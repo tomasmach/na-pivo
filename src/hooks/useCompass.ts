@@ -72,21 +72,25 @@ export function useCompass(): UseCompassResult {
 
   // Fetch pubs from Mapy.cz whenever the user's position changes. The data
   // layer short-circuits if the user hasn't moved more than ~2 km from the
-  // previous fetch center, so this is safe to call on every GPS update.
+  // previous fetch center (or if a fetch is already in-flight), so this is
+  // safe to call on every GPS update. We intentionally do not abort the
+  // network request on cleanup — GPS jitter would otherwise cancel in-flight
+  // fetches every few seconds and prevent any data from ever loading.
   useEffect(() => {
     if (!position) return;
-    const controller = new AbortController();
-    fetchPubsNear(position.lat, position.lng, controller.signal)
+    let cancelled = false;
+    fetchPubsNear(position.lat, position.lng)
       .then(() => {
-        if (!controller.signal.aborted) setPubsLoaded(true);
+        if (!cancelled) setPubsLoaded(true);
       })
       .catch((err) => {
-        if (controller.signal.aborted) return;
-        if (err?.name === 'AbortError') return;
+        if (cancelled) return;
         console.warn('[useCompass] fetchPubsNear failed:', err);
         setPubsLoaded(true);
       });
-    return () => controller.abort();
+    return () => {
+      cancelled = true;
+    };
   }, [position?.lat, position?.lng]);
 
   // — Permission check on mount —
