@@ -390,6 +390,14 @@ export default function CompassScreen() {
     router.push('/settings');
   }, [router]);
 
+  // Dev-only shortcut: long-press the settings gear to simulate arrival at the
+  // current pub. Compiled out of release builds since `__DEV__` is false there.
+  const handleDevArrival = useCallback(() => {
+    if (!__DEV__) return;
+    if (pub) usePubStore.getState().setRevealedPub(pub);
+    router.push('/celebration');
+  }, [pub, router]);
+
   const handleOpenMaps = useCallback(() => {
     if (pub) openPubInMaps(pub);
   }, [pub]);
@@ -428,7 +436,7 @@ export default function CompassScreen() {
   return (
     <View style={[styles.root, { paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, 16) }]}>
       {/* Header */}
-      <TitleBar showGear onSettings={handleSettings} />
+      <TitleBar showGear onSettings={handleSettings} onSettingsLongPress={handleDevArrival} />
 
       {/* Calibration hint (optional, subtle) */}
       {headingAccuracy !== null && headingAccuracy > 20 && (

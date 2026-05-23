@@ -9,6 +9,7 @@ import { cs } from '@/i18n/cs';
 
 interface TitleBarProps {
   onSettings?: () => void;
+  onSettingsLongPress?: () => void;
   showGear?: boolean;
 }
 
@@ -29,7 +30,11 @@ function GearIcon({ size = 20, color }: { size?: number; color: string }) {
   );
 }
 
-export const TitleBar = memo(function TitleBar({ onSettings, showGear = true }: TitleBarProps) {
+export const TitleBar = memo(function TitleBar({
+  onSettings,
+  onSettingsLongPress,
+  showGear = true,
+}: TitleBarProps) {
   return (
     <View style={styles.container}>
       {/* Centered logo: beer icon + title */}
@@ -42,6 +47,7 @@ export const TitleBar = memo(function TitleBar({ onSettings, showGear = true }: 
       {showGear && onSettings ? (
         <Pressable
           onPress={onSettings}
+          onLongPress={onSettingsLongPress}
           style={styles.gearTouchable}
           hitSlop={12}
           accessibilityLabel={cs.a11y.settingsButton}
