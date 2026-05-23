@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useSharedValue, withSpring } from 'react-native-reanimated';
+import { useSharedValue, withTiming, Easing } from 'react-native-reanimated';
 
 import { useCompass } from '@/hooks/useCompass';
 import { usePubStore } from '@/stores/pubStore';
@@ -370,14 +370,19 @@ export default function CompassScreen() {
   // Track the last animated value to enable shortest-path wrap
   const lastRotationRef = useRef(0);
 
-  // Animate the compass arrow with wrap-aware spring
+  // Animate the compass arrow toward each new heading-derived target.
+  // Short timing (≈one heading frame) keeps the arrow visually fluid without
+  // a long-running spring that would perpetually chase a moving target.
   useEffect(() => {
     if (arrowRotation === null) return;
 
     const target = shortestTarget(lastRotationRef.current, arrowRotation);
     lastRotationRef.current = target;
 
-    rotation.value = withSpring(target, { damping: 18, stiffness: 90 });
+    rotation.value = withTiming(target, {
+      duration: 120,
+      easing: Easing.out(Easing.quad),
+    });
   }, [arrowRotation, rotation]);
 
   // Arrival handling: persist revealed pub, push to celebration, dismiss
