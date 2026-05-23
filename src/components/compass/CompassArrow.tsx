@@ -45,11 +45,11 @@ export const CompassArrow = memo(function CompassArrow({
   const cx = size / 2;
   const cy = size / 2;
 
-  // react-native-svg G transform string approach
-  // Rotate around the center point using SVG transform attribute
   const animatedGProps = useAnimatedProps(() => {
     return {
-      transform: `rotate(${rotation.value} ${cx} ${cy})`,
+      rotation: rotation.value,
+      originX: cx,
+      originY: cy,
     };
   });
 
