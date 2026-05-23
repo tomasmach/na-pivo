@@ -8,7 +8,7 @@ import {
   useSharedValue,
   type SharedValue,
 } from 'react-native-reanimated';
-import { findNearestPub, findRandomPubInRadius, isLoaded, loadPubs } from '@/data/pubs';
+import { fetchPubsNear, findNearestPub, findRandomPubInRadius, isLoaded } from '@/data/pubs';
 import type { Pub } from '@/data/pubs';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { usePubStore } from '@/stores/pubStore';
@@ -70,13 +70,21 @@ export function useCompass(): UseCompassResult {
   // — Pub data loading state —
   const [pubsLoaded, setPubsLoaded] = useState(() => isLoaded());
 
+  // Fetch pubs from Mapy.cz whenever the user's position changes. The data
+  // layer short-circuits if the user hasn't moved more than ~2 km from the
+  // previous fetch center, so this is safe to call on every GPS update.
   useEffect(() => {
-    if (!isLoaded()) {
-      loadPubs()
-        .then(() => setPubsLoaded(true))
-        .catch(() => setPubsLoaded(true)); // even on error, stop showing spinner
-    }
-  }, []);
+    if (!position) return;
+    const controller = new AbortController();
+    fetchPubsNear(position.lat, position.lng, controller.signal)
+      .then(() => {
+        if (!controller.signal.aborted) setPubsLoaded(true);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setPubsLoaded(true);
+      });
+    return () => controller.abort();
+  }, [position?.lat, position?.lng]);
 
   // — Permission check on mount —
   useEffect(() => {

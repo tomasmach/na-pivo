@@ -13,7 +13,7 @@ jest.mock('@/data/pubs', () => ({
   findNearestPub: jest.fn(),
   findRandomPubInRadius: jest.fn(),
   isLoaded: jest.fn(() => true),
-  loadPubs: jest.fn(async () => undefined),
+  fetchPubsNear: jest.fn(async () => undefined),
 }));
 
 jest.mock('@/compass/useDevicePosition', () => ({

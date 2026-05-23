@@ -1,5 +1,6 @@
 import KDBush from "kdbush";
 import * as geokdbush from "geokdbush";
+import { searchPubsNear } from "./mapyClient";
 
 export type Pub = {
   id: string;
@@ -10,17 +11,16 @@ export type Pub = {
   city?: string;
 };
 
-interface PubsJson {
-  version: string;
-  generated: string;
-  count: number;
-  pubs: Pub[];
-}
-
 let _pubs: Pub[] = [];
 let _index: KDBush | null = null;
 let _idMap: Map<string, Pub> = new Map();
 let _loaded = false;
+let _lastFetchCenter: { lat: number; lng: number } | null = null;
+let _inflight: Promise<void> | null = null;
+
+/** Re-fetch from Mapy.cz when the user has moved more than this distance from
+ *  the previous fetch center (km). */
+const REFETCH_THRESHOLD_KM = 2;
 
 /** mulberry32 seeded PRNG — returns a function that yields floats in [0, 1) */
 function mulberry32(seed: number): () => number {
@@ -34,9 +34,20 @@ function mulberry32(seed: number): () => number {
   };
 }
 
+function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371;
+  const dLat = ((bLat - aLat) * Math.PI) / 180;
+  const dLng = ((bLng - aLng) * Math.PI) / 180;
+  const lat1 = (aLat * Math.PI) / 180;
+  const lat2 = (bLat * Math.PI) / 180;
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
 /**
  * Builds a KDBush index from the given pubs array.
- * Exposed so tests can inject synthetic data without loading the real JSON.
+ * Exposed so tests can inject synthetic data without hitting the network.
  */
 export function _init(syntheticPubs: Pub[]): void {
   _pubs = syntheticPubs.slice();
@@ -58,15 +69,32 @@ export function _init(syntheticPubs: Pub[]): void {
 }
 
 /**
- * Loads and indexes the bundled pubs dataset.
- * Must be called before any find* functions.
- * Safe to call multiple times (no-op after first successful load).
+ * Fetch pubs near (lat, lng) from Mapy.cz and rebuild the spatial index.
+ * Short-circuits when the user is within REFETCH_THRESHOLD_KM of the last
+ * fetch center, so it is safe to call on every GPS update.
  */
-export async function loadPubs(): Promise<void> {
-  if (_loaded) return;
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const json: PubsJson = require("../../assets/data/pubs.json");
-  _init(json.pubs);
+export async function fetchPubsNear(
+  lat: number,
+  lng: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (_loaded && _lastFetchCenter) {
+    const movedKm = haversineKm(_lastFetchCenter.lat, _lastFetchCenter.lng, lat, lng);
+    if (movedKm < REFETCH_THRESHOLD_KM) return;
+  }
+  if (_inflight) return _inflight;
+
+  _inflight = (async () => {
+    try {
+      const pubs = await searchPubsNear(lat, lng, 25, signal);
+      if (signal?.aborted) return;
+      _init(pubs);
+      _lastFetchCenter = { lat, lng };
+    } finally {
+      _inflight = null;
+    }
+  })();
+  return _inflight;
 }
 
 export function isLoaded(): boolean {
@@ -76,7 +104,7 @@ export function isLoaded(): boolean {
 function assertLoaded(): void {
   if (!_loaded) {
     throw new Error(
-      "Pub data not loaded. Await loadPubs() before calling find* functions."
+      "Pub data not loaded. Await fetchPubsNear() before calling find* functions.",
     );
   }
 }
@@ -132,18 +160,16 @@ export function findRandomPubInRadius(opts: {
     ? (i: number) => !excludeSet.has(_pubs[i].id)
     : undefined;
 
-  // Retrieve all pubs within radius (up to a reasonable upper bound)
   const results = geokdbush.around(_index, lng, lat, Infinity, maxDistance, predicate);
   if (results.length === 0) return null;
 
-  const rng =
-    seed !== undefined ? mulberry32(seed) : () => Math.random();
+  const rng = seed !== undefined ? mulberry32(seed) : () => Math.random();
   const chosen = Math.floor(rng() * results.length);
   return _pubs[results[chosen]];
 }
 
 /**
- * Returns a pub by its id string (e.g. "osm:12345"), or null if not found.
+ * Returns a pub by its id string, or null if not found.
  */
 export function getPubById(id: string): Pub | null {
   assertLoaded();
