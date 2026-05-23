@@ -80,8 +80,11 @@ export function useCompass(): UseCompassResult {
       .then(() => {
         if (!controller.signal.aborted) setPubsLoaded(true);
       })
-      .catch(() => {
-        if (!controller.signal.aborted) setPubsLoaded(true);
+      .catch((err) => {
+        if (controller.signal.aborted) return;
+        if (err?.name === 'AbortError') return;
+        console.warn('[useCompass] fetchPubsNear failed:', err);
+        setPubsLoaded(true);
       });
     return () => controller.abort();
   }, [position?.lat, position?.lng]);

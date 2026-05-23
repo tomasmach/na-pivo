@@ -101,14 +101,6 @@ export function isLoaded(): boolean {
   return _loaded;
 }
 
-function assertLoaded(): void {
-  if (!_loaded) {
-    throw new Error(
-      "Pub data not loaded. Await fetchPubsNear() before calling find* functions.",
-    );
-  }
-}
-
 /**
  * Returns the nearest pub within maxKm kilometers.
  * When maxKm is omitted, there is no distance limit.
@@ -120,8 +112,7 @@ export function findNearestPub(opts: {
   maxKm?: number;
   excludeIds?: string[];
 }): Pub | null {
-  assertLoaded();
-  if (!_index || _pubs.length === 0) return null;
+  if (!_loaded || !_index || _pubs.length === 0) return null;
 
   const { lat, lng, maxKm, excludeIds } = opts;
   const maxDistance = Number.isFinite(maxKm) ? maxKm : undefined;
@@ -149,8 +140,7 @@ export function findRandomPubInRadius(opts: {
   seed?: number;
   excludeIds?: string[];
 }): Pub | null {
-  assertLoaded();
-  if (!_index || _pubs.length === 0) return null;
+  if (!_loaded || !_index || _pubs.length === 0) return null;
 
   const { lat, lng, maxKm, seed, excludeIds } = opts;
   const maxDistance = Number.isFinite(maxKm) ? maxKm : undefined;
@@ -172,6 +162,6 @@ export function findRandomPubInRadius(opts: {
  * Returns a pub by its id string, or null if not found.
  */
 export function getPubById(id: string): Pub | null {
-  assertLoaded();
+  if (!_loaded) return null;
   return _idMap.get(id) ?? null;
 }
