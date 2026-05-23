@@ -94,11 +94,19 @@ async function geocodeQuery(
   url.searchParams.set('preferBBox', preferBBox);
   url.searchParams.set('apikey', apiKey);
 
-  const resp = await fetch(url.toString(), {
-    headers: { 'User-Agent': USER_AGENT },
-    signal,
-  });
+  let resp: Response;
+  try {
+    resp = await fetch(url.toString(), {
+      headers: { 'User-Agent': USER_AGENT },
+      signal,
+    });
+  } catch (err) {
+    console.warn(`[mapy] fetch threw for "${query}":`, err);
+    throw err;
+  }
   if (!resp.ok) {
+    const body = await resp.text().catch(() => '<unreadable>');
+    console.warn(`[mapy] "${query}" HTTP ${resp.status}: ${body.slice(0, 200)}`);
     throw new Error(`Mapy.cz geocode ${query}: HTTP ${resp.status}`);
   }
   const data = (await resp.json()) as MapyGeocodeResponse;
