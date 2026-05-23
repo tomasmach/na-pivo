@@ -1,14 +1,19 @@
 /**
  * Mapy.cz REST API client — POI search for pubs/bars.
  *
- * Strategy: 4 parallel /v1/geocode queries (hospoda, bar, pivnice, pivovar)
- * around a bbox derived from the user's position. Results are deduplicated by
- * coordinate and filtered to pub-ish labels.
+ * Strategy: 4 parallel /v1/suggest queries (hospoda, bar, pivnice, pivovar)
+ * with a tight bbox around the user. Suggest ranks by location, unlike
+ * geocode which biases toward textual relevance. Results are deduplicated,
+ * label-filtered, name-blocklisted, and clamped to the requested radius.
  */
 
 import type { Pub } from './pubs';
 
-const BASE_URL = 'https://api.mapy.cz/v1/geocode';
+// /v1/suggest is dramatically better than /v1/geocode for "POIs near me" —
+// it ranks by location rather than textual relevance, so a small bbox around
+// the user reliably surfaces local results instead of pushing back popular
+// places from far away.
+const BASE_URL = 'https://api.mapy.cz/v1/suggest';
 const USER_AGENT = 'napivo-ios/1.0';
 
 const QUERY_TERMS = ['hospoda', 'bar', 'pivnice', 'pivovar'];
@@ -25,6 +30,17 @@ const ALLOWED_LABELS = new Set<string>([
   'Vinárna',
   'Klub',
 ]);
+
+// Chain restaurants labeled "Restaurace a pohostinství" that nobody goes to for
+// a beer. Matched as a case-insensitive substring against the POI name.
+const NAME_BLOCKLIST = [
+  "mcdonald", // McDonald's
+  "kfc",
+  "burger king",
+  "subway",
+  "starbucks",
+  "costa coffee",
+];
 
 interface MapyPosition {
   lat: number;
@@ -81,7 +97,7 @@ function pickAddress(item: MapyGeocodeItem): string | undefined {
   return undefined;
 }
 
-async function geocodeQuery(
+async function suggestQuery(
   query: string,
   preferBBox: string,
   apiKey: string,
@@ -107,10 +123,26 @@ async function geocodeQuery(
   if (!resp.ok) {
     const body = await resp.text().catch(() => '<unreadable>');
     console.warn(`[mapy] "${query}" HTTP ${resp.status}: ${body.slice(0, 200)}`);
-    throw new Error(`Mapy.cz geocode ${query}: HTTP ${resp.status}`);
+    throw new Error(`Mapy.cz suggest ${query}: HTTP ${resp.status}`);
   }
   const data = (await resp.json()) as MapyGeocodeResponse;
   return data.items ?? [];
+}
+
+function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371;
+  const dLat = ((bLat - aLat) * Math.PI) / 180;
+  const dLng = ((bLng - aLng) * Math.PI) / 180;
+  const lat1 = (aLat * Math.PI) / 180;
+  const lat2 = (bLat * Math.PI) / 180;
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+function nameIsBlocked(name: string): boolean {
+  const lower = name.toLowerCase();
+  return NAME_BLOCKLIST.some((needle) => lower.includes(needle));
 }
 
 /**
@@ -128,10 +160,13 @@ export async function searchPubsNear(
     throw new Error('MAPY_API_KEY is not configured');
   }
 
-  const preferBBox = buildPreferBBox(lat, lng, kmRadius);
+  // Suggest ranks by proximity, so a tight bbox surfaces the local POIs we
+  // care about. We then filter by true haversine distance below to enforce
+  // the caller's radius precisely.
+  const suggestBBox = buildPreferBBox(lat, lng, Math.min(kmRadius, 5));
 
   const settled = await Promise.allSettled(
-    QUERY_TERMS.map((term) => geocodeQuery(term, preferBBox, apiKey, signal)),
+    QUERY_TERMS.map((term) => suggestQuery(term, suggestBBox, apiKey, signal)),
   );
 
   const items: MapyGeocodeItem[] = [];
@@ -143,15 +178,20 @@ export async function searchPubsNear(
     }
   }
   if (allFailed) {
-    throw new Error('All Mapy.cz geocode queries failed');
+    throw new Error('All Mapy.cz suggest queries failed');
   }
 
-  // Dedupe by coordinate (~1m precision is plenty).
+  // Dedupe by coordinate (~1m precision is plenty), filter labels and chain
+  // restaurants, enforce true radius.
   const seen = new Set<string>();
   const pubs: Pub[] = [];
   for (const item of items) {
     if (!item.label || !ALLOWED_LABELS.has(item.label)) continue;
     if (!item.name || !item.position) continue;
+    if (nameIsBlocked(item.name)) continue;
+
+    const distance = haversineKm(lat, lng, item.position.lat, item.position.lon);
+    if (distance > kmRadius) continue;
 
     const key = `${item.position.lat.toFixed(5)},${item.position.lon.toFixed(5)}`;
     if (seen.has(key)) continue;
