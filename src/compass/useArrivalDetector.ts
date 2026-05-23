@@ -1,0 +1,99 @@
+/**
+ * Detects arrival at a pub and triggers haptic + sound feedback once per pub visit.
+ */
+
+import { useEffect, useRef, useState } from 'react';
+import * as Haptics from 'expo-haptics';
+import { createAudioPlayer } from 'expo-audio';
+import type { AudioPlayer } from 'expo-audio';
+
+export interface UseArrivalDetectorOptions {
+  distanceMeters: number | null;
+  gpsAccuracyMeters: number | null;
+  targetPubId: string | null;
+  hapticEnabled: boolean;
+  soundEnabled: boolean;
+  thresholdMeters?: number;
+}
+
+export interface UseArrivalDetectorResult {
+  arrived: boolean;
+  dismiss: () => void;
+}
+
+const DEFAULT_THRESHOLD_METERS = 30;
+
+export function useArrivalDetector({
+  distanceMeters,
+  gpsAccuracyMeters,
+  targetPubId,
+  hapticEnabled,
+  soundEnabled,
+  thresholdMeters = DEFAULT_THRESHOLD_METERS,
+}: UseArrivalDetectorOptions): UseArrivalDetectorResult {
+  const [arrived, setArrived] = useState(false);
+
+  // Tracks the pubId that has already fired, to prevent re-firing.
+  const firedRef = useRef<string | null>(null);
+
+  // Lazily created audio player — cached for the component's lifetime.
+  const audioPlayerRef = useRef<AudioPlayer | null>(null);
+
+  // Reset fired state when target pub changes so a new pub can trigger arrival.
+  const prevPubIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (targetPubId !== prevPubIdRef.current) {
+      prevPubIdRef.current = targetPubId;
+      firedRef.current = null;
+      setArrived(false);
+    }
+  }, [targetPubId]);
+
+  // Clean up audio player on unmount.
+  useEffect(() => {
+    return () => {
+      audioPlayerRef.current?.remove();
+      audioPlayerRef.current = null;
+    };
+  }, []);
+
+  // Arrival detection.
+  useEffect(() => {
+    if (
+      distanceMeters === null ||
+      distanceMeters >= thresholdMeters ||
+      gpsAccuracyMeters === null ||
+      gpsAccuracyMeters >= 30 ||
+      targetPubId === null ||
+      firedRef.current === targetPubId
+    ) {
+      return;
+    }
+
+    // Fire arrival.
+    firedRef.current = targetPubId;
+    setArrived(true);
+
+    if (hapticEnabled) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {
+        // ignore haptic errors on simulator / unsupported devices
+      });
+    }
+
+    if (soundEnabled) {
+      // Lazily create the player and cache it.
+      if (!audioPlayerRef.current) {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        audioPlayerRef.current = createAudioPlayer(require('../../assets/sounds/cink.mp3'));
+      }
+      audioPlayerRef.current.play();
+    }
+  }, [distanceMeters, gpsAccuracyMeters, targetPubId, hapticEnabled, soundEnabled, thresholdMeters]);
+
+  const dismiss = (): void => {
+    // Reset visual state but keep firedRef so the same pub doesn't re-fire.
+    setArrived(false);
+  };
+
+  return { arrived, dismiss };
+}

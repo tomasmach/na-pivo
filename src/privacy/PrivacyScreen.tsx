@@ -1,0 +1,134 @@
+/**
+ * Privacy screen — scrollable, dark background.
+ * Shows app privacy policy paragraphs and a mailto contact link.
+ */
+
+import React from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  Pressable,
+  Linking,
+  StyleSheet,
+} from 'react-native';
+import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { Colors } from '@/theme/colors';
+import { Fonts } from '@/theme/fonts';
+import { cs } from '@/i18n/cs';
+
+export default function PrivacyScreen() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+
+  function handleEmail() {
+    void Linking.openURL(`mailto:${cs.privacy.contactEmail}`);
+  }
+
+  return (
+    <View style={[styles.root, { paddingTop: insets.top || 16 }]}>
+      {/* Header row */}
+      <View style={styles.header}>
+        <Pressable
+          onPress={() => router.back()}
+          style={styles.backButton}
+          accessibilityRole="button"
+          accessibilityLabel={cs.a11y.backButton}
+          hitSlop={8}
+        >
+          <Text style={styles.backChevron}>‹</Text>
+        </Pressable>
+        <Text style={styles.headerTitle}>{cs.privacy.title}</Text>
+        {/* Spacer to keep title centered */}
+        <View style={styles.backButton} />
+      </View>
+
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: Math.max(insets.bottom + 32, 48) },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        {cs.privacy.body.map((paragraph, index) => (
+          <Text key={index} style={styles.paragraph}>
+            {paragraph}
+          </Text>
+        ))}
+
+        {/* Contact */}
+        <View style={styles.contactRow}>
+          <Text style={styles.contactLabel}>{cs.privacy.contactLabel}: </Text>
+          <Pressable onPress={handleEmail} accessibilityRole="link">
+            <Text style={styles.contactEmail}>{cs.privacy.contactEmail}</Text>
+          </Pressable>
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: Colors.stout,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backChevron: {
+    fontFamily: Fonts.display.bold,
+    fontSize: 32,
+    color: Colors.foam,
+    lineHeight: 36,
+  },
+  headerTitle: {
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 24,
+    color: Colors.foam,
+    textAlign: 'center',
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 24,
+    paddingTop: 24,
+  },
+  paragraph: {
+    fontFamily: Fonts.ui.regular,
+    fontSize: 15,
+    color: Colors.foamMuted,
+    lineHeight: 15 * 1.5,
+    marginBottom: 16,
+  },
+  contactRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  contactLabel: {
+    fontFamily: Fonts.ui.regular,
+    fontSize: 15,
+    color: Colors.foamMuted,
+  },
+  contactEmail: {
+    fontFamily: Fonts.ui.medium,
+    fontSize: 15,
+    color: Colors.amber,
+    textDecorationLine: 'underline',
+  },
+});
