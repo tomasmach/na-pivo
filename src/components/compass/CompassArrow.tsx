@@ -1,13 +1,13 @@
 import React, { memo } from 'react';
+import { StyleSheet } from 'react-native';
 import Svg, {
-  G,
   Path,
   Defs,
   Filter,
   FeGaussianBlur,
 } from 'react-native-svg';
 import Animated, {
-  useAnimatedProps,
+  useAnimatedStyle,
   useSharedValue,
   withSpring,
   cancelAnimation,
@@ -15,9 +15,6 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Colors } from '@/theme/colors';
 import { CompassSize } from '@/theme/layout';
-
-// Create Animated version of the SVG G group
-const AnimatedG = Animated.createAnimatedComponent(G);
 
 interface CompassArrowProps {
   rotation: SharedValue<number>;
@@ -42,31 +39,34 @@ export const CompassArrow = memo(function CompassArrow({
   rotation,
   size = CompassSize,
 }: CompassArrowProps) {
-  const cx = size / 2;
-  const cy = size / 2;
-
-  const animatedGProps = useAnimatedProps(() => {
+  const animatedStyle = useAnimatedStyle(() => {
     return {
-      rotation: rotation.value,
-      originX: cx,
-      originY: cy,
+      transform: [{ rotate: `${rotation.value}deg` }],
     };
   });
 
   return (
-    <Svg
-      width={size}
-      height={size}
-      viewBox={`0 0 ${CompassSize} ${CompassSize}`}
+    <Animated.View
+      style={[
+        styles.rotatingArrow,
+        {
+          width: size,
+          height: size,
+        },
+        animatedStyle,
+      ]}
     >
-      <Defs>
-        <Filter id="arrowGlowFilter" x="-80%" y="-80%" width="260%" height="260%">
-          <FeGaussianBlur stdDeviation="10" />
-        </Filter>
-      </Defs>
+      <Svg
+        width={size}
+        height={size}
+        viewBox={`0 0 ${CompassSize} ${CompassSize}`}
+      >
+        <Defs>
+          <Filter id="arrowGlowFilter" x="-80%" y="-80%" width="260%" height="260%">
+            <FeGaussianBlur stdDeviation="10" />
+          </Filter>
+        </Defs>
 
-      {/* Rotating group — driven by Reanimated */}
-      <AnimatedG animatedProps={animatedGProps}>
         {/* Glow layer behind arrow */}
         <Path
           d={GLOW_PATH}
@@ -92,9 +92,15 @@ export const CompassArrow = memo(function CompassArrow({
           strokeWidth={2}
           strokeLinejoin="round"
         />
-      </AnimatedG>
-    </Svg>
+      </Svg>
+    </Animated.View>
   );
+});
+
+const styles = StyleSheet.create({
+  rotatingArrow: {
+    transformOrigin: 'center',
+  },
 });
 
 // ── Hook ──────────────────────────────────────────────────────────────────

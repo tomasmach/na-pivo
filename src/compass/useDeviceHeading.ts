@@ -5,10 +5,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import * as Location from 'expo-location';
+import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 import { createAngleEMA, DEFAULT_HEADING_ALPHA } from './smoothing';
 
 export interface UseDeviceHeadingResult {
-  smoothedHeading: number | null;
+  smoothedHeading: SharedValue<number | null>;
   accuracyDeg: number | null;
   hasMagnetometer: boolean;
 }
@@ -16,7 +17,7 @@ export interface UseDeviceHeadingResult {
 const NO_HEADING_THRESHOLD = 5;
 
 export function useDeviceHeading(): UseDeviceHeadingResult {
-  const [smoothedHeading, setSmoothedHeading] = useState<number | null>(null);
+  const smoothedHeading = useSharedValue<number | null>(null);
   const [accuracyDeg, setAccuracyDeg] = useState<number | null>(null);
   const [hasMagnetometer, setHasMagnetometer] = useState(true);
 
@@ -24,12 +25,15 @@ export function useDeviceHeading(): UseDeviceHeadingResult {
   const emaRef = useRef(createAngleEMA(DEFAULT_HEADING_ALPHA));
   const isMountedRef = useRef(true);
   const noHeadingCountRef = useRef(0);
+  const accuracyDegRef = useRef<number | null>(null);
+  const hasMagnetometerRef = useRef(true);
 
   const startWatching = async (): Promise<void> => {
     if (subscriptionRef.current) return;
 
     emaRef.current.reset();
     noHeadingCountRef.current = 0;
+    smoothedHeading.value = null;
 
     try {
       const sub = await Location.watchHeadingAsync((heading) => {
@@ -40,7 +44,8 @@ export function useDeviceHeading(): UseDeviceHeadingResult {
         // Track no-heading callbacks
         if (trueHeading === -1 && magHeading === -1) {
           noHeadingCountRef.current += 1;
-          if (noHeadingCountRef.current >= NO_HEADING_THRESHOLD) {
+          if (noHeadingCountRef.current >= NO_HEADING_THRESHOLD && hasMagnetometerRef.current) {
+            hasMagnetometerRef.current = false;
             setHasMagnetometer(false);
           }
           return;
@@ -48,13 +53,23 @@ export function useDeviceHeading(): UseDeviceHeadingResult {
 
         // Reset no-heading counter when we get a valid reading
         noHeadingCountRef.current = 0;
+        if (!hasMagnetometerRef.current) {
+          hasMagnetometerRef.current = true;
+          setHasMagnetometer(true);
+        }
 
-        // Prefer trueHeading when valid
-        const raw = trueHeading >= 0 ? trueHeading : magHeading;
+        // Prefer magnetic heading for immediate compass response. trueHeading
+        // can be slower or unavailable depending on CoreLocation calibration.
+        const raw = magHeading >= 0 ? magHeading : trueHeading;
         const smoothed = emaRef.current(raw);
 
-        setSmoothedHeading(smoothed);
-        setAccuracyDeg(accuracy);
+        smoothedHeading.value = smoothed;
+
+        const roundedAccuracy = Math.round(accuracy);
+        if (accuracyDegRef.current !== roundedAccuracy) {
+          accuracyDegRef.current = roundedAccuracy;
+          setAccuracyDeg(roundedAccuracy);
+        }
       });
 
       if (!isMountedRef.current) {

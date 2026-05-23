@@ -3,8 +3,18 @@
   "version": "1.0.0",
   "main": "expo-router/entry",
   "private": true,
+  "expo": {
+    "autolinking": {
+      "ios": {
+        "buildFromSource": [
+          "expo-location"
+        ]
+      }
+    }
+  },
   "scripts": {
     "start": "expo start",
+    "postinstall": "node scripts/patch-expo-location-heading.js",
     "ios": "expo run:ios",
     "android": "expo run:android",
     "typecheck": "tsc --noEmit",

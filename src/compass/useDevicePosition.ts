@@ -29,9 +29,9 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
     try {
       const sub = await Location.watchPositionAsync(
         {
-          accuracy: Location.Accuracy.Balanced,
-          distanceInterval: 10,
-          timeInterval: 5000,
+          accuracy: Location.Accuracy.BestForNavigation,
+          distanceInterval: 0,
+          timeInterval: 1000,
         },
         (location) => {
           if (!isMountedRef.current) return;

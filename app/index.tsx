@@ -6,7 +6,7 @@
  *   + Permission gate and loading state
  */
 
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -16,11 +16,15 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useSharedValue, withTiming, Easing } from 'react-native-reanimated';
+import {
+  useAnimatedReaction,
+  useSharedValue,
+} from 'react-native-reanimated';
 
 import { useCompass } from '@/hooks/useCompass';
 import { usePubStore } from '@/stores/pubStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { shortestRotationTarget } from '@/compass/rotation';
 import { openPubInMaps } from '@/utils/maps';
 
 import { CompassContainer } from '@/components/compass/CompassContainer';
@@ -42,21 +46,6 @@ import { Fonts } from '@/theme/fonts';
 import { Radius, Spacing, CompassSize } from '@/theme/layout';
 import { amberGlow, amberGlowStrong } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
-
-// ─── Rotation wrap-around helper ─────────────────────────────────────────────
-
-/**
- * Given a target angle and the current animated value, return the equivalent
- * target that minimises the travel distance (always < 180°). This prevents
- * the arrow from spinning the long way around when crossing 0°/360°.
- */
-function shortestTarget(current: number, target: number): number {
-  let t = target;
-  // Shift t until |t - current| < 180
-  while (t - current > 180) t -= 360;
-  while (current - t > 180) t += 360;
-  return t;
-}
 
 // ─── Permission screen ────────────────────────────────────────────────────────
 
@@ -367,23 +356,25 @@ export default function CompassScreen() {
 
   // Reanimated shared value for compass rotation
   const rotation = useSharedValue(0);
-  // Track the last animated value to enable shortest-path wrap
-  const lastRotationRef = useRef(0);
+  const lastRotationTarget = useSharedValue(0);
+  const hasRotationTarget = useSharedValue(false);
 
-  // Animate the compass arrow toward each new heading-derived target.
-  // Short timing (≈one heading frame) keeps the arrow visually fluid without
-  // a long-running spring that would perpetually chase a moving target.
-  useEffect(() => {
-    if (arrowRotation === null) return;
+  // Keep the hot heading -> arrow path inside Reanimated instead of React
+  // state/effects. The native heading stream is already high-frequency, so the
+  // shared value is assigned directly instead of restarting an animation.
+  useAnimatedReaction(
+    () => arrowRotation.value,
+    (target, previousTarget) => {
+      if (target === null || target === previousTarget) return;
 
-    const target = shortestTarget(lastRotationRef.current, arrowRotation);
-    lastRotationRef.current = target;
+      const current = hasRotationTarget.value ? lastRotationTarget.value : rotation.value;
+      const nextTarget = shortestRotationTarget(current, target);
 
-    rotation.value = withTiming(target, {
-      duration: 120,
-      easing: Easing.out(Easing.quad),
-    });
-  }, [arrowRotation, rotation]);
+      hasRotationTarget.value = true;
+      lastRotationTarget.value = nextTarget;
+      rotation.value = nextTarget;
+    },
+  );
 
   // Arrival handling: persist revealed pub, push to celebration, dismiss
   useEffect(() => {

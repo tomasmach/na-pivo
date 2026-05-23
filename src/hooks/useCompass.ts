@@ -3,6 +3,11 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useDerivedValue,
+  useSharedValue,
+  type SharedValue,
+} from 'react-native-reanimated';
 import { findNearestPub, findRandomPubInRadius, isLoaded, loadPubs } from '@/data/pubs';
 import type { Pub } from '@/data/pubs';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -13,6 +18,7 @@ import { useTargetBearing } from '@/compass/useTargetBearing';
 import { useArrivalDetector } from '@/compass/useArrivalDetector';
 import { ensureLocationPermission, openSystemSettings } from '@/compass/permissions';
 import { formatDistanceCs } from '@/compass/distance';
+import { compassArrowRotation } from '@/compass/rotation';
 import type { PermissionState } from '@/compass/permissions';
 import type { Mode } from '@/stores/settingsStore';
 
@@ -23,7 +29,7 @@ const RECOMPUTE_DISTANCE_M = 50;
 const RECOMPUTE_THRESHOLD_DEG = 0.0005;
 
 export interface UseCompassResult {
-  arrowRotation: number | null;
+  arrowRotation: SharedValue<number | null>;
   distanceMeters: number | null;
   distanceFormatted: string | null;
   pub: Pub | null;
@@ -136,6 +142,11 @@ export function useCompass(): UseCompassResult {
     position ? { lat: position.lat, lng: position.lng } : null,
     currentPub,
   );
+  const bearingValue = useSharedValue<number | null>(null);
+
+  useEffect(() => {
+    bearingValue.value = bearing;
+  }, [bearing, bearingValue]);
 
   // — Arrival detection —
   const { arrived, dismiss: dismissArrival } = useArrivalDetector({
@@ -147,10 +158,16 @@ export function useCompass(): UseCompassResult {
   });
 
   // — Arrow rotation —
-  const arrowRotation =
-    bearing !== null && smoothedHeading !== null
-      ? ((bearing - smoothedHeading + 360) % 360)
-      : null;
+  const arrowRotation = useDerivedValue<number | null>(() => {
+    const currentBearing = bearingValue.value;
+    const currentHeading = smoothedHeading.value;
+
+    if (currentBearing === null || currentHeading === null) {
+      return null;
+    }
+
+    return compassArrowRotation(currentBearing, currentHeading);
+  });
 
   // — Distance formatted —
   const distanceFormatted = distanceMeters !== null ? formatDistanceCs(distanceMeters) : null;

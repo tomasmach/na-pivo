@@ -28,10 +28,15 @@ jest.mock('@/compass/useDevicePosition', () => ({
 
 jest.mock('@/compass/useDeviceHeading', () => ({
   useDeviceHeading: jest.fn(() => ({
-    smoothedHeading: 10,
+    smoothedHeading: { value: 10 },
     accuracyDeg: 5,
     hasMagnetometer: true,
   })),
+}));
+
+jest.mock('react-native-reanimated', () => ({
+  useSharedValue: jest.fn((value) => ({ value })),
+  useDerivedValue: jest.fn((factory) => ({ value: factory() })),
 }));
 
 jest.mock('@/compass/useTargetBearing', () => ({

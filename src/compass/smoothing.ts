@@ -11,7 +11,7 @@ export interface AngleEMAFn {
  * Creates a stateful angle EMA updater.
  *
  * @param alpha  Smoothing factor in (0, 1]. Higher = more responsive, lower = smoother.
- *               Default recommended value for compass heading: 0.2.
+ *               Default recommended value for compass heading: 0.65.
  *
  * On first call: returns `next` unchanged.
  * On subsequent calls: wrap-aware EMA:
@@ -42,4 +42,4 @@ export function createAngleEMA(alpha: number): AngleEMAFn {
 }
 
 /** Default alpha for compass heading smoothing. */
-export const DEFAULT_HEADING_ALPHA = 0.2;
+export const DEFAULT_HEADING_ALPHA = 0.65;

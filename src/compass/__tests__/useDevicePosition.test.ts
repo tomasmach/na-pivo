@@ -7,7 +7,7 @@ import { useDevicePosition } from '../useDevicePosition';
 
 jest.mock('expo-location', () => ({
   Accuracy: {
-    Balanced: 3,
+    BestForNavigation: 6,
   },
   watchPositionAsync: jest.fn(),
 }));
@@ -85,6 +85,14 @@ describe('useDevicePosition', () => {
     });
 
     expect(Location.watchPositionAsync).toHaveBeenCalledTimes(1);
+    expect(Location.watchPositionAsync).toHaveBeenCalledWith(
+      {
+        accuracy: Location.Accuracy.BestForNavigation,
+        distanceInterval: 0,
+        timeInterval: 1000,
+      },
+      expect.any(Function),
+    );
 
     act(() => {
       emitLocation?.({
