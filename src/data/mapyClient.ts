@@ -6,7 +6,6 @@
  * coordinate and filtered to pub-ish labels.
  */
 
-import Constants from 'expo-constants';
 import type { Pub } from './pubs';
 
 const BASE_URL = 'https://api.mapy.cz/v1/geocode';
@@ -45,9 +44,11 @@ interface MapyGeocodeResponse {
   items?: MapyGeocodeItem[];
 }
 
+// Read at module top-level so Metro inlines the value at bundle time.
+const MAPY_API_KEY = process.env.EXPO_PUBLIC_MAPY_API_KEY ?? '';
+
 function getApiKey(): string {
-  const key = (Constants.expoConfig?.extra as Record<string, unknown> | undefined)?.mapyApiKey;
-  return typeof key === 'string' ? key : '';
+  return MAPY_API_KEY;
 }
 
 /**
