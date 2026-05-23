@@ -18,8 +18,7 @@
     "ios": "expo run:ios",
     "android": "expo run:android",
     "typecheck": "tsc --noEmit",
-    "test": "jest --passWithNoTests",
-    "fetch-pubs": "tsx scripts/fetch-pubs.ts"
+    "test": "jest --passWithNoTests"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
@@ -56,7 +55,6 @@
     "jest-expo": "^56.0.4",
     "react-test-renderer": "^19.2.3",
     "ts-jest": "^29.4.11",
-    "tsx": "^4.22.3",
     "typescript": "^6.0.3"
   }
 }
