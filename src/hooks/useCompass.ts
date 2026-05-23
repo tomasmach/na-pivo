@@ -54,12 +54,12 @@ export function useCompass(): UseCompassResult {
   // — Pub store —
   const setRevealedPub = usePubStore((s) => s.setRevealedPub);
 
-  // — Position / heading —
-  const { position } = useDevicePosition();
-  const { smoothedHeading, accuracyDeg, hasMagnetometer } = useDeviceHeading();
-
   // — Permission state —
   const [permissionState, setPermissionState] = useState<PermissionState>('undetermined');
+
+  // — Position / heading —
+  const { position } = useDevicePosition(permissionState === 'granted');
+  const { smoothedHeading, accuracyDeg, hasMagnetometer } = useDeviceHeading();
 
   // — Pub data loading state —
   const [pubsLoaded, setPubsLoaded] = useState(() => isLoaded());
@@ -90,24 +90,11 @@ export function useCompass(): UseCompassResult {
   const lastMaxKmRef = useRef<number | null | undefined>(undefined);
   const lastSeedRef = useRef<number | null>(null);
 
-  // — Target selection logic —
-  const selectTarget = useCallback(() => {
-    if (!position || !pubsLoaded) return;
-
-    const { lat, lng } = position;
-    const pub =
-      mode === 'nearest'
-        ? findNearestPub({ lat, lng, maxKm: maxDistanceKm ?? undefined })
-        : findRandomPubInRadius({ lat, lng, maxKm: maxDistanceKm ?? 2, seed: surpriseSeed });
-
-    setCurrentPub(pub);
-    setRevealed(false);
-  }, [position, pubsLoaded, mode, maxDistanceKm, surpriseSeed]);
-
   useEffect(() => {
     if (!position || !pubsLoaded) return;
 
     const { lat, lng } = position;
+    const maxKm = maxDistanceKm ?? undefined;
     const lastPos = lastTargetPosRef.current;
 
     // Check if we should recompute
@@ -132,8 +119,8 @@ export function useCompass(): UseCompassResult {
 
       const pub =
         mode === 'nearest'
-          ? findNearestPub({ lat, lng, maxKm: maxDistanceKm ?? undefined })
-          : findRandomPubInRadius({ lat, lng, maxKm: maxDistanceKm ?? 2, seed: surpriseSeed });
+          ? findNearestPub({ lat, lng, maxKm })
+          : findRandomPubInRadius({ lat, lng, maxKm, seed: surpriseSeed });
 
       setCurrentPub(pub);
       // Only reset revealed when actually changing to a different pub

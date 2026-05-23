@@ -16,12 +16,14 @@ export interface UseDevicePositionResult {
   position: DevicePosition | null;
 }
 
-export function useDevicePosition(): UseDevicePositionResult {
+export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
   const [position, setPosition] = useState<DevicePosition | null>(null);
   const subscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const isMountedRef = useRef(true);
+  const enabledRef = useRef(enabled);
 
   const startWatching = async (): Promise<void> => {
+    if (!enabledRef.current) return;
     if (subscriptionRef.current) return; // already watching
 
     try {
@@ -40,7 +42,7 @@ export function useDevicePosition(): UseDevicePositionResult {
           });
         },
       );
-      if (!isMountedRef.current) {
+      if (!isMountedRef.current || !enabledRef.current) {
         sub.remove();
         return;
       }
@@ -56,10 +58,23 @@ export function useDevicePosition(): UseDevicePositionResult {
   };
 
   useEffect(() => {
-    isMountedRef.current = true;
-    startWatching();
+    enabledRef.current = enabled;
 
+    if (enabled && AppState.currentState === 'active') {
+      startWatching();
+    } else {
+      stopWatching();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled]);
+
+  useEffect(() => {
     const handleAppState = (nextState: AppStateStatus): void => {
+      if (!enabledRef.current) {
+        stopWatching();
+        return;
+      }
+
       if (nextState === 'active') {
         startWatching();
       } else {
@@ -71,6 +86,7 @@ export function useDevicePosition(): UseDevicePositionResult {
 
     return () => {
       isMountedRef.current = false;
+      enabledRef.current = false;
       stopWatching();
       subscription.remove();
     };

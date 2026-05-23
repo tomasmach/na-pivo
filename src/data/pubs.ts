@@ -82,7 +82,8 @@ function assertLoaded(): void {
 }
 
 /**
- * Returns the nearest pub within maxKm kilometers (default 100 km).
+ * Returns the nearest pub within maxKm kilometers.
+ * When maxKm is omitted, there is no distance limit.
  * Returns null if no pub is found within the radius.
  */
 export function findNearestPub(opts: {
@@ -94,27 +95,29 @@ export function findNearestPub(opts: {
   assertLoaded();
   if (!_index || _pubs.length === 0) return null;
 
-  const { lat, lng, maxKm = 100, excludeIds } = opts;
+  const { lat, lng, maxKm, excludeIds } = opts;
+  const maxDistance = Number.isFinite(maxKm) ? maxKm : undefined;
   const excludeSet = excludeIds ? new Set(excludeIds) : null;
 
   const predicate = excludeSet
     ? (i: number) => !excludeSet.has(_pubs[i].id)
     : undefined;
 
-  const results = geokdbush.around(_index, lng, lat, 1, maxKm, predicate);
+  const results = geokdbush.around(_index, lng, lat, 1, maxDistance, predicate);
   if (results.length === 0) return null;
   return _pubs[results[0]];
 }
 
 /**
  * Returns a random pub within maxKm kilometers.
+ * When maxKm is omitted, there is no distance limit.
  * When seed is provided, selection is deterministic for that seed value.
  * Returns null if no pub is found within the radius.
  */
 export function findRandomPubInRadius(opts: {
   lat: number;
   lng: number;
-  maxKm: number;
+  maxKm?: number;
   seed?: number;
   excludeIds?: string[];
 }): Pub | null {
@@ -122,6 +125,7 @@ export function findRandomPubInRadius(opts: {
   if (!_index || _pubs.length === 0) return null;
 
   const { lat, lng, maxKm, seed, excludeIds } = opts;
+  const maxDistance = Number.isFinite(maxKm) ? maxKm : undefined;
   const excludeSet = excludeIds ? new Set(excludeIds) : null;
 
   const predicate = excludeSet
@@ -129,7 +133,7 @@ export function findRandomPubInRadius(opts: {
     : undefined;
 
   // Retrieve all pubs within radius (up to a reasonable upper bound)
-  const results = geokdbush.around(_index, lng, lat, Infinity, maxKm, predicate);
+  const results = geokdbush.around(_index, lng, lat, Infinity, maxDistance, predicate);
   if (results.length === 0) return null;
 
   const rng =

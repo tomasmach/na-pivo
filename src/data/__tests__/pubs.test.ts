@@ -41,6 +41,11 @@ describe("findNearestPub", () => {
     expect(pub).toBeNull();
   });
 
+  it("has no distance limit when maxKm is omitted", () => {
+    const pub = findNearestPub({ lat: 56.0, lng: 3.0 });
+    expect(pub).not.toBeNull();
+  });
+
   it("respects excludeIds — skips excluded entries", () => {
     // Nearest to osm:1 is osm:1 itself; excluding it should return osm:2
     const pub = findNearestPub({
@@ -70,6 +75,11 @@ describe("findRandomPubInRadius", () => {
   it("returns null when all pubs are outside maxKm", () => {
     const pub = findRandomPubInRadius({ lat: 56.0, lng: 3.0, maxKm: 10 });
     expect(pub).toBeNull();
+  });
+
+  it("has no distance limit when maxKm is omitted", () => {
+    const pub = findRandomPubInRadius({ lat: 56.0, lng: 3.0, seed: 1 });
+    expect(pub).not.toBeNull();
   });
 
   it("returns a pub within the given radius", () => {

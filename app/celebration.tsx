@@ -22,6 +22,7 @@ import { Fonts } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
 import { usePubStore } from '@/stores/pubStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { openPubInMaps } from '@/utils/maps';
 import { Confetti } from '@/components/celebration/Confetti';
 import { ConfettiStatic } from '@/components/celebration/ConfettiStatic';
@@ -35,6 +36,7 @@ export default function CelebrationScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const revealedPub = usePubStore((s) => s.revealedPub);
+  const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
   const reducedMotion = useReducedMotion();
   const hapticFiredRef = useRef(false);
 
@@ -43,12 +45,13 @@ export default function CelebrationScreen() {
   const contentOpacity = useSharedValue(reducedMotion ? 1 : 0);
 
   useEffect(() => {
-    // Fire haptic once on mount
-    if (!hapticFiredRef.current) {
+    if (hapticEnabled && !hapticFiredRef.current) {
       hapticFiredRef.current = true;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
     }
+  }, [hapticEnabled]);
 
+  useEffect(() => {
     if (reducedMotion) {
       headlineScale.value = 1;
       contentOpacity.value = 1;
@@ -60,8 +63,7 @@ export default function CelebrationScreen() {
 
     // Fade in rest of content
     contentOpacity.value = withTiming(1, { duration: 250 });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [contentOpacity, headlineScale, reducedMotion]);
 
   const headlineAnimStyle = useAnimatedStyle(() => ({
     transform: [{ scale: headlineScale.value }],
