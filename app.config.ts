@@ -44,6 +44,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     stripeDonateUrl:
       process.env.STRIPE_DONATE_URL ??
       'https://donate.stripe.com/eVqcN5fAwgdP5qr9wmdfG00',
+    mapyApiKey: process.env.MAPY_API_KEY ?? '',
     eas: {
       projectId: '',
     },

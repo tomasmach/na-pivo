@@ -36,6 +36,7 @@ module.exports = {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
     '^expo-linking$': '<rootDir>/src/__mocks__/expo-linking.ts',
+    '^expo-constants$': '<rootDir>/src/__mocks__/expo-constants.ts',
     '^react-native$': '<rootDir>/src/__mocks__/react-native.ts',
   },
   testMatch: ['**/__tests__/**/*.test.ts?(x)'],
