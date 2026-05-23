@@ -108,6 +108,34 @@ async function fetchOverpass(endpoint: string, retried = false): Promise<Overpas
   }
 }
 
+// OSM tag prefixes used to mark a feature as no longer operational.
+// Anything tagged like `disused:amenity=pub` or `was:amenity=pub` is dropped.
+const CLOSED_LIFECYCLE_PREFIXES = [
+  "disused:",
+  "was:",
+  "abandoned:",
+  "removed:",
+  "demolished:",
+  "razed:",
+  "destroyed:",
+];
+
+function isClosed(tags: Record<string, string>): boolean {
+  // Explicit lifecycle prefix on any amenity-like tag.
+  for (const prefix of CLOSED_LIFECYCLE_PREFIXES) {
+    for (const key of Object.keys(tags)) {
+      if (key.startsWith(prefix)) return true;
+    }
+  }
+  // Standalone disused / abandoned flags.
+  if (tags["disused"] === "yes") return true;
+  if (tags["abandoned"] === "yes") return true;
+  // opening_hours of "closed" / "off" marks a permanently shuttered place.
+  const hours = tags["opening_hours"]?.toLowerCase().trim();
+  if (hours === "closed" || hours === "off") return true;
+  return false;
+}
+
 function isValidName(name: string | undefined): boolean {
   if (!name) return false;
   const trimmed = name.trim();
@@ -143,10 +171,12 @@ function processElements(elements: OverpassElement[]): {
   pubs: Pub[];
   droppedNoName: number;
   droppedWrongAmenity: number;
+  droppedClosed: number;
 } {
   const validAmenities = new Set(["pub", "bar", "biergarten", "restaurant"]);
   let droppedNoName = 0;
   let droppedWrongAmenity = 0;
+  let droppedClosed = 0;
   const seen = new Set<number>();
   const pubs: Pub[] = [];
 
@@ -165,6 +195,12 @@ function processElements(elements: OverpassElement[]): {
     // For restaurant, must have microbrewery=yes (double-check even though QL filters)
     if (amenity === "restaurant" && tags["microbrewery"] !== "yes") {
       droppedWrongAmenity++;
+      continue;
+    }
+
+    // Drop permanently closed / disused places (OSM lifecycle prefixes etc.)
+    if (isClosed(tags)) {
+      droppedClosed++;
       continue;
     }
 
@@ -201,7 +237,7 @@ function processElements(elements: OverpassElement[]): {
     return aNum - bNum;
   });
 
-  return { pubs, droppedNoName, droppedWrongAmenity };
+  return { pubs, droppedNoName, droppedWrongAmenity, droppedClosed };
 }
 
 function writeAttribution(): void {
@@ -257,12 +293,13 @@ async function main(): Promise<void> {
   const totalFetched = data.elements.filter((e) => e.type === "node").length;
   console.log(`Fetched ${totalFetched} elements from Overpass.`);
 
-  const { pubs, droppedNoName, droppedWrongAmenity } = processElements(data.elements);
+  const { pubs, droppedNoName, droppedWrongAmenity, droppedClosed } = processElements(data.elements);
 
   console.log(`\nSummary:`);
   console.log(`  Total fetched (nodes):    ${totalFetched}`);
   console.log(`  Dropped (no name):        ${droppedNoName}`);
   console.log(`  Dropped (wrong amenity):  ${droppedWrongAmenity}`);
+  console.log(`  Dropped (closed/disused): ${droppedClosed}`);
   console.log(`  Final count:              ${pubs.length}`);
 
   const output: PubsJson = {

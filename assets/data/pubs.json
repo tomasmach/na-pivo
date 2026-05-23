@@ -1,7 +1,7 @@
 {
   "version": "1",
   "generated": "2026-05-23",
-  "count": 8800,
+  "count": 8776,
   "pubs": [
     {
       "id": "osm:21315878",
@@ -1342,14 +1342,6 @@
       "address": "Beranových 39"
     },
     {
-      "id": "osm:296790152",
-      "name": "Restaurace U Rybníčka",
-      "lat": 49.5904848,
-      "lng": 17.2186455,
-      "address": "Neředínská 45/80",
-      "city": "Olomouc"
-    },
-    {
       "id": "osm:296792993",
       "name": "Doors",
       "lat": 50.1947796,
@@ -1986,12 +1978,6 @@
       "lng": 14.3239746,
       "address": "Evropská 209",
       "city": "Praha"
-    },
-    {
-      "id": "osm:346667263",
-      "name": "Bastion",
-      "lat": 48.1590046,
-      "lng": 17.1161827
     },
     {
       "id": "osm:346909390",
@@ -7393,13 +7379,6 @@
       "lng": 20.8744624
     },
     {
-      "id": "osm:824871351",
-      "name": "Hostinec Na Rychtě",
-      "lat": 49.8686743,
-      "lng": 15.6247858,
-      "city": "Kraskov"
-    },
-    {
       "id": "osm:824902130",
       "name": "Starohájska piváreň",
       "lat": 48.1246604,
@@ -8064,13 +8043,6 @@
       "lng": 17.394335
     },
     {
-      "id": "osm:894503165",
-      "name": "U Ervína",
-      "lat": 49.6257826,
-      "lng": 17.4036525,
-      "address": "Olomoucká 31"
-    },
-    {
       "id": "osm:895526468",
       "name": "Garage cafe bar",
       "lat": 48.2505782,
@@ -8355,14 +8327,6 @@
       "name": "Restaurace Rolava",
       "lat": 50.3187681,
       "lng": 12.7423647
-    },
-    {
-      "id": "osm:899426702",
-      "name": "U Pačesa",
-      "lat": 49.6385803,
-      "lng": 17.2317829,
-      "address": "Dalimilova 52/65",
-      "city": "Olomouc"
     },
     {
       "id": "osm:899531928",
@@ -11960,12 +11924,6 @@
       "lng": 14.8088139
     },
     {
-      "id": "osm:1418413806",
-      "name": "Majdanka",
-      "lat": 49.1918489,
-      "lng": 21.0865631
-    },
-    {
       "id": "osm:1419197521",
       "name": "Plan B",
       "lat": 49.5912491,
@@ -12786,14 +12744,6 @@
       "lng": 13.776817
     },
     {
-      "id": "osm:1514494178",
-      "name": "Traubka",
-      "lat": 49.202132,
-      "lng": 16.6152336,
-      "address": "Traubova 8",
-      "city": "Brno"
-    },
-    {
       "id": "osm:1514495217",
       "name": "Jazz Klub Triumf",
       "lat": 49.2032957,
@@ -12810,14 +12760,6 @@
       "name": "Bar Kotelna",
       "lat": 50.7724516,
       "lng": 15.0546378
-    },
-    {
-      "id": "osm:1518730825",
-      "name": "U Hasiča",
-      "lat": 48.1553943,
-      "lng": 17.1196368,
-      "address": "Wilsonova 2736/1",
-      "city": "Bratislava"
     },
     {
       "id": "osm:1520934868",
@@ -12894,13 +12836,6 @@
       "lng": 14.4856534,
       "address": "K Prádelně",
       "city": "Praha"
-    },
-    {
-      "id": "osm:1539962766",
-      "name": "Espresso u dvoch levov",
-      "lat": 49.2618091,
-      "lng": 18.8704853,
-      "city": "Horný Vadičov"
     },
     {
       "id": "osm:1539978791",
@@ -14004,12 +13939,6 @@
       "name": "Amadeus",
       "lat": 48.7545078,
       "lng": 17.8307876
-    },
-    {
-      "id": "osm:1736354250",
-      "name": "Hospůdka u Jaróša",
-      "lat": 49.2217444,
-      "lng": 16.5855783
     },
     {
       "id": "osm:1738510730",
@@ -19865,12 +19794,6 @@
       "address": "Kysucká"
     },
     {
-      "id": "osm:2341862864",
-      "name": "U Rybníka",
-      "lat": 50.5287526,
-      "lng": 15.0991273
-    },
-    {
       "id": "osm:2342610713",
       "name": "Cafe pub Keiko",
       "lat": 48.7667846,
@@ -23134,12 +23057,6 @@
       "city": "Praha"
     },
     {
-      "id": "osm:2737472091",
-      "name": "U Lotranda",
-      "lat": 50.5265898,
-      "lng": 16.0894856
-    },
-    {
       "id": "osm:2737504771",
       "name": "U Hašků",
       "lat": 50.5340217,
@@ -24073,14 +23990,6 @@
       "name": "Karloveská Klubovňa",
       "lat": 48.1516403,
       "lng": 17.0610071
-    },
-    {
-      "id": "osm:2916495576",
-      "name": "Simpson Bar",
-      "lat": 49.2027127,
-      "lng": 16.6188838,
-      "address": "Durďákova 2",
-      "city": "Brno"
     },
     {
       "id": "osm:2916498114",
@@ -29009,14 +28918,6 @@
       "lng": 21.188254
     },
     {
-      "id": "osm:3710179081",
-      "name": "Ferdinand",
-      "lat": 50.0716454,
-      "lng": 14.4612115,
-      "address": "Bulharská 734/28",
-      "city": "Praha"
-    },
-    {
       "id": "osm:3710296826",
       "name": "Pod Ronovem",
       "lat": 50.6101695,
@@ -30001,12 +29902,6 @@
       "lng": 14.4510897,
       "address": "Bořivojova 491/61",
       "city": "Praha"
-    },
-    {
-      "id": "osm:3803109014",
-      "name": "Relax klub",
-      "lat": 49.9674965,
-      "lng": 14.5143371
     },
     {
       "id": "osm:3803173326",
@@ -31370,14 +31265,6 @@
       "lng": 15.7600861
     },
     {
-      "id": "osm:4127102390",
-      "name": "KROG",
-      "lat": 48.1214727,
-      "lng": 17.1055972,
-      "address": "Hálova 1109/14",
-      "city": "Bratislava"
-    },
-    {
       "id": "osm:4127954168",
       "name": "Kantýna",
       "lat": 49.1316897,
@@ -32124,13 +32011,6 @@
       "city": "Ostrava"
     },
     {
-      "id": "osm:4223222594",
-      "name": "Hospoda Domov",
-      "lat": 50.7381816,
-      "lng": 15.0114318,
-      "address": "Ještědská 149"
-    },
-    {
       "id": "osm:4223405689",
       "name": "Nemesis",
       "lat": 50.0873361,
@@ -32163,12 +32043,6 @@
       "name": "bufet HAMU",
       "lat": 50.0881777,
       "lng": 14.4018545
-    },
-    {
-      "id": "osm:4225736942",
-      "name": "Pivnice u vousatýho pulitru",
-      "lat": 48.9728399,
-      "lng": 14.4726142
     },
     {
       "id": "osm:4226017245",
@@ -37858,12 +37732,6 @@
       "lng": 14.7655252
     },
     {
-      "id": "osm:5248290895",
-      "name": "Výčap na Medenej",
-      "lat": 48.1415557,
-      "lng": 17.1123864
-    },
-    {
       "id": "osm:5249453574",
       "name": "Kovárna",
       "lat": 50.0469553,
@@ -38358,12 +38226,6 @@
       "name": "Ligi bar",
       "lat": 48.7257963,
       "lng": 21.2407236
-    },
-    {
-      "id": "osm:5474313615",
-      "name": "Once upon a beer",
-      "lat": 50.0747286,
-      "lng": 14.4422167
     },
     {
       "id": "osm:5474931921",
@@ -39164,12 +39026,6 @@
       "name": "Hostinec u chovatelů",
       "lat": 49.1166176,
       "lng": 14.7330987
-    },
-    {
-      "id": "osm:5773661217",
-      "name": "Gin bar",
-      "lat": 48.9764957,
-      "lng": 14.4719088
     },
     {
       "id": "osm:5773769906",
@@ -41077,14 +40933,6 @@
       "name": "Remitáž",
       "lat": 48.3981091,
       "lng": 18.2053761
-    },
-    {
-      "id": "osm:6495404528",
-      "name": "Pivnice V Plachovce",
-      "lat": 49.7431303,
-      "lng": 13.3678387,
-      "address": "Plachého 951/31",
-      "city": "Plzeň"
     },
     {
       "id": "osm:6501232363",
@@ -43029,12 +42877,6 @@
       "lng": 18.5026441
     },
     {
-      "id": "osm:7563832100",
-      "name": "U Kollára",
-      "lat": 49.3090438,
-      "lng": 20.5682271
-    },
-    {
       "id": "osm:7572690710",
       "name": "Dechtáreske bistro",
       "lat": 49.0925248,
@@ -44967,14 +44809,6 @@
       "lng": 17.5697548
     },
     {
-      "id": "osm:8911147129",
-      "name": "Pivovar Reichenberg",
-      "lat": 50.7731056,
-      "lng": 15.0555452,
-      "address": "Ruprechtická 306/4A",
-      "city": "Liberec"
-    },
-    {
       "id": "osm:8915534136",
       "name": "Pod Plechym",
       "lat": 49.7098195,
@@ -46124,12 +45958,6 @@
       "name": "Bikers bar Bohemia",
       "lat": 48.97617,
       "lng": 14.4758837
-    },
-    {
-      "id": "osm:9423661948",
-      "name": "Mango",
-      "lat": 48.9738717,
-      "lng": 14.4758155
     },
     {
       "id": "osm:9423661982",
@@ -49313,12 +49141,6 @@
       "name": "Kotel",
       "lat": 50.1047584,
       "lng": 13.7177409
-    },
-    {
-      "id": "osm:11203334788",
-      "name": "Divadelní Bar",
-      "lat": 50.102711,
-      "lng": 13.7314231
     },
     {
       "id": "osm:11203457412",
@@ -55692,6 +55514,18 @@
       "name": "New Chicago",
       "lat": 49.2234215,
       "lng": 18.7409401
+    },
+    {
+      "id": "osm:13865918445",
+      "name": "Burčák",
+      "lat": 48.8361139,
+      "lng": 16.5069474
+    },
+    {
+      "id": "osm:13865923054",
+      "name": "U Ondry",
+      "lat": 48.8361415,
+      "lng": 16.506758
     }
   ]
 }
