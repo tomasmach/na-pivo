@@ -43,16 +43,16 @@ jest.mock('react-native-reanimated', () => ({
   useReducedMotion: jest.fn(() => true),
 }));
 
-jest.mock('@/components/celebration/Confetti', () => ({
-  Confetti: jest.fn(() => null),
-}));
-
-jest.mock('@/components/celebration/ConfettiStatic', () => ({
-  ConfettiStatic: jest.fn(() => null),
-}));
-
 jest.mock('@/components/celebration/FoamDrip', () => ({
   FoamDrip: jest.fn(() => null),
+}));
+
+jest.mock('@/components/celebration/BeerBubbles', () => ({
+  BeerBubbles: jest.fn(() => null),
+}));
+
+jest.mock('@/components/celebration/SoftGlow', () => ({
+  SoftGlow: jest.fn(() => null),
 }));
 
 jest.mock('@/components/shared/GlowButton', () => ({

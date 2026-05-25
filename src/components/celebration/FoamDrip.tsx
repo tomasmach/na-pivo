@@ -1,112 +1,244 @@
 import React, { memo, useMemo } from 'react';
 import Svg, { Ellipse, Rect } from 'react-native-svg';
-import { Colors } from '@/theme/colors';
+import { Colors, withAlpha } from '@/theme/colors';
+import { buildFoamTongues, type FoamTongue } from './foamAnchors';
 
 interface FoamDripProps {
   width: number;
   height?: number;
 }
 
-/**
- * Beer foam dripping down from the top of the screen.
- *
- * Geometry mirrors the design's ESHlJ frame:
- *   - 24px solid foam cap across the top
- *   - row of overlapping round bumps (42×34) along the cap's underside
- *   - a few thin vertical drip ellipses hanging at scattered positions
- *   - small foam droplets below for splatter
- */
-export const FoamDrip = memo(function FoamDrip({ width, height = 100 }: FoamDripProps) {
-  const CAP_HEIGHT = 24;
-  const BUMP_W = 42;
-  const BUMP_H = 34;
-  const BUMP_RX = BUMP_W / 2;
-  const BUMP_RY = BUMP_H / 2;
-  const BUMP_STEP = 36; // bumps overlap by 6px
+function seededRandom(seed: number): number {
+  const x = Math.sin(seed + 1) * 10000;
+  return x - Math.floor(x);
+}
 
-  const bumps = useMemo(() => {
-    const items: { cx: number; cy: number }[] = [];
-    // Start before the left edge so first bump is partially off-screen, matching design.
-    for (let cx = -BUMP_RX + 5; cx < width + BUMP_RX; cx += BUMP_STEP) {
-      items.push({ cx, cy: CAP_HEIGHT + 1 });
+interface Bubble {
+  cx: number;
+  cy: number;
+  r: number;
+  fill: string;
+  opacity: number;
+}
+
+/**
+ * Beer foam rendered as densely packed micro-bubbles with a glossy cap.
+ * Includes hanging "tongues" of foam that extend lower in random clusters —
+ * the FoamDrops anchor visually below these. No spiky drips.
+ */
+export const FoamDrip = memo(function FoamDrip({ width, height = 180 }: FoamDripProps) {
+  const CAP_HEIGHT = 30;
+  const FOAM_BOTTOM = 108; // y where main foam density fades to zero
+
+  const tongues = useMemo<FoamTongue[]>(
+    () => buildFoamTongues(width, FOAM_BOTTOM),
+    [width],
+  );
+
+  // Pack the main foam region with hundreds of overlapping circles.
+  // Mix of micro-bubbles (2-5px), medium bubbles (5-12px), and rare large
+  // pockets (12-20px) — matches the bubble-size distribution of real beer head.
+  const bubbles = useMemo(() => {
+    const result: Bubble[] = [];
+    const targetDensity = (width * (FOAM_BOTTOM - CAP_HEIGHT)) / 22;
+    const count = Math.round(targetDensity);
+
+    for (let i = 0; i < count; i++) {
+      const r0 = seededRandom(i * 13);
+      const r1 = seededRandom(i * 17);
+      const r2 = seededRandom(i * 19);
+      const r3 = seededRandom(i * 23);
+      const r4 = seededRandom(i * 29);
+      const r5 = seededRandom(i * 31);
+
+      const yT = r1;
+      const dropChance = Math.pow(yT, 1.5);
+      if (r2 < dropChance) continue;
+
+      const cy = CAP_HEIGHT + yT * (FOAM_BOTTOM - CAP_HEIGHT);
+      const cx = r0 * width;
+
+      // Bubble size distribution: mostly small, occasionally medium, rarely large.
+      let r: number;
+      if (r5 > 0.94) {
+        r = 12 + r3 * 8; // rare large pocket
+      } else if (r5 > 0.72) {
+        r = 6 + r3 * 6; // medium bubble
+      } else {
+        r = 2 + r3 * 4; // micro-bubble (most common)
+      }
+
+      let fill: string = Colors.foam;
+      let opacity = 1;
+      if (r4 < 0.18) {
+        fill = Colors.foamMuted;
+        opacity = 0.92;
+      } else if (r4 > 0.94) {
+        fill = Colors.white;
+        opacity = 0.85;
+      } else {
+        opacity = 0.97;
+      }
+
+      result.push({ cx, cy, r, fill, opacity });
+    }
+    return result;
+  }, [width]);
+
+  // Bubbles inside each hanging tongue.
+  const tongueBubbles = useMemo(() => {
+    const result: Bubble[] = [];
+    tongues.forEach((tongue, idx) => {
+      const span = tongue.bottomY - tongue.topY;
+      const bubblesPerTongue = Math.round(span * 1.1);
+      for (let i = 0; i < bubblesPerTongue; i++) {
+        const seed = idx * 1000 + i;
+        const yT = seededRandom(seed * 7);
+        const cy = tongue.topY + yT * span;
+        // Width narrows steeply toward the tip for a proper drip shape.
+        const widthScale = Math.pow(1 - yT, 0.7);
+        const xOffset = (seededRandom(seed * 11) - 0.5) * tongue.width * widthScale;
+        const cx = tongue.centerX + xOffset;
+        // Bubbles get smaller as the tongue narrows toward the tip.
+        const sizeRoll = seededRandom(seed * 13);
+        const r = (1.8 + sizeRoll * 5.5) * (0.6 + widthScale * 0.6);
+        const colorRoll = seededRandom(seed * 17);
+        const fill = colorRoll < 0.18
+          ? Colors.foamMuted
+          : colorRoll > 0.93
+            ? Colors.white
+            : Colors.foam;
+        const opacity = colorRoll > 0.93 ? 0.78 : 0.95;
+        result.push({ cx, cy, r, fill, opacity });
+      }
+    });
+    return result;
+  }, [tongues]);
+
+  // Dark crevice shadows between bubble clusters — adds visual depth.
+  const crevices = useMemo(() => {
+    const items: { cx: number; cy: number; r: number; opacity: number }[] = [];
+    for (let i = 0; i < 22; i++) {
+      const yT = seededRandom(i * 31);
+      items.push({
+        cx: seededRandom(i * 37) * width,
+        cy: CAP_HEIGHT + 4 + yT * (FOAM_BOTTOM - CAP_HEIGHT - 8),
+        r: 1 + seededRandom(i * 41) * 2.5,
+        opacity: 0.12 + seededRandom(i * 43) * 0.12,
+      });
     }
     return items;
   }, [width]);
 
-  // Drip ellipses: fractions across width + height. Positions tuned to design.
-  const drips = useMemo(() => {
-    const dripDefs: ReadonlyArray<readonly [number, number]> = [
-      [0.13, 50],
-      [0.33, 68],
-      [0.54, 38],
-      [0.72, 58],
-      [0.86, 44],
-    ];
-    return dripDefs.map(([frac, h]) => ({
-      cx: width * frac,
-      cy: CAP_HEIGHT + 8 + h / 2,
-      rx: 7,
-      ry: h / 2,
-    }));
+  // Tiny bright highlights scattered on the foam surface — reflective sheen.
+  const sparkles = useMemo(() => {
+    const items: { cx: number; cy: number; r: number; opacity: number }[] = [];
+    for (let i = 0; i < 30; i++) {
+      const yT = seededRandom(i * 53);
+      items.push({
+        cx: seededRandom(i * 47) * width,
+        cy: 4 + yT * (FOAM_BOTTOM - 30),
+        r: 1 + seededRandom(i * 59) * 1.6,
+        opacity: 0.55 + seededRandom(i * 61) * 0.35,
+      });
+    }
+    return items;
   }, [width]);
 
-  // Tiny droplets scattered below the drips.
-  const droplets = useMemo(() => {
-    const dropDefs: ReadonlyArray<readonly [number, number, number]> = [
-      [0.16, 88, 4],
-      [0.35, 96, 3.5],
-      [0.55, 90, 4.5],
-      [0.77, 94, 3],
-      [0.92, 86, 3.5],
-    ];
-    return dropDefs.map(([frac, cy, r]) => ({
-      cx: width * frac,
-      cy,
-      r,
-    }));
+  // Top-edge glossy highlights along the cap.
+  const topHighlights = useMemo(() => {
+    const spots: { cx: number; cy: number; rx: number; ry: number }[] = [];
+    let i = 0;
+    for (let cx = 18; cx < width; cx += 56) {
+      spots.push({
+        cx: cx + seededRandom(i * 67) * 18,
+        cy: 6 + seededRandom(i * 71) * 3,
+        rx: 12 + seededRandom(i * 73) * 8,
+        ry: 2.5,
+      });
+      i += 1;
+    }
+    return spots;
   }, [width]);
 
   return (
     <Svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
-      {/* Solid foam cap */}
+      {/* Solid foam cap across the top */}
       <Rect x={0} y={0} width={width} height={CAP_HEIGHT} fill={Colors.foam} />
 
-      {/* Round bumps along the underside */}
-      {bumps.map((b, i) => (
+      {/* Main foam bubble field */}
+      {bubbles.map((b, i) => (
         <Ellipse
-          key={`bump-${i}`}
+          key={`b-${i}`}
           cx={b.cx}
           cy={b.cy}
-          rx={BUMP_RX}
-          ry={BUMP_RY}
-          fill={Colors.foam}
+          rx={b.r}
+          ry={b.r}
+          fill={b.fill}
+          opacity={b.opacity}
         />
       ))}
 
-      {/* Thin vertical drip ellipses */}
-      {drips.map((d, i) => (
+      {/* Hanging tongues of foam extending below */}
+      {tongueBubbles.map((b, i) => (
         <Ellipse
-          key={`drip-${i}`}
-          cx={d.cx}
-          cy={d.cy}
-          rx={d.rx}
-          ry={d.ry}
-          fill={Colors.foam}
+          key={`t-${i}`}
+          cx={b.cx}
+          cy={b.cy}
+          rx={b.r}
+          ry={b.r}
+          fill={b.fill}
+          opacity={b.opacity}
         />
       ))}
 
-      {/* Small droplets */}
-      {droplets.map((d, i) => (
+      {/* Crevice shadows for definition */}
+      {crevices.map((c, i) => (
         <Ellipse
-          key={`drop-${i}`}
-          cx={d.cx}
-          cy={d.cy}
-          rx={d.r}
-          ry={d.r}
-          fill={Colors.foam}
-          opacity={0.9}
+          key={`cr-${i}`}
+          cx={c.cx}
+          cy={c.cy}
+          rx={c.r}
+          ry={c.r}
+          fill={Colors.stout}
+          opacity={c.opacity}
         />
       ))}
+
+      {/* Sparkle reflections */}
+      {sparkles.map((s, i) => (
+        <Ellipse
+          key={`s-${i}`}
+          cx={s.cx}
+          cy={s.cy}
+          rx={s.r}
+          ry={s.r}
+          fill={Colors.white}
+          opacity={s.opacity}
+        />
+      ))}
+
+      {/* Glossy highlights along the cap top edge */}
+      {topHighlights.map((h, i) => (
+        <Ellipse
+          key={`hl-${i}`}
+          cx={h.cx}
+          cy={h.cy}
+          rx={h.rx}
+          ry={h.ry}
+          fill={Colors.white}
+          opacity={0.45}
+        />
+      ))}
+
+      {/* Warm amber-tinted band where foam meets beer */}
+      <Rect
+        x={0}
+        y={FOAM_BOTTOM + 50}
+        width={width}
+        height={10}
+        fill={withAlpha(Colors.amber, 0.06)}
+      />
     </Svg>
   );
 });

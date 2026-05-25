@@ -24,9 +24,11 @@ import { cs } from '@/i18n/cs';
 import { usePubStore } from '@/stores/pubStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { openPubInMaps } from '@/utils/maps';
-import { Confetti } from '@/components/celebration/Confetti';
-import { ConfettiStatic } from '@/components/celebration/ConfettiStatic';
 import { FoamDrip } from '@/components/celebration/FoamDrip';
+import { FoamDrops } from '@/components/celebration/FoamDrops';
+import { buildFoamTongues } from '@/components/celebration/foamAnchors';
+import { BeerBubbles } from '@/components/celebration/BeerBubbles';
+import { SoftGlow } from '@/components/celebration/SoftGlow';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { BeerIcon, MapPinIcon } from '@/components/shared/IconGlyph';
 
@@ -75,25 +77,40 @@ export default function CelebrationScreen() {
 
   const pubName = revealedPub?.name ?? 'Hospoda';
 
+  // Drop anchors: emerge from the bottom tip of each foam tongue.
+  const FOAM_BOTTOM = 108;
+  const dropAnchors = buildFoamTongues(SCREEN_W, FOAM_BOTTOM).map((t) => ({
+    x: t.centerX,
+    y: t.bottomY - 4,
+  }));
+
   return (
     <View style={styles.root}>
-      {/* Background warm-glow blobs */}
-      <View style={styles.glowBlobLarge} pointerEvents="none" />
-      <View style={styles.glowBlobSmall} pointerEvents="none" />
-
-      {/* Static scattered confetti — persistent decoration */}
-      <View style={StyleSheet.absoluteFill} pointerEvents="none">
-        <ConfettiStatic width={SCREEN_W} height={SCREEN_H} pieceCount={24} />
+      {/* Background warm-glow — soft radial gradient behind the headline */}
+      <View style={styles.glowLargeWrap} pointerEvents="none">
+        <SoftGlow size={620} color={Colors.glow} opacity={0.18} />
+      </View>
+      <View style={styles.glowHeadlineWrap} pointerEvents="none">
+        <SoftGlow size={340} color={Colors.amber} opacity={0.22} />
       </View>
 
-      {/* Falling confetti — animated celebration */}
+      {/* Rising beer bubbles — ambient carbonation effect */}
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
-        <Confetti width={SCREEN_W} height={SCREEN_H} pieceCount={18} />
+        <BeerBubbles width={SCREEN_W} height={SCREEN_H} bubbleCount={32} />
       </View>
 
-      {/* FoamDrip at the very top */}
+      {/* Foam cap at the very top — extends behind the status bar */}
       <View style={styles.foamContainer} pointerEvents="none">
-        <FoamDrip width={SCREEN_W} height={110} />
+        <FoamDrip width={SCREEN_W} height={150} />
+      </View>
+
+      {/* Drops periodically fall from the foam edge down the screen */}
+      <View style={styles.foamContainer} pointerEvents="none">
+        <FoamDrops
+          width={SCREEN_W}
+          fallDistance={SCREEN_H - 120}
+          anchors={dropAnchors}
+        />
       </View>
 
       {/* Main scrollable content, centered vertically with foam offset */}
@@ -101,7 +118,7 @@ export default function CelebrationScreen() {
         style={[
           styles.content,
           {
-            paddingTop: insets.top + 80,
+            paddingTop: insets.top + 130,
             paddingBottom: insets.bottom + 24,
           },
         ]}
@@ -162,26 +179,16 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
 
-  // Warm glow background blobs (simulated radial gradients via transparent circles)
-  glowBlobLarge: {
+  // Warm glow — soft SVG radial gradients (no hard edges)
+  glowLargeWrap: {
     position: 'absolute',
-    width: 590,
-    height: 540,
-    top: -160,
-    left: -140,
-    borderRadius: 295,
-    backgroundColor: Colors.glow,
-    opacity: 0.07,
+    top: -180,
+    left: -160,
   },
-  glowBlobSmall: {
+  glowHeadlineWrap: {
     position: 'absolute',
-    width: 240,
-    height: 240,
-    top: SCREEN_H * 0.3,
-    left: (SCREEN_W - 240) / 2,
-    borderRadius: 120,
-    backgroundColor: Colors.amber,
-    opacity: 0.045,
+    top: SCREEN_H * 0.28,
+    left: (SCREEN_W - 340) / 2,
   },
 
   foamContainer: {
