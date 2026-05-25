@@ -4364,8 +4364,8 @@
     {
       "type": "frame",
       "id": "dbgzh",
-      "x": 7582,
-      "y": 980,
+      "x": 10300,
+      "y": -1466,
       "name": "Na pivo - App Icon",
       "width": 1280,
       "fill": "#0E0805",
@@ -5442,7 +5442,8 @@
                           "fill": "$na-pivo-foam",
                           "content": "Na pivo",
                           "fontFamily": "$na-pivo-font-display",
-                          "fontSize": 40
+                          "fontSize": 40,
+                          "fontWeight": "normal"
                         },
                         {
                           "type": "text",
