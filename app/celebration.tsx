@@ -34,6 +34,13 @@ import { BeerIcon, MapPinIcon } from '@/components/shared/IconGlyph';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
+/**
+ * How far the foam SVG bleeds above the visible screen edge. Big enough that
+ * even on devices with a tall status bar / dynamic island, the foam's cap
+ * fully covers the top — the actual clip happens behind the device bezel.
+ */
+const FOAM_OVERHANG = 60;
+
 export default function CelebrationScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -99,9 +106,12 @@ export default function CelebrationScreen() {
         <BeerBubbles width={SCREEN_W} height={SCREEN_H} bubbleCount={32} />
       </View>
 
-      {/* Foam cap at the very top — extends behind the status bar */}
-      <View style={styles.foamContainer} pointerEvents="none">
-        <FoamDrip width={SCREEN_W} height={150} />
+      {/* Foam cap at the very top — extends behind the status bar.
+          The negative top + matching overhang lets the SVG draw above the
+          visible screen edge, so the foam appears to bleed off the top of the
+          device instead of being chopped flat. */}
+      <View style={[styles.foamContainer, { top: -FOAM_OVERHANG }]} pointerEvents="none">
+        <FoamDrip width={SCREEN_W} height={150} overhang={FOAM_OVERHANG} />
       </View>
 
       {/* Drops periodically fall from the foam edge down the screen */}

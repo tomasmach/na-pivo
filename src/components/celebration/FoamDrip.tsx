@@ -6,6 +6,13 @@ import { buildFoamTongues, type FoamTongue } from './foamAnchors';
 interface FoamDripProps {
   width: number;
   height?: number;
+  /**
+   * Extends the SVG canvas this many pixels above its top edge. Bubbles and cap
+   * fill this overhang region, so when the component is positioned with a
+   * matching negative `top`, the foam appears to bleed off the screen instead
+   * of being chopped flat at the device edge.
+   */
+  overhang?: number;
 }
 
 function seededRandom(seed: number): number {
@@ -26,9 +33,14 @@ interface Bubble {
  * Includes hanging "tongues" of foam that extend lower in random clusters —
  * the FoamDrops anchor visually below these. No spiky drips.
  */
-export const FoamDrip = memo(function FoamDrip({ width, height = 180 }: FoamDripProps) {
+export const FoamDrip = memo(function FoamDrip({
+  width,
+  height = 180,
+  overhang = 0,
+}: FoamDripProps) {
   const CAP_HEIGHT = 30;
   const FOAM_BOTTOM = 108; // y where main foam density fades to zero
+  const BUBBLE_TOP = -overhang; // bubbles may draw this far above SVG y=0
 
   const tongues = useMemo<FoamTongue[]>(
     () => buildFoamTongues(width, FOAM_BOTTOM),
@@ -40,7 +52,7 @@ export const FoamDrip = memo(function FoamDrip({ width, height = 180 }: FoamDrip
   // pockets (12-20px) — matches the bubble-size distribution of real beer head.
   const bubbles = useMemo(() => {
     const result: Bubble[] = [];
-    const targetDensity = (width * (FOAM_BOTTOM - CAP_HEIGHT)) / 22;
+    const targetDensity = (width * (FOAM_BOTTOM - BUBBLE_TOP)) / 22;
     const count = Math.round(targetDensity);
 
     for (let i = 0; i < count; i++) {
@@ -55,7 +67,7 @@ export const FoamDrip = memo(function FoamDrip({ width, height = 180 }: FoamDrip
       const dropChance = Math.pow(yT, 1.5);
       if (r2 < dropChance) continue;
 
-      const cy = CAP_HEIGHT + yT * (FOAM_BOTTOM - CAP_HEIGHT);
+      const cy = BUBBLE_TOP + yT * (FOAM_BOTTOM - BUBBLE_TOP);
       const cx = r0 * width;
 
       // Bubble size distribution: mostly small, occasionally medium, rarely large.
@@ -83,7 +95,7 @@ export const FoamDrip = memo(function FoamDrip({ width, height = 180 }: FoamDrip
       result.push({ cx, cy, r, fill, opacity });
     }
     return result;
-  }, [width]);
+  }, [width, BUBBLE_TOP]);
 
   // Bubbles inside each hanging tongue.
   const tongueBubbles = useMemo(() => {
@@ -122,13 +134,13 @@ export const FoamDrip = memo(function FoamDrip({ width, height = 180 }: FoamDrip
       const yT = seededRandom(i * 31);
       items.push({
         cx: seededRandom(i * 37) * width,
-        cy: CAP_HEIGHT + 4 + yT * (FOAM_BOTTOM - CAP_HEIGHT - 8),
+        cy: BUBBLE_TOP + 4 + yT * (FOAM_BOTTOM - BUBBLE_TOP - 8),
         r: 1 + seededRandom(i * 41) * 2.5,
         opacity: 0.12 + seededRandom(i * 43) * 0.12,
       });
     }
     return items;
-  }, [width]);
+  }, [width, BUBBLE_TOP]);
 
   // Tiny bright highlights scattered on the foam surface — reflective sheen.
   const sparkles = useMemo(() => {
@@ -137,13 +149,13 @@ export const FoamDrip = memo(function FoamDrip({ width, height = 180 }: FoamDrip
       const yT = seededRandom(i * 53);
       items.push({
         cx: seededRandom(i * 47) * width,
-        cy: 4 + yT * (FOAM_BOTTOM - 30),
+        cy: BUBBLE_TOP + 4 + yT * (FOAM_BOTTOM - BUBBLE_TOP - 30),
         r: 1 + seededRandom(i * 59) * 1.6,
         opacity: 0.55 + seededRandom(i * 61) * 0.35,
       });
     }
     return items;
-  }, [width]);
+  }, [width, BUBBLE_TOP]);
 
   // Top-edge glossy highlights along the cap.
   const topHighlights = useMemo(() => {
@@ -152,19 +164,32 @@ export const FoamDrip = memo(function FoamDrip({ width, height = 180 }: FoamDrip
     for (let cx = 18; cx < width; cx += 56) {
       spots.push({
         cx: cx + seededRandom(i * 67) * 18,
-        cy: 6 + seededRandom(i * 71) * 3,
+        cy: BUBBLE_TOP + 6 + seededRandom(i * 71) * 3,
         rx: 12 + seededRandom(i * 73) * 8,
         ry: 2.5,
       });
       i += 1;
     }
     return spots;
-  }, [width]);
+  }, [width, BUBBLE_TOP]);
+
+  const svgHeight = height + overhang;
 
   return (
-    <Svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
-      {/* Solid foam cap across the top */}
-      <Rect x={0} y={0} width={width} height={CAP_HEIGHT} fill={Colors.foam} />
+    <Svg
+      width={width}
+      height={svgHeight}
+      viewBox={`0 ${BUBBLE_TOP} ${width} ${svgHeight}`}
+    >
+      {/* Solid foam cap across the top — extended up by overhang so the cap
+          fills any area above the visible screen edge without leaving gaps. */}
+      <Rect
+        x={0}
+        y={BUBBLE_TOP}
+        width={width}
+        height={CAP_HEIGHT - BUBBLE_TOP}
+        fill={Colors.foam}
+      />
 
       {/* Main foam bubble field */}
       {bubbles.map((b, i) => (
