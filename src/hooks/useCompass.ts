@@ -173,7 +173,15 @@ export function useCompass(): UseCompassResult {
   });
 
   // — Arrow rotation —
+  // DEV-ONLY: hardcoded angle for App Store screenshots in the iOS Simulator,
+  // which has no magnetometer. Set to null to use the real device heading.
+  const SCREENSHOT_ARROW_DEG: number | null = __DEV__ ? 30 : null;
+
   const arrowRotation = useDerivedValue<number | null>(() => {
+    if (SCREENSHOT_ARROW_DEG !== null) {
+      return SCREENSHOT_ARROW_DEG;
+    }
+
     const currentBearing = bearingValue.value;
     const currentHeading = smoothedHeading.value;
 
