@@ -14,7 +14,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   userInterfaceStyle: 'dark',
   assetBundlePatterns: ['**/*'],
   ios: {
-    bundleIdentifier: 'com.tomasmach.napivo',
+    bundleIdentifier: 'com.tomasmach.na-pivo',
     buildNumber: '1',
     supportsTablet: false,
     infoPlist: {
