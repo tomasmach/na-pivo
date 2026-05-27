@@ -7,6 +7,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: 'Na pivo',
   slug: 'na-pivo',
+  owner: 'tomasmach',
   scheme: 'napivo',
   version: '1.0.0',
   orientation: 'portrait',
