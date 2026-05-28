@@ -19,10 +19,12 @@ android/
 # EAS
 .easignore
 credentials.json
+AuthKey.p8
 
 # Local environment
 .env
 .env.local
+.codex/
 
 # macOS
 .DS_Store
