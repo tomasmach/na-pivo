@@ -111,7 +111,7 @@ export default function CelebrationScreen() {
           visible screen edge, so the foam appears to bleed off the top of the
           device instead of being chopped flat. */}
       <View style={[styles.foamContainer, { top: -FOAM_OVERHANG }]} pointerEvents="none">
-        <FoamDrip width={SCREEN_W} height={150} overhang={FOAM_OVERHANG} />
+        <FoamDrip width={SCREEN_W} height={236} overhang={FOAM_OVERHANG} />
       </View>
 
       {/* Drops periodically fall from the foam edge down the screen */}
@@ -128,7 +128,7 @@ export default function CelebrationScreen() {
         style={[
           styles.content,
           {
-            paddingTop: insets.top + 130,
+            paddingTop: insets.top + 170,
             paddingBottom: insets.bottom + 24,
           },
         ]}

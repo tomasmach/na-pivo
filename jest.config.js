@@ -39,6 +39,7 @@ module.exports = {
     '^expo-constants$': '<rootDir>/src/__mocks__/expo-constants.ts',
     '^react-native$': '<rootDir>/src/__mocks__/react-native.ts',
   },
+  setupFiles: ['<rootDir>/jest.setup.ts'],
   testMatch: ['**/__tests__/**/*.test.ts?(x)'],
   passWithNoTests: true,
   // kdbush, geokdbush, tinyqueue and react-native packages need transformation

@@ -1,7 +1,9 @@
 import React, { memo, useMemo } from 'react';
 import Svg, { Ellipse, Rect } from 'react-native-svg';
-import { Colors, withAlpha } from '@/theme/colors';
+import { Colors } from '@/theme/colors';
 import { buildFoamTongues, type FoamTongue } from './foamAnchors';
+
+const SVG_EDGE_PADDING = 28;
 
 interface FoamDripProps {
   width: number;
@@ -41,6 +43,9 @@ export const FoamDrip = memo(function FoamDrip({
   const CAP_HEIGHT = 30;
   const FOAM_BOTTOM = 108; // y where main foam density fades to zero
   const BUBBLE_TOP = -overhang; // bubbles may draw this far above SVG y=0
+  const viewBoxX = -SVG_EDGE_PADDING;
+  const viewBoxY = BUBBLE_TOP - SVG_EDGE_PADDING;
+  const viewBoxWidth = width + SVG_EDGE_PADDING * 2;
 
   const tongues = useMemo<FoamTongue[]>(
     () => buildFoamTongues(width, FOAM_BOTTOM),
@@ -173,21 +178,22 @@ export const FoamDrip = memo(function FoamDrip({
     return spots;
   }, [width, BUBBLE_TOP]);
 
-  const svgHeight = height + overhang;
+  const svgHeight = height + overhang + SVG_EDGE_PADDING;
 
   return (
     <Svg
-      width={width}
+      width={width + SVG_EDGE_PADDING * 2}
       height={svgHeight}
-      viewBox={`0 ${BUBBLE_TOP} ${width} ${svgHeight}`}
+      viewBox={`${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${svgHeight}`}
+      style={{ marginLeft: -SVG_EDGE_PADDING }}
     >
       {/* Solid foam cap across the top — extended up by overhang so the cap
           fills any area above the visible screen edge without leaving gaps. */}
       <Rect
-        x={0}
-        y={BUBBLE_TOP}
-        width={width}
-        height={CAP_HEIGHT - BUBBLE_TOP}
+        x={viewBoxX}
+        y={viewBoxY}
+        width={viewBoxWidth}
+        height={CAP_HEIGHT - viewBoxY}
         fill={Colors.foam}
       />
 
@@ -255,15 +261,6 @@ export const FoamDrip = memo(function FoamDrip({
           opacity={0.45}
         />
       ))}
-
-      {/* Warm amber-tinted band where foam meets beer */}
-      <Rect
-        x={0}
-        y={FOAM_BOTTOM + 50}
-        width={width}
-        height={10}
-        fill={withAlpha(Colors.amber, 0.06)}
-      />
     </Svg>
   );
 });
