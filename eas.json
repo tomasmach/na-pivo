@@ -1,29 +1,42 @@
 {
-  "cli": { "version": ">= 16.0.0", "appVersionSource": "local" },
-  "build": {
-    "development": {
-      "developmentClient": true,
-      "distribution": "internal",
-      "ios": { "simulator": false, "resourceClass": "m-medium" }
+    "cli": {
+        "version": ">= 16.0.0",
+        "appVersionSource": "remote"
     },
-    "preview": {
-      "distribution": "internal",
-      "ios": { "buildConfiguration": "Release", "resourceClass": "m-medium" },
-      "channel": "preview"
+    "build": {
+        "development": {
+            "developmentClient": true,
+            "distribution": "internal",
+            "ios": {
+                "simulator": false,
+                "resourceClass": "m-medium"
+            }
+        },
+        "preview": {
+            "distribution": "internal",
+            "ios": {
+                "buildConfiguration": "Release",
+                "resourceClass": "m-medium"
+            },
+            "channel": "preview"
+        },
+        "production": {
+            "autoIncrement": true,
+            "ios": {
+                "buildConfiguration": "Release",
+                "resourceClass": "m-medium",
+                "autoIncrement": "buildNumber"
+            },
+            "channel": "production"
+        }
     },
-    "production": {
-      "autoIncrement": true,
-      "ios": { "buildConfiguration": "Release", "resourceClass": "m-medium" },
-      "channel": "production"
+    "submit": {
+        "production": {
+            "ios": {
+                "appleId": "tomades1@gmail.com",
+                "ascAppId": "6773790025",
+                "appleTeamId": "T5W2WM23A6"
+            }
+        }
     }
-  },
-  "submit": {
-    "production": {
-      "ios": {
-        "appleId": "tomades1@gmail.com",
-        "ascAppId": "6773790025",
-        "appleTeamId": "T5W2WM23A6"
-      }
-    }
-  }
 }
