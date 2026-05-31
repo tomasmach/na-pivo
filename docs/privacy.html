@@ -4,22 +4,37 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Zásady ochrany osobních údajů – Na pivo</title>
+<meta name="description" content="Zásady ochrany osobních údajů mobilní aplikace Na pivo.">
+<meta property="og:title" content="Zásady ochrany osobních údajů – Na pivo">
+<meta property="og:description" content="Jak aplikace Na pivo pracuje s polohou, senzory, vyhledáváním a službami třetích stran.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23fff3d6'/%3E%3Ctext x='32' y='43' font-size='34' text-anchor='middle'%3E🍺%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="_style.css">
 </head>
 <body>
+<a class="skip-link" href="#content">Přeskočit na obsah</a>
 <div class="wrap">
   <header class="site">
-    <span class="logo">🍺</span>
-    <span class="name">Na pivo</span>
+    <a class="brand" href="index.html" aria-label="Na pivo">
+      <span class="logo" aria-hidden="true">🍺</span>
+      <span class="name">Na pivo</span>
+    </a>
+    <nav class="top-nav" aria-label="Hlavní navigace">
+      <a href="index.html">Dokumenty</a>
+      <a href="privacy.html" aria-current="page">Soukromí</a>
+      <a href="terms.html">Podmínky</a>
+    </nav>
   </header>
 
+  <main id="content" class="document-shell">
+  <article class="document">
+  <p class="eyebrow">Na pivo</p>
   <h1>Zásady ochrany osobních údajů</h1>
   <p class="updated">Poslední aktualizace: 28. května 2026</p>
 
-  <h2>Kdo jsme</h2>
+  <h2 id="kdo-jsme">Kdo jsme</h2>
   <p>Aplikaci <strong>Na pivo</strong> provozuje fyzická osoba (samostatný vývojář), dále jen „my" nebo „provozovatel". Tyto zásady vysvětlují, jaká data aplikace zpracovává, k čemu je používá a jaká práva v souvislosti s ochranou soukromí máte. Snažíme se sbírat co nejméně dat – a jak uvidíte níže, aplikace nesbírá prakticky nic, co by opouštělo váš telefon.</p>
 
-  <h2>Jaká data zpracováváme</h2>
+  <h2 id="data">Jaká data zpracováváme</h2>
 
   <h3>Poloha</h3>
   <p>Aplikace používá vaši aktuální polohu k tomu, aby vám ukázala směrovou šipku k vybrané hospodě (funguje jako kompas). <strong>Vaše poloha nikdy neopouští váš telefon</strong> – zpracovává se výhradně lokálně na zařízení a nikam ji neodesíláme ani neukládáme. Polohu na pozadí nevyužíváme.</p>
@@ -39,7 +54,7 @@
     <li>Neukládáme historii vaší polohy.</li>
   </ul>
 
-  <h2>Jak data používáme</h2>
+  <h2 id="pouziti">Jak data používáme</h2>
   <p>Zpracovávaná data slouží výhradně k fungování aplikace:</p>
   <ul>
     <li><strong>Poloha a pohybové senzory</strong> – zobrazení směrové šipky k vybrané hospodě.</li>
@@ -47,7 +62,7 @@
   </ul>
   <p>Data nepoužíváme k profilování, cílení reklamy ani k žádnému dalšímu účelu.</p>
 
-  <h2>Služby třetích stran</h2>
+  <h2 id="treti-strany">Služby třetích stran</h2>
 
   <h3>Mapy.cz (Seznam.cz, a.s.)</h3>
   <p>Pro vyhledávání hospod podle názvu odesíláme váš textový dotaz a přibližnou oblast mapy na API služby Mapy.cz. Tato služba zpracovává dotaz podle vlastních zásad ochrany osobních údajů. Více informací: <a href="https://o.seznam.cz/ochrana-udaju/">https://o.seznam.cz/ochrana-udaju/</a></p>
@@ -58,7 +73,7 @@
   <h2>Doba uchování dat</h2>
   <p>Protože aplikace neukládá žádná osobní data na našich serverech, není z naší strany co uchovávat ani mazat. Poloha a data senzorů existují pouze dočasně v paměti zařízení po dobu používání aplikace. Služby třetích stran (Mapy.cz, Stripe) uchovávají případná data podle vlastních zásad.</p>
 
-  <h2>Vaše práva</h2>
+  <h2 id="prava">Vaše práva</h2>
   <p>Podle nařízení GDPR (Obecné nařízení o ochraně osobních údajů) máte právo na:</p>
   <ul>
     <li><strong>přístup</strong> k osobním údajům, které o vás zpracováváme,</li>
@@ -76,7 +91,7 @@
   <h2>Změny těchto zásad</h2>
   <p>Tyto zásady můžeme čas od času aktualizovat. O podstatných změnách budeme informovat aktualizací této stránky a změnou data „Poslední aktualizace" v záhlaví. Doporučujeme zásady občas zkontrolovat.</p>
 
-  <h2>Kontaktujte nás</h2>
+  <h2 id="kontakt">Kontaktujte nás</h2>
   <p>Máte-li jakýkoli dotaz k ochraně soukromí nebo k těmto zásadám, napište nám na: <a href="mailto:tomades1@gmail.com">tomades1@gmail.com</a></p>
 
   <div class="nav">
@@ -85,8 +100,20 @@
   </div>
 
   <footer>
-    Na pivo · Zásady ochrany osobních údajů
+    <span>Na pivo · Zásady ochrany osobních údajů</span>
+    <span><a href="mailto:tomades1@gmail.com">tomades1@gmail.com</a></span>
   </footer>
+  </article>
+  <aside class="toc" aria-label="Obsah dokumentu">
+    <p class="toc-title">Obsah</p>
+    <a href="#kdo-jsme">Kdo jsme</a>
+    <a href="#data">Jaká data zpracováváme</a>
+    <a href="#pouziti">Jak data používáme</a>
+    <a href="#treti-strany">Služby třetích stran</a>
+    <a href="#prava">Vaše práva</a>
+    <a href="#kontakt">Kontaktujte nás</a>
+  </aside>
+  </main>
 </div>
 </body>
 </html>
