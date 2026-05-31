@@ -15,7 +15,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   assetBundlePatterns: ['**/*'],
   ios: {
     bundleIdentifier: 'com.tomasmach.na-pivo',
-    buildNumber: '2',
+    buildNumber: '3',
     supportsTablet: false,
     infoPlist: {
       NSLocationWhenInUseUsageDescription: LOCATION_REASON,
