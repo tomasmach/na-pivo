@@ -70,9 +70,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       typedRoutes: true,
     },
     extra: {
-      stripeDonateUrl:
-        process.env.STRIPE_DONATE_URL ??
-        'https://donate.stripe.com/eVqcN5fAwgdP5qr9wmdfG00',
       eas: {
         projectId: '1f785cbf-d168-4396-937a-463e1c3de2e8',
       },

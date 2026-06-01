@@ -6,9 +6,7 @@
 
 Na pivo is a novelty iOS app that points a compass arrow toward the nearest (or a randomly
 chosen) pub in your area. All pub data is bundled on-device — no internet connection required
-after install. The optional "Podpoř autora" link opens Safari to a Stripe-hosted donation
-page where the user can type any amount (suggested 50 Kč). Nothing inside the app is purchased
-or unlocked — it's purely a voluntary tip to the developer, outside the App Store.
+after install. Nothing inside the app is purchased or unlocked — it's free and ad-free.
 
 ## Run locally
 
@@ -34,18 +32,6 @@ eas build -p ios --profile preview
 
 # production build (auto-increment build number)
 eas build -p ios --profile production
-```
-
-## Required environment variables
-
-| Variable | Description |
-|---|---|
-| `STRIPE_DONATE_URL` | Stripe Payment Link URL for the donate button. Defaults to the production link baked into `app.config.ts` if unset. |
-
-Set via `.env` locally or as an EAS secret:
-
-```bash
-eas secret:create --scope project --name STRIPE_DONATE_URL --value "https://donate.stripe.com/..."
 ```
 
 ## License

@@ -62,14 +62,6 @@ export default function RootLayout() {
               gestureEnabled: false,
             }}
           />
-          <Stack.Screen
-            name="donate"
-            options={{
-              presentation: 'fullScreenModal',
-              animation: 'slide_from_bottom',
-              gestureEnabled: false,
-            }}
-          />
         </Stack>
       </SafeAreaProvider>
     </GestureHandlerRootView>

@@ -7,8 +7,7 @@
  *  2. Distance card  (custom discrete slider)
  *  3. Preferences card  (haptics + sound toggles)
  *  4. About card  (about + privacy rows)
- *  5. Donate row
- *  6. Footer  (attribution)
+ *  5. Footer  (attribution)
  */
 
 import React, { useCallback, useState } from 'react';
@@ -47,7 +46,6 @@ import {
   Volume2Icon,
   InfoIcon,
   ShieldIcon,
-  HeartIcon,
 } from '@/components/shared/IconGlyph';
 
 // ---------------------------------------------------------------------------
@@ -390,26 +388,6 @@ export default function SettingsScreen() {
           />
         </View>
 
-        {/* ── Donate row ── */}
-        <Pressable
-          onPress={() => router.push('/donate')}
-          style={({ pressed }) => [
-            styles.donateRow,
-            pressed && styles.rowPressed,
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel={cs.settings.donate.title}
-        >
-          <View style={styles.donateIconWell}>
-            <HeartIcon size={16} color={Colors.amber} />
-          </View>
-          <View style={styles.donateText}>
-            <Text style={styles.donateTitle}>{cs.settings.donate.title}</Text>
-            <Text style={styles.donateSubtitle}>{cs.settings.donate.subtitle}</Text>
-          </View>
-          <ChevronRightIcon size={14} color={Colors.mutedText} />
-        </Pressable>
-
         {/* ── Footer ── */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>{cs.settings.footer}</Text>
@@ -665,41 +643,6 @@ const styles = StyleSheet.create({
   },
   rowPressed: {
     opacity: 0.65,
-  },
-
-  // ── Donate row ──
-  donateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.stout,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    paddingVertical: 14,
-    paddingHorizontal: 18,
-    gap: 12,
-  },
-  donateIconWell: {
-    width: 32,
-    height: 32,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout3,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  donateText: {
-    flex: 1,
-  },
-  donateTitle: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 13,
-    color: Colors.foamMuted,
-    marginBottom: 2,
-  },
-  donateSubtitle: {
-    fontFamily: Fonts.ui.regular,
-    fontSize: 11,
-    color: Colors.mutedText,
   },
 
   // ── Footer ──

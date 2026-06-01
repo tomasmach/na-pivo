@@ -37,12 +37,9 @@ Data nepoužíváme k profilování, cílení reklamy ani k žádnému dalšímu
 ### Mapy.cz (Seznam.cz, a.s.)
 Pro vyhledávání hospod podle názvu odesíláme váš textový dotaz a přibližnou oblast mapy na API služby Mapy.cz. Tato služba zpracovává dotaz podle vlastních zásad ochrany osobních údajů. Více informací: [https://o.seznam.cz/ochrana-udaju/](https://o.seznam.cz/ochrana-udaju/)
 
-### Dobrovolné příspěvky (Stripe)
-Aplikace umožňuje poslat dobrovolný příspěvek („donate") na podporu vývoje. **Nejde o nákup** – uživatel za příspěvek nezískává žádné placené funkce ani obsah. Platba probíhá mimo aplikaci, na zabezpečené stránce otevřené ve webovém prohlížeči a zpracovává ji společnost **Stripe**. Veškeré platební údaje zadáváte přímo u Stripe; aplikace tyto údaje nevidí ani neukládá. Zásady ochrany osobních údajů Stripe: [https://stripe.com/privacy](https://stripe.com/privacy)
-
 ## Doba uchování dat
 
-Protože aplikace neukládá žádná osobní data na našich serverech, není z naší strany co uchovávat ani mazat. Poloha a data senzorů existují pouze dočasně v paměti zařízení po dobu používání aplikace. Služby třetích stran (Mapy.cz, Stripe) uchovávají případná data podle vlastních zásad.
+Protože aplikace neukládá žádná osobní data na našich serverech, není z naší strany co uchovávat ani mazat. Poloha a data senzorů existují pouze dočasně v paměti zařízení po dobu používání aplikace. Služby třetích stran (Mapy.cz) uchovávají případná data podle vlastních zásad.
 
 ## Vaše práva
 
