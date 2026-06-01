@@ -10,12 +10,14 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   owner: 'tomasmach',
   scheme: 'napivo',
   version: '1.0.0',
+  icon: './assets/images/icon.png',
   orientation: 'portrait',
   userInterfaceStyle: 'dark',
   assetBundlePatterns: ['**/*'],
   ios: {
     bundleIdentifier: 'com.tomasmach.na-pivo',
-    buildNumber: '3',
+    buildNumber: '4',
+    icon: './assets/images/icon.png',
     supportsTablet: false,
     infoPlist: {
       NSLocationWhenInUseUsageDescription: LOCATION_REASON,
