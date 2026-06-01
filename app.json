@@ -2,7 +2,15 @@
   "plugins": [
     "expo-router",
     "expo-font",
-    "expo-audio",
+    [
+      "expo-audio",
+      {
+        "enableBackgroundPlayback": false,
+        "enableBackgroundRecording": false,
+        "microphonePermission": false,
+        "recordAudioAndroid": false
+      }
+    ],
     "expo-status-bar",
     "expo-asset",
     "expo-splash-screen"
