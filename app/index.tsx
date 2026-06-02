@@ -13,6 +13,7 @@ import {
   Pressable,
   StyleSheet,
   Linking,
+  useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -23,7 +24,6 @@ import {
 
 import { useCompass } from '@/hooks/useCompass';
 import { usePubStore } from '@/stores/pubStore';
-import { useSettingsStore } from '@/stores/settingsStore';
 import { shortestRotationTarget } from '@/compass/rotation';
 import { openPubInMaps } from '@/utils/maps';
 
@@ -169,6 +169,40 @@ interface HiddenPubPillProps {
 // Pencil design uses fixed pixel widths for the skeleton bars
 const SKELETON_BAR_WIDTHS = [26, 46, 16, 36, 52] as const;
 
+type ActiveCompassLayout = {
+  bottomControlsPaddingBottom: number;
+  bottomControlsPaddingTop: number;
+  compassMarginTop: number;
+  compassSize: number;
+  distanceNumberFontSize: number;
+  distanceNumberLineHeight: number;
+  distancePaddingBottom: number;
+  distancePaddingTop: number;
+  distanceUnitFontSize: number;
+  distanceUnitLineHeight: number;
+  pubPillPaddingBottom: number;
+};
+
+function getActiveCompassLayout(height: number, topInset: number, bottomInset: number): ActiveCompassLayout {
+  const usableHeight = height - topInset - bottomInset;
+  const isTight = usableHeight < 700;
+  const isCompact = usableHeight < 820;
+
+  return {
+    bottomControlsPaddingBottom: isTight ? 8 : 12,
+    bottomControlsPaddingTop: isTight ? 10 : isCompact ? 12 : 16,
+    compassMarginTop: isTight ? 0 : Spacing.sm,
+    compassSize: isTight ? 252 : isCompact ? 286 : CompassSize,
+    distanceNumberFontSize: isTight ? 56 : isCompact ? 66 : 78,
+    distanceNumberLineHeight: isTight ? 70 : isCompact ? 82 : 96,
+    distancePaddingBottom: isTight ? 4 : Spacing.sm,
+    distancePaddingTop: isTight ? 18 : isCompact ? 26 : Spacing.xxl,
+    distanceUnitFontSize: isTight ? 26 : isCompact ? 30 : 34,
+    distanceUnitLineHeight: isTight ? 34 : isCompact ? 40 : 44,
+    pubPillPaddingBottom: isTight ? 8 : Spacing.md,
+  };
+}
+
 function HiddenPubPill({ onReveal }: HiddenPubPillProps) {
   return (
     <Pressable
@@ -297,9 +331,10 @@ function ModeToggle({ mode, onNearest, onSurprise }: ModeToggleProps) {
 interface DistanceDisplayProps {
   distanceFormatted: string | null;
   mode: 'nearest' | 'surprise';
+  layout: ActiveCompassLayout;
 }
 
-function DistanceDisplay({ distanceFormatted, mode }: DistanceDisplayProps) {
+function DistanceDisplay({ distanceFormatted, mode, layout }: DistanceDisplayProps) {
   // Split "320 m" or "2,5 km" into number and unit parts
   let numberPart = '—';
   let unitPart = '';
@@ -318,10 +353,40 @@ function DistanceDisplay({ distanceFormatted, mode }: DistanceDisplayProps) {
     mode === 'nearest' ? cs.compass.distanceCaption.nearest : cs.compass.distanceCaption.surprise;
 
   return (
-    <View style={styles.distanceWrap}>
+    <View
+      style={[
+        styles.distanceWrap,
+        {
+          paddingTop: layout.distancePaddingTop,
+          paddingBottom: layout.distancePaddingBottom,
+        },
+      ]}
+    >
       <View style={styles.distanceRow}>
-        <Text style={styles.distanceNumber}>{numberPart}</Text>
-        {unitPart !== '' && <Text style={styles.distanceUnit}>{unitPart}</Text>}
+        <Text
+          style={[
+            styles.distanceNumber,
+            {
+              fontSize: layout.distanceNumberFontSize,
+              lineHeight: layout.distanceNumberLineHeight,
+            },
+          ]}
+        >
+          {numberPart}
+        </Text>
+        {unitPart !== '' && (
+          <Text
+            style={[
+              styles.distanceUnit,
+              {
+                fontSize: layout.distanceUnitFontSize,
+                lineHeight: layout.distanceUnitLineHeight,
+              },
+            ]}
+          >
+            {unitPart}
+          </Text>
+        )}
       </View>
       <Text style={styles.distanceCaption}>{caption}</Text>
     </View>
@@ -333,6 +398,7 @@ function DistanceDisplay({ distanceFormatted, mode }: DistanceDisplayProps) {
 export default function CompassScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { height: screenHeight } = useWindowDimensions();
 
   const {
     arrowRotation,
@@ -343,6 +409,7 @@ export default function CompassScreen() {
     mode,
     setMode,
     reroll,
+    retrySearch,
     arrived,
     dismissArrival,
     headingAccuracy,
@@ -351,8 +418,7 @@ export default function CompassScreen() {
     requestPermission,
     isLoading,
   } = useCompass();
-
-  const maxDistanceKm = useSettingsStore((s) => s.maxDistanceKm);
+  const activeLayout = getActiveCompassLayout(screenHeight, insets.top, Math.max(insets.bottom, 16));
 
   // Reanimated shared value for compass rotation
   const rotation = useSharedValue(0);
@@ -417,16 +483,14 @@ export default function CompassScreen() {
     return <LoadingScreen rotation={rotation} />;
   }
 
-  // ── State D: nothing nearby (pub is null when maxDistanceKm is set) ───────
-  // "Nic poblíž" only triggers when maxDistanceKm is non-null (user set a limit)
-  // and the query returned null.
-  if (pub === null && maxDistanceKm !== null) {
+  // ── State D: nothing nearby / pub lookup failed ───────────────────────────
+  if (pub === null) {
     return (
       <View style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <TitleBar showGear onSettings={handleSettings} />
         <EmptyScreen
           onSettings={handleSettings}
-          onRetry={reroll}
+          onRetry={retrySearch}
         />
       </View>
     );
@@ -446,12 +510,20 @@ export default function CompassScreen() {
       )}
 
       {/* Compass area */}
-      <View style={styles.compassArea}>
-        <CompassContainer rotation={rotation} size={CompassSize} />
+      <View
+        style={[
+          styles.compassArea,
+          {
+            height: activeLayout.compassSize,
+            marginTop: activeLayout.compassMarginTop,
+          },
+        ]}
+      >
+        <CompassContainer rotation={rotation} size={activeLayout.compassSize} />
       </View>
 
       {/* Distance */}
-      <DistanceDisplay distanceFormatted={distanceFormatted} mode={mode} />
+      <DistanceDisplay distanceFormatted={distanceFormatted} mode={mode} layout={activeLayout} />
 
       {/* No magnetometer note */}
       {hasMagnetometer === false && (
@@ -464,7 +536,7 @@ export default function CompassScreen() {
       <View style={styles.flexSpacer} />
 
       {/* Pub pill */}
-      <View style={styles.pubPillWrap}>
+      <View style={[styles.pubPillWrap, { paddingBottom: activeLayout.pubPillPaddingBottom }]}>
         {revealed && pub !== null ? (
           <RevealedPubPill pubName={pub.name} onOpenMaps={handleOpenMaps} />
         ) : (
@@ -473,7 +545,15 @@ export default function CompassScreen() {
       </View>
 
       {/* Bottom controls: mode toggle pill + reroll button, side by side */}
-      <View style={styles.bottomControls}>
+      <View
+        style={[
+          styles.bottomControls,
+          {
+            paddingTop: activeLayout.bottomControlsPaddingTop,
+            paddingBottom: activeLayout.bottomControlsPaddingBottom,
+          },
+        ]}
+      >
         <View style={styles.modeToggleFlex}>
           <ModeToggle
             mode={mode}
@@ -567,8 +647,6 @@ const styles = StyleSheet.create({
   compassArea: {
     alignItems: 'center',
     justifyContent: 'center',
-    height: CompassSize,
-    marginTop: Spacing.sm,
   },
   flexSpacer: {
     flex: 1,
@@ -579,8 +657,6 @@ const styles = StyleSheet.create({
   distanceWrap: {
     alignItems: 'center',
     paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.xxl,
-    paddingBottom: Spacing.sm,
   },
   distanceRow: {
     flexDirection: 'row',
@@ -589,16 +665,12 @@ const styles = StyleSheet.create({
   },
   distanceNumber: {
     fontFamily: Fonts.display.extrabold,
-    fontSize: 78,
     color: Colors.foam,
-    lineHeight: 96,
     includeFontPadding: false,
   },
   distanceUnit: {
     fontFamily: Fonts.display.extrabold,
-    fontSize: 34,
     color: Colors.amber,
-    lineHeight: 44,
     includeFontPadding: false,
   },
   distanceCaption: {
@@ -623,7 +695,6 @@ const styles = StyleSheet.create({
   // ── Pub pill (shared) ──
   pubPillWrap: {
     paddingHorizontal: 24,
-    paddingBottom: Spacing.md,
   },
   pubPill: {
     borderRadius: Radius.card,
@@ -692,8 +763,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 12,
     gap: 10,
   },
   modeToggleFlex: {

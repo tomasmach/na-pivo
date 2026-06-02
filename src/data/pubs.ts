@@ -18,6 +18,10 @@ let _loaded = false;
 let _lastFetchCenter: { lat: number; lng: number } | null = null;
 let _inflight: Promise<void> | null = null;
 
+interface FetchPubsNearOptions {
+  force?: boolean;
+}
+
 /** Re-fetch from Mapy.cz when the user has moved more than this distance from
  *  the previous fetch center (km). */
 const REFETCH_THRESHOLD_KM = 2;
@@ -77,8 +81,9 @@ export async function fetchPubsNear(
   lat: number,
   lng: number,
   signal?: AbortSignal,
+  options: FetchPubsNearOptions = {},
 ): Promise<void> {
-  if (_loaded && _lastFetchCenter) {
+  if (!options.force && _loaded && _lastFetchCenter) {
     const movedKm = haversineKm(_lastFetchCenter.lat, _lastFetchCenter.lng, lat, lng);
     if (movedKm < REFETCH_THRESHOLD_KM) return;
   }

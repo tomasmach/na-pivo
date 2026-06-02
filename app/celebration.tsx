@@ -4,7 +4,8 @@ import {
   Text,
   Pressable,
   StyleSheet,
-  Dimensions,
+  ScrollView,
+  useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -32,8 +33,6 @@ import { SoftGlow } from '@/components/celebration/SoftGlow';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { BeerIcon, MapPinIcon } from '@/components/shared/IconGlyph';
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-
 /**
  * How far the foam SVG bleeds above the visible screen edge. Big enough that
  * even on devices with a tall status bar / dynamic island, the foam's cap
@@ -41,8 +40,51 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
  */
 const FOAM_OVERHANG = 60;
 
+type CelebrationLayout = {
+  buttonHeight: number;
+  cardPaddingHorizontal: number;
+  cardPaddingVertical: number;
+  contentWidth: number;
+  foamBottom: number;
+  foamHeight: number;
+  headlineFontSize: number;
+  headlineLineHeight: number;
+  iconSize: number;
+  justifyContent: 'center' | 'flex-start';
+  paddingBottom: number;
+  paddingTop: number;
+  pubNameFontSize: number;
+  subtitleMarginBottom: number;
+  subtitlePaddingTop: number;
+};
+
+function getCelebrationLayout(width: number, height: number, topInset: number, bottomInset: number): CelebrationLayout {
+  const usableHeight = height - topInset - bottomInset;
+  const isTight = usableHeight < 700;
+  const isCompact = usableHeight < 820;
+
+  return {
+    buttonHeight: isTight ? 54 : isCompact ? 58 : 64,
+    cardPaddingHorizontal: isTight ? 18 : 22,
+    cardPaddingVertical: isTight ? 14 : 18,
+    contentWidth: Math.min(width - 48, 342),
+    foamBottom: isTight ? 72 : isCompact ? 88 : 108,
+    foamHeight: isTight ? 178 : isCompact ? 204 : 236,
+    headlineFontSize: isTight ? 54 : isCompact ? 64 : 84,
+    headlineLineHeight: isTight ? 64 : isCompact ? 78 : 110,
+    iconSize: isTight ? 56 : isCompact ? 72 : 96,
+    justifyContent: isTight ? 'flex-start' : 'center',
+    paddingBottom: bottomInset + (isTight ? 12 : isCompact ? 16 : 24),
+    paddingTop: topInset + (isTight ? 96 : isCompact ? 132 : 170),
+    pubNameFontSize: isTight ? 24 : isCompact ? 27 : 30,
+    subtitleMarginBottom: isTight ? 14 : isCompact ? 18 : 24,
+    subtitlePaddingTop: isTight ? 8 : isCompact ? 10 : 14,
+  };
+}
+
 export default function CelebrationScreen() {
   const insets = useSafeAreaInsets();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const router = useRouter();
   const revealedPub = usePubStore((s) => s.revealedPub);
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
@@ -83,10 +125,10 @@ export default function CelebrationScreen() {
   }));
 
   const pubName = revealedPub?.name ?? 'Hospoda';
+  const layout = getCelebrationLayout(screenWidth, screenHeight, insets.top, insets.bottom);
 
   // Drop anchors: emerge from the bottom tip of each foam tongue.
-  const FOAM_BOTTOM = 108;
-  const dropAnchors = buildFoamTongues(SCREEN_W, FOAM_BOTTOM).map((t) => ({
+  const dropAnchors = buildFoamTongues(screenWidth, layout.foamBottom).map((t) => ({
     x: t.centerX,
     y: t.bottomY - 4,
   }));
@@ -103,7 +145,7 @@ export default function CelebrationScreen() {
 
       {/* Rising beer bubbles — ambient carbonation effect */}
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
-        <BeerBubbles width={SCREEN_W} height={SCREEN_H} bubbleCount={32} />
+        <BeerBubbles width={screenWidth} height={screenHeight} bubbleCount={32} />
       </View>
 
       {/* Foam cap at the very top — extends behind the status bar.
@@ -111,48 +153,105 @@ export default function CelebrationScreen() {
           visible screen edge, so the foam appears to bleed off the top of the
           device instead of being chopped flat. */}
       <View style={[styles.foamContainer, { top: -FOAM_OVERHANG }]} pointerEvents="none">
-        <FoamDrip width={SCREEN_W} height={236} overhang={FOAM_OVERHANG} />
+        <FoamDrip width={screenWidth} height={layout.foamHeight} overhang={FOAM_OVERHANG} />
       </View>
 
       {/* Drops periodically fall from the foam edge down the screen */}
       <View style={styles.foamContainer} pointerEvents="none">
         <FoamDrops
-          width={SCREEN_W}
-          fallDistance={SCREEN_H - 120}
+          width={screenWidth}
+          fallDistance={screenHeight - 120}
           anchors={dropAnchors}
         />
       </View>
 
-      {/* Main scrollable content, centered vertically with foam offset */}
-      <View
-        style={[
+      {/* Main content, compacting in iPhone compatibility windows on iPad. */}
+      <ScrollView
+        style={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        contentContainerStyle={[
           styles.content,
           {
-            paddingTop: insets.top + 170,
-            paddingBottom: insets.bottom + 24,
+            minHeight: screenHeight,
+            justifyContent: layout.justifyContent,
+            paddingTop: layout.paddingTop,
+            paddingBottom: layout.paddingBottom,
           },
         ]}
       >
         {/* Beer mug icon */}
         <Animated.View style={[styles.emojiWrap, contentAnimStyle]}>
-          <BeerIcon size={96} color={Colors.foam} />
+          <BeerIcon size={layout.iconSize} color={Colors.foam} />
         </Animated.View>
 
         {/* Headline — bounce-in animated */}
         <Animated.View style={[styles.headlineWrap, headlineAnimStyle]}>
-          <Text style={styles.headlineLine1}>{cs.celebration.headlineLine1}</Text>
-          <Text style={styles.headlineLine2}>{cs.celebration.headlineLine2}</Text>
+          <Text
+            style={[
+              styles.headlineLine1,
+              {
+                fontSize: layout.headlineFontSize,
+                lineHeight: layout.headlineLineHeight,
+              },
+            ]}
+          >
+            {cs.celebration.headlineLine1}
+          </Text>
+          <Text
+            style={[
+              styles.headlineLine2,
+              {
+                fontSize: layout.headlineFontSize,
+                lineHeight: layout.headlineLineHeight,
+              },
+            ]}
+          >
+            {cs.celebration.headlineLine2}
+          </Text>
         </Animated.View>
 
         {/* Subtitle */}
         <Animated.View style={contentAnimStyle}>
-          <Text style={styles.subtitle}>{cs.celebration.subtitle}</Text>
+          <Text
+            style={[
+              styles.subtitle,
+              {
+                paddingTop: layout.subtitlePaddingTop,
+                marginBottom: layout.subtitleMarginBottom,
+              },
+            ]}
+          >
+            {cs.celebration.subtitle}
+          </Text>
         </Animated.View>
 
         {/* Pub card */}
-        <Animated.View style={[styles.pubCard, contentAnimStyle]}>
+        <Animated.View
+          style={[
+            styles.pubCard,
+            contentAnimStyle,
+            {
+              width: layout.contentWidth,
+              paddingHorizontal: layout.cardPaddingHorizontal,
+              paddingVertical: layout.cardPaddingVertical,
+            },
+          ]}
+        >
           <Text style={styles.pubCardEyebrow}>{cs.celebration.eyebrow}</Text>
-          <Text style={styles.pubCardName}>{pubName}</Text>
+          <Text
+            style={[
+              styles.pubCardName,
+              {
+                fontSize: layout.pubNameFontSize,
+              },
+            ]}
+            numberOfLines={2}
+            adjustsFontSizeToFit
+            minimumFontScale={0.78}
+          >
+            {pubName}
+          </Text>
 
           {revealedPub != null && (
             <Pressable
@@ -168,16 +267,16 @@ export default function CelebrationScreen() {
         </Animated.View>
 
         {/* Back to compass button */}
-        <Animated.View style={[styles.buttonWrap, contentAnimStyle]}>
+        <Animated.View style={[styles.buttonWrap, { width: layout.contentWidth }, contentAnimStyle]}>
           <GlowButton
             label={cs.celebration.backToCompass}
             onPress={() => router.back()}
             variant="primary"
             glow="strong"
-            height={64}
+            height={layout.buttonHeight}
           />
         </Animated.View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -197,8 +296,8 @@ const styles = StyleSheet.create({
   },
   glowHeadlineWrap: {
     position: 'absolute',
-    top: SCREEN_H * 0.28,
-    left: (SCREEN_W - 340) / 2,
+    top: '28%',
+    alignSelf: 'center',
   },
 
   foamContainer: {
@@ -209,11 +308,15 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
 
-  content: {
+  scroll: {
     flex: 1,
+    zIndex: 20,
+  },
+
+  content: {
     alignItems: 'center',
-    justifyContent: 'center',
     gap: 2,
+    paddingHorizontal: 24,
   },
 
   emojiWrap: {
@@ -227,17 +330,13 @@ const styles = StyleSheet.create({
   },
   headlineLine1: {
     fontFamily: Fonts.display.extrabold,
-    fontSize: 84,
-    lineHeight: 110,
-    letterSpacing: -2,
+    letterSpacing: 0,
     color: Colors.foam,
     textAlign: 'center',
   },
   headlineLine2: {
     fontFamily: Fonts.display.extrabold,
-    fontSize: 84,
-    lineHeight: 110,
-    letterSpacing: -2,
+    letterSpacing: 0,
     color: Colors.amber,
     textAlign: 'center',
     textShadowColor: Colors.glow,
@@ -250,18 +349,13 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: Colors.foamMuted,
     textAlign: 'center',
-    paddingTop: 14,
-    marginBottom: 24,
   },
 
   pubCard: {
-    width: 342,
     backgroundColor: Colors.stout2,
     borderRadius: Radius.card,
     borderWidth: 1,
     borderColor: Colors.border,
-    paddingVertical: 18,
-    paddingHorizontal: 22,
     marginBottom: 20,
   },
   pubCardEyebrow: {
@@ -273,8 +367,7 @@ const styles = StyleSheet.create({
   },
   pubCardName: {
     fontFamily: Fonts.display.extrabold,
-    fontSize: 30,
-    letterSpacing: -1,
+    letterSpacing: 0,
     color: Colors.amber,
   },
   mapsRow: {
@@ -289,7 +382,5 @@ const styles = StyleSheet.create({
     color: Colors.neon,
   },
 
-  buttonWrap: {
-    width: 342,
-  },
+  buttonWrap: {},
 });

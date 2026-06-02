@@ -13,6 +13,7 @@ const createComponent =
 export const View = createComponent('View');
 export const Text = createComponent('Text');
 export const Pressable = createComponent('Pressable');
+export const ScrollView = createComponent('ScrollView');
 
 export const StyleSheet = {
   absoluteFill: {
@@ -33,6 +34,13 @@ export const Dimensions = {
     fontScale: 1,
   })),
 };
+
+export const useWindowDimensions = jest.fn(() => ({
+  width: 390,
+  height: 844,
+  scale: 3,
+  fontScale: 1,
+}));
 
 export const Platform = {
   OS: 'ios',

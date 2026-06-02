@@ -1,6 +1,8 @@
 import React from 'react';
+import { useWindowDimensions } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { GlowButton } from '@/components/shared/GlowButton';
 import CelebrationScreen from '../celebration';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -90,6 +92,12 @@ describe('CelebrationScreen', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (useWindowDimensions as jest.Mock).mockReturnValue({
+      width: 390,
+      height: 844,
+      scale: 3,
+      fontScale: 1,
+    });
   });
 
   afterEach(() => {
@@ -124,5 +132,22 @@ describe('CelebrationScreen', () => {
     expect(Haptics.notificationAsync).toHaveBeenCalledWith(
       Haptics.NotificationFeedbackType.Success
     );
+  });
+
+  it('uses compact controls when the viewport is short', async () => {
+    (useWindowDimensions as jest.Mock).mockReturnValue({
+      width: 390,
+      height: 780,
+      scale: 3,
+      fontScale: 1,
+    });
+
+    await act(async () => {
+      renderer = TestRenderer.create(React.createElement(CelebrationScreen));
+      await Promise.resolve();
+    });
+
+    const glowButtonMock = GlowButton as unknown as jest.Mock;
+    expect(glowButtonMock.mock.calls.some(([props]) => props.height === 58)).toBe(true);
   });
 });

@@ -40,7 +40,7 @@ export const cs = {
   empty: {
     headlineLine1: 'Tady se',
     headlineLine2: 'nenapiješ',
-    body: 'V tvém okolí žádná hospoda. Zkus rozšířit dosah v nastavení.',
+    body: 'V tvém okolí jsme nenašli hospodu. Zkus to znovu nebo uprav dosah v nastavení.',
     openSettings: 'Otevřít nastavení',
     retry: 'Zkusit znovu',
   },

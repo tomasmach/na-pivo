@@ -17,7 +17,7 @@ import { useDeviceHeading } from '@/compass/useDeviceHeading';
 import { useTargetBearing } from '@/compass/useTargetBearing';
 import { useArrivalDetector } from '@/compass/useArrivalDetector';
 import { ensureLocationPermission, openSystemSettings } from '@/compass/permissions';
-import { formatDistanceCs } from '@/compass/distance';
+import { formatDistanceCs, haversineMeters } from '@/compass/distance';
 import { compassArrowRotation } from '@/compass/rotation';
 import type { PermissionState } from '@/compass/permissions';
 import type { Mode } from '@/stores/settingsStore';
@@ -25,8 +25,22 @@ import type { Mode } from '@/stores/settingsStore';
 /** Minimum distance (meters) to move before recomputing the target pub. */
 const RECOMPUTE_DISTANCE_M = 50;
 
-/** Squared euclidean proxy for fast distance check (degrees). ~50m ≈ 0.0005°. */
-const RECOMPUTE_THRESHOLD_DEG = 0.0005;
+type TargetPosition = {
+  lat: number;
+  lng: number;
+  accuracyMeters: number;
+};
+
+function hasMovedEnoughForRetarget(current: TargetPosition, previous: TargetPosition): boolean {
+  const movedMeters = haversineMeters(previous, current);
+  const accuracyAwareThreshold = Math.max(
+    RECOMPUTE_DISTANCE_M,
+    current.accuracyMeters,
+    previous.accuracyMeters,
+  );
+
+  return movedMeters >= accuracyAwareThreshold;
+}
 
 export interface UseCompassResult {
   arrowRotation: SharedValue<number | null>;
@@ -38,6 +52,7 @@ export interface UseCompassResult {
   mode: Mode;
   setMode: (m: Mode) => void;
   reroll: () => void;
+  retrySearch: () => void;
   arrived: boolean;
   dismissArrival: () => void;
   headingAccuracy: number | null;
@@ -69,6 +84,8 @@ export function useCompass(): UseCompassResult {
 
   // — Pub data loading state —
   const [pubsLoaded, setPubsLoaded] = useState(() => isLoaded());
+  const [searchRetryNonce, setSearchRetryNonce] = useState(0);
+  const forceNextSearchRef = useRef(false);
 
   // Fetch pubs from Mapy.cz whenever the user's position changes. The data
   // layer short-circuits if the user hasn't moved more than ~2 km from the
@@ -79,7 +96,10 @@ export function useCompass(): UseCompassResult {
   useEffect(() => {
     if (!position) return;
     let cancelled = false;
-    fetchPubsNear(position.lat, position.lng)
+    const force = forceNextSearchRef.current;
+    forceNextSearchRef.current = false;
+
+    fetchPubsNear(position.lat, position.lng, undefined, { force })
       .then(() => {
         if (!cancelled) setPubsLoaded(true);
       })
@@ -91,7 +111,7 @@ export function useCompass(): UseCompassResult {
     return () => {
       cancelled = true;
     };
-  }, [position?.lat, position?.lng]);
+  }, [position?.lat, position?.lng, searchRetryNonce]);
 
   // — Permission check on mount —
   useEffect(() => {
@@ -103,9 +123,10 @@ export function useCompass(): UseCompassResult {
   // — Target pub state —
   const [currentPub, setCurrentPub] = useState<Pub | null>(null);
   const [revealed, setRevealed] = useState(false);
+  const [, bumpTargetSelectionRevision] = useState(0);
 
   // Track last position used to select a target, to avoid re-selecting on every tiny GPS twitch.
-  const lastTargetPosRef = useRef<{ lat: number; lng: number } | null>(null);
+  const lastTargetPosRef = useRef<TargetPosition | null>(null);
   // Track last inputs that determined the current target.
   const lastModeRef = useRef<Mode | null>(null);
   const lastMaxKmRef = useRef<number | null | undefined>(undefined);
@@ -114,7 +135,7 @@ export function useCompass(): UseCompassResult {
   useEffect(() => {
     if (!position || !pubsLoaded) return;
 
-    const { lat, lng } = position;
+    const { lat, lng, accuracyMeters } = position;
     const maxKm = maxDistanceKm ?? undefined;
     const lastPos = lastTargetPosRef.current;
 
@@ -123,17 +144,11 @@ export function useCompass(): UseCompassResult {
     const maxKmChanged = maxDistanceKm !== lastMaxKmRef.current;
     const seedChanged = surpriseSeed !== lastSeedRef.current;
 
-    let distanceMoved = Infinity;
-    if (lastPos) {
-      const dLat = lat - lastPos.lat;
-      const dLng = lng - lastPos.lng;
-      distanceMoved = Math.sqrt(dLat * dLat + dLng * dLng);
-    }
-
-    const positionMoved = distanceMoved >= RECOMPUTE_THRESHOLD_DEG;
+    const currentPos = { lat, lng, accuracyMeters };
+    const positionMoved = lastPos === null || hasMovedEnoughForRetarget(currentPos, lastPos);
 
     if (modeChanged || maxKmChanged || seedChanged || positionMoved) {
-      lastTargetPosRef.current = { lat, lng };
+      lastTargetPosRef.current = currentPos;
       lastModeRef.current = mode;
       lastMaxKmRef.current = maxDistanceKm;
       lastSeedRef.current = surpriseSeed;
@@ -149,6 +164,7 @@ export function useCompass(): UseCompassResult {
         if (pub?.id !== currentPub?.id) return false;
         return prev;
       });
+      bumpTargetSelectionRevision((revision) => revision + 1);
     }
   }, [position, pubsLoaded, mode, maxDistanceKm, surpriseSeed]);
 
@@ -196,19 +212,47 @@ export function useCompass(): UseCompassResult {
   const distanceFormatted = distanceMeters !== null ? formatDistanceCs(distanceMeters) : null;
 
   // — isLoading —
-  const isLoading = !pubsLoaded || position === null;
+  const targetSelectionIsCurrent =
+    position !== null &&
+    pubsLoaded &&
+    lastTargetPosRef.current !== null &&
+    lastModeRef.current === mode &&
+    lastMaxKmRef.current === maxDistanceKm &&
+    lastSeedRef.current === surpriseSeed &&
+    !hasMovedEnoughForRetarget(
+      {
+        lat: position.lat,
+        lng: position.lng,
+        accuracyMeters: position.accuracyMeters,
+      },
+      lastTargetPosRef.current,
+    );
+
+  const isLoading = !pubsLoaded || position === null || !targetSelectionIsCurrent;
 
   // — Actions —
   const reveal = useCallback(() => {
+    if (!currentPub) return;
+
     setRevealed(true);
-    if (currentPub) {
-      setRevealedPub(currentPub);
-    }
+    setRevealedPub(currentPub);
   }, [currentPub, setRevealedPub]);
 
   const reroll = useCallback(() => {
     bumpSurpriseSeed();
   }, [bumpSurpriseSeed]);
+
+  const retrySearch = useCallback(() => {
+    forceNextSearchRef.current = true;
+    lastTargetPosRef.current = null;
+    lastModeRef.current = null;
+    lastMaxKmRef.current = undefined;
+    lastSeedRef.current = null;
+    setCurrentPub(null);
+    setRevealed(false);
+    setPubsLoaded(false);
+    setSearchRetryNonce((nonce) => nonce + 1);
+  }, []);
 
   const requestPermission = useCallback(async () => {
     const state = await ensureLocationPermission();
@@ -228,6 +272,7 @@ export function useCompass(): UseCompassResult {
     mode,
     setMode,
     reroll,
+    retrySearch,
     arrived,
     dismissArrival,
     headingAccuracy: accuracyDeg,
