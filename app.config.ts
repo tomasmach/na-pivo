@@ -44,6 +44,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         ITSAppUsesNonExemptEncryption: false,
       },
     },
+    android: {
+      package: 'com.tomasmach.na_pivo',
+      versionCode: 1,
+      adaptiveIcon: {
+        foregroundImage: './assets/images/icon.png',
+        backgroundColor: '#101010',
+      },
+    },
     plugins: [
       'expo-router',
       'expo-font',

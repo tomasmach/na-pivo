@@ -18,6 +18,10 @@
         "resourceClass": "m-medium",
         "autoIncrement": "buildNumber"
       },
+      "android": {
+        "buildType": "app-bundle",
+        "autoIncrement": "versionCode"
+      },
       "channel": "production"
     }
   },
@@ -27,6 +31,9 @@
         "appleId": "tomades1@gmail.com",
         "ascAppId": "6773790025",
         "appleTeamId": "T5W2WM23A6"
+      },
+      "android": {
+        "track": "production"
       }
     }
   }
