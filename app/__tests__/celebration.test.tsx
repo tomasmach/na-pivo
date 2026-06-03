@@ -134,10 +134,10 @@ describe('CelebrationScreen', () => {
     );
   });
 
-  it('uses compact controls when the viewport is short', async () => {
+  it('scales controls down on a genuinely short viewport', async () => {
     (useWindowDimensions as jest.Mock).mockReturnValue({
       width: 390,
-      height: 780,
+      height: 560,
       scale: 3,
       fontScale: 1,
     });
@@ -148,6 +148,29 @@ describe('CelebrationScreen', () => {
     });
 
     const glowButtonMock = GlowButton as unknown as jest.Mock;
-    expect(glowButtonMock.mock.calls.some(([props]) => props.height === 58)).toBe(true);
+    // Full-size button is 64; a short viewport must shrink it (but never below
+    // the 48pt touch-target floor).
+    expect(
+      glowButtonMock.mock.calls.some(
+        ([props]) => props.height >= 48 && props.height < 64
+      )
+    ).toBe(true);
+  });
+
+  it('keeps full-size controls on a normal phone viewport', async () => {
+    (useWindowDimensions as jest.Mock).mockReturnValue({
+      width: 390,
+      height: 844,
+      scale: 3,
+      fontScale: 1,
+    });
+
+    await act(async () => {
+      renderer = TestRenderer.create(React.createElement(CelebrationScreen));
+      await Promise.resolve();
+    });
+
+    const glowButtonMock = GlowButton as unknown as jest.Mock;
+    expect(glowButtonMock.mock.calls.some(([props]) => props.height === 64)).toBe(true);
   });
 });

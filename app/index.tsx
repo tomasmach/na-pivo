@@ -183,23 +183,47 @@ type ActiveCompassLayout = {
   pubPillPaddingBottom: number;
 };
 
-function getActiveCompassLayout(height: number, topInset: number, bottomInset: number): ActiveCompassLayout {
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+// The compass takes whatever vertical room is left after the surrounding chrome
+// (title bar, distance block, pub pill, bottom controls, minimum spacers), but
+// never exceeds the design size or the screen width. Everything else scales in
+// proportion to how much the compass shrank, so layouts degrade smoothly on
+// small screens / iPhone-compatibility windows instead of jumping between
+// hard-coded buckets. On every normal phone there is enough room for the full
+// 320pt compass (t === 1), so the layout matches the original design.
+function getActiveCompassLayout(
+  width: number,
+  height: number,
+  topInset: number,
+  bottomInset: number,
+): ActiveCompassLayout {
   const usableHeight = height - topInset - bottomInset;
-  const isTight = usableHeight < 700;
-  const isCompact = usableHeight < 820;
+
+  const VERTICAL_CHROME = 430; // generous reserve for the non-compass content
+  const widthBudget = width - 48; // 24pt side padding on each edge
+  const heightBudget = usableHeight - VERTICAL_CHROME;
+
+  const compassSize = Math.round(
+    clamp(Math.min(widthBudget, heightBudget), 240, CompassSize),
+  );
+
+  const t = compassSize / CompassSize; // 0.75 .. 1
 
   return {
-    bottomControlsPaddingBottom: isTight ? 8 : 12,
-    bottomControlsPaddingTop: isTight ? 10 : isCompact ? 12 : 16,
-    compassMarginTop: isTight ? 0 : Spacing.sm,
-    compassSize: isTight ? 252 : isCompact ? 286 : CompassSize,
-    distanceNumberFontSize: isTight ? 56 : isCompact ? 66 : 78,
-    distanceNumberLineHeight: isTight ? 70 : isCompact ? 82 : 96,
-    distancePaddingBottom: isTight ? 4 : Spacing.sm,
-    distancePaddingTop: isTight ? 18 : isCompact ? 26 : Spacing.xxl,
-    distanceUnitFontSize: isTight ? 26 : isCompact ? 30 : 34,
-    distanceUnitLineHeight: isTight ? 34 : isCompact ? 40 : 44,
-    pubPillPaddingBottom: isTight ? 8 : Spacing.md,
+    bottomControlsPaddingBottom: 12,
+    bottomControlsPaddingTop: Math.round(16 * t),
+    compassMarginTop: Math.round(Spacing.sm * t),
+    compassSize,
+    distanceNumberFontSize: Math.round(78 * t),
+    distanceNumberLineHeight: Math.round(96 * t),
+    distancePaddingBottom: Spacing.sm,
+    distancePaddingTop: Math.round(Spacing.xxl * t),
+    distanceUnitFontSize: Math.round(34 * t),
+    distanceUnitLineHeight: Math.round(44 * t),
+    pubPillPaddingBottom: Spacing.md,
   };
 }
 
@@ -398,7 +422,7 @@ function DistanceDisplay({ distanceFormatted, mode, layout }: DistanceDisplayPro
 export default function CompassScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { height: screenHeight } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
   const {
     arrowRotation,
@@ -418,7 +442,12 @@ export default function CompassScreen() {
     requestPermission,
     isLoading,
   } = useCompass();
-  const activeLayout = getActiveCompassLayout(screenHeight, insets.top, Math.max(insets.bottom, 16));
+  const activeLayout = getActiveCompassLayout(
+    screenWidth,
+    screenHeight,
+    insets.top,
+    Math.max(insets.bottom, 16),
+  );
 
   // Reanimated shared value for compass rotation
   const rotation = useSharedValue(0);

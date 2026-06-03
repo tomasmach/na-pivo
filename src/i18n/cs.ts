@@ -54,7 +54,7 @@ export const cs = {
       kmShort: 'km',
       mShort: 'm',
       rangeMin: '500 m',
-      rangeMax: '10 km',
+      rangeMax: '∞',
     },
     haptics: {
       title: 'Vibrace u cíle',

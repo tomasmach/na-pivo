@@ -52,13 +52,16 @@ import {
 // Discrete slider positions
 // ---------------------------------------------------------------------------
 
-const SLIDER_POSITIONS: Array<number | null> = [null, 0.5, 1, 1.5, 2, 2.5, 5, 10];
+// Ordered low → high reach. `null` ("Bez limitu") sits at the far RIGHT so the
+// thumb travels left→right as the search radius grows, and the fill bar is full
+// at unlimited — matching the user's mental model of "maximum reach".
+const SLIDER_POSITIONS: Array<number | null> = [0.5, 1, 1.5, 2, 2.5, 5, 10, null];
 const SLIDER_STEPS = SLIDER_POSITIONS.length - 1; // 7
 
 function positionIndexForKm(km: number | null): number {
-  if (km === null) return 0;
+  if (km === null) return SLIDER_POSITIONS.length - 1;
   const idx = SLIDER_POSITIONS.indexOf(km);
-  return idx === -1 ? 0 : idx;
+  return idx === -1 ? SLIDER_POSITIONS.length - 1 : idx;
 }
 
 function formatCzKm(km: number): string {

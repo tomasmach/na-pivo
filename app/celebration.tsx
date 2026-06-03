@@ -58,27 +58,35 @@ type CelebrationLayout = {
   subtitlePaddingTop: number;
 };
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+// Continuous scaling instead of hard-coded buckets: `t` is 1 on every normal
+// phone (full design, matching the original screens) and shrinks smoothly only
+// when the viewport is genuinely short — e.g. an iPhone-compatibility window on
+// iPad. The ScrollView below guarantees the back button stays reachable even if
+// the content can't fully fit.
 function getCelebrationLayout(width: number, height: number, topInset: number, bottomInset: number): CelebrationLayout {
   const usableHeight = height - topInset - bottomInset;
-  const isTight = usableHeight < 700;
-  const isCompact = usableHeight < 820;
+  const t = clamp(usableHeight / 740, 0.66, 1);
 
   return {
-    buttonHeight: isTight ? 54 : isCompact ? 58 : 64,
-    cardPaddingHorizontal: isTight ? 18 : 22,
-    cardPaddingVertical: isTight ? 14 : 18,
+    buttonHeight: Math.round(clamp(64 * t, 48, 64)),
+    cardPaddingHorizontal: Math.round(22 * t),
+    cardPaddingVertical: Math.round(18 * t),
     contentWidth: Math.min(width - 48, 342),
-    foamBottom: isTight ? 72 : isCompact ? 88 : 108,
-    foamHeight: isTight ? 178 : isCompact ? 204 : 236,
-    headlineFontSize: isTight ? 54 : isCompact ? 64 : 84,
-    headlineLineHeight: isTight ? 64 : isCompact ? 78 : 110,
-    iconSize: isTight ? 56 : isCompact ? 72 : 96,
-    justifyContent: isTight ? 'flex-start' : 'center',
-    paddingBottom: bottomInset + (isTight ? 12 : isCompact ? 16 : 24),
-    paddingTop: topInset + (isTight ? 96 : isCompact ? 132 : 170),
-    pubNameFontSize: isTight ? 24 : isCompact ? 27 : 30,
-    subtitleMarginBottom: isTight ? 14 : isCompact ? 18 : 24,
-    subtitlePaddingTop: isTight ? 8 : isCompact ? 10 : 14,
+    foamBottom: Math.round(108 * t),
+    foamHeight: Math.round(236 * t),
+    headlineFontSize: Math.round(84 * t),
+    headlineLineHeight: Math.round(110 * t),
+    iconSize: Math.round(96 * t),
+    justifyContent: t < 0.85 ? 'flex-start' : 'center',
+    paddingBottom: bottomInset + Math.round(24 * t),
+    paddingTop: topInset + Math.round(170 * t),
+    pubNameFontSize: Math.round(30 * t),
+    subtitleMarginBottom: Math.round(24 * t),
+    subtitlePaddingTop: Math.round(14 * t),
   };
 }
 
@@ -330,13 +338,13 @@ const styles = StyleSheet.create({
   },
   headlineLine1: {
     fontFamily: Fonts.display.extrabold,
-    letterSpacing: 0,
+    letterSpacing: -2,
     color: Colors.foam,
     textAlign: 'center',
   },
   headlineLine2: {
     fontFamily: Fonts.display.extrabold,
-    letterSpacing: 0,
+    letterSpacing: -2,
     color: Colors.amber,
     textAlign: 'center',
     textShadowColor: Colors.glow,
@@ -367,7 +375,7 @@ const styles = StyleSheet.create({
   },
   pubCardName: {
     fontFamily: Fonts.display.extrabold,
-    letterSpacing: 0,
+    letterSpacing: -1,
     color: Colors.amber,
   },
   mapsRow: {

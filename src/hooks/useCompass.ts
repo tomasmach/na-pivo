@@ -212,23 +212,15 @@ export function useCompass(): UseCompassResult {
   const distanceFormatted = distanceMeters !== null ? formatDistanceCs(distanceMeters) : null;
 
   // — isLoading —
-  const targetSelectionIsCurrent =
-    position !== null &&
-    pubsLoaded &&
-    lastTargetPosRef.current !== null &&
-    lastModeRef.current === mode &&
-    lastMaxKmRef.current === maxDistanceKm &&
-    lastSeedRef.current === surpriseSeed &&
-    !hasMovedEnoughForRetarget(
-      {
-        lat: position.lat,
-        lng: position.lng,
-        accuracyMeters: position.accuracyMeters,
-      },
-      lastTargetPosRef.current,
-    );
-
-  const isLoading = !pubsLoaded || position === null || !targetSelectionIsCurrent;
+  // The full-screen loading state must appear ONLY during a genuine cold start:
+  // before pub data has loaded, before the first GPS fix, or before the very
+  // first target has been selected (also the state retrySearch resets us to).
+  // It must NOT react to mode / maxDistance / seed changes: those recompute the
+  // target synchronously and locally inside the selection effect, so gating on
+  // ref-vs-prop staleness would unmount the whole compass for a single frame and
+  // make the screen visibly jump and re-load on every toggle.
+  const hasSelectedTarget = lastTargetPosRef.current !== null;
+  const isLoading = !pubsLoaded || position === null || !hasSelectedTarget;
 
   // — Actions —
   const reveal = useCallback(() => {

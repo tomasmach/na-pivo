@@ -66,9 +66,12 @@ const hookCleanups: Array<() => void> = [];
 function renderCompassHook() {
   let latestResult: ReturnType<typeof useCompass> | undefined;
   let renderer: { update: (element: React.ReactElement) => void; unmount: () => void };
+  const loadingLog: boolean[] = [];
 
   function Harness() {
-    latestResult = useCompass();
+    const result = useCompass();
+    loadingLog.push(result.isLoading);
+    latestResult = result;
     return null;
   }
 
@@ -83,6 +86,7 @@ function renderCompassHook() {
       }
       return latestResult;
     },
+    loadingLog,
     rerender() {
       act(() => {
         renderer.update(React.createElement(Harness));
@@ -214,6 +218,50 @@ describe('useCompass', () => {
     expect((findNearestPub as jest.Mock).mock.calls).toHaveLength(callsBeforeJitter);
     expect(hook.result.pub).toBe(nearbyPub);
     expect(hook.result.revealed).toBe(true);
+  });
+
+  it('does not flash the loading screen when switching modes', async () => {
+    const nearestPub: Pub = { id: 'osm:nearest', name: 'Nearest Pub', lat: 50.08, lng: 14.42 };
+    const surprisePub: Pub = { id: 'osm:surprise', name: 'Surprise Pub', lat: 49.2, lng: 16.6 };
+
+    useSettingsStore.setState({
+      mode: 'nearest',
+      maxDistanceKm: null,
+      hapticEnabled: true,
+      soundEnabled: false,
+      surpriseSeed: 17,
+    });
+    (findNearestPub as jest.Mock).mockReturnValue(nearestPub);
+    (findRandomPubInRadius as jest.Mock).mockReturnValue(surprisePub);
+
+    const hook = renderCompassHook();
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Initial load settled: a real pub is shown, no loading state.
+    expect(hook.result.isLoading).toBe(false);
+    expect(hook.result.pub).toBe(nearestPub);
+
+    // Switch to surprise mode and capture every render that happens in between.
+    const rendersBeforeSwitch = hook.loadingLog.length;
+
+    act(() => {
+      hook.result.setMode('surprise');
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const rendersDuringSwitch = hook.loadingLog.slice(rendersBeforeSwitch);
+
+    // The active compass must never blink to the full-screen loading state while
+    // re-selecting the target — the recompute is synchronous and local.
+    expect(rendersDuringSwitch).not.toContain(true);
+    expect(hook.result.isLoading).toBe(false);
+    expect(hook.result.pub).toBe(surprisePub);
   });
 
   it('forces a fresh pub fetch when retrying search', async () => {
