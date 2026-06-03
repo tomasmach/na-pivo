@@ -36,9 +36,12 @@ function degToRad(deg: number): number {
 }
 
 export const CompassDial = memo(function CompassDial({ size = CompassSize }: CompassDialProps) {
-  const cx = size / 2;
-  const cy = size / 2;
-  const scale = size / CompassSize;
+  // All geometry is authored in the 320pt design space and projected onto the
+  // rendered `size` by the SVG viewBox below. Computing cx/cy from `size`
+  // instead of CompassSize is what cropped the dial whenever size !== 320
+  // (e.g. the smaller compass on iPad's iPhone-compatibility window).
+  const cx = CompassSize / 2;
+  const cy = CompassSize / 2;
 
   // Radii (at default 320px)
   const R_OUTER = 150;
