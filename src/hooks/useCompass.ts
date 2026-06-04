@@ -24,6 +24,7 @@ import type { Mode } from '@/stores/settingsStore';
 
 /** Minimum distance (meters) to move before recomputing the target pub. */
 const RECOMPUTE_DISTANCE_M = 50;
+const UNLIMITED_SEARCH_RADIUS_KM = 100;
 
 type TargetPosition = {
   lat: number;
@@ -60,6 +61,7 @@ export interface UseCompassResult {
   permissionState: PermissionState;
   requestPermission: () => Promise<void>;
   isLoading: boolean;
+  searchFailed: boolean;
 }
 
 export function useCompass(): UseCompassResult {
@@ -84,6 +86,8 @@ export function useCompass(): UseCompassResult {
 
   // — Pub data loading state —
   const [pubsLoaded, setPubsLoaded] = useState(() => isLoaded());
+  const [pubDataRevision, bumpPubDataRevision] = useState(0);
+  const [searchFailed, setSearchFailed] = useState(false);
   const [searchRetryNonce, setSearchRetryNonce] = useState(0);
   const forceNextSearchRef = useRef(false);
 
@@ -97,21 +101,28 @@ export function useCompass(): UseCompassResult {
     if (!position) return;
     let cancelled = false;
     const force = forceNextSearchRef.current;
+    const radiusKm = maxDistanceKm ?? UNLIMITED_SEARCH_RADIUS_KM;
     forceNextSearchRef.current = false;
 
-    fetchPubsNear(position.lat, position.lng, undefined, { force })
+    fetchPubsNear(position.lat, position.lng, undefined, { force, radiusKm })
       .then(() => {
-        if (!cancelled) setPubsLoaded(true);
+        if (!cancelled) {
+          setSearchFailed(false);
+          setPubsLoaded(true);
+          bumpPubDataRevision((revision) => revision + 1);
+        }
       })
       .catch((err) => {
         if (cancelled) return;
         console.warn('[useCompass] fetchPubsNear failed:', err);
+        setSearchFailed(true);
         setPubsLoaded(true);
+        bumpPubDataRevision((revision) => revision + 1);
       });
     return () => {
       cancelled = true;
     };
-  }, [position?.lat, position?.lng, searchRetryNonce]);
+  }, [position?.lat, position?.lng, maxDistanceKm, searchRetryNonce]);
 
   // — Permission check on mount —
   useEffect(() => {
@@ -166,7 +177,7 @@ export function useCompass(): UseCompassResult {
       });
       bumpTargetSelectionRevision((revision) => revision + 1);
     }
-  }, [position, pubsLoaded, mode, maxDistanceKm, surpriseSeed]);
+  }, [position, pubsLoaded, pubDataRevision, mode, maxDistanceKm, surpriseSeed]);
 
   // — Bearing / distance —
   const { bearing, distanceMeters } = useTargetBearing(
@@ -242,6 +253,7 @@ export function useCompass(): UseCompassResult {
     lastSeedRef.current = null;
     setCurrentPub(null);
     setRevealed(false);
+    setSearchFailed(false);
     setPubsLoaded(false);
     setSearchRetryNonce((nonce) => nonce + 1);
   }, []);
@@ -272,5 +284,6 @@ export function useCompass(): UseCompassResult {
     permissionState,
     requestPermission,
     isLoading,
+    searchFailed,
   };
 }

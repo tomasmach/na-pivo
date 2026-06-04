@@ -1,4 +1,17 @@
-import { _init, findNearestPub, findRandomPubInRadius, getPubById, isLoaded, type Pub } from "../pubs";
+import {
+  _init,
+  fetchPubsNear,
+  findNearestPub,
+  findRandomPubInRadius,
+  getPubById,
+  isLoaded,
+  type Pub,
+} from "../pubs";
+import { searchPubsNear } from "../mapyClient";
+
+jest.mock("../mapyClient", () => ({
+  searchPubsNear: jest.fn(async () => []),
+}));
 
 const SYNTHETIC_PUBS: Pub[] = [
   // Prague city centre area
@@ -12,12 +25,21 @@ const SYNTHETIC_PUBS: Pub[] = [
 ];
 
 beforeEach(() => {
+  jest.clearAllMocks();
   _init(SYNTHETIC_PUBS);
 });
 
 describe("isLoaded", () => {
   it("is true after _init", () => {
     expect(isLoaded()).toBe(true);
+  });
+});
+
+describe("fetchPubsNear", () => {
+  it("passes the requested fetch radius to the Mapy client", async () => {
+    await fetchPubsNear(50.08, 14.42, undefined, { force: true, radiusKm: 100 });
+
+    expect(searchPubsNear).toHaveBeenCalledWith(50.08, 14.42, 100, undefined);
   });
 });
 

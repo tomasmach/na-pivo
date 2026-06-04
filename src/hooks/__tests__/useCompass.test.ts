@@ -279,6 +279,21 @@ describe('useCompass', () => {
       await Promise.resolve();
     });
 
-    expect(fetchPubsNear).toHaveBeenLastCalledWith(50.08, 14.42, undefined, { force: true });
+    expect(fetchPubsNear).toHaveBeenLastCalledWith(50.08, 14.42, undefined, {
+      force: true,
+      radiusKm: 100,
+    });
+  });
+
+  it('surfaces pub search failures separately from an empty result', async () => {
+    (fetchPubsNear as jest.Mock).mockRejectedValueOnce(new Error('HTTP 403'));
+
+    const hook = renderCompassHook();
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(hook.result.searchFailed).toBe(true);
   });
 });

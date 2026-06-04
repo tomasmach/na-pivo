@@ -18,6 +18,7 @@ const USER_AGENT = 'napivo-ios/1.0';
 
 const QUERY_TERMS = ['hospoda', 'bar', 'pivnice', 'pivovar'];
 const MAX_RESULTS_PER_QUERY = 15; // Mapy.cz API limit.
+const SUGGEST_BBOX_STEPS_KM = [5, 15, 50, 100] as const;
 
 // Mapy.cz returns mixed categories under our text queries. Keep only the ones
 // that match a place where you can actually drink a beer.
@@ -145,6 +146,43 @@ function nameIsBlocked(name: string): boolean {
   return NAME_BLOCKLIST.some((needle) => lower.includes(needle));
 }
 
+function buildSuggestRadiusSteps(kmRadius: number): number[] {
+  const steps = SUGGEST_BBOX_STEPS_KM.filter((step) => step < kmRadius);
+  return [...steps, kmRadius].filter((step, index, arr) => index === 0 || step !== arr[index - 1]);
+}
+
+function itemToPub(
+  item: MapyGeocodeItem,
+  lat: number,
+  lng: number,
+  kmRadius: number,
+  seen: Set<string>,
+): Pub | null {
+  if (!item.label || !ALLOWED_LABELS.has(item.label)) return null;
+  if (!item.name || !item.position) return null;
+  if (nameIsBlocked(item.name)) return null;
+
+  const distance = haversineKm(lat, lng, item.position.lat, item.position.lon);
+  if (distance > kmRadius) return null;
+
+  const key = `${item.position.lat.toFixed(5)},${item.position.lon.toFixed(5)}`;
+  if (seen.has(key)) return null;
+  seen.add(key);
+
+  const pub: Pub = {
+    id: `mapy:${key}`,
+    name: item.name.trim(),
+    lat: item.position.lat,
+    lng: item.position.lon,
+  };
+  const address = pickAddress(item);
+  if (address) pub.address = address;
+  const city = pickCity(item);
+  if (city) pub.city = city;
+
+  return pub;
+}
+
 /**
  * Fetch pubs near the given coordinate from Mapy.cz.
  * Throws if the API key is missing or all requests fail.
@@ -160,55 +198,38 @@ export async function searchPubsNear(
     throw new Error('MAPY_API_KEY is not configured');
   }
 
-  // Suggest ranks by proximity, so a tight bbox surfaces the local POIs we
-  // care about. We then filter by true haversine distance below to enforce
-  // the caller's radius precisely.
-  const suggestBBox = buildPreferBBox(lat, lng, Math.min(kmRadius, 5));
-
-  const settled = await Promise.allSettled(
-    QUERY_TERMS.map((term) => suggestQuery(term, suggestBBox, apiKey, signal)),
-  );
-
-  const items: MapyGeocodeItem[] = [];
-  let allFailed = true;
-  for (const result of settled) {
-    if (result.status === 'fulfilled') {
-      allFailed = false;
-      items.push(...result.value);
-    }
-  }
-  if (allFailed) {
-    throw new Error('All Mapy.cz suggest queries failed');
-  }
-
-  // Dedupe by coordinate (~1m precision is plenty), filter labels and chain
-  // restaurants, enforce true radius.
   const seen = new Set<string>();
   const pubs: Pub[] = [];
-  for (const item of items) {
-    if (!item.label || !ALLOWED_LABELS.has(item.label)) continue;
-    if (!item.name || !item.position) continue;
-    if (nameIsBlocked(item.name)) continue;
+  let anyRequestSucceeded = false;
 
-    const distance = haversineKm(lat, lng, item.position.lat, item.position.lon);
-    if (distance > kmRadius) continue;
+  // Suggest ranks by proximity and only accepts a preferred bbox, not a strict
+  // radius. For unlimited / large searches, start local and progressively widen
+  // the preferred area so rural users do not get an empty result just because
+  // nothing matched inside the old fixed 5 km bbox.
+  for (const bboxRadiusKm of buildSuggestRadiusSteps(kmRadius)) {
+    const suggestBBox = buildPreferBBox(lat, lng, bboxRadiusKm);
+    const settled = await Promise.allSettled(
+      QUERY_TERMS.map((term) => suggestQuery(term, suggestBBox, apiKey, signal)),
+    );
 
-    const key = `${item.position.lat.toFixed(5)},${item.position.lon.toFixed(5)}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
+    const items: MapyGeocodeItem[] = [];
+    for (const result of settled) {
+      if (result.status === 'fulfilled') {
+        anyRequestSucceeded = true;
+        items.push(...result.value);
+      }
+    }
 
-    const pub: Pub = {
-      id: `mapy:${key}`,
-      name: item.name.trim(),
-      lat: item.position.lat,
-      lng: item.position.lon,
-    };
-    const address = pickAddress(item);
-    if (address) pub.address = address;
-    const city = pickCity(item);
-    if (city) pub.city = city;
+    for (const item of items) {
+      const pub = itemToPub(item, lat, lng, kmRadius, seen);
+      if (pub) pubs.push(pub);
+    }
 
-    pubs.push(pub);
+    if (pubs.length > 0) break;
+  }
+
+  if (!anyRequestSucceeded) {
+    throw new Error('All Mapy.cz suggest queries failed');
   }
 
   return pubs;

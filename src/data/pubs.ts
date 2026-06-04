@@ -16,15 +16,18 @@ let _index: KDBush | null = null;
 let _idMap: Map<string, Pub> = new Map();
 let _loaded = false;
 let _lastFetchCenter: { lat: number; lng: number } | null = null;
+let _lastFetchRadiusKm: number | null = null;
 let _inflight: Promise<void> | null = null;
 
 interface FetchPubsNearOptions {
   force?: boolean;
+  radiusKm?: number;
 }
 
 /** Re-fetch from Mapy.cz when the user has moved more than this distance from
  *  the previous fetch center (km). */
 const REFETCH_THRESHOLD_KM = 2;
+const DEFAULT_FETCH_RADIUS_KM = 25;
 
 /** mulberry32 seeded PRNG — returns a function that yields floats in [0, 1) */
 function mulberry32(seed: number): () => number {
@@ -83,18 +86,25 @@ export async function fetchPubsNear(
   signal?: AbortSignal,
   options: FetchPubsNearOptions = {},
 ): Promise<void> {
+  const radiusKm = Number.isFinite(options.radiusKm)
+    ? Math.max(options.radiusKm ?? DEFAULT_FETCH_RADIUS_KM, 0.1)
+    : DEFAULT_FETCH_RADIUS_KM;
+
   if (!options.force && _loaded && _lastFetchCenter) {
     const movedKm = haversineKm(_lastFetchCenter.lat, _lastFetchCenter.lng, lat, lng);
-    if (movedKm < REFETCH_THRESHOLD_KM) return;
+    const radiusAlreadyCovered =
+      _lastFetchRadiusKm !== null && _lastFetchRadiusKm >= radiusKm;
+    if (movedKm < REFETCH_THRESHOLD_KM && radiusAlreadyCovered) return;
   }
   if (_inflight) return _inflight;
 
   _inflight = (async () => {
     try {
-      const pubs = await searchPubsNear(lat, lng, 25, signal);
+      const pubs = await searchPubsNear(lat, lng, radiusKm, signal);
       if (signal?.aborted) return;
       _init(pubs);
       _lastFetchCenter = { lat, lng };
+      _lastFetchRadiusKm = radiusKm;
     } finally {
       _inflight = null;
     }

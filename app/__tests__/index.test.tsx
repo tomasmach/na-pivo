@@ -103,6 +103,7 @@ function baseCompassState() {
     permissionState: 'granted',
     requestPermission: jest.fn(),
     isLoading: false,
+    searchFailed: false,
   };
 }
 

@@ -41,6 +41,10 @@ export const cs = {
     headlineLine1: 'Tady se',
     headlineLine2: 'nenapiješ',
     body: 'V tvém okolí jsme nenašli hospodu. Zkus to znovu nebo uprav dosah v nastavení.',
+    searchFailedHeadlineLine1: 'Hledání',
+    searchFailedHeadlineLine2: 'spadlo',
+    searchFailedBody:
+      'Nepodařilo se stáhnout hospody. Zkontroluj připojení a zkus to znovu.',
     openSettings: 'Otevřít nastavení',
     retry: 'Zkusit znovu',
   },
@@ -78,7 +82,7 @@ export const cs = {
     body: [
       'Žádná analytika, žádné sledování, žádný účet.',
       'Tvoje poloha je zpracována výhradně přímo v telefonu. Aplikace ji nikam neposílá a nikde neukládá.',
-      'Aplikace nepotřebuje připojení k internetu — seznam hospod máš zabalený přímo v telefonu.',
+      'Pro stažení okolních hospod aplikace posílá přibližnou oblast vyhledávání na Mapy.cz.',
     ],
     contactLabel: 'Kontakt',
     contactEmail: 'tomades1@gmail.com',

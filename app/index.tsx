@@ -114,9 +114,18 @@ function LoadingScreen({ rotation }: LoadingScreenProps) {
 interface EmptyScreenProps {
   onSettings: () => void;
   onRetry: () => void;
+  searchFailed: boolean;
 }
 
-function EmptyScreen({ onSettings, onRetry }: EmptyScreenProps) {
+function EmptyScreen({ onSettings, onRetry, searchFailed }: EmptyScreenProps) {
+  const headlineLine1 = searchFailed
+    ? cs.empty.searchFailedHeadlineLine1
+    : cs.empty.headlineLine1;
+  const headlineLine2 = searchFailed
+    ? cs.empty.searchFailedHeadlineLine2
+    : cs.empty.headlineLine2;
+  const body = searchFailed ? cs.empty.searchFailedBody : cs.empty.body;
+
   return (
     <View style={styles.emptyContainer}>
       {/* Top group — icon, headline, body, centered vertically */}
@@ -126,11 +135,11 @@ function EmptyScreen({ onSettings, onRetry }: EmptyScreenProps) {
         </View>
 
         <View style={styles.emptyHeadlineWrap}>
-          <Text style={styles.emptyHeadlineFoam}>{cs.empty.headlineLine1}</Text>
-          <Text style={styles.emptyHeadlineAmber}>{cs.empty.headlineLine2}</Text>
+          <Text style={styles.emptyHeadlineFoam}>{headlineLine1}</Text>
+          <Text style={styles.emptyHeadlineAmber}>{headlineLine2}</Text>
         </View>
 
-        <Text style={styles.emptyBody}>{cs.empty.body}</Text>
+        <Text style={styles.emptyBody}>{body}</Text>
       </View>
 
       {/* Bottom group — primary CTA and retry pinned to bottom */}
@@ -441,6 +450,7 @@ export default function CompassScreen() {
     permissionState,
     requestPermission,
     isLoading,
+    searchFailed,
   } = useCompass();
   const activeLayout = getActiveCompassLayout(
     screenWidth,
@@ -520,6 +530,7 @@ export default function CompassScreen() {
         <EmptyScreen
           onSettings={handleSettings}
           onRetry={retrySearch}
+          searchFailed={searchFailed}
         />
       </View>
     );
