@@ -5,32 +5,26 @@ const czechPub = { name: 'U Zlatého Tygra', lat: 50.0857, lng: 14.4148 };
 const ampersandPub = { name: 'Pub & Bar', lat: 50.0, lng: 14.0 };
 
 describe('buildMapsUrl', () => {
-  it('contains the Google Maps search base URL', () => {
+  it('contains the Mapy.cz base URL', () => {
     const url = buildMapsUrl(simplePub);
-    expect(url).toContain('https://www.google.com/maps/search/?api=1&query=');
+    expect(url).toContain('https://mapy.cz/zakladni');
   });
 
-  it('contains the encoded lat,lng of the pub', () => {
+  it('searches by the pub name so Mapy.cz shows its label', () => {
     const url = buildMapsUrl(simplePub);
-    expect(url).toContain(`${simplePub.lat},${simplePub.lng}`);
+    expect(url).toContain(`q=${encodeURIComponent(simplePub.name)}`);
   });
 
-  it('contains the URL-encoded pub name that round-trips via decodeURIComponent', () => {
+  it('centres the map on the pub using x=longitude and y=latitude', () => {
     const url = buildMapsUrl(czechPub);
-    // Extract the name portion from inside the parentheses
-    const match = url.match(/\(([^)]+)\)/);
-    expect(match).not.toBeNull();
-    const encodedName = match![1];
-    expect(decodeURIComponent(encodedName)).toBe(czechPub.name);
+    expect(url).toContain(`x=${czechPub.lng}`);
+    expect(url).toContain(`y=${czechPub.lat}`);
   });
 
-  it('encodes & in a pub name so it does not appear raw in the URL query string', () => {
+  it('URL-encodes the pub name so & does not break the query string', () => {
     const url = buildMapsUrl(ampersandPub);
-    // The & in the name must be percent-encoded, not raw
-    const queryPart = url.split('?')[1];
-    // After the fixed api=1&query= prefix, the name should not introduce a raw &
-    const afterQuery = queryPart.replace('api=1&query=', '');
-    expect(afterQuery).not.toContain('Pub & Bar');
-    expect(afterQuery).toContain('Pub%20%26%20Bar');
+    const queryValue = url.split('q=')[1].split('&')[0];
+    expect(queryValue).toBe('Pub%20%26%20Bar');
+    expect(decodeURIComponent(queryValue)).toBe(ampersandPub.name);
   });
 });
