@@ -119,7 +119,7 @@ function result(overrides: Partial<PubHoursResult> = {}): PubHoursResult {
   return {
     openingHours: 'Po–Ne 11:00–23:00',
     isOpenNow: true,
-    nextChange: '2026-06-08T23:00:00Z',
+    nextChange: '2026-06-08T23:00:00+02:00',
     status: 'ok',
     ...overrides,
   };
@@ -163,7 +163,7 @@ describe('useCompass — opening hours enrichment', () => {
     expect(enriched?.isOpenNow).toBe(true);
     expect(enriched?.hoursStatus).toBe('ok');
     expect(enriched?.openingHours).toBe('Po–Ne 11:00–23:00');
-    expect(enriched?.nextChange).toBe('2026-06-08T23:00:00Z');
+    expect(enriched?.nextChange).toBe('2026-06-08T23:00:00+02:00');
   });
 
   it('passes an AbortSignal so the previous lookup can be cancelled', async () => {
@@ -257,6 +257,31 @@ describe('useCompass — opening hours enrichment', () => {
     await flush();
 
     expect(fetchPubHours).toHaveBeenCalledTimes(1);
+  });
+
+  // Regression: a nextChange more than ~24.85 days out (e.g. a seasonal closure)
+  // overflows setTimeout's 32-bit delay and fires almost immediately. Without
+  // the chunked re-arm guard the expiry timer would tight-loop delete→refetch.
+  it('does not loop-refetch when nextChange is far in the future (setTimeout overflow guard)', async () => {
+    (fetchPubHours as jest.Mock).mockResolvedValue(
+      new Map([[PUB.id, result({ nextChange: '2099-01-01T12:00:00+02:00' })]])
+    );
+
+    const hook = renderCompassHook();
+    await flush();
+    await flush();
+
+    expect(hook.result.pub?.hoursStatus).toBe('ok');
+    const callsAfterResolve = (fetchPubHours as jest.Mock).mock.calls.length;
+    expect(callsAfterResolve).toBe(1);
+
+    // Advance real time well past the ~1ms an overflowed timer would fire at.
+    // With the guard the expiry timer is ~24.85 days out and never fires here.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    expect((fetchPubHours as jest.Mock).mock.calls.length).toBe(callsAfterResolve);
   });
 
   // Regression: A→B→A reselection while A's hours lookup is still in flight.

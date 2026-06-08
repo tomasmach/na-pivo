@@ -256,6 +256,9 @@ export function useCompass(): UseCompassResult {
   // stored in a separate map keyed by pub id; failures leave the entry undefined.
   const currentPubId = currentPub?.id ?? null;
   const [hoursById, setHoursById] = useState<Map<string, PubHoursState>>(() => new Map());
+  // Bumped by the nextChange expiry timer below to force the fetch effect to
+  // re-run and refresh a now-stale isOpenNow snapshot.
+  const [hoursRefetchNonce, setHoursRefetchNonce] = useState(0);
 
   // Mirror the hours map into a ref so the fetch effect can read the latest
   // contents (to skip already-resolved ids) without listing it as a dependency,
@@ -334,11 +337,12 @@ export function useCompass(): UseCompassResult {
         return next;
       });
     };
-    // Intentionally keyed only on the pub id: the same pub object identity can
-    // change across renders without the target actually changing, and re-running
-    // on every identity churn would cancel/restart the request in a loop.
+    // Keyed on the pub id (the same pub object identity can change across renders
+    // without the target actually changing — re-running on identity churn would
+    // cancel/restart the request in a loop) plus hoursRefetchNonce, which the
+    // expiry timer bumps to force a refresh once a cached isOpenNow goes stale.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPubId]);
+  }, [currentPubId, hoursRefetchNonce]);
 
   // Merge the resolved hours onto the targeted pub so consumers can read
   // pub.isOpenNow / pub.hoursStatus. A new object is only created when the pub
@@ -383,6 +387,59 @@ export function useCompass(): UseCompassResult {
     autoClosedIdsRef.current = new Set(autoClosedIdsRef.current).add(currentPubId);
     setExcludeRevision((revision) => revision + 1);
   }, [currentPubId, hideClosedPubs, hoursStatusForCurrent, isOpenNowForCurrent]);
+
+  // — Expire resolved hours at their nextChange boundary (NON-BLOCKING) —
+  // isOpenNow / openUntil are a snapshot from when the lookup resolved. A user
+  // lingering on the same pub across its open/close time (e.g. it opens at 11:00)
+  // would otherwise keep seeing the stale boolean, because the fetch effect is
+  // keyed on the pub id and never re-runs while standing still. When the current
+  // pub has a RESOLVED 'ok' result with a FUTURE nextChange, schedule a one-shot
+  // timer that drops the cached entry and bumps the refetch nonce, so the fetch
+  // effect re-runs and pulls a freshly-computed isOpenNow.
+  //
+  // Only future transitions are scheduled: a fresh result from a correct backend
+  // always has nextChange in the future, so an already-past value is treated as a
+  // no-op (this also keeps fixed-date test fixtures from triggering a refetch).
+  const nextChangeForCurrent = hoursForCurrent?.nextChange;
+  useEffect(() => {
+    if (hoursStatusForCurrent !== 'ok' || !currentPubId || !nextChangeForCurrent) return;
+    // The boundary must be an absolute instant. The backend emits an explicit
+    // Europe/Prague offset (or Z); require one, because a bare local time would
+    // be parsed in the device's zone and fire at the wrong moment (the chip's
+    // literal HH:MM slice is offset-agnostic, but this scheduling is not).
+    if (!/([+-]\d{2}:?\d{2}|Z)$/.test(nextChangeForCurrent)) return;
+    const at = Date.parse(nextChangeForCurrent);
+    if (Number.isNaN(at)) return;
+    if (at - Date.now() <= 0) return; // already past — refresh on next reselection
+
+    const expireId = currentPubId;
+    // setTimeout clamps any delay above 2^31-1 ms (~24.85 days) and fires almost
+    // immediately. A far-future nextChange (e.g. a seasonal "Mar-Oct" closure)
+    // would then tight-loop: fire → delete → refetch → same far-future value →
+    // reschedule → overflow again. So re-arm in bounded chunks and only actually
+    // expire+refetch once the REAL boundary is reached.
+    const MAX_DELAY = 2_147_483_647;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const tick = () => {
+      const remaining = at - Date.now();
+      if (remaining <= 0) {
+        setHoursById((prev) => {
+          if (!prev.has(expireId)) return prev;
+          const next = new Map(prev);
+          next.delete(expireId);
+          return next;
+        });
+        setHoursRefetchNonce((nonce) => nonce + 1);
+        return;
+      }
+      timer = setTimeout(tick, Math.min(remaining, MAX_DELAY));
+    };
+    tick();
+
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [currentPubId, hoursStatusForCurrent, nextChangeForCurrent]);
 
   // — Bearing / distance —
   const { bearing, distanceMeters } = useTargetBearing(

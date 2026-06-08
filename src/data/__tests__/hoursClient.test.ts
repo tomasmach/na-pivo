@@ -69,7 +69,7 @@ describe('fetchPubHours — happy path', () => {
             name: 'whatever',
             opening_hours: 'Po–Ne 11:00–23:00',
             isOpenNow: true,
-            nextChange: '2026-06-08T23:00:00Z',
+            nextChange: '2026-06-08T23:00:00+02:00',
             status: 'ok',
           },
           {
@@ -91,7 +91,7 @@ describe('fetchPubHours — happy path', () => {
     expect(result.get(PUB_A.id)).toEqual({
       openingHours: 'Po–Ne 11:00–23:00',
       isOpenNow: true,
-      nextChange: '2026-06-08T23:00:00Z',
+      nextChange: '2026-06-08T23:00:00+02:00',
       status: 'ok',
     });
     expect(result.get(PUB_B.id)).toEqual({
