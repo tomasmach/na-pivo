@@ -78,6 +78,23 @@ def _distance_score(distance_m: float) -> float:
 MIN_NAME_SIM = 0.5
 
 
+def name_similarity(a: str, b: str) -> float:
+    """Return the [0, 1] token-sort-ratio similarity of two business names."""
+    return fuzz.token_sort_ratio((a or "").lower(), (b or "").lower()) / 100.0
+
+
+def names_match(a: str, b: str) -> bool:
+    """
+    True if two business names are similar enough to be the same business.
+
+    Uses the same hard name-similarity gate (MIN_NAME_SIM) as verify_match.
+    Used on cache READ to reject a geohash-8 collision: two DISTINCT businesses
+    in the same ~38 m cell share one PubHours.cache_key, so without this gate a
+    nearby different business would be served the cached pub's opening hours.
+    """
+    return name_similarity(a, b) >= MIN_NAME_SIM
+
+
 def verify_match(
     q_name: str,
     q_lat: float,

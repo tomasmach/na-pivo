@@ -90,10 +90,13 @@ _SEARCH_URL = "https://www.firmy.cz/?q={query}"
 _DETAIL_URL = "https://www.firmy.cz/detail/{firm_id}-{slug}.html"
 
 # Hosts the Seznam GDPR cookie-wall redirects to when consent is missing.
-# If a "detail" fetch lands on one of these, we were bounced by the consent
-# wall (typically because the request came from a flagged datacenter IP — use
+# If a request lands on one of these, we were bounced by the consent wall
+# (typically because the request came from a flagged datacenter IP — use
 # FIRMY_PROXY_URL with a residential proxy in production).
-_CONSENT_WALL_HOSTS = ("cmp.seznam.cz", "cmp.firmy.cz", "nastaveni-souhlasu")
+_CONSENT_WALL_HOSTS = ("cmp.seznam.cz", "cmp.firmy.cz")
+# Path token the consent wall uses; matched against the URL PATH only (never the
+# query string) so a user-controlled ?q= search term can't false-trigger it.
+_CONSENT_WALL_PATH_TOKEN = "nastaveni-souhlasu"
 
 # Minimum confidence required to accept a Firmy.cz result.
 # Raised from 0.40 to 0.55 together with the matcher's hard name-similarity gate
@@ -124,6 +127,20 @@ _DETAIL_RE = re.compile(
 # ---------------------------------------------------------------------------
 # Public dataclass
 # ---------------------------------------------------------------------------
+
+
+class TransientFetchError(Exception):
+    """
+    Raised by FirmyHoursSource on a RETRYABLE failure (proxy 502/Bad Gateway,
+    connection reset, timeout, or a consent-wall bounce).
+
+    Distinguishing this from a genuine "no confident match" (fetch returns None)
+    is the whole point: the caller persists a transient error as status 'error'
+    (which is NOT cache-fresh, so the next request re-fetches it), whereas a real
+    no-match is persisted as 'unknown' and cached for HOURS_TTL_DAYS. Without this
+    split, an intermittent proxy 502 would freeze a pub as a fresh 'unknown' for
+    30 days even though the next attempt would have succeeded.
+    """
 
 
 @dataclass
@@ -390,8 +407,24 @@ class FirmyHoursSource:
             resp = self._get(url)
             resp.raise_for_status()
         except requests.RequestException as exc:
+            # Network / proxy / 5xx — retryable. Raise so the caller persists
+            # 'error' (re-fetched next request) instead of a sticky 'unknown'.
             logger.warning("firmy: search request failed for %r: %s", query, exc)
-            return None
+            raise TransientFetchError(f"search request failed for {query!r}: {exc}") from exc
+
+        # SEARCH is the FIRST request, so a flagged/datacenter proxy IP is bounced
+        # to the Seznam consent wall HERE (HTTP 200 from cmp.seznam.cz, no detail
+        # link). Detect it so it raises (retryable) instead of degrading to a
+        # "no results" None → a sticky 30-day 'unknown'. (Mirror of _fetch_detail.)
+        if self._is_consent_wall(resp):
+            logger.warning(
+                "firmy: search for %r was bounced to the Seznam consent wall (%s) — "
+                "the proxy IP is likely flagged; use a residential FIRMY_PROXY_URL.",
+                query, resp.url,
+            )
+            raise TransientFetchError(
+                f"search for {query!r} bounced to consent wall ({resp.url})"
+            )
 
         html = resp.text
 
@@ -417,8 +450,17 @@ class FirmyHoursSource:
 
     @staticmethod
     def _is_consent_wall(resp: requests.Response) -> bool:
-        """True if *resp* was bounced to the Seznam GDPR cookie-wall."""
-        return any(host in (resp.url or "") for host in _CONSENT_WALL_HOSTS)
+        """True if *resp* was bounced to the Seznam GDPR cookie-wall.
+
+        Matches the parsed hostname / path (NOT the raw URL) so a user-controlled
+        query string — e.g. a pub literally named 'nastaveni-souhlasu' reaching
+        the ?q= search URL — can never false-trigger the consent detection.
+        """
+        parsed = urlparse(resp.url or "")
+        host = (parsed.hostname or "").lower()
+        if host in _CONSENT_WALL_HOSTS:
+            return True
+        return _CONSENT_WALL_PATH_TOKEN in parsed.path.lower()
 
     def _fetch_detail(self, firm_id: str, slug: str) -> dict | None:
         """
@@ -430,12 +472,16 @@ class FirmyHoursSource:
             resp = self._get(url)
             resp.raise_for_status()
         except requests.RequestException as exc:
+            # Network / proxy / 5xx — retryable (see TransientFetchError).
             logger.warning("firmy: detail request failed for %s/%s: %s", firm_id, slug, exc)
-            return None
+            raise TransientFetchError(
+                f"detail request failed for {firm_id}/{slug}: {exc}"
+            ) from exc
 
         # If the cookie-wall bounced us to the consent page we never reached the
-        # detail content. This almost always means the request originated from a
-        # flagged datacenter IP — set FIRMY_PROXY_URL to a residential proxy.
+        # detail content. With a residential proxy this should not happen; when it
+        # does it is a transient proxy-rotation flag, so treat it as retryable
+        # (raise) rather than caching a sticky 'unknown' for 30 days.
         if self._is_consent_wall(resp):
             logger.warning(
                 "firmy: detail for firm %s was bounced to the Seznam consent wall "
@@ -444,7 +490,9 @@ class FirmyHoursSource:
                 firm_id,
                 resp.url,
             )
-            return None
+            raise TransientFetchError(
+                f"detail for firm {firm_id} bounced to consent wall ({resp.url})"
+            )
 
         ld_blocks = self._extract_ld_blocks(resp.text)
         return self._local_business_block(ld_blocks)
@@ -468,11 +516,20 @@ class FirmyHoursSource:
         RawHours | None
             RawHours with opening_hours_raw=None if the pub was found but has
             no published hours.  Returns None if no confident match was found.
+
+        Raises
+        ------
+        RuntimeError
+            Daily request cap exceeded.
+        TransientFetchError
+            A retryable network/proxy/consent-wall failure — the caller should
+            persist 'error' (re-fetched next request), not a sticky 'unknown'.
         """
         try:
             return self._fetch_inner(name, lat, lng, city)
-        except RuntimeError:
-            # Daily cap exceeded — propagate so the caller can handle
+        except (RuntimeError, TransientFetchError):
+            # Daily cap exceeded, or a retryable fetch failure — propagate so the
+            # caller distinguishes it from a genuine no-match (None).
             raise
         except Exception as exc:  # noqa: BLE001
             logger.error("firmy: unexpected error fetching %r: %s", name, exc, exc_info=True)

@@ -12,20 +12,24 @@ normalize_to_osm    — converts Firmy.cz openingHours to OSM grammar; see norma
 is_open_now         — evaluates OSM hours string at a given moment; see is_open.py
 next_change         — next open/close transition; see is_open.py
 verify_match        — name+geo confidence scoring; see matcher.py
+names_match         — name-only gate for cache-read collision guard; see matcher.py
 geohash8            — canonical cache-key helper; see matcher.py
+TransientFetchError — raised by FirmyHoursSource on a retryable network/proxy error
 """
 
-from .firmy import FirmyHoursSource, RawHours  # noqa: F401
+from .firmy import FirmyHoursSource, RawHours, TransientFetchError  # noqa: F401
 from .is_open import is_open_now, next_change  # noqa: F401
-from .matcher import geohash8, verify_match  # noqa: F401
+from .matcher import geohash8, names_match, verify_match  # noqa: F401
 from .normalizer import normalize_to_osm  # noqa: F401
 
 __all__ = [
     "RawHours",
     "FirmyHoursSource",
+    "TransientFetchError",
     "normalize_to_osm",
     "is_open_now",
     "next_change",
     "verify_match",
+    "names_match",
     "geohash8",
 ]

@@ -35,8 +35,12 @@ class PubHours(models.Model):
     lng = models.FloatField()
 
     # ---------- enrichment result ----------
-    opening_hours_raw = models.CharField(
-        max_length=512,
+    # TextField (not CharField(512)): a heavily multi-segmented openingHoursSpecification
+    # can normalise to an OSM string well over 512 chars. On Postgres a varchar(512)
+    # overflow raises DataError on the unguarded write in cache._enrich_sync, which
+    # bubbles to a batch-wide HTTP 500 (SQLite silently truncates, masking it in tests).
+    # TextField is unbounded, removing the failure mode entirely.
+    opening_hours_raw = models.TextField(
         blank=True,
         null=True,
         help_text="OSM opening_hours grammar string, e.g. 'Mo-Fr 10:00-22:00; Sa 11:00-20:00'.",

@@ -15,7 +15,10 @@ Response body:
                 "name": str,
                 "opening_hours": str|null,
                 "isOpenNow": bool|null,
-                "nextChange": str|null,  -- ISO-8601 UTC datetime
+                "nextChange": str|null,  -- ISO-8601 datetime WITH Europe/Prague offset
+                                         --   (e.g. 2026-06-08T23:00:00+02:00), NOT UTC.
+                                         --   The mobile chip reads the literal HH:MM as
+                                         --   Prague wall-clock, so do not normalise to UTC.
                 "status": "ok|unknown|pending|error",
                 "source": str|null,
                 "confidence": float|null
@@ -83,7 +86,7 @@ class PubHoursResultSerializer(serializers.Serializer):
     name = serializers.CharField()
     opening_hours = serializers.CharField(allow_null=True)
     isOpenNow = serializers.BooleanField(allow_null=True)
-    nextChange = serializers.CharField(allow_null=True)  # ISO-8601 string
+    nextChange = serializers.CharField(allow_null=True)  # ISO-8601 w/ Europe/Prague offset
     status = serializers.CharField()
     source = serializers.CharField(allow_null=True)
     confidence = serializers.FloatField(allow_null=True)

@@ -7,8 +7,9 @@ live network traffic is made.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
+from zoneinfo import ZoneInfo
 
 import pytest
 from django.utils import timezone as dj_tz
@@ -287,18 +288,22 @@ def test_is_open_now_computed_from_known_hours():
 
 
 @pytest.mark.django_db
-def test_next_change_returned_as_iso8601():
-    """nextChange datetime is serialised to ISO-8601 string."""
+def test_next_change_returned_as_iso8601_with_prague_offset():
+    """nextChange is serialised verbatim to an ISO-8601 string carrying the
+    Europe/Prague offset (e.g. ...+02:00), NOT UTC — the mobile chip reads the
+    literal HH:MM as Prague wall-clock, so the contract must stay Prague-local."""
     _make_fresh_row()
 
     from pubs.api import cache as cache_module
 
-    nc_dt = datetime(2024, 6, 3, 23, 0, 0, tzinfo=UTC)
+    nc_dt = datetime(2026, 6, 8, 23, 0, 0, tzinfo=ZoneInfo("Europe/Prague"))
     with patch.object(cache_module, "is_open_now", return_value=True), \
          patch.object(cache_module, "next_change", return_value=nc_dt):
         results = get_or_enrich([_PUB_ENTRY], sync_budget=3)
 
     assert results[0]["nextChange"] == nc_dt.isoformat()
+    # Guard the contract: the wire value carries an explicit offset, not a 'Z'.
+    assert results[0]["nextChange"].endswith("+02:00")
 
 
 # ---------------------------------------------------------------------------
@@ -391,3 +396,66 @@ def test_sync_enrich_error_does_not_close_task():
 
     task = EnrichTask.objects.get(cache_key=_FLEKY_KEY)
     assert task.done is False
+
+
+# ---------------------------------------------------------------------------
+# Test: geohash-8 collision — a different business must not get cached hours
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_geohash_collision_serves_unknown_not_wrong_hours():
+    """Two DISTINCT businesses in one ~38 m geohash cell share a cache_key. The
+    second must NOT be served the first's hours: it gets 'unknown', no fetch is
+    triggered, and the cached row is left untouched (no flip-flop)."""
+    _make_fresh_row()  # name "Restaurace U Fleků", has hours
+
+    other = {"name": "Pizzeria Grosseto", "lat": _FLEKY_LAT, "lng": _FLEKY_LNG}
+    assert geohash8(other["lat"], other["lng"]) == _FLEKY_KEY  # same cell
+
+    with patch("pubs.api.cache.FirmyHoursSource") as mock_cls:
+        results = get_or_enrich([other], sync_budget=3)
+
+    # A name mismatch on a fresh cell must not re-fetch (would overwrite the row).
+    mock_cls.assert_not_called()
+    assert results[0]["status"] == "unknown"
+    assert results[0]["opening_hours"] is None
+    assert results[0]["name"] == "Pizzeria Grosseto"
+
+    # The cached row for the original business is unchanged.
+    row = PubHours.objects.get(cache_key=_FLEKY_KEY)
+    assert row.name == _FLEKY_NAME
+    assert row.opening_hours_raw == _FLEKY_HOURS
+
+
+# ---------------------------------------------------------------------------
+# Test: a transient fetch error is persisted as 'error' and self-heals
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_transient_fetch_error_persists_error_and_refetches_next_request():
+    """A transient proxy/network error (e.g. a proxy 502) is persisted as
+    'error', not a sticky 'unknown'. Because 'error' is not cache-fresh, the
+    very next request re-fetches and self-heals to 'ok'."""
+    from pubs.enrichment import TransientFetchError
+
+    failing = MagicMock()
+    failing.fetch.side_effect = TransientFetchError("proxy 502 Bad Gateway")
+    with patch("pubs.api.cache.FirmyHoursSource", return_value=failing):
+        results = get_or_enrich([_PUB_ENTRY], sync_budget=1)
+
+    assert results[0]["status"] == "error"
+    assert results[0]["opening_hours"] is None
+    row = PubHours.objects.get(cache_key=_FLEKY_KEY)
+    assert row.status == PubHours.Status.ERROR
+
+    # Next request: the 'error' row is stale → re-fetch → succeeds → 'ok'.
+    ok_source = MagicMock()
+    ok_source.fetch.return_value = _GOOD_RAW
+    with patch("pubs.api.cache.FirmyHoursSource", return_value=ok_source):
+        results2 = get_or_enrich([_PUB_ENTRY], sync_budget=1)
+
+    ok_source.fetch.assert_called_once()
+    assert results2[0]["status"] == "ok"
+    assert results2[0]["opening_hours"] == _FLEKY_HOURS

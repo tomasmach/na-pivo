@@ -22,7 +22,12 @@ import requests
 from requests.adapters import HTTPAdapter
 from requests.models import Response
 
-from pubs.enrichment.firmy import _DETAIL_RE, FirmyHoursSource, RawHours
+from pubs.enrichment.firmy import (
+    _DETAIL_RE,
+    FirmyHoursSource,
+    RawHours,
+    TransientFetchError,
+)
 
 # ---------------------------------------------------------------------------
 # Fixture paths
@@ -273,8 +278,9 @@ class TestFirmyHoursSourceFetch:
         assert result is not None
         assert result.opening_hours_raw == "Mo 10:00-22:00; Tu 10:00-22:00"
 
-    def test_network_error_on_detail_returns_none(self):
-        """Network error on detail fetch → None (graceful degradation)."""
+    def test_network_error_on_detail_raises_transient(self):
+        """A real network error on the detail fetch raises TransientFetchError
+        (retryable) — the caller persists 'error', not a sticky 'unknown'."""
         name = "Test Pub"
         lat, lng = 50.0, 14.0
         search_html = _make_search_html("333333", "test-pub", name, lat, lng)
@@ -288,7 +294,7 @@ class TestFirmyHoursSourceFetch:
             return _make_response(search_html)
 
         def handle_detail(_req):
-            raise ConnectionError("network error")
+            raise requests.exceptions.ConnectionError("network error")
 
         adapter = MockFirmyAdapter({
             r"autologin": handle_autologin,
@@ -299,8 +305,54 @@ class TestFirmyHoursSourceFetch:
         session.mount("http://", adapter)
 
         src = FirmyHoursSource(session=session, min_interval=0.0)
-        result = src.fetch(name, lat, lng)
-        assert result is None
+        with pytest.raises(TransientFetchError):
+            src.fetch(name, lat, lng)
+
+    def test_proxy_error_on_search_raises_transient(self):
+        """A proxy 502 (ProxyError) on the search request raises
+        TransientFetchError rather than degrading to a no-match None. This is
+        the real-world Webshare rotation blip that must NOT poison the cache."""
+        name = "U Fleku"
+        lat, lng = 50.0808, 14.4205
+
+        session = requests.Session()
+
+        def handle_search(_req):
+            raise requests.exceptions.ProxyError(
+                "Unable to connect to proxy: Tunnel connection failed: 502 Bad Gateway"
+            )
+
+        adapter = MockFirmyAdapter({r"firmy\.cz/\?q=": handle_search})
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+
+        src = FirmyHoursSource(session=session, min_interval=0.0)
+        with pytest.raises(TransientFetchError):
+            src.fetch(name, lat, lng, city="Praha")
+
+    def test_consent_wall_on_search_raises_transient(self):
+        """A flagged proxy IP is bounced to the consent wall on the FIRST
+        (search) request: HTTP 200 from cmp.seznam.cz with no detail link. This
+        must raise TransientFetchError, not degrade to a sticky 'unknown'."""
+        name = "U Fleku"
+        lat, lng = 50.0808, 14.4205
+
+        session = requests.Session()
+
+        def handle_search(_req):
+            # 200 OK, but the final URL is the Seznam GDPR consent wall.
+            return _make_response(
+                "<html><body>consent</body></html>",
+                url="https://cmp.seznam.cz/cz/ochrana-udaju?reason=missing",
+            )
+
+        adapter = MockFirmyAdapter({r"firmy\.cz/\?q=": handle_search})
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+
+        src = FirmyHoursSource(session=session, min_interval=0.0)
+        with pytest.raises(TransientFetchError):
+            src.fetch(name, lat, lng, city="Praha")
 
     def test_daily_cap_exceeded_raises(self):
         """Exceeding daily cap raises RuntimeError."""
@@ -340,6 +392,23 @@ class TestHttpGuardrails:
         assert not FirmyHoursSource._host_allowed("https://firmy.cz.evil.com/")
         assert not FirmyHoursSource._host_allowed(None)
         assert not FirmyHoursSource._host_allowed("")
+
+    def test_is_consent_wall_matches_host_path_not_query(self):
+        """Consent detection keys on host/path, never the user-controlled ?q=."""
+        # Real consent-wall hosts → True.
+        assert FirmyHoursSource._is_consent_wall(
+            _make_response("", url="https://cmp.seznam.cz/cz/ochrana-udaju"))
+        assert FirmyHoursSource._is_consent_wall(
+            _make_response("", url="https://cmp.firmy.cz/x"))
+        # The token on the PATH of a firmy/seznam host → True.
+        assert FirmyHoursSource._is_consent_wall(
+            _make_response("", url="https://www.firmy.cz/nastaveni-souhlasu"))
+        # A normal search whose QUERY contains the token → NOT a consent wall.
+        assert not FirmyHoursSource._is_consent_wall(
+            _make_response("", url="https://www.firmy.cz/?q=U+nastaveni-souhlasu+Praha"))
+        # An ordinary search result page → False.
+        assert not FirmyHoursSource._is_consent_wall(
+            _make_response("", url="https://www.firmy.cz/?q=U+Fleku+Praha"))
 
     def test_foreign_host_body_not_read(self):
         """If the proxy redirects us off the allowed families, body is dropped."""

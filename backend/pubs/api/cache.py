@@ -34,6 +34,7 @@ from pubs.enrichment import (
     FirmyHoursSource,
     geohash8,
     is_open_now,
+    names_match,
     next_change,
 )
 from pubs.models import EnrichTask, PubHours
@@ -84,6 +85,21 @@ def _pending_result(cache_key: str, name: str) -> dict[str, Any]:
         "isOpenNow": None,
         "nextChange": None,
         "status": PubHours.Status.PENDING,
+        "source": None,
+        "confidence": None,
+    }
+
+
+def _unknown_result(cache_key: str, name: str) -> dict[str, Any]:
+    """A no-data 'unknown' result that is NOT persisted (used for a geohash
+    collision where the cached row belongs to a different business)."""
+    return {
+        "key": cache_key,
+        "name": name,
+        "opening_hours": None,
+        "isOpenNow": None,
+        "nextChange": None,
+        "status": PubHours.Status.UNKNOWN,
         "source": None,
         "confidence": None,
     }
@@ -288,8 +304,21 @@ def get_or_enrich(
         row = existing.get(key)
 
         if row is not None and _is_fresh(row, ttl_days):
-            # Cache HIT — return as-is (compute isOpenNow/nextChange live)
-            results.append(_result_from_row(row))
+            if names_match(name, row.name):
+                # Cache HIT — return as-is (compute isOpenNow/nextChange live)
+                results.append(_result_from_row(row))
+            else:
+                # Geohash-8 collision: a DIFFERENT business occupies this ~38 m
+                # cell. Serving the cached business's hours would mislabel this
+                # pub. We can't overwrite the shared unique-key row without
+                # flip-flopping the cache, so report 'unknown' (no hours) for
+                # this pub and leave the cached row untouched.
+                logger.info(
+                    "pub-hours: geohash collision at %s — cached %r != requested %r; "
+                    "returning unknown",
+                    key, row.name, name,
+                )
+                results.append(_unknown_result(key, name))
             continue
 
         # Cache MISS or stale
