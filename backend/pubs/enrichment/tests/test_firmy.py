@@ -394,56 +394,30 @@ class TestHttpGuardrails:
 
 
 # ---------------------------------------------------------------------------
-# Tests: warmup respects throttle + daily cap (MEDIUM 4)
+# Regression: constructing a source must NOT warm up the session.
+#
+# An earlier version "warmed up" the session via the szn.cz autologin endpoint
+# to (supposedly) bypass the Seznam GDPR consent wall. In reality that warmup
+# pushed the session INTO the consent wall and broke EVERY live detail fetch
+# (the autologin redirect chain also overflowed max_redirects). A plain
+# cookie-aware session reaches search + detail pages directly, so construction
+# must make zero outbound requests.
 # ---------------------------------------------------------------------------
 
-class TestWarmupGuardrails:
-    def test_warmup_counts_against_daily_cap(self):
-        """Homepage + autologin warmup GETs consume the daily cap."""
-        from pubs.enrichment import firmy as firmy_mod
-
-        # Reset the process-wide counter so the assertion is deterministic.
-        firmy_mod._global_counter._day = None
-        firmy_mod._global_counter._count = 0
-
-        session = requests.Session()
-
-        def handler(_req):
-            return _make_response("<html></html>", url="https://www.firmy.cz/")
-
-        adapter = MockFirmyAdapter({r".*": handler})
-        session.mount("https://", adapter)
-        session.mount("http://", adapter)
-
-        # Use a real (owned) session path by building one with a proxy=None,
-        # but we must exercise _build_session — instead drive warmup directly.
-        src = FirmyHoursSource(session=session, min_interval=0.0)
-        # The injected-session path skips warmup; drive warmup explicitly to
-        # confirm it routes through the cap.
-        before = firmy_mod._global_counter.current()
-        src._session.max_redirects = firmy_mod._MAX_REDIRECTS
-        # Simulate the two warmup hits through the guarded path.
-        for url in (firmy_mod._HOMEPAGE_URL, firmy_mod._AUTOLOGIN_URL):
-            if src._check_cap():
-                src._throttle()
-                src._session.get(url, timeout=5, allow_redirects=True)
-        after = firmy_mod._global_counter.current()
-        assert after - before == 2
-
-    def test_build_session_warmup_uses_cap(self):
-        """_build_session routes warmup through the cap accounting."""
+class TestNoWarmup:
+    def test_build_session_makes_no_warmup_requests(self):
+        """Constructing FirmyHoursSource issues no homepage/autologin GETs."""
         from pubs.enrichment import firmy as firmy_mod
 
         firmy_mod._global_counter._day = None
         firmy_mod._global_counter._count = 0
 
-        # Patch requests.Session.get used inside _build_session to avoid network.
+        # If construction warmed up the session it would call Session.get here.
         with patch.object(requests.Session, "get", return_value=_make_response("")) as mock_get:
             src = FirmyHoursSource(min_interval=0.0)
 
-        # Two warmup GETs were issued and each consumed a cap slot.
-        assert mock_get.call_count == 2
-        assert firmy_mod._global_counter.current() == 2
+        assert mock_get.call_count == 0
+        assert firmy_mod._global_counter.current() == 0
         src.__exit__()
 
 

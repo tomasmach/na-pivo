@@ -26,18 +26,22 @@ For production-scale usage, pursue a **Seznam B2B / Mapy.com data license**
 Pipeline
 --------
 1. SEARCH:  GET https://www.firmy.cz/?q={name}+{city}
-   - Cookie-aware requests.Session (warmed via homepage + szn.cz autologin) so
-     the cookie-wall cookies are seeded.  The search page is served from any IP.
-   - Extract the first /detail/{firmId}-{slug}.html link from the JSON-LD
-     blocks in the search results.
+   - A plain cookie-aware requests.Session with a browser User-Agent. No login
+     or warmup is needed — the search page is served directly.
+   - Extract the first /detail/{firmId}-{slug}.html link from the search HTML.
 
 2. DETAIL:  GET https://www.firmy.cz/detail/{firmId}-{slug}.html
-   - Detail pages sit behind a Seznam GDPR consent cookie-wall.  Requests from
-     flagged datacenter IPs are bounced to cmp.seznam.cz (reason=missing) and
-     never receive the content — route through FIRMY_PROXY_URL (residential) in
-     production.  The fetch detects this bounce and logs an actionable warning.
-   - On a consented session: extract the LocalBusiness JSON-LD block and read
-     openingHours (string | list | openingHoursSpecification).
+   - Served directly to a plain cookie-aware session; the LocalBusiness JSON-LD
+     block carries openingHours (string | list | openingHoursSpecification).
+   - Seznam can bounce automated traffic from flagged (datacenter) IPs to its
+     GDPR consent wall (cmp.seznam.cz, reason=missing). If that happens, route
+     requests through FIRMY_PROXY_URL (a residential proxy). _is_consent_wall
+     detects the bounce and logs an actionable warning. A residential IP is not
+     bounced, so no autologin / consent handshake is performed.
+
+   NOTE: an earlier version "warmed up" the session via the szn.cz autologin
+   endpoint — that actively pushed the session INTO the consent wall and broke
+   every live fetch. Do not reintroduce it; the plain path below works.
 
 3. NORMALISE + MATCH:
    - normalize_to_osm → OSM grammar string.
@@ -72,31 +76,17 @@ _BROWSER_UA = (
     "Chrome/126.0.0.0 Safari/537.36"
 )
 
-_DEFAULT_HEADERS = {
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "cs-CZ,cs;q=0.9,en;q=0.8",
-}
-
-# Homepage — visiting it first seeds the szn.cz / firmy.cz cookie-wall cookies
-# (sznlbr, cw_util, qt, ...) that the consent handshake builds on.
-_HOMEPAGE_URL = "https://www.firmy.cz/"
-
-# Autologin endpoint — establishes a session that bypasses the consent wall
-_AUTOLOGIN_URL = (
-    "https://login.szn.cz/api/v1/autologin"
-    "?service=firmy"
-    "&return_url=https%3A%2F%2Fwww.firmy.cz%2F"
-)
-
-# Seznam CMP check-consent endpoint. With a valid consent cookie it returns
-# {"valid": true, ...}; otherwise {"reason": "missing", "valid": false}.
-_CHECK_CONSENT_URL = "https://cmp.seznam.cz/check-point/v1/check-consent"
+# IMPORTANT: send ONLY a User-Agent. Verified empirically that adding an
+# `Accept` header or a multi-language `Accept-Language` (e.g.
+# "cs-CZ,cs;q=0.9,en;q=0.8") makes firmy.cz/Seznam 302 the request to the GDPR
+# consent wall (login.szn.cz/autologin) instead of serving the page — a UA-only
+# request is served directly. Do not add request headers here without re-testing
+# a live detail fetch.
 
 _SEARCH_URL = "https://www.firmy.cz/?q={query}"
 # NB: do NOT append ?noredirect=1 — that flag suppresses the cookie-wall's
-# return redirect, so the consent handshake can never complete and the detail
-# page is never delivered. Letting the redirect chain run naturally is what
-# allows a consented session (residential IP) to land back on the detail page.
+# return redirect. Letting the redirect chain run naturally is what lets a
+# (residential-IP) session land on the detail page with its content.
 _DETAIL_URL = "https://www.firmy.cz/detail/{firm_id}-{slug}.html"
 
 # Hosts the Seznam GDPR cookie-wall redirects to when consent is missing.
@@ -112,8 +102,9 @@ _CONSENT_WALL_HOSTS = ("cmp.seznam.cz", "cmp.firmy.cz", "nastaveni-souhlasu")
 MIN_CONFIDENCE = 0.55
 
 # Hard cap on redirects per request. A hostile/compromised proxy could otherwise
-# chain redirects to DoS the worker (requests' default is 30).
-_MAX_REDIRECTS = 5
+# chain redirects to DoS the worker (requests' default is 30). 10 leaves room for
+# the occasional legitimate Seznam consent redirect while staying bounded.
+_MAX_REDIRECTS = 10
 
 # Maximum response body we will read into memory before parsing (~2 MB).
 # Larger responses are truncated to bound memory; legitimate firmy.cz pages are
@@ -196,9 +187,8 @@ class FirmyHoursSource:
     ----------
     session : requests.Session | None
         Supply a pre-configured session (e.g. in tests with a mocked adapter).
-        If None, a new session is created and warmed up with the szn.cz
-        autologin flow so that detail pages are accessible without the consent
-        wall.
+        If None, a plain cookie-aware session with a browser User-Agent is
+        created (no login / warmup — detail pages are served directly).
     proxy_url : str | None
         HTTP/SOCKS proxy URL for all Firmy.cz requests.
         Example: "http://user:pass@proxy:8888"
@@ -245,37 +235,16 @@ class FirmyHoursSource:
 
     def _build_session(self, proxy_url: str | None) -> requests.Session:
         s = requests.Session()
-        s.headers.update({"User-Agent": _BROWSER_UA, **_DEFAULT_HEADERS})
+        s.headers.update({"User-Agent": _BROWSER_UA})
         # Cap redirect chains so a hostile/compromised proxy cannot loop us.
         s.max_redirects = _MAX_REDIRECTS
         if proxy_url:
             s.proxies = {"http": proxy_url, "https": proxy_url}
 
+        # No warmup: a plain cookie-aware session reaches search + detail pages
+        # directly. (A previous autologin "warmup" pushed the session into the
+        # Seznam consent wall and broke every live fetch — see module docstring.)
         self._session = s
-
-        # Warm up the session so that detail-page requests are not bounced by
-        # the Seznam GDPR cookie-wall:
-        #   1. Visit the homepage to seed the cookie-wall cookies
-        #      (sznlbr / cw_util / qt / ...).
-        #   2. Hit the autologin endpoint (follows the szn.cz consent redirect).
-        # On a residential IP this is enough for check-consent to report valid.
-        #
-        # Warmup hits go through the SAME throttle + daily-cap accounting as
-        # real fetches (they are real outbound requests to firmy.cz). If the cap
-        # is already exhausted we simply skip warmup — it must never break a
-        # subsequent fetch.
-        for url, label in ((_HOMEPAGE_URL, "homepage"), (_AUTOLOGIN_URL, "autologin")):
-            try:
-                if not self._check_cap():
-                    logger.warning(
-                        "firmy: skipping %s warmup — daily cap reached", label
-                    )
-                    break
-                self._throttle()
-                s.get(url, timeout=self._timeout, allow_redirects=True)
-            except Exception as exc:  # noqa: BLE001 — warmup must never break a fetch
-                logger.warning("firmy: %s warmup failed: %s", label, exc)
-
         return s
 
     # ------------------------------------------------------------------
