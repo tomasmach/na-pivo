@@ -1,0 +1,26 @@
+# VCS & local tooling
+.git
+.gitignore
+
+# Python virtualenv & caches (rebuilt inside the image)
+.venv
+env
+venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+
+# Local dev database — never bake into the image
+db.sqlite3
+db.sqlite3-journal
+
+# Secrets & collected static (provided/generated on the server)
+.env
+.env.*
+staticfiles
+media
+
+# OS noise
+.DS_Store
+Thumbs.db
