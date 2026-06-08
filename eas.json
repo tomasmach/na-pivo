@@ -18,7 +18,10 @@
         "buildConfiguration": "Release",
         "resourceClass": "m-medium"
       },
-      "channel": "preview"
+      "channel": "preview",
+      "env": {
+        "EXPO_PUBLIC_BACKEND_URL": "https://api.na-pivo.cz"
+      }
     },
     "production": {
       "autoIncrement": true,
@@ -31,7 +34,10 @@
         "buildType": "app-bundle",
         "autoIncrement": "versionCode"
       },
-      "channel": "production"
+      "channel": "production",
+      "env": {
+        "EXPO_PUBLIC_BACKEND_URL": "https://api.na-pivo.cz"
+      }
     }
   },
   "submit": {
