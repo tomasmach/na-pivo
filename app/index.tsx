@@ -23,11 +23,13 @@ import {
 } from 'react-native-reanimated';
 
 import { useCompass } from '@/hooks/useCompass';
+import type { HoursStatus } from '@/data/pubs';
 import { usePubStore } from '@/stores/pubStore';
 import { shortestRotationTarget } from '@/compass/rotation';
 import { openPubInMaps } from '@/utils/maps';
 
 import { CompassContainer } from '@/components/compass/CompassContainer';
+import { OpenStatusChip } from '@/components/compass/OpenStatusChip';
 import { TitleBar } from '@/components/shared/TitleBar';
 import { GlowButton } from '@/components/shared/GlowButton';
 import {
@@ -269,9 +271,33 @@ function HiddenPubPill({ onReveal }: HiddenPubPillProps) {
 interface RevealedPubPillProps {
   pubName: string;
   onOpenMaps: () => void;
+  isOpenNow: boolean | null;
+  hoursStatus?: HoursStatus;
+  nextChange?: string | null;
 }
 
-function RevealedPubPill({ pubName, onOpenMaps }: RevealedPubPillProps) {
+function RevealedPubPill({
+  pubName,
+  onOpenMaps,
+  isOpenNow,
+  hoursStatus,
+  nextChange,
+}: RevealedPubPillProps) {
+  // Fold the open/closed status into the pill's OWN a11y label: the Pressable
+  // collapses its children into a single VoiceOver element, so the chip's label
+  // would otherwise never be announced. Stay silent while the lookup is in flight.
+  const statusWord =
+    isOpenNow === true
+      ? cs.compass.openNow
+      : isOpenNow === false
+        ? cs.compass.closedNow
+        : hoursStatus === 'loading' || hoursStatus === 'pending'
+          ? null
+          : cs.compass.hoursUnknown;
+  const accessibilityLabel = statusWord
+    ? `${cs.a11y.pubPillRevealed(pubName)}. ${cs.a11y.openStatus(statusWord)}`
+    : cs.a11y.pubPillRevealed(pubName);
+
   return (
     <Pressable
       onPress={onOpenMaps}
@@ -282,7 +308,7 @@ function RevealedPubPill({ pubName, onOpenMaps }: RevealedPubPillProps) {
         amberGlow(14),
         pressed && { opacity: 0.85 },
       ]}
-      accessibilityLabel={cs.a11y.pubPillRevealed(pubName)}
+      accessibilityLabel={accessibilityLabel}
       accessibilityRole="button"
     >
       {/* Top row: pub name */}
@@ -293,10 +319,17 @@ function RevealedPubPill({ pubName, onOpenMaps }: RevealedPubPillProps) {
         </Text>
       </View>
 
-      {/* Bottom row: open in maps */}
+      {/* Open status chip — its own row so the long unknown-hours label can
+          never squeeze the maps-hint row below it on narrow screens. The chip
+          renders nothing while the lookup is in flight, so this row collapses. */}
+      <OpenStatusChip isOpenNow={isOpenNow} status={hoursStatus} nextChange={nextChange} />
+
+      {/* Bottom row: open in maps CTA */}
       <View style={styles.pubPillHintRow}>
         <MapPinIcon size={14} color={Colors.amber} />
-        <Text style={styles.pubPillMapsHint}>{cs.compass.openInMaps}</Text>
+        <Text style={styles.pubPillMapsHint} numberOfLines={1}>
+          {cs.compass.openInMaps}
+        </Text>
         <ExternalLinkIcon size={12} color={Colors.amber} />
       </View>
     </Pressable>
@@ -442,6 +475,7 @@ export default function CompassScreen() {
     mode,
     setMode,
     reroll,
+    skip,
     retrySearch,
     arrived,
     dismissArrival,
@@ -578,7 +612,13 @@ export default function CompassScreen() {
       {/* Pub pill */}
       <View style={[styles.pubPillWrap, { paddingBottom: activeLayout.pubPillPaddingBottom }]}>
         {revealed && pub !== null ? (
-          <RevealedPubPill pubName={pub.name} onOpenMaps={handleOpenMaps} />
+          <RevealedPubPill
+            pubName={pub.name}
+            onOpenMaps={handleOpenMaps}
+            isOpenNow={pub.isOpenNow ?? null}
+            hoursStatus={pub.hoursStatus}
+            nextChange={pub.nextChange}
+          />
         ) : (
           <HiddenPubPill onReveal={reveal} />
         )}
@@ -602,14 +642,11 @@ export default function CompassScreen() {
           />
         </View>
         <Pressable
-          onPress={mode === 'surprise' ? reroll : undefined}
-          disabled={mode !== 'surprise'}
-          style={[
-            styles.rerollButton,
-            mode !== 'surprise' && styles.rerollButtonInactive,
-          ]}
+          onPress={mode === 'surprise' ? reroll : skip}
+          style={styles.rerollButton}
           hitSlop={12}
-          accessibilityLabel={cs.a11y.rerollButton}
+          accessibilityLabel={mode === 'surprise' ? cs.a11y.rerollButton : cs.a11y.skipButton}
+          accessibilityHint={mode === 'surprise' ? undefined : cs.a11y.skipButtonHint}
           accessibilityRole="button"
         >
           <RefreshCwIcon size={18} color={Colors.foamMuted} />
@@ -853,9 +890,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout3,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  rerollButtonInactive: {
-    opacity: 0.4,
   },
 
   // ── Empty state (State D) ──

@@ -44,6 +44,7 @@ import {
   RadiusIcon,
   BellRingIcon,
   Volume2Icon,
+  BeerOffIcon,
   InfoIcon,
   ShieldIcon,
 } from '@/components/shared/IconGlyph';
@@ -271,9 +272,11 @@ export default function SettingsScreen() {
   const maxDistanceKm = useSettingsStore((s) => s.maxDistanceKm);
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
   const soundEnabled = useSettingsStore((s) => s.soundEnabled);
+  const hideClosedPubs = useSettingsStore((s) => s.hideClosedPubs);
   const setMaxDistanceKm = useSettingsStore((s) => s.setMaxDistanceKm);
   const setHapticEnabled = useSettingsStore((s) => s.setHapticEnabled);
   const setSoundEnabled = useSettingsStore((s) => s.setSoundEnabled);
+  const setHideClosedPubs = useSettingsStore((s) => s.setHideClosedPubs);
 
   const sliderIndex = positionIndexForKm(maxDistanceKm);
 
@@ -291,6 +294,10 @@ export default function SettingsScreen() {
   const toggleSound = useCallback(() => {
     setSoundEnabled(!soundEnabled);
   }, [soundEnabled, setSoundEnabled]);
+
+  const toggleHideClosed = useCallback(() => {
+    setHideClosedPubs(!hideClosedPubs);
+  }, [hideClosedPubs, setHideClosedPubs]);
 
   // Distance display
   const distanceDisplay =
@@ -369,6 +376,15 @@ export default function SettingsScreen() {
             value={soundEnabled}
             onToggle={toggleSound}
             toggleLabel={`${cs.settings.sound.title}: ${soundEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+            borderTop
+          />
+          <PrefRow
+            icon={<BeerOffIcon size={18} color={Colors.foamMuted} />}
+            title={cs.settings.hideClosed.title}
+            subtitle={cs.settings.hideClosed.subtitle}
+            value={hideClosedPubs}
+            onToggle={toggleHideClosed}
+            toggleLabel={`${cs.settings.hideClosed.title}: ${hideClosedPubs ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
             borderTop
           />
         </View>

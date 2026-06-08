@@ -19,6 +19,11 @@ export const cs = {
     settingsLabel: 'Nastavení',
     openInMaps: 'Otevřít v mapách',
     calibrationHint: 'Otoč telefonem do osmičky pro kalibraci kompasu',
+    openNow: 'Otevřeno',
+    openUntil: (t: string) => `Otevřeno do ${t}`,
+    closedNow: 'Zavřeno',
+    closedUntil: (t: string) => `Zavřeno · otevře v ${t}`,
+    hoursUnknown: 'Otevírací doba neznámá',
   },
 
   permissions: {
@@ -68,13 +73,17 @@ export const cs = {
       title: 'Zvuk cinknutí',
       subtitle: 'Drobné „cink“ u cíle',
     },
+    hideClosed: {
+      title: 'Skrýt zavřené hospody',
+      subtitle: 'Ukázat jen otevřené a ty s neznámou dobou',
+    },
     about: {
       title: 'O appce',
       version: 'v1.0',
     },
     privacy: 'Soukromí',
     footer: 'Bez reklam · Bez placení',
-    attribution: 'Data: © OpenStreetMap přispěvatelé (ODbL)',
+    attribution: 'Data o místech: Mapy.cz (Seznam.cz). Otevírací doba: samostatné vyhledávání.',
   },
 
   privacy: {
@@ -83,6 +92,7 @@ export const cs = {
       'Žádná analytika, žádné sledování, žádný účet.',
       'Tvoje poloha je zpracována výhradně přímo v telefonu. Aplikace ji nikam neposílá a nikde neukládá.',
       'Pro stažení okolních hospod aplikace posílá přibližnou oblast vyhledávání na Mapy.cz.',
+      'Pro zobrazení otevírací doby aplikace pošle název a polohu vybrané hospody na vlastní server provozovatele, který dohledá otevírací dobu.',
     ],
     contactLabel: 'Kontakt',
     contactEmail: 'tomades1@gmail.com',
@@ -95,10 +105,13 @@ export const cs = {
       `Šipka kompasu míří k hospodě, vzdálenost ${distance}.`,
     pubPillHidden: 'Skrytá hospoda, ťukni pro odhalení',
     pubPillRevealed: (pubName: string) => `${pubName}, ťukni pro otevření v mapách`,
+    openStatus: (status: string) => `Stav otevírací doby: ${status}`,
     toggleOn: 'zapnuto',
     toggleOff: 'vypnuto',
     settingsButton: 'Otevřít nastavení',
     rerollButton: 'Vyber jinou hospodu',
+    skipButton: 'Přeskočit na další hospodu',
+    skipButtonHint: 'Vynechá tuhle hospodu a najde další nejbližší',
     backButton: 'Zpět',
     modeNearestButton: 'Mód: Nejbližší hospoda',
     modeSurpriseButton: 'Mód: Překvap mě',

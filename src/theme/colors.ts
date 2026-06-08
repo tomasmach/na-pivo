@@ -24,6 +24,10 @@ export const Colors = {
   // Status
   success: '#7DD66B',
 
+  // Opening-hours status — hours-forward & warm, on the stout/amber palette
+  open: '#F0BE5C', // warm foam-amber tone that sits beside the amber accent
+  closed: '#A8896A', // muted clay/foam tone — calm, never an alarming red
+
   // Pure
   black: '#000000',
   white: '#FFFFFF',
