@@ -1,0 +1,575 @@
+"""
+pubs.enrichment.firmy — opening-hours scraper for Firmy.cz (Seznam business directory).
+
+LEGAL / ROBOTS NOTICE
+---------------------
+firmy.cz robots.txt declares "User-agent: * / Disallow: /", which means automated
+crawling is prohibited. This module is designed as a *low-volume, lazy-fill* cache
+loader and implements the following mitigations:
+
+  * All requests route through an optional residential proxy (FIRMY_PROXY_URL).
+    In production the proxy MUST be set. In dev/tests it may be omitted (direct).
+  * A configurable minimum interval (FIRMY_MIN_INTERVAL_SEC, default 3 s) is
+    enforced between consecutive HTTP requests.
+  * A hard daily cap (FIRMY_DAILY_CAP, default 2 000 requests/day) is checked
+    before each request; if exceeded the fetch is refused.
+  * Aggressive caching (HOURS_TTL_DAYS, default 30 days) means each pub is
+    re-fetched at most ~12 times a year.
+  * Only *lazy fill* is performed — data is fetched on user demand, never
+    bulk pre-crawled.
+  * This proxy is used exclusively by this module; the mobile app's Mapy.cz
+    key never shares identity with this scraper.
+
+For production-scale usage, pursue a **Seznam B2B / Mapy.com data license**
+(see https://o-seznam.cz/kontakty/) instead of relying on scraping.
+
+Pipeline
+--------
+1. SEARCH:  GET https://www.firmy.cz/?q={name}+{city}
+   - Cookie-aware requests.Session (warmed via homepage + szn.cz autologin) so
+     the cookie-wall cookies are seeded.  The search page is served from any IP.
+   - Extract the first /detail/{firmId}-{slug}.html link from the JSON-LD
+     blocks in the search results.
+
+2. DETAIL:  GET https://www.firmy.cz/detail/{firmId}-{slug}.html
+   - Detail pages sit behind a Seznam GDPR consent cookie-wall.  Requests from
+     flagged datacenter IPs are bounced to cmp.seznam.cz (reason=missing) and
+     never receive the content — route through FIRMY_PROXY_URL (residential) in
+     production.  The fetch detects this bounce and logs an actionable warning.
+   - On a consented session: extract the LocalBusiness JSON-LD block and read
+     openingHours (string | list | openingHoursSpecification).
+
+3. NORMALISE + MATCH:
+   - normalize_to_osm → OSM grammar string.
+   - verify_match → confidence 0-1; reject if below MIN_CONFIDENCE.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import re
+import threading
+import time
+from dataclasses import dataclass
+from datetime import UTC, date, datetime
+from urllib.parse import quote_plus, urlparse
+
+import requests
+
+from .matcher import verify_match
+from .normalizer import normalize_to_osm
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+_BROWSER_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/126.0.0.0 Safari/537.36"
+)
+
+_DEFAULT_HEADERS = {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "cs-CZ,cs;q=0.9,en;q=0.8",
+}
+
+# Homepage — visiting it first seeds the szn.cz / firmy.cz cookie-wall cookies
+# (sznlbr, cw_util, qt, ...) that the consent handshake builds on.
+_HOMEPAGE_URL = "https://www.firmy.cz/"
+
+# Autologin endpoint — establishes a session that bypasses the consent wall
+_AUTOLOGIN_URL = (
+    "https://login.szn.cz/api/v1/autologin"
+    "?service=firmy"
+    "&return_url=https%3A%2F%2Fwww.firmy.cz%2F"
+)
+
+# Seznam CMP check-consent endpoint. With a valid consent cookie it returns
+# {"valid": true, ...}; otherwise {"reason": "missing", "valid": false}.
+_CHECK_CONSENT_URL = "https://cmp.seznam.cz/check-point/v1/check-consent"
+
+_SEARCH_URL = "https://www.firmy.cz/?q={query}"
+# NB: do NOT append ?noredirect=1 — that flag suppresses the cookie-wall's
+# return redirect, so the consent handshake can never complete and the detail
+# page is never delivered. Letting the redirect chain run naturally is what
+# allows a consented session (residential IP) to land back on the detail page.
+_DETAIL_URL = "https://www.firmy.cz/detail/{firm_id}-{slug}.html"
+
+# Hosts the Seznam GDPR cookie-wall redirects to when consent is missing.
+# If a "detail" fetch lands on one of these, we were bounced by the consent
+# wall (typically because the request came from a flagged datacenter IP — use
+# FIRMY_PROXY_URL with a residential proxy in production).
+_CONSENT_WALL_HOSTS = ("cmp.seznam.cz", "cmp.firmy.cz", "nastaveni-souhlasu")
+
+# Minimum confidence required to accept a Firmy.cz result.
+# Raised from 0.40 to 0.55 together with the matcher's hard name-similarity gate
+# so that geo proximity alone can never clear the acceptance bar (a different
+# business at the same geohash cell must be rejected).
+MIN_CONFIDENCE = 0.55
+
+# Hard cap on redirects per request. A hostile/compromised proxy could otherwise
+# chain redirects to DoS the worker (requests' default is 30).
+_MAX_REDIRECTS = 5
+
+# Maximum response body we will read into memory before parsing (~2 MB).
+# Larger responses are truncated to bound memory; legitimate firmy.cz pages are
+# well under this.
+_MAX_BODY_BYTES = 2 * 1024 * 1024
+
+# Hosts whose responses we are willing to parse. The FINAL URL of every request
+# (after redirects) must end in one of these — a hostile proxy must not be able
+# to redirect us to an arbitrary host and have us parse its JSON-LD.
+_ALLOWED_HOST_SUFFIXES = (".firmy.cz", ".seznam.cz", "firmy.cz", "seznam.cz")
+
+# Regex to extract detail links from search page HTML
+_DETAIL_RE = re.compile(
+    r'href="https://www\.firmy\.cz/detail/(\d+)-([^"]+)\.html"'
+)
+
+# ---------------------------------------------------------------------------
+# Public dataclass
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class RawHours:
+    """Raw result returned by FirmyHoursSource.fetch()."""
+
+    opening_hours_raw: str | None
+    source: str
+    source_ref: str | None
+    matched_name: str | None
+    matched_lat: float | None
+    matched_lng: float | None
+    confidence: float
+
+
+# ---------------------------------------------------------------------------
+# Daily-cap counter (process-wide, resets at midnight)
+# ---------------------------------------------------------------------------
+
+
+class _DailyCounter:
+    """Thread-safe counter that resets at calendar-day boundary (UTC)."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._day: date | None = None
+        self._count: int = 0
+
+    def increment_and_check(self, cap: int) -> bool:
+        """
+        Increment the counter and return True if the cap is NOT exceeded
+        (i.e. the request is allowed).  Returns False if cap is exceeded.
+        """
+        with self._lock:
+            today = datetime.now(tz=UTC).date()
+            if self._day != today:
+                self._day = today
+                self._count = 0
+            if self._count >= cap:
+                return False
+            self._count += 1
+            return True
+
+    def current(self) -> int:
+        with self._lock:
+            return self._count
+
+
+_global_counter = _DailyCounter()
+
+# ---------------------------------------------------------------------------
+# FirmyHoursSource
+# ---------------------------------------------------------------------------
+
+
+class FirmyHoursSource:
+    """
+    Fetch opening hours for a pub from Firmy.cz.
+
+    Parameters
+    ----------
+    session : requests.Session | None
+        Supply a pre-configured session (e.g. in tests with a mocked adapter).
+        If None, a new session is created and warmed up with the szn.cz
+        autologin flow so that detail pages are accessible without the consent
+        wall.
+    proxy_url : str | None
+        HTTP/SOCKS proxy URL for all Firmy.cz requests.
+        Example: "http://user:pass@proxy:8888"
+    min_interval : float
+        Minimum seconds between consecutive HTTP requests (rate limiting).
+    timeout : int
+        Per-request HTTP timeout in seconds.
+    daily_cap : int
+        Hard cap on the number of Firmy.cz requests per UTC calendar day.
+    min_confidence : float
+        Minimum verify_match score required to accept a result.
+    """
+
+    def __init__(
+        self,
+        session: requests.Session | None = None,
+        proxy_url: str | None = None,
+        min_interval: float = 3.0,
+        timeout: int = 15,
+        daily_cap: int = 2000,
+        min_confidence: float = MIN_CONFIDENCE,
+    ) -> None:
+        self._min_interval = min_interval
+        self._timeout = timeout
+        self._daily_cap = daily_cap
+        self._min_confidence = min_confidence
+        self._last_request_at: float = 0.0
+        self._lock = threading.Lock()
+
+        if session is not None:
+            self._session = session
+            self._owns_session = False
+        else:
+            self._session = self._build_session(proxy_url)
+            self._owns_session = True
+
+        # Cap redirect chains on every session (injected or built) so a
+        # hostile/compromised proxy cannot loop us (requests' default is 30).
+        self._session.max_redirects = _MAX_REDIRECTS
+
+    # ------------------------------------------------------------------
+    # Session construction
+    # ------------------------------------------------------------------
+
+    def _build_session(self, proxy_url: str | None) -> requests.Session:
+        s = requests.Session()
+        s.headers.update({"User-Agent": _BROWSER_UA, **_DEFAULT_HEADERS})
+        # Cap redirect chains so a hostile/compromised proxy cannot loop us.
+        s.max_redirects = _MAX_REDIRECTS
+        if proxy_url:
+            s.proxies = {"http": proxy_url, "https": proxy_url}
+
+        self._session = s
+
+        # Warm up the session so that detail-page requests are not bounced by
+        # the Seznam GDPR cookie-wall:
+        #   1. Visit the homepage to seed the cookie-wall cookies
+        #      (sznlbr / cw_util / qt / ...).
+        #   2. Hit the autologin endpoint (follows the szn.cz consent redirect).
+        # On a residential IP this is enough for check-consent to report valid.
+        #
+        # Warmup hits go through the SAME throttle + daily-cap accounting as
+        # real fetches (they are real outbound requests to firmy.cz). If the cap
+        # is already exhausted we simply skip warmup — it must never break a
+        # subsequent fetch.
+        for url, label in ((_HOMEPAGE_URL, "homepage"), (_AUTOLOGIN_URL, "autologin")):
+            try:
+                if not self._check_cap():
+                    logger.warning(
+                        "firmy: skipping %s warmup — daily cap reached", label
+                    )
+                    break
+                self._throttle()
+                s.get(url, timeout=self._timeout, allow_redirects=True)
+            except Exception as exc:  # noqa: BLE001 — warmup must never break a fetch
+                logger.warning("firmy: %s warmup failed: %s", label, exc)
+
+        return s
+
+    # ------------------------------------------------------------------
+    # Rate limiting
+    # ------------------------------------------------------------------
+
+    def _throttle(self) -> None:
+        """Block until min_interval has elapsed since the last request."""
+        with self._lock:
+            elapsed = time.monotonic() - self._last_request_at
+            if elapsed < self._min_interval:
+                time.sleep(self._min_interval - elapsed)
+            self._last_request_at = time.monotonic()
+
+    def _check_cap(self) -> bool:
+        return _global_counter.increment_and_check(self._daily_cap)
+
+    # ------------------------------------------------------------------
+    # HTTP helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _host_allowed(url: str | None) -> bool:
+        """True if *url*'s host is within the firmy.cz / seznam.cz families."""
+        if not url:
+            return False
+        host = (urlparse(url).hostname or "").lower()
+        if not host:
+            return False
+        return any(
+            host == suffix.lstrip(".") or host.endswith(suffix)
+            for suffix in _ALLOWED_HOST_SUFFIXES
+        )
+
+    @staticmethod
+    def _read_bounded_body(resp: requests.Response) -> None:
+        """Read at most _MAX_BODY_BYTES of *resp* into resp._content.
+
+        Bounds memory against a hostile/compromised proxy streaming an
+        unbounded body. Safe to call on already-materialised responses (e.g.
+        test mocks): in that case the existing content is truncated in place.
+        """
+        existing = resp._content
+        if existing is not None and existing is not False:
+            # Body already materialised (mock or non-streamed) — just truncate.
+            if len(existing) > _MAX_BODY_BYTES:
+                logger.warning(
+                    "firmy: response body from %s exceeds %d bytes — truncating",
+                    resp.url, _MAX_BODY_BYTES,
+                )
+                resp._content = existing[:_MAX_BODY_BYTES]
+            return
+
+        chunks: list[bytes] = []
+        total = 0
+        try:
+            for chunk in resp.iter_content(chunk_size=65536):
+                if not chunk:
+                    continue
+                chunks.append(chunk)
+                total += len(chunk)
+                if total >= _MAX_BODY_BYTES:
+                    logger.warning(
+                        "firmy: response body from %s exceeds %d bytes — truncating",
+                        resp.url, _MAX_BODY_BYTES,
+                    )
+                    break
+        finally:
+            resp._content = b"".join(chunks)[:_MAX_BODY_BYTES]
+
+    def _get(self, url: str, **kwargs) -> requests.Response:
+        """Throttled, cap-checked GET request with redirect/size/host guards."""
+        if not self._check_cap():
+            raise RuntimeError(
+                f"firmy: daily request cap of {self._daily_cap} exceeded — "
+                "not making further requests today."
+            )
+        self._throttle()
+        kwargs.setdefault("stream", True)
+        resp = self._session.get(url, timeout=self._timeout, **kwargs)
+
+        # Reject responses that ended up off the firmy.cz / seznam.cz families
+        # (a hostile proxy could redirect us elsewhere). We still return the
+        # response object so consent-wall detection (cmp.seznam.cz) keeps
+        # working, but we refuse to read/parse a foreign body.
+        if not self._host_allowed(resp.url):
+            logger.warning(
+                "firmy: response final host %r is outside the allowed "
+                "firmy.cz/seznam.cz families — not reading body.",
+                resp.url,
+            )
+            resp._content = b""
+            return resp
+
+        self._read_bounded_body(resp)
+        return resp
+
+    # ------------------------------------------------------------------
+    # JSON-LD extraction helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _extract_ld_blocks(html: str) -> list[dict]:
+        """Return all parsed JSON-LD blocks from an HTML page."""
+        blocks = []
+        for raw in re.findall(
+            r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+            html,
+            re.DOTALL,
+        ):
+            try:
+                data = json.loads(raw.strip())
+                blocks.append(data)
+            except json.JSONDecodeError:
+                pass
+        return blocks
+
+    @staticmethod
+    def _local_business_block(blocks: list[dict]) -> dict | None:
+        """Return the first LocalBusiness / Restaurant block."""
+        for b in blocks:
+            t = b.get("@type", "")
+            if isinstance(t, list):
+                if any(x in ("LocalBusiness", "Restaurant", "FoodEstablishment", "BarOrPub") for x in t):
+                    return b
+            elif t in ("LocalBusiness", "Restaurant", "FoodEstablishment", "BarOrPub"):
+                return b
+        return None
+
+    # ------------------------------------------------------------------
+    # Search
+    # ------------------------------------------------------------------
+
+    def _search(self, name: str, city: str | None) -> tuple[str, str, dict] | None:
+        """
+        Search Firmy.cz and return (firm_id, slug, ld_block) for the first hit,
+        or None if nothing was found.
+        """
+        query = name if not city else f"{name} {city}"
+        url = _SEARCH_URL.format(query=quote_plus(query))
+
+        try:
+            resp = self._get(url)
+            resp.raise_for_status()
+        except requests.RequestException as exc:
+            logger.warning("firmy: search request failed for %r: %s", query, exc)
+            return None
+
+        html = resp.text
+
+        # Extract first detail link
+        m = _DETAIL_RE.search(html)
+        if not m:
+            logger.debug("firmy: no detail link found for query %r", query)
+            return None
+
+        firm_id = m.group(1)
+        slug = m.group(2)
+
+        # Also extract LocalBusiness JSON-LD from the search page
+        # (contains name + geo, useful for verify_match)
+        ld_blocks = self._extract_ld_blocks(html)
+        lb = self._local_business_block(ld_blocks)
+
+        return firm_id, slug, lb or {}
+
+    # ------------------------------------------------------------------
+    # Detail
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _is_consent_wall(resp: requests.Response) -> bool:
+        """True if *resp* was bounced to the Seznam GDPR cookie-wall."""
+        return any(host in (resp.url or "") for host in _CONSENT_WALL_HOSTS)
+
+    def _fetch_detail(self, firm_id: str, slug: str) -> dict | None:
+        """
+        Fetch a Firmy.cz detail page and return the LocalBusiness JSON-LD block,
+        or None on failure.
+        """
+        url = _DETAIL_URL.format(firm_id=firm_id, slug=slug)
+        try:
+            resp = self._get(url)
+            resp.raise_for_status()
+        except requests.RequestException as exc:
+            logger.warning("firmy: detail request failed for %s/%s: %s", firm_id, slug, exc)
+            return None
+
+        # If the cookie-wall bounced us to the consent page we never reached the
+        # detail content. This almost always means the request originated from a
+        # flagged datacenter IP — set FIRMY_PROXY_URL to a residential proxy.
+        if self._is_consent_wall(resp):
+            logger.warning(
+                "firmy: detail for firm %s was bounced to the Seznam consent wall "
+                "(%s). Consent could not be established for this session — in "
+                "production route requests through FIRMY_PROXY_URL (residential).",
+                firm_id,
+                resp.url,
+            )
+            return None
+
+        ld_blocks = self._extract_ld_blocks(resp.text)
+        return self._local_business_block(ld_blocks)
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def fetch(
+        self,
+        name: str,
+        lat: float,
+        lng: float,
+        city: str | None = None,
+    ) -> RawHours | None:
+        """
+        Fetch opening hours for a pub from Firmy.cz.
+
+        Returns
+        -------
+        RawHours | None
+            RawHours with opening_hours_raw=None if the pub was found but has
+            no published hours.  Returns None if no confident match was found.
+        """
+        try:
+            return self._fetch_inner(name, lat, lng, city)
+        except RuntimeError:
+            # Daily cap exceeded — propagate so the caller can handle
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.error("firmy: unexpected error fetching %r: %s", name, exc, exc_info=True)
+            return None
+
+    def _fetch_inner(
+        self,
+        name: str,
+        lat: float,
+        lng: float,
+        city: str | None,
+    ) -> RawHours | None:
+        # Step 1: Search
+        result = self._search(name, city)
+        if result is None:
+            return None
+
+        firm_id, slug, search_lb = result
+
+        # Step 2: Fetch detail
+        detail_lb = self._fetch_detail(firm_id, slug)
+        if detail_lb is None:
+            logger.debug("firmy: no LocalBusiness block on detail page for firm %s", firm_id)
+            return None
+
+        # Step 3: Extract candidate metadata
+        c_name: str = detail_lb.get("name") or search_lb.get("name") or ""
+        geo = detail_lb.get("geo") or search_lb.get("geo") or {}
+        c_lat: float | None = None
+        c_lng: float | None = None
+        try:
+            c_lat = float(geo.get("latitude") or geo.get("lat") or 0) or None
+            c_lng = float(geo.get("longitude") or geo.get("lng") or 0) or None
+        except (TypeError, ValueError):
+            pass
+
+        # Step 4: Verify match
+        confidence = verify_match(name, lat, lng, c_name, c_lat, c_lng)
+        if confidence < self._min_confidence:
+            logger.debug(
+                "firmy: low confidence %.2f for %r → %r (firm %s) — discarding",
+                confidence, name, c_name, firm_id,
+            )
+            return None
+
+        # Step 5: Normalise opening hours
+        raw_oh = detail_lb.get("openingHours") or detail_lb.get("openingHoursSpecification")
+        osm_hours = normalize_to_osm(raw_oh)
+
+        return RawHours(
+            opening_hours_raw=osm_hours,
+            source="firmy",
+            source_ref=firm_id,
+            matched_name=c_name or None,
+            matched_lat=c_lat,
+            matched_lng=c_lng,
+            confidence=confidence,
+        )
+
+    # ------------------------------------------------------------------
+    # Context manager
+    # ------------------------------------------------------------------
+
+    def __enter__(self) -> FirmyHoursSource:
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        if self._owns_session:
+            self._session.close()

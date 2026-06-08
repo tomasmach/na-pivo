@@ -1,0 +1,51 @@
+[project]
+name = "na-pivo-backend"
+version = "0.1.0"
+description = "na-pivo backend — enriches pubs with opening hours scraped from Firmy.cz"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "dj-database-url>=3.1.2",
+    "django>=6.0.6",
+    "django-cors-headers>=4.9.0",
+    "djangorestframework>=3.17.1",
+    "geohash2>=1.1",
+    "opening-hours-py>=1.4.0",
+    "python-dotenv>=1.2.2",
+    "rapidfuzz>=3.14.5",
+    "requests>=2.34.2",
+]
+
+[project.optional-dependencies]
+prod = [
+    "gunicorn>=26.0.0",
+    "psycopg[binary]>=3.3.4",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-django>=4.12.0",
+    "ruff>=0.15.16",
+]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings"
+python_files = ["tests.py", "test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# The DRF response serializer must expose camelCase keys (isOpenNow, nextChange)
+# because that is the wire contract the mobile app consumes — N815 cannot apply.
+"pubs/api/serializers.py" = ["N815"]
+# Tests bind mocked classes to PascalCase names (MockSource) by convention.
+"**/tests/*.py" = ["N806"]

@@ -1,0 +1,95 @@
+"""
+pubs.api.serializers — request/response serializers for the pub-hours API.
+
+Request body (POST /v1/pub-hours):
+    {
+        "pubs": [{"name": str, "lat": float, "lng": float, "city"?: str}],
+        "sync_budget"?: int  -- max pubs to enrich synchronously (default SYNC_ENRICH_BUDGET)
+    }
+
+Response body:
+    {
+        "results": [
+            {
+                "key": str,         -- geohash-8 cache key
+                "name": str,
+                "opening_hours": str|null,
+                "isOpenNow": bool|null,
+                "nextChange": str|null,  -- ISO-8601 UTC datetime
+                "status": "ok|unknown|pending|error",
+                "source": str|null,
+                "confidence": float|null
+            }
+        ]
+    }
+"""
+
+from __future__ import annotations
+
+from rest_framework import serializers
+
+# ---------------------------------------------------------------------------
+# Request serializers
+# ---------------------------------------------------------------------------
+
+
+class PubInputSerializer(serializers.Serializer):
+    """A single pub entry in the request body."""
+
+    name = serializers.CharField(max_length=255)
+    lat = serializers.FloatField()
+    lng = serializers.FloatField()
+    city = serializers.CharField(max_length=128, required=False, allow_null=True, allow_blank=True)
+
+    def validate_lat(self, value: float) -> float:
+        if not (-90.0 <= value <= 90.0):
+            raise serializers.ValidationError("Latitude must be between -90 and 90.")
+        return value
+
+    def validate_lng(self, value: float) -> float:
+        if not (-180.0 <= value <= 180.0):
+            raise serializers.ValidationError("Longitude must be between -180 and 180.")
+        return value
+
+
+class PubHoursRequestSerializer(serializers.Serializer):
+    """Top-level request body for POST /v1/pub-hours."""
+
+    pubs = PubInputSerializer(many=True, min_length=1)
+    # Hard upper bound on synchronous (in-request) fetches a client may request.
+    # Each sync fetch is throttled (~FIRMY_MIN_INTERVAL_SEC), so an unbounded
+    # value would let a single request tie the worker up for minutes. The value
+    # is further clamped server-side to settings.SYNC_ENRICH_BUDGET in
+    # get_or_enrich; this max_value is the request-level ceiling.
+    sync_budget = serializers.IntegerField(
+        required=False, allow_null=True, min_value=0, max_value=5
+    )
+
+    def validate_pubs(self, value: list) -> list:
+        if len(value) > 50:
+            raise serializers.ValidationError("At most 50 pubs may be queried at once.")
+        return value
+
+
+# ---------------------------------------------------------------------------
+# Response serializers
+# ---------------------------------------------------------------------------
+
+
+class PubHoursResultSerializer(serializers.Serializer):
+    """A single result entry in the response body."""
+
+    key = serializers.CharField()
+    name = serializers.CharField()
+    opening_hours = serializers.CharField(allow_null=True)
+    isOpenNow = serializers.BooleanField(allow_null=True)
+    nextChange = serializers.CharField(allow_null=True)  # ISO-8601 string
+    status = serializers.CharField()
+    source = serializers.CharField(allow_null=True)
+    confidence = serializers.FloatField(allow_null=True)
+
+
+class PubHoursResponseSerializer(serializers.Serializer):
+    """Top-level response body for POST /v1/pub-hours."""
+
+    results = PubHoursResultSerializer(many=True)
