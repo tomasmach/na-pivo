@@ -47,3 +47,6 @@ Thumbs.db
 
 # uv
 .python-version
+
+# Playwright MCP scratch artifacts
+.playwright-mcp/
