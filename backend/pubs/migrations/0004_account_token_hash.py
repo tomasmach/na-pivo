@@ -2,6 +2,11 @@
 # replaced by `token_hash`. We add the column nullable, backfill the SHA-256 of
 # any existing raw token, enforce uniqueness, then drop the raw column — so the
 # migration is safe whether or not the table already holds rows.
+#
+# token_hash uses unique=True only (NOT db_index=True as well). On PostgreSQL the
+# AddField(db_index)→AlterField(unique) path created the varchar_pattern_ops
+# "_like" index twice and failed with 'relation "..._like" already exists'.
+# unique=True alone provides the index the auth exact-match lookup needs.
 
 import hashlib
 
@@ -31,7 +36,6 @@ class Migration(migrations.Migration):
             model_name="account",
             name="token_hash",
             field=models.CharField(
-                db_index=True,
                 help_text=(
                     "SHA-256 hex digest of the bearer token. The raw token is "
                     "returned once at registration and never stored, so a DB leak "
@@ -46,7 +50,6 @@ class Migration(migrations.Migration):
             model_name="account",
             name="token_hash",
             field=models.CharField(
-                db_index=True,
                 help_text=(
                     "SHA-256 hex digest of the bearer token. The raw token is "
                     "returned once at registration and never stored, so a DB leak "

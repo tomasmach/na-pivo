@@ -205,7 +205,10 @@ class Account(models.Model):
     token_hash = models.CharField(
         max_length=64,
         unique=True,
-        db_index=True,
+        # No db_index — unique=True already creates the lookup index (auth does an
+        # exact-match lookup, never a prefix LIKE). Setting db_index=True too made
+        # migration 0004 create the Postgres varchar_pattern_ops "_like" index
+        # twice (AddField + AlterField) and fail: relation "..._like" already exists.
         help_text="SHA-256 hex digest of the bearer token. The raw token is "
         "returned once at registration and never stored, so a DB leak exposes "
         "only non-reversible hashes.",
