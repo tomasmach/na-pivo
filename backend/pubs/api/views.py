@@ -4,12 +4,15 @@ pubs.api.views — DRF views for the pub-hours API.
 Endpoints
 ---------
 POST /v1/pub-hours   → PubHoursView
+POST /v1/pub-reports → PubReportView
+GET  /v1/pub-reports/blocked → BlockedPubReportsView
 GET  /v1/health      → HealthView
 """
 
 from __future__ import annotations
 
 import logging
+import math
 
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -18,7 +21,15 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
-from pubs.models import Account, generate_account_token, hash_account_token
+from pubs.enrichment import geohash8
+from pubs.models import (
+    Account,
+    EnrichTask,
+    PubHours,
+    PubReport,
+    generate_account_token,
+    hash_account_token,
+)
 
 from .authentication import AccountTokenAuthentication
 from .cache import get_or_enrich
@@ -26,11 +37,30 @@ from .serializers import (
     AccountMeSerializer,
     AccountRegisterSerializer,
     AccountSerializer,
+    BlockedPubsResponseSerializer,
     PubHoursRequestSerializer,
     PubHoursResponseSerializer,
+    PubReportBlockedQuerySerializer,
+    PubReportRequestSerializer,
+    PubReportSerializer,
 )
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_BLOCKED_REPORT_RADIUS_KM = 25.0
+
+
+def _haversine_km(a_lat: float, a_lng: float, b_lat: float, b_lng: float) -> float:
+    radius_km = 6371.0
+    d_lat = math.radians(b_lat - a_lat)
+    d_lng = math.radians(b_lng - a_lng)
+    lat1 = math.radians(a_lat)
+    lat2 = math.radians(b_lat)
+    h = (
+        math.sin(d_lat / 2) ** 2
+        + math.cos(lat1) * math.cos(lat2) * math.sin(d_lng / 2) ** 2
+    )
+    return 2 * radius_km * math.asin(math.sqrt(h))
 
 
 class HealthView(APIView):
@@ -69,6 +99,117 @@ class PubHoursView(APIView):
 
         resp_serializer = PubHoursResponseSerializer({"results": results})
         return Response(resp_serializer.data, status=status.HTTP_200_OK)
+
+
+class PubReportView(APIView):
+    """
+    POST /v1/pub-reports
+
+    Save a user report that a Mapy.cz result should no longer be offered by the
+    compass. The mobile app also hides the place locally immediately; this
+    endpoint makes the block available to later searches and other installs.
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request: Request) -> Response:
+        serializer = PubReportRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        cache_key = geohash8(data["lat"], data["lng"])
+        external_id = data.get("external_id") or None
+
+        try:
+            report, created = PubReport.objects.update_or_create(
+                account=request.user,
+                cache_key=cache_key,
+                reason=data["reason"],
+                defaults={
+                    "external_id": external_id,
+                    "name": data["name"],
+                    "lat": data["lat"],
+                    "lng": data["lng"],
+                    "city": data.get("city") or None,
+                    "address": data.get("address") or None,
+                    "active": True,
+                },
+            )
+            PubHours.objects.filter(cache_key=cache_key).delete()
+            EnrichTask.objects.filter(cache_key=cache_key).delete()
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "pub-report: unexpected error saving report for %r: %s",
+                data.get("name"),
+                exc,
+                exc_info=True,
+            )
+            return Response(
+                {"detail": "Internal server error."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response(
+            PubReportSerializer(report).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+
+class BlockedPubReportsView(APIView):
+    """
+    GET /v1/pub-reports/blocked?lat=...&lng=...&radius_km=...
+
+    Return active reports near the user. This intentionally stays unauthenticated
+    so filtering still works before or without a recovered anonymous account.
+    """
+
+    authentication_classes: list = []
+    permission_classes = [AllowAny]
+
+    def get(self, request: Request) -> Response:
+        serializer = PubReportBlockedQuerySerializer(data=request.query_params)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        lat = data["lat"]
+        lng = data["lng"]
+        radius_km = data.get("radius_km") or DEFAULT_BLOCKED_REPORT_RADIUS_KM
+
+        lat_delta = radius_km / 111.0
+        lng_delta = radius_km / (111.0 * max(math.cos(math.radians(lat)), 0.01))
+
+        reports = PubReport.objects.filter(
+            active=True,
+            lat__gte=lat - lat_delta,
+            lat__lte=lat + lat_delta,
+            lng__gte=lng - lng_delta,
+            lng__lte=lng + lng_delta,
+        ).order_by("-created_at")
+
+        blocked = []
+        seen: set[tuple[str, str | None]] = set()
+        for report in reports:
+            if _haversine_km(lat, lng, report.lat, report.lng) > radius_km:
+                continue
+            key = (report.cache_key, report.external_id)
+            if key in seen:
+                continue
+            seen.add(key)
+            blocked.append(
+                {
+                    "cache_key": report.cache_key,
+                    "external_id": report.external_id,
+                    "reason": report.reason,
+                }
+            )
+
+        return Response(
+            BlockedPubsResponseSerializer({"blocked": blocked}).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class AccountView(APIView):
