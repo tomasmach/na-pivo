@@ -2,6 +2,7 @@ import KDBush from "kdbush";
 import * as geokdbush from "geokdbush";
 import { searchPubsNear } from "./mapyClient";
 import { fetchBlockedPubReports } from "./pubReportsClient";
+import { geohash8 } from "./geohash";
 
 /**
  * Lifecycle of an opening-hours lookup for a single pub.
@@ -130,10 +131,21 @@ export async function fetchPubsNear(
       if (signal?.aborted) return;
       const blockedReports = await fetchBlockedPubReports(lat, lng, radiusKm, signal);
       if (signal?.aborted) return;
+      // A place is hidden if it matches a report by either signal:
+      //  - external_id: the exact Mapy.cz item id that was reported, or
+      //  - cache_key: the geohash-8 cell of the report, which still catches the
+      //    same physical place when Mapy.cz returns a different id for it.
       const blockedExternalIds = new Set(
         blockedReports.flatMap((report) => (report.externalId ? [report.externalId] : [])),
       );
-      _init(pubs.filter((pub) => !blockedExternalIds.has(pub.id)));
+      const blockedCacheKeys = new Set(blockedReports.map((report) => report.cacheKey));
+      _init(
+        pubs.filter(
+          (pub) =>
+            !blockedExternalIds.has(pub.id) &&
+            !blockedCacheKeys.has(geohash8(pub.lat, pub.lng)),
+        ),
+      );
       _lastFetchCenter = { lat, lng };
       _lastFetchRadiusKm = radiusKm;
     } finally {

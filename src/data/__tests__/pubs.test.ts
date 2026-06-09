@@ -9,6 +9,7 @@ import {
 } from "../pubs";
 import { searchPubsNear } from "../mapyClient";
 import { fetchBlockedPubReports } from "../pubReportsClient";
+import { geohash8 } from "../geohash";
 
 jest.mock("../mapyClient", () => ({
   searchPubsNear: jest.fn(async () => []),
@@ -61,6 +62,26 @@ describe("fetchPubsNear", () => {
 
     expect(getPubById("mapy:blocked")).toBeNull();
     expect(getPubById("mapy:ok")?.name).toBe("U Piva");
+  });
+
+  it("filters by cache_key even when the Mapy id no longer matches the report", async () => {
+    // The reported place comes back from Mapy.cz under a fresh provider id, so
+    // external_id matching alone would miss it — the geohash-8 cell still hides it.
+    const movedPub: Pub = { id: "mapy:new-id", name: "Zavřeno", lat: 50.08, lng: 14.42 };
+    const keepPub: Pub = { id: "mapy:keep", name: "U Piva", lat: 50.2, lng: 14.6 };
+    (searchPubsNear as jest.Mock).mockResolvedValue([movedPub, keepPub]);
+    (fetchBlockedPubReports as jest.Mock).mockResolvedValue([
+      {
+        cacheKey: geohash8(movedPub.lat, movedPub.lng),
+        externalId: "mapy:old-id",
+        reason: "closed",
+      },
+    ]);
+
+    await fetchPubsNear(50.08, 14.42, undefined, { force: true, radiusKm: 5 });
+
+    expect(getPubById("mapy:new-id")).toBeNull();
+    expect(getPubById("mapy:keep")?.name).toBe("U Piva");
   });
 });
 
