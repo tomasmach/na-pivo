@@ -1,7 +1,15 @@
 import React from 'react';
+import { Alert } from 'react-native';
 import { cs } from '@/i18n/cs';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+jest.mock('react-native', () => ({
+  ...jest.requireActual('react-native'),
+  Alert: {
+    alert: jest.fn(),
+  },
+}));
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
@@ -48,6 +56,7 @@ jest.mock('@/components/shared/IconGlyph', () => ({
   ExternalLinkIcon: jest.fn(() => null),
   RefreshCwIcon: jest.fn(() => null),
   SettingsIcon: jest.fn(() => null),
+  FlagIcon: jest.fn(() => null),
 }));
 
 jest.mock('@/utils/maps', () => ({
@@ -95,6 +104,8 @@ function baseCompassState() {
     mode: 'nearest',
     setMode: jest.fn(),
     reroll: jest.fn(),
+    skip: jest.fn(),
+    reportCurrentPub: jest.fn(async () => true),
     retrySearch: jest.fn(),
     arrived: false,
     dismissArrival: jest.fn(),
@@ -148,5 +159,37 @@ describe('CompassScreen', () => {
     });
 
     expect(reveal).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens the report reason sheet from the revealed pub pill', () => {
+    const reportCurrentPub = jest.fn(async () => true);
+    (Alert.alert as jest.Mock).mockImplementation(() => undefined);
+    useCompass.mockReturnValue({
+      ...baseCompassState(),
+      revealed: true,
+      reportCurrentPub,
+    });
+
+    let renderer: any;
+
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(CompassScreen));
+    });
+
+    const reportButton = renderer!.root.findByProps({
+      accessibilityLabel: cs.a11y.reportPubButton,
+    });
+
+    act(() => {
+      reportButton.props.onPress();
+    });
+
+    expect(Alert.alert).toHaveBeenCalledTimes(1);
+    const [, , buttons] = (Alert.alert as jest.Mock).mock.calls[0];
+    act(() => {
+      buttons?.[2]?.onPress?.();
+    });
+
+    expect(reportCurrentPub).toHaveBeenCalledWith('not_pub');
   });
 });

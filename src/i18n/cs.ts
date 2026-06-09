@@ -6,6 +6,10 @@
 export const cs = {
   appName: 'Na pivo',
 
+  common: {
+    cancel: 'Zrušit',
+  },
+
   compass: {
     headerTitle: 'na pivo',
     hiddenPubHint: 'Ťukni pro odhalení',
@@ -18,6 +22,12 @@ export const cs = {
     rerollLabel: 'Vyber jinou hospodu',
     settingsLabel: 'Nastavení',
     openInMaps: 'Otevřít v mapách',
+    reportProblem: 'Nahlásit problém',
+    reportTitle: 'Nahlásit hospodu',
+    reportBody: (pubName: string) =>
+      `Schováme „${pubName}“ z kompasu. Co je špatně?`,
+    reportClosed: 'Už nefunguje',
+    reportNotPub: 'Není to hospoda',
     calibrationHint: 'Otoč telefonem do osmičky pro kalibraci kompasu',
     openNow: 'Otevřeno',
     openUntil: (t: string) => `Otevřeno do ${t}`,
@@ -112,6 +122,7 @@ export const cs = {
     rerollButton: 'Vyber jinou hospodu',
     skipButton: 'Přeskočit na další hospodu',
     skipButtonHint: 'Vynechá tuhle hospodu a najde další nejbližší',
+    reportPubButton: 'Nahlásit problém s hospodou',
     backButton: 'Zpět',
     modeNearestButton: 'Mód: Nejbližší hospoda',
     modeSurpriseButton: 'Mód: Překvap mě',

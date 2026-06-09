@@ -1,6 +1,7 @@
 import KDBush from "kdbush";
 import * as geokdbush from "geokdbush";
 import { searchPubsNear } from "./mapyClient";
+import { fetchBlockedPubReports } from "./pubReportsClient";
 
 /**
  * Lifecycle of an opening-hours lookup for a single pub.
@@ -127,7 +128,12 @@ export async function fetchPubsNear(
     try {
       const pubs = await searchPubsNear(lat, lng, radiusKm, signal);
       if (signal?.aborted) return;
-      _init(pubs);
+      const blockedReports = await fetchBlockedPubReports(lat, lng, radiusKm, signal);
+      if (signal?.aborted) return;
+      const blockedExternalIds = new Set(
+        blockedReports.flatMap((report) => (report.externalId ? [report.externalId] : [])),
+      );
+      _init(pubs.filter((pub) => !blockedExternalIds.has(pub.id)));
       _lastFetchCenter = { lat, lng };
       _lastFetchRadiusKm = radiusKm;
     } finally {

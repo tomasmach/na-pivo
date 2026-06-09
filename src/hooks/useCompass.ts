@@ -11,6 +11,7 @@ import {
 import { fetchPubsNear, findNearestPub, findRandomPubInRadius, isLoaded } from '@/data/pubs';
 import type { HoursStatus, Pub } from '@/data/pubs';
 import { fetchPubHours } from '@/data/hoursClient';
+import { reportPubIssue, type PubReportReason } from '@/data/pubReportsClient';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { usePubStore } from '@/stores/pubStore';
 import { useDevicePosition } from '@/compass/useDevicePosition';
@@ -63,6 +64,7 @@ export interface UseCompassResult {
   setMode: (m: Mode) => void;
   reroll: () => void;
   skip: () => void;
+  reportCurrentPub: (reason: PubReportReason) => Promise<boolean>;
   retrySearch: () => void;
   arrived: boolean;
   dismissArrival: () => void;
@@ -87,6 +89,8 @@ export function useCompass(): UseCompassResult {
 
   // — Pub store —
   const setRevealedPub = usePubStore((s) => s.setRevealedPub);
+  const reportedPubIds = usePubStore((s) => s.reportedPubIds);
+  const addReportedPubId = usePubStore((s) => s.addReportedPubId);
 
   // — Permission state —
   const [permissionState, setPermissionState] = useState<PermissionState>('undetermined');
@@ -168,6 +172,7 @@ export function useCompass(): UseCompassResult {
   const lastModeRef = useRef<Mode | null>(null);
   const lastMaxKmRef = useRef<number | null | undefined>(undefined);
   const lastSeedRef = useRef<number | null>(null);
+  const lastReportedPubIdsRef = useRef<string[]>(reportedPubIds);
   // Track the excludeRevision the current target was selected against, so the
   // selection effect recomputes when (and only when) the exclusion set changes.
   const lastExcludeRevisionRef = useRef<number>(0);
@@ -201,6 +206,7 @@ export function useCompass(): UseCompassResult {
     // The exclusion set changed (a skip() or an auto-skip-closed) → walk to the
     // next eligible pub even though position/mode/maxKm/seed are unchanged.
     const excludeChanged = excludeRevision !== lastExcludeRevisionRef.current;
+    const reportedChanged = reportedPubIds !== lastReportedPubIdsRef.current;
 
     // A genuine context change (the user moved enough, or switched mode/maxKm)
     // means the accumulated skip/auto-closed exclusions are stale: they only
@@ -212,17 +218,19 @@ export function useCompass(): UseCompassResult {
       resetExclusions();
     }
 
-    if (modeChanged || maxKmChanged || seedChanged || positionMoved || excludeChanged) {
+    if (modeChanged || maxKmChanged || seedChanged || positionMoved || excludeChanged || reportedChanged) {
       lastTargetPosRef.current = currentPos;
       lastModeRef.current = mode;
       lastMaxKmRef.current = maxDistanceKm;
       lastSeedRef.current = surpriseSeed;
+      lastReportedPubIdsRef.current = reportedPubIds;
       lastExcludeRevisionRef.current = excludeRevision;
 
-      const excludeIds = [
+      const excludeIds = Array.from(new Set([
+        ...reportedPubIds,
         ...skippedIdsRef.current,
         ...autoClosedIdsRef.current,
-      ];
+      ]));
 
       const pub =
         mode === 'nearest'
@@ -244,6 +252,7 @@ export function useCompass(): UseCompassResult {
     mode,
     maxDistanceKm,
     surpriseSeed,
+    reportedPubIds,
     excludeRevision,
     resetExclusions,
   ]);
@@ -519,6 +528,18 @@ export function useCompass(): UseCompassResult {
     setExcludeRevision((revision) => revision + 1);
   }, [currentPub]);
 
+  const reportCurrentPub = useCallback(async (reason: PubReportReason): Promise<boolean> => {
+    const pub = currentPub;
+    if (!pub) return false;
+
+    addReportedPubId(pub.id);
+    setRevealed(false);
+    setRevealedPub(null);
+    setExcludeRevision((revision) => revision + 1);
+
+    return reportPubIssue(pub, reason);
+  }, [addReportedPubId, currentPub, setRevealedPub]);
+
   const retrySearch = useCallback(() => {
     forceNextSearchRef.current = true;
     lastTargetPosRef.current = null;
@@ -556,6 +577,7 @@ export function useCompass(): UseCompassResult {
     setMode,
     reroll,
     skip,
+    reportCurrentPub,
     retrySearch,
     arrived,
     dismissArrival,

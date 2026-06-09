@@ -8,9 +8,14 @@ import {
   type Pub,
 } from "../pubs";
 import { searchPubsNear } from "../mapyClient";
+import { fetchBlockedPubReports } from "../pubReportsClient";
 
 jest.mock("../mapyClient", () => ({
   searchPubsNear: jest.fn(async () => []),
+}));
+
+jest.mock("../pubReportsClient", () => ({
+  fetchBlockedPubReports: jest.fn(async () => []),
 }));
 
 const SYNTHETIC_PUBS: Pub[] = [
@@ -40,6 +45,22 @@ describe("fetchPubsNear", () => {
     await fetchPubsNear(50.08, 14.42, undefined, { force: true, radiusKm: 100 });
 
     expect(searchPubsNear).toHaveBeenCalledWith(50.08, 14.42, 100, undefined);
+  });
+
+  it("filters backend-blocked Mapy results before rebuilding the index", async () => {
+    const pubs: Pub[] = [
+      { id: "mapy:blocked", name: "Palačinkárna", lat: 50.08, lng: 14.42 },
+      { id: "mapy:ok", name: "U Piva", lat: 50.081, lng: 14.421 },
+    ];
+    (searchPubsNear as jest.Mock).mockResolvedValue(pubs);
+    (fetchBlockedPubReports as jest.Mock).mockResolvedValue([
+      { cacheKey: "u2fk1234", externalId: "mapy:blocked", reason: "not_pub" },
+    ]);
+
+    await fetchPubsNear(50.08, 14.42, undefined, { force: true, radiusKm: 5 });
+
+    expect(getPubById("mapy:blocked")).toBeNull();
+    expect(getPubById("mapy:ok")?.name).toBe("U Piva");
   });
 });
 
