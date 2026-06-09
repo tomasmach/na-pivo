@@ -30,6 +30,11 @@ SECRET_KEY = os.environ.get(
 
 DEBUG = os.environ.get("DEBUG", "True").lower() in ("1", "true", "yes")
 
+ENABLE_DJANGO_ADMIN = os.environ.get(
+    "ENABLE_DJANGO_ADMIN",
+    "True" if DEBUG else "False",
+).lower() in ("1", "true", "yes")
+
 ALLOWED_HOSTS: list[str] = [
     h.strip()
     for h in os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")

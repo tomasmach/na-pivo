@@ -94,6 +94,7 @@ All settings are read from environment variables (or a `.env` file).  See `.env.
 |---|---|---|
 | `SECRET_KEY` | insecure dev key | Django secret key |
 | `DEBUG` | `True` | Enable debug mode |
+| `ENABLE_DJANGO_ADMIN` | `True` in dev, `False` in prod | Register `/admin/` routes |
 | `ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated allowed hosts |
 | `DATABASE_URL` | SQLite | dj-database-url connection string |
 | `FIRMY_PROXY_URL` | _(unset)_ | Residential proxy for Firmy.cz requests |
