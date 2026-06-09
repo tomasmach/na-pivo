@@ -113,14 +113,20 @@ class AccountRegisterSerializer(serializers.Serializer):
     device_id = serializers.CharField(max_length=64, min_length=1, trim_whitespace=True)
 
     def validate_device_id(self, value: str) -> str:
-        # The client always generates a UUID v4. Enforcing UUID format keeps the
-        # account-creation key space narrow — a bare CharField would let an
-        # attacker spam arbitrary strings — and matches the documented contract.
+        # The client always generates a canonical lowercase UUID v4. We parse the
+        # value and re-serialise it to the canonical hyphenated form
+        # (str(uuid.UUID(...))) so non-canonical spellings of the SAME id —
+        # uppercase, {braces}, a urn:uuid: prefix, or dash-less — collapse to one
+        # value. Without this, device_id's UNIQUE key would treat each spelling as
+        # a distinct account, so a re-POST in a different form would create a
+        # duplicate row instead of idempotently recovering the existing one.
+        # Enforcing UUID format also keeps the account-creation key space narrow —
+        # a bare CharField would let an attacker spam arbitrary strings.
         try:
-            uuid.UUID(value)
+            canonical = uuid.UUID(value)
         except (ValueError, AttributeError, TypeError) as exc:
             raise serializers.ValidationError("device_id must be a valid UUID.") from exc
-        return value
+        return str(canonical)
 
 
 class AccountSerializer(serializers.ModelSerializer):

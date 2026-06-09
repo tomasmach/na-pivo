@@ -182,6 +182,29 @@ def test_register_invalid_device_id_returns_400(client):
     assert Account.objects.count() == 0
 
 
+@pytest.mark.django_db
+def test_register_canonicalizes_device_id(client):
+    """Non-canonical spellings of one UUID resolve to a SINGLE account.
+
+    Regression guard for the idempotency bug where validate_device_id returned
+    the raw input instead of str(uuid.UUID(...)): an uppercase (or braced / urn:
+    / dash-less) device_id was stored verbatim, so re-POSTing the canonical form
+    of the same id missed the UNIQUE row and created a duplicate account.
+    """
+    uppercase = _DEVICE_ID.upper()
+
+    first = client.post("/v1/account", data={"device_id": uppercase}, format="json")
+    assert first.status_code == status.HTTP_201_CREATED
+    # Stored/echoed in canonical lowercase form, NOT the uppercase input.
+    assert first.json()["device_id"] == _DEVICE_ID
+
+    # Re-POST the canonical form: same logical id → recovered, not duplicated.
+    second = client.post("/v1/account", data={"device_id": _DEVICE_ID}, format="json")
+    assert second.status_code == status.HTTP_200_OK
+    assert second.json()["id"] == first.json()["id"]
+    assert Account.objects.count() == 1
+
+
 # ---------------------------------------------------------------------------
 # last_seen_at is touched on re-registration
 # ---------------------------------------------------------------------------
