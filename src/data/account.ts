@@ -12,7 +12,10 @@
  *    anchor that survives app updates (until reinstall / new phone). It is an
  *    identifier, not a secret.
  *  - `token` is the SERVER-issued secret returned by POST /v1/account. It is the
- *    credential future authenticated calls will use.
+ *    credential future authenticated calls will use. Because it is a bearer
+ *    secret it is persisted in the device secure store (Keychain on iOS,
+ *    Keystore-backed EncryptedSharedPreferences on Android) — never in plaintext
+ *    AsyncStorage — via expo-secure-store.
  *
  * Registration is once-per-install: once we have a cached account whose deviceId
  * matches this device, ensureAccount() returns it WITHOUT a network call.
@@ -26,6 +29,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 
 export interface AccountSession {
   /** Stable client-generated device identifier (UUID v4). */
@@ -36,6 +40,10 @@ export interface AccountSession {
   token: string;
 }
 
+// The non-secret device anchor lives in AsyncStorage; the account blob — which
+// holds the SERVER-ISSUED BEARER TOKEN — lives in expo-secure-store (Keychain on
+// iOS, Keystore-backed EncryptedSharedPreferences on Android) so the credential
+// is never written to disk in cleartext.
 const DEVICE_ID_KEY = 'na-pivo-device-id';
 const ACCOUNT_KEY = 'na-pivo-account';
 const REQUEST_TIMEOUT_MS = 8000;
@@ -129,7 +137,7 @@ export async function getOrCreateDeviceId(): Promise<string> {
 
 async function readCachedAccount(): Promise<CachedAccount | null> {
   try {
-    const raw = await AsyncStorage.getItem(ACCOUNT_KEY);
+    const raw = await SecureStore.getItemAsync(ACCOUNT_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<CachedAccount>;
     if (parsed?.deviceId && parsed?.accountId && parsed?.token) {
@@ -140,16 +148,17 @@ async function readCachedAccount(): Promise<CachedAccount | null> {
       };
     }
   } catch {
-    // ignore corrupt cache
+    // Corrupt cache, or the secure store being unavailable (e.g. web): the
+    // caller simply re-registers and idempotently recovers the same account.
   }
   return null;
 }
 
 async function writeCachedAccount(account: CachedAccount): Promise<void> {
   try {
-    await AsyncStorage.setItem(ACCOUNT_KEY, JSON.stringify(account));
+    await SecureStore.setItemAsync(ACCOUNT_KEY, JSON.stringify(account));
   } catch {
-    // best effort
+    // best effort — never throw if the secure store is unavailable.
   }
 }
 
@@ -157,7 +166,7 @@ async function writeCachedAccount(account: CachedAccount): Promise<void> {
  *  e.g. after a future authenticated call returns 401. */
 export async function clearCachedAccount(): Promise<void> {
   try {
-    await AsyncStorage.removeItem(ACCOUNT_KEY);
+    await SecureStore.deleteItemAsync(ACCOUNT_KEY);
   } catch {
     // best effort
   }
