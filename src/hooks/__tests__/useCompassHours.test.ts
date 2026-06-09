@@ -35,6 +35,10 @@ jest.mock('@/data/hoursClient', () => ({
   fetchPubHours: jest.fn(),
 }));
 
+jest.mock('@/data/pubReportsClient', () => ({
+  reportPubIssue: jest.fn(async () => true),
+}));
+
 jest.mock('@/compass/useDevicePosition', () => ({
   useDevicePosition: jest.fn(() => ({
     position: { lat: 50.08, lng: 14.42, accuracyMeters: 8 },
@@ -136,6 +140,7 @@ describe('useCompass — opening hours enrichment', () => {
       maxDistanceKm: null,
       hapticEnabled: true,
       soundEnabled: false,
+      hideClosedPubs: true,
       surpriseSeed: 17,
     });
     (findNearestPub as jest.Mock).mockReturnValue(PUB);

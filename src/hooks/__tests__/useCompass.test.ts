@@ -17,6 +17,10 @@ jest.mock('@/data/pubs', () => ({
   fetchPubsNear: jest.fn(async () => undefined),
 }));
 
+jest.mock('@/data/pubReportsClient', () => ({
+  reportPubIssue: jest.fn(async () => true),
+}));
+
 jest.mock('@/compass/useDevicePosition', () => ({
   useDevicePosition: jest.fn(() => ({
     position: {
@@ -124,6 +128,7 @@ describe('useCompass', () => {
       maxDistanceKm: null,
       hapticEnabled: true,
       soundEnabled: false,
+      hideClosedPubs: true,
       surpriseSeed: 17,
     });
     (findNearestPub as jest.Mock).mockReturnValue(pub);
@@ -173,6 +178,7 @@ describe('useCompass', () => {
       maxDistanceKm: null,
       hapticEnabled: true,
       soundEnabled: false,
+      hideClosedPubs: true,
       surpriseSeed: 17,
     });
     (findNearestPub as jest.Mock).mockReturnValue(nearbyPub);
@@ -229,6 +235,7 @@ describe('useCompass', () => {
       maxDistanceKm: null,
       hapticEnabled: true,
       soundEnabled: false,
+      hideClosedPubs: true,
       surpriseSeed: 17,
     });
     (findNearestPub as jest.Mock).mockReturnValue(nearestPub);

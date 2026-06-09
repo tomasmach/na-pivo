@@ -22,8 +22,10 @@ import React from 'react';
 import { findNearestPub, findRandomPubInRadius, type Pub } from '@/data/pubs';
 import { useDevicePosition } from '@/compass/useDevicePosition';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { usePubStore } from '@/stores/pubStore';
 import { fetchPubHours } from '@/data/hoursClient';
 import type { PubHoursResult } from '@/data/hoursClient';
+import { reportPubIssue } from '@/data/pubReportsClient';
 import { useCompass } from '../useCompass';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -41,6 +43,10 @@ jest.mock('@/data/pubs', () => ({
 
 jest.mock('@/data/hoursClient', () => ({
   fetchPubHours: jest.fn(),
+}));
+
+jest.mock('@/data/pubReportsClient', () => ({
+  reportPubIssue: jest.fn(async () => true),
 }));
 
 jest.mock('@/compass/useDevicePosition', () => ({
@@ -179,6 +185,11 @@ describe('useCompass — hours-aware selection (Skrýt zavřené hospody)', () =
       soundEnabled: false,
       hideClosedPubs: true,
       surpriseSeed: 17,
+    });
+    usePubStore.setState({
+      revealedPub: null,
+      reportedPubIds: [],
+      isDataLoaded: false,
     });
     (findRandomPubInRadius as jest.Mock).mockReturnValue(OPEN);
   });
@@ -390,5 +401,44 @@ describe('useCompass — hours-aware selection (Skrýt zavřené hospody)', () =
     );
     expect(sawEmptyAfterRetry).toBe(true);
     expect(hook.result.pub?.id).toBe(OPEN.id);
+  });
+
+  it('persistent reported pubs are excluded from selection', async () => {
+    usePubStore.setState({ reportedPubIds: [OPEN.id] });
+    wireNearestWalk([OPEN, THIRD]);
+    wireHours({
+      [OPEN.id]: hours({ isOpenNow: true }),
+      [THIRD.id]: hours({ isOpenNow: true }),
+    });
+
+    const hook = renderCompassHook();
+    await flush();
+
+    expect(hook.result.pub?.id).toBe(THIRD.id);
+    const firstCall = (findNearestPub as jest.Mock).mock.calls[0]?.[0];
+    expect(firstCall?.excludeIds).toContain(OPEN.id);
+  });
+
+  it('reportCurrentPub hides the current pub locally and syncs the report', async () => {
+    wireNearestWalk([OPEN, THIRD]);
+    wireHours({
+      [OPEN.id]: hours({ isOpenNow: true }),
+      [THIRD.id]: hours({ isOpenNow: true }),
+    });
+
+    const hook = renderCompassHook();
+    await flush();
+    expect(hook.result.pub?.id).toBe(OPEN.id);
+
+    let synced = false;
+    await act(async () => {
+      synced = await hook.result.reportCurrentPub('not_pub');
+    });
+    await flush();
+
+    expect(synced).toBe(true);
+    expect(usePubStore.getState().reportedPubIds).toContain(OPEN.id);
+    expect(reportPubIssue).toHaveBeenCalledWith(OPEN, 'not_pub');
+    expect(hook.result.pub?.id).toBe(THIRD.id);
   });
 });

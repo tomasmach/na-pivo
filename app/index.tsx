@@ -13,6 +13,7 @@ import {
   Pressable,
   StyleSheet,
   Linking,
+  Alert,
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,6 +25,7 @@ import {
 
 import { useCompass } from '@/hooks/useCompass';
 import type { HoursStatus } from '@/data/pubs';
+import type { PubReportReason } from '@/data/pubReportsClient';
 import { usePubStore } from '@/stores/pubStore';
 import { shortestRotationTarget } from '@/compass/rotation';
 import { openPubInMaps } from '@/utils/maps';
@@ -41,6 +43,7 @@ import {
   ExternalLinkIcon,
   RefreshCwIcon,
   SettingsIcon,
+  FlagIcon,
 } from '@/components/shared/IconGlyph';
 
 import { Colors } from '@/theme/colors';
@@ -271,6 +274,7 @@ function HiddenPubPill({ onReveal }: HiddenPubPillProps) {
 interface RevealedPubPillProps {
   pubName: string;
   onOpenMaps: () => void;
+  onReport: () => void;
   isOpenNow: boolean | null;
   hoursStatus?: HoursStatus;
   nextChange?: string | null;
@@ -279,6 +283,7 @@ interface RevealedPubPillProps {
 function RevealedPubPill({
   pubName,
   onOpenMaps,
+  onReport,
   isOpenNow,
   hoursStatus,
   nextChange,
@@ -299,40 +304,48 @@ function RevealedPubPill({
     : cs.a11y.pubPillRevealed(pubName);
 
   return (
-    <Pressable
-      onPress={onOpenMaps}
-      hitSlop={8}
-      style={({ pressed }) => [
-        styles.pubPill,
-        styles.pubPillRevealed,
-        amberGlow(14),
-        pressed && { opacity: 0.85 },
-      ]}
-      accessibilityLabel={accessibilityLabel}
-      accessibilityRole="button"
-    >
-      {/* Top row: pub name */}
-      <View style={styles.pubPillRow}>
-        <BeerIcon size={18} color={Colors.amber} />
-        <Text style={styles.pubName} numberOfLines={1}>
-          {pubName}
-        </Text>
-      </View>
+    <View style={[styles.pubPill, styles.pubPillRevealed, amberGlow(14)]}>
+      <Pressable
+        onPress={onOpenMaps}
+        hitSlop={8}
+        style={({ pressed }) => [styles.pubPillTapArea, pressed && { opacity: 0.85 }]}
+        accessibilityLabel={accessibilityLabel}
+        accessibilityRole="button"
+      >
+        {/* Top row: pub name */}
+        <View style={styles.pubPillRow}>
+          <BeerIcon size={18} color={Colors.amber} />
+          <Text style={styles.pubName} numberOfLines={1}>
+            {pubName}
+          </Text>
+        </View>
 
-      {/* Open status chip — its own row so the long unknown-hours label can
-          never squeeze the maps-hint row below it on narrow screens. The chip
-          renders nothing while the lookup is in flight, so this row collapses. */}
-      <OpenStatusChip isOpenNow={isOpenNow} status={hoursStatus} nextChange={nextChange} />
+        {/* Open status chip — its own row so the long unknown-hours label can
+            never squeeze the maps-hint row below it on narrow screens. The chip
+            renders nothing while the lookup is in flight, so this row collapses. */}
+        <OpenStatusChip isOpenNow={isOpenNow} status={hoursStatus} nextChange={nextChange} />
 
-      {/* Bottom row: open in maps CTA */}
-      <View style={styles.pubPillHintRow}>
-        <MapPinIcon size={14} color={Colors.amber} />
-        <Text style={styles.pubPillMapsHint} numberOfLines={1}>
-          {cs.compass.openInMaps}
-        </Text>
-        <ExternalLinkIcon size={12} color={Colors.amber} />
-      </View>
-    </Pressable>
+        {/* Bottom row: open in maps CTA */}
+        <View style={styles.pubPillHintRow}>
+          <MapPinIcon size={14} color={Colors.amber} />
+          <Text style={styles.pubPillMapsHint} numberOfLines={1}>
+            {cs.compass.openInMaps}
+          </Text>
+          <ExternalLinkIcon size={12} color={Colors.amber} />
+        </View>
+      </Pressable>
+
+      <Pressable
+        onPress={onReport}
+        hitSlop={10}
+        style={({ pressed }) => [styles.reportButton, pressed && { opacity: 0.75 }]}
+        accessibilityLabel={cs.a11y.reportPubButton}
+        accessibilityRole="button"
+      >
+        <FlagIcon size={14} color={Colors.mutedText} />
+        <Text style={styles.reportButtonText}>{cs.compass.reportProblem}</Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -476,6 +489,7 @@ export default function CompassScreen() {
     setMode,
     reroll,
     skip,
+    reportCurrentPub,
     retrySearch,
     arrived,
     dismissArrival,
@@ -540,6 +554,31 @@ export default function CompassScreen() {
   const handleOpenMaps = useCallback(() => {
     if (pub) openPubInMaps(pub);
   }, [pub]);
+
+  const handleReportReason = useCallback((reason: PubReportReason) => {
+    reportCurrentPub(reason).catch(() => undefined);
+  }, [reportCurrentPub]);
+
+  const handleReport = useCallback(() => {
+    if (!pub) return;
+    Alert.alert(
+      cs.compass.reportTitle,
+      cs.compass.reportBody(pub.name),
+      [
+        { text: cs.common.cancel, style: 'cancel' },
+        {
+          text: cs.compass.reportClosed,
+          style: 'destructive',
+          onPress: () => handleReportReason('closed'),
+        },
+        {
+          text: cs.compass.reportNotPub,
+          style: 'destructive',
+          onPress: () => handleReportReason('not_pub'),
+        },
+      ],
+    );
+  }, [handleReportReason, pub]);
 
   // ── State A: permission not granted ──────────────────────────────────────
   if (permissionState === 'denied' || permissionState === 'undetermined') {
@@ -615,6 +654,7 @@ export default function CompassScreen() {
           <RevealedPubPill
             pubName={pub.name}
             onOpenMaps={handleOpenMaps}
+            onReport={handleReport}
             isOpenNow={pub.isOpenNow ?? null}
             hoursStatus={pub.hoursStatus}
             nextChange={pub.nextChange}
@@ -775,8 +815,8 @@ const styles = StyleSheet.create({
   },
   pubPill: {
     borderRadius: Radius.card,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
     gap: 8,
     alignItems: 'center',
     justifyContent: 'center',
@@ -794,12 +834,15 @@ const styles = StyleSheet.create({
   pubPillRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    alignSelf: 'stretch',
+    justifyContent: 'center',
     gap: 10,
     height: 38,
   },
   pubPillHintRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
   },
 
@@ -828,11 +871,32 @@ const styles = StyleSheet.create({
     color: Colors.foam,
     flex: 1,
   },
+  pubPillTapArea: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    gap: 8,
+  },
   pubPillMapsHint: {
     fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.amber,
     flex: 1,
+  },
+  reportButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 32,
+    paddingHorizontal: 12,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    alignSelf: 'stretch',
+  },
+  reportButtonText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 12,
+    color: Colors.mutedText,
   },
 
   // ── Mode toggle ──
