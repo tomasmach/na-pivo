@@ -1,6 +1,6 @@
 # Zásady ochrany osobních údajů – Na pivo
 
-*Poslední aktualizace: 8. června 2026*
+*Poslední aktualizace: 9. června 2026*
 
 ## Kdo jsme
 
@@ -20,8 +20,11 @@ Když v aplikaci vyhledáváte hospodu podle názvu, odešle se zadaný text (a 
 ### Otevírací doba
 Když je vybraná hospoda zobrazena, aplikace pošle její název a polohu (zeměpisné souřadnice) na náš vlastní server, který k danému místu dohledá otevírací dobu a vrátí ji zpět. Odesílá se pouze údaj o vybrané hospodě, nikoli o vás ani o vaší poloze. Tato funkce je nepovinná – pokud server není dostupný nebo dotaz selže, aplikace funguje dál bez zobrazení otevírací doby. Více v sekci „Služby třetích stran".
 
+### Anonymní identifikátor zařízení
+Aplikace při prvním spuštění vytvoří anonymní náhodný identifikátor zařízení (náhodné UUID) a odešle ho na náš vlastní server, aby každému zařízení patřil dočasný anonymní účet. Tento identifikátor neobsahuje žádné osobní údaje – nevzniká z e-mailu, jména, telefonního čísla ani z hardwarového identifikátoru telefonu – a slouží výhradně k odlišení jednotlivých zařízení. Registrace je nepovinná funkce; pokud server není dostupný nebo dotaz selže, aplikace funguje dál bez vytvořeného účtu. Server v odpovědi vrátí náhodný přístupový token, který aplikace ukládá pouze lokálně na zařízení a nikam jinam ho neodesílá; slouží k ověření zařízení u budoucích funkcí. Více v sekci „Služby třetích stran".
+
 ### Co NEsbíráme
-- Nemáme žádné uživatelské účty ani registraci.
+- Nepoužíváme přihlašování ani osobní uživatelské účty (anonymní identifikátor zařízení neobsahuje žádné osobní údaje a nevyžaduje registraci).
 - Nepoužíváme žádné analytické nástroje, nástroje pro hlášení pádů ani reklamní SDK.
 - Nesbíráme e-mailovou adresu, jméno ani žádné kontaktní údaje.
 - Nesledujeme vás napříč aplikacemi ani webovými stránkami.
@@ -33,6 +36,7 @@ Zpracovávaná data slouží výhradně k fungování aplikace:
 - **Poloha a pohybové senzory** – zobrazení směrové šipky k vybrané hospodě.
 - **Vyhledávací dotazy** – získání návrhů míst z Mapy.cz.
 - **Název a poloha vybrané hospody** – dohledání otevírací doby na našem serveru.
+- **Anonymní identifikátor zařízení** – odlišení jednotlivých zařízení a vytvoření dočasného anonymního účtu na našem serveru.
 
 Data nepoužíváme k profilování, cílení reklamy ani k žádnému dalšímu účelu.
 
@@ -42,11 +46,14 @@ Data nepoužíváme k profilování, cílení reklamy ani k žádnému dalšímu
 Pro vyhledávání hospod podle názvu odesíláme váš textový dotaz a přibližnou oblast mapy na API služby Mapy.cz. Tato služba zpracovává dotaz podle vlastních zásad ochrany osobních údajů. Více informací: [https://o.seznam.cz/ochrana-udaju/](https://o.seznam.cz/ochrana-udaju/)
 
 ### Server pro otevírací dobu (provozovatel aplikace)
-Pro zobrazení otevírací doby vybrané hospody pošleme její název a polohu na náš vlastní server, který otevírací dobu dohledá z veřejně dostupných zdrojů a vrátí ji aplikaci. Server přijímá pouze údaje o vybraném místě – neodesíláme vaši polohu, identifikátor zařízení ani jiné osobní údaje a dotazy nespojujeme s konkrétním uživatelem. Jde o nepovinnou funkci; když není dostupná, aplikace funguje dál bez otevírací doby.
+Pro zobrazení otevírací doby vybrané hospody pošleme její název a polohu na náš vlastní server, který otevírací dobu dohledá z veřejně dostupných zdrojů a vrátí ji aplikaci. Server přijímá pouze údaje o vybraném místě – neodesíláme vaši polohu ani jiné osobní údaje a dotaz na otevírací dobu nespojujeme s vaším identifikátorem zařízení. Jde o nepovinnou funkci; když není dostupná, aplikace funguje dál bez otevírací doby.
+
+### Anonymní účet zařízení (provozovatel aplikace)
+Při prvním spuštění aplikace odešle na náš vlastní server anonymní náhodný identifikátor zařízení (náhodné UUID) a server pro toto zařízení vytvoří dočasný anonymní účet. Identifikátor neobsahuje žádné osobní údaje a slouží jen k odlišení zařízení; nepoužíváme ho ke sledování ani k profilování. Jde o nepovinnou funkci – pokud server není dostupný, aplikace funguje dál bez vytvořeného účtu.
 
 ## Doba uchování dat
 
-Protože aplikace neukládá žádná osobní data na našich serverech, není z naší strany co uchovávat ani mazat. Poloha a data senzorů existují pouze dočasně v paměti zařízení po dobu používání aplikace. Služby třetích stran (Mapy.cz) uchovávají případná data podle vlastních zásad.
+Na našich serverech neukládáme žádné osobní údaje. Uchováváme pouze anonymní identifikátor zařízení a k němu vázaný dočasný účet, abychom dokázali odlišit jednotlivá zařízení; tento údaj neobsahuje žádné osobní informace. Poloha a data senzorů existují pouze dočasně v paměti zařízení po dobu používání aplikace. Služby třetích stran (Mapy.cz) uchovávají případná data podle vlastních zásad.
 
 ## Vaše práva
 
