@@ -1,0 +1,180 @@
+/**
+ * Opening-hours client — talks to the app's own backend (NOT Mapy.cz) to look
+ * up pub opening hours scraped from Firmy.cz.
+ *
+ * Design principle: opening hours are a NON-BLOCKING enrichment. If
+ * EXPO_PUBLIC_BACKEND_URL is unset/empty, or the request fails/times out, this
+ * module resolves to an empty (or partial) Map and NEVER throws — the compass
+ * app then behaves exactly as it does without a backend, just without hours.
+ *
+ * Privacy note: calling the backend sends the pub name + coordinates to OUR
+ * server, which is new data egress beyond Mapy.cz. This is disclosed in
+ * cs.privacy.body and PRIVACY_POLICY.md.
+ */
+
+import type { HoursStatus, Pub } from './pubs';
+
+export interface PubHoursResult {
+  openingHours: string | null;
+  isOpenNow: boolean | null;
+  nextChange: string | null;
+  status: HoursStatus;
+}
+
+/** Shape of a single result entry in the backend's response. */
+interface BackendResult {
+  key?: string;
+  name?: string;
+  opening_hours?: string | null;
+  isOpenNow?: boolean | null;
+  nextChange?: string | null;
+  status?: string;
+  source?: string | null;
+  confidence?: number | null;
+}
+
+interface BackendResponse {
+  results?: BackendResult[];
+}
+
+/** Client-side hard timeout for a single hours request. */
+const REQUEST_TIMEOUT_MS = 8000;
+
+/** Backend's accepted status values; anything else is normalized to 'unknown'. */
+const VALID_BACKEND_STATUSES: ReadonlySet<string> = new Set([
+  'ok',
+  'unknown',
+  'pending',
+  'error',
+]);
+
+/**
+ * Read the backend base URL at call time (still statically referenced as
+ * process.env.EXPO_PUBLIC_BACKEND_URL so Expo/Metro inlines it at build).
+ * Empty/unset → feature dormant.
+ */
+function getBackendUrl(): string {
+  return (process.env.EXPO_PUBLIC_BACKEND_URL ?? '').trim();
+}
+
+/** Strip a single trailing slash so we can safely append the path. */
+function trimTrailingSlash(url: string): string {
+  return url.endsWith('/') ? url.slice(0, -1) : url;
+}
+
+function normalizeStatus(raw: string | undefined): HoursStatus {
+  if (raw && VALID_BACKEND_STATUSES.has(raw)) {
+    return raw as HoursStatus;
+  }
+  return 'unknown';
+}
+
+function toResult(entry: BackendResult | undefined): PubHoursResult {
+  if (!entry) {
+    return {
+      openingHours: null,
+      isOpenNow: null,
+      nextChange: null,
+      status: 'unknown',
+    };
+  }
+  return {
+    openingHours: entry.opening_hours ?? null,
+    isOpenNow: typeof entry.isOpenNow === 'boolean' ? entry.isOpenNow : null,
+    nextChange: entry.nextChange ?? null,
+    status: normalizeStatus(entry.status),
+  };
+}
+
+/**
+ * Look up opening hours for the given pubs.
+ *
+ * Maps the backend's response (returned IN INPUT ORDER) back onto each pub's
+ * `id` BY INDEX — the backend key is a geohash, not our pub id, so we must not
+ * trust it for matching.
+ *
+ * @param pubs   The pubs to look up. Typically a single currently-targeted pub.
+ * @param signal Optional caller AbortSignal (e.g. cancel on pub change/unmount).
+ *               Layered with an internal 8s timeout.
+ * @returns      A Map keyed by pub.id. Empty when the feature is dormant or the
+ *               request fails; partial when only some entries resolve. Never throws.
+ */
+export async function fetchPubHours(
+  pubs: Pub[],
+  signal?: AbortSignal,
+): Promise<Map<string, PubHoursResult>> {
+  const out = new Map<string, PubHoursResult>();
+
+  // Nothing to do, or already cancelled.
+  if (pubs.length === 0 || signal?.aborted) {
+    return out;
+  }
+
+  const baseUrl = getBackendUrl();
+  // Feature dormant — no backend configured.
+  if (!baseUrl) {
+    return out;
+  }
+
+  // sync_budget tells the backend how many lazy fills to perform synchronously.
+  // For the common single-pub case use 1; otherwise cap at the backend's max (5).
+  const syncBudget = pubs.length <= 1 ? 1 : Math.min(pubs.length, 5);
+
+  const body = JSON.stringify({
+    pubs: pubs.map((p) => ({
+      name: p.name,
+      lat: p.lat,
+      lng: p.lng,
+      city: p.city,
+    })),
+    sync_budget: syncBudget,
+  });
+
+  // Layer an internal timeout with the caller's signal. If either aborts, the
+  // fetch aborts.
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
+
+  const onExternalAbort = () => timeoutController.abort();
+  if (signal) {
+    if (signal.aborted) {
+      timeoutController.abort();
+    } else {
+      signal.addEventListener('abort', onExternalAbort);
+    }
+  }
+
+  try {
+    const resp = await fetch(`${trimTrailingSlash(baseUrl)}/v1/pub-hours`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      signal: timeoutController.signal,
+    });
+
+    if (!resp.ok) {
+      // Non-blocking: swallow HTTP errors, return what we have (empty).
+      return out;
+    }
+
+    const data = (await resp.json()) as BackendResponse;
+    const results = Array.isArray(data?.results) ? data.results : [];
+
+    // Map results back to pub.id BY INDEX. Only fill entries the backend returned.
+    const n = Math.min(results.length, pubs.length);
+    for (let i = 0; i < n; i++) {
+      out.set(pubs[i].id, toResult(results[i]));
+    }
+
+    return out;
+  } catch {
+    // Any failure (network, abort, timeout, malformed JSON) → return whatever
+    // we have so far. Never throw; hours are a non-blocking enrichment.
+    return out;
+  } finally {
+    clearTimeout(timeoutId);
+    if (signal) {
+      signal.removeEventListener('abort', onExternalAbort);
+    }
+  }
+}

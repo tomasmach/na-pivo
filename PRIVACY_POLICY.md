@@ -1,6 +1,6 @@
 # Zásady ochrany osobních údajů – Na pivo
 
-*Poslední aktualizace: 28. května 2026*
+*Poslední aktualizace: 8. června 2026*
 
 ## Kdo jsme
 
@@ -17,6 +17,9 @@ Aplikace čte data z pohybových senzorů (kompas/akcelerometr), aby správně o
 ### Vyhledávací dotazy
 Když v aplikaci vyhledáváte hospodu podle názvu, odešle se zadaný text (a přibližná oblast mapy) na službu **Mapy.cz**, která vrátí návrhy míst. Bez tohoto dotazu by vyhledávání nefungovalo. Více v sekci „Služby třetích stran".
 
+### Otevírací doba
+Když je vybraná hospoda zobrazena, aplikace pošle její název a polohu (zeměpisné souřadnice) na náš vlastní server, který k danému místu dohledá otevírací dobu a vrátí ji zpět. Odesílá se pouze údaj o vybrané hospodě, nikoli o vás ani o vaší poloze. Tato funkce je nepovinná – pokud server není dostupný nebo dotaz selže, aplikace funguje dál bez zobrazení otevírací doby. Více v sekci „Služby třetích stran".
+
 ### Co NEsbíráme
 - Nemáme žádné uživatelské účty ani registraci.
 - Nepoužíváme žádné analytické nástroje, nástroje pro hlášení pádů ani reklamní SDK.
@@ -29,6 +32,7 @@ Když v aplikaci vyhledáváte hospodu podle názvu, odešle se zadaný text (a 
 Zpracovávaná data slouží výhradně k fungování aplikace:
 - **Poloha a pohybové senzory** – zobrazení směrové šipky k vybrané hospodě.
 - **Vyhledávací dotazy** – získání návrhů míst z Mapy.cz.
+- **Název a poloha vybrané hospody** – dohledání otevírací doby na našem serveru.
 
 Data nepoužíváme k profilování, cílení reklamy ani k žádnému dalšímu účelu.
 
@@ -36,6 +40,9 @@ Data nepoužíváme k profilování, cílení reklamy ani k žádnému dalšímu
 
 ### Mapy.cz (Seznam.cz, a.s.)
 Pro vyhledávání hospod podle názvu odesíláme váš textový dotaz a přibližnou oblast mapy na API služby Mapy.cz. Tato služba zpracovává dotaz podle vlastních zásad ochrany osobních údajů. Více informací: [https://o.seznam.cz/ochrana-udaju/](https://o.seznam.cz/ochrana-udaju/)
+
+### Server pro otevírací dobu (provozovatel aplikace)
+Pro zobrazení otevírací doby vybrané hospody pošleme její název a polohu na náš vlastní server, který otevírací dobu dohledá z veřejně dostupných zdrojů a vrátí ji aplikaci. Server přijímá pouze údaje o vybraném místě – neodesíláme vaši polohu, identifikátor zařízení ani jiné osobní údaje a dotazy nespojujeme s konkrétním uživatelem. Jde o nepovinnou funkci; když není dostupná, aplikace funguje dál bez otevírací doby.
 
 ## Doba uchování dat
 

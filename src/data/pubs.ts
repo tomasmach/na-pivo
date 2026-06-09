@@ -2,6 +2,23 @@ import KDBush from "kdbush";
 import * as geokdbush from "geokdbush";
 import { searchPubsNear } from "./mapyClient";
 
+/**
+ * Lifecycle of an opening-hours lookup for a single pub.
+ *
+ * - 'ok'      — hours were resolved (openingHours / isOpenNow may still be null
+ *               if the source had no schedule, but the lookup itself succeeded).
+ * - 'unknown' — the backend looked but found no usable hours.
+ * - 'pending' — the backend accepted the request but is still resolving it
+ *               (lazy fill in progress); the client may retry later.
+ * - 'error'   — the backend reported a failure for this pub.
+ * - 'loading' — client-side state while the request is in flight.
+ *
+ * Opening hours are a non-blocking enrichment: when the backend is unset or a
+ * request fails, hours fields simply stay undefined and the app behaves exactly
+ * as it does without a backend.
+ */
+export type HoursStatus = 'ok' | 'unknown' | 'pending' | 'error' | 'loading';
+
 export type Pub = {
   id: string;
   name: string;
@@ -9,6 +26,14 @@ export type Pub = {
   lng: number;
   address?: string;
   city?: string;
+  /** Human-readable opening hours (e.g. "Po–Pá 11:00–23:00"), or null if none. */
+  openingHours?: string | null;
+  /** Whether the pub is open at the moment the lookup resolved, or null/unknown. */
+  isOpenNow?: boolean | null;
+  /** ISO-8601 timestamp of the next open/close transition, or null if unknown. */
+  nextChange?: string | null;
+  /** Lifecycle of the opening-hours lookup for this pub. */
+  hoursStatus?: HoursStatus;
 };
 
 let _pubs: Pub[] = [];
