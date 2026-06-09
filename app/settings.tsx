@@ -38,6 +38,7 @@ import { Radius, Spacing } from '@/theme/layout';
 import { amberGlow, softDrop } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { getAppVersionLabel } from '@/utils/appVersion';
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -279,6 +280,7 @@ export default function SettingsScreen() {
   const setHideClosedPubs = useSettingsStore((s) => s.setHideClosedPubs);
 
   const sliderIndex = positionIndexForKm(maxDistanceKm);
+  const appVersionLabel = getAppVersionLabel();
 
   const handleSliderSnap = useCallback(
     (index: number) => {
@@ -394,7 +396,7 @@ export default function SettingsScreen() {
           <AboutRow
             icon={<InfoIcon size={18} color={Colors.foamMuted} />}
             title={cs.settings.about.title}
-            rightLabel={cs.settings.about.version}
+            rightLabel={appVersionLabel || undefined}
             onPress={() => {
               // TODO: navigate to about screen when built
             }}

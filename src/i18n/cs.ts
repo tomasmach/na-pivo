@@ -79,7 +79,6 @@ export const cs = {
     },
     about: {
       title: 'O appce',
-      version: 'v1.0',
     },
     privacy: 'Soukromí',
     footer: 'Bez reklam · Bez placení',
