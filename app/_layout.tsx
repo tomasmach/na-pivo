@@ -8,6 +8,7 @@ import { useEffect } from 'react';
 
 import { fontAssets } from '@/theme/fonts';
 import { Colors } from '@/theme/colors';
+import { useAccountStore } from '@/stores/accountStore';
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   // ignore — splash may already be hidden
@@ -21,6 +22,12 @@ export default function RootLayout() {
       SplashScreen.hideAsync().catch(() => undefined);
     }
   }, [fontsLoaded, fontError]);
+
+  useEffect(() => {
+    // Fire-and-forget: ensure an anonymous device account exists. Non-blocking —
+    // failure leaves the app fully functional and retries on the next launch.
+    void useAccountStore.getState().initAccount();
+  }, []);
 
   if (!fontsLoaded && !fontError) {
     return null;

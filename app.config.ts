@@ -139,6 +139,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         },
       ],
       'expo-splash-screen',
+      'expo-secure-store',
     ],
     experiments: {
       typedRoutes: true,
