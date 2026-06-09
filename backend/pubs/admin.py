@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Account, EnrichTask, PubHours
+from .models import Account, EnrichTask, PubHours, PubReport
 
 
 @admin.register(PubHours)
@@ -28,4 +28,13 @@ class AccountAdmin(admin.ModelAdmin):
     # Only the SHA-256 token_hash is stored (never the raw bearer secret), so it
     # is safe to surface read-only — it cannot be reversed into a usable token.
     readonly_fields = ("public_id", "token_hash", "created_at", "last_seen_at")
+    ordering = ("-created_at",)
+
+
+@admin.register(PubReport)
+class PubReportAdmin(admin.ModelAdmin):
+    list_display = ("name", "reason", "active", "cache_key", "external_id", "account", "created_at")
+    list_filter = ("reason", "active")
+    search_fields = ("name", "cache_key", "external_id", "city", "address")
+    readonly_fields = ("cache_key", "created_at", "updated_at")
     ordering = ("-created_at",)

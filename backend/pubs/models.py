@@ -3,6 +3,7 @@ Data models for the na-pivo pub-hours enrichment service.
 
 PubHours  — the cached result of enriching a pub with opening hours from Firmy.cz.
 EnrichTask — a queued enrichment job for pubs that missed the sync_budget.
+PubReport — user reports for places that should no longer be shown as pubs.
 """
 
 import hashlib
@@ -237,3 +238,65 @@ class Account(models.Model):
     @property
     def is_anonymous(self) -> bool:
         return False
+
+
+class PubReport(models.Model):
+    """
+    A user report that a Mapy.cz result should be hidden from the compass.
+
+    Reports are keyed by the same geohash-8 cell used by PubHours so the mobile
+    app can filter future Mapy.cz search results without depending solely on a
+    provider-specific id. The original Mapy id is also stored when available for
+    stricter matching and auditability.
+    """
+
+    class Reason(models.TextChoices):
+        CLOSED = "closed", "Closed / no longer operating"
+        NOT_PUB = "not_pub", "Not a pub"
+
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="pub_reports",
+    )
+    cache_key = models.CharField(
+        max_length=12,
+        db_index=True,
+        help_text="Geohash-8 of the reported place coordinates.",
+    )
+    external_id = models.CharField(
+        max_length=128,
+        blank=True,
+        null=True,
+        db_index=True,
+        help_text="Client-side provider id, e.g. Mapy.cz item id.",
+    )
+    name = models.CharField(max_length=255)
+    lat = models.FloatField()
+    lng = models.FloatField()
+    city = models.CharField(max_length=128, blank=True, null=True)
+    address = models.CharField(max_length=255, blank=True, null=True)
+    reason = models.CharField(max_length=16, choices=Reason.choices, db_index=True)
+    active = models.BooleanField(
+        default=True,
+        db_index=True,
+        help_text="Inactive reports are retained for audit but no longer hide the place.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Pub Report"
+        verbose_name_plural = "Pub Reports"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "cache_key", "reason"],
+                name="unique_pub_report_per_account_key_reason",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"PubReport({self.name} [{self.cache_key}] — {self.reason})"

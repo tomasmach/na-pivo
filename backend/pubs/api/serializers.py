@@ -33,7 +33,7 @@ import uuid
 
 from rest_framework import serializers
 
-from pubs.models import Account
+from pubs.models import Account, PubReport
 
 # ---------------------------------------------------------------------------
 # Request serializers
@@ -78,6 +78,44 @@ class PubHoursRequestSerializer(serializers.Serializer):
         return value
 
 
+class PubReportRequestSerializer(PubInputSerializer):
+    """Request body for POST /v1/pub-reports."""
+
+    reason = serializers.ChoiceField(choices=PubReport.Reason.choices)
+    external_id = serializers.CharField(
+        max_length=128,
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        trim_whitespace=True,
+    )
+    address = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        trim_whitespace=True,
+    )
+
+
+class PubReportBlockedQuerySerializer(serializers.Serializer):
+    """Query params for GET /v1/pub-reports/blocked."""
+
+    lat = serializers.FloatField()
+    lng = serializers.FloatField()
+    radius_km = serializers.FloatField(required=False, min_value=0.1, max_value=100.0)
+
+    def validate_lat(self, value: float) -> float:
+        if not (-90.0 <= value <= 90.0):
+            raise serializers.ValidationError("Latitude must be between -90 and 90.")
+        return value
+
+    def validate_lng(self, value: float) -> float:
+        if not (-180.0 <= value <= 180.0):
+            raise serializers.ValidationError("Longitude must be between -180 and 180.")
+        return value
+
+
 # ---------------------------------------------------------------------------
 # Response serializers
 # ---------------------------------------------------------------------------
@@ -100,6 +138,41 @@ class PubHoursResponseSerializer(serializers.Serializer):
     """Top-level response body for POST /v1/pub-hours."""
 
     results = PubHoursResultSerializer(many=True)
+
+
+class PubReportSerializer(serializers.ModelSerializer):
+    """Response body for a saved pub report."""
+
+    class Meta:
+        model = PubReport
+        fields = [
+            "id",
+            "cache_key",
+            "external_id",
+            "name",
+            "lat",
+            "lng",
+            "city",
+            "address",
+            "reason",
+            "active",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
+class BlockedPubSerializer(serializers.Serializer):
+    """A compact entry the mobile app can use to filter Mapy.cz results."""
+
+    cache_key = serializers.CharField()
+    external_id = serializers.CharField(allow_null=True)
+    reason = serializers.CharField()
+
+
+class BlockedPubsResponseSerializer(serializers.Serializer):
+    """Top-level response body for GET /v1/pub-reports/blocked."""
+
+    blocked = BlockedPubSerializer(many=True)
 
 
 # ---------------------------------------------------------------------------
