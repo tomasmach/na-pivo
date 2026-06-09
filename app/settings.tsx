@@ -18,6 +18,7 @@ import {
   Pressable,
   StyleSheet,
   LayoutChangeEvent,
+  Linking,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -48,7 +49,9 @@ import {
   BeerOffIcon,
   InfoIcon,
   ShieldIcon,
+  HeartIcon,
 } from '@/components/shared/IconGlyph';
+import { InstagramIcon, LinkedinIcon } from '@/components/shared/BrandIcon';
 
 // ---------------------------------------------------------------------------
 // Discrete slider positions
@@ -263,6 +266,35 @@ function AboutRow({ icon, title, rightLabel, onPress, borderTop }: AboutRowProps
 }
 
 // ---------------------------------------------------------------------------
+// Social button (creator links)
+// ---------------------------------------------------------------------------
+
+interface SocialButtonProps {
+  icon: React.ReactNode;
+  label: string;
+  url: string;
+}
+
+function SocialButton({ icon, label, url }: SocialButtonProps) {
+  const handlePress = useCallback(() => {
+    void Linking.openURL(url);
+  }, [url]);
+
+  return (
+    <Pressable
+      onPress={handlePress}
+      style={({ pressed }) => [styles.socialButton, pressed && styles.rowPressed]}
+      accessibilityRole="link"
+      accessibilityLabel={label}
+      hitSlop={4}
+    >
+      {icon}
+      <Text style={styles.socialButtonLabel}>{label}</Text>
+    </Pressable>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main screen
 // ---------------------------------------------------------------------------
 
@@ -407,6 +439,32 @@ export default function SettingsScreen() {
             onPress={() => router.push('/privacy')}
             borderTop
           />
+        </View>
+
+        {/* ── Creator card ── */}
+        <View style={styles.card}>
+          <View style={styles.creatorHeaderRow}>
+            <Text style={styles.creatorName}>{cs.settings.creator.name}</Text>
+            <View style={styles.creatorLabel}>
+              <HeartIcon size={14} color={Colors.amber} />
+              <Text style={styles.cardSectionHeaderText}>
+                {cs.settings.creator.header}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.socialRow}>
+            <SocialButton
+              icon={<InstagramIcon size={18} color={Colors.foam} />}
+              label={cs.settings.creator.instagram}
+              url={cs.settings.creator.instagramUrl}
+            />
+            <SocialButton
+              icon={<LinkedinIcon size={18} color={Colors.foam} />}
+              label={cs.settings.creator.linkedin}
+              url={cs.settings.creator.linkedinUrl}
+            />
+          </View>
         </View>
 
         {/* ── Footer ── */}
@@ -664,6 +722,45 @@ const styles = StyleSheet.create({
   },
   rowPressed: {
     opacity: 0.65,
+  },
+
+  // ── Creator card ──
+  creatorHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  creatorName: {
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 24,
+    color: Colors.foam,
+  },
+  creatorLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  socialRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  socialButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout3,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  socialButtonLabel: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 14,
+    color: Colors.foam,
   },
 
   // ── Footer ──
