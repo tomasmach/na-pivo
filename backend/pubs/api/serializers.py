@@ -29,7 +29,11 @@ Response body:
 
 from __future__ import annotations
 
+import uuid
+
 from rest_framework import serializers
+
+from pubs.models import Account
 
 # ---------------------------------------------------------------------------
 # Request serializers
@@ -96,3 +100,46 @@ class PubHoursResponseSerializer(serializers.Serializer):
     """Top-level response body for POST /v1/pub-hours."""
 
     results = PubHoursResultSerializer(many=True)
+
+
+# ---------------------------------------------------------------------------
+# Account serializers
+# ---------------------------------------------------------------------------
+
+
+class AccountRegisterSerializer(serializers.Serializer):
+    """Request body for POST /v1/account."""
+
+    device_id = serializers.CharField(max_length=64, min_length=1, trim_whitespace=True)
+
+    def validate_device_id(self, value: str) -> str:
+        # The client always generates a UUID v4. Enforcing UUID format keeps the
+        # account-creation key space narrow — a bare CharField would let an
+        # attacker spam arbitrary strings — and matches the documented contract.
+        try:
+            uuid.UUID(value)
+        except (ValueError, AttributeError, TypeError) as exc:
+            raise serializers.ValidationError("device_id must be a valid UUID.") from exc
+        return value
+
+
+class AccountSerializer(serializers.ModelSerializer):
+    """Account fields returned by POST /v1/account. The raw ``token`` is NOT a
+    model field (only its hash is stored), so the view injects it into the
+    response separately."""
+
+    id = serializers.UUIDField(source="public_id", read_only=True)
+
+    class Meta:
+        model = Account
+        fields = ["id", "device_id", "created_at"]
+
+
+class AccountMeSerializer(serializers.ModelSerializer):
+    """Account view returned by GET /v1/account/me — NEVER exposes the token."""
+
+    id = serializers.UUIDField(source="public_id", read_only=True)
+
+    class Meta:
+        model = Account
+        fields = ["id", "device_id", "created_at", "last_seen_at"]

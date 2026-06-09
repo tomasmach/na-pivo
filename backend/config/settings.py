@@ -134,6 +134,14 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # ---------------------------------------------------------------------------
 # Django REST Framework
 # ---------------------------------------------------------------------------
+
+# Per-IP rate limit for the unauthenticated account-registration endpoint
+# (POST /v1/account). It blunts scripted mass account creation while leaving the
+# legitimate once-per-install call untouched. Format: DRF throttle rate string.
+ACCOUNT_REGISTER_THROTTLE_RATE: str = os.environ.get(
+    "ACCOUNT_REGISTER_THROTTLE_RATE", "120/min"
+)
+
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
@@ -145,6 +153,16 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.AllowAny",
     ],
+    # Scoped throttle rates. Only AccountView opts into the "account" scope (via
+    # throttle_classes = [ScopedRateThrottle]); pub-hours is intentionally left
+    # unthrottled here (it has its own Firmy.cz rate limiting downstream).
+    # NOTE: DRF throttling uses the Django cache. The default LocMemCache is
+    # per-process, so under multiple gunicorn workers the effective limit is
+    # rate × workers — configure a shared cache (Redis/Memcached) for an exact
+    # global limit in production.
+    "DEFAULT_THROTTLE_RATES": {
+        "account": ACCOUNT_REGISTER_THROTTLE_RATE,
+    },
 }
 
 # ---------------------------------------------------------------------------
