@@ -123,69 +123,53 @@ Every install gets an anonymous, device-bound account automatically — there is
 
 ---
 
-## Deploy to Hetzner VPS
+## Deploy (Docker Compose)
+
+Production runs as **Docker Compose** at `/opt/na-pivo` on a Hetzner VPS (`api.na-pivo.cz`), behind a shared **Caddy** reverse proxy that terminates TLS. Three services (see `docker-compose.yml`): `napivo-web` (gunicorn), `worker` (background opening-hours refresh — replaces the old cron), and `db` (PostgreSQL 17). `docker-entrypoint.sh` applies migrations and collects static files on every start, so a deploy is just *pull + rebuild*.
 
 ### Prerequisites
 
-- Hetzner VPS (CX22 or better), Ubuntu 24.04
-- Domain / subdomain pointing to the VPS IP
+- VPS (CX22 or better), Ubuntu 24.04, with Docker Engine + the Compose plugin
+- A Caddy reverse proxy on an external `caddy` Docker network routing your hostname to the `napivo-web` service
+- DNS for your hostname → the VPS IP
 - A residential proxy subscription (e.g. Bright Data, Oxylabs) — see legal note above
 
-### Steps
+### First-time setup
 
 ```bash
-# On the VPS
-apt update && apt install -y python3.14 python3.14-venv postgresql nginx certbot python3-certbot-nginx
+# As root on the VPS. Use a read-only deploy key dedicated to THIS repo (GitHub
+# allows a given deploy key on only one repository, so each repo needs its own).
+ssh-keygen -t ed25519 -f ~/.ssh/id_napivo -N ""
+cat >> ~/.ssh/config <<'CFG'
+Host github-napivo
+  HostName github.com
+  User git
+  IdentityFile ~/.ssh/id_napivo
+  IdentitiesOnly yes
+CFG
+# Add ~/.ssh/id_napivo.pub as a read-only Deploy key on the GitHub repo, then:
+git clone git@github-napivo:tomasmach/na-pivo-backend.git /opt/na-pivo
+cd /opt/na-pivo
 
-# Create a postgres database
-sudo -u postgres psql -c "CREATE USER napivo WITH PASSWORD 'strong-pass';"
-sudo -u postgres psql -c "CREATE DATABASE napivo OWNER napivo;"
-
-# Clone repo, create venv
-git clone ... /srv/na-pivo/backend
-cd /srv/na-pivo/backend
-pip install uv
-uv sync --extra prod
-
-# Configure environment
-cp .env.example .env
-# Edit .env: SECRET_KEY, DEBUG=False, ALLOWED_HOSTS=yourdomain.com,
-#            DATABASE_URL=postgres://napivo:strong-pass@localhost/napivo,
+# Configure environment (NEVER committed — .env is gitignored). See .env.production.example.
+cp .env.production.example .env
+# Edit .env: SECRET_KEY, DEBUG=False, ENABLE_DJANGO_ADMIN=False,
+#            ALLOWED_HOSTS=api.yourdomain.com,
+#            DATABASE_URL=postgres://napivo:strong-pass@db:5432/napivo,
 #            FIRMY_PROXY_URL=http://user:pass@proxy:port
 
-# Migrate & collect static
-uv run python manage.py migrate
-uv run python manage.py collectstatic --no-input
-
-# Gunicorn systemd service
-# Create /etc/systemd/system/na-pivo.service (see below), then:
-systemctl enable --now na-pivo
-
-# Nginx reverse-proxy + TLS
-certbot --nginx -d yourdomain.com
+# Build & start. The entrypoint runs migrate + collectstatic, then gunicorn on :8000.
+docker compose up -d --build
 ```
 
-**Systemd unit (`/etc/systemd/system/na-pivo.service`):**
+### Routine deploys
 
-```ini
-[Unit]
-Description=na-pivo backend
-After=network.target postgresql.service
-
-[Service]
-User=www-data
-WorkingDirectory=/srv/na-pivo/backend
-EnvironmentFile=/srv/na-pivo/backend/.env
-ExecStart=/srv/na-pivo/backend/.venv/bin/gunicorn config.wsgi:application \
-    --workers 2 --bind 127.0.0.1:8000
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
+```bash
+cd /opt/na-pivo
+git pull
+docker compose up -d --build      # entrypoint re-applies migrations automatically
+docker compose ps                 # confirm napivo-web is healthy
+docker compose logs --tail=30 napivo-web
 ```
 
-**Cron for background enrichment** (add to `crontab -e` as www-data):
-
-```cron
-*/5 * * * * cd /srv/na-pivo/backend && .venv/bin/python manage.py refresh_hours --limit 50
-```
+> **Migrations run inside the container on start** (`docker-entrypoint.sh`), and `set -e` means a failed migration stops `napivo-web` before gunicorn — check `docker compose logs napivo-web` if it won't go healthy. Tests run on SQLite, which does **not** create PostgreSQL `varchar_pattern_ops` `_like` indexes, so verify any migration against Postgres before deploying.
