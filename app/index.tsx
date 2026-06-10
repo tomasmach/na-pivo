@@ -47,7 +47,7 @@ import {
 } from '@/components/shared/IconGlyph';
 
 import { Colors } from '@/theme/colors';
-import { Fonts } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, CompassSize } from '@/theme/layout';
 import { amberGlow, amberGlowStrong } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
@@ -69,8 +69,12 @@ function PermissionScreen({ permissionState, requestPermission }: PermissionScre
           <BeerIcon size={56} color={Colors.amber} />
         </View>
 
-        <Text style={styles.permTitle}>{cs.permissions.title}</Text>
-        <Text style={styles.permBody}>{cs.permissions.body}</Text>
+        <Text style={styles.permTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+          {cs.permissions.title}
+        </Text>
+        <Text style={styles.permBody} maxFontSizeMultiplier={FontScaleCap.body}>
+          {cs.permissions.body}
+        </Text>
 
         <GlowButton
           label={cs.permissions.cta}
@@ -109,7 +113,9 @@ function LoadingScreen({ rotation }: LoadingScreenProps) {
       <View style={styles.loadingCompassWrap}>
         <CompassContainer rotation={rotation} size={CompassSize} />
       </View>
-      <Text style={styles.loadingText}>Hledáme hospodu…</Text>
+      <Text style={styles.loadingText} maxFontSizeMultiplier={FontScaleCap.body}>
+        Hledáme hospodu…
+      </Text>
     </View>
   );
 }
@@ -140,11 +146,17 @@ function EmptyScreen({ onSettings, onRetry, searchFailed }: EmptyScreenProps) {
         </View>
 
         <View style={styles.emptyHeadlineWrap}>
-          <Text style={styles.emptyHeadlineFoam}>{headlineLine1}</Text>
-          <Text style={styles.emptyHeadlineAmber}>{headlineLine2}</Text>
+          <Text style={styles.emptyHeadlineFoam} maxFontSizeMultiplier={FontScaleCap.display}>
+            {headlineLine1}
+          </Text>
+          <Text style={styles.emptyHeadlineAmber} maxFontSizeMultiplier={FontScaleCap.display}>
+            {headlineLine2}
+          </Text>
         </View>
 
-        <Text style={styles.emptyBody}>{body}</Text>
+        <Text style={styles.emptyBody} maxFontSizeMultiplier={FontScaleCap.body}>
+          {body}
+        </Text>
       </View>
 
       {/* Bottom group — primary CTA and retry pinned to bottom */}
@@ -167,7 +179,9 @@ function EmptyScreen({ onSettings, onRetry, searchFailed }: EmptyScreenProps) {
           accessibilityRole="button"
         >
           <RefreshCwIcon size={16} color={Colors.mutedText} />
-          <Text style={styles.emptyRetryText}>{cs.empty.retry}</Text>
+          <Text style={styles.emptyRetryText} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.empty.retry}
+          </Text>
         </Pressable>
       </View>
     </View>
@@ -213,18 +227,24 @@ function getActiveCompassLayout(
   height: number,
   topInset: number,
   bottomInset: number,
+  fontScale: number,
 ): ActiveCompassLayout {
   const usableHeight = height - topInset - bottomInset;
 
-  const VERTICAL_CHROME = 430; // generous reserve for the non-compass content
+  // The chrome reserve is mostly text, which the OS multiplies by its font
+  // scale. Texts on this screen cap their growth via FontScaleCap (≤ 1.3), so
+  // the reserve grows by the same capped factor — without this, large system
+  // font sizes (Samsung goes up to ~2.0) push the bottom controls off-screen.
+  const effectiveFontScale = clamp(fontScale, 1, FontScaleCap.body);
+  const VERTICAL_CHROME = Math.round(430 * effectiveFontScale);
   const widthBudget = width - 48; // 24pt side padding on each edge
   const heightBudget = usableHeight - VERTICAL_CHROME;
 
   const compassSize = Math.round(
-    clamp(Math.min(widthBudget, heightBudget), 240, CompassSize),
+    clamp(Math.min(widthBudget, heightBudget), 200, CompassSize),
   );
 
-  const t = compassSize / CompassSize; // 0.75 .. 1
+  const t = compassSize / CompassSize; // 0.625 .. 1
 
   return {
     bottomControlsPaddingBottom: 12,
@@ -263,7 +283,9 @@ function HiddenPubPill({ onReveal }: HiddenPubPillProps) {
       {/* Bottom row: reveal hint */}
       <View style={styles.pubPillHintRow}>
         <EyeIcon size={14} color={Colors.amber} />
-        <Text style={styles.pubPillHint}>{cs.compass.hiddenPubHint}</Text>
+        <Text style={styles.pubPillHint} maxFontSizeMultiplier={FontScaleCap.body}>
+          {cs.compass.hiddenPubHint}
+        </Text>
       </View>
     </Pressable>
   );
@@ -315,7 +337,7 @@ function RevealedPubPill({
         {/* Top row: pub name */}
         <View style={styles.pubPillRow}>
           <BeerIcon size={18} color={Colors.amber} />
-          <Text style={styles.pubName} numberOfLines={1}>
+          <Text style={styles.pubName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
             {pubName}
           </Text>
         </View>
@@ -328,7 +350,11 @@ function RevealedPubPill({
         {/* Bottom row: open in maps CTA */}
         <View style={styles.pubPillHintRow}>
           <MapPinIcon size={14} color={Colors.amber} />
-          <Text style={styles.pubPillMapsHint} numberOfLines={1}>
+          <Text
+            style={styles.pubPillMapsHint}
+            numberOfLines={1}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
             {cs.compass.openInMaps}
           </Text>
           <ExternalLinkIcon size={12} color={Colors.amber} />
@@ -343,7 +369,9 @@ function RevealedPubPill({
         accessibilityRole="button"
       >
         <FlagIcon size={14} color={Colors.mutedText} />
-        <Text style={styles.reportButtonText}>{cs.compass.reportProblem}</Text>
+        <Text style={styles.reportButtonText} maxFontSizeMultiplier={FontScaleCap.body}>
+          {cs.compass.reportProblem}
+        </Text>
       </Pressable>
     </View>
   );
@@ -376,6 +404,8 @@ function ModeToggle({ mode, onNearest, onSurprise }: ModeToggleProps) {
             styles.modeSegmentText,
             mode === 'nearest' ? styles.modeSegmentTextActive : styles.modeSegmentTextInactive,
           ]}
+          numberOfLines={1}
+          maxFontSizeMultiplier={FontScaleCap.heading}
         >
           {cs.compass.modeNearest}
         </Text>
@@ -397,6 +427,8 @@ function ModeToggle({ mode, onNearest, onSurprise }: ModeToggleProps) {
             styles.modeSegmentText,
             mode === 'surprise' ? styles.modeSegmentTextActive : styles.modeSegmentTextInactive,
           ]}
+          numberOfLines={1}
+          maxFontSizeMultiplier={FontScaleCap.heading}
         >
           {cs.compass.modeSurprise}
         </Text>
@@ -450,6 +482,7 @@ function DistanceDisplay({ distanceFormatted, mode, layout }: DistanceDisplayPro
               lineHeight: layout.distanceNumberLineHeight,
             },
           ]}
+          maxFontSizeMultiplier={FontScaleCap.display}
         >
           {numberPart}
         </Text>
@@ -462,12 +495,15 @@ function DistanceDisplay({ distanceFormatted, mode, layout }: DistanceDisplayPro
                 lineHeight: layout.distanceUnitLineHeight,
               },
             ]}
+            maxFontSizeMultiplier={FontScaleCap.display}
           >
             {unitPart}
           </Text>
         )}
       </View>
-      <Text style={styles.distanceCaption}>{caption}</Text>
+      <Text style={styles.distanceCaption} maxFontSizeMultiplier={FontScaleCap.body}>
+        {caption}
+      </Text>
     </View>
   );
 }
@@ -477,7 +513,7 @@ function DistanceDisplay({ distanceFormatted, mode, layout }: DistanceDisplayPro
 export default function CompassScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight, fontScale } = useWindowDimensions();
 
   const {
     arrowRotation,
@@ -505,6 +541,7 @@ export default function CompassScreen() {
     screenHeight,
     insets.top,
     Math.max(insets.bottom, 16),
+    fontScale,
   );
 
   // Reanimated shared value for compass rotation
@@ -618,7 +655,9 @@ export default function CompassScreen() {
       {/* Calibration hint (optional, subtle) */}
       {headingAccuracy !== null && headingAccuracy > 20 && (
         <View style={styles.calibrationRow}>
-          <Text style={styles.calibrationText}>{cs.compass.calibrationHint}</Text>
+          <Text style={styles.calibrationText} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.compass.calibrationHint}
+          </Text>
         </View>
       )}
 
@@ -640,7 +679,7 @@ export default function CompassScreen() {
 
       {/* No magnetometer note */}
       {hasMagnetometer === false && (
-        <Text style={styles.noMagText}>
+        <Text style={styles.noMagText} maxFontSizeMultiplier={FontScaleCap.body}>
           Tvůj telefon nemá kompas, šipka se nebude otáčet.
         </Text>
       )}
@@ -922,7 +961,10 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: Radius.pill,
     paddingVertical: 10,
-    paddingHorizontal: 22,
+    // Keep horizontal padding small: the segments already split the pill 50/50
+    // via flex, and a larger value leaves "Překvap mě" too little room at big
+    // system font sizes, wrapping it onto two lines.
+    paddingHorizontal: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },

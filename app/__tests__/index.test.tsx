@@ -75,6 +75,7 @@ jest.mock('@/theme/fonts', () => ({
       bold: 'ui-bold',
     },
   },
+  FontScaleCap: { display: 1.1, heading: 1.2, body: 1.3 },
 }));
 
 jest.mock('@/hooks/useCompass', () => ({
@@ -159,6 +160,37 @@ describe('CompassScreen', () => {
     });
 
     expect(reveal).toHaveBeenCalledTimes(1);
+  });
+
+  it('shrinks the compass at large system font sizes so the bottom controls stay on-screen', () => {
+    const { useWindowDimensions } = require('react-native') as {
+      useWindowDimensions: jest.Mock;
+    };
+    const { CompassContainer } = require('@/components/compass/CompassContainer') as {
+      CompassContainer: jest.Mock;
+    };
+    useCompass.mockReturnValue(baseCompassState());
+
+    // Baseline: default mock dimensions (390×844, fontScale 1) → full design size.
+    act(() => {
+      TestRenderer.create(React.createElement(CompassScreen));
+    });
+    const baselineSize = CompassContainer.mock.calls.at(-1)?.[0]?.size;
+    expect(baselineSize).toBe(320);
+
+    // Samsung-style accessibility font scale: the chrome reserve grows, so the
+    // compass must give up vertical space instead of pushing controls off-screen.
+    useWindowDimensions.mockReturnValueOnce({
+      width: 390,
+      height: 844,
+      scale: 3,
+      fontScale: 2,
+    });
+    act(() => {
+      TestRenderer.create(React.createElement(CompassScreen));
+    });
+    const scaledSize = CompassContainer.mock.calls.at(-1)?.[0]?.size;
+    expect(scaledSize).toBeLessThan(baselineSize);
   });
 
   it('opens the report reason sheet from the revealed pub pill', () => {

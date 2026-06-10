@@ -17,6 +17,7 @@ jest.mock('@/theme/fonts', () => ({
       bold: 'ui-bold',
     },
   },
+  FontScaleCap: { display: 1.1, heading: 1.2, body: 1.3 },
 }));
 
 const TestRenderer = require('react-test-renderer');

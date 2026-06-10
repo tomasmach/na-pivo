@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Colors } from '@/theme/colors';
-import { Fonts } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { cs } from '@/i18n/cs';
 
 /**
@@ -89,7 +89,11 @@ export const OpenStatusChip = memo(function OpenStatusChip({
 
   return (
     <View style={styles.chip} accessibilityRole="text" accessibilityLabel={label}>
-      <Text style={[styles.label, { color: textColor }]} numberOfLines={1}>
+      <Text
+        style={[styles.label, { color: textColor }]}
+        numberOfLines={1}
+        maxFontSizeMultiplier={FontScaleCap.body}
+      >
         {label}
       </Text>
     </View>

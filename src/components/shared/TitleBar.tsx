@@ -2,7 +2,7 @@ import React, { memo } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Colors } from '@/theme/colors';
-import { Fonts } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea } from '@/theme/layout';
 import { BeerIcon } from './IconGlyph';
 import { cs } from '@/i18n/cs';
@@ -40,7 +40,9 @@ export const TitleBar = memo(function TitleBar({
       {/* Centered logo: beer icon + title */}
       <View style={styles.logoRow}>
         <BeerIcon size={20} color={Colors.amber} />
-        <Text style={styles.titleText}>{cs.compass.headerTitle}</Text>
+        <Text style={styles.titleText} maxFontSizeMultiplier={FontScaleCap.heading}>
+          {cs.compass.headerTitle}
+        </Text>
       </View>
 
       {/* Subtle gear in the top-right corner (absolute so the title stays centered) */}

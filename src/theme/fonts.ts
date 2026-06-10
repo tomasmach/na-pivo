@@ -27,6 +27,21 @@ export const Fonts = {
 } as const;
 
 /**
+ * Caps for the OS font-scale multiplier (`maxFontSizeMultiplier`). The layout
+ * is designed around fixed type sizes, so unbounded accessibility scaling
+ * (Samsung allows up to ~2.0) overflows screens. Body text scales the most;
+ * display numerals are already huge and barely need to grow.
+ */
+export const FontScaleCap = {
+  /** Large decorative type: distance numerals, big headlines. */
+  display: 1.1,
+  /** Headings, button labels, pub names. */
+  heading: 1.2,
+  /** Regular UI text, captions, hints. */
+  body: 1.3,
+} as const;
+
+/**
  * The full map passed to `useFonts`. Keep this in sync with the .ttf files
  * sitting under `assets/fonts/`.
  */

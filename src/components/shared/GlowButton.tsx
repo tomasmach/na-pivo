@@ -1,7 +1,7 @@
 import React, { memo, ReactNode } from 'react';
 import { Pressable, Text, View, StyleSheet, ViewStyle } from 'react-native';
 import { Colors } from '@/theme/colors';
-import { Fonts } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
 import { amberGlow, amberGlowStrong } from '@/theme/shadows';
 
@@ -60,7 +60,11 @@ export const GlowButton = memo(function GlowButton({
         accessibilityRole="button"
       >
         {icon != null && <View style={styles.iconSlot}>{icon}</View>}
-        <Text style={[styles.label, isPrimary ? styles.primaryText : styles.secondaryText]}>
+        <Text
+          style={[styles.label, isPrimary ? styles.primaryText : styles.secondaryText]}
+          numberOfLines={1}
+          maxFontSizeMultiplier={FontScaleCap.heading}
+        >
           {label}
         </Text>
       </Pressable>
