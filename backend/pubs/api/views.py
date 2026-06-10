@@ -6,6 +6,7 @@ Endpoints
 POST /v1/pub-hours   → PubHoursView
 POST /v1/pub-reports → PubReportView
 GET  /v1/pub-reports/blocked → BlockedPubReportsView
+GET  /v1/release-notes → ReleaseNotesView
 GET  /v1/health      → HealthView
 """
 
@@ -27,6 +28,7 @@ from pubs.models import (
     EnrichTask,
     PubHours,
     PubReport,
+    ReleaseNote,
     generate_account_token,
     hash_account_token,
 )
@@ -43,6 +45,7 @@ from .serializers import (
     PubReportBlockedQuerySerializer,
     PubReportRequestSerializer,
     PubReportSerializer,
+    ReleaseNoteSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -210,6 +213,42 @@ class BlockedPubReportsView(APIView):
             BlockedPubsResponseSerializer({"blocked": blocked}).data,
             status=status.HTTP_200_OK,
         )
+
+
+class ReleaseNotesView(APIView):
+    """
+    GET /v1/release-notes?version=<app-version>
+
+    Return the published "what's new" note for the given app version, or 404 if
+    none exists. Unauthenticated by design — the mobile app calls this on launch
+    right after an update, with no account required. The app shows the note once
+    and remembers it locally, so a 404 (no note for this version) is an expected,
+    cheap response, not an error.
+    """
+
+    authentication_classes: list = []
+    permission_classes = [AllowAny]
+
+    def get(self, request: Request) -> Response:
+        version = (request.query_params.get("version") or "").strip()
+        if not version:
+            return Response(
+                {"detail": "Query param 'version' is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        note = (
+            ReleaseNote.objects.filter(version=version, is_published=True)
+            .prefetch_related("items")
+            .first()
+        )
+        if note is None:
+            return Response(
+                {"detail": "No release note for this version."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        return Response(ReleaseNoteSerializer(note).data, status=status.HTTP_200_OK)
 
 
 class AccountView(APIView):

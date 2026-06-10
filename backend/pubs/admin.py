@@ -1,6 +1,13 @@
 from django.contrib import admin
 
-from .models import Account, EnrichTask, PubHours, PubReport
+from .models import (
+    Account,
+    EnrichTask,
+    PubHours,
+    PubReport,
+    ReleaseNote,
+    ReleaseNoteItem,
+)
 
 
 @admin.register(PubHours)
@@ -38,3 +45,20 @@ class PubReportAdmin(admin.ModelAdmin):
     search_fields = ("name", "cache_key", "external_id", "city", "address")
     readonly_fields = ("cache_key", "created_at", "updated_at")
     ordering = ("-created_at",)
+
+
+class ReleaseNoteItemInline(admin.TabularInline):
+    model = ReleaseNoteItem
+    extra = 1
+    fields = ("order", "icon", "text")
+    ordering = ("order",)
+
+
+@admin.register(ReleaseNote)
+class ReleaseNoteAdmin(admin.ModelAdmin):
+    list_display = ("version", "title", "is_published", "published_at", "updated_at")
+    list_filter = ("is_published",)
+    search_fields = ("version", "title")
+    readonly_fields = ("published_at", "created_at", "updated_at")
+    ordering = ("-created_at",)
+    inlines = [ReleaseNoteItemInline]

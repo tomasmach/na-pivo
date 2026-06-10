@@ -33,7 +33,7 @@ import uuid
 
 from rest_framework import serializers
 
-from pubs.models import Account, PubReport
+from pubs.models import Account, PubReport, ReleaseNote
 
 # ---------------------------------------------------------------------------
 # Request serializers
@@ -222,3 +222,29 @@ class AccountMeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Account
         fields = ["id", "device_id", "created_at", "last_seen_at"]
+
+
+# ---------------------------------------------------------------------------
+# Release-note ("what's new") serializers
+# ---------------------------------------------------------------------------
+
+
+class ReleaseNoteItemSerializer(serializers.Serializer):
+    """A single highlight bullet in the response body."""
+
+    icon = serializers.CharField(allow_blank=True)
+    text = serializers.CharField()
+
+
+class ReleaseNoteSerializer(serializers.ModelSerializer):
+    """Response body for GET /v1/release-notes.
+
+    ``items`` reads the related ReleaseNoteItem rows in their ``order`` (the
+    related manager honours ReleaseNoteItem.Meta.ordering)."""
+
+    items = ReleaseNoteItemSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ReleaseNote
+        fields = ["version", "title", "items"]
+        read_only_fields = fields

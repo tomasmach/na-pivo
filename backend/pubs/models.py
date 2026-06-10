@@ -4,6 +4,7 @@ Data models for the na-pivo pub-hours enrichment service.
 PubHours  — the cached result of enriching a pub with opening hours from Firmy.cz.
 EnrichTask — a queued enrichment job for pubs that missed the sync_budget.
 PubReport — user reports for places that should no longer be shown as pubs.
+ReleaseNote — a "what's new" entry shown once after the app updates to a version.
 """
 
 import hashlib
@@ -11,6 +12,7 @@ import secrets
 import uuid
 
 from django.db import models
+from django.utils import timezone
 
 
 class PubHours(models.Model):
@@ -300,3 +302,90 @@ class PubReport(models.Model):
 
     def __str__(self) -> str:
         return f"PubReport({self.name} [{self.cache_key}] — {self.reason})"
+
+
+class ReleaseNote(models.Model):
+    """
+    A user-facing "what's new" entry for one shipped app version.
+
+    When the mobile app launches after an update, it fetches the note whose
+    ``version`` matches the version it just updated to (the value shipped in
+    app.config.ts) and shows it once in a popup. Content is authored in the
+    Django admin: a ``title`` plus an ordered list of ``ReleaseNoteItem``
+    highlights. A note is invisible to the app until ``is_published`` is set, so
+    a release can be drafted ahead of time and flipped on when the build ships.
+    """
+
+    version = models.CharField(
+        max_length=32,
+        unique=True,
+        db_index=True,
+        help_text="App version this note describes, e.g. '1.2.0'. "
+        "Must match the version shipped in the app's app.config.ts.",
+    )
+    title = models.CharField(
+        max_length=120,
+        default="Co je nového",
+        help_text="Headline shown at the top of the popup.",
+    )
+    is_published = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Only published notes are returned to the app. Leave off to draft.",
+    )
+    published_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Set automatically the first time the note is published.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Release Note"
+        verbose_name_plural = "Release Notes"
+        ordering = ["-created_at"]
+
+    def save(self, *args, **kwargs):
+        # Stamp the publish date once, the first time the note goes live. Kept
+        # idempotent so toggling is_published off and on again preserves the
+        # original date.
+        if self.is_published and self.published_at is None:
+            self.published_at = timezone.now()
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        state = "published" if self.is_published else "draft"
+        return f"ReleaseNote({self.version} — {state})"
+
+
+class ReleaseNoteItem(models.Model):
+    """A single highlight bullet inside a ReleaseNote, shown as one row."""
+
+    release_note = models.ForeignKey(
+        ReleaseNote,
+        on_delete=models.CASCADE,
+        related_name="items",
+    )
+    icon = models.CharField(
+        max_length=8,
+        blank=True,
+        default="",
+        help_text="Optional emoji shown before the text, e.g. '🍺'.",
+    )
+    text = models.CharField(
+        max_length=280,
+        help_text="One change in plain Czech, e.g. 'Přidali jsme otevírací dobu hospod.'",
+    )
+    order = models.PositiveIntegerField(
+        default=0,
+        help_text="Lower numbers appear first.",
+    )
+
+    class Meta:
+        verbose_name = "Release Note Item"
+        verbose_name_plural = "Release Note Items"
+        ordering = ["order", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.icon} {self.text}".strip()
