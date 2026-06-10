@@ -92,6 +92,7 @@ function Toggle({ value, onToggle, accessibilityLabel }: ToggleProps) {
 
   const handlePress = useCallback(() => {
     onToggle();
+    // eslint-disable-next-line react-hooks/immutability -- Reanimated shared values are mutable boxes; assigning .value is their API
     offset.value = withSpring(value ? 2 : 24, {
       mass: 0.6,
       damping: 14,

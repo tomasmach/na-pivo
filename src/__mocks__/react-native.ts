@@ -5,10 +5,17 @@
 
 import React from 'react';
 
-const createComponent =
-  (name: string) =>
-  ({ children, ...props }: { children?: React.ReactNode; [key: string]: unknown }) =>
-    React.createElement(name, props, children);
+const createComponent = (name: string) => {
+  const Component = ({
+    children,
+    ...props
+  }: {
+    children?: React.ReactNode;
+    [key: string]: unknown;
+  }) => React.createElement(name, props, children);
+  Component.displayName = name;
+  return Component;
+};
 
 export const View = createComponent('View');
 export const Text = createComponent('Text');

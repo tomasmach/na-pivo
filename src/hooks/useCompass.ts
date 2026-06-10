@@ -153,6 +153,10 @@ export function useCompass(): UseCompassResult {
   const [currentPub, setCurrentPub] = useState<Pub | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [, bumpTargetSelectionRevision] = useState(0);
+  // State mirror of `lastTargetPosRef !== null` so render code (isLoading)
+  // never reads the ref during render. Set by the selection effect, cleared by
+  // retrySearch — always in lockstep with the ref.
+  const [hasSelectedTarget, setHasSelectedTarget] = useState(false);
 
   // — Excluded pubs (skip + auto-skip-closed) —
   // Two id sets that grow while the user stands in one place:
@@ -226,6 +230,7 @@ export function useCompass(): UseCompassResult {
 
     if (modeChanged || maxKmChanged || seedChanged || positionMoved || excludeChanged || reportedChanged) {
       lastTargetPosRef.current = currentPos;
+      setHasSelectedTarget(true);
       lastModeRef.current = mode;
       lastMaxKmRef.current = maxDistanceKm;
       lastSeedRef.current = surpriseSeed;
@@ -289,9 +294,14 @@ export function useCompass(): UseCompassResult {
 
   // Mirror the hours map into a ref so the fetch effect can read the latest
   // contents (to skip already-resolved ids) without listing it as a dependency,
-  // which would otherwise retrigger the effect every time hours resolve.
+  // which would otherwise retrigger the effect every time hours resolve. The
+  // mirror runs in an effect (not during render) and is declared BEFORE the
+  // fetch effect — effects run in declaration order, so the fetch effect always
+  // reads a fresh mirror.
   const hoursByIdRef = useRef(hoursById);
-  hoursByIdRef.current = hoursById;
+  useEffect(() => {
+    hoursByIdRef.current = hoursById;
+  }, [hoursById]);
 
   useEffect(() => {
     if (!currentPubId || !currentPub) return;
@@ -519,7 +529,6 @@ export function useCompass(): UseCompassResult {
   // target synchronously and locally inside the selection effect, so gating on
   // ref-vs-prop staleness would unmount the whole compass for a single frame and
   // make the screen visibly jump and re-load on every toggle.
-  const hasSelectedTarget = lastTargetPosRef.current !== null;
   const isLoading = !pubsLoaded || position === null || !hasSelectedTarget;
 
   // — Actions —
@@ -565,6 +574,7 @@ export function useCompass(): UseCompassResult {
   const retrySearch = useCallback(() => {
     forceNextSearchRef.current = true;
     lastTargetPosRef.current = null;
+    setHasSelectedTarget(false);
     lastModeRef.current = null;
     lastMaxKmRef.current = undefined;
     lastSeedRef.current = null;
