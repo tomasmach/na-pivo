@@ -14,6 +14,7 @@ import {
   StyleSheet,
   Linking,
   Alert,
+  Platform,
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,6 +22,7 @@ import { useRouter } from 'expo-router';
 import {
   useAnimatedReaction,
   useSharedValue,
+  withSpring,
 } from 'react-native-reanimated';
 
 import { useCompass } from '@/hooks/useCompass';
@@ -28,6 +30,7 @@ import type { HoursStatus } from '@/data/pubs';
 import type { PubReportReason } from '@/data/pubReportsClient';
 import { usePubStore } from '@/stores/pubStore';
 import { shortestRotationTarget } from '@/compass/rotation';
+import { isHeadingAccuracyLow } from '@/compass/headingAccuracy';
 import { openPubInMaps } from '@/utils/maps';
 
 import { CompassContainer } from '@/components/compass/CompassContainer';
@@ -51,6 +54,18 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, CompassSize } from '@/theme/layout';
 import { amberGlow, amberGlowStrong } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
+
+// Android's heading samples arrive as discrete jumps (see the rotation
+// reaction in CompassScreen); animate between them. The spring is essentially
+// critically damped (damping ≈ 2·√stiffness) so the needle settles without
+// overshooting — overshoot would read as more wobble, not less.
+const ANIMATE_ARROW = Platform.OS === 'android';
+const ARROW_SPRING_CONFIG = {
+  damping: 26,
+  stiffness: 180,
+  mass: 1,
+  overshootClamping: true,
+} as const;
 
 // ─── Permission screen ────────────────────────────────────────────────────────
 
@@ -550,8 +565,12 @@ export default function CompassScreen() {
   const hasRotationTarget = useSharedValue(false);
 
   // Keep the hot heading -> arrow path inside Reanimated instead of React
-  // state/effects. The native heading stream is already high-frequency, so the
+  // state/effects. iOS delivers a dense, pre-fused heading stream, so the
   // shared value is assigned directly instead of restarting an animation.
+  // Android's stream is sparse and quantized (raw sensors + a native ~2°
+  // deadband), so direct assignment reads as visible twitching there — a
+  // near-critically-damped spring turns those discrete jumps into continuous
+  // motion instead.
   useAnimatedReaction(
     () => arrowRotation.value,
     (target, previousTarget) => {
@@ -562,7 +581,9 @@ export default function CompassScreen() {
 
       hasRotationTarget.value = true;
       lastRotationTarget.value = nextTarget;
-      rotation.value = nextTarget;
+      rotation.value = ANIMATE_ARROW
+        ? withSpring(nextTarget, ARROW_SPRING_CONFIG)
+        : nextTarget;
     },
   );
 
@@ -653,7 +674,7 @@ export default function CompassScreen() {
       <TitleBar showGear onSettings={handleSettings} onSettingsLongPress={handleDevArrival} />
 
       {/* Calibration hint (optional, subtle) */}
-      {headingAccuracy !== null && headingAccuracy > 20 && (
+      {isHeadingAccuracyLow(headingAccuracy, Platform.OS) && (
         <View style={styles.calibrationRow}>
           <Text style={styles.calibrationText} maxFontSizeMultiplier={FontScaleCap.body}>
             {cs.compass.calibrationHint}

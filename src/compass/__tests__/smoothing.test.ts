@@ -1,4 +1,9 @@
-import { createAngleEMA } from '../smoothing';
+import {
+  createAngleEMA,
+  headingAlphaForPlatform,
+  DEFAULT_HEADING_ALPHA,
+  ANDROID_HEADING_ALPHA,
+} from '../smoothing';
 
 describe('createAngleEMA', () => {
   it('returns next on first call', () => {
@@ -64,5 +69,45 @@ describe('createAngleEMA', () => {
       expect(v).toBeGreaterThanOrEqual(0);
       expect(v).toBeLessThan(360);
     }
+  });
+});
+
+describe('headingAlphaForPlatform', () => {
+  it('keeps the responsive default alpha on iOS', () => {
+    expect(headingAlphaForPlatform('ios')).toBe(DEFAULT_HEADING_ALPHA);
+  });
+
+  it('uses a heavier smoothing alpha on Android', () => {
+    expect(headingAlphaForPlatform('android')).toBe(ANDROID_HEADING_ALPHA);
+    expect(ANDROID_HEADING_ALPHA).toBeLessThan(DEFAULT_HEADING_ALPHA);
+  });
+
+  it('falls back to the default alpha on unknown platforms', () => {
+    expect(headingAlphaForPlatform('web')).toBe(DEFAULT_HEADING_ALPHA);
+  });
+
+  it('attenuates Android-style deadband jitter well below the iOS alpha', () => {
+    // Android's native layer only emits when the azimuth moves > ~2°, so a
+    // stationary phone produces an alternating ±3° square wave around the true
+    // heading. Measure the steady-state wobble that survives each alpha.
+    const wobbleAfterSmoothing = (alpha: number): number => {
+      const ema = createAngleEMA(alpha);
+      ema(180);
+      let maxDeviation = 0;
+      for (let i = 0; i < 40; i++) {
+        const sample = i % 2 === 0 ? 183 : 177;
+        const v = ema(sample);
+        const deviation = Math.abs(((v - 180 + 540) % 360) - 180);
+        if (i >= 10) maxDeviation = Math.max(maxDeviation, deviation);
+      }
+      return maxDeviation;
+    };
+
+    const androidWobble = wobbleAfterSmoothing(ANDROID_HEADING_ALPHA);
+    const iosWobble = wobbleAfterSmoothing(DEFAULT_HEADING_ALPHA);
+
+    expect(androidWobble).toBeLessThan(iosWobble * 0.6);
+    // The surviving wobble must be small in absolute terms too (< 1.5°).
+    expect(androidWobble).toBeLessThan(1.5);
   });
 });

@@ -41,5 +41,19 @@ export function createAngleEMA(alpha: number): AngleEMAFn {
   return update;
 }
 
-/** Default alpha for compass heading smoothing. */
+/** Default alpha for compass heading smoothing (iOS). */
 export const DEFAULT_HEADING_ALPHA = 0.65;
+
+/**
+ * Heavier smoothing for Android. Its native heading stream is sparse and
+ * quantized: expo-location reads raw, unfiltered magnetometer/accelerometer
+ * values and only emits when the azimuth moves > ~2° (and ≥ 50 ms passed), so
+ * sensor noise arrives as discrete multi-degree jumps rather than the dense,
+ * pre-fused stream CoreLocation provides on iOS.
+ */
+export const ANDROID_HEADING_ALPHA = 0.3;
+
+/** Pick the heading EMA alpha for the given `Platform.OS`. */
+export function headingAlphaForPlatform(os: string): number {
+  return os === 'android' ? ANDROID_HEADING_ALPHA : DEFAULT_HEADING_ALPHA;
+}

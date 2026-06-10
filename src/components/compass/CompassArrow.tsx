@@ -8,9 +8,6 @@ import Svg, {
 } from 'react-native-svg';
 import Animated, {
   useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  cancelAnimation,
   SharedValue,
 } from 'react-native-reanimated';
 import { Colors } from '@/theme/colors';
@@ -102,22 +99,3 @@ const styles = StyleSheet.create({
     transformOrigin: 'center',
   },
 });
-
-// ── Hook ──────────────────────────────────────────────────────────────────
-
-export function useArrowRotation() {
-  const rotation = useSharedValue(0);
-
-  function setRotation(deg: number) {
-    rotation.value = withSpring(deg, {
-      damping: 18,
-      stiffness: 90,
-    });
-  }
-
-  function stopRotation() {
-    cancelAnimation(rotation);
-  }
-
-  return { rotation, setRotation, stopRotation };
-}

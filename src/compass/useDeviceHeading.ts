@@ -3,13 +3,14 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, Platform } from 'react-native';
 import * as Location from 'expo-location';
 import { useSharedValue, type SharedValue } from 'react-native-reanimated';
-import { createAngleEMA, DEFAULT_HEADING_ALPHA } from './smoothing';
+import { createAngleEMA, headingAlphaForPlatform } from './smoothing';
 
 export interface UseDeviceHeadingResult {
   smoothedHeading: SharedValue<number | null>;
+  /** iOS: degrees of possible error. Android: SensorManager constant 0–3 (smaller = worse). */
   accuracyDeg: number | null;
   hasMagnetometer: boolean;
 }
@@ -22,7 +23,7 @@ export function useDeviceHeading(): UseDeviceHeadingResult {
   const [hasMagnetometer, setHasMagnetometer] = useState(true);
 
   const subscriptionRef = useRef<Location.LocationSubscription | null>(null);
-  const emaRef = useRef(createAngleEMA(DEFAULT_HEADING_ALPHA));
+  const emaRef = useRef(createAngleEMA(headingAlphaForPlatform(Platform.OS)));
   const isMountedRef = useRef(true);
   const noHeadingCountRef = useRef(0);
   const accuracyDegRef = useRef<number | null>(null);
