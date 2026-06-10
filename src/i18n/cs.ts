@@ -103,6 +103,12 @@ export const cs = {
     attribution: 'Data o místech: Mapy.cz (Seznam.cz). Otevírací doba: samostatné vyhledávání.',
   },
 
+  whatsNew: {
+    eyebrow: 'AKTUALIZACE',
+    defaultTitle: 'Co je nového',
+    cta: 'Paráda!',
+  },
+
   privacy: {
     title: 'Soukromí',
     body: [

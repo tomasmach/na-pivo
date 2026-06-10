@@ -9,6 +9,8 @@ import { useEffect } from 'react';
 import { fontAssets } from '@/theme/fonts';
 import { Colors } from '@/theme/colors';
 import { useAccountStore } from '@/stores/accountStore';
+import { useReleaseStore } from '@/stores/releaseStore';
+import { WhatsNewModal } from '@/components/shared/WhatsNewModal';
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   // ignore — splash may already be hidden
@@ -27,6 +29,13 @@ export default function RootLayout() {
     // Fire-and-forget: ensure an anonymous device account exists. Non-blocking —
     // failure leaves the app fully functional and retries on the next launch.
     void useAccountStore.getState().initAccount();
+  }, []);
+
+  useEffect(() => {
+    // Fire-and-forget: after an app update, surface the "what's new" popup. Waits
+    // for persisted state internally and never throws — a miss just retries next
+    // launch.
+    void useReleaseStore.getState().checkForUpdate();
   }, []);
 
   if (!fontsLoaded && !fontError) {
@@ -70,6 +79,7 @@ export default function RootLayout() {
             }}
           />
         </Stack>
+        <WhatsNewModal />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
