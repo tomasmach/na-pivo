@@ -20,6 +20,8 @@ android/
 .easignore
 credentials.json
 AuthKey.p8
+google-service-account.json
+*-service-account*.json
 
 # Local environment
 .env
