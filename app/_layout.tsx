@@ -2,12 +2,14 @@ import { Stack } from 'expo-router';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
+import { AppState } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useEffect } from 'react';
 
 import { fontAssets } from '@/theme/fonts';
 import { Colors } from '@/theme/colors';
+import { flushPubReportQueue } from '@/data/pubReportQueue';
 import { useAccountStore } from '@/stores/accountStore';
 import { useReleaseStore } from '@/stores/releaseStore';
 import { WhatsNewModal } from '@/components/shared/WhatsNewModal';
@@ -36,6 +38,16 @@ export default function RootLayout() {
     // for persisted state internally and never throws — a miss just retries next
     // launch.
     void useReleaseStore.getState().checkForUpdate();
+  }, []);
+
+  useEffect(() => {
+    // Fire-and-forget: re-send pub reports whose first delivery failed. Runs on
+    // launch and whenever the app returns to the foreground; never throws.
+    void flushPubReportQueue();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void flushPubReportQueue();
+    });
+    return () => subscription.remove();
   }, []);
 
   if (!fontsLoaded && !fontError) {

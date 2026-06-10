@@ -6,9 +6,12 @@ import type { Pub } from '@/data/pubs';
 interface PubState {
   revealedPub: Pub | null;
   reportedPubIds: string[];
+  /** geohash-8 cells of reported places — survives Mapy.cz handing the same
+   *  physical place a fresh id, which the coordinate-derived ids do not. */
+  reportedCacheKeys: string[];
   isDataLoaded: boolean;
   setRevealedPub: (p: Pub | null) => void;
-  addReportedPubId: (id: string) => void;
+  addReportedPub: (id: string, cacheKey: string) => void;
   setIsDataLoaded: (v: boolean) => void;
 }
 
@@ -17,13 +20,21 @@ export const usePubStore = create<PubState>()(
     (set) => ({
       revealedPub: null,
       reportedPubIds: [],
+      reportedCacheKeys: [],
       isDataLoaded: false,
 
       setRevealedPub: (p) => set({ revealedPub: p }),
-      addReportedPubId: (id) =>
+      addReportedPub: (id, cacheKey) =>
         set((state) => {
-          if (state.reportedPubIds.includes(id)) return state;
-          return { reportedPubIds: [...state.reportedPubIds, id] };
+          const hasId = state.reportedPubIds.includes(id);
+          const hasKey = state.reportedCacheKeys.includes(cacheKey);
+          if (hasId && hasKey) return state;
+          return {
+            reportedPubIds: hasId ? state.reportedPubIds : [...state.reportedPubIds, id],
+            reportedCacheKeys: hasKey
+              ? state.reportedCacheKeys
+              : [...state.reportedCacheKeys, cacheKey],
+          };
         }),
       setIsDataLoaded: (v) => set({ isDataLoaded: v }),
     }),
@@ -33,6 +44,7 @@ export const usePubStore = create<PubState>()(
       partialize: (state) => ({
         revealedPub: state.revealedPub,
         reportedPubIds: state.reportedPubIds,
+        reportedCacheKeys: state.reportedCacheKeys,
       }),
     }
   )

@@ -205,6 +205,51 @@ describe("findRandomPubInRadius", () => {
   });
 });
 
+describe("excludeCacheKeys — reported places hidden by geohash-8 cell", () => {
+  it("findNearestPub skips a reported pub even when Mapy.cz returns it under a fresh id", () => {
+    // The user reported osm:1; a later Mapy.cz fetch returns the same physical
+    // place under a different provider id. Id-based exclusion alone would miss
+    // it and the compass would target the reported pub again — the geohash-8
+    // cell of the report must still hide it.
+    const reborn: Pub = { id: "mapy:fresh-id", name: "U Fleků", lat: 50.0822, lng: 14.4127 };
+    _init([reborn, ...SYNTHETIC_PUBS.slice(1)]);
+
+    const pub = findNearestPub({
+      lat: 50.0822,
+      lng: 14.4127,
+      excludeIds: ["osm:1"],
+      excludeCacheKeys: [geohash8(50.0822, 14.4127)],
+    });
+
+    expect(pub).not.toBeNull();
+    expect(pub!.id).not.toBe("mapy:fresh-id");
+  });
+
+  it("findRandomPubInRadius never returns a pub from an excluded cell", () => {
+    const cacheKey = geohash8(50.0822, 14.4127);
+    for (let seed = 0; seed < 30; seed++) {
+      const pub = findRandomPubInRadius({
+        lat: 50.0822,
+        lng: 14.4127,
+        maxKm: 5,
+        seed,
+        excludeCacheKeys: [cacheKey],
+      });
+      expect(pub?.id).not.toBe("osm:1");
+    }
+  });
+
+  it("returns null when the only pub in range sits in an excluded cell", () => {
+    const pub = findNearestPub({
+      lat: 49.1951,
+      lng: 16.6068,
+      maxKm: 10,
+      excludeCacheKeys: [geohash8(49.1951, 16.6068)],
+    });
+    expect(pub).toBeNull();
+  });
+});
+
 describe("getPubById", () => {
   it("returns the expected pub for a known id", () => {
     const pub = getPubById("osm:3");

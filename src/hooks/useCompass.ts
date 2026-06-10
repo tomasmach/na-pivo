@@ -11,7 +11,9 @@ import {
 import { fetchPubsNear, findNearestPub, findRandomPubInRadius, isLoaded } from '@/data/pubs';
 import type { HoursStatus, Pub } from '@/data/pubs';
 import { fetchPubHours } from '@/data/hoursClient';
-import { reportPubIssue, type PubReportReason } from '@/data/pubReportsClient';
+import { enqueuePubReport } from '@/data/pubReportQueue';
+import type { PubReportReason } from '@/data/pubReportsClient';
+import { geohash8 } from '@/data/geohash';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { usePubStore } from '@/stores/pubStore';
 import { useDevicePosition } from '@/compass/useDevicePosition';
@@ -90,7 +92,8 @@ export function useCompass(): UseCompassResult {
   // — Pub store —
   const setRevealedPub = usePubStore((s) => s.setRevealedPub);
   const reportedPubIds = usePubStore((s) => s.reportedPubIds);
-  const addReportedPubId = usePubStore((s) => s.addReportedPubId);
+  const reportedCacheKeys = usePubStore((s) => s.reportedCacheKeys);
+  const addReportedPub = usePubStore((s) => s.addReportedPub);
 
   // — Permission state —
   const [permissionState, setPermissionState] = useState<PermissionState>('undetermined');
@@ -173,6 +176,7 @@ export function useCompass(): UseCompassResult {
   const lastMaxKmRef = useRef<number | null | undefined>(undefined);
   const lastSeedRef = useRef<number | null>(null);
   const lastReportedPubIdsRef = useRef<string[]>(reportedPubIds);
+  const lastReportedCacheKeysRef = useRef<string[]>(reportedCacheKeys);
   // Track the excludeRevision the current target was selected against, so the
   // selection effect recomputes when (and only when) the exclusion set changes.
   const lastExcludeRevisionRef = useRef<number>(0);
@@ -206,7 +210,9 @@ export function useCompass(): UseCompassResult {
     // The exclusion set changed (a skip() or an auto-skip-closed) → walk to the
     // next eligible pub even though position/mode/maxKm/seed are unchanged.
     const excludeChanged = excludeRevision !== lastExcludeRevisionRef.current;
-    const reportedChanged = reportedPubIds !== lastReportedPubIdsRef.current;
+    const reportedChanged =
+      reportedPubIds !== lastReportedPubIdsRef.current ||
+      reportedCacheKeys !== lastReportedCacheKeysRef.current;
 
     // A genuine context change (the user moved enough, or switched mode/maxKm)
     // means the accumulated skip/auto-closed exclusions are stale: they only
@@ -224,6 +230,7 @@ export function useCompass(): UseCompassResult {
       lastMaxKmRef.current = maxDistanceKm;
       lastSeedRef.current = surpriseSeed;
       lastReportedPubIdsRef.current = reportedPubIds;
+      lastReportedCacheKeysRef.current = reportedCacheKeys;
       lastExcludeRevisionRef.current = excludeRevision;
 
       const excludeIds = Array.from(new Set([
@@ -231,11 +238,21 @@ export function useCompass(): UseCompassResult {
         ...skippedIdsRef.current,
         ...autoClosedIdsRef.current,
       ]));
+      // Reported places are excluded by geohash-8 cell too — the coordinate-
+      // derived Mapy.cz ids change between fetches, the cell does not.
+      const excludeCacheKeys = reportedCacheKeys;
 
       const pub =
         mode === 'nearest'
-          ? findNearestPub({ lat, lng, maxKm, excludeIds })
-          : findRandomPubInRadius({ lat, lng, maxKm, seed: surpriseSeed, excludeIds });
+          ? findNearestPub({ lat, lng, maxKm, excludeIds, excludeCacheKeys })
+          : findRandomPubInRadius({
+              lat,
+              lng,
+              maxKm,
+              seed: surpriseSeed,
+              excludeIds,
+              excludeCacheKeys,
+            });
 
       setCurrentPub(pub);
       // Only reset revealed when actually changing to a different pub
@@ -253,6 +270,7 @@ export function useCompass(): UseCompassResult {
     maxDistanceKm,
     surpriseSeed,
     reportedPubIds,
+    reportedCacheKeys,
     excludeRevision,
     resetExclusions,
   ]);
@@ -532,13 +550,17 @@ export function useCompass(): UseCompassResult {
     const pub = currentPub;
     if (!pub) return false;
 
-    addReportedPubId(pub.id);
+    // Hide locally by both signals: the Mapy.cz id (exact match) and the
+    // geohash-8 cell (still matches when a later fetch re-ids the place).
+    addReportedPub(pub.id, geohash8(pub.lat, pub.lng));
     setRevealed(false);
     setRevealedPub(null);
     setExcludeRevision((revision) => revision + 1);
 
-    return reportPubIssue(pub, reason);
-  }, [addReportedPubId, currentPub, setRevealedPub]);
+    // Persisted queue with retry — a failed send is re-attempted on the next
+    // launch/foreground instead of being dropped silently.
+    return enqueuePubReport(pub, reason);
+  }, [addReportedPub, currentPub, setRevealedPub]);
 
   const retrySearch = useCallback(() => {
     forceNextSearchRef.current = true;

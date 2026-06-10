@@ -25,7 +25,8 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { usePubStore } from '@/stores/pubStore';
 import { fetchPubHours } from '@/data/hoursClient';
 import type { PubHoursResult } from '@/data/hoursClient';
-import { reportPubIssue } from '@/data/pubReportsClient';
+import { enqueuePubReport } from '@/data/pubReportQueue';
+import { geohash8 } from '@/data/geohash';
 import { useCompass } from '../useCompass';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -45,8 +46,9 @@ jest.mock('@/data/hoursClient', () => ({
   fetchPubHours: jest.fn(),
 }));
 
-jest.mock('@/data/pubReportsClient', () => ({
-  reportPubIssue: jest.fn(async () => true),
+jest.mock('@/data/pubReportQueue', () => ({
+  enqueuePubReport: jest.fn(async () => true),
+  flushPubReportQueue: jest.fn(async () => undefined),
 }));
 
 jest.mock('@/compass/useDevicePosition', () => ({
@@ -150,9 +152,17 @@ function hours(overrides: Partial<PubHoursResult> = {}): PubHoursResult {
  */
 function wireNearestWalk(order: Pub[]) {
   (findNearestPub as jest.Mock).mockImplementation(
-    ({ excludeIds = [] }: { excludeIds?: string[] }) => {
+    ({
+      excludeIds = [],
+      excludeCacheKeys = [],
+    }: { excludeIds?: string[]; excludeCacheKeys?: string[] }) => {
       const excluded = new Set(excludeIds);
-      return order.find((p) => !excluded.has(p.id)) ?? null;
+      const excludedCells = new Set(excludeCacheKeys);
+      return (
+        order.find(
+          (p) => !excluded.has(p.id) && !excludedCells.has(geohash8(p.lat, p.lng))
+        ) ?? null
+      );
     }
   );
 }
@@ -189,6 +199,7 @@ describe('useCompass — hours-aware selection (Skrýt zavřené hospody)', () =
     usePubStore.setState({
       revealedPub: null,
       reportedPubIds: [],
+      reportedCacheKeys: [],
       isDataLoaded: false,
     });
     (findRandomPubInRadius as jest.Mock).mockReturnValue(OPEN);
@@ -419,7 +430,7 @@ describe('useCompass — hours-aware selection (Skrýt zavřené hospody)', () =
     expect(firstCall?.excludeIds).toContain(OPEN.id);
   });
 
-  it('reportCurrentPub hides the current pub locally and syncs the report', async () => {
+  it('reportCurrentPub hides the current pub locally and queues the report', async () => {
     wireNearestWalk([OPEN, THIRD]);
     wireHours({
       [OPEN.id]: hours({ isOpenNow: true }),
@@ -438,7 +449,33 @@ describe('useCompass — hours-aware selection (Skrýt zavřené hospody)', () =
 
     expect(synced).toBe(true);
     expect(usePubStore.getState().reportedPubIds).toContain(OPEN.id);
-    expect(reportPubIssue).toHaveBeenCalledWith(OPEN, 'not_pub');
+    expect(usePubStore.getState().reportedCacheKeys).toContain(
+      geohash8(OPEN.lat, OPEN.lng)
+    );
+    expect(enqueuePubReport).toHaveBeenCalledWith(OPEN, 'not_pub');
     expect(hook.result.pub?.id).toBe(THIRD.id);
+  });
+
+  it('a reported pub stays hidden when Mapy.cz returns it under a fresh id', async () => {
+    // The user reported OPEN earlier; a later fetch re-ids the same physical
+    // place. Id-based exclusion misses the fresh id — the persisted geohash-8
+    // cell must still hide it from selection.
+    const rebornOpen: Pub = { ...OPEN, id: 'mapy:fresh-id' };
+    usePubStore.setState({
+      reportedPubIds: [OPEN.id],
+      reportedCacheKeys: [geohash8(OPEN.lat, OPEN.lng)],
+    });
+    wireNearestWalk([rebornOpen, THIRD]);
+    wireHours({
+      [rebornOpen.id]: hours({ isOpenNow: true }),
+      [THIRD.id]: hours({ isOpenNow: true }),
+    });
+
+    const hook = renderCompassHook();
+    await flush();
+
+    expect(hook.result.pub?.id).toBe(THIRD.id);
+    const firstCall = (findNearestPub as jest.Mock).mock.calls[0]?.[0];
+    expect(firstCall?.excludeCacheKeys).toContain(geohash8(OPEN.lat, OPEN.lng));
   });
 });

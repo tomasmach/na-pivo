@@ -41,6 +41,9 @@ export type Pub = {
 let _pubs: Pub[] = [];
 let _index: KDBush | null = null;
 let _idMap: Map<string, Pub> = new Map();
+/** geohash-8 cell per pub, parallel to _pubs — precomputed so selection-time
+ *  cache-key exclusion does not re-encode coordinates on every query. */
+let _cacheKeys: string[] = [];
 let _loaded = false;
 let _lastFetchCenter: { lat: number; lng: number } | null = null;
 let _lastFetchRadiusKm: number | null = null;
@@ -86,6 +89,7 @@ function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): nu
 export function _init(syntheticPubs: Pub[]): void {
   _pubs = syntheticPubs.slice();
   _idMap = new Map(_pubs.map((p) => [p.id, p]));
+  _cacheKeys = _pubs.map((p) => geohash8(p.lat, p.lng));
 
   if (_pubs.length === 0) {
     _index = null;
@@ -159,6 +163,20 @@ export function isLoaded(): boolean {
   return _loaded;
 }
 
+/** Builds an index predicate excluding pubs by id and/or geohash-8 cell. The
+ *  cell match hides a reported place even when a later Mapy.cz fetch returns
+ *  it under a fresh provider id (the ids are coordinate-derived and unstable). */
+function buildExcludePredicate(
+  excludeIds?: string[],
+  excludeCacheKeys?: string[],
+): ((i: number) => boolean) | undefined {
+  const idSet = excludeIds?.length ? new Set(excludeIds) : null;
+  const keySet = excludeCacheKeys?.length ? new Set(excludeCacheKeys) : null;
+  if (!idSet && !keySet) return undefined;
+  return (i: number) =>
+    !(idSet?.has(_pubs[i].id) || keySet?.has(_cacheKeys[i]));
+}
+
 /**
  * Returns the nearest pub within maxKm kilometers.
  * When maxKm is omitted, there is no distance limit.
@@ -169,16 +187,13 @@ export function findNearestPub(opts: {
   lng: number;
   maxKm?: number;
   excludeIds?: string[];
+  excludeCacheKeys?: string[];
 }): Pub | null {
   if (!_loaded || !_index || _pubs.length === 0) return null;
 
-  const { lat, lng, maxKm, excludeIds } = opts;
+  const { lat, lng, maxKm, excludeIds, excludeCacheKeys } = opts;
   const maxDistance = Number.isFinite(maxKm) ? maxKm : undefined;
-  const excludeSet = excludeIds ? new Set(excludeIds) : null;
-
-  const predicate = excludeSet
-    ? (i: number) => !excludeSet.has(_pubs[i].id)
-    : undefined;
+  const predicate = buildExcludePredicate(excludeIds, excludeCacheKeys);
 
   const results = geokdbush.around(_index, lng, lat, 1, maxDistance, predicate);
   if (results.length === 0) return null;
@@ -197,16 +212,13 @@ export function findRandomPubInRadius(opts: {
   maxKm?: number;
   seed?: number;
   excludeIds?: string[];
+  excludeCacheKeys?: string[];
 }): Pub | null {
   if (!_loaded || !_index || _pubs.length === 0) return null;
 
-  const { lat, lng, maxKm, seed, excludeIds } = opts;
+  const { lat, lng, maxKm, seed, excludeIds, excludeCacheKeys } = opts;
   const maxDistance = Number.isFinite(maxKm) ? maxKm : undefined;
-  const excludeSet = excludeIds ? new Set(excludeIds) : null;
-
-  const predicate = excludeSet
-    ? (i: number) => !excludeSet.has(_pubs[i].id)
-    : undefined;
+  const predicate = buildExcludePredicate(excludeIds, excludeCacheKeys);
 
   const results = geokdbush.around(_index, lng, lat, Infinity, maxDistance, predicate);
   if (results.length === 0) return null;
