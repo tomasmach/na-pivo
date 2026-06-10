@@ -22,6 +22,7 @@ import {
   ChevronRight,
   Heart,
   Flag,
+  MessageSquare,
   Radius,
   Signal,
   Wifi,
@@ -58,6 +59,7 @@ export const ChevronLeftIcon = wrap(ChevronLeft, 'ChevronLeftIcon');
 export const ChevronRightIcon = wrap(ChevronRight, 'ChevronRightIcon');
 export const HeartIcon = wrap(Heart, 'HeartIcon');
 export const FlagIcon = wrap(Flag, 'FlagIcon');
+export const MessageSquareIcon = wrap(MessageSquare, 'MessageSquareIcon');
 export const RadiusIcon = wrap(Radius, 'RadiusIcon');
 export const SignalIcon = wrap(Signal, 'SignalIcon');
 export const WifiIcon = wrap(Wifi, 'WifiIcon');

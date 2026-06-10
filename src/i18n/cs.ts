@@ -90,6 +90,7 @@ export const cs = {
     about: {
       title: 'O appce',
     },
+    feedback: 'Napiš nám / nahlas chybu',
     privacy: 'Soukromí',
     creator: {
       header: 'TVŮRCE',
@@ -101,6 +102,26 @@ export const cs = {
     },
     footer: 'Bez reklam · Bez placení',
     attribution: 'Data o místech: Mapy.cz (Seznam.cz). Otevírací doba: samostatné vyhledávání.',
+  },
+
+  report: {
+    title: 'Napiš nám',
+    intro: 'Našel jsi chybu nebo ti něco chybí? Napiš nám pár slov, pomůže to.',
+    categoryBug: 'Chyba',
+    categoryIdea: 'Nápad',
+    categoryOther: 'Jiné',
+    messagePlaceholder: 'Popiš, co se stalo nebo co ti chybí…',
+    contactCaption: 'Kam ti můžeme odepsat? (nepovinné)',
+    contactInstagram: 'Instagram',
+    contactEmail: 'E-mail',
+    contactInstagramPlaceholder: '@tvujprofil',
+    contactEmailPlaceholder: 'tvuj@email.cz',
+    submit: 'Odeslat',
+    versionCaption: (version: string) => `Odesíláme i verzi aplikace: ${version}`,
+    successTitle: 'Díky! 🍺',
+    successBody:
+      'Zpráva dorazí, i kdyby teď zrovna nebylo připojení — odešleme ji, jakmile budeš online.',
+    successClose: 'Zavřít',
   },
 
   whatsNew: {
@@ -137,6 +158,11 @@ export const cs = {
     skipButton: 'Přeskočit na další hospodu',
     skipButtonHint: 'Vynechá tuhle hospodu a najde další nejbližší',
     reportPubButton: 'Nahlásit problém s hospodou',
+    feedbackButton: 'Napiš nám nebo nahlas chybu',
+    feedbackCategory: (label: string) => `Kategorie: ${label}`,
+    feedbackContactChannel: (label: string) => `Kontakt přes: ${label}`,
+    feedbackContactInput: 'Kontakt pro odpověď',
+    feedbackSubmitButton: 'Odeslat zpětnou vazbu',
     backButton: 'Zpět',
     modeNearestButton: 'Mód: Nejbližší hospoda',
     modeSurpriseButton: 'Mód: Překvap mě',

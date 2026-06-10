@@ -10,6 +10,7 @@ import { useEffect } from 'react';
 import { fontAssets } from '@/theme/fonts';
 import { Colors } from '@/theme/colors';
 import { flushPubReportQueue } from '@/data/pubReportQueue';
+import { flushFeedbackQueue } from '@/data/feedbackQueue';
 import { useAccountStore } from '@/stores/accountStore';
 import { useReleaseStore } from '@/stores/releaseStore';
 import { WhatsNewModal } from '@/components/shared/WhatsNewModal';
@@ -41,11 +42,16 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    // Fire-and-forget: re-send pub reports whose first delivery failed. Runs on
-    // launch and whenever the app returns to the foreground; never throws.
+    // Fire-and-forget: re-send pub reports and feedback whose first delivery
+    // failed. Runs on launch and whenever the app returns to the foreground;
+    // never throws.
     void flushPubReportQueue();
+    void flushFeedbackQueue();
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void flushPubReportQueue();
+      if (state === 'active') {
+        void flushPubReportQueue();
+        void flushFeedbackQueue();
+      }
     });
     return () => subscription.remove();
   }, []);
@@ -84,6 +90,14 @@ export default function RootLayout() {
           />
           <Stack.Screen
             name="privacy"
+            options={{
+              presentation: 'fullScreenModal',
+              animation: 'slide_from_bottom',
+              gestureEnabled: false,
+            }}
+          />
+          <Stack.Screen
+            name="report"
             options={{
               presentation: 'fullScreenModal',
               animation: 'slide_from_bottom',

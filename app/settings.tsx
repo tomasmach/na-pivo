@@ -50,6 +50,7 @@ import {
   InfoIcon,
   ShieldIcon,
   HeartIcon,
+  MessageSquareIcon,
 } from '@/components/shared/IconGlyph';
 import { InstagramIcon, LinkedinIcon } from '@/components/shared/BrandIcon';
 
@@ -432,6 +433,12 @@ export default function SettingsScreen() {
             onPress={() => {
               // TODO: navigate to about screen when built
             }}
+          />
+          <AboutRow
+            icon={<MessageSquareIcon size={18} color={Colors.foamMuted} />}
+            title={cs.settings.feedback}
+            onPress={() => router.push('/report')}
+            borderTop
           />
           <AboutRow
             icon={<ShieldIcon size={18} color={Colors.foamMuted} />}
