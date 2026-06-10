@@ -3,6 +3,7 @@ from django.contrib import admin
 from .models import (
     Account,
     EnrichTask,
+    FeedbackReport,
     PubHours,
     PubReport,
     ReleaseNote,
@@ -45,6 +46,46 @@ class PubReportAdmin(admin.ModelAdmin):
     search_fields = ("name", "cache_key", "external_id", "city", "address")
     readonly_fields = ("cache_key", "created_at", "updated_at")
     ordering = ("-created_at",)
+
+
+@admin.register(FeedbackReport)
+class FeedbackReportAdmin(admin.ModelAdmin):
+    list_display = (
+        "created_at",
+        "category",
+        "status",
+        "short_message",
+        "contact",
+        "app_version",
+        "platform",
+        "account",
+        "linear_issue_id",
+    )
+    list_filter = ("category", "status", "contact_type", "platform")
+    list_editable = ("status",)
+    search_fields = ("message", "contact")
+    readonly_fields = (
+        "client_id",
+        "category",
+        "message",
+        "contact_type",
+        "contact",
+        "app_version",
+        "platform",
+        "os_version",
+        "account",
+        "linear_issue_id",
+        "linear_issue_url",
+        "linear_synced_at",
+        "created_at",
+        "updated_at",
+    )
+    ordering = ("-created_at",)
+
+    @admin.display(description="message")
+    def short_message(self, obj: FeedbackReport) -> str:
+        msg = obj.message or ""
+        return msg if len(msg) <= 60 else f"{msg[:57]}..."
 
 
 class ReleaseNoteItemInline(admin.TabularInline):

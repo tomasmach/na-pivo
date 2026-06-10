@@ -142,6 +142,11 @@ ACCOUNT_REGISTER_THROTTLE_RATE: str = os.environ.get(
     "ACCOUNT_REGISTER_THROTTLE_RATE", "120/min"
 )
 
+# Per-IP rate limit for the authenticated in-app feedback endpoint
+# (POST /v1/feedback). Blunts spammy submissions while leaving normal one-off
+# feedback untouched. Format: DRF throttle rate string.
+FEEDBACK_THROTTLE_RATE: str = os.environ.get("FEEDBACK_THROTTLE_RATE", "20/min")
+
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
@@ -162,8 +167,17 @@ REST_FRAMEWORK = {
     # global limit in production.
     "DEFAULT_THROTTLE_RATES": {
         "account": ACCOUNT_REGISTER_THROTTLE_RATE,
+        "feedback": FEEDBACK_THROTTLE_RATE,
     },
 }
+
+# ---------------------------------------------------------------------------
+# Linear integration (feedback → Linear issue sync)
+# ---------------------------------------------------------------------------
+# Used by the `sync_feedback_linear` management command. If either is empty the
+# command is a no-op, so leaving them unset disables the sync entirely.
+LINEAR_API_KEY: str = os.environ.get("LINEAR_API_KEY", "")
+LINEAR_TEAM_ID: str = os.environ.get("LINEAR_TEAM_ID", "")
 
 # ---------------------------------------------------------------------------
 # CORS (django-cors-headers)

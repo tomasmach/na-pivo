@@ -51,6 +51,7 @@ services:
       - |
         while true; do
           python manage.py refresh_hours --limit 50 || true
+          python manage.py sync_feedback_linear --limit 20 || true
           sleep 300
         done
 

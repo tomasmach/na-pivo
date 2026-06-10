@@ -26,6 +26,7 @@ from pubs.enrichment import geohash8
 from pubs.models import (
     Account,
     EnrichTask,
+    FeedbackReport,
     PubHours,
     PubReport,
     ReleaseNote,
@@ -40,6 +41,8 @@ from .serializers import (
     AccountRegisterSerializer,
     AccountSerializer,
     BlockedPubsResponseSerializer,
+    FeedbackReportSerializer,
+    FeedbackRequestSerializer,
     PubHoursRequestSerializer,
     PubHoursResponseSerializer,
     PubReportBlockedQuerySerializer,
@@ -156,6 +159,61 @@ class PubReportView(APIView):
 
         return Response(
             PubReportSerializer(report).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+
+class FeedbackView(APIView):
+    """
+    POST /v1/feedback
+
+    Save in-app feedback / a bug report from the mobile app. Keyed by
+    (account, client_id): the client generates a UUID per submission and re-POSTs
+    it verbatim on offline retries, so the same client_id updates the existing row
+    instead of duplicating it. Returns 201 when created, 200 when an existing row
+    was updated. Throttled per-IP (scope "feedback").
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "feedback"
+
+    def post(self, request: Request) -> Response:
+        serializer = FeedbackRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+
+        try:
+            report, created = FeedbackReport.objects.update_or_create(
+                account=request.user,
+                client_id=data["client_id"],
+                defaults={
+                    "category": data["category"],
+                    "message": data["message"],
+                    "contact_type": data.get("contact_type") or "",
+                    "contact": data.get("contact") or "",
+                    "app_version": data.get("app_version") or "",
+                    "platform": data.get("platform") or "",
+                    "os_version": data.get("os_version") or "",
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "feedback: unexpected error saving feedback %r: %s",
+                data.get("client_id"),
+                exc,
+                exc_info=True,
+            )
+            return Response(
+                {"detail": "Internal server error."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response(
+            FeedbackReportSerializer(report).data,
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
 

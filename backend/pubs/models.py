@@ -5,6 +5,7 @@ PubHours  — the cached result of enriching a pub with opening hours from Firmy
 EnrichTask — a queued enrichment job for pubs that missed the sync_budget.
 PubReport — user reports for places that should no longer be shown as pubs.
 ReleaseNote — a "what's new" entry shown once after the app updates to a version.
+FeedbackReport — an in-app feedback / bug report submitted by a user.
 """
 
 import hashlib
@@ -389,3 +390,88 @@ class ReleaseNoteItem(models.Model):
 
     def __str__(self) -> str:
         return f"{self.icon} {self.text}".strip()
+
+
+class FeedbackReport(models.Model):
+    """
+    An in-app feedback / bug report submitted by a user from the mobile app.
+
+    Keyed by (account, client_id): the client generates a UUID per submission and
+    re-POSTs it verbatim on offline retries, so the unique constraint lets the
+    endpoint update_or_create the same row instead of duplicating it.
+    """
+
+    class Category(models.TextChoices):
+        BUG = "bug", "Bug"
+        IDEA = "idea", "Idea"
+        OTHER = "other", "Other"
+
+    class ContactType(models.TextChoices):
+        EMAIL = "email", "E-mail"
+        INSTAGRAM = "instagram", "Instagram"
+
+    class Status(models.TextChoices):
+        NEW = "new", "New"
+        TRIAGED = "triaged", "Triaged"
+        RESOLVED = "resolved", "Resolved"
+
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="feedback_reports",
+    )
+    client_id = models.UUIDField(
+        help_text="Client-generated UUID; idempotency key for offline retries.",
+    )
+    category = models.CharField(
+        max_length=16,
+        choices=Category.choices,
+        db_index=True,
+    )
+    message = models.TextField(max_length=4000)
+    contact_type = models.CharField(
+        max_length=16,
+        choices=ContactType.choices,
+        blank=True,
+        default="",
+        help_text="How the user wants to be reached; empty = no contact given.",
+    )
+    contact = models.CharField(
+        max_length=254,
+        blank=True,
+        default="",
+        help_text="E-mail address or bare Instagram handle (no leading '@').",
+    )
+    app_version = models.CharField(max_length=64, blank=True, default="")
+    platform = models.CharField(max_length=32, blank=True, default="")
+    os_version = models.CharField(max_length=64, blank=True, default="")
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.NEW,
+        db_index=True,
+    )
+
+    # ---------- Linear sync prep (filled in by sync_feedback_linear) ----------
+    linear_issue_id = models.CharField(max_length=64, blank=True, default="")
+    linear_issue_url = models.URLField(blank=True, default="")
+    linear_synced_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Feedback Report"
+        verbose_name_plural = "Feedback Reports"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "client_id"],
+                name="unique_feedback_per_account_client_id",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"FeedbackReport({self.category} [{self.status}] — {self.message[:40]!r})"

@@ -31,9 +31,11 @@ from __future__ import annotations
 
 import uuid
 
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import EmailValidator
 from rest_framework import serializers
 
-from pubs.models import Account, PubReport, ReleaseNote
+from pubs.models import Account, FeedbackReport, PubReport, ReleaseNote
 
 # ---------------------------------------------------------------------------
 # Request serializers
@@ -98,6 +100,66 @@ class PubReportRequestSerializer(PubInputSerializer):
     )
 
 
+class FeedbackRequestSerializer(serializers.Serializer):
+    """Request body for POST /v1/feedback."""
+
+    client_id = serializers.UUIDField()
+    category = serializers.ChoiceField(choices=FeedbackReport.Category.choices)
+    message = serializers.CharField(max_length=4000, trim_whitespace=True)
+    contact_type = serializers.ChoiceField(
+        choices=FeedbackReport.ContactType.choices,
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+    contact = serializers.CharField(
+        max_length=254, required=False, allow_blank=True, default="", trim_whitespace=True
+    )
+    app_version = serializers.CharField(
+        max_length=64, required=False, allow_blank=True, default="", trim_whitespace=True
+    )
+    platform = serializers.CharField(
+        max_length=32, required=False, allow_blank=True, default="", trim_whitespace=True
+    )
+    os_version = serializers.CharField(
+        max_length=64, required=False, allow_blank=True, default="", trim_whitespace=True
+    )
+
+    def validate_message(self, value: str) -> str:
+        if not value.strip():
+            raise serializers.ValidationError("Message must not be empty.")
+        return value
+
+    def validate(self, attrs: dict) -> dict:
+        contact = (attrs.get("contact") or "").strip()
+        contact_type = attrs.get("contact_type") or ""
+
+        if not contact:
+            # No contact given — normalise both fields to empty.
+            attrs["contact"] = ""
+            attrs["contact_type"] = ""
+            return attrs
+
+        if contact_type == FeedbackReport.ContactType.EMAIL:
+            try:
+                EmailValidator()(contact)
+            except DjangoValidationError as exc:
+                raise serializers.ValidationError(
+                    {"contact": "Enter a valid e-mail address."}
+                ) from exc
+        elif contact_type == FeedbackReport.ContactType.INSTAGRAM:
+            # Store the bare handle without a single leading "@".
+            contact = contact.removeprefix("@")
+        else:
+            raise serializers.ValidationError(
+                {"contact_type": "contact_type is required when contact is given."}
+            )
+
+        attrs["contact"] = contact
+        attrs["contact_type"] = contact_type
+        return attrs
+
+
 class PubReportBlockedQuerySerializer(serializers.Serializer):
     """Query params for GET /v1/pub-reports/blocked."""
 
@@ -156,6 +218,27 @@ class PubReportSerializer(serializers.ModelSerializer):
             "address",
             "reason",
             "active",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
+class FeedbackReportSerializer(serializers.ModelSerializer):
+    """Response body for a saved feedback report."""
+
+    class Meta:
+        model = FeedbackReport
+        fields = [
+            "id",
+            "client_id",
+            "category",
+            "message",
+            "contact_type",
+            "contact",
+            "app_version",
+            "platform",
+            "os_version",
+            "status",
             "created_at",
         ]
         read_only_fields = fields
