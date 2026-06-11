@@ -197,6 +197,39 @@ describe('CompassScreen', () => {
     expect(scaledSize).toBeLessThan(baselineSize);
   });
 
+  it('reserves revealed-card height before the pub is revealed', () => {
+    useCompass.mockReturnValue(baseCompassState());
+
+    let renderer: any;
+
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(CompassScreen));
+    });
+
+    const hiddenPill = renderer!.root.findByProps({ accessibilityLabel: cs.a11y.pubPillHidden });
+    const hiddenStyle = hiddenPill.props.style({ pressed: false });
+
+    expect(hiddenStyle[0].minHeight).toBeGreaterThanOrEqual(160);
+  });
+
+  it('keeps the surprise mode label on one line', () => {
+    useCompass.mockReturnValue(baseCompassState());
+
+    let renderer: any;
+
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(CompassScreen));
+    });
+
+    const surpriseLabel = renderer!.root.find(
+      (node: any) => node.type === 'Text' && node.children.includes(cs.compass.modeSurprise),
+    );
+
+    expect(surpriseLabel.props.numberOfLines).toBe(1);
+    expect(surpriseLabel.props.adjustsFontSizeToFit).toBe(true);
+    expect(surpriseLabel.props.minimumFontScale).toBeLessThan(1);
+  });
+
   it('opens the report reason sheet from the revealed pub pill', () => {
     const reportCurrentPub = jest.fn(async () => true);
     (Alert.alert as jest.Mock).mockImplementation(() => undefined);

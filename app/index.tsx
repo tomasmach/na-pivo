@@ -70,6 +70,12 @@ const ARROW_SPRING_CONFIG = {
   overshootClamping: true,
 } as const;
 
+// Keep the hidden and revealed pub cards occupying the same slot. Without this,
+// revealing the pub makes the card taller and pushes the bottom controls into
+// the Android navigation area on shorter devices.
+const PUB_PILL_MIN_HEIGHT = 166;
+const ACTIVE_CHROME_HEIGHT = 500;
+
 // ─── Permission screen ────────────────────────────────────────────────────────
 
 interface PermissionScreenProps {
@@ -254,7 +260,7 @@ function getActiveCompassLayout(
   // the reserve grows by the same capped factor — without this, large system
   // font sizes (Samsung goes up to ~2.0) push the bottom controls off-screen.
   const effectiveFontScale = clamp(fontScale, 1, FontScaleCap.body);
-  const VERTICAL_CHROME = Math.round(430 * effectiveFontScale);
+  const VERTICAL_CHROME = Math.round(ACTIVE_CHROME_HEIGHT * effectiveFontScale);
   const widthBudget = width - 48; // 24pt side padding on each edge
   const heightBudget = usableHeight - VERTICAL_CHROME;
 
@@ -480,6 +486,8 @@ function ModeToggle({ mode, onNearest, onSurprise }: ModeToggleProps) {
             mode === 'nearest' ? styles.modeSegmentTextActive : styles.modeSegmentTextInactive,
           ]}
           numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.82}
           maxFontSizeMultiplier={FontScaleCap.heading}
         >
           {cs.compass.modeNearest}
@@ -503,6 +511,8 @@ function ModeToggle({ mode, onNearest, onSurprise }: ModeToggleProps) {
             mode === 'surprise' ? styles.modeSegmentTextActive : styles.modeSegmentTextInactive,
           ]}
           numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.82}
           maxFontSizeMultiplier={FontScaleCap.heading}
         >
           {cs.compass.modeSurprise}
@@ -956,6 +966,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   pubPill: {
+    minHeight: PUB_PILL_MIN_HEIGHT,
     borderRadius: Radius.card,
     paddingHorizontal: 18,
     paddingVertical: 14,
@@ -1072,6 +1083,7 @@ const styles = StyleSheet.create({
   },
   modeToggleFlex: {
     flex: 1,
+    minWidth: 0,
   },
   modeTogglePill: {
     flexDirection: 'row',
@@ -1100,6 +1112,8 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.bold,
     fontSize: 14,
     letterSpacing: 0.1,
+    includeFontPadding: false,
+    textAlign: 'center',
   },
   modeSegmentTextActive: {
     color: Colors.stout,
