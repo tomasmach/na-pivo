@@ -2,28 +2,35 @@ import * as Linking from 'expo-linking';
 import type { Pub } from '@/data/pubs';
 
 /**
- * Builds a Mapy.cz URL that opens the pub by name, centred on its location. On
- * mobile this hands off to the Mapy.cz / Mapy.com app via universal links if
- * installed, else the web.
+ * Builds a Mapy.com URL that pins the pub at its exact coordinates. On mobile
+ * this hands off to the Mapy.cz / Mapy.com app via universal links if installed,
+ * else the web.
  *
- * The Mapy.cz suggest API gives us no place ID, so we cannot deep-link to a POI
- * detail card directly. Instead we run a name search (`q`) anchored at the pub's
- * coordinates: the name comes straight from Mapy.cz, so the search resolves to
- * the same POI and shows its label — unlike a bare coordinate pin.
+ * We use the documented showmap URL API with coordinates only — never a name
+ * search. The Mapy.cz suggest API gives us no place ID, so we cannot deep-link
+ * to a POI detail card; and a name search (`q`) is resolved nationwide by
+ * textual relevance, so it can land on a different place with a similar name far
+ * away (e.g. "Restaurace Kamenec" near Olomouc resolving to "Pohostinství
+ * Kamenec u Poličky" ~150 km away). showmap pins the precise position and does
+ * no searching.
  *
- * Note: Mapy.cz uses x=longitude and y=latitude (the opposite of Google's
- * lat,lng order).
+ * Note: showmap's `center` is longitude-first (lon,lat), the opposite of
+ * Google's lat,lng order. The comma is encoded as %2C, which Mapy.com accepts.
  */
-export function buildMapsUrl(pub: Pick<Pub, 'name' | 'lat' | 'lng'>): string {
-  const query = encodeURIComponent(pub.name);
-  return `https://mapy.cz/zakladni?q=${query}&x=${pub.lng}&y=${pub.lat}&z=17`;
+export function buildMapsUrl(pub: Pick<Pub, 'lat' | 'lng'>): string {
+  const params = new URLSearchParams({
+    center: `${pub.lng},${pub.lat}`,
+    zoom: '17',
+    marker: 'true',
+  });
+  return `https://mapy.com/fnc/v1/showmap?${params.toString()}`;
 }
 
 /**
  * Convenience wrapper that uses expo-linking to open the URL.
  */
 export async function openPubInMaps(
-  pub: Pick<Pub, 'name' | 'lat' | 'lng'>
+  pub: Pick<Pub, 'lat' | 'lng'>
 ): Promise<void> {
   const url = buildMapsUrl(pub);
   await Linking.openURL(url);

@@ -4,27 +4,31 @@ const simplePub = { name: 'U Fleků', lat: 50.0808, lng: 14.4178 };
 const czechPub = { name: 'U Zlatého Tygra', lat: 50.0857, lng: 14.4148 };
 const ampersandPub = { name: 'Pub & Bar', lat: 50.0, lng: 14.0 };
 
+// Regression: a name search (`q=Restaurace Kamenec`) anchored at coordinates is
+// resolved by Mapy.cz nationwide by textual relevance — a user near Olomouc got
+// sent to "Pohostinství Kamenec u Poličky" ~150 km away. The link must target
+// the pub's exact coordinates and never rely on its name.
 describe('buildMapsUrl', () => {
-  it('contains the Mapy.cz base URL', () => {
+  it('uses the Mapy.com showmap URL API', () => {
     const url = buildMapsUrl(simplePub);
-    expect(url).toContain('https://mapy.cz/zakladni');
+    expect(url).toContain('https://mapy.com/fnc/v1/showmap');
   });
 
-  it('searches by the pub name so Mapy.cz shows its label', () => {
-    const url = buildMapsUrl(simplePub);
-    expect(url).toContain(`q=${encodeURIComponent(simplePub.name)}`);
-  });
-
-  it('centres the map on the pub using x=longitude and y=latitude', () => {
+  it('pins the exact pub position via center=lng,lat with a marker', () => {
     const url = buildMapsUrl(czechPub);
-    expect(url).toContain(`x=${czechPub.lng}`);
-    expect(url).toContain(`y=${czechPub.lat}`);
+    expect(url).toContain(`center=${czechPub.lng}%2C${czechPub.lat}`);
+    expect(url).toContain('marker=true');
   });
 
-  it('URL-encodes the pub name so & does not break the query string', () => {
+  it('zooms in close enough to identify the pub', () => {
+    const url = buildMapsUrl(simplePub);
+    expect(url).toMatch(/zoom=1[5-9]/);
+  });
+
+  it('never searches by pub name — name matches can resolve far away', () => {
     const url = buildMapsUrl(ampersandPub);
-    const queryValue = url.split('q=')[1].split('&')[0];
-    expect(queryValue).toBe('Pub%20%26%20Bar');
-    expect(decodeURIComponent(queryValue)).toBe(ampersandPub.name);
+    expect(url).not.toContain('q=');
+    expect(url).not.toContain('query=');
+    expect(url).not.toContain(encodeURIComponent(ampersandPub.name));
   });
 });
