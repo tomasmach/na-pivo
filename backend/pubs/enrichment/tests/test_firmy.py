@@ -507,3 +507,81 @@ class TestDetailRegex:
 
     def test_no_match_on_non_detail_url(self):
         assert _DETAIL_RE.search('<a href="https://www.firmy.cz/restaurace">link</a>') is None
+
+
+# ---------------------------------------------------------------------------
+# Tests: HTTP status semantics (410 = Firmy.cz "no search results")
+# ---------------------------------------------------------------------------
+
+class TestHttpStatusSemantics:
+    """
+    Live-verified 2026-06-11: firmy.cz/?q= answers HTTP 410 Gone for searches
+    with ZERO results (e.g. 'bangladeshi & indian restaurant ostrava' — the '&'
+    breaks tokenization so nothing matches; plain gibberish queries get 410
+    too). A 410 is therefore a genuine no-match, NOT a transient failure:
+    treating it as TransientFetchError makes the worker retry the same pub on
+    every request forever (log spam + wasted proxy quota) instead of caching
+    'unknown' for HOURS_TTL_DAYS.
+
+    Contract: 4xx (except 429) → no-match (None); 429/5xx/network → transient.
+    """
+
+    def _source_with_search(self, handler) -> FirmyHoursSource:
+        session = requests.Session()
+        adapter = MockFirmyAdapter({r"firmy\.cz/\?q=": handler})
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+        return FirmyHoursSource(session=session, min_interval=0.0)
+
+    def test_search_410_no_results_returns_none(self):
+        def handle_search(_req):
+            return _make_response(
+                "<html>no results page</html>", status_code=410,
+                url="https://www.firmy.cz/?q=bangladeshi+%26+indian+restaurant+ostrava",
+            )
+
+        src = self._source_with_search(handle_search)
+        assert src.fetch("Bangladeshi & Indian restaurant", 49.8, 18.2, city="Ostrava") is None
+
+    def test_search_404_returns_none(self):
+        def handle_search(_req):
+            return _make_response("", status_code=404)
+
+        src = self._source_with_search(handle_search)
+        assert src.fetch("Test Pub", 50.0, 14.0) is None
+
+    def test_search_429_raises_transient(self):
+        def handle_search(_req):
+            return _make_response("", status_code=429)
+
+        src = self._source_with_search(handle_search)
+        with pytest.raises(TransientFetchError):
+            src.fetch("Test Pub", 50.0, 14.0)
+
+    def test_search_500_raises_transient(self):
+        def handle_search(_req):
+            return _make_response("", status_code=500)
+
+        src = self._source_with_search(handle_search)
+        with pytest.raises(TransientFetchError):
+            src.fetch("Test Pub", 50.0, 14.0)
+
+    def test_detail_410_firm_gone_returns_none(self):
+        """A firm removed between search and detail is a no-match, not a retry."""
+        name = "Test Pub"
+        lat, lng = 50.0, 14.0
+        search_html = _make_search_html("444444", "test-pub", name, lat, lng)
+
+        session = requests.Session()
+        adapter = MockFirmyAdapter({
+            r"firmy\.cz/\?q=": lambda _req: _make_response(search_html),
+            r"/detail/": lambda _req: _make_response(
+                "", status_code=410,
+                url="https://www.firmy.cz/detail/444444-test-pub.html",
+            ),
+        })
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+
+        src = FirmyHoursSource(session=session, min_interval=0.0)
+        assert src.fetch(name, lat, lng) is None

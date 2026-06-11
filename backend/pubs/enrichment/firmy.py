@@ -29,10 +29,15 @@ Pipeline
    - A plain cookie-aware requests.Session with a browser User-Agent. No login
      or warmup is needed — the search page is served directly.
    - Extract the first /detail/{firmId}-{slug}.html link from the search HTML.
+   - HTTP status: firmy.cz answers 410 Gone (and 404) for a search with ZERO
+     results — that is a genuine no-match (→ None), NOT a transient failure.
+     Only 429 (rate limit) and 5xx (server) are retryable.
 
 2. DETAIL:  GET https://www.firmy.cz/detail/{firmId}-{slug}.html
    - Served directly to a plain cookie-aware session; the LocalBusiness JSON-LD
      block carries openingHours (string | list | openingHoursSpecification).
+   - HTTP status: a firm removed between search and detail answers 410/404 —
+     a genuine "firm gone" no-match (→ None). Only 429 and 5xx are retryable.
    - Seznam can bounce automated traffic from flagged (datacenter) IPs to its
      GDPR consent wall (cmp.seznam.cz, reason=missing). If that happens, route
      requests through FIRMY_PROXY_URL (a residential proxy). _is_consent_wall
@@ -405,12 +410,32 @@ class FirmyHoursSource:
 
         try:
             resp = self._get(url)
-            resp.raise_for_status()
         except requests.RequestException as exc:
-            # Network / proxy / 5xx — retryable. Raise so the caller persists
-            # 'error' (re-fetched next request) instead of a sticky 'unknown'.
+            # Network / proxy error (no HTTP response) — retryable. Raise so the
+            # caller persists 'error' (re-fetched next request) instead of a
+            # sticky 'unknown'.
             logger.warning("firmy: search request failed for %r: %s", query, exc)
             raise TransientFetchError(f"search request failed for {query!r}: {exc}") from exc
+
+        # HTTP status semantics: firmy.cz answers 410 Gone (and 404) for searches
+        # with ZERO results — the SSR no-results page. That is a GENUINE no-match,
+        # not a transient failure: retrying it forever spams logs and burns proxy
+        # quota instead of caching 'unknown' for HOURS_TTL_DAYS. So any 4xx EXCEPT
+        # 429 means "no result" → return None. 429 (rate limit) and 5xx (server)
+        # stay retryable → TransientFetchError.
+        if 400 <= resp.status_code < 500 and resp.status_code != 429:
+            logger.info(
+                "firmy: search for %r returned HTTP %d (no results) — treating as no-match",
+                query, resp.status_code,
+            )
+            return None
+        if resp.status_code >= 400:
+            logger.warning(
+                "firmy: search for %r returned retryable HTTP %d", query, resp.status_code
+            )
+            raise TransientFetchError(
+                f"search for {query!r} returned HTTP {resp.status_code}"
+            )
 
         # SEARCH is the FIRST request, so a flagged/datacenter proxy IP is bounced
         # to the Seznam consent wall HERE (HTTP 200 from cmp.seznam.cz, no detail
@@ -470,13 +495,31 @@ class FirmyHoursSource:
         url = _DETAIL_URL.format(firm_id=firm_id, slug=slug)
         try:
             resp = self._get(url)
-            resp.raise_for_status()
         except requests.RequestException as exc:
-            # Network / proxy / 5xx — retryable (see TransientFetchError).
+            # Network / proxy error (no HTTP response) — retryable.
             logger.warning("firmy: detail request failed for %s/%s: %s", firm_id, slug, exc)
             raise TransientFetchError(
                 f"detail request failed for {firm_id}/{slug}: {exc}"
             ) from exc
+
+        # HTTP status semantics (mirror of _search): a firm removed between the
+        # search and detail fetch answers 410 Gone (or 404). That is a genuine
+        # "firm gone" no-match → return None, not a retry. Any 4xx EXCEPT 429 is a
+        # no-match; 429 (rate limit) and 5xx (server) stay retryable.
+        if 400 <= resp.status_code < 500 and resp.status_code != 429:
+            logger.info(
+                "firmy: detail for firm %s returned HTTP %d (gone) — treating as no-match",
+                firm_id, resp.status_code,
+            )
+            return None
+        if resp.status_code >= 400:
+            logger.warning(
+                "firmy: detail for firm %s returned retryable HTTP %d",
+                firm_id, resp.status_code,
+            )
+            raise TransientFetchError(
+                f"detail for firm {firm_id} returned HTTP {resp.status_code}"
+            )
 
         # If the cookie-wall bounced us to the consent page we never reached the
         # detail content. With a residential proxy this should not happen; when it
