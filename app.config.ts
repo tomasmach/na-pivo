@@ -94,7 +94,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     slug: 'na-pivo',
     owner: 'tomasmach',
     scheme: 'napivo',
-    version: '1.1.1',
+    version: '1.1.2',
     icon: './assets/images/icon.png',
     orientation: 'portrait',
     userInterfaceStyle: 'dark',
