@@ -9,6 +9,7 @@ Public surface
 RawHours            — dataclass returned by FirmyHoursSource.fetch()
 FirmyHoursSource    — scraper; see firmy.py
 normalize_to_osm    — converts Firmy.cz openingHours to OSM grammar; see normalizer.py
+community_hours_to_osm — converts structured community hours to OSM grammar; see normalizer.py
 is_open_now         — evaluates OSM hours string at a given moment; see is_open.py
 next_change         — next open/close transition; see is_open.py
 verify_match        — name+geo confidence scoring; see matcher.py
@@ -20,13 +21,14 @@ TransientFetchError — raised by FirmyHoursSource on a retryable network/proxy 
 from .firmy import FirmyHoursSource, RawHours, TransientFetchError  # noqa: F401
 from .is_open import is_open_now, next_change  # noqa: F401
 from .matcher import geohash8, names_match, verify_match  # noqa: F401
-from .normalizer import normalize_to_osm  # noqa: F401
+from .normalizer import community_hours_to_osm, normalize_to_osm  # noqa: F401
 
 __all__ = [
     "RawHours",
     "FirmyHoursSource",
     "TransientFetchError",
     "normalize_to_osm",
+    "community_hours_to_osm",
     "is_open_now",
     "next_change",
     "verify_match",

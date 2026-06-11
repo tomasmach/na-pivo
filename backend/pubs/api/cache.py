@@ -37,7 +37,7 @@ from pubs.enrichment import (
     names_match,
     next_change,
 )
-from pubs.models import EnrichTask, PubHours
+from pubs.models import EnrichTask, PubCommunityData, PubHours
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +74,8 @@ def _result_from_row(row: PubHours) -> dict[str, Any]:
         "status": row.status,
         "source": row.source if row.source else None,
         "confidence": row.confidence,
+        "beers": [],
+        "hours_json": None,
     }
 
 
@@ -87,6 +89,8 @@ def _pending_result(cache_key: str, name: str) -> dict[str, Any]:
         "status": PubHours.Status.PENDING,
         "source": None,
         "confidence": None,
+        "beers": [],
+        "hours_json": None,
     }
 
 
@@ -102,6 +106,33 @@ def _unknown_result(cache_key: str, name: str) -> dict[str, Any]:
         "status": PubHours.Status.UNKNOWN,
         "source": None,
         "confidence": None,
+        "beers": [],
+        "hours_json": None,
+    }
+
+
+def _community_result(row: PubCommunityData, name: str) -> dict[str, Any]:
+    """Build a response dict from a community-data row whose hours override firmy.
+
+    isOpenNow / nextChange are computed live from the community
+    opening_hours_raw, exactly like the firmy path.
+    """
+    oh = row.opening_hours_raw or None
+    is_open = is_open_now(oh) if oh else None
+    nc = next_change(oh) if oh else None
+    nc_iso: str | None = nc.isoformat() if nc is not None else None
+
+    return {
+        "key": row.cache_key,
+        "name": name,
+        "opening_hours": oh,
+        "isOpenNow": is_open,
+        "nextChange": nc_iso,
+        "status": PubHours.Status.OK,
+        "source": "community",
+        "confidence": None,
+        "beers": row.beers or [],
+        "hours_json": row.hours_json,
     }
 
 
@@ -288,6 +319,14 @@ def get_or_enrich(
         for row in PubHours.objects.filter(cache_key__in=all_keys)
     }
 
+    # Bulk-load community-contributed data for the same keys (single batched
+    # query, not N+1). Community hours take precedence over firmy data, and
+    # community beers are attached to every matching result.
+    community: dict[str, PubCommunityData] = {
+        row.cache_key: row
+        for row in PubCommunityData.objects.filter(cache_key__in=all_keys)
+    }
+
     # Lazy-initialise the scraper only when we actually need a sync fetch
     source: FirmyHoursSource | None = None
     budget_remaining = sync_budget
@@ -300,6 +339,29 @@ def get_or_enrich(
         lat = entry["lat"]
         lng = entry["lng"]
         city = entry["city"]
+
+        # --- Community data takes precedence -------------------------------
+        # Guard against a geohash-8 collision with names_match, same as the
+        # firmy cache read below: a different business in the same ~38 m cell
+        # must not be served this pub's community data.
+        comm = community.get(key)
+        comm_matches = comm is not None and names_match(name, comm.name)
+
+        if comm_matches and comm.hours_json is not None:
+            # Community hours satisfy this pub fully — override firmy entirely
+            # and do NOT schedule an EnrichTask (it is already satisfied).
+            results.append(_community_result(comm, name))
+            continue
+
+        # Community beers (but no community hours) are attached to whatever the
+        # firmy path produces below. _result_index marks where this entry's
+        # result lands so we can patch its `beers` in once built.
+        community_beers = comm.beers if comm_matches else None
+        _result_index = len(results)
+
+        def _attach_beers() -> None:
+            if community_beers:
+                results[_result_index]["beers"] = community_beers
 
         row = existing.get(key)
 
@@ -319,6 +381,7 @@ def get_or_enrich(
                     key, row.name, name,
                 )
                 results.append(_unknown_result(key, name))
+            _attach_beers()
             continue
 
         # Cache MISS or stale
@@ -341,5 +404,7 @@ def get_or_enrich(
             # Budget exhausted — queue for background enrichment
             _upsert_enrich_task(key, name, lat, lng, city)
             results.append(_pending_result(key, name))
+
+        _attach_beers()
 
     return results

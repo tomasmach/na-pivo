@@ -147,6 +147,11 @@ ACCOUNT_REGISTER_THROTTLE_RATE: str = os.environ.get(
 # feedback untouched. Format: DRF throttle rate string.
 FEEDBACK_THROTTLE_RATE: str = os.environ.get("FEEDBACK_THROTTLE_RATE", "20/min")
 
+# Per-IP rate limit for the authenticated community-contribution endpoint
+# (POST /v1/pub-community). Blunts scripted mass contributions while leaving
+# normal hand-entered submissions untouched. Format: DRF throttle rate string.
+COMMUNITY_THROTTLE_RATE: str = os.environ.get("COMMUNITY_THROTTLE_RATE", "30/min")
+
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
@@ -168,6 +173,7 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "account": ACCOUNT_REGISTER_THROTTLE_RATE,
         "feedback": FEEDBACK_THROTTLE_RATE,
+        "community": COMMUNITY_THROTTLE_RATE,
     },
 }
 

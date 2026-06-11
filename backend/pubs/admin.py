@@ -4,6 +4,8 @@ from .models import (
     Account,
     EnrichTask,
     FeedbackReport,
+    PubCommunityData,
+    PubContributionLog,
     PubHours,
     PubReport,
     ReleaseNote,
@@ -86,6 +88,51 @@ class FeedbackReportAdmin(admin.ModelAdmin):
     def short_message(self, obj: FeedbackReport) -> str:
         msg = obj.message or ""
         return msg if len(msg) <= 60 else f"{msg[:57]}..."
+
+
+@admin.register(PubCommunityData)
+class PubCommunityDataAdmin(admin.ModelAdmin):
+    # Fully editable so the owner can fix or revert community data. cache_key and
+    # the timestamps stay read-only (cache_key is identity; timestamps are
+    # bookkeeping).
+    list_display = (
+        "name",
+        "cache_key",
+        "city",
+        "hours_updated_at",
+        "beers_updated_at",
+        "account",
+        "updated_at",
+    )
+    search_fields = ("name", "cache_key", "external_id", "city")
+    readonly_fields = ("cache_key", "created_at", "updated_at")
+    ordering = ("-updated_at",)
+
+
+@admin.register(PubContributionLog)
+class PubContributionLogAdmin(admin.ModelAdmin):
+    # Append-only audit history — fully read-only.
+    list_display = ("created_at", "kind", "name", "cache_key", "account")
+    list_filter = ("kind", "created_at")
+    search_fields = ("name", "cache_key")
+    readonly_fields = (
+        "account",
+        "cache_key",
+        "name",
+        "lat",
+        "lng",
+        "kind",
+        "payload",
+        "client_id",
+        "created_at",
+    )
+    ordering = ("-created_at",)
+
+    def has_add_permission(self, request) -> bool:  # noqa: ARG002
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:  # noqa: ARG002
+        return False
 
 
 class ReleaseNoteItemInline(admin.TabularInline):

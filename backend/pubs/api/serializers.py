@@ -160,6 +160,148 @@ class FeedbackRequestSerializer(serializers.Serializer):
         return attrs
 
 
+# ---------------------------------------------------------------------------
+# Community contribution (POST /v1/pub-community)
+# ---------------------------------------------------------------------------
+
+# The 7 weekday keys the structured community hours dict must contain, in order.
+_COMMUNITY_DAY_KEYS = ("mo", "tu", "we", "th", "fr", "sa", "su")
+# Allowed beer glass volumes (ml). None is also allowed (unknown).
+_ALLOWED_VOLUMES_ML = {300, 330, 400, 500, 1000}
+_MAX_INTERVALS_PER_DAY = 3
+_MAX_BEERS = 12
+
+
+def _validate_hhmm(value: str) -> str:
+    """Validate a "HH:MM" 24-hour time string; return it unchanged or raise."""
+    if not isinstance(value, str):
+        raise serializers.ValidationError("Time must be a 'HH:MM' string.")
+    parts = value.split(":")
+    if len(parts) != 2 or not (parts[0].isdigit() and parts[1].isdigit()):
+        raise serializers.ValidationError(f"Invalid time {value!r}; expected 'HH:MM'.")
+    hh, mm = int(parts[0]), int(parts[1])
+    # Allow 24:00 as an end-of-day marker (OSM-legal); otherwise 00:00–23:59.
+    if not (0 <= hh <= 24 and 0 <= mm <= 59) or (hh == 24 and mm != 0):
+        raise serializers.ValidationError(f"Time out of range: {value!r}.")
+    return f"{hh:02d}:{mm:02d}"
+
+
+class CommunityBeerSerializer(serializers.Serializer):
+    """A single beer-on-tap entry in a community contribution."""
+
+    name = serializers.CharField(max_length=80, min_length=1, trim_whitespace=True)
+    price_czk = serializers.IntegerField(
+        required=False, allow_null=True, min_value=1, max_value=1000
+    )
+    volume_ml = serializers.IntegerField(required=False, allow_null=True)
+
+    def validate_volume_ml(self, value: int | None) -> int | None:
+        if value is None:
+            return None
+        if value not in _ALLOWED_VOLUMES_ML:
+            raise serializers.ValidationError(
+                f"volume_ml must be one of {sorted(_ALLOWED_VOLUMES_ML)}."
+            )
+        return value
+
+    def to_representation(self, instance: dict) -> dict:
+        # Always emit the canonical shape with all three keys present.
+        return {
+            "name": instance.get("name"),
+            "price_czk": instance.get("price_czk"),
+            "volume_ml": instance.get("volume_ml"),
+        }
+
+
+class PubCommunityRequestSerializer(PubInputSerializer):
+    """Request body for POST /v1/pub-community.
+
+    Inherits name/lat/lng/city (+ lat/lng bounds) from PubInputSerializer and
+    adds the community payload. At least one of ``hours`` / ``beers`` must be
+    given.
+    """
+
+    client_id = serializers.UUIDField()
+    external_id = serializers.CharField(
+        max_length=128,
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        trim_whitespace=True,
+    )
+    # hours: dict of the 7 day keys → list of [start, end] pairs (validated in
+    # validate_hours). beers: list of beer dicts (validated by the child
+    # serializer + count in validate_beers).
+    hours = serializers.DictField(required=False, allow_null=True)
+    beers = CommunityBeerSerializer(many=True, required=False)
+
+    def validate_hours(self, value: dict | None) -> dict | None:
+        if value is None:
+            return None
+        keys = set(value.keys())
+        expected = set(_COMMUNITY_DAY_KEYS)
+        if keys != expected:
+            raise serializers.ValidationError(
+                f"hours must contain exactly the 7 day keys {list(_COMMUNITY_DAY_KEYS)}."
+            )
+
+        cleaned: dict[str, list] = {}
+        for day in _COMMUNITY_DAY_KEYS:
+            intervals = value[day]
+            if not isinstance(intervals, list):
+                raise serializers.ValidationError(
+                    f"hours[{day!r}] must be a list of [start, end] pairs."
+                )
+            if len(intervals) > _MAX_INTERVALS_PER_DAY:
+                raise serializers.ValidationError(
+                    f"hours[{day!r}] allows at most {_MAX_INTERVALS_PER_DAY} intervals."
+                )
+            cleaned_intervals: list[list[str]] = []
+            for pair in intervals:
+                if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+                    raise serializers.ValidationError(
+                        f"hours[{day!r}] entries must be [start, end] pairs."
+                    )
+                start = _validate_hhmm(pair[0])
+                end = _validate_hhmm(pair[1])
+                if start == end:
+                    raise serializers.ValidationError(
+                        f"hours[{day!r}] interval {start}-{end} is empty (start == end)."
+                    )
+                # Overnight intervals (end < start) are intentionally allowed.
+                cleaned_intervals.append([start, end])
+            cleaned[day] = cleaned_intervals
+        return cleaned
+
+    def validate_beers(self, value: list) -> list:
+        if len(value) > _MAX_BEERS:
+            raise serializers.ValidationError(
+                f"At most {_MAX_BEERS} beers may be submitted."
+            )
+        # Canonicalise every entry to all three keys so the stored JSON (and the
+        # /v1/pub-hours read path) has a stable shape regardless of which
+        # optional fields the client sent.
+        return [
+            {
+                "name": beer["name"],
+                "price_czk": beer.get("price_czk"),
+                "volume_ml": beer.get("volume_ml"),
+            }
+            for beer in value
+        ]
+
+    def validate(self, attrs: dict) -> dict:
+        has_hours = attrs.get("hours") is not None
+        # `beers` is absent when not sent; an explicit empty list still counts as
+        # a beers contribution (it clears the list).
+        has_beers = "beers" in attrs
+        if not has_hours and not has_beers:
+            raise serializers.ValidationError(
+                "At least one of 'hours' or 'beers' must be provided."
+            )
+        return attrs
+
+
 class PubReportBlockedQuerySerializer(serializers.Serializer):
     """Query params for GET /v1/pub-reports/blocked."""
 
@@ -184,7 +326,14 @@ class PubReportBlockedQuerySerializer(serializers.Serializer):
 
 
 class PubHoursResultSerializer(serializers.Serializer):
-    """A single result entry in the response body."""
+    """A single result entry in the response body.
+
+    ``source`` is "community" when community-contributed hours overrode the
+    firmy data, otherwise the firmy source ("firmy") or null. ``beers`` is
+    always present: the community beer list, or an empty list when there is no
+    community data. ``hours_json`` is the structured community hours (for client
+    form prefill) when community hours exist, else null.
+    """
 
     key = serializers.CharField()
     name = serializers.CharField()
@@ -194,6 +343,16 @@ class PubHoursResultSerializer(serializers.Serializer):
     status = serializers.CharField()
     source = serializers.CharField(allow_null=True)
     confidence = serializers.FloatField(allow_null=True)
+    beers = serializers.ListField(child=serializers.DictField(), default=list)
+    hours_json = serializers.JSONField(allow_null=True, required=False)
+
+
+class PubCommunityResponseSerializer(serializers.Serializer):
+    """Response body for POST /v1/pub-community."""
+
+    cache_key = serializers.CharField()
+    hours = serializers.JSONField(allow_null=True)
+    beers = serializers.ListField(child=serializers.DictField())
 
 
 class PubHoursResponseSerializer(serializers.Serializer):

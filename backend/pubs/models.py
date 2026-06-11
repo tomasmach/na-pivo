@@ -6,6 +6,8 @@ EnrichTask — a queued enrichment job for pubs that missed the sync_budget.
 PubReport — user reports for places that should no longer be shown as pubs.
 ReleaseNote — a "what's new" entry shown once after the app updates to a version.
 FeedbackReport — an in-app feedback / bug report submitted by a user.
+PubCommunityData — current community-contributed hours + beers for a pub.
+PubContributionLog — append-only history of community contributions.
 """
 
 import hashlib
@@ -475,3 +477,149 @@ class FeedbackReport(models.Model):
 
     def __str__(self) -> str:
         return f"FeedbackReport({self.category} [{self.status}] — {self.message[:40]!r})"
+
+
+class PubCommunityData(models.Model):
+    """
+    Community-contributed opening hours and beers-on-tap for one pub.
+
+    Holds the CURRENT community state per geohash-8 cell (one row per
+    ``cache_key``, matching PubHours). Contributions go live immediately — this
+    row is upserted on every submission — and full history is kept in
+    PubContributionLog for audit / revert. Community opening hours TAKE
+    PRECEDENCE over the firmy.cz-derived PubHours in the /v1/pub-hours read path.
+
+    ``hours_json`` is the structured weekly form the client submits and prefills
+    its form from. ``opening_hours_raw`` is the OSM grammar string derived from
+    it so the existing is_open evaluator works unchanged.
+    """
+
+    # ---------- identity ----------
+    cache_key = models.CharField(
+        max_length=12,
+        unique=True,
+        db_index=True,
+        help_text="Geohash-8 of (lat, lng) — ~38 m precision; matches PubHours.cache_key.",
+    )
+    name = models.CharField(max_length=255)
+    lat = models.FloatField()
+    lng = models.FloatField()
+    city = models.CharField(max_length=128, blank=True, null=True)
+    external_id = models.CharField(
+        max_length=128,
+        blank=True,
+        null=True,
+        db_index=True,
+        help_text="Client-side provider id, e.g. Mapy.cz item id.",
+    )
+
+    # ---------- opening hours ----------
+    hours_json = models.JSONField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Structured weekly hours as submitted: "
+            '{"mo": [["11:00","23:00"]], "tu": [], ...} — all 7 keys '
+            "mo/tu/we/th/fr/sa/su; an empty list means closed that day. "
+            "None means no community hours have been contributed yet."
+        ),
+    )
+    opening_hours_raw = models.TextField(
+        blank=True,
+        default="",
+        help_text="OSM opening_hours grammar string derived from hours_json.",
+    )
+
+    # ---------- beers on tap ----------
+    beers = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            'List of beers on tap: '
+            '[{"name": str, "price_czk": int|null, "volume_ml": int|null}].'
+        ),
+    )
+
+    # ---------- contributor / timestamps ----------
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="community_data",
+        help_text="The most recent contributor.",
+    )
+    hours_updated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When opening hours were last contributed (None = never).",
+    )
+    beers_updated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the beer list was last contributed (None = never).",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Pub Community Data"
+        verbose_name_plural = "Pub Community Data"
+        ordering = ["-updated_at"]
+
+    def __str__(self) -> str:
+        return f"PubCommunityData({self.name} [{self.cache_key}])"
+
+
+class PubContributionLog(models.Model):
+    """
+    Append-only history of community contributions, for audit and revert.
+
+    One row per (account, client_id, kind): the client generates a UUID per
+    submission and re-POSTs it verbatim on offline retries, so the unique
+    constraint lets the endpoint get_or_create the same row instead of
+    duplicating it. ``payload`` stores exactly what was submitted for that kind
+    (the hours_json dict or the beers list).
+    """
+
+    class Kind(models.TextChoices):
+        HOURS = "hours", "Opening hours"
+        BEERS = "beers", "Beers on tap"
+
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="contribution_logs",
+    )
+    cache_key = models.CharField(
+        max_length=12,
+        db_index=True,
+        help_text="Geohash-8 of the contributed pub coordinates.",
+    )
+    name = models.CharField(max_length=255)
+    lat = models.FloatField()
+    lng = models.FloatField()
+    kind = models.CharField(max_length=16, choices=Kind.choices, db_index=True)
+    payload = models.JSONField(
+        help_text="The submitted data for this kind (hours_json dict or beers list).",
+    )
+    client_id = models.UUIDField(
+        help_text="Client-generated UUID; idempotency key for offline retries.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Pub Contribution Log"
+        verbose_name_plural = "Pub Contribution Log"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "client_id", "kind"],
+                name="unique_contribution_per_account_client_id_kind",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"PubContributionLog({self.name} [{self.cache_key}] — {self.kind})"

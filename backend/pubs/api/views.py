@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import math
 
+from django.utils import timezone as dj_timezone
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
@@ -22,11 +23,13 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
-from pubs.enrichment import geohash8
+from pubs.enrichment import community_hours_to_osm, geohash8
 from pubs.models import (
     Account,
     EnrichTask,
     FeedbackReport,
+    PubCommunityData,
+    PubContributionLog,
     PubHours,
     PubReport,
     ReleaseNote,
@@ -43,6 +46,8 @@ from .serializers import (
     BlockedPubsResponseSerializer,
     FeedbackReportSerializer,
     FeedbackRequestSerializer,
+    PubCommunityRequestSerializer,
+    PubCommunityResponseSerializer,
     PubHoursRequestSerializer,
     PubHoursResponseSerializer,
     PubReportBlockedQuerySerializer,
@@ -161,6 +166,109 @@ class PubReportView(APIView):
             PubReportSerializer(report).data,
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
+
+
+class PubCommunityView(APIView):
+    """
+    POST /v1/pub-community
+
+    Accept community-contributed opening hours and/or a list of beers on tap for
+    a pub. Contributions go LIVE IMMEDIATELY (no approval queue): the per-pub
+    PubCommunityData row is upserted and full history is appended to
+    PubContributionLog for audit / revert. Community opening hours take
+    precedence over firmy.cz data in the /v1/pub-hours read path.
+
+    Auth: Bearer token (per-account). Idempotent on (account, client_id, kind):
+    re-POSTing the same client_id never duplicates a log row. Throttled per-IP
+    (scope "community").
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "community"
+
+    def post(self, request: Request) -> Response:
+        serializer = PubCommunityRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        cache_key = geohash8(data["lat"], data["lng"])
+        has_hours = data.get("hours") is not None
+        has_beers = "beers" in data
+        now = dj_timezone.now()
+
+        try:
+            defaults = {
+                "name": data["name"],
+                "lat": data["lat"],
+                "lng": data["lng"],
+                "city": data.get("city") or None,
+                "external_id": data.get("external_id") or None,
+                "account": request.user,
+            }
+            if has_hours:
+                hours_json = data["hours"]
+                defaults["hours_json"] = hours_json
+                defaults["opening_hours_raw"] = community_hours_to_osm(hours_json)
+                defaults["hours_updated_at"] = now
+            if has_beers:
+                defaults["beers"] = data["beers"]
+                defaults["beers_updated_at"] = now
+
+            record, _ = PubCommunityData.objects.update_or_create(
+                cache_key=cache_key,
+                defaults=defaults,
+            )
+
+            # Append idempotent history rows, one per submitted kind.
+            if has_hours:
+                PubContributionLog.objects.get_or_create(
+                    account=request.user,
+                    client_id=data["client_id"],
+                    kind=PubContributionLog.Kind.HOURS,
+                    defaults={
+                        "cache_key": cache_key,
+                        "name": data["name"],
+                        "lat": data["lat"],
+                        "lng": data["lng"],
+                        "payload": data["hours"],
+                    },
+                )
+            if has_beers:
+                PubContributionLog.objects.get_or_create(
+                    account=request.user,
+                    client_id=data["client_id"],
+                    kind=PubContributionLog.Kind.BEERS,
+                    defaults={
+                        "cache_key": cache_key,
+                        "name": data["name"],
+                        "lat": data["lat"],
+                        "lng": data["lng"],
+                        "payload": data["beers"],
+                    },
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "pub-community: unexpected error saving contribution for %r: %s",
+                data.get("name"),
+                exc,
+                exc_info=True,
+            )
+            return Response(
+                {"detail": "Internal server error."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        body = PubCommunityResponseSerializer(
+            {
+                "cache_key": record.cache_key,
+                "hours": record.hours_json,
+                "beers": record.beers or [],
+            }
+        ).data
+        return Response(body, status=status.HTTP_200_OK)
 
 
 class FeedbackView(APIView):

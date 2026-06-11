@@ -176,3 +176,73 @@ def normalize_to_osm(value: object) -> str | None:
             return "; ".join(parts) if parts else None
 
     return None
+
+
+# ---------------------------------------------------------------------------
+# Structured community hours → OSM grammar
+# ---------------------------------------------------------------------------
+
+# Day keys in the structured community ``hours_json`` → OSM two-letter codes,
+# in calendar order (the OSM string is emitted Mo..Su).
+_COMMUNITY_DAY_ORDER: tuple[tuple[str, str], ...] = (
+    ("mo", "Mo"),
+    ("tu", "Tu"),
+    ("we", "We"),
+    ("th", "Th"),
+    ("fr", "Fr"),
+    ("sa", "Sa"),
+    ("su", "Su"),
+)
+
+
+def community_hours_to_osm(hours: dict | None) -> str:
+    """
+    Convert a structured community ``hours_json`` dict to an OSM opening_hours
+    string the is_open evaluator understands.
+
+    Parameters
+    ----------
+    hours:
+        ``{"mo": [["11:00","23:00"]], "tu": [], ...}`` — all 7 keys
+        mo/tu/we/th/fr/sa/su. An empty list means closed that day. Overnight
+        intervals (end < start, e.g. ``["16:00","01:00"]``) are passed straight
+        through as ``16:00-01:00``; the Rust ``opening_hours`` evaluator handles
+        them. Up to 3 intervals per day are supported (comma-joined).
+
+    Returns
+    -------
+    str
+        Per-day OSM string, e.g. "Mo 11:00-23:00; We 11:00-23:00; ...". Empty
+        string if *hours* is None/empty (no day produces any token).
+
+    Notes
+    -----
+    Closed days are OMITTED from the string rather than emitted as
+    ``<Day> off``. The evaluator already reads any day with no rule as closed,
+    so omission has the same "closed" meaning — but it avoids a subtle bug: an
+    explicit ``Sa off`` token SUPPRESSES the spillover of a Friday overnight
+    interval (``Fr 16:00-01:00``) into early Saturday, whereas omitting Saturday
+    lets the overnight interval evaluate correctly. The only behavioural
+    difference from the input is therefore desirable.
+
+    This emits one segment per day (no Mo-Fr range grouping); the evaluator
+    treats the per-day form identically, and keeping it explicit makes the
+    derived string trivially auditable in the admin against ``hours_json``.
+    Input is assumed already validated by the serializer (HH:MM format,
+    interval count).
+    """
+    if not hours:
+        return ""
+
+    segments: list[str] = []
+    for key, osm_day in _COMMUNITY_DAY_ORDER:
+        intervals = hours.get(key)
+        if not intervals:
+            # Closed (empty list) or missing — omit the day; the evaluator reads
+            # an unmentioned day as closed, and omission preserves overnight
+            # spillover from the previous day (see Notes).
+            continue
+        parts = [f"{start}-{end}" for start, end in intervals]
+        segments.append(f"{osm_day} {','.join(parts)}")
+
+    return "; ".join(segments)
