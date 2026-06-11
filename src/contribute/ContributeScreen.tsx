@@ -17,7 +17,6 @@ import {
   ScrollView,
   Pressable,
   TextInput,
-  KeyboardAvoidingView,
   Platform,
   StyleSheet,
 } from 'react-native';
@@ -328,117 +327,114 @@ export default function ContributeScreen() {
           </View>
         </View>
       ) : (
-        <KeyboardAvoidingView
+        <ScrollView
           style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={insets.top + 56}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: Math.max(insets.bottom + 24, 32) },
+          ]}
+          automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          <ScrollView
-            contentContainerStyle={[
-              styles.scrollContent,
-              { paddingBottom: Math.max(insets.bottom + 24, 32) },
-            ]}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            {pub.name ? (
-              <Text style={styles.pubName} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {pub.name}
-              </Text>
-            ) : null}
-            <Text style={styles.intro} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.contribute.intro}
+          {pub.name ? (
+            <Text style={styles.pubName} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {pub.name}
             </Text>
+          ) : null}
+          <Text style={styles.intro} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.contribute.intro}
+          </Text>
 
-            {/* ── Otevírací doba ── */}
-            <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {cs.contribute.hoursHeader}
-              </Text>
-              <Pressable
-                onPress={copyMondayToAll}
-                style={styles.copyButton}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={cs.a11y.contributeCopyToAll}
-              >
-                <CopyIcon size={14} color={Colors.amber} />
-                <Text style={styles.copyButtonText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.contribute.copyToAll}
-                </Text>
-              </Pressable>
-            </View>
-
-            {DAY_KEYS.map((day) => (
-              <DayRow
-                key={day}
-                day={day}
-                intervals={hours[day]}
-                onToggleClosed={() => toggleClosed(day)}
-                onAddInterval={() => addInterval(day)}
-                onRemoveInterval={(i) => removeInterval(day, i)}
-                onChangeTime={(i, which, value) => setIntervalValue(day, i, which, value)}
-              />
-            ))}
-
-            {/* ── Piva na čepu ── */}
-            <Text
-              style={[styles.sectionHeader, styles.sectionHeaderSpaced]}
-              maxFontSizeMultiplier={FontScaleCap.heading}
+          {/* ── Otevírací doba ── */}
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {cs.contribute.hoursHeader}
+            </Text>
+            <Pressable
+              onPress={copyMondayToAll}
+              style={styles.copyButton}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={cs.a11y.contributeCopyToAll}
             >
-              {cs.contribute.beersHeader}
+              <CopyIcon size={14} color={Colors.amber} />
+              <Text style={styles.copyButtonText} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.contribute.copyToAll}
+              </Text>
+            </Pressable>
+          </View>
+
+          {DAY_KEYS.map((day) => (
+            <DayRow
+              key={day}
+              day={day}
+              intervals={hours[day]}
+              onToggleClosed={() => toggleClosed(day)}
+              onAddInterval={() => addInterval(day)}
+              onRemoveInterval={(i) => removeInterval(day, i)}
+              onChangeTime={(i, which, value) => setIntervalValue(day, i, which, value)}
+            />
+          ))}
+
+          {/* ── Piva na čepu ── */}
+          <Text
+            style={[styles.sectionHeader, styles.sectionHeaderSpaced]}
+            maxFontSizeMultiplier={FontScaleCap.heading}
+          >
+            {cs.contribute.beersHeader}
+          </Text>
+
+          {beers.map((beer, index) => (
+            <BeerRowView
+              key={index}
+              beer={beer}
+              onChangeName={(name) => updateBeer(index, { name })}
+              onChangePrice={(priceText) =>
+                updateBeer(index, { priceText: priceText.replace(/\D/g, '').slice(0, 4) })
+              }
+              onChangeVolume={(volumeMl) => updateBeer(index, { volumeMl })}
+              onRemove={() => removeBeer(index)}
+            />
+          ))}
+
+          {beers.length < MAX_BEERS ? (
+            <Pressable
+              onPress={addBeer}
+              style={styles.addRow}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={cs.a11y.contributeAddBeer}
+            >
+              <PlusIcon size={16} color={Colors.amber} />
+              <Text style={styles.addRowText} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.contribute.addBeer}
+              </Text>
+            </Pressable>
+          ) : (
+            <Text style={styles.maxHint} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.contribute.maxBeersReached}
             </Text>
+          )}
 
-            {beers.map((beer, index) => (
-              <BeerRowView
-                key={index}
-                beer={beer}
-                onChangeName={(name) => updateBeer(index, { name })}
-                onChangePrice={(priceText) =>
-                  updateBeer(index, { priceText: priceText.replace(/\D/g, '').slice(0, 4) })
-                }
-                onChangeVolume={(volumeMl) => updateBeer(index, { volumeMl })}
-                onRemove={() => removeBeer(index)}
-              />
-            ))}
+          {!hoursValid && (
+            <Text style={styles.invalidHint} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.contribute.invalidHint}
+            </Text>
+          )}
 
-            {beers.length < MAX_BEERS ? (
-              <Pressable
-                onPress={addBeer}
-                style={styles.addRow}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={cs.a11y.contributeAddBeer}
-              >
-                <PlusIcon size={16} color={Colors.amber} />
-                <Text style={styles.addRowText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.contribute.addBeer}
-                </Text>
-              </Pressable>
-            ) : (
-              <Text style={styles.maxHint} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.contribute.maxBeersReached}
-              </Text>
-            )}
-
-            {!hoursValid && (
-              <Text style={styles.invalidHint} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.contribute.invalidHint}
-              </Text>
-            )}
-
-            {/* ── Submit ── */}
-            <View style={styles.submitButton}>
-              <GlowButton
-                label={cs.contribute.save}
-                onPress={handleSubmit}
-                glow={canSubmit ? 'soft' : 'none'}
-                accessibilityLabel={cs.a11y.contributeSaveButton}
-              />
-              {!canSubmit && <View style={styles.submitDisabledOverlay} />}
-            </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
+          {/* ── Submit ── */}
+          <View style={styles.submitButton}>
+            <GlowButton
+              label={cs.contribute.save}
+              onPress={handleSubmit}
+              glow={canSubmit ? 'soft' : 'none'}
+              accessibilityLabel={cs.a11y.contributeSaveButton}
+            />
+            {!canSubmit && <View style={styles.submitDisabledOverlay} />}
+          </View>
+        </ScrollView>
       )}
     </View>
   );
