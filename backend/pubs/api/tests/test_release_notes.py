@@ -79,6 +79,15 @@ def test_unknown_version_returns_404(client):
     assert resp.status_code == status.HTTP_404_NOT_FOUND
 
 
+@pytest.mark.django_db
+def test_newer_version_note_is_not_returned_for_older_version(client):
+    _make_note("1.1.1")
+
+    resp = client.get("/v1/release-notes", {"version": "1.1.0"})
+
+    assert resp.status_code == status.HTTP_404_NOT_FOUND
+
+
 # ---------------------------------------------------------------------------
 # Request validation
 # ---------------------------------------------------------------------------
