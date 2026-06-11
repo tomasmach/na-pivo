@@ -435,6 +435,64 @@ def test_read_community_collision_guard_rejects_mismatched_name(client):
 
 
 # ---------------------------------------------------------------------------
+# venueKind: community-beers override (POST /v1/pub-hours)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_community_hours_with_beers_force_venue_kind_pub(client):
+    """Community hours + non-empty beers → venueKind 'pub'."""
+    _make_community()  # has beers
+    resp = client.post(
+        "/v1/pub-hours",
+        data={"pubs": [{"name": _NAME, "lat": _LAT, "lng": _LNG}]},
+        format="json",
+    )
+    assert resp.status_code == status.HTTP_200_OK
+    r = resp.json()["results"][0]
+    assert r["source"] == "community"
+    assert r["venueKind"] == "pub"
+
+
+@pytest.mark.django_db
+def test_community_beers_override_firmy_not_pub_verdict(client):
+    """Even if the stored firmy verdict is 'not_pub', non-empty community beers
+    force venueKind 'pub' (the community knows best)."""
+    from pubs.api.tests.test_views import _make_fresh_row
+    from pubs.models import PubHours
+
+    # Firmy says not_pub, but the community listed beers on tap.
+    _make_fresh_row(venue_kind=PubHours.VenueKind.NOT_PUB)
+    _make_community(hours_json=None, opening_hours_raw="")  # beers only
+
+    resp = client.post(
+        "/v1/pub-hours",
+        data={"pubs": [{"name": _NAME, "lat": _LAT, "lng": _LNG}]},
+        format="json",
+    )
+    assert resp.status_code == status.HTTP_200_OK
+    r = resp.json()["results"][0]
+    assert r["source"] == "firmy"  # firmy hours kept (community had none)
+    assert r["beers"] == _BEERS
+    assert r["venueKind"] == "pub"  # overridden
+
+
+@pytest.mark.django_db
+def test_community_hours_without_beers_does_not_force_pub(client):
+    """Community hours but an EMPTY beer list must NOT force 'pub'."""
+    _make_community(beers=[])
+    resp = client.post(
+        "/v1/pub-hours",
+        data={"pubs": [{"name": _NAME, "lat": _LAT, "lng": _LNG}]},
+        format="json",
+    )
+    assert resp.status_code == status.HTTP_200_OK
+    r = resp.json()["results"][0]
+    assert r["source"] == "community"
+    assert r["venueKind"] == "unknown"
+
+
+# ---------------------------------------------------------------------------
 # Throttle scope existence
 # ---------------------------------------------------------------------------
 

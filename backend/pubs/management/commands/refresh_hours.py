@@ -23,7 +23,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from pubs.enrichment import FirmyHoursSource, RawHours, geohash8
+from pubs.enrichment import FirmyHoursSource, RawHours, classify_venue, geohash8
 from pubs.models import EnrichTask, PubHours
 
 logger = logging.getLogger(__name__)
@@ -55,6 +55,9 @@ def _persist_result(
     source_ref: str | None = None
     confidence: float | None = None
     error: str | None = None
+    # No-match rows carry no classification — keep the safe 'unknown' default.
+    venue_kind = PubHours.VenueKind.UNKNOWN
+    venue_categories: list[str] = []
 
     if result is not None:
         if result.opening_hours_raw:
@@ -65,6 +68,9 @@ def _persist_result(
         opening_hours_raw = result.opening_hours_raw
         source_ref = result.source_ref
         confidence = result.confidence
+        # Classify the venue (draft beer?) from the scraped categories/tags.
+        venue_kind = classify_venue(result.categories, result.tags)
+        venue_categories = result.categories
 
     PubHours.objects.update_or_create(
         cache_key=cache_key,
@@ -76,6 +82,8 @@ def _persist_result(
             "source": result.source if result else "firmy",
             "source_ref": source_ref,
             "confidence": confidence,
+            "venue_kind": venue_kind,
+            "venue_categories": venue_categories,
             "status": status,
             "error": error,
             "fetched_at": timezone.now(),

@@ -79,6 +79,30 @@ class PubHours(models.Model):
     )
     error = models.TextField(blank=True, null=True)
 
+    # ---------- venue classification ----------
+    # Whether this place serves draft beer, derived from the Firmy.cz categories
+    # / tags by pubs.enrichment.venue.classify_venue. Indexed because the read
+    # path and future filtering query by it. 'unknown' is the safe default for
+    # a row that has never been classified (e.g. a no-match or pre-migration row).
+    class VenueKind(models.TextChoices):
+        PUB = "pub", "Pub"
+        MAYBE = "maybe", "Maybe"
+        NOT_PUB = "not_pub", "Not a pub"
+        UNKNOWN = "unknown", "Unknown"
+
+    venue_kind = models.CharField(
+        max_length=16,
+        choices=VenueKind.choices,
+        default=VenueKind.UNKNOWN,
+        db_index=True,
+        help_text="Draft-beer classification derived from Firmy.cz categories/tags.",
+    )
+    venue_categories = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Firmy.cz category names the classification was derived from.",
+    )
+
     # ---------- timestamps ----------
     fetched_at = models.DateTimeField(
         null=True,

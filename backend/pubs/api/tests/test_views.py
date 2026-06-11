@@ -161,6 +161,77 @@ def test_response_shape_from_cache(client):
     assert r["status"] == "ok"
     assert r["source"] == "firmy"
     assert pytest.approx(r["confidence"]) == 0.95
+    # venue_kind defaults to 'unknown' on a row that wasn't classified.
+    assert r["venueKind"] == "unknown"
+
+
+@pytest.mark.django_db
+def test_response_includes_venue_kind_from_row(client):
+    """A classified PubHours row surfaces its venue_kind as venueKind."""
+    _make_fresh_row(venue_kind=PubHours.VenueKind.PUB)
+
+    from pubs.api import cache as cache_module
+
+    with patch.object(cache_module, "is_open_now", return_value=True), \
+         patch.object(cache_module, "next_change", return_value=None):
+        resp = client.post(
+            "/v1/pub-hours",
+            data={"pubs": [{"name": _FLEKY_NAME, "lat": _FLEKY_LAT, "lng": _FLEKY_LNG}]},
+            format="json",
+        )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["results"][0]["venueKind"] == "pub"
+
+
+@pytest.mark.django_db
+def test_sync_fetch_persists_classified_venue_kind(client):
+    """A sync fetch classifies the venue from scraped categories/tags and the
+    response + persisted row both carry venueKind 'pub'."""
+    raw = RawHours(
+        opening_hours_raw=_FLEKY_HOURS,
+        source="firmy",
+        source_ref="272313",
+        matched_name=_FLEKY_NAME,
+        matched_lat=_FLEKY_LAT,
+        matched_lng=_FLEKY_LNG,
+        confidence=0.95,
+        categories=["České a staročeské restaurace", "Restaurace"],
+        tags=["tocene-pivo"],
+    )
+    mock_source = MagicMock()
+    mock_source.fetch.return_value = raw
+
+    with patch("pubs.api.cache.FirmyHoursSource", return_value=mock_source):
+        resp = client.post(
+            "/v1/pub-hours",
+            data={
+                "pubs": [{"name": _FLEKY_NAME, "lat": _FLEKY_LAT, "lng": _FLEKY_LNG}],
+                "sync_budget": 1,
+            },
+            format="json",
+        )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["results"][0]["venueKind"] == "pub"
+    row = PubHours.objects.get(cache_key=_FLEKY_KEY)
+    assert row.venue_kind == "pub"
+    assert row.venue_categories == ["České a staročeské restaurace", "Restaurace"]
+
+
+@pytest.mark.django_db
+def test_pending_result_venue_kind_unknown(client):
+    """A pub with no PubHours row (pending) reports venueKind 'unknown'."""
+    resp = client.post(
+        "/v1/pub-hours",
+        data={
+            "pubs": [{"name": _FLEKY_NAME, "lat": _FLEKY_LAT, "lng": _FLEKY_LNG}],
+            "sync_budget": 0,
+        },
+        format="json",
+    )
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["results"][0]["venueKind"] == "unknown"
 
 
 @pytest.mark.django_db

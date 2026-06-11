@@ -32,6 +32,7 @@ from django.utils import timezone as dj_tz
 
 from pubs.enrichment import (
     FirmyHoursSource,
+    classify_venue,
     geohash8,
     is_open_now,
     names_match,
@@ -74,6 +75,7 @@ def _result_from_row(row: PubHours) -> dict[str, Any]:
         "status": row.status,
         "source": row.source if row.source else None,
         "confidence": row.confidence,
+        "venueKind": row.venue_kind,
         "beers": [],
         "hours_json": None,
     }
@@ -89,6 +91,7 @@ def _pending_result(cache_key: str, name: str) -> dict[str, Any]:
         "status": PubHours.Status.PENDING,
         "source": None,
         "confidence": None,
+        "venueKind": PubHours.VenueKind.UNKNOWN,
         "beers": [],
         "hours_json": None,
     }
@@ -106,6 +109,7 @@ def _unknown_result(cache_key: str, name: str) -> dict[str, Any]:
         "status": PubHours.Status.UNKNOWN,
         "source": None,
         "confidence": None,
+        "venueKind": PubHours.VenueKind.UNKNOWN,
         "beers": [],
         "hours_json": None,
     }
@@ -122,6 +126,13 @@ def _community_result(row: PubCommunityData, name: str) -> dict[str, Any]:
     nc = next_change(oh) if oh else None
     nc_iso: str | None = nc.isoformat() if nc is not None else None
 
+    # Community hours imply someone has curated this place; if they also listed
+    # beers on tap, the community knows it serves draft beer → force 'pub'.
+    # Otherwise leave it unknown (community hours alone don't prove a beer pub).
+    venue_kind = (
+        PubHours.VenueKind.PUB if row.beers else PubHours.VenueKind.UNKNOWN
+    )
+
     return {
         "key": row.cache_key,
         "name": name,
@@ -131,6 +142,7 @@ def _community_result(row: PubCommunityData, name: str) -> dict[str, Any]:
         "status": PubHours.Status.OK,
         "source": "community",
         "confidence": None,
+        "venueKind": venue_kind,
         "beers": row.beers or [],
         "hours_json": row.hours_json,
     }
@@ -230,6 +242,8 @@ def _enrich_sync(
                 "source": "firmy",
                 "source_ref": None,
                 "confidence": None,
+                "venue_kind": PubHours.VenueKind.UNKNOWN,
+                "venue_categories": [],
                 "error": None,
                 "fetched_at": now,
             },
@@ -242,6 +256,9 @@ def _enrich_sync(
     else:
         status = PubHours.Status.UNKNOWN
 
+    # Classify the venue (draft beer?) from the scraped Firmy.cz categories/tags.
+    venue_kind = classify_venue(raw.categories, raw.tags)
+
     row, _ = PubHours.objects.update_or_create(
         cache_key=cache_key,
         defaults={
@@ -253,6 +270,8 @@ def _enrich_sync(
             "source": raw.source,
             "source_ref": raw.source_ref,
             "confidence": raw.confidence,
+            "venue_kind": venue_kind,
+            "venue_categories": raw.categories,
             "error": None,
             "fetched_at": now,
         },
@@ -360,8 +379,12 @@ def get_or_enrich(
         _result_index = len(results)
 
         def _attach_beers() -> None:
+            # Non-empty community beers are a definitive draft-beer signal — the
+            # community override forces venueKind 'pub' regardless of the stored
+            # firmy verdict (the community knows better).
             if community_beers:
                 results[_result_index]["beers"] = community_beers
+                results[_result_index]["venueKind"] = PubHours.VenueKind.PUB
 
         row = existing.get(key)
 

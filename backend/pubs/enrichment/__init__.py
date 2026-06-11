@@ -13,6 +13,7 @@ community_hours_to_osm — converts structured community hours to OSM grammar; s
 is_open_now         — evaluates OSM hours string at a given moment; see is_open.py
 next_change         — next open/close transition; see is_open.py
 verify_match        — name+geo confidence scoring; see matcher.py
+classify_venue      — classify draft-beer venue from categories/tags; see venue.py
 names_match         — name-only gate for cache-read collision guard; see matcher.py
 geohash8            — canonical cache-key helper; see matcher.py
 TransientFetchError — raised by FirmyHoursSource on a retryable network/proxy error
@@ -22,6 +23,7 @@ from .firmy import FirmyHoursSource, RawHours, TransientFetchError  # noqa: F401
 from .is_open import is_open_now, next_change  # noqa: F401
 from .matcher import geohash8, names_match, verify_match  # noqa: F401
 from .normalizer import community_hours_to_osm, normalize_to_osm  # noqa: F401
+from .venue import classify_venue  # noqa: F401
 
 __all__ = [
     "RawHours",
@@ -34,4 +36,5 @@ __all__ = [
     "verify_match",
     "names_match",
     "geohash8",
+    "classify_venue",
 ]

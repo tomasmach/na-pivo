@@ -35,6 +35,7 @@ from pubs.enrichment.firmy import (
 
 FIXTURES_DIR = pathlib.Path(__file__).parent / "fixtures"
 UFLEKU_HTML = (FIXTURES_DIR / "firmy_ufleku.html").read_text(encoding="utf-8")
+DETAIL_LISTS_HTML = (FIXTURES_DIR / "firmy_detail_lists.html").read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +172,53 @@ class TestUflekuFixture:
 
 
 # ---------------------------------------------------------------------------
+# Tests: category / tag extraction (div.list.lcat / div.list.ltag)
+# ---------------------------------------------------------------------------
+
+class TestCategoryTagExtraction:
+    """Parse the lcat/ltag blocks from realistic SSR HTML, footer noise and all."""
+
+    def test_extracts_category_names_from_lcat(self):
+        cats, _tags = FirmyHoursSource._extract_categories_tags(DETAIL_LISTS_HTML)
+        assert cats == ["České a staročeské restaurace", "Restaurace"]
+
+    def test_extracts_tag_slugs_from_ltag(self):
+        _cats, tags = FirmyHoursSource._extract_categories_tags(DETAIL_LISTS_HTML)
+        assert tags == ["jitrnice", "tocene-pivo", "darkove-poukazy", "svickova", "salat"]
+
+    def test_footer_stitek_links_are_not_swept_in(self):
+        """Generic /stitek/ links in the page footer (outside the ltag block)
+        must NOT leak into the extracted tags."""
+        _cats, tags = FirmyHoursSource._extract_categories_tags(DETAIL_LISTS_HTML)
+        assert "samosber-jahod" not in tags
+        assert "vanocni-stromky" not in tags
+
+    def test_real_ufleku_fixture_extraction(self):
+        """The full real U Fleků page extracts the same lists."""
+        cats, tags = FirmyHoursSource._extract_categories_tags(UFLEKU_HTML)
+        assert "České a staročeské restaurace" in cats
+        assert "Restaurace" in cats
+        assert "tocene-pivo" in tags
+
+    def test_missing_sections_yield_empty_lists(self):
+        cats, tags = FirmyHoursSource._extract_categories_tags(
+            "<html><body>no detail lists here</body></html>"
+        )
+        assert cats == []
+        assert tags == []
+
+    def test_only_lcat_present(self):
+        html = (
+            '<div class="detailLists"><div class="list lcat"><ul>'
+            '<li><a href="https://www.firmy.cz/x">Pivnice</a></li>'
+            "</ul></div></div>"
+        )
+        cats, tags = FirmyHoursSource._extract_categories_tags(html)
+        assert cats == ["Pivnice"]
+        assert tags == []
+
+
+# ---------------------------------------------------------------------------
 # Tests: FirmyHoursSource.fetch() with mocked HTTP
 # ---------------------------------------------------------------------------
 
@@ -208,6 +256,34 @@ class TestFirmyHoursSourceFetch:
         assert result.source == "firmy"
         assert result.source_ref == "272313"
         assert result.confidence > 0.4
+
+    def test_fetch_populates_categories_and_tags(self):
+        """A successful fetch carries the scraped categories/tags on RawHours."""
+        name = "Restaurace U Fleků"
+        lat, lng = 50.078914, 14.416990
+        search_html = _make_search_html("272313", "u-fleku", name, lat, lng)
+        ld = {
+            "@context": "http://schema.org",
+            "@type": "LocalBusiness",
+            "name": name,
+            "geo": {"latitude": lat, "longitude": lng},
+            "openingHours": "Mo-Su 10:00-23:00",
+        }
+        detail_html = (
+            f'<html><script type="application/ld+json">{json.dumps(ld)}</script>'
+            '<div class="list lcat"><ul>'
+            '<li><a href="https://www.firmy.cz/x">České a staročeské restaurace</a></li>'
+            '<li><a href="https://www.firmy.cz/y">Restaurace</a></li></ul></div>'
+            '<div class="list ltag"><ul>'
+            '<li><a href="https://www.firmy.cz/stitek/tocene-pivo">Točené pivo</a></li>'
+            "</ul></div></html>"
+        )
+        src = _make_source(search_html, detail_html, firm_id="272313", slug="u-fleku")
+
+        result = src.fetch(name, lat, lng, city="Praha")
+        assert result is not None
+        assert result.categories == ["České a staročeské restaurace", "Restaurace"]
+        assert result.tags == ["tocene-pivo"]
 
     def test_no_hours_returns_raw_hours_with_none(self):
         """Firm found but no opening hours → RawHours(opening_hours_raw=None)."""

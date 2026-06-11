@@ -21,7 +21,8 @@ Response body:
                                          --   Prague wall-clock, so do not normalise to UTC.
                 "status": "ok|unknown|pending|error",
                 "source": str|null,
-                "confidence": float|null
+                "confidence": float|null,
+                "venueKind": "pub|maybe|not_pub|unknown"  -- draft-beer classification
             }
         ]
     }
@@ -343,6 +344,10 @@ class PubHoursResultSerializer(serializers.Serializer):
     status = serializers.CharField()
     source = serializers.CharField(allow_null=True)
     confidence = serializers.FloatField(allow_null=True)
+    # Draft-beer classification: one of "pub" | "maybe" | "not_pub" | "unknown".
+    # A pub with no PubHours row, or one we couldn't classify, is "unknown".
+    # Non-empty community beers force "pub" (the community knows best).
+    venueKind = serializers.CharField()
     beers = serializers.ListField(child=serializers.DictField(), default=list)
     hours_json = serializers.JSONField(allow_null=True, required=False)
 

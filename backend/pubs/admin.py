@@ -15,8 +15,8 @@ from .models import (
 
 @admin.register(PubHours)
 class PubHoursAdmin(admin.ModelAdmin):
-    list_display = ("name", "cache_key", "status", "confidence", "source", "fetched_at", "updated_at")
-    list_filter = ("status", "source")
+    list_display = ("name", "cache_key", "status", "venue_kind", "confidence", "source", "fetched_at", "updated_at")
+    list_filter = ("status", "venue_kind", "source")
     search_fields = ("name", "cache_key", "source_ref")
     readonly_fields = ("cache_key", "updated_at", "fetched_at")
     ordering = ("-updated_at",)

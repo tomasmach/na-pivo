@@ -60,7 +60,7 @@ import logging
 import re
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from urllib.parse import quote_plus, urlparse
 
@@ -129,6 +129,22 @@ _DETAIL_RE = re.compile(
     r'href="https://www\.firmy\.cz/detail/(\d+)-([^"]+)\.html"'
 )
 
+# Category / tag extraction from the detail page.
+#
+# The detail page carries a `<div class="detailLists">` with two sibling blocks:
+#   <div class="list lcat"> … category <a> links … </div>
+#   <div class="list ltag"> … /stitek/{slug} <a> links … </div>
+# We FIRST isolate each block up to its closing </div> so we never sweep in the
+# page footer (which has its own generic /stitek/ links, e.g.
+# /stitek/samosber-jahod, outside the ltag section). The blocks contain no
+# nested <div>, so a non-greedy match to the first </div> bounds them cleanly.
+_LCAT_BLOCK_RE = re.compile(r'<div class="list lcat">(.*?)</div>', re.DOTALL)
+_LTAG_BLOCK_RE = re.compile(r'<div class="list ltag">(.*?)</div>', re.DOTALL)
+# Category names are the link texts inside the lcat block.
+_CATEGORY_LINK_RE = re.compile(r"<a [^>]*>([^<]+)</a>")
+# Tag slugs are the /stitek/{slug} path segments inside the ltag block.
+_TAG_SLUG_RE = re.compile(r'/stitek/([^"/?#]+)')
+
 # ---------------------------------------------------------------------------
 # Public dataclass
 # ---------------------------------------------------------------------------
@@ -159,6 +175,11 @@ class RawHours:
     matched_lat: float | None
     matched_lng: float | None
     confidence: float
+    # Firmy.cz category names (link texts) and tag slugs scraped from the detail
+    # page, used to classify whether the venue serves draft beer. Default empty
+    # so older call sites / fixtures without category data keep working.
+    categories: list[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -397,6 +418,37 @@ class FirmyHoursSource:
         return None
 
     # ------------------------------------------------------------------
+    # Category / tag extraction
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _extract_categories_tags(html: str) -> tuple[list[str], list[str]]:
+        """Return (category names, tag slugs) scraped from a detail page.
+
+        Tolerant regex extraction (the repo deliberately avoids BeautifulSoup).
+        Each list is restricted to its own ``div.list.lcat`` / ``div.list.ltag``
+        block so unrelated footer links (e.g. generic /stitek/ links outside the
+        tag section) are never swept in. Missing sections yield empty lists.
+        """
+        categories: list[str] = []
+        lcat_match = _LCAT_BLOCK_RE.search(html)
+        if lcat_match:
+            for text in _CATEGORY_LINK_RE.findall(lcat_match.group(1)):
+                name = text.strip()
+                if name:
+                    categories.append(name)
+
+        tags: list[str] = []
+        ltag_match = _LTAG_BLOCK_RE.search(html)
+        if ltag_match:
+            for slug in _TAG_SLUG_RE.findall(ltag_match.group(1)):
+                slug = slug.strip()
+                if slug:
+                    tags.append(slug)
+
+        return categories, tags
+
+    # ------------------------------------------------------------------
     # Search
     # ------------------------------------------------------------------
 
@@ -487,10 +539,13 @@ class FirmyHoursSource:
             return True
         return _CONSENT_WALL_PATH_TOKEN in parsed.path.lower()
 
-    def _fetch_detail(self, firm_id: str, slug: str) -> dict | None:
+    def _fetch_detail(
+        self, firm_id: str, slug: str
+    ) -> tuple[dict, list[str], list[str]] | None:
         """
-        Fetch a Firmy.cz detail page and return the LocalBusiness JSON-LD block,
-        or None on failure.
+        Fetch a Firmy.cz detail page and return a tuple of
+        (LocalBusiness JSON-LD block, category names, tag slugs), or None on
+        failure (no detail content / consent wall / firm gone).
         """
         url = _DETAIL_URL.format(firm_id=firm_id, slug=slug)
         try:
@@ -537,8 +592,13 @@ class FirmyHoursSource:
                 f"detail for firm {firm_id} bounced to consent wall ({resp.url})"
             )
 
-        ld_blocks = self._extract_ld_blocks(resp.text)
-        return self._local_business_block(ld_blocks)
+        html = resp.text
+        ld_blocks = self._extract_ld_blocks(html)
+        lb = self._local_business_block(ld_blocks)
+        if lb is None:
+            return None
+        categories, tags = self._extract_categories_tags(html)
+        return lb, categories, tags
 
     # ------------------------------------------------------------------
     # Public API
@@ -593,10 +653,11 @@ class FirmyHoursSource:
         firm_id, slug, search_lb = result
 
         # Step 2: Fetch detail
-        detail_lb = self._fetch_detail(firm_id, slug)
-        if detail_lb is None:
+        detail = self._fetch_detail(firm_id, slug)
+        if detail is None:
             logger.debug("firmy: no LocalBusiness block on detail page for firm %s", firm_id)
             return None
+        detail_lb, categories, tags = detail
 
         # Step 3: Extract candidate metadata
         c_name: str = detail_lb.get("name") or search_lb.get("name") or ""
@@ -630,6 +691,8 @@ class FirmyHoursSource:
             matched_lat=c_lat,
             matched_lng=c_lng,
             confidence=confidence,
+            categories=categories,
+            tags=tags,
         )
 
     # ------------------------------------------------------------------
