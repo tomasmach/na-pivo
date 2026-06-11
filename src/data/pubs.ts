@@ -22,6 +22,18 @@ import type { CommunityBeer, WeeklyHours } from "./communityHours";
  */
 export type HoursStatus = 'ok' | 'unknown' | 'pending' | 'error' | 'loading';
 
+/**
+ * Backend verdict on whether a place is actually a pub, derived from Firmy.cz
+ * categories (community beer reports override to 'pub' server-side).
+ *
+ * - 'pub'     — confidently a pub.
+ * - 'maybe'   — possibly a pub (half-restaurant, etc.) — kept.
+ * - 'not_pub' — confidently NOT a pub — hidden entirely; the compass never
+ *               targets it (see useCompass auto-exclusion).
+ * - 'unknown' — no verdict (also the default for older backends) — kept.
+ */
+export type VenueKind = 'pub' | 'maybe' | 'not_pub' | 'unknown';
+
 export type Pub = {
   id: string;
   name: string;
@@ -43,6 +55,13 @@ export type Pub = {
   communityHours?: WeeklyHours;
   /** Beers on tap, when known (community-sourced). */
   beers?: CommunityBeer[];
+  /**
+   * Backend verdict on whether this place is a pub. Resolved asynchronously with
+   * opening hours; 'not_pub' places are auto-excluded from compass targeting.
+   * Undefined until hours resolve (or when the backend is dormant) → treated as
+   * 'unknown' (shown).
+   */
+  venueKind?: VenueKind;
 };
 
 let _pubs: Pub[] = [];

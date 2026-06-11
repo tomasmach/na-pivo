@@ -143,6 +143,7 @@ function hours(overrides: Partial<PubHoursResult> = {}): PubHoursResult {
     source: null,
     communityHours: null,
     beers: [],
+    venueKind: 'unknown',
     ...overrides,
   };
 }
@@ -480,5 +481,131 @@ describe('useCompass — hours-aware selection (Skrýt zavřené hospody)', () =
     expect(hook.result.pub?.id).toBe(THIRD.id);
     const firstCall = (findNearestPub as jest.Mock).mock.calls[0]?.[0];
     expect(firstCall?.excludeCacheKeys).toContain(geohash8(OPEN.lat, OPEN.lng));
+  });
+});
+
+/**
+ * Backend venueKind === 'not_pub' must hide a place ENTIRELY: the compass walks
+ * past it to the next eligible pub, exactly like a known-closed pub, but
+ * UNCONDITIONALLY — independent of the "hide closed" preference. 'pub' / 'maybe'
+ * / 'unknown' (and a dormant backend) leave selection untouched.
+ */
+describe('useCompass — venueKind not_pub hiding', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (useDevicePosition as jest.Mock).mockReturnValue({
+      position: { lat: 50.08, lng: 14.42, accuracyMeters: 8 },
+    });
+    useSettingsStore.setState({
+      mode: 'nearest',
+      maxDistanceKm: null,
+      hapticEnabled: true,
+      soundEnabled: false,
+      hideClosedPubs: true,
+      surpriseSeed: 17,
+    });
+    usePubStore.setState({
+      revealedPub: null,
+      reportedPubIds: [],
+      reportedCacheKeys: [],
+      isDataLoaded: false,
+    });
+    (findRandomPubInRadius as jest.Mock).mockReturnValue(OPEN);
+  });
+
+  afterEach(() => {
+    for (const cleanup of hookCleanups.splice(0)) cleanup();
+  });
+
+  it('auto-hides a not_pub place and lands on the next nearest pub', async () => {
+    // NOT_PUB is open per hours but is not actually a pub → must be walked past.
+    const NOT_PUB: Pub = { id: 'mapy:not_pub', name: 'Sushi Place', lat: 50.08, lng: 14.42 };
+    wireNearestWalk([NOT_PUB, OPEN]);
+    wireHours({
+      [NOT_PUB.id]: hours({ isOpenNow: true, venueKind: 'not_pub' }),
+      [OPEN.id]: hours({ isOpenNow: true, venueKind: 'pub' }),
+    });
+
+    const hook = renderCompassHook();
+    await flush();
+    await flush();
+
+    expect(hook.result.pub?.id).toBe(OPEN.id);
+    const lastCall = (findNearestPub as jest.Mock).mock.calls.at(-1)?.[0];
+    expect(lastCall?.excludeIds).toContain(NOT_PUB.id);
+  });
+
+  it('hides a not_pub place EVEN WITH hideClosedPubs OFF (unconditional)', async () => {
+    useSettingsStore.setState({ hideClosedPubs: false });
+    const NOT_PUB: Pub = { id: 'mapy:not_pub', name: 'Sushi Place', lat: 50.08, lng: 14.42 };
+    wireNearestWalk([NOT_PUB, OPEN]);
+    wireHours({
+      [NOT_PUB.id]: hours({ isOpenNow: true, venueKind: 'not_pub' }),
+      [OPEN.id]: hours({ isOpenNow: true, venueKind: 'pub' }),
+    });
+
+    const hook = renderCompassHook();
+    await flush();
+    await flush();
+
+    expect(hook.result.pub?.id).toBe(OPEN.id);
+    const lastCall = (findNearestPub as jest.Mock).mock.calls.at(-1)?.[0];
+    expect(lastCall?.excludeIds).toContain(NOT_PUB.id);
+  });
+
+  it('does NOT hide pub / maybe / unknown verdicts', async () => {
+    const MAYBE: Pub = { id: 'mapy:maybe', name: 'Half Restaurant', lat: 50.08, lng: 14.42 };
+    wireNearestWalk([MAYBE, OPEN]);
+    wireHours({
+      [MAYBE.id]: hours({ isOpenNow: true, venueKind: 'maybe' }),
+      [OPEN.id]: hours({ isOpenNow: true, venueKind: 'pub' }),
+    });
+
+    const hook = renderCompassHook();
+    await flush();
+    await flush();
+
+    // 'maybe' stays put — it is a candidate pub.
+    expect(hook.result.pub?.id).toBe(MAYBE.id);
+    const allExcludes = (findNearestPub as jest.Mock).mock.calls.flatMap(
+      (c) => c[0]?.excludeIds ?? []
+    );
+    expect(allExcludes).not.toContain(MAYBE.id);
+  });
+
+  it('walks past multiple not_pub places until it finds a real pub', async () => {
+    const NOT_A: Pub = { id: 'mapy:not_a', name: 'Sushi A', lat: 50.08, lng: 14.42 };
+    const NOT_B: Pub = { id: 'mapy:not_b', name: 'Cafe B', lat: 50.081, lng: 14.421 };
+    wireNearestWalk([NOT_A, NOT_B, OPEN]);
+    wireHours({
+      [NOT_A.id]: hours({ isOpenNow: true, venueKind: 'not_pub' }),
+      [NOT_B.id]: hours({ isOpenNow: true, venueKind: 'not_pub' }),
+      [OPEN.id]: hours({ isOpenNow: true, venueKind: 'pub' }),
+    });
+
+    const hook = renderCompassHook();
+    await flush();
+    await flush();
+    await flush();
+
+    expect(hook.result.pub?.id).toBe(OPEN.id);
+    const lastCall = (findNearestPub as jest.Mock).mock.calls.at(-1)?.[0];
+    expect(lastCall?.excludeIds).toEqual(expect.arrayContaining([NOT_A.id, NOT_B.id]));
+  });
+
+  it('dormant backend (empty hours map) hides nothing — missing verdict stays', async () => {
+    const PLACE: Pub = { id: 'mapy:place', name: 'Some Place', lat: 50.08, lng: 14.42 };
+    wireNearestWalk([PLACE, OPEN]);
+    (fetchPubHours as jest.Mock).mockResolvedValue(new Map());
+
+    const hook = renderCompassHook();
+    await flush();
+    await flush();
+
+    expect(hook.result.pub?.id).toBe(PLACE.id);
+    const allExcludes = (findNearestPub as jest.Mock).mock.calls.flatMap(
+      (c) => c[0]?.excludeIds ?? []
+    );
+    expect(allExcludes).not.toContain(PLACE.id);
   });
 });

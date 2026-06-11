@@ -12,7 +12,7 @@
  * cs.privacy.body and PRIVACY_POLICY.md.
  */
 
-import type { HoursStatus, Pub } from './pubs';
+import type { HoursStatus, Pub, VenueKind } from './pubs';
 import type { CommunityBeer, WeeklyHours } from './communityHours';
 import { beerFromWire, isWeeklyHours } from './communityHours';
 
@@ -27,6 +27,12 @@ export interface PubHoursResult {
   communityHours: WeeklyHours | null;
   /** Beers on tap, when the backend has them; empty array when none. */
   beers: CommunityBeer[];
+  /**
+   * Backend verdict on whether this place is actually a pub, classified from
+   * Firmy.cz categories (community beer reports override to 'pub' server-side).
+   * Absent/unrecognized → 'unknown' for backward compatibility.
+   */
+  venueKind: VenueKind;
 }
 
 interface WireBeer {
@@ -49,6 +55,8 @@ interface BackendResult {
   hours_json?: unknown;
   /** Beers on tap (may be absent on older backends). */
   beers?: WireBeer[];
+  /** Pub-vs-not verdict (may be absent on older backends). */
+  venueKind?: string | null;
 }
 
 interface BackendResponse {
@@ -87,6 +95,21 @@ function normalizeStatus(raw: string | undefined): HoursStatus {
   return 'unknown';
 }
 
+/** Backend's accepted venueKind values; anything else (or absent) → 'unknown'. */
+const VALID_VENUE_KINDS: ReadonlySet<string> = new Set([
+  'pub',
+  'maybe',
+  'not_pub',
+  'unknown',
+]);
+
+function normalizeVenueKind(raw: string | null | undefined): VenueKind {
+  if (raw && VALID_VENUE_KINDS.has(raw)) {
+    return raw as VenueKind;
+  }
+  return 'unknown';
+}
+
 function toResult(entry: BackendResult | undefined): PubHoursResult {
   if (!entry) {
     return {
@@ -97,6 +120,7 @@ function toResult(entry: BackendResult | undefined): PubHoursResult {
       source: null,
       communityHours: null,
       beers: [],
+      venueKind: 'unknown',
     };
   }
   // Optional extended fields — old backends omit them; never break on absence.
@@ -112,6 +136,7 @@ function toResult(entry: BackendResult | undefined): PubHoursResult {
     source: typeof entry.source === 'string' ? entry.source : null,
     communityHours,
     beers,
+    venueKind: normalizeVenueKind(entry.venueKind),
   };
 }
 

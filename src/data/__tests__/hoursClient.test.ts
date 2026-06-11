@@ -96,6 +96,7 @@ describe('fetchPubHours — happy path', () => {
       source: null,
       communityHours: null,
       beers: [],
+      venueKind: 'unknown',
     });
     expect(result.get(PUB_B.id)).toEqual({
       openingHours: null,
@@ -105,6 +106,7 @@ describe('fetchPubHours — happy path', () => {
       source: null,
       communityHours: null,
       beers: [],
+      venueKind: 'unknown',
     });
   });
 
@@ -168,6 +170,7 @@ describe('fetchPubHours — happy path', () => {
       source: null,
       communityHours: null,
       beers: [],
+      venueKind: 'unknown',
     });
   });
 
@@ -224,6 +227,39 @@ describe('fetchPubHours — happy path', () => {
     expect(entry?.source).toBeNull();
     expect(entry?.communityHours).toBeNull();
     expect(entry?.beers).toEqual([]);
+    // Missing venueKind on an older backend must default to 'unknown'.
+    expect(entry?.venueKind).toBe('unknown');
+  });
+
+  it.each(['pub', 'maybe', 'not_pub', 'unknown'] as const)(
+    'parses the venueKind verdict "%s" from the backend',
+    async (kind) => {
+      setBackend('https://api.example.com');
+      global.fetch = jest.fn(async () => ({
+        ok: true,
+        json: async () => ({ results: [{ status: 'ok', venueKind: kind }] }),
+      })) as unknown as typeof fetch;
+
+      const entry = (await fetchPubHours([PUB_A])).get(PUB_A.id);
+      expect(entry?.venueKind).toBe(kind);
+    },
+  );
+
+  it('normalizes an unrecognized / null venueKind to "unknown"', async () => {
+    setBackend('https://api.example.com');
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        results: [
+          { status: 'ok', venueKind: 'restaurant' },
+          { status: 'ok', venueKind: null },
+        ],
+      }),
+    })) as unknown as typeof fetch;
+
+    const result = await fetchPubHours([PUB_A, PUB_B]);
+    expect(result.get(PUB_A.id)?.venueKind).toBe('unknown');
+    expect(result.get(PUB_B.id)?.venueKind).toBe('unknown');
   });
 
   it('ignores a malformed hours_json that is not a valid weekly object', async () => {

@@ -9,7 +9,7 @@ import {
   type SharedValue,
 } from 'react-native-reanimated';
 import { fetchPubsNear, findNearestPub, findRandomPubInRadius, isLoaded } from '@/data/pubs';
-import type { HoursStatus, Pub } from '@/data/pubs';
+import type { HoursStatus, Pub, VenueKind } from '@/data/pubs';
 import { fetchPubHours } from '@/data/hoursClient';
 import { enqueuePubReport } from '@/data/pubReportQueue';
 import type { PubReportReason } from '@/data/pubReportsClient';
@@ -51,6 +51,8 @@ type PubHoursState = {
   communityHours?: WeeklyHours | null;
   /** Beers on tap from the backend, when present. */
   beers?: CommunityBeer[];
+  /** Backend pub-vs-not verdict; 'not_pub' triggers auto-exclusion. */
+  venueKind?: VenueKind;
 };
 
 function hasMovedEnoughForRetarget(current: TargetPosition, previous: TargetPosition): boolean {
@@ -180,6 +182,11 @@ export function useCompass(): UseCompassResult {
   // never accumulate across moves/mode/maxKm changes — only while standing still.
   const skippedIdsRef = useRef<Set<string>>(new Set());
   const autoClosedIdsRef = useRef<Set<string>>(new Set());
+  //   • notPubIdsRef   — pubs the backend classified as venueKind === 'not_pub'.
+  //     Hidden UNCONDITIONALLY (independent of hideClosedPubs) — these are not
+  //     pubs at all, so the compass must never lead to them. Treated exactly like
+  //     auto-closed for selection: added to excludeIds, drives a re-selection.
+  const notPubIdsRef = useRef<Set<string>>(new Set());
   const [excludeRevision, setExcludeRevision] = useState(0);
 
   // Track last position used to select a target, to avoid re-selecting on every tiny GPS twitch.
@@ -199,9 +206,13 @@ export function useCompass(): UseCompassResult {
    *  mode / maxKm changed) and on retrySearch — the sets must only accumulate
    *  while the user is standing in one place. Returns true if anything was cleared. */
   const resetExclusions = useCallback((): boolean => {
-    const hadAny = skippedIdsRef.current.size > 0 || autoClosedIdsRef.current.size > 0;
+    const hadAny =
+      skippedIdsRef.current.size > 0 ||
+      autoClosedIdsRef.current.size > 0 ||
+      notPubIdsRef.current.size > 0;
     if (skippedIdsRef.current.size > 0) skippedIdsRef.current = new Set();
     if (autoClosedIdsRef.current.size > 0) autoClosedIdsRef.current = new Set();
+    if (notPubIdsRef.current.size > 0) notPubIdsRef.current = new Set();
     return hadAny;
   }, []);
 
@@ -251,6 +262,7 @@ export function useCompass(): UseCompassResult {
         ...reportedPubIds,
         ...skippedIdsRef.current,
         ...autoClosedIdsRef.current,
+        ...notPubIdsRef.current,
       ]));
       // Reported places are excluded by geohash-8 cell too — the coordinate-
       // derived Mapy.cz ids change between fetches, the cell does not.
@@ -351,6 +363,7 @@ export function useCompass(): UseCompassResult {
               source: result.source,
               communityHours: result.communityHours,
               beers: result.beers,
+              venueKind: result.venueKind,
             });
           } else {
             next.delete(currentPubId);
@@ -459,6 +472,7 @@ export function useCompass(): UseCompassResult {
       hoursSource,
       communityHours: communityHours ?? undefined,
       beers: beers && beers.length > 0 ? beers : undefined,
+      venueKind: hoursForCurrent?.venueKind ?? currentPub.venueKind,
     };
   }, [currentPub, hoursForCurrent, overrideForCurrent]);
 
@@ -488,6 +502,29 @@ export function useCompass(): UseCompassResult {
     autoClosedIdsRef.current = new Set(autoClosedIdsRef.current).add(currentPubId);
     setExcludeRevision((revision) => revision + 1);
   }, [currentPubId, hideClosedPubs, hoursStatusForCurrent, isOpenNowForCurrent]);
+
+  // — Auto-hide non-pubs (venueKind === 'not_pub') (NON-BLOCKING) —
+  // The backend classifies each place from Firmy.cz categories. A definite
+  // 'not_pub' verdict means this is not a drinking spot at all (a sushi place, a
+  // shop, …), so the compass must NEVER lead the user to it — UNCONDITIONALLY,
+  // regardless of the "hide closed" preference. The verdict arrives with the
+  // (async) hours lookup, so — exactly like a known-closed pub — we add its id to
+  // notPubIds and bump excludeRevision; the selection effect then walks to the
+  // next eligible place. 'pub' / 'maybe' / 'unknown' (incl. older backends and a
+  // dormant backend) change nothing.
+  //
+  // Loop safety mirrors the auto-closed effect: act only once per id (guarded by
+  // `.has`), the set only grows (until a context change clears it), and the effect
+  // is keyed on currentPubId + the resolved verdict, not on render churn.
+  const venueKindForCurrent = hoursForCurrent?.venueKind;
+  useEffect(() => {
+    if (!currentPubId) return;
+    if (venueKindForCurrent !== 'not_pub') return;
+    if (notPubIdsRef.current.has(currentPubId)) return;
+
+    notPubIdsRef.current = new Set(notPubIdsRef.current).add(currentPubId);
+    setExcludeRevision((revision) => revision + 1);
+  }, [currentPubId, venueKindForCurrent]);
 
   // — Expire resolved hours at their nextChange boundary (NON-BLOCKING) —
   // isOpenNow / openUntil are a snapshot from when the lookup resolved. A user
