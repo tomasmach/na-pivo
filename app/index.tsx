@@ -28,6 +28,7 @@ import {
 import { useCompass } from '@/hooks/useCompass';
 import type { HoursStatus } from '@/data/pubs';
 import type { CommunityBeer } from '@/data/communityClient';
+import { parseOsmOpeningHoursToWeeklyHours } from '@/data/communityHours';
 import type { PubReportReason } from '@/data/pubReportsClient';
 import { usePubStore } from '@/stores/pubStore';
 import { shortestRotationTarget } from '@/compass/rotation';
@@ -674,6 +675,8 @@ export default function CompassScreen() {
 
   const handleContribute = useCallback(() => {
     if (!pub) return;
+    const prefillHours =
+      pub.communityHours ?? parseOsmOpeningHoursToWeeklyHours(pub.openingHours);
     // Params are strings; JSON-encode the structured prefill fields so the
     // contribute screen can hydrate the form from the current enrichment.
     router.push({
@@ -684,7 +687,7 @@ export default function CompassScreen() {
         lat: String(pub.lat),
         lng: String(pub.lng),
         ...(pub.city ? { city: pub.city } : {}),
-        ...(pub.communityHours ? { hours: JSON.stringify(pub.communityHours) } : {}),
+        ...(prefillHours ? { hours: JSON.stringify(prefillHours) } : {}),
         ...(pub.beers && pub.beers.length > 0 ? { beers: JSON.stringify(pub.beers) } : {}),
       },
     });

@@ -4,6 +4,7 @@ import {
   emptyWeeklyHours,
   parseHhMm,
   formatHhMm,
+  parseOsmOpeningHoursToWeeklyHours,
   type WeeklyHours,
 } from '../communityHours';
 
@@ -35,7 +36,8 @@ describe('parseHhMm / formatHhMm', () => {
   });
 
   it('rejects malformed or out-of-range values', () => {
-    expect(parseHhMm('24:00')).toBeNull();
+    expect(parseHhMm('24:00')).toBe(1440);
+    expect(parseHhMm('24:01')).toBeNull();
     expect(parseHhMm('11:60')).toBeNull();
     expect(parseHhMm('1:00')).toBeNull();
     expect(parseHhMm('abc')).toBeNull();
@@ -45,6 +47,52 @@ describe('parseHhMm / formatHhMm', () => {
     expect(formatHhMm(0)).toBe('00:00');
     expect(formatHhMm(690)).toBe('11:30');
     expect(formatHhMm(1500)).toBe('01:00'); // 25:00 → 01:00
+  });
+});
+
+describe('parseOsmOpeningHoursToWeeklyHours', () => {
+  it('parses Firmy.cz weekday ranges into editable weekly hours', () => {
+    expect(parseOsmOpeningHoursToWeeklyHours('Mo-Fr 11:00-23:00; Sa 12:00-00:00')).toEqual({
+      mo: [['11:00', '23:00']],
+      tu: [['11:00', '23:00']],
+      we: [['11:00', '23:00']],
+      th: [['11:00', '23:00']],
+      fr: [['11:00', '23:00']],
+      sa: [['12:00', '00:00']],
+      su: [],
+    });
+  });
+
+  it('parses comma day lists, single-digit hours, and multiple intervals', () => {
+    expect(parseOsmOpeningHoursToWeeklyHours('Tu,We,Th 8:00-14:00,17:00-0:00')).toEqual({
+      mo: [],
+      tu: [
+        ['08:00', '14:00'],
+        ['17:00', '00:00'],
+      ],
+      we: [
+        ['08:00', '14:00'],
+        ['17:00', '00:00'],
+      ],
+      th: [
+        ['08:00', '14:00'],
+        ['17:00', '00:00'],
+      ],
+      fr: [],
+      sa: [],
+      su: [],
+    });
+  });
+
+  it('parses nonstop hours without creating an invalid equal-time interval', () => {
+    expect(parseOsmOpeningHoursToWeeklyHours('24/7')).toEqual(everyDay([['00:00', '24:00']]));
+  });
+
+  it('returns null for unsupported opening_hours constructs', () => {
+    expect(parseOsmOpeningHoursToWeeklyHours('Mo-Fr sunrise-sunset')).toBeNull();
+    expect(parseOsmOpeningHoursToWeeklyHours('Su off')).toBeNull();
+    expect(parseOsmOpeningHoursToWeeklyHours('PH off')).toBeNull();
+    expect(parseOsmOpeningHoursToWeeklyHours(null)).toBeNull();
   });
 });
 

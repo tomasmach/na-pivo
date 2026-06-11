@@ -1,5 +1,6 @@
 import React from 'react';
 import { Alert } from 'react-native';
+import { useRouter } from 'expo-router';
 import { cs } from '@/i18n/cs';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -87,6 +88,7 @@ const CompassScreen = require('../index').default;
 const { useCompass } = require('@/hooks/useCompass') as {
   useCompass: jest.Mock;
 };
+const mockedUseRouter = useRouter as jest.Mock;
 
 const TestRenderer = require('react-test-renderer');
 const { act } = TestRenderer;
@@ -123,6 +125,7 @@ function baseCompassState() {
 describe('CompassScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockedUseRouter.mockReturnValue({ push: jest.fn() });
   });
 
   it('shows empty state instead of a reveal button when no pub is selected', () => {
@@ -224,5 +227,50 @@ describe('CompassScreen', () => {
     });
 
     expect(reportCurrentPub).toHaveBeenCalledWith('not_pub');
+  });
+
+  it('prefills contribute hours from Firmy.cz opening hours when community hours are absent', () => {
+    const push = jest.fn();
+    mockedUseRouter.mockReturnValue({ push });
+    useCompass.mockReturnValue({
+      ...baseCompassState(),
+      revealed: true,
+      pub: {
+        id: 'osm:1',
+        name: 'U Testu',
+        lat: 50.08,
+        lng: 14.42,
+        city: 'Praha',
+        openingHours: 'Mo-Fr 11:00-23:00; Sa 12:00-00:00',
+        hoursSource: 'firmy',
+      },
+    });
+
+    let renderer: any;
+
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(CompassScreen));
+    });
+
+    const contributeButton = renderer!.root.findByProps({
+      accessibilityLabel: cs.a11y.contributePubButton,
+    });
+
+    act(() => {
+      contributeButton.props.onPress();
+    });
+
+    expect(push).toHaveBeenCalledTimes(1);
+    const route = push.mock.calls[0][0];
+    expect(route.pathname).toBe('/contribute');
+    expect(JSON.parse(route.params.hours)).toEqual({
+      mo: [['11:00', '23:00']],
+      tu: [['11:00', '23:00']],
+      we: [['11:00', '23:00']],
+      th: [['11:00', '23:00']],
+      fr: [['11:00', '23:00']],
+      sa: [['12:00', '00:00']],
+      su: [],
+    });
   });
 });

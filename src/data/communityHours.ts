@@ -62,6 +62,18 @@ export type WeeklyHours = Record<DayKey, HoursInterval[]>;
 
 /** Map JS Date.getDay() (0=Sun..6=Sat) onto our Monday-first day index (0=Mo). */
 const JS_DAY_TO_INDEX = [6, 0, 1, 2, 3, 4, 5] as const;
+const OSM_DAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'] as const;
+const OSM_DAY_TO_KEY: Record<(typeof OSM_DAYS)[number], DayKey> = {
+  Mo: 'mo',
+  Tu: 'tu',
+  We: 'we',
+  Th: 'th',
+  Fr: 'fr',
+  Sa: 'sa',
+  Su: 'su',
+};
+const DASH_CHARS = /[–—−]/g;
+const MAX_INTERVALS_PER_DAY = 3;
 
 /** Parse `HH:MM` into minutes since midnight, or null when malformed. */
 export function parseHhMm(value: string): number | null {
@@ -69,7 +81,7 @@ export function parseHhMm(value: string): number | null {
   if (!m) return null;
   const h = Number(m[1]);
   const min = Number(m[2]);
-  if (h > 23 || min > 59) return null;
+  if (h > 24 || min > 59 || (h === 24 && min !== 0)) return null;
   return h * 60 + min;
 }
 
@@ -101,6 +113,140 @@ export function isWeeklyHours(value: unknown): value is WeeklyHours {
 /** An empty (all-closed) week — handy as a form default. */
 export function emptyWeeklyHours(): WeeklyHours {
   return { mo: [], tu: [], we: [], th: [], fr: [], sa: [], su: [] };
+}
+
+function cloneWeeklyHours(hours: WeeklyHours): WeeklyHours {
+  return {
+    mo: hours.mo.map((iv): HoursInterval => [iv[0], iv[1]]),
+    tu: hours.tu.map((iv): HoursInterval => [iv[0], iv[1]]),
+    we: hours.we.map((iv): HoursInterval => [iv[0], iv[1]]),
+    th: hours.th.map((iv): HoursInterval => [iv[0], iv[1]]),
+    fr: hours.fr.map((iv): HoursInterval => [iv[0], iv[1]]),
+    sa: hours.sa.map((iv): HoursInterval => [iv[0], iv[1]]),
+    su: hours.su.map((iv): HoursInterval => [iv[0], iv[1]]),
+  };
+}
+
+function parseOsmDayToken(token: string): DayKey[] | null {
+  const trimmed = token.trim();
+  if (!trimmed) return null;
+
+  const range = /^(Mo|Tu|We|Th|Fr|Sa|Su)-(Mo|Tu|We|Th|Fr|Sa|Su)$/.exec(trimmed);
+  if (range) {
+    const start = OSM_DAYS.indexOf(range[1] as (typeof OSM_DAYS)[number]);
+    const end = OSM_DAYS.indexOf(range[2] as (typeof OSM_DAYS)[number]);
+    if (start < 0 || end < 0) return null;
+
+    const days: DayKey[] = [];
+    for (let i = start; ; i = (i + 1) % OSM_DAYS.length) {
+      days.push(OSM_DAY_TO_KEY[OSM_DAYS[i]]);
+      if (i === end) break;
+    }
+    return days;
+  }
+
+  if (/^(Mo|Tu|We|Th|Fr|Sa|Su)$/.test(trimmed)) {
+    return [OSM_DAY_TO_KEY[trimmed as (typeof OSM_DAYS)[number]]];
+  }
+
+  return null;
+}
+
+function parseOsmDays(value: string): DayKey[] | null {
+  const days: DayKey[] = [];
+  const seen = new Set<DayKey>();
+
+  for (const rawToken of value.split(',')) {
+    const parsed = parseOsmDayToken(rawToken);
+    if (!parsed) return null;
+    for (const day of parsed) {
+      if (!seen.has(day)) {
+        seen.add(day);
+        days.push(day);
+      }
+    }
+  }
+
+  return days.length > 0 ? days : null;
+}
+
+function normalizeOsmTime(value: string): string | null {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
+  if (!match) return null;
+
+  const h = Number(match[1]);
+  const min = Number(match[2]);
+  if (h > 24 || min > 59 || (h === 24 && min !== 0)) return null;
+  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+}
+
+function parseOsmIntervals(value: string): HoursInterval[] | null {
+  const timePart = value.trim();
+  if (!timePart) return [['00:00', '24:00']];
+  if (/^off$/i.test(timePart)) return null;
+
+  const intervals: HoursInterval[] = [];
+  for (const rawInterval of timePart.split(',')) {
+    const match = /^(\d{1,2}:\d{2})-(\d{1,2}:\d{2})$/.exec(rawInterval.trim());
+    if (!match) return null;
+
+    const start = normalizeOsmTime(match[1]);
+    const end = normalizeOsmTime(match[2]);
+    if (!start || !end || start === end) return null;
+    intervals.push([start, end]);
+  }
+
+  return intervals.length > 0 ? intervals : null;
+}
+
+/**
+ * Convert the OSM opening_hours subset emitted by the backend's Firmy.cz
+ * normalizer into the app's editable weekly form model.
+ *
+ * Supported examples:
+ *   - "Mo-Su 10:00-23:00"
+ *   - "Mo,Tu,We,Th,Fr,Sa 11:00-22:00"
+ *   - "Tu,We,Th 17:00-22:00; Fr,Sa 17:00-00:00"
+ *   - "Mo 10:00-14:00,17:00-22:00"
+ *
+ * Unsupported OSM constructs return null so callers do not prefill misleading
+ * values.
+ */
+export function parseOsmOpeningHoursToWeeklyHours(value: string | null | undefined): WeeklyHours | null {
+  const source = value?.trim().replace(DASH_CHARS, '-');
+  if (!source) return null;
+
+  if (source === '24/7') {
+    return {
+      mo: [['00:00', '24:00']],
+      tu: [['00:00', '24:00']],
+      we: [['00:00', '24:00']],
+      th: [['00:00', '24:00']],
+      fr: [['00:00', '24:00']],
+      sa: [['00:00', '24:00']],
+      su: [['00:00', '24:00']],
+    };
+  }
+
+  const out = emptyWeeklyHours();
+  for (const rawRule of source.split(';')) {
+    const rule = rawRule.trim();
+    if (!rule) continue;
+
+    const firstSpace = rule.search(/\s/);
+    const dayPart = firstSpace >= 0 ? rule.slice(0, firstSpace) : rule;
+    const timePart = firstSpace >= 0 ? rule.slice(firstSpace).trim() : '';
+    const days = parseOsmDays(dayPart);
+    const intervals = parseOsmIntervals(timePart);
+    if (!days || !intervals) return null;
+
+    for (const day of days) {
+      out[day].push(...intervals.map((iv): HoursInterval => [iv[0], iv[1]]));
+      if (out[day].length > MAX_INTERVALS_PER_DAY) return null;
+    }
+  }
+
+  return cloneWeeklyHours(out);
 }
 
 export interface OpenState {
