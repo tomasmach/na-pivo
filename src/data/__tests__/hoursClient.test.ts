@@ -93,12 +93,18 @@ describe('fetchPubHours — happy path', () => {
       isOpenNow: true,
       nextChange: '2026-06-08T23:00:00+02:00',
       status: 'ok',
+      source: null,
+      communityHours: null,
+      beers: [],
     });
     expect(result.get(PUB_B.id)).toEqual({
       openingHours: null,
       isOpenNow: false,
       nextChange: null,
       status: 'ok',
+      source: null,
+      communityHours: null,
+      beers: [],
     });
   });
 
@@ -159,7 +165,79 @@ describe('fetchPubHours — happy path', () => {
       isOpenNow: null,
       nextChange: null,
       status: 'unknown',
+      source: null,
+      communityHours: null,
+      beers: [],
     });
+  });
+
+  it('parses the optional community source / hours_json / beers fields', async () => {
+    setBackend('https://api.example.com');
+    const hoursJson = {
+      mo: [['11:00', '23:00']],
+      tu: [],
+      we: [['11:00', '23:00']],
+      th: [['11:00', '23:00']],
+      fr: [['11:00', '00:00']],
+      sa: [['12:00', '00:00']],
+      su: [],
+    };
+    const fetchSpy = jest.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        results: [
+          {
+            status: 'ok',
+            isOpenNow: true,
+            source: 'community',
+            hours_json: hoursJson,
+            beers: [
+              { name: 'Pilsner Urquell 12°', price_czk: 65, volume_ml: 500 },
+              { name: 'Kozel 11°' },
+            ],
+          },
+        ],
+      }),
+    }));
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    const result = await fetchPubHours([PUB_A]);
+    const entry = result.get(PUB_A.id);
+
+    expect(entry?.source).toBe('community');
+    expect(entry?.communityHours).toEqual(hoursJson);
+    expect(entry?.beers).toEqual([
+      { name: 'Pilsner Urquell 12°', priceCzk: 65, volumeMl: 500 },
+      { name: 'Kozel 11°' },
+    ]);
+  });
+
+  it('tolerates absent community fields (old backend) without breaking', async () => {
+    setBackend('https://api.example.com');
+    const fetchSpy = jest.fn(async () => ({
+      ok: true,
+      json: async () => ({ results: [{ status: 'ok', isOpenNow: true }] }),
+    }));
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    const entry = (await fetchPubHours([PUB_A])).get(PUB_A.id);
+    expect(entry?.source).toBeNull();
+    expect(entry?.communityHours).toBeNull();
+    expect(entry?.beers).toEqual([]);
+  });
+
+  it('ignores a malformed hours_json that is not a valid weekly object', async () => {
+    setBackend('https://api.example.com');
+    const fetchSpy = jest.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        results: [{ status: 'ok', source: 'community', hours_json: { mo: 'nope' } }],
+      }),
+    }));
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    const entry = (await fetchPubHours([PUB_A])).get(PUB_A.id);
+    expect(entry?.communityHours).toBeNull();
   });
 
   it('returns a partial Map when the backend returns fewer results than pubs', async () => {

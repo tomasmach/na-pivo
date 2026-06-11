@@ -3,6 +3,7 @@ import * as geokdbush from "geokdbush";
 import { searchPubsNear } from "./mapyClient";
 import { fetchBlockedPubReports } from "./pubReportsClient";
 import { geohash8 } from "./geohash";
+import type { CommunityBeer, WeeklyHours } from "./communityHours";
 
 /**
  * Lifecycle of an opening-hours lookup for a single pub.
@@ -36,6 +37,12 @@ export type Pub = {
   nextChange?: string | null;
   /** Lifecycle of the opening-hours lookup for this pub. */
   hoursStatus?: HoursStatus;
+  /** Origin of the resolved hours (e.g. "community", "firmy"); undefined if none. */
+  hoursSource?: string;
+  /** Structured weekly hours when the source is community — used for form prefill. */
+  communityHours?: WeeklyHours;
+  /** Beers on tap, when known (community-sourced). */
+  beers?: CommunityBeer[];
 };
 
 let _pubs: Pub[] = [];

@@ -27,6 +27,7 @@ import {
 
 import { useCompass } from '@/hooks/useCompass';
 import type { HoursStatus } from '@/data/pubs';
+import type { CommunityBeer } from '@/data/communityClient';
 import type { PubReportReason } from '@/data/pubReportsClient';
 import { usePubStore } from '@/stores/pubStore';
 import { shortestRotationTarget } from '@/compass/rotation';
@@ -47,6 +48,7 @@ import {
   RefreshCwIcon,
   SettingsIcon,
   FlagIcon,
+  PencilIcon,
 } from '@/components/shared/IconGlyph';
 
 import { Colors } from '@/theme/colors';
@@ -312,18 +314,37 @@ interface RevealedPubPillProps {
   pubName: string;
   onOpenMaps: () => void;
   onReport: () => void;
+  onContribute: () => void;
   isOpenNow: boolean | null;
   hoursStatus?: HoursStatus;
   nextChange?: string | null;
+  beers?: CommunityBeer[];
+}
+
+/** A compact one-liner for the cheapest/first beer, with "a další" when more. */
+function formatBeerLine(beers: CommunityBeer[]): string | null {
+  if (beers.length === 0) return null;
+  // Prefer the cheapest priced beer; fall back to the first when none priced.
+  const priced = beers.filter((b) => typeof b.priceCzk === 'number');
+  const lead = priced.length
+    ? priced.reduce((a, b) => ((b.priceCzk ?? 0) < (a.priceCzk ?? 0) ? b : a))
+    : beers[0];
+  const base =
+    typeof lead.priceCzk === 'number'
+      ? cs.compass.beerWithPrice(lead.name, `${lead.priceCzk} Kč`)
+      : cs.compass.beerNoPrice(lead.name);
+  return beers.length > 1 ? `${base} · ${cs.compass.beerAndMore}` : base;
 }
 
 function RevealedPubPill({
   pubName,
   onOpenMaps,
   onReport,
+  onContribute,
   isOpenNow,
   hoursStatus,
   nextChange,
+  beers,
 }: RevealedPubPillProps) {
   // Fold the open/closed status into the pill's OWN a11y label: the Pressable
   // collapses its children into a single VoiceOver element, so the chip's label
@@ -339,6 +360,8 @@ function RevealedPubPill({
   const accessibilityLabel = statusWord
     ? `${cs.a11y.pubPillRevealed(pubName)}. ${cs.a11y.openStatus(statusWord)}`
     : cs.a11y.pubPillRevealed(pubName);
+
+  const beerLine = beers && beers.length > 0 ? formatBeerLine(beers) : null;
 
   return (
     <View style={[styles.pubPill, styles.pubPillRevealed, amberGlow(14)]}>
@@ -362,6 +385,26 @@ function RevealedPubPill({
             renders nothing while the lookup is in flight, so this row collapses. */}
         <OpenStatusChip isOpenNow={isOpenNow} status={hoursStatus} nextChange={nextChange} />
 
+        {/* Beers on tap — a compact line for the cheapest/first beer. Tapping it
+            opens the contribute screen (where the full list lives + is editable). */}
+        {beerLine && (
+          <Pressable
+            onPress={onContribute}
+            hitSlop={6}
+            style={({ pressed }) => [styles.beerLineRow, pressed && { opacity: 0.75 }]}
+            accessibilityRole="button"
+            accessibilityLabel={cs.a11y.contributeBeersLine(beerLine)}
+          >
+            <Text
+              style={styles.beerLineText}
+              numberOfLines={1}
+              maxFontSizeMultiplier={FontScaleCap.body}
+            >
+              {beerLine}
+            </Text>
+          </Pressable>
+        )}
+
         {/* Bottom row: open in maps CTA */}
         <View style={styles.pubPillHintRow}>
           <MapPinIcon size={14} color={Colors.amber} />
@@ -376,18 +419,34 @@ function RevealedPubPill({
         </View>
       </Pressable>
 
-      <Pressable
-        onPress={onReport}
-        hitSlop={10}
-        style={({ pressed }) => [styles.reportButton, pressed && { opacity: 0.75 }]}
-        accessibilityLabel={cs.a11y.reportPubButton}
-        accessibilityRole="button"
-      >
-        <FlagIcon size={14} color={Colors.mutedText} />
-        <Text style={styles.reportButtonText} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.compass.reportProblem}
-        </Text>
-      </Pressable>
+      {/* Footer actions: contribute info + report problem. Wraps at large fonts. */}
+      <View style={styles.pubPillFooter}>
+        <Pressable
+          onPress={onContribute}
+          hitSlop={10}
+          style={({ pressed }) => [styles.footerButton, pressed && { opacity: 0.75 }]}
+          accessibilityLabel={cs.a11y.contributePubButton}
+          accessibilityRole="button"
+        >
+          <PencilIcon size={14} color={Colors.amber} />
+          <Text style={styles.contributeButtonText} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.compass.contribute}
+          </Text>
+        </Pressable>
+
+        <Pressable
+          onPress={onReport}
+          hitSlop={10}
+          style={({ pressed }) => [styles.footerButton, pressed && { opacity: 0.75 }]}
+          accessibilityLabel={cs.a11y.reportPubButton}
+          accessibilityRole="button"
+        >
+          <FlagIcon size={14} color={Colors.mutedText} />
+          <Text style={styles.reportButtonText} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.compass.reportProblem}
+          </Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -613,6 +672,24 @@ export default function CompassScreen() {
     if (pub) openPubInMaps(pub);
   }, [pub]);
 
+  const handleContribute = useCallback(() => {
+    if (!pub) return;
+    // Params are strings; JSON-encode the structured prefill fields so the
+    // contribute screen can hydrate the form from the current enrichment.
+    router.push({
+      pathname: '/contribute',
+      params: {
+        id: pub.id,
+        name: pub.name,
+        lat: String(pub.lat),
+        lng: String(pub.lng),
+        ...(pub.city ? { city: pub.city } : {}),
+        ...(pub.communityHours ? { hours: JSON.stringify(pub.communityHours) } : {}),
+        ...(pub.beers && pub.beers.length > 0 ? { beers: JSON.stringify(pub.beers) } : {}),
+      },
+    });
+  }, [pub, router]);
+
   const handleReportReason = useCallback((reason: PubReportReason) => {
     reportCurrentPub(reason).catch(() => undefined);
   }, [reportCurrentPub]);
@@ -715,9 +792,11 @@ export default function CompassScreen() {
             pubName={pub.name}
             onOpenMaps={handleOpenMaps}
             onReport={handleReport}
+            onContribute={handleContribute}
             isOpenNow={pub.isOpenNow ?? null}
             hoursStatus={pub.hoursStatus}
             nextChange={pub.nextChange}
+            beers={pub.beers}
           />
         ) : (
           <HiddenPubPill onReveal={reveal} />
@@ -942,16 +1021,38 @@ const styles = StyleSheet.create({
     color: Colors.amber,
     flex: 1,
   },
-  reportButton: {
+  beerLineRow: {
+    alignSelf: 'flex-start',
+  },
+  beerLineText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 13,
+    color: Colors.foamMuted,
+    letterSpacing: 0.2,
+  },
+  pubPillFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    alignSelf: 'stretch',
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    paddingTop: 8,
+    gap: 16,
+  },
+  footerButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
     minHeight: 32,
-    paddingHorizontal: 12,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    alignSelf: 'stretch',
+    paddingHorizontal: 4,
+  },
+  contributeButtonText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 12,
+    color: Colors.amber,
   },
   reportButtonText: {
     fontFamily: Fonts.ui.semibold,

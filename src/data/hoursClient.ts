@@ -13,12 +13,26 @@
  */
 
 import type { HoursStatus, Pub } from './pubs';
+import type { CommunityBeer, WeeklyHours } from './communityHours';
+import { beerFromWire, isWeeklyHours } from './communityHours';
 
 export interface PubHoursResult {
   openingHours: string | null;
   isOpenNow: boolean | null;
   nextChange: string | null;
   status: HoursStatus;
+  /** Origin of the hours, e.g. "community" | "firmy"; null when not reported. */
+  source: string | null;
+  /** Structured weekly hours, present when source is "community". */
+  communityHours: WeeklyHours | null;
+  /** Beers on tap, when the backend has them; empty array when none. */
+  beers: CommunityBeer[];
+}
+
+interface WireBeer {
+  name?: string;
+  price_czk?: number;
+  volume_ml?: number;
 }
 
 /** Shape of a single result entry in the backend's response. */
@@ -31,6 +45,10 @@ interface BackendResult {
   status?: string;
   source?: string | null;
   confidence?: number | null;
+  /** Structured weekly hours (present when source is community). */
+  hours_json?: unknown;
+  /** Beers on tap (may be absent on older backends). */
+  beers?: WireBeer[];
 }
 
 interface BackendResponse {
@@ -76,13 +94,24 @@ function toResult(entry: BackendResult | undefined): PubHoursResult {
       isOpenNow: null,
       nextChange: null,
       status: 'unknown',
+      source: null,
+      communityHours: null,
+      beers: [],
     };
   }
+  // Optional extended fields — old backends omit them; never break on absence.
+  const communityHours = isWeeklyHours(entry.hours_json) ? entry.hours_json : null;
+  const beers = Array.isArray(entry.beers)
+    ? entry.beers.flatMap((b) => (b && typeof b.name === 'string' ? [beerFromWire(b as { name: string })] : []))
+    : [];
   return {
     openingHours: entry.opening_hours ?? null,
     isOpenNow: typeof entry.isOpenNow === 'boolean' ? entry.isOpenNow : null,
     nextChange: entry.nextChange ?? null,
     status: normalizeStatus(entry.status),
+    source: typeof entry.source === 'string' ? entry.source : null,
+    communityHours,
+    beers,
   };
 }
 

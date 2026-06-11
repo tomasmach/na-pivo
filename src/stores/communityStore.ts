@@ -1,0 +1,68 @@
+/**
+ * Local optimistic overrides for community contributions.
+ *
+ * When a user submits opening hours and/or beers for a pub, we write the edit
+ * here immediately — keyed by the pub's geohash-8 cell (the stable physical
+ * place key) — so their contribution shows INSTANTLY in the UI, even offline and
+ * before the backend round-trip. The override is merged onto the enriched pub in
+ * useCompass; backend community data eventually supersedes it (see the merge
+ * precedence there).
+ *
+ * Persisted to AsyncStorage so the optimistic view survives an app restart while
+ * the queued submission is still pending delivery.
+ */
+
+import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import type { CommunityBeer, WeeklyHours } from '@/data/communityClient';
+
+export interface CommunityOverride {
+  hours?: WeeklyHours;
+  beers?: CommunityBeer[];
+  /** Epoch ms when the override was written — newest write wins on merge. */
+  updatedAt: number;
+}
+
+interface CommunityState {
+  /** geohash-8 cell → the user's latest local override for that pub. */
+  overrides: Record<string, CommunityOverride>;
+  /**
+   * Merge a new optimistic override for `cell`. Only the provided parts replace
+   * the stored ones (hours / beers are edited independently), so submitting just
+   * beers does not wipe a previously-submitted hours override.
+   */
+  setOverride: (
+    cell: string,
+    patch: { hours?: WeeklyHours; beers?: CommunityBeer[] },
+  ) => void;
+  /** Read the override for a cell, or undefined when none. */
+  getOverride: (cell: string) => CommunityOverride | undefined;
+}
+
+export const useCommunityStore = create<CommunityState>()(
+  persist(
+    (set, get) => ({
+      overrides: {},
+
+      setOverride: (cell, patch) =>
+        set((state) => {
+          const prev = state.overrides[cell];
+          const next: CommunityOverride = {
+            hours: patch.hours ?? prev?.hours,
+            beers: patch.beers ?? prev?.beers,
+            updatedAt: Date.now(),
+          };
+          return { overrides: { ...state.overrides, [cell]: next } };
+        }),
+
+      getOverride: (cell) => get().overrides[cell],
+    }),
+    {
+      name: 'na-pivo-community',
+      storage: createJSONStorage(() => AsyncStorage),
+      partialize: (state) => ({ overrides: state.overrides }),
+    },
+  ),
+);

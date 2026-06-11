@@ -11,6 +11,7 @@ import { fontAssets } from '@/theme/fonts';
 import { Colors } from '@/theme/colors';
 import { flushPubReportQueue } from '@/data/pubReportQueue';
 import { flushFeedbackQueue } from '@/data/feedbackQueue';
+import { flushCommunityQueue } from '@/data/communityQueue';
 import { useAccountStore } from '@/stores/accountStore';
 import { useReleaseStore } from '@/stores/releaseStore';
 import { WhatsNewModal } from '@/components/shared/WhatsNewModal';
@@ -47,10 +48,12 @@ export default function RootLayout() {
     // never throws.
     void flushPubReportQueue();
     void flushFeedbackQueue();
+    void flushCommunityQueue();
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         void flushPubReportQueue();
         void flushFeedbackQueue();
+        void flushCommunityQueue();
       }
     });
     return () => subscription.remove();
@@ -98,6 +101,14 @@ export default function RootLayout() {
           />
           <Stack.Screen
             name="report"
+            options={{
+              presentation: 'fullScreenModal',
+              animation: 'slide_from_bottom',
+              gestureEnabled: false,
+            }}
+          />
+          <Stack.Screen
+            name="contribute"
             options={{
               presentation: 'fullScreenModal',
               animation: 'slide_from_bottom',

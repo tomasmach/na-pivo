@@ -57,6 +57,7 @@ jest.mock('@/components/shared/IconGlyph', () => ({
   RefreshCwIcon: jest.fn(() => null),
   SettingsIcon: jest.fn(() => null),
   FlagIcon: jest.fn(() => null),
+  PencilIcon: jest.fn(() => null),
 }));
 
 jest.mock('@/utils/maps', () => ({

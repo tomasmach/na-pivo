@@ -14,8 +14,11 @@ import { fetchPubHours } from '@/data/hoursClient';
 import { enqueuePubReport } from '@/data/pubReportQueue';
 import type { PubReportReason } from '@/data/pubReportsClient';
 import { geohash8 } from '@/data/geohash';
+import type { CommunityBeer, WeeklyHours } from '@/data/communityClient';
+import { computeOpenState } from '@/data/communityHours';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { usePubStore } from '@/stores/pubStore';
+import { useCommunityStore } from '@/stores/communityStore';
 import { useDevicePosition } from '@/compass/useDevicePosition';
 import { useDeviceHeading } from '@/compass/useDeviceHeading';
 import { useTargetBearing } from '@/compass/useTargetBearing';
@@ -42,6 +45,12 @@ type PubHoursState = {
   openingHours?: string | null;
   isOpenNow?: boolean | null;
   nextChange?: string | null;
+  /** Origin of the resolved hours, e.g. "community" | "firmy". */
+  source?: string | null;
+  /** Structured weekly hours when the source is community (for prefill). */
+  communityHours?: WeeklyHours | null;
+  /** Beers on tap from the backend, when present. */
+  beers?: CommunityBeer[];
 };
 
 function hasMovedEnoughForRetarget(current: TargetPosition, previous: TargetPosition): boolean {
@@ -339,6 +348,9 @@ export function useCompass(): UseCompassResult {
               openingHours: result.openingHours,
               isOpenNow: result.isOpenNow,
               nextChange: result.nextChange,
+              source: result.source,
+              communityHours: result.communityHours,
+              beers: result.beers,
             });
           } else {
             next.delete(currentPubId);
@@ -381,22 +393,74 @@ export function useCompass(): UseCompassResult {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPubId, hoursRefetchNonce]);
 
+  // Local optimistic community override for the current pub, keyed by its
+  // geohash-8 cell so it follows the physical place across unstable Mapy.cz ids.
+  const overrides = useCommunityStore((s) => s.overrides);
+  const currentCell = useMemo(
+    () => (currentPub ? geohash8(currentPub.lat, currentPub.lng) : null),
+    [currentPub],
+  );
+  const overrideForCurrent = currentCell ? overrides[currentCell] : undefined;
+
   // Merge the resolved hours onto the targeted pub so consumers can read
-  // pub.isOpenNow / pub.hoursStatus. A new object is only created when the pub
-  // or its hours actually change, keeping referential stability for memoized
-  // consumers and avoiding render churn.
+  // pub.isOpenNow / pub.hoursStatus. A new object is only created when the pub,
+  // its hours, or the local override actually change, keeping referential
+  // stability for memoized consumers and avoiding render churn.
+  //
+  // Merge precedence:
+  //   • Backend data whose source is "community" is the canonical, public truth
+  //     → it WINS over the local optimistic override (the override has been
+  //     accepted and round-tripped, so prefer the server copy).
+  //   • Otherwise (firmy / unknown / no backend hours) the user's local override
+  //     WINS, so their just-submitted edit shows immediately. For hours we
+  //     compute isOpenNow / nextChange locally from the structured WeeklyHours so
+  //     the OpenStatusChip stays correct before the backend round-trips.
   const hoursForCurrent = currentPubId ? hoursById.get(currentPubId) : undefined;
   const enrichedPub = useMemo<Pub | null>(() => {
     if (!currentPub) return null;
-    if (!hoursForCurrent) return currentPub;
+
+    const backendIsCommunity = hoursForCurrent?.source === 'community';
+
+    // — Hours —
+    let openingHours = hoursForCurrent?.openingHours ?? currentPub.openingHours;
+    let isOpenNow = hoursForCurrent?.isOpenNow ?? null;
+    let nextChange = hoursForCurrent?.nextChange ?? null;
+    let hoursStatus = hoursForCurrent?.status;
+    let hoursSource = hoursForCurrent?.source ?? undefined;
+    let communityHours = hoursForCurrent?.communityHours ?? undefined;
+
+    if (overrideForCurrent?.hours && !backendIsCommunity) {
+      // Local override wins over firmy/unknown — compute the live state locally.
+      const local = computeOpenState(overrideForCurrent.hours);
+      communityHours = overrideForCurrent.hours;
+      isOpenNow = local.isOpenNow;
+      nextChange = local.nextChange;
+      hoursStatus = 'ok';
+      hoursSource = 'community';
+      openingHours = null;
+    }
+
+    // — Beers —
+    // Backend community beers win; otherwise the local override's beers show.
+    let beers = hoursForCurrent?.beers;
+    if (overrideForCurrent?.beers && !(backendIsCommunity && (hoursForCurrent?.beers?.length ?? 0) > 0)) {
+      beers = overrideForCurrent.beers;
+    }
+
+    // Nothing to merge → return the bare pub for referential stability.
+    if (!hoursForCurrent && !overrideForCurrent) return currentPub;
+
     return {
       ...currentPub,
-      openingHours: hoursForCurrent.openingHours,
-      isOpenNow: hoursForCurrent.isOpenNow,
-      nextChange: hoursForCurrent.nextChange,
-      hoursStatus: hoursForCurrent.status,
+      openingHours,
+      isOpenNow,
+      nextChange,
+      hoursStatus,
+      hoursSource,
+      communityHours: communityHours ?? undefined,
+      beers: beers && beers.length > 0 ? beers : undefined,
     };
-  }, [currentPub, hoursForCurrent]);
+  }, [currentPub, hoursForCurrent, overrideForCurrent]);
 
   // — Auto-skip known-closed pubs (NON-BLOCKING) —
   // When hideClosedPubs is on and the CURRENT pub's hours have RESOLVED to a

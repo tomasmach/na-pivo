@@ -140,6 +140,9 @@ function hours(overrides: Partial<PubHoursResult> = {}): PubHoursResult {
     isOpenNow: true,
     nextChange: '2026-06-08T23:00:00+02:00',
     status: 'ok',
+    source: null,
+    communityHours: null,
+    beers: [],
     ...overrides,
   };
 }

@@ -27,6 +27,11 @@ import {
   Signal,
   Wifi,
   BatteryFull,
+  Pencil,
+  Plus,
+  Trash2,
+  Copy,
+  X,
   LucideProps,
 } from 'lucide-react-native';
 
@@ -64,3 +69,8 @@ export const RadiusIcon = wrap(Radius, 'RadiusIcon');
 export const SignalIcon = wrap(Signal, 'SignalIcon');
 export const WifiIcon = wrap(Wifi, 'WifiIcon');
 export const BatteryFullIcon = wrap(BatteryFull, 'BatteryFullIcon');
+export const PencilIcon = wrap(Pencil, 'PencilIcon');
+export const PlusIcon = wrap(Plus, 'PlusIcon');
+export const Trash2Icon = wrap(Trash2, 'Trash2Icon');
+export const CopyIcon = wrap(Copy, 'CopyIcon');
+export const XIcon = wrap(X, 'XIcon');

@@ -23,6 +23,9 @@ Když je vybraná hospoda zobrazena, aplikace pošle její název a polohu (zem�
 ### Anonymní identifikátor zařízení
 Aplikace při prvním spuštění vytvoří anonymní náhodný identifikátor zařízení (náhodné UUID) a odešle ho na náš vlastní server, aby každému zařízení patřil dočasný anonymní účet. Tento identifikátor neobsahuje žádné osobní údaje – nevzniká z e-mailu, jména, telefonního čísla ani z hardwarového identifikátoru telefonu – a slouží výhradně k odlišení jednotlivých zařízení. Registrace je nepovinná funkce; pokud server není dostupný nebo dotaz selže, aplikace funguje dál bez vytvořeného účtu. Server v odpovědi vrátí náhodný přístupový token, který aplikace ukládá pouze lokálně na zařízení a nikam jinam ho neodesílá; slouží k ověření zařízení u budoucích funkcí. Více v sekci „Služby třetích stran".
 
+### Údaje doplněné uživatelem (otevírací doba a piva na čepu)
+Aplikace umožňuje dobrovolně doplnit otevírací dobu vybrané hospody a seznam piv na čepu (název, případně cenu a objem). Pokud tyto údaje vyplníte a odešlete, aplikace je pošle na náš vlastní server pod anonymním identifikátorem zařízení. **Tyto údaje se následně veřejně zobrazují ostatním uživatelům aplikace**, aby věděli, co která hospoda nabízí a kdy má otevřeno. Údaje se týkají hospody, nikoli vás – neobsahují žádné osobní informace o vaší osobě. Doplňování je zcela dobrovolné; pokud nic nevyplníte, nic se neodesílá. Pokud server není dostupný, aplikace odeslání zopakuje, jakmile budete znovu online.
+
 ### Co NEsbíráme
 - Nepoužíváme přihlašování ani osobní uživatelské účty (anonymní identifikátor zařízení neobsahuje žádné osobní údaje a nevyžaduje registraci).
 - Nepoužíváme žádné analytické nástroje, nástroje pro hlášení pádů ani reklamní SDK.
@@ -37,6 +40,7 @@ Zpracovávaná data slouží výhradně k fungování aplikace:
 - **Vyhledávací dotazy** – získání návrhů míst z Mapy.cz.
 - **Název a poloha vybrané hospody** – dohledání otevírací doby na našem serveru.
 - **Anonymní identifikátor zařízení** – odlišení jednotlivých zařízení a vytvoření dočasného anonymního účtu na našem serveru.
+- **Údaje doplněné uživatelem (otevírací doba, piva na čepu)** – uložení a veřejné zobrazení ostatním uživatelům, aby aplikace ukazovala aktuální informace o hospodách.
 
 Data nepoužíváme k profilování, cílení reklamy ani k žádnému dalšímu účelu.
 
@@ -50,6 +54,9 @@ Pro zobrazení otevírací doby vybrané hospody pošleme její název a polohu 
 
 ### Anonymní účet zařízení (provozovatel aplikace)
 Při prvním spuštění aplikace odešle na náš vlastní server anonymní náhodný identifikátor zařízení (náhodné UUID) a server pro toto zařízení vytvoří dočasný anonymní účet. Identifikátor neobsahuje žádné osobní údaje a slouží jen k odlišení zařízení; nepoužíváme ho ke sledování ani k profilování. Jde o nepovinnou funkci – pokud server není dostupný, aplikace funguje dál bez vytvořeného účtu.
+
+### Doplněné údaje o hospodách (provozovatel aplikace)
+Když dobrovolně doplníte otevírací dobu nebo piva na čepu, aplikace tyto údaje odešle na náš vlastní server pod anonymním účtem zařízení. Server je uloží a veřejně je zobrazí ostatním uživatelům aplikace. Údaje popisují danou hospodu, nikoli vaši osobu, a neobsahují žádné osobní informace. Jde o dobrovolnou funkci; pokud nic nevyplníte, nic se neodesílá.
 
 ## Doba uchování dat
 
