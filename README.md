@@ -22,14 +22,26 @@ To test against the local backend instead of the deployed API:
 cd ../na-pivo-backend
 uv run python manage.py runserver 0.0.0.0:8000
 
-# terminal 2 — Expo app
+# terminal 2 — build and run the local iOS app
 cd ../na-pivo
-npm run start:local
+npm run ios:local
 ```
 
-`start:local` derives the backend host from the Expo/Metro LAN URL and uses
-port `8000`, so it works for both the iOS simulator and a physical device on the
-same Wi-Fi. Override the port with `EXPO_PUBLIC_BACKEND_PORT=8765` if needed.
+`ios:local` is the local-backend equivalent of `npx expo run:ios`. It passes the
+Mac's LAN IP into the app so the simulator/device talks to the local Django
+server instead of `https://api.na-pivo.cz`. Override the port with
+`EXPO_PUBLIC_BACKEND_PORT=8765` if needed.
+
+Raw command equivalent:
+
+```bash
+EXPO_PUBLIC_BACKEND_MODE=local \
+EXPO_PUBLIC_BACKEND_HOST=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo localhost) \
+npx expo run:ios
+```
+
+Use `npm run start:local` only when you want to start Metro without rebuilding
+the native iOS app.
 
 ## Refresh pub dataset
 

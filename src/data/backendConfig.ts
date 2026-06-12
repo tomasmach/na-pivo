@@ -57,7 +57,7 @@ function getLocalBackendUrl(): string {
   const port = normalizePort(
     (process.env.EXPO_PUBLIC_BACKEND_PORT ?? '').trim() || DEFAULT_LOCAL_BACKEND_PORT,
   );
-  let host = getExpoDevServerHost();
+  let host = (process.env.EXPO_PUBLIC_BACKEND_HOST ?? '').trim() || getExpoDevServerHost();
 
   if (!host) {
     host = Platform.OS === 'android' ? '10.0.2.2' : 'localhost';

@@ -5,6 +5,7 @@ import { getBackendEndpoint, getBackendUrl } from '../backendConfig';
 
 const ORIGINAL_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 const ORIGINAL_MODE = process.env.EXPO_PUBLIC_BACKEND_MODE;
+const ORIGINAL_HOST = process.env.EXPO_PUBLIC_BACKEND_HOST;
 const ORIGINAL_PORT = process.env.EXPO_PUBLIC_BACKEND_PORT;
 const ORIGINAL_PLATFORM = Platform.OS;
 
@@ -22,6 +23,7 @@ function setEnv(name: string, value: string | undefined): void {
 beforeEach(() => {
   setEnv('EXPO_PUBLIC_BACKEND_URL', undefined);
   setEnv('EXPO_PUBLIC_BACKEND_MODE', undefined);
+  setEnv('EXPO_PUBLIC_BACKEND_HOST', undefined);
   setEnv('EXPO_PUBLIC_BACKEND_PORT', undefined);
   constants.expoConfig = { version: '1.1.2', extra: { mapyApiKey: 'test-key' } };
   constants.expoGoConfig = null;
@@ -32,6 +34,7 @@ beforeEach(() => {
 afterEach(() => {
   setEnv('EXPO_PUBLIC_BACKEND_URL', ORIGINAL_URL);
   setEnv('EXPO_PUBLIC_BACKEND_MODE', ORIGINAL_MODE);
+  setEnv('EXPO_PUBLIC_BACKEND_HOST', ORIGINAL_HOST);
   setEnv('EXPO_PUBLIC_BACKEND_PORT', ORIGINAL_PORT);
   (Platform as { OS: string }).OS = ORIGINAL_PLATFORM;
 });
@@ -64,6 +67,14 @@ describe('backendConfig', () => {
     constants.expoConfig = { hostUri: '192.168.1.42:8081' };
 
     expect(getBackendUrl()).toBe('http://192.168.1.42:8765');
+  });
+
+  it('lets a local backend host override Expo hostUri', () => {
+    setEnv('EXPO_PUBLIC_BACKEND_MODE', 'local');
+    setEnv('EXPO_PUBLIC_BACKEND_HOST', '192.168.1.33');
+    constants.expoConfig = { hostUri: 'localhost:8081' };
+
+    expect(getBackendUrl()).toBe('http://192.168.1.33:8000');
   });
 
   it('maps Android loopback to the host machine address', () => {

@@ -14,12 +14,12 @@
   },
   "scripts": {
     "start": "expo start",
-    "start:local": "EXPO_PUBLIC_BACKEND_MODE=local expo start --lan",
+    "start:local": "EXPO_PUBLIC_BACKEND_MODE=local EXPO_PUBLIC_BACKEND_HOST=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo localhost) expo start --lan",
     "postinstall": "node scripts/patch-expo-location-heading.js",
     "ios": "expo run:ios",
-    "ios:local": "EXPO_PUBLIC_BACKEND_MODE=local expo run:ios",
+    "ios:local": "EXPO_PUBLIC_BACKEND_MODE=local EXPO_PUBLIC_BACKEND_HOST=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo localhost) expo run:ios",
     "android": "expo run:android",
-    "android:local": "EXPO_PUBLIC_BACKEND_MODE=local expo run:android",
+    "android:local": "EXPO_PUBLIC_BACKEND_MODE=local EXPO_PUBLIC_BACKEND_HOST=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo localhost) expo run:android",
     "typecheck": "tsc --noEmit",
     "test": "jest --passWithNoTests",
     "lint": "expo lint"
