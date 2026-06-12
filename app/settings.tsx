@@ -53,6 +53,7 @@ import {
   MessageSquareIcon,
 } from '@/components/shared/IconGlyph';
 import { InstagramIcon, LinkedinIcon } from '@/components/shared/BrandIcon';
+import { MapyLogo } from '@/components/shared/MapyLogo';
 
 // ---------------------------------------------------------------------------
 // Discrete slider positions
@@ -479,6 +480,19 @@ export default function SettingsScreen() {
         <View style={styles.footer}>
           <Text style={styles.footerText}>{cs.settings.footer}</Text>
           <Text style={styles.attributionText}>{cs.settings.attribution}</Text>
+          {/* Official Mapy.com logo — required by the REST API attribution terms.
+              The wordmark is black, so it sits on a white chip to stay legible on
+              the dark footer (the logo itself is never recoloured). Links to
+              mapy.com. */}
+          <Pressable
+            onPress={() => Linking.openURL('https://mapy.com/')}
+            hitSlop={8}
+            style={({ pressed }) => [styles.mapyLogoChip, pressed && { opacity: 0.7 }]}
+            accessibilityRole="link"
+            accessibilityLabel="Mapy.com"
+          >
+            <MapyLogo height={14} />
+          </Pressable>
         </View>
 
         {/* Extra bottom breathing room */}
@@ -789,5 +803,12 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: Colors.mutedText,
     textAlign: 'center',
+  },
+  mapyLogoChip: {
+    backgroundColor: Colors.white,
+    borderRadius: Radius.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginTop: 6,
   },
 });

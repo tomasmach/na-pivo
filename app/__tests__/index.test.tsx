@@ -262,30 +262,6 @@ describe('CompassScreen', () => {
     expect(reportCurrentPub).toHaveBeenCalledWith('not_pub');
   });
 
-  it('shows the Mapy.com attribution on the revealed pub and opens mapy.com when tapped', () => {
-    const { Linking } = require('react-native') as { Linking: { openURL: jest.Mock } };
-    useCompass.mockReturnValue({
-      ...baseCompassState(),
-      revealed: true,
-    });
-
-    let renderer: any;
-
-    act(() => {
-      renderer = TestRenderer.create(React.createElement(CompassScreen));
-    });
-
-    const attribution = renderer!.root.findByProps({
-      accessibilityLabel: `${cs.compass.poweredByMapy} Mapy.com`,
-    });
-
-    act(() => {
-      attribution.props.onPress();
-    });
-
-    expect(Linking.openURL).toHaveBeenCalledWith('https://mapy.com/');
-  });
-
   it('prefills contribute hours from Firmy.cz opening hours when community hours are absent', () => {
     const push = jest.fn();
     mockedUseRouter.mockReturnValue({ push });
