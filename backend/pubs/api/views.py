@@ -17,7 +17,7 @@ import math
 from datetime import timedelta
 
 from django.conf import settings
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.utils import timezone as dj_timezone
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -377,40 +377,41 @@ class DrinksView(APIView):
         drank_at = data.get("drank_at") or dj_timezone.now()
 
         try:
-            drink, created = DrinkLog.objects.get_or_create(
-                account=request.user,
-                client_id=data["client_id"],
-                defaults={
-                    "cache_key": cache_key,
-                    "name": data["name"],
-                    "lat": data["lat"],
-                    "lng": data["lng"],
-                    "city": data.get("city") or "",
-                    "external_id": data.get("external_id") or "",
-                    "beer_name": beer["name"],
-                    "price_czk": beer["price_czk"],
-                    "volume_ml": beer.get("volume_ml"),
-                    "drank_at": drank_at,
-                },
-            )
-
-            # Idempotent replay: the drink already exists, so do NOT repeat the
-            # menu merge (which is not itself idempotent — a price could have
-            # changed since).
-            if not created:
-                return Response(
-                    {
-                        "accepted": True,
-                        "duplicate": True,
+            with transaction.atomic():
+                drink, created = DrinkLog.objects.get_or_create(
+                    account=request.user,
+                    client_id=data["client_id"],
+                    defaults={
                         "cache_key": cache_key,
-                        "menu_updated": False,
+                        "name": data["name"],
+                        "lat": data["lat"],
+                        "lng": data["lng"],
+                        "city": data.get("city") or "",
+                        "external_id": data.get("external_id") or "",
+                        "beer_name": beer["name"],
+                        "price_czk": beer["price_czk"],
+                        "volume_ml": beer.get("volume_ml"),
+                        "drank_at": drank_at,
                     },
-                    status=status.HTTP_200_OK,
                 )
 
-            menu_updated = self._merge_into_community(
-                cache_key, data, beer, account=request.user
-            )
+                # Idempotent replay: the drink already exists, so do NOT repeat the
+                # menu merge (which is not itself idempotent — a price could have
+                # changed since).
+                if not created:
+                    return Response(
+                        {
+                            "accepted": True,
+                            "duplicate": True,
+                            "cache_key": drink.cache_key,
+                            "menu_updated": False,
+                        },
+                        status=status.HTTP_200_OK,
+                    )
+
+                menu_updated = self._merge_into_community(
+                    cache_key, data, beer, account=request.user
+                )
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "drinks: unexpected error logging drink for %r: %s",
@@ -450,27 +451,31 @@ class DrinksView(APIView):
             ~38 m cell) → skip the merge, leave the menu untouched.
         """
         now = dj_timezone.now()
-        row = PubCommunityData.objects.filter(cache_key=cache_key).first()
+        row = PubCommunityData.objects.select_for_update().filter(cache_key=cache_key).first()
 
         if row is None:
             try:
-                PubCommunityData.objects.create(
-                    cache_key=cache_key,
-                    name=data["name"],
-                    lat=data["lat"],
-                    lng=data["lng"],
-                    city=data.get("city") or None,
-                    external_id=data.get("external_id") or None,
-                    account=account,
-                    beers=[
-                        {
-                            "name": beer["name"],
-                            "price_czk": beer["price_czk"],
-                            "volume_ml": beer.get("volume_ml"),
-                        }
-                    ],
-                    beers_updated_at=now,
-                )
+                # Nested atomic gives this INSERT its own savepoint. If a concurrent
+                # first-drink wins the unique cache_key race, the savepoint rolls back
+                # cleanly and the outer DrinkLog transaction can still continue.
+                with transaction.atomic():
+                    PubCommunityData.objects.create(
+                        cache_key=cache_key,
+                        name=data["name"],
+                        lat=data["lat"],
+                        lng=data["lng"],
+                        city=data.get("city") or None,
+                        external_id=data.get("external_id") or None,
+                        account=account,
+                        beers=[
+                            {
+                                "name": beer["name"],
+                                "price_czk": beer["price_czk"],
+                                "volume_ml": beer.get("volume_ml"),
+                            }
+                        ],
+                        beers_updated_at=now,
+                    )
                 return True
             except IntegrityError:
                 # A concurrent first-drink for this brand-new cell won the race and
@@ -480,7 +485,11 @@ class DrinksView(APIView):
                 # DrinkLog but silently drop this beer from the menu). The merge
                 # below is still guarded by names_match against whatever business
                 # the winner seeded.
-                row = PubCommunityData.objects.filter(cache_key=cache_key).first()
+                row = (
+                    PubCommunityData.objects.select_for_update()
+                    .filter(cache_key=cache_key)
+                    .first()
+                )
                 if row is None:
                     # The winner's row vanished between INSERT-fail and re-SELECT
                     # (deleted concurrently) — nothing to merge into.

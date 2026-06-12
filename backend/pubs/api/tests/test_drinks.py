@@ -12,7 +12,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework.throttling import ScopedRateThrottle
 
-from pubs.api.views import _merge_drink_into_menu
+from pubs.api.views import DrinksView, _merge_drink_into_menu
 from pubs.enrichment import geohash8
 from pubs.models import Account, DrinkLog, PubCommunityData
 
@@ -404,13 +404,21 @@ def test_log_concurrent_first_drink_race_still_merges(client, monkeypatch):
 
     token = _register(client)
     real_create = PubCommunityData.objects.create
-    state = {"raced": False}
+    real_select_for_update = PubCommunityData.objects.select_for_update
+    state = {"raced": False, "winner_inserted": False}
 
     def racing_create(*args, **kwargs):
         if not state["raced"]:
             state["raced"] = True
-            # The "winner" lands first with a names-matching menu, then our INSERT
-            # collides on the unique cache_key.
+            raise IntegrityError("duplicate key value violates unique constraint")
+        return real_create(*args, **kwargs)
+
+    def racing_select_for_update(*args, **kwargs):
+        qs = real_select_for_update(*args, **kwargs)
+        if state["raced"] and not state["winner_inserted"]:
+            state["winner_inserted"] = True
+            # The "winner" lands after our failed INSERT savepoint has rolled back,
+            # matching the real concurrent-transaction shape this test exercises.
             real_create(
                 cache_key=_KEY,
                 name=_NAME,
@@ -418,10 +426,10 @@ def test_log_concurrent_first_drink_race_still_merges(client, monkeypatch):
                 lng=_LNG,
                 beers=[{"name": "Kozel 11", "price_czk": 45, "volume_ml": 330}],
             )
-            raise IntegrityError("duplicate key value violates unique constraint")
-        return real_create(*args, **kwargs)
+        return qs
 
     monkeypatch.setattr(PubCommunityData.objects, "create", racing_create)
+    monkeypatch.setattr(PubCommunityData.objects, "select_for_update", racing_select_for_update)
 
     resp = client.post("/v1/drinks", data=_payload(), format="json", **_auth(token))
     assert resp.status_code == status.HTTP_201_CREATED
@@ -434,6 +442,22 @@ def test_log_concurrent_first_drink_race_still_merges(client, monkeypatch):
         {"name": "Kozel 11", "price_czk": 45, "volume_ml": 330},
         {"name": "Pilsner Urquell", "price_czk": 62, "volume_ml": 500},
     ]
+
+
+@pytest.mark.django_db
+def test_log_rolls_back_drink_when_menu_merge_fails(client, monkeypatch):
+    """DrinkLog and the community-menu merge must commit or fail together."""
+    token = _register(client)
+
+    def failing_merge(cache_key, data, beer, account):  # noqa: ARG001
+        raise RuntimeError("merge failed")
+
+    monkeypatch.setattr(DrinksView, "_merge_into_community", staticmethod(failing_merge))
+
+    resp = client.post("/v1/drinks", data=_payload(), format="json", **_auth(token))
+    assert resp.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+    assert DrinkLog.objects.count() == 0
+    assert PubCommunityData.objects.count() == 0
 
 
 @pytest.mark.django_db
