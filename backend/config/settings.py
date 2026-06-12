@@ -35,11 +35,17 @@ ENABLE_DJANGO_ADMIN = os.environ.get(
     "True" if DEBUG else "False",
 ).lower() in ("1", "true", "yes")
 
-ALLOWED_HOSTS: list[str] = [
-    h.strip()
-    for h in os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
-    if h.strip()
-]
+if DEBUG:
+    # Expo on a physical device reaches the dev server via the Mac's LAN IP,
+    # which changes by network. Keep DEBUG-only host validation open so local
+    # mobile testing does not require editing .env for every Wi-Fi.
+    ALLOWED_HOSTS: list[str] = ["*"]
+else:
+    ALLOWED_HOSTS = [
+        h.strip()
+        for h in os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+        if h.strip()
+    ]
 
 # ---------------------------------------------------------------------------
 # Application definition

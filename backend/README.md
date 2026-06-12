@@ -74,6 +74,17 @@ API endpoint: `http://localhost:8000/v1/pub-hours`
 Admin: `http://localhost:8000/admin/`  
 Health: `http://localhost:8000/v1/health`
 
+For local Expo testing on a physical device, bind the backend to the LAN
+interface:
+
+```bash
+uv run python manage.py runserver 0.0.0.0:8000
+```
+
+Then start the Expo app from `../na-pivo` with `npm run start:local`. In
+`DEBUG=True`, Django accepts LAN `Host` headers automatically; production still
+uses the explicit `ALLOWED_HOSTS` setting.
+
 ---
 
 ## Running tests
@@ -95,7 +106,7 @@ All settings are read from environment variables (or a `.env` file).  See `.env.
 | `SECRET_KEY` | insecure dev key | Django secret key |
 | `DEBUG` | `True` | Enable debug mode |
 | `ENABLE_DJANGO_ADMIN` | `True` in dev, `False` in prod | Register `/admin/` routes |
-| `ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated allowed hosts |
+| `ALLOWED_HOSTS` | `*` in dev, env value in prod | Comma-separated allowed hosts |
 | `DATABASE_URL` | SQLite | dj-database-url connection string |
 | `FIRMY_PROXY_URL` | _(unset)_ | Residential proxy for Firmy.cz requests |
 | `FIRMY_USER_AGENT` | mobile Chrome UA | User-Agent header for Firmy.cz |
