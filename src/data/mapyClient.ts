@@ -1,10 +1,14 @@
 /**
  * Mapy.cz REST API client — POI search for pubs/bars.
  *
- * Strategy: 4 parallel /v1/suggest queries (hospoda, bar, pivnice, pivovar)
- * with a tight bbox around the user. Suggest ranks by location, unlike
- * geocode which biases toward textual relevance. Results are deduplicated,
- * label-filtered, name-blocklisted, and clamped to the requested radius.
+ * Strategy: prefer our own backend (which proxies Mapy.cz and caches results,
+ * so it spends our shared Mapy credit instead of every client doing 4+ requests
+ * each). When the backend is unset, errors, or returns 503 (no key / cap
+ * exhausted), fall back to hitting Mapy.cz /v1/suggest directly: 4 parallel
+ * queries (hospoda, bar, pivnice, pivovar) with a tight bbox around the user.
+ * Suggest ranks by location, unlike geocode which biases toward textual
+ * relevance. Either way the raw Mapy items run through the SAME pipeline:
+ * deduplicated, label-filtered, name-blocklisted, and clamped to the radius.
  */
 
 import type { Pub } from './pubs';
@@ -124,6 +128,64 @@ const MAPY_API_KEY = process.env.EXPO_PUBLIC_MAPY_API_KEY ?? '';
 
 function getApiKey(): string {
   return MAPY_API_KEY;
+}
+
+/**
+ * Read the backend base URL the same way hoursClient does (still statically
+ * referenced as process.env.EXPO_PUBLIC_BACKEND_URL so Expo/Metro inlines it at
+ * build). Empty/unset → no backend, go straight to the direct Mapy fallback.
+ */
+function getBackendUrl(): string {
+  return (process.env.EXPO_PUBLIC_BACKEND_URL ?? '').trim();
+}
+
+/** Strip a single trailing slash so we can safely append the path. */
+function trimTrailingSlash(url: string): string {
+  return url.endsWith('/') ? url.slice(0, -1) : url;
+}
+
+/** Shape of the backend's pubs-near response. items are RAW Mapy suggest items
+ *  (same shape as a direct /v1/suggest response), fed through itemToPub below. */
+interface BackendPubsNearResponse {
+  items?: MapyGeocodeItem[];
+}
+
+/**
+ * Try the backend pubs-near proxy. Returns the raw Mapy items on success, or
+ * null on ANY failure (no backend configured, non-200 incl. 503, network error,
+ * malformed JSON) so the caller falls back to the direct Mapy.cz flow. Never
+ * throws except for an honoured abort, which must propagate like a real cancel.
+ */
+async function backendSuggest(
+  lat: number,
+  lng: number,
+  kmRadius: number,
+  signal?: AbortSignal,
+): Promise<MapyGeocodeItem[] | null> {
+  const baseUrl = getBackendUrl();
+  if (!baseUrl) return null; // No backend — use the fallback.
+
+  const url = new URL(`${trimTrailingSlash(baseUrl)}/v1/pubs/near`);
+  url.searchParams.set('lat', String(lat));
+  url.searchParams.set('lng', String(lng));
+  url.searchParams.set('radius_km', String(kmRadius));
+
+  try {
+    const resp = await fetch(url.toString(), { signal });
+    if (!resp.ok) {
+      // 503 (no key / cap exhausted) or any other non-200 → fall back.
+      console.warn(`[mapy] backend pubs/near HTTP ${resp.status} — falling back to Mapy`);
+      return null;
+    }
+    const data = (await resp.json()) as BackendPubsNearResponse;
+    return data.items ?? [];
+  } catch (err) {
+    // An honoured abort must propagate so callers' cancellation works; any other
+    // failure (network, malformed JSON) just means "use the fallback".
+    if (signal?.aborted) throw err;
+    console.warn('[mapy] backend pubs/near failed — falling back to Mapy:', err);
+    return null;
+  }
 }
 
 /**
@@ -317,14 +379,55 @@ function itemToPub(
   return pub;
 }
 
+/** Run a list of raw Mapy items through the filtering pipeline. Shared by the
+ *  backend-proxied path and the direct Mapy path so both apply the identical
+ *  label allow-list, name heuristics, radius clamp and dedupe. */
+function itemsToPubs(
+  items: MapyGeocodeItem[],
+  lat: number,
+  lng: number,
+  kmRadius: number,
+): Pub[] {
+  const seen = new Set<string>();
+  const pubs: Pub[] = [];
+  for (const item of items) {
+    const pub = itemToPub(item, lat, lng, kmRadius, seen);
+    if (pub) pubs.push(pub);
+  }
+  return pubs;
+}
+
 /**
- * Fetch pubs near the given coordinate from Mapy.cz.
- * Throws if the API key is missing or all requests fail.
+ * Fetch pubs near the given coordinate, preferring our backend proxy and
+ * falling back to Mapy.cz directly. Throws only when BOTH the backend is
+ * unavailable AND the direct path can't run (no API key) or all its requests
+ * fail — so callers' error handling still fires on a true outage.
  */
 export async function searchPubsNear(
   lat: number,
   lng: number,
   kmRadius = 25,
+  signal?: AbortSignal,
+): Promise<Pub[]> {
+  // Backend-first: it caches Mapy results and spends our shared credit once,
+  // instead of every client cold-starting 4+ Mapy requests of its own.
+  const backendItems = await backendSuggest(lat, lng, kmRadius, signal);
+  if (backendItems !== null) {
+    return itemsToPubs(backendItems, lat, lng, kmRadius);
+  }
+
+  // Fallback: hit Mapy.cz directly (unchanged behavior).
+  return searchPubsNearDirect(lat, lng, kmRadius, signal);
+}
+
+/**
+ * Direct Mapy.cz suggest flow — the fallback when the backend is unavailable.
+ * Throws if the API key is missing or all requests fail.
+ */
+async function searchPubsNearDirect(
+  lat: number,
+  lng: number,
+  kmRadius: number,
   signal?: AbortSignal,
 ): Promise<Pub[]> {
   const apiKey = getApiKey();

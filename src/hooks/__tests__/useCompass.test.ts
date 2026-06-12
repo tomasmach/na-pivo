@@ -303,4 +303,80 @@ describe('useCompass', () => {
 
     expect(hook.result.searchFailed).toBe(true);
   });
+
+  describe('radius-change debounce', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.runOnlyPendingTimers();
+      jest.useRealTimers();
+    });
+
+    // Flush the microtask queue inside act so the mocked fetch's resolved
+    // .then() state updates settle without "not wrapped in act" warnings.
+    const flush = () => act(async () => { await Promise.resolve(); });
+
+    it('does NOT delay the first fetch on mount', async () => {
+      renderCompassHook();
+      await flush();
+      // The initial mount fetch must fire synchronously, with no timer pending.
+      expect(fetchPubsNear).toHaveBeenCalledTimes(1);
+    });
+
+    it('coalesces rapid maxDistanceKm changes into a single fetch', async () => {
+      renderCompassHook();
+      await flush();
+      // Mount fetch (immediate).
+      expect(fetchPubsNear).toHaveBeenCalledTimes(1);
+
+      // Simulate dragging the distance slider upward: several rapid changes.
+      act(() => {
+        useSettingsStore.setState({ maxDistanceKm: 5 });
+      });
+      act(() => {
+        useSettingsStore.setState({ maxDistanceKm: 10 });
+      });
+      act(() => {
+        useSettingsStore.setState({ maxDistanceKm: 20 });
+      });
+
+      // Nothing fired yet — the radius-change path is debounced.
+      expect(fetchPubsNear).toHaveBeenCalledTimes(1);
+
+      act(() => {
+        jest.advanceTimersByTime(700);
+      });
+      await flush();
+
+      // Exactly one extra fetch for the whole drag, with the final radius.
+      expect(fetchPubsNear).toHaveBeenCalledTimes(2);
+      expect(fetchPubsNear).toHaveBeenLastCalledWith(50.08, 14.42, undefined, {
+        force: false,
+        radiusKm: 20,
+      });
+    });
+
+    it('fires a GPS-driven fetch immediately (not debounced)', async () => {
+      const hook = renderCompassHook();
+      await flush();
+      expect(fetchPubsNear).toHaveBeenCalledTimes(1);
+
+      // A position change (radius unchanged) must not be delayed.
+      (useDevicePosition as jest.Mock).mockReturnValue({
+        position: { lat: 51.0, lng: 15.0, accuracyMeters: 8 },
+      });
+      act(() => {
+        hook.rerender();
+      });
+      await flush();
+
+      expect(fetchPubsNear).toHaveBeenCalledTimes(2);
+      expect(fetchPubsNear).toHaveBeenLastCalledWith(51.0, 15.0, undefined, {
+        force: false,
+        radiusKm: 100,
+      });
+    });
+  });
 });

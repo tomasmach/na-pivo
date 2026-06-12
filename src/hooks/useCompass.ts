@@ -120,6 +120,16 @@ export function useCompass(): UseCompassResult {
   const [searchRetryNonce, setSearchRetryNonce] = useState(0);
   const forceNextSearchRef = useRef(false);
 
+  // Track the maxDistanceKm the last fetch effect ran with, so we can tell a
+  // radius-only re-run (debounce it) apart from a GPS/mount/retry re-run (fire
+  // immediately). The distance slider commits on every step while dragging, so
+  // raising the radius fires several maxDistanceKm changes — and each full fetch
+  // is 4+ Mapy requests. Debouncing here, the layer that actually sees the
+  // churn, coalesces a drag into a single fetch.
+  const lastFetchedMaxKmRef = useRef<number | null | undefined>(undefined);
+  const radiusDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const RADIUS_DEBOUNCE_MS = 700;
+
   // Fetch pubs from Mapy.cz whenever the user's position changes. The data
   // layer short-circuits if the user hasn't moved more than ~2 km from the
   // previous fetch center (or if a fetch is already in-flight), so this is
@@ -129,27 +139,53 @@ export function useCompass(): UseCompassResult {
   useEffect(() => {
     if (!position) return;
     let cancelled = false;
-    const force = forceNextSearchRef.current;
-    const radiusKm = maxDistanceKm ?? UNLIMITED_SEARCH_RADIUS_KM;
-    forceNextSearchRef.current = false;
 
-    fetchPubsNear(position.lat, position.lng, undefined, { force, radiusKm })
-      .then(() => {
-        if (!cancelled) {
-          setSearchFailed(false);
+    const runFetch = () => {
+      if (cancelled) return;
+      const force = forceNextSearchRef.current;
+      const radiusKm = maxDistanceKm ?? UNLIMITED_SEARCH_RADIUS_KM;
+      forceNextSearchRef.current = false;
+      lastFetchedMaxKmRef.current = maxDistanceKm;
+
+      fetchPubsNear(position.lat, position.lng, undefined, { force, radiusKm })
+        .then(() => {
+          if (!cancelled) {
+            setSearchFailed(false);
+            setPubsLoaded(true);
+            bumpPubDataRevision((revision) => revision + 1);
+          }
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          console.warn('[useCompass] fetchPubsNear failed:', err);
+          setSearchFailed(true);
           setPubsLoaded(true);
           bumpPubDataRevision((revision) => revision + 1);
-        }
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        console.warn('[useCompass] fetchPubsNear failed:', err);
-        setSearchFailed(true);
-        setPubsLoaded(true);
-        bumpPubDataRevision((revision) => revision + 1);
-      });
+        });
+    };
+
+    // Debounce ONLY the radius-change path: when maxDistanceKm is the sole thing
+    // that changed (the slider drag), coalesce rapid successive changes into one
+    // fetch. The first run on mount (ref still `undefined`), GPS-driven calls,
+    // and forced retries are never delayed.
+    const radiusOnlyChange =
+      lastFetchedMaxKmRef.current !== undefined &&
+      maxDistanceKm !== lastFetchedMaxKmRef.current &&
+      !forceNextSearchRef.current;
+
+    if (radiusOnlyChange) {
+      if (radiusDebounceRef.current) clearTimeout(radiusDebounceRef.current);
+      radiusDebounceRef.current = setTimeout(runFetch, RADIUS_DEBOUNCE_MS);
+    } else {
+      runFetch();
+    }
+
     return () => {
       cancelled = true;
+      if (radiusDebounceRef.current) {
+        clearTimeout(radiusDebounceRef.current);
+        radiusDebounceRef.current = undefined;
+      }
     };
   }, [position?.lat, position?.lng, maxDistanceKm, searchRetryNonce]);
 
