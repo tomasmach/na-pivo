@@ -103,8 +103,12 @@ All settings are read from environment variables (or a `.env` file).  See `.env.
 | `FIRMY_DAILY_CAP` | `2000` | Hard daily request cap |
 | `HOURS_TTL_DAYS` | `30` | Days before cached hours are refreshed |
 | `SYNC_ENRICH_BUDGET` | `3` | Max pubs enriched synchronously per API call |
+| `MAPY_API_KEY` | _(unset)_ | Mapy.cz key for the server-side `/v1/pubs/near` suggest proxy. Unset → endpoint returns 503 and the app calls Mapy.cz directly |
+| `MAPY_DAILY_CAP` | `5000` | Hard daily cap on Mapy.cz suggest HTTP requests (counts individual requests) |
+| `PUBS_NEAR_TTL_DAYS` | `7` | Days before a cached `/v1/pubs/near` result is refreshed |
 | `CORS_ALLOWED_ORIGINS` | Expo localhost | Comma-separated CORS origins |
 | `ACCOUNT_REGISTER_THROTTLE_RATE` | `120/min` | Per-IP rate limit for `POST /v1/account` (DRF throttle rate string) |
+| `PUBS_NEAR_THROTTLE_RATE` | `60/min` | Per-IP rate limit for `GET /v1/pubs/near` (DRF throttle rate string) |
 
 ---
 

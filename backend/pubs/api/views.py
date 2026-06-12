@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import logging
 import math
+from datetime import timedelta
 
+from django.conf import settings
 from django.utils import timezone as dj_timezone
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -23,7 +25,15 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
-from pubs.enrichment import community_hours_to_osm, geohash8
+from pubs.enrichment import (
+    MapyAllQueriesFailedError,
+    MapyDailyCapExceededError,
+    MapySuggestSource,
+    community_hours_to_osm,
+    geohash5,
+    geohash5_center,
+    geohash8,
+)
 from pubs.models import (
     Account,
     EnrichTask,
@@ -32,6 +42,7 @@ from pubs.models import (
     PubContributionLog,
     PubHours,
     PubReport,
+    PubSearchCache,
     ReleaseNote,
     generate_account_token,
     hash_account_token,
@@ -53,12 +64,27 @@ from .serializers import (
     PubReportBlockedQuerySerializer,
     PubReportRequestSerializer,
     PubReportSerializer,
+    PubsNearQuerySerializer,
     ReleaseNoteSerializer,
 )
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_BLOCKED_REPORT_RADIUS_KM = 25.0
+
+# Radius buckets (km) for the Mapy "pubs near" cache — the same widening steps
+# the search itself uses. radius_bucket = the smallest bucket >= the requested
+# radius (capped at the largest). A 25 km and a 40 km request in one cell thus
+# share the 50 km row.
+PUBS_NEAR_RADIUS_BUCKETS = (5, 15, 50, 100)
+
+
+def _radius_bucket(radius_km: float) -> int:
+    """Smallest bucket >= radius_km (capped at the largest bucket)."""
+    for bucket in PUBS_NEAR_RADIUS_BUCKETS:
+        if radius_km <= bucket:
+            return bucket
+    return PUBS_NEAR_RADIUS_BUCKETS[-1]
 
 
 def _haversine_km(a_lat: float, a_lng: float, b_lat: float, b_lng: float) -> float:
@@ -377,6 +403,161 @@ class BlockedPubReportsView(APIView):
 
         return Response(
             BlockedPubsResponseSerializer({"blocked": blocked}).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class PubsNearView(APIView):
+    """
+    GET /v1/pubs/near?lat=<float>&lng=<float>&radius_km=<float, default 25>
+
+    Server-side Mapy.cz /v1/suggest proxy with a shared DB cache. The mobile app
+    used to call Mapy.cz directly from every device, which nearly exhausted the
+    shared API credit; this endpoint fetches once per coarse (geohash-5) cell and
+    radius bucket, caches the trimmed suggest items, and serves every device in
+    the cell from that single row.
+
+    Response 200:
+        {"items": [<MapySuggestItem>...], "cached": <bool>, "fetched_at": "<ISO>"}
+    where each MapySuggestItem is a trimmed raw Mapy suggest item the client feeds
+    into its existing filtering pipeline.
+
+    Returns 503 when Mapy is not configured / unavailable AND there is no cached
+    row to fall back on — the client then calls Mapy.cz directly.
+
+    Unauthenticated by design (like BlockedPubReportsView — filtering must work
+    before an account is recovered) but throttled per-IP (scope "pubs_near").
+    """
+
+    authentication_classes: list = []
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "pubs_near"
+
+    def get(self, request: Request) -> Response:
+        serializer = PubsNearQuerySerializer(data=request.query_params)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        radius_km: float = data["radius_km"]
+
+        # Quantize to the shared cache cell and run the search from its CENTRE so
+        # every user in the ~5 km cell collapses to one cached row.
+        cache_key = geohash5(data["lat"], data["lng"])
+        center_lat, center_lng = geohash5_center(cache_key)
+        radius_bucket = _radius_bucket(radius_km)
+
+        ttl_days: int = int(getattr(settings, "PUBS_NEAR_TTL_DAYS", 7))
+        cutoff = dj_timezone.now() - timedelta(days=ttl_days)
+
+        row = PubSearchCache.objects.filter(
+            cache_key=cache_key, radius_bucket=radius_bucket
+        ).first()
+
+        # Fresh cache hit — serve as-is.
+        if row is not None and row.fetched_at >= cutoff:
+            return Response(
+                {
+                    "items": row.items,
+                    "cached": True,
+                    "fetched_at": row.fetched_at.isoformat(),
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        # Stale or missing → fetch from Mapy. If the key isn't configured, fall
+        # back to any stale row, else 503.
+        api_key: str = getattr(settings, "MAPY_API_KEY", "") or ""
+        if not api_key:
+            if row is not None:
+                logger.info(
+                    "pubs-near: MAPY_API_KEY unset — serving stale cache for %s/%dkm",
+                    cache_key, radius_bucket,
+                )
+                return Response(
+                    {
+                        "items": row.items,
+                        "cached": True,
+                        "fetched_at": row.fetched_at.isoformat(),
+                    },
+                    status=status.HTTP_200_OK,
+                )
+            return Response(
+                {"detail": "Mapy.cz proxy is not configured."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        daily_cap = int(getattr(settings, "MAPY_DAILY_CAP", 5000))
+
+        try:
+            with MapySuggestSource(api_key=api_key, daily_cap=daily_cap) as source:
+                result = source.search_near(center_lat, center_lng, radius_bucket)
+        except (MapyDailyCapExceededError, MapyAllQueriesFailedError) as exc:
+            # Daily cap hit or every upstream query failed. Serve the stale row if
+            # we have one (better stale than nothing); otherwise 503 so the client
+            # falls back to calling Mapy.cz directly.
+            if row is not None:
+                logger.warning(
+                    "pubs-near: Mapy fetch failed (%s) — serving stale cache for %s/%dkm",
+                    exc, cache_key, radius_bucket,
+                )
+                return Response(
+                    {
+                        "items": row.items,
+                        "cached": True,
+                        "fetched_at": row.fetched_at.isoformat(),
+                    },
+                    status=status.HTTP_200_OK,
+                )
+            logger.warning(
+                "pubs-near: Mapy fetch failed (%s) and no cache for %s/%dkm — 503",
+                exc, cache_key, radius_bucket,
+            )
+            return Response(
+                {"detail": "Mapy.cz is temporarily unavailable."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "pubs-near: unexpected error fetching %s/%dkm: %s",
+                cache_key, radius_bucket, exc, exc_info=True,
+            )
+            if row is not None:
+                return Response(
+                    {
+                        "items": row.items,
+                        "cached": True,
+                        "fetched_at": row.fetched_at.isoformat(),
+                    },
+                    status=status.HTTP_200_OK,
+                )
+            return Response(
+                {"detail": "Internal server error."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        # Success — upsert the cache row. We accept the small write race between
+        # concurrent requests for the same cell (both fetch, last write wins via
+        # update_or_create on the unique (cache_key, radius_bucket) key): the
+        # project runs sqlite in dev and Postgres in prod, so we avoid a
+        # Postgres-only stampede lock (e.g. advisory locks) and a select_for_update
+        # that would behave differently across the two backends. The duplicate
+        # fetch is rare (TTL is days) and the result is identical, so it is cheaper
+        # to tolerate than to serialize every request.
+        now = dj_timezone.now()
+        PubSearchCache.objects.update_or_create(
+            cache_key=cache_key,
+            radius_bucket=radius_bucket,
+            defaults={"items": result.items, "fetched_at": now},
+        )
+
+        return Response(
+            {
+                "items": result.items,
+                "cached": False,
+                "fetched_at": now.isoformat(),
+            },
             status=status.HTTP_200_OK,
         )
 

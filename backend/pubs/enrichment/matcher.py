@@ -20,9 +20,33 @@ from rapidfuzz import fuzz
 # Geohash
 # ---------------------------------------------------------------------------
 
+def geohash(lat: float, lng: float, precision: int) -> str:
+    """Return a Geohash string at the given precision."""
+    return geohash2.encode(lat, lng, precision=precision)
+
+
 def geohash8(lat: float, lng: float) -> str:
     """Return a Geohash string at precision 8 (~38 m accuracy)."""
-    return geohash2.encode(lat, lng, precision=8)
+    return geohash(lat, lng, precision=8)
+
+
+def geohash5(lat: float, lng: float) -> str:
+    """Return a Geohash string at precision 5 (~4.9 km × 4.9 km cell).
+
+    Used as the shared cache cell for the Mapy 'pubs near' proxy: every user in
+    one ~5 km cell collapses to a single PubSearchCache row.
+    """
+    return geohash(lat, lng, precision=5)
+
+
+def geohash5_center(cache_key: str) -> tuple[float, float]:
+    """Return the (lat, lng) CENTRE of a geohash-5 cache key.
+
+    The search is run from the cell centre so all users in the cell share one
+    cached result regardless of where inside the cell they actually are.
+    """
+    lat_str, lng_str, _lat_err, _lng_err = geohash2.decode_exactly(cache_key)
+    return float(lat_str), float(lng_str)
 
 
 # ---------------------------------------------------------------------------

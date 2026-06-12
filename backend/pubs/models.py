@@ -595,6 +595,64 @@ class PubCommunityData(models.Model):
         return f"PubCommunityData({self.name} [{self.cache_key}])"
 
 
+class PubSearchCache(models.Model):
+    """
+    Shared, DB-cached result of a Mapy.cz "pubs near" suggest search.
+
+    The mobile app used to call Mapy.cz /v1/suggest directly from every device,
+    which exhausted the shared API credit. The server now proxies that search
+    (GET /v1/pubs/near) and caches the trimmed suggest items here so every user
+    in the same coarse cell shares ONE upstream fetch.
+
+    Identity is (cache_key, radius_bucket):
+      * cache_key is a geohash at precision 5 (~4.9 km cell). The search runs
+        from the CENTRE of the cell, so all users in the cell collapse to one row.
+      * radius_bucket is the smallest of [5, 15, 50, 100] km that covers the
+        requested radius — the same widening steps the search itself uses, so a
+        25 km and a 40 km request in the same cell share the 50 km row.
+
+    Rows are refreshed when older than settings.PUBS_NEAR_TTL_DAYS; a stale row
+    is still served if the upstream fetch fails (better stale than nothing).
+    """
+
+    cache_key = models.CharField(
+        max_length=12,
+        db_index=True,
+        help_text="Geohash-5 of the search centre — ~4.9 km cell.",
+    )
+    radius_bucket = models.PositiveIntegerField(
+        help_text="Smallest covering radius bucket in km (one of 5, 15, 50, 100).",
+    )
+    items = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Trimmed Mapy.cz suggest items: "
+            '[{"name", "label", "position": {"lat", "lon"}, '
+            '"regionalStructure": [{"name", "type"}, ...]}].'
+        ),
+    )
+    fetched_at = models.DateTimeField(
+        help_text="When the upstream Mapy.cz fetch that produced these items completed.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Pub Search Cache"
+        verbose_name_plural = "Pub Search Cache"
+        ordering = ["-updated_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["cache_key", "radius_bucket"],
+                name="unique_pub_search_cache_cell_radius",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"PubSearchCache({self.cache_key} @ {self.radius_bucket}km — {len(self.items)} items)"
+
+
 class PubContributionLog(models.Model):
     """
     Append-only history of community contributions, for audit and revert.

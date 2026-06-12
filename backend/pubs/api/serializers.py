@@ -321,6 +321,51 @@ class PubReportBlockedQuerySerializer(serializers.Serializer):
         return value
 
 
+# Default radius for GET /v1/pubs/near when the client omits radius_km.
+PUBS_NEAR_DEFAULT_RADIUS_KM = 25.0
+# Hard ceiling on the requested radius (matches the largest Mapy bbox step).
+PUBS_NEAR_MAX_RADIUS_KM = 100.0
+
+
+class PubsNearQuerySerializer(serializers.Serializer):
+    """Query params for GET /v1/pubs/near.
+
+    radius_km is optional and clamped to (0, 100]; when omitted it defaults to
+    PUBS_NEAR_DEFAULT_RADIUS_KM. lat/lng are bounds-checked like the other geo
+    serializers.
+    """
+
+    lat = serializers.FloatField()
+    lng = serializers.FloatField()
+    radius_km = serializers.FloatField(required=False, allow_null=True)
+
+    def validate_lat(self, value: float) -> float:
+        if not (-90.0 <= value <= 90.0):
+            raise serializers.ValidationError("Latitude must be between -90 and 90.")
+        return value
+
+    def validate_lng(self, value: float) -> float:
+        if not (-180.0 <= value <= 180.0):
+            raise serializers.ValidationError("Longitude must be between -180 and 180.")
+        return value
+
+    def validate_radius_km(self, value: float | None) -> float:
+        # Default when omitted/null; otherwise clamp into (0, 100]. A value <= 0
+        # is rejected (a zero-radius search is meaningless); values above the cap
+        # are clamped down rather than rejected, mirroring the client's max bbox.
+        if value is None:
+            return PUBS_NEAR_DEFAULT_RADIUS_KM
+        if value <= 0:
+            raise serializers.ValidationError("radius_km must be greater than 0.")
+        return min(value, PUBS_NEAR_MAX_RADIUS_KM)
+
+    def validate(self, attrs: dict) -> dict:
+        # Ensure radius_km is always present in validated_data even when omitted
+        # (validate_radius_km only runs when the field is supplied).
+        attrs.setdefault("radius_km", PUBS_NEAR_DEFAULT_RADIUS_KM)
+        return attrs
+
+
 # ---------------------------------------------------------------------------
 # Response serializers
 # ---------------------------------------------------------------------------
