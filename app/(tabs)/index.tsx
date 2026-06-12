@@ -6,7 +6,7 @@
  *   + Permission gate and loading state
  */
 
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import {
   Alert,
   Platform,
   useWindowDimensions,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -74,7 +75,7 @@ const ARROW_SPRING_CONFIG = {
 // revealing the pub makes the card taller and pushes the bottom controls into
 // the Android navigation area on shorter devices.
 const PUB_PILL_MIN_HEIGHT = 166;
-const ACTIVE_CHROME_HEIGHT = 500;
+const ACTIVE_CHROME_HEIGHT = 430;
 
 // ─── Permission screen ────────────────────────────────────────────────────────
 
@@ -272,16 +273,16 @@ function getActiveCompassLayout(
 
   return {
     bottomControlsPaddingBottom: 12,
-    bottomControlsPaddingTop: Math.round(16 * t),
-    compassMarginTop: Math.round(Spacing.sm * t),
+    bottomControlsPaddingTop: Math.round(12 * t),
+    compassMarginTop: 0,
     compassSize,
-    distanceNumberFontSize: Math.round(78 * t),
-    distanceNumberLineHeight: Math.round(96 * t),
-    distancePaddingBottom: Spacing.sm,
-    distancePaddingTop: Math.round(Spacing.xxl * t),
-    distanceUnitFontSize: Math.round(34 * t),
-    distanceUnitLineHeight: Math.round(44 * t),
-    pubPillPaddingBottom: Spacing.md,
+    distanceNumberFontSize: Math.round(64 * t),
+    distanceNumberLineHeight: Math.round(78 * t),
+    distancePaddingBottom: 0,
+    distancePaddingTop: Math.round(20 * t),
+    distanceUnitFontSize: Math.round(28 * t),
+    distanceUnitLineHeight: Math.round(36 * t),
+    pubPillPaddingBottom: 12,
   };
 }
 
@@ -599,6 +600,7 @@ export default function CompassScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width: screenWidth, height: screenHeight, fontScale } = useWindowDimensions();
+  const [sceneSize, setSceneSize] = useState<{ width: number; height: number } | null>(null);
 
   const {
     arrowRotation,
@@ -622,12 +624,25 @@ export default function CompassScreen() {
     searchFailed,
   } = useCompass();
   const activeLayout = getActiveCompassLayout(
-    screenWidth,
-    screenHeight,
+    sceneSize?.width ?? screenWidth,
+    sceneSize?.height ?? screenHeight,
     insets.top,
     Math.max(insets.bottom, 16),
     fontScale,
   );
+
+  const handleSceneLayout = useCallback((event: LayoutChangeEvent) => {
+    const { width, height } = event.nativeEvent.layout;
+    const next = { width: Math.round(width), height: Math.round(height) };
+    if (next.width <= 0 || next.height <= 0) return;
+
+    setSceneSize((current) => {
+      if (current?.width === next.width && current.height === next.height) {
+        return current;
+      }
+      return next;
+    });
+  }, []);
 
   // Reanimated shared value for compass rotation
   const rotation = useSharedValue(0);
@@ -759,9 +774,17 @@ export default function CompassScreen() {
 
   // ── State C: active compass ───────────────────────────────────────────────
   return (
-    <View style={[styles.root, { paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, 16) }]}>
+    <View
+      onLayout={handleSceneLayout}
+      style={[styles.root, { paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, 16) }]}
+    >
       {/* Header */}
-      <TitleBar showGear onSettings={handleSettings} onSettingsLongPress={handleDevArrival} />
+      <TitleBar
+        align="left"
+        showGear
+        onSettings={handleSettings}
+        onSettingsLongPress={handleDevArrival}
+      />
 
       {/* Calibration hint (optional, subtle) */}
       {isHeadingAccuracyLow(headingAccuracy, Platform.OS) && (
@@ -919,7 +942,7 @@ const styles = StyleSheet.create({
   },
   flexSpacer: {
     flex: 1,
-    minHeight: Spacing.md,
+    minHeight: Spacing.xs,
   },
 
   // ── Distance ──
@@ -947,7 +970,7 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     fontSize: 14,
     color: Colors.mutedText,
-    marginTop: 2,
+    marginTop: 0,
     textAlign: 'center',
   },
 

@@ -8,6 +8,7 @@ import { BeerIcon } from './IconGlyph';
 import { cs } from '@/i18n/cs';
 
 interface TitleBarProps {
+  align?: 'center' | 'left';
   onSettings?: () => void;
   onSettingsLongPress?: () => void;
   showGear?: boolean;
@@ -31,13 +32,15 @@ function GearIcon({ size = 20, color }: { size?: number; color: string }) {
 }
 
 export const TitleBar = memo(function TitleBar({
+  align = 'center',
   onSettings,
   onSettingsLongPress,
   showGear = true,
 }: TitleBarProps) {
+  const isLeftAligned = align === 'left';
+
   return (
-    <View style={styles.container}>
-      {/* Centered logo: beer icon + title */}
+    <View style={[styles.container, isLeftAligned && styles.containerLeft]}>
       <View style={styles.logoRow}>
         <BeerIcon size={20} color={Colors.amber} />
         <Text style={styles.titleText} maxFontSizeMultiplier={FontScaleCap.heading}>
@@ -45,12 +48,11 @@ export const TitleBar = memo(function TitleBar({
         </Text>
       </View>
 
-      {/* Subtle gear in the top-right corner (absolute so the title stays centered) */}
       {showGear && onSettings ? (
         <Pressable
           onPress={onSettings}
           onLongPress={onSettingsLongPress}
-          style={styles.gearTouchable}
+          style={[styles.gearTouchable, isLeftAligned && styles.gearTouchableLeft]}
           hitSlop={12}
           accessibilityLabel={cs.a11y.settingsButton}
           accessibilityRole="button"
@@ -66,8 +68,14 @@ const styles = StyleSheet.create({
   container: {
     height: 48,
     paddingTop: 10,
+    paddingHorizontal: 24,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  containerLeft: {
+    height: 40,
+    paddingTop: 2,
+    alignItems: 'flex-start',
   },
   logoRow: {
     flexDirection: 'row',
@@ -89,5 +97,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     opacity: 0.55,
+  },
+  gearTouchableLeft: {
+    top: 2,
   },
 });

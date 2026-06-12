@@ -197,6 +197,51 @@ describe('CompassScreen', () => {
     expect(scaledSize).toBeLessThan(baselineSize);
   });
 
+  it('uses measured scene height after the tab bar takes vertical space', () => {
+    const { CompassContainer } = require('@/components/compass/CompassContainer') as {
+      CompassContainer: jest.Mock;
+    };
+    useCompass.mockReturnValue(baseCompassState());
+    CompassContainer.mockClear();
+
+    let renderer: any;
+
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(CompassScreen));
+    });
+
+    expect(CompassContainer.mock.calls.at(-1)?.[0]?.size).toBe(320);
+
+    const measuredRoot = renderer!.root.find(
+      (node: any) => typeof node.props.onLayout === 'function',
+    );
+
+    act(() => {
+      measuredRoot.props.onLayout({
+        nativeEvent: { layout: { width: 390, height: 744 } },
+      });
+    });
+
+    expect(CompassContainer.mock.calls.at(-1)?.[0]?.size).toBeLessThan(320);
+  });
+
+  it('places the title bar in the top-left on the active compass', () => {
+    const { TitleBar } = require('@/components/shared/TitleBar') as {
+      TitleBar: jest.Mock;
+    };
+    useCompass.mockReturnValue(baseCompassState());
+    TitleBar.mockClear();
+
+    act(() => {
+      TestRenderer.create(React.createElement(CompassScreen));
+    });
+
+    expect(TitleBar).toHaveBeenCalledWith(
+      expect.objectContaining({ align: 'left', showGear: true }),
+      undefined,
+    );
+  });
+
   it('reserves revealed-card height before the pub is revealed', () => {
     useCompass.mockReturnValue(baseCompassState());
 
