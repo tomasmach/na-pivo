@@ -8,6 +8,7 @@ from .models import (
     PubContributionLog,
     PubHours,
     PubReport,
+    PubSearchCache,
     ReleaseNote,
     ReleaseNoteItem,
 )
@@ -19,6 +20,15 @@ class PubHoursAdmin(admin.ModelAdmin):
     list_filter = ("status", "venue_kind", "source")
     search_fields = ("name", "cache_key", "source_ref")
     readonly_fields = ("cache_key", "updated_at", "fetched_at")
+    ordering = ("-updated_at",)
+
+
+@admin.register(PubSearchCache)
+class PubSearchCacheAdmin(admin.ModelAdmin):
+    list_display = ("cache_key", "radius_bucket", "fetched_at", "updated_at")
+    list_filter = ("radius_bucket",)
+    search_fields = ("cache_key",)
+    readonly_fields = ("created_at", "updated_at")
     ordering = ("-updated_at",)
 
 

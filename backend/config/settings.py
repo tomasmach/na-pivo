@@ -152,6 +152,12 @@ FEEDBACK_THROTTLE_RATE: str = os.environ.get("FEEDBACK_THROTTLE_RATE", "20/min")
 # normal hand-entered submissions untouched. Format: DRF throttle rate string.
 COMMUNITY_THROTTLE_RATE: str = os.environ.get("COMMUNITY_THROTTLE_RATE", "30/min")
 
+# Per-IP rate limit for the unauthenticated Mapy.cz "pubs near" proxy
+# (GET /v1/pubs/near). The result is shared-cached per geohash-5 cell, so the
+# legitimate once-per-search call is cheap; this blunts scripted enumeration.
+# Format: DRF throttle rate string.
+PUBS_NEAR_THROTTLE_RATE: str = os.environ.get("PUBS_NEAR_THROTTLE_RATE", "60/min")
+
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
@@ -174,6 +180,7 @@ REST_FRAMEWORK = {
         "account": ACCOUNT_REGISTER_THROTTLE_RATE,
         "feedback": FEEDBACK_THROTTLE_RATE,
         "community": COMMUNITY_THROTTLE_RATE,
+        "pubs_near": PUBS_NEAR_THROTTLE_RATE,
     },
 }
 
@@ -221,6 +228,27 @@ FIRMY_MIN_INTERVAL_SEC: float = float(os.environ.get("FIRMY_MIN_INTERVAL_SEC", "
 
 # Hard daily cap on Firmy.cz requests across the whole process.
 FIRMY_DAILY_CAP: int = int(os.environ.get("FIRMY_DAILY_CAP", "2000"))
+
+# ---------------------------------------------------------------------------
+# Mapy.cz "pubs near" proxy settings
+# ---------------------------------------------------------------------------
+
+# Mapy.cz API key for the server-side /v1/suggest proxy (GET /v1/pubs/near).
+# The mobile app no longer calls Mapy.cz directly (it exhausted the shared
+# credit); the server fetches once per geohash-5 cell and caches the result.
+# REQUIRED for the endpoint to work: if unset, /v1/pubs/near returns 503 and the
+# client falls back to calling Mapy.cz directly.
+MAPY_API_KEY: str = os.environ.get("MAPY_API_KEY", "")
+
+# Hard daily cap on Mapy.cz suggest HTTP requests across the whole process
+# (counts INDIVIDUAL requests, like FIRMY_DAILY_CAP — each search makes up to
+# 4 term-queries × the number of bbox-widening steps it needs).
+MAPY_DAILY_CAP: int = int(os.environ.get("MAPY_DAILY_CAP", "5000"))
+
+# How many days a cached PubSearchCache row is considered fresh before the
+# server re-fetches from Mapy.cz. A stale row is still served if the upstream
+# fetch fails.
+PUBS_NEAR_TTL_DAYS: int = int(os.environ.get("PUBS_NEAR_TTL_DAYS", "7"))
 
 # ---------------------------------------------------------------------------
 # Enrichment / cache settings

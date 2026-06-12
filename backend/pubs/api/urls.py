@@ -21,12 +21,14 @@ from .views import (
     PubCommunityView,
     PubHoursView,
     PubReportView,
+    PubsNearView,
     ReleaseNotesView,
 )
 
 urlpatterns = [
     path("pub-hours", PubHoursView.as_view(), name="pub-hours"),
     path("pub-community", PubCommunityView.as_view(), name="pub-community"),
+    path("pubs/near", PubsNearView.as_view(), name="pubs-near"),
     path("pub-reports", PubReportView.as_view(), name="pub-reports"),
     path("pub-reports/blocked", BlockedPubReportsView.as_view(), name="pub-reports-blocked"),
     path("feedback", FeedbackView.as_view(), name="feedback"),
