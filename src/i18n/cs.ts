@@ -105,7 +105,11 @@ export const cs = {
       linkedinUrl: 'https://www.linkedin.com/in/mach-tomas/',
     },
     footer: 'Bez reklam · Bez placení',
-    attribution: 'Data o místech: Mapy.cz (Seznam.cz). Otevírací doba: samostatné vyhledávání.',
+    // The Mapy.com logo is rendered inline between these two halves (replacing
+    // the brand name), so the attribution reads "Data o místech: [logo]
+    // (Seznam.cz). …" — see app/settings.tsx footer.
+    attributionBefore: 'Data o místech:',
+    attributionAfter: '(Seznam.cz). Otevírací doba: samostatné vyhledávání.',
   },
 
   report: {

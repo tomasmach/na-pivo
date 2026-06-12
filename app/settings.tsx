@@ -479,19 +479,23 @@ export default function SettingsScreen() {
         {/* ── Footer ── */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>{cs.settings.footer}</Text>
-          <Text style={styles.attributionText}>{cs.settings.attribution}</Text>
-          {/* Official Mapy.com logo — required by the REST API attribution terms.
-              The wordmark is black, so it sits on a white chip to stay legible on
-              the dark footer (the logo itself is never recoloured). Links to
-              mapy.com. */}
+          {/* Attribution with the official Mapy.com logo inline, replacing the
+              brand name in the sentence ("Data o místech: [logo] (Seznam.cz)…").
+              Required by the REST API attribution terms. The wordmark is black,
+              so the logo rides on a small white chip to stay legible on the dark
+              footer (it is never recoloured); tapping it opens mapy.com. */}
           <Pressable
             onPress={() => Linking.openURL('https://mapy.com/')}
             hitSlop={8}
-            style={({ pressed }) => [styles.mapyLogoChip, pressed && { opacity: 0.7 }]}
+            style={({ pressed }) => [styles.attributionRow, pressed && { opacity: 0.7 }]}
             accessibilityRole="link"
-            accessibilityLabel="Mapy.com"
+            accessibilityLabel={`${cs.settings.attributionBefore} Mapy.com ${cs.settings.attributionAfter}`}
           >
-            <MapyLogo height={14} />
+            <Text style={styles.attributionText}>{cs.settings.attributionBefore}</Text>
+            <View style={styles.mapyLogoChip}>
+              <MapyLogo height={12} />
+            </View>
+            <Text style={styles.attributionText}>{cs.settings.attributionAfter}</Text>
           </Pressable>
         </View>
 
@@ -804,11 +808,18 @@ const styles = StyleSheet.create({
     color: Colors.mutedText,
     textAlign: 'center',
   },
+  attributionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingHorizontal: Spacing.lg,
+  },
   mapyLogoChip: {
     backgroundColor: Colors.white,
     borderRadius: Radius.pill,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginTop: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
   },
 });
