@@ -44,6 +44,7 @@ describe('addDrink', () => {
     expect(current?.pubName).toBe(PUB_A.pubName);
     expect(current?.drinks).toHaveLength(1);
     expect(current?.drinks[0].priceCzk).toBe(50);
+    expect(current?.drinks[0].syncStatus).toBe('pending');
   });
 
   it('appends to the same session for the same pub on the same day', () => {
@@ -129,6 +130,19 @@ describe('undoLast', () => {
     useTallyStore.getState().undoLast();
     // Session object remains but empty; another undo is a no-op.
     expect(useTallyStore.getState().undoLast()).toBeNull();
+  });
+
+  it('does not remove the last drink when the expected id no longer matches', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer());
+    useTallyStore.getState().addDrink(PUB_A, beer());
+    expect(useTallyStore.getState().undoLast('id-1')).toBeNull();
+    expect(useTallyStore.getState().current?.drinks).toHaveLength(2);
+  });
+
+  it('marks a drink as synced so delivered drinks are not treated as pending undo', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer());
+    useTallyStore.getState().markDrinkSynced('id-1');
+    expect(useTallyStore.getState().current?.drinks[0].syncStatus).toBe('sent');
   });
 });
 

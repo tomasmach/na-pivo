@@ -46,6 +46,7 @@ import {
 import { geohash8 } from '@/data/geohash';
 import { generateUuidV4 } from '@/data/account';
 import { mergeBeerIntoMenu, type CommunityBeer } from '@/data/communityHours';
+import { fetchPubHours } from '@/data/hoursClient';
 import { buildDrinkEntry } from '@/data/drinksClient';
 import { enqueueDrink, flushDrinksQueue, removeQueuedDrink } from '@/data/drinksQueue';
 import { useCommunityStore } from '@/stores/communityStore';
@@ -260,6 +261,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
   const current = useTallyStore((s) => s.current);
   const addDrink = useTallyStore((s) => s.addDrink);
   const undoLast = useTallyStore((s) => s.undoLast);
+  const markDrinkSynced = useTallyStore((s) => s.markDrinkSynced);
 
   const [formMode, setFormMode] = useState<BeerFormMode | null>(null);
   const [formBeer, setFormBeer] = useState<CommunityBeer | null>(null);
@@ -267,11 +269,27 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
   const [formNonce, setFormNonce] = useState(0);
   // Per-beer pulse counter (key → token); bumped on each count to bounce a card.
   const [pulses, setPulses] = useState<Record<string, number>>({});
+  const [backendMenu, setBackendMenu] = useState<{ pubId: string; beers: CommunityBeer[] } | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    fetchPubHours([pub], controller.signal).then((resultMap) => {
+      if (controller.signal.aborted) return;
+      setBackendMenu({ pubId: pub.id, beers: resultMap.get(pub.id)?.beers ?? [] });
+    });
+
+    return () => controller.abort();
+  }, [pub]);
 
   // Session totals — only count drinks for THIS pub's session.
   const isThisPubSession = current?.pubKey === cell;
   const count = isThisPubSession ? sessionCount(current) : 0;
   const totalCzk = isThisPubSession ? sessionTotalCzk(current) : 0;
+  const latestDrink = isThisPubSession ? current?.drinks[current.drinks.length - 1] : undefined;
+  const latestDrinkId = latestDrink?.id ?? null;
+  const latestDrinkSyncStatus = latestDrink?.syncStatus ?? 'pending';
+  const canUndo = latestDrinkId !== null && latestDrinkSyncStatus !== 'sent';
   const beerCounts = useMemo(
     () => (isThisPubSession ? sessionBeerCounts(current) : new Map<string, number>()),
     [isThisPubSession, current],
@@ -282,9 +300,11 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
   // folds in every beer counted this session (we setOverride on each count), so
   // it is the single source of truth for the visible menu.
   const menu = useMemo<CommunityBeer[]>(() => {
+    const backendBeers = backendMenu?.pubId === pub.id ? backendMenu.beers : [];
     if (override?.beers && override.beers.length > 0) return override.beers;
+    if (backendBeers.length > 0) return backendBeers;
     return pub.beers ?? [];
-  }, [override, pub.beers]);
+  }, [backendMenu, override, pub.beers, pub.id]);
 
   // — Count one beer (writes tally + queue + menu override) —
   const countBeer = useCallback(
@@ -319,14 +339,16 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
         },
         id,
       );
-      void enqueueDrink(entry);
+      void enqueueDrink(entry).then((leftQueue) => {
+        if (leftQueue) markDrinkSynced(id);
+      });
       void flushDrinksQueue();
 
       if (hapticEnabled) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
       }
     },
-    [addDrink, cell, hapticEnabled, menu, pub, setOverride],
+    [addDrink, cell, hapticEnabled, markDrinkSynced, menu, pub, setOverride],
   );
 
   // Tap a menu card: priced → instant +1; unpriced → ask price first.
@@ -377,9 +399,15 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
   );
 
   const handleUndo = useCallback(() => {
-    const removedId = undoLast();
-    if (removedId) void removeQueuedDrink(removedId);
-  }, [undoLast]);
+    if (!canUndo || !latestDrinkId) return;
+    void removeQueuedDrink(latestDrinkId).then((removed) => {
+      if (removed) {
+        undoLast(latestDrinkId);
+      } else {
+        markDrinkSynced(latestDrinkId);
+      }
+    });
+  }, [canUndo, latestDrinkId, markDrinkSynced, undoLast]);
 
   const hasMenu = menu.length > 0;
 
@@ -414,7 +442,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
         {/* Hero */}
         <Hero count={count} totalCzk={totalCzk} reducedMotion={reducedMotion} />
 
-        {count > 0 && (
+        {count > 0 && canUndo && (
           <Pressable
             onPress={handleUndo}
             style={styles.undoRow}

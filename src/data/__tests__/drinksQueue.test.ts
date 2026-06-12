@@ -143,13 +143,13 @@ describe('removeQueuedDrink', () => {
     await enqueueDrink(entry({ client_id: 'a' }));
     await enqueueDrink(entry({ client_id: 'b' }));
 
-    await removeQueuedDrink('a');
+    await expect(removeQueuedDrink('a')).resolves.toBe(true);
     const queue = await readQueue();
     expect(queue.map((e) => e.client_id)).toEqual(['b']);
   });
 
   it('is a no-op when the drink already flushed', async () => {
-    await removeQueuedDrink('missing');
+    await expect(removeQueuedDrink('missing')).resolves.toBe(false);
     expect(await readQueue()).toEqual([]);
   });
 });

@@ -38,6 +38,8 @@ export interface TallyDrink {
   volumeMl?: number;
   /** ISO-8601 timestamp of when it was counted. */
   at: string;
+  /** Delivery state for undo safety. Pending drinks may still be removed from the queue. */
+  syncStatus?: 'pending' | 'sent';
 }
 
 /** One sitting at one pub on one drinking day. */
@@ -81,7 +83,9 @@ interface TallyState {
    * there is nothing to undo. Empties the session object if it was the last
    * drink (the pub stays pinned by the UI, not by the store).
    */
-  undoLast: () => string | null;
+  undoLast: (expectedId?: string) => string | null;
+  /** Mark a drink as no longer queued, so the UI does not offer a local-only undo. */
+  markDrinkSynced: (id: string) => void;
   /** Wipe the current session AND history (e.g. a "start over" affordance). */
   reset: () => void;
 }
@@ -123,6 +127,7 @@ export const useTallyStore = create<TallyState>()(
             beerName: beer.beerName,
             priceCzk: beer.priceCzk,
             at,
+            syncStatus: 'pending',
           };
           if (typeof beer.volumeMl === 'number') drink.volumeMl = beer.volumeMl;
 
@@ -155,17 +160,31 @@ export const useTallyStore = create<TallyState>()(
           };
         }),
 
-      undoLast: () => {
+      undoLast: (expectedId) => {
         let removedId: string | null = null;
         set((state) => {
           if (!state.current || state.current.drinks.length === 0) return state;
           const drinks = state.current.drinks.slice();
+          if (expectedId && drinks[drinks.length - 1]?.id !== expectedId) return state;
           const removed = drinks.pop();
           removedId = removed?.id ?? null;
           return { current: { ...state.current, drinks } };
         });
         return removedId;
       },
+
+      markDrinkSynced: (id) =>
+        set((state) => {
+          if (!state.current) return state;
+          let changed = false;
+          const drinks = state.current.drinks.map((drink) => {
+            if (drink.id !== id) return drink;
+            changed = true;
+            return { ...drink, syncStatus: 'sent' as const };
+          });
+          if (!changed) return state;
+          return { current: { ...state.current, drinks } };
+        }),
 
       reset: () => set({ current: null, history: [] }),
     }),

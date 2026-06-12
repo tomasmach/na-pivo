@@ -59,8 +59,11 @@ jest.mock('@/components/shared/IconGlyph', () => ({
 // Drinks delivery layer — assert calls without touching the network.
 const enqueueDrink = jest.fn((_entry: unknown) => Promise.resolve(true));
 const flushDrinksQueue = jest.fn(() => Promise.resolve(undefined));
-const removeQueuedDrink = jest.fn((_clientId: string) => Promise.resolve(undefined));
+const removeQueuedDrink = jest.fn((_clientId: string) => Promise.resolve(true));
 jest.mock('@/data/drinksQueue', () => ({ enqueueDrink, flushDrinksQueue, removeQueuedDrink }));
+
+const fetchPubHours = jest.fn(async () => new Map());
+jest.mock('@/data/hoursClient', () => ({ fetchPubHours }));
 
 jest.mock('@/data/account', () => ({ generateUuidV4: jest.fn(() => 'uuid-fixed') }));
 
@@ -93,6 +96,7 @@ function nearbyState(over: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  fetchPubHours.mockImplementation(() => new Promise(() => undefined));
   useTallyStore.setState({ current: null, history: [] });
   useCommunityStore.setState({ overrides: {} });
 });
@@ -133,7 +137,44 @@ describe('CounterScreen states', () => {
 });
 
 describe('CounterScreen counting', () => {
-  it('counts a priced beer on tap → updates tally, queue, and menu override', () => {
+  it('renders backend community beers fetched for the active pub', async () => {
+    fetchPubHours.mockResolvedValueOnce(
+      new Map([
+        [
+          PUB.id,
+          {
+            openingHours: null,
+            isOpenNow: null,
+            nextChange: null,
+            status: 'ok',
+            source: 'firmy',
+            communityHours: null,
+            beers: [{ name: 'Plzeň', priceCzk: 62, volumeMl: 500 }],
+            venueKind: 'pub',
+          },
+        ],
+      ]),
+    );
+    useNearbyPub.mockReturnValue(nearbyState());
+
+    let renderer: any;
+    await act(async () => {
+      renderer = TestRenderer.create(React.createElement(CounterScreen));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const cs = require('@/i18n/cs').cs;
+    const wanted = cs.a11y.counterCountBeer('Plzeň', cs.counter.price(62));
+    const card = renderer.root.findAll(
+      (n: any) => n.props?.accessibilityLabel === wanted && typeof n.props?.onPress === 'function',
+    )[0];
+    expect(card).toBeTruthy();
+    expect(fetchPubHours).toHaveBeenCalledWith([PUB], expect.any(AbortSignal));
+  });
+
+  it('counts a priced beer on tap → updates tally, queue, and menu override', async () => {
     useCommunityStore.setState({
       overrides: { [CELL]: { beers: [{ name: 'Plzeň', priceCzk: 62, volumeMl: 500 }], updatedAt: 1 } },
     });
@@ -152,8 +193,9 @@ describe('CounterScreen counting', () => {
     )[0];
     expect(card).toBeTruthy();
 
-    act(() => {
+    await act(async () => {
       card.props.onPress();
+      await Promise.resolve();
     });
 
     // Tally recorded.
@@ -174,7 +216,7 @@ describe('CounterScreen counting', () => {
     expect(override?.beers).toHaveLength(1);
   });
 
-  it('undoing the last count removes the tally drink and the queued payload', () => {
+  it('undoing the last pending count removes the tally drink and the queued payload', async () => {
     useCommunityStore.setState({
       overrides: { [CELL]: { beers: [{ name: 'Plzeň', priceCzk: 62, volumeMl: 500 }], updatedAt: 1 } },
     });
@@ -200,8 +242,9 @@ describe('CounterScreen counting', () => {
       (n: any) => n.props?.accessibilityLabel === cs.a11y.counterUndo,
     )[0];
     expect(undo).toBeTruthy();
-    act(() => {
+    await act(async () => {
       undo.props.onPress();
+      await Promise.resolve();
     });
 
     expect(useTallyStore.getState().current?.drinks).toHaveLength(0);

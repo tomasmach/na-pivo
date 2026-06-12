@@ -113,15 +113,19 @@ export function enqueueDrink(entry: DrinkEntry): Promise<boolean> {
 /**
  * Remove a queued drink by its client_id — used when the user undoes a count
  * before the queued payload has been delivered, so an undone beer is never sent.
- * Best-effort and never throws; a no-op if the drink already flushed.
+ * Resolves true only when the payload was still queued and got removed. False
+ * means it was already delivered/dropped or was never queued, so callers must not
+ * roll back their local tally.
  */
-export function removeQueuedDrink(clientId: string): Promise<void> {
+export function removeQueuedDrink(clientId: string): Promise<boolean> {
   return runLocked(async () => {
     const queue = await loadQueue();
     const filtered = queue.filter((entry) => entry.client_id !== clientId);
     if (filtered.length !== queue.length) {
       await saveQueue(filtered);
+      return true;
     }
+    return false;
   });
 }
 
