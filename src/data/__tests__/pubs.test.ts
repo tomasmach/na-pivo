@@ -1,5 +1,7 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   _init,
+  _reset,
   fetchPubsNear,
   findNearestPub,
   findRandomPubInRadius,
@@ -11,6 +13,10 @@ import { searchPubsNear } from "../mapyClient";
 import { fetchBlockedPubReports } from "../pubReportsClient";
 import { geohash8 } from "../geohash";
 
+jest.mock("@react-native-async-storage/async-storage", () =>
+  require("@react-native-async-storage/async-storage/jest/async-storage-mock"),
+);
+
 jest.mock("../mapyClient", () => ({
   searchPubsNear: jest.fn(async () => []),
 }));
@@ -18,6 +24,8 @@ jest.mock("../mapyClient", () => ({
 jest.mock("../pubReportsClient", () => ({
   fetchBlockedPubReports: jest.fn(async () => []),
 }));
+
+const SNAPSHOT_KEY = "na-pivo-pubs-snapshot";
 
 const SYNTHETIC_PUBS: Pub[] = [
   // Prague city centre area
@@ -82,6 +90,157 @@ describe("fetchPubsNear", () => {
 
     expect(getPubById("mapy:new-id")).toBeNull();
     expect(getPubById("mapy:keep")?.name).toBe("U Piva");
+  });
+});
+
+describe("fetchPubsNear — persistent snapshot cache", () => {
+  const PRAGUE = { lat: 50.08, lng: 14.42 };
+  const SNAPSHOT_PUBS: Pub[] = [
+    { id: "mapy:cached-1", name: "U Cache", lat: 50.081, lng: 14.421 },
+  ];
+
+  // Each case must exercise the one-shot cold-start hydration from a clean
+  // module state, so reset the in-memory index + "hydration attempted" latch.
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    await AsyncStorage.clear();
+    _reset();
+    (searchPubsNear as jest.Mock).mockResolvedValue([]);
+    (fetchBlockedPubReports as jest.Mock).mockResolvedValue([]);
+  });
+
+  async function writeSnapshot(snapshot: {
+    pubs: Pub[];
+    centerLat: number;
+    centerLng: number;
+    radiusKm: number;
+    savedAt: number;
+  }): Promise<void> {
+    await AsyncStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshot));
+  }
+
+  it("hydrates from a fresh, covering snapshot and SKIPS the network", async () => {
+    await writeSnapshot({
+      pubs: SNAPSHOT_PUBS,
+      centerLat: PRAGUE.lat,
+      centerLng: PRAGUE.lng,
+      radiusKm: 25,
+      savedAt: Date.now(),
+    });
+
+    await fetchPubsNear(PRAGUE.lat, PRAGUE.lng, undefined, { radiusKm: 25 });
+
+    expect(searchPubsNear).not.toHaveBeenCalled();
+    expect(getPubById("mapy:cached-1")?.name).toBe("U Cache");
+  });
+
+  it("fetches when the snapshot is older than the 24h TTL", async () => {
+    await writeSnapshot({
+      pubs: SNAPSHOT_PUBS,
+      centerLat: PRAGUE.lat,
+      centerLng: PRAGUE.lng,
+      radiusKm: 25,
+      savedAt: Date.now() - 25 * 60 * 60 * 1000,
+    });
+
+    await fetchPubsNear(PRAGUE.lat, PRAGUE.lng, undefined, { radiusKm: 25 });
+
+    expect(searchPubsNear).toHaveBeenCalledTimes(1);
+    expect(getPubById("mapy:cached-1")).toBeNull();
+  });
+
+  it("fetches when the request is outside the snapshot's move threshold", async () => {
+    await writeSnapshot({
+      pubs: SNAPSHOT_PUBS,
+      centerLat: PRAGUE.lat,
+      centerLng: PRAGUE.lng,
+      radiusKm: 25,
+      savedAt: Date.now(),
+    });
+
+    // ~330 km away (Bratislava) — well past REFETCH_THRESHOLD_KM.
+    await fetchPubsNear(48.1486, 17.1077, undefined, { radiusKm: 25 });
+
+    expect(searchPubsNear).toHaveBeenCalledTimes(1);
+  });
+
+  it("fetches when the snapshot radius does not cover the request", async () => {
+    await writeSnapshot({
+      pubs: SNAPSHOT_PUBS,
+      centerLat: PRAGUE.lat,
+      centerLng: PRAGUE.lng,
+      radiusKm: 5,
+      savedAt: Date.now(),
+    });
+
+    await fetchPubsNear(PRAGUE.lat, PRAGUE.lng, undefined, { radiusKm: 25 });
+
+    expect(searchPubsNear).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores the snapshot and fetches under options.force", async () => {
+    await writeSnapshot({
+      pubs: SNAPSHOT_PUBS,
+      centerLat: PRAGUE.lat,
+      centerLng: PRAGUE.lng,
+      radiusKm: 25,
+      savedAt: Date.now(),
+    });
+
+    await fetchPubsNear(PRAGUE.lat, PRAGUE.lng, undefined, { force: true, radiusKm: 25 });
+
+    expect(searchPubsNear).toHaveBeenCalledTimes(1);
+  });
+
+  it("persists the post-block-filtering result after a successful fetch", async () => {
+    (searchPubsNear as jest.Mock).mockResolvedValue([
+      { id: "mapy:blocked", name: "Palačinkárna", lat: 50.08, lng: 14.42 },
+      { id: "mapy:ok", name: "U Piva", lat: 50.081, lng: 14.421 },
+    ]);
+    (fetchBlockedPubReports as jest.Mock).mockResolvedValue([
+      { cacheKey: "ignored", externalId: "mapy:blocked", reason: "not_pub" },
+    ]);
+
+    await fetchPubsNear(PRAGUE.lat, PRAGUE.lng, undefined, { radiusKm: 25 });
+
+    const raw = await AsyncStorage.getItem(SNAPSHOT_KEY);
+    expect(raw).not.toBeNull();
+    const saved = JSON.parse(raw as string);
+    // Only the surviving (non-blocked) pub is persisted.
+    expect(saved.pubs).toHaveLength(1);
+    expect(saved.pubs[0].id).toBe("mapy:ok");
+    expect(saved.centerLat).toBe(PRAGUE.lat);
+    expect(saved.radiusKm).toBe(25);
+  });
+
+  it("degrades silently to a network fetch when the stored snapshot is corrupt", async () => {
+    await AsyncStorage.setItem(SNAPSHOT_KEY, "{not valid json");
+
+    await expect(
+      fetchPubsNear(PRAGUE.lat, PRAGUE.lng, undefined, { radiusKm: 25 }),
+    ).resolves.toBeUndefined();
+
+    expect(searchPubsNear).toHaveBeenCalledTimes(1);
+  });
+
+  it("consults the snapshot only on the first call of a session", async () => {
+    await writeSnapshot({
+      pubs: SNAPSHOT_PUBS,
+      centerLat: PRAGUE.lat,
+      centerLng: PRAGUE.lng,
+      radiusKm: 25,
+      savedAt: Date.now(),
+    });
+
+    // First call hydrates from the snapshot (no network).
+    await fetchPubsNear(PRAGUE.lat, PRAGUE.lng, undefined, { radiusKm: 25 });
+    expect(searchPubsNear).not.toHaveBeenCalled();
+
+    // Moving far past the threshold now goes to the network — the snapshot is
+    // not re-consulted because hydration only happens once per session.
+    await AsyncStorage.clear();
+    await fetchPubsNear(48.1486, 17.1077, undefined, { radiusKm: 25 });
+    expect(searchPubsNear).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -1,5 +1,6 @@
 import KDBush from "kdbush";
 import * as geokdbush from "geokdbush";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { searchPubsNear } from "./mapyClient";
 import { fetchBlockedPubReports } from "./pubReportsClient";
 import { geohash8 } from "./geohash";
@@ -74,6 +75,10 @@ let _loaded = false;
 let _lastFetchCenter: { lat: number; lng: number } | null = null;
 let _lastFetchRadiusKm: number | null = null;
 let _inflight: Promise<void> | null = null;
+/** Whether we have already attempted to hydrate from AsyncStorage this session.
+ *  The persisted snapshot is only consulted once, on the first fetchPubsNear
+ *  call — afterwards the in-memory state is authoritative. */
+let _hydrationAttempted = false;
 
 interface FetchPubsNearOptions {
   force?: boolean;
@@ -84,6 +89,55 @@ interface FetchPubsNearOptions {
  *  the previous fetch center (km). */
 const REFETCH_THRESHOLD_KM = 2;
 const DEFAULT_FETCH_RADIUS_KM = 25;
+
+/** AsyncStorage key for the persisted result snapshot. */
+const SNAPSHOT_KEY = "na-pivo-pubs-snapshot";
+/** A snapshot older than this is treated as stale and ignored (ms). */
+const SNAPSHOT_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** Persisted shape of the last successful fetch — the block-filtered pubs plus
+ *  the fetch center/radius gate values, so a cold start can skip the network. */
+interface PubsSnapshot {
+  pubs: Pub[];
+  centerLat: number;
+  centerLng: number;
+  radiusKm: number;
+  savedAt: number;
+}
+
+/** Persist the post-block-filtering result set. Degrades silently on any
+ *  storage failure (quota, serialization) — caching must never throw. */
+async function saveSnapshot(snapshot: PubsSnapshot): Promise<void> {
+  try {
+    await AsyncStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshot));
+  } catch {
+    // Best-effort cache: a failed write just means the next cold start fetches.
+  }
+}
+
+/** Read and validate the persisted snapshot. Returns null when absent, corrupt,
+ *  expired, or unreadable — never throws. */
+async function loadSnapshot(): Promise<PubsSnapshot | null> {
+  try {
+    const raw = await AsyncStorage.getItem(SNAPSHOT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PubsSnapshot;
+    if (
+      !Array.isArray(parsed.pubs) ||
+      !Number.isFinite(parsed.centerLat) ||
+      !Number.isFinite(parsed.centerLng) ||
+      !Number.isFinite(parsed.radiusKm) ||
+      !Number.isFinite(parsed.savedAt)
+    ) {
+      return null;
+    }
+    if (Date.now() - parsed.savedAt > SNAPSHOT_TTL_MS) return null;
+    return parsed;
+  } catch {
+    // Missing, corrupt JSON, or storage error → behave as if nothing was cached.
+    return null;
+  }
+}
 
 /** mulberry32 seeded PRNG — returns a function that yields floats in [0, 1) */
 function mulberry32(seed: number): () => number {
@@ -133,9 +187,49 @@ export function _init(syntheticPubs: Pub[]): void {
 }
 
 /**
+ * Reset the module state to a fresh-launch baseline. Exposed for tests so each
+ * case can exercise the one-shot cold-start hydration in isolation; clears the
+ * in-memory index, the fetch gate, and the "hydration already attempted" latch.
+ */
+export function _reset(): void {
+  _pubs = [];
+  _index = null;
+  _idMap = new Map();
+  _cacheKeys = [];
+  _loaded = false;
+  _lastFetchCenter = null;
+  _lastFetchRadiusKm = null;
+  _inflight = null;
+  _hydrationAttempted = false;
+}
+
+/**
+ * Returns true if a fetch center/radius covers a request at (lat, lng, radiusKm):
+ * the request is within REFETCH_THRESHOLD_KM of the center and the cached radius
+ * is at least as large. Shared by the in-memory short-circuit and the persisted
+ * snapshot hydration gate so both apply the identical move-threshold rule.
+ */
+function gateCovers(
+  centerLat: number,
+  centerLng: number,
+  cachedRadiusKm: number,
+  lat: number,
+  lng: number,
+  radiusKm: number,
+): boolean {
+  const movedKm = haversineKm(centerLat, centerLng, lat, lng);
+  return movedKm < REFETCH_THRESHOLD_KM && cachedRadiusKm >= radiusKm;
+}
+
+/**
  * Fetch pubs near (lat, lng) from Mapy.cz and rebuild the spatial index.
  * Short-circuits when the user is within REFETCH_THRESHOLD_KM of the last
  * fetch center, so it is safe to call on every GPS update.
+ *
+ * On the FIRST call of a session it also tries a persisted snapshot before the
+ * network: a fresh (within TTL) snapshot whose center/radius covers the request
+ * hydrates the index and skips the fetch entirely — killing the cold-start
+ * Mapy requests. A force refetch always bypasses both caches.
  */
 export async function fetchPubsNear(
   lat: number,
@@ -147,16 +241,34 @@ export async function fetchPubsNear(
     ? Math.max(options.radiusKm ?? DEFAULT_FETCH_RADIUS_KM, 0.1)
     : DEFAULT_FETCH_RADIUS_KM;
 
+  // In-memory short-circuit (also covers the post-hydration session).
   if (!options.force && _loaded && _lastFetchCenter) {
-    const movedKm = haversineKm(_lastFetchCenter.lat, _lastFetchCenter.lng, lat, lng);
-    const radiusAlreadyCovered =
-      _lastFetchRadiusKm !== null && _lastFetchRadiusKm >= radiusKm;
-    if (movedKm < REFETCH_THRESHOLD_KM && radiusAlreadyCovered) return;
+    if (gateCovers(_lastFetchCenter.lat, _lastFetchCenter.lng, _lastFetchRadiusKm ?? 0, lat, lng, radiusKm)) {
+      return;
+    }
   }
   if (_inflight) return _inflight;
 
   _inflight = (async () => {
     try {
+      // Cold-start hydration: consult the persisted snapshot exactly once, and
+      // only when not force-refetching. A covering, fresh snapshot lets us skip
+      // the network (and its 4+ Mapy requests) entirely.
+      if (!options.force && !_hydrationAttempted) {
+        _hydrationAttempted = true;
+        const snapshot = await loadSnapshot();
+        if (signal?.aborted) return;
+        if (
+          snapshot &&
+          gateCovers(snapshot.centerLat, snapshot.centerLng, snapshot.radiusKm, lat, lng, radiusKm)
+        ) {
+          _init(snapshot.pubs);
+          _lastFetchCenter = { lat: snapshot.centerLat, lng: snapshot.centerLng };
+          _lastFetchRadiusKm = snapshot.radiusKm;
+          return;
+        }
+      }
+
       const pubs = await searchPubsNear(lat, lng, radiusKm, signal);
       if (signal?.aborted) return;
       const blockedReports = await fetchBlockedPubReports(lat, lng, radiusKm, signal);
@@ -169,15 +281,17 @@ export async function fetchPubsNear(
         blockedReports.flatMap((report) => (report.externalId ? [report.externalId] : [])),
       );
       const blockedCacheKeys = new Set(blockedReports.map((report) => report.cacheKey));
-      _init(
-        pubs.filter(
-          (pub) =>
-            !blockedExternalIds.has(pub.id) &&
-            !blockedCacheKeys.has(geohash8(pub.lat, pub.lng)),
-        ),
+      const filtered = pubs.filter(
+        (pub) =>
+          !blockedExternalIds.has(pub.id) &&
+          !blockedCacheKeys.has(geohash8(pub.lat, pub.lng)),
       );
+      _init(filtered);
       _lastFetchCenter = { lat, lng };
       _lastFetchRadiusKm = radiusKm;
+      // Persist the post-block-filtering result so the next cold start can skip
+      // the network. Fire-and-forget — saveSnapshot never throws.
+      void saveSnapshot({ pubs: filtered, centerLat: lat, centerLng: lng, radiusKm, savedAt: Date.now() });
     } finally {
       _inflight = null;
     }

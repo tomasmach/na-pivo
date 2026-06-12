@@ -15,7 +15,7 @@
  *      negative keyword, otherwise in. Pizza is intentionally NOT a negative.
  */
 
-import { isAcceptablePubName } from '../mapyClient';
+import { isAcceptablePubName, searchPubsNear } from '../mapyClient';
 
 const REST = 'Restaurace a pohostinství';
 const BAR = 'Bar';
@@ -107,5 +107,127 @@ describe('isAcceptablePubName — matching mechanics', () => {
   it('hard chain blocklist beats everything, every label', () => {
     expect(isAcceptablePubName('Starbucks Reserve', 'Hospoda')).toBe(false);
     expect(isAcceptablePubName('KFC', BAR)).toBe(false);
+  });
+});
+
+describe('searchPubsNear — backend-first with direct-Mapy fallback', () => {
+  const ORIGINAL_FETCH = global.fetch;
+  const ORIGINAL_BACKEND = process.env.EXPO_PUBLIC_BACKEND_URL;
+
+  // A raw Mapy suggest item — the same shape the backend returns in `items` and
+  // the direct /v1/suggest returns in `items`. Picked so it survives itemToPub.
+  const PUB_ITEM = {
+    name: 'Hospoda U Testu',
+    label: 'Hospoda',
+    position: { lat: 50.081, lon: 14.421 },
+  };
+
+  function setBackend(url: string | undefined): void {
+    if (url === undefined) {
+      delete process.env.EXPO_PUBLIC_BACKEND_URL;
+    } else {
+      process.env.EXPO_PUBLIC_BACKEND_URL = url;
+    }
+  }
+
+  afterEach(() => {
+    global.fetch = ORIGINAL_FETCH;
+    setBackend(ORIGINAL_BACKEND);
+    jest.clearAllMocks();
+  });
+
+  it('uses the backend pubs/near endpoint when configured and 200', async () => {
+    setBackend('https://api.example.com');
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ items: [PUB_ITEM] }),
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const pubs = await searchPubsNear(50.08, 14.42, 25);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const calledUrl = String((fetchMock.mock.calls[0] as unknown[])[0]);
+    expect(calledUrl).toContain('https://api.example.com/v1/pubs/near');
+    expect(calledUrl).toContain('lat=50.08');
+    expect(calledUrl).toContain('lng=14.42');
+    expect(calledUrl).toContain('radius_km=25');
+    // The backend's raw items run through itemToPub just like a direct fetch.
+    expect(pubs).toHaveLength(1);
+    expect(pubs[0].name).toBe('Hospoda U Testu');
+  });
+
+  it('feeds backend items through the existing filter pipeline (drops non-pubs)', async () => {
+    setBackend('https://api.example.com');
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        items: [
+          PUB_ITEM,
+          // Café under a screened label → dropped by the name heuristic.
+          { name: 'Kavárna roh', label: 'Bar', position: { lat: 50.082, lon: 14.422 } },
+        ],
+      }),
+    })) as unknown as typeof fetch;
+
+    const pubs = await searchPubsNear(50.08, 14.42, 25);
+
+    expect(pubs).toHaveLength(1);
+    expect(pubs[0].name).toBe('Hospoda U Testu');
+  });
+
+  it('falls back to direct Mapy on a 503 from the backend', async () => {
+    setBackend('https://api.example.com');
+    // Backend returns 503 (no key / cap exhausted); the direct fallback then
+    // throws because no Mapy API key is configured in the test env — which
+    // proves the fallback path was taken.
+    global.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 503,
+      json: async () => ({}),
+      text: async () => '',
+    })) as unknown as typeof fetch;
+
+    await expect(searchPubsNear(50.08, 14.42, 25)).rejects.toThrow(
+      'MAPY_API_KEY is not configured',
+    );
+  });
+
+  it('falls back to direct Mapy on a backend network error', async () => {
+    setBackend('https://api.example.com');
+    global.fetch = jest.fn(async () => {
+      throw new Error('network down');
+    }) as unknown as typeof fetch;
+
+    await expect(searchPubsNear(50.08, 14.42, 25)).rejects.toThrow(
+      'MAPY_API_KEY is not configured',
+    );
+  });
+
+  it('skips straight to fallback when the backend is not configured', async () => {
+    setBackend(undefined);
+    const fetchMock = jest.fn(async () => ({ ok: true, status: 200, json: async () => ({}) }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    // No backend + no Mapy key → throws, and the backend was never contacted.
+    await expect(searchPubsNear(50.08, 14.42, 25)).rejects.toThrow(
+      'MAPY_API_KEY is not configured',
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('propagates an honoured abort instead of falling back', async () => {
+    setBackend('https://api.example.com');
+    const controller = new AbortController();
+    controller.abort();
+    global.fetch = jest.fn(async () => {
+      throw new DOMException('Aborted', 'AbortError');
+    }) as unknown as typeof fetch;
+
+    await expect(
+      searchPubsNear(50.08, 14.42, 25, controller.signal),
+    ).rejects.not.toThrow('MAPY_API_KEY is not configured');
   });
 });
