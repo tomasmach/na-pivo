@@ -51,7 +51,13 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _SUGGEST_URL = "https://api.mapy.cz/v1/suggest"
-_USER_AGENT = "napivo-backend/1.0"
+# The Mapy.cz API key is restricted in the developer portal to an allow-list of
+# User-Agents — it returns 403 for anything other than this exact value (even a
+# browser UA is rejected). The mobile client (src/data/mapyClient.ts) sends the
+# same string, and this proxy reuses the same key, so it must match. To run the
+# backend under its own UA, add it to the key's allowed-User-Agents list in the
+# Mapy.com portal first, then change this constant.
+_USER_AGENT = "napivo-ios/1.0"
 
 QUERY_TERMS = ["hospoda", "bar", "pivnice", "pivovar"]
 MAX_RESULTS_PER_QUERY = 15  # Mapy.cz API limit.
