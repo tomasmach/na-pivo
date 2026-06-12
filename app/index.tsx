@@ -39,7 +39,6 @@ import { CompassContainer } from '@/components/compass/CompassContainer';
 import { OpenStatusChip } from '@/components/compass/OpenStatusChip';
 import { TitleBar } from '@/components/shared/TitleBar';
 import { GlowButton } from '@/components/shared/GlowButton';
-import { MapyLogo } from '@/components/shared/MapyLogo';
 import {
   BeerIcon,
   BeerOffIcon,
@@ -455,26 +454,6 @@ function RevealedPubPill({
           </Text>
         </Pressable>
       </View>
-
-      {/* Mapy.com attribution — required by the REST API terms wherever the API
-          is used. The place data in this pill comes from Mapy.com /v1/suggest,
-          so the official logo sits right next to it. The wordmark is black, so
-          it rides on a white chip to stay legible on the dark pill (the logo
-          itself is never recoloured). Tapping it opens mapy.com. */}
-      <Pressable
-        onPress={() => Linking.openURL('https://mapy.com/')}
-        hitSlop={8}
-        style={({ pressed }) => [styles.mapyAttribution, pressed && { opacity: 0.7 }]}
-        accessibilityRole="link"
-        accessibilityLabel={`${cs.compass.poweredByMapy} Mapy.com`}
-      >
-        <Text style={styles.mapyAttributionCaption} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.compass.poweredByMapy}
-        </Text>
-        <View style={styles.mapyLogoChip}>
-          <MapyLogo height={14} />
-        </View>
-      </Pressable>
     </View>
   );
 }
@@ -1075,24 +1054,6 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.border,
     paddingTop: 8,
     gap: 16,
-  },
-  mapyAttribution: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  mapyAttributionCaption: {
-    fontFamily: Fonts.ui.regular,
-    fontSize: 11,
-    color: Colors.mutedText,
-    letterSpacing: 0.2,
-  },
-  mapyLogoChip: {
-    backgroundColor: Colors.white,
-    borderRadius: Radius.pill,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
   },
   footerButton: {
     flexDirection: 'row',

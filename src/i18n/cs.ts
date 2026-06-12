@@ -38,7 +38,6 @@ export const cs = {
     beerWithPrice: (name: string, price: string) => `🍺 ${name} · ${price}`,
     beerNoPrice: (name: string) => `🍺 ${name}`,
     beerAndMore: 'a další',
-    poweredByMapy: 'Hledání přes',
   },
 
   permissions: {
