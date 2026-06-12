@@ -38,6 +38,7 @@ module.exports = {
     '^expo-linking$': '<rootDir>/src/__mocks__/expo-linking.ts',
     '^expo-constants$': '<rootDir>/src/__mocks__/expo-constants.ts',
     '^react-native$': '<rootDir>/src/__mocks__/react-native.ts',
+    '^react-native-svg$': '<rootDir>/src/__mocks__/react-native-svg.ts',
   },
   setupFiles: ['<rootDir>/jest.setup.ts'],
   testMatch: ['**/__tests__/**/*.test.ts?(x)'],
