@@ -152,6 +152,12 @@ FEEDBACK_THROTTLE_RATE: str = os.environ.get("FEEDBACK_THROTTLE_RATE", "20/min")
 # normal hand-entered submissions untouched. Format: DRF throttle rate string.
 COMMUNITY_THROTTLE_RATE: str = os.environ.get("COMMUNITY_THROTTLE_RATE", "30/min")
 
+# Per-IP rate limit for the authenticated drink-logging endpoint
+# (POST /v1/drinks). The in-app beer counter can log several beers in one
+# session (one POST each), so this is more generous than the community rate;
+# it still blunts scripted mass logging. Format: DRF throttle rate string.
+DRINKS_THROTTLE_RATE: str = os.environ.get("DRINKS_THROTTLE_RATE", "60/min")
+
 # Per-IP rate limit for the unauthenticated Mapy.cz "pubs near" proxy
 # (GET /v1/pubs/near). The result is shared-cached per geohash-5 cell, so the
 # legitimate once-per-search call is cheap; this blunts scripted enumeration.
@@ -180,6 +186,7 @@ REST_FRAMEWORK = {
         "account": ACCOUNT_REGISTER_THROTTLE_RATE,
         "feedback": FEEDBACK_THROTTLE_RATE,
         "community": COMMUNITY_THROTTLE_RATE,
+        "drinks": DRINKS_THROTTLE_RATE,
         "pubs_near": PUBS_NEAR_THROTTLE_RATE,
     },
 }

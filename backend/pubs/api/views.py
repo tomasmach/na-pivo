@@ -17,6 +17,7 @@ import math
 from datetime import timedelta
 
 from django.conf import settings
+from django.db import IntegrityError
 from django.utils import timezone as dj_timezone
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -33,9 +34,11 @@ from pubs.enrichment import (
     geohash5,
     geohash5_center,
     geohash8,
+    names_match,
 )
 from pubs.models import (
     Account,
+    DrinkLog,
     EnrichTask,
     FeedbackReport,
     PubCommunityData,
@@ -55,6 +58,7 @@ from .serializers import (
     AccountRegisterSerializer,
     AccountSerializer,
     BlockedPubsResponseSerializer,
+    DrinkRequestSerializer,
     FeedbackReportSerializer,
     FeedbackRequestSerializer,
     PubCommunityRequestSerializer,
@@ -295,6 +299,207 @@ class PubCommunityView(APIView):
             }
         ).data
         return Response(body, status=status.HTTP_200_OK)
+
+
+# Mirror the community menu cap (serializers._MAX_BEERS): a community beer menu
+# holds at most 12 entries. When the menu is full a drink is still logged, but
+# the merge is skipped.
+_MAX_MENU_BEERS = 12
+
+
+def _merge_drink_into_menu(beers: list[dict], beer: dict) -> bool:
+    """Merge one drunk ``beer`` into a community ``beers`` menu list IN PLACE.
+
+    The match key is (normalized name, volume_ml): the beer name trimmed +
+    casefolded, plus the exact volume (None matches None). On a match the
+    existing entry's ``price_czk`` is updated to the posted price. Otherwise the
+    beer is appended IF the menu has room (< 12 entries); a full menu is left
+    untouched.
+
+    Every entry is kept in the canonical CommunityBeerSerializer shape (all three
+    keys ``name`` / ``price_czk`` / ``volume_ml`` present).
+
+    Returns True if the list was changed (price updated or beer appended), False
+    if nothing changed (no match and the menu was full).
+    """
+    posted_key = ((beer.get("name") or "").strip().casefold(), beer.get("volume_ml"))
+    for entry in beers:
+        entry_key = ((entry.get("name") or "").strip().casefold(), entry.get("volume_ml"))
+        if entry_key == posted_key:
+            entry["price_czk"] = beer["price_czk"]
+            return True
+
+    if len(beers) >= _MAX_MENU_BEERS:
+        return False
+
+    beers.append(
+        {
+            "name": beer["name"],
+            "price_czk": beer["price_czk"],
+            "volume_ml": beer.get("volume_ml"),
+        }
+    )
+    return True
+
+
+class DrinksView(APIView):
+    """
+    POST /v1/drinks
+
+    Log one beer the user drank via the in-app beer counter. Every drink carries
+    a beer name + price; the server records the per-user DrinkLog AND merges the
+    beer into the pub's community menu (PubCommunityData.beers) so counting beers
+    community-sources the menu and prices.
+
+    Auth: Bearer token (per-account). Idempotent on (account, client_id): a
+    replayed client_id returns 200 ``duplicate: true`` with NO repeated side
+    effects (no second log row, no second merge). Throttled per-IP (scope
+    "drinks").
+
+    The menu merge NEVER touches PubCommunityData.hours and is guarded by
+    names_match so a different business in the same ~38 m geohash cell does not
+    inherit the menu — in that case the drink is logged but the merge is skipped.
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "drinks"
+
+    def post(self, request: Request) -> Response:
+        serializer = DrinkRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        cache_key = geohash8(data["lat"], data["lng"])
+        beer = data["beer"]
+        drank_at = data.get("drank_at") or dj_timezone.now()
+
+        try:
+            drink, created = DrinkLog.objects.get_or_create(
+                account=request.user,
+                client_id=data["client_id"],
+                defaults={
+                    "cache_key": cache_key,
+                    "name": data["name"],
+                    "lat": data["lat"],
+                    "lng": data["lng"],
+                    "city": data.get("city") or "",
+                    "external_id": data.get("external_id") or "",
+                    "beer_name": beer["name"],
+                    "price_czk": beer["price_czk"],
+                    "volume_ml": beer.get("volume_ml"),
+                    "drank_at": drank_at,
+                },
+            )
+
+            # Idempotent replay: the drink already exists, so do NOT repeat the
+            # menu merge (which is not itself idempotent — a price could have
+            # changed since).
+            if not created:
+                return Response(
+                    {
+                        "accepted": True,
+                        "duplicate": True,
+                        "cache_key": cache_key,
+                        "menu_updated": False,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+            menu_updated = self._merge_into_community(
+                cache_key, data, beer, account=request.user
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "drinks: unexpected error logging drink for %r: %s",
+                data.get("name"),
+                exc,
+                exc_info=True,
+            )
+            return Response(
+                {"detail": "Internal server error."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response(
+            {
+                "accepted": True,
+                "duplicate": False,
+                "cache_key": cache_key,
+                "menu_updated": menu_updated,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    @staticmethod
+    def _merge_into_community(
+        cache_key: str, data: dict, beer: dict, account: Account
+    ) -> bool:
+        """Merge the drunk beer into PubCommunityData.beers for ``cache_key``.
+
+        Returns whether the community menu was changed. NEVER touches hours.
+
+        Three cases:
+          * No row for the cell → create one holding just this beer (mirrors how
+            PubCommunityView seeds a row), menu_updated = True.
+          * Row exists and names_match(row.name, posted name) → merge the beer
+            (update price of a same name+volume entry, else append if room).
+          * Row exists but names_match fails (different business in the same
+            ~38 m cell) → skip the merge, leave the menu untouched.
+        """
+        now = dj_timezone.now()
+        row = PubCommunityData.objects.filter(cache_key=cache_key).first()
+
+        if row is None:
+            try:
+                PubCommunityData.objects.create(
+                    cache_key=cache_key,
+                    name=data["name"],
+                    lat=data["lat"],
+                    lng=data["lng"],
+                    city=data.get("city") or None,
+                    external_id=data.get("external_id") or None,
+                    account=account,
+                    beers=[
+                        {
+                            "name": beer["name"],
+                            "price_czk": beer["price_czk"],
+                            "volume_ml": beer.get("volume_ml"),
+                        }
+                    ],
+                    beers_updated_at=now,
+                )
+                return True
+            except IntegrityError:
+                # A concurrent first-drink for this brand-new cell won the race and
+                # already created the row (cache_key is unique). Re-fetch it and
+                # fall through to the names_match + merge path instead of letting
+                # the IntegrityError bubble up as a 500 (which would commit our
+                # DrinkLog but silently drop this beer from the menu). The merge
+                # below is still guarded by names_match against whatever business
+                # the winner seeded.
+                row = PubCommunityData.objects.filter(cache_key=cache_key).first()
+                if row is None:
+                    # The winner's row vanished between INSERT-fail and re-SELECT
+                    # (deleted concurrently) — nothing to merge into.
+                    return False
+
+        # Collision guard: a different business sharing this geohash cell must not
+        # inherit the menu (same gate as the read path).
+        if not names_match(row.name, data["name"]):
+            return False
+
+        beers = list(row.beers or [])
+        changed = _merge_drink_into_menu(beers, beer)
+        if changed:
+            row.beers = beers
+            row.beers_updated_at = now
+            # Refresh the most-recent-contributor pointer; never touch hours.
+            row.account = account
+            row.save(update_fields=["beers", "beers_updated_at", "account", "updated_at"])
+        return changed
 
 
 class FeedbackView(APIView):

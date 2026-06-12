@@ -16,6 +16,7 @@ from .views import (
     AccountMeView,
     AccountView,
     BlockedPubReportsView,
+    DrinksView,
     FeedbackView,
     HealthView,
     PubCommunityView,
@@ -28,6 +29,7 @@ from .views import (
 urlpatterns = [
     path("pub-hours", PubHoursView.as_view(), name="pub-hours"),
     path("pub-community", PubCommunityView.as_view(), name="pub-community"),
+    path("drinks", DrinksView.as_view(), name="drinks"),
     path("pubs/near", PubsNearView.as_view(), name="pubs-near"),
     path("pub-reports", PubReportView.as_view(), name="pub-reports"),
     path("pub-reports/blocked", BlockedPubReportsView.as_view(), name="pub-reports-blocked"),
