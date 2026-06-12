@@ -81,7 +81,7 @@ interface:
 uv run python manage.py runserver 0.0.0.0:8000
 ```
 
-Then start the Expo app from `../na-pivo` with `npm run start:local`. In
+Then start the Expo app from `../na-pivo` with `npm run ios:local`. In
 `DEBUG=True`, Django accepts LAN `Host` headers automatically; production still
 uses the explicit `ALLOWED_HOSTS` setting.
 
