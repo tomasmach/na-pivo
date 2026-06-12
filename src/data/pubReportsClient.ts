@@ -6,6 +6,7 @@
  */
 
 import { ensureAccount } from './account';
+import { getBackendEndpoint } from './backendConfig';
 import type { Pub } from './pubs';
 
 export type PubReportReason = 'closed' | 'not_pub';
@@ -28,14 +29,6 @@ interface BackendBlockedResponse {
 
 const REQUEST_TIMEOUT_MS = 8000;
 const VALID_REASONS = new Set<string>(['closed', 'not_pub']);
-
-function getBackendUrl(): string {
-  return (process.env.EXPO_PUBLIC_BACKEND_URL ?? '').trim();
-}
-
-function trimTrailingSlash(url: string): string {
-  return url.endsWith('/') ? url.slice(0, -1) : url;
-}
 
 function chainAbortSignal(signal?: AbortSignal): {
   signal: AbortSignal;
@@ -69,15 +62,15 @@ export async function reportPubIssue(
 ): Promise<boolean> {
   if (signal?.aborted) return false;
 
-  const baseUrl = getBackendUrl();
-  if (!baseUrl) return false;
+  const endpoint = getBackendEndpoint('/v1/pub-reports');
+  if (!endpoint) return false;
 
   const session = await ensureAccount(signal);
   if (!session || signal?.aborted) return false;
 
   const abort = chainAbortSignal(signal);
   try {
-    const resp = await fetch(`${trimTrailingSlash(baseUrl)}/v1/pub-reports`, {
+    const resp = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -111,10 +104,10 @@ export async function fetchBlockedPubReports(
 ): Promise<BlockedPubReport[]> {
   if (signal?.aborted) return [];
 
-  const baseUrl = getBackendUrl();
-  if (!baseUrl) return [];
+  const endpoint = getBackendEndpoint('/v1/pub-reports/blocked');
+  if (!endpoint) return [];
 
-  const url = new URL(`${trimTrailingSlash(baseUrl)}/v1/pub-reports/blocked`);
+  const url = new URL(endpoint);
   url.searchParams.set('lat', String(lat));
   url.searchParams.set('lng', String(lng));
   url.searchParams.set('radius_km', String(radiusKm));

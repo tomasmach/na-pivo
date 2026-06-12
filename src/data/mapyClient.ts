@@ -12,6 +12,7 @@
  */
 
 import type { Pub } from './pubs';
+import { getBackendEndpoint } from './backendConfig';
 
 // /v1/suggest is dramatically better than /v1/geocode for "POIs near me" —
 // it ranks by location rather than textual relevance, so a small bbox around
@@ -130,20 +131,6 @@ function getApiKey(): string {
   return MAPY_API_KEY;
 }
 
-/**
- * Read the backend base URL the same way hoursClient does (still statically
- * referenced as process.env.EXPO_PUBLIC_BACKEND_URL so Expo/Metro inlines it at
- * build). Empty/unset → no backend, go straight to the direct Mapy fallback.
- */
-function getBackendUrl(): string {
-  return (process.env.EXPO_PUBLIC_BACKEND_URL ?? '').trim();
-}
-
-/** Strip a single trailing slash so we can safely append the path. */
-function trimTrailingSlash(url: string): string {
-  return url.endsWith('/') ? url.slice(0, -1) : url;
-}
-
 /** Shape of the backend's pubs-near response. items are RAW Mapy suggest items
  *  (same shape as a direct /v1/suggest response), fed through itemToPub below. */
 interface BackendPubsNearResponse {
@@ -162,10 +149,10 @@ async function backendSuggest(
   kmRadius: number,
   signal?: AbortSignal,
 ): Promise<MapyGeocodeItem[] | null> {
-  const baseUrl = getBackendUrl();
-  if (!baseUrl) return null; // No backend — use the fallback.
+  const endpoint = getBackendEndpoint('/v1/pubs/near');
+  if (!endpoint) return null; // No backend — use the fallback.
 
-  const url = new URL(`${trimTrailingSlash(baseUrl)}/v1/pubs/near`);
+  const url = new URL(endpoint);
   url.searchParams.set('lat', String(lat));
   url.searchParams.set('lng', String(lng));
   url.searchParams.set('radius_km', String(kmRadius));

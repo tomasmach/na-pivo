@@ -23,6 +23,7 @@
  */
 
 import { ensureAccount } from './account';
+import { getBackendEndpoint } from './backendConfig';
 import type { CommunityBeer } from './communityHours';
 
 export type { CommunityBeer };
@@ -65,14 +66,6 @@ export type SubmitDrinkResult = 'ok' | 'permanent-error' | 'retry';
 
 const REQUEST_TIMEOUT_MS = 8000;
 
-function getBackendUrl(): string {
-  return (process.env.EXPO_PUBLIC_BACKEND_URL ?? '').trim();
-}
-
-function trimTrailingSlash(url: string): string {
-  return url.endsWith('/') ? url.slice(0, -1) : url;
-}
-
 /**
  * Build the retry-stable wire payload from the user's input + a fresh client_id.
  * `external_id` and `city` are only included when present; `drank_at` defaults
@@ -113,8 +106,8 @@ export async function submitDrink(
 ): Promise<SubmitDrinkResult> {
   if (signal?.aborted) return 'retry';
 
-  const baseUrl = getBackendUrl();
-  if (!baseUrl) return 'retry';
+  const endpoint = getBackendEndpoint('/v1/drinks');
+  if (!endpoint) return 'retry';
 
   const session = await ensureAccount(signal);
   if (!session || signal?.aborted) return 'retry';
@@ -131,7 +124,7 @@ export async function submitDrink(
   }
 
   try {
-    const resp = await fetch(`${trimTrailingSlash(baseUrl)}/v1/drinks`, {
+    const resp = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

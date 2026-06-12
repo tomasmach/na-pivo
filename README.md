@@ -15,6 +15,22 @@ npm install
 npm run start        # Expo dev server (scan QR with Expo Go or custom dev client)
 ```
 
+To test against the local backend instead of the deployed API:
+
+```bash
+# terminal 1 — backend
+cd ../na-pivo-backend
+uv run python manage.py runserver 0.0.0.0:8000
+
+# terminal 2 — Expo app
+cd ../na-pivo
+npm run start:local
+```
+
+`start:local` derives the backend host from the Expo/Metro LAN URL and uses
+port `8000`, so it works for both the iOS simulator and a physical device on the
+same Wi-Fi. Override the port with `EXPO_PUBLIC_BACKEND_PORT=8765` if needed.
+
 ## Refresh pub dataset
 
 ```bash

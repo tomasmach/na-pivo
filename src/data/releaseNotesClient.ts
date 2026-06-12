@@ -15,6 +15,8 @@
 
 import Constants from 'expo-constants';
 
+import { getBackendEndpoint } from './backendConfig';
+
 export interface ReleaseNoteItem {
   /** Optional leading emoji (may be ''). */
   icon: string;
@@ -33,15 +35,6 @@ export type FetchReleaseNoteResult =
   | { kind: 'error' };
 
 const REQUEST_TIMEOUT_MS = 8000;
-
-/** Read the backend base URL at call time (Expo inlines EXPO_PUBLIC_* at build). */
-function getBackendUrl(): string {
-  return (process.env.EXPO_PUBLIC_BACKEND_URL ?? '').trim();
-}
-
-function trimTrailingSlash(url: string): string {
-  return url.endsWith('/') ? url.slice(0, -1) : url;
-}
 
 /** The version of the currently-running build, or null if unavailable. */
 export function getCurrentAppVersion(): string | null {
@@ -71,8 +64,8 @@ export async function fetchReleaseNote(
   version: string,
   signal?: AbortSignal,
 ): Promise<FetchReleaseNoteResult> {
-  const baseUrl = getBackendUrl();
-  if (!baseUrl || !version || signal?.aborted) {
+  const endpoint = getBackendEndpoint('/v1/release-notes');
+  if (!endpoint || !version || signal?.aborted) {
     // Dormant (no backend) or cancelled — treat as a transient miss so the
     // caller doesn't burn the popup; it will retry next launch.
     return { kind: 'error' };
@@ -90,7 +83,7 @@ export async function fetchReleaseNote(
   }
 
   try {
-    const url = new URL(`${trimTrailingSlash(baseUrl)}/v1/release-notes`);
+    const url = new URL(endpoint);
     url.searchParams.set('version', version);
 
     const resp = await fetch(url.toString(), {
