@@ -12,6 +12,7 @@ import { Colors } from '@/theme/colors';
 import { flushPubReportQueue } from '@/data/pubReportQueue';
 import { flushFeedbackQueue } from '@/data/feedbackQueue';
 import { flushCommunityQueue } from '@/data/communityQueue';
+import { flushDrinksQueue } from '@/data/drinksQueue';
 import { useAccountStore } from '@/stores/accountStore';
 import { useReleaseStore } from '@/stores/releaseStore';
 import { WhatsNewModal } from '@/components/shared/WhatsNewModal';
@@ -49,11 +50,13 @@ export default function RootLayout() {
     void flushPubReportQueue();
     void flushFeedbackQueue();
     void flushCommunityQueue();
+    void flushDrinksQueue();
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         void flushPubReportQueue();
         void flushFeedbackQueue();
         void flushCommunityQueue();
+        void flushDrinksQueue();
       }
     });
     return () => subscription.remove();
@@ -74,7 +77,7 @@ export default function RootLayout() {
             animation: 'fade',
           }}
         >
-          <Stack.Screen name="index" />
+          <Stack.Screen name="(tabs)" />
           <Stack.Screen
             name="settings"
             options={{

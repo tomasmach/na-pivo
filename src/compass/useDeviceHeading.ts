@@ -1,5 +1,7 @@
 /**
- * Subscribes to device heading. Smooths via wrap-aware EMA. Pauses on background.
+ * Subscribes to device heading. Smooths via wrap-aware EMA. Pauses on background
+ * and, when `enabled` is false, whenever the consuming screen is not active (the
+ * compass tab is blurred), so the magnetometer never runs for an off-screen tab.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -17,7 +19,7 @@ export interface UseDeviceHeadingResult {
 
 const NO_HEADING_THRESHOLD = 5;
 
-export function useDeviceHeading(): UseDeviceHeadingResult {
+export function useDeviceHeading(enabled = true): UseDeviceHeadingResult {
   const smoothedHeading = useSharedValue<number | null>(null);
   const [accuracyDeg, setAccuracyDeg] = useState<number | null>(null);
   const [hasMagnetometer, setHasMagnetometer] = useState(true);
@@ -28,8 +30,12 @@ export function useDeviceHeading(): UseDeviceHeadingResult {
   const noHeadingCountRef = useRef(0);
   const accuracyDegRef = useRef<number | null>(null);
   const hasMagnetometerRef = useRef(true);
+  // Mirror of `enabled` so the AppState handler always reads the latest value
+  // without re-subscribing on every toggle.
+  const enabledRef = useRef(enabled);
 
   const startWatching = async (): Promise<void> => {
+    if (!enabledRef.current) return;
     if (subscriptionRef.current) return;
 
     emaRef.current.reset();
@@ -73,7 +79,7 @@ export function useDeviceHeading(): UseDeviceHeadingResult {
         }
       });
 
-      if (!isMountedRef.current) {
+      if (!isMountedRef.current || !enabledRef.current) {
         sub.remove();
         return;
       }
@@ -86,13 +92,31 @@ export function useDeviceHeading(): UseDeviceHeadingResult {
   const stopWatching = (): void => {
     subscriptionRef.current?.remove();
     subscriptionRef.current = null;
+    smoothedHeading.value = null;
   };
+
+  // Start/stop in response to the `enabled` flag (compass tab focus). Watching
+  // only runs while enabled AND the app is foregrounded.
+  useEffect(() => {
+    enabledRef.current = enabled;
+
+    if (enabled && AppState.currentState === 'active') {
+      startWatching();
+    } else {
+      stopWatching();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled]);
 
   useEffect(() => {
     isMountedRef.current = true;
-    startWatching();
 
     const handleAppState = (nextState: AppStateStatus): void => {
+      if (!enabledRef.current) {
+        stopWatching();
+        return;
+      }
+
       if (nextState === 'active') {
         startWatching();
       } else {

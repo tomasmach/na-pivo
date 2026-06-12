@@ -84,7 +84,7 @@ jest.mock('@/hooks/useCompass', () => ({
   useCompass: jest.fn(),
 }));
 
-const CompassScreen = require('../index').default;
+const CompassScreen = require('../(tabs)/index').default;
 const { useCompass } = require('@/hooks/useCompass') as {
   useCompass: jest.Mock;
 };

@@ -8,6 +8,8 @@ import React, { memo, ComponentType } from 'react';
 import {
   Beer,
   BeerOff,
+  Compass,
+  Undo2,
   LockKeyhole,
   Eye,
   MapPin,
@@ -50,6 +52,8 @@ function wrap(Lucide: ComponentType<LucideProps>, displayName: string) {
 
 export const BeerIcon = wrap(Beer, 'BeerIcon');
 export const BeerOffIcon = wrap(BeerOff, 'BeerOffIcon');
+export const CompassIcon = wrap(Compass, 'CompassIcon');
+export const Undo2Icon = wrap(Undo2, 'Undo2Icon');
 export const LockKeyholeIcon = wrap(LockKeyhole, 'LockKeyholeIcon');
 export const EyeIcon = wrap(Eye, 'EyeIcon');
 export const MapPinIcon = wrap(MapPin, 'MapPinIcon');

@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-navigation/bottom-tabs": "^7.18.0",
     "expo": "^56.0.3",
     "expo-asset": "~56.0.13",
     "expo-audio": "~56.0.9",
