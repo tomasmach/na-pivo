@@ -306,6 +306,106 @@ describe('useCompass — opening hours enrichment', () => {
     expect(hook.result.pub?.isOpenNow).toBeNull();
   });
 
+  it('falls back from pending to unknown after 5s, then shows later retry data', async () => {
+    jest.useFakeTimers();
+    try {
+      (fetchPubHours as jest.Mock)
+        .mockResolvedValueOnce(
+          new Map([
+            [
+              PUB.id,
+              result({
+                openingHours: null,
+                isOpenNow: null,
+                nextChange: null,
+                status: 'pending',
+              }),
+            ],
+          ]),
+        )
+        .mockResolvedValueOnce(
+          new Map([
+            [
+              PUB.id,
+              result({
+                openingHours: 'Po-Ne 12:00-23:00',
+                isOpenNow: true,
+                nextChange: null,
+                status: 'ok',
+              }),
+            ],
+          ]),
+        );
+
+      const hook = renderCompassHook();
+      await flush();
+
+      expect(hook.result.pub?.hoursStatus).toBe('pending');
+
+      await act(async () => {
+        jest.advanceTimersByTime(5_000);
+        await Promise.resolve();
+      });
+
+      expect(hook.result.pub?.hoursStatus).toBe('unknown');
+      expect(hook.result.pub?.isOpenNow).toBeNull();
+
+      await act(async () => {
+        jest.advanceTimersByTime(5_000);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(fetchPubHours).toHaveBeenCalledTimes(2);
+      expect(hook.result.pub?.hoursStatus).toBe('ok');
+      expect(hook.result.pub?.openingHours).toBe('Po-Ne 12:00-23:00');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('stops pending background polling after the configured cache-only retries', async () => {
+    jest.useFakeTimers();
+    try {
+      (fetchPubHours as jest.Mock).mockResolvedValue(
+        new Map([
+          [
+            PUB.id,
+            result({
+              openingHours: null,
+              isOpenNow: null,
+              nextChange: null,
+              status: 'pending',
+            }),
+          ],
+        ]),
+      );
+
+      renderCompassHook();
+      await flush();
+
+      for (const delay of [10_000, 30_000, 90_000, 300_000]) {
+        await act(async () => {
+          jest.advanceTimersByTime(delay);
+          await Promise.resolve();
+          await Promise.resolve();
+        });
+      }
+
+      expect(fetchPubHours).toHaveBeenCalledTimes(5);
+
+      await act(async () => {
+        jest.advanceTimersByTime(600_000);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(fetchPubHours).toHaveBeenCalledTimes(5);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('does not refetch hours for the same pub on re-render', async () => {
     (fetchPubHours as jest.Mock).mockResolvedValue(new Map([[PUB.id, result()]]));
 

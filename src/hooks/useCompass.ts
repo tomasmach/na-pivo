@@ -34,6 +34,7 @@ import type { Mode } from '@/stores/settingsStore';
 /** Minimum distance (meters) to move before recomputing the target pub. */
 const RECOMPUTE_DISTANCE_M = 50;
 const UNLIMITED_SEARCH_RADIUS_KM = 100;
+const HOURS_LOADING_FALLBACK_MS = 5_000;
 const PENDING_HOURS_RETRY_DELAYS_MS = [10_000, 30_000, 90_000, 300_000] as const;
 
 type TargetPosition = {
@@ -377,6 +378,7 @@ export function useCompass(): UseCompassResult {
   // re-run and refresh a now-stale isOpenNow snapshot.
   const [hoursRefetchNonce, setHoursRefetchNonce] = useState(0);
   const pendingHoursRetryCountsRef = useRef<Map<string, number>>(new Map());
+  const [pendingHoursRetryNonce, setPendingHoursRetryNonce] = useState(0);
 
   // Mirror the hours map into a ref so the fetch effect can read the latest
   // contents (to skip already-resolved ids) without listing it as a dependency,
@@ -410,7 +412,12 @@ export function useCompass(): UseCompassResult {
       .then((resultMap) => {
         if (controller.signal.aborted) return;
         const result = resultMap.get(currentPubId);
-        if (result?.status !== 'pending') {
+        if (result?.status === 'pending') {
+          if (!pendingHoursRetryCountsRef.current.has(currentPubId)) {
+            pendingHoursRetryCountsRef.current.set(currentPubId, 0);
+          }
+          setPendingHoursRetryNonce((nonce) => nonce + 1);
+        } else {
           pendingHoursRetryCountsRef.current.delete(currentPubId);
         }
         // Empty/partial map (dormant backend, failure, or this id missing) →
@@ -423,8 +430,13 @@ export function useCompass(): UseCompassResult {
           // transient — drop it so a later reselection can retry instead of
           // caching a dead value for the lifetime of the hook.
           if (result && result.status !== 'error') {
+            const previous = prev.get(currentPubId);
+            const visibleStatus =
+              result.status === 'pending' && previous?.status === 'unknown'
+                ? 'unknown'
+                : result.status;
             next.set(currentPubId, {
-              status: result.status,
+              status: visibleStatus,
               openingHours: result.openingHours,
               isOpenNow: result.isOpenNow,
               nextChange: result.nextChange,
@@ -568,34 +580,105 @@ export function useCompass(): UseCompassResult {
   const hoursStatusForCurrent = hoursForCurrent?.status;
   const isOpenNowForCurrent = hoursForCurrent?.isOpenNow;
 
+  // — Loading fallback —
+  // Keep the spinner brief. If the initial cache-only lookup has not produced
+  // usable data within 5 seconds, show the normal unknown-hours state while the
+  // background pending poll continues. This avoids an indefinite spinner when
+  // refresh_hours will not fill the row until a later worker pass.
+  useEffect(() => {
+    if (!currentPubId) return;
+    if (hoursStatusForCurrent !== 'loading' && hoursStatusForCurrent !== 'pending') return;
+    const hasVisibleDetails =
+      Boolean(hoursForCurrent?.openingHours) ||
+      typeof hoursForCurrent?.isOpenNow === 'boolean' ||
+      typeof hoursForCurrent?.rating === 'number' ||
+      (hoursForCurrent?.beers?.length ?? 0) > 0;
+    if (hasVisibleDetails) {
+      return;
+    }
+
+    const fallbackId = currentPubId;
+    const timer = setTimeout(() => {
+      setHoursById((prev) => {
+        const row = prev.get(fallbackId);
+        if (!row || (row.status !== 'loading' && row.status !== 'pending')) return prev;
+        const next = new Map(prev);
+        next.set(fallbackId, { ...row, status: 'unknown' });
+        return next;
+      });
+    }, HOURS_LOADING_FALLBACK_MS);
+
+    return () => clearTimeout(timer);
+  }, [currentPubId, hoursStatusForCurrent, hoursForCurrent]);
+
   // — Retry pending enrichment (cache-only) —
   // A pending result means the backend queued refresh_hours instead of blocking
   // this request on Firmy.cz. Poll the backend gently while the same pub remains
   // selected; the client still sends sync_budget=0, so these retries do not
   // spend residential proxy traffic themselves.
+  const shouldRetryPendingHours = currentPubId
+    ? pendingHoursRetryCountsRef.current.has(currentPubId)
+    : false;
   useEffect(() => {
-    if (!currentPubId || hoursStatusForCurrent !== 'pending') return;
+    if (!currentPubId || !currentPub || !shouldRetryPendingHours) return;
 
     const retryId = currentPubId;
+    const pubForLookup = currentPub;
     const attempt = pendingHoursRetryCountsRef.current.get(retryId) ?? 0;
-    const delay =
-      PENDING_HOURS_RETRY_DELAYS_MS[
-        Math.min(attempt, PENDING_HOURS_RETRY_DELAYS_MS.length - 1)
-      ];
+    if (attempt >= PENDING_HOURS_RETRY_DELAYS_MS.length) {
+      pendingHoursRetryCountsRef.current.delete(retryId);
+      return;
+    }
+
+    const delay = PENDING_HOURS_RETRY_DELAYS_MS[attempt];
     pendingHoursRetryCountsRef.current.set(retryId, attempt + 1);
 
+    const controller = new AbortController();
     const timer = setTimeout(() => {
-      setHoursById((prev) => {
-        if (prev.get(retryId)?.status !== 'pending') return prev;
-        const next = new Map(prev);
-        next.delete(retryId);
-        return next;
-      });
-      setHoursRefetchNonce((nonce) => nonce + 1);
+      fetchPubHours([pubForLookup], controller.signal)
+        .then((resultMap) => {
+          if (controller.signal.aborted) return;
+
+          const result = resultMap.get(retryId);
+          if (result?.status === 'pending') {
+            setPendingHoursRetryNonce((nonce) => nonce + 1);
+            return;
+          }
+
+          pendingHoursRetryCountsRef.current.delete(retryId);
+          if (!result || result.status === 'error') return;
+
+          setHoursById((prev) => {
+            const next = new Map(prev);
+            next.set(retryId, {
+              status: result.status,
+              openingHours: result.openingHours,
+              isOpenNow: result.isOpenNow,
+              nextChange: result.nextChange,
+              source: result.source,
+              communityHours: result.communityHours,
+              beers: result.beers,
+              rating: result.rating,
+              ratingCount: result.ratingCount,
+              ratingLabel: result.ratingLabel,
+              venueKind: result.venueKind,
+            });
+            return next;
+          });
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) {
+            setPendingHoursRetryNonce((nonce) => nonce + 1);
+          }
+        });
     }, delay);
 
-    return () => clearTimeout(timer);
-  }, [currentPubId, hoursStatusForCurrent]);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPubId, shouldRetryPendingHours, pendingHoursRetryNonce]);
 
   useEffect(() => {
     if (!hideClosedPubs || !currentPubId) return;
