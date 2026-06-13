@@ -73,6 +73,22 @@ class PubHours(models.Model):
         blank=True,
         help_text="Match confidence in [0, 1] — name similarity blended with geo distance.",
     )
+    rating_value = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Public star rating from the source listing, e.g. 4.1.",
+    )
+    rating_count = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Number of public user ratings behind rating_value.",
+    )
+    rating_label = models.CharField(
+        max_length=64,
+        blank=True,
+        null=True,
+        help_text="Human rating label from the source listing, e.g. 'Velmi dobré'.",
+    )
     status = models.CharField(
         max_length=16,
         choices=Status.choices,

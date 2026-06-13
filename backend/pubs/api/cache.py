@@ -89,6 +89,9 @@ def _result_from_row(row: PubHours) -> dict[str, Any]:
         "status": row.status,
         "source": row.source if row.source else None,
         "confidence": row.confidence,
+        "rating": row.rating_value,
+        "ratingCount": row.rating_count,
+        "ratingLabel": row.rating_label or None,
         "venueKind": row.venue_kind,
         "beers": [],
         "hours_json": None,
@@ -105,6 +108,9 @@ def _pending_result(cache_key: str, name: str) -> dict[str, Any]:
         "status": PubHours.Status.PENDING,
         "source": None,
         "confidence": None,
+        "rating": None,
+        "ratingCount": None,
+        "ratingLabel": None,
         "venueKind": PubHours.VenueKind.UNKNOWN,
         "beers": [],
         "hours_json": None,
@@ -123,6 +129,9 @@ def _unknown_result(cache_key: str, name: str) -> dict[str, Any]:
         "status": PubHours.Status.UNKNOWN,
         "source": None,
         "confidence": None,
+        "rating": None,
+        "ratingCount": None,
+        "ratingLabel": None,
         "venueKind": PubHours.VenueKind.UNKNOWN,
         "beers": [],
         "hours_json": None,
@@ -152,7 +161,11 @@ def _serve_cached_or_unknown(
     return _unknown_result(key, name)
 
 
-def _community_result(row: PubCommunityData, name: str) -> dict[str, Any]:
+def _community_result(
+    row: PubCommunityData,
+    name: str,
+    hours_row: PubHours | None = None,
+) -> dict[str, Any]:
     """Build a response dict from a community-data row whose hours override firmy.
 
     isOpenNow / nextChange are computed live from the community
@@ -179,6 +192,9 @@ def _community_result(row: PubCommunityData, name: str) -> dict[str, Any]:
         "status": PubHours.Status.OK,
         "source": "community",
         "confidence": None,
+        "rating": hours_row.rating_value if hours_row is not None else None,
+        "ratingCount": hours_row.rating_count if hours_row is not None else None,
+        "ratingLabel": hours_row.rating_label if hours_row is not None else None,
         "venueKind": venue_kind,
         "beers": row.beers or [],
         "hours_json": row.hours_json,
@@ -279,6 +295,9 @@ def _enrich_sync(
                 "source": "firmy",
                 "source_ref": None,
                 "confidence": None,
+                "rating_value": None,
+                "rating_count": None,
+                "rating_label": None,
                 "venue_kind": PubHours.VenueKind.UNKNOWN,
                 "venue_categories": [],
                 "error": None,
@@ -307,6 +326,9 @@ def _enrich_sync(
             "source": raw.source,
             "source_ref": raw.source_ref,
             "confidence": raw.confidence,
+            "rating_value": raw.rating_value,
+            "rating_count": raw.rating_count,
+            "rating_label": raw.rating_label,
             "venue_kind": venue_kind,
             "venue_categories": raw.categories,
             "error": None,
@@ -398,6 +420,7 @@ def get_or_enrich(
         lat = entry["lat"]
         lng = entry["lng"]
         city = entry["city"]
+        row = existing.get(key)
 
         # --- Community data takes precedence -------------------------------
         # Guard against a geohash-8 collision with names_match, same as the
@@ -409,7 +432,8 @@ def get_or_enrich(
         if comm_matches and comm.hours_json is not None:
             # Community hours satisfy this pub fully — override firmy entirely
             # and do NOT schedule an EnrichTask (it is already satisfied).
-            results.append(_community_result(comm, name))
+            rating_row = row if row is not None and names_match(name, row.name) else None
+            results.append(_community_result(comm, name, rating_row))
             continue
 
         # Community beers (but no community hours) are attached to whatever the
@@ -425,8 +449,6 @@ def get_or_enrich(
             if community_beers:
                 results[_result_index]["beers"] = community_beers
                 results[_result_index]["venueKind"] = PubHours.VenueKind.PUB
-
-        row = existing.get(key)
 
         if row is not None and _is_fresh(row, ttl_days):
             # Cache HIT — return as-is (compute isOpenNow/nextChange live), or

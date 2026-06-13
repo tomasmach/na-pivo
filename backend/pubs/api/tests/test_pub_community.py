@@ -350,6 +350,9 @@ def test_read_community_hours_override_firmy(client):
     assert r["opening_hours"] == community_hours_to_osm(_FULL_HOURS)
     assert r["hours_json"] == _FULL_HOURS
     assert r["beers"] == _BEERS
+    assert r["rating"] == pytest.approx(4.1)
+    assert r["ratingCount"] == 364
+    assert r["ratingLabel"] == "Velmi dobré"
     # isOpenNow / nextChange are computed from the community OSM string.
     assert r["isOpenNow"] in (True, False)
 

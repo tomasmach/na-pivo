@@ -63,6 +63,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
+from html import unescape
 from urllib.parse import quote_plus, urlparse
 
 import requests
@@ -155,6 +156,22 @@ _CATEGORY_LINK_RE = re.compile(r"<a [^>]*>([^<]+)</a>")
 # Tag slugs are the /stitek/{slug} path segments inside the ltag block.
 _TAG_SLUG_RE = re.compile(r'/stitek/([^"/?#]+)')
 
+# Rating extraction from the detail page. Firmy.cz renders the same Mapy rating
+# badge in the page HTML, e.g. reviewBadgeNew=4,1 + badgeReviewCount.
+_RATING_VALUE_RE = re.compile(
+    r'<span[^>]*class=["\'][^"\']*\breviewBadgeNew\b[^"\']*["\'][^>]*>\s*([^<]+)\s*</span>',
+    re.IGNORECASE,
+)
+_RATING_COUNT_RE = re.compile(
+    r'<span[^>]*class=["\'][^"\']*\bbadgeReviewCount\b[^"\']*["\'][^>]*>\s*([^<]+)\s*</span>',
+    re.IGNORECASE,
+)
+_RATING_LABEL_RE = re.compile(
+    r'<span[^>]*class=["\'][^"\']*\bbadgeLabelValue\b[^"\']*["\'][^>]*>\s*([^<]+)\s*</span>',
+    re.IGNORECASE,
+)
+_WHITESPACE_RE = re.compile(r"\s+")
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -177,6 +194,10 @@ def _coerce_coord(*candidates: object) -> float | None:
         if math.isfinite(coord):
             return coord
     return None
+
+
+def _clean_text(value: str) -> str:
+    return _WHITESPACE_RE.sub(" ", unescape(value).replace("\xa0", " ")).strip()
 
 
 # ---------------------------------------------------------------------------
@@ -209,6 +230,9 @@ class RawHours:
     matched_lat: float | None
     matched_lng: float | None
     confidence: float
+    rating_value: float | None = None
+    rating_count: int | None = None
+    rating_label: str | None = None
     # Firmy.cz category names (link texts) and tag slugs scraped from the detail
     # page, used to classify whether the venue serves draft beer. Default empty
     # so older call sites / fixtures without category data keep working.
@@ -482,6 +506,34 @@ class FirmyHoursSource:
 
         return categories, tags
 
+    @staticmethod
+    def _extract_rating(html: str) -> tuple[float | None, int | None, str | None]:
+        """Return (rating value, rating count, label) from a detail page."""
+        rating_value: float | None = None
+        value_match = _RATING_VALUE_RE.search(html)
+        if value_match:
+            raw_value = _clean_text(value_match.group(1)).replace(",", ".")
+            try:
+                parsed_value = float(raw_value)
+            except ValueError:
+                parsed_value = math.nan
+            if math.isfinite(parsed_value) and 0.0 <= parsed_value <= 5.0:
+                rating_value = parsed_value
+
+        rating_count: int | None = None
+        count_match = _RATING_COUNT_RE.search(html)
+        if count_match:
+            digits = re.sub(r"\D", "", _clean_text(count_match.group(1)))
+            if digits:
+                rating_count = int(digits)
+
+        rating_label: str | None = None
+        label_match = _RATING_LABEL_RE.search(html)
+        if label_match:
+            rating_label = _clean_text(label_match.group(1)) or None
+
+        return rating_value, rating_count, rating_label
+
     # ------------------------------------------------------------------
     # Search
     # ------------------------------------------------------------------
@@ -575,11 +627,12 @@ class FirmyHoursSource:
 
     def _fetch_detail(
         self, firm_id: str, slug: str
-    ) -> tuple[dict, list[str], list[str]] | None:
+    ) -> tuple[dict, list[str], list[str], float | None, int | None, str | None] | None:
         """
         Fetch a Firmy.cz detail page and return a tuple of
-        (LocalBusiness JSON-LD block, category names, tag slugs), or None on
-        failure (no detail content / consent wall / firm gone).
+        (LocalBusiness JSON-LD block, category names, tag slugs, rating value,
+        rating count, rating label), or None on failure (no detail content /
+        consent wall / firm gone).
         """
         url = _DETAIL_URL.format(firm_id=firm_id, slug=slug)
         try:
@@ -632,7 +685,8 @@ class FirmyHoursSource:
         if lb is None:
             return None
         categories, tags = self._extract_categories_tags(html)
-        return lb, categories, tags
+        rating_value, rating_count, rating_label = self._extract_rating(html)
+        return lb, categories, tags, rating_value, rating_count, rating_label
 
     # ------------------------------------------------------------------
     # Public API
@@ -698,7 +752,7 @@ class FirmyHoursSource:
         if detail is None:
             logger.debug("firmy: no LocalBusiness block on detail page for firm %s", firm_id)
             return None
-        detail_lb, categories, tags = detail
+        detail_lb, categories, tags, rating_value, rating_count, rating_label = detail
 
         # Step 3: Extract candidate metadata
         c_name: str = detail_lb.get("name") or search_lb.get("name") or ""
@@ -732,6 +786,9 @@ class FirmyHoursSource:
             matched_lat=c_lat,
             matched_lng=c_lng,
             confidence=confidence,
+            rating_value=rating_value,
+            rating_count=rating_count,
+            rating_label=rating_label,
             categories=categories,
             tags=tags,
         )

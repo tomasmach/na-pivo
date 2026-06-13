@@ -55,6 +55,9 @@ def _persist_result(
     opening_hours_raw: str | None = None
     source_ref: str | None = None
     confidence: float | None = None
+    rating_value: float | None = None
+    rating_count: int | None = None
+    rating_label: str | None = None
     error: str | None = None
     # No-match rows carry no classification — keep the safe 'unknown' default.
     venue_kind = PubHours.VenueKind.UNKNOWN
@@ -69,6 +72,9 @@ def _persist_result(
         opening_hours_raw = result.opening_hours_raw
         source_ref = result.source_ref
         confidence = result.confidence
+        rating_value = result.rating_value
+        rating_count = result.rating_count
+        rating_label = result.rating_label
         # Classify the venue (draft beer?) from the scraped categories/tags.
         venue_kind = classify_venue(result.categories, result.tags)
         venue_categories = result.categories
@@ -83,6 +89,9 @@ def _persist_result(
             "source": result.source if result else "firmy",
             "source_ref": source_ref,
             "confidence": confidence,
+            "rating_value": rating_value,
+            "rating_count": rating_count,
+            "rating_label": rating_label,
             "venue_kind": venue_kind,
             "venue_categories": venue_categories,
             "status": status,

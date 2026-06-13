@@ -36,6 +36,9 @@ _GOOD_RAW = RawHours(
     matched_lat=_FLEKY_LAT,
     matched_lng=_FLEKY_LNG,
     confidence=0.95,
+    rating_value=4.1,
+    rating_count=364,
+    rating_label="Velmi dobré",
 )
 
 _PUB_ENTRY = {"name": _FLEKY_NAME, "lat": _FLEKY_LAT, "lng": _FLEKY_LNG}
@@ -52,6 +55,9 @@ def _make_fresh_row(**kwargs) -> PubHours:
         source="firmy",
         source_ref="272313",
         confidence=0.95,
+        rating_value=4.1,
+        rating_count=364,
+        rating_label="Velmi dobré",
         status=PubHours.Status.OK,
         fetched_at=dj_tz.now(),
     )
@@ -82,6 +88,9 @@ def test_cache_hit_returns_without_scraping():
     assert r["status"] == "ok"
     assert r["confidence"] == pytest.approx(0.95)
     assert r["source"] == "firmy"
+    assert r["rating"] == pytest.approx(4.1)
+    assert r["ratingCount"] == 364
+    assert r["ratingLabel"] == "Velmi dobré"
 
 
 # ---------------------------------------------------------------------------
@@ -109,12 +118,18 @@ def test_cache_miss_within_budget_triggers_fetch_and_persists():
     assert r["status"] == "ok"
     assert r["opening_hours"] == _FLEKY_HOURS
     assert r["confidence"] == pytest.approx(0.95)
+    assert r["rating"] == pytest.approx(4.1)
+    assert r["ratingCount"] == 364
+    assert r["ratingLabel"] == "Velmi dobré"
 
     # Row must be persisted
     row = PubHours.objects.get(cache_key=_FLEKY_KEY)
     assert row.opening_hours_raw == _FLEKY_HOURS
     assert row.status == PubHours.Status.OK
     assert row.source_ref == "272313"
+    assert row.rating_value == pytest.approx(4.1)
+    assert row.rating_count == 364
+    assert row.rating_label == "Velmi dobré"
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +186,9 @@ def test_over_budget_creates_pending_enrich_task():
     assert r["opening_hours"] is None
     assert r["isOpenNow"] is None
     assert r["nextChange"] is None
+    assert r["rating"] is None
+    assert r["ratingCount"] is None
+    assert r["ratingLabel"] is None
 
     task = EnrichTask.objects.get(cache_key=_FLEKY_KEY)
     assert task.name == _FLEKY_NAME
@@ -214,9 +232,15 @@ def test_no_match_from_firmy_gives_unknown_status():
 
     assert results[0]["status"] == "unknown"
     assert results[0]["opening_hours"] is None
+    assert results[0]["rating"] is None
+    assert results[0]["ratingCount"] is None
+    assert results[0]["ratingLabel"] is None
 
     row = PubHours.objects.get(cache_key=_FLEKY_KEY)
     assert row.status == PubHours.Status.UNKNOWN
+    assert row.rating_value is None
+    assert row.rating_count is None
+    assert row.rating_label is None
 
 
 # ---------------------------------------------------------------------------

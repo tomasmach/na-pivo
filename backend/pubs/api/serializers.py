@@ -22,6 +22,9 @@ Response body:
                 "status": "ok|unknown|pending|error",
                 "source": str|null,
                 "confidence": float|null,
+                "rating": float|null,       -- source star rating, 0-5
+                "ratingCount": int|null,    -- number of source ratings
+                "ratingLabel": str|null,    -- source label, e.g. "Velmi dobré"
                 "venueKind": "pub|maybe|not_pub|unknown"  -- draft-beer classification
             }
         ]
@@ -583,6 +586,9 @@ class PubHoursResultSerializer(serializers.Serializer):
     status = serializers.CharField()
     source = serializers.CharField(allow_null=True)
     confidence = serializers.FloatField(allow_null=True)
+    rating = serializers.FloatField(allow_null=True)
+    ratingCount = serializers.IntegerField(allow_null=True)
+    ratingLabel = serializers.CharField(allow_null=True)
     # Draft-beer classification: one of "pub" | "maybe" | "not_pub" | "unknown".
     # A pub with no PubHours row, or one we couldn't classify, is "unknown".
     # Non-empty community beers force "pub" (the community knows best).

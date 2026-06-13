@@ -36,6 +36,9 @@ _GOOD_RAW = RawHours(
     matched_lat=_FLEKY_LAT,
     matched_lng=_FLEKY_LNG,
     confidence=0.95,
+    rating_value=4.1,
+    rating_count=364,
+    rating_label="Velmi dobré",
 )
 
 
@@ -54,6 +57,9 @@ def _make_fresh_row(**kwargs):
         source="firmy",
         source_ref="272313",
         confidence=0.95,
+        rating_value=4.1,
+        rating_count=364,
+        rating_label="Velmi dobré",
         status=PubHours.Status.OK,
         fetched_at=dj_tz.now(),
     )
@@ -161,6 +167,9 @@ def test_response_shape_from_cache(client):
     assert r["status"] == "ok"
     assert r["source"] == "firmy"
     assert pytest.approx(r["confidence"]) == 0.95
+    assert r["rating"] == pytest.approx(4.1)
+    assert r["ratingCount"] == 364
+    assert r["ratingLabel"] == "Velmi dobré"
     # venue_kind defaults to 'unknown' on a row that wasn't classified.
     assert r["venueKind"] == "unknown"
 
@@ -283,6 +292,9 @@ def test_view_triggers_sync_fetch_on_miss(client):
     body = resp.json()
     assert body["results"][0]["status"] == "ok"
     assert body["results"][0]["opening_hours"] == _FLEKY_HOURS
+    assert body["results"][0]["rating"] == pytest.approx(4.1)
+    assert body["results"][0]["ratingCount"] == 364
+    assert body["results"][0]["ratingLabel"] == "Velmi dobré"
 
 
 @pytest.mark.django_db

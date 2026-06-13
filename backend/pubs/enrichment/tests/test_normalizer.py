@@ -216,7 +216,13 @@ class TestNormalizeToOsmSpecification:
         import logging
 
         spec = [{"dayOfWeek": "Funday", "opens": "10:00", "closes": "22:00"}]
-        with caplog.at_level(logging.WARNING):
-            result = normalize_to_osm(spec)
+        pubs_logger = logging.getLogger("pubs")
+        old_propagate = pubs_logger.propagate
+        pubs_logger.propagate = True
+        try:
+            with caplog.at_level(logging.WARNING, logger="pubs.enrichment.normalizer"):
+                result = normalize_to_osm(spec)
+        finally:
+            pubs_logger.propagate = old_propagate
         assert result is None
         assert any("Funday" in rec.message for rec in caplog.records)

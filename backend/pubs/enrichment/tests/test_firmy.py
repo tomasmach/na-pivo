@@ -163,6 +163,12 @@ class TestUflekuFixture:
         normalized = normalize_to_osm(raw_oh)
         assert normalized == "Mo,Tu,We,Th,Fr,Sa,Su 10:00-23:00"
 
+    def test_fixture_rating(self):
+        rating_value, rating_count, rating_label = FirmyHoursSource._extract_rating(UFLEKU_HTML)
+        assert rating_value == pytest.approx(4.1)
+        assert rating_count == 364
+        assert rating_label == "Velmi dobré"
+
     def test_fixture_name_and_geo(self):
         blocks = FirmyHoursSource._extract_ld_blocks(UFLEKU_HTML)
         lb = FirmyHoursSource._local_business_block(blocks)
@@ -256,6 +262,27 @@ class TestFirmyHoursSourceFetch:
         assert result.source == "firmy"
         assert result.source_ref == "272313"
         assert result.confidence > 0.4
+        assert result.rating_value is None
+        assert result.rating_count is None
+        assert result.rating_label is None
+
+    def test_successful_fetch_returns_rating(self):
+        name = "Restaurace U Fleků"
+        lat, lng = 50.078914, 14.416990
+        search_html = _make_search_html("272313", "restaurace-u-fleku", name, lat, lng)
+        detail_html = (
+            self._detail_html_with_hours(name, lat, lng, "Mo-Su 10:00-23:00")
+            + '<span class="reviewBadgeNew medium">4,1</span>'
+            + '<span class="badgeLabelValue">Velmi dobré</span>'
+            + '<span class="badgeReviewCount">364 hodnocení</span>'
+        )
+        src = _make_source(search_html, detail_html)
+
+        result = src.fetch(name, lat, lng, city="Praha")
+        assert result is not None
+        assert result.rating_value == pytest.approx(4.1)
+        assert result.rating_count == 364
+        assert result.rating_label == "Velmi dobré"
 
     def test_fetch_populates_categories_and_tags(self):
         """A successful fetch carries the scraped categories/tags on RawHours."""
