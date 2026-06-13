@@ -377,6 +377,45 @@ class TestStaleRowsAreRefreshed:
         ph.refresh_from_db()
         assert ph.status == PubHours.Status.OK
 
+    def test_recent_error_status_row_waits_for_retry_cooldown(self, settings):
+        """A recent transient error is not retried by cron on every run."""
+        settings.FIRMY_ERROR_RETRY_COOLDOWN_MINUTES = 15
+        ph = _make_pub_hours(
+            fetched_at=timezone.now() - timedelta(minutes=5),
+            status=PubHours.Status.ERROR,
+        )
+
+        with patch(FIRMY_SOURCE_PATH) as MockSource:
+            instance = MockSource.return_value
+            instance._owns_session = True
+            instance._session = MagicMock()
+            instance.fetch.return_value = _GOOD_RESULT
+
+            _run_command()
+
+        instance.fetch.assert_not_called()
+        ph.refresh_from_db()
+        assert ph.status == PubHours.Status.ERROR
+
+    def test_stale_row_with_open_task_is_not_refreshed_twice(self):
+        """The stale-refresh phase skips keys already represented by an open task."""
+        stale_time = timezone.now() - timedelta(days=31)
+        ph = _make_pub_hours(fetched_at=stale_time)
+        _make_task()
+
+        with patch(FIRMY_SOURCE_PATH) as MockSource:
+            instance = MockSource.return_value
+            instance._owns_session = True
+            instance._session = MagicMock()
+            instance.fetch.side_effect = Exception("proxy outage")
+
+            _run_command()
+
+        # One fetch for the task; no second fetch for the same stale PubHours row.
+        assert instance.fetch.call_count == 1
+        ph.refresh_from_db()
+        assert ph.opening_hours_raw == "Mo-Su 10:00-23:00"
+
     def test_pending_rows_not_touched_by_stale_refresh(self):
         """PubHours with status=pending are not touched by the stale-refresh phase."""
         stale_time = timezone.now() - timedelta(days=31)
@@ -559,6 +598,27 @@ class TestAttemptTracking:
         task.refresh_from_db()
         assert task.attempts == 1
         assert task.done is False  # Still has remaining attempts
+
+    def test_recent_failed_task_waits_for_retry_cooldown(self, settings):
+        settings.FIRMY_ERROR_RETRY_COOLDOWN_MINUTES = 15
+        task = _make_task(
+            attempts=1,
+            max_attempts=3,
+            last_attempt_at=timezone.now() - timedelta(minutes=5),
+        )
+
+        with patch(FIRMY_SOURCE_PATH) as MockSource:
+            instance = MockSource.return_value
+            instance._owns_session = True
+            instance._session = MagicMock()
+            instance.fetch.return_value = _GOOD_RESULT
+
+            _run_command()
+
+        instance.fetch.assert_not_called()
+        task.refresh_from_db()
+        assert task.attempts == 1
+        assert task.done is False
 
     def test_task_marked_done_after_max_attempts(self):
         task = _make_task(attempts=2, max_attempts=3)

@@ -271,6 +271,13 @@ PUBS_NEAR_TTL_DAYS: int = int(os.environ.get("PUBS_NEAR_TTL_DAYS", "7"))
 # How many days a cached PubHours row is considered fresh before re-fetching.
 HOURS_TTL_DAYS: int = int(os.environ.get("HOURS_TTL_DAYS", "30"))
 
+# How long a transient Firmy.cz ERROR row cools down before another proxy fetch
+# is attempted. This prevents a proxy outage / consent-wall bounce from burning
+# residential bandwidth on every pub-hours request.
+FIRMY_ERROR_RETRY_COOLDOWN_MINUTES: int = int(
+    os.environ.get("FIRMY_ERROR_RETRY_COOLDOWN_MINUTES", "15")
+)
+
 # Maximum number of pubs to enrich synchronously (in-request) per POST /v1/pub-hours.
 # Pubs beyond this budget get an EnrichTask and return status "pending".
 SYNC_ENRICH_BUDGET: int = int(os.environ.get("SYNC_ENRICH_BUDGET", "3"))

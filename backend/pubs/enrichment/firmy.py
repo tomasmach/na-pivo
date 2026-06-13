@@ -651,6 +651,13 @@ class FirmyHoursSource:
             return None
 
         firm_id, slug, search_lb = result
+        if self._search_hit_is_confident_mismatch(name, lat, lng, search_lb):
+            logger.debug(
+                "firmy: search metadata for firm %s is below confidence threshold — "
+                "skipping detail fetch",
+                firm_id,
+            )
+            return None
 
         # Step 2: Fetch detail
         detail = self._fetch_detail(firm_id, slug)
@@ -694,6 +701,28 @@ class FirmyHoursSource:
             categories=categories,
             tags=tags,
         )
+
+    def _search_hit_is_confident_mismatch(
+        self,
+        name: str,
+        lat: float,
+        lng: float,
+        search_lb: dict,
+    ) -> bool:
+        """Return True when search metadata is complete enough to reject early."""
+        c_name = search_lb.get("name") or ""
+        geo = search_lb.get("geo") or {}
+        if not c_name or not isinstance(geo, dict):
+            return False
+
+        try:
+            c_lat = float(geo.get("latitude") or geo.get("lat"))
+            c_lng = float(geo.get("longitude") or geo.get("lng"))
+        except (TypeError, ValueError):
+            return False
+
+        confidence = verify_match(name, lat, lng, c_name, c_lat, c_lng)
+        return confidence < self._min_confidence
 
     # ------------------------------------------------------------------
     # Context manager

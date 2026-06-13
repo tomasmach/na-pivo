@@ -11,10 +11,12 @@ get_or_enrich(pubs, sync_budget) -> list[dict]
     2. Bulk-load all PubHours rows for those keys.
     3. FRESH row (fetched_at within TTL and status in {ok, unknown}):
          → Return cached data as-is.
-    4. STALE or MISSING and sync_budget > 0:
+    4. Recent ERROR row within FIRMY_ERROR_RETRY_COOLDOWN_MINUTES:
+         → Return cached error without spending another Firmy.cz proxy fetch.
+    5. STALE or MISSING and sync_budget > 0:
          → Fetch synchronously via FirmyHoursSource, persist result,
            decrement budget.
-    5. STALE or MISSING but budget exhausted:
+    6. STALE or MISSING but budget exhausted:
          → Upsert an EnrichTask, return status "pending".
 
     isOpenNow and nextChange are computed ON READ from opening_hours_raw
@@ -56,6 +58,18 @@ def _is_fresh(row: PubHours, ttl_days: int) -> bool:
     if row.fetched_at is None:
         return False
     cutoff = dj_tz.now() - timedelta(days=ttl_days)
+    return row.fetched_at >= cutoff
+
+
+def _is_error_in_cooldown(row: PubHours, cooldown_minutes: int) -> bool:
+    """Return True if a transient error row should not be retried yet."""
+    if row.status != PubHours.Status.ERROR:
+        return False
+    if row.fetched_at is None:
+        return False
+    if cooldown_minutes <= 0:
+        return False
+    cutoff = dj_tz.now() - timedelta(minutes=cooldown_minutes)
     return row.fetched_at >= cutoff
 
 
@@ -316,6 +330,9 @@ def get_or_enrich(
     proxy_url: str | None = getattr(settings, "FIRMY_PROXY_URL", None)
     min_interval: float = float(getattr(settings, "FIRMY_MIN_INTERVAL_SEC", 3.0))
     daily_cap: int = int(getattr(settings, "FIRMY_DAILY_CAP", 2000))
+    error_retry_cooldown_minutes: int = int(
+        getattr(settings, "FIRMY_ERROR_RETRY_COOLDOWN_MINUTES", 15)
+    )
 
     # Annotate each pub entry with its cache key
     entries: list[dict[str, Any]] = []
@@ -402,6 +419,28 @@ def get_or_enrich(
                     "pub-hours: geohash collision at %s — cached %r != requested %r; "
                     "returning unknown",
                     key, row.name, name,
+                )
+                results.append(_unknown_result(key, name))
+            _attach_beers()
+            continue
+
+        if row is not None and _is_error_in_cooldown(
+            row, error_retry_cooldown_minutes
+        ):
+            if names_match(name, row.name):
+                logger.info(
+                    "pub-hours: transient error for %s is still in retry cooldown; "
+                    "returning cached error without Firmy.cz fetch",
+                    key,
+                )
+                results.append(_result_from_row(row))
+            else:
+                logger.info(
+                    "pub-hours: geohash collision at %s during error cooldown — "
+                    "cached %r != requested %r; returning unknown",
+                    key,
+                    row.name,
+                    name,
                 )
                 results.append(_unknown_result(key, name))
             _attach_beers()

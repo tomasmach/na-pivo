@@ -3,8 +3,8 @@ pubs.management.commands.refresh_hours — process pending EnrichTasks and refre
 stale PubHours rows via FirmyHoursSource.
 
 Intended to run via cron (e.g. every 5 minutes). Respects FIRMY_MIN_INTERVAL_SEC
-and FIRMY_DAILY_CAP settings. Each invocation processes up to --limit rows and
-writes nothing in --dry-run mode.
+FIRMY_DAILY_CAP, and FIRMY_ERROR_RETRY_COOLDOWN_MINUTES settings. Each invocation
+processes up to --limit rows and writes nothing in --dry-run mode.
 
 Usage
 -----
@@ -21,6 +21,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
+from django.db import models
 from django.utils import timezone
 
 from pubs.enrichment import FirmyHoursSource, RawHours, classify_venue, geohash8
@@ -152,6 +153,9 @@ class Command(BaseCommand):
         min_interval: float = float(getattr(settings, "FIRMY_MIN_INTERVAL_SEC", 3))
         daily_cap: int = int(getattr(settings, "FIRMY_DAILY_CAP", 2000))
         ttl_days: int = int(getattr(settings, "HOURS_TTL_DAYS", 30))
+        error_retry_cooldown_minutes: int = int(
+            getattr(settings, "FIRMY_ERROR_RETRY_COOLDOWN_MINUTES", 15)
+        )
 
         if dry_run:
             self.stdout.write(self.style.WARNING("[dry-run] No database writes will occur."))
@@ -168,6 +172,7 @@ class Command(BaseCommand):
         try:
             processed, cap_exceeded = self._process_pending_tasks(
                 source=source,
+                error_retry_cooldown_minutes=error_retry_cooldown_minutes,
                 limit=limit,
                 processed_so_far=processed,
                 dry_run=dry_run,
@@ -177,6 +182,7 @@ class Command(BaseCommand):
                 processed, cap_exceeded = self._refresh_stale_rows(
                     source=source,
                     ttl_days=ttl_days,
+                    error_retry_cooldown_minutes=error_retry_cooldown_minutes,
                     limit=limit,
                     processed_so_far=processed,
                     dry_run=dry_run,
@@ -206,6 +212,7 @@ class Command(BaseCommand):
     def _process_pending_tasks(
         self,
         source: FirmyHoursSource,
+        error_retry_cooldown_minutes: int,
         limit: int,
         processed_so_far: int,
         dry_run: bool,
@@ -224,6 +231,9 @@ class Command(BaseCommand):
         ttl_days: int = int(getattr(settings, "HOURS_TTL_DAYS", 30))
         fresh_cutoff = timezone.now() - timedelta(days=ttl_days)
         fresh_statuses = [PubHours.Status.OK, PubHours.Status.UNKNOWN]
+        retry_cutoff = timezone.now() - timedelta(
+            minutes=error_retry_cooldown_minutes
+        )
 
         processed = processed_so_far
         cap_exceeded = False
@@ -246,6 +256,18 @@ class Command(BaseCommand):
                     task.cache_key,
                 )
                 _mark_task_done(task, dry_run)
+                continue
+
+            if (
+                error_retry_cooldown_minutes > 0
+                and task.last_attempt_at is not None
+                and task.last_attempt_at >= retry_cutoff
+            ):
+                logger.info(
+                    "EnrichTask %s was attempted recently — skipping until "
+                    "retry cooldown expires",
+                    task.cache_key,
+                )
                 continue
 
             if not dry_run:
@@ -316,21 +338,35 @@ class Command(BaseCommand):
         self,
         source: FirmyHoursSource,
         ttl_days: int,
+        error_retry_cooldown_minutes: int,
         limit: int,
         processed_so_far: int,
         dry_run: bool,
     ) -> tuple[int, bool]:
         """
-        Re-fetch PubHours rows whose fetched_at is older than HOURS_TTL_DAYS
-        or whose status is "error" (retry errors).
+        Re-fetch PubHours rows whose fetched_at is older than HOURS_TTL_DAYS.
+        Error rows use FIRMY_ERROR_RETRY_COOLDOWN_MINUTES instead of the full TTL.
 
         Returns (total_processed, cap_exceeded).
         """
         stale_cutoff = timezone.now() - timedelta(days=ttl_days)
+        error_retry_cutoff = timezone.now() - timedelta(
+            minutes=error_retry_cooldown_minutes
+        )
 
         qs = PubHours.objects.filter(
             status__in=[PubHours.Status.OK, PubHours.Status.UNKNOWN, PubHours.Status.ERROR],
-            fetched_at__lt=stale_cutoff,
+        ).filter(
+            models.Q(
+                status__in=[PubHours.Status.OK, PubHours.Status.UNKNOWN],
+                fetched_at__lt=stale_cutoff,
+            )
+            | models.Q(
+                status=PubHours.Status.ERROR,
+                fetched_at__lt=error_retry_cutoff,
+            )
+        ).exclude(
+            cache_key__in=EnrichTask.objects.filter(done=False).values("cache_key")
         ).order_by("fetched_at")
 
         processed = processed_so_far
@@ -362,7 +398,8 @@ class Command(BaseCommand):
                 if not dry_run:
                     row.status = PubHours.Status.ERROR
                     row.error = str(exc)
-                    row.save(update_fields=["status", "error", "updated_at"])
+                    row.fetched_at = timezone.now()
+                    row.save(update_fields=["status", "error", "fetched_at", "updated_at"])
                 processed += 1
                 continue
 

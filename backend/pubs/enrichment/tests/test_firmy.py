@@ -311,6 +311,58 @@ class TestFirmyHoursSourceFetch:
         result = src.fetch(name, q_lat, q_lng)
         assert result is None
 
+    def test_low_confidence_search_metadata_skips_detail_fetch(self):
+        """Complete search metadata can reject an obvious mismatch before detail."""
+        name = "Restaurace Na Rohu"
+        q_lat, q_lng = 50.078914, 14.416990
+        c_lat, c_lng = 49.195060, 16.606837
+        search_html = _make_search_html(
+            "111111", "restaurace-na-rohu", "McDonald's Brno", c_lat, c_lng
+        )
+
+        session = requests.Session()
+        detail_calls = 0
+
+        def handle_search(_req):
+            return _make_response(search_html)
+
+        def handle_detail(_req):
+            nonlocal detail_calls
+            detail_calls += 1
+            return _make_response(
+                self._detail_html_with_hours(
+                    "McDonald's Brno", c_lat, c_lng, "Mo-Su 09:00-22:00"
+                )
+            )
+
+        adapter = MockFirmyAdapter({
+            r"firmy\.cz/\?q=": handle_search,
+            r"/detail/": handle_detail,
+        })
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+
+        src = FirmyHoursSource(session=session, min_interval=0.0)
+        assert src.fetch(name, q_lat, q_lng) is None
+        assert detail_calls == 0
+
+    def test_missing_search_metadata_keeps_detail_fallback(self):
+        """Sparse search pages still fetch detail because only detail has metadata."""
+        name = "Restaurace U Fleků"
+        lat, lng = 50.078914, 14.416990
+        search_html = (
+            '<html><body><a href="https://www.firmy.cz/detail/272313-u-fleku.html">'
+            "Restaurace U Fleků</a></body></html>"
+        )
+        detail_html = self._detail_html_with_hours(
+            name, lat, lng, "Mo,Tu,We,Th,Fr,Sa,Su 10:00–23:00"
+        )
+        src = _make_source(search_html, detail_html, firm_id="272313", slug="u-fleku")
+
+        result = src.fetch(name, lat, lng)
+        assert result is not None
+        assert result.opening_hours_raw == "Mo,Tu,We,Th,Fr,Sa,Su 10:00-23:00"
+
     def test_no_search_results_returns_none(self):
         """Empty search page → None."""
         src = _make_source(

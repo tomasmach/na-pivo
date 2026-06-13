@@ -434,11 +434,14 @@ def test_geohash_collision_serves_unknown_not_wrong_hours():
 
 
 @pytest.mark.django_db
-def test_transient_fetch_error_persists_error_and_refetches_next_request():
+def test_transient_fetch_error_cools_down_before_refetch(settings):
     """A transient proxy/network error (e.g. a proxy 502) is persisted as
-    'error', not a sticky 'unknown'. Because 'error' is not cache-fresh, the
-    very next request re-fetches and self-heals to 'ok'."""
+    'error', not a sticky 'unknown'. A short retry cooldown prevents the very
+    next request from spending another proxy fetch, then the row self-heals
+    once the cooldown has expired."""
     from pubs.enrichment import TransientFetchError
+
+    settings.FIRMY_ERROR_RETRY_COOLDOWN_MINUTES = 15
 
     failing = MagicMock()
     failing.fetch.side_effect = TransientFetchError("proxy 502 Bad Gateway")
@@ -450,12 +453,25 @@ def test_transient_fetch_error_persists_error_and_refetches_next_request():
     row = PubHours.objects.get(cache_key=_FLEKY_KEY)
     assert row.status == PubHours.Status.ERROR
 
-    # Next request: the 'error' row is stale → re-fetch → succeeds → 'ok'.
+    # Next request during cooldown: return the cached error without a fetch.
+    cooling_source = MagicMock()
+    cooling_source.fetch.return_value = _GOOD_RAW
+    with patch("pubs.api.cache.FirmyHoursSource", return_value=cooling_source):
+        results2 = get_or_enrich([_PUB_ENTRY], sync_budget=1)
+
+    cooling_source.fetch.assert_not_called()
+    assert results2[0]["status"] == "error"
+    assert results2[0]["opening_hours"] is None
+
+    # After cooldown: the error row is retryable → re-fetch → succeeds → ok.
+    row.fetched_at = dj_tz.now() - timedelta(minutes=16)
+    row.save(update_fields=["fetched_at"])
+
     ok_source = MagicMock()
     ok_source.fetch.return_value = _GOOD_RAW
     with patch("pubs.api.cache.FirmyHoursSource", return_value=ok_source):
-        results2 = get_or_enrich([_PUB_ENTRY], sync_budget=1)
+        results3 = get_or_enrich([_PUB_ENTRY], sync_budget=1)
 
     ok_source.fetch.assert_called_once()
-    assert results2[0]["status"] == "ok"
-    assert results2[0]["opening_hours"] == _FLEKY_HOURS
+    assert results3[0]["status"] == "ok"
+    assert results3[0]["opening_hours"] == _FLEKY_HOURS
