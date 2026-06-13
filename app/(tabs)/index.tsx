@@ -386,7 +386,9 @@ function formatBeerLineParts(
     : beers[0];
   const price = typeof lead.priceCzk === 'number' ? `${lead.priceCzk} Kč` : null;
   return {
-    lead: cs.compass.beerNoPrice(lead.name),
+    // Bare name — the leading mug is drawn as a crisp BeerIcon, not the 🍺 emoji,
+    // so the line stays on-brand with the brass/amber palette.
+    lead: lead.name,
     price,
     more: beers.length > 1 ? cs.compass.beerAndMore : null,
   };
@@ -462,6 +464,7 @@ function RevealedPubPill({
             accessibilityRole="button"
             accessibilityLabel={cs.a11y.contributeBeersLine(beerLine)}
           >
+            <BeerIcon size={13} color={Colors.amber} />
             <Text
               style={styles.beerLineText}
               numberOfLines={1}
@@ -1300,6 +1303,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   beerLineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     alignSelf: 'flex-start',
   },
   beerLineText: {

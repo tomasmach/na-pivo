@@ -1,9 +1,11 @@
 import React, { memo } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea } from '@/theme/layout';
+import { LinearBackdrop } from './Gradient';
+import { BeerIcon } from './IconGlyph';
 import { cs } from '@/i18n/cs';
 
 interface TitleBarProps {
@@ -17,23 +19,22 @@ interface TitleBarProps {
 const WORDMARK_LEAD = 'na ';
 const WORDMARK_ACCENT = 'pivo';
 
-// Small brushed-brass medallion that replaces the leading beer glyph.
-function BrandMark({ size = 18 }: { size?: number }) {
-  const c = size / 2;
-  const r = size / 2 - 0.5;
+// Brushed-brass medallion with a beer mug embossed into it — the same
+// brass-disk-with-dark-glyph language as the locked pub card, so the wordmark
+// reads unmistakably "beer" while staying on the premium brass palette.
+function BrandMark({ size = 22 }: { size?: number }) {
   return (
-    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <Defs>
-        <LinearGradient id="brandBrass" x1="0%" y1="0%" x2="100%" y2="100%">
-          <Stop offset="0%" stopColor="#F5B642" />
-          <Stop offset="50%" stopColor={Colors.engrave} />
-          <Stop offset="100%" stopColor={Colors.border} />
-        </LinearGradient>
-      </Defs>
-      <Circle cx={c} cy={c} r={r} fill="url(#brandBrass)" />
-      {/* foam-dot glint punched up-left */}
-      <Circle cx={c - r * 0.42} cy={c - r * 0.42} r={size * 0.13} fill={Colors.glint} opacity={0.85} />
-    </Svg>
+    <View style={[styles.brandMark, { width: size, height: size, borderRadius: size / 2 }]}>
+      <LinearBackdrop
+        vertical
+        stops={[
+          { offset: 0, color: Colors.amberLight },
+          { offset: 0.5, color: Colors.amber },
+          { offset: 1, color: Colors.brassShadow },
+        ]}
+      />
+      <BeerIcon size={Math.round(size * 0.62)} color={Colors.enamel} />
+    </View>
   );
 }
 
@@ -66,7 +67,7 @@ export const TitleBar = memo(function TitleBar({
     <View>
       <View style={[styles.container, isLeftAligned && styles.containerLeft]}>
         <View style={styles.logoRow}>
-          <BrandMark size={18} />
+          <BrandMark size={22} />
           <Text style={styles.titleText} maxFontSizeMultiplier={FontScaleCap.heading}>
             <Text style={styles.titleLead}>{WORDMARK_LEAD}</Text>
             <Text style={styles.titleAccent}>{WORDMARK_ACCENT}</Text>
@@ -113,6 +114,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  brandMark: {
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   titleText: {
     fontFamily: Fonts.display.extrabold,
