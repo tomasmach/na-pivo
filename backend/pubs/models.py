@@ -8,6 +8,8 @@ ReleaseNote — a "what's new" entry shown once after the app updates to a versi
 FeedbackReport — an in-app feedback / bug report submitted by a user.
 PubCommunityData — current community-contributed hours + beers for a pub.
 PubContributionLog — append-only history of community contributions.
+ClientEvent — privacy-safe diagnostic / usage telemetry from the app.
+AccountUsageStats — aggregated per-account app usage counters.
 """
 
 import hashlib
@@ -501,6 +503,108 @@ class FeedbackReport(models.Model):
 
     def __str__(self) -> str:
         return f"FeedbackReport({self.category} [{self.status}] — {self.message[:40]!r})"
+
+
+class ClientEvent(models.Model):
+    """
+    Privacy-safe client-side diagnostic / usage event.
+
+    The mobile app sends only a small whitelist of app lifecycle, error, API
+    failure and distance-summary events. It never sends bearer tokens, request
+    payloads, GPS points, routes, pub names, beer names, feedback text or contact
+    details. ``context`` is sanitized server-side before storage.
+    """
+
+    class Severity(models.TextChoices):
+        INFO = "info", "Info"
+        WARNING = "warning", "Warning"
+        ERROR = "error", "Error"
+
+    class Event(models.TextChoices):
+        APP_OPEN = "app_open", "App opened"
+        APP_FOREGROUND = "app_foreground", "App foregrounded"
+        WALKING_DISTANCE = "walking_distance", "Walking distance"
+        CONSOLE_WARN = "console_warn", "Console warning"
+        CONSOLE_ERROR = "console_error", "Console error"
+        UNHANDLED_ERROR = "unhandled_error", "Unhandled error"
+        API_FAILURE = "api_failure", "API failure"
+
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="client_events",
+        help_text="Anonymous account when the app had a valid token; null for unauthenticated telemetry.",
+    )
+    event = models.CharField(max_length=64, choices=Event.choices, db_index=True)
+    severity = models.CharField(
+        max_length=16,
+        choices=Severity.choices,
+        default=Severity.INFO,
+        db_index=True,
+    )
+    message = models.CharField(max_length=300, blank=True, default="")
+    context = models.JSONField(default=dict, blank=True)
+    app_version = models.CharField(max_length=64, blank=True, default="", db_index=True)
+    platform = models.CharField(max_length=32, blank=True, default="", db_index=True)
+    os_version = models.CharField(max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        verbose_name = "Client Event"
+        verbose_name_plural = "Client Events"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["event", "created_at"]),
+            models.Index(fields=["severity", "created_at"]),
+            models.Index(fields=["account", "created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"ClientEvent({self.event} [{self.severity}] @ {self.created_at:%Y-%m-%d %H:%M})"
+
+
+class AccountUsageStats(models.Model):
+    """
+    Aggregated usage counters for one anonymous account.
+
+    This is the admin/query-friendly layer for product statistics:
+    app-open counts, active users and distance leaderboards. The distance value
+    is reported by the app as meter increments only; no GPS coordinates or route
+    history are stored here.
+    """
+
+    account = models.OneToOneField(
+        Account,
+        on_delete=models.CASCADE,
+        related_name="usage_stats",
+    )
+    app_open_count = models.PositiveIntegerField(default=0, db_index=True)
+    app_foreground_count = models.PositiveIntegerField(default=0)
+    walked_distance_m = models.PositiveIntegerField(default=0, db_index=True)
+    client_warning_count = models.PositiveIntegerField(default=0)
+    client_error_count = models.PositiveIntegerField(default=0)
+    api_failure_count = models.PositiveIntegerField(default=0)
+    last_app_open_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    last_event_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    last_app_version = models.CharField(max_length=64, blank=True, default="")
+    last_platform = models.CharField(max_length=32, blank=True, default="")
+    last_os_version = models.CharField(max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Account Usage Stats"
+        verbose_name_plural = "Account Usage Stats"
+        ordering = ["-walked_distance_m", "-app_open_count"]
+
+    @property
+    def walked_distance_km(self) -> float:
+        return round(self.walked_distance_m / 1000, 2)
+
+    def __str__(self) -> str:
+        return f"AccountUsageStats({self.account.public_id} — {self.walked_distance_km} km)"
 
 
 class PubCommunityData(models.Model):

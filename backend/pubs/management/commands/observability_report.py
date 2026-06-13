@@ -1,0 +1,283 @@
+"""Print an LLM-friendly observability and product-feedback report."""
+
+from __future__ import annotations
+
+import json
+import re
+from collections import Counter, defaultdict
+from datetime import timedelta
+from typing import Any
+
+from django.core.management.base import BaseCommand
+from django.db.models import Count, Sum
+from django.utils import timezone
+
+from pubs.models import AccountUsageStats, ClientEvent, FeedbackReport
+
+_EMAIL_RE = re.compile(r"[\w.!#$%&'*+/=?^`{|}~-]+@[\w.-]+\.[A-Za-z]{2,}")
+_BEARER_RE = re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]+", re.IGNORECASE)
+_LONG_TOKEN_RE = re.compile(r"\b[A-Za-z0-9._~+/=-]{32,}\b")
+
+
+def _clean_text(value: str, max_len: int = 240) -> str:
+    text = (value or "").strip()
+    text = _BEARER_RE.sub("Bearer [redacted]", text)
+    text = _EMAIL_RE.sub("[redacted-email]", text)
+    text = _LONG_TOKEN_RE.sub("[redacted-token]", text)
+    return text[:max_len]
+
+
+def _iso(value) -> str:
+    return value.isoformat() if value else ""
+
+
+class Command(BaseCommand):
+    help = "Print app usage, client errors and feedback in JSON or Markdown."
+
+    def add_arguments(self, parser):
+        parser.add_argument("--days", type=int, default=7, help="Lookback window in days.")
+        parser.add_argument("--limit", type=int, default=10, help="Rows per section.")
+        parser.add_argument(
+            "--format",
+            choices=("markdown", "json"),
+            default="markdown",
+            help="Output format for agents or scripts.",
+        )
+
+    def handle(self, *args, **options):
+        days = max(1, int(options["days"]))
+        limit = max(1, int(options["limit"]))
+        since = timezone.now() - timedelta(days=days)
+        report = self._build_report(since=since, days=days, limit=limit)
+
+        if options["format"] == "json":
+            self.stdout.write(json.dumps(report, ensure_ascii=False, indent=2, default=str))
+        else:
+            self.stdout.write(self._format_markdown(report))
+
+    def _build_report(self, *, since, days: int, limit: int) -> dict[str, Any]:
+        events = ClientEvent.objects.filter(created_at__gte=since)
+        opened_events = events.filter(event=ClientEvent.Event.APP_OPEN)
+        foreground_events = events.filter(event=ClientEvent.Event.APP_FOREGROUND)
+        distance_events = events.filter(event=ClientEvent.Event.WALKING_DISTANCE)
+        error_events = events.filter(severity=ClientEvent.Severity.ERROR)
+        warning_events = events.filter(severity=ClientEvent.Severity.WARNING)
+        feedback = FeedbackReport.objects.filter(created_at__gte=since)
+
+        period_distance_by_account: defaultdict[str, int] = defaultdict(int)
+        period_distance_total_m = 0
+        for event in distance_events.exclude(account__isnull=True).select_related("account"):
+            distance_m = int((event.context or {}).get("distance_m") or 0)
+            if distance_m <= 0:
+                continue
+            account_id = str(event.account.public_id)
+            period_distance_by_account[account_id] += distance_m
+            period_distance_total_m += distance_m
+
+        api_failure_counter: Counter[tuple[str, str]] = Counter()
+        for event in events.filter(event=ClientEvent.Event.API_FAILURE):
+            context = event.context or {}
+            operation = str(context.get("operation") or "unknown")
+            status = str(context.get("status") or context.get("reason") or "unknown")
+            api_failure_counter[(operation, status)] += 1
+
+        recent_errors = [
+            {
+                "created_at": _iso(event.created_at),
+                "event": event.event,
+                "severity": event.severity,
+                "message": _clean_text(event.message),
+                "context": event.context,
+                "app_version": event.app_version,
+                "platform": event.platform,
+                "account": str(event.account.public_id) if event.account_id else "",
+            }
+            for event in error_events.order_by("-created_at")[:limit]
+        ]
+
+        recent_feedback = [
+            {
+                "created_at": _iso(row.created_at),
+                "id": row.id,
+                "category": row.category,
+                "status": row.status,
+                "message": _clean_text(row.message, max_len=320),
+                "app_version": row.app_version,
+                "platform": row.platform,
+                "account": str(row.account.public_id) if row.account_id else "",
+            }
+            for row in feedback.order_by("-created_at")[:limit]
+        ]
+
+        return {
+            "window": {
+                "days": days,
+                "since": _iso(since),
+                "generated_at": _iso(timezone.now()),
+            },
+            "usage": {
+                "app_opens": opened_events.count(),
+                "unique_opening_accounts": opened_events.exclude(account__isnull=True)
+                .values("account_id")
+                .distinct()
+                .count(),
+                "foregrounds": foreground_events.count(),
+                "active_accounts": events.exclude(account__isnull=True)
+                .values("account_id")
+                .distinct()
+                .count(),
+                "walked_distance_m": period_distance_total_m,
+                "walked_distance_km": round(period_distance_total_m / 1000, 2),
+            },
+            "all_time": {
+                "accounts_with_opens": AccountUsageStats.objects.filter(
+                    app_open_count__gt=0
+                ).count(),
+                "app_opens": AccountUsageStats.objects.aggregate(
+                    total=Sum("app_open_count")
+                )["total"]
+                or 0,
+                "walked_distance_m": AccountUsageStats.objects.aggregate(
+                    total=Sum("walked_distance_m")
+                )["total"]
+                or 0,
+            },
+            "top_walkers_period": [
+                {
+                    "account": account_id,
+                    "walked_distance_m": distance_m,
+                    "walked_distance_km": round(distance_m / 1000, 2),
+                }
+                for account_id, distance_m in sorted(
+                    period_distance_by_account.items(),
+                    key=lambda item: item[1],
+                    reverse=True,
+                )[:limit]
+            ],
+            "top_walkers_all_time": [
+                {
+                    "account": str(row.account.public_id),
+                    "walked_distance_m": row.walked_distance_m,
+                    "walked_distance_km": row.walked_distance_km,
+                    "app_open_count": row.app_open_count,
+                    "last_app_open_at": _iso(row.last_app_open_at),
+                }
+                for row in AccountUsageStats.objects.select_related("account").order_by(
+                    "-walked_distance_m", "-app_open_count"
+                )[:limit]
+            ],
+            "client_health": {
+                "events": events.count(),
+                "warnings": warning_events.count(),
+                "errors": error_events.count(),
+                "api_failures": events.filter(event=ClientEvent.Event.API_FAILURE).count(),
+                "events_by_type": list(
+                    events.values("event")
+                    .annotate(count=Count("id"))
+                    .order_by("-count", "event")[:limit]
+                ),
+                "api_failures_by_operation": [
+                    {"operation": operation, "status": status, "count": count}
+                    for (operation, status), count in api_failure_counter.most_common(limit)
+                ],
+            },
+            "recent_errors": recent_errors,
+            "feedback": {
+                "total": feedback.count(),
+                "by_category": list(
+                    feedback.values("category")
+                    .annotate(count=Count("id"))
+                    .order_by("-count", "category")
+                ),
+                "by_status": list(
+                    feedback.values("status")
+                    .annotate(count=Count("id"))
+                    .order_by("-count", "status")
+                ),
+                "recent": recent_feedback,
+            },
+        }
+
+    def _format_markdown(self, report: dict[str, Any]) -> str:
+        usage = report["usage"]
+        all_time = report["all_time"]
+        health = report["client_health"]
+        lines = [
+            "# Na pivo observability report",
+            "",
+            f"Window: last {report['window']['days']} days since {report['window']['since']}",
+            "",
+            "## Usage",
+            "",
+            f"- App opens: {usage['app_opens']} ({usage['unique_opening_accounts']} unique accounts)",
+            f"- Foregrounds: {usage['foregrounds']}",
+            f"- Active accounts: {usage['active_accounts']}",
+            f"- Walked distance: {usage['walked_distance_km']} km",
+            f"- All-time opens: {all_time['app_opens']} across {all_time['accounts_with_opens']} accounts",
+            f"- All-time walked distance: {round(all_time['walked_distance_m'] / 1000, 2)} km",
+            "",
+            "## Top Walkers In Window",
+            "",
+        ]
+        lines.extend(self._table(report["top_walkers_period"], ["account", "walked_distance_km"]))
+        lines.extend(
+            [
+                "",
+                "## Top Walkers All Time",
+                "",
+            ]
+        )
+        lines.extend(
+            self._table(
+                report["top_walkers_all_time"],
+                ["account", "walked_distance_km", "app_open_count", "last_app_open_at"],
+            )
+        )
+        lines.extend(
+            [
+                "",
+                "## Client Health",
+                "",
+                f"- Events: {health['events']}",
+                f"- Warnings: {health['warnings']}",
+                f"- Errors: {health['errors']}",
+                f"- API failures: {health['api_failures']}",
+                "",
+                "### Events By Type",
+                "",
+            ]
+        )
+        lines.extend(self._table(health["events_by_type"], ["event", "count"]))
+        lines.extend(["", "### API Failures By Operation", ""])
+        lines.extend(
+            self._table(health["api_failures_by_operation"], ["operation", "status", "count"])
+        )
+        lines.extend(["", "## Recent Errors", ""])
+        lines.extend(
+            self._table(
+                report["recent_errors"],
+                ["created_at", "event", "message", "app_version", "platform", "account"],
+            )
+        )
+        lines.extend(["", "## Feedback", ""])
+        lines.append(f"- Total: {report['feedback']['total']}")
+        lines.extend(["", "### Recent Feedback", ""])
+        lines.extend(
+            self._table(
+                report["feedback"]["recent"],
+                ["created_at", "id", "category", "status", "message", "app_version", "platform"],
+            )
+        )
+        return "\n".join(lines)
+
+    def _table(self, rows: list[dict[str, Any]], columns: list[str]) -> list[str]:
+        if not rows:
+            return ["_No rows._"]
+        lines = [
+            "| " + " | ".join(columns) + " |",
+            "| " + " | ".join("---" for _ in columns) + " |",
+        ]
+        for row in rows:
+            values = [str(row.get(column, "")).replace("|", "\\|").replace("\n", " ") for column in columns]
+            lines.append("| " + " | ".join(values) + " |")
+        return lines

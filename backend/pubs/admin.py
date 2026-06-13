@@ -2,6 +2,8 @@ from django.contrib import admin
 
 from .models import (
     Account,
+    AccountUsageStats,
+    ClientEvent,
     DrinkLog,
     EnrichTask,
     FeedbackReport,
@@ -99,6 +101,90 @@ class FeedbackReportAdmin(admin.ModelAdmin):
     def short_message(self, obj: FeedbackReport) -> str:
         msg = obj.message or ""
         return msg if len(msg) <= 60 else f"{msg[:57]}..."
+
+
+@admin.register(ClientEvent)
+class ClientEventAdmin(admin.ModelAdmin):
+    # Diagnostic telemetry is append-only. It is intentionally small and
+    # sanitized by the API serializer, but still read-only in admin.
+    list_display = (
+        "created_at",
+        "event",
+        "severity",
+        "app_version",
+        "platform",
+        "account",
+        "short_message",
+    )
+    list_filter = ("event", "severity", "platform", "app_version", "created_at")
+    search_fields = ("message", "account__public_id")
+    readonly_fields = (
+        "account",
+        "event",
+        "severity",
+        "message",
+        "context",
+        "app_version",
+        "platform",
+        "os_version",
+        "created_at",
+    )
+    ordering = ("-created_at",)
+
+    @admin.display(description="message")
+    def short_message(self, obj: ClientEvent) -> str:
+        msg = obj.message or ""
+        return msg if len(msg) <= 80 else f"{msg[:77]}..."
+
+    def has_add_permission(self, request) -> bool:  # noqa: ARG002
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:  # noqa: ARG002
+        return False
+
+
+@admin.register(AccountUsageStats)
+class AccountUsageStatsAdmin(admin.ModelAdmin):
+    list_display = (
+        "account_public_id",
+        "app_open_count",
+        "app_foreground_count",
+        "walked_distance_km",
+        "client_error_count",
+        "api_failure_count",
+        "last_app_open_at",
+        "last_app_version",
+        "last_platform",
+    )
+    list_filter = ("last_platform", "last_app_version", "last_app_open_at")
+    search_fields = ("account__public_id", "account__device_id")
+    readonly_fields = (
+        "account",
+        "app_open_count",
+        "app_foreground_count",
+        "walked_distance_m",
+        "client_warning_count",
+        "client_error_count",
+        "api_failure_count",
+        "last_app_open_at",
+        "last_event_at",
+        "last_app_version",
+        "last_platform",
+        "last_os_version",
+        "created_at",
+        "updated_at",
+    )
+    ordering = ("-walked_distance_m", "-app_open_count")
+
+    @admin.display(description="account")
+    def account_public_id(self, obj: AccountUsageStats) -> str:
+        return str(obj.account.public_id)
+
+    def has_add_permission(self, request) -> bool:  # noqa: ARG002
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:  # noqa: ARG002
+        return False
 
 
 @admin.register(PubCommunityData)

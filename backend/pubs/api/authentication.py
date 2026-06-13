@@ -40,6 +40,10 @@ class AccountTokenAuthentication(authentication.BaseAuthentication):
         except Account.DoesNotExist:
             raise exceptions.AuthenticationFailed("Invalid account token.") from None
 
+        # The request logging middleware runs outside DRF's Request wrapper.
+        # Attach only the public account id to the underlying HttpRequest so logs
+        # can be correlated without ever exposing request.auth / bearer tokens.
+        request._request.na_pivo_account_id = str(account.public_id)
         return (account, token)
 
     def authenticate_header(self, request):  # noqa: ARG002

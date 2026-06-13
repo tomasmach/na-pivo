@@ -30,13 +30,14 @@ Response body:
 
 from __future__ import annotations
 
+import re
 import uuid
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import EmailValidator
 from rest_framework import serializers
 
-from pubs.models import Account, FeedbackReport, PubReport, ReleaseNote
+from pubs.models import Account, ClientEvent, FeedbackReport, PubReport, ReleaseNote
 
 # ---------------------------------------------------------------------------
 # Request serializers
@@ -159,6 +160,143 @@ class FeedbackRequestSerializer(serializers.Serializer):
         attrs["contact"] = contact
         attrs["contact_type"] = contact_type
         return attrs
+
+
+# ---------------------------------------------------------------------------
+# Client observability (POST /v1/client-events)
+# ---------------------------------------------------------------------------
+
+_MAX_CLIENT_EVENT_CONTEXT_KEYS = 16
+_MAX_CLIENT_EVENT_DISTANCE_M = 50_000
+_CLIENT_EVENT_CONTEXT_KEYS = {
+    "operation",
+    "endpoint",
+    "status",
+    "reason",
+    "error_name",
+    "error_message",
+    "stack",
+    "source",
+    "queue",
+    "pending_count",
+    "distance_m",
+    "duration_ms",
+}
+_EMAIL_RE = re.compile(r"[\w.!#$%&'*+/=?^`{|}~-]+@[\w.-]+\.[A-Za-z]{2,}")
+_BEARER_RE = re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]+", re.IGNORECASE)
+_UUID_RE = re.compile(
+    r"\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b",
+    re.IGNORECASE,
+)
+_LONG_TOKEN_RE = re.compile(r"\b[A-Za-z0-9._~+/=-]{32,}\b")
+
+
+def _sanitize_client_text(value: object, *, max_len: int) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    text = _BEARER_RE.sub("Bearer [redacted]", text)
+    text = _EMAIL_RE.sub("[redacted-email]", text)
+    text = _UUID_RE.sub("[redacted-uuid]", text)
+    text = _LONG_TOKEN_RE.sub("[redacted-token]", text)
+    return text[:max_len]
+
+
+def _sanitize_client_scalar(key: str, value: object) -> object | None:
+    if value is None:
+        return None
+
+    if key == "endpoint":
+        return _sanitize_client_text(value, max_len=240).split("?", 1)[0]
+
+    if key == "distance_m":
+        try:
+            distance = int(value)
+        except (TypeError, ValueError):
+            return None
+        return max(0, min(distance, _MAX_CLIENT_EVENT_DISTANCE_M))
+
+    if key in {"status", "pending_count", "duration_ms"}:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    if isinstance(value, bool):
+        return value
+
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value
+
+    max_len = 800 if key == "stack" else 240
+    return _sanitize_client_text(value, max_len=max_len)
+
+
+class ClientEventRequestSerializer(serializers.Serializer):
+    """Sanitized client telemetry event.
+
+    The backend intentionally stores only a strict event/context whitelist. This
+    keeps telemetry useful for aggregate diagnostics while avoiding bearer
+    tokens, coordinates, free-form request payloads and user-entered content.
+    """
+
+    event = serializers.ChoiceField(choices=ClientEvent.Event.choices)
+    severity = serializers.ChoiceField(
+        choices=ClientEvent.Severity.choices,
+        required=False,
+        default=ClientEvent.Severity.INFO,
+    )
+    message = serializers.CharField(
+        max_length=300,
+        required=False,
+        allow_blank=True,
+        default="",
+        trim_whitespace=True,
+    )
+    context = serializers.JSONField(required=False, default=dict)
+    app_version = serializers.CharField(
+        max_length=64,
+        required=False,
+        allow_blank=True,
+        default="",
+        trim_whitespace=True,
+    )
+    platform = serializers.CharField(
+        max_length=32,
+        required=False,
+        allow_blank=True,
+        default="",
+        trim_whitespace=True,
+    )
+    os_version = serializers.CharField(
+        max_length=64,
+        required=False,
+        allow_blank=True,
+        default="",
+        trim_whitespace=True,
+    )
+
+    def validate_message(self, value: str) -> str:
+        return _sanitize_client_text(value, max_len=300)
+
+    def validate_context(self, value: object) -> dict:
+        if value in (None, ""):
+            return {}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("context must be an object.")
+
+        sanitized: dict[str, object] = {}
+        for raw_key, raw_value in value.items():
+            key = str(raw_key)
+            if key not in _CLIENT_EVENT_CONTEXT_KEYS:
+                continue
+            clean_value = _sanitize_client_scalar(key, raw_value)
+            if clean_value is None:
+                continue
+            sanitized[key] = clean_value
+            if len(sanitized) >= _MAX_CLIENT_EVENT_CONTEXT_KEYS:
+                break
+        return sanitized
 
 
 # ---------------------------------------------------------------------------

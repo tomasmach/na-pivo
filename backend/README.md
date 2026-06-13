@@ -120,6 +120,8 @@ All settings are read from environment variables (or a `.env` file).  See `.env.
 | `CORS_ALLOWED_ORIGINS` | Expo localhost | Comma-separated CORS origins |
 | `ACCOUNT_REGISTER_THROTTLE_RATE` | `120/min` | Per-IP rate limit for `POST /v1/account` (DRF throttle rate string) |
 | `PUBS_NEAR_THROTTLE_RATE` | `60/min` | Per-IP rate limit for `GET /v1/pubs/near` (DRF throttle rate string) |
+| `CLIENT_EVENTS_THROTTLE_RATE` | `120/min` | Per-IP rate limit for `POST /v1/client-events` |
+| `LOG_LEVEL` | `INFO` | Structured JSON log level |
 
 ---
 
@@ -135,6 +137,36 @@ Every install gets an anonymous, device-bound account automatically — there is
 - The bearer token is a server-issued secret (`secrets.token_urlsafe`), returned **once** at registration and stored only as a **SHA-256 hash** (`token_hash`) — a DB leak exposes no usable tokens. Re-registration **rotates** it (the old raw value is unrecoverable from its hash). It is never derived from client input and is excluded from `/v1/account/me`.
 - **Future per-user data must FK to `Account` (its PK), not to `public_id`, and never join on `token`** — see the `Account` model docstring for the `on_delete` guidance.
 - **Security TODO before attaching real credentials / personal data:** today a re-POST of a known `device_id` returns that account's token (idempotent recovery), so `device_id` is effectively a bearer-equivalent key. That is acceptable only while accounts hold nothing sensitive. Before then, registration must stop letting `device_id` unilaterally recover the token, and the `account` throttle should be backed by a **shared cache** (Redis/Memcached) — the default `LocMemCache` is per-process, so under multiple gunicorn workers the effective limit is `rate × workers`.
+
+---
+
+## Observability and stats
+
+Server logs are JSON on stdout and include a privacy-safe request id, path,
+status, duration, app version headers and a hashed client IP. They never log
+request bodies, bearer tokens, cookies, feedback contact data or raw GPS points.
+
+The Expo app sends a small event whitelist to:
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/v1/client-events` | optional `Authorization: Bearer <token>` | App opens, foregrounds, sanitized warnings/errors/API failures and walking-distance meter increments. |
+
+Authenticated events update `AccountUsageStats`, which answers questions like
+"how many anonymous accounts opened the app?", "how many opens were there?" and
+"which anonymous account walked the most kilometers?". Walking distance is
+computed on-device; the backend stores only meter increments, not coordinates or
+routes.
+
+Agent-friendly report:
+
+```bash
+uv run python manage.py observability_report --days 7 --format markdown
+uv run python manage.py observability_report --days 7 --format json
+```
+
+The report includes usage totals, top walkers, client error/API-failure
+breakdowns and recent feedback with contact-like text redacted.
 
 ---
 

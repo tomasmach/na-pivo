@@ -20,6 +20,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
+from django.db.models import F
 from django.utils import timezone as dj_timezone
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -39,6 +40,8 @@ from pubs.enrichment import (
 )
 from pubs.models import (
     Account,
+    AccountUsageStats,
+    ClientEvent,
     DrinkLog,
     EnrichTask,
     FeedbackReport,
@@ -59,6 +62,7 @@ from .serializers import (
     AccountRegisterSerializer,
     AccountSerializer,
     BlockedPubsResponseSerializer,
+    ClientEventRequestSerializer,
     DrinkRequestSerializer,
     FeedbackReportSerializer,
     FeedbackRequestSerializer,
@@ -183,8 +187,8 @@ class PubReportView(APIView):
             EnrichTask.objects.filter(cache_key=cache_key).delete()
         except Exception as exc:  # noqa: BLE001
             logger.error(
-                "pub-report: unexpected error saving report for %r: %s",
-                data.get("name"),
+                "pub-report: unexpected error saving report for cache key %s: %s",
+                cache_key,
                 exc,
                 exc_info=True,
             )
@@ -282,8 +286,8 @@ class PubCommunityView(APIView):
                 )
         except Exception as exc:  # noqa: BLE001
             logger.error(
-                "pub-community: unexpected error saving contribution for %r: %s",
-                data.get("name"),
+                "pub-community: unexpected error saving contribution for cache key %s: %s",
+                cache_key,
                 exc,
                 exc_info=True,
             )
@@ -422,8 +426,8 @@ class DrinksView(APIView):
                 )
         except Exception as exc:  # noqa: BLE001
             logger.error(
-                "drinks: unexpected error logging drink for %r: %s",
-                data.get("name"),
+                "drinks: unexpected error logging drink for cache key %s: %s",
+                cache_key,
                 exc,
                 exc_info=True,
             )
@@ -597,6 +601,114 @@ class FeedbackView(APIView):
             FeedbackReportSerializer(report).data,
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
+
+
+def _account_from_request(request: Request) -> Account | None:
+    user = getattr(request, "user", None)
+    return user if isinstance(user, Account) else None
+
+
+def _update_usage_stats(event: ClientEvent) -> None:
+    """Fold one authenticated client event into per-account usage counters."""
+
+    if event.account_id is None:
+        return
+
+    now = event.created_at or dj_timezone.now()
+    stats, _ = AccountUsageStats.objects.get_or_create(account=event.account)
+
+    update_fields: dict[str, object] = {
+        "last_event_at": now,
+    }
+    if event.app_version:
+        update_fields["last_app_version"] = event.app_version
+    if event.platform:
+        update_fields["last_platform"] = event.platform
+    if event.os_version:
+        update_fields["last_os_version"] = event.os_version
+
+    if event.event == ClientEvent.Event.APP_OPEN:
+        update_fields["app_open_count"] = F("app_open_count") + 1
+        update_fields["last_app_open_at"] = now
+    elif event.event == ClientEvent.Event.APP_FOREGROUND:
+        update_fields["app_foreground_count"] = F("app_foreground_count") + 1
+    elif event.event == ClientEvent.Event.WALKING_DISTANCE:
+        distance_m = int(event.context.get("distance_m") or 0)
+        if distance_m > 0:
+            update_fields["walked_distance_m"] = F("walked_distance_m") + distance_m
+
+    if event.event == ClientEvent.Event.API_FAILURE:
+        update_fields["api_failure_count"] = F("api_failure_count") + 1
+
+    if event.severity == ClientEvent.Severity.WARNING:
+        update_fields["client_warning_count"] = F("client_warning_count") + 1
+    elif event.severity == ClientEvent.Severity.ERROR:
+        update_fields["client_error_count"] = F("client_error_count") + 1
+
+    AccountUsageStats.objects.filter(pk=stats.pk).update(**update_fields)
+
+
+class ClientEventsView(APIView):
+    """
+    POST /v1/client-events
+
+    Accept one sanitized app observability event. Auth is optional: events with a
+    valid account token are linked to the anonymous account and folded into
+    AccountUsageStats; unauthenticated events are still useful for aggregate
+    diagnostics but cannot affect per-account leaderboards.
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "client_events"
+
+    def post(self, request: Request) -> Response:
+        serializer = ClientEventRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        account = _account_from_request(request)
+
+        try:
+            event = ClientEvent.objects.create(
+                account=account,
+                event=data["event"],
+                severity=data["severity"],
+                message=data.get("message") or "",
+                context=data.get("context") or {},
+                app_version=data.get("app_version") or "",
+                platform=data.get("platform") or "",
+                os_version=data.get("os_version") or "",
+            )
+            _update_usage_stats(event)
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "client-events: unexpected error saving %r: %s",
+                data.get("event"),
+                exc,
+                exc_info=True,
+            )
+            return Response(
+                {"detail": "Internal server error."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        logger.info(
+            "client event accepted",
+            extra={
+                "event": "client_event",
+                "observability": {
+                    "client_event": event.event,
+                    "severity": event.severity,
+                    "account_id": str(account.public_id) if account else "",
+                    "app_version": event.app_version,
+                    "platform": event.platform,
+                },
+            },
+        )
+        return Response({"accepted": True}, status=status.HTTP_202_ACCEPTED)
 
 
 class BlockedPubReportsView(APIView):
@@ -904,8 +1016,7 @@ class AccountView(APIView):
                 account.save(update_fields=["token_hash", "last_seen_at"])
         except Exception as exc:  # noqa: BLE001
             logger.error(
-                "account: unexpected error registering device %r: %s",
-                device_id,
+                "account: unexpected error registering account: %s",
                 exc,
                 exc_info=True,
             )
