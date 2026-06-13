@@ -96,6 +96,9 @@ describe('fetchPubHours — happy path', () => {
       source: null,
       communityHours: null,
       beers: [],
+      rating: null,
+      ratingCount: null,
+      ratingLabel: null,
       venueKind: 'unknown',
     });
     expect(result.get(PUB_B.id)).toEqual({
@@ -106,6 +109,9 @@ describe('fetchPubHours — happy path', () => {
       source: null,
       communityHours: null,
       beers: [],
+      rating: null,
+      ratingCount: null,
+      ratingLabel: null,
       venueKind: 'unknown',
     });
   });
@@ -170,6 +176,9 @@ describe('fetchPubHours — happy path', () => {
       source: null,
       communityHours: null,
       beers: [],
+      rating: null,
+      ratingCount: null,
+      ratingLabel: null,
       venueKind: 'unknown',
     });
   });
@@ -227,8 +236,33 @@ describe('fetchPubHours — happy path', () => {
     expect(entry?.source).toBeNull();
     expect(entry?.communityHours).toBeNull();
     expect(entry?.beers).toEqual([]);
+    expect(entry?.rating).toBeNull();
+    expect(entry?.ratingCount).toBeNull();
+    expect(entry?.ratingLabel).toBeNull();
     // Missing venueKind on an older backend must default to 'unknown'.
     expect(entry?.venueKind).toBe('unknown');
+  });
+
+  it('parses optional source rating fields', async () => {
+    setBackend('https://api.example.com');
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        results: [
+          {
+            status: 'ok',
+            rating: 4.1,
+            ratingCount: 364,
+            ratingLabel: 'Velmi dobré',
+          },
+        ],
+      }),
+    })) as unknown as typeof fetch;
+
+    const entry = (await fetchPubHours([PUB_A])).get(PUB_A.id);
+    expect(entry?.rating).toBe(4.1);
+    expect(entry?.ratingCount).toBe(364);
+    expect(entry?.ratingLabel).toBe('Velmi dobré');
   });
 
   it.each(['pub', 'maybe', 'not_pub', 'unknown'] as const)(

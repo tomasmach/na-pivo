@@ -53,6 +53,12 @@ type PubHoursState = {
   communityHours?: WeeklyHours | null;
   /** Beers on tap from the backend, when present. */
   beers?: CommunityBeer[];
+  /** Public star rating from the enrichment source, on a 0-5 scale. */
+  rating?: number | null;
+  /** Number of user ratings behind `rating`, when known. */
+  ratingCount?: number | null;
+  /** Human rating label from the source, when known. */
+  ratingLabel?: string | null;
   /** Backend pub-vs-not verdict; 'not_pub' triggers auto-exclusion. */
   venueKind?: VenueKind;
 };
@@ -420,6 +426,9 @@ export function useCompass(): UseCompassResult {
               source: result.source,
               communityHours: result.communityHours,
               beers: result.beers,
+              rating: result.rating,
+              ratingCount: result.ratingCount,
+              ratingLabel: result.ratingLabel,
               venueKind: result.venueKind,
             });
           } else {
@@ -529,6 +538,9 @@ export function useCompass(): UseCompassResult {
       hoursSource,
       communityHours: communityHours ?? undefined,
       beers: beers && beers.length > 0 ? beers : undefined,
+      rating: hoursForCurrent?.rating ?? currentPub.rating ?? null,
+      ratingCount: hoursForCurrent?.ratingCount ?? currentPub.ratingCount ?? null,
+      ratingLabel: hoursForCurrent?.ratingLabel ?? currentPub.ratingLabel ?? null,
       venueKind: hoursForCurrent?.venueKind ?? currentPub.venueKind,
     };
   }, [currentPub, hoursForCurrent, overrideForCurrent]);

@@ -50,6 +50,7 @@ export const cs = {
     beerWithPrice: (name: string, price: string) => `🍺 ${name} · ${price}`,
     beerNoPrice: (name: string) => `🍺 ${name}`,
     beerAndMore: 'a další',
+    ratingCount: (count: string) => `${count} hodnocení`,
   },
 
   permissions: {
@@ -298,6 +299,8 @@ export const cs = {
     pubPillHidden: 'Skrytá hospoda, ťukni pro odhalení',
     pubPillRevealed: (pubName: string) => `${pubName}, ťukni pro otevření v mapách`,
     openStatus: (status: string) => `Stav otevírací doby: ${status}`,
+    pubRating: (rating: string, count?: string) =>
+      count ? `Hodnocení: ${rating} z 5, ${count} hodnocení` : `Hodnocení: ${rating} z 5`,
     toggleOn: 'zapnuto',
     toggleOff: 'vypnuto',
     settingsButton: 'Otevřít nastavení',

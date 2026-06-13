@@ -29,6 +29,12 @@ export interface PubHoursResult {
   communityHours: WeeklyHours | null;
   /** Beers on tap, when the backend has them; empty array when none. */
   beers: CommunityBeer[];
+  /** Public star rating from the backend source, on a 0-5 scale. */
+  rating: number | null;
+  /** Number of user ratings behind `rating`, when known. */
+  ratingCount: number | null;
+  /** Human rating label from the source, when known. */
+  ratingLabel: string | null;
   /**
    * Backend verdict on whether this place is actually a pub, classified from
    * Firmy.cz categories (community beer reports override to 'pub' server-side).
@@ -57,6 +63,12 @@ interface BackendResult {
   hours_json?: unknown;
   /** Beers on tap (may be absent on older backends). */
   beers?: WireBeer[];
+  /** Public star rating (may be absent on older backends). */
+  rating?: number | null;
+  /** Number of public ratings (may be absent on older backends). */
+  ratingCount?: number | null;
+  /** Human rating label (may be absent on older backends). */
+  ratingLabel?: string | null;
   /** Pub-vs-not verdict (may be absent on older backends). */
   venueKind?: string | null;
 }
@@ -108,6 +120,9 @@ function toResult(entry: BackendResult | undefined): PubHoursResult {
       source: null,
       communityHours: null,
       beers: [],
+      rating: null,
+      ratingCount: null,
+      ratingLabel: null,
       venueKind: 'unknown',
     };
   }
@@ -124,6 +139,12 @@ function toResult(entry: BackendResult | undefined): PubHoursResult {
     source: typeof entry.source === 'string' ? entry.source : null,
     communityHours,
     beers,
+    rating: typeof entry.rating === 'number' && Number.isFinite(entry.rating) ? entry.rating : null,
+    ratingCount:
+      typeof entry.ratingCount === 'number' && Number.isFinite(entry.ratingCount)
+        ? entry.ratingCount
+        : null,
+    ratingLabel: typeof entry.ratingLabel === 'string' ? entry.ratingLabel : null,
     venueKind: normalizeVenueKind(entry.venueKind),
   };
 }

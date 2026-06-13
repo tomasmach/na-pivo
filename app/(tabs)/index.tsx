@@ -53,6 +53,7 @@ import {
   SettingsIcon,
   FlagIcon,
   PencilIcon,
+  StarIcon,
 } from '@/components/shared/IconGlyph';
 
 import { Colors } from '@/theme/colors';
@@ -329,6 +330,8 @@ interface RevealedPubPillProps {
   hoursStatus?: HoursStatus;
   nextChange?: string | null;
   beers?: CommunityBeer[];
+  rating?: number | null;
+  ratingCount?: number | null;
 }
 
 /** A compact one-liner for the cheapest/first beer, with "a další" when more. */
@@ -346,6 +349,13 @@ function formatBeerLine(beers: CommunityBeer[], priceCurrency: PriceCurrency): s
   return beers.length > 1 ? `${base} · ${cs.compass.beerAndMore}` : base;
 }
 
+function formatRatingValue(rating: number): string {
+  return rating.toLocaleString('cs-CZ', {
+    minimumFractionDigits: Number.isInteger(rating) ? 0 : 1,
+    maximumFractionDigits: 1,
+  });
+}
+
 function RevealedPubPill({
   pubName,
   onOpenMaps,
@@ -355,8 +365,22 @@ function RevealedPubPill({
   hoursStatus,
   nextChange,
   beers,
+  rating,
+  ratingCount,
 }: RevealedPubPillProps) {
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
+  const hasRating = typeof rating === 'number' && Number.isFinite(rating);
+  const ratingValue = hasRating ? formatRatingValue(rating) : null;
+  const ratingCountText =
+    typeof ratingCount === 'number' && Number.isFinite(ratingCount) && ratingCount > 0
+      ? ratingCount.toLocaleString('cs-CZ')
+      : null;
+  const ratingLine =
+    ratingValue === null
+      ? null
+      : ratingCountText
+        ? `${ratingValue} / 5 · ${cs.compass.ratingCount(ratingCountText)}`
+        : `${ratingValue} / 5`;
   // Fold the open/closed status into the pill's OWN a11y label: the Pressable
   // collapses its children into a single VoiceOver element, so the chip's label
   // would otherwise never be announced. Stay silent while the lookup is in flight.
@@ -368,9 +392,10 @@ function RevealedPubPill({
         : hoursStatus === 'loading' || hoursStatus === 'pending'
           ? null
           : cs.compass.hoursUnknown;
-  const accessibilityLabel = statusWord
-    ? `${cs.a11y.pubPillRevealed(pubName)}. ${cs.a11y.openStatus(statusWord)}`
-    : cs.a11y.pubPillRevealed(pubName);
+  const accessibilityParts = [cs.a11y.pubPillRevealed(pubName)];
+  if (statusWord) accessibilityParts.push(cs.a11y.openStatus(statusWord));
+  if (ratingValue) accessibilityParts.push(cs.a11y.pubRating(ratingValue, ratingCountText ?? undefined));
+  const accessibilityLabel = accessibilityParts.join('. ');
 
   const beerLine = beers && beers.length > 0 ? formatBeerLine(beers, priceCurrency) : null;
 
@@ -395,6 +420,19 @@ function RevealedPubPill({
             never squeeze the maps-hint row below it on narrow screens. The chip
             renders nothing while the lookup is in flight, so this row collapses. */}
         <OpenStatusChip isOpenNow={isOpenNow} status={hoursStatus} nextChange={nextChange} />
+
+        {ratingLine && (
+          <View style={styles.ratingRow}>
+            <StarIcon size={14} color={Colors.amber} />
+            <Text
+              style={styles.ratingText}
+              numberOfLines={1}
+              maxFontSizeMultiplier={FontScaleCap.body}
+            >
+              {ratingLine}
+            </Text>
+          </View>
+        )}
 
         {/* Beers on tap — a compact line for the cheapest/first beer. Tapping it
             opens the contribute screen (where the full list lives + is editable). */}
@@ -836,6 +874,8 @@ export default function CompassScreen() {
             hoursStatus={pub.hoursStatus}
             nextChange={pub.nextChange}
             beers={pub.beers}
+            rating={pub.rating}
+            ratingCount={pub.ratingCount}
           />
         ) : (
           <HiddenPubPill onReveal={reveal} />
@@ -1069,6 +1109,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.foamMuted,
     letterSpacing: 0.2,
+  },
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 5,
+    minHeight: 18,
+  },
+  ratingText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 13,
+    color: Colors.foam,
   },
   pubPillFooter: {
     flexDirection: 'row',

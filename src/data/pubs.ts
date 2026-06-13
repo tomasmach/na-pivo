@@ -56,6 +56,12 @@ export type Pub = {
   communityHours?: WeeklyHours;
   /** Beers on tap, when known (community-sourced). */
   beers?: CommunityBeer[];
+  /** Public star rating from the enrichment source, on a 0-5 scale. */
+  rating?: number | null;
+  /** Number of user ratings behind `rating`, when known. */
+  ratingCount?: number | null;
+  /** Human rating label from the source, e.g. "Velmi dobré". */
+  ratingLabel?: string | null;
   /**
    * Backend verdict on whether this place is a pub. Resolved asynchronously with
    * opening hours; 'not_pub' places are auto-excluded from compass targeting.

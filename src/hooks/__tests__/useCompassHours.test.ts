@@ -140,6 +140,9 @@ function result(overrides: Partial<PubHoursResult> = {}): PubHoursResult {
     source: null,
     communityHours: null,
     beers: [],
+    rating: null,
+    ratingCount: null,
+    ratingLabel: null,
     venueKind: 'unknown',
     ...overrides,
   };
@@ -185,6 +188,19 @@ describe('useCompass — opening hours enrichment', () => {
     expect(enriched?.hoursStatus).toBe('ok');
     expect(enriched?.openingHours).toBe('Po–Ne 11:00–23:00');
     expect(enriched?.nextChange).toBe('2026-06-08T23:00:00+02:00');
+  });
+
+  it('merges source rating onto the returned pub', async () => {
+    (fetchPubHours as jest.Mock).mockResolvedValue(
+      new Map([[PUB.id, result({ rating: 4.1, ratingCount: 364, ratingLabel: 'Velmi dobré' })]]),
+    );
+
+    const hook = renderCompassHook();
+    await flush();
+
+    expect(hook.result.pub?.rating).toBe(4.1);
+    expect(hook.result.pub?.ratingCount).toBe(364);
+    expect(hook.result.pub?.ratingLabel).toBe('Velmi dobré');
   });
 
   it('passes an AbortSignal so the previous lookup can be cancelled', async () => {
