@@ -1,8 +1,8 @@
 import React from 'react';
 import { useWindowDimensions } from 'react-native';
-import * as Haptics from 'expo-haptics';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { GlowButton } from '@/components/shared/GlowButton';
+import { fireSuccessHaptic } from '@/utils/haptics';
 import CelebrationScreen from '../celebration';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -11,12 +11,7 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
 
-jest.mock('expo-haptics', () => ({
-  NotificationFeedbackType: {
-    Success: 'success',
-  },
-  notificationAsync: jest.fn(async () => undefined),
-}));
+jest.mock('@/utils/haptics', () => ({ fireSuccessHaptic: jest.fn() }));
 
 jest.mock('expo-router', () => ({
   useRouter: jest.fn(() => ({
@@ -118,7 +113,7 @@ describe('CelebrationScreen', () => {
       await Promise.resolve();
     });
 
-    expect(Haptics.notificationAsync).not.toHaveBeenCalled();
+    expect(fireSuccessHaptic).not.toHaveBeenCalled();
   });
 
   it('fires arrival haptics once when haptics are enabled', async () => {
@@ -129,10 +124,7 @@ describe('CelebrationScreen', () => {
       await Promise.resolve();
     });
 
-    expect(Haptics.notificationAsync).toHaveBeenCalledTimes(1);
-    expect(Haptics.notificationAsync).toHaveBeenCalledWith(
-      Haptics.NotificationFeedbackType.Success
-    );
+    expect(fireSuccessHaptic).toHaveBeenCalledTimes(1);
   });
 
   it('scales controls down on a genuinely short viewport', async () => {

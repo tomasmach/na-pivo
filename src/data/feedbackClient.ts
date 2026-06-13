@@ -9,6 +9,7 @@
 import { Platform } from 'react-native';
 
 import { ensureAccount } from './account';
+import { getBackendEndpoint } from './backendConfig';
 import { getAppVersionLabel } from '@/utils/appVersion';
 
 export type FeedbackCategory = 'bug' | 'idea' | 'other';
@@ -35,14 +36,6 @@ export interface FeedbackEntry {
 }
 
 const REQUEST_TIMEOUT_MS = 8000;
-
-function getBackendUrl(): string {
-  return (process.env.EXPO_PUBLIC_BACKEND_URL ?? '').trim();
-}
-
-function trimTrailingSlash(url: string): string {
-  return url.endsWith('/') ? url.slice(0, -1) : url;
-}
 
 function chainAbortSignal(signal?: AbortSignal): {
   signal: AbortSignal;
@@ -99,15 +92,15 @@ export async function submitFeedback(
 ): Promise<boolean> {
   if (signal?.aborted) return false;
 
-  const baseUrl = getBackendUrl();
-  if (!baseUrl) return false;
+  const endpoint = getBackendEndpoint('/v1/feedback');
+  if (!endpoint) return false;
 
   const session = await ensureAccount(signal);
   if (!session || signal?.aborted) return false;
 
   const abort = chainAbortSignal(signal);
   try {
-    const resp = await fetch(`${trimTrailingSlash(baseUrl)}/v1/feedback`, {
+    const resp = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

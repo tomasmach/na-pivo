@@ -63,6 +63,10 @@ export const Linking = {
   addEventListener: jest.fn(() => ({ remove: jest.fn() })),
 };
 
+export const Alert = {
+  alert: jest.fn(),
+};
+
 export const AppState = {
   currentState: 'active',
   addEventListener: jest.fn(() => ({ remove: jest.fn() })),

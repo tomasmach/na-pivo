@@ -3,6 +3,18 @@
  * Structured by screen/component so adding a second locale later is trivial.
  */
 
+import { czechPlural } from './plural';
+
+/** Format a serving volume in ml as a Czech litre string with a decimal comma:
+ *  500 → "0,5 l", 300 → "0,3 l", 1000 → "1 l", 330 → "0,33 l". */
+function formatVolume(ml: number): string {
+  const litres = ml / 1000;
+  const text = Number.isInteger(litres)
+    ? String(litres)
+    : litres.toFixed(litres * 100 % 10 === 0 ? 1 : 2).replace(/0+$/, '').replace(/\.$/, '');
+  return `${text.replace('.', ',')} l`;
+}
+
 export const cs = {
   appName: 'Na pivo',
 
@@ -176,6 +188,79 @@ export const cs = {
     successClose: 'Zavřít',
   },
 
+  tabs: {
+    compass: 'Kompas',
+    counter: 'Počítadlo',
+  },
+
+  counter: {
+    // — Permission gate —
+    permTitle: 'Potřebujeme tvoji polohu',
+    permBody:
+      'Ať poznáme hospodu, ve které sedíš, a začneš počítat. Tvoje poloha nikdy neopouští telefon.',
+    permCta: 'Povolit polohu',
+    permOpenSettings: 'Otevřít Nastavení',
+
+    // — Detecting / empty —
+    detecting: 'Hledáme, kde sedíš…',
+    noPubTitle: 'Žádná hospoda nablízku',
+    noPubBody: 'Nenašli jsme hospodu ve tvém okolí. Zkus to znovu.',
+    retry: 'Zkusit znovu',
+
+    // — Active header —
+    changePub: 'Změnit',
+    pickerTitle: 'Kde sedíš?',
+
+    // — Hero —
+    totalSpent: (price: string) => `Utraceno ${price}`,
+    heroEmptyTitle: 'Ťukni na pivo a začni počítat',
+    lastDrinkJustNow: 'Poslední pivo před chvilkou',
+    lastDrinkMinutesAgo: (minutes: number) =>
+      `Poslední pivo před ${minutes} ${czechPlural(minutes, {
+        one: 'minutou',
+        few: 'minutami',
+        many: 'minutami',
+      })}`,
+    rapidDrinkTitle: 'Už sis pivo přidal',
+    rapidDrinkBody: (lastDrinkText: string) =>
+      `${lastDrinkText}. Fakt chceš přidat další?`,
+    rapidDrinkConfirm: 'Přidat další',
+
+    // — Menu —
+    menuHeader: 'Co tu mají',
+    addBeer: 'Přidat pivo',
+    perBeerCount: (n: number) => `${n}×`,
+    // Empty-menu hero — the community-sourcing nudge.
+    emptyMenuTitle: 'Tady ještě nikdo nepřidal pivo',
+    emptyMenuBody: 'Doplň, co mají na čepu.\nPomůžeš ostatním.',
+    emptyMenuCta: 'Přidat první pivo',
+
+    // — Undo —
+    undoLast: 'Vrátit poslední',
+
+    // — Beer / price modal —
+    priceModalTitle: 'Kolik stojí?',
+    addModalTitle: 'Jaké pivo si dáváš?',
+    editModalTitle: 'Uprav cenu',
+    beerNamePlaceholder: 'Název piva, např. Pilsner Urquell 12°',
+    pricePlaceholder: 'Cena (Kč)',
+    priceLabel: 'Cena za',
+    volumeSmall: '0,3 l',
+    volumeLarge: '0,5 l',
+    volumeOther: 'Jiné',
+    confirmCount: 'Připsat pivo',
+    confirmSave: 'Uložit',
+    cancel: 'Zrušit',
+
+    // — Formatting helpers —
+    price: (czk: number) => `${czk} Kč`,
+    // Standalone currency unit shown next to the price input.
+    currencySuffix: 'Kč',
+    // "62 Kč · 0,5 l" or just "62 Kč" when no volume.
+    beerMeta: (czk: number, ml?: number) =>
+      ml ? `${czk} Kč · ${formatVolume(ml)}` : `${czk} Kč`,
+  },
+
   whatsNew: {
     eyebrow: 'AKTUALIZACE',
     defaultTitle: 'Co je nového',
@@ -228,6 +313,28 @@ export const cs = {
     backButton: 'Zpět',
     modeNearestButton: 'Mód: Nejbližší hospoda',
     modeSurpriseButton: 'Mód: Překvap mě',
+
+    // — Tabs —
+    tabCompass: 'Záložka Kompas',
+    tabCounter: 'Záložka Počítadlo',
+
+    // — Counter —
+    counterChangePub: 'Změnit hospodu',
+    counterCloseModal: 'Zavřít',
+    counterPickPub: (name: string, distance: string) =>
+      `${name}, ${distance}. Ťukni pro výběr.`,
+    counterCountBeer: (name: string, price: string) =>
+      `Připsat ${name} za ${price}`,
+    counterCountBeerNoPrice: (name: string) =>
+      `Připsat ${name}, nejdřív zadej cenu`,
+    counterEditBeer: (name: string) => `Upravit cenu u ${name}`,
+    counterRemoveBeer: (name: string) => `Odebrat poslední ${name}`,
+    counterAddBeer: 'Přidat nové pivo',
+    counterUndo: 'Vrátit poslední připsané pivo',
+    counterTotal: (count: string, price: string) =>
+      `Napočítáno ${count}, utraceno ${price}`,
+    counterRequestLocation: 'Povolit polohu',
+    counterRetry: 'Hledat hospodu znovu',
   },
 } as const;
 

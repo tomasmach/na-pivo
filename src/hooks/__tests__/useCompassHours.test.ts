@@ -24,6 +24,18 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
 
+// The compass focus-gates its sensors via expo-router's useFocusEffect; under
+// test the screen is treated as focused, so the effect runs on mount (and its
+// cleanup on unmount) exactly like a focused tab.
+jest.mock('expo-router', () => {
+  const { useEffect } = require('react');
+  return {
+    useFocusEffect: (cb: () => void | (() => void)) => {
+      useEffect(() => cb(), [cb]);
+    },
+  };
+});
+
 jest.mock('@/data/pubs', () => ({
   findNearestPub: jest.fn(),
   findRandomPubInRadius: jest.fn(),

@@ -15,6 +15,8 @@ const LOCATION_REASON =
 const MAPY_USER_AGENT = 'napivo-ios/1.0';
 const REQUIRED_EAS_ENV = ['EXPO_PUBLIC_MAPY_API_KEY'] as const;
 const RCT_HTTP_HANDLER_IMPORT = '#import <React/RCTHTTPRequestHandler.h>';
+const LOCAL_BACKEND_MODES = new Set(['local', 'auto']);
+const SPLASH_BACKGROUND = '#1f1007';
 
 function assertRequiredEasEnv(): void {
   if (process.env.EAS_BUILD !== 'true') return;
@@ -23,6 +25,12 @@ function assertRequiredEasEnv(): void {
   if (missing.length > 0) {
     throw new Error(`Missing required EAS env: ${missing.join(', ')}`);
   }
+}
+
+function usesLocalBackend(): boolean {
+  const mode = (process.env.EXPO_PUBLIC_BACKEND_MODE ?? '').trim().toLowerCase();
+  const backendUrl = (process.env.EXPO_PUBLIC_BACKEND_URL ?? '').trim().toLowerCase();
+  return LOCAL_BACKEND_MODES.has(mode) || LOCAL_BACKEND_MODES.has(backendUrl);
 }
 
 const withoutBackgroundAudio: ConfigPlugin = (config) =>
@@ -108,6 +116,13 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         NSLocationWhenInUseUsageDescription: LOCATION_REASON,
         NSMotionUsageDescription: 'Pomocí senzorů otáčíme šipku, když se otočíš.',
         ITSAppUsesNonExemptEncryption: false,
+        ...(usesLocalBackend()
+          ? {
+              NSAppTransportSecurity: {
+                NSAllowsLocalNetworking: true,
+              },
+            }
+          : {}),
       },
     },
     android: {
@@ -138,7 +153,15 @@ export default ({ config }: ConfigContext): ExpoConfig => {
           recordAudioAndroid: false,
         },
       ],
-      'expo-splash-screen',
+      [
+        'expo-splash-screen',
+        {
+          image: './assets/images/icon.png',
+          imageWidth: 140,
+          resizeMode: 'contain',
+          backgroundColor: SPLASH_BACKGROUND,
+        },
+      ],
       'expo-secure-store',
     ],
     experiments: {

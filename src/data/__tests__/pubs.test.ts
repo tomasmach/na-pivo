@@ -4,6 +4,7 @@ import {
   _reset,
   fetchPubsNear,
   findNearestPub,
+  findNearbyPubs,
   findRandomPubInRadius,
   getPubById,
   isLoaded,
@@ -291,6 +292,35 @@ describe("findNearestPub", () => {
     });
     // Only Brno (~200 km) and Bratislava (~330 km) remain; within 100 km neither should appear
     expect(pub).toBeNull();
+  });
+});
+
+describe("findNearbyPubs", () => {
+  it("returns the nearest pubs sorted nearest-first with distances", () => {
+    const result = findNearbyPubs({ lat: 50.0822, lng: 14.4127, limit: 3, maxKm: 5 });
+    // Three Prague pubs within 5 km, nearest first (U Fleků at the query point).
+    expect(result.length).toBe(3);
+    expect(result[0].pub.id).toBe("osm:1");
+    expect(result[0].distanceMeters).toBeLessThan(result[1].distanceMeters);
+    expect(result[0].distanceMeters).toBeGreaterThanOrEqual(0);
+  });
+
+  it("respects the limit", () => {
+    const result = findNearbyPubs({ lat: 50.0822, lng: 14.4127, limit: 1 });
+    expect(result).toHaveLength(1);
+    expect(result[0].pub.id).toBe("osm:1");
+  });
+
+  it("respects maxKm", () => {
+    // Only the 3 Prague pubs are within 5 km of the centre.
+    const result = findNearbyPubs({ lat: 50.0822, lng: 14.4127, limit: 10, maxKm: 5 });
+    expect(result).toHaveLength(3);
+    expect(result.every((r) => r.distanceMeters <= 5000)).toBe(true);
+  });
+
+  it("returns [] when nothing is loaded", () => {
+    _reset();
+    expect(findNearbyPubs({ lat: 50.0822, lng: 14.4127, limit: 5 })).toEqual([]);
   });
 });
 

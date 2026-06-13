@@ -31,6 +31,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
+import { getBackendEndpoint } from './backendConfig';
+
 export interface AccountSession {
   /** Stable client-generated device identifier (UUID v4). */
   deviceId: string;
@@ -66,15 +68,6 @@ interface CachedAccount {
   deviceId: string;
   accountId: string;
   token: string;
-}
-
-/** Read the backend base URL at call time (Expo inlines EXPO_PUBLIC_* at build). */
-function getBackendUrl(): string {
-  return (process.env.EXPO_PUBLIC_BACKEND_URL ?? '').trim();
-}
-
-function trimTrailingSlash(url: string): string {
-  return url.endsWith('/') ? url.slice(0, -1) : url;
 }
 
 // Precomputed 00..ff byte→hex table for the getRandomValues UUID path.
@@ -195,8 +188,8 @@ export async function ensureAccount(signal?: AbortSignal): Promise<AccountSessio
     return { deviceId, accountId: cached.accountId, token: cached.token };
   }
 
-  const baseUrl = getBackendUrl();
-  if (!baseUrl || signal?.aborted) {
+  const endpoint = getBackendEndpoint('/v1/account');
+  if (!endpoint || signal?.aborted) {
     // Dormant (no backend) or cancelled, and no matching cached account.
     return null;
   }
@@ -213,7 +206,7 @@ export async function ensureAccount(signal?: AbortSignal): Promise<AccountSessio
   }
 
   try {
-    const resp = await fetch(`${trimTrailingSlash(baseUrl)}/v1/account`, {
+    const resp = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ device_id: deviceId }),

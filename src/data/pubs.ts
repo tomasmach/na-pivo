@@ -369,6 +369,30 @@ export function findRandomPubInRadius(opts: {
 }
 
 /**
+ * Returns the nearest `limit` pubs to (lat, lng), each with its distance in
+ * meters, sorted nearest-first. Used by the beer counter to build a "where are
+ * you?" picker and to auto-detect the pub the user is sitting in. Respects
+ * maxKm when provided; returns [] when nothing is loaded / in range.
+ */
+export function findNearbyPubs(opts: {
+  lat: number;
+  lng: number;
+  limit: number;
+  maxKm?: number;
+}): { pub: Pub; distanceMeters: number }[] {
+  if (!_loaded || !_index || _pubs.length === 0) return [];
+
+  const { lat, lng, limit, maxKm } = opts;
+  const maxDistance = Number.isFinite(maxKm) ? maxKm : undefined;
+  const results = geokdbush.around(_index, lng, lat, limit, maxDistance);
+  return results.map((i) => ({
+    pub: _pubs[i],
+    // geokdbush returns results sorted by distance; recompute meters for the UI.
+    distanceMeters: haversineKm(lat, lng, _pubs[i].lat, _pubs[i].lng) * 1000,
+  }));
+}
+
+/**
  * Returns a pub by its id string, or null if not found.
  */
 export function getPubById(id: string): Pub | null {

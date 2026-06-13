@@ -3,9 +3,9 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import * as Haptics from 'expo-haptics';
 import { createAudioPlayer } from 'expo-audio';
 import type { AudioPlayer } from 'expo-audio';
+import { fireSuccessHaptic } from '@/utils/haptics';
 
 export interface UseArrivalDetectorOptions {
   distanceMeters: number | null;
@@ -75,15 +75,12 @@ export function useArrivalDetector({
     setArrived(true);
 
     if (hapticEnabled) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {
-        // ignore haptic errors on simulator / unsupported devices
-      });
+      fireSuccessHaptic();
     }
 
     if (soundEnabled) {
       // Lazily create the player and cache it.
       if (!audioPlayerRef.current) {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
         audioPlayerRef.current = createAudioPlayer(require('../../assets/sounds/cink.mp3'));
       }
       audioPlayerRef.current.play();

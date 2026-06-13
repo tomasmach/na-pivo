@@ -3,6 +3,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import {
   useDerivedValue,
   useSharedValue,
@@ -109,9 +110,24 @@ export function useCompass(): UseCompassResult {
   // — Permission state —
   const [permissionState, setPermissionState] = useState<PermissionState>('undetermined');
 
+  // — Tab focus gate —
+  // The compass lives in a persistent <Tabs> navigator, so its screen stays
+  // MOUNTED even while the user is on the Počítadlo (counter) tab. Without
+  // gating, the GPS watcher (1s interval) and the magnetometer would keep
+  // running invisibly for an off-screen tab — duplicating the counter's own
+  // GPS watcher and draining the battery. Track focus and pause both sensors on
+  // blur, mirroring useNearbyPub.
+  const [focused, setFocused] = useState(false);
+  useFocusEffect(
+    useCallback(() => {
+      setFocused(true);
+      return () => setFocused(false);
+    }, []),
+  );
+
   // — Position / heading —
-  const { position } = useDevicePosition(permissionState === 'granted');
-  const { smoothedHeading, accuracyDeg, hasMagnetometer } = useDeviceHeading();
+  const { position } = useDevicePosition(focused && permissionState === 'granted');
+  const { smoothedHeading, accuracyDeg, hasMagnetometer } = useDeviceHeading(focused);
 
   // — Pub data loading state —
   const [pubsLoaded, setPubsLoaded] = useState(() => isLoaded());

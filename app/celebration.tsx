@@ -16,12 +16,12 @@ import Animated, {
   withTiming,
   useReducedMotion,
 } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
 
 import { Colors } from '@/theme/colors';
 import { Fonts } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
+import { fireSuccessHaptic } from '@/utils/haptics';
 import { usePubStore } from '@/stores/pubStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { openPubInMaps } from '@/utils/maps';
@@ -106,7 +106,7 @@ export default function CelebrationScreen() {
   useEffect(() => {
     if (hapticEnabled && !hapticFiredRef.current) {
       hapticFiredRef.current = true;
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+      fireSuccessHaptic();
     }
   }, [hapticEnabled]);
 

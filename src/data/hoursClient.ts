@@ -13,6 +13,7 @@
  */
 
 import type { HoursStatus, Pub, VenueKind } from './pubs';
+import { getBackendEndpoint } from './backendConfig';
 import type { CommunityBeer, WeeklyHours } from './communityHours';
 import { beerFromWire, isWeeklyHours } from './communityHours';
 
@@ -73,20 +74,6 @@ const VALID_BACKEND_STATUSES: ReadonlySet<string> = new Set([
   'pending',
   'error',
 ]);
-
-/**
- * Read the backend base URL at call time (still statically referenced as
- * process.env.EXPO_PUBLIC_BACKEND_URL so Expo/Metro inlines it at build).
- * Empty/unset → feature dormant.
- */
-function getBackendUrl(): string {
-  return (process.env.EXPO_PUBLIC_BACKEND_URL ?? '').trim();
-}
-
-/** Strip a single trailing slash so we can safely append the path. */
-function trimTrailingSlash(url: string): string {
-  return url.endsWith('/') ? url.slice(0, -1) : url;
-}
 
 function normalizeStatus(raw: string | undefined): HoursStatus {
   if (raw && VALID_BACKEND_STATUSES.has(raw)) {
@@ -164,9 +151,9 @@ export async function fetchPubHours(
     return out;
   }
 
-  const baseUrl = getBackendUrl();
+  const endpoint = getBackendEndpoint('/v1/pub-hours');
   // Feature dormant — no backend configured.
-  if (!baseUrl) {
+  if (!endpoint) {
     return out;
   }
 
@@ -199,7 +186,7 @@ export async function fetchPubHours(
   }
 
   try {
-    const resp = await fetch(`${trimTrailingSlash(baseUrl)}/v1/pub-hours`, {
+    const resp = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body,

@@ -14,15 +14,19 @@
   },
   "scripts": {
     "start": "expo start",
+    "start:local": "EXPO_PUBLIC_BACKEND_MODE=local EXPO_PUBLIC_BACKEND_HOST=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo localhost) expo start --lan",
     "postinstall": "node scripts/patch-expo-location-heading.js",
     "ios": "expo run:ios",
+    "ios:local": "EXPO_PUBLIC_BACKEND_MODE=local EXPO_PUBLIC_BACKEND_HOST=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo localhost) expo run:ios",
     "android": "expo run:android",
+    "android:local": "EXPO_PUBLIC_BACKEND_MODE=local EXPO_PUBLIC_BACKEND_HOST=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo localhost) expo run:android",
     "typecheck": "tsc --noEmit",
     "test": "jest --passWithNoTests",
     "lint": "expo lint"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-navigation/bottom-tabs": "^7.18.0",
     "expo": "^56.0.3",
     "expo-asset": "~56.0.13",
     "expo-audio": "~56.0.9",

@@ -13,6 +13,7 @@
  */
 
 import { ensureAccount } from './account';
+import { getBackendEndpoint } from './backendConfig';
 import type { CommunityBeer, WeeklyHours, WireBeer } from './communityHours';
 import { DAY_KEYS, beerFromWire, beerToWire } from './communityHours';
 
@@ -59,14 +60,6 @@ interface WireResponse {
 }
 
 const REQUEST_TIMEOUT_MS = 8000;
-
-function getBackendUrl(): string {
-  return (process.env.EXPO_PUBLIC_BACKEND_URL ?? '').trim();
-}
-
-function trimTrailingSlash(url: string): string {
-  return url.endsWith('/') ? url.slice(0, -1) : url;
-}
 
 function chainAbortSignal(signal?: AbortSignal): {
   signal: AbortSignal;
@@ -124,15 +117,15 @@ export async function submitPubCommunity(
 ): Promise<CommunityResponse | null> {
   if (signal?.aborted) return null;
 
-  const baseUrl = getBackendUrl();
-  if (!baseUrl) return null;
+  const endpoint = getBackendEndpoint('/v1/pub-community');
+  if (!endpoint) return null;
 
   const session = await ensureAccount(signal);
   if (!session || signal?.aborted) return null;
 
   const abort = chainAbortSignal(signal);
   try {
-    const resp = await fetch(`${trimTrailingSlash(baseUrl)}/v1/pub-community`, {
+    const resp = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

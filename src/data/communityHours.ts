@@ -54,6 +54,61 @@ export function beerFromWire(beer: WireBeer): CommunityBeer {
   return app;
 }
 
+/** The most beers a community menu may hold — mirrors the backend cap. */
+export const MAX_MENU_BEERS = 12;
+
+/** Normalize a beer name for identity comparison: trim + lowercase (casefold). */
+export function normalizeBeerName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+/**
+ * Merge one drunk/added beer into a community menu, returning a NEW list.
+ *
+ * Mirrors the backend merge rule exactly so the optimistic local menu matches
+ * what the server will store:
+ *  - find an existing beer with the same normalized name AND same volumeMl →
+ *    update its priceCzk to the incoming price (canonicalized copy);
+ *  - else append the beer when the menu has room (< MAX_MENU_BEERS);
+ *  - else (menu full) leave the list unchanged.
+ *
+ * Two beers match only when BOTH name and volume agree, so "Plzeň 0,5" and
+ * "Plzeň 0,3" stay separate menu rows (different prices). A missing volume on
+ * either side is treated as its own bucket (undefined === undefined matches).
+ */
+export function mergeBeerIntoMenu(
+  menu: readonly CommunityBeer[],
+  beer: CommunityBeer,
+): CommunityBeer[] {
+  const incomingName = normalizeBeerName(beer.name);
+  const incomingVolume = beer.volumeMl;
+
+  let matched = false;
+  const next = menu.map((existing) => {
+    if (
+      !matched &&
+      normalizeBeerName(existing.name) === incomingName &&
+      existing.volumeMl === incomingVolume
+    ) {
+      matched = true;
+      const merged: CommunityBeer = { name: existing.name };
+      if (typeof beer.priceCzk === 'number') merged.priceCzk = beer.priceCzk;
+      if (typeof existing.volumeMl === 'number') merged.volumeMl = existing.volumeMl;
+      return merged;
+    }
+    return existing;
+  });
+
+  if (matched) return next;
+  if (next.length >= MAX_MENU_BEERS) return next;
+
+  const appended: CommunityBeer = { name: beer.name.trim() };
+  if (typeof beer.priceCzk === 'number') appended.priceCzk = beer.priceCzk;
+  if (typeof beer.volumeMl === 'number') appended.volumeMl = beer.volumeMl;
+  next.push(appended);
+  return next;
+}
+
 /** A single opening interval as [start, end] in `HH:MM` 24h local time. */
 export type HoursInterval = [string, string];
 
