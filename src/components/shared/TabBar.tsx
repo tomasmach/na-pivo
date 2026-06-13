@@ -10,13 +10,13 @@
 import React, { memo } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
 
 import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea } from '@/theme/layout';
 import { amberGlow } from '@/theme/shadows';
 import { CompassIcon, BeerIcon } from '@/components/shared/IconGlyph';
+import { fireLightImpactHaptic } from '@/utils/haptics';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { cs } from '@/i18n/cs';
 
@@ -99,7 +99,7 @@ export function TabBar({ state, navigation }: TabBarProps) {
 
         const onPress = () => {
           if (hapticEnabled) {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+            fireLightImpactHaptic();
           }
           const event = navigation.emit({
             type: 'tabPress',

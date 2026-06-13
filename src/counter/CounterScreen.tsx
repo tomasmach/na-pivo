@@ -25,7 +25,6 @@ import Animated, {
   withSpring,
   useReducedMotion,
 } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
 
 import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -49,6 +48,7 @@ import { mergeBeerIntoMenu, type CommunityBeer } from '@/data/communityHours';
 import { fetchPubHours } from '@/data/hoursClient';
 import { buildDrinkEntry } from '@/data/drinksClient';
 import { enqueueDrink, flushDrinksQueue, removeQueuedDrink } from '@/data/drinksQueue';
+import { fireSuccessHaptic } from '@/utils/haptics';
 import { useCommunityStore } from '@/stores/communityStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
@@ -380,7 +380,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
       void flushDrinksQueue();
 
       if (hapticEnabled) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+        fireSuccessHaptic();
       }
     },
     [addDrink, cell, hapticEnabled, markDrinkSynced, menu, pub, setOverride],
