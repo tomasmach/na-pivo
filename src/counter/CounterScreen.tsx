@@ -34,6 +34,7 @@ import { cs } from '@/i18n/cs';
 import { beerCountLabel } from '@/i18n/plural';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { BeerBubbles } from '@/components/celebration/BeerBubbles';
+import { SoftGlow } from '@/components/celebration/SoftGlow';
 import {
   BeerIcon,
   MapPinIcon,
@@ -609,9 +610,12 @@ function Hero({
       accessibilityLabel={cs.a11y.counterTotal(beerCountLabel(count), cs.counter.price(totalCzk))}
     >
       <View style={styles.heroMetricFrame}>
+        <View style={styles.heroGlowBlob}>
+          <SoftGlow size={300} color={Colors.glow} opacity={0.38} />
+        </View>
         {!reducedMotion && (
           <View style={styles.heroBubbles}>
-            <BeerBubbles width={260} height={178} bubbleCount={16} />
+            <BeerBubbles width={292} height={260} bubbleCount={18} overflowVisible />
           </View>
         )}
         <View style={[styles.heroCountGlow, amberGlowStrong(28)]}>
@@ -757,18 +761,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
   },
   heroMetricFrame: {
-    width: 280,
-    minHeight: 142,
+    width: 310,
+    minHeight: 164,
     alignItems: 'center',
     justifyContent: 'flex-end',
     overflow: 'visible',
   },
+  heroGlowBlob: {
+    position: 'absolute',
+    bottom: -156,
+    width: 300,
+    height: 300,
+  },
   heroBubbles: {
     position: 'absolute',
-    left: 10,
-    bottom: -30,
-    width: 260,
-    height: 178,
+    left: 9,
+    bottom: -70,
+    width: 292,
+    height: 260,
     overflow: 'visible',
   },
   heroCountGlow: {

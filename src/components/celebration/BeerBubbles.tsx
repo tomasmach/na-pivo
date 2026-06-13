@@ -17,6 +17,7 @@ interface BeerBubblesProps {
   width: number;
   height: number;
   bubbleCount?: number;
+  overflowVisible?: boolean;
 }
 
 type BubbleKind = 'ring' | 'sparkle';
@@ -159,12 +160,20 @@ export const BeerBubbles = memo(function BeerBubbles({
   width,
   height,
   bubbleCount = 28,
+  overflowVisible = false,
 }: BeerBubblesProps) {
   const reducedMotion = useReducedMotion();
   const bubbles = buildBubbles(width, bubbleCount);
 
   return (
-    <View style={[styles.container, { width, height }]} pointerEvents="none">
+    <View
+      style={[
+        styles.container,
+        { width, height },
+        overflowVisible && styles.containerOverflowVisible,
+      ]}
+      pointerEvents="none"
+    >
       {bubbles.map((config, i) => (
         <Bubble
           key={i}
@@ -183,6 +192,9 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     overflow: 'hidden',
+  },
+  containerOverflowVisible: {
+    overflow: 'visible',
   },
   bubble: {
     position: 'absolute',
