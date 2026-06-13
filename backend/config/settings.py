@@ -165,8 +165,9 @@ COMMUNITY_THROTTLE_RATE: str = os.environ.get("COMMUNITY_THROTTLE_RATE", "30/min
 DRINKS_THROTTLE_RATE: str = os.environ.get("DRINKS_THROTTLE_RATE", "60/min")
 
 # Per-IP rate limit for the unauthenticated Mapy.cz "pubs near" proxy
-# (GET /v1/pubs/near). The result is shared-cached per geohash-5 cell, so the
-# legitimate once-per-search call is cheap; this blunts scripted enumeration.
+# (GET /v1/pubs/near). The result is shared-cached per geohash-6 cell, so the
+# legitimate once-per-search call is cheap while staying local enough for dense
+# city areas; this blunts scripted enumeration.
 # Format: DRF throttle rate string.
 PUBS_NEAR_THROTTLE_RATE: str = os.environ.get("PUBS_NEAR_THROTTLE_RATE", "60/min")
 
@@ -248,7 +249,7 @@ FIRMY_DAILY_CAP: int = int(os.environ.get("FIRMY_DAILY_CAP", "2000"))
 
 # Mapy.cz API key for the server-side /v1/suggest proxy (GET /v1/pubs/near).
 # The mobile app no longer calls Mapy.cz directly (it exhausted the shared
-# credit); the server fetches once per geohash-5 cell and caches the result.
+# credit); the server fetches once per geohash-6 cell and caches the result.
 # REQUIRED for the endpoint to work: if unset, /v1/pubs/near returns 503 and the
 # client falls back to calling Mapy.cz directly.
 MAPY_API_KEY: str = os.environ.get("MAPY_API_KEY", "")

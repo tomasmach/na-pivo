@@ -16,8 +16,9 @@ verify_match        — name+geo confidence scoring; see matcher.py
 classify_venue      — classify draft-beer venue from categories/tags; see venue.py
 names_match         — name-only gate for cache-read collision guard; see matcher.py
 geohash8            — canonical PubHours cache-key helper (precision 8); see matcher.py
-geohash5            — coarse cell helper for the Mapy 'pubs near' cache; see matcher.py
-geohash5_center     — (lat, lng) centre of a geohash-5 cell; see matcher.py
+geohash6            — cache-cell helper for the Mapy 'pubs near' cache; see matcher.py
+geohash5            — legacy coarse cell helper; see matcher.py
+geohash5_center     — legacy (lat, lng) centre of a geohash-5 cell; see matcher.py
 TransientFetchError — raised by FirmyHoursSource on a retryable network/proxy error
 MapySuggestSource   — server-side Mapy.cz /v1/suggest 'pubs near' proxy; see mapy.py
 MapyDailyCapExceededError — raised by MapySuggestSource when the daily cap is hit
@@ -35,6 +36,7 @@ from .mapy import (  # noqa: F401
 from .matcher import (  # noqa: F401
     geohash5,
     geohash5_center,
+    geohash6,
     geohash8,
     names_match,
     verify_match,
@@ -57,6 +59,7 @@ __all__ = [
     "verify_match",
     "names_match",
     "geohash8",
+    "geohash6",
     "geohash5",
     "geohash5_center",
     "classify_venue",

@@ -178,9 +178,16 @@ def _trim_item(item: dict) -> dict | None:
 
 
 def _dedupe_key(item: dict) -> str:
-    """(lat, lon) rounded to 5 decimals — same key the client uses."""
+    """Name + (lat, lon) rounded to 5 decimals.
+
+    Mapy can return distinct businesses at the same mapped point (for example a
+    restaurant and the beer venue inside/next to it). Coordinate-only dedupe
+    silently dropped one of them before the client could choose the better pub
+    candidate.
+    """
     pos = item["position"]
-    return f"{round(pos['lat'], 5)},{round(pos['lon'], 5)}"
+    name = (item.get("name") or "").strip().casefold()
+    return f"{round(pos['lat'], 5)},{round(pos['lon'], 5)}|{name}"
 
 
 # ---------------------------------------------------------------------------

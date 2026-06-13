@@ -683,11 +683,12 @@ class PubSearchCache(models.Model):
     The mobile app used to call Mapy.cz /v1/suggest directly from every device,
     which exhausted the shared API credit. The server now proxies that search
     (GET /v1/pubs/near) and caches the trimmed suggest items here so every user
-    in the same coarse cell shares ONE upstream fetch.
+    in the same small cache cell shares ONE upstream fetch.
 
     Identity is (cache_key, radius_bucket):
-      * cache_key is a geohash at precision 5 (~4.9 km cell). The search runs
-        from the CENTRE of the cell, so all users in the cell collapse to one row.
+      * cache_key is a geohash at precision 6 (~1.2 km × 0.6 km cell). The
+        upstream search still runs from the user's actual request coordinate, so
+        dense-city edge cases do not inherit results from a far-away cell centre.
       * radius_bucket is the smallest of [5, 15, 50, 100] km that covers the
         requested radius — the same widening steps the search itself uses, so a
         25 km and a 40 km request in the same cell share the 50 km row.
@@ -699,7 +700,7 @@ class PubSearchCache(models.Model):
     cache_key = models.CharField(
         max_length=12,
         db_index=True,
-        help_text="Geohash-5 of the search centre — ~4.9 km cell.",
+        help_text="Geohash-6 of the request coordinate — ~1.2 km × 0.6 km cell.",
     )
     radius_bucket = models.PositiveIntegerField(
         help_text="Smallest covering radius bucket in km (one of 5, 15, 50, 100).",

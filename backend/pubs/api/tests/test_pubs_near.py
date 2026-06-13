@@ -20,15 +20,14 @@ from pubs.enrichment import (
     MapyAllQueriesFailedError,
     MapyDailyCapExceededError,
     MapySuggestResult,
-    geohash5,
-    geohash5_center,
+    geohash6,
 )
 from pubs.models import PubSearchCache
 
 # Prague centre-ish coordinates.
 _LAT = 50.0812
 _LNG = 14.4182
-_KEY = geohash5(_LAT, _LNG)
+_KEY = geohash6(_LAT, _LNG)
 
 _ITEM = {
     "name": "Hospoda U Testu",
@@ -113,9 +112,9 @@ def test_cache_miss_fetches_and_persists(client):
     assert body["items"] == [_ITEM]
     assert "fetched_at" in body and body["fetched_at"]
 
-    # The search ran from the CELL CENTRE with the radius bucket (25 → 50).
-    center_lat, center_lng = geohash5_center(_KEY)
-    instance.search_near.assert_called_once_with(center_lat, center_lng, 50)
+    # The search runs from the user's actual coordinate with the radius bucket
+    # (25 → 50). This keeps dense-city results local even near cache-cell edges.
+    instance.search_near.assert_called_once_with(_LAT, _LNG, 50)
 
     # Row persisted on the (cache_key, radius_bucket=50) key.
     row = PubSearchCache.objects.get(cache_key=_KEY, radius_bucket=50)
@@ -227,7 +226,7 @@ def test_over_cap_radius_clamped_to_100(client):
 
 
 # ---------------------------------------------------------------------------
-# Cell quantization — two nearby coords share one row
+# Cell quantization — very nearby coords share one row
 # ---------------------------------------------------------------------------
 
 
@@ -238,9 +237,9 @@ def test_two_nearby_coords_share_one_cache_row(client):
     with patch("pubs.api.views.MapySuggestSource", factory):
         # First request populates the cell.
         client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
-        # A coord ~100 m away falls in the same geohash-5 cell → cache HIT.
+        # A coord ~70 m away falls in the same geohash-6 cell → cache HIT.
         nearby_lat, nearby_lng = _LAT + 0.0005, _LNG + 0.0005
-        assert geohash5(nearby_lat, nearby_lng) == _KEY
+        assert geohash6(nearby_lat, nearby_lng) == _KEY
         resp2 = client.get(
             "/v1/pubs/near", data={"lat": nearby_lat, "lng": nearby_lng, "radius_km": 25}
         )
