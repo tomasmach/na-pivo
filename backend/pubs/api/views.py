@@ -3,11 +3,13 @@ pubs.api.views — DRF views for the pub-hours API.
 
 Endpoints
 ---------
-POST /v1/pub-hours   → PubHoursView
-POST /v1/pub-reports → PubReportView
-GET  /v1/pub-reports/blocked → BlockedPubReportsView
-GET  /v1/release-notes → ReleaseNotesView
-GET  /v1/health      → HealthView
+POST   /v1/pub-hours   → PubHoursView
+POST   /v1/pub-reports → PubReportView
+GET    /v1/pub-reports/blocked → BlockedPubReportsView
+POST   /v1/drinks      → DrinksView
+DELETE /v1/drinks/<client_id> → DrinksView
+GET    /v1/release-notes → ReleaseNotesView
+GET    /v1/health      → HealthView
 """
 
 from __future__ import annotations
@@ -343,7 +345,8 @@ def _merge_drink_into_menu(beers: list[dict], beer: dict) -> bool:
 
 class DrinksView(APIView):
     """
-    POST /v1/drinks
+    POST   /v1/drinks
+    DELETE /v1/drinks/<client_id>
 
     Log one beer the user drank via the in-app beer counter. Every drink carries
     a beer name + price; the server records the per-user DrinkLog AND merges the
@@ -358,6 +361,12 @@ class DrinksView(APIView):
     The menu merge NEVER touches PubCommunityData.hours and is guarded by
     names_match so a different business in the same ~38 m geohash cell does not
     inherit the menu — in that case the drink is logged but the merge is skipped.
+
+    DELETE removes the per-user DrinkLog row for (account, client_id) — used when
+    the in-app minus button decrements a beer that was already delivered. It is
+    idempotent (a missing row is a success with ``deleted: false``, so the
+    client's offline delete queue can retry safely) and NEVER touches
+    PubCommunityData: the contributed price was real community data and stays.
     """
 
     authentication_classes = [AccountTokenAuthentication]
@@ -432,6 +441,31 @@ class DrinksView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+    def delete(self, request: Request, client_id) -> Response:
+        # Idempotent delete of the per-user drink. The account filter means a
+        # client_id belonging to another account (or never logged, or already
+        # deleted) simply matches nothing → deleted: false, never a hard 404,
+        # so the client's offline delete queue can retry safely. The community
+        # menu (PubCommunityData) is deliberately left untouched — the price was
+        # real community data and stays.
+        try:
+            deleted_count, _ = DrinkLog.objects.filter(
+                account=request.user, client_id=client_id
+            ).delete()
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "drinks: unexpected error deleting drink %r: %s",
+                client_id,
+                exc,
+                exc_info=True,
+            )
+            return Response(
+                {"detail": "Internal server error."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response({"deleted": deleted_count > 0}, status=status.HTTP_200_OK)
 
     @staticmethod
     def _merge_into_community(

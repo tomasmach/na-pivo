@@ -530,3 +530,92 @@ def test_drinks_endpoint_is_throttled(client, monkeypatch):
         **_auth(token),
     )
     assert throttled.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+
+
+# ---------------------------------------------------------------------------
+# DELETE /v1/drinks/<client_id> — per-user drink removal (in-app minus button)
+# ---------------------------------------------------------------------------
+
+_OTHER_DEVICE_ID = "11112222-3333-4444-5555-666677778888"
+
+
+@pytest.mark.django_db
+def test_delete_removes_logged_drink(client):
+    token = _register(client)
+    created = client.post("/v1/drinks", data=_payload(), format="json", **_auth(token))
+    assert created.status_code == status.HTTP_201_CREATED
+    assert DrinkLog.objects.count() == 1
+
+    resp = client.delete(f"/v1/drinks/{_CLIENT_ID}", **_auth(token))
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json() == {"deleted": True}
+    assert DrinkLog.objects.filter(client_id=_CLIENT_ID).count() == 0
+
+
+@pytest.mark.django_db
+def test_delete_unknown_client_id_is_idempotent_success(client):
+    token = _register(client)
+    resp = client.delete(f"/v1/drinks/{_CLIENT_ID}", **_auth(token))
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json() == {"deleted": False}
+
+
+@pytest.mark.django_db
+def test_delete_same_drink_twice_second_is_false(client):
+    token = _register(client)
+    client.post("/v1/drinks", data=_payload(), format="json", **_auth(token))
+
+    first = client.delete(f"/v1/drinks/{_CLIENT_ID}", **_auth(token))
+    assert first.status_code == status.HTTP_200_OK
+    assert first.json() == {"deleted": True}
+
+    second = client.delete(f"/v1/drinks/{_CLIENT_ID}", **_auth(token))
+    assert second.status_code == status.HTTP_200_OK
+    assert second.json() == {"deleted": False}
+
+
+@pytest.mark.django_db
+def test_delete_requires_account_token(client):
+    resp = client.delete(f"/v1/drinks/{_CLIENT_ID}")
+    assert resp.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+@pytest.mark.django_db
+def test_delete_cannot_remove_another_accounts_drink(client):
+    # Account A logs a drink.
+    token_a = _register(client)
+    client.post("/v1/drinks", data=_payload(), format="json", **_auth(token_a))
+    assert DrinkLog.objects.filter(client_id=_CLIENT_ID).count() == 1
+
+    # Account B (different device) tries to delete A's client_id → matches nothing.
+    token_b = _register(client, device_id=_OTHER_DEVICE_ID)
+    resp = client.delete(f"/v1/drinks/{_CLIENT_ID}", **_auth(token_b))
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json() == {"deleted": False}
+
+    # A's drink still exists.
+    assert DrinkLog.objects.filter(
+        account=Account.objects.get(device_id=_DEVICE_ID), client_id=_CLIENT_ID
+    ).count() == 1
+
+
+@pytest.mark.django_db
+def test_delete_does_not_change_community_menu(client):
+    token = _register(client)
+    created = client.post("/v1/drinks", data=_payload(), format="json", **_auth(token))
+    assert created.status_code == status.HTTP_201_CREATED
+
+    # Capture the community menu the drink merged into.
+    row_before = PubCommunityData.objects.get(cache_key=_KEY)
+    beers_before = row_before.beers
+    assert beers_before == [{"name": "Pilsner Urquell", "price_czk": 62, "volume_ml": 500}]
+
+    resp = client.delete(f"/v1/drinks/{_CLIENT_ID}", **_auth(token))
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json() == {"deleted": True}
+
+    # The drink is gone, but the community row + its beers are unchanged.
+    assert DrinkLog.objects.filter(client_id=_CLIENT_ID).count() == 0
+    row_after = PubCommunityData.objects.get(cache_key=_KEY)
+    assert row_after.pk == row_before.pk
+    assert row_after.beers == beers_before
