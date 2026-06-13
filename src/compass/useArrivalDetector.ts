@@ -35,6 +35,10 @@ export function useArrivalDetector({
 
   // Tracks the pubId that has already fired, to prevent re-firing.
   const firedRef = useRef<string | null>(null);
+  // Avoid firing on cold start when the user/app already begins inside the
+  // arrival radius. Arrival is armed only after observing the target outside
+  // the threshold, then fires on the outside -> inside transition.
+  const armedRef = useRef(false);
 
   // Lazily created audio player — cached for the component's lifetime.
   const audioPlayerRef = useRef<AudioPlayer | null>(null);
@@ -45,6 +49,7 @@ export function useArrivalDetector({
     if (targetPubId !== prevPubIdRef.current) {
       prevPubIdRef.current = targetPubId;
       firedRef.current = null;
+      armedRef.current = false;
       setArrived(false);
     }
   }, [targetPubId]);
@@ -61,12 +66,20 @@ export function useArrivalDetector({
   useEffect(() => {
     if (
       distanceMeters === null ||
-      distanceMeters >= thresholdMeters ||
       gpsAccuracyMeters === null ||
       gpsAccuracyMeters >= 30 ||
       targetPubId === null ||
       firedRef.current === targetPubId
     ) {
+      return;
+    }
+
+    if (distanceMeters >= thresholdMeters) {
+      armedRef.current = true;
+      return;
+    }
+
+    if (!armedRef.current) {
       return;
     }
 
