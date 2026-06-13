@@ -2,6 +2,7 @@ from django.contrib import admin
 
 from .models import (
     Account,
+    DrinkLog,
     EnrichTask,
     FeedbackReport,
     PubCommunityData,
@@ -137,6 +138,37 @@ class PubContributionLogAdmin(admin.ModelAdmin):
         "created_at",
     )
     ordering = ("-created_at",)
+
+    def has_add_permission(self, request) -> bool:  # noqa: ARG002
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:  # noqa: ARG002
+        return False
+
+
+@admin.register(DrinkLog)
+class DrinkLogAdmin(admin.ModelAdmin):
+    # Append-only per-user drink history — fully read-only, like the
+    # contribution log.
+    list_display = ("drank_at", "beer_name", "price_czk", "volume_ml", "name", "cache_key", "account")
+    list_filter = ("volume_ml", "drank_at")
+    search_fields = ("beer_name", "name", "cache_key", "city")
+    readonly_fields = (
+        "account",
+        "client_id",
+        "cache_key",
+        "name",
+        "lat",
+        "lng",
+        "city",
+        "external_id",
+        "beer_name",
+        "price_czk",
+        "volume_ml",
+        "drank_at",
+        "created_at",
+    )
+    ordering = ("-drank_at",)
 
     def has_add_permission(self, request) -> bool:  # noqa: ARG002
         return False

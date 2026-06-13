@@ -595,6 +595,87 @@ class PubCommunityData(models.Model):
         return f"PubCommunityData({self.name} [{self.cache_key}])"
 
 
+class DrinkLog(models.Model):
+    """
+    A single beer the user logged via the in-app beer counter.
+
+    The mobile beer counter lets a user at a pub tally each beer they drink.
+    Every counted beer carries a name and price, which the server uses to
+    community-source the pub's beer menu + prices (merged into
+    ``PubCommunityData.beers`` — see ``DrinksView``). This row is the per-user,
+    append-only record of one drink.
+
+    Keyed by (account, client_id): the client generates a UUID per logged drink
+    and re-POSTs it verbatim on offline retries, so the unique constraint lets
+    the endpoint get_or_create the same row instead of duplicating it (and skip
+    repeating the menu merge on replay). ``cache_key`` is the geohash-8 cell of
+    (lat, lng) — computed server-side, matching PubCommunityData / PubHours — so
+    the drink merges into the same per-pub community row.
+    """
+
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name="drinks",
+        help_text="The user who logged this drink.",
+    )
+    client_id = models.UUIDField(
+        help_text="Client-generated UUID; idempotency key for offline retries.",
+    )
+    cache_key = models.CharField(
+        max_length=12,
+        db_index=True,
+        help_text="Geohash-8 of (lat, lng) — ~38 m precision; matches PubCommunityData.cache_key.",
+    )
+    # TextField (not bounded CharField): free text from the client. SQLite (dev /
+    # tests) silently truncates an over-length CharField while Postgres (prod)
+    # raises DataError, so use unbounded TextField and let the serializer enforce
+    # the length bound. Same rationale for city / external_id / beer_name below.
+    name = models.TextField(help_text="Pub name as the client saw it (1..200 chars, enforced by the serializer).")
+    lat = models.FloatField()
+    lng = models.FloatField()
+    city = models.TextField(blank=True, default="", help_text="Optional city hint from the client.")
+    external_id = models.TextField(
+        blank=True,
+        default="",
+        help_text="Client-side provider id, e.g. Mapy.cz item id.",
+    )
+
+    # ---------- the drunk beer ----------
+    beer_name = models.TextField(help_text="Beer name (1..80 chars, enforced by the serializer).")
+    price_czk = models.PositiveSmallIntegerField(
+        help_text="Price paid in CZK (1..1000) — mandatory; this is the community-sourcing hook.",
+    )
+    volume_ml = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text="Glass volume in ml (one of 300/330/400/500/1000) or null if unknown.",
+    )
+
+    # ---------- timestamps ----------
+    drank_at = models.DateTimeField(
+        help_text="When the beer was drunk (client-supplied ISO8601, or server now() if omitted).",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Drink Log"
+        verbose_name_plural = "Drink Log"
+        ordering = ["-drank_at"]
+        indexes = [
+            models.Index(fields=["account", "drank_at"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "client_id"],
+                name="unique_drink_per_account_client_id",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"DrinkLog({self.beer_name} @ {self.name} [{self.cache_key}] — {self.price_czk} Kč)"
+
+
 class PubSearchCache(models.Model):
     """
     Shared, DB-cached result of a Mapy.cz "pubs near" suggest search.

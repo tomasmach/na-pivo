@@ -303,6 +303,62 @@ class PubCommunityRequestSerializer(PubInputSerializer):
         return attrs
 
 
+# ---------------------------------------------------------------------------
+# Drink logging (POST /v1/drinks)
+# ---------------------------------------------------------------------------
+
+
+class DrinkBeerSerializer(CommunityBeerSerializer):
+    """A single drunk beer in a drink-log submission.
+
+    Identical bounds to CommunityBeerSerializer (name 1..80, price 1..1000,
+    volume_ml ∈ {300,330,400,500,1000} or null) except ``price_czk`` is
+    REQUIRED — a logged drink always carries a price, which is the
+    community-sourcing hook that feeds the pub's beer menu.
+    """
+
+    price_czk = serializers.IntegerField(required=True, min_value=1, max_value=1000)
+
+
+class DrinkRequestSerializer(PubInputSerializer):
+    """Request body for POST /v1/drinks.
+
+    Inherits name/lat/lng/city (+ lat/lng bounds) from PubInputSerializer and
+    adds the idempotency key, optional external id, the required ``beer`` (with a
+    mandatory price), and an optional ``drank_at`` (server defaults to now()).
+    """
+
+    client_id = serializers.UUIDField()
+    external_id = serializers.CharField(
+        max_length=128,
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        trim_whitespace=True,
+    )
+    beer = DrinkBeerSerializer()
+    drank_at = serializers.DateTimeField(required=False, allow_null=True)
+
+    def validate_name(self, value: str) -> str:
+        # Pub name bound for drinks is 1..200 (PubInputSerializer caps the field
+        # at 255 via CharField; tighten to the wire contract here).
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Pub name must not be empty.")
+        if len(value) > 200:
+            raise serializers.ValidationError("Pub name must be at most 200 characters.")
+        return value
+
+    def validate_beer(self, value: dict) -> dict:
+        # Canonicalise to all three keys so the merge + stored JSON have a stable
+        # shape, matching CommunityBeerSerializer.to_representation output.
+        return {
+            "name": value["name"],
+            "price_czk": value["price_czk"],
+            "volume_ml": value.get("volume_ml"),
+        }
+
+
 class PubReportBlockedQuerySerializer(serializers.Serializer):
     """Query params for GET /v1/pub-reports/blocked."""
 
