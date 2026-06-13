@@ -100,7 +100,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ...config,
     name: 'Na pivo',
     slug: 'na-pivo',
-    owner: 'tomasmach',
+    owner: 'tomasmachs-organization',
     scheme: 'napivo',
     version: '1.1.2',
     icon: './assets/images/icon.png',
