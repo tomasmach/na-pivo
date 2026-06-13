@@ -232,7 +232,7 @@ export const cs = {
     perBeerCount: (n: number) => `${n}×`,
     // Empty-menu hero — the community-sourcing nudge.
     emptyMenuTitle: 'Tady ještě nikdo nepřidal pivo',
-    emptyMenuBody: 'Buď první, kdo doplní, co tu mají na čepu — pomůžeš všem ostatním.',
+    emptyMenuBody: 'Doplň, co mají na čepu.\nPomůžeš ostatním.',
     emptyMenuCta: 'Přidat první pivo',
 
     // — Undo —

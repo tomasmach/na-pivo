@@ -892,13 +892,16 @@ const styles = StyleSheet.create({
     color: Colors.foam,
     textAlign: 'center',
     lineHeight: 28,
+    alignSelf: 'stretch',
   },
   emptyMenuBody: {
     fontFamily: Fonts.ui.regular,
     fontSize: 15,
     color: Colors.mutedText,
     textAlign: 'center',
-    lineHeight: 22,
+    lineHeight: 23,
+    alignSelf: 'center',
+    maxWidth: 320,
   },
   emptyMenuButton: {
     alignSelf: 'stretch',
