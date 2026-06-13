@@ -32,6 +32,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
 import { getBackendEndpoint } from './backendConfig';
+import { trackApiFailure } from './telemetryClient';
 
 export interface AccountSession {
   /** Stable client-generated device identifier (UUID v4). */
@@ -214,6 +215,10 @@ export async function ensureAccount(signal?: AbortSignal): Promise<AccountSessio
     });
 
     if (!resp.ok) {
+      trackApiFailure('account_register', {
+        endpoint: '/v1/account',
+        status: resp.status,
+      });
       return null;
     }
 
@@ -224,8 +229,16 @@ export async function ensureAccount(signal?: AbortSignal): Promise<AccountSessio
       return { deviceId, accountId: account.accountId, token: account.token };
     }
     return null;
-  } catch {
+  } catch (err) {
     // network / timeout / abort / malformed JSON — never throw.
+    const isAbortError = err instanceof Error && err.name === 'AbortError';
+    if (!signal?.aborted && !isAbortError) {
+      trackApiFailure('account_register', {
+        endpoint: '/v1/account',
+        reason: 'exception',
+        error: err,
+      });
+    }
     return null;
   } finally {
     clearTimeout(timeoutId);

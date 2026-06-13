@@ -13,6 +13,7 @@
 
 import type { Pub } from './pubs';
 import { getBackendEndpoint } from './backendConfig';
+import { trackApiFailure } from './telemetryClient';
 
 // /v1/suggest is dramatically better than /v1/geocode for "POIs near me" —
 // it ranks by location rather than textual relevance, so a small bbox around
@@ -162,6 +163,10 @@ async function backendSuggest(
     if (!resp.ok) {
       // 503 (no key / cap exhausted) or any other non-200 → fall back.
       console.warn(`[mapy] backend pubs/near HTTP ${resp.status} — falling back to Mapy`);
+      trackApiFailure('pubs_near_backend', {
+        endpoint: '/v1/pubs/near',
+        status: resp.status,
+      });
       return null;
     }
     const data = (await resp.json()) as BackendPubsNearResponse;
@@ -171,6 +176,11 @@ async function backendSuggest(
     // failure (network, malformed JSON) just means "use the fallback".
     if (signal?.aborted) throw err;
     console.warn('[mapy] backend pubs/near failed — falling back to Mapy:', err);
+    trackApiFailure('pubs_near_backend', {
+      endpoint: '/v1/pubs/near',
+      reason: 'exception',
+      error: err,
+    });
     return null;
   }
 }

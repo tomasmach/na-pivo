@@ -22,6 +22,7 @@ import { ensureLocationPermission, openSystemSettings } from '@/compass/permissi
 import type { PermissionState } from '@/compass/permissions';
 import { fetchPubsNear, findNearbyPubs, type Pub } from '@/data/pubs';
 import { geohash8 } from '@/data/geohash';
+import { recordWalkingSample } from '@/data/walkingTelemetry';
 
 /** Auto-detect the pub when the nearest is within this many metres. GPS indoors
  *  is often coarse, so the threshold is generous (a small pub block). */
@@ -78,6 +79,10 @@ export function useNearbyPub(): UseNearbyPubResult {
   );
 
   const { position } = useDevicePosition(focused && permissionState === 'granted');
+
+  useEffect(() => {
+    if (position) recordWalkingSample(position);
+  }, [position]);
 
   // — Fetch + rank nearby pubs on each position update —
   // All state writes happen inside the async callback (not synchronously in the

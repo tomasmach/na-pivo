@@ -17,6 +17,7 @@ import type { PubReportReason } from '@/data/pubReportsClient';
 import { geohash8 } from '@/data/geohash';
 import type { CommunityBeer, WeeklyHours } from '@/data/communityClient';
 import { computeOpenState } from '@/data/communityHours';
+import { recordWalkingSample } from '@/data/walkingTelemetry';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { usePubStore } from '@/stores/pubStore';
 import { useCommunityStore } from '@/stores/communityStore';
@@ -128,6 +129,10 @@ export function useCompass(): UseCompassResult {
   // — Position / heading —
   const { position } = useDevicePosition(focused && permissionState === 'granted');
   const { smoothedHeading, accuracyDeg, hasMagnetometer } = useDeviceHeading(focused);
+
+  useEffect(() => {
+    if (position) recordWalkingSample(position);
+  }, [position]);
 
   // — Pub data loading state —
   const [pubsLoaded, setPubsLoaded] = useState(() => isLoaded());

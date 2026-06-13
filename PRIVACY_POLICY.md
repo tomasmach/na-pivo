@@ -1,6 +1,6 @@
 # Zásady ochrany osobních údajů – Na pivo
 
-*Poslední aktualizace: 9. června 2026*
+*Poslední aktualizace: 13. června 2026*
 
 ## Kdo jsme
 
@@ -23,15 +23,18 @@ Když je vybraná hospoda zobrazena, aplikace pošle její název a polohu (zem�
 ### Anonymní identifikátor zařízení
 Aplikace při prvním spuštění vytvoří anonymní náhodný identifikátor zařízení (náhodné UUID) a odešle ho na náš vlastní server, aby každému zařízení patřil dočasný anonymní účet. Tento identifikátor neobsahuje žádné osobní údaje – nevzniká z e-mailu, jména, telefonního čísla ani z hardwarového identifikátoru telefonu – a slouží výhradně k odlišení jednotlivých zařízení. Registrace je nepovinná funkce; pokud server není dostupný nebo dotaz selže, aplikace funguje dál bez vytvořeného účtu. Server v odpovědi vrátí náhodný přístupový token, který aplikace ukládá pouze lokálně na zařízení a nikam jinam ho neodesílá; slouží k ověření zařízení u budoucích funkcí. Více v sekci „Služby třetích stran".
 
+### Provozní statistiky a technické chyby
+Aplikace posílá na náš vlastní server omezené provozní údaje, abychom poznali, jestli aplikace funguje: otevření aplikace, návrat do popředí, typ technické chyby, verzi aplikace, platformu a stavové kódy vybraných požadavků. K anonymnímu účtu ukládáme také součet nachozených metrů v aplikaci. **Součet metrů se počítá přímo v telefonu a na server se odesílají pouze přírůstky v metrech – neposíláme GPS body, trasu ani historii polohy.** Tyto údaje nepoužíváme k reklamě ani profilování.
+
 ### Údaje doplněné uživatelem (otevírací doba a piva na čepu)
 Aplikace umožňuje dobrovolně doplnit otevírací dobu vybrané hospody a seznam piv na čepu (název, případně cenu a objem). Pokud tyto údaje vyplníte a odešlete, aplikace je pošle na náš vlastní server pod anonymním identifikátorem zařízení. **Tyto údaje se následně veřejně zobrazují ostatním uživatelům aplikace**, aby věděli, co která hospoda nabízí a kdy má otevřeno. Údaje se týkají hospody, nikoli vás – neobsahují žádné osobní informace o vaší osobě. Doplňování je zcela dobrovolné; pokud nic nevyplníte, nic se neodesílá. Pokud server není dostupný, aplikace odeslání zopakuje, jakmile budete znovu online.
 
 ### Co NEsbíráme
 - Nepoužíváme přihlašování ani osobní uživatelské účty (anonymní identifikátor zařízení neobsahuje žádné osobní údaje a nevyžaduje registraci).
-- Nepoužíváme žádné analytické nástroje, nástroje pro hlášení pádů ani reklamní SDK.
+- Nepoužíváme reklamní SDK ani sledování napříč aplikacemi.
 - Nesbíráme e-mailovou adresu, jméno ani žádné kontaktní údaje.
 - Nesledujeme vás napříč aplikacemi ani webovými stránkami.
-- Neukládáme historii vaší polohy.
+- Neukládáme historii vaší polohy, GPS body ani trasu.
 
 ## Jak data používáme
 
@@ -40,6 +43,8 @@ Zpracovávaná data slouží výhradně k fungování aplikace:
 - **Vyhledávací dotazy** – získání návrhů míst z Mapy.cz.
 - **Název a poloha vybrané hospody** – dohledání otevírací doby na našem serveru.
 - **Anonymní identifikátor zařízení** – odlišení jednotlivých zařízení a vytvoření dočasného anonymního účtu na našem serveru.
+- **Provozní statistiky a technické chyby** – zjištění, kolik zařízení aplikaci používá, kolikrát byla otevřena, kde padá nebo kde selhávají backendové funkce.
+- **Součet nachozených metrů** – anonymní souhrnné statistiky a žebříčky bez ukládání polohové historie.
 - **Údaje doplněné uživatelem (otevírací doba, piva na čepu)** – uložení a veřejné zobrazení ostatním uživatelům, aby aplikace ukazovala aktuální informace o hospodách.
 
 Data nepoužíváme k profilování, cílení reklamy ani k žádnému dalšímu účelu.
@@ -55,12 +60,15 @@ Pro zobrazení otevírací doby vybrané hospody pošleme její název a polohu 
 ### Anonymní účet zařízení (provozovatel aplikace)
 Při prvním spuštění aplikace odešle na náš vlastní server anonymní náhodný identifikátor zařízení (náhodné UUID) a server pro toto zařízení vytvoří dočasný anonymní účet. Identifikátor neobsahuje žádné osobní údaje a slouží jen k odlišení zařízení; nepoužíváme ho ke sledování ani k profilování. Jde o nepovinnou funkci – pokud server není dostupný, aplikace funguje dál bez vytvořeného účtu.
 
+### Provozní statistiky a technické chyby (provozovatel aplikace)
+Provozní statistiky a technické chyby zpracováváme na vlastním serveru. Slouží pouze k údržbě a zlepšování aplikace. Neposíláme je žádné reklamní síti ani externímu analytickému nástroji.
+
 ### Doplněné údaje o hospodách (provozovatel aplikace)
 Když dobrovolně doplníte otevírací dobu nebo piva na čepu, aplikace tyto údaje odešle na náš vlastní server pod anonymním účtem zařízení. Server je uloží a veřejně je zobrazí ostatním uživatelům aplikace. Údaje popisují danou hospodu, nikoli vaši osobu, a neobsahují žádné osobní informace. Jde o dobrovolnou funkci; pokud nic nevyplníte, nic se neodesílá.
 
 ## Doba uchování dat
 
-Na našich serverech neukládáme žádné osobní údaje. Uchováváme pouze anonymní identifikátor zařízení a k němu vázaný dočasný účet, abychom dokázali odlišit jednotlivá zařízení; tento údaj neobsahuje žádné osobní informace. Poloha a data senzorů existují pouze dočasně v paměti zařízení po dobu používání aplikace. Služby třetích stran (Mapy.cz) uchovávají případná data podle vlastních zásad.
+Na našich serverech uchováváme anonymní identifikátor zařízení a k němu vázaný dočasný účet, provozní statistiky, technické chyby a dobrovolně odeslané údaje o hospodách. Poloha a data senzorů existují pouze dočasně v paměti zařízení po dobu používání aplikace; na server se neposílají GPS body ani trasa. Služby třetích stran (Mapy.cz) uchovávají případná data podle vlastních zásad.
 
 ## Vaše práva
 
@@ -72,7 +80,7 @@ Podle nařízení GDPR (Obecné nařízení o ochraně osobních údajů) máte 
 - **přenositelnost** údajů,
 - **vznést námitku** proti zpracování.
 
-Protože aplikace o vás nesbírá ani neukládá žádné osobní údaje, ve většině případů nemáme žádná data, kterých by se tato práva mohla týkat. Pokud máte přesto jakýkoli dotaz nebo požadavek, ozvěte se nám na kontakt uvedený níže.
+Protože pracujeme hlavně s anonymními technickými údaji, ve většině případů nemáme data, která by šla přímo spojit s vaší osobou. Pokud máte přesto jakýkoli dotaz nebo požadavek, ozvěte se nám na kontakt uvedený níže.
 
 ## Děti
 

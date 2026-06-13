@@ -14,6 +14,12 @@ import { flushFeedbackQueue } from '@/data/feedbackQueue';
 import { flushCommunityQueue } from '@/data/communityQueue';
 import { flushDrinksQueue } from '@/data/drinksQueue';
 import { flushDeleteDrinksQueue } from '@/data/deleteDrinksQueue';
+import {
+  installClientTelemetry,
+  setTelemetrySession,
+  trackClientEvent,
+} from '@/data/telemetryClient';
+import { flushWalkingDistance } from '@/data/walkingTelemetry';
 import { useAccountStore } from '@/stores/accountStore';
 import { useReleaseStore } from '@/stores/releaseStore';
 import { WhatsNewModal } from '@/components/shared/WhatsNewModal';
@@ -32,9 +38,21 @@ export default function RootLayout() {
   }, [fontsLoaded, fontError]);
 
   useEffect(() => {
-    // Fire-and-forget: ensure an anonymous device account exists. Non-blocking —
-    // failure leaves the app fully functional and retries on the next launch.
-    void useAccountStore.getState().initAccount();
+    installClientTelemetry();
+  }, []);
+
+  useEffect(() => {
+    // Fire-and-forget: ensure an anonymous device account exists. Non-blocking.
+    // Once the attempt settles, telemetry can include the bearer auth header so
+    // usage counters attach to the anonymous account when possible.
+    void useAccountStore
+      .getState()
+      .initAccount()
+      .finally(() => {
+        const session = useAccountStore.getState().session;
+        setTelemetrySession(session);
+        void trackClientEvent({ event: 'app_open', severity: 'info' });
+      });
   }, []);
 
   useEffect(() => {
@@ -55,14 +73,20 @@ export default function RootLayout() {
     void flushDeleteDrinksQueue();
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
+        void trackClientEvent({ event: 'app_foreground', severity: 'info' });
         void flushPubReportQueue();
         void flushFeedbackQueue();
         void flushCommunityQueue();
         void flushDrinksQueue();
         void flushDeleteDrinksQueue();
+      } else {
+        flushWalkingDistance();
       }
     });
-    return () => subscription.remove();
+    return () => {
+      flushWalkingDistance();
+      subscription.remove();
+    };
   }, []);
 
   if (!fontsLoaded && !fontError) {

@@ -270,8 +270,9 @@ export const cs = {
   privacy: {
     title: 'Soukromí',
     body: [
-      'Žádná analytika, žádné sledování, žádný účet.',
+      'Sbíráme jen omezené anonymní provozní statistiky: otevření aplikace, technické chyby a součet nachozených metrů.',
       'Tvoje poloha je zpracována výhradně přímo v telefonu. Aplikace ji nikam neposílá a nikde neukládá.',
+      'Nachozené metry se počítají v telefonu a na server se posílá jen součet po dávkách, nikdy GPS body ani trasa.',
       'Pro stažení okolních hospod aplikace posílá přibližnou oblast vyhledávání na Mapy.cz.',
       'Pro zobrazení otevírací doby aplikace pošle název a polohu vybrané hospody na vlastní server provozovatele, který dohledá otevírací dobu.',
       'Aplikace vytvoří anonymní náhodný identifikátor zařízení a odešle ho na náš server, aby každému zařízení patřil dočasný účet. Identifikátor neobsahuje žádné osobní údaje a slouží jen k odlišení zařízení.',

@@ -51,6 +51,7 @@ export const useWindowDimensions = jest.fn(() => ({
 
 export const Platform = {
   OS: 'ios',
+  Version: '18.1',
   select: (options: Record<string, unknown>) =>
     options['ios'] ?? options['default'] ?? undefined,
 };

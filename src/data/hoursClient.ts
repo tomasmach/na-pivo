@@ -16,6 +16,7 @@ import type { HoursStatus, Pub, VenueKind } from './pubs';
 import { getBackendEndpoint } from './backendConfig';
 import type { CommunityBeer, WeeklyHours } from './communityHours';
 import { beerFromWire, isWeeklyHours } from './communityHours';
+import { trackApiFailure } from './telemetryClient';
 
 export interface PubHoursResult {
   openingHours: string | null;
@@ -195,6 +196,7 @@ export async function fetchPubHours(
 
     if (!resp.ok) {
       // Non-blocking: swallow HTTP errors, return what we have (empty).
+      trackApiFailure('pub_hours', { endpoint: '/v1/pub-hours', status: resp.status });
       return out;
     }
 
@@ -208,9 +210,16 @@ export async function fetchPubHours(
     }
 
     return out;
-  } catch {
+  } catch (err) {
     // Any failure (network, abort, timeout, malformed JSON) → return whatever
     // we have so far. Never throw; hours are a non-blocking enrichment.
+    if (!signal?.aborted) {
+      trackApiFailure('pub_hours', {
+        endpoint: '/v1/pub-hours',
+        reason: 'exception',
+        error: err,
+      });
+    }
     return out;
   } finally {
     clearTimeout(timeoutId);
