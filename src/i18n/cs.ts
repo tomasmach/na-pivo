@@ -328,6 +328,7 @@ export const cs = {
     counterCountBeerNoPrice: (name: string) =>
       `Připsat ${name}, nejdřív zadej cenu`,
     counterEditBeer: (name: string) => `Upravit cenu u ${name}`,
+    counterRemoveBeer: (name: string) => `Odebrat poslední ${name}`,
     counterAddBeer: 'Přidat nové pivo',
     counterUndo: 'Vrátit poslední připsané pivo',
     counterTotal: (count: string, price: string) =>

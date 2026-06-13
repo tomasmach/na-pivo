@@ -91,22 +91,42 @@ async function flushLocked(): Promise<void> {
 }
 
 /**
- * Persists the drink and immediately tries to sync the whole queue. Resolves
- * true when this drink reached the backend (or was permanently rejected) on the
- * first attempt — i.e. it left the queue; false means it stays queued for a
- * later flush. Never throws.
+ * Persists the drink and (by default) immediately tries to sync the whole
+ * queue. Resolves true when this drink reached the backend (or was permanently
+ * rejected) on the first attempt — i.e. it left the queue; false means it stays
+ * queued for a later flush. Never throws.
+ *
+ * Pass `{ deliver: false }` to persist the drink WITHOUT sending it yet. The
+ * payload is durably queued (crash-safe) but stays retractable via
+ * removeQueuedDrink until a later flush delivers it — this is what gives the
+ * counter a real undo window. Resolves false in that case (still queued).
  *
  * No dedup: every drink is a distinct event keyed by its own client_id.
  */
-export function enqueueDrink(entry: DrinkEntry): Promise<boolean> {
+export function enqueueDrink(entry: DrinkEntry, options?: { deliver?: boolean }): Promise<boolean> {
+  const deliver = options?.deliver ?? true;
   return runLocked(async () => {
     const queue = await loadQueue();
     queue.push(entry);
     await saveQueue(queue.slice(-MAX_QUEUE_LENGTH));
 
+    if (!deliver) return false;
+
     await flushLocked();
     const after = await loadQueue();
     return !after.some((queued) => queued.client_id === entry.client_id);
+  });
+}
+
+/**
+ * True when a drink with this client_id is still waiting in the queue. Lets a
+ * caller that deferred delivery learn, after a flush, whether THIS drink was
+ * actually delivered (queued → still pending; not queued → delivered/dropped).
+ */
+export function isDrinkQueued(clientId: string): Promise<boolean> {
+  return runLocked(async () => {
+    const queue = await loadQueue();
+    return queue.some((entry) => entry.client_id === clientId);
   });
 }
 

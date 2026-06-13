@@ -31,6 +31,7 @@ import {
   BatteryFull,
   Pencil,
   Plus,
+  Minus,
   Trash2,
   Copy,
   X,
@@ -75,6 +76,7 @@ export const WifiIcon = wrap(Wifi, 'WifiIcon');
 export const BatteryFullIcon = wrap(BatteryFull, 'BatteryFullIcon');
 export const PencilIcon = wrap(Pencil, 'PencilIcon');
 export const PlusIcon = wrap(Plus, 'PlusIcon');
+export const MinusIcon = wrap(Minus, 'MinusIcon');
 export const Trash2Icon = wrap(Trash2, 'Trash2Icon');
 export const CopyIcon = wrap(Copy, 'CopyIcon');
 export const XIcon = wrap(X, 'XIcon');

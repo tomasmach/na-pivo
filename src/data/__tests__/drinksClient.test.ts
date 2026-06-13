@@ -1,4 +1,4 @@
-import { buildDrinkEntry, submitDrink, type DrinkInput } from '../drinksClient';
+import { buildDrinkEntry, submitDrink, deleteDrink, type DrinkInput } from '../drinksClient';
 import { ensureAccount } from '../account';
 
 // drinksClient → account → expo-secure-store, which isn't transformed for the
@@ -131,6 +131,55 @@ describe('submitDrink', () => {
     (ensureAccount as jest.Mock).mockResolvedValueOnce(null);
     global.fetch = jest.fn() as unknown as typeof fetch;
     await expect(submitDrink(entry)).resolves.toBe('retry');
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('deleteDrink', () => {
+  it('is a dormant no-op (retry) when no backend is configured', async () => {
+    setBackend(undefined);
+    global.fetch = jest.fn() as unknown as typeof fetch;
+    await expect(deleteDrink('client-1')).resolves.toBe('retry');
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('DELETEs /v1/drinks/<client_id> with the Bearer token and returns ok on 2xx', async () => {
+    setBackend('https://api.example.com');
+    const fetchSpy = jest.fn(async () => ({ ok: true, status: 200, json: async () => ({ deleted: true }) }));
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    await expect(deleteDrink('client-1')).resolves.toBe('ok');
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('https://api.example.com/v1/drinks/client-1');
+    expect(init.method).toBe('DELETE');
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok');
+  });
+
+  it('returns permanent-error on 4xx (except 429) and retry on 429/5xx/network', async () => {
+    setBackend('https://api.example.com');
+
+    global.fetch = jest.fn(async () => ({ ok: false, status: 400, json: async () => ({}) })) as unknown as typeof fetch;
+    await expect(deleteDrink('c')).resolves.toBe('permanent-error');
+
+    global.fetch = jest.fn(async () => ({ ok: false, status: 429, json: async () => ({}) })) as unknown as typeof fetch;
+    await expect(deleteDrink('c')).resolves.toBe('retry');
+
+    global.fetch = jest.fn(async () => ({ ok: false, status: 503, json: async () => ({}) })) as unknown as typeof fetch;
+    await expect(deleteDrink('c')).resolves.toBe('retry');
+
+    global.fetch = jest.fn(async () => {
+      throw new Error('network down');
+    }) as unknown as typeof fetch;
+    await expect(deleteDrink('c')).resolves.toBe('retry');
+  });
+
+  it('returns retry when there is no account session', async () => {
+    setBackend('https://api.example.com');
+    (ensureAccount as jest.Mock).mockResolvedValueOnce(null);
+    global.fetch = jest.fn() as unknown as typeof fetch;
+    await expect(deleteDrink('c')).resolves.toBe('retry');
     expect(global.fetch).not.toHaveBeenCalled();
   });
 });

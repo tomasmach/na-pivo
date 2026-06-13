@@ -51,16 +51,22 @@ jest.mock('@/components/shared/IconGlyph', () => ({
   BeerIcon: jest.fn(() => null),
   MapPinIcon: jest.fn(() => null),
   PlusIcon: jest.fn(() => null),
+  MinusIcon: jest.fn(() => null),
   Undo2Icon: jest.fn(() => null),
   RefreshCwIcon: jest.fn(() => null),
   XIcon: jest.fn(() => null),
 }));
 
 // Drinks delivery layer — assert calls without touching the network.
-const enqueueDrink = jest.fn((_entry: unknown) => Promise.resolve(true));
+const enqueueDrink = jest.fn((_entry: unknown, _options?: unknown) => Promise.resolve(true));
 const flushDrinksQueue = jest.fn(() => Promise.resolve(undefined));
 const removeQueuedDrink = jest.fn((_clientId: string) => Promise.resolve(true));
-jest.mock('@/data/drinksQueue', () => ({ enqueueDrink, flushDrinksQueue, removeQueuedDrink }));
+const isDrinkQueued = jest.fn((_clientId: string) => Promise.resolve(false));
+jest.mock('@/data/drinksQueue', () => ({ enqueueDrink, flushDrinksQueue, isDrinkQueued, removeQueuedDrink }));
+
+const enqueueDelete = jest.fn((_clientId: string) => Promise.resolve(undefined));
+const flushDeleteDrinksQueue = jest.fn(() => Promise.resolve(undefined));
+jest.mock('@/data/deleteDrinksQueue', () => ({ enqueueDelete, flushDeleteDrinksQueue }));
 
 const fetchPubHours = jest.fn(async () => new Map());
 jest.mock('@/data/hoursClient', () => ({ fetchPubHours }));
@@ -96,10 +102,19 @@ function nearbyState(over: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
+  // Fake timers so the counter's deferred-delivery setTimeout never auto-fires
+  // mid-test (it would mark a drink synced after the test ends → act warnings).
+  // Tests that exercise the undo window advance time explicitly.
+  jest.useFakeTimers();
   jest.clearAllMocks();
   fetchPubHours.mockImplementation(() => new Promise(() => undefined));
   useTallyStore.setState({ current: null, history: [] });
   useCommunityStore.setState({ overrides: {} });
+});
+
+afterEach(() => {
+  jest.clearAllTimers();
+  jest.useRealTimers();
 });
 
 describe('CounterScreen states', () => {
@@ -205,9 +220,11 @@ describe('CounterScreen counting', () => {
     expect(current?.drinks).toHaveLength(1);
     expect(current?.drinks[0].priceCzk).toBe(62);
 
-    // Delivery enqueued + flushed.
+    // Delivery is persisted immediately but deferred (deliver: false), so the
+    // queued payload stays retractable through the undo window — no flush yet.
     expect(enqueueDrink).toHaveBeenCalledTimes(1);
-    expect(flushDrinksQueue).toHaveBeenCalledTimes(1);
+    expect(enqueueDrink.mock.calls[0][1]).toEqual({ deliver: false });
+    expect(flushDrinksQueue).not.toHaveBeenCalled();
     const entry = enqueueDrink.mock.calls[0][0] as any;
     expect(entry.client_id).toBe('uuid-fixed');
     expect(entry.beer).toEqual({ name: 'Plzeň', price_czk: 62, volume_ml: 500 });
@@ -263,7 +280,22 @@ describe('CounterScreen counting', () => {
     expect(useTallyStore.getState().current?.drinks).toHaveLength(2);
   });
 
-  it('undoing the last pending count removes the tally drink and the queued payload', async () => {
+  // Counts the beer, returns the rendered "+" and "−" Pressables for it.
+  function countOnce(renderer: any, cs: any) {
+    const plusLabel = cs.a11y.counterCountBeer('Plzeň', cs.counter.price(62));
+    const plus = renderer.root.findAll(
+      (n: any) => n.props?.accessibilityLabel === plusLabel && typeof n.props?.onPress === 'function',
+    )[0];
+    act(() => {
+      plus.props.onPress();
+    });
+    const minus = renderer.root.findAll(
+      (n: any) => n.props?.accessibilityLabel === cs.a11y.counterRemoveBeer('Plzeň') && typeof n.props?.onPress === 'function',
+    )[0];
+    return { plus, minus };
+  }
+
+  it('the minus button removes the last count of that beer and pulls a still-queued payload', async () => {
     useCommunityStore.setState({
       overrides: { [CELL]: { beers: [{ name: 'Plzeň', priceCzk: 62, volumeMl: 500 }], updatedAt: 1 } },
     });
@@ -275,26 +307,58 @@ describe('CounterScreen counting', () => {
     });
 
     const cs = require('@/i18n/cs').cs;
-    const wanted = cs.a11y.counterCountBeer('Plzeň', cs.counter.price(62));
-    const card = renderer.root.findAll(
-      (n: any) => n.props?.accessibilityLabel === wanted && typeof n.props?.onPress === 'function',
-    )[0];
-    act(() => {
-      card.props.onPress();
-    });
+    const { minus } = countOnce(renderer, cs);
     expect(useTallyStore.getState().current?.drinks).toHaveLength(1);
+    expect(minus).toBeTruthy();
 
-    // Tap the undo affordance.
-    const undo = renderer.root.findAll(
-      (n: any) => n.props?.accessibilityLabel === cs.a11y.counterUndo,
-    )[0];
-    expect(undo).toBeTruthy();
+    // Within the undo window the payload is still queued, so − pulls it back and
+    // never asks the backend to delete (it was never delivered).
     await act(async () => {
-      undo.props.onPress();
+      minus.props.onPress();
       await Promise.resolve();
     });
 
     expect(useTallyStore.getState().current?.drinks).toHaveLength(0);
     expect(removeQueuedDrink).toHaveBeenCalledWith('uuid-fixed');
+    expect(enqueueDelete).not.toHaveBeenCalled();
+  });
+
+  it('the minus button enqueues a backend delete once the drink has been delivered', async () => {
+    useCommunityStore.setState({
+      overrides: { [CELL]: { beers: [{ name: 'Plzeň', priceCzk: 62, volumeMl: 500 }], updatedAt: 1 } },
+    });
+    useNearbyPub.mockReturnValue(nearbyState());
+
+    let renderer: any;
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(CounterScreen));
+    });
+
+    const cs = require('@/i18n/cs').cs;
+    countOnce(renderer, cs);
+
+    // Let the deferred send fire → the drink reaches the backend (marked synced).
+    await act(async () => {
+      jest.advanceTimersByTime(6000);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(flushDrinksQueue).toHaveBeenCalledTimes(1);
+    expect(useTallyStore.getState().current?.drinks[0].syncStatus).toBe('sent');
+
+    // Now − can no longer pull it from the queue → it durably enqueues a DELETE.
+    removeQueuedDrink.mockResolvedValueOnce(false);
+    const minus = renderer.root.findAll(
+      (n: any) => n.props?.accessibilityLabel === cs.a11y.counterRemoveBeer('Plzeň') && typeof n.props?.onPress === 'function',
+    )[0];
+    await act(async () => {
+      minus.props.onPress();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(useTallyStore.getState().current?.drinks).toHaveLength(0);
+    expect(enqueueDelete).toHaveBeenCalledWith('uuid-fixed');
   });
 });

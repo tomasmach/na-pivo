@@ -84,6 +84,13 @@ interface TallyState {
    * drink (the pub stays pinned by the UI, not by the store).
    */
   undoLast: (expectedId?: string) => string | null;
+  /**
+   * Remove a specific drink (by id) from the current session, wherever it sits
+   * in the list — used by the per-beer minus button, where the beer being
+   * decremented is not necessarily the most recently counted one. Returns the
+   * removed id, or null when no drink matched. A no-op on the empty session.
+   */
+  removeDrink: (id: string) => string | null;
   /** Mark a drink as no longer queued, so the UI does not offer a local-only undo. */
   markDrinkSynced: (id: string) => void;
   /** Wipe the current session AND history (e.g. a "start over" affordance). */
@@ -168,6 +175,23 @@ export const useTallyStore = create<TallyState>()(
           if (expectedId && drinks[drinks.length - 1]?.id !== expectedId) return state;
           const removed = drinks.pop();
           removedId = removed?.id ?? null;
+          return { current: { ...state.current, drinks } };
+        });
+        return removedId;
+      },
+
+      removeDrink: (id) => {
+        let removedId: string | null = null;
+        set((state) => {
+          if (!state.current) return state;
+          const drinks = state.current.drinks.filter((drink) => {
+            if (drink.id === id && removedId === null) {
+              removedId = id;
+              return false;
+            }
+            return true;
+          });
+          if (removedId === null) return state;
           return { current: { ...state.current, drinks } };
         });
         return removedId;

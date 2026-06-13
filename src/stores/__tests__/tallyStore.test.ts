@@ -146,6 +146,34 @@ describe('undoLast', () => {
   });
 });
 
+describe('removeDrink', () => {
+  it('removes a specific drink by id from anywhere in the session', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer()); // id-1
+    useTallyStore.getState().addDrink(PUB_A, beer()); // id-2
+    useTallyStore.getState().addDrink(PUB_A, beer()); // id-3
+
+    // Remove the MIDDLE drink, not the most recent — this is the per-beer case.
+    const removed = useTallyStore.getState().removeDrink('id-2');
+    expect(removed).toBe('id-2');
+    const ids = useTallyStore.getState().current?.drinks.map((d) => d.id);
+    expect(ids).toEqual(['id-1', 'id-3']);
+  });
+
+  it('returns null and leaves the session untouched when the id is unknown', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer()); // id-1
+    expect(useTallyStore.getState().removeDrink('nope')).toBeNull();
+    expect(useTallyStore.getState().current?.drinks).toHaveLength(1);
+  });
+
+  it('removes only the first matching drink when ids collide', () => {
+    // Mirrors the screen, where a fixed test uuid can repeat: only one row goes.
+    useTallyStore.getState().addDrink(PUB_A, { ...beer(), id: 'dup' });
+    useTallyStore.getState().addDrink(PUB_A, { ...beer(), id: 'dup' });
+    expect(useTallyStore.getState().removeDrink('dup')).toBe('dup');
+    expect(useTallyStore.getState().current?.drinks).toHaveLength(1);
+  });
+});
+
 describe('history cap', () => {
   it('keeps at most 50 archived sessions, newest first', () => {
     // 52 sittings at alternating pubs → 51 archived after the 52nd opens.

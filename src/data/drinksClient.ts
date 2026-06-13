@@ -149,3 +149,56 @@ export async function submitDrink(
     if (signal) signal.removeEventListener('abort', onExternalAbort);
   }
 }
+
+/**
+ * DELETE one previously-logged drink by its client_id — used when the user
+ * removes a counted beer that already reached the backend. Same conventions as
+ * submitDrink: best-effort, 8s timeout, never throws, and returns the same
+ * three-state result so deleteDrinksQueue can decide to drop or keep the id.
+ *
+ * The endpoint is idempotent (deleting a missing/already-deleted id replies 200
+ * deleted:false), so re-sending a queued delete is safe. Deleting a drink does
+ * NOT change the pub's community menu — the contributed price stays.
+ */
+export async function deleteDrink(
+  clientId: string,
+  signal?: AbortSignal,
+): Promise<SubmitDrinkResult> {
+  if (signal?.aborted) return 'retry';
+
+  const endpoint = getBackendEndpoint(`/v1/drinks/${clientId}`);
+  if (!endpoint) return 'retry';
+
+  const session = await ensureAccount(signal);
+  if (!session || signal?.aborted) return 'retry';
+
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
+  const onExternalAbort = () => timeoutController.abort();
+  if (signal) {
+    if (signal.aborted) {
+      timeoutController.abort();
+    } else {
+      signal.addEventListener('abort', onExternalAbort);
+    }
+  }
+
+  try {
+    const resp = await fetch(endpoint, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${session.token}` },
+      signal: timeoutController.signal,
+    });
+
+    if (resp.ok) return 'ok';
+    if (resp.status >= 400 && resp.status < 500 && resp.status !== 429) {
+      return 'permanent-error';
+    }
+    return 'retry';
+  } catch {
+    return 'retry';
+  } finally {
+    clearTimeout(timeoutId);
+    if (signal) signal.removeEventListener('abort', onExternalAbort);
+  }
+}

@@ -13,6 +13,7 @@ import { flushPubReportQueue } from '@/data/pubReportQueue';
 import { flushFeedbackQueue } from '@/data/feedbackQueue';
 import { flushCommunityQueue } from '@/data/communityQueue';
 import { flushDrinksQueue } from '@/data/drinksQueue';
+import { flushDeleteDrinksQueue } from '@/data/deleteDrinksQueue';
 import { useAccountStore } from '@/stores/accountStore';
 import { useReleaseStore } from '@/stores/releaseStore';
 import { WhatsNewModal } from '@/components/shared/WhatsNewModal';
@@ -51,12 +52,14 @@ export default function RootLayout() {
     void flushFeedbackQueue();
     void flushCommunityQueue();
     void flushDrinksQueue();
+    void flushDeleteDrinksQueue();
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         void flushPubReportQueue();
         void flushFeedbackQueue();
         void flushCommunityQueue();
         void flushDrinksQueue();
+        void flushDeleteDrinksQueue();
       }
     });
     return () => subscription.remove();

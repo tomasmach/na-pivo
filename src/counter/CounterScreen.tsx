@@ -16,7 +16,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, Linking, Alert } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet, Linking, Alert, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   useAnimatedStyle,
@@ -39,7 +39,7 @@ import {
   BeerIcon,
   MapPinIcon,
   PlusIcon,
-  Undo2Icon,
+  MinusIcon,
   RefreshCwIcon,
 } from '@/components/shared/IconGlyph';
 
@@ -48,8 +48,9 @@ import { generateUuidV4 } from '@/data/account';
 import { mergeBeerIntoMenu, type CommunityBeer } from '@/data/communityHours';
 import { fetchPubHours } from '@/data/hoursClient';
 import { buildDrinkEntry } from '@/data/drinksClient';
-import { enqueueDrink, flushDrinksQueue, removeQueuedDrink } from '@/data/drinksQueue';
-import { fireSuccessHaptic } from '@/utils/haptics';
+import { enqueueDrink, flushDrinksQueue, isDrinkQueued, removeQueuedDrink } from '@/data/drinksQueue';
+import { enqueueDelete } from '@/data/deleteDrinksQueue';
+import { fireSuccessHaptic, fireLightImpactHaptic } from '@/utils/haptics';
 import { useCommunityStore } from '@/stores/communityStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
@@ -158,10 +159,11 @@ interface MenuCardProps {
   /** Increments each time THIS beer is counted; drives the bounce. */
   pulseToken: number;
   onCount: () => void;
+  onDecrement: () => void;
   onEdit: () => void;
 }
 
-function MenuCard({ beer, count, pulseToken, onCount, onEdit }: MenuCardProps) {
+function MenuCard({ beer, count, pulseToken, onCount, onDecrement, onEdit }: MenuCardProps) {
   const reducedMotion = useReducedMotion();
   const scale = useSharedValue(1);
   const hasPrice = typeof beer.priceCzk === 'number';
@@ -185,30 +187,27 @@ function MenuCard({ beer, count, pulseToken, onCount, onEdit }: MenuCardProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pulseToken]);
 
-  const handlePress = () => {
-    onCount();
-  };
-
   const meta = hasPrice
     ? cs.counter.beerMeta(beer.priceCzk as number, beer.volumeMl)
     : cs.counter.pricePlaceholder;
 
-  const a11yLabel = hasPrice
+  const countA11yLabel = hasPrice
     ? cs.a11y.counterCountBeer(beer.name, cs.counter.price(beer.priceCzk as number))
     : cs.a11y.counterCountBeerNoPrice(beer.name);
 
   return (
     <Animated.View style={animatedStyle}>
-      <Pressable
-        onPress={handlePress}
-        onLongPress={onEdit}
-        delayLongPress={300}
-        style={({ pressed }) => [styles.menuCard, count > 0 && styles.menuCardCounted, pressed && styles.menuCardPressed]}
-        accessibilityRole="button"
-        accessibilityLabel={a11yLabel}
-        accessibilityHint={cs.a11y.counterEditBeer(beer.name)}
-      >
-        <View style={styles.menuCardText}>
+      <View style={[styles.menuCard, count > 0 && styles.menuCardCounted]}>
+        {/* Name + price doubles as the edit target (long-press) — counting and
+            removing live in the explicit stepper so taps never feel ambiguous. */}
+        <Pressable
+          onLongPress={onEdit}
+          delayLongPress={300}
+          style={({ pressed }) => [styles.menuCardText, pressed && styles.menuCardPressed]}
+          accessibilityRole="button"
+          accessibilityLabel={beer.name}
+          accessibilityHint={cs.a11y.counterEditBeer(beer.name)}
+        >
           <Text style={styles.menuCardName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
             {beer.name}
           </Text>
@@ -219,19 +218,38 @@ function MenuCard({ beer, count, pulseToken, onCount, onEdit }: MenuCardProps) {
           >
             {meta}
           </Text>
-        </View>
-        {count > 0 ? (
-          <View style={styles.countBadge}>
-            <Text style={styles.countBadgeText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.counter.perBeerCount(count)}
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.plusBadge}>
+        </Pressable>
+
+        <View style={styles.stepper}>
+          {count > 0 && (
+            <>
+              <Pressable
+                onPress={onDecrement}
+                style={({ pressed }) => [styles.stepButton, styles.stepButtonMinus, pressed && styles.stepButtonPressed]}
+                hitSlop={6}
+                accessibilityRole="button"
+                accessibilityLabel={cs.a11y.counterRemoveBeer(beer.name)}
+              >
+                <MinusIcon size={18} color={Colors.mutedText} />
+              </Pressable>
+              <View style={styles.countBadge}>
+                <Text style={styles.countBadgeText} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {cs.counter.perBeerCount(count)}
+                </Text>
+              </View>
+            </>
+          )}
+          <Pressable
+            onPress={onCount}
+            style={({ pressed }) => [styles.stepButton, styles.stepButtonPlus, pressed && styles.stepButtonPressed]}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={countA11yLabel}
+          >
             <PlusIcon size={20} color={Colors.amber} />
-          </View>
-        )}
-      </Pressable>
+          </Pressable>
+        </View>
+      </View>
     </Animated.View>
   );
 }
@@ -250,6 +268,14 @@ function beerKey(beer: CommunityBeer): string {
 }
 
 const RAPID_DRINK_WARNING_MS = 5 * 60 * 1000;
+
+/** How long a freshly-counted drink stays undoable before we deliver it. We
+ *  defer the backend send by this window so the queued payload remains
+ *  retractable (removeQueuedDrink only works pre-delivery) — otherwise a fast
+ *  POST marks the drink 'sent' within a fraction of a second and the undo row
+ *  vanishes before the user can reach it. The launch/foreground flush still
+ *  delivers anything left waiting, so a deferred drink is never stranded. */
+const UNDO_WINDOW_MS = 6000;
 
 export function minutesSinceDrink(at: string, nowMs: number = Date.now()): number | null {
   const atMs = Date.parse(at);
@@ -273,6 +299,7 @@ export function shouldWarnRapidDrink(lastDrinkAt: string | undefined, nowMs: num
 
 function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps) {
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
   const reducedMotion = useReducedMotion();
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
 
@@ -283,7 +310,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
 
   const current = useTallyStore((s) => s.current);
   const addDrink = useTallyStore((s) => s.addDrink);
-  const undoLast = useTallyStore((s) => s.undoLast);
+  const removeDrink = useTallyStore((s) => s.removeDrink);
   const markDrinkSynced = useTallyStore((s) => s.markDrinkSynced);
 
   const [formMode, setFormMode] = useState<BeerFormMode | null>(null);
@@ -294,6 +321,20 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
   const [pulses, setPulses] = useState<Record<string, number>>({});
   const [backendMenu, setBackendMenu] = useState<{ pubId: string; beers: CommunityBeer[] } | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  // Deferred-send timers per drink id; a count schedules delivery for the end of
+  // the undo window, and undo cancels its drink's timer before it fires.
+  const sendTimers = React.useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  useEffect(() => {
+    const timers = sendTimers.current;
+    return () => {
+      // Leaving the screen ends the undo window: cancel the pending timers and
+      // hand off to a single flush so nothing held for undo is left undelivered.
+      timers.forEach((timer) => clearTimeout(timer));
+      timers.clear();
+      void flushDrinksQueue();
+    };
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -312,9 +353,6 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
   const totalCzk = isThisPubSession ? sessionTotalCzk(current) : 0;
   const latestDrink = isThisPubSession ? current?.drinks[current.drinks.length - 1] : undefined;
   const latestDrinkAt = latestDrink?.at;
-  const latestDrinkId = latestDrink?.id ?? null;
-  const latestDrinkSyncStatus = latestDrink?.syncStatus ?? 'pending';
-  const canUndo = latestDrinkId !== null && latestDrinkSyncStatus !== 'sent';
   const latestDrinkText = latestDrinkAt ? lastDrinkAgoText(latestDrinkAt, nowMs) : null;
   const beerCounts = useMemo(
     () => (isThisPubSession ? sessionBeerCounts(current) : new Map<string, number>()),
@@ -375,10 +413,18 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
         },
         id,
       );
-      void enqueueDrink(entry).then((leftQueue) => {
-        if (leftQueue) markDrinkSynced(id);
-      });
-      void flushDrinksQueue();
+      // Persist now (crash-safe) but hold the actual send for the undo window so
+      // the queued payload stays retractable; deliver + mark synced when it ends.
+      void enqueueDrink(entry, { deliver: false });
+      const timer = setTimeout(() => {
+        sendTimers.current.delete(id);
+        void flushDrinksQueue()
+          .then(() => isDrinkQueued(id))
+          .then((stillQueued) => {
+            if (!stillQueued) markDrinkSynced(id);
+          });
+      }, UNDO_WINDOW_MS);
+      sendTimers.current.set(id, timer);
 
       if (hapticEnabled) {
         fireSuccessHaptic();
@@ -450,21 +496,58 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
     [cell, formMode, menu, requestCountBeer, setOverride],
   );
 
-  const handleUndo = useCallback(() => {
-    if (!canUndo || !latestDrinkId) return;
-    void removeQueuedDrink(latestDrinkId).then((removed) => {
-      if (removed) {
-        undoLast(latestDrinkId);
-      } else {
-        markDrinkSynced(latestDrinkId);
+  // Remove the most recently counted drink OF THIS BEER. Optimistically drops it
+  // from the local tally, then reconciles delivery: if the payload is still
+  // queued (caught inside the undo window, or just offline) we pull it before it
+  // ever sends; if it already reached the backend we enqueue a durable DELETE so
+  // the server drops the row too. The community menu/price is left untouched.
+  const decrementBeer = useCallback(
+    (beer: CommunityBeer) => {
+      const key = beerKey(beer);
+      const drinks = current?.pubKey === cell ? current.drinks : [];
+      let targetId: string | null = null;
+      for (let i = drinks.length - 1; i >= 0; i--) {
+        const drinkKey = `${drinks[i].beerName.trim().toLowerCase()}|${drinks[i].volumeMl ?? ''}`;
+        if (drinkKey === key) {
+          targetId = drinks[i].id;
+          break;
+        }
       }
-    });
-  }, [canUndo, latestDrinkId, markDrinkSynced, undoLast]);
+      if (!targetId) return;
+
+      // Cancel the deferred send so a not-yet-delivered drink never goes out.
+      const timer = sendTimers.current.get(targetId);
+      if (timer) {
+        clearTimeout(timer);
+        sendTimers.current.delete(targetId);
+      }
+
+      removeDrink(targetId);
+      const removedId = targetId;
+      void removeQueuedDrink(removedId).then((pulledFromQueue) => {
+        if (!pulledFromQueue) void enqueueDelete(removedId);
+      });
+
+      if (hapticEnabled) {
+        fireLightImpactHaptic();
+      }
+    },
+    [cell, current, hapticEnabled, removeDrink],
+  );
 
   const hasMenu = menu.length > 0;
+  const bubbleFieldWidth = Math.min(screenWidth - Spacing.lg * 2, 340);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + 8 }]}>
+      {count > 0 && !reducedMotion && (
+        <View style={[styles.counterBubbleOverlay, { top: insets.top + 58 }]} pointerEvents="none">
+          <View style={[styles.counterBubbleField, { width: bubbleFieldWidth }]}>
+            <BeerBubbles width={bubbleFieldWidth} height={310} bubbleCount={20} overflowVisible />
+          </View>
+        </View>
+      )}
+
       {/* Header: pub name + change */}
       <View style={styles.header}>
         <MapPinIcon size={18} color={Colors.amber} />
@@ -494,20 +577,9 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
         {/* Hero */}
         <Hero count={count} totalCzk={totalCzk} latestDrinkText={latestDrinkText} reducedMotion={reducedMotion} />
 
-        {count > 0 && canUndo && (
-          <Pressable
-            onPress={handleUndo}
-            style={styles.undoRow}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={cs.a11y.counterUndo}
-          >
-            <Undo2Icon size={15} color={Colors.mutedText} />
-            <Text style={styles.undoText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.counter.undoLast}
-            </Text>
-          </Pressable>
-        )}
+        {/* Flexible gap — pushes the menu down so a short session doesn't
+            leave a dead void at the bottom; collapses when the menu is long. */}
+        <View style={styles.flexSpacer} />
 
         {/* Menu */}
         {hasMenu ? (
@@ -523,6 +595,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
                   count={beerCounts.get(beerKey(beer)) ?? 0}
                   pulseToken={pulses[beerKey(beer)] ?? 0}
                   onCount={() => handleTapBeer(beer)}
+                  onDecrement={() => decrementBeer(beer)}
                   onEdit={() => handleEditBeer(beer)}
                 />
               ))}
@@ -610,14 +683,9 @@ function Hero({
       accessibilityLabel={cs.a11y.counterTotal(beerCountLabel(count), cs.counter.price(totalCzk))}
     >
       <View style={styles.heroMetricFrame}>
-        <View style={styles.heroGlowBlob}>
-          <SoftGlow size={300} color={Colors.glow} opacity={0.38} />
+        <View style={styles.heroGlowBlob} pointerEvents="none">
+          <SoftGlow size={340} color={Colors.glow} opacity={0.42} />
         </View>
-        {!reducedMotion && (
-          <View style={styles.heroBubbles}>
-            <BeerBubbles width={292} height={260} bubbleCount={18} overflowVisible />
-          </View>
-        )}
         <View style={[styles.heroCountGlow, amberGlowStrong(28)]}>
           <Text style={styles.heroCount} maxFontSizeMultiplier={FontScaleCap.display}>
             {count}
@@ -627,9 +695,11 @@ function Hero({
       <Text style={styles.heroNoun} maxFontSizeMultiplier={FontScaleCap.heading}>
         {beerCountLabel(count).split(' ')[1]}
       </Text>
-      <Text style={styles.heroTotal} maxFontSizeMultiplier={FontScaleCap.heading}>
-        {cs.counter.totalSpent(cs.counter.price(totalCzk))}
-      </Text>
+      <View style={styles.spentPill}>
+        <Text style={styles.spentPillText} maxFontSizeMultiplier={FontScaleCap.heading}>
+          {cs.counter.totalSpent(cs.counter.price(totalCzk))}
+        </Text>
+      </View>
       {latestDrinkText && (
         <Text style={styles.heroLastDrink} maxFontSizeMultiplier={FontScaleCap.body}>
           {latestDrinkText}
@@ -738,17 +808,39 @@ const styles = StyleSheet.create({
   },
 
   scrollContent: {
+    flexGrow: 1,
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.sm,
   },
+  // Eats leftover height on a short session (1–2 beers) so the menu docks
+  // toward the thumb instead of stranding a void at the bottom; the minHeight
+  // keeps a breath of separation, and flex collapses it once the menu is long.
+  flexSpacer: {
+    flex: 1,
+    minHeight: Spacing.xl,
+  },
+  counterBubbleOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 310,
+    alignItems: 'center',
+    overflow: 'visible',
+    zIndex: 0,
+  },
+  counterBubbleField: {
+    height: 310,
+    overflow: 'visible',
+  },
 
   // — Hero —
+  // The top padding gives the centered glow room to bloom above the digit
+  // without the ScrollView clipping its halo (the cause of the "uříznutý" glow).
   hero: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: Spacing.md,
-    paddingBottom: Spacing.md,
-    minHeight: 244,
+    paddingTop: 88,
+    paddingBottom: Spacing.lg,
   },
   heroEmptyIcon: {
     marginBottom: Spacing.md,
@@ -760,26 +852,21 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: Spacing.lg,
   },
+  // Sized to the digit; the glow is an absolutely-centered sibling behind it so
+  // the halo stays symmetric around the number on every count.
   heroMetricFrame: {
-    width: 310,
-    minHeight: 164,
     alignItems: 'center',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
     overflow: 'visible',
   },
   heroGlowBlob: {
     position: 'absolute',
-    bottom: -156,
-    width: 300,
-    height: 300,
-  },
-  heroBubbles: {
-    position: 'absolute',
-    left: 9,
-    bottom: -70,
-    width: 292,
-    height: 260,
-    overflow: 'visible',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   heroCountGlow: {
     paddingHorizontal: 18,
@@ -790,6 +877,9 @@ const styles = StyleSheet.create({
   heroCount: {
     fontFamily: Fonts.display.extrabold,
     fontSize: 120,
+    // Keep the line box tall enough that the extrabold digit never clips at the
+    // top; the gap to "piv" is closed by the noun's negative margin instead, so
+    // we don't trade a bottom gap for a top crop.
     lineHeight: 142,
     color: Colors.amber,
     includeFontPadding: false,
@@ -798,34 +888,31 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.display.extrabold,
     fontSize: 28,
     color: Colors.foam,
-    marginTop: -8,
+    // Pull up into the digit's empty descender/leading space (which has no
+    // glyph for a number) to tighten the number↔word gap without clipping.
+    marginTop: -30,
   },
-  heroTotal: {
+  // "Utraceno 225 Kč" lives in a contained pill so it reads as a deliberate
+  // stat chip rather than text floating under the hero.
+  spentPill: {
+    marginTop: Spacing.md,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout2,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  spentPillText: {
     fontFamily: Fonts.ui.bold,
-    fontSize: 17,
+    fontSize: 16,
     color: Colors.foamMuted,
-    marginTop: Spacing.sm,
   },
   heroLastDrink: {
     fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.mutedText,
-    marginTop: 6,
-  },
-
-  // — Undo —
-  undoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 6,
-    marginBottom: Spacing.sm,
-  },
-  undoText: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 13,
-    color: Colors.mutedText,
+    marginTop: 10,
   },
 
   // — Menu —
@@ -874,6 +961,12 @@ const styles = StyleSheet.create({
     color: Colors.mutedText,
     fontStyle: 'italic',
   },
+  // — Per-beer stepper (− value +) —
+  stepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   countBadge: {
     minWidth: 40,
     height: 40,
@@ -888,15 +981,26 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: Colors.stout,
   },
-  plusBadge: {
+  stepButton: {
     width: 40,
     height: 40,
     borderRadius: Radius.pill,
     backgroundColor: Colors.stout3,
     borderWidth: 1,
-    borderColor: Colors.border,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // The plus carries an amber outline so it reads as the primary "+1" action;
+  // the muted minus sits quietly beside the count so removing never feels like
+  // the headline gesture.
+  stepButtonPlus: {
+    borderColor: Colors.amber,
+  },
+  stepButtonMinus: {
+    borderColor: Colors.border,
+  },
+  stepButtonPressed: {
+    opacity: 0.7,
   },
   addBeerCard: {
     flexDirection: 'row',
