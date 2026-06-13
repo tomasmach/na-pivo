@@ -72,10 +72,12 @@ export const CompassArrow = memo(function CompassArrow({
           filter="url(#arrowGlowFilter)"
         />
 
-        {/* Tail fin (depth indicator) */}
+        {/* Tail fin — the shadowed bronze underside of the needle. A dark brass
+            tone (not the old cream) so the south half reads with real contrast
+            against the pale foam dial instead of washing out. */}
         <Path
           d={TAIL_PATH}
-          fill={Colors.foamMuted}
+          fill={Colors.brassShadow}
           stroke={Colors.stout}
           strokeWidth={1.5}
           strokeLinejoin="round"
