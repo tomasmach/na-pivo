@@ -35,6 +35,7 @@ import {
   Trash2,
   Copy,
   X,
+  Coins,
   LucideProps,
 } from 'lucide-react-native';
 
@@ -80,3 +81,4 @@ export const MinusIcon = wrap(Minus, 'MinusIcon');
 export const Trash2Icon = wrap(Trash2, 'Trash2Icon');
 export const CopyIcon = wrap(Copy, 'CopyIcon');
 export const XIcon = wrap(X, 'XIcon');
+export const CoinsIcon = wrap(Coins, 'CoinsIcon');

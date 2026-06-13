@@ -103,6 +103,12 @@ export const cs = {
       title: 'Skrýt zavřené hospody',
       subtitle: 'Ukázat jen otevřené a ty s neznámou dobou',
     },
+    currency: {
+      title: 'Měna cen',
+      subtitle: 'Pro zadávání cen piva v Česku nebo na Slovensku',
+      czk: 'Kč',
+      eur: '€',
+    },
     about: {
       title: 'O appce',
     },
@@ -257,8 +263,8 @@ export const cs = {
     // Standalone currency unit shown next to the price input.
     currencySuffix: 'Kč',
     // "62 Kč · 0,5 l" or just "62 Kč" when no volume.
-    beerMeta: (czk: number, ml?: number) =>
-      ml ? `${czk} Kč · ${formatVolume(ml)}` : `${czk} Kč`,
+    beerMeta: (price: string, ml?: number) =>
+      ml ? `${price} · ${formatVolume(ml)}` : price,
   },
 
   whatsNew: {

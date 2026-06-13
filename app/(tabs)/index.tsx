@@ -32,9 +32,11 @@ import type { CommunityBeer } from '@/data/communityClient';
 import { parseOsmOpeningHoursToWeeklyHours } from '@/data/communityHours';
 import type { PubReportReason } from '@/data/pubReportsClient';
 import { usePubStore } from '@/stores/pubStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { shortestRotationTarget } from '@/compass/rotation';
 import { isHeadingAccuracyLow } from '@/compass/headingAccuracy';
 import { openPubInMaps } from '@/utils/maps';
+import { formatPrice, type PriceCurrency } from '@/utils/currency';
 
 import { CompassContainer } from '@/components/compass/CompassContainer';
 import { OpenStatusChip } from '@/components/compass/OpenStatusChip';
@@ -330,7 +332,7 @@ interface RevealedPubPillProps {
 }
 
 /** A compact one-liner for the cheapest/first beer, with "a další" when more. */
-function formatBeerLine(beers: CommunityBeer[]): string | null {
+function formatBeerLine(beers: CommunityBeer[], priceCurrency: PriceCurrency): string | null {
   if (beers.length === 0) return null;
   // Prefer the cheapest priced beer; fall back to the first when none priced.
   const priced = beers.filter((b) => typeof b.priceCzk === 'number');
@@ -339,7 +341,7 @@ function formatBeerLine(beers: CommunityBeer[]): string | null {
     : beers[0];
   const base =
     typeof lead.priceCzk === 'number'
-      ? cs.compass.beerWithPrice(lead.name, `${lead.priceCzk} Kč`)
+      ? cs.compass.beerWithPrice(lead.name, formatPrice(lead.priceCzk, priceCurrency))
       : cs.compass.beerNoPrice(lead.name);
   return beers.length > 1 ? `${base} · ${cs.compass.beerAndMore}` : base;
 }
@@ -354,6 +356,7 @@ function RevealedPubPill({
   nextChange,
   beers,
 }: RevealedPubPillProps) {
+  const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   // Fold the open/closed status into the pill's OWN a11y label: the Pressable
   // collapses its children into a single VoiceOver element, so the chip's label
   // would otherwise never be announced. Stay silent while the lookup is in flight.
@@ -369,7 +372,7 @@ function RevealedPubPill({
     ? `${cs.a11y.pubPillRevealed(pubName)}. ${cs.a11y.openStatus(statusWord)}`
     : cs.a11y.pubPillRevealed(pubName);
 
-  const beerLine = beers && beers.length > 0 ? formatBeerLine(beers) : null;
+  const beerLine = beers && beers.length > 0 ? formatBeerLine(beers, priceCurrency) : null;
 
   return (
     <View style={[styles.pubPill, styles.pubPillRevealed, amberGlow(14)]}>

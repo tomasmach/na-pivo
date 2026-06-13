@@ -53,6 +53,7 @@ import { enqueueDelete } from '@/data/deleteDrinksQueue';
 import { fireSuccessHaptic, fireLightImpactHaptic } from '@/utils/haptics';
 import { useCommunityStore } from '@/stores/communityStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { formatPrice, pricePlaceholder, type PriceCurrency } from '@/utils/currency';
 import {
   useTallyStore,
   sessionCount,
@@ -161,9 +162,10 @@ interface MenuCardProps {
   onCount: () => void;
   onDecrement: () => void;
   onEdit: () => void;
+  priceCurrency: PriceCurrency;
 }
 
-function MenuCard({ beer, count, pulseToken, onCount, onDecrement, onEdit }: MenuCardProps) {
+function MenuCard({ beer, count, pulseToken, onCount, onDecrement, onEdit, priceCurrency }: MenuCardProps) {
   const reducedMotion = useReducedMotion();
   const scale = useSharedValue(1);
   const hasPrice = typeof beer.priceCzk === 'number';
@@ -188,11 +190,11 @@ function MenuCard({ beer, count, pulseToken, onCount, onDecrement, onEdit }: Men
   }, [pulseToken]);
 
   const meta = hasPrice
-    ? cs.counter.beerMeta(beer.priceCzk as number, beer.volumeMl)
-    : cs.counter.pricePlaceholder;
+    ? cs.counter.beerMeta(formatPrice(beer.priceCzk as number, priceCurrency), beer.volumeMl)
+    : pricePlaceholder(priceCurrency);
 
   const countA11yLabel = hasPrice
-    ? cs.a11y.counterCountBeer(beer.name, cs.counter.price(beer.priceCzk as number))
+    ? cs.a11y.counterCountBeer(beer.name, formatPrice(beer.priceCzk as number, priceCurrency))
     : cs.a11y.counterCountBeerNoPrice(beer.name);
 
   return (
@@ -302,6 +304,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
   const { width: screenWidth } = useWindowDimensions();
   const reducedMotion = useReducedMotion();
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
+  const priceCurrency = useSettingsStore((s) => s.priceCurrency);
 
   const cell = useMemo(() => geohash8(pub.lat, pub.lng), [pub.lat, pub.lng]);
 
@@ -575,7 +578,13 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
         showsVerticalScrollIndicator={false}
       >
         {/* Hero */}
-        <Hero count={count} totalCzk={totalCzk} latestDrinkText={latestDrinkText} reducedMotion={reducedMotion} />
+        <Hero
+          count={count}
+          totalCzk={totalCzk}
+          latestDrinkText={latestDrinkText}
+          reducedMotion={reducedMotion}
+          priceCurrency={priceCurrency}
+        />
 
         {/* Flexible gap — pushes the menu down so a short session doesn't
             leave a dead void at the bottom; collapses when the menu is long. */}
@@ -597,6 +606,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
                   onCount={() => handleTapBeer(beer)}
                   onDecrement={() => decrementBeer(beer)}
                   onEdit={() => handleEditBeer(beer)}
+                  priceCurrency={priceCurrency}
                 />
               ))}
             </View>
@@ -656,11 +666,13 @@ function Hero({
   totalCzk,
   latestDrinkText,
   reducedMotion,
+  priceCurrency,
 }: {
   count: number;
   totalCzk: number;
   latestDrinkText: string | null;
   reducedMotion: boolean;
+  priceCurrency: PriceCurrency;
 }) {
   if (count === 0) {
     return (
@@ -680,7 +692,7 @@ function Hero({
       style={styles.hero}
       accessible
       accessibilityRole="text"
-      accessibilityLabel={cs.a11y.counterTotal(beerCountLabel(count), cs.counter.price(totalCzk))}
+      accessibilityLabel={cs.a11y.counterTotal(beerCountLabel(count), formatPrice(totalCzk, priceCurrency))}
     >
       <View style={styles.heroMetricFrame}>
         <View style={styles.heroGlowBlob} pointerEvents="none">
@@ -697,7 +709,7 @@ function Hero({
       </Text>
       <View style={styles.spentPill}>
         <Text style={styles.spentPillText} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {cs.counter.totalSpent(cs.counter.price(totalCzk))}
+          {cs.counter.totalSpent(formatPrice(totalCzk, priceCurrency))}
         </Text>
       </View>
       {latestDrinkText && (
@@ -892,7 +904,7 @@ const styles = StyleSheet.create({
     // glyph for a number) to tighten the number↔word gap without clipping.
     marginTop: -30,
   },
-  // "Utraceno 225 Kč" lives in a contained pill so it reads as a deliberate
+  // The spent total lives in a contained pill so it reads as a deliberate
   // stat chip rather than text floating under the hero.
   spentPill: {
     marginTop: Spacing.md,

@@ -78,6 +78,7 @@ jest.mock('@/counter/useNearbyPub', () => ({ useNearbyPub: () => useNearbyPub() 
 
 import { useTallyStore } from '@/stores/tallyStore';
 import { useCommunityStore } from '@/stores/communityStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { geohash8 } from '@/data/geohash';
 import { Alert } from 'react-native';
 
@@ -110,6 +111,7 @@ beforeEach(() => {
   fetchPubHours.mockImplementation(() => new Promise(() => undefined));
   useTallyStore.setState({ current: null, history: [] });
   useCommunityStore.setState({ overrides: {} });
+  useSettingsStore.setState({ priceCurrency: 'CZK' });
 });
 
 afterEach(() => {
@@ -232,6 +234,26 @@ describe('CounterScreen counting', () => {
     // Menu override still present (price unchanged → same single beer).
     const override = useCommunityStore.getState().overrides[CELL];
     expect(override?.beers).toHaveLength(1);
+  });
+
+  it('renders priced beer labels in EUR when selected in settings', () => {
+    useSettingsStore.setState({ priceCurrency: 'EUR' });
+    useCommunityStore.setState({
+      overrides: { [CELL]: { beers: [{ name: 'Plzeň', priceCzk: 75, volumeMl: 500 }], updatedAt: 1 } },
+    });
+    useNearbyPub.mockReturnValue(nearbyState());
+
+    let renderer: any;
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(CounterScreen));
+    });
+
+    const cs = require('@/i18n/cs').cs;
+    const wanted = cs.a11y.counterCountBeer('Plzeň', '3 €');
+    const card = renderer.root.findAll(
+      (n: any) => n.props?.accessibilityLabel === wanted && typeof n.props?.onPress === 'function',
+    )[0];
+    expect(card).toBeTruthy();
   });
 
   it('shows the last-drink time and asks for confirmation when counting again too quickly', async () => {

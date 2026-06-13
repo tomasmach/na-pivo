@@ -47,6 +47,14 @@ import { generateUuidV4 } from '@/data/account';
 import { buildCommunityEntry, type CommunityBeer } from '@/data/communityClient';
 import { enqueuePubCommunity, flushCommunityQueue } from '@/data/communityQueue';
 import { useCommunityStore } from '@/stores/communityStore';
+import { useSettingsStore } from '@/stores/settingsStore';
+import {
+  formatPriceInputFromCzk,
+  parsePriceInputToCzk,
+  pricePlaceholder,
+  sanitizePriceInput,
+  type PriceCurrency,
+} from '@/utils/currency';
 
 /** Volumes the backend accepts; the picker offers the two common ones + "jiné". */
 const VOLUME_SMALL = 300;
@@ -109,6 +117,7 @@ export default function ContributeScreen() {
   const cell = useMemo(() => geohash8(pub.lat, pub.lng), [pub.lat, pub.lng]);
   const setOverride = useCommunityStore((s) => s.setOverride);
   const storedOverride = useCommunityStore((s) => s.overrides[cell]);
+  const priceCurrency = useSettingsStore((s) => s.priceCurrency);
 
   // Prefill: prefer params (from the enriched pub), then the local override.
   const prefillHours = useMemo<WeeklyHours>(() => {
@@ -123,11 +132,11 @@ export default function ContributeScreen() {
     const source = fromParam ?? storedOverride?.beers ?? [];
     return source.map((b) => ({
       name: b.name,
-      priceText: typeof b.priceCzk === 'number' ? String(b.priceCzk) : '',
+      priceText: typeof b.priceCzk === 'number' ? formatPriceInputFromCzk(b.priceCzk, priceCurrency) : '',
       volumeMl: b.volumeMl,
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [priceCurrency]);
 
   const [hours, setHours] = useState<WeeklyHours>(prefillHours);
   const [beers, setBeers] = useState<BeerRow[]>(prefillBeers);
@@ -229,16 +238,16 @@ export default function ContributeScreen() {
         const name = b.name.trim();
         if (!name) return null;
         const out: CommunityBeer = { name: name.slice(0, 80) };
-        const price = Number(b.priceText);
-        if (b.priceText.trim() && Number.isFinite(price) && price >= 1 && price <= 1000) {
-          out.priceCzk = Math.round(price);
+        const priceCzk = parsePriceInputToCzk(b.priceText, priceCurrency);
+        if (priceCzk !== null) {
+          out.priceCzk = priceCzk;
         }
         if (typeof b.volumeMl === 'number') out.volumeMl = b.volumeMl;
         return out;
       })
       .filter((b): b is CommunityBeer => b !== null)
       .slice(0, MAX_BEERS);
-  }, [beers]);
+  }, [beers, priceCurrency]);
 
   const canSubmit = (hoursTouched || beersTouched) && hoursValid;
 
@@ -392,10 +401,11 @@ export default function ContributeScreen() {
               beer={beer}
               onChangeName={(name) => updateBeer(index, { name })}
               onChangePrice={(priceText) =>
-                updateBeer(index, { priceText: priceText.replace(/\D/g, '').slice(0, 4) })
+                updateBeer(index, { priceText: sanitizePriceInput(priceText, priceCurrency) })
               }
               onChangeVolume={(volumeMl) => updateBeer(index, { volumeMl })}
               onRemove={() => removeBeer(index)}
+              priceCurrency={priceCurrency}
             />
           ))}
 
@@ -551,6 +561,7 @@ interface BeerRowViewProps {
   onChangePrice: (price: string) => void;
   onChangeVolume: (volumeMl: number | undefined) => void;
   onRemove: () => void;
+  priceCurrency: PriceCurrency;
 }
 
 const VOLUME_OPTIONS: { value: number | undefined; labelKey: 'volumeSmall' | 'volumeLarge' | 'volumeOther' }[] = [
@@ -565,7 +576,10 @@ function BeerRowView({
   onChangePrice,
   onChangeVolume,
   onRemove,
+  priceCurrency,
 }: BeerRowViewProps) {
+  const placeholder = pricePlaceholder(priceCurrency);
+
   return (
     <View style={styles.beerRow}>
       <View style={styles.beerTopRow}>
@@ -593,11 +607,11 @@ function BeerRowView({
           style={styles.priceInput}
           value={beer.priceText}
           onChangeText={onChangePrice}
-          placeholder={cs.contribute.pricePlaceholder}
+          placeholder={placeholder}
           placeholderTextColor={Colors.mutedText}
-          keyboardType="number-pad"
-          maxLength={4}
-          accessibilityLabel={cs.contribute.pricePlaceholder}
+          keyboardType={priceCurrency === 'EUR' ? 'decimal-pad' : 'number-pad'}
+          maxLength={priceCurrency === 'EUR' ? 6 : 4}
+          accessibilityLabel={placeholder}
         />
         <View style={styles.volumeGroup}>
           {VOLUME_OPTIONS.map((opt) => {

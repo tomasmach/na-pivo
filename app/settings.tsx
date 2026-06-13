@@ -47,6 +47,7 @@ import {
   BellRingIcon,
   Volume2Icon,
   BeerOffIcon,
+  CoinsIcon,
   InfoIcon,
   ShieldIcon,
   HeartIcon,
@@ -54,6 +55,7 @@ import {
 } from '@/components/shared/IconGlyph';
 import { InstagramIcon, LinkedinIcon } from '@/components/shared/BrandIcon';
 import { MapyLogo } from '@/components/shared/MapyLogo';
+import type { PriceCurrency } from '@/utils/currency';
 
 // ---------------------------------------------------------------------------
 // Discrete slider positions
@@ -62,7 +64,7 @@ import { MapyLogo } from '@/components/shared/MapyLogo';
 // Ordered low → high reach. `null` ("Bez limitu") sits at the far RIGHT so the
 // thumb travels left→right as the search radius grows, and the fill bar is full
 // at unlimited — matching the user's mental model of "maximum reach".
-const SLIDER_POSITIONS: Array<number | null> = [0.5, 1, 1.5, 2, 2.5, 5, 10, null];
+const SLIDER_POSITIONS: (number | null)[] = [0.5, 1, 1.5, 2, 2.5, 5, 10, null];
 const SLIDER_STEPS = SLIDER_POSITIONS.length - 1; // 7
 
 function positionIndexForKm(km: number | null): number {
@@ -233,6 +235,49 @@ function PrefRow({ icon, title, subtitle, value, onToggle, toggleLabel, borderTo
   );
 }
 
+interface CurrencyRowProps {
+  value: PriceCurrency;
+  onSelect: (currency: PriceCurrency) => void;
+  borderTop?: boolean;
+}
+
+function CurrencyRow({ value, onSelect, borderTop }: CurrencyRowProps) {
+  const options: PriceCurrency[] = ['CZK', 'EUR'];
+
+  return (
+    <View style={[styles.prefRow, borderTop && styles.prefRowBorderTop]}>
+      <View style={styles.iconWell}>
+        <CoinsIcon size={18} color={Colors.foamMuted} />
+      </View>
+      <View style={styles.prefText}>
+        <Text style={styles.prefTitle}>{cs.settings.currency.title}</Text>
+        <Text style={styles.prefSubtitle}>{cs.settings.currency.subtitle}</Text>
+      </View>
+      <View style={styles.currencySegment}>
+        {options.map((currency) => {
+          const selected = value === currency;
+          const label = currency === 'EUR' ? cs.settings.currency.eur : cs.settings.currency.czk;
+          return (
+            <Pressable
+              key={currency}
+              onPress={() => onSelect(currency)}
+              style={[styles.currencyOption, selected && styles.currencyOptionSelected]}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              accessibilityLabel={`${cs.settings.currency.title}: ${label}`}
+              hitSlop={4}
+            >
+              <Text style={[styles.currencyOptionText, selected && styles.currencyOptionTextSelected]}>
+                {label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // About / nav row
 // ---------------------------------------------------------------------------
@@ -306,10 +351,12 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
 
   const maxDistanceKm = useSettingsStore((s) => s.maxDistanceKm);
+  const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
   const soundEnabled = useSettingsStore((s) => s.soundEnabled);
   const hideClosedPubs = useSettingsStore((s) => s.hideClosedPubs);
   const setMaxDistanceKm = useSettingsStore((s) => s.setMaxDistanceKm);
+  const setPriceCurrency = useSettingsStore((s) => s.setPriceCurrency);
   const setHapticEnabled = useSettingsStore((s) => s.setHapticEnabled);
   const setSoundEnabled = useSettingsStore((s) => s.setSoundEnabled);
   const setHideClosedPubs = useSettingsStore((s) => s.setHideClosedPubs);
@@ -422,6 +469,11 @@ export default function SettingsScreen() {
             value={hideClosedPubs}
             onToggle={toggleHideClosed}
             toggleLabel={`${cs.settings.hideClosed.title}: ${hideClosedPubs ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+            borderTop
+          />
+          <CurrencyRow
+            value={priceCurrency}
+            onSelect={setPriceCurrency}
             borderTop
           />
         </View>
@@ -699,6 +751,34 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.regular,
     fontSize: 12,
     color: Colors.mutedText,
+  },
+  currencySegment: {
+    flexDirection: 'row',
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout3,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 3,
+    gap: 3,
+  },
+  currencyOption: {
+    minWidth: 42,
+    height: 30,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  currencyOptionSelected: {
+    backgroundColor: Colors.amber,
+  },
+  currencyOptionText: {
+    fontFamily: Fonts.ui.bold,
+    fontSize: 13,
+    color: Colors.mutedText,
+  },
+  currencyOptionTextSelected: {
+    color: Colors.stout,
   },
 
   // ── Toggle ──

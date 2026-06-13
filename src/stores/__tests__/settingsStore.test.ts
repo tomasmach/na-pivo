@@ -30,6 +30,7 @@ describe('useSettingsStore', () => {
 
     expect(state.mode).toBe('nearest');
     expect(state.maxDistanceKm).toBeNull();
+    expect(state.priceCurrency).toBe('CZK');
     expect(state.hapticEnabled).toBe(true);
     expect(state.soundEnabled).toBe(false);
     expect(state.hideClosedPubs).toBe(true);
@@ -124,6 +125,29 @@ describe('useSettingsStore', () => {
     useSettingsStore.getState().setMaxDistanceKm(5);
     useSettingsStore.getState().setMaxDistanceKm(null);
     expect(useSettingsStore.getState().maxDistanceKm).toBeNull();
+  });
+
+  it('setPriceCurrency switches between CZK and EUR', () => {
+    const { useSettingsStore } = require('../settingsStore');
+
+    useSettingsStore.getState().setPriceCurrency('EUR');
+    expect(useSettingsStore.getState().priceCurrency).toBe('EUR');
+
+    useSettingsStore.getState().setPriceCurrency('CZK');
+    expect(useSettingsStore.getState().priceCurrency).toBe('CZK');
+  });
+
+  it('keeps priceCurrency in the partialized payload', async () => {
+    const { useSettingsStore } = require('../settingsStore');
+    await (useSettingsStore.persist as any).rehydrate?.();
+
+    useSettingsStore.getState().setPriceCurrency('EUR');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const raw = await currentAsyncStorage().getItem('na-pivo-settings');
+    expect(raw).not.toBeNull();
+    const persisted = JSON.parse(raw as string).state;
+    expect(persisted.priceCurrency).toBe('EUR');
   });
 
   it('setHapticEnabled toggles haptic', () => {

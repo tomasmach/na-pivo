@@ -18,6 +18,14 @@ import { Radius, Spacing } from '@/theme/layout';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { cs } from '@/i18n/cs';
 import type { CommunityBeer } from '@/data/communityHours';
+import { useSettingsStore } from '@/stores/settingsStore';
+import {
+  currencySuffix,
+  formatPriceInputFromCzk,
+  parsePriceInputToCzk,
+  pricePlaceholder,
+  sanitizePriceInput,
+} from '@/utils/currency';
 
 const VOLUME_SMALL = 300;
 const VOLUME_DEFAULT = 500;
@@ -78,21 +86,23 @@ interface BeerFormBodyProps {
 function BeerFormBody({ mode, beer, onCancel, onSubmit }: BeerFormBodyProps) {
   const insets = useSafeAreaInsets();
   const nameLocked = mode !== 'add';
+  const priceCurrency = useSettingsStore((s) => s.priceCurrency);
 
   // Initialized once at mount from props (the body is remounted per open).
   const [name, setName] = useState(beer?.name ?? '');
   const [priceText, setPriceText] = useState(
-    typeof beer?.priceCzk === 'number' ? String(beer.priceCzk) : '',
+    typeof beer?.priceCzk === 'number' ? formatPriceInputFromCzk(beer.priceCzk, priceCurrency) : '',
   );
   const [volumeMl, setVolumeMl] = useState<number | undefined>(
     beer?.volumeMl ?? (mode === 'add' ? VOLUME_DEFAULT : beer?.volumeMl),
   );
 
   const trimmedName = name.trim();
-  const price = Number(priceText);
-  const priceValid = priceText.trim() !== '' && Number.isFinite(price) && price >= 1 && price <= 1000;
+  const priceCzk = parsePriceInputToCzk(priceText, priceCurrency);
+  const priceValid = priceCzk !== null;
   const nameValid = nameLocked || trimmedName.length > 0;
   const canSubmit = priceValid && nameValid;
+  const placeholder = pricePlaceholder(priceCurrency);
 
   const title =
     mode === 'add' ? cs.counter.addModalTitle : mode === 'edit' ? cs.counter.editModalTitle : cs.counter.priceModalTitle;
@@ -103,7 +113,7 @@ function BeerFormBody({ mode, beer, onCancel, onSubmit }: BeerFormBodyProps) {
     if (!canSubmit) return;
     const result: BeerFormResult = {
       name: nameLocked ? (beer?.name ?? '') : trimmedName.slice(0, 80),
-      priceCzk: Math.round(price),
+      priceCzk: priceCzk as number,
     };
     if (typeof volumeMl === 'number') result.volumeMl = volumeMl;
     onSubmit(result);
@@ -137,16 +147,16 @@ function BeerFormBody({ mode, beer, onCancel, onSubmit }: BeerFormBodyProps) {
             <TextInput
               style={styles.priceInput}
               value={priceText}
-              onChangeText={(v) => setPriceText(v.replace(/\D/g, '').slice(0, 4))}
-              placeholder={cs.counter.pricePlaceholder}
+              onChangeText={(v) => setPriceText(sanitizePriceInput(v, priceCurrency))}
+              placeholder={placeholder}
               placeholderTextColor={Colors.mutedText}
-              keyboardType="number-pad"
-              maxLength={4}
+              keyboardType={priceCurrency === 'EUR' ? 'decimal-pad' : 'number-pad'}
+              maxLength={priceCurrency === 'EUR' ? 6 : 4}
               autoFocus={nameLocked}
-              accessibilityLabel={cs.counter.pricePlaceholder}
+              accessibilityLabel={placeholder}
             />
             <Text style={styles.priceSuffix} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.counter.currencySuffix}
+              {currencySuffix(priceCurrency)}
             </Text>
           </View>
 
