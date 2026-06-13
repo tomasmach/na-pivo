@@ -47,7 +47,6 @@ import {
   BeerOffIcon,
   LockKeyholeIcon,
   EyeIcon,
-  MapPinIcon,
   ExternalLinkIcon,
   RefreshCwIcon,
   SettingsIcon,
@@ -375,12 +374,15 @@ function RevealedPubPill({
     typeof ratingCount === 'number' && Number.isFinite(ratingCount) && ratingCount > 0
       ? ratingCount.toLocaleString('cs-CZ')
       : null;
+  // Compact form for the meta row: the star icon already reads as "rating", so
+  // the "/ 5" and "hodnocení" words are dropped to fit beside the open-status.
+  // The verbose version still goes to the accessibility label below.
   const ratingLine =
     ratingValue === null
       ? null
       : ratingCountText
-        ? `${ratingValue} / 5 · ${cs.compass.ratingCount(ratingCountText)}`
-        : `${ratingValue} / 5`;
+        ? `${ratingValue} · ${ratingCountText}`
+        : ratingValue;
   // Fold the open/closed status into the pill's OWN a11y label: the Pressable
   // collapses its children into a single VoiceOver element, so the chip's label
   // would otherwise never be announced. Stay silent while the lookup is in flight.
@@ -408,31 +410,37 @@ function RevealedPubPill({
         accessibilityLabel={accessibilityLabel}
         accessibilityRole="button"
       >
-        {/* Top row: pub name */}
-        <View style={styles.pubPillRow}>
+        {/* Name row — the trailing ↗ is the maps cue; the whole tap area below
+            opens maps, so there's no separate "Otevřít v mapách" line anymore. */}
+        <View style={styles.revealedNameRow}>
           <BeerIcon size={18} color={Colors.amber} />
           <Text style={styles.pubName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
             {pubName}
           </Text>
+          <ExternalLinkIcon size={16} color={Colors.amber} />
         </View>
 
-        {/* Open status chip — its own row so the long unknown-hours label can
-            never squeeze the maps-hint row below it on narrow screens. The chip
-            renders nothing while the lookup is in flight, so this row collapses. */}
-        <OpenStatusChip isOpenNow={isOpenNow} status={hoursStatus} nextChange={nextChange} />
-
-        {ratingLine && (
-          <View style={styles.ratingRow}>
-            <StarIcon size={14} color={Colors.amber} />
-            <Text
-              style={styles.ratingText}
-              numberOfLines={1}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            >
-              {ratingLine}
-            </Text>
+        {/* Meta row — open-status on the left, rating on the right. Pairing the
+            two shortest facts on one line is what reclaims the vertical space.
+            The status shrinks/ellipsizes first so the rating stays pinned right;
+            the chip renders nothing while hours are still loading. */}
+        <View style={styles.metaRow}>
+          <View style={styles.metaStatus}>
+            <OpenStatusChip isOpenNow={isOpenNow} status={hoursStatus} nextChange={nextChange} />
           </View>
-        )}
+          {ratingLine && (
+            <View style={styles.ratingRow}>
+              <StarIcon size={13} color={Colors.amber} />
+              <Text
+                style={styles.ratingText}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {ratingLine}
+              </Text>
+            </View>
+          )}
+        </View>
 
         {/* Beers on tap — a compact line for the cheapest/first beer. Tapping it
             opens the contribute screen (where the full list lives + is editable). */}
@@ -444,6 +452,7 @@ function RevealedPubPill({
             accessibilityRole="button"
             accessibilityLabel={cs.a11y.contributeBeersLine(beerLine)}
           >
+            <BeerIcon size={14} color={Colors.mutedText} />
             <Text
               style={styles.beerLineText}
               numberOfLines={1}
@@ -453,19 +462,6 @@ function RevealedPubPill({
             </Text>
           </Pressable>
         )}
-
-        {/* Bottom row: open in maps CTA */}
-        <View style={styles.pubPillHintRow}>
-          <MapPinIcon size={14} color={Colors.amber} />
-          <Text
-            style={styles.pubPillMapsHint}
-            numberOfLines={1}
-            maxFontSizeMultiplier={FontScaleCap.body}
-          >
-            {cs.compass.openInMaps}
-          </Text>
-          <ExternalLinkIcon size={12} color={Colors.amber} />
-        </View>
       </Pressable>
 
       {/* Footer actions: contribute info + report problem. Wraps at large fonts. */}
@@ -517,7 +513,6 @@ function ModeToggle({ mode, onNearest, onSurprise }: ModeToggleProps) {
         style={[
           styles.modeSegment,
           mode === 'nearest' && styles.modeSegmentActive,
-          mode === 'nearest' && amberGlow(8),
         ]}
         accessibilityLabel={cs.a11y.modeNearestButton}
         accessibilityRole="button"
@@ -542,7 +537,6 @@ function ModeToggle({ mode, onNearest, onSurprise }: ModeToggleProps) {
         style={[
           styles.modeSegment,
           mode === 'surprise' && styles.modeSegmentActive,
-          mode === 'surprise' && amberGlow(8),
         ]}
         accessibilityLabel={cs.a11y.modeSurpriseButton}
         accessibilityRole="button"
@@ -1013,7 +1007,9 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     fontSize: 14,
     color: Colors.mutedText,
-    marginTop: 0,
+    // The big numeral's line box leaves slack beneath the baseline; pull the
+    // caption up into it so it reads as one tight unit with the distance.
+    marginTop: -8,
     textAlign: 'center',
   },
 
@@ -1095,20 +1091,44 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  pubPillMapsHint: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 13,
-    color: Colors.amber,
-    flex: 1,
+  revealedNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    gap: 10,
+    height: 38,
+  },
+  // Open-status (shrinks first) on the left, rating pinned to the right.
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    justifyContent: 'space-between',
+    gap: 10,
+    minHeight: 18,
+  },
+  metaStatus: {
+    flexShrink: 1,
+    minWidth: 0,
   },
   beerLineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     alignSelf: 'flex-start',
+    // Bound the row to the card width so a long "Pilsner Urquell 12° · 50 Kč ·
+    // a další" line ellipsizes instead of overflowing. A pub with several beers
+    // collapses to one lead-beer line via formatBeerLine, but that single line
+    // itself can be long, so the cap matters even though the row never wraps.
+    maxWidth: '100%',
   },
   beerLineText: {
     fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.foamMuted,
     letterSpacing: 0.2,
+    // Shrink past the fixed icon so numberOfLines={1} can ellipsize the text.
+    flexShrink: 1,
   },
   ratingRow: {
     flexDirection: 'row',

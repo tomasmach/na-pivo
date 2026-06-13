@@ -47,8 +47,10 @@ export const cs = {
     closedUntil: (t: string) => `Zavřeno · otevře v ${t}`,
     hoursUnknown: 'Otevírací doba neznámá',
     contribute: 'Doplnit info',
-    beerWithPrice: (name: string, price: string) => `🍺 ${name} · ${price}`,
-    beerNoPrice: (name: string) => `🍺 ${name}`,
+    // The leading beer glyph is a line-art icon rendered next to this text in
+    // the pub card (see RevealedPubPill), not an emoji baked into the string.
+    beerWithPrice: (name: string, price: string) => `${name} · ${price}`,
+    beerNoPrice: (name: string) => name,
     beerAndMore: 'a další',
     ratingCount: (count: string) => `${count} hodnocení`,
   },
