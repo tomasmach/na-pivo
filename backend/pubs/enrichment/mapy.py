@@ -39,6 +39,7 @@ from __future__ import annotations
 import logging
 import math
 import threading
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 
@@ -76,6 +77,26 @@ ALLOWED_LABELS = {
     "Restaurace a pohostinství",
     "Klub",
 }
+
+TRUSTED_PUB_LABELS = {"Hospoda", "Pivnice", "Pivovar"}
+
+POSITIVE_NAME_KEYWORDS = (
+    "hospoda",
+    "hospudka",
+    "hostinec",
+    "pivnice",
+    "pivovar",
+    "pivni",
+    "pivo",
+    "pivoteka",
+    "vycep",
+    "senk",
+    "tankovna",
+    "nalevarna",
+    "lokal",
+    "pub",
+    "beer",
+)
 
 # Per-request HTTP timeout (seconds).
 _DEFAULT_TIMEOUT = 10
@@ -188,6 +209,37 @@ def _dedupe_key(item: dict) -> str:
     pos = item["position"]
     name = (item.get("name") or "").strip().casefold()
     return f"{round(pos['lat'], 5)},{round(pos['lon'], 5)}|{name}"
+
+
+def _normalize_for_match(value: str) -> str:
+    decomposed = unicodedata.normalize("NFD", value.lower())
+    return "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn")
+
+
+def _tokenize_name(value: str) -> list[str]:
+    token = []
+    tokens = []
+    for ch in _normalize_for_match(value):
+        if ch.isalnum():
+            token.append(ch)
+        elif token:
+            tokens.append("".join(token))
+            token = []
+    if token:
+        tokens.append("".join(token))
+    return tokens
+
+
+def _pub_signal_priority(item: dict) -> int:
+    """Higher value means old coordinate-deduping clients should see it first."""
+    tokens = _tokenize_name(item.get("name") or "")
+    if any(any(token.startswith(keyword) for token in tokens) for keyword in POSITIVE_NAME_KEYWORDS):
+        return 3
+    if item.get("label") in TRUSTED_PUB_LABELS:
+        return 2
+    if item.get("label") in ALLOWED_LABELS:
+        return 1
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -363,6 +415,10 @@ class MapySuggestSource:
         if not any_request_succeeded:
             raise MapyAllQueriesFailedError("All Mapy.cz suggest queries failed")
 
+        # Older mobile builds dedupe by coordinate and keep the first item. Put
+        # stronger pub-like names first so a colocated generic venue does not
+        # hide "Lokál", "Pivovar", etc.
+        merged.sort(key=lambda item: _pub_signal_priority(item), reverse=True)
         return MapySuggestResult(items=merged)
 
     # ------------------------------------------------------------------

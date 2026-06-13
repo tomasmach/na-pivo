@@ -198,7 +198,7 @@ def test_distinct_names_at_same_position_are_preserved():
 
     src = _make_source(handler)
     result = src.search_near(50.0, 14.0, 5)
-    assert [item["name"] for item in result.items] == ["Terminál Karlín", "Lokál Hamburk"]
+    assert [item["name"] for item in result.items] == ["Lokál Hamburk", "Terminál Karlín"]
 
 
 def test_breaks_on_first_step_when_allowed_label_present():
