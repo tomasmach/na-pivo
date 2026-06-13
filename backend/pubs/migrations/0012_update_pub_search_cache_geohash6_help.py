@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('pubs', '0012_drinklog'),
+        ('pubs', '0011_pubsearchcache'),
     ]
 
     operations = [
