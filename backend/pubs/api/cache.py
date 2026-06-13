@@ -129,6 +129,29 @@ def _unknown_result(cache_key: str, name: str) -> dict[str, Any]:
     }
 
 
+def _serve_cached_or_unknown(
+    row: PubHours,
+    key: str,
+    name: str,
+    *,
+    match_log: str | None = None,
+    collision_log: str,
+) -> dict[str, Any]:
+    """Serve the cached row, or _unknown_result on a geohash-8 collision.
+
+    The names_match decision (serve the cached row vs. serve an 'unknown'
+    result) is the security-relevant invariant that stops a different business
+    in the same ~38 m geohash-8 cell from being served the cached pub's hours.
+    It is shared by every cache-read branch so the decision can never diverge.
+    """
+    if names_match(name, row.name):
+        if match_log:
+            logger.info(match_log, key)
+        return _result_from_row(row)
+    logger.info(collision_log, key, row.name, name)
+    return _unknown_result(key, name)
+
+
 def _community_result(row: PubCommunityData, name: str) -> dict[str, Any]:
     """Build a response dict from a community-data row whose hours override firmy.
 
@@ -406,43 +429,39 @@ def get_or_enrich(
         row = existing.get(key)
 
         if row is not None and _is_fresh(row, ttl_days):
-            if names_match(name, row.name):
-                # Cache HIT — return as-is (compute isOpenNow/nextChange live)
-                results.append(_result_from_row(row))
-            else:
-                # Geohash-8 collision: a DIFFERENT business occupies this ~38 m
-                # cell. Serving the cached business's hours would mislabel this
-                # pub. We can't overwrite the shared unique-key row without
-                # flip-flopping the cache, so report 'unknown' (no hours) for
-                # this pub and leave the cached row untouched.
-                logger.info(
-                    "pub-hours: geohash collision at %s — cached %r != requested %r; "
-                    "returning unknown",
-                    key, row.name, name,
+            # Cache HIT — return as-is (compute isOpenNow/nextChange live), or
+            # serve 'unknown' on a geohash-8 collision (a DIFFERENT business
+            # occupies this ~38 m cell). We can't overwrite the shared
+            # unique-key row without flip-flopping the cache, so we leave the
+            # cached row untouched and report no hours for this pub.
+            results.append(
+                _serve_cached_or_unknown(
+                    row, key, name,
+                    collision_log=(
+                        "pub-hours: geohash collision at %s — cached %r != requested %r; "
+                        "returning unknown"
+                    ),
                 )
-                results.append(_unknown_result(key, name))
+            )
             _attach_beers()
             continue
 
         if row is not None and _is_error_in_cooldown(
             row, error_retry_cooldown_minutes
         ):
-            if names_match(name, row.name):
-                logger.info(
-                    "pub-hours: transient error for %s is still in retry cooldown; "
-                    "returning cached error without Firmy.cz fetch",
-                    key,
+            results.append(
+                _serve_cached_or_unknown(
+                    row, key, name,
+                    match_log=(
+                        "pub-hours: transient error for %s is still in retry cooldown; "
+                        "returning cached error without Firmy.cz fetch"
+                    ),
+                    collision_log=(
+                        "pub-hours: geohash collision at %s during error cooldown — "
+                        "cached %r != requested %r; returning unknown"
+                    ),
                 )
-                results.append(_result_from_row(row))
-            else:
-                logger.info(
-                    "pub-hours: geohash collision at %s during error cooldown — "
-                    "cached %r != requested %r; returning unknown",
-                    key,
-                    row.name,
-                    name,
-                )
-                results.append(_unknown_result(key, name))
+            )
             _attach_beers()
             continue
 

@@ -416,6 +416,28 @@ class TestStaleRowsAreRefreshed:
         ph.refresh_from_db()
         assert ph.opening_hours_raw == "Mo-Su 10:00-23:00"
 
+    def test_stale_row_with_maxed_out_task_is_refreshed(self):
+        """A row whose EnrichTask is stuck (done=False, attempts==max_attempts) is
+        not shielded from stale-refresh — phase 1 can't process the task, so
+        phase 2 must heal the row."""
+        stale_time = timezone.now() - timedelta(days=31)
+        ph = _make_pub_hours(fetched_at=stale_time, status=PubHours.Status.ERROR)
+        # Task is stuck at max attempts but never marked done.
+        _make_task(attempts=3, max_attempts=3, done=False)
+
+        with patch(FIRMY_SOURCE_PATH) as MockSource:
+            instance = MockSource.return_value
+            instance._owns_session = True
+            instance._session = MagicMock()
+            instance.fetch.return_value = _GOOD_RESULT
+
+            _run_command()
+
+        # Phase 1 skips the maxed-out task; phase 2 refreshes the stale row.
+        assert instance.fetch.call_count == 1
+        ph.refresh_from_db()
+        assert ph.status == PubHours.Status.OK
+
     def test_pending_rows_not_touched_by_stale_refresh(self):
         """PubHours with status=pending are not touched by the stale-refresh phase."""
         stale_time = timezone.now() - timedelta(days=31)

@@ -222,18 +222,17 @@ class Command(BaseCommand):
 
         Returns (total_processed, cap_exceeded).
         """
-        qs = (
-            EnrichTask.objects.filter(done=False)
-            .extra(where=["attempts < max_attempts"])
-            .order_by("created_at")
-        )
+        qs = EnrichTask.objects.filter(done=False).extra(where=["attempts < max_attempts"])
+        if error_retry_cooldown_minutes > 0:
+            retry_cutoff = timezone.now() - timedelta(minutes=error_retry_cooldown_minutes)
+            qs = qs.filter(
+                models.Q(last_attempt_at__isnull=True) | models.Q(last_attempt_at__lt=retry_cutoff)
+            )
+        qs = qs.order_by("created_at")
 
         ttl_days: int = int(getattr(settings, "HOURS_TTL_DAYS", 30))
         fresh_cutoff = timezone.now() - timedelta(days=ttl_days)
         fresh_statuses = [PubHours.Status.OK, PubHours.Status.UNKNOWN]
-        retry_cutoff = timezone.now() - timedelta(
-            minutes=error_retry_cooldown_minutes
-        )
 
         processed = processed_so_far
         cap_exceeded = False
@@ -256,18 +255,6 @@ class Command(BaseCommand):
                     task.cache_key,
                 )
                 _mark_task_done(task, dry_run)
-                continue
-
-            if (
-                error_retry_cooldown_minutes > 0
-                and task.last_attempt_at is not None
-                and task.last_attempt_at >= retry_cutoff
-            ):
-                logger.info(
-                    "EnrichTask %s was attempted recently — skipping until "
-                    "retry cooldown expires",
-                    task.cache_key,
-                )
                 continue
 
             if not dry_run:
@@ -355,8 +342,6 @@ class Command(BaseCommand):
         )
 
         qs = PubHours.objects.filter(
-            status__in=[PubHours.Status.OK, PubHours.Status.UNKNOWN, PubHours.Status.ERROR],
-        ).filter(
             models.Q(
                 status__in=[PubHours.Status.OK, PubHours.Status.UNKNOWN],
                 fetched_at__lt=stale_cutoff,
@@ -366,7 +351,9 @@ class Command(BaseCommand):
                 fetched_at__lt=error_retry_cutoff,
             )
         ).exclude(
-            cache_key__in=EnrichTask.objects.filter(done=False).values("cache_key")
+            cache_key__in=EnrichTask.objects.filter(done=False)
+            .extra(where=["attempts < max_attempts"])
+            .values("cache_key")
         ).order_by("fetched_at")
 
         processed = processed_so_far

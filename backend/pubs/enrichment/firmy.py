@@ -57,6 +57,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 import threading
 import time
@@ -66,7 +67,7 @@ from urllib.parse import quote_plus, urlparse
 
 import requests
 
-from .matcher import verify_match
+from .matcher import _haversine_m, verify_match
 from .normalizer import normalize_to_osm
 
 logger = logging.getLogger(__name__)
@@ -109,6 +110,15 @@ _CONSENT_WALL_PATH_TOKEN = "nastaveni-souhlasu"
 # business at the same geohash cell must be rejected).
 MIN_CONFIDENCE = 0.55
 
+# Distance (metres) beyond which a search hit is treated as a different physical
+# location and the detail fetch is skipped to save residential-proxy bandwidth.
+# Deliberately generous (5 km): the detail page of a given firm_id carries the
+# SAME geo as its search card, so geo is stable across search→detail — a hit this
+# far away is a same-named business in another city that the detail fetch cannot
+# relocate. The threshold is wide enough that GPS drift / coarse geocoding never
+# drops a true nearby match; we reject only clearly-different-location hits.
+SEARCH_REJECT_DISTANCE_M = 5000
+
 # Hard cap on redirects per request. A hostile/compromised proxy could otherwise
 # chain redirects to DoS the worker (requests' default is 30). 10 leaves room for
 # the occasional legitimate Seznam consent redirect while staying bounded.
@@ -144,6 +154,30 @@ _LTAG_BLOCK_RE = re.compile(r'<div class="list ltag">(.*?)</div>', re.DOTALL)
 _CATEGORY_LINK_RE = re.compile(r"<a [^>]*>([^<]+)</a>")
 # Tag slugs are the /stitek/{slug} path segments inside the ltag block.
 _TAG_SLUG_RE = re.compile(r'/stitek/([^"/?#]+)')
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _coerce_coord(*candidates: object) -> float | None:
+    """Return the first candidate coercible to a finite float, else None.
+
+    Accepts numbers and numeric strings; a legitimate 0.0 is preserved. Returns
+    None when no candidate is a parseable, finite coordinate (None, empty, or
+    non-numeric strings all fall through).
+    """
+    for value in candidates:
+        if value is None:
+            continue
+        try:
+            coord = float(value)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(coord):
+            return coord
+    return None
+
 
 # ---------------------------------------------------------------------------
 # Public dataclass
@@ -651,10 +685,10 @@ class FirmyHoursSource:
             return None
 
         firm_id, slug, search_lb = result
-        if self._search_hit_is_confident_mismatch(name, lat, lng, search_lb):
+        if self._search_hit_is_geographically_distant(lat, lng, search_lb):
             logger.debug(
-                "firmy: search metadata for firm %s is below confidence threshold — "
-                "skipping detail fetch",
+                "firmy: search hit for firm %s is geographically distant — "
+                "skipping detail fetch to save proxy bandwidth",
                 firm_id,
             )
             return None
@@ -702,27 +736,34 @@ class FirmyHoursSource:
             tags=tags,
         )
 
-    def _search_hit_is_confident_mismatch(
+    def _search_hit_is_geographically_distant(
         self,
-        name: str,
         lat: float,
         lng: float,
         search_lb: dict,
     ) -> bool:
-        """Return True when search metadata is complete enough to reject early."""
-        c_name = search_lb.get("name") or ""
-        geo = search_lb.get("geo") or {}
-        if not c_name or not isinstance(geo, dict):
+        """Return True when the search hit is far enough to be a different place.
+
+        A geo-only pre-filter: the detail page of a given firm_id carries the
+        SAME coordinates as its search card, so a hit that is geographically
+        distant from the query is a same-named business in another city that the
+        detail fetch cannot relocate — skipping it is safe and saves proxy
+        bandwidth. We never reject on the (possibly truncated/parent) search
+        NAME, because the authoritative gate prefers the better detail name.
+
+        Coords are parsed robustly; if they cannot be parsed we return False so
+        the caller falls through to the detail fetch — the safe default.
+        """
+        geo = search_lb.get("geo")
+        if not isinstance(geo, dict):
             return False
 
-        try:
-            c_lat = float(geo.get("latitude") or geo.get("lat"))
-            c_lng = float(geo.get("longitude") or geo.get("lng"))
-        except (TypeError, ValueError):
+        c_lat = _coerce_coord(geo.get("latitude"), geo.get("lat"))
+        c_lng = _coerce_coord(geo.get("longitude"), geo.get("lng"))
+        if c_lat is None or c_lng is None:
             return False
 
-        confidence = verify_match(name, lat, lng, c_name, c_lat, c_lng)
-        return confidence < self._min_confidence
+        return _haversine_m(lat, lng, c_lat, c_lng) > SEARCH_REJECT_DISTANCE_M
 
     # ------------------------------------------------------------------
     # Context manager

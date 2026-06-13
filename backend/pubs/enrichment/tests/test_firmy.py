@@ -311,11 +311,13 @@ class TestFirmyHoursSourceFetch:
         result = src.fetch(name, q_lat, q_lng)
         assert result is None
 
-    def test_low_confidence_search_metadata_skips_detail_fetch(self):
-        """Complete search metadata can reject an obvious mismatch before detail."""
+    def test_distant_search_metadata_skips_detail_fetch(self):
+        """A search hit in another city (here Brno vs a Prague query, ~185 km)
+        is geographically distant, so the detail fetch is skipped to save proxy
+        bandwidth — detail is never hit."""
         name = "Restaurace Na Rohu"
         q_lat, q_lng = 50.078914, 14.416990
-        c_lat, c_lng = 49.195060, 16.606837
+        c_lat, c_lng = 49.195060, 16.606837  # Brno
         search_html = _make_search_html(
             "111111", "restaurace-na-rohu", "McDonald's Brno", c_lat, c_lng
         )
@@ -345,6 +347,49 @@ class TestFirmyHoursSourceFetch:
         src = FirmyHoursSource(session=session, min_interval=0.0)
         assert src.fetch(name, q_lat, q_lng) is None
         assert detail_calls == 0
+
+    def test_nearby_search_hit_with_poor_name_still_fetches_detail(self):
+        """A search card whose geo is CLOSE to the query but whose card NAME is
+        poor/truncated must STILL fetch detail — the geo-only pre-filter never
+        drops a near match on a bad search name; the better detail name then
+        clears the post-detail confidence gate."""
+        name = "Restaurace U Fleků"
+        q_lat, q_lng = 50.078914, 14.416990
+        # ~110 m north of the query — well inside SEARCH_REJECT_DISTANCE_M.
+        c_lat, c_lng = 50.079914, 14.416990
+        # Truncated/parent search-card name that would fail the name gate.
+        search_html = _make_search_html(
+            "272313", "u-fleku", "Restaurace", c_lat, c_lng
+        )
+
+        session = requests.Session()
+        detail_calls = 0
+
+        def handle_search(_req):
+            return _make_response(search_html)
+
+        def handle_detail(_req):
+            nonlocal detail_calls
+            detail_calls += 1
+            # Detail page carries the full, correct name.
+            return _make_response(
+                self._detail_html_with_hours(
+                    name, c_lat, c_lng, "Mo,Tu,We,Th,Fr,Sa,Su 10:00–23:00"
+                )
+            )
+
+        adapter = MockFirmyAdapter({
+            r"firmy\.cz/\?q=": handle_search,
+            r"/detail/": handle_detail,
+        })
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+
+        src = FirmyHoursSource(session=session, min_interval=0.0)
+        result = src.fetch(name, q_lat, q_lng)
+        assert detail_calls >= 1
+        assert result is not None
+        assert result.opening_hours_raw == "Mo,Tu,We,Th,Fr,Sa,Su 10:00-23:00"
 
     def test_missing_search_metadata_keeps_detail_fallback(self):
         """Sparse search pages still fetch detail because only detail has metadata."""
