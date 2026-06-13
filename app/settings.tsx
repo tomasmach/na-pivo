@@ -36,7 +36,7 @@ import {
 import { Colors } from '@/theme/colors';
 import { Fonts } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { amberGlow, softDrop } from '@/theme/shadows';
+import { softDrop } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { getAppVersionLabel } from '@/utils/appVersion';
@@ -188,9 +188,7 @@ function DistanceSlider({ positionIndex, onSnap }: SliderProps) {
           {/* Fill bar */}
           <Animated.View style={[styles.trackFill, fillStyle]} />
           {/* Thumb — absolutely positioned */}
-          <Animated.View
-            style={[styles.thumb, amberGlow(14), thumbStyle]}
-          />
+          <Animated.View style={[styles.thumb, thumbStyle]} />
         </View>
       </GestureDetector>
 
@@ -640,6 +638,8 @@ const styles = StyleSheet.create({
     color: Colors.amber,
   },
   distanceDisplay: {
+    height: 70,
+    justifyContent: 'center',
     alignItems: 'center',
     marginTop: 0,
     marginBottom: 20,
