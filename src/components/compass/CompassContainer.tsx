@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import { View, StyleSheet } from 'react-native';
-import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { SharedValue } from 'react-native-reanimated';
 import { CompassDial } from './CompassDial';
 import { CompassArrow } from './CompassArrow';
@@ -12,42 +12,12 @@ interface CompassContainerProps {
   size?: number;
 }
 
-// Glow extends this fraction of `size` beyond the dial on each side.
-const GLOW_OVERFLOW_RATIO = 0.4;
-
 export const CompassContainer = memo(function CompassContainer({
   rotation,
   size = CompassSize,
 }: CompassContainerProps) {
-  const glowOverflow = size * GLOW_OVERFLOW_RATIO;
-  const glowSize = size + glowOverflow * 2;
-
   return (
     <View style={{ width: size, height: size }}>
-      {/* Outer glow halo — overflows container so it spreads beyond the dial */}
-      <View
-        pointerEvents="none"
-        style={{
-          position: 'absolute',
-          top: -glowOverflow,
-          left: -glowOverflow,
-          width: glowSize,
-          height: glowSize,
-        }}
-      >
-        <Svg width={glowSize} height={glowSize} viewBox={`0 0 ${glowSize} ${glowSize}`}>
-          <Defs>
-            <RadialGradient id="compassGlow" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
-              <Stop offset="0%" stopColor={Colors.glow} stopOpacity={0.55} />
-              <Stop offset="35%" stopColor={Colors.glow} stopOpacity={0.32} />
-              <Stop offset="70%" stopColor={Colors.glow} stopOpacity={0.08} />
-              <Stop offset="100%" stopColor={Colors.glow} stopOpacity={0} />
-            </RadialGradient>
-          </Defs>
-          <Circle cx={glowSize / 2} cy={glowSize / 2} r={glowSize / 2} fill="url(#compassGlow)" />
-        </Svg>
-      </View>
-
       {/* Static dial (rings, ticks, cardinals, hub) */}
       <CompassDial size={size} />
 
@@ -59,8 +29,32 @@ export const CompassContainer = memo(function CompassContainer({
       {/* Static hub layered above the arrow so needles disappear under it */}
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
         <Svg width={size} height={size} viewBox={`0 0 ${CompassSize} ${CompassSize}`}>
-          <Circle cx={CompassSize / 2} cy={CompassSize / 2} r={15} fill={Colors.stout} stroke={Colors.amber} strokeWidth={2} />
-          <Circle cx={CompassSize / 2} cy={CompassSize / 2} r={7} fill={Colors.amber} />
+          <Defs>
+            {/* Brushed-brass dome: lit TL → engraved core → shadowed BR */}
+            <LinearGradient id="hubBrass" x1="0" y1="0" x2="1" y2="1">
+              <Stop offset="0%" stopColor={Colors.amberLight} />
+              <Stop offset="50%" stopColor={Colors.engrave} />
+              <Stop offset="100%" stopColor={Colors.border} />
+            </LinearGradient>
+          </Defs>
+          <Circle
+            cx={CompassSize / 2}
+            cy={CompassSize / 2}
+            r={16}
+            fill="url(#hubBrass)"
+            stroke={Colors.border}
+            strokeWidth={1}
+          />
+          <Circle cx={CompassSize / 2} cy={CompassSize / 2} r={9} fill={Colors.enamel} />
+          <Circle cx={CompassSize / 2} cy={CompassSize / 2} r={4.5} fill={Colors.amberLight} />
+          {/* Tiny specular glint, offset up-left, where the key light catches the dome */}
+          <Circle
+            cx={CompassSize / 2 - 1.4}
+            cy={CompassSize / 2 - 1.4}
+            r={1.5}
+            fill={Colors.glint}
+            opacity={0.9}
+          />
         </Svg>
       </View>
     </View>

@@ -20,8 +20,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import {
+import Animated, {
   useAnimatedReaction,
+  useAnimatedStyle,
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
@@ -40,6 +41,8 @@ import { CompassContainer } from '@/components/compass/CompassContainer';
 import { OpenStatusChip } from '@/components/compass/OpenStatusChip';
 import { TitleBar } from '@/components/shared/TitleBar';
 import { GlowButton } from '@/components/shared/GlowButton';
+import { ScreenBackground } from '@/components/shared/ScreenBackground';
+import { LinearBackdrop } from '@/components/shared/Gradient';
 import {
   BeerIcon,
   BeerOffIcon,
@@ -53,10 +56,11 @@ import {
   PencilIcon,
 } from '@/components/shared/IconGlyph';
 
-import { Colors } from '@/theme/colors';
+import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, CompassSize } from '@/theme/layout';
-import { amberGlow, amberGlowStrong } from '@/theme/shadows';
+import { amberGlowStrong } from '@/theme/shadows';
+import { fireLightImpactHaptic } from '@/utils/haptics';
 import { cs } from '@/i18n/cs';
 
 // Android's heading samples arrive as discrete jumps (see the rotation
@@ -135,6 +139,7 @@ function LoadingScreen({ rotation }: LoadingScreenProps) {
   const insets = useSafeAreaInsets();
   return (
     <View style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+      <ScreenBackground />
       <View style={styles.loadingCompassWrap}>
         <CompassContainer rotation={rotation} size={CompassSize} />
       </View>
@@ -219,9 +224,6 @@ interface HiddenPubPillProps {
   onReveal: () => void;
 }
 
-// Pencil design uses fixed pixel widths for the skeleton bars
-const SKELETON_BAR_WIDTHS = [26, 46, 16, 36, 52] as const;
-
 type ActiveCompassLayout = {
   bottomControlsPaddingBottom: number;
   bottomControlsPaddingTop: number;
@@ -291,25 +293,50 @@ function HiddenPubPill({ onReveal }: HiddenPubPillProps) {
     <Pressable
       onPress={onReveal}
       hitSlop={8}
-      style={({ pressed }) => [styles.pubPill, styles.pubPillHidden, pressed && { opacity: 0.8 }]}
+      style={({ pressed }) => [
+        styles.pubPill,
+        styles.pubPillHidden,
+        pressed && { transform: [{ scale: 0.985 }] },
+      ]}
       accessibilityLabel={cs.a11y.pubPillHidden}
       accessibilityRole="button"
     >
-      {/* Top row: lock icon + skeleton bars */}
-      <View style={styles.pubPillRow}>
-        <LockKeyholeIcon size={22} color={Colors.amber} />
-        <View style={styles.skeletonGroup}>
-          {SKELETON_BAR_WIDTHS.map((w, i) => (
-            <View key={i} style={[styles.skeletonBar, { width: w }]} />
-          ))}
-        </View>
+      {/* Lit enamel face of a sealed beer mat (litTop → enamel) */}
+      <LinearBackdrop
+        vertical
+        stops={[
+          { offset: 0, color: Colors.litTop },
+          { offset: 1, color: Colors.enamel },
+        ]}
+      />
+
+      {/* Brass wax-seal medallion, embossed lock keyhole */}
+      <View style={styles.hiddenMedallion}>
+        <LinearBackdrop
+          vertical
+          stops={[
+            { offset: 0, color: Colors.amberLight },
+            { offset: 0.4, color: Colors.amber },
+            { offset: 0.78, color: Colors.brassShadow },
+            { offset: 1, color: Colors.border },
+          ]}
+        />
+        <LockKeyholeIcon size={26} color={Colors.enamel} />
       </View>
 
-      {/* Bottom row: reveal hint */}
-      <View style={styles.pubPillHintRow}>
+      {/* Teaser copy */}
+      <Text style={styles.hiddenTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+        Tvoje pivo čeká
+      </Text>
+      <Text style={styles.hiddenSub} maxFontSizeMultiplier={FontScaleCap.body}>
+        Klepni a odkryj nejbližší výčep
+      </Text>
+
+      {/* Reveal hint pill */}
+      <View style={styles.hiddenRevealPill}>
         <EyeIcon size={14} color={Colors.amber} />
         <Text style={styles.pubPillHint} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.compass.hiddenPubHint}
+          Odkrýt
         </Text>
       </View>
     </Pressable>
@@ -344,6 +371,27 @@ function formatBeerLine(beers: CommunityBeer[]): string | null {
   return beers.length > 1 ? `${base} · ${cs.compass.beerAndMore}` : base;
 }
 
+/**
+ * Same selection as `formatBeerLine`, but split into visual parts so the price
+ * can be tinted amber and the lead/more text stays foam-muted. The plain string
+ * from `formatBeerLine` is still used for the a11y label.
+ */
+function formatBeerLineParts(
+  beers: CommunityBeer[],
+): { lead: string; price: string | null; more: string | null } | null {
+  if (beers.length === 0) return null;
+  const priced = beers.filter((b) => typeof b.priceCzk === 'number');
+  const lead = priced.length
+    ? priced.reduce((a, b) => ((b.priceCzk ?? 0) < (a.priceCzk ?? 0) ? b : a))
+    : beers[0];
+  const price = typeof lead.priceCzk === 'number' ? `${lead.priceCzk} Kč` : null;
+  return {
+    lead: cs.compass.beerNoPrice(lead.name),
+    price,
+    more: beers.length > 1 ? cs.compass.beerAndMore : null,
+  };
+}
+
 function RevealedPubPill({
   pubName,
   onOpenMaps,
@@ -370,19 +418,30 @@ function RevealedPubPill({
     : cs.a11y.pubPillRevealed(pubName);
 
   const beerLine = beers && beers.length > 0 ? formatBeerLine(beers) : null;
+  const beerParts = beers && beers.length > 0 ? formatBeerLineParts(beers) : null;
 
   return (
-    <View style={[styles.pubPill, styles.pubPillRevealed, amberGlow(14)]}>
+    <View style={[styles.pubPill, styles.pubPillRevealed]}>
+      {/* Warm enamel face under the brass-rimmed card (stout3 → stout2) */}
+      <LinearBackdrop
+        vertical
+        stops={[
+          { offset: 0, color: Colors.stout3 },
+          { offset: 1, color: Colors.stout2 },
+        ]}
+      />
       <Pressable
         onPress={onOpenMaps}
         hitSlop={8}
-        style={({ pressed }) => [styles.pubPillTapArea, pressed && { opacity: 0.85 }]}
+        style={({ pressed }) => [styles.pubPillTapArea, pressed && { transform: [{ scale: 0.98 }] }]}
         accessibilityLabel={accessibilityLabel}
         accessibilityRole="button"
       >
         {/* Top row: pub name */}
         <View style={styles.pubPillRow}>
-          <BeerIcon size={18} color={Colors.amber} />
+          <View style={styles.beerChip}>
+            <BeerIcon size={18} color={Colors.amber} />
+          </View>
           <Text style={styles.pubName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
             {pubName}
           </Text>
@@ -395,7 +454,7 @@ function RevealedPubPill({
 
         {/* Beers on tap — a compact line for the cheapest/first beer. Tapping it
             opens the contribute screen (where the full list lives + is editable). */}
-        {beerLine && (
+        {beerLine && beerParts && (
           <Pressable
             onPress={onContribute}
             hitSlop={6}
@@ -408,14 +467,23 @@ function RevealedPubPill({
               numberOfLines={1}
               maxFontSizeMultiplier={FontScaleCap.body}
             >
-              {beerLine}
+              {beerParts.lead}
+              {beerParts.price && (
+                <>
+                  {' · '}
+                  <Text style={styles.beerLinePrice}>{beerParts.price}</Text>
+                </>
+              )}
+              {beerParts.more && (
+                <Text style={styles.beerLineMore}>{` · ${beerParts.more}`}</Text>
+              )}
             </Text>
           </Pressable>
         )}
 
-        {/* Bottom row: open in maps CTA */}
-        <View style={styles.pubPillHintRow}>
-          <MapPinIcon size={14} color={Colors.amber} />
+        {/* Bottom row: open in maps — promoted to a full-width amber action bar */}
+        <View style={styles.mapsCtaBar}>
+          <MapPinIcon size={16} color={Colors.amber} />
           <Text
             style={styles.pubPillMapsHint}
             numberOfLines={1}
@@ -467,17 +535,67 @@ interface ModeToggleProps {
   onSurprise: () => void;
 }
 
+// withSpring config for the toggle slug — snappy but settles cleanly.
+const TOGGLE_SLUG_SPRING = { damping: 22, stiffness: 220 } as const;
+// Gap between the two toggle segments (mirrors styles.modeTogglePill.gap).
+const MODE_SEGMENT_GAP = 4;
+
 function ModeToggle({ mode, onNearest, onSurprise }: ModeToggleProps) {
+  // Measure one segment's width so the brass slug can slide exactly between the
+  // two halves instead of relying on hard-coded percentages.
+  const [segmentWidth, setSegmentWidth] = useState(0);
+  const slug = useSharedValue(0); // 0 = nearest, 1 = surprise
+
+  useEffect(() => {
+    slug.value = withSpring(mode === 'surprise' ? 1 : 0, TOGGLE_SLUG_SPRING);
+  }, [mode, slug]);
+
+  // The two segments are separated by the track's 4pt gap, so the slug travels
+  // one segment width plus that gap when sliding to the second half.
+  const slugStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: slug.value * (segmentWidth + MODE_SEGMENT_GAP) }],
+  }));
+
+  const handleSegmentLayout = useCallback((event: LayoutChangeEvent) => {
+    const w = Math.round(event.nativeEvent.layout.width);
+    if (w > 0) setSegmentWidth((current) => (current === w ? current : w));
+  }, []);
+
+  // Fire a light haptic only when the press actually flips the mode.
+  const handleNearest = useCallback(() => {
+    if (mode !== 'nearest') fireLightImpactHaptic();
+    onNearest();
+  }, [mode, onNearest]);
+  const handleSurprise = useCallback(() => {
+    if (mode !== 'surprise') fireLightImpactHaptic();
+    onSurprise();
+  }, [mode, onSurprise]);
+
   return (
     <View style={styles.modeTogglePill}>
+      {/* Sliding brass slug behind the labels (only shown once measured) */}
+      {segmentWidth > 0 && (
+        <Animated.View
+          style={[styles.modeSlug, { width: segmentWidth }, slugStyle]}
+          pointerEvents="none"
+        >
+          <LinearBackdrop
+            vertical
+            stops={[
+              { offset: 0, color: Colors.amberLight },
+              { offset: 0.5, color: Colors.amber },
+              { offset: 1, color: Colors.engrave },
+            ]}
+          />
+          <View style={styles.modeSlugHighlight} pointerEvents="none" />
+        </Animated.View>
+      )}
+
       {/* Nejbližší segment */}
       <Pressable
-        onPress={onNearest}
-        style={[
-          styles.modeSegment,
-          mode === 'nearest' && styles.modeSegmentActive,
-          mode === 'nearest' && amberGlow(8),
-        ]}
+        onPress={handleNearest}
+        onLayout={handleSegmentLayout}
+        style={styles.modeSegment}
         accessibilityLabel={cs.a11y.modeNearestButton}
         accessibilityRole="button"
       >
@@ -497,12 +615,8 @@ function ModeToggle({ mode, onNearest, onSurprise }: ModeToggleProps) {
 
       {/* Překvap mě segment */}
       <Pressable
-        onPress={onSurprise}
-        style={[
-          styles.modeSegment,
-          mode === 'surprise' && styles.modeSegmentActive,
-          mode === 'surprise' && amberGlow(8),
-        ]}
+        onPress={handleSurprise}
+        style={styles.modeSegment}
         accessibilityLabel={cs.a11y.modeSurpriseButton}
         accessibilityRole="button"
       >
@@ -520,6 +634,65 @@ function ModeToggle({ mode, onNearest, onSurprise }: ModeToggleProps) {
         </Text>
       </Pressable>
     </View>
+  );
+}
+
+// ─── Reroll knob ──────────────────────────────────────────────────────────────
+
+interface RerollButtonProps {
+  onPress: () => void;
+  accessibilityLabel: string;
+  accessibilityHint?: string;
+}
+
+// withSpring config for the knob spin — a single firm 180° flick.
+const REROLL_SPIN_SPRING = { damping: 14, stiffness: 140 } as const;
+
+function RerollButton({ onPress, accessibilityLabel, accessibilityHint }: RerollButtonProps) {
+  // A knurled knob: pressing it spring-spins the glyph a half turn and dips the
+  // whole knob in. Both are decorative shared values, isolated from the hot
+  // heading→needle path.
+  const spin = useSharedValue(0);
+  const pressed = useSharedValue(0);
+
+  const knobStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 - pressed.value * 0.06 }], // 1 → 0.94
+  }));
+  const glyphStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${spin.value}deg` }],
+  }));
+
+  const handlePress = useCallback(() => {
+    const next = spin.value + 180;
+    // Writing the reanimated shared value drives the spin on the UI thread; the
+    // experimental immutability rule misfires on this valid pattern.
+    // eslint-disable-next-line react-hooks/immutability
+    spin.value = withSpring(next, REROLL_SPIN_SPRING);
+    onPress();
+  }, [onPress, spin]);
+
+  return (
+    <Pressable
+      onPress={handlePress}
+      onPressIn={() => {
+        pressed.value = withSpring(1, REROLL_SPIN_SPRING);
+      }}
+      onPressOut={() => {
+        pressed.value = withSpring(0, REROLL_SPIN_SPRING);
+      }}
+      hitSlop={12}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
+      accessibilityRole="button"
+    >
+      <Animated.View style={[styles.rerollButton, knobStyle]}>
+        {/* Top-arc glint — the lit lip of the knurled knob */}
+        <View style={styles.rerollKnobHighlight} pointerEvents="none" />
+        <Animated.View style={glyphStyle}>
+          <RefreshCwIcon size={18} color={Colors.foamMuted} />
+        </Animated.View>
+      </Animated.View>
+    </Pressable>
   );
 }
 
@@ -586,6 +759,10 @@ function DistanceDisplay({ distanceFormatted, mode, layout }: DistanceDisplayPro
             {unitPart}
           </Text>
         )}
+      </View>
+      {/* Brass hairline under the distance — a thin lit ruler */}
+      <View style={styles.distanceHairline}>
+        <View style={styles.distanceHairlineEdge} pointerEvents="none" />
       </View>
       <Text style={styles.distanceCaption} maxFontSizeMultiplier={FontScaleCap.body}>
         {caption}
@@ -778,6 +955,8 @@ export default function CompassScreen() {
       onLayout={handleSceneLayout}
       style={[styles.root, { paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, 16) }]}
     >
+      <ScreenBackground />
+
       {/* Header */}
       <TitleBar
         align="left"
@@ -856,16 +1035,11 @@ export default function CompassScreen() {
             onSurprise={() => setMode('surprise')}
           />
         </View>
-        <Pressable
+        <RerollButton
           onPress={mode === 'surprise' ? reroll : skip}
-          style={styles.rerollButton}
-          hitSlop={12}
           accessibilityLabel={mode === 'surprise' ? cs.a11y.rerollButton : cs.a11y.skipButton}
           accessibilityHint={mode === 'surprise' ? undefined : cs.a11y.skipButtonHint}
-          accessibilityRole="button"
-        >
-          <RefreshCwIcon size={18} color={Colors.foamMuted} />
-        </Pressable>
+        />
       </View>
     </View>
   );
@@ -958,19 +1132,34 @@ const styles = StyleSheet.create({
   distanceNumber: {
     fontFamily: Fonts.display.extrabold,
     color: Colors.foam,
+    letterSpacing: -1.5,
     includeFontPadding: false,
   },
   distanceUnit: {
     fontFamily: Fonts.display.extrabold,
-    color: Colors.amber,
+    color: Colors.mutedText,
+    letterSpacing: 0.5,
     includeFontPadding: false,
   },
+  distanceHairline: {
+    width: 64,
+    height: 2,
+    borderRadius: 2,
+    backgroundColor: withAlpha(Colors.border, 0.5),
+    marginTop: 6,
+    overflow: 'hidden',
+  },
+  distanceHairlineEdge: {
+    height: 1,
+    backgroundColor: withAlpha(Colors.amber, 0.3),
+  },
   distanceCaption: {
-    fontFamily: Fonts.ui.bold,
-    fontStyle: 'italic',
-    fontSize: 14,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 12,
     color: Colors.mutedText,
-    marginTop: 0,
+    letterSpacing: 1.6,
+    textTransform: 'uppercase',
+    marginTop: 8,
     textAlign: 'center',
   },
 
@@ -998,14 +1187,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pubPillHidden: {
-    backgroundColor: Colors.stout2,
+    overflow: 'hidden',
     borderWidth: 1,
     borderColor: Colors.border,
   },
   pubPillRevealed: {
-    backgroundColor: Colors.stout2,
-    borderWidth: 1,
+    overflow: 'hidden',
+    borderWidth: 1.5,
     borderColor: Colors.amber,
+    // Single contained warm under-glow (iOS) instead of the old amberGlow halo.
+    shadowColor: Colors.glow,
+    shadowOpacity: 0.28,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
   },
   pubPillRow: {
     flexDirection: 'row',
@@ -1023,16 +1218,39 @@ const styles = StyleSheet.create({
   },
 
   // ── Hidden pill internals ──
-  skeletonGroup: {
+  hiddenMedallion: {
+    width: 64,
+    height: 64,
+    borderRadius: Radius.pill,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  hiddenTitle: {
+    fontFamily: Fonts.display.bold,
+    fontSize: 17,
+    color: Colors.foam,
+    textAlign: 'center',
+  },
+  hiddenSub: {
+    fontFamily: Fonts.ui.medium,
+    fontSize: 12,
+    color: Colors.mutedText,
+    textAlign: 'center',
+  },
+  hiddenRevealPill: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
-  },
-  skeletonBar: {
-    height: 14,
+    backgroundColor: Colors.stout3,
+    borderWidth: 1,
+    borderColor: Colors.border,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.foamMuted,
-    opacity: 0.6,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    marginTop: 4,
   },
   pubPillHint: {
     fontFamily: Fonts.ui.semibold,
@@ -1041,9 +1259,20 @@ const styles = StyleSheet.create({
   },
 
   // ── Revealed pill internals ──
+  beerChip: {
+    width: 30,
+    height: 30,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout,
+    borderWidth: 1,
+    borderColor: Colors.amber,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   pubName: {
     fontFamily: Fonts.display.extrabold,
-    fontSize: 24,
+    fontSize: 23,
+    letterSpacing: -0.3,
     color: Colors.foam,
     flex: 1,
   },
@@ -1052,9 +1281,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  mapsCtaBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    gap: 8,
+    height: 44,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: withAlpha(Colors.amber, 0.12),
+    borderTopWidth: 1,
+    borderTopColor: withAlpha(Colors.amber, 0.25),
+  },
   pubPillMapsHint: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 13,
+    fontFamily: Fonts.ui.bold,
+    fontSize: 14,
     color: Colors.amber,
     flex: 1,
   },
@@ -1066,6 +1307,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.foamMuted,
     letterSpacing: 0.2,
+  },
+  beerLinePrice: {
+    fontFamily: Fonts.display.bold,
+    fontSize: 13,
+    color: Colors.amber,
+  },
+  beerLineMore: {
+    color: Colors.mutedText,
   },
   pubPillFooter: {
     flexDirection: 'row',
@@ -1087,12 +1336,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   contributeButtonText: {
-    fontFamily: Fonts.ui.semibold,
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     color: Colors.amber,
+    opacity: 0.85,
   },
   reportButtonText: {
-    fontFamily: Fonts.ui.semibold,
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     color: Colors.mutedText,
   },
@@ -1110,12 +1360,38 @@ const styles = StyleSheet.create({
   },
   modeTogglePill: {
     flexDirection: 'row',
-    backgroundColor: Colors.stout3,
+    // Recessed channel — a faux-inset look via a dark top edge and a lighter
+    // bottom edge, as if the slug rides in a milled brass groove.
+    backgroundColor: Colors.channel,
     borderWidth: 1,
     borderColor: Colors.border,
+    borderTopColor: Colors.roast,
+    borderBottomColor: withAlpha(Colors.border, 0.6),
     borderRadius: Radius.pill,
     padding: 5,
     gap: 4,
+  },
+  modeSlug: {
+    position: 'absolute',
+    top: 5,
+    left: 5,
+    bottom: 5,
+    borderRadius: Radius.pill,
+    overflow: 'hidden',
+    // Lifts the active slug off the recessed channel.
+    shadowColor: Colors.black,
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  modeSlugHighlight: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: withAlpha(Colors.glint, 0.6),
   },
   modeSegment: {
     flex: 1,
@@ -1127,9 +1403,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  modeSegmentActive: {
-    backgroundColor: Colors.amber,
   },
   modeSegmentText: {
     fontFamily: Fonts.ui.bold,
@@ -1145,10 +1418,10 @@ const styles = StyleSheet.create({
   modeSegmentTextInactive: {
     color: Colors.foamMuted,
     fontFamily: Fonts.ui.semibold,
-    opacity: 0.7,
+    opacity: 0.6,
   },
 
-  // ── Reroll button ──
+  // ── Reroll knob ──
   rerollButton: {
     width: 44,
     height: 44,
@@ -1156,8 +1429,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
     backgroundColor: Colors.stout3,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  rerollKnobHighlight: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: withAlpha(Colors.glint, 0.25),
   },
 
   // ── Empty state (State D) ──

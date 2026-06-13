@@ -31,9 +31,28 @@ jest.mock('react-native-safe-area-context', () => ({
   })),
 }));
 
-jest.mock('react-native-reanimated', () => ({
-  useAnimatedReaction: jest.fn(),
-  useSharedValue: jest.fn((value) => ({ value })),
+jest.mock('react-native-reanimated', () => {
+  const RN = require('react');
+  const AnimatedView = ({ children, ...props }: { children?: unknown; [k: string]: unknown }) =>
+    RN.createElement('Animated.View', props, children);
+  return {
+    __esModule: true,
+    default: { View: AnimatedView, createAnimatedComponent: (c: unknown) => c },
+    useAnimatedReaction: jest.fn(),
+    useSharedValue: jest.fn((value) => ({ value })),
+    useAnimatedStyle: jest.fn(() => ({})),
+    withSpring: jest.fn((toValue) => toValue),
+    withTiming: jest.fn((toValue) => toValue),
+  };
+});
+
+// The mode-toggle detent fires a haptic; mock it so the suite never loads the
+// ESM-only expo-haptics native module (mirrors celebration/CounterScreen tests).
+jest.mock('@/utils/haptics', () => ({ fireLightImpactHaptic: jest.fn() }));
+
+// Decorative screen backdrop (SVG gradients + a grain image). Inert in tests.
+jest.mock('@/components/shared/ScreenBackground', () => ({
+  ScreenBackground: jest.fn(() => null),
 }));
 
 jest.mock('@/components/compass/CompassContainer', () => ({

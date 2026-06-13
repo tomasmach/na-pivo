@@ -27,6 +27,7 @@ export const Circle = createComponent('Circle');
 export const Defs = createComponent('Defs');
 export const Ellipse = createComponent('Ellipse');
 export const Path = createComponent('Path');
+export const LinearGradient = createComponent('LinearGradient');
 export const RadialGradient = createComponent('RadialGradient');
 export const Rect = createComponent('Rect');
 export const Stop = createComponent('Stop');

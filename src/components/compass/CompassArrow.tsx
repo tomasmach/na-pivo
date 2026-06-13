@@ -60,7 +60,7 @@ export const CompassArrow = memo(function CompassArrow({
       >
         <Defs>
           <Filter id="arrowGlowFilter" x="-80%" y="-80%" width="260%" height="260%">
-            <FeGaussianBlur stdDeviation="10" />
+            <FeGaussianBlur stdDeviation="5" />
           </Filter>
         </Defs>
 
@@ -68,7 +68,7 @@ export const CompassArrow = memo(function CompassArrow({
         <Path
           d={GLOW_PATH}
           fill={Colors.glow}
-          opacity={0.45}
+          opacity={0.22}
           filter="url(#arrowGlowFilter)"
         />
 

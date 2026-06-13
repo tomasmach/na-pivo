@@ -21,6 +21,17 @@ export const Colors = {
   foamMuted: '#E8DCC0',
   mutedText: '#A8896A',
 
+  // Brass / enamel materials — derived from the palette for the "Brass Taproom"
+  // redesign. Not in the original Pencil tokens; computed from stout/amber.
+  roast: '#160D04', // deepest roast, background edge (≈ stout × 0.8)
+  enamel: '#241608', // dark vitreous enamel — the compass dial face
+  litTop: '#332011', // lit top of the locked card
+  brassShadow: '#8A5A1E', // shadow side of brushed brass (≈ amber × 0.62)
+  engrave: '#C98A2E', // engraved guilloché hairline
+  tickMinor: '#7A5A38', // minor tick recessed into enamel
+  glint: '#FCE7B8', // specular highlight on brass / foam
+  channel: '#1B1006', // recessed channel behind the mode toggle
+
   // Status
   success: '#7DD66B',
 

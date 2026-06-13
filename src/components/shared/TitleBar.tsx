@@ -1,10 +1,9 @@
 import React, { memo } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
-import { Colors } from '@/theme/colors';
+import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
+import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea } from '@/theme/layout';
-import { BeerIcon } from './IconGlyph';
 import { cs } from '@/i18n/cs';
 
 interface TitleBarProps {
@@ -12,6 +11,30 @@ interface TitleBarProps {
   onSettings?: () => void;
   onSettingsLongPress?: () => void;
   showGear?: boolean;
+}
+
+// Two-tone wordmark split for "na pivo": muted lead + amber accent.
+const WORDMARK_LEAD = 'na ';
+const WORDMARK_ACCENT = 'pivo';
+
+// Small brushed-brass medallion that replaces the leading beer glyph.
+function BrandMark({ size = 18 }: { size?: number }) {
+  const c = size / 2;
+  const r = size / 2 - 0.5;
+  return (
+    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <Defs>
+        <LinearGradient id="brandBrass" x1="0%" y1="0%" x2="100%" y2="100%">
+          <Stop offset="0%" stopColor="#F5B642" />
+          <Stop offset="50%" stopColor={Colors.engrave} />
+          <Stop offset="100%" stopColor={Colors.border} />
+        </LinearGradient>
+      </Defs>
+      <Circle cx={c} cy={c} r={r} fill="url(#brandBrass)" />
+      {/* foam-dot glint punched up-left */}
+      <Circle cx={c - r * 0.42} cy={c - r * 0.42} r={size * 0.13} fill={Colors.glint} opacity={0.85} />
+    </Svg>
+  );
 }
 
 function GearIcon({ size = 20, color }: { size?: number; color: string }) {
@@ -40,26 +63,35 @@ export const TitleBar = memo(function TitleBar({
   const isLeftAligned = align === 'left';
 
   return (
-    <View style={[styles.container, isLeftAligned && styles.containerLeft]}>
-      <View style={styles.logoRow}>
-        <BeerIcon size={20} color={Colors.amber} />
-        <Text style={styles.titleText} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {cs.compass.headerTitle}
-        </Text>
+    <View>
+      <View style={[styles.container, isLeftAligned && styles.containerLeft]}>
+        <View style={styles.logoRow}>
+          <BrandMark size={18} />
+          <Text style={styles.titleText} maxFontSizeMultiplier={FontScaleCap.heading}>
+            <Text style={styles.titleLead}>{WORDMARK_LEAD}</Text>
+            <Text style={styles.titleAccent}>{WORDMARK_ACCENT}</Text>
+          </Text>
+        </View>
+
+        {showGear && onSettings ? (
+          <Pressable
+            onPress={onSettings}
+            onLongPress={onSettingsLongPress}
+            style={[styles.gearTouchable, isLeftAligned && styles.gearTouchableLeft]}
+            hitSlop={12}
+            accessibilityLabel={cs.a11y.settingsButton}
+            accessibilityRole="button"
+          >
+            <View style={styles.gearDisk}>
+              <GearIcon size={20} color={Colors.mutedText} />
+            </View>
+          </Pressable>
+        ) : null}
       </View>
 
-      {showGear && onSettings ? (
-        <Pressable
-          onPress={onSettings}
-          onLongPress={onSettingsLongPress}
-          style={[styles.gearTouchable, isLeftAligned && styles.gearTouchableLeft]}
-          hitSlop={12}
-          accessibilityLabel={cs.a11y.settingsButton}
-          accessibilityRole="button"
-        >
-          <GearIcon size={20} color={Colors.foamMuted} />
-        </Pressable>
-      ) : null}
+      {/* engraved hairline: 1px highlight above a 1px rule */}
+      <View style={styles.hairlineHighlight} />
+      <View style={styles.hairlineRule} />
     </View>
   );
 });
@@ -85,8 +117,15 @@ const styles = StyleSheet.create({
   titleText: {
     fontFamily: Fonts.display.extrabold,
     fontSize: 22,
-    color: Colors.foam,
-    letterSpacing: 0.2,
+    letterSpacing: -0.5,
+  },
+  titleLead: {
+    fontFamily: Fonts.display.extrabold,
+    color: Colors.foamMuted,
+  },
+  titleAccent: {
+    fontFamily: Fonts.display.extrabold,
+    color: Colors.amber,
   },
   gearTouchable: {
     position: 'absolute',
@@ -100,5 +139,23 @@ const styles = StyleSheet.create({
   },
   gearTouchableLeft: {
     top: 2,
+  },
+  gearDisk: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.foam, 0.04),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.border, 0.5),
+  },
+  hairlineHighlight: {
+    height: 1,
+    backgroundColor: withAlpha(Colors.foam, 0.05),
+  },
+  hairlineRule: {
+    height: 1,
+    backgroundColor: withAlpha(Colors.border, 0.4),
   },
 });
