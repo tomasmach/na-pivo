@@ -30,8 +30,7 @@ from pubs.enrichment import (
     MapyDailyCapExceededError,
     MapySuggestSource,
     community_hours_to_osm,
-    geohash5,
-    geohash5_center,
+    geohash6,
     geohash8,
 )
 from pubs.models import (
@@ -413,9 +412,9 @@ class PubsNearView(APIView):
 
     Server-side Mapy.cz /v1/suggest proxy with a shared DB cache. The mobile app
     used to call Mapy.cz directly from every device, which nearly exhausted the
-    shared API credit; this endpoint fetches once per coarse (geohash-5) cell and
-    radius bucket, caches the trimmed suggest items, and serves every device in
-    the cell from that single row.
+    shared API credit; this endpoint fetches once per small (geohash-6) cell and
+    radius bucket, caches the trimmed suggest items, and serves nearby devices
+    from that row.
 
     Response 200:
         {"items": [<MapySuggestItem>...], "cached": <bool>, "fetched_at": "<ISO>"}
@@ -442,10 +441,10 @@ class PubsNearView(APIView):
         data = serializer.validated_data
         radius_km: float = data["radius_km"]
 
-        # Quantize to the shared cache cell and run the search from its CENTRE so
-        # every user in the ~5 km cell collapses to one cached row.
-        cache_key = geohash5(data["lat"], data["lng"])
-        center_lat, center_lng = geohash5_center(cache_key)
+        # Quantize to a small shared cache cell but run the search from the user's
+        # actual position. The old geohash-5 centre search could be >2 km away at
+        # a cell edge, which made dense-city results point to the wrong quarter.
+        cache_key = geohash6(data["lat"], data["lng"])
         radius_bucket = _radius_bucket(radius_km)
 
         ttl_days: int = int(getattr(settings, "PUBS_NEAR_TTL_DAYS", 7))
@@ -492,7 +491,7 @@ class PubsNearView(APIView):
 
         try:
             with MapySuggestSource(api_key=api_key, daily_cap=daily_cap) as source:
-                result = source.search_near(center_lat, center_lng, radius_bucket)
+                result = source.search_near(data["lat"], data["lng"], radius_bucket)
         except (MapyDailyCapExceededError, MapyAllQueriesFailedError) as exc:
             # Daily cap hit or every upstream query failed. Serve the stale row if
             # we have one (better stale than nothing); otherwise 503 so the client

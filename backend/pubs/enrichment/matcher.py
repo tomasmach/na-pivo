@@ -33,10 +33,18 @@ def geohash8(lat: float, lng: float) -> str:
 def geohash5(lat: float, lng: float) -> str:
     """Return a Geohash string at precision 5 (~4.9 km × 4.9 km cell).
 
-    Used as the shared cache cell for the Mapy 'pubs near' proxy: every user in
-    one ~5 km cell collapses to a single PubSearchCache row.
+    Kept for compatibility with older PubSearchCache rows and tests.
     """
     return geohash(lat, lng, precision=5)
+
+
+def geohash6(lat: float, lng: float) -> str:
+    """Return a Geohash string at precision 6 (~1.2 km × 0.6 km cell).
+
+    Used as the shared cache cell for the Mapy 'pubs near' proxy: small enough
+    that the cached result stays local to the user's actual position.
+    """
+    return geohash(lat, lng, precision=6)
 
 
 def geohash5_center(cache_key: str) -> tuple[float, float]:

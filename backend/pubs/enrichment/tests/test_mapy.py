@@ -167,13 +167,13 @@ def test_item_missing_position_is_dropped():
 
 
 def test_dedupe_by_rounded_position():
-    # Two items within 5-decimal rounding of each other collapse to one.
+    # Same business from multiple term queries collapses to one.
     def handler(req):
         return _make_response(
             {
                 "items": [
                     _item("A", "Hospoda", 50.000001, 14.000001),
-                    _item("B", "Hospoda", 50.000002, 14.000002),
+                    _item("A", "Hospoda", 50.000002, 14.000002),
                 ]
             }
         )
@@ -181,6 +181,24 @@ def test_dedupe_by_rounded_position():
     src = _make_source(handler)
     result = src.search_near(50.0, 14.0, 5)
     assert len(result.items) == 1
+
+
+def test_distinct_names_at_same_position_are_preserved():
+    """Do not drop a pub just because Mapy pins it to another venue's point."""
+
+    def handler(req):
+        return _make_response(
+            {
+                "items": [
+                    _item("Terminál Karlín", "Restaurace a pohostinství", 50.0, 14.0),
+                    _item("Lokál Hamburk", "Restaurace a pohostinství", 50.0, 14.0),
+                ]
+            }
+        )
+
+    src = _make_source(handler)
+    result = src.search_near(50.0, 14.0, 5)
+    assert [item["name"] for item in result.items] == ["Terminál Karlín", "Lokál Hamburk"]
 
 
 def test_breaks_on_first_step_when_allowed_label_present():
