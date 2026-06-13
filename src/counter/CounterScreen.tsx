@@ -608,11 +608,17 @@ function Hero({
       accessibilityRole="text"
       accessibilityLabel={cs.a11y.counterTotal(beerCountLabel(count), cs.counter.price(totalCzk))}
     >
-      {!reducedMotion && <BeerBubbles width={260} height={160} bubbleCount={16} />}
-      <View style={amberGlowStrong(28)}>
-        <Text style={styles.heroCount} maxFontSizeMultiplier={FontScaleCap.display}>
-          {count}
-        </Text>
+      <View style={styles.heroMetricFrame}>
+        {!reducedMotion && (
+          <View style={styles.heroBubbles}>
+            <BeerBubbles width={260} height={178} bubbleCount={16} />
+          </View>
+        )}
+        <View style={[styles.heroCountGlow, amberGlowStrong(28)]}>
+          <Text style={styles.heroCount} maxFontSizeMultiplier={FontScaleCap.display}>
+            {count}
+          </Text>
+        </View>
       </View>
       <Text style={styles.heroNoun} maxFontSizeMultiplier={FontScaleCap.heading}>
         {beerCountLabel(count).split(' ')[1]}
@@ -736,9 +742,9 @@ const styles = StyleSheet.create({
   hero: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: Spacing.lg,
+    paddingTop: Spacing.md,
     paddingBottom: Spacing.md,
-    minHeight: 200,
+    minHeight: 244,
   },
   heroEmptyIcon: {
     marginBottom: Spacing.md,
@@ -750,10 +756,31 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: Spacing.lg,
   },
+  heroMetricFrame: {
+    width: 280,
+    minHeight: 142,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    overflow: 'visible',
+  },
+  heroBubbles: {
+    position: 'absolute',
+    left: 10,
+    bottom: -30,
+    width: 260,
+    height: 178,
+    overflow: 'visible',
+  },
+  heroCountGlow: {
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: 2,
+    overflow: 'visible',
+  },
   heroCount: {
     fontFamily: Fonts.display.extrabold,
     fontSize: 120,
-    lineHeight: 132,
+    lineHeight: 142,
     color: Colors.amber,
     includeFontPadding: false,
   },
