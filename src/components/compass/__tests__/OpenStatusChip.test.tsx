@@ -149,16 +149,20 @@ describe('OpenStatusChip', () => {
     expect(text).toBe(cs.compass.hoursUnknown);
   });
 
-  it('renders nothing while loading with no resolved openness yet', () => {
+  it('renders a loading label while loading with no resolved openness yet', () => {
     const renderer = render(<OpenStatusChip isOpenNow={null} status="loading" />);
 
-    expect(renderer.toJSON()).toBeNull();
+    const { text, color } = readLabel(renderer);
+    expect(text).toBe(cs.compass.detailsLoading);
+    expect(color).toBe(Colors.mutedText);
   });
 
-  it('renders nothing while pending with no resolved openness yet', () => {
+  it('renders a loading label while pending with no resolved openness yet', () => {
     const renderer = render(<OpenStatusChip isOpenNow={null} status="pending" />);
 
-    expect(renderer.toJSON()).toBeNull();
+    const { text, color } = readLabel(renderer);
+    expect(text).toBe(cs.compass.detailsLoading);
+    expect(color).toBe(Colors.mutedText);
   });
 
   it('still shows a result if openness resolves while status is loading/pending', () => {

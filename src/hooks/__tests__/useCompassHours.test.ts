@@ -283,6 +283,29 @@ describe('useCompass — opening hours enrichment', () => {
     expect(hook.result.pub?.isOpenNow).toBe(true);
   });
 
+  it('keeps a pending backend enrichment visible on the selected pub', async () => {
+    (fetchPubHours as jest.Mock).mockResolvedValue(
+      new Map([
+        [
+          PUB.id,
+          result({
+            openingHours: null,
+            isOpenNow: null,
+            nextChange: null,
+            status: 'pending',
+          }),
+        ],
+      ]),
+    );
+
+    const hook = renderCompassHook();
+    await flush();
+
+    expect(hook.result.pub?.id).toBe(PUB.id);
+    expect(hook.result.pub?.hoursStatus).toBe('pending');
+    expect(hook.result.pub?.isOpenNow).toBeNull();
+  });
+
   it('does not refetch hours for the same pub on re-render', async () => {
     (fetchPubHours as jest.Mock).mockResolvedValue(new Map([[PUB.id, result()]]));
 

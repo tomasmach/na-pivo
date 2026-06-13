@@ -21,6 +21,7 @@ export const View = createComponent('View');
 export const Text = createComponent('Text');
 export const Pressable = createComponent('Pressable');
 export const ScrollView = createComponent('ScrollView');
+export const ActivityIndicator = createComponent('ActivityIndicator');
 
 export const StyleSheet = {
   absoluteFill: {

@@ -5,7 +5,7 @@
  * Focus: how resolved opening hours drive which pub the hook ends up targeting.
  *   • hideClosedPubs ON  → a pub resolving to isOpenNow === false is auto-skipped
  *     to the next nearest, walking one pub at a time until an open/unknown pub
- *     (or null) is reached.
+ *     (or null) is reached, unless the user has already revealed that pub.
  *   • An UNKNOWN-hours pub is NOT skipped (we only hide pubs we KNOW are closed).
  *   • hideClosedPubs OFF → nothing is auto-skipped.
  *   • skip() excludes the current pub and advances to the next nearest.
@@ -248,6 +248,42 @@ describe('useCompass — hours-aware selection (Skrýt zavřené hospody)', () =
     // CLOSED must have been excluded from the re-selection.
     const lastCall = (findNearestPub as jest.Mock).mock.calls.at(-1)?.[0];
     expect(lastCall?.excludeIds).toContain(CLOSED.id);
+  });
+
+  it('does not auto-skip a closed pub after the user has revealed it', async () => {
+    wireNearestWalk([CLOSED, OPEN]);
+    let resolveHours!: (m: Map<string, PubHoursResult>) => void;
+    (fetchPubHours as jest.Mock).mockImplementation(
+      () =>
+        new Promise<Map<string, PubHoursResult>>((resolve) => {
+          resolveHours = resolve;
+        })
+    );
+
+    const hook = renderCompassHook();
+    await flush();
+
+    expect(hook.result.pub?.id).toBe(CLOSED.id);
+    expect(hook.result.pub?.hoursStatus).toBe('loading');
+
+    act(() => {
+      hook.result.reveal();
+    });
+
+    await act(async () => {
+      resolveHours(new Map([[CLOSED.id, hours({ isOpenNow: false })]]));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await flush();
+
+    expect(hook.result.revealed).toBe(true);
+    expect(hook.result.pub?.id).toBe(CLOSED.id);
+    expect(hook.result.pub?.isOpenNow).toBe(false);
+    const allExcludes = (findNearestPub as jest.Mock).mock.calls.flatMap(
+      (c) => c[0]?.excludeIds ?? []
+    );
+    expect(allExcludes).not.toContain(CLOSED.id);
   });
 
   it('walks past multiple known-closed pubs until it finds an open one', async () => {
@@ -500,10 +536,10 @@ describe('useCompass — hours-aware selection (Skrýt zavřené hospody)', () =
 });
 
 /**
- * Backend venueKind === 'not_pub' must hide a place ENTIRELY: the compass walks
- * past it to the next eligible pub, exactly like a known-closed pub, but
- * UNCONDITIONALLY — independent of the "hide closed" preference. 'pub' / 'maybe'
- * / 'unknown' (and a dormant backend) leave selection untouched.
+ * Backend venueKind === 'not_pub' hides a place before it is revealed: the
+ * compass walks past it to the next eligible pub, exactly like a known-closed
+ * pub, but independent of the "hide closed" preference. Once the user is
+ * already inspecting a revealed pub, the target stays stable.
  */
 describe('useCompass — venueKind not_pub hiding', () => {
   beforeEach(() => {
@@ -566,6 +602,41 @@ describe('useCompass — venueKind not_pub hiding', () => {
     expect(hook.result.pub?.id).toBe(OPEN.id);
     const lastCall = (findNearestPub as jest.Mock).mock.calls.at(-1)?.[0];
     expect(lastCall?.excludeIds).toContain(NOT_PUB.id);
+  });
+
+  it('does not auto-hide a not_pub place after the user has revealed it', async () => {
+    const NOT_PUB: Pub = { id: 'mapy:not_pub', name: 'Sushi Place', lat: 50.08, lng: 14.42 };
+    wireNearestWalk([NOT_PUB, OPEN]);
+    let resolveHours!: (m: Map<string, PubHoursResult>) => void;
+    (fetchPubHours as jest.Mock).mockImplementation(
+      () =>
+        new Promise<Map<string, PubHoursResult>>((resolve) => {
+          resolveHours = resolve;
+        })
+    );
+
+    const hook = renderCompassHook();
+    await flush();
+
+    expect(hook.result.pub?.id).toBe(NOT_PUB.id);
+    act(() => {
+      hook.result.reveal();
+    });
+
+    await act(async () => {
+      resolveHours(new Map([[NOT_PUB.id, hours({ isOpenNow: true, venueKind: 'not_pub' })]]));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await flush();
+
+    expect(hook.result.revealed).toBe(true);
+    expect(hook.result.pub?.id).toBe(NOT_PUB.id);
+    expect(hook.result.pub?.venueKind).toBe('not_pub');
+    const allExcludes = (findNearestPub as jest.Mock).mock.calls.flatMap(
+      (c) => c[0]?.excludeIds ?? []
+    );
+    expect(allExcludes).not.toContain(NOT_PUB.id);
   });
 
   it('does NOT hide pub / maybe / unknown verdicts', async () => {

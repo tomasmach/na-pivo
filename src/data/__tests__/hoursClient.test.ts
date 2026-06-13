@@ -116,7 +116,7 @@ describe('fetchPubHours — happy path', () => {
     });
   });
 
-  it('POSTs the correct body and sync_budget for a single pub', async () => {
+  it('POSTs the correct body and a cache-only sync_budget for a single pub', async () => {
     setBackend('https://api.example.com/');
     const fetchSpy = jest.fn(async () => ({
       ok: true,
@@ -132,10 +132,24 @@ describe('fetchPubHours — happy path', () => {
     expect(url).toBe('https://api.example.com/v1/pub-hours');
     expect(init.method).toBe('POST');
     const parsed = JSON.parse(init.body as string);
-    expect(parsed.sync_budget).toBe(1);
+    expect(parsed.sync_budget).toBe(0);
     expect(parsed.pubs).toEqual([
       { name: 'U Fleků', lat: 50.0, lng: 14.0, city: 'Praha' },
     ]);
+  });
+
+  it('allows callers to override sync_budget explicitly', async () => {
+    setBackend('https://api.example.com/');
+    const fetchSpy = jest.fn(async () => ({
+      ok: true,
+      json: async () => ({ results: [{ status: 'unknown' }] }),
+    }));
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    await fetchPubHours([PUB_A], undefined, { syncBudget: 1 });
+
+    const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(init.body as string).sync_budget).toBe(1);
   });
 
   it('caps sync_budget at 5 for many pubs', async () => {

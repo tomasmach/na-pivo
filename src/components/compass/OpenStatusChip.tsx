@@ -1,5 +1,5 @@
 import React, { memo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { ActivityIndicator, View, Text, StyleSheet } from 'react-native';
 import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { cs } from '@/i18n/cs';
@@ -56,16 +56,30 @@ function localTimeFromIso(iso: string | null | undefined): string | null {
  * - unknown              → "Otevírací doba neznámá"    (subtle muted)
  *
  * While the lookup is still in flight (`loading`/`pending`) and we don't yet
- * have a usable `isOpenNow` value, the chip renders nothing to avoid flicker.
+ * have a usable `isOpenNow` value, the chip shows a compact loading state.
  */
 export const OpenStatusChip = memo(function OpenStatusChip({
   isOpenNow,
   status,
   nextChange,
 }: OpenStatusChipProps) {
-  // Still resolving and nothing meaningful to show yet → stay out of the way.
   if ((status === 'loading' || status === 'pending') && isOpenNow == null) {
-    return null;
+    return (
+      <View
+        style={styles.chip}
+        accessibilityRole="text"
+        accessibilityLabel={cs.compass.detailsLoading}
+      >
+        <ActivityIndicator size="small" color={Colors.mutedText} />
+        <Text
+          style={[styles.label, { color: Colors.mutedText }]}
+          numberOfLines={1}
+          maxFontSizeMultiplier={FontScaleCap.body}
+        >
+          {cs.compass.detailsLoading}
+        </Text>
+      </View>
+    );
   }
 
   const time = localTimeFromIso(nextChange);
@@ -107,6 +121,7 @@ const styles = StyleSheet.create({
     // The pub pill centers its children; override so the status reads left,
     // aligned with the pub name and the "Otevřít v mapách" row.
     alignSelf: 'flex-start',
+    gap: 6,
   },
   label: {
     fontFamily: Fonts.ui.semibold,

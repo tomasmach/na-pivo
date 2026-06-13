@@ -34,6 +34,7 @@ import type { Mode } from '@/stores/settingsStore';
 /** Minimum distance (meters) to move before recomputing the target pub. */
 const RECOMPUTE_DISTANCE_M = 50;
 const UNLIMITED_SEARCH_RADIUS_KM = 100;
+const PENDING_HOURS_RETRY_DELAYS_MS = [10_000, 30_000, 90_000, 300_000] as const;
 
 type TargetPosition = {
   lat: number;
@@ -375,6 +376,7 @@ export function useCompass(): UseCompassResult {
   // Bumped by the nextChange expiry timer below to force the fetch effect to
   // re-run and refresh a now-stale isOpenNow snapshot.
   const [hoursRefetchNonce, setHoursRefetchNonce] = useState(0);
+  const pendingHoursRetryCountsRef = useRef<Map<string, number>>(new Map());
 
   // Mirror the hours map into a ref so the fetch effect can read the latest
   // contents (to skip already-resolved ids) without listing it as a dependency,
@@ -408,16 +410,19 @@ export function useCompass(): UseCompassResult {
       .then((resultMap) => {
         if (controller.signal.aborted) return;
         const result = resultMap.get(currentPubId);
+        if (result?.status !== 'pending') {
+          pendingHoursRetryCountsRef.current.delete(currentPubId);
+        }
         // Empty/partial map (dormant backend, failure, or this id missing) →
-        // drop the 'loading' placeholder so hours simply don't appear.
+        // drop the 'loading' placeholder so hours simply don't appear. Pending
+        // stays visible and is retried below; it means the backend accepted the
+        // lookup but deferred the proxy work to refresh_hours.
         setHoursById((prev) => {
           const next = new Map(prev);
-          // Cache only RESOLVED results. 'pending' (backend lazy-fill still in
-          // progress) and 'error' are transient — drop them so a later
-          // reselection of this pub retries, instead of caching a dead value for
-          // the lifetime of the hook and never showing the hours the backend
-          // fills in moments later.
-          if (result && result.status !== 'pending' && result.status !== 'error') {
+          // Cache resolved results and the visible pending state. 'error' is
+          // transient — drop it so a later reselection can retry instead of
+          // caching a dead value for the lifetime of the hook.
+          if (result && result.status !== 'error') {
             next.set(currentPubId, {
               status: result.status,
               openingHours: result.openingHours,
@@ -441,6 +446,7 @@ export function useCompass(): UseCompassResult {
         // fetchPubHours never throws, but guard anyway: clear the placeholder so
         // a failure leaves hours undefined rather than stuck on 'loading'.
         if (controller.signal.aborted) return;
+        pendingHoursRetryCountsRef.current.delete(currentPubId);
         setHoursById((prev) => {
           const next = new Map(prev);
           next.delete(currentPubId);
@@ -546,12 +552,11 @@ export function useCompass(): UseCompassResult {
   }, [currentPub, hoursForCurrent, overrideForCurrent]);
 
   // — Auto-skip known-closed pubs (NON-BLOCKING) —
-  // When hideClosedPubs is on and the CURRENT pub's hours have RESOLVED to a
-  // definite isOpenNow === false, add its id to autoClosedIds and bump
+  // When hideClosedPubs is on and a NOT-YET-REVEALED pub's hours have RESOLVED
+  // to a definite isOpenNow === false, add its id to autoClosedIds and bump
   // excludeRevision; the selection effect then reselects the next nearest pub,
-  // excluding it. This reuses the existing per-pub hours fetch, so the walk
-  // proceeds one pub at a time and terminates as soon as an open / unknown pub is
-  // reached (or findNearestPub returns null → empty state).
+  // excluding it. Once the user has revealed a pub, keep that detail stable and
+  // show the closed status instead of switching out from under them.
   //
   // Loop safety:
   //   • Act ONLY on RESOLVED hours: status must be 'ok' AND isOpenNow === false.
@@ -562,25 +567,55 @@ export function useCompass(): UseCompassResult {
   //     so it re-evaluates precisely when those change, not on render churn.
   const hoursStatusForCurrent = hoursForCurrent?.status;
   const isOpenNowForCurrent = hoursForCurrent?.isOpenNow;
+
+  // — Retry pending enrichment (cache-only) —
+  // A pending result means the backend queued refresh_hours instead of blocking
+  // this request on Firmy.cz. Poll the backend gently while the same pub remains
+  // selected; the client still sends sync_budget=0, so these retries do not
+  // spend residential proxy traffic themselves.
+  useEffect(() => {
+    if (!currentPubId || hoursStatusForCurrent !== 'pending') return;
+
+    const retryId = currentPubId;
+    const attempt = pendingHoursRetryCountsRef.current.get(retryId) ?? 0;
+    const delay =
+      PENDING_HOURS_RETRY_DELAYS_MS[
+        Math.min(attempt, PENDING_HOURS_RETRY_DELAYS_MS.length - 1)
+      ];
+    pendingHoursRetryCountsRef.current.set(retryId, attempt + 1);
+
+    const timer = setTimeout(() => {
+      setHoursById((prev) => {
+        if (prev.get(retryId)?.status !== 'pending') return prev;
+        const next = new Map(prev);
+        next.delete(retryId);
+        return next;
+      });
+      setHoursRefetchNonce((nonce) => nonce + 1);
+    }, delay);
+
+    return () => clearTimeout(timer);
+  }, [currentPubId, hoursStatusForCurrent]);
+
   useEffect(() => {
     if (!hideClosedPubs || !currentPubId) return;
+    if (revealed) return;
     if (hoursStatusForCurrent !== 'ok') return;
     if (isOpenNowForCurrent !== false) return;
     if (autoClosedIdsRef.current.has(currentPubId)) return;
 
     autoClosedIdsRef.current = new Set(autoClosedIdsRef.current).add(currentPubId);
     setExcludeRevision((revision) => revision + 1);
-  }, [currentPubId, hideClosedPubs, hoursStatusForCurrent, isOpenNowForCurrent]);
+  }, [currentPubId, hideClosedPubs, revealed, hoursStatusForCurrent, isOpenNowForCurrent]);
 
   // — Auto-hide non-pubs (venueKind === 'not_pub') (NON-BLOCKING) —
   // The backend classifies each place from Firmy.cz categories. A definite
   // 'not_pub' verdict means this is not a drinking spot at all (a sushi place, a
-  // shop, …), so the compass must NEVER lead the user to it — UNCONDITIONALLY,
-  // regardless of the "hide closed" preference. The verdict arrives with the
-  // (async) hours lookup, so — exactly like a known-closed pub — we add its id to
-  // notPubIds and bump excludeRevision; the selection effect then walks to the
-  // next eligible place. 'pub' / 'maybe' / 'unknown' (incl. older backends and a
-  // dormant backend) change nothing.
+  // shop, ...), so before reveal the compass walks past it regardless of the
+  // "hide closed" preference. If the user has already revealed the detail, keep
+  // it stable instead of switching to a different pub after the async verdict
+  // arrives. 'pub' / 'maybe' / 'unknown' (incl. older backends and a dormant
+  // backend) change nothing.
   //
   // Loop safety mirrors the auto-closed effect: act only once per id (guarded by
   // `.has`), the set only grows (until a context change clears it), and the effect
@@ -588,12 +623,13 @@ export function useCompass(): UseCompassResult {
   const venueKindForCurrent = hoursForCurrent?.venueKind;
   useEffect(() => {
     if (!currentPubId) return;
+    if (revealed) return;
     if (venueKindForCurrent !== 'not_pub') return;
     if (notPubIdsRef.current.has(currentPubId)) return;
 
     notPubIdsRef.current = new Set(notPubIdsRef.current).add(currentPubId);
     setExcludeRevision((revision) => revision + 1);
-  }, [currentPubId, venueKindForCurrent]);
+  }, [currentPubId, revealed, venueKindForCurrent]);
 
   // — Expire resolved hours at their nextChange boundary (NON-BLOCKING) —
   // isOpenNow / openUntil are a snapshot from when the lookup resolved. A user

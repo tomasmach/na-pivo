@@ -43,6 +43,17 @@ export interface PubHoursResult {
   venueKind: VenueKind;
 }
 
+export interface FetchPubHoursOptions {
+  /**
+   * Max pubs the backend may enrich synchronously in this request.
+   *
+   * The detail UI defaults single-pub lookups to 0 so cache misses return
+   * quickly as "pending" and the background worker spends proxy traffic at its
+   * controlled pace. Batch callers keep the old bounded sync behavior.
+   */
+  syncBudget?: number;
+}
+
 interface WireBeer {
   name?: string;
   price_czk?: number;
@@ -110,6 +121,11 @@ function normalizeVenueKind(raw: string | null | undefined): VenueKind {
   return 'unknown';
 }
 
+function clampSyncBudget(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(Math.trunc(value), 5));
+}
+
 function toResult(entry: BackendResult | undefined): PubHoursResult {
   if (!entry) {
     return {
@@ -165,6 +181,7 @@ function toResult(entry: BackendResult | undefined): PubHoursResult {
 export async function fetchPubHours(
   pubs: Pub[],
   signal?: AbortSignal,
+  options: FetchPubHoursOptions = {},
 ): Promise<Map<string, PubHoursResult>> {
   const out = new Map<string, PubHoursResult>();
 
@@ -180,8 +197,15 @@ export async function fetchPubHours(
   }
 
   // sync_budget tells the backend how many lazy fills to perform synchronously.
-  // For the common single-pub case use 1; otherwise cap at the backend's max (5).
-  const syncBudget = pubs.length <= 1 ? 1 : Math.min(pubs.length, 5);
+  // Single-pub detail lookups are latency-sensitive, so default them to a
+  // cache-only request that queues background enrichment on a miss. Multi-pub
+  // batch calls keep the previous bounded sync behavior.
+  const syncBudget =
+    options.syncBudget !== undefined
+      ? clampSyncBudget(options.syncBudget)
+      : pubs.length <= 1
+        ? 0
+        : Math.min(pubs.length, 5);
 
   const body = JSON.stringify({
     pubs: pubs.map((p) => ({

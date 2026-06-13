@@ -46,6 +46,7 @@ export const cs = {
     closedNow: 'Zavřeno',
     closedUntil: (t: string) => `Zavřeno · otevře v ${t}`,
     hoursUnknown: 'Otevírací doba neznámá',
+    detailsLoading: 'Načítám info',
     contribute: 'Doplnit info',
     // The leading beer glyph is a line-art icon rendered next to this text in
     // the pub card (see RevealedPubPill), not an emoji baked into the string.
