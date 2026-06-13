@@ -40,6 +40,12 @@ async function readQueue(): Promise<DrinkEntry[]> {
   return raw ? JSON.parse(raw) : [];
 }
 
+async function flushMicrotasks(times = 5): Promise<void> {
+  for (let i = 0; i < times; i++) {
+    await Promise.resolve();
+  }
+}
+
 beforeEach(async () => {
   seq = 0;
   jest.clearAllMocks();
@@ -123,6 +129,30 @@ describe('flushDrinksQueue', () => {
     (submitDrink as jest.Mock).mockResolvedValue('permanent-error');
     await flushDrinksQueue();
     expect(await readQueue()).toHaveLength(0);
+  });
+
+  it('persists a new drink while a slow flush is still delivering an older snapshot', async () => {
+    let resolveSubmit!: (value: 'retry') => void;
+    const slowSubmit = new Promise<'retry'>((resolve) => {
+      resolveSubmit = resolve;
+    });
+
+    (submitDrink as jest.Mock).mockReturnValueOnce(slowSubmit);
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([entry({ client_id: 'a' })]));
+
+    const flushing = flushDrinksQueue();
+    await flushMicrotasks();
+    expect(submitDrink).toHaveBeenCalledWith(expect.objectContaining({ client_id: 'a' }));
+
+    const enqueueing = enqueueDrink(entry({ client_id: 'b' }), { deliver: false });
+    await flushMicrotasks();
+
+    expect((await readQueue()).map((e) => e.client_id)).toEqual(['a', 'b']);
+
+    resolveSubmit('retry');
+    await flushing;
+    await enqueueing;
+    expect((await readQueue()).map((e) => e.client_id)).toEqual(['a', 'b']);
   });
 
   it('does nothing on an empty queue', async () => {

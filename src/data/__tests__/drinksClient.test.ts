@@ -1,5 +1,5 @@
 import { buildDrinkEntry, submitDrink, deleteDrink, type DrinkInput } from '../drinksClient';
-import { ensureAccount } from '../account';
+import { clearCachedAccount, ensureAccount } from '../account';
 
 // drinksClient → account → expo-secure-store, which isn't transformed for the
 // node test env; mock it so the module loads. We also stub ensureAccount so the
@@ -13,6 +13,7 @@ jest.mock('expo-secure-store', () => ({
 
 jest.mock('../account', () => ({
   ...jest.requireActual('../account'),
+  clearCachedAccount: jest.fn(async () => undefined),
   ensureAccount: jest.fn(async () => ({ deviceId: 'd', accountId: 'a', token: 'tok' })),
 }));
 
@@ -100,10 +101,26 @@ describe('submitDrink', () => {
     expect(JSON.parse(init.body as string)).toEqual(entry);
   });
 
-  it('returns permanent-error on 4xx (except 429)', async () => {
+  it('returns permanent-error on validation 4xx responses', async () => {
     setBackend('https://api.example.com');
     global.fetch = jest.fn(async () => ({ ok: false, status: 400, json: async () => ({}) })) as unknown as typeof fetch;
     await expect(submitDrink(entry)).resolves.toBe('permanent-error');
+
+    global.fetch = jest.fn(async () => ({ ok: false, status: 422, json: async () => ({}) })) as unknown as typeof fetch;
+    await expect(submitDrink(entry)).resolves.toBe('permanent-error');
+  });
+
+  it('keeps deploy-mismatch 404 responses queued for retry', async () => {
+    setBackend('https://api.example.com');
+    global.fetch = jest.fn(async () => ({ ok: false, status: 404, json: async () => ({}) })) as unknown as typeof fetch;
+    await expect(submitDrink(entry)).resolves.toBe('retry');
+  });
+
+  it('clears the cached account and retries later on 401', async () => {
+    setBackend('https://api.example.com');
+    global.fetch = jest.fn(async () => ({ ok: false, status: 401, json: async () => ({}) })) as unknown as typeof fetch;
+    await expect(submitDrink(entry)).resolves.toBe('retry');
+    expect(clearCachedAccount).toHaveBeenCalledTimes(1);
   });
 
   it('returns retry on 429 (throttled)', async () => {
@@ -157,11 +174,14 @@ describe('deleteDrink', () => {
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok');
   });
 
-  it('returns permanent-error on 4xx (except 429) and retry on 429/5xx/network', async () => {
+  it('returns permanent-error on validation 4xx and retry on recoverable failures', async () => {
     setBackend('https://api.example.com');
 
     global.fetch = jest.fn(async () => ({ ok: false, status: 400, json: async () => ({}) })) as unknown as typeof fetch;
     await expect(deleteDrink('c')).resolves.toBe('permanent-error');
+
+    global.fetch = jest.fn(async () => ({ ok: false, status: 404, json: async () => ({}) })) as unknown as typeof fetch;
+    await expect(deleteDrink('c')).resolves.toBe('retry');
 
     global.fetch = jest.fn(async () => ({ ok: false, status: 429, json: async () => ({}) })) as unknown as typeof fetch;
     await expect(deleteDrink('c')).resolves.toBe('retry');
@@ -173,6 +193,13 @@ describe('deleteDrink', () => {
       throw new Error('network down');
     }) as unknown as typeof fetch;
     await expect(deleteDrink('c')).resolves.toBe('retry');
+  });
+
+  it('clears the cached account and keeps delete queued on 401', async () => {
+    setBackend('https://api.example.com');
+    global.fetch = jest.fn(async () => ({ ok: false, status: 401, json: async () => ({}) })) as unknown as typeof fetch;
+    await expect(deleteDrink('c')).resolves.toBe('retry');
+    expect(clearCachedAccount).toHaveBeenCalledTimes(1);
   });
 
   it('returns retry when there is no account session', async () => {

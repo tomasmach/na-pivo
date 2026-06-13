@@ -16,13 +16,13 @@
  * null), submitDrink returns a THREE-state result the queue uses to decide
  * whether to drop or keep a payload:
  *   - 'ok'              → 2xx: the drink reached the backend, drop from queue.
- *   - 'permanent-error' → 4xx (validation / auth): retrying will never succeed,
- *                          drop from queue.
+ *   - 'permanent-error' → validation error: retrying this byte-stable payload
+ *                          will never succeed, drop from queue.
  *   - 'retry'           → network error / timeout / 5xx / 429 / dormant: keep in
  *                          queue and retry on the next flush.
  */
 
-import { ensureAccount } from './account';
+import { clearCachedAccount, ensureAccount } from './account';
 import { getBackendEndpoint } from './backendConfig';
 import type { CommunityBeer } from './communityHours';
 
@@ -65,6 +65,22 @@ export interface DrinkEntry {
 export type SubmitDrinkResult = 'ok' | 'permanent-error' | 'retry';
 
 const REQUEST_TIMEOUT_MS = 8000;
+
+async function classifyDrinkHttpFailure(status: number): Promise<SubmitDrinkResult> {
+  if (status === 401) {
+    await clearCachedAccount();
+    return 'retry';
+  }
+
+  // Validation errors are permanent for this byte-stable payload. Other 4xx
+  // responses can be caused by auth recovery, throttling, or a frontend build
+  // briefly running against an older backend during rollout, so keep them queued.
+  if (status === 400 || status === 422) {
+    return 'permanent-error';
+  }
+
+  return 'retry';
+}
 
 /**
  * Build the retry-stable wire payload from the user's input + a fresh client_id.
@@ -135,12 +151,7 @@ export async function submitDrink(
     });
 
     if (resp.ok) return 'ok';
-    // 4xx (except 429) is permanent: the payload is malformed or unauthorized and
-    // will never be accepted, so drop it. 429 (throttled) and 5xx are transient.
-    if (resp.status >= 400 && resp.status < 500 && resp.status !== 429) {
-      return 'permanent-error';
-    }
-    return 'retry';
+    return classifyDrinkHttpFailure(resp.status);
   } catch {
     // network / timeout / abort / malformed response — keep for a later flush.
     return 'retry';
@@ -191,10 +202,7 @@ export async function deleteDrink(
     });
 
     if (resp.ok) return 'ok';
-    if (resp.status >= 400 && resp.status < 500 && resp.status !== 429) {
-      return 'permanent-error';
-    }
-    return 'retry';
+    return classifyDrinkHttpFailure(resp.status);
   } catch {
     return 'retry';
   } finally {

@@ -14,7 +14,7 @@
  *
  * Flush keep/drop rule (matches the mobile retry contract):
  *   - 'ok' (2xx)              → reached backend → drop from queue.
- *   - 'permanent-error' (4xx) → will never succeed → drop from queue.
+ *   - 'permanent-error'       → will never succeed → drop from queue.
  *   - 'retry' (network/5xx/429/dormant) → keep for the next flush.
  */
 
@@ -66,28 +66,38 @@ async function saveQueue(queue: DrinkEntry[]): Promise<void> {
   }
 }
 
-/** Serializes queue mutations — concurrent enqueue/flush/remove calls would
- *  otherwise read-modify-write the same AsyncStorage snapshot and lose items. */
-let _chain: Promise<unknown> = Promise.resolve();
+/** Serializes only AsyncStorage mutations. Network delivery deliberately runs
+ *  outside this lock so a slow/offline flush cannot block a freshly-counted beer
+ *  from being persisted immediately. */
+let _mutationChain: Promise<unknown> = Promise.resolve();
 
-function runLocked<T>(task: () => Promise<T>): Promise<T> {
-  const next = _chain.then(task, task);
-  _chain = next.catch(() => undefined);
+function runMutation<T>(task: () => Promise<T>): Promise<T> {
+  const next = _mutationChain.then(task, task);
+  _mutationChain = next.catch(() => undefined);
   return next;
 }
 
 /** Attempts to send every queued drink, keeping only the ones that should
  *  retry ('ok' and 'permanent-error' are both removed). */
-async function flushLocked(): Promise<void> {
-  const queue = await loadQueue();
+async function flushUnlocked(): Promise<void> {
+  const queue = await runMutation(loadQueue);
   if (queue.length === 0) return;
 
-  const remaining: DrinkEntry[] = [];
+  const deliveredOrDropped = new Set<string>();
+  const snapshotIds = new Set(queue.map((entry) => entry.client_id));
   for (const entry of queue) {
     const result = await submitDrink(entry);
-    if (result === 'retry') remaining.push(entry);
+    if (result !== 'retry') deliveredOrDropped.add(entry.client_id);
   }
-  await saveQueue(remaining);
+
+  await runMutation(async () => {
+    const current = await loadQueue();
+    const remaining = current.filter((entry) => {
+      if (!snapshotIds.has(entry.client_id)) return true;
+      return !deliveredOrDropped.has(entry.client_id);
+    });
+    await saveQueue(remaining);
+  });
 }
 
 /**
@@ -103,19 +113,18 @@ async function flushLocked(): Promise<void> {
  *
  * No dedup: every drink is a distinct event keyed by its own client_id.
  */
-export function enqueueDrink(entry: DrinkEntry, options?: { deliver?: boolean }): Promise<boolean> {
+export async function enqueueDrink(entry: DrinkEntry, options?: { deliver?: boolean }): Promise<boolean> {
   const deliver = options?.deliver ?? true;
-  return runLocked(async () => {
+  await runMutation(async () => {
     const queue = await loadQueue();
     queue.push(entry);
     await saveQueue(queue.slice(-MAX_QUEUE_LENGTH));
-
-    if (!deliver) return false;
-
-    await flushLocked();
-    const after = await loadQueue();
-    return !after.some((queued) => queued.client_id === entry.client_id);
   });
+
+  if (!deliver) return false;
+
+  await flushDrinksQueue();
+  return !(await isDrinkQueued(entry.client_id));
 }
 
 /**
@@ -124,7 +133,7 @@ export function enqueueDrink(entry: DrinkEntry, options?: { deliver?: boolean })
  * actually delivered (queued → still pending; not queued → delivered/dropped).
  */
 export function isDrinkQueued(clientId: string): Promise<boolean> {
-  return runLocked(async () => {
+  return runMutation(async () => {
     const queue = await loadQueue();
     return queue.some((entry) => entry.client_id === clientId);
   });
@@ -138,7 +147,7 @@ export function isDrinkQueued(clientId: string): Promise<boolean> {
  * roll back their local tally.
  */
 export function removeQueuedDrink(clientId: string): Promise<boolean> {
-  return runLocked(async () => {
+  return runMutation(async () => {
     const queue = await loadQueue();
     const filtered = queue.filter((entry) => entry.client_id !== clientId);
     if (filtered.length !== queue.length) {
@@ -154,5 +163,5 @@ export function removeQueuedDrink(clientId: string): Promise<boolean> {
  * foreground — both fire-and-forget. Never throws.
  */
 export function flushDrinksQueue(): Promise<void> {
-  return runLocked(flushLocked);
+  return flushUnlocked();
 }
