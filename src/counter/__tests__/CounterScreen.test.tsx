@@ -73,6 +73,7 @@ jest.mock('@/counter/useNearbyPub', () => ({ useNearbyPub: () => useNearbyPub() 
 import { useTallyStore } from '@/stores/tallyStore';
 import { useCommunityStore } from '@/stores/communityStore';
 import { geohash8 } from '@/data/geohash';
+import { Alert } from 'react-native';
 
 const CounterScreen = require('../CounterScreen').default;
 const TestRenderer = require('react-test-renderer');
@@ -214,6 +215,52 @@ describe('CounterScreen counting', () => {
     // Menu override still present (price unchanged → same single beer).
     const override = useCommunityStore.getState().overrides[CELL];
     expect(override?.beers).toHaveLength(1);
+  });
+
+  it('shows the last-drink time and asks for confirmation when counting again too quickly', async () => {
+    useCommunityStore.setState({
+      overrides: { [CELL]: { beers: [{ name: 'Plzeň', priceCzk: 62, volumeMl: 500 }], updatedAt: 1 } },
+    });
+    useNearbyPub.mockReturnValue(nearbyState());
+
+    let renderer: any;
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(CounterScreen));
+    });
+
+    const cs = require('@/i18n/cs').cs;
+    const wanted = cs.a11y.counterCountBeer('Plzeň', cs.counter.price(62));
+    const card = renderer.root.findAll(
+      (n: any) => n.props?.accessibilityLabel === wanted && typeof n.props?.onPress === 'function',
+    )[0];
+
+    await act(async () => {
+      card.props.onPress();
+      await Promise.resolve();
+    });
+
+    const texts = renderer.root.findAllByType('Text').map((t: any) => t.props.children);
+    expect(texts.flat().join(' ')).toContain(cs.counter.lastDrinkJustNow);
+    expect(enqueueDrink).toHaveBeenCalledTimes(1);
+    expect(Alert.alert).not.toHaveBeenCalled();
+
+    await act(async () => {
+      card.props.onPress();
+      await Promise.resolve();
+    });
+
+    expect(Alert.alert).toHaveBeenCalledTimes(1);
+    expect(enqueueDrink).toHaveBeenCalledTimes(1);
+    expect(useTallyStore.getState().current?.drinks).toHaveLength(1);
+
+    const buttons = (Alert.alert as jest.Mock).mock.calls[0][2];
+    await act(async () => {
+      buttons[1].onPress();
+      await Promise.resolve();
+    });
+
+    expect(enqueueDrink).toHaveBeenCalledTimes(2);
+    expect(useTallyStore.getState().current?.drinks).toHaveLength(2);
   });
 
   it('undoing the last pending count removes the tally drink and the queued payload', async () => {

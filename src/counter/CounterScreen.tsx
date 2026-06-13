@@ -16,7 +16,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, Linking } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet, Linking, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   useAnimatedStyle,
@@ -248,6 +248,28 @@ function beerKey(beer: CommunityBeer): string {
   return `${beer.name.trim().toLowerCase()}|${beer.volumeMl ?? ''}`;
 }
 
+const RAPID_DRINK_WARNING_MS = 5 * 60 * 1000;
+
+export function minutesSinceDrink(at: string, nowMs: number = Date.now()): number | null {
+  const atMs = Date.parse(at);
+  if (!Number.isFinite(atMs)) return null;
+  return Math.max(0, Math.floor((nowMs - atMs) / 60000));
+}
+
+function lastDrinkAgoText(at: string, nowMs: number): string | null {
+  const minutes = minutesSinceDrink(at, nowMs);
+  if (minutes === null) return null;
+  return minutes === 0 ? cs.counter.lastDrinkJustNow : cs.counter.lastDrinkMinutesAgo(minutes);
+}
+
+export function shouldWarnRapidDrink(lastDrinkAt: string | undefined, nowMs: number = Date.now()): boolean {
+  if (!lastDrinkAt) return false;
+  const atMs = Date.parse(lastDrinkAt);
+  if (!Number.isFinite(atMs)) return false;
+  const elapsedMs = nowMs - atMs;
+  return elapsedMs >= 0 && elapsedMs < RAPID_DRINK_WARNING_MS;
+}
+
 function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps) {
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
@@ -270,6 +292,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
   // Per-beer pulse counter (key → token); bumped on each count to bounce a card.
   const [pulses, setPulses] = useState<Record<string, number>>({});
   const [backendMenu, setBackendMenu] = useState<{ pubId: string; beers: CommunityBeer[] } | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
     const controller = new AbortController();
@@ -287,13 +310,24 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
   const count = isThisPubSession ? sessionCount(current) : 0;
   const totalCzk = isThisPubSession ? sessionTotalCzk(current) : 0;
   const latestDrink = isThisPubSession ? current?.drinks[current.drinks.length - 1] : undefined;
+  const latestDrinkAt = latestDrink?.at;
   const latestDrinkId = latestDrink?.id ?? null;
   const latestDrinkSyncStatus = latestDrink?.syncStatus ?? 'pending';
   const canUndo = latestDrinkId !== null && latestDrinkSyncStatus !== 'sent';
+  const latestDrinkText = latestDrinkAt ? lastDrinkAgoText(latestDrinkAt, nowMs) : null;
   const beerCounts = useMemo(
     () => (isThisPubSession ? sessionBeerCounts(current) : new Map<string, number>()),
     [isThisPubSession, current],
   );
+
+  useEffect(() => {
+    if (!latestDrinkAt) return undefined;
+    const timer = setInterval(() => setNowMs(Date.now()), 60 * 1000);
+    if (typeof timer === 'object' && 'unref' in timer && typeof timer.unref === 'function') {
+      timer.unref();
+    }
+    return () => clearInterval(timer);
+  }, [latestDrinkAt]);
 
   // The menu shown = pub.beers (backend/enriched) merged with the local
   // community override (the authoritative local copy). The override already
@@ -311,6 +345,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
     (beer: CommunityBeer & { priceCzk: number }) => {
       const id = generateUuidV4();
       const at = new Date().toISOString();
+      setNowMs(Date.parse(at));
 
       addDrink(
         { pubKey: cell, pubName: pub.name },
@@ -351,6 +386,22 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
     [addDrink, cell, hapticEnabled, markDrinkSynced, menu, pub, setOverride],
   );
 
+  const requestCountBeer = useCallback(
+    (beer: CommunityBeer & { priceCzk: number }) => {
+      if (!shouldWarnRapidDrink(latestDrinkAt)) {
+        countBeer(beer);
+        return;
+      }
+
+      const body = cs.counter.rapidDrinkBody(latestDrinkText ?? cs.counter.lastDrinkJustNow);
+      Alert.alert(cs.counter.rapidDrinkTitle, body, [
+        { text: cs.counter.cancel, style: 'cancel' },
+        { text: cs.counter.rapidDrinkConfirm, onPress: () => countBeer(beer) },
+      ]);
+    },
+    [countBeer, latestDrinkAt, latestDrinkText],
+  );
+
   // Tap a menu card: priced → instant +1; unpriced → ask price first.
   const openForm = useCallback((mode: BeerFormMode, beer: CommunityBeer | null) => {
     setFormBeer(beer);
@@ -361,12 +412,12 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
   const handleTapBeer = useCallback(
     (beer: CommunityBeer) => {
       if (typeof beer.priceCzk === 'number') {
-        countBeer({ ...beer, priceCzk: beer.priceCzk });
+        requestCountBeer({ ...beer, priceCzk: beer.priceCzk });
       } else {
         openForm('price', beer);
       }
     },
-    [countBeer, openForm],
+    [openForm, requestCountBeer],
   );
 
   const handleEditBeer = useCallback(
@@ -392,10 +443,10 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
         setOverride(cell, { beers: mergedMenu });
       } else {
         // 'add' and 'price' both count the beer immediately.
-        countBeer(beer);
+        requestCountBeer(beer);
       }
     },
-    [cell, countBeer, formMode, menu, setOverride],
+    [cell, formMode, menu, requestCountBeer, setOverride],
   );
 
   const handleUndo = useCallback(() => {
@@ -440,7 +491,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
         showsVerticalScrollIndicator={false}
       >
         {/* Hero */}
-        <Hero count={count} totalCzk={totalCzk} reducedMotion={reducedMotion} />
+        <Hero count={count} totalCzk={totalCzk} latestDrinkText={latestDrinkText} reducedMotion={reducedMotion} />
 
         {count > 0 && canUndo && (
           <Pressable
@@ -526,7 +577,17 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
 
 // ─── Hero ─────────────────────────────────────────────────────────────────────
 
-function Hero({ count, totalCzk, reducedMotion }: { count: number; totalCzk: number; reducedMotion: boolean }) {
+function Hero({
+  count,
+  totalCzk,
+  latestDrinkText,
+  reducedMotion,
+}: {
+  count: number;
+  totalCzk: number;
+  latestDrinkText: string | null;
+  reducedMotion: boolean;
+}) {
   if (count === 0) {
     return (
       <View style={styles.hero}>
@@ -559,6 +620,11 @@ function Hero({ count, totalCzk, reducedMotion }: { count: number; totalCzk: num
       <Text style={styles.heroTotal} maxFontSizeMultiplier={FontScaleCap.heading}>
         {cs.counter.totalSpent(cs.counter.price(totalCzk))}
       </Text>
+      {latestDrinkText && (
+        <Text style={styles.heroLastDrink} maxFontSizeMultiplier={FontScaleCap.body}>
+          {latestDrinkText}
+        </Text>
+      )}
     </View>
   );
 }
@@ -702,6 +768,12 @@ const styles = StyleSheet.create({
     fontSize: 17,
     color: Colors.foamMuted,
     marginTop: Spacing.sm,
+  },
+  heroLastDrink: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 13,
+    color: Colors.mutedText,
+    marginTop: 6,
   },
 
   // — Undo —

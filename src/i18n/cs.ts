@@ -3,6 +3,8 @@
  * Structured by screen/component so adding a second locale later is trivial.
  */
 
+import { czechPlural } from './plural';
+
 /** Format a serving volume in ml as a Czech litre string with a decimal comma:
  *  500 → "0,5 l", 300 → "0,3 l", 1000 → "1 l", 330 → "0,33 l". */
 function formatVolume(ml: number): string {
@@ -212,6 +214,17 @@ export const cs = {
     // — Hero —
     totalSpent: (price: string) => `Utraceno ${price}`,
     heroEmptyTitle: 'Ťukni na pivo a začni počítat',
+    lastDrinkJustNow: 'Poslední pivo před chvilkou',
+    lastDrinkMinutesAgo: (minutes: number) =>
+      `Poslední pivo před ${minutes} ${czechPlural(minutes, {
+        one: 'minutou',
+        few: 'minutami',
+        many: 'minutami',
+      })}`,
+    rapidDrinkTitle: 'Už sis pivo přidal',
+    rapidDrinkBody: (lastDrinkText: string) =>
+      `${lastDrinkText}. Fakt chceš přidat další?`,
+    rapidDrinkConfirm: 'Přidat další',
 
     // — Menu —
     menuHeader: 'Co tu mají',
