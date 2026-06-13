@@ -3,7 +3,8 @@
  * on tap. Both sections are independently editable; only the touched parts are
  * submitted. On submit it writes an optimistic local override (so the edit shows
  * instantly, even offline), enqueues the contribution fire-and-forget (the queue
- * persists + retries), and swaps to a thank-you state — mirroring ReportScreen.
+ * persists + retries), then pops straight back — a haptic + toast confirm the
+ * save, since the override already shows the edit on the screen underneath.
  *
  * The pub to describe arrives via router params (JSON-string-encoded fields).
  * Prefill comes from the enriched pub's communityHours/beers, threaded through
@@ -48,6 +49,8 @@ import { buildCommunityEntry, type CommunityBeer } from '@/data/communityClient'
 import { enqueuePubCommunity, flushCommunityQueue } from '@/data/communityQueue';
 import { useCommunityStore } from '@/stores/communityStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useToastStore } from '@/stores/toastStore';
+import { fireSuccessHaptic } from '@/utils/haptics';
 import {
   formatPriceInputFromCzk,
   parsePriceInputToCzk,
@@ -142,7 +145,6 @@ export default function ContributeScreen() {
   const [beers, setBeers] = useState<BeerRow[]>(prefillBeers);
   const [hoursTouched, setHoursTouched] = useState(false);
   const [beersTouched, setBeersTouched] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
 
   // ── Hours editing ─────────────────────────────────────────────────────────
 
@@ -280,7 +282,11 @@ export default function ContributeScreen() {
     void enqueuePubCommunity(entry);
     void flushCommunityQueue();
 
-    setSubmitted(true);
+    // No success screen: the edit already shows instantly via the optimistic
+    // override, so just confirm with a haptic + toast and pop back to it.
+    if (useSettingsStore.getState().hapticEnabled) fireSuccessHaptic();
+    useToastStore.getState().show(cs.contribute.savedToast);
+    router.back();
   }, [
     beersTouched,
     cell,
@@ -293,6 +299,7 @@ export default function ContributeScreen() {
     pub.lat,
     pub.lng,
     pub.name,
+    router,
     setOverride,
   ]);
 
@@ -321,22 +328,7 @@ export default function ContributeScreen() {
         <View style={styles.headerSpacer} />
       </View>
 
-      {submitted ? (
-        <View
-          style={[styles.successWrapper, { paddingBottom: Math.max(insets.bottom + 24, 32) }]}
-        >
-          <Text style={styles.successTitle} maxFontSizeMultiplier={FontScaleCap.display}>
-            {cs.contribute.successTitle}
-          </Text>
-          <Text style={styles.successBody} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.contribute.successBody}
-          </Text>
-          <View style={styles.successButton}>
-            <GlowButton label={cs.contribute.successClose} onPress={() => router.back()} />
-          </View>
-        </View>
-      ) : (
-        <ScrollView
+      <ScrollView
           style={styles.flex}
           contentContainerStyle={[
             styles.scrollContent,
@@ -445,7 +437,6 @@ export default function ContributeScreen() {
             {!canSubmit && <View style={styles.submitDisabledOverlay} />}
           </View>
         </ScrollView>
-      )}
     </View>
   );
 }
@@ -919,30 +910,5 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout,
     opacity: 0.55,
     borderRadius: Radius.pill,
-  },
-
-  successWrapper: {
-    flex: 1,
-    paddingHorizontal: Spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.md,
-  },
-  successTitle: {
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 40,
-    color: Colors.foam,
-    textAlign: 'center',
-  },
-  successBody: {
-    fontFamily: Fonts.ui.regular,
-    fontSize: 15,
-    color: Colors.foamMuted,
-    lineHeight: 15 * 1.5,
-    textAlign: 'center',
-  },
-  successButton: {
-    alignSelf: 'stretch',
-    marginTop: Spacing.sm,
   },
 });

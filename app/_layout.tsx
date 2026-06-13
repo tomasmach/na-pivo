@@ -23,6 +23,7 @@ import { flushWalkingDistance } from '@/data/walkingTelemetry';
 import { useAccountStore } from '@/stores/accountStore';
 import { useReleaseStore } from '@/stores/releaseStore';
 import { WhatsNewModal } from '@/components/shared/WhatsNewModal';
+import { Toast } from '@/components/shared/Toast';
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   // ignore — splash may already be hidden
@@ -147,6 +148,7 @@ export default function RootLayout() {
           />
         </Stack>
         <WhatsNewModal />
+        <Toast />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

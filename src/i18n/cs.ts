@@ -190,9 +190,7 @@ export const cs = {
     maxBeersReached: 'Víc piv už přidat nejde',
     save: 'Uložit',
     invalidHint: 'Zkontroluj zadané časy (formát HH:MM).',
-    successTitle: 'Díky! 🍺',
-    successBody: 'Díky! Údaje se propíšou všem — odešleme je, jakmile budeš online.',
-    successClose: 'Zavřít',
+    savedToast: 'Díky! Uloženo',
   },
 
   tabs: {
