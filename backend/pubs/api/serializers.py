@@ -4,7 +4,8 @@ pubs.api.serializers — request/response serializers for the pub-hours API.
 Request body (POST /v1/pub-hours):
     {
         "pubs": [{"name": str, "lat": float, "lng": float, "city"?: str}],
-        "sync_budget"?: int  -- max pubs to enrich synchronously (default SYNC_ENRICH_BUDGET)
+        "sync_budget"?: int  -- max pubs to enrich synchronously; 0 = queue-only
+                               -- (default SYNC_ENRICH_BUDGET)
     }
 
 Response body:

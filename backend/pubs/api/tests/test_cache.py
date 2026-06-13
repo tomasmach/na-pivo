@@ -133,36 +133,28 @@ def test_cache_miss_within_budget_triggers_fetch_and_persists():
 
 
 # ---------------------------------------------------------------------------
-# Test: stale row within budget — re-fetches and updates
+# Test: stale row within budget — returns stale data and queues refresh
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
-def test_stale_row_within_budget_refetches():
-    """A row older than TTL is considered stale and re-fetched."""
+def test_stale_row_returns_immediately_and_queues_refresh():
+    """A stale usable row is served immediately instead of blocking on Firmy.cz."""
     old_fetched = dj_tz.now() - timedelta(days=31)
     _make_fresh_row(fetched_at=old_fetched)
 
-    mock_source = MagicMock()
-    updated_raw = RawHours(
-        opening_hours_raw="Mo-Fr 11:00-22:00",
-        source="firmy",
-        source_ref="272313",
-        matched_name=_FLEKY_NAME,
-        matched_lat=_FLEKY_LAT,
-        matched_lng=_FLEKY_LNG,
-        confidence=0.90,
-    )
-    mock_source.fetch.return_value = updated_raw
-
-    with patch("pubs.api.cache.FirmyHoursSource", return_value=mock_source):
+    with patch("pubs.api.cache.FirmyHoursSource") as mock_cls:
         results = get_or_enrich([_PUB_ENTRY], sync_budget=1)
 
-    mock_source.fetch.assert_called_once()
-    assert results[0]["opening_hours"] == "Mo-Fr 11:00-22:00"
+    mock_cls.assert_not_called()
+    assert results[0]["opening_hours"] == _FLEKY_HOURS
+    assert results[0]["rating"] == pytest.approx(4.1)
 
     row = PubHours.objects.get(cache_key=_FLEKY_KEY)
-    assert row.opening_hours_raw == "Mo-Fr 11:00-22:00"
+    assert row.opening_hours_raw == _FLEKY_HOURS
+    task = EnrichTask.objects.get(cache_key=_FLEKY_KEY)
+    assert task.name == _FLEKY_NAME
+    assert task.done is False
 
 
 # ---------------------------------------------------------------------------

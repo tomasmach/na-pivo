@@ -349,12 +349,11 @@ if not DEBUG:
             "be configured. Set FIRMY_PROXY_URL (see README)."
         )
 
-    if SYNC_ENRICH_BUDGET < 1:
+    if SYNC_ENRICH_BUDGET < 0:
         raise ImproperlyConfigured(
-            "SYNC_ENRICH_BUDGET must be >= 1 in production. With 0, every cold "
-            "single-pub lookup returns status 'pending' and the mobile client "
-            "does not retry within a session, so opening hours never appear. "
-            "Set SYNC_ENRICH_BUDGET >= 1."
+            "SYNC_ENRICH_BUDGET must be >= 0. With 0, cold lookups return "
+            "status 'pending' and refresh_hours performs enrichment in the "
+            "background."
         )
 
     # Force HTTPS and trust the reverse-proxy's forwarded-proto header.

@@ -13,10 +13,12 @@ get_or_enrich(pubs, sync_budget) -> list[dict]
          → Return cached data as-is.
     4. Recent ERROR row within FIRMY_ERROR_RETRY_COOLDOWN_MINUTES:
          → Return cached error without spending another Firmy.cz proxy fetch.
-    5. STALE or MISSING and sync_budget > 0:
+    5. STALE row with status in {ok, unknown}:
+         → Return stale cached data immediately and queue refresh_hours.
+    6. MISSING and sync_budget > 0:
          → Fetch synchronously via FirmyHoursSource, persist result,
            decrement budget.
-    6. STALE or MISSING but budget exhausted:
+    7. MISSING but budget exhausted:
          → Upsert an EnrichTask, return status "pending".
 
     isOpenNow and nextChange are computed ON READ from opening_hours_raw
@@ -487,7 +489,28 @@ def get_or_enrich(
             _attach_beers()
             continue
 
-        # Cache MISS or stale
+        if row is not None and row.status in _FRESH_STATUSES:
+            # Stale-but-usable data should not make a user-facing detail request
+            # wait on Firmy.cz. Serve it immediately and let refresh_hours update
+            # the rating/hours in the background. Keep the same collision guard
+            # as fresh cache hits; a different business in this cell must not
+            # inherit the stale row or cause us to flip-flop the shared key.
+            if names_match(name, row.name):
+                _upsert_enrich_task(key, name, lat, lng, city)
+                results.append(_result_from_row(row))
+            else:
+                logger.info(
+                    "pub-hours: geohash collision at %s during stale read — "
+                    "cached %r != requested %r; returning unknown",
+                    key,
+                    row.name,
+                    name,
+                )
+                results.append(_unknown_result(key, name))
+            _attach_beers()
+            continue
+
+        # Cache MISS, expired error, or another unusable row status
         if budget_remaining > 0:
             # Fetch synchronously
             if source is None:

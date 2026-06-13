@@ -113,7 +113,7 @@ All settings are read from environment variables (or a `.env` file).  See `.env.
 | `FIRMY_MIN_INTERVAL_SEC` | `3` | Min seconds between Firmy.cz requests |
 | `FIRMY_DAILY_CAP` | `2000` | Hard daily request cap |
 | `HOURS_TTL_DAYS` | `30` | Days before cached hours are refreshed |
-| `SYNC_ENRICH_BUDGET` | `3` | Max pubs enriched synchronously per API call |
+| `SYNC_ENRICH_BUDGET` | `3` | Max pubs enriched synchronously per API call; `0` makes cold lookups pending-only and leaves enrichment to the worker |
 | `MAPY_API_KEY` | _(unset)_ | Mapy.cz key for the server-side `/v1/pubs/near` suggest proxy. Unset → endpoint returns 503 and the app calls Mapy.cz directly |
 | `MAPY_DAILY_CAP` | `5000` | Hard daily cap on Mapy.cz suggest HTTP requests (counts individual requests) |
 | `PUBS_NEAR_TTL_DAYS` | `7` | Days before a cached `/v1/pubs/near` result is refreshed |
