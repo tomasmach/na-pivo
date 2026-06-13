@@ -265,6 +265,8 @@ export const cs = {
     eyebrow: 'AKTUALIZACE',
     defaultTitle: 'Co je nového',
     cta: 'Paráda!',
+    // Version badge shown next to the eyebrow, e.g. "v1.2.0".
+    versionLabel: (version: string) => `v${version}`,
   },
 
   privacy: {
