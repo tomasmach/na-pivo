@@ -1,6 +1,11 @@
 import { create } from 'zustand';
 
-import { ensureAccount, type AccountSession } from '@/data/account';
+import {
+  ensureAccount,
+  fetchAccountPreferences,
+  type AccountSession,
+} from '@/data/account';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 export type AccountStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -26,6 +31,12 @@ export const useAccountStore = create<AccountState>((set, get) => ({
     try {
       const session = await ensureAccount();
       set({ session, status: session ? 'ready' : 'idle' });
+      if (session) {
+        const preferences = await fetchAccountPreferences();
+        if (preferences) {
+          useSettingsStore.getState().setHidePubNames(preferences.hidePubNames);
+        }
+      }
     } catch {
       // ensureAccount is already non-throwing; this is defence in depth.
       set({ status: 'error' });

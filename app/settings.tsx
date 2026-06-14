@@ -39,6 +39,7 @@ import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { updateAccountPreferences } from '@/data/account';
 import { getAppVersionLabel } from '@/utils/appVersion';
 import {
   ChevronLeftIcon,
@@ -47,6 +48,7 @@ import {
   BellRingIcon,
   Volume2Icon,
   BeerOffIcon,
+  EyeOffIcon,
   CoinsIcon,
   InfoIcon,
   ShieldIcon,
@@ -353,11 +355,13 @@ export default function SettingsScreen() {
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
   const soundEnabled = useSettingsStore((s) => s.soundEnabled);
   const hideClosedPubs = useSettingsStore((s) => s.hideClosedPubs);
+  const hidePubNames = useSettingsStore((s) => s.hidePubNames);
   const setMaxDistanceKm = useSettingsStore((s) => s.setMaxDistanceKm);
   const setPriceCurrency = useSettingsStore((s) => s.setPriceCurrency);
   const setHapticEnabled = useSettingsStore((s) => s.setHapticEnabled);
   const setSoundEnabled = useSettingsStore((s) => s.setSoundEnabled);
   const setHideClosedPubs = useSettingsStore((s) => s.setHideClosedPubs);
+  const setHidePubNames = useSettingsStore((s) => s.setHidePubNames);
 
   const sliderIndex = positionIndexForKm(maxDistanceKm);
   const appVersionLabel = getAppVersionLabel();
@@ -380,6 +384,12 @@ export default function SettingsScreen() {
   const toggleHideClosed = useCallback(() => {
     setHideClosedPubs(!hideClosedPubs);
   }, [hideClosedPubs, setHideClosedPubs]);
+
+  const toggleHidePubNames = useCallback(() => {
+    const next = !hidePubNames;
+    setHidePubNames(next);
+    void updateAccountPreferences({ hidePubNames: next });
+  }, [hidePubNames, setHidePubNames]);
 
   // Distance display
   const distanceDisplay =
@@ -467,6 +477,15 @@ export default function SettingsScreen() {
             value={hideClosedPubs}
             onToggle={toggleHideClosed}
             toggleLabel={`${cs.settings.hideClosed.title}: ${hideClosedPubs ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+            borderTop
+          />
+          <PrefRow
+            icon={<EyeOffIcon size={18} color={Colors.foamMuted} />}
+            title={cs.settings.hidePubNames.title}
+            subtitle={cs.settings.hidePubNames.subtitle}
+            value={hidePubNames}
+            onToggle={toggleHidePubNames}
+            toggleLabel={`${cs.settings.hidePubNames.title}: ${hidePubNames ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
             borderTop
           />
           <CurrencyRow

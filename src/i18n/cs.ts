@@ -107,6 +107,10 @@ export const cs = {
       title: 'Skrýt zavřené hospody',
       subtitle: 'Ukázat jen otevřené a ty s neznámou dobou',
     },
+    hidePubNames: {
+      title: 'Schovávat názvy hospod',
+      subtitle: 'Název se ukáže až po ťuknutí',
+    },
     currency: {
       title: 'Měna cen',
       subtitle: 'Pro zadávání cen piva v Česku nebo na Slovensku',

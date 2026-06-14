@@ -1,7 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
-import { clearCachedAccount, ensureAccount, getOrCreateDeviceId } from '../account';
+import {
+  clearCachedAccount,
+  ensureAccount,
+  fetchAccountPreferences,
+  getOrCreateDeviceId,
+  updateAccountPreferences,
+} from '../account';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
@@ -303,5 +309,57 @@ describe('clearCachedAccount', () => {
 
     const session = await ensureAccount();
     expect(session).toEqual({ deviceId: 'dev-1', accountId: 'acc-2', token: 'tok-2' });
+  });
+});
+
+describe('account preferences', () => {
+  it('GETs /v1/account/me with the cached Bearer token and maps hide_pub_names', async () => {
+    await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-1');
+    await seedAccount({ deviceId: 'dev-1', accountId: 'acc-1', token: 'tok-1' });
+    setBackend('https://api.example.com');
+    const fetchSpy = mockFetchOk({ id: 'acc-1', device_id: 'dev-1', hide_pub_names: true });
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    const preferences = await fetchAccountPreferences();
+
+    expect(preferences).toEqual({ hidePubNames: true });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('https://api.example.com/v1/account/me');
+    expect(init.method).toBe('GET');
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok-1');
+  });
+
+  it('PATCHes hidePubNames as hide_pub_names and returns the updated preferences', async () => {
+    await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-1');
+    await seedAccount({ deviceId: 'dev-1', accountId: 'acc-1', token: 'tok-1' });
+    setBackend('https://api.example.com');
+    const fetchSpy = mockFetchOk({ id: 'acc-1', device_id: 'dev-1', hide_pub_names: false });
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    const preferences = await updateAccountPreferences({ hidePubNames: false });
+
+    expect(preferences).toEqual({ hidePubNames: false });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('https://api.example.com/v1/account/me');
+    expect(init.method).toBe('PATCH');
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok-1');
+    expect((init.headers as Record<string, string>)['Content-Type']).toBe('application/json');
+    expect(JSON.parse(init.body as string)).toEqual({ hide_pub_names: false });
+  });
+
+  it('clears the cached account when preferences fetch gets a 401', async () => {
+    await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-1');
+    await seedAccount({ deviceId: 'dev-1', accountId: 'acc-1', token: 'tok-1' });
+    setBackend('https://api.example.com');
+    global.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 401,
+      json: async () => ({}),
+    })) as unknown as typeof fetch;
+
+    await expect(fetchAccountPreferences()).resolves.toBeNull();
+    expect(await SecureStore.getItemAsync(ACCOUNT_KEY)).toBeNull();
   });
 });

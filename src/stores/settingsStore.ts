@@ -13,6 +13,7 @@ interface SettingsState {
   hapticEnabled: boolean;
   soundEnabled: boolean;
   hideClosedPubs: boolean;
+  hidePubNames: boolean;
   surpriseSeed: number;
   setMode: (m: Mode) => void;
   setMaxDistanceKm: (km: number | null) => void;
@@ -20,6 +21,7 @@ interface SettingsState {
   setHapticEnabled: (v: boolean) => void;
   setSoundEnabled: (v: boolean) => void;
   setHideClosedPubs: (v: boolean) => void;
+  setHidePubNames: (v: boolean) => void;
   bumpSurpriseSeed: () => void;
 }
 
@@ -32,6 +34,7 @@ export const useSettingsStore = create<SettingsState>()(
       hapticEnabled: true,
       soundEnabled: false,
       hideClosedPubs: true,
+      hidePubNames: false,
       surpriseSeed: 1,
 
       setMode: (m) => set({ mode: m }),
@@ -40,6 +43,7 @@ export const useSettingsStore = create<SettingsState>()(
       setHapticEnabled: (v) => set({ hapticEnabled: v }),
       setSoundEnabled: (v) => set({ soundEnabled: v }),
       setHideClosedPubs: (v) => set({ hideClosedPubs: v }),
+      setHidePubNames: (v) => set({ hidePubNames: v }),
       bumpSurpriseSeed: () =>
         set((state) => ({ surpriseSeed: state.surpriseSeed + 1 })),
     }),
@@ -53,6 +57,7 @@ export const useSettingsStore = create<SettingsState>()(
         hapticEnabled: state.hapticEnabled,
         soundEnabled: state.soundEnabled,
         hideClosedPubs: state.hideClosedPubs,
+        hidePubNames: state.hidePubNames,
         surpriseSeed: state.surpriseSeed,
       }),
     }

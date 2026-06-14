@@ -12,6 +12,7 @@ import {
   Undo2,
   LockKeyhole,
   Eye,
+  EyeOff,
   MapPin,
   ExternalLink,
   RefreshCw,
@@ -59,6 +60,7 @@ export const CompassIcon = wrap(Compass, 'CompassIcon');
 export const Undo2Icon = wrap(Undo2, 'Undo2Icon');
 export const LockKeyholeIcon = wrap(LockKeyhole, 'LockKeyholeIcon');
 export const EyeIcon = wrap(Eye, 'EyeIcon');
+export const EyeOffIcon = wrap(EyeOff, 'EyeOffIcon');
 export const MapPinIcon = wrap(MapPin, 'MapPinIcon');
 export const ExternalLinkIcon = wrap(ExternalLink, 'ExternalLinkIcon');
 export const RefreshCwIcon = wrap(RefreshCw, 'RefreshCwIcon');

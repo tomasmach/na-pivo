@@ -34,7 +34,13 @@ describe('useSettingsStore', () => {
     expect(state.hapticEnabled).toBe(true);
     expect(state.soundEnabled).toBe(false);
     expect(state.hideClosedPubs).toBe(true);
+    expect(state.hidePubNames).toBe(false);
     expect(typeof state.surpriseSeed).toBe('number');
+  });
+
+  it('defaults hidePubNames to false (show pub names out of the box)', () => {
+    const { useSettingsStore } = require('../settingsStore');
+    expect(useSettingsStore.getState().hidePubNames).toBe(false);
   });
 
   it('defaults hideClosedPubs to true (hide known-closed pubs out of the box)', () => {
@@ -50,6 +56,16 @@ describe('useSettingsStore', () => {
 
     useSettingsStore.getState().setHideClosedPubs(true);
     expect(useSettingsStore.getState().hideClosedPubs).toBe(true);
+  });
+
+  it('setHidePubNames toggles hidden names off and back on', () => {
+    const { useSettingsStore } = require('../settingsStore');
+
+    useSettingsStore.getState().setHidePubNames(true);
+    expect(useSettingsStore.getState().hidePubNames).toBe(true);
+
+    useSettingsStore.getState().setHidePubNames(false);
+    expect(useSettingsStore.getState().hidePubNames).toBe(false);
   });
 
   it('persists hideClosedPubs through the partialize/rehydrate cycle', async () => {
@@ -82,6 +98,19 @@ describe('useSettingsStore', () => {
     const persisted = JSON.parse(raw as string).state;
     expect(persisted).toHaveProperty('hideClosedPubs');
     expect(persisted.hideClosedPubs).toBe(true);
+  });
+
+  it('keeps hidePubNames in the partialized payload', async () => {
+    const { useSettingsStore } = require('../settingsStore');
+    await (useSettingsStore.persist as any).rehydrate?.();
+
+    useSettingsStore.getState().setHidePubNames(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const raw = await currentAsyncStorage().getItem('na-pivo-settings');
+    expect(raw).not.toBeNull();
+    const persisted = JSON.parse(raw as string).state;
+    expect(persisted.hidePubNames).toBe(true);
   });
 
   it('setMode updates the mode', () => {

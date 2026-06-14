@@ -2,6 +2,7 @@ import React from 'react';
 import { Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { cs } from '@/i18n/cs';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -127,6 +128,9 @@ describe('CompassScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockedUseRouter.mockReturnValue({ push: jest.fn() });
+    act(() => {
+      useSettingsStore.setState({ hidePubNames: false });
+    });
   });
 
   it('shows empty state instead of a reveal button when no pub is selected', () => {
@@ -146,6 +150,9 @@ describe('CompassScreen', () => {
   });
 
   it('wires the hidden pub pill to reveal when a pub exists', () => {
+    act(() => {
+      useSettingsStore.setState({ hidePubNames: true });
+    });
     const reveal = jest.fn();
     useCompass.mockReturnValue({
       ...baseCompassState(),
@@ -165,6 +172,25 @@ describe('CompassScreen', () => {
     });
 
     expect(reveal).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the revealed pub pill by default when hidden names are disabled', () => {
+    useCompass.mockReturnValue(baseCompassState());
+
+    let renderer: any;
+
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(CompassScreen));
+    });
+
+    expect(renderer!.root.findAllByProps({ accessibilityLabel: cs.a11y.pubPillHidden })).toHaveLength(0);
+    expect(
+      renderer!.root.find(
+        (node: any) =>
+          typeof node.props.accessibilityLabel === 'string' &&
+          node.props.accessibilityLabel.startsWith(cs.a11y.pubPillRevealed('U Testu')),
+      ),
+    ).toBeTruthy();
   });
 
   it('shrinks the compass at large system font sizes so the bottom controls stay on-screen', () => {
@@ -244,6 +270,9 @@ describe('CompassScreen', () => {
   });
 
   it('reserves revealed-card height before the pub is revealed', () => {
+    act(() => {
+      useSettingsStore.setState({ hidePubNames: true });
+    });
     useCompass.mockReturnValue(baseCompassState());
 
     let renderer: any;

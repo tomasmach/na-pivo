@@ -43,6 +43,10 @@ export interface AccountSession {
   token: string;
 }
 
+export interface AccountPreferences {
+  hidePubNames: boolean;
+}
+
 // The non-secret device anchor lives in AsyncStorage; the account blob — which
 // holds the SERVER-ISSUED BEARER TOKEN — lives in expo-secure-store (Keychain on
 // iOS, Keystore-backed EncryptedSharedPreferences on Android) so the credential
@@ -57,6 +61,13 @@ interface RegisterResponse {
   token?: string;
   created?: boolean;
   created_at?: string;
+  hide_pub_names?: boolean;
+}
+
+interface AccountMeResponse {
+  id?: string;
+  device_id?: string;
+  hide_pub_names?: boolean;
 }
 
 /**
@@ -69,6 +80,37 @@ interface CachedAccount {
   deviceId: string;
   accountId: string;
   token: string;
+}
+
+function chainAbortSignal(signal?: AbortSignal): {
+  signal: AbortSignal;
+  cleanup: () => void;
+} {
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
+  const onExternalAbort = () => timeoutController.abort();
+
+  if (signal) {
+    if (signal.aborted) {
+      timeoutController.abort();
+    } else {
+      signal.addEventListener('abort', onExternalAbort);
+    }
+  }
+
+  return {
+    signal: timeoutController.signal,
+    cleanup: () => {
+      clearTimeout(timeoutId);
+      if (signal) signal.removeEventListener('abort', onExternalAbort);
+    },
+  };
+}
+
+function preferencesFromResponse(data: AccountMeResponse): AccountPreferences {
+  return {
+    hidePubNames: data.hide_pub_names === true,
+  };
 }
 
 // Precomputed 00..ff byte→hex table for the getRandomValues UUID path.
@@ -245,5 +287,111 @@ export async function ensureAccount(signal?: AbortSignal): Promise<AccountSessio
     if (signal) {
       signal.removeEventListener('abort', onExternalAbort);
     }
+  }
+}
+
+export async function fetchAccountPreferences(
+  signal?: AbortSignal,
+): Promise<AccountPreferences | null> {
+  if (signal?.aborted) return null;
+
+  const endpoint = getBackendEndpoint('/v1/account/me');
+  if (!endpoint) return null;
+
+  const session = await ensureAccount(signal);
+  if (!session || signal?.aborted) return null;
+
+  const abort = chainAbortSignal(signal);
+  try {
+    const resp = await fetch(endpoint, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${session.token}` },
+      signal: abort.signal,
+    });
+
+    if (resp.status === 401) {
+      await clearCachedAccount();
+      return null;
+    }
+    if (!resp.ok) {
+      trackApiFailure('account_preferences_fetch', {
+        endpoint: '/v1/account/me',
+        status: resp.status,
+      });
+      return null;
+    }
+
+    const data = (await resp.json()) as AccountMeResponse;
+    return preferencesFromResponse(data);
+  } catch (err) {
+    const isAbortError = err instanceof Error && err.name === 'AbortError';
+    if (!signal?.aborted && !isAbortError) {
+      trackApiFailure('account_preferences_fetch', {
+        endpoint: '/v1/account/me',
+        reason: 'exception',
+        error: err,
+      });
+    }
+    return null;
+  } finally {
+    abort.cleanup();
+  }
+}
+
+export async function updateAccountPreferences(
+  preferences: Partial<AccountPreferences>,
+  signal?: AbortSignal,
+): Promise<AccountPreferences | null> {
+  if (signal?.aborted) return null;
+
+  const endpoint = getBackendEndpoint('/v1/account/me');
+  if (!endpoint) return null;
+
+  const session = await ensureAccount(signal);
+  if (!session || signal?.aborted) return null;
+
+  const body: Record<string, boolean> = {};
+  if (typeof preferences.hidePubNames === 'boolean') {
+    body.hide_pub_names = preferences.hidePubNames;
+  }
+
+  const abort = chainAbortSignal(signal);
+  try {
+    const resp = await fetch(endpoint, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.token}`,
+      },
+      body: JSON.stringify(body),
+      signal: abort.signal,
+    });
+
+    if (resp.status === 401) {
+      await clearCachedAccount();
+      return null;
+    }
+    if (!resp.ok) {
+      trackApiFailure('account_preferences_update', {
+        endpoint: '/v1/account/me',
+        status: resp.status,
+      });
+      return null;
+    }
+
+    const data = (await resp.json()) as AccountMeResponse;
+    return preferencesFromResponse(data);
+  } catch (err) {
+    const isAbortError = err instanceof Error && err.name === 'AbortError';
+    if (!signal?.aborted && !isAbortError) {
+      trackApiFailure('account_preferences_update', {
+        endpoint: '/v1/account/me',
+        reason: 'exception',
+        error: err,
+      });
+    }
+    return null;
+  } finally {
+    abort.cleanup();
   }
 }

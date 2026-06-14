@@ -658,6 +658,8 @@ export default function CompassScreen() {
     isLoading,
     searchFailed,
   } = useCompass();
+  const hidePubNames = useSettingsStore((s) => s.hidePubNames);
+  const showPubDetails = !hidePubNames || revealed;
   const activeLayout = getActiveCompassLayout(
     sceneSize?.width ?? screenWidth,
     sceneSize?.height ?? screenHeight,
@@ -858,7 +860,7 @@ export default function CompassScreen() {
 
       {/* Pub pill */}
       <View style={[styles.pubPillWrap, { paddingBottom: activeLayout.pubPillPaddingBottom }]}>
-        {revealed && pub !== null ? (
+        {showPubDetails && pub !== null ? (
           <RevealedPubPill
             pubName={pub.name}
             onOpenMaps={handleOpenMaps}
