@@ -29,12 +29,15 @@ Aplikace posílá na náš vlastní server omezené provozní údaje, abychom po
 ### Údaje doplněné uživatelem (otevírací doba a piva na čepu)
 Aplikace umožňuje dobrovolně doplnit otevírací dobu vybrané hospody a seznam piv na čepu (název, případně cenu a objem). Pokud tyto údaje vyplníte a odešlete, aplikace je pošle na náš vlastní server pod anonymním identifikátorem zařízení. **Tyto údaje se následně veřejně zobrazují ostatním uživatelům aplikace**, aby věděli, co která hospoda nabízí a kdy má otevřeno. Údaje se týkají hospody, nikoli vás – neobsahují žádné osobní informace o vaší osobě. Doplňování je zcela dobrovolné; pokud nic nevyplníte, nic se neodesílá. Pokud server není dostupný, aplikace odeslání zopakuje, jakmile budete znovu online.
 
+### Soukromá historie návštěv a poznámky k hospodám
+Aplikace ukládá počítadlo piv, historii večerů a vaše soukromé hodnocení hospod (například palec nahoru/dolů, rychlý štítek nebo vlastní poznámku). Aby se tyto údaje po reinstalaci nebo na stejném anonymním účtu obnovily, aplikace je synchronizuje na náš vlastní server pod anonymním účtem zařízení. Tyto údaje jsou **soukromé pro daný anonymní účet**, veřejně se nezobrazují ostatním uživatelům a nepoužíváme je k reklamě ani profilování. U návštěvy hospody ukládáme identifikátor večera, název hospody, přibližnou polohu hospody, čas začátku a případně čas posledního započítaného piva; neukládáme průběžné GPS body ani trasu pohybu.
+
 ### Co NEsbíráme
 - Nepoužíváme přihlašování ani osobní uživatelské účty (anonymní identifikátor zařízení neobsahuje žádné osobní údaje a nevyžaduje registraci).
 - Nepoužíváme reklamní SDK ani sledování napříč aplikacemi.
 - Nesbíráme e-mailovou adresu, jméno ani žádné kontaktní údaje.
 - Nesledujeme vás napříč aplikacemi ani webovými stránkami.
-- Neukládáme historii vaší polohy, GPS body ani trasu.
+- Neukládáme průběžnou historii vaší polohy, GPS body ani trasu.
 
 ## Jak data používáme
 

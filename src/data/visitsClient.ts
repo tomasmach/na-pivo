@@ -37,6 +37,8 @@ export interface VisitEntry {
   started_at: string;
   /** ISO-8601 of the last beer, or null while the evening is still open. */
   ended_at?: string | null;
+  /** ISO-8601 of the last local change — drives last-write-wins on the server. */
+  updated_at: string;
 }
 
 /** A single visit in backend wire form as returned by GET /v1/pub-visits. */
@@ -50,6 +52,7 @@ export interface WireVisit {
   external_id: string | null;
   started_at: string;
   ended_at: string | null;
+  updated_at: string;
 }
 
 /** Outcome of one visit POST/DELETE attempt — drives queue keep/drop. */
@@ -245,7 +248,8 @@ function isWireVisit(value: unknown): value is WireVisit {
   return (
     !!v &&
     typeof v.client_id === 'string' &&
-    typeof v.started_at === 'string'
+    typeof v.started_at === 'string' &&
+    typeof v.updated_at === 'string'
   );
 }
 

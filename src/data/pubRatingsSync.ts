@@ -29,6 +29,7 @@ import { decodeGeohash8 } from './geohash';
 import {
   enqueueRatingOp,
   flushPubRatingsQueue,
+  getQueuedRatingDeletePubKeys,
   type RatingQueueItem,
 } from './pubRatingsQueue';
 import { fetchRatings, type WireRatingUpsert } from './pubRatingsClient';
@@ -67,6 +68,20 @@ function buildUpsertPayload(pubKey: string, rating: PubRating): WireRatingUpsert
   };
 }
 
+/** Build a timestamped empty rating tombstone for LWW-safe deletes. */
+function buildDeletePayload(pubKey: string): WireRatingUpsert {
+  const { lat, lng } = decodeGeohash8(pubKey);
+  return {
+    name: pubNameForKey(pubKey),
+    lat,
+    lng,
+    verdict: null,
+    tag: null,
+    note: null,
+    updated_at: new Date().toISOString(),
+  };
+}
+
 /** Enqueue an upsert for a single local rating. */
 function enqueueUpsert(pubKey: string, rating: PubRating): void {
   const item: RatingQueueItem = {
@@ -79,7 +94,7 @@ function enqueueUpsert(pubKey: string, rating: PubRating): void {
 
 /** Enqueue a delete for a removed rating. */
 function enqueueDelete(pubKey: string): void {
-  void enqueueRatingOp({ op: 'delete', pubKey });
+  void enqueueRatingOp({ op: 'delete', pubKey, payload: buildDeletePayload(pubKey) });
 }
 
 /**
@@ -124,10 +139,12 @@ export function installPubRatingsSync(): () => void {
  *     suppressSync so the merged-in entries are not echoed back as upserts.
  */
 export async function restorePubRatings(signal?: AbortSignal): Promise<void> {
+  // Apply queued tombstones before reading, when possible. If any delete remains
+  // pending, skip that server row below so a cleared rating does not reappear.
+  await flushPubRatingsQueue();
+  const pendingDeleteKeys = await getQueuedRatingDeletePubKeys();
   const serverRatings = await fetchRatings(signal);
   if (serverRatings === null) {
-    // Dormant / offline / no account — still flush any locally-queued changes.
-    await flushPubRatingsQueue();
     return;
   }
 
@@ -135,6 +152,7 @@ export async function restorePubRatings(signal?: AbortSignal): Promise<void> {
   const serverByKey = new Map<string, PubRating>();
   const merged: { pubKey: string; rating: PubRating }[] = [];
   for (const wire of serverRatings) {
+    if (pendingDeleteKeys.has(wire.cache_key)) continue;
     const rating: PubRating = { updatedAt: wire.updated_at };
     if (wire.verdict === 'like' || wire.verdict === 'dislike') rating.verdict = wire.verdict;
     if (wire.tag) rating.tag = wire.tag;
@@ -154,6 +172,7 @@ export async function restorePubRatings(signal?: AbortSignal): Promise<void> {
   // Push local ratings the server is missing, or where the local copy is newer.
   const localRatings = usePubRatingsStore.getState().ratings;
   for (const [pubKey, local] of Object.entries(localRatings)) {
+    if (pendingDeleteKeys.has(pubKey)) continue;
     const server = serverByKey.get(pubKey);
     if (!server) {
       enqueueUpsert(pubKey, local);

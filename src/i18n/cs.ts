@@ -311,7 +311,7 @@ export const cs = {
 
     // — Personal pub rating ("Stálo to za návrat?") —
     ratingHeader: 'STÁLO TO ZA TO?',
-    ratingHint: 'Jen pro tebe. Nikam se to neposílá.',
+    ratingHint: 'Jen pro tebe. Soukromě se synchronizuje mezi tvými zařízeními.',
     verdictLike: 'Dobrý',
     verdictDislike: 'Slabý',
     // Quick preset tags — the user's own one-tap memory labels.

@@ -17,7 +17,7 @@
  *
  * Each queue item is one operation on one pubKey:
  *   - { op: 'upsert', pubKey, payload } → PUT the payload.
- *   - { op: 'delete', pubKey }          → DELETE pubKey (rating was removed).
+ *   - { op: 'delete', pubKey, payload } → PUT an empty timestamped tombstone.
  *
  * Flush keep/drop rule (matches the mobile retry contract):
  *   - 'ok' (2xx)              → reached backend → drop from queue.
@@ -28,7 +28,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
-  submitRatingDelete,
   submitRatingUpsert,
   type SubmitRatingResult,
   type WireRatingUpsert,
@@ -43,20 +42,24 @@ const MAX_QUEUE_LENGTH = 500;
 /** One pending sync operation, keyed (and deduped) by pubKey. */
 export type RatingQueueItem =
   | { op: 'upsert'; pubKey: string; payload: WireRatingUpsert }
-  | { op: 'delete'; pubKey: string };
+  | { op: 'delete'; pubKey: string; payload: WireRatingUpsert };
+
+function isRatingPayload(value: unknown): value is WireRatingUpsert {
+  const p = value as WireRatingUpsert;
+  return (
+    !!p &&
+    typeof p.lat === 'number' &&
+    typeof p.lng === 'number' &&
+    typeof p.updated_at === 'string'
+  );
+}
 
 function isQueueItem(value: unknown): value is RatingQueueItem {
   const i = value as RatingQueueItem;
   if (!i || typeof i.pubKey !== 'string') return false;
-  if (i.op === 'delete') return true;
+  if (i.op === 'delete') return isRatingPayload((i as { payload?: unknown }).payload);
   if (i.op === 'upsert') {
-    const p = (i as { payload?: WireRatingUpsert }).payload;
-    return (
-      !!p &&
-      typeof p.lat === 'number' &&
-      typeof p.lng === 'number' &&
-      typeof p.updated_at === 'string'
-    );
+    return isRatingPayload((i as { payload?: unknown }).payload);
   }
   return false;
 }
@@ -97,9 +100,21 @@ function runLocked<T>(task: () => Promise<T>): Promise<T> {
 }
 
 async function deliver(item: RatingQueueItem): Promise<SubmitRatingResult> {
-  return item.op === 'upsert'
-    ? submitRatingUpsert(item.payload)
-    : submitRatingDelete(item.pubKey);
+  // Deletes are timestamped tombstone PUTs (empty verdict/tag/note) so the
+  // backend can apply the same last-write-wins conflict rule as normal upserts.
+  return submitRatingUpsert(item.payload);
+}
+
+/** Pending tombstones that restore must not hydrate back into local state. */
+export function getQueuedRatingDeletePubKeys(): Promise<Set<string>> {
+  return runLocked(async () => {
+    const queue = await loadQueue();
+    return new Set(
+      queue
+        .filter((item) => item.op === 'delete')
+        .map((item) => item.pubKey),
+    );
+  });
 }
 
 /** Stable content signature for an op, used to tell whether the queued op for a

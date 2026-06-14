@@ -50,7 +50,7 @@ import { fetchPubHours } from '@/data/hoursClient';
 import { buildDrinkEntry } from '@/data/drinksClient';
 import { enqueueDrink, flushDrinksQueue, isDrinkQueued, removeQueuedDrink } from '@/data/drinksQueue';
 import { enqueueDelete } from '@/data/deleteDrinksQueue';
-import { syncVisit } from '@/data/visitsSync';
+import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
 import { trackCounterTabOpened } from '@/data/counterTelemetry';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { fireSuccessHaptic, fireLightImpactHaptic } from '@/utils/haptics';
@@ -548,7 +548,15 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
         sendTimers.current.delete(targetId);
       }
 
+      const visitUpdatedAt = new Date().toISOString();
+      const currentVisitClientId = current?.clientId;
       removeDrink(targetId);
+      const nextSession = useTallyStore.getState().current;
+      if (nextSession && nextSession.drinks.length > 0) {
+        syncVisit(nextSession, visitUpdatedAt);
+      } else if (currentVisitClientId) {
+        deleteVisitByClientId(currentVisitClientId);
+      }
       const removedId = targetId;
       void removeQueuedDrink(removedId).then((pulledFromQueue) => {
         void trackClientEvent({

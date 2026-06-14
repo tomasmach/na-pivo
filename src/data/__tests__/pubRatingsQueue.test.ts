@@ -11,10 +11,8 @@ jest.mock('expo-secure-store', () => ({
 }));
 
 const submitRatingUpsert: jest.Mock = jest.fn(async (_payload?: unknown) => 'ok');
-const submitRatingDelete: jest.Mock = jest.fn(async (_pubKey?: unknown) => 'ok');
 jest.mock('../pubRatingsClient', () => ({
   submitRatingUpsert: (...args: unknown[]) => submitRatingUpsert(...(args as [])),
-  submitRatingDelete: (...args: unknown[]) => submitRatingDelete(...(args as [])),
 }));
 
 import {
@@ -43,6 +41,23 @@ function upsert(pubKey: string, over: Partial<WireRatingUpsert> = {}): RatingQue
   };
 }
 
+function tombstone(pubKey: string, over: Partial<WireRatingUpsert> = {}): RatingQueueItem {
+  return {
+    op: 'delete',
+    pubKey,
+    payload: {
+      name: 'U Testu',
+      lat: 50.08,
+      lng: 14.42,
+      verdict: null,
+      tag: null,
+      note: null,
+      updated_at: '2026-06-14T20:00:00.000Z',
+      ...over,
+    },
+  };
+}
+
 async function readQueue(): Promise<RatingQueueItem[]> {
   const raw = await AsyncStorage.getItem(STORAGE_KEY);
   return raw ? JSON.parse(raw) : [];
@@ -51,7 +66,6 @@ async function readQueue(): Promise<RatingQueueItem[]> {
 beforeEach(async () => {
   jest.clearAllMocks();
   submitRatingUpsert.mockResolvedValue('ok');
-  submitRatingDelete.mockResolvedValue('ok');
   await AsyncStorage.clear();
 });
 
@@ -69,13 +83,15 @@ describe('enqueueRatingOp — dedup per pubKey (last write wins)', () => {
 
   it('lets a delete supersede a queued upsert for the same pubKey', async () => {
     submitRatingUpsert.mockResolvedValue('retry');
-    submitRatingDelete.mockResolvedValue('retry');
     await enqueueRatingOp(upsert('aaaaaaaa'));
-    await enqueueRatingOp({ op: 'delete', pubKey: 'aaaaaaaa' });
+    await enqueueRatingOp(tombstone('aaaaaaaa'));
 
     const queue = await readQueue();
     expect(queue).toHaveLength(1);
     expect(queue[0].op).toBe('delete');
+    expect((queue[0] as { payload: WireRatingUpsert }).payload.updated_at).toBe(
+      '2026-06-14T20:00:00.000Z',
+    );
   });
 
   it('keeps distinct pubKeys as separate items', async () => {
@@ -130,7 +146,6 @@ describe('flushPubRatingsQueue', () => {
   it('does nothing on an empty queue', async () => {
     await flushPubRatingsQueue();
     expect(submitRatingUpsert).not.toHaveBeenCalled();
-    expect(submitRatingDelete).not.toHaveBeenCalled();
   });
 
   it('survives corrupted storage contents', async () => {

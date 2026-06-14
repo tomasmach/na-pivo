@@ -1,5 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
@@ -11,9 +9,11 @@ jest.mock('../pubRatingsClient', () => ({
 
 const enqueueRatingOp: jest.Mock = jest.fn((_item?: unknown) => Promise.resolve(undefined));
 const flushPubRatingsQueue: jest.Mock = jest.fn(() => Promise.resolve(undefined));
+const getQueuedRatingDeletePubKeys: jest.Mock = jest.fn(async () => new Set<string>());
 jest.mock('../pubRatingsQueue', () => ({
   enqueueRatingOp: (...args: unknown[]) => enqueueRatingOp(...(args as [])),
   flushPubRatingsQueue: () => flushPubRatingsQueue(),
+  getQueuedRatingDeletePubKeys: () => getQueuedRatingDeletePubKeys(),
 }));
 
 import { restorePubRatings, installPubRatingsSync } from '../pubRatingsSync';
@@ -40,6 +40,7 @@ function wire(over: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  getQueuedRatingDeletePubKeys.mockResolvedValue(new Set<string>());
   usePubRatingsStore.setState({ ratings: {} });
   useTallyStore.setState({ current: null, history: [] });
 });
@@ -100,6 +101,14 @@ describe('restorePubRatings — pull + merge (LWW)', () => {
     expect(flushPubRatingsQueue).toHaveBeenCalled();
     expect(enqueueRatingOp).not.toHaveBeenCalled();
   });
+
+  it('does not hydrate server ratings with a pending local delete tombstone', async () => {
+    getQueuedRatingDeletePubKeys.mockResolvedValue(new Set([PUB]));
+    fetchRatings.mockResolvedValue([wire()]);
+    await restorePubRatings();
+    expect(usePubRatingsStore.getState().ratings[PUB]).toBeUndefined();
+    expect(enqueueRatingOp).not.toHaveBeenCalled();
+  });
 });
 
 describe('installPubRatingsSync — push subscribe-diff', () => {
@@ -116,7 +125,18 @@ describe('installPubRatingsSync — push subscribe-diff', () => {
     usePubRatingsStore.getState().setRating(PUB, { verdict: 'like' });
     const unsub = installPubRatingsSync();
     usePubRatingsStore.getState().clearRating(PUB);
-    expect(enqueueRatingOp).toHaveBeenCalledWith({ op: 'delete', pubKey: PUB });
+    expect(enqueueRatingOp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        op: 'delete',
+        pubKey: PUB,
+        payload: expect.objectContaining({
+          verdict: null,
+          tag: null,
+          note: null,
+          updated_at: expect.any(String),
+        }),
+      }),
+    );
     unsub();
   });
 });

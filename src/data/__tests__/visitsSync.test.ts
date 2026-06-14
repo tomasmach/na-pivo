@@ -52,8 +52,21 @@ describe('buildVisitEntry', () => {
     expect(buildVisitEntry(session())?.ended_at).toBe('2026-06-14T20:30:00.000Z');
   });
 
+  it('defaults updated_at to the same timestamp as ended_at', () => {
+    expect(buildVisitEntry(session())?.updated_at).toBe('2026-06-14T20:30:00.000Z');
+  });
+
   it('sets ended_at to null for an empty session', () => {
     expect(buildVisitEntry(session({ drinks: [] }))?.ended_at).toBeNull();
+    expect(buildVisitEntry(session({ drinks: [] }))?.updated_at).toBe(
+      '2026-06-14T19:00:00.000Z',
+    );
+  });
+
+  it('uses an explicit updated_at when provided', () => {
+    expect(buildVisitEntry(session(), '2026-06-14T21:00:00.000Z')?.updated_at).toBe(
+      '2026-06-14T21:00:00.000Z',
+    );
   });
 
   it('carries the session clientId as the idempotency key', () => {

@@ -56,7 +56,8 @@ function isQueueItem(value: unknown): value is VisitQueueItem {
       typeof e.name === 'string' &&
       typeof e.lat === 'number' &&
       typeof e.lng === 'number' &&
-      typeof e.started_at === 'string'
+      typeof e.started_at === 'string' &&
+      typeof e.updated_at === 'string'
     );
   }
   return false;

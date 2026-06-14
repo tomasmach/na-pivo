@@ -30,6 +30,7 @@ function entry(clientId: string, over: Partial<VisitEntry> = {}): VisitEntry {
     lng: 14.42,
     started_at: '2026-06-14T19:00:00.000Z',
     ended_at: null,
+    updated_at: '2026-06-14T19:00:00.000Z',
     ...over,
   };
 }

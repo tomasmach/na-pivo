@@ -43,16 +43,18 @@ function lastDrinkAt(session: TallySession): string | null {
 
 /** Build the wire VisitEntry for a session, or null when it has no clientId
  *  (defensive — every session minted/migrated under v1 has one). */
-export function buildVisitEntry(session: TallySession): VisitEntry | null {
+export function buildVisitEntry(session: TallySession, updatedAt?: string): VisitEntry | null {
   if (!session.clientId) return null;
   const { lat, lng } = decodeGeohash8(session.pubKey);
+  const endedAt = lastDrinkAt(session);
   const entry: VisitEntry = {
     client_id: session.clientId,
     name: session.pubName,
     lat,
     lng,
     started_at: session.startedAt,
-    ended_at: lastDrinkAt(session),
+    ended_at: endedAt,
+    updated_at: updatedAt ?? endedAt ?? session.startedAt,
   };
   return entry;
 }
@@ -62,9 +64,9 @@ export function buildVisitEntry(session: TallySession): VisitEntry | null {
  * current session) so the backend tracks the evening as it grows. Fire-and-
  * forget, never throws.
  */
-export function syncVisit(session: TallySession | null): void {
+export function syncVisit(session: TallySession | null, updatedAt?: string): void {
   if (!session) return;
-  const entry = buildVisitEntry(session);
+  const entry = buildVisitEntry(session, updatedAt);
   if (!entry) return;
   void enqueueVisitOp({ op: 'upsert', clientId: entry.client_id, entry });
 }
