@@ -54,6 +54,7 @@ def test_register_creates_account(client):
     assert body["id"]
     assert body["device_id"] == _DEVICE_ID
     assert body["token"]
+    assert body["hide_pub_names"] is False
     assert body["created"] is True
     assert body["created_at"]
 
@@ -154,6 +155,7 @@ def test_me_returns_account_for_valid_token(client):
     body = resp.json()
     assert body["id"] == register_body["id"]
     assert body["device_id"] == _DEVICE_ID
+    assert body["hide_pub_names"] is False
     assert "token" not in body
 
 
@@ -167,6 +169,41 @@ def test_me_with_invalid_token_returns_401(client):
 def test_me_without_token_returns_401(client):
     resp = client.get("/v1/account/me")
     assert resp.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+@pytest.mark.django_db
+def test_patch_me_updates_hide_pub_names_preference(client):
+    register = client.post("/v1/account", data={"device_id": _DEVICE_ID}, format="json")
+    token = register.json()["token"]
+
+    resp = client.patch(
+        "/v1/account/me",
+        data={"hide_pub_names": True},
+        format="json",
+        HTTP_AUTHORIZATION=f"Bearer {token}",
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    body = resp.json()
+    assert body["hide_pub_names"] is True
+
+    account = Account.objects.get(device_id=_DEVICE_ID)
+    assert account.hide_pub_names is True
+
+
+@pytest.mark.django_db
+def test_patch_me_rejects_invalid_hide_pub_names(client):
+    register = client.post("/v1/account", data={"device_id": _DEVICE_ID}, format="json")
+    token = register.json()["token"]
+
+    resp = client.patch(
+        "/v1/account/me",
+        data={"hide_pub_names": "not-a-bool"},
+        format="json",
+        HTTP_AUTHORIZATION=f"Bearer {token}",
+    )
+
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST
 
 
 # ---------------------------------------------------------------------------

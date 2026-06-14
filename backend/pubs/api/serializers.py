@@ -710,7 +710,7 @@ class AccountSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Account
-        fields = ["id", "device_id", "created_at"]
+        fields = ["id", "device_id", "hide_pub_names", "created_at"]
 
 
 class AccountMeSerializer(serializers.ModelSerializer):
@@ -720,7 +720,15 @@ class AccountMeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Account
-        fields = ["id", "device_id", "created_at", "last_seen_at"]
+        fields = ["id", "device_id", "hide_pub_names", "created_at", "last_seen_at"]
+
+
+class AccountPreferencesSerializer(serializers.ModelSerializer):
+    """Writable account preferences accepted by PATCH /v1/account/me."""
+
+    class Meta:
+        model = Account
+        fields = ["hide_pub_names"]
 
 
 # ---------------------------------------------------------------------------

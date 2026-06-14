@@ -59,6 +59,7 @@ from .authentication import AccountTokenAuthentication
 from .cache import get_or_enrich
 from .serializers import (
     AccountMeSerializer,
+    AccountPreferencesSerializer,
     AccountRegisterSerializer,
     AccountSerializer,
     BlockedPubsResponseSerializer,
@@ -1037,11 +1038,11 @@ class AccountView(APIView):
 
 class AccountMeView(APIView):
     """
-    GET /v1/account/me
+    GET/PATCH /v1/account/me
 
-    Return the account that owns the supplied Bearer token. Token-authenticated;
-    never echoes the token back. This is the scaffolding future per-user features
-    build on.
+    Return or update the account that owns the supplied Bearer token.
+    Token-authenticated; never echoes the token back. This is the scaffolding
+    future per-user features build on.
     """
 
     authentication_classes = [AccountTokenAuthentication]
@@ -1050,3 +1051,15 @@ class AccountMeView(APIView):
     def get(self, request: Request) -> Response:
         # request.user is the authenticated Account instance.
         return Response(AccountMeSerializer(request.user).data, status=status.HTTP_200_OK)
+
+    def patch(self, request: Request) -> Response:
+        serializer = AccountPreferencesSerializer(
+            request.user,
+            data=request.data,
+            partial=True,
+        )
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        account = serializer.save()
+        return Response(AccountMeSerializer(account).data, status=status.HTTP_200_OK)

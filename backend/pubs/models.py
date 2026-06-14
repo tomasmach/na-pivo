@@ -262,6 +262,12 @@ class Account(models.Model):
         "only non-reversible hashes.",
     )
 
+    # ---------- preferences ----------
+    hide_pub_names = models.BooleanField(
+        default=False,
+        help_text="Whether the app should hide pub names behind the reveal interaction.",
+    )
+
     # ---------- timestamps ----------
     created_at = models.DateTimeField(auto_now_add=True)
     last_seen_at = models.DateTimeField(auto_now=True)
