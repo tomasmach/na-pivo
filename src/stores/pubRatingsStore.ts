@@ -1,16 +1,27 @@
 /**
  * Personal, private pub ratings — the "Stálo to za návrat?" memory.
  *
- * This is local-first and never leaves the device: the user marks a pub they
- * have been to with a thumbs up / down, an optional quick tag ("Sem se vrátit" /
- * "Nic moc" / "Dobrý tankový") and an optional free-text note in their own
- * words. It is NOT a public review, not aggregated, and not synced to the
- * backend — it is just the user's own memory of whether a place was worth
- * coming back to.
+ * This is local-first: the user marks a pub they have been to with a thumbs up /
+ * down, an optional quick tag ("Sem se vrátit" / "Nic moc" / "Dobrý tankový")
+ * and an optional free-text note in their own words. It is NOT a public review,
+ * not aggregated, and not shared — it is just the user's own memory of whether a
+ * place was worth coming back to.
+ *
+ * It DOES sync to the backend now, but stays PRIVATE and per-account: a rating
+ * moves to the server only so the SAME anonymous account sees the same ratings
+ * across devices / after a reinstall. It is never exposed to other users. The
+ * sync is bidirectional and runs entirely outside this store:
+ *   - PUSH: pubRatingsSync.ts subscribes to `ratings` and diffs each change into
+ *     an upsert/delete on pubRatingsQueue (a persistent best-effort retry queue).
+ *   - PULL: restorePubRatings() fetches the server set on launch and calls
+ *     `hydrateRatings` to merge it in (last-write-wins by updatedAt).
+ * To stop a pull from echoing straight back out as a push, hydrate runs under a
+ * module-level suppress flag in pubRatingsSync (see `hydrateRatings`).
  *
  * Ratings are keyed by `pubKey` (the geohash-8 cell), the exact same durable
  * place key the tally store uses for a session, so a rating made here lines up
- * with every evening at that pub.
+ * with every evening at that pub. The backend re-derives the same geohash-8
+ * cache_key from the lat/lng we send, so the keys line up across the wire.
  */
 
 import { create } from 'zustand';
@@ -51,6 +62,15 @@ interface PubRatingsState {
   setRating: (pubKey: string, input: PubRatingInput) => void;
   /** Remove a pub's rating completely. */
   clearRating: (pubKey: string) => void;
+  /**
+   * Merge a batch of server ratings into local state (the PULL side of sync).
+   * Last-write-wins by `updatedAt`: a server entry only overwrites the local one
+   * when its `updatedAt` is strictly newer; local-only ratings are left
+   * untouched (so a freshly-made local rating the server hasn't seen survives).
+   * Pure state merge — it does NOT enqueue anything; pubRatingsSync runs it under
+   * the suppress flag so the resulting state change is not echoed back out.
+   */
+  hydrateRatings: (serverRatings: { pubKey: string; rating: PubRating }[]) => void;
 }
 
 /** Trim a note to something worth keeping, or `undefined` when it is blank. */
@@ -137,6 +157,25 @@ export const usePubRatingsStore = create<PubRatingsState>()(
           const next = { ...state.ratings };
           delete next[pubKey];
           return { ratings: next };
+        }),
+
+      hydrateRatings: (serverRatings) =>
+        set((state) => {
+          let changed = false;
+          const next = { ...state.ratings };
+          for (const { pubKey, rating } of serverRatings) {
+            const local = next[pubKey];
+            // LWW: keep local unless the server copy is strictly newer. Compare
+            // by parsed ISO time so timezone/format differences don't matter.
+            if (local) {
+              const localMs = Date.parse(local.updatedAt);
+              const serverMs = Date.parse(rating.updatedAt);
+              if (!(Number.isFinite(serverMs) && serverMs > localMs)) continue;
+            }
+            next[pubKey] = rating;
+            changed = true;
+          }
+          return changed ? { ratings: next } : state;
         }),
     }),
     {

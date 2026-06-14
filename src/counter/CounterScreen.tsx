@@ -50,6 +50,7 @@ import { fetchPubHours } from '@/data/hoursClient';
 import { buildDrinkEntry } from '@/data/drinksClient';
 import { enqueueDrink, flushDrinksQueue, isDrinkQueued, removeQueuedDrink } from '@/data/drinksQueue';
 import { enqueueDelete } from '@/data/deleteDrinksQueue';
+import { syncVisit } from '@/data/visitsSync';
 import { trackCounterTabOpened } from '@/data/counterTelemetry';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { fireSuccessHaptic, fireLightImpactHaptic } from '@/utils/haptics';
@@ -396,6 +397,10 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
         { pubKey: cell, pubName: pub.name },
         { id, beerName: beer.name, priceCzk: beer.priceCzk, volumeMl: beer.volumeMl, at },
       );
+      // Push/refresh the visit ("evening") record. addDrink writes synchronously,
+      // so the freshest session — with this beer and its bumped ended_at — is on
+      // the store now; the visit POST is idempotent on the session clientId.
+      syncVisit(useTallyStore.getState().current);
       if (startsSession) {
         void trackClientEvent({ event: 'counter_session_started' });
       }

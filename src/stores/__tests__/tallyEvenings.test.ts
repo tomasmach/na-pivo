@@ -6,6 +6,7 @@ import { allSessionsNewestFirst, findSessionByStart, type TallySession } from '.
 
 function session(startedAt: string, drinkCount: number, over: Partial<TallySession> = {}): TallySession {
   return {
+    clientId: over.clientId ?? `visit-${startedAt}`,
     pubKey: over.pubKey ?? `key-${startedAt}`,
     pubName: over.pubName ?? 'U Zlatého tygra',
     startedAt,

@@ -79,6 +79,10 @@ jest.mock('@/data/hoursClient', () => ({ fetchPubHours }));
 
 jest.mock('@/data/account', () => ({ generateUuidV4: jest.fn(() => 'uuid-fixed') }));
 
+// Visit ("evening") sync — keep it out of the network path; the wiring is
+// covered by visitsSync/visitsQueue tests.
+jest.mock('@/data/visitsSync', () => ({ syncVisit: jest.fn(), deleteVisitByClientId: jest.fn() }));
+
 const useNearbyPub = jest.fn();
 jest.mock('@/counter/useNearbyPub', () => ({ useNearbyPub: () => useNearbyPub() }));
 

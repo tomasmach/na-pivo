@@ -159,6 +159,55 @@ describe('clearRating + isolation', () => {
   });
 });
 
+describe('hydrateRatings — last-write-wins merge', () => {
+  it('adds a server rating the local store does not have', () => {
+    usePubRatingsStore.getState().hydrateRatings([
+      { pubKey: PUB, rating: { verdict: 'like', updatedAt: '2026-06-14T10:00:00.000Z' } },
+    ]);
+    expect(getPubRating(PUB)?.verdict).toBe('like');
+  });
+
+  it('overwrites a local rating only when the server copy is strictly newer', () => {
+    usePubRatingsStore.getState().setRating(PUB, { verdict: 'like' });
+    // Force a known-old local timestamp.
+    usePubRatingsStore.setState({
+      ratings: { [PUB]: { verdict: 'like', updatedAt: '2026-06-14T10:00:00.000Z' } },
+    });
+    usePubRatingsStore.getState().hydrateRatings([
+      { pubKey: PUB, rating: { verdict: 'dislike', updatedAt: '2026-06-14T12:00:00.000Z' } },
+    ]);
+    expect(getPubRating(PUB)?.verdict).toBe('dislike');
+  });
+
+  it('keeps the local rating when it is newer than the server copy', () => {
+    usePubRatingsStore.setState({
+      ratings: { [PUB]: { verdict: 'like', updatedAt: '2026-06-14T12:00:00.000Z' } },
+    });
+    usePubRatingsStore.getState().hydrateRatings([
+      { pubKey: PUB, rating: { verdict: 'dislike', updatedAt: '2026-06-14T10:00:00.000Z' } },
+    ]);
+    expect(getPubRating(PUB)?.verdict).toBe('like');
+  });
+
+  it('keeps the local rating when timestamps are equal (no strict-newer win)', () => {
+    const stamp = '2026-06-14T12:00:00.000Z';
+    usePubRatingsStore.setState({ ratings: { [PUB]: { verdict: 'like', updatedAt: stamp } } });
+    usePubRatingsStore.getState().hydrateRatings([
+      { pubKey: PUB, rating: { verdict: 'dislike', updatedAt: stamp } },
+    ]);
+    expect(getPubRating(PUB)?.verdict).toBe('like');
+  });
+
+  it('leaves local-only ratings untouched', () => {
+    usePubRatingsStore.getState().setRating(OTHER, { verdict: 'dislike' });
+    usePubRatingsStore.getState().hydrateRatings([
+      { pubKey: PUB, rating: { verdict: 'like', updatedAt: '2026-06-14T10:00:00.000Z' } },
+    ]);
+    expect(getPubRating(OTHER)?.verdict).toBe('dislike');
+    expect(getPubRating(PUB)?.verdict).toBe('like');
+  });
+});
+
 describe('selectPubRating', () => {
   it('reads a rating from a state snapshot', () => {
     usePubRatingsStore.getState().setRating(PUB, { verdict: 'like' });

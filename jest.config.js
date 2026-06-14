@@ -37,6 +37,7 @@ module.exports = {
     '^@/(.*)$': '<rootDir>/src/$1',
     '^expo-linking$': '<rootDir>/src/__mocks__/expo-linking.ts',
     '^expo-constants$': '<rootDir>/src/__mocks__/expo-constants.ts',
+    '^expo-secure-store$': '<rootDir>/src/__mocks__/expo-secure-store.ts',
     '^react-native$': '<rootDir>/src/__mocks__/react-native.ts',
     '^react-native-svg$': '<rootDir>/src/__mocks__/react-native-svg.ts',
   },

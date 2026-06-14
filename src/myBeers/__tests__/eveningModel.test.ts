@@ -25,6 +25,7 @@ function drink(over: Partial<{ beerName: string; priceCzk: number; volumeMl: num
 
 function session(drinks: ReturnType<typeof drink>[], over: Partial<TallySession> = {}): TallySession {
   return {
+    clientId: over.clientId ?? 'visit-aaaaaaaa',
     pubKey: over.pubKey ?? 'aaaaaaaa',
     pubName: over.pubName ?? 'U Zlatého tygra',
     startedAt: over.startedAt ?? drinks[0]?.at ?? '2026-06-14T19:00:00.000Z',
