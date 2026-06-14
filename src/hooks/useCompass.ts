@@ -616,9 +616,13 @@ export function useCompass(): UseCompassResult {
   // this request on Firmy.cz. Poll the backend gently while the same pub remains
   // selected; the client still sends sync_budget=0, so these retries do not
   // spend residential proxy traffic themselves.
-  const shouldRetryPendingHours = currentPubId
-    ? pendingHoursRetryCountsRef.current.has(currentPubId)
-    : false;
+  // Reading this ref during render is intentional and safe: every mutation of
+  // pendingHoursRetryCountsRef is paired with a setPendingHoursRetryNonce bump
+  // (or a setHoursById update), so this derived flag is recomputed on the same
+  // render that changes the ref. (Same hook-lint friction the effect below opts
+  // out of for exhaustive-deps.)
+  // eslint-disable-next-line react-hooks/refs
+  const shouldRetryPendingHours = currentPubId ? pendingHoursRetryCountsRef.current.has(currentPubId) : false;
   useEffect(() => {
     if (!currentPubId || !currentPub || !shouldRetryPendingHours) return;
 
