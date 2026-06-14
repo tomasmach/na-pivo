@@ -58,3 +58,55 @@ export function geohash8(lat: number, lng: number): string {
 
   return hash;
 }
+
+/**
+ * Inverse of {@link geohash8}: decode a geohash-8 string back to the CENTRE of
+ * the cell it names. This is the exact inversion of the encoder above — same
+ * BASE32 alphabet, same longitude-first 5-bits-per-char bit order — so the
+ * round-trip identity holds for every valid hash:
+ *
+ *   geohash8(decodeGeohash8(h)) === h
+ *
+ * We need it because the local pub-rating store keys ratings only by their
+ * geohash-8 `pubKey` and never stores the lat/lng that produced them. To push a
+ * rating to the backend (which re-derives the same cache_key from lat/lng) we
+ * reconstruct a representative coordinate from the key — the cell centre, which
+ * is guaranteed to re-encode to the same cell.
+ *
+ * Each character contributes 5 bits, alternating longitude/latitude (longitude
+ * first). We progressively bisect the lat/lng ranges following each bit, then
+ * return the midpoint of the final ranges — the cell centre.
+ */
+export function decodeGeohash8(hash: string): { lat: number; lng: number } {
+  let latMin = -90;
+  let latMax = 90;
+  let lngMin = -180;
+  let lngMax = 180;
+
+  let even = true; // even bit refines longitude, odd refines latitude
+
+  for (const char of hash) {
+    const cd = BASE32.indexOf(char);
+    if (cd === -1) continue; // skip any stray non-base32 character defensively
+    // Walk the 5 bits of this char from most- to least-significant, exactly
+    // mirroring how the encoder shifted them in.
+    for (let mask = 16; mask >= 1; mask >>= 1) {
+      const bitSet = (cd & mask) !== 0;
+      if (even) {
+        const mid = (lngMin + lngMax) / 2;
+        if (bitSet) lngMin = mid;
+        else lngMax = mid;
+      } else {
+        const mid = (latMin + latMax) / 2;
+        if (bitSet) latMin = mid;
+        else latMax = mid;
+      }
+      even = !even;
+    }
+  }
+
+  return {
+    lat: (latMin + latMax) / 2,
+    lng: (lngMin + lngMax) / 2,
+  };
+}

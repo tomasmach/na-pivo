@@ -4,6 +4,15 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
+// The store mints a clientId per session via account.generateUuidV4 and, on
+// reset, lazily requires visitsSync to retract visits. Keep both deterministic
+// and network-free here.
+let uuidSeq = 0;
+jest.mock('@/data/account', () => ({ generateUuidV4: jest.fn(() => `uuid-${++uuidSeq}`) }));
+
+const deleteVisitByClientId = jest.fn();
+jest.mock('@/data/visitsSync', () => ({ deleteVisitByClientId, syncVisit: jest.fn() }));
+
 import {
   useTallyStore,
   drinkingDayKey,
@@ -11,6 +20,7 @@ import {
   sessionCount,
   sessionTotalCzk,
   sessionBeerCounts,
+  migrateTally,
   type TallySession,
 } from '../tallyStore';
 
@@ -102,6 +112,7 @@ describe('session rollover by drinking day (04:00 cutoff)', () => {
 
   it('shouldStartNewSession is true for no session, pub change, and day rollover', () => {
     const session: TallySession = {
+      clientId: 'session-a',
       pubKey: PUB_A.pubKey,
       pubName: PUB_A.pubName,
       startedAt: '2026-06-12T22:00:00',
@@ -220,5 +231,56 @@ describe('reset', () => {
     useTallyStore.getState().reset();
     expect(useTallyStore.getState().current).toBeNull();
     expect(useTallyStore.getState().history).toHaveLength(0);
+  });
+
+  it('retracts each wiped session from the backend by its clientId', () => {
+    deleteVisitByClientId.mockClear();
+    useTallyStore.getState().addDrink(PUB_A, beer());
+    const curId = useTallyStore.getState().current?.clientId;
+    useTallyStore.getState().reset();
+    expect(deleteVisitByClientId).toHaveBeenCalledWith(curId);
+  });
+});
+
+describe('clientId', () => {
+  it('mints a stable clientId when a session is opened', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer());
+    expect(useTallyStore.getState().current?.clientId).toBeTruthy();
+  });
+
+  it('keeps the same clientId as the session grows', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer());
+    const id = useTallyStore.getState().current?.clientId;
+    useTallyStore.getState().addDrink(PUB_A, beer());
+    expect(useTallyStore.getState().current?.clientId).toBe(id);
+  });
+});
+
+describe('migrateTally — v0 → v1 backfills clientId', () => {
+  it('mints a clientId for the current and every history session', () => {
+    const v0 = {
+      current: { pubKey: 'aaaaaaaa', pubName: 'A', startedAt: 't', drinks: [] },
+      history: [
+        { pubKey: 'bbbbbbbb', pubName: 'B', startedAt: 't2', drinks: [] },
+        { pubKey: 'cccccccc', pubName: 'C', startedAt: 't3', drinks: [] },
+      ],
+    };
+    const migrated = migrateTally(v0, 0);
+    expect(migrated.current?.clientId).toBeTruthy();
+    expect(migrated.history.every((s) => !!s.clientId)).toBe(true);
+    // Distinct ids.
+    const ids = [migrated.current!.clientId, ...migrated.history.map((s) => s.clientId)];
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('passes already-current (v1) state through untouched', () => {
+    const v1 = { current: null, history: [] };
+    expect(migrateTally(v1, 1)).toBe(v1);
+  });
+
+  it('tolerates missing input', () => {
+    const migrated = migrateTally(undefined, 0);
+    expect(migrated.current).toBeNull();
+    expect(migrated.history).toEqual([]);
   });
 });

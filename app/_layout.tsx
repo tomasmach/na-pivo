@@ -14,6 +14,10 @@ import { flushFeedbackQueue } from '@/data/feedbackQueue';
 import { flushCommunityQueue } from '@/data/communityQueue';
 import { flushDrinksQueue } from '@/data/drinksQueue';
 import { flushDeleteDrinksQueue } from '@/data/deleteDrinksQueue';
+import { installPubRatingsSync, restorePubRatings } from '@/data/pubRatingsSync';
+import { flushPubRatingsQueue } from '@/data/pubRatingsQueue';
+import { flushVisitsQueue } from '@/data/visitsQueue';
+import { seedVisitsFromHistory } from '@/data/visitsSync';
 import {
   installClientTelemetry,
   setTelemetrySession,
@@ -64,6 +68,14 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
+    // Install the personal-rating push subscriber once for the process lifetime:
+    // it diffs every store change into a queued upsert/delete. Kept separate from
+    // the flush effect so it is set up exactly once.
+    const unsubscribeRatings = installPubRatingsSync();
+    return unsubscribeRatings;
+  }, []);
+
+  useEffect(() => {
     // Fire-and-forget: re-send pub reports and feedback whose first delivery
     // failed. Runs on launch and whenever the app returns to the foreground;
     // never throws.
@@ -72,6 +84,12 @@ export default function RootLayout() {
     void flushCommunityQueue();
     void flushDrinksQueue();
     void flushDeleteDrinksQueue();
+    // Personal ratings: pull + merge the server set (LWW), pushing local-newer
+    // ratings, then flush. Visits: one-time seed of existing history, then flush.
+    void restorePubRatings();
+    void flushPubRatingsQueue();
+    void seedVisitsFromHistory();
+    void flushVisitsQueue();
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         void trackClientEvent({ event: 'app_foreground', severity: 'info' });
@@ -80,6 +98,9 @@ export default function RootLayout() {
         void flushCommunityQueue();
         void flushDrinksQueue();
         void flushDeleteDrinksQueue();
+        void restorePubRatings();
+        void flushPubRatingsQueue();
+        void flushVisitsQueue();
       } else {
         flushWalkingDistance();
       }
@@ -140,6 +161,14 @@ export default function RootLayout() {
           />
           <Stack.Screen
             name="contribute"
+            options={{
+              presentation: 'fullScreenModal',
+              animation: 'slide_from_bottom',
+              gestureEnabled: false,
+            }}
+          />
+          <Stack.Screen
+            name="evening"
             options={{
               presentation: 'fullScreenModal',
               animation: 'slide_from_bottom',

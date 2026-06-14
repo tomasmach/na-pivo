@@ -23,6 +23,8 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { generateUuidV4 } from '@/data/account';
+
 /** Hours to subtract from local time before taking the calendar date, so the
  *  "drinking day" rolls at 04:00 local rather than at midnight. */
 const DAY_CUTOFF_HOURS = 4;
@@ -44,6 +46,10 @@ export interface TallyDrink {
 
 /** One sitting at one pub on one drinking day. */
 export interface TallySession {
+  /** Stable per-session id, generated once when the session is opened. It is the
+   *  idempotency key for the /v1/pub-visits sync (a "visit" = one evening), so a
+   *  re-sent visit upsert never duplicates the record server-side. */
+  clientId: string;
   /** geohash-8 cell of the pub — the durable physical-place key. */
   pubKey: string;
   pubName: string;
@@ -119,6 +125,34 @@ export function shouldStartNewSession(
   return drinkingDayKey(new Date(session.startedAt)) !== drinkingDayKey(at);
 }
 
+/** Ensure a persisted session carries a stable `clientId`, minting one when an
+ *  older build wrote it without (v0 → v1). Exported for unit tests. */
+function ensureSessionClientId(session: TallySession | null): TallySession | null {
+  if (!session) return null;
+  if (typeof session.clientId === 'string' && session.clientId) return session;
+  return { ...session, clientId: generateUuidV4() };
+}
+
+/**
+ * Migrate persisted tally state to the current shape. v0 sessions predate the
+ * per-session `clientId` used as the /v1/pub-visits idempotency key, so v1
+ * backfills one for the current session and every archived session. Exported so
+ * the migration is unit-testable in isolation.
+ */
+export function migrateTally(persisted: unknown, version: number): TallyState {
+  const base = (persisted ?? {}) as Partial<TallyState>;
+  if (version >= 1) return base as TallyState;
+
+  const current = ensureSessionClientId((base.current as TallySession | null) ?? null);
+  const history = Array.isArray(base.history)
+    ? (base.history as TallySession[])
+        .map((session) => ensureSessionClientId(session))
+        .filter((session): session is TallySession => session != null)
+    : [];
+
+  return { ...(base as TallyState), current, history };
+}
+
 export const useTallyStore = create<TallyState>()(
   persist(
     (set) => ({
@@ -148,6 +182,7 @@ export const useTallyStore = create<TallyState>()(
                 : state.history;
             return {
               current: {
+                clientId: generateUuidV4(),
                 pubKey: pub.pubKey,
                 pubName: pub.pubName,
                 startedAt: at,
@@ -210,12 +245,37 @@ export const useTallyStore = create<TallyState>()(
           return { current: { ...state.current, drinks } };
         }),
 
-      reset: () => set({ current: null, history: [] }),
+      reset: () =>
+        set((state) => {
+          // Wiping local evenings must also retract them from the backend. We
+          // collect every session's clientId and enqueue a visit delete for each.
+          // The delete helper is required lazily to avoid a static import cycle
+          // (visitsSync imports this store); it is fire-and-forget + never throws.
+          const sessions = state.current ? [state.current, ...state.history] : state.history;
+          const clientIds = sessions
+            .map((session) => session.clientId)
+            .filter((id): id is string => typeof id === 'string' && id.length > 0);
+          if (clientIds.length > 0) {
+            try {
+              // eslint-disable-next-line @typescript-eslint/no-require-imports
+              const { deleteVisitByClientId } = require('@/data/visitsSync') as {
+                deleteVisitByClientId: (clientId: string) => void;
+              };
+              for (const id of clientIds) deleteVisitByClientId(id);
+            } catch {
+              // Sync module unavailable (e.g. under a test harness) — local wipe
+              // still proceeds; the backend reconciles on the next launch.
+            }
+          }
+          return { current: null, history: [] };
+        }),
     }),
     {
       name: 'na-pivo-tally',
+      version: 1,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({ current: state.current, history: state.history }),
+      migrate: migrateTally,
     },
   ),
 );
@@ -228,6 +288,31 @@ export function sessionCount(session: TallySession | null): number {
 /** Total spent (CZK) in the current session. */
 export function sessionTotalCzk(session: TallySession | null): number {
   return session?.drinks.reduce((sum, d) => sum + d.priceCzk, 0) ?? 0;
+}
+
+/**
+ * All drinking evenings, newest-first, as a single list — the read model behind
+ * "Moje piva". The live `current` session is NOT in `history` until it rolls
+ * over, so we prepend it (only when it actually holds drinks; an empty pinned
+ * session is not an evening). Pure + non-mutating so the screen and tests can
+ * rely on it without touching counter behavior.
+ */
+export function allSessionsNewestFirst(
+  current: TallySession | null,
+  history: TallySession[],
+): TallySession[] {
+  if (current && current.drinks.length > 0) return [current, ...history];
+  return history;
+}
+
+/** Find an evening by its `startedAt` (the stable per-session identity used for
+ *  routing to a detail screen). Searches the live session first, then history. */
+export function findSessionByStart(
+  current: TallySession | null,
+  history: TallySession[],
+  startedAt: string,
+): TallySession | null {
+  return allSessionsNewestFirst(current, history).find((s) => s.startedAt === startedAt) ?? null;
 }
 
 /** Per-beer counts in the current session, keyed by normalized name + volume —

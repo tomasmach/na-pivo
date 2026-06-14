@@ -79,6 +79,12 @@ jest.mock('@/data/hoursClient', () => ({ fetchPubHours }));
 
 jest.mock('@/data/account', () => ({ generateUuidV4: jest.fn(() => 'uuid-fixed') }));
 
+// Visit ("evening") sync — keep it out of the network path; the wiring is
+// covered by visitsSync/visitsQueue tests.
+const syncVisit = jest.fn();
+const deleteVisitByClientId = jest.fn();
+jest.mock('@/data/visitsSync', () => ({ syncVisit, deleteVisitByClientId }));
+
 const useNearbyPub = jest.fn();
 jest.mock('@/counter/useNearbyPub', () => ({ useNearbyPub: () => useNearbyPub() }));
 
@@ -362,6 +368,7 @@ describe('CounterScreen counting', () => {
       context: { delivery_state: 'queued' },
     });
     expect(enqueueDelete).not.toHaveBeenCalled();
+    expect(deleteVisitByClientId).toHaveBeenCalledWith(expect.any(String));
   });
 
   it('the minus button enqueues a backend delete once the drink has been delivered', async () => {
@@ -401,5 +408,6 @@ describe('CounterScreen counting', () => {
 
     expect(useTallyStore.getState().current?.drinks).toHaveLength(0);
     expect(enqueueDelete).toHaveBeenCalledWith('uuid-fixed');
+    expect(deleteVisitByClientId).toHaveBeenCalledWith(expect.any(String));
   });
 });

@@ -38,6 +38,9 @@ import {
   X,
   Coins,
   Star,
+  ThumbsUp,
+  ThumbsDown,
+  History,
   LucideProps,
 } from 'lucide-react-native';
 
@@ -86,3 +89,6 @@ export const CopyIcon = wrap(Copy, 'CopyIcon');
 export const XIcon = wrap(X, 'XIcon');
 export const CoinsIcon = wrap(Coins, 'CoinsIcon');
 export const StarIcon = wrap(Star, 'StarIcon');
+export const ThumbsUpIcon = wrap(ThumbsUp, 'ThumbsUpIcon');
+export const ThumbsDownIcon = wrap(ThumbsDown, 'ThumbsDownIcon');
+export const HistoryIcon = wrap(History, 'HistoryIcon');

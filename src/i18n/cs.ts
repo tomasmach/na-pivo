@@ -7,7 +7,7 @@ import { czechPlural } from './plural';
 
 /** Format a serving volume in ml as a Czech litre string with a decimal comma:
  *  500 → "0,5 l", 300 → "0,3 l", 1000 → "1 l", 330 → "0,33 l". */
-function formatVolume(ml: number): string {
+export function formatVolume(ml: number): string {
   const litres = ml / 1000;
   const text = Number.isInteger(litres)
     ? String(litres)
@@ -203,6 +203,7 @@ export const cs = {
   tabs: {
     compass: 'Kompas',
     counter: 'Počítadlo',
+    myBeers: 'Moje piva',
   },
 
   counter: {
@@ -273,6 +274,54 @@ export const cs = {
       ml ? `${price} · ${formatVolume(ml)}` : price,
   },
 
+  myBeers: {
+    // Tab label + screen title.
+    title: 'Moje piva',
+
+    // — Empty state —
+    emptyTitle: 'Zatím žádná pivní stopa',
+    emptyBody:
+      'Ťukni na pivo v Počítadle a večer se uloží sem. Uvidíš, kde jsi byl, co jsi pil a kolik to dalo.',
+
+    // — Sections —
+    currentHeader: 'AKTUÁLNÍ VEČER',
+    pastHeader: 'MINULÉ VEČERY',
+
+    // — Date labels —
+    today: 'Dnes',
+    yesterday: 'Včera',
+
+    // — Evening summary —
+    // "3 piva · 186 Kč"
+    summary: (beers: string, spent: string) => `${beers} · ${spent}`,
+    lastDrinkJustNow: 'Poslední pivo před chvilkou',
+    lastDrinkMinutesAgo: (minutes: number) =>
+      `Poslední pivo před ${minutes} ${czechPlural(minutes, {
+        one: 'minutou',
+        few: 'minutami',
+        many: 'minutami',
+      })}`,
+
+    // — Detail —
+    breakdownHeader: 'CO PADLO',
+    // Meta shown to the right of a beer name, e.g. "2× · 124 Kč" (count × subtotal).
+    // The volume is appended to the name separately in EveningBreakdown.
+    breakdownLine: (count: number, price: string) => `${count}× · ${price}`,
+    totalLabel: 'Celkem',
+
+    // — Personal pub rating ("Stálo to za návrat?") —
+    ratingHeader: 'STÁLO TO ZA TO?',
+    ratingHint: 'Jen pro tebe. Soukromě se synchronizuje mezi tvými zařízeními.',
+    verdictLike: 'Dobrý',
+    verdictDislike: 'Slabý',
+    // Quick preset tags — the user's own one-tap memory labels.
+    tagLabel: 'Rychlá známka',
+    notePresets: ['Sem se vrátit', 'Nic moc', 'Dobrý tankový'] as const,
+    // Free-text note in the user's own words.
+    noteLabel: 'Vlastní poznámka',
+    notePlaceholder: 'Co sis chtěl zapamatovat? Třeba „skvělý výčep, ale draho".',
+  },
+
   whatsNew: {
     eyebrow: 'AKTUALIZACE',
     defaultTitle: 'Co je nového',
@@ -334,6 +383,7 @@ export const cs = {
     // — Tabs —
     tabCompass: 'Záložka Kompas',
     tabCounter: 'Záložka Počítadlo',
+    tabMyBeers: 'Záložka Moje piva',
 
     // — Counter —
     counterChangePub: 'Změnit hospodu',
@@ -352,6 +402,14 @@ export const cs = {
       `Napočítáno ${count}, utraceno ${price}`,
     counterRequestLocation: 'Povolit polohu',
     counterRetry: 'Hledat hospodu znovu',
+
+    // — Moje piva —
+    myBeersEvening: (pub: string, summary: string) =>
+      `Večer v hospodě ${pub}, ${summary}. Ťukni pro detail.`,
+    ratingLike: (pub: string) => `Hodnotit ${pub} jako dobrou`,
+    ratingDislike: (pub: string) => `Hodnotit ${pub} jako slabou`,
+    ratingNote: (note: string) => `Štítek: ${note}`,
+    ratingNoteInput: (pub: string) => `Vlastní poznámka k hospodě ${pub}`,
   },
 } as const;
 
