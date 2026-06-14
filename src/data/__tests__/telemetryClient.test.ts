@@ -54,13 +54,13 @@ describe('trackClientEvent', () => {
     const [url, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe('https://api.example.com/v1/client-events');
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer secret-token');
-    expect((init.headers as Record<string, string>)['X-Na-Pivo-App-Version']).toBe('v1.1.2 (4)');
+    expect((init.headers as Record<string, string>)['X-Na-Pivo-App-Version']).toBe('v1.1.3 (4)');
 
     const body = JSON.parse(init.body as string);
     expect(body).toMatchObject({
       event: 'console_error',
       severity: 'error',
-      app_version: 'v1.1.2 (4)',
+      app_version: 'v1.1.3 (4)',
       platform: 'ios',
       os_version: '18.1',
     });
@@ -80,5 +80,45 @@ describe('trackClientEvent', () => {
     await trackClientEvent({ event: 'app_open' });
 
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('allows privacy-safe counter events and drops non-whitelisted context', async () => {
+    const fetchSpy = jest.fn(async () => ({ ok: true }));
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    await trackClientEvent({
+      event: 'drink_sync_failed',
+      severity: 'warning',
+      context: {
+        operation: 'submit_drink',
+        status: 429,
+        sync_result: 'retry',
+        retryable: true,
+        queue: 'drinks',
+        pending_count: 3.4,
+        mode: 'add',
+        delivery_state: 'queued',
+        return_days: 2.2,
+        // Not whitelisted; must not cross the wire.
+        pub_name: 'U Zlatého tygra',
+        beer_name: 'Plzeň',
+        lat: 50.0876,
+      },
+    });
+
+    const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.event).toBe('drink_sync_failed');
+    expect(body.context).toEqual({
+      operation: 'submit_drink',
+      status: 429,
+      sync_result: 'retry',
+      retryable: true,
+      queue: 'drinks',
+      pending_count: 3,
+      mode: 'add',
+      delivery_state: 'queued',
+      return_days: 2,
+    });
   });
 });

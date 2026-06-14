@@ -68,6 +68,12 @@ const enqueueDelete = jest.fn((_clientId: string) => Promise.resolve(undefined))
 const flushDeleteDrinksQueue = jest.fn(() => Promise.resolve(undefined));
 jest.mock('@/data/deleteDrinksQueue', () => ({ enqueueDelete, flushDeleteDrinksQueue }));
 
+const mockTrackClientEvent = jest.fn(async () => undefined);
+jest.mock('@/data/telemetryClient', () => ({ trackClientEvent: mockTrackClientEvent }));
+
+const mockTrackCounterTabOpened = jest.fn(async () => undefined);
+jest.mock('@/data/counterTelemetry', () => ({ trackCounterTabOpened: mockTrackCounterTabOpened }));
+
 const fetchPubHours = jest.fn(async () => new Map());
 jest.mock('@/data/hoursClient', () => ({ fetchPubHours }));
 
@@ -233,6 +239,12 @@ describe('CounterScreen counting', () => {
     const entry = enqueueDrink.mock.calls[0][0] as any;
     expect(entry.client_id).toBe('uuid-fixed');
     expect(entry.beer).toEqual({ name: 'Plzeň', price_czk: 62, volume_ml: 500 });
+    expect(mockTrackCounterTabOpened).toHaveBeenCalledWith(false);
+    expect(mockTrackClientEvent).toHaveBeenCalledWith({ event: 'counter_session_started' });
+    expect(mockTrackClientEvent).toHaveBeenCalledWith({
+      event: 'drink_added',
+      context: { had_active_session: false },
+    });
 
     // Menu override still present (price unchanged → same single beer).
     const override = useCommunityStore.getState().overrides[CELL];
@@ -345,6 +357,10 @@ describe('CounterScreen counting', () => {
 
     expect(useTallyStore.getState().current?.drinks).toHaveLength(0);
     expect(removeQueuedDrink).toHaveBeenCalledWith('uuid-fixed');
+    expect(mockTrackClientEvent).toHaveBeenCalledWith({
+      event: 'drink_removed',
+      context: { delivery_state: 'queued' },
+    });
     expect(enqueueDelete).not.toHaveBeenCalled();
   });
 

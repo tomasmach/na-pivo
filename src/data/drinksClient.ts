@@ -25,6 +25,7 @@
 import { clearCachedAccount, ensureAccount } from './account';
 import { getBackendEndpoint } from './backendConfig';
 import type { CommunityBeer } from './communityHours';
+import { trackClientEvent } from './telemetryClient';
 
 export type { CommunityBeer };
 
@@ -82,6 +83,30 @@ async function classifyDrinkHttpFailure(status: number): Promise<SubmitDrinkResu
   return 'retry';
 }
 
+function trackDrinkSynced(operation: 'submit_drink' | 'delete_drink'): void {
+  void trackClientEvent({
+    event: 'drink_synced',
+    context: { operation },
+  });
+}
+
+function trackDrinkSyncFailed(
+  operation: 'submit_drink' | 'delete_drink',
+  details: { status?: number; reason: string; result?: SubmitDrinkResult; retryable?: boolean },
+): void {
+  void trackClientEvent({
+    event: 'drink_sync_failed',
+    severity: 'warning',
+    context: {
+      operation,
+      status: details.status,
+      reason: details.reason,
+      sync_result: details.result,
+      retryable: details.retryable,
+    },
+  });
+}
+
 /**
  * Build the retry-stable wire payload from the user's input + a fresh client_id.
  * `external_id` and `city` are only included when present; `drank_at` defaults
@@ -123,10 +148,24 @@ export async function submitDrink(
   if (signal?.aborted) return 'retry';
 
   const endpoint = getBackendEndpoint('/v1/drinks');
-  if (!endpoint) return 'retry';
+  if (!endpoint) {
+    trackDrinkSyncFailed('submit_drink', {
+      reason: 'backend_unconfigured',
+      result: 'retry',
+      retryable: true,
+    });
+    return 'retry';
+  }
 
   const session = await ensureAccount(signal);
-  if (!session || signal?.aborted) return 'retry';
+  if (!session || signal?.aborted) {
+    trackDrinkSyncFailed('submit_drink', {
+      reason: signal?.aborted ? 'aborted' : 'account_unavailable',
+      result: 'retry',
+      retryable: true,
+    });
+    return 'retry';
+  }
 
   const timeoutController = new AbortController();
   const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
@@ -150,10 +189,25 @@ export async function submitDrink(
       signal: timeoutController.signal,
     });
 
-    if (resp.ok) return 'ok';
-    return classifyDrinkHttpFailure(resp.status);
+    if (resp.ok) {
+      trackDrinkSynced('submit_drink');
+      return 'ok';
+    }
+    const result = await classifyDrinkHttpFailure(resp.status);
+    trackDrinkSyncFailed('submit_drink', {
+      status: resp.status,
+      reason: 'http_error',
+      result,
+      retryable: result === 'retry',
+    });
+    return result;
   } catch {
     // network / timeout / abort / malformed response — keep for a later flush.
+    trackDrinkSyncFailed('submit_drink', {
+      reason: 'network_or_timeout',
+      result: 'retry',
+      retryable: true,
+    });
     return 'retry';
   } finally {
     clearTimeout(timeoutId);
@@ -178,10 +232,24 @@ export async function deleteDrink(
   if (signal?.aborted) return 'retry';
 
   const endpoint = getBackendEndpoint(`/v1/drinks/${clientId}`);
-  if (!endpoint) return 'retry';
+  if (!endpoint) {
+    trackDrinkSyncFailed('delete_drink', {
+      reason: 'backend_unconfigured',
+      result: 'retry',
+      retryable: true,
+    });
+    return 'retry';
+  }
 
   const session = await ensureAccount(signal);
-  if (!session || signal?.aborted) return 'retry';
+  if (!session || signal?.aborted) {
+    trackDrinkSyncFailed('delete_drink', {
+      reason: signal?.aborted ? 'aborted' : 'account_unavailable',
+      result: 'retry',
+      retryable: true,
+    });
+    return 'retry';
+  }
 
   const timeoutController = new AbortController();
   const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
@@ -202,8 +270,20 @@ export async function deleteDrink(
     });
 
     if (resp.ok) return 'ok';
-    return classifyDrinkHttpFailure(resp.status);
+    const result = await classifyDrinkHttpFailure(resp.status);
+    trackDrinkSyncFailed('delete_drink', {
+      status: resp.status,
+      reason: 'http_error',
+      result,
+      retryable: result === 'retry',
+    });
+    return result;
   } catch {
+    trackDrinkSyncFailed('delete_drink', {
+      reason: 'network_or_timeout',
+      result: 'retry',
+      retryable: true,
+    });
     return 'retry';
   } finally {
     clearTimeout(timeoutId);

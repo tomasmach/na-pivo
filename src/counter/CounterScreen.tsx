@@ -50,6 +50,8 @@ import { fetchPubHours } from '@/data/hoursClient';
 import { buildDrinkEntry } from '@/data/drinksClient';
 import { enqueueDrink, flushDrinksQueue, isDrinkQueued, removeQueuedDrink } from '@/data/drinksQueue';
 import { enqueueDelete } from '@/data/deleteDrinksQueue';
+import { trackCounterTabOpened } from '@/data/counterTelemetry';
+import { trackClientEvent } from '@/data/telemetryClient';
 import { fireSuccessHaptic, fireLightImpactHaptic } from '@/utils/haptics';
 import { useCommunityStore } from '@/stores/communityStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -387,12 +389,20 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
     (beer: CommunityBeer & { priceCzk: number }) => {
       const id = generateUuidV4();
       const at = new Date().toISOString();
+      const startsSession = count === 0;
       setNowMs(Date.parse(at));
 
       addDrink(
         { pubKey: cell, pubName: pub.name },
         { id, beerName: beer.name, priceCzk: beer.priceCzk, volumeMl: beer.volumeMl, at },
       );
+      if (startsSession) {
+        void trackClientEvent({ event: 'counter_session_started' });
+      }
+      void trackClientEvent({
+        event: 'drink_added',
+        context: { had_active_session: !startsSession },
+      });
 
       // Merge into the local community menu so the price shows instantly across
       // the app (same rule as the backend merge).
@@ -433,7 +443,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
         fireSuccessHaptic();
       }
     },
-    [addDrink, cell, hapticEnabled, markDrinkSynced, menu, pub, setOverride],
+    [addDrink, cell, count, hapticEnabled, markDrinkSynced, menu, pub, setOverride],
   );
 
   const requestCountBeer = useCallback(
@@ -457,6 +467,10 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
     setFormBeer(beer);
     setFormMode(mode);
     setFormNonce((n) => n + 1);
+    void trackClientEvent({
+      event: 'beer_form_opened',
+      context: { mode },
+    });
   }, []);
 
   const handleTapBeer = useCallback(
@@ -487,6 +501,10 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
       setFormMode(null);
       setFormBeer(null);
       const beer = { name: result.name, priceCzk: result.priceCzk, volumeMl: result.volumeMl };
+      void trackClientEvent({
+        event: 'beer_price_added',
+        context: { mode: mode ?? 'unknown' },
+      });
       if (mode === 'edit') {
         // Edit just updates the menu price; the NEXT tap counts it.
         const mergedMenu = mergeBeerIntoMenu(menu, beer);
@@ -528,6 +546,10 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
       removeDrink(targetId);
       const removedId = targetId;
       void removeQueuedDrink(removedId).then((pulledFromQueue) => {
+        void trackClientEvent({
+          event: 'drink_removed',
+          context: { delivery_state: pulledFromQueue ? 'queued' : 'delivered' },
+        });
         if (!pulledFromQueue) void enqueueDelete(removedId);
       });
 
@@ -727,6 +749,13 @@ export default function CounterScreen() {
   const { candidates, selected, selectPub, permissionState, requestPermission, loading, retry } =
     useNearbyPub();
   const [pickerOpen, setPickerOpen] = useState(false);
+  const hadActiveSessionOnOpen = React.useRef(
+    (useTallyStore.getState().current?.drinks.length ?? 0) > 0,
+  );
+
+  useEffect(() => {
+    void trackCounterTabOpened(hadActiveSessionOnOpen.current);
+  }, []);
 
   // Active pub: an explicit selection, else the nearest candidate.
   const activePub = selected ?? candidates[0]?.pub ?? null;

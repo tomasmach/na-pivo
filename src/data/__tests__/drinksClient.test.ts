@@ -17,6 +17,11 @@ jest.mock('../account', () => ({
   ensureAccount: jest.fn(async () => ({ deviceId: 'd', accountId: 'a', token: 'tok' })),
 }));
 
+jest.mock('../telemetryClient', () => ({
+  trackApiFailure: jest.fn(),
+  trackClientEvent: jest.fn(async () => undefined),
+}));
+
 const ORIGINAL_FETCH = global.fetch;
 const ORIGINAL_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 

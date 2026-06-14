@@ -16,6 +16,16 @@ export type ClientTelemetryEvent =
   | 'app_open'
   | 'app_foreground'
   | 'walking_distance'
+  | 'counter_tab_opened'
+  | 'counter_session_started'
+  | 'drink_added'
+  | 'drink_removed'
+  | 'drink_synced'
+  | 'drink_sync_failed'
+  | 'beer_form_opened'
+  | 'beer_price_added'
+  | 'counter_returned_same_day'
+  | 'counter_returned_later'
   | 'console_warn'
   | 'console_error'
   | 'unhandled_error'
@@ -44,8 +54,14 @@ const CONTEXT_KEYS = new Set([
   'error_message',
   'stack',
   'source',
+  'mode',
   'queue',
   'pending_count',
+  'sync_result',
+  'delivery_state',
+  'return_days',
+  'had_active_session',
+  'retryable',
   'distance_m',
   'duration_ms',
 ]);
@@ -157,7 +173,13 @@ function sanitizeContext(
       if (endpoint) out[key] = endpoint;
       continue;
     }
-    if (key === 'distance_m' || key === 'status' || key === 'pending_count' || key === 'duration_ms') {
+    if (
+      key === 'distance_m' ||
+      key === 'status' ||
+      key === 'pending_count' ||
+      key === 'return_days' ||
+      key === 'duration_ms'
+    ) {
       const numberValue = Number(value);
       if (Number.isFinite(numberValue)) out[key] = Math.max(0, Math.round(numberValue));
       continue;
