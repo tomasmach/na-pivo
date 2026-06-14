@@ -48,8 +48,10 @@ from pubs.models import (
     PubCommunityData,
     PubContributionLog,
     PubHours,
+    PubRating,
     PubReport,
     PubSearchCache,
+    PubVisit,
     ReleaseNote,
     generate_account_token,
     hash_account_token,
@@ -71,10 +73,12 @@ from .serializers import (
     PubCommunityResponseSerializer,
     PubHoursRequestSerializer,
     PubHoursResponseSerializer,
+    PubRatingRequestSerializer,
     PubReportBlockedQuerySerializer,
     PubReportRequestSerializer,
     PubReportSerializer,
     PubsNearQuerySerializer,
+    PubVisitRequestSerializer,
     ReleaseNoteSerializer,
 )
 
@@ -602,6 +606,249 @@ class FeedbackView(APIView):
             FeedbackReportSerializer(report).data,
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
+
+
+def _rating_item(rating: PubRating) -> dict:
+    """Serialize one PubRating to the wire shape the mobile app expects.
+
+    An empty verdict ("") is exposed as null, and updated_at is the client's
+    last-write-wins timestamp (client_updated_at), not the server's updated_at.
+    """
+    return {
+        "cache_key": rating.cache_key,
+        "name": rating.name,
+        "lat": rating.lat,
+        "lng": rating.lng,
+        "external_id": rating.external_id,
+        "verdict": rating.verdict or None,
+        "tag": rating.tag,
+        "note": rating.note,
+        "updated_at": rating.client_updated_at.isoformat(),
+    }
+
+
+class PubRatingView(APIView):
+    """
+    PUT    /v1/pub-ratings            → upsert one private rating
+    GET    /v1/pub-ratings            → list all ratings of the account
+    DELETE /v1/pub-ratings/<cache_key> → idempotent delete by geohash-8 key
+
+    Two-way sync of a user's private per-pub ratings (thumbs verdict + optional
+    tag + free-text note), keyed by the geohash-8 ``cache_key`` computed
+    server-side from lat/lng. Conflict resolution is LAST-WRITE-WINS on the
+    client's ``updated_at``: a PUT older than the stored client_updated_at is
+    ignored (``applied: false``). An empty rating (no verdict, tag, or note)
+    deletes any existing row. GET returns every rating so a fresh install can
+    restore. Throttled per-IP (scope "pub_ratings").
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "pub_ratings"
+
+    def get(self, request: Request) -> Response:
+        try:
+            ratings = PubRating.objects.filter(account=request.user)
+            items = [_rating_item(rating) for rating in ratings]
+        except Exception as exc:  # noqa: BLE001
+            logger.error("pub-ratings: unexpected error listing ratings: %s", exc, exc_info=True)
+            return Response(
+                {"detail": "Internal server error."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        return Response({"ratings": items}, status=status.HTTP_200_OK)
+
+    def put(self, request: Request) -> Response:
+        serializer = PubRatingRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        cache_key = geohash8(data["lat"], data["lng"])
+        # Normalise the optional signal fields to "" (the model's blank default).
+        verdict = data.get("verdict") or ""
+        tag = (data.get("tag") or "").strip()
+        note = (data.get("note") or "").strip()
+        updated_at = data["updated_at"]
+
+        try:
+            # No signal at all → this is a clear/delete, not a rating.
+            if not verdict and not tag and not note:
+                PubRating.objects.filter(
+                    account=request.user, cache_key=cache_key
+                ).delete()
+                return Response({"deleted": True}, status=status.HTTP_200_OK)
+
+            with transaction.atomic():
+                existing = (
+                    PubRating.objects.select_for_update()
+                    .filter(account=request.user, cache_key=cache_key)
+                    .first()
+                )
+                # Last-write-wins: a stale write (older than what we already have)
+                # is ignored — return the existing row with applied: false.
+                if existing is not None and existing.client_updated_at > updated_at:
+                    body = _rating_item(existing)
+                    body["applied"] = False
+                    return Response(body, status=status.HTTP_200_OK)
+
+                rating, _ = PubRating.objects.update_or_create(
+                    account=request.user,
+                    cache_key=cache_key,
+                    defaults={
+                        "name": data.get("name") or "",
+                        "lat": data["lat"],
+                        "lng": data["lng"],
+                        "external_id": data.get("external_id") or "",
+                        "verdict": verdict,
+                        "tag": tag,
+                        "note": note,
+                        "client_updated_at": updated_at,
+                    },
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "pub-ratings: unexpected error saving rating for cache key %s: %s",
+                cache_key,
+                exc,
+                exc_info=True,
+            )
+            return Response(
+                {"detail": "Internal server error."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        body = _rating_item(rating)
+        body["applied"] = True
+        return Response(body, status=status.HTTP_200_OK)
+
+    def delete(self, request: Request, cache_key: str) -> Response:
+        # Idempotent delete: the account filter means a cache_key belonging to
+        # another account (or never rated, or already deleted) matches nothing →
+        # deleted: false, never a hard 404, so the client can retry safely.
+        try:
+            deleted_count, _ = PubRating.objects.filter(
+                account=request.user, cache_key=cache_key
+            ).delete()
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "pub-ratings: unexpected error deleting rating %r: %s",
+                cache_key,
+                exc,
+                exc_info=True,
+            )
+            return Response(
+                {"detail": "Internal server error."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        return Response({"deleted": deleted_count > 0}, status=status.HTTP_200_OK)
+
+
+def _visit_item(visit: PubVisit) -> dict:
+    """Serialize one PubVisit to the wire shape the mobile app expects."""
+    return {
+        "client_id": str(visit.client_id),
+        "cache_key": visit.cache_key,
+        "name": visit.name,
+        "lat": visit.lat,
+        "lng": visit.lng,
+        "city": visit.city,
+        "external_id": visit.external_id,
+        "started_at": visit.started_at.isoformat(),
+        "ended_at": visit.ended_at.isoformat() if visit.ended_at else None,
+    }
+
+
+class PubVisitView(APIView):
+    """
+    POST   /v1/pub-visits              → push one explicit visit (upsert)
+    GET    /v1/pub-visits              → list all visits of the account
+    DELETE /v1/pub-visits/<client_id>  → idempotent delete by client_id
+
+    Records that the user spent an evening at a pub even when no beer was
+    counted. Idempotent on (account, client_id): a re-POST (offline retry, or a
+    later POST filling in ``ended_at``) updates the same row. ``cache_key`` is
+    the geohash-8 cell computed server-side. Throttled per-IP (scope
+    "pub_visits").
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "pub_visits"
+
+    def get(self, request: Request) -> Response:
+        try:
+            visits = PubVisit.objects.filter(account=request.user)
+            items = [_visit_item(visit) for visit in visits]
+        except Exception as exc:  # noqa: BLE001
+            logger.error("pub-visits: unexpected error listing visits: %s", exc, exc_info=True)
+            return Response(
+                {"detail": "Internal server error."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        return Response({"visits": items}, status=status.HTTP_200_OK)
+
+    def post(self, request: Request) -> Response:
+        serializer = PubVisitRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        cache_key = geohash8(data["lat"], data["lng"])
+
+        try:
+            _, created = PubVisit.objects.update_or_create(
+                account=request.user,
+                client_id=data["client_id"],
+                defaults={
+                    "cache_key": cache_key,
+                    "name": data["name"],
+                    "lat": data["lat"],
+                    "lng": data["lng"],
+                    "city": data.get("city") or "",
+                    "external_id": data.get("external_id") or "",
+                    "started_at": data["started_at"],
+                    "ended_at": data.get("ended_at"),
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "pub-visits: unexpected error saving visit %r: %s",
+                data.get("client_id"),
+                exc,
+                exc_info=True,
+            )
+            return Response(
+                {"detail": "Internal server error."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response(
+            {"accepted": True, "duplicate": not created, "cache_key": cache_key},
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+    def delete(self, request: Request, client_id) -> Response:
+        # Idempotent delete scoped to the account (a foreign / missing / already
+        # deleted client_id matches nothing → deleted: false, never a 404).
+        try:
+            deleted_count, _ = PubVisit.objects.filter(
+                account=request.user, client_id=client_id
+            ).delete()
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "pub-visits: unexpected error deleting visit %r: %s",
+                client_id,
+                exc,
+                exc_info=True,
+            )
+            return Response(
+                {"detail": "Internal server error."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        return Response({"deleted": deleted_count > 0}, status=status.HTTP_200_OK)
 
 
 def _account_from_request(request: Request) -> Account | None:

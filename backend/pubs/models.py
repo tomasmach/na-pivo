@@ -812,6 +812,167 @@ class DrinkLog(models.Model):
         return f"DrinkLog({self.beer_name} @ {self.name} [{self.cache_key}] — {self.price_czk} Kč)"
 
 
+class PubRating(models.Model):
+    """
+    A per-user private rating of one pub, keyed by its geohash-8 cell.
+
+    The mobile app lets a user privately rate a pub they visited: a thumbs
+    up/down ``verdict``, an optional one-word ``tag`` and a free-text ``note``.
+    The row is keyed by (account, geohash-8 ``cache_key``) so the same physical
+    pub collapses to one rating per account regardless of which provider id the
+    client saw it under.
+
+    Sync is two-way and conflict-resolved by LAST-WRITE-WINS on
+    ``client_updated_at`` (the client's local updatedAt, NOT the server's
+    ``updated_at``): a PUT whose ``updated_at`` is older than the stored
+    ``client_updated_at`` is ignored, so a stale offline write never clobbers a
+    newer one. An empty rating (no verdict, tag, or note) deletes the row.
+
+    This is currently PRIVATE per account, but it is the substrate future public
+    aggregates (e.g. a community like/dislike ratio per pub) and achievements
+    (e.g. "rated 50 pubs") will be built on, hence the geohash-8 key shared with
+    PubHours / PubCommunityData.
+    """
+
+    class Verdict(models.TextChoices):
+        LIKE = "like", "Like"
+        DISLIKE = "dislike", "Dislike"
+
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name="pub_ratings",
+        help_text="The user who owns this private rating.",
+    )
+    cache_key = models.CharField(
+        max_length=12,
+        db_index=True,
+        help_text="Geohash-8 of (lat, lng) — ~38 m precision; matches PubHours.cache_key.",
+    )
+    # TextField (not bounded CharField): free text the client controls. SQLite
+    # (dev / tests) silently truncates an over-length CharField while Postgres
+    # (prod) raises DataError, so use unbounded TextField and let the serializer
+    # enforce the wire bound. Same rationale for external_id / tag / note below.
+    name = models.TextField(
+        blank=True,
+        default="",
+        help_text="Pub name as the client saw it (legacy ratings may have none).",
+    )
+    lat = models.FloatField()
+    lng = models.FloatField()
+    external_id = models.TextField(
+        blank=True,
+        default="",
+        help_text="Client-side provider id, e.g. Mapy.cz item id.",
+    )
+    verdict = models.CharField(
+        max_length=10,
+        choices=Verdict.choices,
+        blank=True,
+        default="",
+        help_text='Thumbs verdict: "like" / "dislike" / "" (none).',
+    )
+    tag = models.TextField(
+        blank=True,
+        default="",
+        help_text="Optional one-word tag (<=64 chars, enforced by the serializer).",
+    )
+    note = models.TextField(
+        blank=True,
+        default="",
+        help_text="Optional free-text note (<=280 chars, enforced by the serializer).",
+    )
+    client_updated_at = models.DateTimeField(
+        help_text="Client's local updatedAt; the last-write-wins conflict key.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Pub Rating"
+        verbose_name_plural = "Pub Ratings"
+        ordering = ["-client_updated_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "cache_key"],
+                name="unique_rating_per_account_pub",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"PubRating({self.name or self.cache_key} [{self.cache_key}] — {self.verdict or 'note'})"
+
+
+class PubVisit(models.Model):
+    """
+    An explicit user visit to a pub — one "evening" out.
+
+    Whereas DrinkLog only exists when a beer was counted, this records that the
+    user was at a pub at all, so a dry visit (a soda, a coffee, just meeting
+    friends) still counts. Identity of one evening is (account, ``client_id``):
+    the client generates a UUID per visit and re-POSTs it verbatim on offline
+    retries / when it later fills in ``ended_at``, so the unique constraint lets
+    the endpoint update_or_create the same row instead of duplicating it.
+    ``started_at`` is when the evening began; ``cache_key`` is the geohash-8 cell
+    computed server-side.
+
+    Future achievements (e.g. "visited 100 pubs", streaks) will be built on
+    these rows.
+    """
+
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name="pub_visits",
+        help_text="The user who made this visit.",
+    )
+    client_id = models.UUIDField(
+        help_text="Client-generated UUID; idempotency key for offline retries / updates.",
+    )
+    cache_key = models.CharField(
+        max_length=12,
+        db_index=True,
+        help_text="Geohash-8 of (lat, lng) — ~38 m precision; matches PubHours.cache_key.",
+    )
+    # TextField (not bounded CharField): see PubRating / DrinkLog rationale.
+    name = models.TextField(help_text="Pub name as the client saw it.")
+    lat = models.FloatField()
+    lng = models.FloatField()
+    city = models.TextField(blank=True, default="", help_text="Optional city hint from the client.")
+    external_id = models.TextField(
+        blank=True,
+        default="",
+        help_text="Client-side provider id, e.g. Mapy.cz item id.",
+    )
+    started_at = models.DateTimeField(
+        help_text="When the evening began — the identity of the visit.",
+    )
+    ended_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the evening ended (None = still open / unknown).",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Pub Visit"
+        verbose_name_plural = "Pub Visits"
+        ordering = ["-started_at"]
+        indexes = [
+            models.Index(fields=["account", "started_at"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "client_id"],
+                name="unique_visit_per_account_client_id",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"PubVisit({self.name} [{self.cache_key}] @ {self.started_at:%Y-%m-%d %H:%M})"
+
+
 class PubSearchCache(models.Model):
     """
     Shared, DB-cached result of a Mapy.cz "pubs near" suggest search.

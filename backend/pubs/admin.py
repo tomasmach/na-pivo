@@ -10,8 +10,10 @@ from .models import (
     PubCommunityData,
     PubContributionLog,
     PubHours,
+    PubRating,
     PubReport,
     PubSearchCache,
+    PubVisit,
     ReleaseNote,
     ReleaseNoteItem,
 )
@@ -255,6 +257,65 @@ class DrinkLogAdmin(admin.ModelAdmin):
         "created_at",
     )
     ordering = ("-drank_at",)
+
+    def has_add_permission(self, request) -> bool:  # noqa: ARG002
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:  # noqa: ARG002
+        return False
+
+
+@admin.register(PubRating)
+class PubRatingAdmin(admin.ModelAdmin):
+    # Per-user private ratings — read-only audit view (the user owns the data via
+    # the API; admin is for inspection / moderation only).
+    list_display = ("client_updated_at", "name", "cache_key", "verdict", "tag", "account", "updated_at")
+    list_filter = ("verdict",)
+    search_fields = ("name", "cache_key", "tag", "note")
+    readonly_fields = (
+        "account",
+        "cache_key",
+        "name",
+        "lat",
+        "lng",
+        "external_id",
+        "verdict",
+        "tag",
+        "note",
+        "client_updated_at",
+        "created_at",
+        "updated_at",
+    )
+    ordering = ("-client_updated_at",)
+
+    def has_add_permission(self, request) -> bool:  # noqa: ARG002
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:  # noqa: ARG002
+        return False
+
+
+@admin.register(PubVisit)
+class PubVisitAdmin(admin.ModelAdmin):
+    # Per-user explicit visits — read-only audit view.
+    list_display = ("started_at", "ended_at", "name", "cache_key", "city", "account", "updated_at")
+    list_filter = ("started_at",)
+    search_fields = ("name", "cache_key", "city")
+    readonly_fields = (
+        "account",
+        "client_id",
+        "cache_key",
+        "name",
+        "lat",
+        "lng",
+        "city",
+        "external_id",
+        "started_at",
+        "ended_at",
+        "created_at",
+        "updated_at",
+    )
+    ordering = ("-started_at",)
 
     def has_add_permission(self, request) -> bool:  # noqa: ARG002
         return False

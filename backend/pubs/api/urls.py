@@ -24,8 +24,10 @@ from .views import (
     HealthView,
     PubCommunityView,
     PubHoursView,
+    PubRatingView,
     PubReportView,
     PubsNearView,
+    PubVisitView,
     ReleaseNotesView,
 )
 
@@ -34,6 +36,10 @@ urlpatterns = [
     path("pub-community", PubCommunityView.as_view(), name="pub-community"),
     path("drinks", DrinksView.as_view(), name="drinks"),
     path("drinks/<uuid:client_id>", DrinksView.as_view(), name="drinks-delete"),
+    path("pub-ratings", PubRatingView.as_view(), name="pub-ratings"),
+    path("pub-ratings/<str:cache_key>", PubRatingView.as_view(), name="pub-ratings-delete"),
+    path("pub-visits", PubVisitView.as_view(), name="pub-visits"),
+    path("pub-visits/<uuid:client_id>", PubVisitView.as_view(), name="pub-visits-delete"),
     path("pubs/near", PubsNearView.as_view(), name="pubs-near"),
     path("pub-reports", PubReportView.as_view(), name="pub-reports"),
     path("pub-reports/blocked", BlockedPubReportsView.as_view(), name="pub-reports-blocked"),

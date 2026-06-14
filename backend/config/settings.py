@@ -165,6 +165,17 @@ COMMUNITY_THROTTLE_RATE: str = os.environ.get("COMMUNITY_THROTTLE_RATE", "30/min
 # it still blunts scripted mass logging. Format: DRF throttle rate string.
 DRINKS_THROTTLE_RATE: str = os.environ.get("DRINKS_THROTTLE_RATE", "60/min")
 
+# Per-IP rate limit for the authenticated pub-rating sync endpoint
+# (PUT/GET/DELETE /v1/pub-ratings). A two-way sync may upsert several ratings in
+# a burst when a fresh install pushes its local history, so this is generous;
+# it still blunts scripted mass writes. Format: DRF throttle rate string.
+PUB_RATINGS_THROTTLE_RATE: str = os.environ.get("PUB_RATINGS_THROTTLE_RATE", "120/min")
+
+# Per-IP rate limit for the authenticated pub-visit push endpoint
+# (POST/GET/DELETE /v1/pub-visits). Mirrors the rating rate for the same
+# burst-on-sync reason. Format: DRF throttle rate string.
+PUB_VISITS_THROTTLE_RATE: str = os.environ.get("PUB_VISITS_THROTTLE_RATE", "120/min")
+
 # Per-IP rate limit for the unauthenticated Mapy.cz "pubs near" proxy
 # (GET /v1/pubs/near). The result is shared-cached per geohash-6 cell, so the
 # legitimate once-per-search call is cheap while staying local enough for dense
@@ -200,6 +211,8 @@ REST_FRAMEWORK = {
         "feedback": FEEDBACK_THROTTLE_RATE,
         "community": COMMUNITY_THROTTLE_RATE,
         "drinks": DRINKS_THROTTLE_RATE,
+        "pub_ratings": PUB_RATINGS_THROTTLE_RATE,
+        "pub_visits": PUB_VISITS_THROTTLE_RATE,
         "pubs_near": PUBS_NEAR_THROTTLE_RATE,
         "client_events": CLIENT_EVENTS_THROTTLE_RATE,
     },

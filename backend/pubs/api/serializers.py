@@ -41,7 +41,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import EmailValidator
 from rest_framework import serializers
 
-from pubs.models import Account, ClientEvent, FeedbackReport, PubReport, ReleaseNote
+from pubs.models import Account, ClientEvent, FeedbackReport, PubRating, PubReport, ReleaseNote
 
 # ---------------------------------------------------------------------------
 # Request serializers
@@ -505,6 +505,65 @@ class DrinkRequestSerializer(PubInputSerializer):
             "price_czk": value["price_czk"],
             "volume_ml": value.get("volume_ml"),
         }
+
+
+# ---------------------------------------------------------------------------
+# Pub ratings (PUT/GET /v1/pub-ratings, DELETE /v1/pub-ratings/<cache_key>)
+# ---------------------------------------------------------------------------
+
+
+class PubRatingRequestSerializer(PubInputSerializer):
+    """Request body for PUT /v1/pub-ratings (upsert one private rating).
+
+    Inherits lat/lng (+ bounds) and city from PubInputSerializer, but loosens
+    ``name`` to optional/blank with a "" default — legacy ratings created before
+    names were stored may not carry one. ``updated_at`` is the client's local
+    updatedAt that drives last-write-wins.
+    """
+
+    # Override the inherited required name field: a rating may have no pub name.
+    name = serializers.CharField(
+        max_length=255, required=False, allow_null=True, allow_blank=True, default=""
+    )
+    external_id = serializers.CharField(
+        max_length=128,
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        trim_whitespace=True,
+    )
+    verdict = serializers.ChoiceField(
+        choices=PubRating.Verdict.choices,
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+    )
+    tag = serializers.CharField(
+        max_length=64, required=False, allow_null=True, allow_blank=True, trim_whitespace=True
+    )
+    note = serializers.CharField(
+        max_length=280, required=False, allow_null=True, allow_blank=True, trim_whitespace=True
+    )
+    updated_at = serializers.DateTimeField()
+
+
+class PubVisitRequestSerializer(PubInputSerializer):
+    """Request body for POST /v1/pub-visits (push one explicit visit).
+
+    Inherits name/lat/lng (+ bounds) and city from PubInputSerializer and adds
+    the idempotency key, optional external id, and the visit's start/end times.
+    """
+
+    client_id = serializers.UUIDField()
+    external_id = serializers.CharField(
+        max_length=128,
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        trim_whitespace=True,
+    )
+    started_at = serializers.DateTimeField()
+    ended_at = serializers.DateTimeField(required=False, allow_null=True)
 
 
 class PubReportBlockedQuerySerializer(serializers.Serializer):
