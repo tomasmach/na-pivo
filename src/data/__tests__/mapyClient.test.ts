@@ -15,7 +15,12 @@
  *      negative keyword, otherwise in. Pizza is intentionally NOT a negative.
  */
 
-import { isAcceptablePubName, searchPubsNear } from '../mapyClient';
+import {
+  geocodePubLocation,
+  isAcceptablePubName,
+  searchPubsNear,
+  suggestPubLocations,
+} from '../mapyClient';
 
 const REST = 'Restaurace a pohostinství';
 const BAR = 'Bar';
@@ -229,5 +234,152 @@ describe('searchPubsNear — backend-first with direct-Mapy fallback', () => {
     await expect(
       searchPubsNear(50.08, 14.42, 25, controller.signal),
     ).rejects.not.toThrow('MAPY_API_KEY is not configured');
+  });
+});
+
+describe('geocodePubLocation', () => {
+  const ORIGINAL_FETCH = global.fetch;
+  const ORIGINAL_MAPY_KEY = process.env.EXPO_PUBLIC_MAPY_API_KEY;
+
+  afterEach(() => {
+    global.fetch = ORIGINAL_FETCH;
+    if (ORIGINAL_MAPY_KEY === undefined) {
+      delete process.env.EXPO_PUBLIC_MAPY_API_KEY;
+    } else {
+      process.env.EXPO_PUBLIC_MAPY_API_KEY = ORIGINAL_MAPY_KEY;
+    }
+    jest.clearAllMocks();
+  });
+
+  it('resolves a pub address through Mapy geocode', async () => {
+    process.env.EXPO_PUBLIC_MAPY_API_KEY = 'test-key';
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        items: [
+          {
+            name: 'Týnská ulička 610/7',
+            label: 'Adresa',
+            type: 'regional.address',
+            position: { lat: 50.08861, lon: 14.42212 },
+            regionalStructure: [
+              { name: '610/7', type: 'regional.address' },
+              { name: 'Týnská ulička', type: 'regional.street' },
+              { name: 'Praha', type: 'regional.municipality' },
+            ],
+          },
+        ],
+      }),
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await geocodePubLocation({
+      name: 'Hospoda U Testu',
+      city: 'Praha',
+      address: 'Týnská ulička 610/7',
+      near: { lat: 50.08, lng: 14.42 },
+    });
+
+    expect(result).toEqual({
+      lat: 50.08861,
+      lng: 14.42212,
+      city: 'Praha',
+      address: 'Týnská ulička 610/7',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const calledUrl = new URL(String((fetchMock.mock.calls[0] as unknown[])[0]));
+    expect(calledUrl.origin + calledUrl.pathname).toBe('https://api.mapy.cz/v1/geocode');
+    expect(calledUrl.searchParams.get('query')).toBe(
+      'Hospoda U Testu, Týnská ulička 610/7, Praha, Česko',
+    );
+    expect(calledUrl.searchParams.get('preferNear')).toBe('14.42,50.08');
+    expect(calledUrl.searchParams.get('apikey')).toBe('test-key');
+    expect(calledUrl.searchParams.getAll('type')).toEqual(['poi', 'regional.address']);
+  });
+
+  it('returns null when no Mapy key is configured', async () => {
+    delete process.env.EXPO_PUBLIC_MAPY_API_KEY;
+    const fetchMock = jest.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(geocodePubLocation({ name: 'Hospoda U Testu', city: 'Praha' })).resolves.toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('suggestPubLocations', () => {
+  const ORIGINAL_FETCH = global.fetch;
+  const ORIGINAL_MAPY_KEY = process.env.EXPO_PUBLIC_MAPY_API_KEY;
+
+  afterEach(() => {
+    global.fetch = ORIGINAL_FETCH;
+    if (ORIGINAL_MAPY_KEY === undefined) {
+      delete process.env.EXPO_PUBLIC_MAPY_API_KEY;
+    } else {
+      process.env.EXPO_PUBLIC_MAPY_API_KEY = ORIGINAL_MAPY_KEY;
+    }
+    jest.clearAllMocks();
+  });
+
+  it('returns selectable Mapy suggestions with address text', async () => {
+    process.env.EXPO_PUBLIC_MAPY_API_KEY = 'test-key';
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        items: [
+          {
+            name: 'Hospoda U Testu',
+            label: 'Hospoda',
+            type: 'poi',
+            position: { lat: 50.081, lon: 14.421 },
+            regionalStructure: [
+              { name: '12', type: 'regional.address' },
+              { name: 'Testovací', type: 'regional.street' },
+              { name: 'Praha', type: 'regional.municipality' },
+            ],
+          },
+          {
+            name: 'Kafe v Presu',
+            label: 'Bar',
+            type: 'poi',
+            position: { lat: 50.082, lon: 14.422 },
+          },
+        ],
+      }),
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const suggestions = await suggestPubLocations({
+      name: 'Hospoda U Te',
+      near: { lat: 50.08, lng: 14.42 },
+    });
+
+    expect(suggestions).toEqual([
+      {
+        id: 'mapy:50.08100,14.42100:Hospoda U Testu',
+        name: 'Hospoda U Testu',
+        lat: 50.081,
+        lng: 14.421,
+        city: 'Praha',
+        address: 'Testovací 12',
+        location: 'Testovací 12, Praha',
+      },
+    ]);
+    const calledUrl = new URL(String((fetchMock.mock.calls[0] as unknown[])[0]));
+    expect(calledUrl.origin + calledUrl.pathname).toBe('https://api.mapy.cz/v1/suggest');
+    expect(calledUrl.searchParams.get('query')).toBe('Hospoda U Te');
+    expect(calledUrl.searchParams.get('preferNear')).toBe('14.42,50.08');
+    expect(calledUrl.searchParams.getAll('type')).toEqual(['poi']);
+  });
+
+  it('does not call Mapy for very short queries', async () => {
+    process.env.EXPO_PUBLIC_MAPY_API_KEY = 'test-key';
+    const fetchMock = jest.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(suggestPubLocations({ name: 'U' })).resolves.toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

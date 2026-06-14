@@ -19,7 +19,8 @@ import { trackApiFailure } from './telemetryClient';
 // it ranks by location rather than textual relevance, so a small bbox around
 // the user reliably surfaces local results instead of pushing back popular
 // places from far away.
-const BASE_URL = 'https://api.mapy.cz/v1/suggest';
+const SUGGEST_URL = 'https://api.mapy.cz/v1/suggest';
+const GEOCODE_URL = 'https://api.mapy.cz/v1/geocode';
 const USER_AGENT = 'napivo-ios/1.0';
 
 const QUERY_TERMS = ['hospoda', 'bar', 'pivnice', 'pivovar'];
@@ -116,6 +117,7 @@ interface MapyGeocodeItem {
   name: string;
   label?: string;
   position: MapyPosition;
+  type?: string;
   location?: string;
   zip?: string;
   regionalStructure?: { name: string; type: string }[];
@@ -125,11 +127,35 @@ interface MapyGeocodeResponse {
   items?: MapyGeocodeItem[];
 }
 
+export interface PubLocationGeocodeInput {
+  name: string;
+  city?: string;
+  address?: string;
+  near?: { lat: number; lng: number } | null;
+}
+
+export interface PubLocationGeocodeResult {
+  lat: number;
+  lng: number;
+  city?: string;
+  address?: string;
+}
+
+export interface PubLocationSuggestion {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  city?: string;
+  address?: string;
+  location?: string;
+}
+
 // Read at module top-level so Metro inlines the value at bundle time.
 const MAPY_API_KEY = process.env.EXPO_PUBLIC_MAPY_API_KEY ?? '';
 
 function getApiKey(): string {
-  return MAPY_API_KEY;
+  return process.env.EXPO_PUBLIC_MAPY_API_KEY ?? MAPY_API_KEY;
 }
 
 /** Shape of the backend's pubs-near response. items are RAW Mapy suggest items
@@ -221,7 +247,7 @@ async function suggestQuery(
   apiKey: string,
   signal?: AbortSignal,
 ): Promise<MapyGeocodeItem[]> {
-  const url = new URL(BASE_URL);
+  const url = new URL(SUGGEST_URL);
   url.searchParams.set('query', query);
   url.searchParams.set('lang', 'cs');
   url.searchParams.set('limit', String(MAX_RESULTS_PER_QUERY));
@@ -245,6 +271,161 @@ async function suggestQuery(
   }
   const data = (await resp.json()) as MapyGeocodeResponse;
   return data.items ?? [];
+}
+
+function buildPubLocationQuery(input: PubLocationGeocodeInput): string {
+  return [input.name, input.address, input.city, 'Česko']
+    .map((part) => part?.trim())
+    .filter(Boolean)
+    .join(', ')
+    .slice(0, 150);
+}
+
+function isValidPosition(position: MapyPosition | undefined): position is MapyPosition {
+  return (
+    !!position &&
+    Number.isFinite(position.lat) &&
+    Number.isFinite(position.lon) &&
+    position.lat >= -90 &&
+    position.lat <= 90 &&
+    position.lon >= -180 &&
+    position.lon <= 180
+  );
+}
+
+export async function geocodePubLocation(
+  input: PubLocationGeocodeInput,
+  signal?: AbortSignal,
+): Promise<PubLocationGeocodeResult | null> {
+  if (signal?.aborted) return null;
+
+  const apiKey = getApiKey();
+  const query = buildPubLocationQuery(input);
+  if (!apiKey || !query) return null;
+
+  const url = new URL(GEOCODE_URL);
+  url.searchParams.set('query', query);
+  url.searchParams.set('lang', 'cs');
+  url.searchParams.set('limit', '3');
+  url.searchParams.append('type', 'poi');
+  url.searchParams.append('type', 'regional.address');
+  url.searchParams.append('locality', 'cz');
+  if (input.near) {
+    url.searchParams.set('preferNear', `${input.near.lng},${input.near.lat}`);
+    url.searchParams.set('preferNearPrecision', '2500');
+  }
+  url.searchParams.set('apikey', apiKey);
+
+  try {
+    const resp = await fetch(url.toString(), {
+      headers: { 'User-Agent': USER_AGENT },
+      signal,
+    });
+    if (!resp.ok) {
+      trackApiFailure('pub_location_geocode', {
+        endpoint: '/v1/geocode',
+        status: resp.status,
+      });
+      return null;
+    }
+
+    const data = (await resp.json()) as MapyGeocodeResponse;
+    const item = (data.items ?? []).find((candidate) => isValidPosition(candidate.position));
+    if (!item || !isValidPosition(item.position)) return null;
+
+    return {
+      lat: item.position.lat,
+      lng: item.position.lon,
+      city: pickCity(item),
+      address: pickAddress(item),
+    };
+  } catch (err) {
+    const isAbortError = err instanceof Error && err.name === 'AbortError';
+    if (!signal?.aborted && !isAbortError) {
+      trackApiFailure('pub_location_geocode', {
+        endpoint: '/v1/geocode',
+        reason: 'exception',
+        error: err,
+      });
+    }
+    return null;
+  }
+}
+
+function itemToLocationSuggestion(item: MapyGeocodeItem): PubLocationSuggestion | null {
+  if (!item.name || !isValidPosition(item.position)) return null;
+  if (item.label && !isAcceptablePubName(item.name, item.label)) return null;
+
+  const city = pickCity(item);
+  const address = pickAddress(item);
+  const key = `${item.position.lat.toFixed(5)},${item.position.lon.toFixed(5)}`;
+  return {
+    id: `mapy:${key}:${item.name.trim()}`,
+    name: item.name.trim(),
+    lat: item.position.lat,
+    lng: item.position.lon,
+    city,
+    address,
+    location: address || city ? [address, city].filter(Boolean).join(', ') : item.location,
+  };
+}
+
+export async function suggestPubLocations(
+  input: PubLocationGeocodeInput,
+  signal?: AbortSignal,
+): Promise<PubLocationSuggestion[]> {
+  if (signal?.aborted) return [];
+
+  const apiKey = getApiKey();
+  const query = input.name.trim().slice(0, 150);
+  if (!apiKey || query.length < 2) return [];
+
+  const url = new URL(SUGGEST_URL);
+  url.searchParams.set('query', query);
+  url.searchParams.set('lang', 'cs');
+  url.searchParams.set('limit', '8');
+  url.searchParams.append('type', 'poi');
+  url.searchParams.append('locality', 'cz');
+  if (input.near) {
+    url.searchParams.set('preferNear', `${input.near.lng},${input.near.lat}`);
+    url.searchParams.set('preferNearPrecision', '2500');
+  }
+  url.searchParams.set('apikey', apiKey);
+
+  try {
+    const resp = await fetch(url.toString(), {
+      headers: { 'User-Agent': USER_AGENT },
+      signal,
+    });
+    if (!resp.ok) {
+      trackApiFailure('pub_location_suggest', {
+        endpoint: '/v1/suggest',
+        status: resp.status,
+      });
+      return [];
+    }
+
+    const data = (await resp.json()) as MapyGeocodeResponse;
+    const seen = new Set<string>();
+    const suggestions: PubLocationSuggestion[] = [];
+    for (const item of data.items ?? []) {
+      const suggestion = itemToLocationSuggestion(item);
+      if (!suggestion || seen.has(suggestion.id)) continue;
+      seen.add(suggestion.id);
+      suggestions.push(suggestion);
+    }
+    return suggestions;
+  } catch (err) {
+    const isAbortError = err instanceof Error && err.name === 'AbortError';
+    if (!signal?.aborted && !isAbortError) {
+      trackApiFailure('pub_location_suggest', {
+        endpoint: '/v1/suggest',
+        reason: 'exception',
+        error: err,
+      });
+    }
+    return [];
+  }
 }
 
 function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): number {

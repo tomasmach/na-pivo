@@ -6,7 +6,7 @@
  * compass can target it immediately after returning.
  */
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -29,6 +29,11 @@ import { GlowButton } from '@/components/shared/GlowButton';
 import { generateUuidV4 } from '@/data/account';
 import { buildAddedPubEntry } from '@/data/addedPubsClient';
 import { enqueueAddedPub } from '@/data/addedPubsQueue';
+import {
+  geocodePubLocation,
+  suggestPubLocations,
+  type PubLocationSuggestion,
+} from '@/data/mapyClient';
 import { clearPubsSnapshot, upsertLocalPub } from '@/data/pubs';
 import { usePubStore } from '@/stores/pubStore';
 import { useToastStore } from '@/stores/toastStore';
@@ -38,19 +43,28 @@ function parseStringParam(value: string | string[] | undefined): string {
   return Array.isArray(value) ? (value[0] ?? '') : (value ?? '');
 }
 
-function parseCoordParam(value: string | string[] | undefined): string {
+function parseCoordParam(value: string | string[] | undefined): number | null {
   const raw = parseStringParam(value);
   const parsed = Number(raw);
-  return Number.isFinite(parsed) ? String(parsed) : '';
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
-function parseCoordInput(value: string): number | null {
-  const parsed = Number(value.trim().replace(',', '.'));
-  return Number.isFinite(parsed) ? parsed : null;
+function isUsableCoordPair(lat: number | null, lng: number | null): lat is number {
+  if (lat === null || lng === null) return false;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return false;
+  return Math.abs(lat) > 0.0001 || Math.abs(lng) > 0.0001;
 }
 
 function pubIdForCoords(lat: number, lng: number): string {
   return `mapy:${lat.toFixed(5)},${lng.toFixed(5)}`;
+}
+
+interface SelectedLocation {
+  lat: number;
+  lng: number;
+  city?: string;
+  address?: string;
+  displayLocation?: string;
 }
 
 export default function AddPubScreen() {
@@ -62,50 +76,127 @@ export default function AddPubScreen() {
 
   const initialLat = useMemo(() => parseCoordParam(params.lat), [params.lat]);
   const initialLng = useMemo(() => parseCoordParam(params.lng), [params.lng]);
+  const initialCoords = useMemo<SelectedLocation | null>(
+    () =>
+      isUsableCoordPair(initialLat, initialLng)
+        ? { lat: initialLat, lng: initialLng as number }
+        : null,
+    [initialLat, initialLng],
+  );
 
   const [name, setName] = useState('');
   const [city, setCity] = useState(parseStringParam(params.city));
   const [address, setAddress] = useState('');
-  const [latText, setLatText] = useState(initialLat);
-  const [lngText, setLngText] = useState(initialLng);
   const [submitted, setSubmitted] = useState(false);
+  const [locationError, setLocationError] = useState('');
+  const [selectedLocation, setSelectedLocation] = useState<SelectedLocation | null>(null);
+  const [suggestions, setSuggestions] = useState<PubLocationSuggestion[]>([]);
+  const [suggesting, setSuggesting] = useState(false);
 
-  const lat = parseCoordInput(latText);
-  const lng = parseCoordInput(lngText);
-  const coordsValid =
-    lat !== null &&
-    lng !== null &&
-    lat >= -90 &&
-    lat <= 90 &&
-    lng >= -180 &&
-    lng <= 180;
-  const canSubmit = name.trim().length > 0 && coordsValid && !submitted;
+  const hasAddress = address.trim().length > 0 || city.trim().length > 0;
+  const canSubmit =
+    name.trim().length > 0 && (selectedLocation !== null || hasAddress || initialCoords !== null) && !submitted;
 
-  const handleSubmit = useCallback(() => {
-    if (!canSubmit || lat === null || lng === null) return;
+  useEffect(() => {
+    const query = name.trim();
+    if (query.length < 2 || selectedLocation || submitted) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      suggestPubLocations({ name: query, near: initialCoords }, controller.signal)
+        .then((results) => {
+          if (!controller.signal.aborted) setSuggestions(results);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setSuggesting(false);
+        });
+    }, 250);
+
+    return () => {
+      controller.abort();
+      clearTimeout(timeout);
+    };
+  }, [initialCoords, name, selectedLocation, submitted]);
+
+  const handleNameChange = useCallback(
+    (value: string) => {
+      setName(value);
+      setLocationError('');
+      if (value.trim().length < 2) {
+        setSuggestions([]);
+        setSuggesting(false);
+      } else {
+        setSuggesting(true);
+      }
+      if (selectedLocation) setSelectedLocation(null);
+    },
+    [selectedLocation],
+  );
+
+  const handleSuggestionPress = useCallback((suggestion: PubLocationSuggestion) => {
+    setSelectedLocation({
+      lat: suggestion.lat,
+      lng: suggestion.lng,
+      city: suggestion.city,
+      address: suggestion.address,
+      displayLocation: suggestion.location,
+    });
+    setName(suggestion.name);
+    setCity(suggestion.city ?? '');
+    setAddress(suggestion.address ?? '');
+    setSuggestions([]);
+    setLocationError('');
+  }, []);
+
+  const handleSubmit = useCallback(async () => {
+    if (!canSubmit) return;
     setSubmitted(true);
+    setLocationError('');
+    setSuggestions([]);
+    setSuggesting(false);
 
     const trimmedName = name.trim().slice(0, 200);
     const trimmedCity = city.trim();
     const trimmedAddress = address.trim();
+    const geocodedLocation = !selectedLocation && hasAddress
+      ? await geocodePubLocation({
+          name: trimmedName,
+          city: trimmedCity || undefined,
+          address: trimmedAddress || undefined,
+          near: initialCoords,
+        })
+      : null;
+    const location = selectedLocation ?? geocodedLocation ?? initialCoords;
+
+    if (!location) {
+      setSubmitted(false);
+      setLocationError(cs.addPub.locationError);
+      showToast(cs.addPub.locationError);
+      return;
+    }
+
+    const resolvedCity = trimmedCity || location.city || '';
+    const resolvedAddress = trimmedAddress || location.address || '';
     const entry = buildAddedPubEntry(
       {
         name: trimmedName,
-        lat,
-        lng,
-        city: trimmedCity || undefined,
-        address: trimmedAddress || undefined,
+        lat: location.lat,
+        lng: location.lng,
+        city: resolvedCity || undefined,
+        address: resolvedAddress || undefined,
       },
       generateUuidV4(),
     );
 
     upsertLocalPub({
-      id: pubIdForCoords(lat, lng),
+      id: pubIdForCoords(location.lat, location.lng),
       name: trimmedName,
-      lat,
-      lng,
-      ...(trimmedCity ? { city: trimmedCity } : {}),
-      ...(trimmedAddress ? { address: trimmedAddress } : {}),
+      lat: location.lat,
+      lng: location.lng,
+      ...(resolvedCity ? { city: resolvedCity } : {}),
+      ...(resolvedAddress ? { address: resolvedAddress } : {}),
       venueKind: 'pub',
     });
     bumpCatalogRevision();
@@ -114,7 +205,18 @@ export default function AddPubScreen() {
     void fireSuccessHaptic();
     showToast(cs.addPub.savedToast);
     router.back();
-  }, [address, bumpCatalogRevision, canSubmit, city, lat, lng, name, router, showToast]);
+  }, [
+    address,
+    bumpCatalogRevision,
+    canSubmit,
+    city,
+    hasAddress,
+    initialCoords,
+    name,
+    router,
+    selectedLocation,
+    showToast,
+  ]);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + 12 }]}>
@@ -155,17 +257,82 @@ export default function AddPubScreen() {
             </Text>
           </View>
 
+          <View style={styles.locationCard}>
+            <Text style={styles.locationHeader}>{cs.addPub.locationHeader}</Text>
+            <Text style={styles.locationBody} maxFontSizeMultiplier={FontScaleCap.body}>
+              {initialCoords ? cs.addPub.locationWithCurrent : cs.addPub.locationFromAddress}
+            </Text>
+          </View>
+
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>{cs.addPub.nameLabel}</Text>
             <TextInput
               style={styles.input}
               value={name}
-              onChangeText={setName}
+              onChangeText={handleNameChange}
               placeholder={cs.addPub.namePlaceholder}
               placeholderTextColor={Colors.mutedText}
               maxLength={200}
               accessibilityLabel={cs.a11y.addPubNameInput}
             />
+            {(suggestions.length > 0 || suggesting || selectedLocation) && (
+              <View style={styles.suggestions}>
+                {selectedLocation && (
+                  <View style={styles.selectedSuggestion}>
+                    <MapPinIcon size={16} color={Colors.amber} />
+                    <View style={styles.suggestionText}>
+                      <Text style={styles.suggestionName} maxFontSizeMultiplier={FontScaleCap.body}>
+                        {cs.addPub.selectedPlace}
+                      </Text>
+                      <Text
+                        style={styles.suggestionLocation}
+                        maxFontSizeMultiplier={FontScaleCap.body}
+                        numberOfLines={2}
+                      >
+                        {selectedLocation.displayLocation || [address, city].filter(Boolean).join(', ')}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+                {!selectedLocation &&
+                  suggestions.map((suggestion) => (
+                    <Pressable
+                      key={suggestion.id}
+                      onPress={() => handleSuggestionPress(suggestion)}
+                      style={({ pressed }) => [styles.suggestionRow, pressed && styles.suggestionPressed]}
+                      accessibilityRole="button"
+                      accessibilityLabel={cs.a11y.addPubSuggestion(suggestion.name)}
+                    >
+                      <View style={styles.suggestionIcon}>
+                        <MapPinIcon size={15} color={Colors.amber} />
+                      </View>
+                      <View style={styles.suggestionText}>
+                        <Text
+                          style={styles.suggestionName}
+                          maxFontSizeMultiplier={FontScaleCap.body}
+                          numberOfLines={1}
+                        >
+                          {suggestion.name}
+                        </Text>
+                        {!!suggestion.location && (
+                          <Text
+                            style={styles.suggestionLocation}
+                            maxFontSizeMultiplier={FontScaleCap.body}
+                            numberOfLines={2}
+                          >
+                            {suggestion.location}
+                          </Text>
+                        )}
+                      </View>
+                    </Pressable>
+                  ))}
+                {!selectedLocation && suggesting && (
+                  <Text style={styles.suggestionHint} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {cs.addPub.searchingPlaces}
+                  </Text>
+                )}
+              </View>
+            )}
           </View>
 
           <View style={styles.twoColumn}>
@@ -195,48 +362,15 @@ export default function AddPubScreen() {
             </View>
           </View>
 
-          <View style={styles.coordCard}>
-            <Text style={styles.coordHeader}>{cs.addPub.coordsHeader}</Text>
-            <View style={styles.twoColumn}>
-              <View style={styles.column}>
-                <Text style={styles.label}>{cs.addPub.latLabel}</Text>
-                <TextInput
-                  style={styles.input}
-                  value={latText}
-                  onChangeText={setLatText}
-                  placeholder="50.0812"
-                  placeholderTextColor={Colors.mutedText}
-                  keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'numeric'}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  accessibilityLabel={cs.a11y.addPubLatInput}
-                />
-              </View>
-              <View style={styles.column}>
-                <Text style={styles.label}>{cs.addPub.lngLabel}</Text>
-                <TextInput
-                  style={styles.input}
-                  value={lngText}
-                  onChangeText={setLngText}
-                  placeholder="14.4182"
-                  placeholderTextColor={Colors.mutedText}
-                  keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'numeric'}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  accessibilityLabel={cs.a11y.addPubLngInput}
-                />
-              </View>
-            </View>
-            {!coordsValid && (
-              <Text style={styles.invalidText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.addPub.invalidCoords}
-              </Text>
-            )}
-          </View>
+          {!!locationError && (
+            <Text style={styles.invalidText} maxFontSizeMultiplier={FontScaleCap.body}>
+              {locationError}
+            </Text>
+          )}
 
           <View style={styles.submitButton}>
             <GlowButton
-              label={cs.addPub.save}
+              label={submitted ? cs.addPub.saving : cs.addPub.save}
               onPress={handleSubmit}
               glow={canSubmit ? 'soft' : 'none'}
               accessibilityLabel={cs.a11y.addPubSaveButton}
@@ -314,6 +448,66 @@ const styles = StyleSheet.create({
   fieldGroup: {
     gap: Spacing.sm,
   },
+  suggestions: {
+    overflow: 'hidden',
+    borderRadius: Radius.medium,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.24),
+    backgroundColor: withAlpha(Colors.stout2, 0.9),
+  },
+  suggestionRow: {
+    minHeight: 62,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: withAlpha(Colors.border, 0.45),
+  },
+  selectedSuggestion: {
+    minHeight: 62,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: withAlpha(Colors.amber, 0.12),
+  },
+  suggestionPressed: {
+    backgroundColor: withAlpha(Colors.amber, 0.1),
+  },
+  suggestionIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.amber, 0.1),
+  },
+  suggestionText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  suggestionName: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 15,
+    color: Colors.foam,
+  },
+  suggestionLocation: {
+    fontFamily: Fonts.ui.regular,
+    fontSize: 13,
+    lineHeight: 18,
+    color: Colors.foamMuted,
+  },
+  suggestionHint: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
+    color: Colors.mutedText,
+  },
   label: {
     fontFamily: Fonts.ui.bold,
     fontSize: 12,
@@ -340,7 +534,7 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: Spacing.sm,
   },
-  coordCard: {
+  locationCard: {
     gap: Spacing.md,
     borderRadius: Radius.card,
     borderWidth: 1,
@@ -348,10 +542,16 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.stout2, 0.78),
     padding: Spacing.lg,
   },
-  coordHeader: {
+  locationHeader: {
     fontFamily: Fonts.display.extrabold,
     fontSize: 18,
     color: Colors.foam,
+  },
+  locationBody: {
+    fontFamily: Fonts.ui.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    color: Colors.foamMuted,
   },
   invalidText: {
     fontFamily: Fonts.ui.medium,
