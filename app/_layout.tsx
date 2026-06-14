@@ -147,14 +147,6 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen
-            name="my-beers"
-            options={{
-              presentation: 'fullScreenModal',
-              animation: 'slide_from_bottom',
-              gestureEnabled: false,
-            }}
-          />
-          <Stack.Screen
             name="evening"
             options={{
               presentation: 'fullScreenModal',

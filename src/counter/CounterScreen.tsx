@@ -18,7 +18,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, Linking, Alert, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -42,7 +41,6 @@ import {
   PlusIcon,
   MinusIcon,
   RefreshCwIcon,
-  HistoryIcon,
 } from '@/components/shared/IconGlyph';
 
 import { geohash8 } from '@/data/geohash';
@@ -80,7 +78,6 @@ function PermissionScreen({
   requestPermission: () => Promise<void>;
 }) {
   const insets = useSafeAreaInsets();
-  const router = useRouter();
   return (
     <View style={[styles.root, styles.centered, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <View style={styles.permIconWrap}>
@@ -111,17 +108,6 @@ function PermissionScreen({
           />
         </View>
       )}
-      <View style={styles.permSecondaryWrap}>
-        <GlowButton
-          label={cs.myBeers.entry}
-          onPress={() => router.push('/my-beers')}
-          variant="secondary"
-          glow="none"
-          height={50}
-          icon={<HistoryIcon size={18} color={Colors.foamMuted} />}
-          accessibilityLabel={cs.a11y.myBeersOpen}
-        />
-      </View>
     </View>
   );
 }
@@ -144,7 +130,6 @@ function DetectingScreen() {
 
 function NoPubScreen({ onRetry }: { onRetry: () => void }) {
   const insets = useSafeAreaInsets();
-  const router = useRouter();
   return (
     <View style={[styles.root, styles.centered, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <View style={styles.permIconWrap}>
@@ -163,17 +148,6 @@ function NoPubScreen({ onRetry }: { onRetry: () => void }) {
           glow="soft"
           icon={<RefreshCwIcon size={20} color={Colors.stout} />}
           accessibilityLabel={cs.a11y.counterRetry}
-        />
-      </View>
-      <View style={styles.permSecondaryWrap}>
-        <GlowButton
-          label={cs.myBeers.entry}
-          onPress={() => router.push('/my-beers')}
-          variant="secondary"
-          glow="none"
-          height={50}
-          icon={<HistoryIcon size={18} color={Colors.foamMuted} />}
-          accessibilityLabel={cs.a11y.myBeersOpen}
         />
       </View>
     </View>
@@ -329,7 +303,6 @@ export function shouldWarnRapidDrink(lastDrinkAt: string | undefined, nowMs: num
 
 function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps) {
   const insets = useSafeAreaInsets();
-  const router = useRouter();
   const { width: screenWidth } = useWindowDimensions();
   const reducedMotion = useReducedMotion();
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
@@ -619,15 +592,6 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
             </Text>
           </Pressable>
         )}
-        <Pressable
-          onPress={() => router.push('/my-beers')}
-          style={styles.myBeersButton}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel={cs.a11y.myBeersOpen}
-        >
-          <HistoryIcon size={20} color={Colors.amber} />
-        </Pressable>
       </View>
 
       <ScrollView
@@ -882,16 +846,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.amber,
-  },
-  myBeersButton: {
-    width: 40,
-    height: 40,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout2,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 
   scrollContent: {

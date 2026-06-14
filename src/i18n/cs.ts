@@ -203,6 +203,7 @@ export const cs = {
   tabs: {
     compass: 'Kompas',
     counter: 'Počítadlo',
+    myBeers: 'Moje piva',
   },
 
   counter: {
@@ -274,8 +275,7 @@ export const cs = {
   },
 
   myBeers: {
-    // Entry point label (button on the counter) + screen title.
-    entry: 'Moje piva',
+    // Tab label + screen title.
     title: 'Moje piva',
 
     // — Empty state —
@@ -379,6 +379,7 @@ export const cs = {
     // — Tabs —
     tabCompass: 'Záložka Kompas',
     tabCounter: 'Záložka Počítadlo',
+    tabMyBeers: 'Záložka Moje piva',
 
     // — Counter —
     counterChangePub: 'Změnit hospodu',
@@ -399,7 +400,6 @@ export const cs = {
     counterRetry: 'Hledat hospodu znovu',
 
     // — Moje piva —
-    myBeersOpen: 'Otevřít Moje piva',
     myBeersEvening: (pub: string, summary: string) =>
       `Večer v hospodě ${pub}, ${summary}. Ťukni pro detail.`,
     ratingLike: (pub: string) => `Hodnotit ${pub} jako dobrou`,

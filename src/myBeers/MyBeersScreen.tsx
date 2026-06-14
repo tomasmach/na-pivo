@@ -12,7 +12,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
 import { Colors } from '@/theme/colors';
@@ -23,7 +23,6 @@ import { cs } from '@/i18n/cs';
 import { beerCountLabel } from '@/i18n/plural';
 import { formatPrice } from '@/utils/currency';
 import {
-  ChevronLeftIcon,
   ChevronRightIcon,
   BeerIcon,
   HistoryIcon,
@@ -174,20 +173,12 @@ export default function MyBeersScreen() {
   const isEmpty = !currentEvening && pastEvenings.length === 0;
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-      {/* Header */}
+    <View style={styles.root}>
+      {/* Header — a tab screen, so no back button; just the title. */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <Pressable
-          onPress={() => router.back()}
-          style={styles.backButton}
-          accessibilityRole="button"
-          accessibilityLabel={cs.a11y.backButton}
-          hitSlop={4}
-        >
-          <ChevronLeftIcon size={22} color={Colors.foam} />
-        </Pressable>
-        <Text style={styles.headerTitle}>{cs.myBeers.title}</Text>
-        <View style={styles.headerSpacer} />
+        <Text style={styles.headerTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+          {cs.myBeers.title}
+        </Text>
       </View>
 
       {isEmpty ? (
@@ -247,12 +238,12 @@ export default function MyBeersScreen() {
           <View style={{ height: Spacing.lg }} />
         </ScrollView>
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  root: {
     flex: 1,
     backgroundColor: Colors.stout,
   },
@@ -260,31 +251,13 @@ const styles = StyleSheet.create({
 
   // — Header —
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
     paddingBottom: 12,
     paddingHorizontal: 20,
   },
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout2,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   headerTitle: {
-    flex: 1,
-    textAlign: 'center',
     fontFamily: Fonts.display.extrabold,
-    fontSize: 24,
+    fontSize: 28,
     color: Colors.foam,
-  },
-  headerSpacer: {
-    width: 44,
-    height: 44,
   },
 
   // — ScrollView —
