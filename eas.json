@@ -1,55 +1,55 @@
 {
-  "cli": {
-    "version": ">= 16.0.0",
-    "appVersionSource": "remote"
-  },
-  "build": {
-    "development": {
-      "developmentClient": true,
-      "distribution": "internal",
-      "ios": {
-        "simulator": false,
-        "resourceClass": "m-medium"
-      }
+    "cli": {
+        "version": ">= 16.0.0",
+        "appVersionSource": "remote"
     },
-    "preview": {
-      "distribution": "internal",
-      "ios": {
-        "buildConfiguration": "Release",
-        "resourceClass": "m-medium"
-      },
-      "channel": "preview",
-      "env": {
-        "EXPO_PUBLIC_BACKEND_URL": "https://api.na-pivo.cz"
-      }
+    "build": {
+        "development": {
+            "developmentClient": true,
+            "distribution": "internal",
+            "ios": {
+                "simulator": false,
+                "resourceClass": "m-medium"
+            }
+        },
+        "preview": {
+            "distribution": "internal",
+            "ios": {
+                "buildConfiguration": "Release",
+                "resourceClass": "m-medium"
+            },
+            "channel": "preview",
+            "env": {
+                "EXPO_PUBLIC_BACKEND_URL": "https://api.na-pivo.cz"
+            }
+        },
+        "production": {
+            "autoIncrement": true,
+            "ios": {
+                "buildConfiguration": "Release",
+                "resourceClass": "m-medium",
+                "autoIncrement": "buildNumber"
+            },
+            "android": {
+                "buildType": "app-bundle",
+                "autoIncrement": "versionCode"
+            },
+            "channel": "production",
+            "env": {
+                "EXPO_PUBLIC_BACKEND_URL": "https://api.na-pivo.cz"
+            }
+        }
     },
-    "production": {
-      "autoIncrement": true,
-      "ios": {
-        "buildConfiguration": "Release",
-        "resourceClass": "m-medium",
-        "autoIncrement": "buildNumber"
-      },
-      "android": {
-        "buildType": "app-bundle",
-        "autoIncrement": "versionCode"
-      },
-      "channel": "production",
-      "env": {
-        "EXPO_PUBLIC_BACKEND_URL": "https://api.na-pivo.cz"
-      }
+    "submit": {
+        "production": {
+            "ios": {
+                "appleId": "tomades1@gmail.com",
+                "ascAppId": "6773790025",
+                "appleTeamId": "T5W2WM23A6"
+            },
+            "android": {
+                "track": "alpha"
+            }
+        }
     }
-  },
-  "submit": {
-    "production": {
-      "ios": {
-        "appleId": "tomades1@gmail.com",
-        "ascAppId": "6773790025",
-        "appleTeamId": "T5W2WM23A6"
-      },
-      "android": {
-        "track": "alpha"
-      }
-    }
-  }
 }
