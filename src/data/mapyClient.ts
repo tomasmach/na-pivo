@@ -164,6 +164,10 @@ interface BackendPubsNearResponse {
   items?: MapyGeocodeItem[];
 }
 
+interface BackendLocationLookupResponse {
+  items?: MapyGeocodeItem[];
+}
+
 /**
  * Try the backend pubs-near proxy. Returns the raw Mapy items on success, or
  * null on ANY failure (no backend configured, non-200 incl. 503, network error,
@@ -207,6 +211,46 @@ async function backendSuggest(
       reason: 'exception',
       error: err,
     });
+    return null;
+  }
+}
+
+async function backendLocationLookup(
+  path: '/v1/pubs/suggest' | '/v1/pubs/geocode',
+  query: string,
+  near?: { lat: number; lng: number } | null,
+  signal?: AbortSignal,
+): Promise<MapyGeocodeItem[] | null> {
+  const endpoint = getBackendEndpoint(path);
+  if (!endpoint || signal?.aborted) return null;
+
+  const url = new URL(endpoint);
+  url.searchParams.set('query', query);
+  if (near) {
+    url.searchParams.set('lat', String(near.lat));
+    url.searchParams.set('lng', String(near.lng));
+  }
+
+  try {
+    const resp = await fetch(url.toString(), { signal });
+    if (!resp.ok) {
+      trackApiFailure(path === '/v1/pubs/suggest' ? 'pub_location_suggest_backend' : 'pub_location_geocode_backend', {
+        endpoint: path,
+        status: resp.status,
+      });
+      return null;
+    }
+    const data = (await resp.json()) as BackendLocationLookupResponse;
+    return data.items ?? [];
+  } catch (err) {
+    const isAbortError = err instanceof Error && err.name === 'AbortError';
+    if (!signal?.aborted && !isAbortError) {
+      trackApiFailure(path === '/v1/pubs/suggest' ? 'pub_location_suggest_backend' : 'pub_location_geocode_backend', {
+        endpoint: path,
+        reason: 'exception',
+        error: err,
+      });
+    }
     return null;
   }
 }
@@ -299,9 +343,23 @@ export async function geocodePubLocation(
 ): Promise<PubLocationGeocodeResult | null> {
   if (signal?.aborted) return null;
 
-  const apiKey = getApiKey();
   const query = buildPubLocationQuery(input);
-  if (!apiKey || !query) return null;
+  if (!query) return null;
+
+  const backendItems = await backendLocationLookup('/v1/pubs/geocode', query, input.near, signal);
+  if (backendItems !== null) {
+    const item = backendItems.find((candidate) => isValidPosition(candidate.position));
+    if (!item || !isValidPosition(item.position)) return null;
+    return {
+      lat: item.position.lat,
+      lng: item.position.lon,
+      city: pickCity(item),
+      address: pickAddress(item),
+    };
+  }
+
+  const apiKey = getApiKey();
+  if (!apiKey) return null;
 
   const url = new URL(GEOCODE_URL);
   url.searchParams.set('query', query);
@@ -376,9 +434,24 @@ export async function suggestPubLocations(
 ): Promise<PubLocationSuggestion[]> {
   if (signal?.aborted) return [];
 
-  const apiKey = getApiKey();
   const query = input.name.trim().slice(0, 150);
-  if (!apiKey || query.length < 2) return [];
+  if (query.length < 2) return [];
+
+  const backendItems = await backendLocationLookup('/v1/pubs/suggest', query, input.near, signal);
+  if (backendItems !== null) {
+    const seen = new Set<string>();
+    const suggestions: PubLocationSuggestion[] = [];
+    for (const item of backendItems) {
+      const suggestion = itemToLocationSuggestion(item);
+      if (!suggestion || seen.has(suggestion.id)) continue;
+      seen.add(suggestion.id);
+      suggestions.push(suggestion);
+    }
+    return suggestions;
+  }
+
+  const apiKey = getApiKey();
+  if (!apiKey) return [];
 
   const url = new URL(SUGGEST_URL);
   url.searchParams.set('query', query);
