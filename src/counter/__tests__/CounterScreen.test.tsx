@@ -54,8 +54,13 @@ jest.mock('@/components/shared/IconGlyph', () => ({
   MinusIcon: jest.fn(() => null),
   Undo2Icon: jest.fn(() => null),
   RefreshCwIcon: jest.fn(() => null),
+  HistoryIcon: jest.fn(() => null),
   XIcon: jest.fn(() => null),
 }));
+
+// expo-router pulls in ESM (expo-asset) that jest can't transform; the counter
+// only needs router.push for the "Moje piva" entry, so stub it.
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn(), back: jest.fn() }) }));
 
 // Drinks delivery layer — assert calls without touching the network.
 const enqueueDrink = jest.fn((_entry: unknown, _options?: unknown) => Promise.resolve(true));

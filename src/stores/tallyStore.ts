@@ -230,6 +230,31 @@ export function sessionTotalCzk(session: TallySession | null): number {
   return session?.drinks.reduce((sum, d) => sum + d.priceCzk, 0) ?? 0;
 }
 
+/**
+ * All drinking evenings, newest-first, as a single list — the read model behind
+ * "Moje piva". The live `current` session is NOT in `history` until it rolls
+ * over, so we prepend it (only when it actually holds drinks; an empty pinned
+ * session is not an evening). Pure + non-mutating so the screen and tests can
+ * rely on it without touching counter behavior.
+ */
+export function allSessionsNewestFirst(
+  current: TallySession | null,
+  history: TallySession[],
+): TallySession[] {
+  if (current && current.drinks.length > 0) return [current, ...history];
+  return history;
+}
+
+/** Find an evening by its `startedAt` (the stable per-session identity used for
+ *  routing to a detail screen). Searches the live session first, then history. */
+export function findSessionByStart(
+  current: TallySession | null,
+  history: TallySession[],
+  startedAt: string,
+): TallySession | null {
+  return allSessionsNewestFirst(current, history).find((s) => s.startedAt === startedAt) ?? null;
+}
+
 /** Per-beer counts in the current session, keyed by normalized name + volume —
  *  used to show a "×3" badge on each menu card. Key shape: `name|volume`. */
 export function sessionBeerCounts(session: TallySession | null): Map<string, number> {
