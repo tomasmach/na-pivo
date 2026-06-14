@@ -107,27 +107,69 @@ def test_add_pub_is_idempotent_on_account_client_id(client):
 
 
 @pytest.mark.django_db
-def test_add_pub_upserts_same_physical_place(client):
+def test_two_different_pubs_same_cell_same_account_coexist(client):
+    """Two different submissions (distinct client_id) from one account that land
+    in the same geohash-8 cell must produce TWO rows — neither overwrites the
+    other, even though they share a cache_key."""
+    token = _register(client)
+
+    first = client.post("/v1/pubs", data=_payload(), format="json", **_auth(token))
+    second = client.post(
+        "/v1/pubs",
+        data=_payload(
+            client_id="aaaaaaaa-0000-0000-0000-000000000099",
+            name="Druhá hospoda ve stejné buňce",
+        ),
+        format="json",
+        **_auth(token),
+    )
+
+    assert first.status_code == status.HTTP_201_CREATED
+    assert second.status_code == status.HTTP_201_CREATED
+    assert UserAddedPub.objects.count() == 2
+    assert UserAddedPub.objects.filter(active=True).count() == 2
+    keys = {p.cache_key for p in UserAddedPub.objects.all()}
+    assert keys == {_KEY}  # both in the same cell
+    names = set(UserAddedPub.objects.values_list("name", flat=True))
+    assert names == {_NAME, "Druhá hospoda ve stejné buňce"}
+
+
+@pytest.mark.django_db
+def test_cross_account_same_cell_does_not_overwrite(client):
+    """Account B adding a pub in the same cell as account A must NOT overwrite
+    A's row — a new row is created for B and A's row is untouched."""
     first_token = _register(client)
     second_token = _register(client, "11111111-2222-3333-4444-555555555555")
+    account_a = Account.objects.get(device_id=_DEVICE_ID)
+
     client.post("/v1/pubs", data=_payload(), format="json", **_auth(first_token))
+    row_a_before = UserAddedPub.objects.get()
 
     resp = client.post(
         "/v1/pubs",
         data=_payload(
             client_id="aaaaaaaa-0000-0000-0000-000000000001",
-            name="Aktualizovaná hospoda",
+            name="Hospoda účtu B",
             address="Nová 1",
         ),
         format="json",
         **_auth(second_token),
     )
 
-    assert resp.status_code == status.HTTP_200_OK
-    assert UserAddedPub.objects.count() == 1
-    pub = UserAddedPub.objects.get()
-    assert pub.name == "Aktualizovaná hospoda"
-    assert pub.address == "Nová 1"
+    assert resp.status_code == status.HTTP_201_CREATED
+    assert UserAddedPub.objects.count() == 2
+
+    # Account A's row is completely untouched.
+    row_a_after = UserAddedPub.objects.get(pk=row_a_before.pk)
+    assert row_a_after.account == account_a
+    assert row_a_after.name == _NAME
+    assert row_a_after.client_id == row_a_before.client_id
+    assert row_a_after.address == "Testovací 12"
+
+    # Account B's row is the new one.
+    row_b = UserAddedPub.objects.exclude(pk=row_a_before.pk).get()
+    assert row_b.name == "Hospoda účtu B"
+    assert row_b.address == "Nová 1"
 
 
 @pytest.mark.django_db

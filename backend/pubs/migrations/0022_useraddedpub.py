@@ -16,7 +16,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('client_id', models.UUIDField(db_index=True, help_text='Client-generated UUID; idempotency key for offline retries.')),
-                ('cache_key', models.CharField(db_index=True, help_text='Geohash-8 of (lat, lng) — ~38 m precision.', max_length=12, unique=True)),
+                ('cache_key', models.CharField(db_index=True, help_text='Geohash-8 of (lat, lng) — ~38 m precision. Indexed but NOT unique: identity is (account, client_id), so two different pubs in the same cell coexist.', max_length=12)),
                 ('name', models.TextField(help_text='Pub name as submitted by the client.')),
                 ('lat', models.FloatField()),
                 ('lng', models.FloatField()),
@@ -31,6 +31,7 @@ class Migration(migrations.Migration):
                 'verbose_name': 'User Added Pub',
                 'verbose_name_plural': 'User Added Pubs',
                 'ordering': ['-updated_at'],
+                'indexes': [models.Index(fields=['active', 'lat', 'lng'], name='addedpub_active_latlng_idx')],
                 'constraints': [models.UniqueConstraint(fields=('account', 'client_id'), name='unique_added_pub_per_account_client_id')],
             },
         ),

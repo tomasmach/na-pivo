@@ -360,11 +360,16 @@ class UserAddedPub(models.Model):
     """
     A community-added pub that the normal Mapy.cz nearby search did not return.
 
-    The row is keyed by the same geohash-8 physical-place key as PubHours and
+    The row carries the same geohash-8 physical-place key as PubHours and
     PubCommunityData, so it participates in the rest of the app's per-pub data
     model. Rows go live immediately and are mixed into GET /v1/pubs/near on
     every request; they are intentionally NOT written into PubSearchCache, whose
     contents remain a cache of the upstream Mapy.cz source.
+
+    Identity is (account, client_id), NOT the geohash cell: ``cache_key`` is only
+    indexed (not unique), so two genuinely different pubs that happen to fall in
+    the same ~38 m cell coexist rather than overwriting each other, and one
+    account's submission can never silently overwrite another account's row.
 
     ``client_id`` gives the mobile retry queue idempotency: replaying the same
     submission for the same account returns the already-created row instead of
@@ -385,9 +390,10 @@ class UserAddedPub(models.Model):
     )
     cache_key = models.CharField(
         max_length=12,
-        unique=True,
         db_index=True,
-        help_text="Geohash-8 of (lat, lng) — ~38 m precision.",
+        help_text="Geohash-8 of (lat, lng) — ~38 m precision. Indexed but NOT "
+        "unique: identity is (account, client_id), so two different pubs in the "
+        "same cell coexist.",
     )
     name = models.TextField(help_text="Pub name as submitted by the client.")
     lat = models.FloatField()
@@ -406,6 +412,11 @@ class UserAddedPub(models.Model):
         verbose_name = "User Added Pub"
         verbose_name_plural = "User Added Pubs"
         ordering = ["-updated_at"]
+        indexes = [
+            # /v1/pubs/near filters active rows by a lat/lng bounding box; without
+            # this composite index that is a full table scan on Postgres.
+            models.Index(fields=["active", "lat", "lng"], name="addedpub_active_latlng_idx"),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=["account", "client_id"],

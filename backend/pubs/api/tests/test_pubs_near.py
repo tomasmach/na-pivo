@@ -447,3 +447,83 @@ def test_user_added_pub_is_not_persisted_into_mapy_cache(client):
     assert resp.status_code == status.HTTP_200_OK
     assert [item["name"] for item in resp.json()["items"]] == ["Jen komunitně", _ITEM["name"]]
     assert PubSearchCache.objects.get(cache_key=_KEY, radius_bucket=50).items == [_ITEM]
+
+
+@pytest.mark.django_db
+def test_user_added_pubs_capped_and_nearest_first(client):
+    """A flood of user-added pubs is capped to _USER_ADDED_MAX_RESULTS, keeping
+    the nearest ones — the most distant rows are the ones dropped."""
+    import uuid as _uuid
+
+    from pubs.api.views import _USER_ADDED_MAX_RESULTS
+
+    # Create more than the cap, each progressively farther from the centre.
+    total = _USER_ADDED_MAX_RESULTS + 20
+    for i in range(total):
+        offset = 0.00005 * (i + 1)  # all within ~0.3 km, ascending distance
+        UserAddedPub.objects.create(
+            client_id=str(_uuid.uuid4()),
+            cache_key=f"u2fk{i:04d}",
+            name=f"Pub {i:03d}",
+            lat=_LAT + offset,
+            lng=_LNG,
+        )
+    factory, _ = _mock_source(MapySuggestResult(items=[]))
+
+    with patch("pubs.api.views.MapySuggestSource", factory):
+        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
+
+    assert resp.status_code == status.HTTP_200_OK
+    items = resp.json()["items"]
+    assert len(items) == _USER_ADDED_MAX_RESULTS
+    # Nearest kept (Pub 000 = closest), farthest dropped.
+    names = [item["name"] for item in items]
+    assert "Pub 000" in names
+    assert f"Pub {total - 1:03d}" not in names
+    # Returned in ascending-distance order.
+    assert names[0] == "Pub 000"
+
+
+@pytest.mark.django_db
+def test_community_pub_dedupes_matching_mapy_item(client):
+    """A pub present both as a community row and in Mapy results is returned once
+    (the Mapy duplicate is dropped)."""
+    UserAddedPub.objects.create(
+        client_id="9a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d",
+        cache_key="u2fk3abc",
+        name="Hospoda U Testu",  # same name as _ITEM
+        lat=50.08,                # same rounded position as _ITEM
+        lng=14.42,
+    )
+    # _ITEM has name "Hospoda U Testu" at position (50.08, 14.42).
+    factory, _ = _mock_source(MapySuggestResult(items=[_ITEM]))
+
+    with patch("pubs.api.views.MapySuggestSource", factory):
+        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
+
+    assert resp.status_code == status.HTTP_200_OK
+    items = resp.json()["items"]
+    names = [item["name"] for item in items]
+    # Appears exactly once, and it's the community row (source set).
+    assert names.count("Hospoda U Testu") == 1
+    assert items[0]["source"] == "community"
+
+
+@pytest.mark.django_db
+def test_distinct_mapy_item_not_deduped(client):
+    """A Mapy item that does NOT match any community pub is kept alongside."""
+    UserAddedPub.objects.create(
+        client_id="9a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d",
+        cache_key="u2fk3abc",
+        name="Jiná hospoda",
+        lat=_LAT,
+        lng=_LNG,
+    )
+    factory, _ = _mock_source(MapySuggestResult(items=[_ITEM]))
+
+    with patch("pubs.api.views.MapySuggestSource", factory):
+        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
+
+    assert resp.status_code == status.HTTP_200_OK
+    names = [item["name"] for item in resp.json()["items"]]
+    assert names == ["Jiná hospoda", _ITEM["name"]]

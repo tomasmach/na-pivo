@@ -253,10 +253,10 @@ class UserAddedPubView(APIView):
                     )
 
                 pub, created = UserAddedPub.objects.update_or_create(
-                    cache_key=cache_key,
+                    account=request.user,
+                    client_id=data["client_id"],
                     defaults={
-                        "account": request.user,
-                        "client_id": data["client_id"],
+                        "cache_key": cache_key,
                         "name": data["name"],
                         "lat": data["lat"],
                         "lng": data["lng"],
@@ -1148,8 +1148,22 @@ def _user_added_pub_item(pub: UserAddedPub) -> dict:
     return item
 
 
+# Upper bounds on the user-added pubs mixed into one /v1/pubs/near response.
+# A bounding-box query can match an unbounded number of rows (an attacker can
+# POST ~20 pubs/min), so cap how many we scan and how many we ultimately return.
+# We scan a generous prefix, compute the haversine distance, then keep only the
+# nearest MAX so the rows we drop are the most distant ones, not arbitrary ones.
+_USER_ADDED_SCAN_LIMIT = 200
+_USER_ADDED_MAX_RESULTS = 50
+
+
 def _nearby_user_added_pub_items(lat: float, lng: float, radius_km: float) -> list[dict]:
-    """Active user-added pubs within the requested circle, as suggest items."""
+    """Active user-added pubs within the requested circle, as suggest items.
+
+    Bounded: at most _USER_ADDED_SCAN_LIMIT rows are scanned and at most
+    _USER_ADDED_MAX_RESULTS (nearest first) are returned, so a flood of added
+    pubs cannot inflate the response.
+    """
 
     lat_delta = radius_km / 111.0
     lng_delta = radius_km / (111.0 * max(math.cos(math.radians(lat)), 0.01))
@@ -1160,21 +1174,46 @@ def _nearby_user_added_pub_items(lat: float, lng: float, radius_km: float) -> li
         lat__lte=lat + lat_delta,
         lng__gte=lng - lng_delta,
         lng__lte=lng + lng_delta,
-    ).order_by("-updated_at")
+    ).order_by("-updated_at")[:_USER_ADDED_SCAN_LIMIT]
 
-    items = []
+    within = []
     for pub in rows:
-        if _haversine_km(lat, lng, pub.lat, pub.lng) <= radius_km:
-            items.append(_user_added_pub_item(pub))
-    return items
+        distance = _haversine_km(lat, lng, pub.lat, pub.lng)
+        if distance <= radius_km:
+            within.append((distance, pub))
+
+    within.sort(key=lambda pair: pair[0])
+    return [_user_added_pub_item(pub) for _, pub in within[:_USER_ADDED_MAX_RESULTS]]
+
+
+def _pub_near_dedupe_key(item: dict) -> str:
+    """Match key for deduping community vs Mapy items.
+
+    Mirrors enrichment.mapy._dedupe_key: casefolded name + (lat, lon) rounded to
+    5 decimals (~1 m). Community items carry position.lon (not lng), same as the
+    trimmed Mapy suggest items, so both sides hash identically.
+    """
+    pos = item.get("position") or {}
+    name = (item.get("name") or "").strip().casefold()
+    return f"{round(pos.get('lat', 0.0), 5)},{round(pos.get('lon', 0.0), 5)}|{name}"
 
 
 def _with_user_added_items(user_added_items: list[dict], mapy_items: list[dict]) -> list[dict]:
-    """Prepend user-added pubs while leaving the upstream cache untouched."""
+    """Prepend user-added pubs, dropping any Mapy item that duplicates one.
+
+    Once a community-added pub also shows up in the upstream Mapy results it would
+    otherwise be returned twice; drop the Mapy copy so each physical pub appears
+    once. The upstream cache row itself is left untouched.
+    """
 
     if not user_added_items:
         return mapy_items
-    return [*user_added_items, *mapy_items]
+
+    seen = {_pub_near_dedupe_key(item) for item in user_added_items}
+    deduped_mapy = [
+        item for item in mapy_items if _pub_near_dedupe_key(item) not in seen
+    ]
+    return [*user_added_items, *deduped_mapy]
 
 
 class PubsNearView(APIView):
