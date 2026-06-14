@@ -12,6 +12,7 @@ import { Colors } from '@/theme/colors';
 import { flushPubReportQueue } from '@/data/pubReportQueue';
 import { flushFeedbackQueue } from '@/data/feedbackQueue';
 import { flushCommunityQueue } from '@/data/communityQueue';
+import { flushAddedPubsQueue } from '@/data/addedPubsQueue';
 import { flushDrinksQueue } from '@/data/drinksQueue';
 import { flushDeleteDrinksQueue } from '@/data/deleteDrinksQueue';
 import { installPubRatingsSync, restorePubRatings } from '@/data/pubRatingsSync';
@@ -82,6 +83,7 @@ export default function RootLayout() {
     void flushPubReportQueue();
     void flushFeedbackQueue();
     void flushCommunityQueue();
+    void flushAddedPubsQueue();
     void flushDrinksQueue();
     void flushDeleteDrinksQueue();
     // Personal ratings: pull + merge the server set (LWW), pushing local-newer
@@ -96,6 +98,7 @@ export default function RootLayout() {
         void flushPubReportQueue();
         void flushFeedbackQueue();
         void flushCommunityQueue();
+        void flushAddedPubsQueue();
         void flushDrinksQueue();
         void flushDeleteDrinksQueue();
         void restorePubRatings();
@@ -161,6 +164,14 @@ export default function RootLayout() {
           />
           <Stack.Screen
             name="contribute"
+            options={{
+              presentation: 'fullScreenModal',
+              animation: 'slide_from_bottom',
+              gestureEnabled: false,
+            }}
+          />
+          <Stack.Screen
+            name="add-pub"
             options={{
               presentation: 'fullScreenModal',
               animation: 'slide_from_bottom',

@@ -97,6 +97,7 @@ export interface UseCompassResult {
   requestPermission: () => Promise<void>;
   isLoading: boolean;
   searchFailed: boolean;
+  currentPosition: { lat: number; lng: number; accuracyMeters: number } | null;
 }
 
 export function useCompass(): UseCompassResult {
@@ -115,6 +116,7 @@ export function useCompass(): UseCompassResult {
   const reportedPubIds = usePubStore((s) => s.reportedPubIds);
   const reportedCacheKeys = usePubStore((s) => s.reportedCacheKeys);
   const addReportedPub = usePubStore((s) => s.addReportedPub);
+  const catalogRevision = usePubStore((s) => s.catalogRevision);
 
   // — Permission state —
   const [permissionState, setPermissionState] = useState<PermissionState>('undetermined');
@@ -262,6 +264,7 @@ export function useCompass(): UseCompassResult {
   const lastSeedRef = useRef<number | null>(null);
   const lastReportedPubIdsRef = useRef<string[]>(reportedPubIds);
   const lastReportedCacheKeysRef = useRef<string[]>(reportedCacheKeys);
+  const lastCatalogRevisionRef = useRef<number>(catalogRevision);
   // Track the excludeRevision the current target was selected against, so the
   // selection effect recomputes when (and only when) the exclusion set changes.
   const lastExcludeRevisionRef = useRef<number>(0);
@@ -302,6 +305,7 @@ export function useCompass(): UseCompassResult {
     const reportedChanged =
       reportedPubIds !== lastReportedPubIdsRef.current ||
       reportedCacheKeys !== lastReportedCacheKeysRef.current;
+    const catalogChanged = catalogRevision !== lastCatalogRevisionRef.current;
 
     // A genuine context change (the user moved enough, or switched mode/maxKm)
     // means the accumulated skip/auto-closed exclusions are stale: they only
@@ -313,7 +317,15 @@ export function useCompass(): UseCompassResult {
       resetExclusions();
     }
 
-    if (modeChanged || maxKmChanged || seedChanged || positionMoved || excludeChanged || reportedChanged) {
+    if (
+      modeChanged ||
+      maxKmChanged ||
+      seedChanged ||
+      positionMoved ||
+      excludeChanged ||
+      reportedChanged ||
+      catalogChanged
+    ) {
       lastTargetPosRef.current = currentPos;
       setHasSelectedTarget(true);
       lastModeRef.current = mode;
@@ -321,6 +333,7 @@ export function useCompass(): UseCompassResult {
       lastSeedRef.current = surpriseSeed;
       lastReportedPubIdsRef.current = reportedPubIds;
       lastReportedCacheKeysRef.current = reportedCacheKeys;
+      lastCatalogRevisionRef.current = catalogRevision;
       lastExcludeRevisionRef.current = excludeRevision;
 
       const excludeIds = Array.from(new Set([
@@ -357,6 +370,7 @@ export function useCompass(): UseCompassResult {
     position,
     pubsLoaded,
     pubDataRevision,
+    catalogRevision,
     mode,
     maxDistanceKm,
     surpriseSeed,
@@ -871,6 +885,7 @@ export function useCompass(): UseCompassResult {
     lastModeRef.current = null;
     lastMaxKmRef.current = undefined;
     lastSeedRef.current = null;
+    lastCatalogRevisionRef.current = catalogRevision;
     // Clear accumulated skip / auto-closed exclusions so the retry starts fresh.
     // The selection effect will re-run via the state resets below; align the
     // tracked revision so it does not also fire an extra excludeChanged pass.
@@ -881,7 +896,7 @@ export function useCompass(): UseCompassResult {
     setSearchFailed(false);
     setPubsLoaded(false);
     setSearchRetryNonce((nonce) => nonce + 1);
-  }, [excludeRevision, resetExclusions]);
+  }, [catalogRevision, excludeRevision, resetExclusions]);
 
   const requestPermission = useCallback(async () => {
     const state = await ensureLocationPermission();
@@ -912,5 +927,6 @@ export function useCompass(): UseCompassResult {
     requestPermission,
     isLoading,
     searchFailed,
+    currentPosition: position,
   };
 }

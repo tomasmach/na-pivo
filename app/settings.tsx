@@ -21,7 +21,7 @@ import {
   Linking,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -54,6 +54,7 @@ import {
   ShieldIcon,
   HeartIcon,
   MessageSquareIcon,
+  MapPinIcon,
 } from '@/components/shared/IconGlyph';
 import { InstagramIcon, LinkedinIcon } from '@/components/shared/BrandIcon';
 import { MapyLogo } from '@/components/shared/MapyLogo';
@@ -512,6 +513,12 @@ export default function SettingsScreen() {
             icon={<MessageSquareIcon size={18} color={Colors.foamMuted} />}
             title={cs.settings.feedback}
             onPress={() => router.push('/report')}
+            borderTop
+          />
+          <AboutRow
+            icon={<MapPinIcon size={18} color={Colors.foamMuted} />}
+            title={cs.settings.addPub}
+            onPress={() => router.push('/add-pub' as Href)}
             borderTop
           />
           <AboutRow

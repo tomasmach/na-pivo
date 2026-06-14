@@ -10,9 +10,11 @@ interface PubState {
    *  physical place a fresh id, which the coordinate-derived ids do not. */
   reportedCacheKeys: string[];
   isDataLoaded: boolean;
+  catalogRevision: number;
   setRevealedPub: (p: Pub | null) => void;
   addReportedPub: (id: string, cacheKey: string) => void;
   setIsDataLoaded: (v: boolean) => void;
+  bumpCatalogRevision: () => void;
 }
 
 export const usePubStore = create<PubState>()(
@@ -22,6 +24,7 @@ export const usePubStore = create<PubState>()(
       reportedPubIds: [],
       reportedCacheKeys: [],
       isDataLoaded: false,
+      catalogRevision: 0,
 
       setRevealedPub: (p) => set({ revealedPub: p }),
       addReportedPub: (id, cacheKey) =>
@@ -37,6 +40,7 @@ export const usePubStore = create<PubState>()(
           };
         }),
       setIsDataLoaded: (v) => set({ isDataLoaded: v }),
+      bumpCatalogRevision: () => set((state) => ({ catalogRevision: state.catalogRevision + 1 })),
     }),
     {
       name: 'na-pivo-pub',

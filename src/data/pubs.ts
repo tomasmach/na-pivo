@@ -121,6 +121,17 @@ async function saveSnapshot(snapshot: PubsSnapshot): Promise<void> {
   }
 }
 
+/** Clear the persisted nearby-pubs snapshot so the next cold start refetches.
+ * Used after a user adds a missing pub; otherwise a stale 24h snapshot could
+ * hide the server-side addition on this device. */
+export async function clearPubsSnapshot(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(SNAPSHOT_KEY);
+  } catch {
+    // Best-effort cache invalidation; the in-memory index remains authoritative.
+  }
+}
+
 /** Read and validate the persisted snapshot. Returns null when absent, corrupt,
  *  expired, or unreadable — never throws. */
 async function loadSnapshot(): Promise<PubsSnapshot | null> {
@@ -190,6 +201,20 @@ export function _init(syntheticPubs: Pub[]): void {
   idx.finish();
   _index = idx;
   _loaded = true;
+}
+
+/** Insert or replace a pub in the in-memory index. The geohash-8 replacement
+ * keeps one visible entry per physical place, matching the backend cache key. */
+export function upsertLocalPub(pub: Pub): void {
+  const cacheKey = geohash8(pub.lat, pub.lng);
+  const next = [
+    pub,
+    ..._pubs.filter((existing) => {
+      if (existing.id === pub.id) return false;
+      return geohash8(existing.lat, existing.lng) !== cacheKey;
+    }),
+  ];
+  _init(next);
 }
 
 /**

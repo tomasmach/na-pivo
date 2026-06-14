@@ -2,12 +2,14 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   _init,
   _reset,
+  clearPubsSnapshot,
   fetchPubsNear,
   findNearestPub,
   findNearbyPubs,
   findRandomPubInRadius,
   getPubById,
   isLoaded,
+  upsertLocalPub,
   type Pub,
 } from "../pubs";
 import { searchPubsNear } from "../mapyClient";
@@ -242,6 +244,46 @@ describe("fetchPubsNear — persistent snapshot cache", () => {
     await AsyncStorage.clear();
     await fetchPubsNear(48.1486, 17.1077, undefined, { radiusKm: 25 });
     expect(searchPubsNear).toHaveBeenCalledTimes(1);
+  });
+
+  it("clearPubsSnapshot removes the persisted nearby-pubs snapshot", async () => {
+    await writeSnapshot({
+      pubs: SNAPSHOT_PUBS,
+      centerLat: PRAGUE.lat,
+      centerLng: PRAGUE.lng,
+      radiusKm: 25,
+      savedAt: Date.now(),
+    });
+
+    await clearPubsSnapshot();
+
+    expect(await AsyncStorage.getItem(SNAPSHOT_KEY)).toBeNull();
+  });
+});
+
+describe("upsertLocalPub", () => {
+  it("adds a new pub to the in-memory index", () => {
+    const pub: Pub = { id: "manual:1", name: "Ručně přidaná", lat: 50.1, lng: 14.5 };
+
+    upsertLocalPub(pub);
+
+    expect(getPubById("manual:1")?.name).toBe("Ručně přidaná");
+  });
+
+  it("replaces an existing pub in the same geohash-8 cell", () => {
+    const original: Pub = { id: "mapy:old", name: "Starý název", lat: 50.0812, lng: 14.4182 };
+    const replacement: Pub = {
+      id: "mapy:new",
+      name: "Nový název",
+      lat: 50.0812,
+      lng: 14.4182,
+    };
+    _init([original]);
+
+    upsertLocalPub(replacement);
+
+    expect(getPubById("mapy:old")).toBeNull();
+    expect(getPubById("mapy:new")?.name).toBe("Nový název");
   });
 });
 

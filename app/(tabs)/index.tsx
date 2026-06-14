@@ -53,6 +53,7 @@ import {
   FlagIcon,
   PencilIcon,
   StarIcon,
+  MapPinIcon,
 } from '@/components/shared/IconGlyph';
 
 import { Colors } from '@/theme/colors';
@@ -152,10 +153,11 @@ function LoadingScreen({ rotation }: LoadingScreenProps) {
 interface EmptyScreenProps {
   onSettings: () => void;
   onRetry: () => void;
+  onAddPub: () => void;
   searchFailed: boolean;
 }
 
-function EmptyScreen({ onSettings, onRetry, searchFailed }: EmptyScreenProps) {
+function EmptyScreen({ onSettings, onRetry, onAddPub, searchFailed }: EmptyScreenProps) {
   const headlineLine1 = searchFailed
     ? cs.empty.searchFailedHeadlineLine1
     : cs.empty.headlineLine1;
@@ -190,26 +192,41 @@ function EmptyScreen({ onSettings, onRetry, searchFailed }: EmptyScreenProps) {
       <View style={styles.emptyBottomGroup}>
         <View style={styles.emptyButtonWrap}>
           <GlowButton
-            label={cs.empty.openSettings}
-            onPress={onSettings}
-            icon={<SettingsIcon size={20} color={Colors.stout} />}
+            label={cs.empty.addPub}
+            onPress={onAddPub}
+            icon={<MapPinIcon size={20} color={Colors.stout} />}
             glow="soft"
-            accessibilityLabel={cs.empty.openSettings}
+            accessibilityLabel={cs.a11y.addPubButton}
           />
         </View>
 
-        <Pressable
-          onPress={onRetry}
-          style={styles.emptyRetry}
-          hitSlop={12}
-          accessibilityLabel={cs.empty.retry}
-          accessibilityRole="button"
-        >
-          <RefreshCwIcon size={16} color={Colors.mutedText} />
-          <Text style={styles.emptyRetryText} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.empty.retry}
-          </Text>
-        </Pressable>
+        <View style={styles.emptySecondaryActions}>
+          <Pressable
+            onPress={onSettings}
+            style={styles.emptyRetry}
+            hitSlop={12}
+            accessibilityLabel={cs.empty.openSettings}
+            accessibilityRole="button"
+          >
+            <SettingsIcon size={16} color={Colors.mutedText} />
+            <Text style={styles.emptyRetryText} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.empty.openSettings}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={onRetry}
+            style={styles.emptyRetry}
+            hitSlop={12}
+            accessibilityLabel={cs.empty.retry}
+            accessibilityRole="button"
+          >
+            <RefreshCwIcon size={16} color={Colors.mutedText} />
+            <Text style={styles.emptyRetryText} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.empty.retry}
+            </Text>
+          </Pressable>
+        </View>
       </View>
     </View>
   );
@@ -657,6 +674,7 @@ export default function CompassScreen() {
     requestPermission,
     isLoading,
     searchFailed,
+    currentPosition,
   } = useCompass();
   const hidePubNames = useSettingsStore((s) => s.hidePubNames);
   const showPubDetails = !hidePubNames || revealed;
@@ -722,6 +740,15 @@ export default function CompassScreen() {
   const handleSettings = useCallback(() => {
     router.push('/settings');
   }, [router]);
+
+  const handleAddPub = useCallback(() => {
+    router.push({
+      pathname: '/add-pub' as never,
+      params: {
+        ...(currentPosition ? { lat: String(currentPosition.lat), lng: String(currentPosition.lng) } : {}),
+      },
+    });
+  }, [currentPosition, router]);
 
   // Dev-only shortcut: long-press the settings gear to simulate arrival at the
   // current pub. Compiled out of release builds since `__DEV__` is false there.
@@ -803,6 +830,7 @@ export default function CompassScreen() {
         <EmptyScreen
           onSettings={handleSettings}
           onRetry={retrySearch}
+          onAddPub={handleAddPub}
           searchFailed={searchFailed}
         />
       </View>
@@ -1294,6 +1322,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  emptySecondaryActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: Spacing.lg,
   },
   emptyRetryText: {
     fontFamily: Fonts.ui.semibold,

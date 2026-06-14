@@ -82,6 +82,7 @@ export const cs = {
       'Nepodařilo se stáhnout hospody. Zkontroluj připojení a zkus to znovu.',
     openSettings: 'Otevřít nastavení',
     retry: 'Zkusit znovu',
+    addPub: 'Přidat hospodu',
   },
 
   settings: {
@@ -121,6 +122,7 @@ export const cs = {
       title: 'O appce',
     },
     feedback: 'Napiš nám / nahlas chybu',
+    addPub: 'Přidat chybějící hospodu',
     privacy: 'Soukromí',
     creator: {
       header: 'TVŮRCE',
@@ -198,6 +200,24 @@ export const cs = {
     save: 'Uložit',
     invalidHint: 'Zkontroluj zadané časy (formát HH:MM).',
     savedToast: 'Díky! Uloženo',
+  },
+
+  addPub: {
+    title: 'Přidat hospodu',
+    intro:
+      'Zadej název a polohu podniku, který v okolí chybí. Po odeslání se bude zobrazovat i ostatním.',
+    nameLabel: 'Název',
+    namePlaceholder: 'Např. Hospoda U Komunity',
+    cityLabel: 'Město',
+    cityPlaceholder: 'Praha',
+    addressLabel: 'Adresa',
+    addressPlaceholder: 'Ulice a číslo',
+    coordsHeader: 'Poloha',
+    latLabel: 'Šířka',
+    lngLabel: 'Délka',
+    invalidCoords: 'Zadej platnou zeměpisnou šířku a délku.',
+    save: 'Přidat hospodu',
+    savedToast: 'Hospoda přidána',
   },
 
   tabs: {
@@ -371,6 +391,13 @@ export const cs = {
     contributeAddBeer: 'Přidat pivo',
     contributeRemoveBeer: 'Odebrat pivo',
     contributeSaveButton: 'Uložit doplněné údaje',
+    addPubButton: 'Přidat chybějící hospodu',
+    addPubNameInput: 'Název hospody',
+    addPubCityInput: 'Město hospody',
+    addPubAddressInput: 'Adresa hospody',
+    addPubLatInput: 'Zeměpisná šířka hospody',
+    addPubLngInput: 'Zeměpisná délka hospody',
+    addPubSaveButton: 'Přidat hospodu',
     feedbackButton: 'Napiš nám nebo nahlas chybu',
     feedbackCategory: (label: string) => `Kategorie: ${label}`,
     feedbackContactChannel: (label: string) => `Kontakt přes: ${label}`,
