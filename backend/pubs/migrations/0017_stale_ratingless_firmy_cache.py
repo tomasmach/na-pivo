@@ -2,7 +2,6 @@ from datetime import UTC, datetime
 
 from django.db import migrations
 
-
 # Old enough to be outside any reasonable HOURS_TTL_DAYS value. Keeping a
 # non-null timestamp means refresh_hours will pick these rows up in its stale
 # refresh phase; setting fetched_at=NULL would only refresh them on direct API

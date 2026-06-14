@@ -63,6 +63,20 @@ class Command(BaseCommand):
         error_events = events.filter(severity=ClientEvent.Severity.ERROR)
         warning_events = events.filter(severity=ClientEvent.Severity.WARNING)
         feedback = FeedbackReport.objects.filter(created_at__gte=since)
+        counter_events = events.filter(
+            event__in=[
+                ClientEvent.Event.COUNTER_TAB_OPENED,
+                ClientEvent.Event.COUNTER_SESSION_STARTED,
+                ClientEvent.Event.DRINK_ADDED,
+                ClientEvent.Event.DRINK_REMOVED,
+                ClientEvent.Event.DRINK_SYNCED,
+                ClientEvent.Event.DRINK_SYNC_FAILED,
+                ClientEvent.Event.BEER_FORM_OPENED,
+                ClientEvent.Event.BEER_PRICE_ADDED,
+                ClientEvent.Event.COUNTER_RETURNED_SAME_DAY,
+                ClientEvent.Event.COUNTER_RETURNED_LATER,
+            ]
+        )
 
         period_distance_by_account: defaultdict[str, int] = defaultdict(int)
         period_distance_total_m = 0
@@ -80,6 +94,14 @@ class Command(BaseCommand):
             operation = str(context.get("operation") or "unknown")
             status = str(context.get("status") or context.get("reason") or "unknown")
             api_failure_counter[(operation, status)] += 1
+
+        drink_sync_failure_counter: Counter[tuple[str, str, str]] = Counter()
+        for event in events.filter(event=ClientEvent.Event.DRINK_SYNC_FAILED):
+            context = event.context or {}
+            operation = str(context.get("operation") or "unknown")
+            status = str(context.get("status") or context.get("reason") or "unknown")
+            result = str(context.get("sync_result") or "unknown")
+            drink_sync_failure_counter[(operation, status, result)] += 1
 
         recent_errors = [
             {
@@ -142,6 +164,40 @@ class Command(BaseCommand):
                 )["total"]
                 or 0,
             },
+            "counter": {
+                "events": counter_events.count(),
+                "tab_opens": events.filter(event=ClientEvent.Event.COUNTER_TAB_OPENED).count(),
+                "unique_counter_accounts": counter_events.exclude(account__isnull=True)
+                .values("account_id")
+                .distinct()
+                .count(),
+                "sessions_started": events.filter(
+                    event=ClientEvent.Event.COUNTER_SESSION_STARTED
+                ).count(),
+                "drinks_added": events.filter(event=ClientEvent.Event.DRINK_ADDED).count(),
+                "drinks_removed": events.filter(event=ClientEvent.Event.DRINK_REMOVED).count(),
+                "drinks_synced": events.filter(event=ClientEvent.Event.DRINK_SYNCED).count(),
+                "drink_sync_failures": events.filter(
+                    event=ClientEvent.Event.DRINK_SYNC_FAILED
+                ).count(),
+                "beer_forms_opened": events.filter(event=ClientEvent.Event.BEER_FORM_OPENED).count(),
+                "beer_prices_added": events.filter(event=ClientEvent.Event.BEER_PRICE_ADDED).count(),
+                "returns_same_day": events.filter(
+                    event=ClientEvent.Event.COUNTER_RETURNED_SAME_DAY
+                ).count(),
+                "returns_later": events.filter(event=ClientEvent.Event.COUNTER_RETURNED_LATER).count(),
+                "drink_sync_failures_by_operation": [
+                    {
+                        "operation": operation,
+                        "status": status,
+                        "sync_result": result,
+                        "count": count,
+                    }
+                    for (operation, status, result), count in drink_sync_failure_counter.most_common(
+                        limit
+                    )
+                ],
+            },
             "top_walkers_period": [
                 {
                     "account": account_id,
@@ -201,6 +257,7 @@ class Command(BaseCommand):
     def _format_markdown(self, report: dict[str, Any]) -> str:
         usage = report["usage"]
         all_time = report["all_time"]
+        counter = report["counter"]
         health = report["client_health"]
         lines = [
             "# Na pivo observability report",
@@ -216,9 +273,31 @@ class Command(BaseCommand):
             f"- All-time opens: {all_time['app_opens']} across {all_time['accounts_with_opens']} accounts",
             f"- All-time walked distance: {round(all_time['walked_distance_m'] / 1000, 2)} km",
             "",
-            "## Top Walkers In Window",
+            "## Counter",
+            "",
+            f"- Counter tab opens: {counter['tab_opens']} ({counter['unique_counter_accounts']} unique accounts)",
+            f"- Sessions started: {counter['sessions_started']}",
+            f"- Drinks added/removed: {counter['drinks_added']} / {counter['drinks_removed']}",
+            f"- Drinks synced/failed: {counter['drinks_synced']} / {counter['drink_sync_failures']}",
+            f"- Beer forms opened / prices added: {counter['beer_forms_opened']} / {counter['beer_prices_added']}",
+            f"- Returns same day / later: {counter['returns_same_day']} / {counter['returns_later']}",
+            "",
+            "### Drink Sync Failures",
             "",
         ]
+        lines.extend(
+            self._table(
+                counter["drink_sync_failures_by_operation"],
+                ["operation", "status", "sync_result", "count"],
+            )
+        )
+        lines.extend(
+            [
+                "",
+                "## Top Walkers In Window",
+                "",
+            ]
+        )
         lines.extend(self._table(report["top_walkers_period"], ["account", "walked_distance_km"]))
         lines.extend(
             [

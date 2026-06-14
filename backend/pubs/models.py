@@ -525,10 +525,10 @@ class ClientEvent(models.Model):
     """
     Privacy-safe client-side diagnostic / usage event.
 
-    The mobile app sends only a small whitelist of app lifecycle, error, API
-    failure and distance-summary events. It never sends bearer tokens, request
-    payloads, GPS points, routes, pub names, beer names, feedback text or contact
-    details. ``context`` is sanitized server-side before storage.
+    The mobile app sends only a small whitelist of app lifecycle, counter usage,
+    error, API failure and distance-summary events. It never sends bearer tokens,
+    request payloads, GPS points, routes, pub names, beer names, feedback text or
+    contact details. ``context`` is sanitized server-side before storage.
     """
 
     class Severity(models.TextChoices):
@@ -540,6 +540,16 @@ class ClientEvent(models.Model):
         APP_OPEN = "app_open", "App opened"
         APP_FOREGROUND = "app_foreground", "App foregrounded"
         WALKING_DISTANCE = "walking_distance", "Walking distance"
+        COUNTER_TAB_OPENED = "counter_tab_opened", "Counter tab opened"
+        COUNTER_SESSION_STARTED = "counter_session_started", "Counter session started"
+        DRINK_ADDED = "drink_added", "Drink added"
+        DRINK_REMOVED = "drink_removed", "Drink removed"
+        DRINK_SYNCED = "drink_synced", "Drink synced"
+        DRINK_SYNC_FAILED = "drink_sync_failed", "Drink sync failed"
+        BEER_FORM_OPENED = "beer_form_opened", "Beer form opened"
+        BEER_PRICE_ADDED = "beer_price_added", "Beer price added"
+        COUNTER_RETURNED_SAME_DAY = "counter_returned_same_day", "Counter returned same day"
+        COUNTER_RETURNED_LATER = "counter_returned_later", "Counter returned later"
         CONSOLE_WARN = "console_warn", "Console warning"
         CONSOLE_ERROR = "console_error", "Console error"
         UNHANDLED_ERROR = "unhandled_error", "Unhandled error"

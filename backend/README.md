@@ -150,13 +150,14 @@ The Expo app sends a small event whitelist to:
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| `POST` | `/v1/client-events` | optional `Authorization: Bearer <token>` | App opens, foregrounds, sanitized warnings/errors/API failures and walking-distance meter increments. |
+| `POST` | `/v1/client-events` | optional `Authorization: Bearer <token>` | App opens, foregrounds, counter usage, drink sync results, sanitized warnings/errors/API failures and walking-distance meter increments. |
 
 Authenticated events update `AccountUsageStats`, which answers questions like
-"how many anonymous accounts opened the app?", "how many opens were there?" and
-"which anonymous account walked the most kilometers?". Walking distance is
-computed on-device; the backend stores only meter increments, not coordinates or
-routes.
+"how many anonymous accounts opened the app?", "how many opens were there?",
+"which anonymous account walked the most kilometers?" and "are people using the
+beer counter?". Counter events are product-level only: no pub names, beer names,
+drink ids or GPS coordinates are accepted. Walking distance is computed
+on-device; the backend stores only meter increments, not coordinates or routes.
 
 Agent-friendly report:
 

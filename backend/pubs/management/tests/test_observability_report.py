@@ -39,6 +39,25 @@ def test_observability_report_json_output():
         severity=ClientEvent.Severity.WARNING,
         context={"operation": "pub_hours", "status": 503},
     )
+    ClientEvent.objects.create(account=account, event=ClientEvent.Event.COUNTER_TAB_OPENED)
+    ClientEvent.objects.create(account=account, event=ClientEvent.Event.COUNTER_SESSION_STARTED)
+    ClientEvent.objects.create(account=account, event=ClientEvent.Event.DRINK_ADDED)
+    ClientEvent.objects.create(
+        account=account,
+        event=ClientEvent.Event.DRINK_REMOVED,
+        context={"delivery_state": "queued"},
+    )
+    ClientEvent.objects.create(account=account, event=ClientEvent.Event.DRINK_SYNCED)
+    ClientEvent.objects.create(
+        account=account,
+        event=ClientEvent.Event.DRINK_SYNC_FAILED,
+        severity=ClientEvent.Severity.WARNING,
+        context={"operation": "submit_drink", "status": 429, "sync_result": "retry"},
+    )
+    ClientEvent.objects.create(account=account, event=ClientEvent.Event.BEER_FORM_OPENED)
+    ClientEvent.objects.create(account=account, event=ClientEvent.Event.BEER_PRICE_ADDED)
+    ClientEvent.objects.create(account=account, event=ClientEvent.Event.COUNTER_RETURNED_SAME_DAY)
+    ClientEvent.objects.create(account=account, event=ClientEvent.Event.COUNTER_RETURNED_LATER)
     FeedbackReport.objects.create(
         account=account,
         client_id="9a7b6c5d-4e3f-4a1b-8c9d-8e7f6a5b4c3d",
@@ -58,6 +77,28 @@ def test_observability_report_json_output():
     assert report["all_time"]["app_opens"] == 3
     assert report["top_walkers_all_time"][0]["walked_distance_km"] == 1.25
     assert report["client_health"]["api_failures"] == 1
+    assert report["counter"] == {
+        "events": 10,
+        "tab_opens": 1,
+        "unique_counter_accounts": 1,
+        "sessions_started": 1,
+        "drinks_added": 1,
+        "drinks_removed": 1,
+        "drinks_synced": 1,
+        "drink_sync_failures": 1,
+        "beer_forms_opened": 1,
+        "beer_prices_added": 1,
+        "returns_same_day": 1,
+        "returns_later": 1,
+        "drink_sync_failures_by_operation": [
+            {
+                "operation": "submit_drink",
+                "status": "429",
+                "sync_result": "retry",
+                "count": 1,
+            }
+        ],
+    }
     assert report["client_health"]["api_failures_by_operation"] == [
         {"operation": "pub_hours", "status": "503", "count": 1}
     ]

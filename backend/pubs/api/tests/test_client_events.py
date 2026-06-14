@@ -147,6 +147,52 @@ def test_client_event_payload_is_sanitized(client):
 
 
 @pytest.mark.django_db
+def test_counter_product_events_are_accepted_and_sanitized(client):
+    token = _register(client)
+
+    resp = client.post(
+        "/v1/client-events",
+        data={
+            "event": "drink_sync_failed",
+            "severity": "warning",
+            "context": {
+                "operation": "submit_drink",
+                "status": 429,
+                "sync_result": "retry",
+                "retryable": True,
+                "mode": "add",
+                "delivery_state": "queued",
+                "return_days": 2.4,
+                "had_active_session": False,
+                "pub_name": "U Zlatého tygra",
+                "beer_name": "Plzeň",
+                "lat": 50.0876,
+                "lng": 14.4214,
+            },
+        },
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_202_ACCEPTED
+    event = ClientEvent.objects.get()
+    assert event.event == ClientEvent.Event.DRINK_SYNC_FAILED
+    assert event.context == {
+        "operation": "submit_drink",
+        "status": 429,
+        "sync_result": "retry",
+        "retryable": True,
+        "mode": "add",
+        "delivery_state": "queued",
+        "return_days": 2,
+        "had_active_session": False,
+    }
+
+    stats_row = AccountUsageStats.objects.get()
+    assert stats_row.client_warning_count == 1
+
+
+@pytest.mark.django_db
 def test_client_event_rejects_unknown_event(client):
     resp = client.post(
         "/v1/client-events",

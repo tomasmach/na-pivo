@@ -181,8 +181,14 @@ _CLIENT_EVENT_CONTEXT_KEYS = {
     "error_message",
     "stack",
     "source",
+    "mode",
     "queue",
     "pending_count",
+    "sync_result",
+    "delivery_state",
+    "return_days",
+    "had_active_session",
+    "retryable",
     "distance_m",
     "duration_ms",
 }
@@ -220,7 +226,7 @@ def _sanitize_client_scalar(key: str, value: object) -> object | None:
             return None
         return max(0, min(distance, _MAX_CLIENT_EVENT_DISTANCE_M))
 
-    if key in {"status", "pending_count", "duration_ms"}:
+    if key in {"status", "pending_count", "return_days", "duration_ms"}:
         try:
             return int(value)
         except (TypeError, ValueError):
