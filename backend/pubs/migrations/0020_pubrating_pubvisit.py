@@ -48,6 +48,7 @@ class Migration(migrations.Migration):
                 ('external_id', models.TextField(blank=True, default='', help_text='Client-side provider id, e.g. Mapy.cz item id.')),
                 ('started_at', models.DateTimeField(help_text='When the evening began — the identity of the visit.')),
                 ('ended_at', models.DateTimeField(blank=True, help_text='When the evening ended (None = still open / unknown).', null=True)),
+                ('client_updated_at', models.DateTimeField(help_text="Client's local updatedAt; the last-write-wins conflict key.")),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('account', models.ForeignKey(help_text='The user who made this visit.', on_delete=django.db.models.deletion.CASCADE, related_name='pub_visits', to='pubs.account')),

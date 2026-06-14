@@ -202,7 +202,7 @@ def test_put_empty_rating_deletes_existing(client):
         **_auth(token),
     )
     assert resp.status_code == status.HTTP_200_OK
-    assert resp.json() == {"deleted": True}
+    assert resp.json() == {"deleted": True, "applied": True}
     assert PubRating.objects.count() == 0
 
 
@@ -216,7 +216,7 @@ def test_put_empty_rating_when_none_exists_is_ok(client):
         **_auth(token),
     )
     assert resp.status_code == status.HTTP_200_OK
-    assert resp.json() == {"deleted": True}
+    assert resp.json() == {"deleted": False, "applied": True}
     assert PubRating.objects.count() == 0
 
 
@@ -232,7 +232,7 @@ def test_put_blank_strings_count_as_empty_and_delete(client):
         **_auth(token),
     )
     assert resp.status_code == status.HTTP_200_OK
-    assert resp.json() == {"deleted": True}
+    assert resp.json() == {"deleted": True, "applied": True}
     assert PubRating.objects.count() == 0
 
 
@@ -300,6 +300,35 @@ def test_lww_equal_timestamp_applies(client):
     # Not strictly older → applies.
     assert resp.json()["applied"] is True
     assert PubRating.objects.get().note == "second"
+
+
+@pytest.mark.django_db
+def test_lww_older_empty_rating_does_not_delete_newer(client):
+    token = _register(client)
+    client.put(
+        "/v1/pub-ratings",
+        data=_payload(note="newer", updated_at="2026-06-13T12:00:00+02:00"),
+        format="json",
+        **_auth(token),
+    )
+
+    resp = client.put(
+        "/v1/pub-ratings",
+        data=_payload(
+            verdict=None,
+            tag=None,
+            note=None,
+            updated_at="2026-06-10T08:00:00+02:00",
+        ),
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    body = resp.json()
+    assert body["applied"] is False
+    assert body["note"] == "newer"
+    assert PubRating.objects.get().note == "newer"
 
 
 # ---------------------------------------------------------------------------

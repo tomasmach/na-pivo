@@ -673,13 +673,6 @@ class PubRatingView(APIView):
         updated_at = data["updated_at"]
 
         try:
-            # No signal at all → this is a clear/delete, not a rating.
-            if not verdict and not tag and not note:
-                PubRating.objects.filter(
-                    account=request.user, cache_key=cache_key
-                ).delete()
-                return Response({"deleted": True}, status=status.HTTP_200_OK)
-
             with transaction.atomic():
                 existing = (
                     PubRating.objects.select_for_update()
@@ -692,6 +685,16 @@ class PubRatingView(APIView):
                     body = _rating_item(existing)
                     body["applied"] = False
                     return Response(body, status=status.HTTP_200_OK)
+
+                # No signal at all → this is a clear/delete, guarded by the same
+                # last-write-wins timestamp as normal upserts.
+                if not verdict and not tag and not note:
+                    if existing is not None:
+                        existing.delete()
+                    return Response(
+                        {"deleted": existing is not None, "applied": True},
+                        status=status.HTTP_200_OK,
+                    )
 
                 rating, _ = PubRating.objects.update_or_create(
                     account=request.user,
@@ -757,6 +760,7 @@ def _visit_item(visit: PubVisit) -> dict:
         "external_id": visit.external_id,
         "started_at": visit.started_at.isoformat(),
         "ended_at": visit.ended_at.isoformat() if visit.ended_at else None,
+        "updated_at": visit.client_updated_at.isoformat(),
     }
 
 
@@ -799,20 +803,38 @@ class PubVisitView(APIView):
         cache_key = geohash8(data["lat"], data["lng"])
 
         try:
-            _, created = PubVisit.objects.update_or_create(
-                account=request.user,
-                client_id=data["client_id"],
-                defaults={
-                    "cache_key": cache_key,
-                    "name": data["name"],
-                    "lat": data["lat"],
-                    "lng": data["lng"],
-                    "city": data.get("city") or "",
-                    "external_id": data.get("external_id") or "",
-                    "started_at": data["started_at"],
-                    "ended_at": data.get("ended_at"),
-                },
-            )
+            with transaction.atomic():
+                existing = (
+                    PubVisit.objects.select_for_update()
+                    .filter(account=request.user, client_id=data["client_id"])
+                    .first()
+                )
+                if existing is not None and existing.client_updated_at > data["updated_at"]:
+                    return Response(
+                        {
+                            "accepted": True,
+                            "duplicate": True,
+                            "cache_key": existing.cache_key,
+                            "applied": False,
+                        },
+                        status=status.HTTP_200_OK,
+                    )
+
+                _, created = PubVisit.objects.update_or_create(
+                    account=request.user,
+                    client_id=data["client_id"],
+                    defaults={
+                        "cache_key": cache_key,
+                        "name": data["name"],
+                        "lat": data["lat"],
+                        "lng": data["lng"],
+                        "city": data.get("city") or "",
+                        "external_id": data.get("external_id") or "",
+                        "started_at": data["started_at"],
+                        "ended_at": data.get("ended_at"),
+                        "client_updated_at": data["updated_at"],
+                    },
+                )
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "pub-visits: unexpected error saving visit %r: %s",
@@ -826,7 +848,12 @@ class PubVisitView(APIView):
             )
 
         return Response(
-            {"accepted": True, "duplicate": not created, "cache_key": cache_key},
+            {
+                "accepted": True,
+                "duplicate": not created,
+                "cache_key": cache_key,
+                "applied": True,
+            },
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
 

@@ -61,6 +61,7 @@ def _payload(**overrides):
         "external_id": "mapy:50.08755,14.42141",
         "started_at": "2026-06-12T19:00:00+02:00",
         "ended_at": None,
+        "updated_at": "2026-06-12T19:00:00+02:00",
     }
     data.update(overrides)
     return data
@@ -113,8 +114,20 @@ def test_post_validation_errors(client):
         **_auth(token),
     )
     bad_lat = client.post("/v1/pub-visits", data=_payload(lat=999), format="json", **_auth(token))
+    ended_before_started = client.post(
+        "/v1/pub-visits",
+        data=_payload(ended_at="2026-06-12T18:59:59+02:00"),
+        format="json",
+        **_auth(token),
+    )
 
-    for resp in (missing_client_id, missing_started_at, missing_name, bad_lat):
+    for resp in (
+        missing_client_id,
+        missing_started_at,
+        missing_name,
+        bad_lat,
+        ended_before_started,
+    ):
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
     assert PubVisit.objects.count() == 0
 
@@ -130,7 +143,12 @@ def test_post_creates_visit_with_geohash_cache_key(client):
     resp = client.post("/v1/pub-visits", data=_payload(), format="json", **_auth(token))
 
     assert resp.status_code == status.HTTP_201_CREATED
-    assert resp.json() == {"accepted": True, "duplicate": False, "cache_key": _KEY}
+    assert resp.json() == {
+        "accepted": True,
+        "duplicate": False,
+        "cache_key": _KEY,
+        "applied": True,
+    }
 
     visit = PubVisit.objects.get()
     assert visit.account == Account.objects.get(device_id=_DEVICE_ID)
@@ -141,6 +159,7 @@ def test_post_creates_visit_with_geohash_cache_key(client):
     assert visit.external_id == "mapy:50.08755,14.42141"
     assert visit.started_at.isoformat() == "2026-06-12T17:00:00+00:00"
     assert visit.ended_at is None
+    assert visit.client_updated_at.isoformat() == "2026-06-12T17:00:00+00:00"
 
 
 @pytest.mark.django_db
@@ -170,7 +189,12 @@ def test_replay_same_client_id_is_duplicate(client):
 
     second = client.post("/v1/pub-visits", data=_payload(), format="json", **_auth(token))
     assert second.status_code == status.HTTP_200_OK
-    assert second.json() == {"accepted": True, "duplicate": True, "cache_key": _KEY}
+    assert second.json() == {
+        "accepted": True,
+        "duplicate": True,
+        "cache_key": _KEY,
+        "applied": True,
+    }
     assert PubVisit.objects.count() == 1
 
 
@@ -194,6 +218,61 @@ def test_upsert_fills_in_ended_at(client):
     assert PubVisit.objects.count() == 1
     visit = PubVisit.objects.get()
     assert visit.ended_at.isoformat() == "2026-06-12T21:30:00+00:00"
+
+
+@pytest.mark.django_db
+def test_stale_visit_replay_does_not_clear_ended_at(client):
+    token = _register(client)
+    client.post(
+        "/v1/pub-visits",
+        data=_payload(
+            ended_at="2026-06-12T23:30:00+02:00",
+            updated_at="2026-06-12T23:30:00+02:00",
+        ),
+        format="json",
+        **_auth(token),
+    )
+
+    resp = client.post(
+        "/v1/pub-visits",
+        data=_payload(ended_at=None, updated_at="2026-06-12T19:05:00+02:00"),
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["applied"] is False
+    visit = PubVisit.objects.get()
+    assert visit.ended_at.isoformat() == "2026-06-12T21:30:00+00:00"
+
+
+@pytest.mark.django_db
+def test_newer_visit_update_can_move_ended_at_backwards(client):
+    token = _register(client)
+    client.post(
+        "/v1/pub-visits",
+        data=_payload(
+            ended_at="2026-06-12T23:30:00+02:00",
+            updated_at="2026-06-12T23:30:00+02:00",
+        ),
+        format="json",
+        **_auth(token),
+    )
+
+    resp = client.post(
+        "/v1/pub-visits",
+        data=_payload(
+            ended_at="2026-06-12T22:15:00+02:00",
+            updated_at="2026-06-12T23:45:00+02:00",
+        ),
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["applied"] is True
+    visit = PubVisit.objects.get()
+    assert visit.ended_at.isoformat() == "2026-06-12T20:15:00+00:00"
 
 
 # ---------------------------------------------------------------------------
@@ -228,6 +307,7 @@ def test_get_lists_all_visits(client):
     assert first["cache_key"] == _KEY
     assert first["started_at"] == "2026-06-12T17:00:00+00:00"
     assert first["ended_at"] is None
+    assert first["updated_at"] == "2026-06-12T17:00:00+00:00"
 
 
 @pytest.mark.django_db

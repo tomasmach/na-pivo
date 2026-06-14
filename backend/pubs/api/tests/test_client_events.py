@@ -193,6 +193,26 @@ def test_counter_product_events_are_accepted_and_sanitized(client):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    "event_name",
+    ["rating_synced", "rating_sync_failed", "visit_synced", "visit_sync_failed"],
+)
+def test_rating_and_visit_sync_events_are_accepted(client, event_name):
+    resp = client.post(
+        "/v1/client-events",
+        data={
+            "event": event_name,
+            "severity": "warning" if event_name.endswith("_failed") else "info",
+            "context": {"operation": "sync", "sync_result": "retry"},
+        },
+        format="json",
+    )
+
+    assert resp.status_code == status.HTTP_202_ACCEPTED
+    assert ClientEvent.objects.get().event == event_name
+
+
+@pytest.mark.django_db
 def test_client_event_rejects_unknown_event(client):
     resp = client.post(
         "/v1/client-events",

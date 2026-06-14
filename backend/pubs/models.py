@@ -552,6 +552,10 @@ class ClientEvent(models.Model):
         DRINK_REMOVED = "drink_removed", "Drink removed"
         DRINK_SYNCED = "drink_synced", "Drink synced"
         DRINK_SYNC_FAILED = "drink_sync_failed", "Drink sync failed"
+        RATING_SYNCED = "rating_synced", "Rating synced"
+        RATING_SYNC_FAILED = "rating_sync_failed", "Rating sync failed"
+        VISIT_SYNCED = "visit_synced", "Visit synced"
+        VISIT_SYNC_FAILED = "visit_sync_failed", "Visit sync failed"
         BEER_FORM_OPENED = "beer_form_opened", "Beer form opened"
         BEER_PRICE_ADDED = "beer_price_added", "Beer price added"
         COUNTER_RETURNED_SAME_DAY = "counter_returned_same_day", "Counter returned same day"
@@ -951,6 +955,9 @@ class PubVisit(models.Model):
         null=True,
         blank=True,
         help_text="When the evening ended (None = still open / unknown).",
+    )
+    client_updated_at = models.DateTimeField(
+        help_text="Client's local updatedAt; the last-write-wins conflict key.",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
