@@ -4,7 +4,12 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
-import { usePubRatingsStore, getPubRating, selectPubRating } from '../pubRatingsStore';
+import {
+  usePubRatingsStore,
+  getPubRating,
+  selectPubRating,
+  migratePubRatings,
+} from '../pubRatingsStore';
 
 const PUB = 'aaaaaaaa';
 const OTHER = 'bbbbbbbb';
@@ -35,34 +40,106 @@ describe('setRating — verdict', () => {
   });
 });
 
-describe('setRating — note', () => {
-  it('stores a note without a verdict', () => {
-    usePubRatingsStore.getState().setRating(PUB, { note: 'Sem se vrátit' });
+describe('setRating — tag', () => {
+  it('stores a quick tag without a verdict', () => {
+    usePubRatingsStore.getState().setRating(PUB, { tag: 'Sem se vrátit' });
     const rating = getPubRating(PUB);
-    expect(rating?.note).toBe('Sem se vrátit');
+    expect(rating?.tag).toBe('Sem se vrátit');
     expect(rating?.verdict).toBeUndefined();
   });
 
-  it('keeps the verdict when only the note changes', () => {
+  it('keeps the verdict when only the tag changes', () => {
     usePubRatingsStore.getState().setRating(PUB, { verdict: 'like' });
-    usePubRatingsStore.getState().setRating(PUB, { note: 'Dobrý tankový' });
+    usePubRatingsStore.getState().setRating(PUB, { tag: 'Dobrý tankový' });
     const rating = getPubRating(PUB);
     expect(rating?.verdict).toBe('like');
-    expect(rating?.note).toBe('Dobrý tankový');
+    expect(rating?.tag).toBe('Dobrý tankový');
   });
 
-  it('removes only the note but keeps the rating when a verdict remains', () => {
-    usePubRatingsStore.getState().setRating(PUB, { verdict: 'like', note: 'Nic moc' });
-    usePubRatingsStore.getState().setRating(PUB, { note: undefined });
+  it('removes only the tag but keeps the rating when a verdict remains', () => {
+    usePubRatingsStore.getState().setRating(PUB, { verdict: 'like', tag: 'Nic moc' });
+    usePubRatingsStore.getState().setRating(PUB, { tag: undefined });
     const rating = getPubRating(PUB);
     expect(rating?.verdict).toBe('like');
+    expect(rating?.tag).toBeUndefined();
+  });
+
+  it('drops the entry when the last tag is removed and there is no verdict', () => {
+    usePubRatingsStore.getState().setRating(PUB, { tag: 'Nic moc' });
+    usePubRatingsStore.getState().setRating(PUB, { tag: undefined });
+    expect(getPubRating(PUB)).toBeUndefined();
+  });
+});
+
+describe('setRating — free-text note', () => {
+  it('stores a free-text note alongside a verdict and tag', () => {
+    usePubRatingsStore
+      .getState()
+      .setRating(PUB, { verdict: 'like', tag: 'Sem se vrátit', note: 'Skvělý výčep' });
+    const rating = getPubRating(PUB);
+    expect(rating?.verdict).toBe('like');
+    expect(rating?.tag).toBe('Sem se vrátit');
+    expect(rating?.note).toBe('Skvělý výčep');
+  });
+
+  it('trims surrounding whitespace from the note', () => {
+    usePubRatingsStore.getState().setRating(PUB, { note: '  draho ale dobrý  ' });
+    expect(getPubRating(PUB)?.note).toBe('draho ale dobrý');
+  });
+
+  it('clears a blank note and drops the entry when nothing else remains', () => {
+    usePubRatingsStore.getState().setRating(PUB, { note: 'něco' });
+    usePubRatingsStore.getState().setRating(PUB, { note: '   ' });
+    expect(getPubRating(PUB)).toBeUndefined();
+  });
+
+  it('keeps the rating when the note is blanked but a verdict remains', () => {
+    usePubRatingsStore.getState().setRating(PUB, { verdict: 'dislike', note: 'fuj' });
+    usePubRatingsStore.getState().setRating(PUB, { note: '' });
+    const rating = getPubRating(PUB);
+    expect(rating?.verdict).toBe('dislike');
     expect(rating?.note).toBeUndefined();
   });
+});
 
-  it('drops the entry when the last note is removed and there is no verdict', () => {
-    usePubRatingsStore.getState().setRating(PUB, { note: 'Nic moc' });
-    usePubRatingsStore.getState().setRating(PUB, { note: undefined });
-    expect(getPubRating(PUB)).toBeUndefined();
+describe('migratePubRatings — v0 → v1', () => {
+  it('moves a legacy preset note into the tag field', () => {
+    const migrated = migratePubRatings(
+      { ratings: { [PUB]: { verdict: 'like', note: 'Sem se vrátit', updatedAt: 't' } } },
+      0,
+    );
+    expect(migrated.ratings[PUB]).toEqual({
+      verdict: 'like',
+      tag: 'Sem se vrátit',
+      updatedAt: 't',
+    });
+  });
+
+  it('keeps a non-preset legacy note as a free-text note', () => {
+    const migrated = migratePubRatings(
+      { ratings: { [PUB]: { note: 'vlastní text', updatedAt: 't' } } },
+      0,
+    );
+    expect(migrated.ratings[PUB]).toEqual({ note: 'vlastní text', updatedAt: 't' });
+  });
+
+  it('drops legacy entries that carry no signal', () => {
+    const migrated = migratePubRatings(
+      { ratings: { [PUB]: { updatedAt: 't' }, [OTHER]: { verdict: 'dislike', updatedAt: 't' } } },
+      0,
+    );
+    expect(migrated.ratings[PUB]).toBeUndefined();
+    expect(migrated.ratings[OTHER]?.verdict).toBe('dislike');
+  });
+
+  it('passes already-current state through untouched', () => {
+    const current = { ratings: { [PUB]: { verdict: 'like', tag: 'Nic moc', updatedAt: 't' } } };
+    expect(migratePubRatings(current, 1)).toBe(current);
+  });
+
+  it('tolerates missing or malformed input', () => {
+    expect(migratePubRatings(undefined, 0).ratings).toEqual({});
+    expect(migratePubRatings({ ratings: { [PUB]: null } }, 0).ratings).toEqual({});
   });
 });
 

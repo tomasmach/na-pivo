@@ -314,8 +314,12 @@ export const cs = {
     ratingHint: 'Jen pro tebe. Nikam se to neposílá.',
     verdictLike: 'Dobrý',
     verdictDislike: 'Slabý',
-    // Optional preset notes — the user's own memory tags.
+    // Quick preset tags — the user's own one-tap memory labels.
+    tagLabel: 'Rychlá známka',
     notePresets: ['Sem se vrátit', 'Nic moc', 'Dobrý tankový'] as const,
+    // Free-text note in the user's own words.
+    noteLabel: 'Vlastní poznámka',
+    notePlaceholder: 'Co sis chtěl zapamatovat? Třeba „skvělý výčep, ale draho".',
   },
 
   whatsNew: {
@@ -404,7 +408,8 @@ export const cs = {
       `Večer v hospodě ${pub}, ${summary}. Ťukni pro detail.`,
     ratingLike: (pub: string) => `Hodnotit ${pub} jako dobrou`,
     ratingDislike: (pub: string) => `Hodnotit ${pub} jako slabou`,
-    ratingNote: (note: string) => `Poznámka: ${note}`,
+    ratingNote: (note: string) => `Štítek: ${note}`,
+    ratingNoteInput: (pub: string) => `Vlastní poznámka k hospodě ${pub}`,
   },
 } as const;
 
