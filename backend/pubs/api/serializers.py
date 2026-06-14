@@ -672,6 +672,36 @@ class PubsNearQuerySerializer(serializers.Serializer):
         return attrs
 
 
+class PubLocationLookupQuerySerializer(serializers.Serializer):
+    """Query params for Mapy-backed pub name/address lookup endpoints."""
+
+    query = serializers.CharField(max_length=150, trim_whitespace=True)
+    lat = serializers.FloatField(required=False)
+    lng = serializers.FloatField(required=False)
+
+    def validate_query(self, value: str) -> str:
+        if len(value) < 2:
+            raise serializers.ValidationError("query must be at least 2 characters.")
+        return value
+
+    def validate_lat(self, value: float) -> float:
+        if not (-90.0 <= value <= 90.0):
+            raise serializers.ValidationError("Latitude must be between -90 and 90.")
+        return value
+
+    def validate_lng(self, value: float) -> float:
+        if not (-180.0 <= value <= 180.0):
+            raise serializers.ValidationError("Longitude must be between -180 and 180.")
+        return value
+
+    def validate(self, attrs: dict) -> dict:
+        has_lat = "lat" in attrs
+        has_lng = "lng" in attrs
+        if has_lat != has_lng:
+            raise serializers.ValidationError("lat and lng must be provided together.")
+        return attrs
+
+
 # ---------------------------------------------------------------------------
 # Response serializers
 # ---------------------------------------------------------------------------

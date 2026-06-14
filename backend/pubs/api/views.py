@@ -7,6 +7,8 @@ POST   /v1/pub-hours   → PubHoursView
 POST   /v1/pubs        → UserAddedPubView
 POST   /v1/pub-reports → PubReportView
 GET    /v1/pub-reports/blocked → BlockedPubReportsView
+GET    /v1/pubs/suggest → PubLocationSuggestView
+GET    /v1/pubs/geocode → PubLocationGeocodeView
 POST   /v1/drinks      → DrinksView
 DELETE /v1/drinks/<client_id> → DrinksView
 GET    /v1/release-notes → ReleaseNotesView
@@ -19,6 +21,7 @@ import logging
 import math
 from datetime import timedelta
 
+import requests
 from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.db.models import F
@@ -75,6 +78,7 @@ from .serializers import (
     PubCommunityResponseSerializer,
     PubHoursRequestSerializer,
     PubHoursResponseSerializer,
+    PubLocationLookupQuerySerializer,
     PubRatingRequestSerializer,
     PubReportBlockedQuerySerializer,
     PubReportRequestSerializer,
@@ -1354,6 +1358,86 @@ class PubsNearView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class _PubLocationLookupBaseView(APIView):
+    """Shared Mapy.cz lookup proxy for add-pub autocomplete and fallback geocode."""
+
+    authentication_classes: list = []
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "pubs_near"
+
+    lookup_kind = "location"
+
+    def _lookup(self, source: MapySuggestSource, query: str, lat: float | None, lng: float | None):
+        raise NotImplementedError
+
+    def get(self, request: Request) -> Response:
+        serializer = PubLocationLookupQuerySerializer(data=request.query_params)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        api_key: str = getattr(settings, "MAPY_API_KEY", "") or ""
+        if not api_key:
+            return Response(
+                {"detail": "Mapy.cz proxy is not configured."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        daily_cap = int(getattr(settings, "MAPY_DAILY_CAP", 5000))
+        try:
+            with MapySuggestSource(api_key=api_key, daily_cap=daily_cap) as source:
+                result = self._lookup(
+                    source,
+                    data["query"],
+                    data.get("lat"),
+                    data.get("lng"),
+                )
+        except MapyDailyCapExceededError as exc:
+            logger.warning("pubs-%s: Mapy daily cap hit: %s", self.lookup_kind, exc)
+            return Response(
+                {"detail": "Mapy.cz daily cap exceeded."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except (requests.RequestException, ValueError) as exc:
+            logger.warning("pubs-%s: Mapy lookup failed: %s", self.lookup_kind, exc)
+            return Response(
+                {"detail": "Mapy.cz is temporarily unavailable."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "pubs-%s: unexpected lookup error: %s",
+                self.lookup_kind,
+                exc,
+                exc_info=True,
+            )
+            return Response(
+                {"detail": "Internal server error."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response({"items": result.items}, status=status.HTTP_200_OK)
+
+
+class PubLocationSuggestView(_PubLocationLookupBaseView):
+    """GET /v1/pubs/suggest?query=...&lat=...&lng=..."""
+
+    lookup_kind = "suggest"
+
+    def _lookup(self, source: MapySuggestSource, query: str, lat: float | None, lng: float | None):
+        return source.suggest_locations(query, lat=lat, lng=lng)
+
+
+class PubLocationGeocodeView(_PubLocationLookupBaseView):
+    """GET /v1/pubs/geocode?query=...&lat=...&lng=..."""
+
+    lookup_kind = "geocode"
+
+    def _lookup(self, source: MapySuggestSource, query: str, lat: float | None, lng: float | None):
+        return source.geocode_location(query, lat=lat, lng=lng)
 
 
 class ReleaseNotesView(APIView):

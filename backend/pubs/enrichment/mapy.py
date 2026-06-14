@@ -52,6 +52,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _SUGGEST_URL = "https://api.mapy.cz/v1/suggest"
+_GEOCODE_URL = "https://api.mapy.cz/v1/geocode"
 # The Mapy.cz API key is restricted in the developer portal to an allow-list of
 # User-Agents — it returns 403 for anything other than this exact value (even a
 # browser UA is rejected). The mobile client (src/data/mapyClient.ts) sends the
@@ -195,6 +196,16 @@ def _trim_item(item: dict) -> dict | None:
             if isinstance(entry, dict)
         ]
 
+    return trimmed
+
+
+def _trim_location_item(item: dict) -> dict | None:
+    trimmed = _trim_item(item)
+    if trimmed is None:
+        return None
+    location = item.get("location")
+    if isinstance(location, str) and location:
+        trimmed["location"] = location
     return trimmed
 
 
@@ -359,6 +370,20 @@ class MapySuggestSource:
         data = resp.json()
         return data.get("items") or []
 
+    def _items_query(self, url: str, params: list[tuple[str, str]]) -> list[dict]:
+        self._check_cap()
+        resp = self._session.get(url, params=params, timeout=self._timeout)
+        if resp.status_code == 429 or resp.status_code >= 500:
+            logger.warning(
+                "mapy: lookup returned retryable HTTP %d — retrying once",
+                resp.status_code,
+            )
+            self._check_cap()
+            resp = self._session.get(url, params=params, timeout=self._timeout)
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("items") or []
+
     # ------------------------------------------------------------------
     # Public API (mirror of mapyClient.ts searchPubsNear)
     # ------------------------------------------------------------------
@@ -420,6 +445,65 @@ class MapySuggestSource:
         # hide "Lokál", "Pivovar", etc.
         merged.sort(key=lambda item: _pub_signal_priority(item), reverse=True)
         return MapySuggestResult(items=merged)
+
+    def suggest_locations(
+        self,
+        query: str,
+        *,
+        lat: float | None = None,
+        lng: float | None = None,
+        limit: int = 8,
+    ) -> MapySuggestResult:
+        """Return trimmed POI suggestions for a user-typed pub name."""
+        params = [
+            ("query", query),
+            ("lang", "cs"),
+            ("limit", str(max(1, min(limit, MAX_RESULTS_PER_QUERY)))),
+            ("type", "poi"),
+            ("locality", "cz"),
+            ("apikey", self._api_key),
+        ]
+        if lat is not None and lng is not None:
+            params.extend(
+                [
+                    ("preferNear", f"{lng},{lat}"),
+                    ("preferNearPrecision", "2500"),
+                ]
+            )
+
+        raw_items = self._items_query(_SUGGEST_URL, params)
+        items = [item for raw in raw_items if (item := _trim_location_item(raw)) is not None]
+        return MapySuggestResult(items=items)
+
+    def geocode_location(
+        self,
+        query: str,
+        *,
+        lat: float | None = None,
+        lng: float | None = None,
+        limit: int = 3,
+    ) -> MapySuggestResult:
+        """Return trimmed geocode matches for a full name/address query."""
+        params = [
+            ("query", query),
+            ("lang", "cs"),
+            ("limit", str(max(1, min(limit, MAX_RESULTS_PER_QUERY)))),
+            ("type", "poi"),
+            ("type", "regional.address"),
+            ("locality", "cz"),
+            ("apikey", self._api_key),
+        ]
+        if lat is not None and lng is not None:
+            params.extend(
+                [
+                    ("preferNear", f"{lng},{lat}"),
+                    ("preferNearPrecision", "2500"),
+                ]
+            )
+
+        raw_items = self._items_query(_GEOCODE_URL, params)
+        items = [item for raw in raw_items if (item := _trim_location_item(raw)) is not None]
+        return MapySuggestResult(items=items)
 
     # ------------------------------------------------------------------
     # Context manager
