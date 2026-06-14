@@ -31,6 +31,7 @@ import { buildAddedPubEntry } from '@/data/addedPubsClient';
 import { enqueueAddedPub } from '@/data/addedPubsQueue';
 import {
   geocodePubLocation,
+  isSpecificGeocodeResult,
   suggestPubLocations,
   type PubLocationSuggestion,
 } from '@/data/mapyClient';
@@ -93,14 +94,23 @@ export default function AddPubScreen() {
   const [suggestions, setSuggestions] = useState<PubLocationSuggestion[]>([]);
   const [suggesting, setSuggesting] = useState(false);
 
-  const hasAddress = address.trim().length > 0 || city.trim().length > 0;
+  // A concrete street address is what lets us geocode to an exact spot. City
+  // alone only resolves to the municipality centroid, so it must not enable a
+  // save on its own (see handleSubmit).
+  const hasStreetAddress = address.trim().length > 0;
   const canSubmit =
-    name.trim().length > 0 && (selectedLocation !== null || hasAddress || initialCoords !== null) && !submitted;
+    name.trim().length > 0 &&
+    (selectedLocation !== null || initialCoords !== null || hasStreetAddress) &&
+    !submitted;
 
   useEffect(() => {
     const query = name.trim();
+    // No search will run for this state — make sure a previously-shown spinner
+    // does not stay visible. Done in an async tick to avoid a synchronous
+    // setState inside the effect body.
     if (query.length < 2 || selectedLocation || submitted) {
-      return;
+      const reset = setTimeout(() => setSuggesting(false), 0);
+      return () => clearTimeout(reset);
     }
 
     const controller = new AbortController();
@@ -160,14 +170,31 @@ export default function AddPubScreen() {
     const trimmedName = name.trim().slice(0, 200);
     const trimmedCity = city.trim();
     const trimmedAddress = address.trim();
-    const geocodedLocation = !selectedLocation && hasAddress
-      ? await geocodePubLocation({
-          name: trimmedName,
-          city: trimmedCity || undefined,
-          address: trimmedAddress || undefined,
-          near: initialCoords,
-        })
-      : null;
+
+    // Only geocode when there is a concrete street address. Geocoding from a
+    // bare city name returns the municipality centroid, which must never be
+    // saved as the pub's location. A precise current location (initialCoords)
+    // is preferred over geocoding when there is no street address.
+    let geocodedLocation = null;
+    if (!selectedLocation && trimmedAddress) {
+      const result = await geocodePubLocation({
+        name: trimmedName,
+        city: trimmedCity || undefined,
+        address: trimmedAddress,
+        near: initialCoords,
+      });
+      // Reject area centroids (regional.municipality/region/…): if we cannot
+      // pin an exact place and have no fallback coords, ask for a precise pick.
+      if (result && isSpecificGeocodeResult(result)) {
+        geocodedLocation = result;
+      } else if (!initialCoords) {
+        setSubmitted(false);
+        setLocationError(cs.addPub.locationImprecise);
+        showToast(cs.addPub.locationImprecise);
+        return;
+      }
+    }
+
     const location = selectedLocation ?? geocodedLocation ?? initialCoords;
 
     if (!location) {
@@ -210,7 +237,6 @@ export default function AddPubScreen() {
     bumpCatalogRevision,
     canSubmit,
     city,
-    hasAddress,
     initialCoords,
     name,
     router,

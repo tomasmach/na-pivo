@@ -293,6 +293,7 @@ describe('geocodePubLocation', () => {
       lng: 14.42212,
       city: 'Praha',
       address: 'Týnská ulička 610/7',
+      type: 'regional.address',
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const calledUrl = new URL(String((fetchMock.mock.calls[0] as unknown[])[0]));
@@ -340,7 +341,7 @@ describe('geocodePubLocation', () => {
       near: { lat: 50.08, lng: 14.42 },
     });
 
-    expect(result).toEqual({ lat: 50.081, lng: 14.421, city: 'Praha', address: undefined });
+    expect(result).toEqual({ lat: 50.081, lng: 14.421, city: 'Praha', address: undefined, type: undefined });
     const calledUrl = new URL(String((fetchMock.mock.calls[0] as unknown[])[0]));
     expect(calledUrl.origin + calledUrl.pathname).toBe('https://api.example.com/v1/pubs/geocode');
     expect(calledUrl.searchParams.get('query')).toBe('Hospoda U Testu, Praha, Česko');

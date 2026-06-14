@@ -1,0 +1,158 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { enqueueAddedPub, flushAddedPubsQueue } from '../addedPubsQueue';
+import { submitAddedPub, type AddedPubEntry } from '../addedPubsClient';
+
+jest.mock('@react-native-async-storage/async-storage', () =>
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock')
+);
+
+jest.mock('../addedPubsClient', () => ({
+  submitAddedPub: jest.fn(async () => null),
+  buildAddedPubEntry: jest.requireActual('../addedPubsClient').buildAddedPubEntry,
+}));
+
+jest.mock('../pubs', () => ({
+  clearPubsSnapshot: jest.fn(async () => undefined),
+}));
+
+const STORAGE_KEY = 'na-pivo-added-pubs-queue';
+
+// Two distinct pubs whose coordinates fall in the SAME geohash-8 cell
+// (~38 m × 19 m). The old dedup keyed on the cell, so the second submit
+// silently overwrote the first; dedup must key on client_id instead.
+const PUB_A: AddedPubEntry = {
+  client_id: 'client-a',
+  name: 'Hospoda U Testu',
+  lat: 50.0812,
+  lng: 14.4182,
+  city: 'Praha',
+  address: 'Testovací 12',
+};
+
+const PUB_B: AddedPubEntry = {
+  client_id: 'client-b',
+  name: 'Pivnice Za Rohem',
+  lat: 50.08121,
+  lng: 14.41821,
+  city: 'Praha',
+  address: 'Testovací 14',
+};
+
+async function readQueue(): Promise<AddedPubEntry[]> {
+  const raw = await AsyncStorage.getItem(STORAGE_KEY);
+  return raw ? JSON.parse(raw) : [];
+}
+
+beforeEach(async () => {
+  jest.clearAllMocks();
+  await AsyncStorage.clear();
+});
+
+describe('enqueueAddedPub', () => {
+  it('sends the pub and leaves the queue empty on success', async () => {
+    (submitAddedPub as jest.Mock).mockResolvedValue({ cacheKey: 'k', name: PUB_A.name, lat: PUB_A.lat, lng: PUB_A.lng });
+
+    await expect(enqueueAddedPub(PUB_A)).resolves.toBe(true);
+
+    expect(submitAddedPub).toHaveBeenCalledWith(PUB_A);
+    await expect(readQueue()).resolves.toEqual([]);
+  });
+
+  it('keeps a failed submit queued instead of dropping it', async () => {
+    (submitAddedPub as jest.Mock).mockResolvedValue(null);
+
+    await expect(enqueueAddedPub(PUB_A)).resolves.toBe(false);
+
+    await expect(readQueue()).resolves.toEqual([PUB_A]);
+  });
+
+  it('keeps two different pubs in the same geohash cell (regression: dedup by client_id, not cell)', async () => {
+    (submitAddedPub as jest.Mock).mockResolvedValue(null);
+
+    await enqueueAddedPub(PUB_A);
+    await enqueueAddedPub(PUB_B);
+
+    const queue = await readQueue();
+    expect(queue).toHaveLength(2);
+    expect(queue.map((e) => e.client_id)).toEqual(['client-a', 'client-b']);
+  });
+
+  it('dedupes a retry of the same client_id (idempotent re-enqueue)', async () => {
+    (submitAddedPub as jest.Mock).mockResolvedValue(null);
+
+    await enqueueAddedPub(PUB_A);
+    await enqueueAddedPub({ ...PUB_A, name: 'Hospoda U Testu (edit)' });
+
+    const queue = await readQueue();
+    expect(queue).toHaveLength(1);
+    expect(queue[0].client_id).toBe('client-a');
+    expect(queue[0].name).toBe('Hospoda U Testu (edit)');
+  });
+
+  it('trims the queue to the maximum length, keeping the newest entries', async () => {
+    (submitAddedPub as jest.Mock).mockResolvedValue(null);
+
+    for (let i = 0; i < 35; i += 1) {
+      await enqueueAddedPub({ ...PUB_A, client_id: `client-${i}`, lat: 50.0812 + i * 0.01 });
+    }
+
+    const queue = await readQueue();
+    expect(queue).toHaveLength(30);
+    expect(queue[0].client_id).toBe('client-5');
+    expect(queue[queue.length - 1].client_id).toBe('client-34');
+  });
+});
+
+describe('flushAddedPubsQueue', () => {
+  it('re-sends queued pubs once the backend recovers and clears the queue', async () => {
+    (submitAddedPub as jest.Mock).mockResolvedValue(null);
+    await enqueueAddedPub(PUB_A);
+    await enqueueAddedPub(PUB_B);
+    expect(await readQueue()).toHaveLength(2);
+
+    (submitAddedPub as jest.Mock).mockResolvedValue({ cacheKey: 'k', name: 'x', lat: 1, lng: 1 });
+    await flushAddedPubsQueue();
+
+    expect(submitAddedPub).toHaveBeenCalledWith(PUB_A);
+    expect(submitAddedPub).toHaveBeenCalledWith(PUB_B);
+    await expect(readQueue()).resolves.toEqual([]);
+  });
+
+  it('keeps only the pubs that failed again', async () => {
+    (submitAddedPub as jest.Mock).mockResolvedValue(null);
+    await enqueueAddedPub(PUB_A);
+    await enqueueAddedPub(PUB_B);
+
+    (submitAddedPub as jest.Mock).mockImplementation(
+      async (entry: AddedPubEntry) =>
+        entry.client_id === PUB_A.client_id ? { cacheKey: 'k', name: 'x', lat: 1, lng: 1 } : null,
+    );
+    await flushAddedPubsQueue();
+
+    await expect(readQueue()).resolves.toEqual([PUB_B]);
+  });
+
+  it('does nothing on an empty queue', async () => {
+    await flushAddedPubsQueue();
+    expect(submitAddedPub).not.toHaveBeenCalled();
+  });
+
+  it('drops corrupted storage entries instead of submitting them', async () => {
+    await AsyncStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify([{ client_id: 'broken' }, PUB_A]),
+    );
+    (submitAddedPub as jest.Mock).mockResolvedValue({ cacheKey: 'k', name: 'x', lat: 1, lng: 1 });
+
+    await flushAddedPubsQueue();
+
+    expect(submitAddedPub).toHaveBeenCalledTimes(1);
+    expect(submitAddedPub).toHaveBeenCalledWith(PUB_A);
+  });
+
+  it('survives non-JSON storage contents', async () => {
+    await AsyncStorage.setItem(STORAGE_KEY, '{not json');
+    await expect(flushAddedPubsQueue()).resolves.toBeUndefined();
+    expect(submitAddedPub).not.toHaveBeenCalled();
+  });
+});

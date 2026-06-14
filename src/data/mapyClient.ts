@@ -139,6 +139,23 @@ export interface PubLocationGeocodeResult {
   lng: number;
   city?: string;
   address?: string;
+  /** Mapy.cz result type, e.g. 'poi', 'regional.address', 'regional.municipality'. */
+  type?: string;
+}
+
+// Mapy.cz result types that pin a concrete place (a POI or a real street
+// address). Anything coarser — 'regional.municipality', 'regional.region',
+// 'regional.country' — only resolves to the centroid of an area and must never
+// be saved as a pub's location.
+const SPECIFIC_GEOCODE_TYPES = new Set<string>([
+  'poi',
+  'regional.address',
+  'regional.street',
+]);
+
+/** True when a geocode result pins a concrete place rather than an area centroid. */
+export function isSpecificGeocodeResult(result: PubLocationGeocodeResult | null): boolean {
+  return !!result && !!result.type && SPECIFIC_GEOCODE_TYPES.has(result.type);
 }
 
 export interface PubLocationSuggestion {
@@ -355,6 +372,7 @@ export async function geocodePubLocation(
       lng: item.position.lon,
       city: pickCity(item),
       address: pickAddress(item),
+      type: item.type,
     };
   }
 
@@ -396,6 +414,7 @@ export async function geocodePubLocation(
       lng: item.position.lon,
       city: pickCity(item),
       address: pickAddress(item),
+      type: item.type,
     };
   } catch (err) {
     const isAbortError = err instanceof Error && err.name === 'AbortError';

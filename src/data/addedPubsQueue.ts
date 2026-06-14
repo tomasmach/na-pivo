@@ -2,23 +2,19 @@
  * Persistent retry queue for pubs missing from the nearby search.
  *
  * Adding a pub is a public community write, so the payload is stored before the
- * first network attempt and retried on launch/foreground. The backend is
- * idempotent on client_id; newer queued edits for the same geohash-8 cell
- * replace older ones.
+ * first network attempt and retried on launch/foreground. The backend upserts on
+ * (account, client_id), so the queue dedupes on client_id: a retry of the same
+ * submit replaces its earlier copy, while two distinct submits (even at the same
+ * spot) both stay queued.
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { submitAddedPub, type AddedPubEntry } from './addedPubsClient';
 import { clearPubsSnapshot } from './pubs';
-import { geohash8 } from './geohash';
 
 const STORAGE_KEY = 'na-pivo-added-pubs-queue';
 const MAX_QUEUE_LENGTH = 30;
-
-export function entryCell(entry: AddedPubEntry): string {
-  return geohash8(entry.lat, entry.lng);
-}
 
 function isAddedPubEntry(entry: unknown): entry is AddedPubEntry {
   const e = entry as AddedPubEntry;
@@ -84,8 +80,7 @@ async function flushLocked(): Promise<void> {
 export function enqueueAddedPub(entry: AddedPubEntry): Promise<boolean> {
   return enqueueTask(async () => {
     const queue = await loadQueue();
-    const cell = entryCell(entry);
-    const deduped = queue.filter((queued) => entryCell(queued) !== cell);
+    const deduped = queue.filter((queued) => queued.client_id !== entry.client_id);
     deduped.push(entry);
     await saveQueue(deduped.slice(-MAX_QUEUE_LENGTH));
 
