@@ -169,12 +169,15 @@ function DistanceSlider({ positionIndex, onSnap }: SliderProps) {
 
   const fillStyle = useAnimatedStyle(() => {
     const frac = SLIDER_STEPS > 0 ? snapIndex.value / SLIDER_STEPS : 0;
-    return { width: `${frac * 100}%` };
+    // Fill reaches the thumb's centre so the bar lines up with the ball.
+    const center = frac * (trackWidth - THUMB_SIZE) + THUMB_SIZE / 2;
+    return { width: center };
   });
 
   const thumbStyle = useAnimatedStyle(() => {
     const frac = SLIDER_STEPS > 0 ? snapIndex.value / SLIDER_STEPS : 0;
-    const x = frac * trackWidth - 14; // 14 = half of 28px thumb
+    // Travel within the track so the thumb stays fully inside at both ends.
+    const x = frac * (trackWidth - THUMB_SIZE);
     return { transform: [{ translateX: x }] };
   });
 
