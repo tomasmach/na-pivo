@@ -159,6 +159,11 @@ FEEDBACK_THROTTLE_RATE: str = os.environ.get("FEEDBACK_THROTTLE_RATE", "20/min")
 # normal hand-entered submissions untouched. Format: DRF throttle rate string.
 COMMUNITY_THROTTLE_RATE: str = os.environ.get("COMMUNITY_THROTTLE_RATE", "30/min")
 
+# Per-IP rate limit for the authenticated missing-pub endpoint (POST /v1/pubs).
+# Adding a pub makes it visible to everyone, so keep it tighter than passive
+# reads while still allowing normal manual corrections.
+ADDED_PUBS_THROTTLE_RATE: str = os.environ.get("ADDED_PUBS_THROTTLE_RATE", "20/min")
+
 # Per-IP rate limit for the authenticated drink-logging endpoint
 # (POST /v1/drinks). The in-app beer counter can log several beers in one
 # session (one POST each), so this is more generous than the community rate;
@@ -210,6 +215,7 @@ REST_FRAMEWORK = {
         "account": ACCOUNT_REGISTER_THROTTLE_RATE,
         "feedback": FEEDBACK_THROTTLE_RATE,
         "community": COMMUNITY_THROTTLE_RATE,
+        "added_pubs": ADDED_PUBS_THROTTLE_RATE,
         "drinks": DRINKS_THROTTLE_RATE,
         "pub_ratings": PUB_RATINGS_THROTTLE_RATE,
         "pub_visits": PUB_VISITS_THROTTLE_RATE,

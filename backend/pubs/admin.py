@@ -16,6 +16,7 @@ from .models import (
     PubVisit,
     ReleaseNote,
     ReleaseNoteItem,
+    UserAddedPub,
 )
 
 
@@ -34,6 +35,15 @@ class PubSearchCacheAdmin(admin.ModelAdmin):
     list_filter = ("radius_bucket",)
     search_fields = ("cache_key",)
     readonly_fields = ("created_at", "updated_at")
+    ordering = ("-updated_at",)
+
+
+@admin.register(UserAddedPub)
+class UserAddedPubAdmin(admin.ModelAdmin):
+    list_display = ("name", "active", "cache_key", "city", "address", "account", "updated_at")
+    list_filter = ("active",)
+    search_fields = ("name", "cache_key", "city", "address")
+    readonly_fields = ("cache_key", "client_id", "created_at", "updated_at")
     ordering = ("-updated_at",)
 
 

@@ -4,6 +4,7 @@ pubs.api.views — DRF views for the pub-hours API.
 Endpoints
 ---------
 POST   /v1/pub-hours   → PubHoursView
+POST   /v1/pubs        → UserAddedPubView
 POST   /v1/pub-reports → PubReportView
 GET    /v1/pub-reports/blocked → BlockedPubReportsView
 POST   /v1/drinks      → DrinksView
@@ -53,6 +54,7 @@ from pubs.models import (
     PubSearchCache,
     PubVisit,
     ReleaseNote,
+    UserAddedPub,
     generate_account_token,
     hash_account_token,
 )
@@ -80,6 +82,8 @@ from .serializers import (
     PubsNearQuerySerializer,
     PubVisitRequestSerializer,
     ReleaseNoteSerializer,
+    UserAddedPubRequestSerializer,
+    UserAddedPubSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -204,6 +208,82 @@ class PubReportView(APIView):
 
         return Response(
             PubReportSerializer(report).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+
+class UserAddedPubView(APIView):
+    """
+    POST /v1/pubs
+
+    Add a pub that the normal Mapy.cz nearby search does not show. The submitted
+    pub is immediately visible to all users through GET /v1/pubs/near, where it
+    is mixed into the Mapy result stream by distance. Auth + throttling mirror
+    the existing community contribution endpoint.
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "added_pubs"
+
+    def post(self, request: Request) -> Response:
+        serializer = UserAddedPubRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        cache_key = geohash8(data["lat"], data["lng"])
+
+        try:
+            with transaction.atomic():
+                existing = (
+                    UserAddedPub.objects.select_for_update()
+                    .filter(account=request.user, client_id=data["client_id"])
+                    .first()
+                )
+                if existing is not None:
+                    return Response(
+                        UserAddedPubSerializer(existing).data,
+                        status=status.HTTP_200_OK,
+                    )
+
+                pub, created = UserAddedPub.objects.update_or_create(
+                    cache_key=cache_key,
+                    defaults={
+                        "account": request.user,
+                        "client_id": data["client_id"],
+                        "name": data["name"],
+                        "lat": data["lat"],
+                        "lng": data["lng"],
+                        "city": data.get("city") or "",
+                        "address": data.get("address") or "",
+                        "active": True,
+                    },
+                )
+
+                # A user adding the same physical place is a stronger signal than
+                # an older block report for that geohash cell; otherwise the
+                # mobile client would fetch this new row and immediately filter it
+                # out by cache_key.
+                PubReport.objects.filter(cache_key=cache_key, active=True).update(
+                    active=False,
+                    updated_at=dj_timezone.now(),
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "user-added-pub: unexpected error saving pub for cache key %s: %s",
+                cache_key,
+                exc,
+                exc_info=True,
+            )
+            return Response(
+                {"detail": "Internal server error."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response(
+            UserAddedPubSerializer(pub).data,
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
 
@@ -1041,6 +1121,58 @@ class BlockedPubReportsView(APIView):
         )
 
 
+def _user_added_pub_item(pub: UserAddedPub) -> dict:
+    """Return a Mapy-suggest-shaped item for the mobile client's existing parser."""
+
+    regional_structure = []
+    if pub.address:
+        regional_structure.append({"name": pub.address, "type": "regional.street"})
+    if pub.city:
+        regional_structure.append({"name": pub.city, "type": "regional.municipality"})
+
+    item = {
+        "name": pub.name,
+        "label": "Hospoda",
+        "position": {"lat": pub.lat, "lon": pub.lng},
+        "regionalStructure": regional_structure,
+        "source": "community",
+    }
+    if pub.address:
+        item["location"] = pub.address
+    elif pub.city:
+        item["location"] = pub.city
+    return item
+
+
+def _nearby_user_added_pub_items(lat: float, lng: float, radius_km: float) -> list[dict]:
+    """Active user-added pubs within the requested circle, as suggest items."""
+
+    lat_delta = radius_km / 111.0
+    lng_delta = radius_km / (111.0 * max(math.cos(math.radians(lat)), 0.01))
+
+    rows = UserAddedPub.objects.filter(
+        active=True,
+        lat__gte=lat - lat_delta,
+        lat__lte=lat + lat_delta,
+        lng__gte=lng - lng_delta,
+        lng__lte=lng + lng_delta,
+    ).order_by("-updated_at")
+
+    items = []
+    for pub in rows:
+        if _haversine_km(lat, lng, pub.lat, pub.lng) <= radius_km:
+            items.append(_user_added_pub_item(pub))
+    return items
+
+
+def _with_user_added_items(user_added_items: list[dict], mapy_items: list[dict]) -> list[dict]:
+    """Prepend user-added pubs while leaving the upstream cache untouched."""
+
+    if not user_added_items:
+        return mapy_items
+    return [*user_added_items, *mapy_items]
+
+
 class PubsNearView(APIView):
     """
     GET /v1/pubs/near?lat=<float>&lng=<float>&radius_km=<float, default 25>
@@ -1075,6 +1207,7 @@ class PubsNearView(APIView):
 
         data = serializer.validated_data
         radius_km: float = data["radius_km"]
+        user_added_items = _nearby_user_added_pub_items(data["lat"], data["lng"], radius_km)
 
         # Quantize to a small shared cache cell but run the search from the user's
         # actual position. The old geohash-5 centre search could be >2 km away at
@@ -1093,7 +1226,7 @@ class PubsNearView(APIView):
         if row is not None and row.fetched_at >= cutoff:
             return Response(
                 {
-                    "items": row.items,
+                    "items": _with_user_added_items(user_added_items, row.items),
                     "cached": True,
                     "fetched_at": row.fetched_at.isoformat(),
                 },
@@ -1111,9 +1244,18 @@ class PubsNearView(APIView):
                 )
                 return Response(
                     {
-                        "items": row.items,
+                        "items": _with_user_added_items(user_added_items, row.items),
                         "cached": True,
                         "fetched_at": row.fetched_at.isoformat(),
+                    },
+                    status=status.HTTP_200_OK,
+                )
+            if user_added_items:
+                return Response(
+                    {
+                        "items": user_added_items,
+                        "cached": True,
+                        "fetched_at": dj_timezone.now().isoformat(),
                     },
                     status=status.HTTP_200_OK,
                 )
@@ -1138,9 +1280,18 @@ class PubsNearView(APIView):
                 )
                 return Response(
                     {
-                        "items": row.items,
+                        "items": _with_user_added_items(user_added_items, row.items),
                         "cached": True,
                         "fetched_at": row.fetched_at.isoformat(),
+                    },
+                    status=status.HTTP_200_OK,
+                )
+            if user_added_items:
+                return Response(
+                    {
+                        "items": user_added_items,
+                        "cached": True,
+                        "fetched_at": dj_timezone.now().isoformat(),
                     },
                     status=status.HTTP_200_OK,
                 )
@@ -1160,9 +1311,18 @@ class PubsNearView(APIView):
             if row is not None:
                 return Response(
                     {
-                        "items": row.items,
+                        "items": _with_user_added_items(user_added_items, row.items),
                         "cached": True,
                         "fetched_at": row.fetched_at.isoformat(),
+                    },
+                    status=status.HTTP_200_OK,
+                )
+            if user_added_items:
+                return Response(
+                    {
+                        "items": user_added_items,
+                        "cached": True,
+                        "fetched_at": dj_timezone.now().isoformat(),
                     },
                     status=status.HTTP_200_OK,
                 )
@@ -1188,7 +1348,7 @@ class PubsNearView(APIView):
 
         return Response(
             {
-                "items": result.items,
+                "items": _with_user_added_items(user_added_items, result.items),
                 "cached": False,
                 "fetched_at": now.isoformat(),
             },

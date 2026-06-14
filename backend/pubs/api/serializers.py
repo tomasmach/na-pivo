@@ -41,7 +41,15 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import EmailValidator
 from rest_framework import serializers
 
-from pubs.models import Account, ClientEvent, FeedbackReport, PubRating, PubReport, ReleaseNote
+from pubs.models import (
+    Account,
+    ClientEvent,
+    FeedbackReport,
+    PubRating,
+    PubReport,
+    ReleaseNote,
+    UserAddedPub,
+)
 
 # ---------------------------------------------------------------------------
 # Request serializers
@@ -104,6 +112,32 @@ class PubReportRequestSerializer(PubInputSerializer):
         allow_blank=True,
         trim_whitespace=True,
     )
+
+
+class UserAddedPubRequestSerializer(PubInputSerializer):
+    """Request body for POST /v1/pubs.
+
+    Lets a user add a pub missing from the nearby search results. Coordinates
+    are still bounds-checked by PubInputSerializer; the fields below are the
+    retry idempotency key and optional human location hints.
+    """
+
+    client_id = serializers.UUIDField()
+    address = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        trim_whitespace=True,
+    )
+
+    def validate_name(self, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Pub name must not be empty.")
+        if len(value) > 200:
+            raise serializers.ValidationError("Pub name must be at most 200 characters.")
+        return value
 
 
 class FeedbackRequestSerializer(serializers.Serializer):
@@ -703,6 +737,27 @@ class PubReportSerializer(serializers.ModelSerializer):
             "reason",
             "active",
             "created_at",
+        ]
+        read_only_fields = fields
+
+
+class UserAddedPubSerializer(serializers.ModelSerializer):
+    """Response body for a community-added pub."""
+
+    class Meta:
+        model = UserAddedPub
+        fields = [
+            "id",
+            "cache_key",
+            "client_id",
+            "name",
+            "lat",
+            "lng",
+            "city",
+            "address",
+            "active",
+            "created_at",
+            "updated_at",
         ]
         read_only_fields = fields
 

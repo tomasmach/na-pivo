@@ -4,6 +4,7 @@ Data models for the na-pivo pub-hours enrichment service.
 PubHours  — the cached result of enriching a pub with opening hours from Firmy.cz.
 EnrichTask — a queued enrichment job for pubs that missed the sync_budget.
 PubReport — user reports for places that should no longer be shown as pubs.
+UserAddedPub — community-added pubs missing from Mapy.cz / suggest results.
 ReleaseNote — a "what's new" entry shown once after the app updates to a version.
 FeedbackReport — an in-app feedback / bug report submitted by a user.
 PubCommunityData — current community-contributed hours + beers for a pub.
@@ -353,6 +354,67 @@ class PubReport(models.Model):
 
     def __str__(self) -> str:
         return f"PubReport({self.name} [{self.cache_key}] — {self.reason})"
+
+
+class UserAddedPub(models.Model):
+    """
+    A community-added pub that the normal Mapy.cz nearby search did not return.
+
+    The row is keyed by the same geohash-8 physical-place key as PubHours and
+    PubCommunityData, so it participates in the rest of the app's per-pub data
+    model. Rows go live immediately and are mixed into GET /v1/pubs/near on
+    every request; they are intentionally NOT written into PubSearchCache, whose
+    contents remain a cache of the upstream Mapy.cz source.
+
+    ``client_id`` gives the mobile retry queue idempotency: replaying the same
+    submission for the same account returns the already-created row instead of
+    creating duplicate side effects.
+    """
+
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="added_pubs",
+        help_text="The account that submitted this pub.",
+    )
+    client_id = models.UUIDField(
+        db_index=True,
+        help_text="Client-generated UUID; idempotency key for offline retries.",
+    )
+    cache_key = models.CharField(
+        max_length=12,
+        unique=True,
+        db_index=True,
+        help_text="Geohash-8 of (lat, lng) — ~38 m precision.",
+    )
+    name = models.TextField(help_text="Pub name as submitted by the client.")
+    lat = models.FloatField()
+    lng = models.FloatField()
+    city = models.TextField(blank=True, default="")
+    address = models.TextField(blank=True, default="")
+    active = models.BooleanField(
+        default=True,
+        db_index=True,
+        help_text="Inactive rows are kept for audit but hidden from /v1/pubs/near.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "User Added Pub"
+        verbose_name_plural = "User Added Pubs"
+        ordering = ["-updated_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "client_id"],
+                name="unique_added_pub_per_account_client_id",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"UserAddedPub({self.name} [{self.cache_key}])"
 
 
 class ReleaseNote(models.Model):

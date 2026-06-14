@@ -22,7 +22,7 @@ from pubs.enrichment import (
     MapySuggestResult,
     geohash6,
 )
-from pubs.models import PubSearchCache
+from pubs.models import PubSearchCache, UserAddedPub
 
 # Prague centre-ish coordinates.
 _LAT = 50.0812
@@ -339,3 +339,111 @@ def test_no_api_key_with_stale_row_serves_stale(client, settings):
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json()["cached"] is True
     assert resp.json()["items"] == [_ITEM]
+
+
+# ---------------------------------------------------------------------------
+# Community-added pubs — mixed into every nearby response
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_user_added_pub_is_prepended_to_fresh_cache_hit(client):
+    UserAddedPub.objects.create(
+        client_id="9a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d",
+        cache_key="u2fk3abc",
+        name="Hospoda Od Komunity",
+        lat=_LAT + 0.0001,
+        lng=_LNG + 0.0001,
+        city="Praha",
+        address="Komunitní 1",
+    )
+    PubSearchCache.objects.create(
+        cache_key=_KEY,
+        radius_bucket=50,
+        items=[_ITEM],
+        fetched_at=dj_tz.now(),
+    )
+
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
+
+    assert resp.status_code == status.HTTP_200_OK
+    body = resp.json()
+    assert body["cached"] is True
+    assert [item["name"] for item in body["items"]] == ["Hospoda Od Komunity", _ITEM["name"]]
+    added = body["items"][0]
+    assert added["label"] == "Hospoda"
+    assert added["position"] == {"lat": _LAT + 0.0001, "lon": _LNG + 0.0001}
+    assert added["source"] == "community"
+    assert {"name": "Praha", "type": "regional.municipality"} in added["regionalStructure"]
+
+
+@pytest.mark.django_db
+def test_user_added_pub_served_without_mapy_key_or_cache(client, settings):
+    settings.MAPY_API_KEY = ""
+    UserAddedPub.objects.create(
+        client_id="9a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d",
+        cache_key="u2fk3abc",
+        name="Hospoda Bez Mapy",
+        lat=_LAT,
+        lng=_LNG,
+    )
+
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 1})
+
+    assert resp.status_code == status.HTTP_200_OK
+    body = resp.json()
+    assert body["cached"] is True
+    assert body["items"][0]["name"] == "Hospoda Bez Mapy"
+
+
+@pytest.mark.django_db
+def test_user_added_pub_filters_inactive_and_far_rows(client):
+    UserAddedPub.objects.create(
+        client_id="9a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d",
+        cache_key="u2fk3abc",
+        name="Blízko",
+        lat=_LAT,
+        lng=_LNG,
+    )
+    UserAddedPub.objects.create(
+        client_id="aaaaaaaa-0000-0000-0000-000000000001",
+        cache_key="u2fk3def",
+        name="Neaktivní",
+        lat=_LAT,
+        lng=_LNG,
+        active=False,
+    )
+    UserAddedPub.objects.create(
+        client_id="aaaaaaaa-0000-0000-0000-000000000002",
+        cache_key="u2fk3ghi",
+        name="Daleko",
+        lat=49.2,
+        lng=16.6,
+    )
+    factory, _ = _mock_source(MapySuggestResult(items=[]))
+
+    with patch("pubs.api.views.MapySuggestSource", factory):
+        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 1})
+
+    assert resp.status_code == status.HTTP_200_OK
+    names = [item["name"] for item in resp.json()["items"]]
+    assert names == ["Blízko"]
+
+
+@pytest.mark.django_db
+def test_user_added_pub_is_not_persisted_into_mapy_cache(client):
+    UserAddedPub.objects.create(
+        client_id="9a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d",
+        cache_key="u2fk3abc",
+        name="Jen komunitně",
+        lat=_LAT,
+        lng=_LNG,
+    )
+    factory, _ = _mock_source(MapySuggestResult(items=[_ITEM]))
+
+    with patch("pubs.api.views.MapySuggestSource", factory):
+        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert [item["name"] for item in resp.json()["items"]] == ["Jen komunitně", _ITEM["name"]]
+    assert PubSearchCache.objects.get(cache_key=_KEY, radius_bucket=50).items == [_ITEM]
