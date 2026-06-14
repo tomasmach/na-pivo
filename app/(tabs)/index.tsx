@@ -58,7 +58,7 @@ import {
 import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, CompassSize } from '@/theme/layout';
-import { amberGlow, amberGlowStrong } from '@/theme/shadows';
+import { amberGlowStrong } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
 
 // Android's heading samples arrive as discrete jumps (see the rotation
@@ -402,7 +402,7 @@ function RevealedPubPill({
   const beerLine = beers && beers.length > 0 ? formatBeerLine(beers, priceCurrency) : null;
 
   return (
-    <View style={[styles.pubPill, styles.pubPillRevealed, amberGlow(14)]}>
+    <View style={[styles.pubPill, styles.pubPillRevealed]}>
       <Pressable
         onPress={onOpenMaps}
         hitSlop={8}
