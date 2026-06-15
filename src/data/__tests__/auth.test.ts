@@ -163,6 +163,28 @@ describe('registerEmail', () => {
         providers: ['email'],
         is_anonymous: false,
         status: 'active',
+        settings: {
+          mode: 'surprise',
+          max_distance_km: 5,
+          price_currency: 'EUR',
+          haptic_enabled: false,
+          sound_enabled: true,
+          hide_closed_pubs: false,
+          hide_pub_names: true,
+        },
+        stats: {
+          total_beers: 12,
+          distinct_pubs: 4,
+          ratings_count: 3,
+          total_spent_czk: 720,
+          max_visits_to_one_pub: 5,
+        },
+        achievements: {
+          first_ten: true,
+          regular: true,
+          reviewer: false,
+        },
+        usage: { walked_distance_m: 1234 },
       }),
     );
 
@@ -186,6 +208,28 @@ describe('registerEmail', () => {
       providers: ['email'],
       isAnonymous: false,
       status: 'active',
+      settings: {
+        mode: 'surprise',
+        maxDistanceKm: 5,
+        priceCurrency: 'EUR',
+        hapticEnabled: false,
+        soundEnabled: true,
+        hideClosedPubs: false,
+        hidePubNames: true,
+      },
+      stats: {
+        totalBeers: 12,
+        distinctPubs: 4,
+        ratingsCount: 3,
+        totalSpentCzk: 720,
+        maxVisitsToOnePub: 5,
+      },
+      achievements: {
+        firstTen: true,
+        regular: true,
+        reviewer: false,
+      },
+      usage: { walkedDistanceM: 1234 },
     });
 
     // 'ensure' bearer claims the current anonymous account first.

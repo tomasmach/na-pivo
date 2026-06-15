@@ -387,6 +387,35 @@ describe('account preferences', () => {
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok-1');
   });
 
+  it('maps the backend settings block into account preferences', async () => {
+    await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-1');
+    await seedAccount({ deviceId: 'dev-1', accountId: 'acc-1', token: 'tok-1' });
+    setBackend('https://api.example.com');
+    global.fetch = mockFetchOk({
+      id: 'acc-1',
+      device_id: 'dev-1',
+      settings: {
+        mode: 'surprise',
+        max_distance_km: 5,
+        price_currency: 'EUR',
+        haptic_enabled: false,
+        sound_enabled: true,
+        hide_closed_pubs: false,
+        hide_pub_names: true,
+      },
+    }) as unknown as typeof fetch;
+
+    await expect(fetchAccountPreferences()).resolves.toEqual({
+      mode: 'surprise',
+      maxDistanceKm: 5,
+      priceCurrency: 'EUR',
+      hapticEnabled: false,
+      soundEnabled: true,
+      hideClosedPubs: false,
+      hidePubNames: true,
+    });
+  });
+
   it('PATCHes hidePubNames as hide_pub_names and returns the updated preferences', async () => {
     await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-1');
     await seedAccount({ deviceId: 'dev-1', accountId: 'acc-1', token: 'tok-1' });
@@ -404,6 +433,56 @@ describe('account preferences', () => {
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok-1');
     expect((init.headers as Record<string, string>)['Content-Type']).toBe('application/json');
     expect(JSON.parse(init.body as string)).toEqual({ hide_pub_names: false });
+  });
+
+  it('PATCHes expanded preferences using the backend field names', async () => {
+    await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-1');
+    await seedAccount({ deviceId: 'dev-1', accountId: 'acc-1', token: 'tok-1' });
+    setBackend('https://api.example.com');
+    const fetchSpy = mockFetchOk({
+      id: 'acc-1',
+      device_id: 'dev-1',
+      settings: {
+        mode: 'nearest',
+        max_distance_km: null,
+        price_currency: 'CZK',
+        haptic_enabled: true,
+        sound_enabled: false,
+        hide_closed_pubs: true,
+        hide_pub_names: false,
+      },
+    });
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    const preferences = await updateAccountPreferences({
+      mode: 'nearest',
+      maxDistanceKm: null,
+      priceCurrency: 'CZK',
+      hapticEnabled: true,
+      soundEnabled: false,
+      hideClosedPubs: true,
+      hidePubNames: false,
+    });
+
+    expect(preferences).toEqual({
+      mode: 'nearest',
+      maxDistanceKm: null,
+      priceCurrency: 'CZK',
+      hapticEnabled: true,
+      soundEnabled: false,
+      hideClosedPubs: true,
+      hidePubNames: false,
+    });
+    const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({
+      compass_mode: 'nearest',
+      max_distance_km: null,
+      price_currency: 'CZK',
+      haptic_enabled: true,
+      sound_enabled: false,
+      hide_closed_pubs: true,
+      hide_pub_names: false,
+    });
   });
 
   it('clears the cached account when preferences fetch gets a 401', async () => {

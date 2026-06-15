@@ -50,6 +50,12 @@ export interface AccountSession {
 }
 
 export interface AccountPreferences {
+  mode?: 'nearest' | 'surprise';
+  maxDistanceKm?: number | null;
+  priceCurrency?: 'CZK' | 'EUR';
+  hapticEnabled?: boolean;
+  soundEnabled?: boolean;
+  hideClosedPubs?: boolean;
   hidePubNames: boolean;
 }
 
@@ -74,6 +80,15 @@ interface AccountMeResponse {
   id?: string;
   device_id?: string;
   hide_pub_names?: boolean;
+  settings?: {
+    mode?: string;
+    max_distance_km?: number | null;
+    price_currency?: string;
+    haptic_enabled?: boolean;
+    sound_enabled?: boolean;
+    hide_closed_pubs?: boolean;
+    hide_pub_names?: boolean;
+  };
 }
 
 /**
@@ -116,9 +131,31 @@ function chainAbortSignal(signal?: AbortSignal): {
 }
 
 function preferencesFromResponse(data: AccountMeResponse): AccountPreferences {
-  return {
-    hidePubNames: data.hide_pub_names === true,
+  const settings = data.settings ?? {};
+  const mode = settings.mode === 'surprise' || settings.mode === 'nearest' ? settings.mode : undefined;
+  const priceCurrency =
+    settings.price_currency === 'EUR' || settings.price_currency === 'CZK'
+      ? settings.price_currency
+      : undefined;
+
+  const preferences: AccountPreferences = {
+    hidePubNames: (settings.hide_pub_names ?? data.hide_pub_names) === true,
   };
+  if (mode) preferences.mode = mode;
+  if (typeof settings.max_distance_km === 'number' || settings.max_distance_km === null) {
+    preferences.maxDistanceKm = settings.max_distance_km;
+  }
+  if (priceCurrency) preferences.priceCurrency = priceCurrency;
+  if (typeof settings.haptic_enabled === 'boolean') {
+    preferences.hapticEnabled = settings.haptic_enabled;
+  }
+  if (typeof settings.sound_enabled === 'boolean') {
+    preferences.soundEnabled = settings.sound_enabled;
+  }
+  if (typeof settings.hide_closed_pubs === 'boolean') {
+    preferences.hideClosedPubs = settings.hide_closed_pubs;
+  }
+  return preferences;
 }
 
 // Precomputed 00..ff byte→hex table for the getRandomValues UUID path.
@@ -394,7 +431,28 @@ export async function updateAccountPreferences(
   const session = await ensureAccount(signal);
   if (!session || signal?.aborted) return null;
 
-  const body: Record<string, boolean> = {};
+  const body: Record<string, unknown> = {};
+  if (preferences.mode === 'nearest' || preferences.mode === 'surprise') {
+    body.compass_mode = preferences.mode;
+  }
+  if (
+    typeof preferences.maxDistanceKm === 'number' ||
+    preferences.maxDistanceKm === null
+  ) {
+    body.max_distance_km = preferences.maxDistanceKm;
+  }
+  if (preferences.priceCurrency === 'CZK' || preferences.priceCurrency === 'EUR') {
+    body.price_currency = preferences.priceCurrency;
+  }
+  if (typeof preferences.hapticEnabled === 'boolean') {
+    body.haptic_enabled = preferences.hapticEnabled;
+  }
+  if (typeof preferences.soundEnabled === 'boolean') {
+    body.sound_enabled = preferences.soundEnabled;
+  }
+  if (typeof preferences.hideClosedPubs === 'boolean') {
+    body.hide_closed_pubs = preferences.hideClosedPubs;
+  }
   if (typeof preferences.hidePubNames === 'boolean') {
     body.hide_pub_names = preferences.hidePubNames;
   }

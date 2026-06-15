@@ -8,6 +8,7 @@ import {
 import * as auth from '@/data/auth';
 import type {
   AccountProfile,
+  AccountSettings,
   AuthActionResult,
   AuthProvider,
   AuthResult,
@@ -63,6 +64,18 @@ interface AccountState {
 }
 
 export const useAccountStore = create<AccountState>((set, get) => {
+  const applyAccountSettings = (settings?: AccountSettings | null) => {
+    if (!settings) return;
+    const store = useSettingsStore.getState();
+    if (settings.mode) store.setMode(settings.mode);
+    if (settings.maxDistanceKm !== undefined) store.setMaxDistanceKm(settings.maxDistanceKm);
+    if (settings.priceCurrency) store.setPriceCurrency(settings.priceCurrency);
+    if (typeof settings.hapticEnabled === 'boolean') store.setHapticEnabled(settings.hapticEnabled);
+    if (typeof settings.soundEnabled === 'boolean') store.setSoundEnabled(settings.soundEnabled);
+    if (typeof settings.hideClosedPubs === 'boolean') store.setHideClosedPubs(settings.hideClosedPubs);
+    if (typeof settings.hidePubNames === 'boolean') store.setHidePubNames(settings.hidePubNames);
+  };
+
   /** Re-read the (possibly rotated) session token into the store. */
   const syncSession = async () => {
     const session = await ensureAccount();
@@ -73,6 +86,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
   const applyAuthResult = async (result: AuthResult): Promise<AuthResult> => {
     if (result.ok) {
       set({ profile: result.profile });
+      applyAccountSettings(result.profile.settings);
       await syncSession();
     }
     return result;
@@ -95,9 +109,12 @@ export const useAccountStore = create<AccountState>((set, get) => {
             auth.fetchAccountProfile(),
           ]);
           if (preferences) {
-            useSettingsStore.getState().setHidePubNames(preferences.hidePubNames);
+            applyAccountSettings(preferences);
           }
-          if (profile) set({ profile });
+          if (profile) {
+            set({ profile });
+            applyAccountSettings(profile.settings);
+          }
         }
       } catch {
         set({ status: 'error' });
@@ -106,7 +123,10 @@ export const useAccountStore = create<AccountState>((set, get) => {
 
     refreshProfile: async () => {
       const profile = await auth.fetchAccountProfile();
-      if (profile) set({ profile });
+      if (profile) {
+        set({ profile });
+        applyAccountSettings(profile.settings);
+      }
     },
 
     register: (params) => auth.registerEmail(params).then(applyAuthResult),
@@ -117,40 +137,61 @@ export const useAccountStore = create<AccountState>((set, get) => {
 
     linkGoogle: async () => {
       const result = await auth.linkGoogle();
-      if (result.ok) set({ profile: result.profile });
+      if (result.ok) {
+        set({ profile: result.profile });
+        applyAccountSettings(result.profile.settings);
+      }
       return result;
     },
     linkApple: async () => {
       const result = await auth.linkApple();
-      if (result.ok) set({ profile: result.profile });
+      if (result.ok) {
+        set({ profile: result.profile });
+        applyAccountSettings(result.profile.settings);
+      }
       return result;
     },
     unlink: async (provider) => {
       const result = await auth.unlinkProvider(provider);
-      if (result.ok) set({ profile: result.profile });
+      if (result.ok) {
+        set({ profile: result.profile });
+        applyAccountSettings(result.profile.settings);
+      }
       return result;
     },
     setPassword: async (params) => {
       const result = await auth.setPassword(params);
-      if (result.ok) set({ profile: result.profile });
+      if (result.ok) {
+        set({ profile: result.profile });
+        applyAccountSettings(result.profile.settings);
+      }
       return result;
     },
 
     updateProfile: async (params) => {
       const result = await auth.updateProfile(params);
-      if (result.ok) set({ profile: result.profile });
+      if (result.ok) {
+        set({ profile: result.profile });
+        applyAccountSettings(result.profile.settings);
+      }
       return result;
     },
     // Thin pass-through: advisory check, never writes store state.
     checkNicknameAvailable: (nickname) => auth.checkNicknameAvailable(nickname),
     uploadAvatar: async (localUri) => {
       const result = await auth.uploadAvatar(localUri);
-      if (result.ok) set({ profile: result.profile });
+      if (result.ok) {
+        set({ profile: result.profile });
+        applyAccountSettings(result.profile.settings);
+      }
       return result;
     },
     removeAvatar: async () => {
       const result = await auth.removeAvatar();
-      if (result.ok) set({ profile: result.profile });
+      if (result.ok) {
+        set({ profile: result.profile });
+        applyAccountSettings(result.profile.settings);
+      }
       return result;
     },
 

@@ -9,12 +9,11 @@
  * stats grid STAYS visible (local-first) so an anonymous user still sees their
  * real counts and a reason to claim an account.
  *
- * Stats are local-first (tallyStore + pubRatingsStore) so they work offline and
- * without an account; only NACHOZENO ("walked") is server-only, read off the raw
- * GET /v1/account/me usage block — absent → "—" so it never masquerades as a 0.
+ * Stats use backend account history when available, with local tally/rating
+ * stores as the offline/anonymous fallback.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -48,7 +47,6 @@ import {
   selectAvatarUrl,
   selectIsPublic,
 } from '@/stores/accountStore';
-import { fetchWalkedDistanceM } from '@/data/auth';
 import { useToastStore } from '@/stores/toastStore';
 import {
   useTallyStore,
@@ -297,26 +295,28 @@ export default function ProfileScreen() {
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const ratingsCount = usePubRatingsStore((s) => Object.keys(s.ratings).length);
 
-  // Server-only walked distance, fetched once when signed in. Null until known;
-  // gated by `isSignedIn` at render so a stale value never shows after sign-out
-  // (the effect only ever performs the async fetch — no synchronous resets).
-  const [walkedM, setWalkedM] = useState<number | null>(null);
-  useEffect(() => {
-    if (!isSignedIn) return;
-    let active = true;
-    void fetchWalkedDistanceM().then((m) => {
-      if (active) setWalkedM(m);
-    });
-    return () => {
-      active = false;
-    };
-  }, [isSignedIn]);
-
   const sessions = useMemo(
     () => allSessionsNewestFirst(current, history),
     [current, history],
   );
-  const stats = useMemo(() => deriveStats(sessions), [sessions]);
+  const localStats = useMemo(() => deriveStats(sessions), [sessions]);
+  const stats = useMemo(() => {
+    const backend = profile?.stats;
+    if (!isSignedIn || !backend) return localStats;
+    return {
+      totalBeers: backend.totalBeers,
+      distinctPubs: backend.distinctPubs,
+      maxVisitsToOnePub: backend.maxVisitsToOnePub,
+      totalSpentCzk: backend.totalSpentCzk,
+    };
+  }, [isSignedIn, localStats, profile?.stats]);
+  const totalRatings = isSignedIn && profile?.stats ? profile.stats.ratingsCount : ratingsCount;
+  const achievements = profile?.achievements ?? {
+    firstTen: stats.totalBeers >= 10,
+    regular: stats.maxVisitsToOnePub >= 5,
+    reviewer: totalRatings >= 10,
+  };
+  const walkedM = isSignedIn ? profile?.usage?.walkedDistanceM ?? null : null;
   const recent = useMemo(() => sessions.slice(0, 3), [sessions]);
   const now = useMemo(() => new Date(), []);
 
@@ -435,7 +435,7 @@ export default function ProfileScreen() {
           />
           <StatTile
             icon={<ThumbsUpIcon size={18} color={Colors.amber} />}
-            value={String(ratingsCount)}
+            value={String(totalRatings)}
             caption={cs.profile.statRatings}
           />
           <StatTile
@@ -457,19 +457,19 @@ export default function ProfileScreen() {
             icon={<BeerIcon size={20} color={Colors.amber} />}
             title={cs.profile.badgeFirstTenTitle}
             subtitle={cs.profile.badgeFirstTenLocked}
-            unlocked={stats.totalBeers >= 10}
+            unlocked={achievements.firstTen}
           />
           <Badge
             icon={<MapPinIcon size={20} color={Colors.amber} />}
             title={cs.profile.badgeRegularTitle}
             subtitle={cs.profile.badgeRegularLocked}
-            unlocked={stats.maxVisitsToOnePub >= 5}
+            unlocked={achievements.regular}
           />
           <Badge
             icon={<ThumbsUpIcon size={20} color={Colors.amber} />}
             title={cs.profile.badgeReviewerTitle}
             subtitle={cs.profile.badgeReviewerLocked}
-            unlocked={ratingsCount >= 10}
+            unlocked={achievements.reviewer}
           />
         </View>
 

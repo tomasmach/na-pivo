@@ -31,6 +31,7 @@ import type { HoursStatus } from '@/data/pubs';
 import type { CommunityBeer } from '@/data/communityClient';
 import { parseOsmOpeningHoursToWeeklyHours } from '@/data/communityHours';
 import type { PubReportReason } from '@/data/pubReportsClient';
+import { updateAccountPreferences } from '@/data/account';
 import { usePubStore } from '@/stores/pubStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { shortestRotationTarget } from '@/compass/rotation';
@@ -678,6 +679,13 @@ export default function CompassScreen() {
   } = useCompass();
   const hidePubNames = useSettingsStore((s) => s.hidePubNames);
   const showPubDetails = !hidePubNames || revealed;
+  const handleModeChange = useCallback(
+    (next: 'nearest' | 'surprise') => {
+      setMode(next);
+      void updateAccountPreferences({ mode: next });
+    },
+    [setMode],
+  );
   const activeLayout = getActiveCompassLayout(
     sceneSize?.width ?? screenWidth,
     sceneSize?.height ?? screenHeight,
@@ -919,8 +927,8 @@ export default function CompassScreen() {
         <View style={styles.modeToggleFlex}>
           <ModeToggle
             mode={mode}
-            onNearest={() => setMode('nearest')}
-            onSurprise={() => setMode('surprise')}
+            onNearest={() => handleModeChange('nearest')}
+            onSurprise={() => handleModeChange('surprise')}
           />
         </View>
         <Pressable

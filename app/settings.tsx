@@ -403,21 +403,29 @@ export default function SettingsScreen() {
 
   const handleSliderSnap = useCallback(
     (index: number) => {
-      setMaxDistanceKm(SLIDER_POSITIONS[index] ?? null);
+      const next = SLIDER_POSITIONS[index] ?? null;
+      setMaxDistanceKm(next);
+      void updateAccountPreferences({ maxDistanceKm: next });
     },
     [setMaxDistanceKm],
   );
 
   const toggleHaptic = useCallback(() => {
-    setHapticEnabled(!hapticEnabled);
+    const next = !hapticEnabled;
+    setHapticEnabled(next);
+    void updateAccountPreferences({ hapticEnabled: next });
   }, [hapticEnabled, setHapticEnabled]);
 
   const toggleSound = useCallback(() => {
-    setSoundEnabled(!soundEnabled);
+    const next = !soundEnabled;
+    setSoundEnabled(next);
+    void updateAccountPreferences({ soundEnabled: next });
   }, [soundEnabled, setSoundEnabled]);
 
   const toggleHideClosed = useCallback(() => {
-    setHideClosedPubs(!hideClosedPubs);
+    const next = !hideClosedPubs;
+    setHideClosedPubs(next);
+    void updateAccountPreferences({ hideClosedPubs: next });
   }, [hideClosedPubs, setHideClosedPubs]);
 
   const toggleHidePubNames = useCallback(() => {
@@ -425,6 +433,14 @@ export default function SettingsScreen() {
     setHidePubNames(next);
     void updateAccountPreferences({ hidePubNames: next });
   }, [hidePubNames, setHidePubNames]);
+
+  const handleCurrencySelect = useCallback(
+    (currency: PriceCurrency) => {
+      setPriceCurrency(currency);
+      void updateAccountPreferences({ priceCurrency: currency });
+    },
+    [setPriceCurrency],
+  );
 
   // Distance display
   const distanceDisplay =
@@ -545,7 +561,7 @@ export default function SettingsScreen() {
           />
           <CurrencyRow
             value={priceCurrency}
-            onSelect={setPriceCurrency}
+            onSelect={handleCurrencySelect}
             borderTop
           />
         </View>

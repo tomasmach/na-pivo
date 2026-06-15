@@ -29,6 +29,30 @@ const REQUEST_TIMEOUT_MS = 12000;
 
 export type AuthProvider = 'email' | 'google' | 'apple';
 
+export interface AccountSettings {
+  mode?: 'nearest' | 'surprise';
+  maxDistanceKm?: number | null;
+  priceCurrency?: 'CZK' | 'EUR';
+  hapticEnabled?: boolean;
+  soundEnabled?: boolean;
+  hideClosedPubs?: boolean;
+  hidePubNames?: boolean;
+}
+
+export interface AccountStats {
+  totalBeers: number;
+  distinctPubs: number;
+  ratingsCount: number;
+  totalSpentCzk: number;
+  maxVisitsToOnePub: number;
+}
+
+export interface AccountAchievements {
+  firstTen: boolean;
+  regular: boolean;
+  reviewer: boolean;
+}
+
 export interface AccountProfile {
   id: string;
   deviceId: string;
@@ -45,6 +69,10 @@ export interface AccountProfile {
   providers: AuthProvider[];
   isAnonymous: boolean;
   status: string;
+  settings?: AccountSettings;
+  stats?: AccountStats;
+  achievements?: AccountAchievements;
+  usage?: { walkedDistanceM: number };
 }
 
 /** Success carries the fresh account state; failure carries a code + message. */
@@ -65,6 +93,27 @@ interface RawAccount {
   /** Defensive alias some providers/responses use instead of avatar_url. */
   picture?: string | null;
   has_avatar?: boolean;
+  settings?: {
+    mode?: string;
+    max_distance_km?: number | null;
+    price_currency?: string;
+    haptic_enabled?: boolean;
+    sound_enabled?: boolean;
+    hide_closed_pubs?: boolean;
+    hide_pub_names?: boolean;
+  };
+  stats?: {
+    total_beers?: number;
+    distinct_pubs?: number;
+    ratings_count?: number;
+    total_spent_czk?: number;
+    max_visits_to_one_pub?: number;
+  };
+  achievements?: {
+    first_ten?: boolean;
+    regular?: boolean;
+    reviewer?: boolean;
+  };
   usage?: { walked_distance_m?: number };
   email?: string;
   email_verified?: boolean;
@@ -76,8 +125,58 @@ interface RawAccount {
 
 const CANCELLED: AuthResult = { ok: false, code: 'cancelled', detail: '' };
 
-function parseProfile(data: RawAccount): AccountProfile {
+function parseSettings(data: RawAccount): AccountSettings | undefined {
+  const raw = data.settings;
+  if (!raw) return undefined;
   return {
+    mode: raw.mode === 'nearest' || raw.mode === 'surprise' ? raw.mode : undefined,
+    maxDistanceKm:
+      typeof raw.max_distance_km === 'number' || raw.max_distance_km === null
+        ? raw.max_distance_km
+        : undefined,
+    priceCurrency:
+      raw.price_currency === 'CZK' || raw.price_currency === 'EUR'
+        ? raw.price_currency
+        : undefined,
+    hapticEnabled: typeof raw.haptic_enabled === 'boolean' ? raw.haptic_enabled : undefined,
+    soundEnabled: typeof raw.sound_enabled === 'boolean' ? raw.sound_enabled : undefined,
+    hideClosedPubs:
+      typeof raw.hide_closed_pubs === 'boolean' ? raw.hide_closed_pubs : undefined,
+    hidePubNames: typeof raw.hide_pub_names === 'boolean' ? raw.hide_pub_names : undefined,
+  };
+}
+
+function parseStats(data: RawAccount): AccountStats | undefined {
+  const raw = data.stats;
+  if (!raw) return undefined;
+  return {
+    totalBeers: typeof raw.total_beers === 'number' ? raw.total_beers : 0,
+    distinctPubs: typeof raw.distinct_pubs === 'number' ? raw.distinct_pubs : 0,
+    ratingsCount: typeof raw.ratings_count === 'number' ? raw.ratings_count : 0,
+    totalSpentCzk: typeof raw.total_spent_czk === 'number' ? raw.total_spent_czk : 0,
+    maxVisitsToOnePub:
+      typeof raw.max_visits_to_one_pub === 'number' ? raw.max_visits_to_one_pub : 0,
+  };
+}
+
+function parseAchievements(data: RawAccount): AccountAchievements | undefined {
+  const raw = data.achievements;
+  if (!raw) return undefined;
+  return {
+    firstTen: raw.first_ten === true,
+    regular: raw.regular === true,
+    reviewer: raw.reviewer === true,
+  };
+}
+
+function parseUsage(data: RawAccount): AccountProfile['usage'] | undefined {
+  const walked = data.usage?.walked_distance_m;
+  if (typeof walked !== 'number' || !Number.isFinite(walked)) return undefined;
+  return { walkedDistanceM: walked };
+}
+
+function parseProfile(data: RawAccount): AccountProfile {
+  const profile: AccountProfile = {
     id: data.id ?? '',
     deviceId: data.device_id ?? '',
     // An empty/missing nickname means the user hasn't picked a handle yet.
@@ -94,6 +193,15 @@ function parseProfile(data: RawAccount): AccountProfile {
     isAnonymous: data.is_anonymous !== false,
     status: data.status ?? 'active',
   };
+  const settings = parseSettings(data);
+  const stats = parseStats(data);
+  const achievements = parseAchievements(data);
+  const usage = parseUsage(data);
+  if (settings) profile.settings = settings;
+  if (stats) profile.stats = stats;
+  if (achievements) profile.achievements = achievements;
+  if (usage) profile.usage = usage;
+  return profile;
 }
 
 /** Turn a backend error body into a stable {code, detail}. Handles both our
