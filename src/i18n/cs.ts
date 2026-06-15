@@ -288,8 +288,8 @@ export const cs = {
     setPasswordSave: 'Uložit heslo',
     setPasswordToast: 'Heslo nastaveno.',
 
-    // — Data / subscription —
-    dataHeader: 'DATA A PŘEDPLATNÉ',
+    // — Data export —
+    dataHeader: 'DATA',
     exportData: 'Stáhnout moje data',
     exportDataSubtitle: 'JSON export profilu, deníku a hodnocení',
     exportDataToast: (filename: string) => `Export uložen: ${filename}`,

@@ -35,13 +35,11 @@ import { cs } from '@/i18n/cs';
 import {
   ChevronLeftIcon,
   CheckIcon,
-  CrownIcon,
   DownloadIcon,
   MailIcon,
   PencilIcon,
   LinkIcon,
   KeyRoundIcon,
-  RefreshCwIcon,
 } from '@/components/shared/IconGlyph';
 import { AppleIcon, GoogleIcon } from '@/components/shared/BrandIcon';
 import { GlowButton } from '@/components/shared/GlowButton';
@@ -215,13 +213,6 @@ export default function AccountScreen() {
     }
   }, [busy, exportAccountData, showToast]);
 
-  const handleRestorePurchases = useCallback(() => {
-    Alert.alert(
-      cs.account.subscriptionRestoreUnavailableTitle,
-      cs.account.subscriptionRestoreUnavailableBody,
-    );
-  }, []);
-
   // The screen is only reachable while signed in; guard defensively so a logout
   // racing with navigation never crashes on a null profile. (Placed after every
   // hook so hook order stays stable across renders.)
@@ -256,15 +247,6 @@ export default function AccountScreen() {
   const canUnlink = providers.length > 1;
 
   const displayTitle = profile.displayName.trim() || profile.email || cs.account.anonymousName;
-  const subscription = profile.subscription;
-  const subscriptionTier =
-    subscription?.tier === 'plus' ? cs.account.subscriptionPlus : cs.account.subscriptionFree;
-  const subscriptionStatus =
-    subscription?.status === 'active'
-      ? cs.account.subscriptionActive
-      : subscription?.status === 'pending_verification'
-        ? cs.account.subscriptionPending
-        : cs.account.subscriptionInactive;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={[]}>
@@ -433,7 +415,7 @@ export default function AccountScreen() {
           </View>
         )}
 
-        {/* ── Data & subscription ── */}
+        {/* ── Data ── */}
         <Text style={styles.sectionHeader}>{cs.account.dataHeader}</Text>
         <View style={styles.methodsCard}>
           <AccountActionRow
@@ -443,15 +425,6 @@ export default function AccountScreen() {
             onPress={handleExportData}
             busy={busy === 'export'}
             accessibilityLabel={cs.a11y.accountExportData}
-          />
-          <AccountActionRow
-            icon={<CrownIcon size={18} color={Colors.foamMuted} />}
-            title={`${cs.account.subscriptionTitle} · ${subscriptionTier}`}
-            subtitle={subscriptionStatus}
-            rightIcon={<RefreshCwIcon size={16} color={Colors.amber} />}
-            onPress={handleRestorePurchases}
-            accessibilityLabel={cs.a11y.accountRestorePurchases}
-            borderTop
           />
         </View>
 
