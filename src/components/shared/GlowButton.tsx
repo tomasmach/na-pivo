@@ -1,6 +1,6 @@
 import React, { memo, ReactNode } from 'react';
 import { Pressable, Text, View, StyleSheet, ViewStyle } from 'react-native';
-import { Colors } from '@/theme/colors';
+import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
 import { amberGlow, amberGlowStrong } from '@/theme/shadows';
@@ -97,7 +97,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amber,
   },
   secondaryBg: {
-    backgroundColor: 'transparent',
+    backgroundColor: withAlpha(Colors.amber, 0.12),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.36),
   },
   label: {
     fontFamily: Fonts.display.extrabold,
@@ -108,7 +110,7 @@ const styles = StyleSheet.create({
     color: Colors.stout,
   },
   secondaryText: {
-    color: Colors.foamMuted,
+    color: Colors.foam,
   },
   iconSlot: {
     marginRight: 4,

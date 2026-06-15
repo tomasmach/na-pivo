@@ -407,7 +407,6 @@ export default function AccountScreen() {
             <GlowButton
               label={busy === 'setPassword' ? cs.account.loading : cs.account.setPasswordSave}
               onPress={handleSetPassword}
-              variant="secondary"
               glow="none"
               height={52}
               accessibilityLabel={cs.a11y.accountSetPassword}
