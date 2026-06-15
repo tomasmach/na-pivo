@@ -33,10 +33,12 @@ from .auth_views import (
 )
 from .views import (
     AccountAvatarView,
+    AccountExportView,
     AccountMeView,
     AccountView,
     BlockedPubReportsView,
     ClientEventsView,
+    ContentReportView,
     DrinksView,
     FeedbackView,
     HealthView,
@@ -50,6 +52,7 @@ from .views import (
     PubsNearView,
     PubVisitView,
     ReleaseNotesView,
+    RestorePurchasesView,
     UserAddedPubView,
 )
 
@@ -68,6 +71,7 @@ urlpatterns = [
     path("pubs/geocode", PubLocationGeocodeView.as_view(), name="pubs-geocode"),
     path("pub-reports", PubReportView.as_view(), name="pub-reports"),
     path("pub-reports/blocked", BlockedPubReportsView.as_view(), name="pub-reports-blocked"),
+    path("content-reports", ContentReportView.as_view(), name="content-reports"),
     path("feedback", FeedbackView.as_view(), name="feedback"),
     path("client-events", ClientEventsView.as_view(), name="client-events"),
     path("release-notes", ReleaseNotesView.as_view(), name="release-notes"),
@@ -75,6 +79,8 @@ urlpatterns = [
     path("account", AccountView.as_view(), name="account"),
     path("account/me", AccountMeView.as_view(), name="account-me"),
     path("account/me/avatar", AccountAvatarView.as_view(), name="account-me-avatar"),
+    path("account/me/purchases/restore", RestorePurchasesView.as_view(), name="account-restore-purchases"),
+    path("account/export", AccountExportView.as_view(), name="account-export"),
     path(
         "account/nickname-available",
         NicknameAvailableView.as_view(),

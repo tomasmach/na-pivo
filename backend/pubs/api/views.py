@@ -51,6 +51,7 @@ from pubs.models import (
     AccountUsageStats,
     AuthToken,
     ClientEvent,
+    ContentReport,
     DrinkLog,
     FeedbackReport,
     PubCommunityData,
@@ -72,6 +73,8 @@ from .serializers import (
     AccountUpdateSerializer,
     BlockedPubsResponseSerializer,
     ClientEventRequestSerializer,
+    ContentReportRequestSerializer,
+    ContentReportSerializer,
     DrinkRequestSerializer,
     FeedbackReportSerializer,
     FeedbackRequestSerializer,
@@ -87,6 +90,7 @@ from .serializers import (
     PubsNearQuerySerializer,
     PubVisitRequestSerializer,
     ReleaseNoteSerializer,
+    RestorePurchasesRequestSerializer,
     UserAddedPubRequestSerializer,
     UserAddedPubSerializer,
 )
@@ -685,6 +689,55 @@ class FeedbackView(APIView):
             FeedbackReportSerializer(report).data,
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
+
+
+class ContentReportView(APIView):
+    """
+    POST /v1/content-reports
+
+    Save a report for inappropriate public profile content. The report captures a
+    small target snapshot so moderation still has context if the user changes
+    their nickname/avatar before the admin reviews it.
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "feedback"
+
+    def post(self, request: Request) -> Response:
+        serializer = ContentReportRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        target = Account.objects.filter(public_id=data["target_account_id"]).first()
+        if target is None:
+            return Response(
+                {"detail": "Profile not found.", "code": "profile_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if target.pk == request.user.pk:
+            return Response(
+                {"detail": "Nelze nahlásit vlastní profil.", "code": "self_report"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        snapshot = {
+            "id": str(target.public_id),
+            "nickname": target.nickname,
+            "display_name": target.display_name,
+            "has_avatar": bool(target.avatar),
+            "is_public": target.is_public,
+        }
+        report = ContentReport.objects.create(
+            reporter=request.user,
+            target_account=target,
+            reason=data["reason"],
+            comment=data.get("comment") or "",
+            target_snapshot=snapshot,
+        )
+        return Response(ContentReportSerializer(report).data, status=status.HTTP_201_CREATED)
 
 
 def _rating_item(rating: PubRating) -> dict:
@@ -1517,6 +1570,149 @@ class ReleaseNotesView(APIView):
         return Response(ReleaseNoteSerializer(note).data, status=status.HTTP_200_OK)
 
 
+def _iso(value) -> str | None:
+    return value.isoformat() if value is not None else None
+
+
+def _export_account_data(account: Account) -> dict:
+    """Return a GDPR-style JSON export for one account, excluding secrets."""
+
+    usage = getattr(account, "usage_stats", None)
+    return {
+        "exported_at": dj_timezone.now().isoformat(),
+        "account": {
+            "id": str(account.public_id),
+            "device_id": account.device_id,
+            "nickname": account.nickname,
+            "display_name": account.display_name,
+            "has_avatar": bool(account.avatar),
+            "is_public": account.is_public,
+            "email": account.primary_email,
+            "email_verified": account.email_is_verified,
+            "providers": account.auth_methods(),
+            "status": account.status,
+            "created_at": _iso(account.created_at),
+            "last_seen_at": _iso(account.last_seen_at),
+        },
+        "settings": {
+            "hide_pub_names": account.hide_pub_names,
+            "compass_mode": account.compass_mode,
+            "max_distance_km": account.max_distance_km,
+            "price_currency": account.price_currency,
+            "haptic_enabled": account.haptic_enabled,
+            "sound_enabled": account.sound_enabled,
+            "hide_closed_pubs": account.hide_closed_pubs,
+            "marketing_emails_enabled": account.marketing_emails_enabled,
+        },
+        "subscription": {
+            "tier": account.subscription_tier,
+            "status": account.subscription_status,
+            "platform": account.subscription_platform,
+            "product_id": account.subscription_product_id,
+            "original_transaction_id": account.subscription_original_transaction_id,
+            "expires_at": _iso(account.subscription_expires_at),
+            "updated_at": _iso(account.subscription_updated_at),
+        },
+        "usage": {
+            "app_open_count": usage.app_open_count if usage else 0,
+            "app_foreground_count": usage.app_foreground_count if usage else 0,
+            "walked_distance_m": usage.walked_distance_m if usage else 0,
+            "client_warning_count": usage.client_warning_count if usage else 0,
+            "client_error_count": usage.client_error_count if usage else 0,
+            "api_failure_count": usage.api_failure_count if usage else 0,
+        },
+        "drinks": [
+            {
+                "client_id": str(drink.client_id),
+                "cache_key": drink.cache_key,
+                "name": drink.name,
+                "lat": drink.lat,
+                "lng": drink.lng,
+                "city": drink.city,
+                "external_id": drink.external_id,
+                "beer_name": drink.beer_name,
+                "price_czk": drink.price_czk,
+                "volume_ml": drink.volume_ml,
+                "drank_at": _iso(drink.drank_at),
+                "created_at": _iso(drink.created_at),
+            }
+            for drink in account.drinks.all()
+        ],
+        "visits": [_visit_item(visit) for visit in account.pub_visits.all()],
+        "ratings": [_rating_item(rating) for rating in account.pub_ratings.all()],
+        "community_contributions": [
+            {
+                "client_id": str(row.client_id),
+                "kind": row.kind,
+                "cache_key": row.cache_key,
+                "name": row.name,
+                "lat": row.lat,
+                "lng": row.lng,
+                "payload": row.payload,
+                "created_at": _iso(row.created_at),
+            }
+            for row in account.contribution_logs.all()
+        ],
+        "pub_reports": [
+            {
+                "cache_key": report.cache_key,
+                "external_id": report.external_id,
+                "name": report.name,
+                "lat": report.lat,
+                "lng": report.lng,
+                "city": report.city,
+                "address": report.address,
+                "reason": report.reason,
+                "active": report.active,
+                "created_at": _iso(report.created_at),
+            }
+            for report in account.pub_reports.all()
+        ],
+        "feedback_reports": [
+            {
+                "client_id": str(report.client_id),
+                "category": report.category,
+                "message": report.message,
+                "contact_type": report.contact_type,
+                "contact": report.contact,
+                "app_version": report.app_version,
+                "platform": report.platform,
+                "os_version": report.os_version,
+                "status": report.status,
+                "created_at": _iso(report.created_at),
+            }
+            for report in account.feedback_reports.all()
+        ],
+        "content_reports_made": [
+            {
+                "target_account_id": (
+                    str(report.target_account.public_id)
+                    if report.target_account_id is not None
+                    else None
+                ),
+                "reason": report.reason,
+                "comment": report.comment,
+                "status": report.status,
+                "created_at": _iso(report.created_at),
+            }
+            for report in account.content_reports_made.all()
+        ],
+    }
+
+
+class AccountExportView(APIView):
+    """GET /v1/account/export — download the authenticated user's data as JSON."""
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        body = _export_account_data(request.user)
+        response = Response(body, status=status.HTTP_200_OK)
+        response["Content-Disposition"] = 'attachment; filename="na-pivo-export.json"'
+        return response
+
+
 class AccountView(APIView):
     """
     POST /v1/account
@@ -1703,6 +1899,53 @@ class AccountMeView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class RestorePurchasesView(APIView):
+    """
+    POST /v1/account/me/purchases/restore
+
+    Store purchase identifiers on the account so a future Na Pivo+ verifier can
+    restore entitlements across devices. This endpoint deliberately does not
+    unlock Plus by itself; without App Store / Play verification it marks the
+    subscription state as pending_verification.
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "account"
+
+    def post(self, request: Request) -> Response:
+        serializer = RestorePurchasesRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        account = request.user
+        account.subscription_platform = data["platform"]
+        account.subscription_product_id = data.get("product_id") or ""
+        account.subscription_original_transaction_id = (
+            data.get("original_transaction_id") or data.get("transaction_id") or ""
+        )
+        account.subscription_expires_at = data.get("expires_at")
+        account.subscription_status = Account.SubscriptionStatus.PENDING_VERIFICATION
+        account.subscription_updated_at = dj_timezone.now()
+        account.save(
+            update_fields=[
+                "subscription_platform",
+                "subscription_product_id",
+                "subscription_original_transaction_id",
+                "subscription_expires_at",
+                "subscription_status",
+                "subscription_updated_at",
+                "last_seen_at",
+            ]
+        )
+        return Response(
+            AccountMeSerializer(account, context={"request": request}).data,
+            status=status.HTTP_202_ACCEPTED,
+        )
 
 
 class AccountAvatarView(APIView):

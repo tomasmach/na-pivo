@@ -267,6 +267,17 @@ class Account(models.Model):
         CZK = "CZK", "CZK"
         EUR = "EUR", "EUR"
 
+    class SubscriptionTier(models.TextChoices):
+        FREE = "free", "Free"
+        PLUS = "plus", "Na Pivo+"
+
+    class SubscriptionStatus(models.TextChoices):
+        INACTIVE = "inactive", "Inactive"
+        PENDING_VERIFICATION = "pending_verification", "Pending verification"
+        ACTIVE = "active", "Active"
+        GRACE_PERIOD = "grace_period", "Grace period"
+        EXPIRED = "expired", "Expired"
+
     # ---------- identity ----------
     public_id = models.UUIDField(
         default=uuid.uuid4,
@@ -327,6 +338,55 @@ class Account(models.Model):
     hide_closed_pubs = models.BooleanField(
         default=True,
         help_text="Whether known-closed pubs should be hidden in the mobile app.",
+    )
+    marketing_emails_enabled = models.BooleanField(
+        default=False,
+        help_text="Whether the user opted in to product/marketing e-mails.",
+    )
+
+    # ---------- subscription / restore-purchases scaffold ----------
+    subscription_tier = models.CharField(
+        max_length=16,
+        choices=SubscriptionTier.choices,
+        default=SubscriptionTier.FREE,
+        db_index=True,
+        help_text="Current entitlement tier. Free until a receipt is verified.",
+    )
+    subscription_status = models.CharField(
+        max_length=32,
+        choices=SubscriptionStatus.choices,
+        default=SubscriptionStatus.INACTIVE,
+        db_index=True,
+        help_text="Current subscription state; pending_verification means restore data was received.",
+    )
+    subscription_platform = models.CharField(
+        max_length=16,
+        blank=True,
+        default="",
+        help_text="Store platform for the latest known purchase, e.g. apple or google.",
+    )
+    subscription_product_id = models.CharField(
+        max_length=128,
+        blank=True,
+        default="",
+        help_text="Store product id for the latest known purchase.",
+    )
+    subscription_original_transaction_id = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="Stable store purchase id used for future restore-purchases verification.",
+    )
+    subscription_expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Expiry reported by a verified subscription provider, when available.",
+    )
+    subscription_updated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When subscription metadata last changed.",
     )
 
     # ---------- profile (populated once the account is claimed) ----------
@@ -938,6 +998,74 @@ class FeedbackReport(models.Model):
 
     def __str__(self) -> str:
         return f"FeedbackReport({self.category} [{self.status}] — {self.message[:40]!r})"
+
+
+class ContentReport(models.Model):
+    """
+    A user report for abusive public profile content.
+
+    This covers the first-abuse case once profiles become public: offensive
+    nicknames, avatars or profile content can be reported by any signed-in
+    account, triaged in Django admin, and acted on by hiding the profile or
+    clearing the offending fields.
+    """
+
+    class Reason(models.TextChoices):
+        INAPPROPRIATE_NICKNAME = "inappropriate_nickname", "Inappropriate nickname"
+        INAPPROPRIATE_AVATAR = "inappropriate_avatar", "Inappropriate avatar"
+        IMPERSONATION = "impersonation", "Impersonation"
+        SPAM = "spam", "Spam"
+        OTHER = "other", "Other"
+
+    class Status(models.TextChoices):
+        NEW = "new", "New"
+        TRIAGED = "triaged", "Triaged"
+        ACTIONED = "actioned", "Actioned"
+        DISMISSED = "dismissed", "Dismissed"
+
+    reporter = models.ForeignKey(
+        Account,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="content_reports_made",
+    )
+    target_account = models.ForeignKey(
+        Account,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="content_reports_received",
+    )
+    reason = models.CharField(max_length=32, choices=Reason.choices, db_index=True)
+    comment = models.TextField(max_length=1000, blank=True, default="")
+    target_snapshot = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Nickname/display/avatar/is_public snapshot at report time.",
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.NEW,
+        db_index=True,
+    )
+    moderator_note = models.TextField(blank=True, default="")
+    actioned_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Content Report"
+        verbose_name_plural = "Content Reports"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["target_account", "status", "created_at"]),
+            models.Index(fields=["reporter", "created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"ContentReport({self.reason} [{self.status}])"
 
 
 class ClientEvent(models.Model):

@@ -48,6 +48,7 @@ from pubs.accounts import AccountError
 from pubs.models import (
     Account,
     ClientEvent,
+    ContentReport,
     FeedbackReport,
     PubRating,
     PubReport,
@@ -201,6 +202,43 @@ class FeedbackRequestSerializer(serializers.Serializer):
 
         attrs["contact"] = contact
         attrs["contact_type"] = contact_type
+        return attrs
+
+
+class ContentReportRequestSerializer(serializers.Serializer):
+    """Request body for POST /v1/content-reports."""
+
+    target_account_id = serializers.UUIDField()
+    reason = serializers.ChoiceField(choices=ContentReport.Reason.choices)
+    comment = serializers.CharField(
+        max_length=1000,
+        required=False,
+        allow_blank=True,
+        default="",
+        trim_whitespace=True,
+    )
+
+
+class RestorePurchasesRequestSerializer(serializers.Serializer):
+    """Receipt identifiers captured now; provider verification can be added later."""
+
+    platform = serializers.ChoiceField(choices=["apple", "google"])
+    product_id = serializers.CharField(
+        max_length=128, required=False, allow_blank=True, default="", trim_whitespace=True
+    )
+    original_transaction_id = serializers.CharField(
+        max_length=255, required=False, allow_blank=True, default="", trim_whitespace=True
+    )
+    transaction_id = serializers.CharField(
+        max_length=255, required=False, allow_blank=True, default="", trim_whitespace=True
+    )
+    expires_at = serializers.DateTimeField(required=False, allow_null=True)
+
+    def validate(self, attrs: dict) -> dict:
+        if not (attrs.get("original_transaction_id") or attrs.get("transaction_id")):
+            raise serializers.ValidationError(
+                {"transaction_id": "A transaction identifier is required."}
+            )
         return attrs
 
 
@@ -817,6 +855,24 @@ class FeedbackReportSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class ContentReportSerializer(serializers.ModelSerializer):
+    """Response body for a saved abusive-content report."""
+
+    target_account_id = serializers.UUIDField(source="target_account.public_id", read_only=True)
+
+    class Meta:
+        model = ContentReport
+        fields = [
+            "id",
+            "target_account_id",
+            "reason",
+            "comment",
+            "status",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
 class BlockedPubSerializer(serializers.Serializer):
     """A compact entry the mobile app can use to filter Mapy.cz results."""
 
@@ -886,6 +942,19 @@ class AccountSettingsSerializer(serializers.Serializer):
     sound_enabled = serializers.BooleanField(read_only=True)
     hide_closed_pubs = serializers.BooleanField(read_only=True)
     hide_pub_names = serializers.BooleanField(read_only=True)
+    marketing_emails_enabled = serializers.BooleanField(read_only=True)
+
+
+class AccountSubscriptionSerializer(serializers.Serializer):
+    """Read-only subscription/entitlement state attached to the account."""
+
+    tier = serializers.CharField(read_only=True)
+    status = serializers.CharField(read_only=True)
+    platform = serializers.CharField(read_only=True, allow_blank=True)
+    product_id = serializers.CharField(read_only=True, allow_blank=True)
+    original_transaction_id = serializers.CharField(read_only=True, allow_blank=True)
+    expires_at = serializers.DateTimeField(read_only=True, allow_null=True)
+    updated_at = serializers.DateTimeField(read_only=True, allow_null=True)
 
 
 class AccountStatsSerializer(serializers.Serializer):
@@ -955,6 +1024,7 @@ class AccountMeSerializer(serializers.ModelSerializer):
     has_avatar = serializers.SerializerMethodField()
     usage = serializers.SerializerMethodField()
     settings = serializers.SerializerMethodField()
+    subscription = serializers.SerializerMethodField()
     stats = serializers.SerializerMethodField()
     achievements = serializers.SerializerMethodField()
 
@@ -975,6 +1045,7 @@ class AccountMeSerializer(serializers.ModelSerializer):
             "status",
             "hide_pub_names",
             "settings",
+            "subscription",
             "stats",
             "achievements",
             "usage",
@@ -1030,6 +1101,20 @@ class AccountMeSerializer(serializers.ModelSerializer):
                 "sound_enabled": obj.sound_enabled,
                 "hide_closed_pubs": obj.hide_closed_pubs,
                 "hide_pub_names": obj.hide_pub_names,
+                "marketing_emails_enabled": obj.marketing_emails_enabled,
+            }
+        ).data
+
+    def get_subscription(self, obj: Account) -> dict:
+        return AccountSubscriptionSerializer(
+            {
+                "tier": obj.subscription_tier,
+                "status": obj.subscription_status,
+                "platform": obj.subscription_platform,
+                "product_id": obj.subscription_product_id,
+                "original_transaction_id": obj.subscription_original_transaction_id,
+                "expires_at": obj.subscription_expires_at,
+                "updated_at": obj.subscription_updated_at,
             }
         ).data
 
@@ -1097,6 +1182,7 @@ class AccountUpdateSerializer(serializers.ModelSerializer):
             "haptic_enabled",
             "sound_enabled",
             "hide_closed_pubs",
+            "marketing_emails_enabled",
         ]
 
     def validate_nickname(self, value: str | None) -> str | None:

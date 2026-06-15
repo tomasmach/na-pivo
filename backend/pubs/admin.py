@@ -1,9 +1,11 @@
 from django.contrib import admin
+from django.utils import timezone
 
 from .models import (
     Account,
     AccountUsageStats,
     ClientEvent,
+    ContentReport,
     DrinkLog,
     EnrichTask,
     FeedbackReport,
@@ -58,13 +60,98 @@ class EnrichTaskAdmin(admin.ModelAdmin):
 
 @admin.register(Account)
 class AccountAdmin(admin.ModelAdmin):
-    list_display = ("public_id", "nickname", "device_id", "is_public", "created_at", "last_seen_at")
-    list_filter = ("is_public",)
+    list_display = (
+        "public_id",
+        "nickname",
+        "device_id",
+        "is_public",
+        "marketing_emails_enabled",
+        "subscription_tier",
+        "subscription_status",
+        "created_at",
+        "last_seen_at",
+    )
+    list_filter = (
+        "is_public",
+        "marketing_emails_enabled",
+        "subscription_tier",
+        "subscription_status",
+    )
     search_fields = ("public_id", "device_id", "nickname")
     # Only the SHA-256 token_hash is stored (never the raw bearer secret), so it
     # is safe to surface read-only — it cannot be reversed into a usable token.
     readonly_fields = ("public_id", "token_hash", "created_at", "last_seen_at")
     ordering = ("-created_at",)
+
+
+@admin.register(ContentReport)
+class ContentReportAdmin(admin.ModelAdmin):
+    list_display = (
+        "created_at",
+        "reason",
+        "status",
+        "target_account",
+        "reporter",
+        "short_comment",
+    )
+    list_filter = ("reason", "status", "created_at")
+    list_editable = ("status",)
+    search_fields = (
+        "comment",
+        "moderator_note",
+        "target_account__public_id",
+        "target_account__nickname",
+        "reporter__public_id",
+        "reporter__nickname",
+    )
+    readonly_fields = ("reporter", "target_account", "target_snapshot", "created_at", "updated_at")
+    actions = ("hide_target_profiles", "clear_target_avatars", "clear_target_nicknames")
+    ordering = ("-created_at",)
+
+    @admin.display(description="comment")
+    def short_comment(self, obj: ContentReport) -> str:
+        comment = obj.comment or ""
+        return comment if len(comment) <= 60 else f"{comment[:57]}..."
+
+    @admin.action(description="Hide target profiles")
+    def hide_target_profiles(self, request, queryset) -> None:  # noqa: ARG002
+        now = timezone.now()
+        for report in queryset.select_related("target_account"):
+            target = report.target_account
+            if target is None:
+                continue
+            target.is_public = False
+            target.save(update_fields=["is_public", "last_seen_at"])
+            report.status = ContentReport.Status.ACTIONED
+            report.actioned_at = now
+            report.save(update_fields=["status", "actioned_at", "updated_at"])
+
+    @admin.action(description="Clear target avatars")
+    def clear_target_avatars(self, request, queryset) -> None:  # noqa: ARG002
+        now = timezone.now()
+        for report in queryset.select_related("target_account"):
+            target = report.target_account
+            if target is None or not target.avatar:
+                continue
+            target.avatar.delete(save=False)
+            target.avatar = ""
+            target.save(update_fields=["avatar", "last_seen_at"])
+            report.status = ContentReport.Status.ACTIONED
+            report.actioned_at = now
+            report.save(update_fields=["status", "actioned_at", "updated_at"])
+
+    @admin.action(description="Clear target nicknames")
+    def clear_target_nicknames(self, request, queryset) -> None:  # noqa: ARG002
+        now = timezone.now()
+        for report in queryset.select_related("target_account"):
+            target = report.target_account
+            if target is None:
+                continue
+            target.nickname = None
+            target.save(update_fields=["nickname", "last_seen_at"])
+            report.status = ContentReport.Status.ACTIONED
+            report.actioned_at = now
+            report.save(update_fields=["status", "actioned_at", "updated_at"])
 
 
 @admin.register(PubReport)

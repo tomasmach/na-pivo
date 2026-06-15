@@ -820,6 +820,7 @@ def test_account_settings_round_trip_through_me(client):
         "sound_enabled": True,
         "hide_closed_pubs": False,
         "hide_pub_names": True,
+        "marketing_emails_enabled": False,
     }
 
     account = Account.objects.get(public_id=account_id)
