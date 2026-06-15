@@ -123,7 +123,9 @@ export const cs = {
       title: 'O appce',
     },
     feedback: 'Napiš nám / nahlas chybu',
+    feedbackCtaSubtitle: 'Něco nehraje nebo ti něco chybí? Dej nám vědět.',
     addPub: 'Přidat chybějící hospodu',
+    addPubCtaSubtitle: 'Nenašel jsi svůj podnik? Přidej ho mezi ostatní.',
     privacy: 'Soukromí',
     creator: {
       header: 'TVŮRCE',

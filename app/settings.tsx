@@ -318,6 +318,37 @@ function AboutRow({ icon, title, rightLabel, onPress, borderTop }: AboutRowProps
 }
 
 // ---------------------------------------------------------------------------
+// Action CTA — a discreet amber call-to-action, surfaced near the top so the
+// contribution actions ("add a missing pub", "report a problem") are visible
+// without scrolling (they used to be buried as rows of the About card).
+// ---------------------------------------------------------------------------
+
+interface ActionCtaProps {
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+  onPress: () => void;
+}
+
+function ActionCta({ icon, title, subtitle, onPress }: ActionCtaProps) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.ctaCard, pressed && styles.rowPressed]}
+      accessibilityRole="button"
+      accessibilityLabel={title}
+    >
+      <View style={styles.ctaIconWell}>{icon}</View>
+      <View style={styles.ctaText}>
+        <Text style={styles.ctaTitle}>{title}</Text>
+        <Text style={styles.ctaSubtitle}>{subtitle}</Text>
+      </View>
+      <ChevronRightIcon size={18} color={Colors.amber} />
+    </Pressable>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Social button (creator links)
 // ---------------------------------------------------------------------------
 
@@ -407,7 +438,7 @@ export default function SettingsScreen() {
     );
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+    <SafeAreaView style={styles.safeArea} edges={[]}>
       {/* ── Header ── */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Pressable
@@ -428,7 +459,13 @@ export default function SettingsScreen() {
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          // Push the home-indicator inset INTO the scrollable content instead of
+          // reserving it as a fixed brown band below the list — the background now
+          // runs cleanly to the screen edge with no empty bar at the bottom.
+          { paddingBottom: insets.bottom + Spacing.sm },
+        ]}
         showsVerticalScrollIndicator={false}
       >
 
@@ -454,6 +491,20 @@ export default function SettingsScreen() {
           {/* Helper text */}
           <Text style={styles.distanceHelper}>{cs.settings.distance.helper}</Text>
         </View>
+
+        {/* ── Contribution CTAs (surfaced high so they're visible without scrolling) ── */}
+        <ActionCta
+          icon={<MapPinIcon size={20} color={Colors.amber} />}
+          title={cs.settings.addPub}
+          subtitle={cs.settings.addPubCtaSubtitle}
+          onPress={() => router.push('/add-pub' as Href)}
+        />
+        <ActionCta
+          icon={<MessageSquareIcon size={20} color={Colors.amber} />}
+          title={cs.settings.feedback}
+          subtitle={cs.settings.feedbackCtaSubtitle}
+          onPress={() => router.push('/report')}
+        />
 
         {/* ── Preferences card ── */}
         <View style={[styles.card, styles.cardNoPaddingV]}>
@@ -508,18 +559,6 @@ export default function SettingsScreen() {
             onPress={() => {
               // TODO: navigate to about screen when built
             }}
-          />
-          <AboutRow
-            icon={<MessageSquareIcon size={18} color={Colors.foamMuted} />}
-            title={cs.settings.feedback}
-            onPress={() => router.push('/report')}
-            borderTop
-          />
-          <AboutRow
-            icon={<MapPinIcon size={18} color={Colors.foamMuted} />}
-            title={cs.settings.addPub}
-            onPress={() => router.push('/add-pub' as Href)}
-            borderTop
           />
           <AboutRow
             icon={<ShieldIcon size={18} color={Colors.foamMuted} />}
@@ -577,9 +616,6 @@ export default function SettingsScreen() {
             <Text style={styles.attributionText}>{cs.settings.attributionAfter}</Text>
           </Pressable>
         </View>
-
-        {/* Extra bottom breathing room */}
-        <View style={{ height: Spacing.sm }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -857,6 +893,41 @@ const styles = StyleSheet.create({
   },
   rowPressed: {
     opacity: 0.65,
+  },
+
+  // ── Add-pub CTA ──
+  ctaCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: Colors.stout2,
+    borderRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: 'rgba(232, 163, 23, 0.35)', // soft amber — noticeable but calm
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  ctaIconWell: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(232, 163, 23, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ctaText: {
+    flex: 1,
+  },
+  ctaTitle: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 15,
+    color: Colors.foam,
+    marginBottom: 2,
+  },
+  ctaSubtitle: {
+    fontFamily: Fonts.ui.regular,
+    fontSize: 12,
+    color: Colors.mutedText,
   },
 
   // ── Creator card ──
