@@ -75,6 +75,9 @@ logger = logging.getLogger(__name__)
 _DEFAULT_CENTER = (50.0875, 14.4213)
 _DEFAULT_RADIUS_KM = 15.0
 _FRESH_STATUSES = (PubHours.Status.OK, PubHours.Status.UNKNOWN)
+# Max keys per `cache_key__in` query. Kept under SQLite's 32766 variable cap
+# (and well under the legacy 999) so a whole-CR catalogue resume doesn't blow up.
+_SQL_IN_CHUNK = 900
 
 
 # ---------------------------------------------------------------------------
@@ -292,15 +295,25 @@ class Command(BaseCommand):
     # ------------------------------------------------------------------
 
     def _fresh_keys(self, keys: list[str], ttl_days: int) -> set[str]:
-        """Return the subset of *keys* with a fresh ok/unknown PubHours row."""
+        """Return the subset of *keys* with a fresh ok/unknown PubHours row.
+
+        The ``cache_key__in`` lookup binds one SQL variable per key. A whole-CR
+        catalogue (~53k keys) blows past SQLite's SQLITE_MAX_VARIABLE_NUMBER
+        (32766) -> "too many SQL variables", so the IN is chunked. (Postgres has
+        no such cap, but chunking is harmless there.)
+        """
         cutoff = timezone.now() - timedelta(days=ttl_days)
-        return set(
-            PubHours.objects.filter(
-                cache_key__in=keys,
-                status__in=_FRESH_STATUSES,
-                fetched_at__gte=cutoff,
-            ).values_list("cache_key", flat=True)
-        )
+        fresh: set[str] = set()
+        for i in range(0, len(keys), _SQL_IN_CHUNK):
+            chunk = keys[i : i + _SQL_IN_CHUNK]
+            fresh.update(
+                PubHours.objects.filter(
+                    cache_key__in=chunk,
+                    status__in=_FRESH_STATUSES,
+                    fetched_at__gte=cutoff,
+                ).values_list("cache_key", flat=True)
+            )
+        return fresh
 
     def _fill(
         self,

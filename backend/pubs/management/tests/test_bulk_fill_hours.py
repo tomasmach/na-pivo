@@ -180,3 +180,23 @@ def test_limit_caps_and_dumps_remaining(tmp_path):
     assert PubHours.objects.count() == 2
     assert len(fake.fetched) == 2
     assert json.loads(rem.read_text())  # the 3rd pub was dumped
+
+
+@pytest.mark.django_db
+def test_fresh_keys_chunks_past_sqlite_variable_cap():
+    """Resuming a whole-CR catalogue passes ~53k keys to ``_fresh_keys``. The
+    ``cache_key__in`` lookup must be chunked, or SQLite raises 'too many SQL
+    variables' (the variable cap is 32766). Regression for that crash.
+    """
+    fresh_key = geohash8(50.08, 14.42)
+    PubHours.objects.create(
+        cache_key=fresh_key, name="Pub A", lat=50.08, lng=14.42,
+        opening_hours_raw="Mo-Su 10:00-22:00",
+        source="firmy", status=PubHours.Status.OK, fetched_at=timezone.now(),
+    )
+    # One real fresh key plus >32766 misses, all in a single call.
+    keys = [fresh_key] + [f"k{i:08d}" for i in range(40_000)]
+
+    result = cmd.Command()._fresh_keys(keys, ttl_days=14)
+
+    assert result == {fresh_key}
