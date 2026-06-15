@@ -50,3 +50,9 @@ Thumbs.db
 
 # Playwright MCP scratch artifacts
 .playwright-mcp/
+
+# Bulk-fill generated data (regenerable via the Mapy sweep / LLM classifier)
+scripts/pub_catalogue*.json
+scripts/pub_remaining*.json
+scripts/venue_verdicts*.json
+scripts/*.log
