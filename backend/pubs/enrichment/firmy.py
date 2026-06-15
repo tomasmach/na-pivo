@@ -450,7 +450,7 @@ class FirmyHoursSource:
         if existing is not None and existing is not False:
             # Body already materialised (mock or non-streamed) — just truncate.
             if len(existing) > _MAX_BODY_BYTES:
-                logger.warning(
+                logger.debug(
                     "firmy: response body from %s exceeds %d bytes — truncating",
                     resp.url, _MAX_BODY_BYTES,
                 )
