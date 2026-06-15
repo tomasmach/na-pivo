@@ -341,7 +341,7 @@ export default function ProfileScreen() {
             {/* ── Identity hero card ── */}
             <View style={styles.identityCard}>
               <View style={styles.avatarHalo}>
-                <Avatar uri={avatarUrl} nickname={nickname} displayName={displayName} size={96} />
+                <Avatar uri={avatarUrl} nickname={nickname} displayName={displayName} size={76} />
               </View>
               <Text
                 style={styles.nickname}
@@ -546,15 +546,15 @@ const styles = StyleSheet.create({
     borderRadius: Radius.cardLarge,
     borderWidth: 1,
     borderColor: Colors.border,
-    paddingVertical: Spacing.xl,
+    paddingVertical: Spacing.lg,
     paddingHorizontal: Spacing.lg,
   },
   avatarHalo: {
-    marginBottom: Spacing.sm,
+    marginBottom: Spacing.xs,
   },
   nickname: {
     fontFamily: Fonts.display.extrabold,
-    fontSize: 26,
+    fontSize: 22,
     color: Colors.foam,
     textAlign: 'center',
   },
@@ -569,7 +569,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'center',
     gap: Spacing.sm,
-    marginTop: Spacing.md,
+    marginTop: Spacing.sm,
   },
   editPill: {
     flexDirection: 'row',
