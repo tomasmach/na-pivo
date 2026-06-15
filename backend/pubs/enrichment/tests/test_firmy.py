@@ -27,6 +27,8 @@ from pubs.enrichment.firmy import (
     FirmyHoursSource,
     RawHours,
     TransientFetchError,
+    _build_search_queries,
+    _core_name,
 )
 
 # ---------------------------------------------------------------------------
@@ -787,3 +789,104 @@ class TestHttpStatusSemantics:
 
         src = FirmyHoursSource(session=session, min_interval=0.0)
         assert src.fetch(name, lat, lng) is None
+
+
+# ---------------------------------------------------------------------------
+# Search-query ladder + geo-aware selection (the cost-cutting coverage fix)
+# ---------------------------------------------------------------------------
+
+def _query_of(req: requests.PreparedRequest) -> str:
+    """Extract the decoded ?q= search term from a mocked request URL."""
+    from urllib.parse import parse_qs, urlparse
+
+    return parse_qs(urlparse(req.url or "").query).get("q", [""])[0]
+
+
+class TestBuildSearchQueries:
+    """Pure unit tests for the query-form ladder (no HTTP)."""
+
+    def test_name_only_first_city_last(self):
+        # A city appended to the query 410s firmy.cz's tokenizer, so the
+        # name-only form must be tried FIRST and name+city only as a fallback.
+        qs = _build_search_queries("Pivnice U Zlatého slona", "Praha")
+        assert qs[0] == "Pivnice U Zlatého slona"
+        assert qs[-1] == "Pivnice U Zlatého slona Praha"
+
+    def test_core_name_inserted_before_city_form(self):
+        name = "Pilsner Urquell: The Original Beer Experience"
+        qs = _build_search_queries(name, "Praha")
+        assert _core_name(name) == "Pilsner Urquell"
+        assert "Pilsner Urquell" in qs
+        assert qs.index("Pilsner Urquell") < qs.index(f"{name} Praha")
+
+    def test_dedupes_when_no_subtitle_no_city(self):
+        # core == name, depunctuated == name, no city → a single query form.
+        assert _build_search_queries("Pivovar Staré Město", None) == ["Pivovar Staré Město"]
+
+    def test_dash_subtitle_core(self):
+        assert _core_name("PLNÝ PEKÁČ - restaurace a pivnice") == "PLNÝ PEKÁČ"
+
+
+class TestSearchLadderBehaviour:
+    """End-to-end fetch() behaviour of the ladder + geo-aware selection."""
+
+    def test_falls_back_to_core_name_when_full_name_410s(self):
+        """A long subtitle name 410s in full but hits on its core name."""
+        name = "Pilsner Urquell: The Original Beer Experience"
+        lat, lng = 50.0875, 14.4213
+        detail_html = _make_search_html("111", "pilsner-urquell-praha", name, lat, lng)
+
+        def handle_search(req):
+            q = _query_of(req)
+            if "Original" in q:  # full name and name+city both carry the subtitle
+                return _make_response("", status_code=410, url=req.url)
+            # core "Pilsner Urquell" → a hit
+            return _make_response(_make_search_html("111", "pilsner-urquell-praha", name, lat, lng))
+
+        session = requests.Session()
+        adapter = MockFirmyAdapter({
+            r"firmy\.cz/\?q=": handle_search,
+            r"/detail/": lambda _req: _make_response(detail_html),
+        })
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+
+        src = FirmyHoursSource(session=session, min_interval=0.0)
+        result = src.fetch(name, lat, lng, city="Praha")
+        assert result is not None
+        assert result.source_ref == "111"
+
+    def test_geo_aware_fallback_to_city_form_for_other_town_name(self):
+        """A name carrying a different town ('… Hostomice', but the pub is in
+        Prague) surfaces the distant other-town listing on the name-only search;
+        the geo-aware ladder must reject it and pick the near name+city hit."""
+        name = "Nalévárna Pivovaru Hostomice"
+        q_lat, q_lng = 50.0875, 14.4213  # Prague
+        far_lat, far_lng = 49.79, 14.04  # Hostomice town (~35 km away)
+
+        # firm_id must be numeric — _DETAIL_RE only matches /detail/<digits>-…
+        far_search = _make_search_html("900", "nalevarna-hostomice", name, far_lat, far_lng)
+        near_search = _make_search_html("200", "nalevarna-praha", name, q_lat, q_lng)
+        near_detail = _make_search_html("200", "nalevarna-praha", name, q_lat, q_lng)
+
+        def handle_search(req):
+            q = _query_of(req)
+            if q.endswith("Praha"):       # name + city disambiguator → near hit
+                return _make_response(near_search)
+            return _make_response(far_search)  # name-only → distant hit
+
+        session = requests.Session()
+        adapter = MockFirmyAdapter({
+            r"firmy\.cz/\?q=": handle_search,
+            r"/detail/200": lambda _req: _make_response(near_detail),
+            # /detail/900 must never be fetched — the distant hit is rejected
+            # before any detail call.
+            r"/detail/900": lambda _req: pytest.fail("fetched the distant FAR detail"),
+        })
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+
+        src = FirmyHoursSource(session=session, min_interval=0.0)
+        result = src.fetch(name, q_lat, q_lng, city="Praha")
+        assert result is not None
+        assert result.source_ref == "200"

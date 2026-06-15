@@ -25,9 +25,13 @@ For production-scale usage, pursue a **Seznam B2B / Mapy.com data license**
 
 Pipeline
 --------
-1. SEARCH:  GET https://www.firmy.cz/?q={name}+{city}
+1. SEARCH:  GET https://www.firmy.cz/?q={name}
    - A plain cookie-aware requests.Session with a browser User-Agent. No login
      or warmup is needed — the search page is served directly.
+   - The query is the pub NAME only. Appending a city makes firmy.cz's tokenizer
+     answer 410 (zero results) for most names; an ordered ladder of name forms
+     (full → core-without-subtitle → de-punctuated) is tried instead, and geo
+     disambiguation is handled afterwards by the pre-filter + verify_match.
    - Extract the first /detail/{firmId}-{slug}.html link from the search HTML.
    - HTTP status: firmy.cz answers 410 Gone (and 404) for a search with ZERO
      results — that is a genuine no-match (→ None), NOT a transient failure.
@@ -140,6 +144,59 @@ _ALLOWED_HOST_DOMAINS = ("firmy.cz", "seznam.cz")
 _DETAIL_RE = re.compile(
     r'href="https://www\.firmy\.cz/detail/(\d+)-([^"]+)\.html"'
 )
+
+# Search-query construction.
+#
+# CRITICAL (verified live 2026-06-15): appending a city to the query usually
+# BREAKS firmy.cz's search tokenizer — it answers 410 (zero results) for most
+# pub names the moment a city token is added ("Pivnice U Zlatého slona Praha" →
+# 410, but "Pivnice U Zlatého slona" → hit). So the NAME-ONLY form is tried
+# first. BUT the city is not pure noise: when the pub's own name carries a
+# *different* town ("Nalévárna Pivovaru Hostomice" sits in Prague, not in the
+# town Hostomice), the name-only search surfaces the other-town listing ~40 km
+# away. The geo-aware selection in _search detects that distant first hit and
+# falls back to the "name + city" form to disambiguate. So city is appended ONLY
+# as a last-resort disambiguating form, never first.
+#
+# Long branded names carry a subtitle after a ':' or ' - ' separator
+# ("Pilsner Urquell: The Original Beer Experience", "PLNÝ PEKÁČ - restaurace a
+# pivnice") that the tokenizer also cannot match — querying the core name before
+# the separator surfaces the listing. Ladder order: full name → core name →
+# de-punctuated core → name+city.
+_SUBTITLE_SEPARATORS = (":", " - ", " – ", " — ")
+_QUERY_PUNCT_RE = re.compile(r"[:\-–—&/|,.()]+")
+_QUERY_WS_RE = re.compile(r"\s+")
+
+
+def _core_name(name: str) -> str:
+    """Return *name* truncated before the first subtitle separator (':'/' - ')."""
+    for sep in _SUBTITLE_SEPARATORS:
+        idx = name.find(sep)
+        if idx > 0:
+            return name[:idx].strip()
+    return name.strip()
+
+
+def _depunctuate(name: str) -> str:
+    """Collapse search-breaking punctuation in *name* to single spaces."""
+    return _QUERY_WS_RE.sub(" ", _QUERY_PUNCT_RE.sub(" ", name)).strip()
+
+
+def _build_search_queries(name: str, city: str | None) -> list[str]:
+    """Ordered, de-duplicated query forms to try for *name*.
+
+    Name-only forms come first (a city usually 410s the tokenizer); the
+    ``name + city`` form is last, a disambiguating fallback used by _search's
+    geo-aware selection when the name-only hit lands in the wrong town.
+    """
+    forms = [name.strip(), _core_name(name), _depunctuate(_core_name(name))]
+    if city:
+        forms.append(f"{name.strip()} {city.strip()}")
+    candidates: list[str] = []
+    for form in forms:
+        if form and form not in candidates:
+            candidates.append(form)
+    return candidates
 
 # Category / tag extraction from the detail page.
 #
@@ -539,12 +596,42 @@ class FirmyHoursSource:
     # Search
     # ------------------------------------------------------------------
 
-    def _search(self, name: str, city: str | None) -> tuple[str, str, dict] | None:
+    def _search(
+        self, name: str, city: str | None, lat: float, lng: float
+    ) -> tuple[str, str, dict] | None:
         """
-        Search Firmy.cz and return (firm_id, slug, ld_block) for the first hit,
-        or None if nothing was found.
+        Search Firmy.cz and return (firm_id, slug, ld_block), or None.
+
+        Tries an ordered ladder of query forms (full name → core name → de-
+        punctuated core → name+city; see _build_search_queries) with GEO-AWARE
+        selection: a form's first hit is accepted as soon as it is NOT
+        geographically distant from (lat, lng). A distant hit (e.g. a name-only
+        search surfacing a same-named pub in another town) is held only as a
+        last-resort fallback while later, more specific forms — including the
+        name+city disambiguator — are tried for a nearer match.
         """
-        query = name if not city else f"{name} {city}"
+        fallback: tuple[str, str, dict] | None = None
+        for query in _build_search_queries(name, city):
+            hit = self._search_once(query)
+            if hit is None:
+                continue
+            _firm_id, _slug, search_lb = hit
+            if not self._search_hit_is_geographically_distant(lat, lng, search_lb):
+                # In-area hit (or no card geo to judge) — accept immediately.
+                return hit
+            # Distant hit — remember the first one as a fallback, but keep trying
+            # more specific forms (notably name+city) for a nearer match.
+            if fallback is None:
+                fallback = hit
+        return fallback
+
+    def _search_once(self, query: str) -> tuple[str, str, dict] | None:
+        """Run ONE search query; return (firm_id, slug, ld_block) or None.
+
+        None means a genuine zero-result page (410/404/no detail link) for THIS
+        query form — the caller advances to the next ladder form. Retryable
+        failures (429/5xx/consent-wall/network) raise TransientFetchError.
+        """
         url = _SEARCH_URL.format(query=quote_plus(query))
 
         try:
@@ -734,8 +821,9 @@ class FirmyHoursSource:
         lng: float,
         city: str | None,
     ) -> RawHours | None:
-        # Step 1: Search
-        result = self._search(name, city)
+        # Step 1: Search (geo-aware ladder; needs the query coords to reject
+        # name-only hits that surface a same-named pub in another town).
+        result = self._search(name, city, lat, lng)
         if result is None:
             return None
 
