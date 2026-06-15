@@ -36,13 +36,18 @@ import {
   ChevronLeftIcon,
   CheckIcon,
   MailIcon,
-  UserIcon,
+  PencilIcon,
   LinkIcon,
   KeyRoundIcon,
 } from '@/components/shared/IconGlyph';
 import { AppleIcon, GoogleIcon } from '@/components/shared/BrandIcon';
 import { GlowButton } from '@/components/shared/GlowButton';
-import { useAccountStore } from '@/stores/accountStore';
+import { Avatar } from '@/profile/Avatar';
+import {
+  useAccountStore,
+  selectNickname,
+  selectAvatarUrl,
+} from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
 import { isAppleSignInSupported } from '@/data/socialAuth';
 import type { AuthProvider } from '@/data/auth';
@@ -56,6 +61,8 @@ export default function AccountScreen() {
   const showToast = useToastStore((s) => s.show);
 
   const profile = useAccountStore((s) => s.profile);
+  const nickname = useAccountStore(selectNickname);
+  const avatarUrl = useAccountStore(selectAvatarUrl);
   const linkGoogle = useAccountStore((s) => s.linkGoogle);
   const linkApple = useAccountStore((s) => s.linkApple);
   const unlink = useAccountStore((s) => s.unlink);
@@ -247,11 +254,20 @@ export default function AccountScreen() {
       >
         {/* ── Identity card ── */}
         <View style={styles.identityCard}>
-          <View style={styles.avatar}>
-            <UserIcon size={28} color={Colors.amber} />
-          </View>
+          <Pressable
+            onPress={() => router.push('/profile/edit')}
+            style={({ pressed }) => [styles.avatarWrap, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel={cs.a11y.profileEdit}
+            hitSlop={6}
+          >
+            <Avatar uri={avatarUrl} nickname={nickname} displayName={profile.displayName} size={72} />
+            <View style={styles.avatarEditBadge}>
+              <PencilIcon size={13} color={Colors.stout} />
+            </View>
+          </Pressable>
           <Text style={styles.identityName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {displayTitle}
+            {nickname ? `@${nickname}` : displayTitle}
           </Text>
           {!!profile.email && (
             <Text style={styles.identityEmail} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -538,16 +554,21 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.xl,
     paddingHorizontal: Spacing.lg,
   },
-  avatar: {
-    width: 72,
-    height: 72,
+  avatarWrap: {
+    marginBottom: Spacing.xs,
+  },
+  avatarEditBadge: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 26,
+    height: 26,
     borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.amber, 0.16),
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.5),
+    backgroundColor: Colors.amber,
+    borderWidth: 2,
+    borderColor: Colors.stout2,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: Spacing.xs,
   },
   identityName: {
     fontFamily: Fonts.display.extrabold,

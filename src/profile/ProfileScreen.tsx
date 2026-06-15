@@ -14,7 +14,7 @@
  * GET /v1/account/me usage block — absent → "—" so it never masquerades as a 0.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -49,6 +49,7 @@ import {
   selectIsPublic,
 } from '@/stores/accountStore';
 import { fetchWalkedDistanceM } from '@/data/auth';
+import { useToastStore } from '@/stores/toastStore';
 import {
   useTallyStore,
   sessionCount,
@@ -240,6 +241,23 @@ export default function ProfileScreen() {
   const nickname = useAccountStore(selectNickname);
   const avatarUrl = useAccountStore(selectAvatarUrl);
   const isPublic = useAccountStore(selectIsPublic);
+  const updateProfile = useAccountStore((s) => s.updateProfile);
+  const showToast = useToastStore((s) => s.show);
+
+  // Inline visibility flip — distinct from the edit pencil (full edit). The store
+  // commits only on a successful PATCH, so the pill reflects the server truth; a
+  // failure surfaces a toast and leaves the previous state untouched.
+  const [visibilityBusy, setVisibilityBusy] = useState(false);
+  const handleToggleVisibility = useCallback(async () => {
+    if (visibilityBusy) return;
+    setVisibilityBusy(true);
+    try {
+      const result = await updateProfile({ isPublic: !isPublic });
+      if (!result.ok) showToast(result.detail || cs.profile.edit.errorGeneric);
+    } finally {
+      setVisibilityBusy(false);
+    }
+  }, [visibilityBusy, isPublic, updateProfile, showToast]);
 
   const current = useTallyStore((s) => s.current);
   const history = useTallyStore((s) => s.history);
@@ -319,15 +337,17 @@ export default function ProfileScreen() {
               </Pressable>
             </View>
 
-            {/* ── Visibility badge ── */}
+            {/* ── Visibility toggle ── */}
             <Pressable
-              onPress={() => router.push('/profile/edit')}
+              onPress={handleToggleVisibility}
+              disabled={visibilityBusy}
               style={({ pressed }) => [
                 styles.visibilityPill,
                 isPublic ? styles.visibilityPublic : styles.visibilityPrivate,
                 pressed && styles.pressed,
               ]}
-              accessibilityRole="button"
+              accessibilityRole="switch"
+              accessibilityState={{ checked: isPublic, busy: visibilityBusy }}
               accessibilityLabel={cs.a11y.profileVisibility}
               hitSlop={4}
             >
