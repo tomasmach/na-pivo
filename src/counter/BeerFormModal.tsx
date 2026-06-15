@@ -9,7 +9,7 @@
  */
 
 import React, { useState } from 'react';
-import { Modal, View, Text, TextInput, Pressable, StyleSheet, Platform } from 'react-native';
+import { Modal, View, Text, TextInput, Pressable, StyleSheet, Platform, KeyboardAvoidingView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
@@ -120,7 +120,10 @@ function BeerFormBody({ mode, beer, onCancel, onSubmit }: BeerFormBodyProps) {
   };
 
   return (
-    <View style={styles.backdrop}>
+    <KeyboardAvoidingView
+      style={styles.backdrop}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
         <View style={[styles.card, { paddingBottom: Math.max(insets.bottom, Spacing.lg) }]}>
           <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
             {title}
@@ -209,7 +212,7 @@ function BeerFormBody({ mode, beer, onCancel, onSubmit }: BeerFormBodyProps) {
             </Text>
           </Pressable>
         </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
