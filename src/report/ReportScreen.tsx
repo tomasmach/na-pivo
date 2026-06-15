@@ -118,7 +118,10 @@ export default function ReportScreen() {
         <KeyboardAvoidingView
           style={styles.flex}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={insets.top + 56}
+          // Full-height view down to the screen bottom: the 'padding' formula
+          // already yields the exact keyboard height, so any positive offset is
+          // added as dead space (an empty brown band above the keyboard).
+          keyboardVerticalOffset={0}
         >
           <ScrollView
             contentContainerStyle={[

@@ -264,7 +264,11 @@ export default function AddPubScreen() {
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={insets.top + 56}
+        // This view spans down to the screen bottom, so the 'padding' formula
+        // (frame.bottom − keyboardTop) already equals the keyboard height.
+        // Any positive offset here is added on top as dead space — it was what
+        // left an empty brown band above the keyboard.
+        keyboardVerticalOffset={0}
       >
         <ScrollView
           contentContainerStyle={[
