@@ -148,7 +148,7 @@ function PastEveningRow({
 
 // ─── Screen ────────────────────────────────────────────────────────────────────
 
-export default function MyBeersScreen() {
+export default function MyBeersScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -174,12 +174,15 @@ export default function MyBeersScreen() {
 
   return (
     <View style={styles.root}>
-      {/* Header — a tab screen, so no back button; just the title. */}
-      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <Text style={styles.headerTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {cs.myBeers.title}
-        </Text>
-      </View>
+      {/* Header — a tab screen, so no back button; just the title. Suppressed
+          when embedded in the "Pivo" tab, where the segment control is the title. */}
+      {!embedded && (
+        <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+          <Text style={styles.headerTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+            {cs.myBeers.title}
+          </Text>
+        </View>
+      )}
 
       {isEmpty ? (
         <View style={styles.empty}>

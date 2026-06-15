@@ -1,7 +1,7 @@
 /**
  * Hand-rolled bottom tab bar — matches the stout/amber pub theme instead of the
- * default react-navigation look. Three items (Kompas / Počítadlo / Moje piva),
- * each an IconGlyph + Baloo2 label. Active = amber with a subtle glow; inactive =
+ * default react-navigation look. Three items (Kompas / Pivo / Profil), each an
+ * IconGlyph + Baloo2 label. Active = amber with a subtle glow; inactive =
  * muted. A light haptic fires on press when the user has haptics enabled.
  *
  * Driven by expo-router's <Tabs> via `tabBar={(props) => <TabBar {...props} />}`.
@@ -15,7 +15,7 @@ import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea } from '@/theme/layout';
 import { amberGlow } from '@/theme/shadows';
-import { CompassIcon, BeerIcon, HistoryIcon, UserIcon } from '@/components/shared/IconGlyph';
+import { CompassIcon, BeerIcon, UserIcon } from '@/components/shared/IconGlyph';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { cs } from '@/i18n/cs';
@@ -49,8 +49,7 @@ const TAB_META: Record<
   { Icon: typeof CompassIcon; label: string; a11yLabel: string }
 > = {
   index: { Icon: CompassIcon, label: cs.tabs.compass, a11yLabel: cs.a11y.tabCompass },
-  counter: { Icon: BeerIcon, label: cs.tabs.counter, a11yLabel: cs.a11y.tabCounter },
-  'my-beers': { Icon: HistoryIcon, label: cs.tabs.myBeers, a11yLabel: cs.a11y.tabMyBeers },
+  beer: { Icon: BeerIcon, label: cs.tabs.beer, a11yLabel: cs.a11y.tabBeer },
   profile: { Icon: UserIcon, label: cs.tabs.profile, a11yLabel: cs.a11y.tabProfile },
 };
 

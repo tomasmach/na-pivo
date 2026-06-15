@@ -321,7 +321,16 @@ export const cs = {
     compass: 'Kompas',
     counter: 'Počítadlo',
     myBeers: 'Moje piva',
+    // Počítadlo + Moje piva live behind one tab now, switched by a segment.
+    beer: 'Štamgast',
     profile: 'Profil',
+  },
+
+  // The merged "Pivo" tab — a segmented control flips between counting and the
+  // personal history; the two screens below it are unchanged.
+  beer: {
+    segmentCount: 'Počítat',
+    segmentHistory: 'Historie',
   },
 
   profile: {
@@ -480,6 +489,16 @@ export const cs = {
     // — Undo —
     undoLast: 'Vrátit poslední',
 
+    // — Closing / resuming an evening —
+    // Explicit "I'm done" — archives the session to history.
+    doneDrinking: 'Dopito',
+    doneTitle: 'Dopito?',
+    doneBody: 'Zavřeme tenhle večer a najdeš ho v Historii.',
+    doneConfirm: 'Dopito',
+    // Offered when a recent evening at this pub auto-completed and can continue.
+    resumeEvening: 'Pokračovat ve večeru',
+    resumeHint: (summary: string) => `Posledně tu padlo ${summary}. Naváž, nebo začni ťuknutím nový.`,
+
     // — Beer / price modal —
     priceModalTitle: 'Kolik stojí?',
     addModalTitle: 'Jaké pivo si dáváš?',
@@ -633,6 +652,11 @@ export const cs = {
     tabCompass: 'Záložka Kompas',
     tabCounter: 'Záložka Počítadlo',
     tabMyBeers: 'Záložka Moje piva',
+    tabBeer: 'Záložka Štamgast',
+    beerSegmentCount: 'Přepnout na počítání piv',
+    beerSegmentHistory: 'Přepnout na historii večerů',
+    counterDone: 'Dopito, zavřít tenhle večer',
+    counterResume: 'Pokračovat v předchozím večeru',
     tabProfile: 'Záložka Profil',
 
     // — Counter —

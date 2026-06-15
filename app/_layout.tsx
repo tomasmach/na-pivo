@@ -27,6 +27,7 @@ import {
 import { flushWalkingDistance } from '@/data/walkingTelemetry';
 import { useAccountStore, selectNeedsProfileSetup } from '@/stores/accountStore';
 import { useReleaseStore } from '@/stores/releaseStore';
+import { useTallyStore } from '@/stores/tallyStore';
 import { WhatsNewModal } from '@/components/shared/WhatsNewModal';
 import { Toast } from '@/components/shared/Toast';
 
@@ -115,9 +116,13 @@ export default function RootLayout() {
     void flushPubRatingsQueue();
     void seedVisitsFromHistory();
     void flushVisitsQueue();
+    // Close an evening left idle past the timeout while the app was away, so the
+    // counter reopens clean (the evening stays resumable for the same day/pub).
+    useTallyStore.getState().maybeAutoArchive();
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         void trackClientEvent({ event: 'app_foreground', severity: 'info' });
+        useTallyStore.getState().maybeAutoArchive();
         void flushPubReportQueue();
         void flushFeedbackQueue();
         void flushCommunityQueue();
