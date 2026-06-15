@@ -32,6 +32,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.db import IntegrityError, connection
 from django.db.migrations.executor import MigrationExecutor
+from django.utils import timezone
 from PIL import Image
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -40,7 +41,7 @@ from rest_framework.throttling import ScopedRateThrottle
 import pubs.accounts as accounts
 import pubs.oauth as oauth
 from pubs.accounts import AccountError
-from pubs.models import Account
+from pubs.models import Account, DrinkLog, PubRating, PubVisit
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -431,7 +432,7 @@ def test_migration_0026_applies_and_constraint_exists():
     """0026 brings the schema to head and installs the functional CI unique
     index. Verified by round-tripping through the migration executor: migrate
     back to 0025, forward to 0026, then prove the constraint by attempting a
-    case-insensitive duplicate."""
+    case-insensitive duplicate. Finally migrate to the current head again."""
     executor = MigrationExecutor(connection)
     app_label = "pubs"
 
@@ -442,9 +443,17 @@ def test_migration_0026_applies_and_constraint_exists():
     executor.migrate([(app_label, "0026_account_profile_fields")])
     executor.loader.build_graph()
 
-    Account.objects.create(device_id="m-1", nickname="Dunkel")
+    historical_apps = executor.loader.project_state(
+        [(app_label, "0026_account_profile_fields")]
+    ).apps
+    HistoricalAccount = historical_apps.get_model(app_label, "Account")
+
+    HistoricalAccount.objects.create(device_id="m-1", nickname="Dunkel")
     with pytest.raises(IntegrityError):
-        Account.objects.create(device_id="m-2", nickname="DUNKEL")
+        HistoricalAccount.objects.create(device_id="m-2", nickname="DUNKEL")
+
+    executor.migrate([(app_label, "0027_account_settings")])
+    executor.loader.build_graph()
 
 
 # ===========================================================================
@@ -779,6 +788,130 @@ def test_hide_pub_names_still_works_through_new_serializer(client):
     assert body["hide_pub_names"] is False
     assert body["display_name"] == "Tomáš"
     assert body["is_public"] is False
+
+
+@pytest.mark.django_db
+def test_account_settings_round_trip_through_me(client):
+    token, account_id = _bootstrap(client)
+
+    resp = client.patch(
+        "/v1/account/me",
+        data={
+            "compass_mode": "surprise",
+            "max_distance_km": 5,
+            "price_currency": "EUR",
+            "haptic_enabled": False,
+            "sound_enabled": True,
+            "hide_closed_pubs": False,
+            "hide_pub_names": True,
+        },
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    body = resp.json()
+    assert body["hide_pub_names"] is True
+    assert body["settings"] == {
+        "mode": "surprise",
+        "max_distance_km": 5.0,
+        "price_currency": "EUR",
+        "haptic_enabled": False,
+        "sound_enabled": True,
+        "hide_closed_pubs": False,
+        "hide_pub_names": True,
+    }
+
+    account = Account.objects.get(public_id=account_id)
+    assert account.compass_mode == "surprise"
+    assert account.max_distance_km == 5
+    assert account.price_currency == "EUR"
+    assert account.haptic_enabled is False
+    assert account.sound_enabled is True
+    assert account.hide_closed_pubs is False
+    assert account.hide_pub_names is True
+
+
+@pytest.mark.django_db
+def test_get_me_returns_backend_profile_stats_and_achievements(client):
+    token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    now = timezone.now()
+
+    for i in range(10):
+        DrinkLog.objects.create(
+            account=account,
+            client_id=uuid.uuid4(),
+            cache_key="u2fkbn12" if i < 6 else "u2fkbn34",
+            name="U Zlatého tygra" if i < 6 else "Lokál",
+            lat=50.0876,
+            lng=14.4214,
+            city="Praha",
+            external_id="",
+            beer_name="Pilsner Urquell",
+            price_czk=50 + i,
+            volume_ml=500,
+            drank_at=now,
+        )
+
+    for i in range(5):
+        PubVisit.objects.create(
+            account=account,
+            client_id=uuid.uuid4(),
+            cache_key="u2fkbn12",
+            name="U Zlatého tygra",
+            lat=50.0876,
+            lng=14.4214,
+            city="Praha",
+            external_id="",
+            started_at=now,
+            ended_at=now,
+            client_updated_at=now,
+        )
+    PubVisit.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        cache_key="u2fkbn34",
+        name="Lokál",
+        lat=50.088,
+        lng=14.422,
+        city="Praha",
+        external_id="",
+        started_at=now,
+        ended_at=now,
+        client_updated_at=now,
+    )
+
+    for i in range(10):
+        PubRating.objects.create(
+            account=account,
+            cache_key=f"u2fk{i:04d}",
+            name=f"Pub {i}",
+            lat=50.0 + i / 1000,
+            lng=14.0,
+            external_id="",
+            verdict=PubRating.Verdict.LIKE,
+            tag="",
+            note="",
+            client_updated_at=now,
+        )
+
+    resp = client.get("/v1/account/me", **_auth(token))
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    body = resp.json()
+    assert body["stats"] == {
+        "total_beers": 10,
+        "distinct_pubs": 2,
+        "ratings_count": 10,
+        "total_spent_czk": sum(range(50, 60)),
+        "max_visits_to_one_pub": 5,
+    }
+    assert body["achievements"] == {
+        "first_ten": True,
+        "regular": True,
+        "reviewer": True,
+    }
 
 
 # ===========================================================================

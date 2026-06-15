@@ -259,6 +259,14 @@ class Account(models.Model):
         # within the window reactivates it.
         PENDING_DELETION = "pending_deletion", "Pending deletion"
 
+    class CompassMode(models.TextChoices):
+        NEAREST = "nearest", "Nearest"
+        SURPRISE = "surprise", "Surprise"
+
+    class PriceCurrency(models.TextChoices):
+        CZK = "CZK", "CZK"
+        EUR = "EUR", "EUR"
+
     # ---------- identity ----------
     public_id = models.UUIDField(
         default=uuid.uuid4,
@@ -290,6 +298,35 @@ class Account(models.Model):
     hide_pub_names = models.BooleanField(
         default=False,
         help_text="Whether the app should hide pub names behind the reveal interaction.",
+    )
+    compass_mode = models.CharField(
+        max_length=16,
+        choices=CompassMode.choices,
+        default=CompassMode.NEAREST,
+        help_text="Preferred compass mode in the mobile app.",
+    )
+    max_distance_km = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Preferred search radius in kilometres; null means unlimited.",
+    )
+    price_currency = models.CharField(
+        max_length=3,
+        choices=PriceCurrency.choices,
+        default=PriceCurrency.CZK,
+        help_text="Preferred currency for displaying counted beer totals.",
+    )
+    haptic_enabled = models.BooleanField(
+        default=True,
+        help_text="Whether haptic feedback is enabled in the mobile app.",
+    )
+    sound_enabled = models.BooleanField(
+        default=False,
+        help_text="Whether counter sounds are enabled in the mobile app.",
+    )
+    hide_closed_pubs = models.BooleanField(
+        default=True,
+        help_text="Whether known-closed pubs should be hidden in the mobile app.",
     )
 
     # ---------- profile (populated once the account is claimed) ----------

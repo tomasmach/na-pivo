@@ -40,6 +40,7 @@ import uuid
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import EmailValidator
 from django.db import IntegrityError
+from django.db.models import Count, Sum
 from rest_framework import serializers
 
 from pubs import accounts
@@ -870,11 +871,64 @@ class AccountSerializer(serializers.ModelSerializer):
 
 
 class AccountUsageSerializer(serializers.Serializer):
-    """Nested usage block — currently just the distance tile the mobile profile
-    screen renders. Reads from the related AccountUsageStats row when present,
-    defaulting to 0 so the key is always there."""
+    """Nested usage block for coarse per-account telemetry counters."""
 
     walked_distance_m = serializers.IntegerField(read_only=True)
+
+
+class AccountSettingsSerializer(serializers.Serializer):
+    """Nested app settings block stored on the account."""
+
+    mode = serializers.CharField(read_only=True)
+    max_distance_km = serializers.FloatField(read_only=True, allow_null=True)
+    price_currency = serializers.CharField(read_only=True)
+    haptic_enabled = serializers.BooleanField(read_only=True)
+    sound_enabled = serializers.BooleanField(read_only=True)
+    hide_closed_pubs = serializers.BooleanField(read_only=True)
+    hide_pub_names = serializers.BooleanField(read_only=True)
+
+
+class AccountStatsSerializer(serializers.Serializer):
+    """Nested profile stats derived from account-owned drinks, visits and ratings."""
+
+    total_beers = serializers.IntegerField(read_only=True)
+    distinct_pubs = serializers.IntegerField(read_only=True)
+    ratings_count = serializers.IntegerField(read_only=True)
+    total_spent_czk = serializers.IntegerField(read_only=True)
+    max_visits_to_one_pub = serializers.IntegerField(read_only=True)
+
+
+class AccountAchievementsSerializer(serializers.Serializer):
+    """Server-derived achievement unlock state for the profile screen."""
+
+    first_ten = serializers.BooleanField(read_only=True)
+    regular = serializers.BooleanField(read_only=True)
+    reviewer = serializers.BooleanField(read_only=True)
+
+
+def _account_stats(obj: Account) -> dict:
+    """Aggregate the account's durable backend history into profile counters."""
+
+    drink_totals = obj.drinks.aggregate(
+        total_beers=Count("id"),
+        total_spent_czk=Sum("price_czk"),
+    )
+    pub_keys = set(obj.pub_visits.values_list("cache_key", flat=True))
+    pub_keys.update(obj.drinks.values_list("cache_key", flat=True))
+    max_visit_row = (
+        obj.pub_visits.values("cache_key")
+        .annotate(n=Count("id"))
+        .order_by("-n")
+        .first()
+    )
+
+    return {
+        "total_beers": int(drink_totals["total_beers"] or 0),
+        "distinct_pubs": len(pub_keys),
+        "ratings_count": obj.pub_ratings.count(),
+        "total_spent_czk": int(drink_totals["total_spent_czk"] or 0),
+        "max_visits_to_one_pub": int(max_visit_row["n"]) if max_visit_row else 0,
+    }
 
 
 class AccountMeSerializer(serializers.ModelSerializer):
@@ -900,6 +954,9 @@ class AccountMeSerializer(serializers.ModelSerializer):
     avatar_url = serializers.SerializerMethodField()
     has_avatar = serializers.SerializerMethodField()
     usage = serializers.SerializerMethodField()
+    settings = serializers.SerializerMethodField()
+    stats = serializers.SerializerMethodField()
+    achievements = serializers.SerializerMethodField()
 
     class Meta:
         model = Account
@@ -917,6 +974,9 @@ class AccountMeSerializer(serializers.ModelSerializer):
             "is_anonymous",
             "status",
             "hide_pub_names",
+            "settings",
+            "stats",
+            "achievements",
             "usage",
             "created_at",
             "last_seen_at",
@@ -960,6 +1020,41 @@ class AccountMeSerializer(serializers.ModelSerializer):
         walked = stats.walked_distance_m if stats is not None else 0
         return AccountUsageSerializer({"walked_distance_m": walked}).data
 
+    def get_settings(self, obj: Account) -> dict:
+        return AccountSettingsSerializer(
+            {
+                "mode": obj.compass_mode,
+                "max_distance_km": obj.max_distance_km,
+                "price_currency": obj.price_currency,
+                "haptic_enabled": obj.haptic_enabled,
+                "sound_enabled": obj.sound_enabled,
+                "hide_closed_pubs": obj.hide_closed_pubs,
+                "hide_pub_names": obj.hide_pub_names,
+            }
+        ).data
+
+    def _stats_for(self, obj: Account) -> dict:
+        cache = getattr(self, "_account_stats_cache", None)
+        if cache is None:
+            cache = {}
+            self._account_stats_cache = cache
+        if obj.pk not in cache:
+            cache[obj.pk] = _account_stats(obj)
+        return cache[obj.pk]
+
+    def get_stats(self, obj: Account) -> dict:
+        return AccountStatsSerializer(self._stats_for(obj)).data
+
+    def get_achievements(self, obj: Account) -> dict:
+        stats = self._stats_for(obj)
+        return AccountAchievementsSerializer(
+            {
+                "first_ten": stats["total_beers"] >= 10,
+                "regular": stats["max_visits_to_one_pub"] >= 5,
+                "reviewer": stats["ratings_count"] >= 10,
+            }
+        ).data
+
 
 class AccountUpdateSerializer(serializers.ModelSerializer):
     """Writable account subset accepted by PATCH /v1/account/me.
@@ -982,10 +1077,27 @@ class AccountUpdateSerializer(serializers.ModelSerializer):
     # the 20-char ceiling and emits code='nickname_too_long' in the {detail, code}
     # shape the mobile client branches on.
     nickname = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    max_distance_km = serializers.FloatField(
+        required=False,
+        allow_null=True,
+        min_value=0.1,
+        max_value=100.0,
+    )
 
     class Meta:
         model = Account
-        fields = ["nickname", "display_name", "is_public", "hide_pub_names"]
+        fields = [
+            "nickname",
+            "display_name",
+            "is_public",
+            "hide_pub_names",
+            "compass_mode",
+            "max_distance_km",
+            "price_currency",
+            "haptic_enabled",
+            "sound_enabled",
+            "hide_closed_pubs",
+        ]
 
     def validate_nickname(self, value: str | None) -> str | None:
         # Coerce empty → None (clear). Otherwise run the canonical validator,
