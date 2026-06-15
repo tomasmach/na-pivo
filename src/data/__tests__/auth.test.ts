@@ -157,7 +157,10 @@ describe('registerEmail', () => {
     expect(result.profile).toEqual({
       id: 'acc-1',
       deviceId: 'dev-1',
+      nickname: null,
       displayName: 'Jan',
+      avatarUrl: null,
+      isPublic: true,
       email: 'jan@example.com',
       emailVerified: true,
       providers: ['email'],

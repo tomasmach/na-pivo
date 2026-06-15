@@ -15,7 +15,7 @@ import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea } from '@/theme/layout';
 import { amberGlow } from '@/theme/shadows';
-import { CompassIcon, BeerIcon, HistoryIcon } from '@/components/shared/IconGlyph';
+import { CompassIcon, BeerIcon, HistoryIcon, UserIcon } from '@/components/shared/IconGlyph';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { cs } from '@/i18n/cs';
@@ -51,6 +51,7 @@ const TAB_META: Record<
   index: { Icon: CompassIcon, label: cs.tabs.compass, a11yLabel: cs.a11y.tabCompass },
   counter: { Icon: BeerIcon, label: cs.tabs.counter, a11yLabel: cs.a11y.tabCounter },
   'my-beers': { Icon: HistoryIcon, label: cs.tabs.myBeers, a11yLabel: cs.a11y.tabMyBeers },
+  profile: { Icon: UserIcon, label: cs.tabs.profile, a11yLabel: cs.a11y.tabProfile },
 };
 
 interface TabItemProps {

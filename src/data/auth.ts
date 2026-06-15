@@ -30,7 +30,14 @@ export type AuthProvider = 'email' | 'google' | 'apple';
 export interface AccountProfile {
   id: string;
   deviceId: string;
+  /** Unique public handle (without the leading @). Null until the user picks one. */
+  nickname: string | null;
+  /** Optional real/display name. */
   displayName: string;
+  /** Absolute, loadable avatar URL minted by the backend, or null. */
+  avatarUrl: string | null;
+  /** Public-by-default visibility. */
+  isPublic: boolean;
   email: string;
   emailVerified: boolean;
   providers: AuthProvider[];
@@ -49,7 +56,14 @@ export type AuthActionResult = { ok: true } | { ok: false; code: string; detail:
 interface RawAccount {
   id?: string;
   device_id?: string;
+  nickname?: string | null;
   display_name?: string;
+  is_public?: boolean;
+  avatar_url?: string | null;
+  /** Defensive alias some providers/responses use instead of avatar_url. */
+  picture?: string | null;
+  has_avatar?: boolean;
+  usage?: { walked_distance_m?: number };
   email?: string;
   email_verified?: boolean;
   providers?: string[];
@@ -64,7 +78,13 @@ function parseProfile(data: RawAccount): AccountProfile {
   return {
     id: data.id ?? '',
     deviceId: data.device_id ?? '',
+    // An empty/missing nickname means the user hasn't picked a handle yet.
+    nickname: typeof data.nickname === 'string' && data.nickname.length > 0 ? data.nickname : null,
     displayName: data.display_name ?? '',
+    // Public-by-default: only an explicit false makes the profile private.
+    isPublic: data.is_public !== false,
+    // Backend guarantees an absolute, loadable URL; `picture` is a defensive alias.
+    avatarUrl: (data.avatar_url ?? data.picture) || null,
     email: data.email ?? '',
     emailVerified: data.email_verified === true,
     providers: (data.providers ?? []) as AuthProvider[],
@@ -376,4 +396,134 @@ export async function fetchAccountProfile(): Promise<AccountProfile | null> {
   const res = await authFetch('/v1/account/me', { method: 'GET', bearer: 'current' });
   if ('networkError' in res || !res.ok) return null;
   return parseProfile(res.data);
+}
+
+/**
+ * Server-only walked-distance counter (metres), read off the raw GET
+ * /v1/account/me `usage` block for the profile stats tile. Returns `null` when
+ * the field is absent so the UI can distinguish "not reported yet" (→ "—") from
+ * a real 0. Never throws.
+ */
+export async function fetchWalkedDistanceM(): Promise<number | null> {
+  const res = await authFetch('/v1/account/me', { method: 'GET', bearer: 'current' });
+  if ('networkError' in res || !res.ok) return null;
+  const walked = res.data.usage?.walked_distance_m;
+  return typeof walked === 'number' && Number.isFinite(walked) ? walked : null;
+}
+
+// ---------------------------------------------------------------------------
+// Profile (nickname / display name / visibility / avatar)
+// ---------------------------------------------------------------------------
+
+/**
+ * Narrow result for the (debounced, advisory) nickname availability check. The
+ * authoritative check is `updateProfile` itself — a 409 there is the source of
+ * truth, this just powers the inline UX hint.
+ */
+export type NicknameAvailability =
+  | { ok: true; available: boolean; reason?: string }
+  | { ok: false; code: string; detail: string };
+
+/**
+ * Write profile fields (PATCH /v1/account/me). Only the keys actually passed are
+ * sent; `displayName` maps to `display_name`. Never throws — a taken nickname
+ * (409) or invalid value (400) surfaces via `extractError` as {code, detail}.
+ */
+export async function updateProfile(params: {
+  nickname?: string;
+  displayName?: string;
+  isPublic?: boolean;
+}): Promise<AuthResult> {
+  const body: Record<string, unknown> = {};
+  if (params.nickname !== undefined) body.nickname = params.nickname;
+  if (params.displayName !== undefined) body.display_name = params.displayName;
+  if (params.isPublic !== undefined) body.is_public = params.isPublic;
+
+  const res = await authFetch('/v1/account/me', { method: 'PATCH', bearer: 'current', body });
+  if ('networkError' in res) return NETWORK_ERROR;
+  if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
+  return { ok: true, profile: parseProfile(res.data) };
+}
+
+interface RawNicknameAvailability {
+  available?: boolean;
+  reason?: string;
+}
+
+/**
+ * Advisory availability check (GET /v1/account/nickname-available?nickname=). Used
+ * for the debounced inline hint while typing; `updateProfile` is authoritative.
+ */
+export async function checkNicknameAvailable(nickname: string): Promise<NicknameAvailability> {
+  const res = await authFetch(
+    `/v1/account/nickname-available?nickname=${encodeURIComponent(nickname)}`,
+    { method: 'GET', bearer: 'current' },
+  );
+  if ('networkError' in res) return NETWORK_ERROR;
+  if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
+  const data = res.data as RawNicknameAvailability;
+  return { ok: true, available: data.available === true, reason: data.reason };
+}
+
+/**
+ * Upload an avatar image (POST /v1/account/me/avatar, multipart field `avatar`).
+ *
+ * MUST bypass `authFetch` — that helper hardcodes `Content-Type: application/json`,
+ * which would corrupt a multipart body. We build a dedicated multipart request:
+ * pull the bearer token directly, append a React-Native file object to FormData,
+ * and set ONLY the Authorization header (RN injects the multipart boundary into
+ * Content-Type for us; setting it manually would drop the boundary). Uses its own
+ * 30s AbortController rather than the shared 12s budget — uploads are slower.
+ */
+export async function uploadAvatar(localUri: string): Promise<AuthResult> {
+  const endpoint = getBackendEndpoint('/v1/account/me/avatar');
+  if (!endpoint) return NETWORK_ERROR;
+
+  const token = await getSessionToken();
+  if (!token) return { ok: false, code: 'unauthenticated', detail: '' };
+
+  const form = new FormData();
+  // RN file object — the typings expect a Blob/string, so cast.
+  form.append('avatar', { uri: localUri, name: 'avatar.jpg', type: 'image/jpeg' } as unknown as Blob);
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  try {
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      // ONLY Authorization — do NOT set Content-Type (RN adds the boundary).
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+      signal: controller.signal,
+    });
+    let data: Record<string, unknown> = {};
+    try {
+      const text = await resp.text();
+      data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+    } catch {
+      data = {};
+    }
+    if (!resp.ok) return { ok: false, ...extractError(data, resp.status) };
+    return { ok: true, profile: parseProfile(data) };
+  } catch (err) {
+    const isAbort = err instanceof Error && err.name === 'AbortError';
+    if (!isAbort) {
+      trackApiFailure('auth_request', {
+        endpoint: '/v1/account/me/avatar',
+        reason: 'exception',
+        error: err,
+      });
+    }
+    return NETWORK_ERROR;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/** Remove the current avatar (DELETE /v1/account/me/avatar). */
+export async function removeAvatar(): Promise<AuthResult> {
+  const res = await authFetch('/v1/account/me/avatar', { method: 'DELETE', bearer: 'current' });
+  if ('networkError' in res) return NETWORK_ERROR;
+  if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
+  return { ok: true, profile: parseProfile(res.data) };
 }

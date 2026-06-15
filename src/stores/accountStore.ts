@@ -6,7 +6,13 @@ import {
   type AccountSession,
 } from '@/data/account';
 import * as auth from '@/data/auth';
-import type { AccountProfile, AuthActionResult, AuthProvider, AuthResult } from '@/data/auth';
+import type {
+  AccountProfile,
+  AuthActionResult,
+  AuthProvider,
+  AuthResult,
+  NicknameAvailability,
+} from '@/data/auth';
 import { useSettingsStore } from '@/stores/settingsStore';
 
 export type AccountStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -37,6 +43,16 @@ interface AccountState {
   linkApple: () => Promise<AuthResult>;
   unlink: (provider: AuthProvider) => Promise<AuthResult>;
   setPassword: (params: { password: string; email?: string }) => Promise<AuthResult>;
+
+  // --- profile (nickname / display name / visibility / avatar) ---
+  updateProfile: (params: {
+    nickname?: string;
+    displayName?: string;
+    isPublic?: boolean;
+  }) => Promise<AuthResult>;
+  checkNicknameAvailable: (nickname: string) => Promise<NicknameAvailability>;
+  uploadAvatar: (localUri: string) => Promise<AuthResult>;
+  removeAvatar: () => Promise<AuthResult>;
 
   // --- lifecycle ---
   logout: (options?: { all?: boolean }) => Promise<void>;
@@ -120,6 +136,24 @@ export const useAccountStore = create<AccountState>((set, get) => {
       return result;
     },
 
+    updateProfile: async (params) => {
+      const result = await auth.updateProfile(params);
+      if (result.ok) set({ profile: result.profile });
+      return result;
+    },
+    // Thin pass-through: advisory check, never writes store state.
+    checkNicknameAvailable: (nickname) => auth.checkNicknameAvailable(nickname),
+    uploadAvatar: async (localUri) => {
+      const result = await auth.uploadAvatar(localUri);
+      if (result.ok) set({ profile: result.profile });
+      return result;
+    },
+    removeAvatar: async () => {
+      const result = await auth.removeAvatar();
+      if (result.ok) set({ profile: result.profile });
+      return result;
+    },
+
     logout: async (options) => {
       await auth.logout(options);
       set({ profile: null });
@@ -148,4 +182,27 @@ export const useAccountStore = create<AccountState>((set, get) => {
 /** Convenience selector: is the user signed in (claimed, not anonymous)? */
 export function selectIsSignedIn(state: AccountState): boolean {
   return !!state.profile && !state.profile.isAnonymous;
+}
+
+/**
+ * Signed-in but hasn't picked a nickname yet — the onboarding gate condition.
+ * Anonymous users are excluded (they create an account first).
+ */
+export function selectNeedsProfileSetup(state: AccountState): boolean {
+  return selectIsSignedIn(state) && state.profile?.nickname == null;
+}
+
+/** Current nickname handle (without leading @), or null. */
+export function selectNickname(state: AccountState): string | null {
+  return state.profile?.nickname ?? null;
+}
+
+/** Absolute avatar URL, or null when none is set. */
+export function selectAvatarUrl(state: AccountState): string | null {
+  return state.profile?.avatarUrl ?? null;
+}
+
+/** Public-by-default visibility (true when no profile yet). */
+export function selectIsPublic(state: AccountState): boolean {
+  return state.profile?.isPublic !== false;
 }

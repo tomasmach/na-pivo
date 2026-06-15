@@ -325,6 +325,118 @@ export const cs = {
     compass: 'Kompas',
     counter: 'Počítadlo',
     myBeers: 'Moje piva',
+    profile: 'Profil',
+  },
+
+  profile: {
+    // — Tab header —
+    title: 'Profil',
+
+    // — Identity —
+    editProfile: 'Upravit profil',
+    // Fallback name under the avatar when no display name is set.
+    noDisplayName: 'Bez jména',
+
+    // — Visibility badge —
+    visibilityPublic: 'Veřejný profil',
+    visibilityPrivate: 'Soukromý profil',
+
+    // — Stats grid —
+    statsHeader: 'TVOJE ČÍSLA',
+    statBeers: 'PIV NAPOČÍTÁNO',
+    statPubs: 'HOSPOD NAVŠTÍVENO',
+    statRatings: 'HODNOCENÍ',
+    statWalked: 'NACHOZENO',
+    statSpent: 'UTRACENO',
+    // Walked distance: "4,2 km" / fallback "—" when the server hasn't reported it.
+    kmShort: 'km',
+    notAvailable: '—',
+
+    // — Achievements —
+    achievementsHeader: 'ODZNAKY',
+    badgeFirstTenTitle: 'Prvních 10 piv',
+    badgeFirstTenLocked: 'Napočítej 10 piv',
+    badgeRegularTitle: 'Stálý host',
+    badgeRegularLocked: 'Navštiv jednu hospodu 5×',
+    badgeReviewerTitle: 'Recenzent',
+    badgeReviewerLocked: 'Ohodnoť 10 hospod',
+
+    // — Recent activity —
+    recentHeader: 'POSLEDNÍ AKTIVITA',
+
+    // — Account & settings rows —
+    manageAccount: 'Spravovat účet',
+    settingsRow: 'Nastavení',
+
+    // — Signed-out hero —
+    signedOutTitle: 'Založ si profil',
+    signedOutBody:
+      'Vytvoř si účet a měj svá piva, hodnocení a odznaky synchronizované na všech zařízeních. Brzy přibydou i kamarádi a žebříčky.',
+    signedOutCta: 'Vytvořit účet',
+
+    // — Onboarding wizard —
+    setup: {
+      // STEP 1 — nickname
+      step1Eyebrow: 'KROK 1 ZE 3',
+      step1Title: 'Vyber si přezdívku',
+      step1Body: 'Pod touhle přezdívkou tě uvidí ostatní. Můžeš ji později změnit.',
+      nicknamePlaceholder: 'prezdivka',
+      nicknameChecking: 'Ověřuji…',
+      nicknameAvailable: 'Volné',
+      nicknameTaken: 'Tahle přezdívka je zabraná',
+      nicknameInvalid: 'Neplatná přezdívka',
+      nicknameTooShort: 'Aspoň 3 znaky',
+      nicknameTooLong: 'Nejvíc 20 znaků',
+      nicknameCharset: 'Jen písmena bez diakritiky, číslice, _ a .',
+      nicknameReserved: 'Tahle přezdívka není dostupná',
+      continue: 'Pokračovat',
+
+      // STEP 2 — avatar
+      step2Eyebrow: 'KROK 2 ZE 3',
+      step2Title: 'Přidej fotku',
+      step2Body: 'Fotka je nepovinná. Můžeš ji kdykoli změnit v profilu.',
+      pickPhoto: 'Vybrat fotku',
+      changePhoto: 'Změnit fotku',
+      skip: 'Přeskočit',
+      avatarUploadError: 'Fotku se nepodařilo nahrát. Zkus to prosím znovu.',
+      permissionTitle: 'Přístup k fotkám',
+      permissionBody: 'Pro výběr fotky potřebujeme přístup ke knihovně fotek. Povol ho v Nastavení.',
+      // Shown when the OS won't re-prompt (canAskAgain=false) — the only path is Settings.
+      permissionBlockedBody: 'Přístup k fotkám je zakázaný. Povol ho v systémovém Nastavení a zkus to znovu.',
+      openSettings: 'Otevřít Nastavení',
+
+      // STEP 3 — visibility
+      step3Eyebrow: 'KROK 3 ZE 3',
+      step3Title: 'Viditelnost profilu',
+      visibilityToggleLabel: 'Veřejný profil',
+      // The GDPR consent copy the user MUST see on the visibility step (locked).
+      consentPublic:
+        'Veřejný profil znamená, že tě podle přezdívky a fotky najdou ostatní v žebříčcích a vyhledávání. Tvoje přesná poloha ani jednotlivá piva se nikdy nezveřejňují. Kdykoli to vypneš v nastavení profilu.',
+      consentPrivate: 'Když vypneš, uvidí tě jen tví kamarádi.',
+      finish: 'Hotovo',
+    },
+
+    // — Edit screen —
+    edit: {
+      title: 'Upravit profil',
+      avatarHeader: 'FOTKA',
+      changePhoto: 'Změnit fotku',
+      removePhoto: 'Odebrat fotku',
+      nicknameHeader: 'PŘEZDÍVKA',
+      displayNameHeader: 'JMÉNO',
+      displayNameLabel: 'Jméno (nepovinné)',
+      displayNamePlaceholder: 'Jak ti máme říkat',
+      visibilityHeader: 'VIDITELNOST',
+      visibilityToggleLabel: 'Veřejný profil',
+      // Short GDPR copy on the edit screen (the wizard carries the full version).
+      consent:
+        'Veřejný profil tě zviditelní v žebříčcích a vyhledávání podle přezdívky a fotky. Poloha ani jednotlivá piva se nikdy nezveřejňují.',
+      consentPrivate: 'Když vypneš, uvidí tě jen tví kamarádi.',
+      save: 'Uložit',
+      saving: 'Ukládám…',
+      savedToast: 'Profil uložen',
+      errorGeneric: 'Něco se pokazilo. Zkus to prosím znovu.',
+    },
   },
 
   counter: {
@@ -525,6 +637,7 @@ export const cs = {
     tabCompass: 'Záložka Kompas',
     tabCounter: 'Záložka Počítadlo',
     tabMyBeers: 'Záložka Moje piva',
+    tabProfile: 'Záložka Profil',
 
     // — Counter —
     counterChangePub: 'Změnit hospodu',
@@ -570,6 +683,19 @@ export const cs = {
     accountSetPassword: 'Nastavit heslo',
     accountLogout: 'Odhlásit se',
     accountDelete: 'Smazat účet',
+
+    // — Profil —
+    profileEdit: 'Upravit profil',
+    profileVisibility: 'Změnit viditelnost profilu',
+    profileManageAccount: 'Spravovat účet',
+    profileSettings: 'Otevřít nastavení',
+    profileSignUp: 'Vytvořit účet',
+    profileNicknameInput: 'Přezdívka',
+    profilePickPhoto: 'Vybrat fotku z knihovny',
+    profileRemovePhoto: 'Odebrat fotku',
+    profileDisplayNameInput: 'Jméno',
+    profileVisibilityToggle: (state: string) => `Veřejný profil: ${state}`,
+    profileClose: 'Zavřít',
   },
 } as const;
 

@@ -36,7 +36,10 @@ function signedInProfile(overrides: Partial<AccountProfile> = {}): AccountProfil
   return {
     id: 'acc-1',
     deviceId: 'dev-1',
+    nickname: 'jan',
     displayName: 'Jan',
+    avatarUrl: null,
+    isPublic: true,
     email: 'jan@example.com',
     emailVerified: true,
     providers: ['email'],

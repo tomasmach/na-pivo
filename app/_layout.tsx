@@ -1,4 +1,4 @@
-import { Stack } from 'expo-router';
+import { Stack, useRouter, usePathname } from 'expo-router';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -25,10 +25,33 @@ import {
   trackClientEvent,
 } from '@/data/telemetryClient';
 import { flushWalkingDistance } from '@/data/walkingTelemetry';
-import { useAccountStore } from '@/stores/accountStore';
+import { useAccountStore, selectNeedsProfileSetup } from '@/stores/accountStore';
 import { useReleaseStore } from '@/stores/releaseStore';
 import { WhatsNewModal } from '@/components/shared/WhatsNewModal';
 import { Toast } from '@/components/shared/Toast';
+
+/**
+ * Onboarding gate: once auth resolves (`status==='ready'`) and a signed-in
+ * account has no nickname yet, push the user into the setup wizard. Runs after
+ * initAccount/auth settles so it catches email/Google/Apple sign-ups AND
+ * returning users upgrading from an older build. Re-entrancy is naturally
+ * guarded — `selectNeedsProfileSetup` flips to false the moment a nickname is
+ * set — and we never redirect while already on the setup route.
+ */
+function ProfileGate() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const status = useAccountStore((s) => s.status);
+  const needsSetup = useAccountStore(selectNeedsProfileSetup);
+
+  useEffect(() => {
+    if (status === 'ready' && needsSetup && pathname !== '/profile/setup') {
+      router.replace('/profile/setup');
+    }
+  }, [status, needsSetup, pathname, router]);
+
+  return null;
+}
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   // ignore — splash may already be hidden
@@ -226,7 +249,25 @@ export default function RootLayout() {
               gestureEnabled: false,
             }}
           />
+          <Stack.Screen
+            name="profile/setup"
+            options={{
+              presentation: 'fullScreenModal',
+              animation: 'slide_from_bottom',
+              // The nickname step is the hard gate — it must not be swipe-dismissable.
+              gestureEnabled: false,
+            }}
+          />
+          <Stack.Screen
+            name="profile/edit"
+            options={{
+              presentation: 'fullScreenModal',
+              animation: 'slide_from_bottom',
+              gestureEnabled: false,
+            }}
+          />
         </Stack>
+        <ProfileGate />
         <WhatsNewModal />
         <Toast />
       </SafeAreaProvider>
