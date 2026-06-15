@@ -34,6 +34,15 @@ export type FetchReleaseNoteResult =
   | { kind: 'none' }
   | { kind: 'error' };
 
+/**
+ * Result of fetching the WHOLE changelog (every published note). Unlike the
+ * single-version fetch there is no 'none': an empty changelog is a valid
+ * `{ kind: 'notes'; notes: [] }`, distinct from 'error' (offline / dormant).
+ */
+export type FetchAllReleaseNotesResult =
+  | { kind: 'notes'; notes: ReleaseNote[] }
+  | { kind: 'error' };
+
 const REQUEST_TIMEOUT_MS = 8000;
 
 /** The version of the currently-running build, or null if unavailable. */
@@ -51,6 +60,22 @@ function normalizeItems(raw: unknown): ReleaseNoteItem[] {
     out.push({ icon: typeof icon === 'string' ? icon : '', text });
   }
   return out;
+}
+
+/** Coerce one raw `{version,title,items}` object into a ReleaseNote, or null if
+ *  it has no usable version. Notes with no items are dropped — there is nothing
+ *  worth showing for them. */
+function normalizeNote(raw: unknown): ReleaseNote | null {
+  const version = (raw as { version?: unknown })?.version;
+  if (typeof version !== 'string' || !version) return null;
+  const items = normalizeItems((raw as { items?: unknown })?.items);
+  if (items.length === 0) return null;
+  const title = (raw as { title?: unknown })?.title;
+  return {
+    version,
+    title: typeof title === 'string' && title ? title : 'Co je nového',
+    items,
+  };
 }
 
 /**
@@ -116,6 +141,65 @@ export async function fetchReleaseNote(
         items,
       },
     };
+  } catch {
+    // network / timeout / abort / malformed JSON — never throw.
+    return { kind: 'error' };
+  } finally {
+    clearTimeout(timeoutId);
+    if (signal) {
+      signal.removeEventListener('abort', onExternalAbort);
+    }
+  }
+}
+
+/**
+ * Fetch the FULL published changelog (every version), newest first.
+ *
+ * Calls `GET /v1/release-notes` with no `version` param — the backend then
+ * returns `{ notes: [...] }` instead of a single note. Used by the in-app
+ * "O appce" screen so the user can scroll through every update.
+ *
+ * Always resolves; never throws. Returns 'error' when the backend is dormant /
+ * offline / malformed, and 'notes' (possibly empty) on a successful response.
+ *
+ * @param signal Optional caller AbortSignal, layered with an internal 8s timeout.
+ */
+export async function fetchAllReleaseNotes(
+  signal?: AbortSignal,
+): Promise<FetchAllReleaseNotesResult> {
+  const endpoint = getBackendEndpoint('/v1/release-notes');
+  if (!endpoint || signal?.aborted) {
+    return { kind: 'error' };
+  }
+
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
+  const onExternalAbort = () => timeoutController.abort();
+  if (signal) {
+    if (signal.aborted) {
+      timeoutController.abort();
+    } else {
+      signal.addEventListener('abort', onExternalAbort);
+    }
+  }
+
+  try {
+    const resp = await fetch(endpoint, {
+      method: 'GET',
+      signal: timeoutController.signal,
+    });
+
+    if (!resp.ok) {
+      return { kind: 'error' };
+    }
+
+    const data = (await resp.json()) as { notes?: unknown };
+    const rawNotes = Array.isArray(data?.notes) ? data.notes : [];
+    const notes = rawNotes
+      .map(normalizeNote)
+      .filter((n): n is ReleaseNote => n !== null);
+
+    return { kind: 'notes', notes };
   } catch {
     // network / timeout / abort / malformed JSON — never throw.
     return { kind: 'error' };

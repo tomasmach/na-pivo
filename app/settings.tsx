@@ -556,9 +556,7 @@ export default function SettingsScreen() {
             icon={<InfoIcon size={18} color={Colors.foamMuted} />}
             title={cs.settings.about.title}
             rightLabel={appVersionLabel || undefined}
-            onPress={() => {
-              // TODO: navigate to about screen when built
-            }}
+            onPress={() => router.push('/about')}
           />
           <AboutRow
             icon={<ShieldIcon size={18} color={Colors.foamMuted} />}

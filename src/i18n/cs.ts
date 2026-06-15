@@ -357,6 +357,20 @@ export const cs = {
     versionLabel: (version: string) => `v${version}`,
   },
 
+  about: {
+    // Screen title reuses settings.about.title ("O appce") as the single source.
+    tagline: 'Tvůj kompas k nejbližšímu pivu.',
+    whatsNewHeader: 'CO JE NOVÉHO',
+    // Shown while this version's release note is being fetched.
+    loading: 'Načítám novinky…',
+    // The backend has no note for this version (404 / empty).
+    empty: 'Pro tuhle verzi tu zatím žádné novinky nemáme.',
+    // Offline / timeout / dormant backend — distinct from "empty" so the user
+    // knows it's worth trying again later.
+    error: 'Novinky se teď nepodařilo načíst. Mrkni na to za chvíli.',
+    footer: 'Bez reklam · Bez placení',
+  },
+
   privacy: {
     title: 'Soukromí',
     body: [

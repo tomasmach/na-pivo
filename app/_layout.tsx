@@ -147,6 +147,14 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen
+            name="about"
+            options={{
+              presentation: 'fullScreenModal',
+              animation: 'slide_from_bottom',
+              gestureEnabled: false,
+            }}
+          />
+          <Stack.Screen
             name="privacy"
             options={{
               presentation: 'fullScreenModal',

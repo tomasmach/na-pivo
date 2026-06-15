@@ -1,4 +1,4 @@
-import { fetchReleaseNote } from '../releaseNotesClient';
+import { fetchAllReleaseNotes, fetchReleaseNote } from '../releaseNotesClient';
 
 const ORIGINAL_FETCH = global.fetch;
 const ORIGINAL_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
@@ -127,5 +127,122 @@ describe('fetchReleaseNote', () => {
     }) as unknown as typeof fetch;
 
     await expect(fetchReleaseNote('1.2.0')).resolves.toEqual({ kind: 'error' });
+  });
+});
+
+describe('fetchAllReleaseNotes', () => {
+  it('returns kind:error when dormant (no backend URL) and never calls fetch', async () => {
+    setBackend('   ');
+    global.fetch = jest.fn() as unknown as typeof fetch;
+
+    await expect(fetchAllReleaseNotes()).resolves.toEqual({ kind: 'error' });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('GETs the collection (no version param) and normalizes each note', async () => {
+    setBackend('https://api.example.com/');
+    const fetchSpy = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        notes: [
+          {
+            version: '1.1.3',
+            title: 'Čerstvě naraženo!',
+            items: [
+              { icon: '🍺', text: 'Počítadlo piv' },
+              { icon: '🗺️', text: '' }, // dropped — empty text
+            ],
+          },
+          { version: '1.1.2', items: [{ text: 'Bez ikony i titulku' }] },
+        ],
+      }),
+    }));
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    const result = await fetchAllReleaseNotes();
+
+    expect(result).toEqual({
+      kind: 'notes',
+      notes: [
+        {
+          version: '1.1.3',
+          title: 'Čerstvě naraženo!',
+          items: [{ icon: '🍺', text: 'Počítadlo piv' }],
+        },
+        {
+          version: '1.1.2',
+          title: 'Co je nového', // defaulted
+          items: [{ icon: '', text: 'Bez ikony i titulku' }],
+        },
+      ],
+    });
+
+    const [url, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('https://api.example.com/v1/release-notes');
+    expect(init.method).toBe('GET');
+  });
+
+  it('drops notes with no usable items and notes without a version', async () => {
+    setBackend('https://api.example.com');
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        notes: [
+          { version: '1.1.3', items: [{ icon: '', text: 'ok' }] },
+          { version: '1.1.2', items: [] }, // no items → dropped
+          { title: 'Bez verze', items: [{ text: 'x' }] }, // no version → dropped
+        ],
+      }),
+    })) as unknown as typeof fetch;
+
+    const result = await fetchAllReleaseNotes();
+    expect(result).toEqual({
+      kind: 'notes',
+      notes: [{ version: '1.1.3', title: 'Co je nového', items: [{ icon: '', text: 'ok' }] }],
+    });
+  });
+
+  it('returns an empty list (kind:notes) when the changelog is empty', async () => {
+    setBackend('https://api.example.com');
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ notes: [] }),
+    })) as unknown as typeof fetch;
+
+    await expect(fetchAllReleaseNotes()).resolves.toEqual({ kind: 'notes', notes: [] });
+  });
+
+  it('tolerates a missing notes field as an empty list', async () => {
+    setBackend('https://api.example.com');
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+    })) as unknown as typeof fetch;
+
+    await expect(fetchAllReleaseNotes()).resolves.toEqual({ kind: 'notes', notes: [] });
+  });
+
+  it('returns kind:error on non-OK responses', async () => {
+    setBackend('https://api.example.com');
+    global.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 500,
+      json: async () => ({}),
+    })) as unknown as typeof fetch;
+
+    await expect(fetchAllReleaseNotes()).resolves.toEqual({ kind: 'error' });
+  });
+
+  it('returns kind:error and never throws on network failures', async () => {
+    setBackend('https://api.example.com');
+    global.fetch = jest.fn(async () => {
+      throw new Error('network down');
+    }) as unknown as typeof fetch;
+
+    await expect(fetchAllReleaseNotes()).resolves.toEqual({ kind: 'error' });
   });
 });
