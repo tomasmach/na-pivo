@@ -20,8 +20,16 @@ interface UploadResult {
 export class File {
   readonly uri: string;
 
-  constructor(uri: string) {
-    this.uri = uri;
+  constructor(...uris: (string | { uri: string })[]) {
+    this.uri = uris.map((part) => (typeof part === 'string' ? part : part.uri)).join('/');
+  }
+
+  create(_options?: unknown): void {
+    // no-op
+  }
+
+  write(_content: string | Uint8Array, _options?: unknown): void {
+    // no-op
   }
 
   async upload(_url: string, _options?: unknown): Promise<UploadResult> {

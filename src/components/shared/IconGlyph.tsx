@@ -49,6 +49,8 @@ import {
   Check,
   BadgeCheck,
   KeyRound,
+  Download,
+  Crown,
   LucideProps,
 } from 'lucide-react-native';
 
@@ -108,3 +110,5 @@ export const UnlinkIcon = wrap(Unlink, 'UnlinkIcon');
 export const CheckIcon = wrap(Check, 'CheckIcon');
 export const BadgeCheckIcon = wrap(BadgeCheck, 'BadgeCheckIcon');
 export const KeyRoundIcon = wrap(KeyRound, 'KeyRoundIcon');
+export const DownloadIcon = wrap(Download, 'DownloadIcon');
+export const CrownIcon = wrap(Crown, 'CrownIcon');

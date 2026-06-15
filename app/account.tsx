@@ -35,10 +35,13 @@ import { cs } from '@/i18n/cs';
 import {
   ChevronLeftIcon,
   CheckIcon,
+  CrownIcon,
+  DownloadIcon,
   MailIcon,
   PencilIcon,
   LinkIcon,
   KeyRoundIcon,
+  RefreshCwIcon,
 } from '@/components/shared/IconGlyph';
 import { AppleIcon, GoogleIcon } from '@/components/shared/BrandIcon';
 import { GlowButton } from '@/components/shared/GlowButton';
@@ -69,6 +72,7 @@ export default function AccountScreen() {
   const setPassword = useAccountStore((s) => s.setPassword);
   const logout = useAccountStore((s) => s.logout);
   const deleteAccount = useAccountStore((s) => s.deleteAccount);
+  const exportAccountData = useAccountStore((s) => s.exportAccountData);
   const requestEmailVerification = useAccountStore((s) => s.requestEmailVerification);
 
   const [busy, setBusy] = useState<null | string>(null);
@@ -192,6 +196,32 @@ export default function AccountScreen() {
     );
   }, [deleteAccount, showToast, router]);
 
+  const handleExportData = useCallback(async () => {
+    if (busy) return;
+    setBusy('export');
+    try {
+      const result = await exportAccountData();
+      if (result.ok) {
+        showToast(cs.account.exportDataToast(result.filename));
+        Alert.alert(
+          cs.account.exportDataSavedTitle,
+          cs.account.exportDataSavedBody(result.uri),
+        );
+      } else {
+        showToast(result.detail || cs.account.errorGeneric);
+      }
+    } finally {
+      setBusy(null);
+    }
+  }, [busy, exportAccountData, showToast]);
+
+  const handleRestorePurchases = useCallback(() => {
+    Alert.alert(
+      cs.account.subscriptionRestoreUnavailableTitle,
+      cs.account.subscriptionRestoreUnavailableBody,
+    );
+  }, []);
+
   // The screen is only reachable while signed in; guard defensively so a logout
   // racing with navigation never crashes on a null profile. (Placed after every
   // hook so hook order stays stable across renders.)
@@ -226,6 +256,15 @@ export default function AccountScreen() {
   const canUnlink = providers.length > 1;
 
   const displayTitle = profile.displayName.trim() || profile.email || cs.account.anonymousName;
+  const subscription = profile.subscription;
+  const subscriptionTier =
+    subscription?.tier === 'plus' ? cs.account.subscriptionPlus : cs.account.subscriptionFree;
+  const subscriptionStatus =
+    subscription?.status === 'active'
+      ? cs.account.subscriptionActive
+      : subscription?.status === 'pending_verification'
+        ? cs.account.subscriptionPending
+        : cs.account.subscriptionInactive;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={[]}>
@@ -394,6 +433,28 @@ export default function AccountScreen() {
           </View>
         )}
 
+        {/* ── Data & subscription ── */}
+        <Text style={styles.sectionHeader}>{cs.account.dataHeader}</Text>
+        <View style={styles.methodsCard}>
+          <AccountActionRow
+            icon={<DownloadIcon size={18} color={Colors.foamMuted} />}
+            title={cs.account.exportData}
+            subtitle={cs.account.exportDataSubtitle}
+            onPress={handleExportData}
+            busy={busy === 'export'}
+            accessibilityLabel={cs.a11y.accountExportData}
+          />
+          <AccountActionRow
+            icon={<CrownIcon size={18} color={Colors.foamMuted} />}
+            title={`${cs.account.subscriptionTitle} · ${subscriptionTier}`}
+            subtitle={subscriptionStatus}
+            rightIcon={<RefreshCwIcon size={16} color={Colors.amber} />}
+            onPress={handleRestorePurchases}
+            accessibilityLabel={cs.a11y.accountRestorePurchases}
+            borderTop
+          />
+        </View>
+
         {/* ── Sign out ── */}
         <View style={styles.logoutButton}>
           <GlowButton
@@ -495,6 +556,55 @@ function MethodRow({
         </View>
       )}
     </View>
+  );
+}
+
+interface AccountActionRowProps {
+  icon: React.ReactNode;
+  title: string;
+  subtitle?: string;
+  rightIcon?: React.ReactNode;
+  onPress: () => void;
+  accessibilityLabel: string;
+  busy?: boolean;
+  borderTop?: boolean;
+}
+
+function AccountActionRow({
+  icon,
+  title,
+  subtitle,
+  rightIcon,
+  onPress,
+  accessibilityLabel,
+  busy,
+  borderTop,
+}: AccountActionRowProps) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={busy}
+      style={({ pressed }) => [
+        styles.actionRow,
+        borderTop && styles.methodRowBorderTop,
+        pressed && styles.pressed,
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+    >
+      <View style={styles.methodIconWell}>{icon}</View>
+      <View style={styles.actionText}>
+        <Text style={styles.methodTitle} maxFontSizeMultiplier={FontScaleCap.body}>
+          {title}
+        </Text>
+        {!!subtitle && (
+          <Text style={styles.actionSubtitle} maxFontSizeMultiplier={FontScaleCap.body}>
+            {subtitle}
+          </Text>
+        )}
+      </View>
+      {busy ? <ActivityIndicator size="small" color={Colors.amber} /> : rightIcon}
+    </Pressable>
   );
 }
 
@@ -698,6 +808,23 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.amber,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    minHeight: 64,
+  },
+  actionText: {
+    flex: 1,
+    gap: 3,
+  },
+  actionSubtitle: {
+    fontFamily: Fonts.ui.regular,
+    fontSize: 12,
+    color: Colors.mutedText,
   },
 
   // ── Set password form ──

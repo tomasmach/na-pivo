@@ -13,7 +13,7 @@
  * native SDK wrappers in src/data/socialAuth.ts.
  */
 
-import { File, UploadType } from 'expo-file-system';
+import { File, Paths, UploadType } from 'expo-file-system';
 
 import {
   ensureAccount,
@@ -37,6 +37,17 @@ export interface AccountSettings {
   soundEnabled?: boolean;
   hideClosedPubs?: boolean;
   hidePubNames?: boolean;
+  marketingEmailsEnabled?: boolean;
+}
+
+export interface AccountSubscription {
+  tier: 'free' | 'plus';
+  status: 'inactive' | 'pending_verification' | 'active' | 'grace_period' | 'expired';
+  platform: string;
+  productId: string;
+  originalTransactionId: string;
+  expiresAt: string | null;
+  updatedAt: string | null;
 }
 
 export interface AccountStats {
@@ -70,6 +81,7 @@ export interface AccountProfile {
   isAnonymous: boolean;
   status: string;
   settings?: AccountSettings;
+  subscription?: AccountSubscription;
   stats?: AccountStats;
   achievements?: AccountAchievements;
   usage?: { walkedDistanceM: number };
@@ -101,6 +113,16 @@ interface RawAccount {
     sound_enabled?: boolean;
     hide_closed_pubs?: boolean;
     hide_pub_names?: boolean;
+    marketing_emails_enabled?: boolean;
+  };
+  subscription?: {
+    tier?: string;
+    status?: string;
+    platform?: string;
+    product_id?: string;
+    original_transaction_id?: string;
+    expires_at?: string | null;
+    updated_at?: string | null;
   };
   stats?: {
     total_beers?: number;
@@ -143,6 +165,36 @@ function parseSettings(data: RawAccount): AccountSettings | undefined {
     hideClosedPubs:
       typeof raw.hide_closed_pubs === 'boolean' ? raw.hide_closed_pubs : undefined,
     hidePubNames: typeof raw.hide_pub_names === 'boolean' ? raw.hide_pub_names : undefined,
+    marketingEmailsEnabled:
+      typeof raw.marketing_emails_enabled === 'boolean'
+        ? raw.marketing_emails_enabled
+        : undefined,
+  };
+}
+
+function parseSubscription(data: RawAccount): AccountSubscription | undefined {
+  const raw = data.subscription;
+  if (!raw) return undefined;
+  const tier = raw.tier === 'plus' ? 'plus' : 'free';
+  const allowedStatus: AccountSubscription['status'][] = [
+    'inactive',
+    'pending_verification',
+    'active',
+    'grace_period',
+    'expired',
+  ];
+  const status = allowedStatus.includes(raw.status as AccountSubscription['status'])
+    ? (raw.status as AccountSubscription['status'])
+    : 'inactive';
+  return {
+    tier,
+    status,
+    platform: typeof raw.platform === 'string' ? raw.platform : '',
+    productId: typeof raw.product_id === 'string' ? raw.product_id : '',
+    originalTransactionId:
+      typeof raw.original_transaction_id === 'string' ? raw.original_transaction_id : '',
+    expiresAt: typeof raw.expires_at === 'string' ? raw.expires_at : null,
+    updatedAt: typeof raw.updated_at === 'string' ? raw.updated_at : null,
   };
 }
 
@@ -194,10 +246,12 @@ function parseProfile(data: RawAccount): AccountProfile {
     status: data.status ?? 'active',
   };
   const settings = parseSettings(data);
+  const subscription = parseSubscription(data);
   const stats = parseStats(data);
   const achievements = parseAchievements(data);
   const usage = parseUsage(data);
   if (settings) profile.settings = settings;
+  if (subscription) profile.subscription = subscription;
   if (stats) profile.stats = stats;
   if (achievements) profile.achievements = achievements;
   if (usage) profile.usage = usage;
@@ -519,6 +573,90 @@ export async function fetchWalkedDistanceM(): Promise<number | null> {
   if ('networkError' in res || !res.ok) return null;
   const walked = res.data.usage?.walked_distance_m;
   return typeof walked === 'number' && Number.isFinite(walked) ? walked : null;
+}
+
+export interface AccountExportResult {
+  ok: true;
+  uri: string;
+  filename: string;
+}
+
+export type AccountExportActionResult =
+  | AccountExportResult
+  | { ok: false; code: string; detail: string };
+
+export async function exportAccountData(): Promise<AccountExportActionResult> {
+  const res = await authFetch('/v1/account/export', { method: 'GET', bearer: 'current' });
+  if ('networkError' in res) return NETWORK_ERROR;
+  if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
+
+  const filename = `na-pivo-export-${new Date().toISOString().slice(0, 10)}.json`;
+  try {
+    const file = new File(Paths.document, filename);
+    file.create({ overwrite: true });
+    file.write(JSON.stringify(res.data, null, 2));
+    return { ok: true, uri: file.uri, filename };
+  } catch (err) {
+    trackApiFailure('account_export_write', {
+      endpoint: '/v1/account/export',
+      reason: 'exception',
+      error: err,
+    });
+    return {
+      ok: false,
+      code: 'file_write_failed',
+      detail: 'Export se nepodařilo uložit do zařízení.',
+    };
+  }
+}
+
+export async function restorePurchases(params: {
+  platform: 'apple' | 'google';
+  productId?: string;
+  originalTransactionId?: string;
+  transactionId?: string;
+  expiresAt?: string | null;
+}): Promise<AuthResult> {
+  const res = await authFetch('/v1/account/me/purchases/restore', {
+    method: 'POST',
+    bearer: 'current',
+    body: {
+      platform: params.platform,
+      product_id: params.productId ?? '',
+      original_transaction_id: params.originalTransactionId ?? '',
+      transaction_id: params.transactionId ?? '',
+      expires_at: params.expiresAt ?? null,
+    },
+  });
+  if ('networkError' in res) return NETWORK_ERROR;
+  if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
+  return { ok: true, profile: parseProfile(res.data) };
+}
+
+export type ContentReportReason =
+  | 'inappropriate_nickname'
+  | 'inappropriate_avatar'
+  | 'impersonation'
+  | 'spam'
+  | 'other';
+
+export async function reportProfileContent(params: {
+  targetAccountId: string;
+  reason: ContentReportReason;
+  comment?: string;
+}): Promise<AuthActionResult> {
+  const res = await authFetch('/v1/content-reports', {
+    method: 'POST',
+    bearer: 'current',
+    body: {
+      target_account_id: params.targetAccountId,
+      reason: params.reason,
+      comment: params.comment ?? '',
+    },
+  });
+  if ('networkError' in res) return NETWORK_ERROR;
+  if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
+  return { ok: true };
 }
 
 // ---------------------------------------------------------------------------

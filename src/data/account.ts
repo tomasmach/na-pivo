@@ -57,6 +57,7 @@ export interface AccountPreferences {
   soundEnabled?: boolean;
   hideClosedPubs?: boolean;
   hidePubNames: boolean;
+  marketingEmailsEnabled?: boolean;
 }
 
 // The non-secret device anchor lives in AsyncStorage; the account blob — which
@@ -88,6 +89,7 @@ interface AccountMeResponse {
     sound_enabled?: boolean;
     hide_closed_pubs?: boolean;
     hide_pub_names?: boolean;
+    marketing_emails_enabled?: boolean;
   };
 }
 
@@ -154,6 +156,9 @@ function preferencesFromResponse(data: AccountMeResponse): AccountPreferences {
   }
   if (typeof settings.hide_closed_pubs === 'boolean') {
     preferences.hideClosedPubs = settings.hide_closed_pubs;
+  }
+  if (typeof settings.marketing_emails_enabled === 'boolean') {
+    preferences.marketingEmailsEnabled = settings.marketing_emails_enabled;
   }
   return preferences;
 }
@@ -455,6 +460,9 @@ export async function updateAccountPreferences(
   }
   if (typeof preferences.hidePubNames === 'boolean') {
     body.hide_pub_names = preferences.hidePubNames;
+  }
+  if (typeof preferences.marketingEmailsEnabled === 'boolean') {
+    body.marketing_emails_enabled = preferences.marketingEmailsEnabled;
   }
 
   const abort = chainAbortSignal(signal);

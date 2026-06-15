@@ -10,8 +10,10 @@ import type {
   AccountProfile,
   AccountSettings,
   AuthActionResult,
+  AccountExportActionResult,
   AuthProvider,
   AuthResult,
+  ContentReportReason,
   NicknameAvailability,
 } from '@/data/auth';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -58,6 +60,19 @@ interface AccountState {
   // --- lifecycle ---
   logout: (options?: { all?: boolean }) => Promise<void>;
   deleteAccount: () => Promise<AuthActionResult>;
+  exportAccountData: () => Promise<AccountExportActionResult>;
+  restorePurchases: (params: {
+    platform: 'apple' | 'google';
+    productId?: string;
+    originalTransactionId?: string;
+    transactionId?: string;
+    expiresAt?: string | null;
+  }) => Promise<AuthResult>;
+  reportProfileContent: (params: {
+    targetAccountId: string;
+    reason: ContentReportReason;
+    comment?: string;
+  }) => Promise<AuthActionResult>;
   requestPasswordReset: (email: string) => Promise<AuthActionResult>;
   requestEmailVerification: () => Promise<AuthActionResult>;
   verifyEmail: (token: string) => Promise<AuthActionResult>;
@@ -74,6 +89,9 @@ export const useAccountStore = create<AccountState>((set, get) => {
     if (typeof settings.soundEnabled === 'boolean') store.setSoundEnabled(settings.soundEnabled);
     if (typeof settings.hideClosedPubs === 'boolean') store.setHideClosedPubs(settings.hideClosedPubs);
     if (typeof settings.hidePubNames === 'boolean') store.setHidePubNames(settings.hidePubNames);
+    if (typeof settings.marketingEmailsEnabled === 'boolean') {
+      store.setMarketingEmailsEnabled(settings.marketingEmailsEnabled);
+    }
   };
 
   /** Re-read the (possibly rotated) session token into the store. */
@@ -210,6 +228,16 @@ export const useAccountStore = create<AccountState>((set, get) => {
       }
       return result;
     },
+    exportAccountData: () => auth.exportAccountData(),
+    restorePurchases: async (params) => {
+      const result = await auth.restorePurchases(params);
+      if (result.ok) {
+        set({ profile: result.profile });
+        applyAccountSettings(result.profile.settings);
+      }
+      return result;
+    },
+    reportProfileContent: (params) => auth.reportProfileContent(params),
     requestPasswordReset: (email) => auth.requestPasswordReset(email),
     requestEmailVerification: () => auth.requestEmailVerification(),
     verifyEmail: async (token) => {

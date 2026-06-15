@@ -53,6 +53,7 @@ import {
   InfoIcon,
   ShieldIcon,
   HeartIcon,
+  MailIcon,
   MessageSquareIcon,
   MapPinIcon,
 } from '@/components/shared/IconGlyph';
@@ -391,12 +392,14 @@ export default function SettingsScreen() {
   const soundEnabled = useSettingsStore((s) => s.soundEnabled);
   const hideClosedPubs = useSettingsStore((s) => s.hideClosedPubs);
   const hidePubNames = useSettingsStore((s) => s.hidePubNames);
+  const marketingEmailsEnabled = useSettingsStore((s) => s.marketingEmailsEnabled);
   const setMaxDistanceKm = useSettingsStore((s) => s.setMaxDistanceKm);
   const setPriceCurrency = useSettingsStore((s) => s.setPriceCurrency);
   const setHapticEnabled = useSettingsStore((s) => s.setHapticEnabled);
   const setSoundEnabled = useSettingsStore((s) => s.setSoundEnabled);
   const setHideClosedPubs = useSettingsStore((s) => s.setHideClosedPubs);
   const setHidePubNames = useSettingsStore((s) => s.setHidePubNames);
+  const setMarketingEmailsEnabled = useSettingsStore((s) => s.setMarketingEmailsEnabled);
 
   const sliderIndex = positionIndexForKm(maxDistanceKm);
   const appVersionLabel = getAppVersionLabel();
@@ -433,6 +436,12 @@ export default function SettingsScreen() {
     setHidePubNames(next);
     void updateAccountPreferences({ hidePubNames: next });
   }, [hidePubNames, setHidePubNames]);
+
+  const toggleMarketingEmails = useCallback(() => {
+    const next = !marketingEmailsEnabled;
+    setMarketingEmailsEnabled(next);
+    void updateAccountPreferences({ marketingEmailsEnabled: next });
+  }, [marketingEmailsEnabled, setMarketingEmailsEnabled]);
 
   const handleCurrencySelect = useCallback(
     (currency: PriceCurrency) => {
@@ -562,6 +571,15 @@ export default function SettingsScreen() {
           <CurrencyRow
             value={priceCurrency}
             onSelect={handleCurrencySelect}
+            borderTop
+          />
+          <PrefRow
+            icon={<MailIcon size={18} color={Colors.foamMuted} />}
+            title={cs.settings.marketingEmails.title}
+            subtitle={cs.settings.marketingEmails.subtitle}
+            value={marketingEmailsEnabled}
+            onToggle={toggleMarketingEmails}
+            toggleLabel={`${cs.settings.marketingEmails.title}: ${marketingEmailsEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
             borderTop
           />
         </View>

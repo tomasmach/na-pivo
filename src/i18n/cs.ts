@@ -119,6 +119,10 @@ export const cs = {
       czk: 'Kč',
       eur: '€',
     },
+    marketingEmails: {
+      title: 'Novinky e-mailem',
+      subtitle: 'Tipy a nabídky můžeš kdykoli vypnout',
+    },
     about: {
       title: 'O appce',
     },
@@ -284,6 +288,26 @@ export const cs = {
     setPasswordSave: 'Uložit heslo',
     setPasswordToast: 'Heslo nastaveno.',
 
+    // — Data / subscription —
+    dataHeader: 'DATA A PŘEDPLATNÉ',
+    exportData: 'Stáhnout moje data',
+    exportDataSubtitle: 'JSON export profilu, deníku a hodnocení',
+    exportDataToast: (filename: string) => `Export uložen: ${filename}`,
+    exportDataSavedTitle: 'Export uložen',
+    exportDataSavedBody: (uri: string) => `Soubor najdeš tady:\n${uri}`,
+    subscriptionTitle: 'Na Pivo+',
+    subscriptionFree: 'Free',
+    subscriptionPlus: 'Plus',
+    subscriptionInactive: 'Neaktivní',
+    subscriptionPending: 'Čeká na ověření',
+    subscriptionActive: 'Aktivní',
+    subscriptionRestore: 'Obnovit nákupy',
+    subscriptionRestoreUnavailableTitle: 'Na Pivo+ ještě není spuštěné',
+    subscriptionRestoreUnavailableBody:
+      'Účet už je připravený držet obnovu nákupů. Jakmile přibude nákupní SDK, napojí se sem ověření účtenky.',
+    reportProfile: 'Nahlásit profil',
+    reportProfileSubtitle: 'Přezdívka nebo avatar porušuje pravidla',
+
     // — Sign out —
     logout: 'Odhlásit se',
 
@@ -372,6 +396,16 @@ export const cs = {
     // — Account & settings rows —
     manageAccount: 'Spravovat účet',
     settingsRow: 'Nastavení',
+
+    report: {
+      button: 'Nahlásit',
+      profileFallback: 'tenhle profil',
+      confirmTitle: 'Nahlásit profil?',
+      confirmBody: (profile: string) =>
+        `Pošleme moderátorovi hlášení na ${profile}. Použij to pro nevhodnou přezdívku, fotku nebo spam.`,
+      confirmSubmit: 'Nahlásit',
+      sentToast: 'Hlášení odesláno.',
+    },
 
     // — Signed-out hero —
     signedOutTitle: 'Založ si profil',
@@ -701,6 +735,9 @@ export const cs = {
     accountLinkProvider: (provider: string) => `Propojit ${provider}`,
     accountUnlinkProvider: (provider: string) => `Odpojit ${provider}`,
     accountSetPassword: 'Nastavit heslo',
+    accountExportData: 'Stáhnout moje data',
+    accountRestorePurchases: 'Obnovit nákupy',
+    accountReportProfile: 'Nahlásit profil',
     accountLogout: 'Odhlásit se',
     accountDelete: 'Smazat účet',
 
