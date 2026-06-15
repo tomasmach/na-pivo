@@ -36,7 +36,7 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
-import { ChevronLeftIcon, Trash2Icon } from '@/components/shared/IconGlyph';
+import { ChevronLeftIcon, Trash2Icon, PencilIcon } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { Avatar } from '@/profile/Avatar';
 import { NicknameField } from '@/profile/NicknameField';
@@ -207,22 +207,36 @@ export default function ProfileEditScreen() {
       >
         <ScrollView
           style={styles.flex}
-          contentContainerStyle={[
-            styles.scrollContent,
-            { paddingBottom: Math.max(insets.bottom + 24, 32) },
-          ]}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: Spacing.xl }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
           {/* ── Avatar card ── */}
           <Text style={styles.sectionHeader}>{cs.profile.edit.avatarHeader}</Text>
           <View style={styles.avatarCard}>
-            <Avatar
-              uri={avatarUrl}
-              nickname={initialNickname}
-              displayName={profile?.displayName}
-              size={88}
-            />
+            {/* The avatar itself is the primary tap target; the amber badge
+                signals it opens the photo picker. */}
+            <Pressable
+              onPress={handlePickAvatar}
+              disabled={avatarBusy}
+              style={({ pressed }) => [styles.avatarTap, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={cs.a11y.profilePickPhoto}
+            >
+              <Avatar
+                uri={avatarUrl}
+                nickname={initialNickname}
+                displayName={profile?.displayName}
+                size={104}
+              />
+              <View style={styles.avatarBadge}>
+                {avatarBusy ? (
+                  <ActivityIndicator size="small" color={Colors.stout} />
+                ) : (
+                  <PencilIcon size={15} color={Colors.stout} />
+                )}
+              </View>
+            </Pressable>
             <View style={styles.avatarActions}>
               <Pressable
                 onPress={handlePickAvatar}
@@ -231,11 +245,7 @@ export default function ProfileEditScreen() {
                 accessibilityLabel={cs.a11y.profilePickPhoto}
                 disabled={avatarBusy}
               >
-                {avatarBusy ? (
-                  <ActivityIndicator size="small" color={Colors.amber} />
-                ) : (
-                  <Text style={styles.avatarBtnPrimaryText}>{cs.profile.edit.changePhoto}</Text>
-                )}
+                <Text style={styles.avatarBtnPrimaryText}>{cs.profile.edit.changePhoto}</Text>
               </Pressable>
               {!!avatarUrl && (
                 <Pressable
@@ -320,17 +330,18 @@ export default function ProfileEditScreen() {
               </Text>
             )}
           </View>
-
-          {/* ── Save ── */}
-          <View style={styles.saveBtn}>
-            <GlowButton
-              label={saving ? cs.profile.edit.saving : cs.profile.edit.save}
-              onPress={handleSave}
-              glow={saving ? 'none' : 'soft'}
-              accessibilityLabel={cs.profile.edit.save}
-            />
-          </View>
         </ScrollView>
+
+        {/* ── Sticky save bar — primary action always reachable, never lost
+            below the fold of a long form. ── */}
+        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+          <GlowButton
+            label={saving ? cs.profile.edit.saving : cs.profile.edit.save}
+            onPress={handleSave}
+            glow={saving ? 'none' : 'soft'}
+            accessibilityLabel={cs.profile.edit.save}
+          />
+        </View>
       </KeyboardAvoidingView>
     </View>
   );
@@ -391,17 +402,36 @@ const styles = StyleSheet.create({
 
   // ── Avatar card ──
   avatarCard: {
-    flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.lg,
     backgroundColor: Colors.stout2,
     borderRadius: Radius.cardLarge,
     borderWidth: 1,
     borderColor: Colors.border,
-    padding: 18,
+    paddingVertical: Spacing.xl,
+    paddingHorizontal: Spacing.lg,
+  },
+  avatarTap: {
+    position: 'relative',
+  },
+  // Amber "edit" badge pinned to the avatar's bottom-right corner.
+  avatarBadge: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 34,
+    height: 34,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.amber,
+    borderWidth: 3,
+    borderColor: Colors.stout2,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   avatarActions: {
-    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
     gap: Spacing.sm,
   },
   avatarBtn: {
@@ -411,7 +441,7 @@ const styles = StyleSheet.create({
     gap: 6,
     minHeight: 44,
     borderRadius: Radius.pill,
-    paddingHorizontal: 16,
+    paddingHorizontal: 18,
     backgroundColor: Colors.stout3,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -477,9 +507,13 @@ const styles = StyleSheet.create({
     color: Colors.amber,
   },
 
-  // ── Save ──
-  saveBtn: {
-    marginTop: Spacing.lg,
+  // ── Sticky save bar ──
+  footer: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+    backgroundColor: Colors.stout,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
   },
 
   pressed: {

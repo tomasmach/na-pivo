@@ -118,12 +118,45 @@ function StatTile({
   return (
     <View style={styles.statTile}>
       <View style={styles.statIconWell}>{icon}</View>
-      <Text style={styles.statValue} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.display}>
+      <Text
+        style={styles.statValue}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        maxFontSizeMultiplier={FontScaleCap.display}
+      >
         {value}
       </Text>
       <Text style={styles.statCaption} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
         {caption}
       </Text>
+    </View>
+  );
+}
+
+/**
+ * Featured "signature" stat — the lifetime beer count, the metric the whole app
+ * is built around. Full-width with an oversized numeral so the eye lands here
+ * first, before scanning the supporting grid below.
+ */
+function HeroStat({ value }: { value: number }) {
+  return (
+    <View style={styles.heroStat}>
+      <View style={styles.heroStatIcon}>
+        <BeerIcon size={26} color={Colors.amber} />
+      </View>
+      <View style={styles.heroStatText}>
+        <Text
+          style={styles.heroStatValue}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          maxFontSizeMultiplier={FontScaleCap.display}
+        >
+          {value}
+        </Text>
+        <Text style={styles.heroStatCaption} maxFontSizeMultiplier={FontScaleCap.body}>
+          {cs.profile.statBeers}
+        </Text>
+      </View>
     </View>
   );
 }
@@ -305,64 +338,69 @@ export default function ProfileScreen() {
       >
         {isSignedIn ? (
           <>
-            {/* ── Identity header card ── */}
+            {/* ── Identity hero card ── */}
             <View style={styles.identityCard}>
-              <Avatar uri={avatarUrl} nickname={nickname} displayName={displayName} size={72} />
-              <View style={styles.identityText}>
+              <View style={styles.avatarHalo}>
+                <Avatar uri={avatarUrl} nickname={nickname} displayName={displayName} size={96} />
+              </View>
+              <Text
+                style={styles.nickname}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.heading}
+              >
+                {nickname ? `@${nickname}` : cs.profile.noDisplayName}
+              </Text>
+              {!!displayName && (
                 <Text
-                  style={styles.nickname}
+                  style={styles.displayName}
                   numberOfLines={1}
-                  maxFontSizeMultiplier={FontScaleCap.heading}
+                  maxFontSizeMultiplier={FontScaleCap.body}
                 >
-                  {nickname ? `@${nickname}` : cs.profile.noDisplayName}
+                  {displayName}
                 </Text>
-                {!!displayName && (
+              )}
+
+              {/* Action pair: full edit + inline visibility flip. */}
+              <View style={styles.identityActions}>
+                <Pressable
+                  onPress={() => router.push('/profile/edit')}
+                  style={({ pressed }) => [styles.editPill, pressed && styles.pressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel={cs.a11y.profileEdit}
+                  hitSlop={4}
+                >
+                  <PencilIcon size={15} color={Colors.amber} />
+                  <Text style={styles.editPillText} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {cs.profile.editProfile}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleToggleVisibility}
+                  disabled={visibilityBusy}
+                  style={({ pressed }) => [
+                    styles.visibilityPill,
+                    isPublic ? styles.visibilityPublic : styles.visibilityPrivate,
+                    pressed && styles.pressed,
+                  ]}
+                  accessibilityRole="switch"
+                  accessibilityState={{ checked: isPublic, busy: visibilityBusy }}
+                  accessibilityLabel={cs.a11y.profileVisibility}
+                  hitSlop={4}
+                >
+                  {isPublic ? (
+                    <EyeIcon size={15} color={Colors.amber} />
+                  ) : (
+                    <EyeOffIcon size={15} color={Colors.mutedText} />
+                  )}
                   <Text
-                    style={styles.displayName}
-                    numberOfLines={1}
+                    style={[styles.visibilityText, !isPublic && styles.visibilityTextPrivate]}
                     maxFontSizeMultiplier={FontScaleCap.body}
                   >
-                    {displayName}
+                    {isPublic ? cs.profile.visibilityPublic : cs.profile.visibilityPrivate}
                   </Text>
-                )}
+                </Pressable>
               </View>
-              <Pressable
-                onPress={() => router.push('/profile/edit')}
-                style={({ pressed }) => [styles.editButton, pressed && styles.pressed]}
-                accessibilityRole="button"
-                accessibilityLabel={cs.a11y.profileEdit}
-                hitSlop={6}
-              >
-                <PencilIcon size={18} color={Colors.amber} />
-              </Pressable>
             </View>
-
-            {/* ── Visibility toggle ── */}
-            <Pressable
-              onPress={handleToggleVisibility}
-              disabled={visibilityBusy}
-              style={({ pressed }) => [
-                styles.visibilityPill,
-                isPublic ? styles.visibilityPublic : styles.visibilityPrivate,
-                pressed && styles.pressed,
-              ]}
-              accessibilityRole="switch"
-              accessibilityState={{ checked: isPublic, busy: visibilityBusy }}
-              accessibilityLabel={cs.a11y.profileVisibility}
-              hitSlop={4}
-            >
-              {isPublic ? (
-                <EyeIcon size={15} color={Colors.amber} />
-              ) : (
-                <EyeOffIcon size={15} color={Colors.mutedText} />
-              )}
-              <Text
-                style={[styles.visibilityText, !isPublic && styles.visibilityTextPrivate]}
-                maxFontSizeMultiplier={FontScaleCap.body}
-              >
-                {isPublic ? cs.profile.visibilityPublic : cs.profile.visibilityPrivate}
-              </Text>
-            </Pressable>
           </>
         ) : (
           /* ── Signed-out hero ── */
@@ -385,14 +423,11 @@ export default function ProfileScreen() {
           </View>
         )}
 
-        {/* ── Stats grid (always visible — local-first) ── */}
+        {/* ── Stats (always visible — local-first) ── */}
         <Text style={styles.sectionHeader}>{cs.profile.statsHeader}</Text>
+        {/* Signature metric leads; supporting figures follow in a 2×2 grid. */}
+        <HeroStat value={stats.totalBeers} />
         <View style={styles.statsGrid}>
-          <StatTile
-            icon={<BeerIcon size={18} color={Colors.amber} />}
-            value={String(stats.totalBeers)}
-            caption={cs.profile.statBeers}
-          />
           <StatTile
             icon={<MapPinIcon size={18} color={Colors.amber} />}
             value={String(stats.distinctPubs)}
@@ -408,18 +443,11 @@ export default function ProfileScreen() {
             value={formatWalked(isSignedIn ? walkedM : null)}
             caption={cs.profile.statWalked}
           />
-        </View>
-        {/* Wide UTRACENO tile — the lifetime spend across every evening. */}
-        <View style={styles.statWideTile}>
-          <View style={styles.statIconWell}>
-            <CoinsIcon size={18} color={Colors.amber} />
-          </View>
-          <Text style={styles.statWideValue} maxFontSizeMultiplier={FontScaleCap.display}>
-            {formatPrice(stats.totalSpentCzk, priceCurrency)}
-          </Text>
-          <Text style={styles.statWideCaption} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.profile.statSpent}
-          </Text>
+          <StatTile
+            icon={<CoinsIcon size={18} color={Colors.amber} />}
+            value={formatPrice(stats.totalSpentCzk, priceCurrency)}
+            caption={cs.profile.statSpent}
+          />
         </View>
 
         {/* ── Achievements ── */}
@@ -510,53 +538,65 @@ const styles = StyleSheet.create({
     gap: Spacing.sm + 2,
   },
 
-  // ── Identity card ──
+  // ── Identity hero card ──
   identityCard: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.md,
+    gap: Spacing.xs,
     backgroundColor: Colors.stout2,
     borderRadius: Radius.cardLarge,
     borderWidth: 1,
     borderColor: Colors.border,
-    padding: 18,
+    paddingVertical: Spacing.xl,
+    paddingHorizontal: Spacing.lg,
   },
-  identityText: {
-    flex: 1,
-    gap: 2,
+  avatarHalo: {
+    marginBottom: Spacing.sm,
   },
   nickname: {
     fontFamily: Fonts.display.extrabold,
-    fontSize: 24,
+    fontSize: 26,
     color: Colors.foam,
+    textAlign: 'center',
   },
   displayName: {
     fontFamily: Fonts.ui.regular,
     fontSize: 14,
     color: Colors.foamMuted,
+    textAlign: 'center',
   },
-  editButton: {
-    width: 40,
-    height: 40,
+  identityActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.md,
+  },
+  editPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 38,
+    paddingHorizontal: 16,
     borderRadius: Radius.pill,
     backgroundColor: withAlpha(Colors.amber, 0.14),
     borderWidth: 1,
     borderColor: withAlpha(Colors.amber, 0.4),
-    alignItems: 'center',
-    justifyContent: 'center',
+  },
+  editPillText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 13,
+    color: Colors.amber,
   },
 
   // ── Visibility pill ──
   visibilityPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
     gap: 6,
+    minHeight: 38,
     paddingHorizontal: 14,
-    paddingVertical: 8,
     borderRadius: Radius.pill,
     borderWidth: 1,
-    marginLeft: 2,
   },
   visibilityPublic: {
     backgroundColor: withAlpha(Colors.amber, 0.14),
@@ -616,6 +656,47 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
 
+  // ── Hero stat (signature beer count) ──
+  heroStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    backgroundColor: Colors.stout2,
+    borderRadius: Radius.card,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.35),
+    paddingVertical: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
+  },
+  heroStatIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: withAlpha(Colors.amber, 0.16),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.4),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroStatText: {
+    flex: 1,
+  },
+  heroStatValue: {
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 44,
+    lineHeight: 56,
+    color: Colors.foam,
+    includeFontPadding: false,
+    fontVariant: ['tabular-nums'],
+  },
+  heroStatCaption: {
+    fontFamily: Fonts.ui.bold,
+    fontSize: 11,
+    letterSpacing: 1.2,
+    color: Colors.mutedText,
+    marginTop: 2,
+  },
+
   // ── Stats grid ──
   statsGrid: {
     flexDirection: 'row',
@@ -635,43 +716,24 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   statIconWell: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
+    width: 38,
+    height: 38,
+    borderRadius: 11,
     backgroundColor: withAlpha(Colors.amber, 0.14),
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Value spans the full tile width (not inline beside the icon) so a wide
+  // figure like "9 999,9 km" or "10 535 Kč" stays at full size instead of
+  // shrinking — keeps numerals visually consistent across all tiles.
   statValue: {
     fontFamily: Fonts.display.extrabold,
-    fontSize: 30,
+    fontSize: 28,
     color: Colors.foam,
-    marginTop: 2,
+    marginTop: 6,
+    fontVariant: ['tabular-nums'],
   },
   statCaption: {
-    fontFamily: Fonts.ui.bold,
-    fontSize: 10,
-    letterSpacing: 1,
-    color: Colors.mutedText,
-  },
-  statWideTile: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-    backgroundColor: Colors.stout2,
-    borderRadius: Radius.card,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-  },
-  statWideValue: {
-    flex: 1,
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 26,
-    color: Colors.foam,
-  },
-  statWideCaption: {
     fontFamily: Fonts.ui.bold,
     fontSize: 10,
     letterSpacing: 1,
