@@ -34,9 +34,9 @@ Usage
   # Prague metro (default), $0 from a home IP, 1.5s throttle:
   python manage.py bulk_fill_hours --throttle 1.5
 
-  # Custom area + bigger daily allowance:
+  # Custom area; large sweep with the Mapy brake lifted:
   python manage.py bulk_fill_hours --center 49.195,16.608 --radius-km 20
-  python manage.py bulk_fill_hours --bbox 12.0,48.5,18.9,51.1   # ~whole CZ
+  python manage.py bulk_fill_hours --bbox 12.0,48.5,18.9,51.1 --mapy-cap 1000000  # ~whole CZ
 
   # Reuse a catalogue, cap this run, dry-run:
   python manage.py bulk_fill_hours --limit 500
@@ -140,6 +140,10 @@ class Command(BaseCommand):
                             help="Radius around --center in km (default 15).")
         parser.add_argument("--cell-km", type=float, default=5.0,
                             help="Mapy grid cell size in km (default 5).")
+        parser.add_argument("--mapy-cap", type=int, default=None,
+                            help="Per-run Mapy request cap for the sweep (default settings.MAPY_DAILY_CAP=5000). "
+                                 "Raise it (e.g. 1000000) to sweep a large area in one go. This counter is "
+                                 "per-process and never touches the running app's cap.")
         parser.add_argument("--catalogue", type=str, default="scripts/pub_catalogue.json",
                             help="Catalogue cache file (built if missing).")
         parser.add_argument("--rebuild-catalogue", action="store_true", default=False,
@@ -177,8 +181,10 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING("[dry-run] No database writes will occur."))
 
         # --- Phase 1: catalogue -------------------------------------------
+        mapy_cap: int = options["mapy_cap"] or int(getattr(settings, "MAPY_DAILY_CAP", 5000))
         catalogue = self._load_or_build_catalogue(
-            catalogue_path, bbox, cell_km, rebuild=options["rebuild_catalogue"]
+            catalogue_path, bbox, cell_km, mapy_cap=mapy_cap,
+            rebuild=options["rebuild_catalogue"],
         )
         self.stdout.write(self.style.SUCCESS(f"Catalogue: {len(catalogue)} unique pubs."))
 
@@ -220,7 +226,8 @@ class Command(BaseCommand):
     # ------------------------------------------------------------------
 
     def _load_or_build_catalogue(
-        self, path: Path, bbox: tuple[float, float, float, float], cell_km: float, *, rebuild: bool
+        self, path: Path, bbox: tuple[float, float, float, float], cell_km: float,
+        *, mapy_cap: int, rebuild: bool,
     ) -> list[dict]:
         if path.exists() and not rebuild:
             self.stdout.write(f"Loading cached catalogue from {path}")
@@ -230,7 +237,6 @@ class Command(BaseCommand):
         if not api_key:
             raise CommandError("MAPY_API_KEY is not set — cannot build the catalogue.")
 
-        mapy_cap = int(getattr(settings, "MAPY_DAILY_CAP", 5000))
         centers = _grid_centers(bbox, cell_km)
         self.stdout.write(
             f"Sweeping {len(centers)} Mapy cell(s) (~{cell_km} km) over bbox {bbox} …"
