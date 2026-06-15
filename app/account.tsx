@@ -35,7 +35,6 @@ import { cs } from '@/i18n/cs';
 import {
   ChevronLeftIcon,
   CheckIcon,
-  DownloadIcon,
   MailIcon,
   PencilIcon,
   LinkIcon,
@@ -200,11 +199,8 @@ export default function AccountScreen() {
     try {
       const result = await exportAccountData();
       if (result.ok) {
-        showToast(cs.account.exportDataToast(result.filename));
-        Alert.alert(
-          cs.account.exportDataSavedTitle,
-          cs.account.exportDataSavedBody(result.uri),
-        );
+        showToast(cs.account.exportDataToast);
+        Alert.alert(cs.account.exportDataSentTitle, cs.account.exportDataSentBody);
       } else {
         showToast(result.detail || cs.account.errorGeneric);
       }
@@ -418,7 +414,7 @@ export default function AccountScreen() {
         <Text style={styles.sectionHeader}>{cs.account.dataHeader}</Text>
         <View style={styles.methodsCard}>
           <AccountActionRow
-            icon={<DownloadIcon size={18} color={Colors.foamMuted} />}
+            icon={<MailIcon size={18} color={Colors.foamMuted} />}
             title={cs.account.exportData}
             subtitle={cs.account.exportDataSubtitle}
             onPress={handleExportData}

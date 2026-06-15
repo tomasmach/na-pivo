@@ -68,12 +68,15 @@ Při prvním spuštění aplikace odešle na náš vlastní server anonymní ná
 ### Provozní statistiky a technické chyby (provozovatel aplikace)
 Provozní statistiky a technické chyby zpracováváme na vlastním serveru. Slouží pouze k údržbě a zlepšování aplikace. Neposíláme je žádné reklamní síti ani externímu analytickému nástroji.
 
+### Odesílání e-mailů (Resend)
+Pokud máte účet s e-mailem, posíláme transakční e-maily (ověření adresy, obnova hesla, export vašich dat, potvrzení smazání účtu) přes službu **Resend**, které k tomu předáme vaši e-mailovou adresu. Zásady: [https://resend.com/legal/privacy-policy](https://resend.com/legal/privacy-policy)
+
 ### Doplněné údaje o hospodách (provozovatel aplikace)
 Když dobrovolně doplníte otevírací dobu nebo piva na čepu, aplikace tyto údaje odešle na náš vlastní server pod anonymním účtem zařízení. Server je uloží a veřejně je zobrazí ostatním uživatelům aplikace. Údaje popisují danou hospodu, nikoli vaši osobu, a neobsahují žádné osobní informace. Jde o dobrovolnou funkci; pokud nic nevyplníte, nic se neodesílá.
 
 ## Doba uchování dat
 
-Na našich serverech uchováváme anonymní identifikátor zařízení a k němu vázaný dočasný účet, provozní statistiky, technické chyby a dobrovolně odeslané údaje o hospodách. Aktuální nebo přibližná poloha se může použít pro jednorázové vyhledání hospod v okolí; neukládáme průběžnou GPS historii, jednotlivé GPS body ani trasu. Služby třetích stran (Mapy.cz) uchovávají případná data podle vlastních zásad.
+Na našich serverech uchováváme anonymní identifikátor zařízení a k němu vázaný dočasný účet, provozní statistiky, technické chyby a dobrovolně odeslané údaje o hospodách. Aktuální nebo přibližná poloha se může použít pro jednorázové vyhledání hospod v okolí; neukládáme průběžnou GPS historii, jednotlivé GPS body ani trasu. Služby třetích stran (Mapy.cz, Resend) uchovávají případná data podle vlastních zásad.
 
 ## Vaše práva
 

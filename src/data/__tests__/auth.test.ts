@@ -601,6 +601,36 @@ describe('verifyEmail', () => {
 });
 
 // ---------------------------------------------------------------------------
+// exportAccountData
+// ---------------------------------------------------------------------------
+describe('exportAccountData', () => {
+  it('requests the backend email export with the current bearer token', async () => {
+    const spy = installFetch(fetchResolving(202, {}));
+
+    const result = await auth.exportAccountData();
+
+    expect(result).toEqual({ ok: true });
+    const { url, init } = firstCall(spy);
+    expect(url).toBe('https://api.test/v1/account/export');
+    expect(init.method).toBe('POST');
+    expect(authHeader(init)).toBe('Bearer cur-tok');
+    expect(bodyOf(init)).toEqual({});
+  });
+
+  it('returns the backend error when export email cannot be requested', async () => {
+    installFetch(fetchResolving(400, { detail: 'K účtu nemáme e-mail.', code: 'missing_email' }));
+
+    const result = await auth.exportAccountData();
+
+    expect(result).toEqual({
+      ok: false,
+      code: 'missing_email',
+      detail: 'K účtu nemáme e-mail.',
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // uploadAvatar
 // ---------------------------------------------------------------------------
 describe('uploadAvatar', () => {

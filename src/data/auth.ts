@@ -13,7 +13,7 @@
  * native SDK wrappers in src/data/socialAuth.ts.
  */
 
-import { File, Paths, UploadType } from 'expo-file-system';
+import { File, UploadType } from 'expo-file-system';
 
 import {
   ensureAccount,
@@ -575,39 +575,13 @@ export async function fetchWalkedDistanceM(): Promise<number | null> {
   return typeof walked === 'number' && Number.isFinite(walked) ? walked : null;
 }
 
-export interface AccountExportResult {
-  ok: true;
-  uri: string;
-  filename: string;
-}
-
-export type AccountExportActionResult =
-  | AccountExportResult
-  | { ok: false; code: string; detail: string };
+export type AccountExportActionResult = AuthActionResult;
 
 export async function exportAccountData(): Promise<AccountExportActionResult> {
-  const res = await authFetch('/v1/account/export', { method: 'GET', bearer: 'current' });
+  const res = await authFetch('/v1/account/export', { method: 'POST', bearer: 'current', body: {} });
   if ('networkError' in res) return NETWORK_ERROR;
   if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
-
-  const filename = `na-pivo-export-${new Date().toISOString().slice(0, 10)}.json`;
-  try {
-    const file = new File(Paths.document, filename);
-    file.create({ overwrite: true });
-    file.write(JSON.stringify(res.data, null, 2));
-    return { ok: true, uri: file.uri, filename };
-  } catch (err) {
-    trackApiFailure('account_export_write', {
-      endpoint: '/v1/account/export',
-      reason: 'exception',
-      error: err,
-    });
-    return {
-      ok: false,
-      code: 'file_write_failed',
-      detail: 'Export se nepodařilo uložit do zařízení.',
-    };
-  }
+  return { ok: true };
 }
 
 export async function restorePurchases(params: {

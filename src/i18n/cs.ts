@@ -290,11 +290,11 @@ export const cs = {
 
     // — Data export —
     dataHeader: 'DATA',
-    exportData: 'Stáhnout moje data',
-    exportDataSubtitle: 'JSON export profilu, deníku a hodnocení',
-    exportDataToast: (filename: string) => `Export uložen: ${filename}`,
-    exportDataSavedTitle: 'Export uložen',
-    exportDataSavedBody: (uri: string) => `Soubor najdeš tady:\n${uri}`,
+    exportData: 'Poslat moje data e-mailem',
+    exportDataSubtitle: 'JSON export profilu, deníku a hodnocení pošleme na tvůj e-mail',
+    exportDataToast: 'Export dat je na cestě.',
+    exportDataSentTitle: 'Export odeslán',
+    exportDataSentBody: 'Data jsme poslali na e-mail připojený k tvému účtu.',
     subscriptionTitle: 'Na Pivo+',
     subscriptionFree: 'Free',
     subscriptionPlus: 'Plus',
