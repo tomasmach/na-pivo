@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import uuid
 
 import pytest
@@ -8,7 +9,8 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from pubs.models import Account, ContentReport, DrinkLog
+from pubs import emailer
+from pubs.models import Account, ContentReport, DrinkLog, EmailCredential
 
 
 @pytest.fixture
@@ -32,6 +34,33 @@ def _bootstrap(client) -> tuple[str, str]:
 
 def _auth(token: str) -> dict:
     return {"HTTP_AUTHORIZATION": f"Bearer {token}"}
+
+
+def test_account_export_email_uses_json_attachment(monkeypatch):
+    captured: dict = {}
+
+    def fake_send_email(to, subject, html, *, text=None, attachments=None):
+        captured["to"] = to
+        captured["subject"] = subject
+        captured["html"] = html
+        captured["text"] = text
+        captured["attachments"] = attachments
+        return True
+
+    monkeypatch.setattr(emailer, "send_email", fake_send_email)
+
+    result = emailer.send_account_export_email(
+        "export@example.com",
+        filename="na-pivo-export.json",
+        json_bytes=b'{"ok": true}',
+    )
+
+    assert result is True
+    assert captured["to"] == "export@example.com"
+    attachment = captured["attachments"][0]
+    assert attachment["filename"] == "na-pivo-export.json"
+    assert attachment["content_type"] == "application/json"
+    assert base64.b64decode(attachment["content"]) == b'{"ok": true}'
 
 
 @pytest.mark.django_db
@@ -113,6 +142,75 @@ def test_account_export_includes_diary_data_and_excludes_secrets(client):
     assert "token_hash" not in serialized
     assert "password" not in serialized
     assert token not in serialized
+
+
+@pytest.mark.django_db
+def test_account_export_post_sends_json_export_by_email(client, monkeypatch):
+    sent: dict = {}
+
+    def fake_send_account_export_email(to, *, filename, json_bytes):
+        sent["to"] = to
+        sent["filename"] = filename
+        sent["json_bytes"] = json_bytes
+        return True
+
+    monkeypatch.setattr(emailer, "send_account_export_email", fake_send_account_export_email)
+
+    token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    EmailCredential.objects.create(
+        account=account,
+        email="export@example.com",
+        password="!",
+        email_verified=True,
+    )
+    DrinkLog.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        cache_key="u2fkbn12",
+        name="U Exportu",
+        lat=50.08,
+        lng=14.45,
+        beer_name="Ležák",
+        price_czk=59,
+        volume_ml=500,
+        drank_at=timezone.now(),
+    )
+
+    resp = client.post("/v1/account/export", data={}, format="json", **_auth(token))
+
+    assert resp.status_code == status.HTTP_202_ACCEPTED, resp.content
+    assert resp.json() == {"email": "export@example.com"}
+    assert sent["to"] == "export@example.com"
+    assert sent["filename"].startswith("na-pivo-export-")
+    assert sent["filename"].endswith(".json")
+    body = sent["json_bytes"].decode("utf-8")
+    assert '"beer_name": "Ležák"' in body
+    assert token not in body
+
+
+@pytest.mark.django_db
+def test_account_export_post_requires_account_email(client):
+    token, _ = _bootstrap(client)
+
+    resp = client.post("/v1/account/export", data={}, format="json", **_auth(token))
+
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST, resp.content
+    assert resp.json()["code"] == "missing_email"
+
+
+@pytest.mark.django_db
+def test_account_export_post_surfaces_email_failure(client, monkeypatch):
+    monkeypatch.setattr(emailer, "send_account_export_email", lambda *args, **kwargs: False)
+
+    token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    EmailCredential.objects.create(account=account, email="export@example.com", password="!")
+
+    resp = client.post("/v1/account/export", data={}, format="json", **_auth(token))
+
+    assert resp.status_code == status.HTTP_502_BAD_GATEWAY, resp.content
+    assert resp.json()["code"] == "email_failed"
 
 
 @pytest.mark.django_db

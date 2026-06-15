@@ -17,6 +17,7 @@ GET    /v1/health      → HealthView
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 from datetime import timedelta
@@ -35,7 +36,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
-from pubs import accounts
+from pubs import accounts, emailer
 from pubs.accounts import AccountError
 from pubs.enrichment import (
     MapyAllQueriesFailedError,
@@ -1701,7 +1702,7 @@ def _export_account_data(account: Account) -> dict:
 
 
 class AccountExportView(APIView):
-    """GET /v1/account/export — download the authenticated user's data as JSON."""
+    """GET downloads data; POST sends the same export to the account e-mail."""
 
     authentication_classes = [AccountTokenAuthentication]
     permission_classes = [IsAuthenticated]
@@ -1711,6 +1712,37 @@ class AccountExportView(APIView):
         response = Response(body, status=status.HTTP_200_OK)
         response["Content-Disposition"] = 'attachment; filename="na-pivo-export.json"'
         return response
+
+    def post(self, request: Request) -> Response:
+        account = request.user
+        email = account.primary_email
+        if not email:
+            return Response(
+                {
+                    "code": "missing_email",
+                    "detail": "K účtu nemáme e-mail, kam bychom export poslali.",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        filename = f"na-pivo-export-{dj_timezone.now().date().isoformat()}.json"
+        body = _export_account_data(account)
+        json_bytes = json.dumps(body, ensure_ascii=False, indent=2).encode("utf-8")
+        sent = emailer.send_account_export_email(
+            email,
+            filename=filename,
+            json_bytes=json_bytes,
+        )
+        if not sent:
+            return Response(
+                {
+                    "code": "email_failed",
+                    "detail": "Export se nepodařilo odeslat e-mailem. Zkus to prosím znovu.",
+                },
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        return Response({"email": email}, status=status.HTTP_202_ACCEPTED)
 
 
 class AccountView(APIView):

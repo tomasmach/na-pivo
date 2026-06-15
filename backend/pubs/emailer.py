@@ -33,7 +33,9 @@ All user-facing copy is Czech (the app is Czech).
 
 from __future__ import annotations
 
+import base64
 import logging
+from collections.abc import Sequence
 
 from django.conf import settings
 
@@ -50,6 +52,8 @@ _ACCENT_TEXT = "#1c1410"
 _BORDER = "#3a2c20"
 
 _APP_NAME = "Na Pivo \U0001f37a"  # "Na Pivo 🍺"
+
+EmailAttachment = dict[str, str]
 
 
 def _render(
@@ -127,7 +131,14 @@ def _render(
     )
 
 
-def send_email(to: str, subject: str, html: str, *, text: str | None = None) -> bool:
+def send_email(
+    to: str,
+    subject: str,
+    html: str,
+    *,
+    text: str | None = None,
+    attachments: Sequence[EmailAttachment] | None = None,
+) -> bool:
     """Send one transactional e-mail via Resend.
 
     Returns ``True`` on success (or in no-op dev mode), ``False`` on failure.
@@ -143,15 +154,16 @@ def send_email(to: str, subject: str, html: str, *, text: str | None = None) -> 
         import resend
 
         resend.api_key = settings.RESEND_API_KEY
-        resend.Emails.send(
-            {
-                "from": settings.EMAIL_FROM,
-                "to": [to],
-                "subject": subject,
-                "html": html,
-                "text": text or _html_to_text_fallback(subject),
-            }
-        )
+        payload: dict[str, object] = {
+            "from": settings.EMAIL_FROM,
+            "to": [to],
+            "subject": subject,
+            "html": html,
+            "text": text or _html_to_text_fallback(subject),
+        }
+        if attachments:
+            payload["attachments"] = list(attachments)
+        resend.Emails.send(payload)
     except Exception:  # noqa: BLE001 -- email must never propagate into a request
         logger.exception("failed to send email to=%s subject=%s", to, subject)
         return False
@@ -244,3 +256,24 @@ def send_account_deleted_email(to: str) -> bool:
         "hospoda je pořád otevřená.\n\nNa Pivo"
     )
     return send_email(to, subject, html, text=text)
+
+
+def send_account_export_email(to: str, *, filename: str, json_bytes: bytes) -> bool:
+    """Send a GDPR-style account export as a JSON attachment."""
+    subject = "Tvoje data z Na Pivo"
+    message = (
+        "V příloze najdeš export svého účtu, pivního deníku, hodnocení a dalších "
+        "dat, která k účtu máme uložená.<br><br>"
+        "Soubor je ve formátu JSON."
+    )
+    html = _render("Tvoje data", message)
+    text = (
+        "V příloze najdeš export svého účtu, pivního deníku, hodnocení a dalších "
+        "dat, která k účtu máme uložená.\n\nSoubor je ve formátu JSON.\n\nNa Pivo"
+    )
+    attachment = {
+        "filename": filename,
+        "content": base64.b64encode(json_bytes).decode("ascii"),
+        "content_type": "application/json",
+    }
+    return send_email(to, subject, html, text=text, attachments=[attachment])
