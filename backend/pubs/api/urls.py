@@ -17,6 +17,20 @@ GET    health/      → HealthView
 
 from django.urls import path
 
+from .auth_views import (
+    AppleAuthView,
+    GoogleAuthView,
+    LinkView,
+    LoginView,
+    LogoutView,
+    RegisterView,
+    RequestEmailVerificationView,
+    RequestPasswordResetView,
+    ResetPasswordView,
+    SetPasswordView,
+    UnlinkView,
+    VerifyEmailView,
+)
 from .views import (
     AccountMeView,
     AccountView,
@@ -58,4 +72,25 @@ urlpatterns = [
     path("health", HealthView.as_view(), name="health"),
     path("account", AccountView.as_view(), name="account"),
     path("account/me", AccountMeView.as_view(), name="account-me"),
+    # --- user accounts / auth ---
+    path("auth/register", RegisterView.as_view(), name="auth-register"),
+    path("auth/login", LoginView.as_view(), name="auth-login"),
+    path("auth/google", GoogleAuthView.as_view(), name="auth-google"),
+    path("auth/apple", AppleAuthView.as_view(), name="auth-apple"),
+    path("auth/link", LinkView.as_view(), name="auth-link"),
+    path("auth/unlink", UnlinkView.as_view(), name="auth-unlink"),
+    path("auth/set-password", SetPasswordView.as_view(), name="auth-set-password"),
+    path("auth/logout", LogoutView.as_view(), name="auth-logout"),
+    path(
+        "auth/request-password-reset",
+        RequestPasswordResetView.as_view(),
+        name="auth-request-password-reset",
+    ),
+    path("auth/reset-password", ResetPasswordView.as_view(), name="auth-reset-password"),
+    path(
+        "auth/request-email-verify",
+        RequestEmailVerificationView.as_view(),
+        name="auth-request-email-verify",
+    ),
+    path("auth/verify-email", VerifyEmailView.as_view(), name="auth-verify-email"),
 ]

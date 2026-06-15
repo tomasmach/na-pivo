@@ -119,6 +119,15 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
+# Argon2 first (OWASP / Django recommended) for the EmailCredential password
+# hashes. PBKDF2 entries stay so any older hashes keep verifying. We use
+# make_password/check_password directly (no auth.User), which honour this list.
+PASSWORD_HASHERS = [
+    "django.contrib.auth.hashers.Argon2PasswordHasher",
+    "django.contrib.auth.hashers.PBKDF2PasswordHasher",
+    "django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher",
+]
+
 # ---------------------------------------------------------------------------
 # Internationalization
 # ---------------------------------------------------------------------------
@@ -205,6 +214,15 @@ PUB_REPORTS_THROTTLE_RATE: str = os.environ.get("PUB_REPORTS_THROTTLE_RATE", "30
 # from noisy loops and scripted spam.
 CLIENT_EVENTS_THROTTLE_RATE: str = os.environ.get("CLIENT_EVENTS_THROTTLE_RATE", "120/min")
 
+# Per-IP rate limit for credential auth endpoints (register / login / social /
+# link / unlink / verify-email / set-password). Kept tight to blunt credential
+# stuffing and enumeration while leaving a real human's few attempts untouched.
+AUTH_THROTTLE_RATE: str = os.environ.get("AUTH_THROTTLE_RATE", "20/min")
+
+# Per-IP rate limit for the email-dispatching endpoints (request password reset /
+# request email verification). Tighter, because each call can send an email.
+AUTH_EMAIL_THROTTLE_RATE: str = os.environ.get("AUTH_EMAIL_THROTTLE_RATE", "5/min")
+
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
@@ -234,8 +252,79 @@ REST_FRAMEWORK = {
         "pub_hours": PUB_HOURS_THROTTLE_RATE,
         "pub_reports": PUB_REPORTS_THROTTLE_RATE,
         "client_events": CLIENT_EVENTS_THROTTLE_RATE,
+        "auth": AUTH_THROTTLE_RATE,
+        "auth_email": AUTH_EMAIL_THROTTLE_RATE,
     },
 }
+
+# ---------------------------------------------------------------------------
+# User accounts — auth, OAuth providers, transactional email
+# ---------------------------------------------------------------------------
+# The app starts anonymous (device-bound Account). Registering / signing in
+# attaches a credential (EmailCredential) or social identity (AuthIdentity) to
+# that same Account ("claim"), so the user's data follows them. Bearer tokens
+# live in the AuthToken table (multi-device, revocable). See pubs/accounts.py.
+
+# --- Email/password & token lifetimes ---
+# How long an email-verification one-time token stays valid.
+EMAIL_VERIFY_TTL_HOURS: int = int(os.environ.get("EMAIL_VERIFY_TTL_HOURS", "24"))
+# How long a password-reset one-time token stays valid (kept short).
+PASSWORD_RESET_TTL_HOURS: int = int(os.environ.get("PASSWORD_RESET_TTL_HOURS", "1"))
+# Optional absolute TTL (days) for issued session tokens. Empty/0 = no expiry
+# (a native app holds a long-lived Keychain credential; revocation is by row).
+_auth_token_ttl_days = os.environ.get("AUTH_TOKEN_TTL_DAYS", "").strip()
+AUTH_TOKEN_TTL_DAYS: int | None = int(_auth_token_ttl_days) if _auth_token_ttl_days else None
+# Soft-delete grace window before a pending-deletion account is hard-purged.
+ACCOUNT_DELETION_GRACE_DAYS: int = int(os.environ.get("ACCOUNT_DELETION_GRACE_DAYS", "14"))
+
+# --- Deep links / web fallback (used in verification & reset emails) ---
+# Custom URL scheme of the mobile app (app.config.ts `scheme`). Email links use
+# napivo://auth/... and the web base URL is the https fallback + the Play-required
+# public account-deletion page.
+APP_DEEP_LINK_SCHEME: str = os.environ.get("APP_DEEP_LINK_SCHEME", "napivo")
+WEB_BASE_URL: str = os.environ.get("WEB_BASE_URL", "https://tomasmach.github.io/na-pivo")
+
+# --- Google Sign-In (server-side ID-token verification) ---
+# OAuth client IDs from Google Cloud Console. The web client id is what the
+# mobile @react-native-google-signin lib uses, so it becomes the token `aud` on
+# both platforms; the iOS/android ids are accepted too for robustness. Any token
+# whose aud is in this set is trusted (after signature/exp/iss/email_verified).
+GOOGLE_WEB_CLIENT_ID: str = os.environ.get("GOOGLE_WEB_CLIENT_ID", "")
+GOOGLE_IOS_CLIENT_ID: str = os.environ.get("GOOGLE_IOS_CLIENT_ID", "")
+GOOGLE_ANDROID_CLIENT_ID: str = os.environ.get("GOOGLE_ANDROID_CLIENT_ID", "")
+GOOGLE_OAUTH_ALLOWED_AUDIENCES: set[str] = {
+    cid
+    for cid in (GOOGLE_WEB_CLIENT_ID, GOOGLE_IOS_CLIENT_ID, GOOGLE_ANDROID_CLIENT_ID)
+    if cid
+}
+
+# --- Sign in with Apple (server-side identity-token verification + revoke) ---
+# Native iOS Sign in with Apple mints tokens whose `aud` is the app BUNDLE ID;
+# a web/Android Services-ID flow would use the SERVICES ID. Accept both.
+APPLE_BUNDLE_ID: str = os.environ.get("APPLE_BUNDLE_ID", "com.tomasmach.na-pivo")
+APPLE_SERVICES_ID: str = os.environ.get("APPLE_SERVICES_ID", "")
+APPLE_ALLOWED_AUDIENCES: list[str] = [
+    aud for aud in (APPLE_BUNDLE_ID, APPLE_SERVICES_ID) if aud
+]
+# client_id used when signing the Apple client-secret JWT and calling revoke —
+# defaults to the bundle id (native iOS).
+APPLE_CLIENT_ID: str = os.environ.get("APPLE_CLIENT_ID", APPLE_BUNDLE_ID)
+# Credentials for the Apple client-secret JWT (required to revoke tokens on
+# account deletion — Apple mandates revocation). The private key is the .p8
+# contents; literal "\n" sequences are normalized to newlines in pubs/oauth.py.
+APPLE_TEAM_ID: str = os.environ.get("APPLE_TEAM_ID", "")
+APPLE_KEY_ID: str = os.environ.get("APPLE_KEY_ID", "")
+APPLE_PRIVATE_KEY: str = os.environ.get("APPLE_PRIVATE_KEY", "")
+
+# --- Resend transactional email ---
+RESEND_API_KEY: str = os.environ.get("RESEND_API_KEY", "")
+EMAIL_FROM: str = os.environ.get("EMAIL_FROM", "Na Pivo <noreply@napivo.cz>")
+# Only actually send when explicitly enabled AND a key is present; otherwise the
+# emailer logs the message (dev no-op) so flows work without Resend configured.
+EMAIL_ENABLED: bool = (
+    os.environ.get("EMAIL_ENABLED", "False").lower() in ("1", "true", "yes")
+    and bool(RESEND_API_KEY)
+)
 
 # ---------------------------------------------------------------------------
 # Logging

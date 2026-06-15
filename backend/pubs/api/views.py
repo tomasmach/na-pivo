@@ -34,6 +34,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
+from pubs import accounts
 from pubs.enrichment import (
     MapyAllQueriesFailedError,
     MapyDailyCapExceededError,
@@ -46,6 +47,7 @@ from pubs.enrichment import (
 from pubs.models import (
     Account,
     AccountUsageStats,
+    AuthToken,
     ClientEvent,
     DrinkLog,
     FeedbackReport,
@@ -57,8 +59,6 @@ from pubs.models import (
     PubVisit,
     ReleaseNote,
     UserAddedPub,
-    generate_account_token,
-    hash_account_token,
 )
 
 from .authentication import AccountTokenAuthentication
@@ -1541,23 +1541,21 @@ class AccountView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         device_id = serializer.validated_data["device_id"]
-        raw_token = generate_account_token()
         try:
             # Idempotent on the device_id UNIQUE constraint: under a concurrent
             # first-registration race, get_or_create wraps the INSERT in a
             # savepoint and re-SELECTs on IntegrityError, so a lost-response retry
             # never creates a duplicate Account.
             #
-            # Only the SHA-256 hash of the token is stored, so the raw token cannot
-            # be recovered later. A known device_id is therefore allowed to rotate
-            # only when the caller proves possession of the current token for this
-            # same account; otherwise device_id would act as a bearer-equivalent
-            # recovery key.
-            account, created = Account.objects.get_or_create(
-                device_id=device_id,
-                defaults={"token_hash": hash_account_token(raw_token)},
-            )
-            if not created:
+            # Tokens live in AuthToken now (kind=device for this bootstrap path).
+            # Only the SHA-256 hash is stored, so a raw token cannot be recovered.
+            # A known device_id is therefore allowed to rotate only when the caller
+            # proves possession of the current token for this same account;
+            # otherwise device_id would act as a bearer-equivalent recovery key.
+            account, created = Account.objects.get_or_create(device_id=device_id)
+            if created:
+                raw_token = accounts.issue_token(account, kind=AuthToken.Kind.DEVICE)
+            else:
                 auth_result = AccountTokenAuthentication().authenticate(request)
                 if auth_result is None:
                     return Response(
@@ -1566,18 +1564,18 @@ class AccountView(APIView):
                         headers={"WWW-Authenticate": "Bearer"},
                     )
 
-                authenticated_account, _presented_token = auth_result
+                authenticated_account, presented_token = auth_result
                 if authenticated_account.pk != account.pk:
                     return Response(
                         {"detail": "Bearer token does not match device account."},
                         status=status.HTTP_403_FORBIDDEN,
                     )
 
-                # Rotate the token (old hash discarded) and touch last_seen_at
-                # (auto_now fires because the field is in update_fields).
-                raw_token = generate_account_token()
-                account.token_hash = hash_account_token(raw_token)
-                account.save(update_fields=["token_hash", "last_seen_at"])
+                # Rotate: revoke the presented token and mint a fresh device token.
+                # Touch last_seen_at (auto_now fires via update_fields).
+                accounts.revoke_token(presented_token)
+                raw_token = accounts.issue_token(account, kind=AuthToken.Kind.DEVICE)
+                account.save(update_fields=["last_seen_at"])
         except AuthenticationFailed as exc:
             return Response(
                 {"detail": str(exc)},
@@ -1632,3 +1630,21 @@ class AccountMeView(APIView):
 
         account = serializer.save()
         return Response(AccountMeSerializer(account).data, status=status.HTTP_200_OK)
+
+    def delete(self, request: Request) -> Response:
+        """Delete the account — required in-app by the App Store and Google Play.
+
+        Soft-delete with a grace window: revoke every token, revoke the Apple
+        token (Apple mandates it), mark the account pending-deletion, and email a
+        cancel-by date. The ``purge_deleted_accounts`` command hard-purges after
+        the window; signing back in within it reactivates the account.
+        """
+        try:
+            accounts.schedule_deletion(request.user)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("account delete failed: %s", exc, exc_info=True)
+            return Response(
+                {"detail": "Internal server error."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)

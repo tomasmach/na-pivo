@@ -237,6 +237,13 @@ class Account(models.Model):
     defined semantics.
     """
 
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        # Soft-deleted: logged out + tokens revoked, hard-purged by the
+        # purge_deleted_accounts command after the grace window. Signing back in
+        # within the window reactivates it.
+        PENDING_DELETION = "pending_deletion", "Pending deletion"
+
     # ---------- identity ----------
     public_id = models.UUIDField(
         default=uuid.uuid4,
@@ -254,19 +261,42 @@ class Account(models.Model):
     token_hash = models.CharField(
         max_length=64,
         unique=True,
-        # No db_index — unique=True already creates the lookup index (auth does an
-        # exact-match lookup, never a prefix LIKE). Setting db_index=True too made
-        # migration 0004 create the Postgres varchar_pattern_ops "_like" index
-        # twice (AddField + AlterField) and fail: relation "..._like" already exists.
-        help_text="SHA-256 hex digest of the bearer token. The raw token is "
-        "returned once at registration and never stored, so a DB leak exposes "
-        "only non-reversible hashes.",
+        null=True,
+        blank=True,
+        # LEGACY: bearer tokens now live in the AuthToken table (multi-device,
+        # revocable). This column is kept (nullable) only so existing rows survive
+        # the migration; new accounts leave it NULL. unique=True still allows many
+        # NULLs on both sqlite and Postgres. No db_index — see AuthToken.token_hash.
+        help_text="DEPRECATED — superseded by AuthToken. SHA-256 digest of the "
+        "legacy single bearer token; nullable, kept for backwards compatibility.",
     )
 
     # ---------- preferences ----------
     hide_pub_names = models.BooleanField(
         default=False,
         help_text="Whether the app should hide pub names behind the reveal interaction.",
+    )
+
+    # ---------- profile (populated once the account is claimed) ----------
+    display_name = models.CharField(
+        max_length=120,
+        blank=True,
+        default="",
+        help_text="Optional display name, set on sign-up or from a social provider.",
+    )
+
+    # ---------- lifecycle / deletion ----------
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.ACTIVE,
+        db_index=True,
+        help_text="ACTIVE, or PENDING_DELETION during the soft-delete grace window.",
+    )
+    deleted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When deletion was requested. Hard purge happens after the grace window.",
     )
 
     # ---------- timestamps ----------
@@ -292,6 +322,224 @@ class Account(models.Model):
     @property
     def is_anonymous(self) -> bool:
         return False
+
+    # --- account-claim helpers ------------------------------------------------
+    # "Anonymous" (above) is the DRF duck-typing flag and is always False so the
+    # IsAuthenticated permission passes for any token holder. Whether the account
+    # has been CLAIMED with a real credential is a separate question answered here.
+    @property
+    def has_email_credential(self) -> bool:
+        return EmailCredential.objects.filter(account=self).exists()
+
+    @property
+    def is_claimed(self) -> bool:
+        """True once a real credential (email/password or a social identity) is
+        attached. A fresh device account is unclaimed (anonymous)."""
+        return self.has_email_credential or self.identities.exists()
+
+    @property
+    def primary_email(self) -> str:
+        """Best contact email: the password email if set, else a social one."""
+        cred = EmailCredential.objects.filter(account=self).first()
+        if cred:
+            return cred.email
+        identity = self.identities.exclude(email="").first()
+        return identity.email if identity else ""
+
+    @property
+    def email_is_verified(self) -> bool:
+        """Whether the account's email/password credential is verified."""
+        cred = EmailCredential.objects.filter(account=self).first()
+        return bool(cred and cred.email_verified)
+
+    def auth_methods(self) -> list[str]:
+        """The provider keys the account can sign in with ('email', 'google',
+        'apple') — used to enforce the never-remove-your-last-credential rule."""
+        methods = ["email"] if self.has_email_credential else []
+        methods += list(self.identities.values_list("provider", flat=True))
+        return methods
+
+
+class AuthToken(models.Model):
+    """A bearer token (session) for an Account.
+
+    Supersedes the single ``Account.token_hash`` field: an account can hold many
+    tokens (one per device / sign-in), each independently revocable. Only the
+    SHA-256 digest of the raw token is stored (same scheme as the legacy field),
+    so a DB leak exposes no usable credential. Revocation = delete the row;
+    "log out everywhere" = delete all rows for the account; account deletion
+    cascades these away.
+    """
+
+    class Kind(models.TextChoices):
+        DEVICE = "device", "Device"  # anonymous device bootstrap (POST /v1/account)
+        SESSION = "session", "Session"  # issued after a credential / social login
+
+    account = models.ForeignKey(
+        "pubs.Account",
+        on_delete=models.CASCADE,
+        related_name="auth_tokens",
+    )
+    token_hash = models.CharField(
+        max_length=64,
+        unique=True,
+        # No db_index — unique=True already creates the exact-match lookup index;
+        # adding it would create a redundant Postgres varchar_pattern_ops "_like"
+        # index (the footgun that broke migration 0004 on Account.token_hash).
+        help_text="SHA-256 hex digest of the raw bearer token.",
+    )
+    kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.SESSION)
+    device_label = models.CharField(
+        max_length=120,
+        blank=True,
+        default="",
+        help_text="Optional human label, e.g. 'iPhone 16 / app 1.2'.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(auto_now=True)
+    expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Optional absolute expiry. NULL = never expires (revoke by row).",
+    )
+
+    class Meta:
+        verbose_name = "Auth token"
+        verbose_name_plural = "Auth tokens"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"AuthToken({self.kind} for account {self.account_id})"
+
+    @property
+    def is_expired(self) -> bool:
+        return self.expires_at is not None and self.expires_at <= timezone.now()
+
+
+class EmailCredential(models.Model):
+    """Email + password credential for an Account (0 or 1 per account).
+
+    ``password`` holds a Django password-hash string (Argon2 via
+    make_password/check_password). ``email`` is stored normalized (lowercased,
+    stripped) and is globally unique so one email maps to one account.
+    """
+
+    account = models.OneToOneField(
+        "pubs.Account",
+        on_delete=models.CASCADE,
+        related_name="email_credential",
+    )
+    email = models.EmailField(
+        unique=True,
+        help_text="Normalized (lowercase) login email; globally unique.",
+    )
+    password = models.CharField(
+        max_length=128,
+        help_text="Django password-hash string (Argon2).",
+    )
+    email_verified = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Email credential"
+        verbose_name_plural = "Email credentials"
+
+    def __str__(self) -> str:
+        verified = "verified" if self.email_verified else "unverified"
+        return f"EmailCredential({self.email} — {verified})"
+
+
+class AuthIdentity(models.Model):
+    """A linked social sign-in provider (Google / Apple) for an Account.
+
+    One row per linked provider. ``subject`` is the provider's stable ``sub``
+    claim — the ONLY reliable join key (email is mutable / may be an Apple private
+    relay). ``UniqueConstraint(provider, subject)`` guarantees one social identity
+    maps to exactly one account; ``UniqueConstraint(account, provider)`` keeps it
+    to one identity per provider per account.
+    """
+
+    class Provider(models.TextChoices):
+        GOOGLE = "google", "Google"
+        APPLE = "apple", "Apple"
+
+    account = models.ForeignKey(
+        "pubs.Account",
+        on_delete=models.CASCADE,
+        related_name="identities",
+    )
+    provider = models.CharField(max_length=20, choices=Provider.choices, db_index=True)
+    subject = models.CharField(
+        max_length=255,
+        help_text="Provider 'sub' claim — the stable per-provider user id.",
+    )
+    email = models.EmailField(
+        blank=True,
+        default="",
+        help_text="Email asserted by the provider at link time (snapshot).",
+    )
+    apple_refresh_token = models.CharField(
+        max_length=512,
+        blank=True,
+        default="",
+        help_text="Apple refresh token, stored so the token can be revoked at "
+        "account deletion (Apple requires revocation). Empty for Google.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Auth identity"
+        verbose_name_plural = "Auth identities"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["provider", "subject"], name="uniq_provider_subject"
+            ),
+            models.UniqueConstraint(
+                fields=["account", "provider"], name="uniq_account_provider"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"AuthIdentity({self.provider}:{self.subject} → account {self.account_id})"
+
+
+class OneTimeToken(models.Model):
+    """Single-use, hashed, TTL'd token for email verification & password reset.
+
+    The raw token is emailed to the user (as a deep link and a manual-entry code)
+    and only its SHA-256 digest is stored. It is single-use (``used_at``) and
+    expires (``expires_at``). Distinct from AuthToken (different lifetime/threat
+    model) — never reuse one as a session token.
+    """
+
+    class Purpose(models.TextChoices):
+        VERIFY_EMAIL = "verify_email", "Verify email"
+        RESET_PASSWORD = "reset_password", "Reset password"
+
+    account = models.ForeignKey(
+        "pubs.Account",
+        on_delete=models.CASCADE,
+        related_name="one_time_tokens",
+    )
+    purpose = models.CharField(max_length=20, choices=Purpose.choices)
+    token_hash = models.CharField(max_length=64, unique=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "One-time token"
+        verbose_name_plural = "One-time tokens"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        state = "used" if self.used_at else "pending"
+        return f"OneTimeToken({self.purpose} — {state})"
+
+    @property
+    def is_usable(self) -> bool:
+        return self.used_at is None and self.expires_at > timezone.now()
 
 
 class PubReport(models.Model):

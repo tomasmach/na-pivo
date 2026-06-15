@@ -867,13 +867,41 @@ class AccountSerializer(serializers.ModelSerializer):
 
 
 class AccountMeSerializer(serializers.ModelSerializer):
-    """Account view returned by GET /v1/account/me — NEVER exposes the token."""
+    """Canonical account state returned by GET /v1/account/me and by every auth
+    endpoint (with the raw ``token`` injected by the view). NEVER exposes a token.
+
+    ``is_anonymous`` is True for a fresh device account with no credential yet;
+    ``providers`` lists the sign-in methods ('email', 'google', 'apple') and
+    drives the link/unlink UI.
+    """
 
     id = serializers.UUIDField(source="public_id", read_only=True)
+    email = serializers.CharField(source="primary_email", read_only=True)
+    email_verified = serializers.BooleanField(source="email_is_verified", read_only=True)
+    is_anonymous = serializers.SerializerMethodField()
+    providers = serializers.SerializerMethodField()
 
     class Meta:
         model = Account
-        fields = ["id", "device_id", "hide_pub_names", "created_at", "last_seen_at"]
+        fields = [
+            "id",
+            "device_id",
+            "display_name",
+            "email",
+            "email_verified",
+            "providers",
+            "is_anonymous",
+            "status",
+            "hide_pub_names",
+            "created_at",
+            "last_seen_at",
+        ]
+
+    def get_is_anonymous(self, obj: Account) -> bool:
+        return not obj.is_claimed
+
+    def get_providers(self, obj: Account) -> list[str]:
+        return obj.auth_methods()
 
 
 class AccountPreferencesSerializer(serializers.ModelSerializer):

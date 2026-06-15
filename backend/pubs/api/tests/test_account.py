@@ -15,7 +15,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework.throttling import ScopedRateThrottle
 
-from pubs.models import Account
+from pubs.models import Account, AuthToken
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -111,13 +111,13 @@ def test_reregistration_without_bearer_does_not_rotate_token(client):
     first = client.post("/v1/account", data={"device_id": _DEVICE_ID}, format="json")
     assert first.status_code == status.HTTP_201_CREATED
     token = first.json()["token"]
-    original_hash = Account.objects.get(device_id=_DEVICE_ID).token_hash
+    original_hash = AuthToken.objects.get(account__device_id=_DEVICE_ID).token_hash
 
     second = client.post("/v1/account", data={"device_id": _DEVICE_ID}, format="json")
 
     assert second.status_code == status.HTTP_401_UNAUTHORIZED
     assert "token" not in second.json()
-    assert Account.objects.get(device_id=_DEVICE_ID).token_hash == original_hash
+    assert AuthToken.objects.get(account__device_id=_DEVICE_ID).token_hash == original_hash
     resp = client.get("/v1/account/me", HTTP_AUTHORIZATION=f"Bearer {token}")
     assert resp.status_code == status.HTTP_200_OK
 
@@ -130,7 +130,7 @@ def test_reregistration_with_other_account_token_does_not_rotate_token(client):
     assert other.status_code == status.HTTP_201_CREATED
 
     token = first.json()["token"]
-    original_hash = Account.objects.get(device_id=_DEVICE_ID).token_hash
+    original_hash = AuthToken.objects.get(account__device_id=_DEVICE_ID).token_hash
 
     resp = client.post(
         "/v1/account",
@@ -141,21 +141,30 @@ def test_reregistration_with_other_account_token_does_not_rotate_token(client):
 
     assert resp.status_code == status.HTTP_403_FORBIDDEN
     assert "token" not in resp.json()
-    assert Account.objects.get(device_id=_DEVICE_ID).token_hash == original_hash
+    assert AuthToken.objects.get(account__device_id=_DEVICE_ID).token_hash == original_hash
     me = client.get("/v1/account/me", HTTP_AUTHORIZATION=f"Bearer {token}")
     assert me.status_code == status.HTTP_200_OK
 
 
 @pytest.mark.django_db
 def test_token_is_stored_hashed(client):
-    """The DB stores only the SHA-256 of the token, never the raw bearer secret."""
+    """The DB stores only the SHA-256 of the token, never the raw bearer secret.
+
+    Tokens now live in AuthToken (kind="device" for the bootstrap path); the
+    legacy Account.token_hash column is unused (NULL) for new accounts.
+    """
     resp = client.post("/v1/account", data={"device_id": _DEVICE_ID}, format="json")
     raw_token = resp.json()["token"]
 
     account = Account.objects.get(device_id=_DEVICE_ID)
     expected = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
-    assert account.token_hash == expected
-    assert account.token_hash != raw_token
+
+    auth_token = AuthToken.objects.get(account=account)
+    assert auth_token.token_hash == expected
+    assert auth_token.token_hash != raw_token
+    assert auth_token.kind == AuthToken.Kind.DEVICE
+    # The raw secret is never persisted anywhere, including the legacy column.
+    assert account.token_hash is None
 
 
 @pytest.mark.django_db
