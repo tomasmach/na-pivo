@@ -144,6 +144,7 @@ describe('ensureAccount — registration (no cache yet)', () => {
       deviceId: persistedDeviceId,
       accountId: 'acc-123',
       token: 'secret-token',
+      authenticated: false,
     });
 
     // The token-bearing blob lands in SecureStore, NOT AsyncStorage.
@@ -153,6 +154,7 @@ describe('ensureAccount — registration (no cache yet)', () => {
       deviceId: persistedDeviceId,
       accountId: 'acc-123',
       token: 'secret-token',
+      authenticated: false,
     });
   });
 
@@ -195,7 +197,12 @@ describe('ensureAccount — registration (no cache yet)', () => {
     expect(replacementDeviceId).toMatch(UUID_RE);
     expect(replacementDeviceId).not.toBe('dev-locked');
     expect(await AsyncStorage.getItem(DEVICE_ID_KEY)).toBe(replacementDeviceId);
-    expect(session).toEqual({ deviceId: replacementDeviceId, accountId: 'acc-2', token: 'tok-2' });
+    expect(session).toEqual({
+      deviceId: replacementDeviceId,
+      accountId: 'acc-2',
+      token: 'tok-2',
+      authenticated: false,
+    });
   });
 
   it('resolves to null on a 2xx body missing id/token and caches nothing', async () => {
@@ -231,7 +238,12 @@ describe('ensureAccount — already established (once-per-install)', () => {
     const session = await ensureAccount();
 
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(session).toEqual({ deviceId: 'dev-1', accountId: 'acc-1', token: 'tok-1' });
+    expect(session).toEqual({
+      deviceId: 'dev-1',
+      accountId: 'acc-1',
+      token: 'tok-1',
+      authenticated: false,
+    });
   });
 
   it('returns the cached session even when the backend is dormant', async () => {
@@ -244,7 +256,12 @@ describe('ensureAccount — already established (once-per-install)', () => {
     const session = await ensureAccount();
 
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(session).toEqual({ deviceId: 'dev-1', accountId: 'acc-1', token: 'tok-1' });
+    expect(session).toEqual({
+      deviceId: 'dev-1',
+      accountId: 'acc-1',
+      token: 'tok-1',
+      authenticated: false,
+    });
   });
 });
 
@@ -263,11 +280,21 @@ describe('ensureAccount — cache desync guard', () => {
     const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
     expect(JSON.parse(init.body as string)).toEqual({ device_id: 'dev-A' });
 
-    expect(session).toEqual({ deviceId: 'dev-A', accountId: 'new-acc', token: 'new-tok' });
+    expect(session).toEqual({
+      deviceId: 'dev-A',
+      accountId: 'new-acc',
+      token: 'new-tok',
+      authenticated: false,
+    });
 
     // Cache was overwritten with the current device's account (in SecureStore).
     const cached = JSON.parse((await SecureStore.getItemAsync(ACCOUNT_KEY)) as string);
-    expect(cached).toEqual({ deviceId: 'dev-A', accountId: 'new-acc', token: 'new-tok' });
+    expect(cached).toEqual({
+      deviceId: 'dev-A',
+      accountId: 'new-acc',
+      token: 'new-tok',
+      authenticated: false,
+    });
   });
 });
 

@@ -227,6 +227,100 @@ export const cs = {
     savedToast: 'Hospoda přidána',
   },
 
+  account: {
+    // — Settings entry —
+    settingsRowTitle: 'Účet',
+    settingsRowSignIn: 'Přihlásit se',
+
+    // — Auth screen (sign in / sign up) —
+    authTitle: 'Účet',
+    tabLogin: 'Přihlásit se',
+    tabRegister: 'Registrovat',
+    intro: 'Přihlas se a měj svá piva a hodnocení synchronizovaná na všech zařízeních.',
+    emailLabel: 'E-mail',
+    emailPlaceholder: 'tvuj@email.cz',
+    passwordLabel: 'Heslo',
+    passwordPlaceholder: 'Alespoň 8 znaků',
+    nameLabel: 'Jméno (nepovinné)',
+    namePlaceholder: 'Jak ti máme říkat',
+    submitLogin: 'Přihlásit se',
+    submitRegister: 'Vytvořit účet',
+    loading: 'Pracuji…',
+    orDivider: 'nebo',
+    continueWithApple: 'Pokračovat přes Apple',
+    continueWithGoogle: 'Pokračovat přes Google',
+    forgotPassword: 'Zapomenuté heslo?',
+
+    // — Inline validation —
+    errorEmailInvalid: 'Zadej platný e-mail.',
+    errorPasswordShort: 'Heslo musí mít alespoň 8 znaků.',
+    errorGeneric: 'Něco se pokazilo. Zkus to prosím znovu.',
+
+    // — Forgot password (inline) —
+    resetPrompt: 'Zadej e-mail a pošleme ti odkaz na obnovu hesla.',
+    resetSend: 'Poslat odkaz',
+    resetSentToast: 'Pokud účet existuje, poslali jsme odkaz na obnovu.',
+
+    // — Post-register / verification —
+    verifyEmailSentToast: 'Ověřovací e-mail je na cestě.',
+
+    // — Account management screen —
+    accountTitle: 'Účet',
+    emailVerified: 'E-mail ověřen',
+    emailUnverified: 'E-mail není ověřen',
+    verifyEmailCta: 'Ověřit e-mail',
+    verifyEmailRequestedToast: 'Ověřovací e-mail je na cestě.',
+    anonymousName: 'Tvůj účet',
+
+    // — Sign-in methods card —
+    methodsHeader: 'ZPŮSOBY PŘIHLÁŠENÍ',
+    methodEmail: 'E-mail a heslo',
+    methodGoogle: 'Google',
+    methodApple: 'Apple',
+    linkCta: 'Propojit',
+    unlinkCta: 'Odpojit',
+    linkedLabel: 'Propojeno',
+    linkedGoogleToast: 'Google propojen.',
+    linkedAppleToast: 'Apple propojen.',
+    unlinkedToast: 'Odpojeno.',
+    setPasswordCta: 'Nastavit heslo',
+    setPasswordHeader: 'Nastavit heslo',
+    setPasswordSave: 'Uložit heslo',
+    setPasswordToast: 'Heslo nastaveno.',
+
+    // — Sign out —
+    logout: 'Odhlásit se',
+
+    // — Danger zone —
+    dangerHeader: 'NEBEZPEČNÁ ZÓNA',
+    deleteAccount: 'Smazat účet',
+    deleteConfirmTitle: 'Smazat účet?',
+    deleteConfirmBody:
+      'Tvůj účet a data se po krátké lhůtě nevratně smažou. Tuto akci nelze vzít zpět.',
+    deleteConfirmCancel: 'Zrušit',
+    deleteConfirmConfirm: 'Smazat',
+    deleteToast: 'Účet bude smazán.',
+
+    // — Password reset screen (deep link) —
+    resetTitle: 'Obnova hesla',
+    resetNewPasswordLabel: 'Nové heslo',
+    resetSubmit: 'Změnit heslo',
+    resetDoneToast: 'Heslo změněno.',
+    resetInvalidTitle: 'Neplatný odkaz',
+    resetInvalidBody: 'Tento odkaz na obnovu hesla už neplatí. Vyžádej si nový.',
+    resetInvalidCta: 'Zpět do aplikace',
+
+    // — Email verification screen (deep link) —
+    verifyTitle: 'Ověření e-mailu',
+    verifyLoading: 'Ověřuji e-mail…',
+    verifySuccessTitle: 'E-mail ověřen ✅',
+    verifySuccessBody: 'Díky! Tvůj e-mail je teď ověřený.',
+    verifyErrorTitle: 'Ověření se nezdařilo',
+    verifyErrorBody: 'Odkaz už neplatí nebo je neplatný. Zkus si nechat poslat nový.',
+    verifyInvalidBody: 'Chybí ověřovací kód. Otevři odkaz z e-mailu znovu.',
+    verifyDoneCta: 'Zpět do aplikace',
+  },
+
   tabs: {
     compass: 'Kompas',
     counter: 'Počítadlo',
@@ -457,6 +551,25 @@ export const cs = {
     ratingDislike: (pub: string) => `Hodnotit ${pub} jako slabou`,
     ratingNote: (note: string) => `Štítek: ${note}`,
     ratingNoteInput: (pub: string) => `Vlastní poznámka k hospodě ${pub}`,
+
+    // — Účet / přihlášení —
+    accountRow: 'Otevřít účet',
+    authEmailInput: 'E-mail',
+    authPasswordInput: 'Heslo',
+    authNameInput: 'Jméno',
+    authResetEmailInput: 'E-mail pro obnovu hesla',
+    authNewPasswordInput: 'Nové heslo',
+    authTabLogin: 'Přepnout na přihlášení',
+    authTabRegister: 'Přepnout na registraci',
+    authForgotPassword: 'Zapomenuté heslo',
+    authSignInApple: 'Pokračovat přes Apple',
+    authSignInGoogle: 'Pokračovat přes Google',
+    accountVerifyEmail: 'Ověřit e-mail',
+    accountLinkProvider: (provider: string) => `Propojit ${provider}`,
+    accountUnlinkProvider: (provider: string) => `Odpojit ${provider}`,
+    accountSetPassword: 'Nastavit heslo',
+    accountLogout: 'Odhlásit se',
+    accountDelete: 'Smazat účet',
   },
 } as const;
 

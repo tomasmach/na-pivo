@@ -40,6 +40,13 @@ export interface AccountSession {
   accountId: string;
   /** Server-issued opaque bearer secret. */
   token: string;
+  /**
+   * True once a real credential (email/password or Google/Apple) is attached —
+   * i.e. the user is SIGNED IN. A signed-in session is no longer device-bound,
+   * so ensureAccount returns it regardless of the current deviceId and never
+   * silently forks a new anonymous account on a 401.
+   */
+  authenticated?: boolean;
 }
 
 export interface AccountPreferences {
@@ -79,6 +86,8 @@ interface CachedAccount {
   deviceId: string;
   accountId: string;
   token: string;
+  /** True when this session is credential-backed (signed in), not anonymous. */
+  authenticated?: boolean;
 }
 
 function chainAbortSignal(signal?: AbortSignal): {
@@ -184,6 +193,7 @@ async function readCachedAccount(): Promise<CachedAccount | null> {
         deviceId: parsed.deviceId,
         accountId: parsed.accountId,
         token: parsed.token,
+        authenticated: parsed.authenticated === true,
       };
     }
   } catch {
@@ -227,11 +237,23 @@ export async function ensureAccount(signal?: AbortSignal): Promise<AccountSessio
   let deviceId = await getOrCreateDeviceId();
   const cached = await readCachedAccount();
 
-  // Already established for THIS device — no network call needed. A cached blob
-  // minted for a different deviceId is ignored (re-register below), so a token
-  // is never paired with a mismatched deviceId.
+  // A SIGNED-IN session is credential-backed, not device-bound: return it as-is
+  // (it may have been minted on another device / after a deviceId change), and
+  // never re-register or fork it. Sign-out is explicit (revertToAnonymous).
+  if (cached && cached.authenticated) {
+    return {
+      deviceId: cached.deviceId,
+      accountId: cached.accountId,
+      token: cached.token,
+      authenticated: true,
+    };
+  }
+
+  // Anonymous: already established for THIS device — no network call needed. A
+  // cached blob minted for a different deviceId is ignored (re-register below),
+  // so a token is never paired with a mismatched deviceId.
   if (cached && cached.deviceId === deviceId) {
-    return { deviceId, accountId: cached.accountId, token: cached.token };
+    return { deviceId, accountId: cached.accountId, token: cached.token, authenticated: false };
   }
 
   const endpoint = getBackendEndpoint('/v1/account');
@@ -276,9 +298,19 @@ export async function ensureAccount(signal?: AbortSignal): Promise<AccountSessio
 
       const data = (await resp.json()) as RegisterResponse;
       if (data?.id && data?.token) {
-        const account: CachedAccount = { deviceId, accountId: data.id, token: data.token };
+        const account: CachedAccount = {
+          deviceId,
+          accountId: data.id,
+          token: data.token,
+          authenticated: false,
+        };
         await writeCachedAccount(account);
-        return { deviceId, accountId: account.accountId, token: account.token };
+        return {
+          deviceId,
+          accountId: account.accountId,
+          token: account.token,
+          authenticated: false,
+        };
       }
       return null;
     }
@@ -406,4 +438,46 @@ export async function updateAccountPreferences(
   } finally {
     abort.cleanup();
   }
+}
+
+// ---------------------------------------------------------------------------
+// Session helpers (used by the auth layer in src/data/auth.ts)
+// ---------------------------------------------------------------------------
+
+/** Current bearer token, or null when there is no cached session. */
+export async function getSessionToken(): Promise<string | null> {
+  const cached = await readCachedAccount();
+  return cached?.token ?? null;
+}
+
+/**
+ * Persist a signed-in session: the server-issued token + account id, flagged
+ * ``authenticated`` so ensureAccount() stops treating it as a device-bound
+ * anonymous account (it survives deviceId changes and never silently forks).
+ */
+export async function setSession(session: {
+  deviceId?: string;
+  accountId: string;
+  token: string;
+  authenticated: boolean;
+}): Promise<void> {
+  const deviceId = session.deviceId ?? (await getOrCreateDeviceId());
+  await writeCachedAccount({
+    deviceId,
+    accountId: session.accountId,
+    token: session.token,
+    authenticated: session.authenticated,
+  });
+}
+
+/**
+ * Sign out: drop the cached session, mint a FRESH device identity (the old one
+ * is now tied to a claimed account that needs a token we no longer hold), then
+ * re-establish a clean anonymous device account so the app keeps working.
+ * Always resolves; never throws.
+ */
+export async function revertToAnonymous(signal?: AbortSignal): Promise<AccountSession | null> {
+  await clearCachedAccount();
+  await replaceDeviceId();
+  return ensureAccount(signal);
 }

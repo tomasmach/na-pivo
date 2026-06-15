@@ -48,14 +48,21 @@
   <h3>Anonymní účet zařízení</h3>
   <p>Aplikace při prvním spuštění vytvoří anonymní náhodný identifikátor zařízení (náhodné UUID) a odešle ho na náš vlastní server, aby každému zařízení patřil dočasný anonymní účet. Identifikátor neobsahuje žádné osobní údaje a slouží jen k odlišení zařízení.</p>
 
+  <h3>Uživatelský účet (volitelné přihlášení)</h3>
+  <p>Přihlášení je <strong>nepovinné</strong> – aplikaci lze plně používat anonymně. Pokud se rozhodnete vytvořit účet, abyste si svá data (např. Pivní deník) přenesli mezi zařízeními, zpracováváme podle zvoleného způsobu přihlášení:</p>
+  <ul>
+    <li><strong>E-mail + heslo</strong> – ukládáme vaši e-mailovou adresu a heslo pouze v nečitelné (zahashované) podobě, nikdy ne v otevřeném textu.</li>
+    <li><strong>Přihlášení přes Google / Apple</strong> – od poskytovatele dostaneme stabilní identifikátor účtu a e-mail (u Applu může jít o skrytý přeposílací e-mail), případně jméno. Heslo poskytovatele nikdy nevidíme.</li>
+  </ul>
+  <p>Při přihlášení se k vašemu účtu připojí dosavadní anonymní data zařízení, aby vám zůstala. Jeden účet lze propojit s více způsoby přihlášení a kdykoli je v nastavení odpojit.</p>
+
   <h3>Provozní statistiky a technické chyby</h3>
   <p>Aplikace posílá na náš vlastní server omezené provozní údaje: otevření aplikace, návrat do popředí, typ technické chyby, verzi aplikace, platformu a stavové kódy vybraných požadavků. K anonymnímu účtu ukládáme také součet nachozených metrů v aplikaci. Součet metrů se počítá přímo v telefonu a na server se odesílají pouze přírůstky v metrech – neposíláme GPS body, trasu ani historii polohy.</p>
 
   <h3>Co NEsbíráme</h3>
   <ul>
-    <li>Nepoužíváme osobní uživatelské účty ani přihlášení.</li>
+    <li>Přihlášení je nepovinné; e-mail ani jméno nesbíráme, dokud si dobrovolně nevytvoříte účet.</li>
     <li>Nepoužíváme reklamní SDK ani sledování napříč aplikacemi.</li>
-    <li>Nesbíráme e-mailovou adresu, jméno ani žádné kontaktní údaje.</li>
     <li>Nesledujeme vás napříč aplikacemi ani webovými stránkami.</li>
     <li>Neukládáme historii vaší polohy, GPS body ani trasu.</li>
   </ul>
@@ -66,6 +73,7 @@
     <li><strong>Poloha a pohybové senzory</strong> – nalezení hospod v okolí a zobrazení směrové šipky k vybrané hospodě.</li>
     <li><strong>Vyhledávací dotazy</strong> – získání návrhů míst z Mapy.cz.</li>
     <li><strong>Anonymní účet zařízení</strong> – odlišení jednotlivých zařízení bez osobní registrace.</li>
+    <li><strong>Uživatelský účet (e-mail / Google / Apple)</strong> – přihlášení a přenos vašich dat mezi zařízeními, pokud si účet dobrovolně vytvoříte.</li>
     <li><strong>Provozní statistiky a technické chyby</strong> – zjištění, kolik zařízení aplikaci používá, kolikrát byla otevřena a kde selhávají backendové funkce.</li>
     <li><strong>Součet nachozených metrů</strong> – anonymní souhrnné statistiky a žebříčky bez ukládání polohové historie.</li>
   </ul>
@@ -77,13 +85,22 @@
   <p>Pro vyhledávání hospod a návrhů míst odesíláme textový dotaz a aktuální nebo přibližnou oblast hledání na náš server, který volá API služby Mapy.cz. Tato služba zpracovává dotaz podle vlastních zásad ochrany osobních údajů. Více informací: <a href="https://o.seznam.cz/ochrana-udaju/">https://o.seznam.cz/ochrana-udaju/</a></p>
 
   <h3>Vlastní server provozovatele</h3>
-  <p>Na vlastním serveru zpracováváme anonymní účet zařízení, otevírací dobu vybrané hospody, dobrovolně doplněné údaje o hospodách, provozní statistiky a technické chyby. Provozní data slouží pouze k údržbě a zlepšování aplikace; neposíláme je reklamní síti ani externímu analytickému nástroji.</p>
+  <p>Na vlastním serveru zpracováváme anonymní účet zařízení, případný uživatelský účet, otevírací dobu vybrané hospody, dobrovolně doplněné údaje o hospodách, provozní statistiky a technické chyby. Provozní data slouží pouze k údržbě a zlepšování aplikace; neposíláme je reklamní síti ani externímu analytickému nástroji.</p>
+
+  <h3>Přihlášení přes Google a Apple</h3>
+  <p>Pokud zvolíte přihlášení přes Google nebo Apple, ověření identity probíhá u příslušného poskytovatele podle jeho vlastních zásad. Naše appka od poskytovatele obdrží pouze stabilní identifikátor účtu a e-mail (případně jméno). Více: <a href="https://policies.google.com/privacy">Google</a>, <a href="https://www.apple.com/legal/privacy/">Apple</a>.</p>
+
+  <h3>Odesílání e-mailů (Resend)</h3>
+  <p>Pokud máte účet s e-mailem, posíláme transakční e-maily (ověření adresy, obnova hesla, potvrzení smazání účtu) přes službu <strong>Resend</strong>, které k tomu předáme vaši e-mailovou adresu. Zásady: <a href="https://resend.com/legal/privacy-policy">https://resend.com/legal/privacy-policy</a></p>
 
   <h3>Dobrovolné příspěvky (Stripe)</h3>
   <p>Aplikace umožňuje poslat dobrovolný příspěvek („donate") na podporu vývoje. <strong>Nejde o nákup</strong> – uživatel za příspěvek nezískává žádné placené funkce ani obsah. Platba probíhá mimo aplikaci, na zabezpečené stránce otevřené ve webovém prohlížeči a zpracovává ji společnost <strong>Stripe</strong>. Veškeré platební údaje zadáváte přímo u Stripe; aplikace tyto údaje nevidí ani neukládá. Zásady ochrany osobních údajů Stripe: <a href="https://stripe.com/privacy">https://stripe.com/privacy</a></p>
 
   <h2>Doba uchování dat</h2>
-  <p>Na našich serverech uchováváme anonymní identifikátor zařízení a k němu vázaný dočasný účet, provozní statistiky, technické chyby a dobrovolně odeslané údaje o hospodách. Aktuální nebo přibližná poloha se může použít pro jednorázové vyhledání hospod v okolí; neukládáme průběžnou GPS historii, jednotlivé GPS body ani trasu. Služby třetích stran (Mapy.cz, Stripe) uchovávají případná data podle vlastních zásad.</p>
+  <p>Na našich serverech uchováváme anonymní identifikátor zařízení a k němu vázaný dočasný účet, případný uživatelský účet, provozní statistiky, technické chyby a dobrovolně odeslané údaje o hospodách. Aktuální nebo přibližná poloha se může použít pro jednorázové vyhledání hospod v okolí; neukládáme průběžnou GPS historii, jednotlivé GPS body ani trasu. Služby třetích stran (Mapy.cz, Stripe, Google, Apple, Resend) uchovávají případná data podle vlastních zásad.</p>
+
+  <h2 id="smazani-uctu">Smazání účtu</h2>
+  <p>Účet i přidružená data můžete kdykoli smazat přímo v aplikaci (<strong>Nastavení → Účet → Smazat účet</strong>) nebo požádat o smazání bez aplikace. Po vyžádání je účet 14 dní deaktivovaný a poté trvale smazán; do té doby ho lze obnovit opětovným přihlášením. Trvale odstraníme vaše identifikační údaje (e-mail, jméno, heslo, propojení s Google/Apple) i soukromý obsah (Pivní deník); příspěvky s hodnotou pro ostatní (přidané hospody, opravy otevírací doby) zůstanou, ale odpojené od vaší identity. Podrobnosti a postup: <a href="delete-account.html">Smazání účtu</a>.</p>
 
   <h2 id="prava">Vaše práva</h2>
   <p>Podle nařízení GDPR (Obecné nařízení o ochraně osobních údajů) máte právo na:</p>
@@ -95,7 +112,7 @@
     <li><strong>přenositelnost</strong> údajů,</li>
     <li><strong>vznést námitku</strong> proti zpracování.</li>
   </ul>
-  <p>Protože pracujeme hlavně s anonymními technickými údaji, ve většině případů nemáme data, která by šla přímo spojit s vaší osobou. Pokud máte přesto jakýkoli dotaz nebo požadavek, ozvěte se nám na kontakt uvedený níže.</p>
+  <p>U anonymního používání pracujeme jen s technickými údaji, které nelze přímo spojit s vaší osobou. Máte-li uživatelský účet, vážou se osobní údaje (např. e-mail) k němu – nejsnáz je uplatníte přímo v aplikaci, kde si můžete účet i veškerá data <a href="delete-account.html">smazat</a>. S jakýmkoli dalším dotazem nebo požadavkem se ozvěte na kontakt uvedený níže.</p>
 
   <h2>Děti</h2>
   <p>Aplikace není určena dětem. Vzhledem k tématu (vyhledávání hospod) je určena dospělým uživatelům a vědomě nesbíráme žádné údaje o dětech.</p>

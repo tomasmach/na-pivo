@@ -7,6 +7,14 @@ const LOCATION_REASON =
 const LOCAL_BACKEND_MODES = new Set(['local', 'auto']);
 const SPLASH_BACKGROUND = '#1f1007';
 
+// Reversed iOS OAuth client id for the native Google Sign-In redirect, e.g.
+// "com.googleusercontent.apps.1234567890-abcdef". Set it via
+// EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME. A placeholder keeps `expo prebuild` working
+// before Google is configured (Google sign-in just won't function until set).
+const GOOGLE_IOS_URL_SCHEME =
+  (process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME ?? '').trim() ||
+  'com.googleusercontent.apps.PLACEHOLDER';
+
 function usesLocalBackend(): boolean {
   const mode = (process.env.EXPO_PUBLIC_BACKEND_MODE ?? '').trim().toLowerCase();
   const backendUrl = (process.env.EXPO_PUBLIC_BACKEND_URL ?? '').trim().toLowerCase();
@@ -47,6 +55,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       buildNumber: '4',
       icon: './assets/images/icon.png',
       supportsTablet: false,
+      usesAppleSignIn: true,
       infoPlist: {
         NSLocationWhenInUseUsageDescription: LOCATION_REASON,
         NSMotionUsageDescription: 'Pomocí senzorů otáčíme šipku, když se otočíš.',
@@ -98,6 +107,19 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         },
       ],
       'expo-secure-store',
+      // Sign in with Apple (iOS). Adds the com.apple.developer.applesignin
+      // entitlement; requires enabling the capability on the App ID in the
+      // Apple Developer portal and a dev-client rebuild.
+      'expo-apple-authentication',
+      // Native Google Sign-In. iosUrlScheme is the reversed iOS OAuth client id;
+      // requires a dev-client rebuild. webClientId is supplied at runtime in
+      // src/data/socialAuth.ts via EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID.
+      [
+        '@react-native-google-signin/google-signin',
+        {
+          iosUrlScheme: GOOGLE_IOS_URL_SCHEME,
+        },
+      ],
     ],
     experiments: {
       typedRoutes: true,

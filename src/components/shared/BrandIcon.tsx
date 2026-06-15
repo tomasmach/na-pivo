@@ -20,6 +20,11 @@ const INSTAGRAM_PATH =
 const LINKEDIN_PATH =
   'M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.225 0z';
 
+// Apple wordmark glyph (Simple Icons). Rendered monochrome so it tints with the
+// surrounding foam/stout palette like the lucide icons do.
+const APPLE_PATH =
+  'M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701';
+
 export const InstagramIcon = memo(function InstagramIcon({
   size = 20,
   color,
@@ -38,6 +43,38 @@ export const LinkedinIcon = memo(function LinkedinIcon({
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">
       <Path d={LINKEDIN_PATH} fill={color} />
+    </Svg>
+  );
+});
+
+export const AppleIcon = memo(function AppleIcon({
+  size = 20,
+  color,
+}: BrandIconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Path d={APPLE_PATH} fill={color} />
+    </Svg>
+  );
+});
+
+/**
+ * Google "G" mark. The official Google logo is four-colour, but to sit calmly
+ * alongside the monochrome Apple glyph on the dark stout palette we render it as
+ * a single tinted "G" outline (tinted via `color`, matching the rest of the
+ * icon set). It stays recognisably the Google geometry without clashing brand
+ * colours on a dark surface.
+ */
+export const GoogleIcon = memo(function GoogleIcon({
+  size = 20,
+  color,
+}: BrandIconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Path
+        d="M12 11v2.6h4.3a3.8 3.8 0 0 1-1.6 2.5 4.5 4.5 0 0 1-2.7.8 4.7 4.7 0 1 1 3-8.4l1.8-1.9A7.3 7.3 0 1 0 12 19.3c2 0 3.7-.7 4.9-1.9 1.3-1.3 1.7-3 1.7-4.5 0-.5 0-.9-.1-1.3l-.1-.6z"
+        fill={color}
+      />
     </Svg>
   );
 });
