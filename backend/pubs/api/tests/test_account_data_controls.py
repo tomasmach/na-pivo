@@ -63,6 +63,25 @@ def test_account_export_email_uses_json_attachment(monkeypatch):
     assert base64.b64decode(attachment["content"]) == b'{"ok": true}'
 
 
+def test_send_email_logs_no_recipient_or_message_pii(settings, caplog):
+    settings.EMAIL_ENABLED = False
+    settings.RESEND_API_KEY = ""
+
+    with caplog.at_level("INFO", logger="pubs.emailer"):
+        sent = emailer.send_email(
+            "person@example.com",
+            "Private subject",
+            "<p>Private body</p>",
+            text="Private text",
+        )
+
+    assert sent is True
+    assert "person@example.com" not in caplog.text
+    assert "Private subject" not in caplog.text
+    assert "Private body" not in caplog.text
+    assert "Private text" not in caplog.text
+
+
 @pytest.mark.django_db
 def test_marketing_email_preference_is_returned_and_patchable(client):
     token, _ = _bootstrap(client)
@@ -190,6 +209,37 @@ def test_account_export_post_sends_json_export_by_email(client, monkeypatch):
 
 
 @pytest.mark.django_db
+def test_account_export_post_requires_verified_email_credential(client, monkeypatch):
+    sent = False
+
+    def fake_send_account_export_email(*args, **kwargs):
+        nonlocal sent
+        sent = True
+        return True
+
+    monkeypatch.setattr(emailer, "send_account_export_email", fake_send_account_export_email)
+
+    token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    EmailCredential.objects.create(
+        account=account,
+        email="unverified@example.com",
+        password="!",
+        email_verified=False,
+    )
+
+    # Direct authenticated download is still allowed.
+    direct = client.get("/v1/account/export", **_auth(token))
+    assert direct.status_code == status.HTTP_200_OK, direct.content
+    assert direct.json()["account"]["email_verified"] is False
+
+    emailed = client.post("/v1/account/export", data={}, format="json", **_auth(token))
+    assert emailed.status_code == status.HTTP_403_FORBIDDEN, emailed.content
+    assert emailed.json()["code"] == "email_unverified"
+    assert sent is False
+
+
+@pytest.mark.django_db
 def test_account_export_post_requires_account_email(client):
     token, _ = _bootstrap(client)
 
@@ -205,7 +255,12 @@ def test_account_export_post_surfaces_email_failure(client, monkeypatch):
 
     token, account_id = _bootstrap(client)
     account = Account.objects.get(public_id=account_id)
-    EmailCredential.objects.create(account=account, email="export@example.com", password="!")
+    EmailCredential.objects.create(
+        account=account,
+        email="export@example.com",
+        password="!",
+        email_verified=True,
+    )
 
     resp = client.post("/v1/account/export", data={}, format="json", **_auth(token))
 

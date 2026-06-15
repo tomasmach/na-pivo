@@ -54,6 +54,7 @@ from pubs.models import (
     ClientEvent,
     ContentReport,
     DrinkLog,
+    EmailCredential,
     FeedbackReport,
     PubCommunityData,
     PubContributionLog,
@@ -1715,8 +1716,8 @@ class AccountExportView(APIView):
 
     def post(self, request: Request) -> Response:
         account = request.user
-        email = account.primary_email
-        if not email:
+        credential = EmailCredential.objects.filter(account=account).first()
+        if credential is None:
             return Response(
                 {
                     "code": "missing_email",
@@ -1724,6 +1725,15 @@ class AccountExportView(APIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if not credential.email_verified:
+            return Response(
+                {
+                    "code": "email_unverified",
+                    "detail": "Export e-mailem pošleme až na ověřený e-mail.",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        email = credential.email
 
         filename = f"na-pivo-export-{dj_timezone.now().date().isoformat()}.json"
         body = _export_account_data(account)

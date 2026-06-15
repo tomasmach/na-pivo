@@ -15,11 +15,11 @@ Configuration is read from Django settings:
 Dev / no-op fallback
 --------------------
 When ``EMAIL_ENABLED`` is ``False`` *or* ``RESEND_API_KEY`` is empty, no network
-call is made: the e-mail is logged at ``INFO`` and the send functions return
-``True``. This lets local and CI environments run the full auth / account flows
-without a Resend account or even the ``resend`` package installed. The ``resend``
-dependency is imported lazily inside :func:`send_email` for exactly this reason --
-the module imports cleanly even when the package is missing.
+call is made: a redacted event is logged at ``INFO`` and the send functions
+return ``True``. This lets local and CI environments run the full auth / account
+flows without a Resend account or even the ``resend`` package installed. The
+``resend`` dependency is imported lazily inside :func:`send_email` for exactly
+this reason -- the module imports cleanly even when the package is missing.
 
 Never raises
 ------------
@@ -54,6 +54,10 @@ _BORDER = "#3a2c20"
 _APP_NAME = "Na Pivo \U0001f37a"  # "Na Pivo 🍺"
 
 EmailAttachment = dict[str, str]
+
+
+def _attachment_count(attachments: Sequence[EmailAttachment] | None) -> int:
+    return len(attachments) if attachments is not None else 0
 
 
 def _render(
@@ -144,10 +148,11 @@ def send_email(
     Returns ``True`` on success (or in no-op dev mode), ``False`` on failure.
     Never raises -- e-mail must never break an API request.
     """
+    attachment_count = _attachment_count(attachments)
     if not getattr(settings, "EMAIL_ENABLED", False) or not getattr(
         settings, "RESEND_API_KEY", ""
     ):
-        logger.info("email (dev no-op) to=%s subject=%s", to, subject)
+        logger.info("email (dev no-op); attachments=%d", attachment_count)
         return True
 
     try:
@@ -164,11 +169,15 @@ def send_email(
         if attachments:
             payload["attachments"] = list(attachments)
         resend.Emails.send(payload)
-    except Exception:  # noqa: BLE001 -- email must never propagate into a request
-        logger.exception("failed to send email to=%s subject=%s", to, subject)
+    except Exception as exc:  # noqa: BLE001 -- email must never propagate into a request
+        logger.error(
+            "failed to send email; error_type=%s attachments=%d",
+            type(exc).__name__,
+            attachment_count,
+        )
         return False
 
-    logger.info("email sent to=%s subject=%s", to, subject)
+    logger.info("email sent; attachments=%d", attachment_count)
     return True
 
 

@@ -511,9 +511,11 @@ def verify_provider_token(provider: str, token: str) -> dict:
 
 
 def apple_refresh_from_code(authorization_code: str) -> str:
-    """Best-effort exchange of an Apple auth code for a refresh token (stored so
-    we can revoke at deletion, which Apple requires). Never fatal — a missing
-    refresh token only means we can't revoke later."""
+    """Exchange an Apple auth code for a refresh token.
+
+    Returns an empty string when no code is provided or the exchange fails; callers
+    reject Apple sign-in/link flows that would create an unrevokeable identity.
+    """
     if not authorization_code:
         return ""
     try:
@@ -548,6 +550,16 @@ def resolve_social(
         .first()
     )
     if existing is not None:
+        if (
+            provider == AuthIdentity.Provider.APPLE
+            and not existing.apple_refresh_token
+            and not apple_refresh_token
+        ):
+            raise AccountError(
+                "Přihlášení přes Apple teď potřebuje nový autorizační kód.",
+                code="apple_refresh_required",
+                http_status=400,
+            )
         # Known identity → sign in to its account.
         account = existing.account
         _reactivate_if_pending(account)
@@ -585,6 +597,13 @@ def resolve_social(
                 code="email_exists",
                 http_status=409,
             )
+
+    if provider == AuthIdentity.Provider.APPLE and not apple_refresh_token:
+        raise AccountError(
+            "Přihlášení přes Apple teď potřebuje nový autorizační kód.",
+            code="apple_refresh_required",
+            http_status=400,
+        )
 
     try:
         with transaction.atomic():
@@ -647,6 +666,16 @@ def link_social(
     )
     if existing is not None:
         if existing.account_id == account.id:
+            if provider == AuthIdentity.Provider.APPLE:
+                if apple_refresh_token and apple_refresh_token != existing.apple_refresh_token:
+                    existing.apple_refresh_token = apple_refresh_token
+                    existing.save(update_fields=["apple_refresh_token"])
+                elif not existing.apple_refresh_token:
+                    raise AccountError(
+                        "Propojení přes Apple teď potřebuje nový autorizační kód.",
+                        code="apple_refresh_required",
+                        http_status=400,
+                    )
             return existing  # already linked to this account — idempotent
         raise AccountError(
             "Tento účet u poskytovatele je už propojený s jiným účtem.",
@@ -658,6 +687,13 @@ def link_social(
             "K účtu už je propojený jiný účet tohoto poskytovatele.",
             code="provider_already_linked",
             http_status=409,
+        )
+
+    if provider == AuthIdentity.Provider.APPLE and not apple_refresh_token:
+        raise AccountError(
+            "Propojení přes Apple teď potřebuje nový autorizační kód.",
+            code="apple_refresh_required",
+            http_status=400,
         )
 
     identity = AuthIdentity.objects.create(
@@ -696,11 +732,17 @@ def unlink(account: Account, *, provider: str) -> None:
     if identity is None:
         raise AccountError("Tento způsob přihlášení není propojený.", code="not_linked")
     if provider == AuthIdentity.Provider.APPLE and identity.apple_refresh_token:
-        # Revoke at Apple so a stale token can't be reused. Best-effort.
+        # Revoke at Apple before dropping the identity so we do not lose the only
+        # token that can satisfy Apple's deletion/unlink requirement.
         try:
             oauth.revoke_apple_token(identity.apple_refresh_token)
         except oauth.OAuthError as exc:
             logger.warning("apple token revoke on unlink failed: %s", exc)
+            raise AccountError(
+                "Apple token se nepodařilo odvolat. Zkus to prosím znovu.",
+                code="apple_revoke_failed",
+                http_status=502,
+            ) from exc
     identity.delete()
 
 
@@ -720,15 +762,23 @@ def _create_one_time_token(account: Account, *, purpose: str, ttl: timedelta) ->
 
 
 def _consume_one_time_token(raw_token: str, *, purpose: str) -> Account:
-    ott = (
-        OneTimeToken.objects.select_related("account")
-        .filter(token_hash=hash_account_token(raw_token), purpose=purpose)
-        .first()
-    )
-    if ott is None or not ott.is_usable:
-        raise AccountError("Odkaz je neplatný nebo vypršel.", code="token_invalid", http_status=400)
-    ott.used_at = timezone.now()
-    ott.save(update_fields=["used_at"])
+    token_hash = hash_account_token(raw_token)
+    now = timezone.now()
+    with transaction.atomic():
+        consumed = OneTimeToken.objects.filter(
+            token_hash=token_hash,
+            purpose=purpose,
+            used_at__isnull=True,
+            expires_at__gt=now,
+        ).update(used_at=now)
+        if consumed != 1:
+            raise AccountError(
+                "Odkaz je neplatný nebo vypršel.", code="token_invalid", http_status=400
+            )
+        ott = OneTimeToken.objects.select_related("account").get(
+            token_hash=token_hash,
+            purpose=purpose,
+        )
     return ott.account
 
 
@@ -818,13 +868,16 @@ def hard_delete(account: Account) -> None:
     tokens and CASCADE-bound personal data; SET_NULL community data is orphaned.
     Emails a confirmation first (the row is about to vanish)."""
     email = account.primary_email
-    _revoke_apple_identities(account)
+    _revoke_apple_identities(account, fail_on_error=True)
     if email:
         emailer.send_account_deleted_email(email)
+    if account.avatar:
+        account.avatar.delete(save=False)
     account.delete()
 
 
-def _revoke_apple_identities(account: Account) -> None:
+def _revoke_apple_identities(account: Account, *, fail_on_error: bool = False) -> None:
+    failed_identity_ids: list[int] = []
     for identity in account.identities.filter(provider=AuthIdentity.Provider.APPLE):
         if not identity.apple_refresh_token:
             continue
@@ -832,6 +885,16 @@ def _revoke_apple_identities(account: Account) -> None:
             oauth.revoke_apple_token(identity.apple_refresh_token)
         except oauth.OAuthError as exc:
             logger.warning("apple token revoke on deletion failed: %s", exc)
+            failed_identity_ids.append(identity.pk)
+        else:
+            identity.apple_refresh_token = ""
+            identity.save(update_fields=["apple_refresh_token"])
+    if failed_identity_ids and fail_on_error:
+        raise AccountError(
+            "Apple token se nepodařilo odvolat. Zkusíme to znovu.",
+            code="apple_revoke_failed",
+            http_status=502,
+        )
 
 
 # ---------------------------------------------------------------------------

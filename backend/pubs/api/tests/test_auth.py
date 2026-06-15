@@ -60,6 +60,14 @@ def _clear_throttle_cache():
 
 
 @pytest.fixture
+def tmp_media(tmp_path, settings):
+    media_root = tmp_path / "media"
+    media_root.mkdir()
+    settings.MEDIA_ROOT = str(media_root)
+    return media_root
+
+
+@pytest.fixture
 def fake_oauth(monkeypatch):
     """Patch the OAuth provider verifiers + Apple code-exchange / revoke.
 
@@ -394,13 +402,29 @@ def test_google_returning_sub_signs_into_same_account(client, fake_oauth):
 def test_apple_new_identity_no_bearer_creates_account(client, fake_oauth):
     resp = client.post(
         "/v1/auth/apple",
-        data={"identity_token": "apple:A-SUB-1:a1@x.cz"},
+        data={
+            "identity_token": "apple:A-SUB-1:a1@x.cz",
+            "authorization_code": "apple-auth-code",
+        },
         format="json",
     )
     assert resp.status_code == status.HTTP_200_OK
     body = resp.json()
     assert body["created"] is True
     assert body["providers"] == ["apple"]
+
+
+@pytest.mark.django_db
+def test_apple_new_identity_requires_refresh_token_capture(client, fake_oauth):
+    resp = client.post(
+        "/v1/auth/apple",
+        data={"identity_token": "apple:A-NO-REFRESH:no-refresh@x.cz"},
+        format="json",
+    )
+
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST
+    assert resp.json()["code"] == "apple_refresh_required"
+    assert not AuthIdentity.objects.filter(provider="apple", subject="A-NO-REFRESH").exists()
 
 
 @pytest.mark.django_db
@@ -424,6 +448,7 @@ def test_apple_full_name_stored_as_display_name_on_first_signin(client, fake_oau
         "/v1/auth/apple",
         data={
             "identity_token": "apple:A-SUB-3:a3@x.cz",
+            "authorization_code": "apple-auth-code",
             "full_name": "Tomáš Macháček",
         },
         format="json",
@@ -587,6 +612,37 @@ def test_unlink_apple_revokes_apple_token(client, fake_oauth, sent_emails):
     assert unlink.status_code == status.HTTP_200_OK
     assert "rt_test" in fake_oauth["revoked"]
     assert not AuthIdentity.objects.filter(subject="A-UNLINK").exists()
+
+
+@pytest.mark.django_db
+def test_unlink_apple_keeps_identity_when_revocation_fails(
+    client, fake_oauth, sent_emails, monkeypatch
+):
+    _, token = _register_and_token(client, "ua-fail@x.cz", "Tr0ub4dor&3")
+    client.post(
+        "/v1/auth/link",
+        data={
+            "provider": "apple",
+            "identity_token": "apple:A-UNLINK-FAIL:ua-fail@x.cz",
+            "authorization_code": "code",
+        },
+        format="json",
+        **_auth(token),
+    )
+
+    def fail_revoke(token: str, token_type_hint: str = "refresh_token") -> None:
+        raise oauth.OAuthError("apple down")
+
+    monkeypatch.setattr(oauth, "revoke_apple_token", fail_revoke)
+
+    unlink = client.post(
+        "/v1/auth/unlink", data={"provider": "apple"}, format="json", **_auth(token)
+    )
+
+    assert unlink.status_code == status.HTTP_502_BAD_GATEWAY
+    assert unlink.json()["code"] == "apple_revoke_failed"
+    identity = AuthIdentity.objects.get(subject="A-UNLINK-FAIL")
+    assert identity.apple_refresh_token == "rt_test"
 
 
 # ===========================================================================
@@ -768,6 +824,23 @@ def test_verify_email_with_bogus_token_returns_400(client):
     assert resp.json()["code"] == "token_invalid"
 
 
+@pytest.mark.django_db
+def test_verify_email_token_cannot_be_replayed(client, sent_emails):
+    _, token = _register_and_token(client, "replay@x.cz", "Tr0ub4dor&3")
+    raw = _verify_code(sent_emails, "verify")
+
+    first = client.post("/v1/auth/verify-email", data={"token": raw}, format="json")
+    second = client.post("/v1/auth/verify-email", data={"token": raw}, format="json")
+
+    assert first.status_code == status.HTTP_200_OK, first.content
+    assert second.status_code == status.HTTP_400_BAD_REQUEST, second.content
+    assert second.json()["code"] == "token_invalid"
+    account = EmailCredential.objects.get(email="replay@x.cz").account
+    assert account.email_is_verified is True
+    assert OneTimeToken.objects.get(account=account).used_at is not None
+    assert client.get("/v1/account/me", **_auth(token)).json()["email_verified"] is True
+
+
 # ===========================================================================
 # 12. Account deletion (soft-delete + purge)
 # ===========================================================================
@@ -866,3 +939,58 @@ def test_purge_command_hard_deletes_after_grace(client, fake_oauth, sent_emails)
         Account.objects.get(pk=account_pk)
     # CASCADE wiped the credential too.
     assert not EmailCredential.objects.filter(email="purge@x.cz").exists()
+
+
+@pytest.mark.django_db
+def test_purge_command_deletes_avatar_file_after_grace(
+    client, fake_oauth, sent_emails, tmp_media
+):
+    _, token = _register_and_token(client, "purge-avatar@x.cz", "Tr0ub4dor&3")
+    account = EmailCredential.objects.get(email="purge-avatar@x.cz").account
+    account_pk = account.pk
+    avatars_dir = tmp_media / "avatars"
+    avatars_dir.mkdir()
+    avatar_path = avatars_dir / f"{account.public_id}.webp"
+    avatar_path.write_bytes(b"avatar")
+    account.avatar = f"avatars/{account.public_id}.webp"
+    account.save(update_fields=["avatar"])
+
+    client.delete("/v1/account/me", **_auth(token))
+    assert avatar_path.exists()
+
+    call_command("purge_deleted_accounts", "--grace-days", "0")
+
+    assert not avatar_path.exists()
+    with pytest.raises(Account.DoesNotExist):
+        Account.objects.get(pk=account_pk)
+
+
+@pytest.mark.django_db
+def test_purge_keeps_apple_account_when_revocation_fails(
+    client, fake_oauth, sent_emails, monkeypatch
+):
+    resp = client.post(
+        "/v1/auth/apple",
+        data={
+            "identity_token": "apple:A-PURGE-FAIL:pf@x.cz",
+            "authorization_code": "code",
+        },
+        format="json",
+    )
+    token = resp.json()["token"]
+    identity = AuthIdentity.objects.get(subject="A-PURGE-FAIL")
+    account_pk = identity.account_id
+
+    def fail_revoke(token: str, token_type_hint: str = "refresh_token") -> None:
+        raise oauth.OAuthError("apple down")
+
+    monkeypatch.setattr(oauth, "revoke_apple_token", fail_revoke)
+
+    deleted = client.delete("/v1/account/me", **_auth(token))
+    assert deleted.status_code == status.HTTP_204_NO_CONTENT
+
+    call_command("purge_deleted_accounts", "--grace-days", "0")
+
+    assert Account.objects.filter(pk=account_pk).exists()
+    identity.refresh_from_db()
+    assert identity.apple_refresh_token == "rt_test"

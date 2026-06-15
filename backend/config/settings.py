@@ -507,6 +507,13 @@ if not DEBUG:
             "background."
         )
 
+    if APPLE_ALLOWED_AUDIENCES and not all((APPLE_TEAM_ID, APPLE_KEY_ID, APPLE_PRIVATE_KEY)):
+        raise ImproperlyConfigured(
+            "APPLE_TEAM_ID, APPLE_KEY_ID and APPLE_PRIVATE_KEY are required in "
+            "production so Sign in with Apple tokens can be exchanged and "
+            "revoked during account deletion."
+        )
+
     # Force HTTPS and trust the reverse-proxy's forwarded-proto header.
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SECURE_SSL_REDIRECT = True

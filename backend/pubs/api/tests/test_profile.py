@@ -1038,7 +1038,10 @@ def test_apple_signin_does_not_capture_avatar(
     """Apple has no picture claim → no capture attempt, no avatar."""
     resp = client.post(
         "/v1/auth/apple",
-        data={"identity_token": "apple:A-NOPIC:np@x.cz"},
+        data={
+            "identity_token": "apple:A-NOPIC:np@x.cz",
+            "authorization_code": "apple-auth-code",
+        },
         format="json",
     )
     assert resp.status_code == status.HTTP_200_OK, resp.content
