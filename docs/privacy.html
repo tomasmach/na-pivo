@@ -32,18 +32,18 @@
   <p class="updated">Poslední aktualizace: 13. června 2026</p>
 
   <h2 id="kdo-jsme">Kdo jsme</h2>
-  <p>Aplikaci <strong>Na pivo</strong> provozuje fyzická osoba (samostatný vývojář), dále jen „my" nebo „provozovatel". Tyto zásady vysvětlují, jaká data aplikace zpracovává, k čemu je používá a jaká práva v souvislosti s ochranou soukromí máte. Snažíme se sbírat co nejméně dat – a jak uvidíte níže, aplikace nesbírá prakticky nic, co by opouštělo váš telefon.</p>
+  <p>Aplikaci <strong>Na pivo</strong> provozuje fyzická osoba (samostatný vývojář), dále jen „my" nebo „provozovatel". Tyto zásady vysvětlují, jaká data aplikace zpracovává, k čemu je používá a jaká práva v souvislosti s ochranou soukromí máte. Snažíme se sbírat co nejméně dat a neukládat průběžnou GPS historii ani trasu pohybu.</p>
 
   <h2 id="data">Jaká data zpracováváme</h2>
 
   <h3>Poloha</h3>
-  <p>Aplikace používá vaši aktuální polohu k tomu, aby vám ukázala směrovou šipku k vybrané hospodě (funguje jako kompas). <strong>Vaše poloha nikdy neopouští váš telefon</strong> – zpracovává se výhradně lokálně na zařízení a nikam ji neodesíláme ani neukládáme. Polohu na pozadí nevyužíváme.</p>
+  <p>Aplikace používá vaši aktuální polohu k tomu, aby našla hospody v okolí a ukázala směrovou šipku k vybrané hospodě (funguje jako kompas). Aktuální nebo přibližná poloha se může odeslat na náš vlastní server, který pro vyhledání hospod a návrhů míst v okolí využívá službu Mapy.cz. <strong>Neukládáme průběžnou GPS historii, jednotlivé GPS body ani trasu pohybu.</strong> Polohu na pozadí nevyužíváme.</p>
 
   <h3>Pohybové senzory</h3>
   <p>Aplikace čte data z pohybových senzorů (kompas/akcelerometr), aby správně otáčela směrovou šipku podle natočení telefonu. Tato data se rovněž zpracovávají pouze lokálně a nikam se neodesílají.</p>
 
   <h3>Vyhledávací dotazy</h3>
-  <p>Když v aplikaci vyhledáváte hospodu podle názvu, odešle se zadaný text (a přibližná oblast mapy) na službu <strong>Mapy.cz</strong>, která vrátí návrhy míst. Bez tohoto dotazu by vyhledávání nefungovalo. Více v sekci „Služby třetích stran".</p>
+  <p>Když v aplikaci vyhledáváte hospodu podle názvu, odešle se zadaný text a případně přibližná oblast hledání na náš server, který přes službu <strong>Mapy.cz</strong> vrátí návrhy míst. Bez tohoto dotazu by vyhledávání nefungovalo. Více v sekci „Služby třetích stran".</p>
 
   <h3>Anonymní účet zařízení</h3>
   <p>Aplikace při prvním spuštění vytvoří anonymní náhodný identifikátor zařízení (náhodné UUID) a odešle ho na náš vlastní server, aby každému zařízení patřil dočasný anonymní účet. Identifikátor neobsahuje žádné osobní údaje a slouží jen k odlišení zařízení.</p>
@@ -63,7 +63,7 @@
   <h2 id="pouziti">Jak data používáme</h2>
   <p>Zpracovávaná data slouží výhradně k fungování aplikace:</p>
   <ul>
-    <li><strong>Poloha a pohybové senzory</strong> – zobrazení směrové šipky k vybrané hospodě.</li>
+    <li><strong>Poloha a pohybové senzory</strong> – nalezení hospod v okolí a zobrazení směrové šipky k vybrané hospodě.</li>
     <li><strong>Vyhledávací dotazy</strong> – získání návrhů míst z Mapy.cz.</li>
     <li><strong>Anonymní účet zařízení</strong> – odlišení jednotlivých zařízení bez osobní registrace.</li>
     <li><strong>Provozní statistiky a technické chyby</strong> – zjištění, kolik zařízení aplikaci používá, kolikrát byla otevřena a kde selhávají backendové funkce.</li>
@@ -74,7 +74,7 @@
   <h2 id="treti-strany">Služby třetích stran</h2>
 
   <h3>Mapy.cz (Seznam.cz, a.s.)</h3>
-  <p>Pro vyhledávání hospod podle názvu odesíláme váš textový dotaz a přibližnou oblast mapy na API služby Mapy.cz. Tato služba zpracovává dotaz podle vlastních zásad ochrany osobních údajů. Více informací: <a href="https://o.seznam.cz/ochrana-udaju/">https://o.seznam.cz/ochrana-udaju/</a></p>
+  <p>Pro vyhledávání hospod a návrhů míst odesíláme textový dotaz a aktuální nebo přibližnou oblast hledání na náš server, který volá API služby Mapy.cz. Tato služba zpracovává dotaz podle vlastních zásad ochrany osobních údajů. Více informací: <a href="https://o.seznam.cz/ochrana-udaju/">https://o.seznam.cz/ochrana-udaju/</a></p>
 
   <h3>Vlastní server provozovatele</h3>
   <p>Na vlastním serveru zpracováváme anonymní účet zařízení, otevírací dobu vybrané hospody, dobrovolně doplněné údaje o hospodách, provozní statistiky a technické chyby. Provozní data slouží pouze k údržbě a zlepšování aplikace; neposíláme je reklamní síti ani externímu analytickému nástroji.</p>
@@ -83,7 +83,7 @@
   <p>Aplikace umožňuje poslat dobrovolný příspěvek („donate") na podporu vývoje. <strong>Nejde o nákup</strong> – uživatel za příspěvek nezískává žádné placené funkce ani obsah. Platba probíhá mimo aplikaci, na zabezpečené stránce otevřené ve webovém prohlížeči a zpracovává ji společnost <strong>Stripe</strong>. Veškeré platební údaje zadáváte přímo u Stripe; aplikace tyto údaje nevidí ani neukládá. Zásady ochrany osobních údajů Stripe: <a href="https://stripe.com/privacy">https://stripe.com/privacy</a></p>
 
   <h2>Doba uchování dat</h2>
-  <p>Na našich serverech uchováváme anonymní identifikátor zařízení a k němu vázaný dočasný účet, provozní statistiky, technické chyby a dobrovolně odeslané údaje o hospodách. Poloha a data senzorů existují pouze dočasně v paměti zařízení po dobu používání aplikace; na server se neposílají GPS body ani trasa. Služby třetích stran (Mapy.cz, Stripe) uchovávají případná data podle vlastních zásad.</p>
+  <p>Na našich serverech uchováváme anonymní identifikátor zařízení a k němu vázaný dočasný účet, provozní statistiky, technické chyby a dobrovolně odeslané údaje o hospodách. Aktuální nebo přibližná poloha se může použít pro jednorázové vyhledání hospod v okolí; neukládáme průběžnou GPS historii, jednotlivé GPS body ani trasu. Služby třetích stran (Mapy.cz, Stripe) uchovávají případná data podle vlastních zásad.</p>
 
   <h2 id="prava">Vaše práva</h2>
   <p>Podle nařízení GDPR (Obecné nařízení o ochraně osobních údajů) máte právo na:</p>

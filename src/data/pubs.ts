@@ -91,7 +91,7 @@ interface FetchPubsNearOptions {
   radiusKm?: number;
 }
 
-/** Re-fetch from Mapy.cz when the user has moved more than this distance from
+/** Re-fetch nearby pubs when the user has moved more than this distance from
  *  the previous fetch center (km). */
 const REFETCH_THRESHOLD_KM = 2;
 const DEFAULT_FETCH_RADIUS_KM = 25;
@@ -253,7 +253,8 @@ function gateCovers(
 }
 
 /**
- * Fetch pubs near (lat, lng) from Mapy.cz and rebuild the spatial index.
+ * Fetch pubs near (lat, lng) through the backend/Mapy lookup and rebuild the
+ * spatial index.
  * Short-circuits when the user is within REFETCH_THRESHOLD_KM of the last
  * fetch center, so it is safe to call on every GPS update.
  *
@@ -284,7 +285,7 @@ export async function fetchPubsNear(
     try {
       // Cold-start hydration: consult the persisted snapshot exactly once, and
       // only when not force-refetching. A covering, fresh snapshot lets us skip
-      // the network (and its 4+ Mapy requests) entirely.
+      // the network entirely.
       if (!options.force && !_hydrationAttempted) {
         _hydrationAttempted = true;
         const snapshot = await loadSnapshot();

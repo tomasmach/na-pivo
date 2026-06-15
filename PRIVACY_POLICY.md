@@ -4,18 +4,18 @@
 
 ## Kdo jsme
 
-Aplikaci **Na pivo** provozuje fyzická osoba (samostatný vývojář), dále jen „my" nebo „provozovatel". Tyto zásady vysvětlují, jaká data aplikace zpracovává, k čemu je používá a jaká práva v souvislosti s ochranou soukromí máte. Snažíme se sbírat co nejméně dat – a jak uvidíte níže, aplikace nesbírá prakticky nic, co by opouštělo váš telefon.
+Aplikaci **Na pivo** provozuje fyzická osoba (samostatný vývojář), dále jen „my" nebo „provozovatel". Tyto zásady vysvětlují, jaká data aplikace zpracovává, k čemu je používá a jaká práva v souvislosti s ochranou soukromí máte. Snažíme se sbírat co nejméně dat a neukládat průběžnou GPS historii ani trasu pohybu.
 
 ## Jaká data zpracováváme
 
 ### Poloha
-Aplikace používá vaši aktuální polohu k tomu, aby vám ukázala směrovou šipku k vybrané hospodě (funguje jako kompas). **Vaše poloha nikdy neopouští váš telefon** – zpracovává se výhradně lokálně na zařízení a nikam ji neodesíláme ani neukládáme. Polohu na pozadí nevyužíváme.
+Aplikace používá vaši aktuální polohu k tomu, aby našla hospody v okolí a ukázala směrovou šipku k vybrané hospodě (funguje jako kompas). Aktuální nebo přibližná poloha se může odeslat na náš vlastní server, který pro vyhledání hospod a návrhů míst v okolí využívá službu Mapy.cz. **Neukládáme průběžnou GPS historii, jednotlivé GPS body ani trasu pohybu.** Polohu na pozadí nevyužíváme.
 
 ### Pohybové senzory
 Aplikace čte data z pohybových senzorů (kompas/akcelerometr), aby správně otáčela směrovou šipku podle natočení telefonu. Tato data se rovněž zpracovávají pouze lokálně a nikam se neodesílají.
 
 ### Vyhledávací dotazy
-Když v aplikaci vyhledáváte hospodu podle názvu, odešle se zadaný text (a přibližná oblast mapy) na službu **Mapy.cz**, která vrátí návrhy míst. Bez tohoto dotazu by vyhledávání nefungovalo. Více v sekci „Služby třetích stran".
+Když v aplikaci vyhledáváte hospodu podle názvu, odešle se zadaný text a případně přibližná oblast hledání na náš server, který přes službu **Mapy.cz** vrátí návrhy míst. Bez tohoto dotazu by vyhledávání nefungovalo. Více v sekci „Služby třetích stran".
 
 ### Otevírací doba
 Když je vybraná hospoda zobrazena, aplikace pošle její název a polohu (zeměpisné souřadnice) na náš vlastní server, který k danému místu dohledá otevírací dobu a vrátí ji zpět. Odesílá se pouze údaj o vybrané hospodě, nikoli o vás ani o vaší poloze. Tato funkce je nepovinná – pokud server není dostupný nebo dotaz selže, aplikace funguje dál bez zobrazení otevírací doby. Více v sekci „Služby třetích stran".
@@ -42,7 +42,7 @@ Aplikace ukládá počítadlo piv, historii večerů a vaše soukromé hodnocen�
 ## Jak data používáme
 
 Zpracovávaná data slouží výhradně k fungování aplikace:
-- **Poloha a pohybové senzory** – zobrazení směrové šipky k vybrané hospodě.
+- **Poloha a pohybové senzory** – nalezení hospod v okolí a zobrazení směrové šipky k vybrané hospodě.
 - **Vyhledávací dotazy** – získání návrhů míst z Mapy.cz.
 - **Název a poloha vybrané hospody** – dohledání otevírací doby na našem serveru.
 - **Anonymní identifikátor zařízení** – odlišení jednotlivých zařízení a vytvoření dočasného anonymního účtu na našem serveru.
@@ -55,7 +55,7 @@ Data nepoužíváme k profilování, cílení reklamy ani k žádnému dalšímu
 ## Služby třetích stran
 
 ### Mapy.cz (Seznam.cz, a.s.)
-Pro vyhledávání hospod podle názvu odesíláme váš textový dotaz a přibližnou oblast mapy na API služby Mapy.cz. Tato služba zpracovává dotaz podle vlastních zásad ochrany osobních údajů. Více informací: [https://o.seznam.cz/ochrana-udaju/](https://o.seznam.cz/ochrana-udaju/)
+Pro vyhledávání hospod a návrhů míst odesíláme textový dotaz a aktuální nebo přibližnou oblast hledání na náš server, který volá API služby Mapy.cz. Tato služba zpracovává dotaz podle vlastních zásad ochrany osobních údajů. Více informací: [https://o.seznam.cz/ochrana-udaju/](https://o.seznam.cz/ochrana-udaju/)
 
 ### Server pro otevírací dobu (provozovatel aplikace)
 Pro zobrazení otevírací doby vybrané hospody pošleme její název a polohu na náš vlastní server, který otevírací dobu dohledá z veřejně dostupných zdrojů a vrátí ji aplikaci. Server přijímá pouze údaje o vybraném místě – neodesíláme vaši polohu ani jiné osobní údaje a dotaz na otevírací dobu nespojujeme s vaším identifikátorem zařízení. Jde o nepovinnou funkci; když není dostupná, aplikace funguje dál bez otevírací doby.
@@ -71,7 +71,7 @@ Když dobrovolně doplníte otevírací dobu nebo piva na čepu, aplikace tyto �
 
 ## Doba uchování dat
 
-Na našich serverech uchováváme anonymní identifikátor zařízení a k němu vázaný dočasný účet, provozní statistiky, technické chyby a dobrovolně odeslané údaje o hospodách. Poloha a data senzorů existují pouze dočasně v paměti zařízení po dobu používání aplikace; na server se neposílají GPS body ani trasa. Služby třetích stran (Mapy.cz) uchovávají případná data podle vlastních zásad.
+Na našich serverech uchováváme anonymní identifikátor zařízení a k němu vázaný dočasný účet, provozní statistiky, technické chyby a dobrovolně odeslané údaje o hospodách. Aktuální nebo přibližná poloha se může použít pro jednorázové vyhledání hospod v okolí; neukládáme průběžnou GPS historii, jednotlivé GPS body ani trasu. Služby třetích stran (Mapy.cz) uchovávají případná data podle vlastních zásad.
 
 ## Vaše práva
 

@@ -19,10 +19,9 @@
  *
  * Registration is once-per-install: once we have a cached account whose deviceId
  * matches this device, ensureAccount() returns it WITHOUT a network call.
- * Registration is idempotent on `deviceId` server-side, so a lost response simply
- * retries and recovers the same account on the next launch. If a future
- * authenticated call ever gets a 401 (server-side token revoked / DB reset), the
- * caller should clearCachedAccount() and re-run ensureAccount() to re-register.
+ * Re-posting a known `deviceId` requires the existing bearer token server-side;
+ * if the token cache is lost or rejected, the client creates a fresh anonymous
+ * device account instead of recovering a token from the non-secret deviceId.
  *
  * Privacy note: registering sends an anonymous random `deviceId` to OUR backend.
  * It contains no personal information. Disclosed in cs privacy copy + PRIVACY_POLICY.md.
@@ -152,6 +151,16 @@ export function generateUuidV4(): string {
   });
 }
 
+async function replaceDeviceId(): Promise<string> {
+  const id = generateUuidV4();
+  try {
+    await AsyncStorage.setItem(DEVICE_ID_KEY, id);
+  } catch {
+    // Persist failed; still return the id for this session.
+  }
+  return id;
+}
+
 /** Return the persisted device id, generating & persisting one on first call. */
 export async function getOrCreateDeviceId(): Promise<string> {
   try {
@@ -162,13 +171,7 @@ export async function getOrCreateDeviceId(): Promise<string> {
   } catch {
     // AsyncStorage read failed — fall through and mint a fresh id (best effort).
   }
-  const id = generateUuidV4();
-  try {
-    await AsyncStorage.setItem(DEVICE_ID_KEY, id);
-  } catch {
-    // Persist failed; still return the id for this session.
-  }
-  return id;
+  return replaceDeviceId();
 }
 
 async function readCachedAccount(): Promise<CachedAccount | null> {
@@ -198,8 +201,8 @@ async function writeCachedAccount(account: CachedAccount): Promise<void> {
   }
 }
 
-/** Drop the cached account (NOT the deviceId). Use to force re-registration,
- *  e.g. after a future authenticated call returns 401. */
+/** Drop the cached account. If the old deviceId is already claimed server-side,
+ *  the next ensureAccount() will mint a fresh anonymous device account. */
 export async function clearCachedAccount(): Promise<void> {
   try {
     await SecureStore.deleteItemAsync(ACCOUNT_KEY);
@@ -221,7 +224,7 @@ export async function clearCachedAccount(): Promise<void> {
  * @param signal Optional caller AbortSignal, layered with an internal 8s timeout.
  */
 export async function ensureAccount(signal?: AbortSignal): Promise<AccountSession | null> {
-  const deviceId = await getOrCreateDeviceId();
+  let deviceId = await getOrCreateDeviceId();
   const cached = await readCachedAccount();
 
   // Already established for THIS device — no network call needed. A cached blob
@@ -249,26 +252,35 @@ export async function ensureAccount(signal?: AbortSignal): Promise<AccountSessio
   }
 
   try {
-    const resp = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ device_id: deviceId }),
-      signal: timeoutController.signal,
-    });
-
-    if (!resp.ok) {
-      trackApiFailure('account_register', {
-        endpoint: '/v1/account',
-        status: resp.status,
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const resp = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ device_id: deviceId }),
+        signal: timeoutController.signal,
       });
-      return null;
-    }
 
-    const data = (await resp.json()) as RegisterResponse;
-    if (data?.id && data?.token) {
-      const account: CachedAccount = { deviceId, accountId: data.id, token: data.token };
-      await writeCachedAccount(account);
-      return { deviceId, accountId: account.accountId, token: account.token };
+      if (resp.status === 401 && attempt === 0) {
+        await clearCachedAccount();
+        deviceId = await replaceDeviceId();
+        continue;
+      }
+
+      if (!resp.ok) {
+        trackApiFailure('account_register', {
+          endpoint: '/v1/account',
+          status: resp.status,
+        });
+        return null;
+      }
+
+      const data = (await resp.json()) as RegisterResponse;
+      if (data?.id && data?.token) {
+        const account: CachedAccount = { deviceId, accountId: data.id, token: data.token };
+        await writeCachedAccount(account);
+        return { deviceId, accountId: account.accountId, token: account.token };
+      }
+      return null;
     }
     return null;
   } catch (err) {

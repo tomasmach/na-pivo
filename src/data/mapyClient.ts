@@ -1,31 +1,16 @@
 /**
  * Mapy.cz REST API client — POI search for pubs/bars.
  *
- * Strategy: prefer our own backend (which proxies Mapy.cz and caches results,
- * so it spends our shared Mapy credit instead of every client doing 4+ requests
- * each). When the backend is unset, errors, or returns 503 (no key / cap
- * exhausted), fall back to hitting Mapy.cz /v1/suggest directly: 4 parallel
- * queries (hospoda, bar, pivnice, pivovar) with a tight bbox around the user.
- * Suggest ranks by location, unlike geocode which biases toward textual
- * relevance. Either way the raw Mapy items run through the SAME pipeline:
- * deduplicated, label-filtered, name-blocklisted, and clamped to the radius.
+ * Strategy: nearby-pub search goes through our own backend proxy, which calls
+ * Mapy.cz and caches results so the app does not ship a production Mapy API key
+ * or send background nearby-search requests directly to Mapy.cz. Raw Mapy items
+ * returned by the backend are deduplicated, label-filtered, name-blocklisted,
+ * and clamped to the radius.
  */
 
 import type { Pub } from './pubs';
 import { getBackendEndpoint } from './backendConfig';
 import { trackApiFailure } from './telemetryClient';
-
-// /v1/suggest is dramatically better than /v1/geocode for "POIs near me" —
-// it ranks by location rather than textual relevance, so a small bbox around
-// the user reliably surfaces local results instead of pushing back popular
-// places from far away.
-const SUGGEST_URL = 'https://api.mapy.cz/v1/suggest';
-const GEOCODE_URL = 'https://api.mapy.cz/v1/geocode';
-const USER_AGENT = 'napivo-ios/1.0';
-
-const QUERY_TERMS = ['hospoda', 'bar', 'pivnice', 'pivovar'];
-const MAX_RESULTS_PER_QUERY = 15; // Mapy.cz API limit.
-const SUGGEST_BBOX_STEPS_KM = [5, 15, 50, 100] as const;
 
 // Mapy.cz returns mixed categories under our text queries. Keep only the ones
 // that match a place where you can actually drink a beer. 'Vinárna' (wine bar)
@@ -123,10 +108,6 @@ interface MapyGeocodeItem {
   regionalStructure?: { name: string; type: string }[];
 }
 
-interface MapyGeocodeResponse {
-  items?: MapyGeocodeItem[];
-}
-
 export interface PubLocationGeocodeInput {
   name: string;
   city?: string;
@@ -168,15 +149,8 @@ export interface PubLocationSuggestion {
   location?: string;
 }
 
-// Read at module top-level so Metro inlines the value at bundle time.
-const MAPY_API_KEY = process.env.EXPO_PUBLIC_MAPY_API_KEY ?? '';
-
-function getApiKey(): string {
-  return process.env.EXPO_PUBLIC_MAPY_API_KEY ?? MAPY_API_KEY;
-}
-
 /** Shape of the backend's pubs-near response. items are RAW Mapy suggest items
- *  (same shape as a direct /v1/suggest response), fed through itemToPub below. */
+ *  fed through itemToPub below. */
 interface BackendPubsNearResponse {
   items?: MapyGeocodeItem[];
 }
@@ -188,8 +162,8 @@ interface BackendLocationLookupResponse {
 /**
  * Try the backend pubs-near proxy. Returns the raw Mapy items on success, or
  * null on ANY failure (no backend configured, non-200 incl. 503, network error,
- * malformed JSON) so the caller falls back to the direct Mapy.cz flow. Never
- * throws except for an honoured abort, which must propagate like a real cancel.
+ * malformed JSON). Never throws except for an honoured abort, which must
+ * propagate like a real cancel.
  */
 async function backendSuggest(
   lat: number,
@@ -198,7 +172,7 @@ async function backendSuggest(
   signal?: AbortSignal,
 ): Promise<MapyGeocodeItem[] | null> {
   const endpoint = getBackendEndpoint('/v1/pubs/near');
-  if (!endpoint) return null; // No backend — use the fallback.
+  if (!endpoint) return null;
 
   const url = new URL(endpoint);
   url.searchParams.set('lat', String(lat));
@@ -208,8 +182,7 @@ async function backendSuggest(
   try {
     const resp = await fetch(url.toString(), { signal });
     if (!resp.ok) {
-      // 503 (no key / cap exhausted) or any other non-200 → fall back.
-      console.warn(`[mapy] backend pubs/near HTTP ${resp.status} — falling back to Mapy`);
+      console.warn(`[mapy] backend pubs/near HTTP ${resp.status}`);
       trackApiFailure('pubs_near_backend', {
         endpoint: '/v1/pubs/near',
         status: resp.status,
@@ -219,10 +192,9 @@ async function backendSuggest(
     const data = (await resp.json()) as BackendPubsNearResponse;
     return data.items ?? [];
   } catch (err) {
-    // An honoured abort must propagate so callers' cancellation works; any other
-    // failure (network, malformed JSON) just means "use the fallback".
+    // An honoured abort must propagate so callers' cancellation works.
     if (signal?.aborted) throw err;
-    console.warn('[mapy] backend pubs/near failed — falling back to Mapy:', err);
+    console.warn('[mapy] backend pubs/near failed:', err);
     trackApiFailure('pubs_near_backend', {
       endpoint: '/v1/pubs/near',
       reason: 'exception',
@@ -272,16 +244,6 @@ async function backendLocationLookup(
   }
 }
 
-/**
- * Convert (lat, lng, kmRadius) → "lonMin,latMin,lonMax,latMax" string for Mapy preferBBox.
- * Approximation: 1° lat ≈ 111 km; 1° lng ≈ 111 km * cos(lat).
- */
-function buildPreferBBox(lat: number, lng: number, kmRadius: number): string {
-  const dLat = kmRadius / 111;
-  const dLng = kmRadius / (111 * Math.cos((lat * Math.PI) / 180));
-  return `${lng - dLng},${lat - dLat},${lng + dLng},${lat + dLat}`;
-}
-
 function pickCity(item: MapyGeocodeItem): string | undefined {
   const rs = item.regionalStructure;
   if (!rs) return undefined;
@@ -300,38 +262,6 @@ function pickAddress(item: MapyGeocodeItem): string | undefined {
   if (street && num) return `${street} ${num}`;
   if (street) return street;
   return undefined;
-}
-
-async function suggestQuery(
-  query: string,
-  preferBBox: string,
-  apiKey: string,
-  signal?: AbortSignal,
-): Promise<MapyGeocodeItem[]> {
-  const url = new URL(SUGGEST_URL);
-  url.searchParams.set('query', query);
-  url.searchParams.set('lang', 'cs');
-  url.searchParams.set('limit', String(MAX_RESULTS_PER_QUERY));
-  url.searchParams.set('preferBBox', preferBBox);
-  url.searchParams.set('apikey', apiKey);
-
-  let resp: Response;
-  try {
-    resp = await fetch(url.toString(), {
-      headers: { 'User-Agent': USER_AGENT },
-      signal,
-    });
-  } catch (err) {
-    console.warn(`[mapy] fetch threw for "${query}":`, err);
-    throw err;
-  }
-  if (!resp.ok) {
-    const body = await resp.text().catch(() => '<unreadable>');
-    console.warn(`[mapy] "${query}" HTTP ${resp.status}: ${body.slice(0, 200)}`);
-    throw new Error(`Mapy.cz suggest ${query}: HTTP ${resp.status}`);
-  }
-  const data = (await resp.json()) as MapyGeocodeResponse;
-  return data.items ?? [];
 }
 
 function buildPubLocationQuery(input: PubLocationGeocodeInput): string {
@@ -376,57 +306,7 @@ export async function geocodePubLocation(
     };
   }
 
-  const apiKey = getApiKey();
-  if (!apiKey) return null;
-
-  const url = new URL(GEOCODE_URL);
-  url.searchParams.set('query', query);
-  url.searchParams.set('lang', 'cs');
-  url.searchParams.set('limit', '3');
-  url.searchParams.append('type', 'poi');
-  url.searchParams.append('type', 'regional.address');
-  url.searchParams.append('locality', 'cz');
-  if (input.near) {
-    url.searchParams.set('preferNear', `${input.near.lng},${input.near.lat}`);
-    url.searchParams.set('preferNearPrecision', '2500');
-  }
-  url.searchParams.set('apikey', apiKey);
-
-  try {
-    const resp = await fetch(url.toString(), {
-      headers: { 'User-Agent': USER_AGENT },
-      signal,
-    });
-    if (!resp.ok) {
-      trackApiFailure('pub_location_geocode', {
-        endpoint: '/v1/geocode',
-        status: resp.status,
-      });
-      return null;
-    }
-
-    const data = (await resp.json()) as MapyGeocodeResponse;
-    const item = (data.items ?? []).find((candidate) => isValidPosition(candidate.position));
-    if (!item || !isValidPosition(item.position)) return null;
-
-    return {
-      lat: item.position.lat,
-      lng: item.position.lon,
-      city: pickCity(item),
-      address: pickAddress(item),
-      type: item.type,
-    };
-  } catch (err) {
-    const isAbortError = err instanceof Error && err.name === 'AbortError';
-    if (!signal?.aborted && !isAbortError) {
-      trackApiFailure('pub_location_geocode', {
-        endpoint: '/v1/geocode',
-        reason: 'exception',
-        error: err,
-      });
-    }
-    return null;
-  }
+  return null;
 }
 
 function itemToLocationSuggestion(item: MapyGeocodeItem): PubLocationSuggestion | null {
@@ -469,55 +349,7 @@ export async function suggestPubLocations(
     return suggestions;
   }
 
-  const apiKey = getApiKey();
-  if (!apiKey) return [];
-
-  const url = new URL(SUGGEST_URL);
-  url.searchParams.set('query', query);
-  url.searchParams.set('lang', 'cs');
-  url.searchParams.set('limit', '8');
-  url.searchParams.append('type', 'poi');
-  url.searchParams.append('locality', 'cz');
-  if (input.near) {
-    url.searchParams.set('preferNear', `${input.near.lng},${input.near.lat}`);
-    url.searchParams.set('preferNearPrecision', '2500');
-  }
-  url.searchParams.set('apikey', apiKey);
-
-  try {
-    const resp = await fetch(url.toString(), {
-      headers: { 'User-Agent': USER_AGENT },
-      signal,
-    });
-    if (!resp.ok) {
-      trackApiFailure('pub_location_suggest', {
-        endpoint: '/v1/suggest',
-        status: resp.status,
-      });
-      return [];
-    }
-
-    const data = (await resp.json()) as MapyGeocodeResponse;
-    const seen = new Set<string>();
-    const suggestions: PubLocationSuggestion[] = [];
-    for (const item of data.items ?? []) {
-      const suggestion = itemToLocationSuggestion(item);
-      if (!suggestion || seen.has(suggestion.id)) continue;
-      seen.add(suggestion.id);
-      suggestions.push(suggestion);
-    }
-    return suggestions;
-  } catch (err) {
-    const isAbortError = err instanceof Error && err.name === 'AbortError';
-    if (!signal?.aborted && !isAbortError) {
-      trackApiFailure('pub_location_suggest', {
-        endpoint: '/v1/suggest',
-        reason: 'exception',
-        error: err,
-      });
-    }
-    return [];
-  }
+  return [];
 }
 
 function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
@@ -612,11 +444,6 @@ export function isAcceptablePubName(name: string, label: string): boolean {
   return passesNameHeuristic(name, label);
 }
 
-function buildSuggestRadiusSteps(kmRadius: number): number[] {
-  const steps = SUGGEST_BBOX_STEPS_KM.filter((step) => step < kmRadius);
-  return [...steps, kmRadius].filter((step, index, arr) => index === 0 || step !== arr[index - 1]);
-}
-
 function itemToPub(
   item: MapyGeocodeItem,
   lat: number,
@@ -668,10 +495,9 @@ function itemsToPubs(
 }
 
 /**
- * Fetch pubs near the given coordinate, preferring our backend proxy and
- * falling back to Mapy.cz directly. Throws only when BOTH the backend is
- * unavailable AND the direct path can't run (no API key) or all its requests
- * fail — so callers' error handling still fires on a true outage.
+ * Fetch pubs near the given coordinate through our backend proxy. Throws when
+ * the backend is not configured or unavailable; production builds must not fall
+ * back to direct Mapy.cz nearby lookup with a bundled public API key.
  */
 export async function searchPubsNear(
   lat: number,
@@ -679,65 +505,10 @@ export async function searchPubsNear(
   kmRadius = 25,
   signal?: AbortSignal,
 ): Promise<Pub[]> {
-  // Backend-first: it caches Mapy results and spends our shared credit once,
-  // instead of every client cold-starting 4+ Mapy requests of its own.
   const backendItems = await backendSuggest(lat, lng, kmRadius, signal);
   if (backendItems !== null) {
     return itemsToPubs(backendItems, lat, lng, kmRadius);
   }
 
-  // Fallback: hit Mapy.cz directly (unchanged behavior).
-  return searchPubsNearDirect(lat, lng, kmRadius, signal);
-}
-
-/**
- * Direct Mapy.cz suggest flow — the fallback when the backend is unavailable.
- * Throws if the API key is missing or all requests fail.
- */
-async function searchPubsNearDirect(
-  lat: number,
-  lng: number,
-  kmRadius: number,
-  signal?: AbortSignal,
-): Promise<Pub[]> {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    throw new Error('MAPY_API_KEY is not configured');
-  }
-
-  const seen = new Set<string>();
-  const pubs: Pub[] = [];
-  let anyRequestSucceeded = false;
-
-  // Suggest ranks by proximity and only accepts a preferred bbox, not a strict
-  // radius. For unlimited / large searches, start local and progressively widen
-  // the preferred area so rural users do not get an empty result just because
-  // nothing matched inside the old fixed 5 km bbox.
-  for (const bboxRadiusKm of buildSuggestRadiusSteps(kmRadius)) {
-    const suggestBBox = buildPreferBBox(lat, lng, bboxRadiusKm);
-    const settled = await Promise.allSettled(
-      QUERY_TERMS.map((term) => suggestQuery(term, suggestBBox, apiKey, signal)),
-    );
-
-    const items: MapyGeocodeItem[] = [];
-    for (const result of settled) {
-      if (result.status === 'fulfilled') {
-        anyRequestSucceeded = true;
-        items.push(...result.value);
-      }
-    }
-
-    for (const item of items) {
-      const pub = itemToPub(item, lat, lng, kmRadius, seen);
-      if (pub) pubs.push(pub);
-    }
-
-    if (pubs.length > 0) break;
-  }
-
-  if (!anyRequestSucceeded) {
-    throw new Error('All Mapy.cz suggest queries failed');
-  }
-
-  return pubs;
+  throw new Error('Mapy backend proxy is not configured or unavailable');
 }

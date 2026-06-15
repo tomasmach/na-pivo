@@ -58,7 +58,8 @@ export const cs = {
 
   permissions: {
     title: 'Potřebujeme tvoji polohu',
-    body: 'Bez polohy neumíme namířit šipku k hospodě. Tvoje poloha nikdy neopouští telefon.',
+    body:
+      'Bez polohy neumíme najít hospody v okolí ani namířit šipku. Aktuální nebo přibližná poloha se může poslat našemu serveru, který pro vyhledávání využívá Mapy.cz; GPS trasu ani historii neukládáme.',
     cta: 'Povolit polohu',
     openSettings: 'Otevřít Nastavení',
   },
@@ -234,7 +235,7 @@ export const cs = {
     // — Permission gate —
     permTitle: 'Potřebujeme tvoji polohu',
     permBody:
-      'Ať poznáme hospodu, ve které sedíš, a začneš počítat. Tvoje poloha nikdy neopouští telefon.',
+      'Ať poznáme hospody v okolí a podnik, ve kterém sedíš. Aktuální nebo přibližná poloha se může poslat našemu serveru, který pro vyhledávání využívá Mapy.cz; GPS trasu ani historii neukládáme.',
     permCta: 'Povolit polohu',
     permOpenSettings: 'Otevřít Nastavení',
 
@@ -358,9 +359,9 @@ export const cs = {
     title: 'Soukromí',
     body: [
       'Sbíráme jen omezené anonymní provozní statistiky: otevření aplikace, technické chyby a součet nachozených metrů.',
-      'Tvoje poloha je zpracována výhradně přímo v telefonu. Aplikace ji nikam neposílá a nikde neukládá.',
+      'Pro stažení okolních hospod může aplikace poslat aktuální nebo přibližnou polohu na náš server, který pro vyhledávání využívá Mapy.cz.',
       'Nachozené metry se počítají v telefonu a na server se posílá jen součet po dávkách, nikdy GPS body ani trasa.',
-      'Pro stažení okolních hospod aplikace posílá přibližnou oblast vyhledávání na Mapy.cz.',
+      'Průběžnou GPS historii, trasu pohybu ani jednotlivé GPS body neukládáme.',
       'Pro zobrazení otevírací doby aplikace pošle název a polohu vybrané hospody na vlastní server provozovatele, který dohledá otevírací dobu.',
       'Aplikace vytvoří anonymní náhodný identifikátor zařízení a odešle ho na náš server, aby každému zařízení patřil dočasný účet. Identifikátor neobsahuje žádné osobní údaje a slouží jen k odlišení zařízení.',
       'Když dobrovolně doplníš otevírací dobu nebo piva na čepu, aplikace tyto údaje odešle na náš server pod anonymním účtem zařízení. Údaje se zobrazují veřejně ostatním uživatelům a neobsahují žádné osobní informace o tobě.',

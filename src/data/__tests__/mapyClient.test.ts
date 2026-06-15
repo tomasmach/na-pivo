@@ -115,12 +115,12 @@ describe('isAcceptablePubName — matching mechanics', () => {
   });
 });
 
-describe('searchPubsNear — backend-first with direct-Mapy fallback', () => {
+describe('searchPubsNear — backend proxy only', () => {
   const ORIGINAL_FETCH = global.fetch;
   const ORIGINAL_BACKEND = process.env.EXPO_PUBLIC_BACKEND_URL;
 
-  // A raw Mapy suggest item — the same shape the backend returns in `items` and
-  // the direct /v1/suggest returns in `items`. Picked so it survives itemToPub.
+  // A raw Mapy suggest item — the same shape the backend returns in `items`.
+  // Picked so it survives itemToPub.
   const PUB_ITEM = {
     name: 'Hospoda U Testu',
     label: 'Hospoda',
@@ -133,6 +133,10 @@ describe('searchPubsNear — backend-first with direct-Mapy fallback', () => {
     } else {
       process.env.EXPO_PUBLIC_BACKEND_URL = url;
     }
+  }
+
+  function calledUrls(fetchMock: jest.Mock): string[] {
+    return fetchMock.mock.calls.map((call) => String((call as unknown[])[0]));
   }
 
   afterEach(() => {
@@ -158,7 +162,7 @@ describe('searchPubsNear — backend-first with direct-Mapy fallback', () => {
     expect(calledUrl).toContain('lat=50.08');
     expect(calledUrl).toContain('lng=14.42');
     expect(calledUrl).toContain('radius_km=25');
-    // The backend's raw items run through itemToPub just like a direct fetch.
+    // The backend's raw items run through the existing itemToPub pipeline.
     expect(pubs).toHaveLength(1);
     expect(pubs[0].name).toBe('Hospoda U Testu');
   });
@@ -183,42 +187,44 @@ describe('searchPubsNear — backend-first with direct-Mapy fallback', () => {
     expect(pubs[0].name).toBe('Hospoda U Testu');
   });
 
-  it('falls back to direct Mapy on a 503 from the backend', async () => {
+  it('does not fall back to direct Mapy on a 503 from the backend', async () => {
     setBackend('https://api.example.com');
-    // Backend returns 503 (no key / cap exhausted); the direct fallback then
-    // throws because no Mapy API key is configured in the test env — which
-    // proves the fallback path was taken.
-    global.fetch = jest.fn(async () => ({
+    const fetchMock = jest.fn(async () => ({
       ok: false,
       status: 503,
       json: async () => ({}),
       text: async () => '',
-    })) as unknown as typeof fetch;
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
 
     await expect(searchPubsNear(50.08, 14.42, 25)).rejects.toThrow(
-      'MAPY_API_KEY is not configured',
+      'Mapy backend proxy is not configured or unavailable',
     );
+    expect(calledUrls(fetchMock)[0]).toContain('/v1/pubs/near');
+    expect(calledUrls(fetchMock).some((url) => url.startsWith('https://api.mapy.cz/'))).toBe(false);
   });
 
-  it('falls back to direct Mapy on a backend network error', async () => {
+  it('does not fall back to direct Mapy on a backend network error', async () => {
     setBackend('https://api.example.com');
-    global.fetch = jest.fn(async () => {
+    const fetchMock = jest.fn(async () => {
       throw new Error('network down');
-    }) as unknown as typeof fetch;
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
 
     await expect(searchPubsNear(50.08, 14.42, 25)).rejects.toThrow(
-      'MAPY_API_KEY is not configured',
+      'Mapy backend proxy is not configured or unavailable',
     );
+    expect(calledUrls(fetchMock)[0]).toContain('/v1/pubs/near');
+    expect(calledUrls(fetchMock).some((url) => url.startsWith('https://api.mapy.cz/'))).toBe(false);
   });
 
-  it('skips straight to fallback when the backend is not configured', async () => {
+  it('fails without any direct Mapy request when the backend is not configured', async () => {
     setBackend(undefined);
     const fetchMock = jest.fn(async () => ({ ok: true, status: 200, json: async () => ({}) }));
     global.fetch = fetchMock as unknown as typeof fetch;
 
-    // No backend + no Mapy key → throws, and the backend was never contacted.
     await expect(searchPubsNear(50.08, 14.42, 25)).rejects.toThrow(
-      'MAPY_API_KEY is not configured',
+      'Mapy backend proxy is not configured or unavailable',
     );
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -233,22 +239,16 @@ describe('searchPubsNear — backend-first with direct-Mapy fallback', () => {
 
     await expect(
       searchPubsNear(50.08, 14.42, 25, controller.signal),
-    ).rejects.not.toThrow('MAPY_API_KEY is not configured');
+    ).rejects.not.toThrow('Mapy backend proxy is not configured or unavailable');
   });
 });
 
 describe('geocodePubLocation', () => {
   const ORIGINAL_FETCH = global.fetch;
-  const ORIGINAL_MAPY_KEY = process.env.EXPO_PUBLIC_MAPY_API_KEY;
   const ORIGINAL_BACKEND = process.env.EXPO_PUBLIC_BACKEND_URL;
 
   afterEach(() => {
     global.fetch = ORIGINAL_FETCH;
-    if (ORIGINAL_MAPY_KEY === undefined) {
-      delete process.env.EXPO_PUBLIC_MAPY_API_KEY;
-    } else {
-      process.env.EXPO_PUBLIC_MAPY_API_KEY = ORIGINAL_MAPY_KEY;
-    }
     if (ORIGINAL_BACKEND === undefined) {
       delete process.env.EXPO_PUBLIC_BACKEND_URL;
     } else {
@@ -257,68 +257,24 @@ describe('geocodePubLocation', () => {
     jest.clearAllMocks();
   });
 
-  it('resolves a pub address through Mapy geocode', async () => {
+  it('returns null without a backend geocode proxy', async () => {
     delete process.env.EXPO_PUBLIC_BACKEND_URL;
-    process.env.EXPO_PUBLIC_MAPY_API_KEY = 'test-key';
-    const fetchMock = jest.fn(async () => ({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        items: [
-          {
-            name: 'Týnská ulička 610/7',
-            label: 'Adresa',
-            type: 'regional.address',
-            position: { lat: 50.08861, lon: 14.42212 },
-            regionalStructure: [
-              { name: '610/7', type: 'regional.address' },
-              { name: 'Týnská ulička', type: 'regional.street' },
-              { name: 'Praha', type: 'regional.municipality' },
-            ],
-          },
-        ],
-      }),
-    }));
-    global.fetch = fetchMock as unknown as typeof fetch;
-
-    const result = await geocodePubLocation({
-      name: 'Hospoda U Testu',
-      city: 'Praha',
-      address: 'Týnská ulička 610/7',
-      near: { lat: 50.08, lng: 14.42 },
-    });
-
-    expect(result).toEqual({
-      lat: 50.08861,
-      lng: 14.42212,
-      city: 'Praha',
-      address: 'Týnská ulička 610/7',
-      type: 'regional.address',
-    });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const calledUrl = new URL(String((fetchMock.mock.calls[0] as unknown[])[0]));
-    expect(calledUrl.origin + calledUrl.pathname).toBe('https://api.mapy.cz/v1/geocode');
-    expect(calledUrl.searchParams.get('query')).toBe(
-      'Hospoda U Testu, Týnská ulička 610/7, Praha, Česko',
-    );
-    expect(calledUrl.searchParams.get('preferNear')).toBe('14.42,50.08');
-    expect(calledUrl.searchParams.get('apikey')).toBe('test-key');
-    expect(calledUrl.searchParams.getAll('type')).toEqual(['poi', 'regional.address']);
-  });
-
-  it('returns null when no Mapy key is configured', async () => {
-    delete process.env.EXPO_PUBLIC_BACKEND_URL;
-    delete process.env.EXPO_PUBLIC_MAPY_API_KEY;
     const fetchMock = jest.fn();
     global.fetch = fetchMock as unknown as typeof fetch;
 
-    await expect(geocodePubLocation({ name: 'Hospoda U Testu', city: 'Praha' })).resolves.toBeNull();
+    await expect(
+      geocodePubLocation({
+        name: 'Hospoda U Testu',
+        city: 'Praha',
+        address: 'Týnská ulička 610/7',
+        near: { lat: 50.08, lng: 14.42 },
+      }),
+    ).resolves.toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('prefers the backend geocode proxy when configured', async () => {
     process.env.EXPO_PUBLIC_BACKEND_URL = 'https://api.example.com';
-    process.env.EXPO_PUBLIC_MAPY_API_KEY = 'test-key';
     const fetchMock = jest.fn(async () => ({
       ok: true,
       status: 200,
@@ -352,16 +308,10 @@ describe('geocodePubLocation', () => {
 
 describe('suggestPubLocations', () => {
   const ORIGINAL_FETCH = global.fetch;
-  const ORIGINAL_MAPY_KEY = process.env.EXPO_PUBLIC_MAPY_API_KEY;
   const ORIGINAL_BACKEND = process.env.EXPO_PUBLIC_BACKEND_URL;
 
   afterEach(() => {
     global.fetch = ORIGINAL_FETCH;
-    if (ORIGINAL_MAPY_KEY === undefined) {
-      delete process.env.EXPO_PUBLIC_MAPY_API_KEY;
-    } else {
-      process.env.EXPO_PUBLIC_MAPY_API_KEY = ORIGINAL_MAPY_KEY;
-    }
     if (ORIGINAL_BACKEND === undefined) {
       delete process.env.EXPO_PUBLIC_BACKEND_URL;
     } else {
@@ -370,9 +320,8 @@ describe('suggestPubLocations', () => {
     jest.clearAllMocks();
   });
 
-  it('returns selectable Mapy suggestions with address text', async () => {
-    delete process.env.EXPO_PUBLIC_BACKEND_URL;
-    process.env.EXPO_PUBLIC_MAPY_API_KEY = 'test-key';
+  it('returns selectable backend suggestions with address text', async () => {
+    process.env.EXPO_PUBLIC_BACKEND_URL = 'https://api.example.com';
     const fetchMock = jest.fn(async () => ({
       ok: true,
       status: 200,
@@ -417,15 +366,14 @@ describe('suggestPubLocations', () => {
       },
     ]);
     const calledUrl = new URL(String((fetchMock.mock.calls[0] as unknown[])[0]));
-    expect(calledUrl.origin + calledUrl.pathname).toBe('https://api.mapy.cz/v1/suggest');
+    expect(calledUrl.origin + calledUrl.pathname).toBe('https://api.example.com/v1/pubs/suggest');
     expect(calledUrl.searchParams.get('query')).toBe('Hospoda U Te');
-    expect(calledUrl.searchParams.get('preferNear')).toBe('14.42,50.08');
-    expect(calledUrl.searchParams.getAll('type')).toEqual(['poi']);
+    expect(calledUrl.searchParams.get('lat')).toBe('50.08');
+    expect(calledUrl.searchParams.get('lng')).toBe('14.42');
   });
 
-  it('does not call Mapy for very short queries', async () => {
+  it('does not call the backend for very short queries', async () => {
     delete process.env.EXPO_PUBLIC_BACKEND_URL;
-    process.env.EXPO_PUBLIC_MAPY_API_KEY = 'test-key';
     const fetchMock = jest.fn();
     global.fetch = fetchMock as unknown as typeof fetch;
 
@@ -435,7 +383,6 @@ describe('suggestPubLocations', () => {
 
   it('prefers the backend suggest proxy when configured', async () => {
     process.env.EXPO_PUBLIC_BACKEND_URL = 'https://api.example.com';
-    process.env.EXPO_PUBLIC_MAPY_API_KEY = 'test-key';
     const fetchMock = jest.fn(async () => ({
       ok: true,
       status: 200,
