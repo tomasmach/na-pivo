@@ -120,6 +120,18 @@ export default ({ config }: ConfigContext): ExpoConfig => {
           iosUrlScheme: GOOGLE_IOS_URL_SCHEME,
         },
       ],
+      // google-signin pulls in AppCheckCore/GoogleUtilities, which can't be
+      // integrated as static *libraries* (no module maps). Building iOS pods as
+      // static *frameworks* gives them module maps so Swift can import them —
+      // the documented fix for google-signin on Expo.
+      [
+        'expo-build-properties',
+        {
+          ios: {
+            useFrameworks: 'static',
+          },
+        },
+      ],
     ],
     experiments: {
       typedRoutes: true,

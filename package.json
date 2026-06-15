@@ -32,6 +32,7 @@
     "expo-apple-authentication": "~56.0.4",
     "expo-asset": "~56.0.13",
     "expo-audio": "~56.0.9",
+    "expo-build-properties": "~56.0.18",
     "expo-constants": "~56.0.14",
     "expo-font": "~56.0.5",
     "expo-haptics": "~56.0.3",
