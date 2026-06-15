@@ -228,10 +228,6 @@ export const cs = {
   },
 
   account: {
-    // — Settings entry —
-    settingsRowTitle: 'Účet',
-    settingsRowSignIn: 'Přihlásit se',
-
     // — Auth screen (sign in / sign up) —
     authTitle: 'Účet',
     tabLogin: 'Přihlásit se',

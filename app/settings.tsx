@@ -39,7 +39,6 @@ import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { useAccountStore, selectIsSignedIn } from '@/stores/accountStore';
 import { updateAccountPreferences } from '@/data/account';
 import { getAppVersionLabel } from '@/utils/appVersion';
 import {
@@ -56,7 +55,6 @@ import {
   HeartIcon,
   MessageSquareIcon,
   MapPinIcon,
-  UserIcon,
 } from '@/components/shared/IconGlyph';
 import { InstagramIcon, LinkedinIcon } from '@/components/shared/BrandIcon';
 import { MapyLogo } from '@/components/shared/MapyLogo';
@@ -400,12 +398,6 @@ export default function SettingsScreen() {
   const setHideClosedPubs = useSettingsStore((s) => s.setHideClosedPubs);
   const setHidePubNames = useSettingsStore((s) => s.setHidePubNames);
 
-  const isSignedIn = useAccountStore(selectIsSignedIn);
-  const accountProfile = useAccountStore((s) => s.profile);
-  const accountRightLabel = isSignedIn
-    ? accountProfile?.email || accountProfile?.displayName || undefined
-    : cs.account.settingsRowSignIn;
-
   const sliderIndex = positionIndexForKm(maxDistanceKm);
   const appVersionLabel = getAppVersionLabel();
 
@@ -498,16 +490,6 @@ export default function SettingsScreen() {
 
           {/* Helper text */}
           <Text style={styles.distanceHelper}>{cs.settings.distance.helper}</Text>
-        </View>
-
-        {/* ── Account ── */}
-        <View style={[styles.card, styles.cardNoPaddingV]}>
-          <AboutRow
-            icon={<UserIcon size={18} color={Colors.foamMuted} />}
-            title={cs.account.settingsRowTitle}
-            rightLabel={accountRightLabel}
-            onPress={() => router.push((isSignedIn ? '/account' : '/auth') as Href)}
-          />
         </View>
 
         {/* ── Contribution CTAs (surfaced high so they're visible without scrolling) ── */}
