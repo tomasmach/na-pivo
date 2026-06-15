@@ -61,6 +61,14 @@ function looksCancelled(err: unknown): boolean {
 // ---------------------------------------------------------------------------
 let googleConfigured = false;
 
+export function isGoogleSignInConfigured(): boolean {
+  const webClientId = (process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '').trim();
+  if (!webClientId) return false;
+  if (Platform.OS !== 'ios') return true;
+  const iosUrlScheme = (process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME ?? '').trim();
+  return !!iosUrlScheme && !iosUrlScheme.includes('PLACEHOLDER');
+}
+
 function loadGoogleModule(): typeof import('@react-native-google-signin/google-signin') {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -75,9 +83,9 @@ function ensureGoogleConfigured(): void {
   const { GoogleSignin } = loadGoogleModule();
   const webClientId = (process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '').trim();
   const iosClientId = (process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? '').trim();
-  if (!webClientId) {
+  if (!isGoogleSignInConfigured()) {
     // webClientId is required to receive an idToken at all.
-    throw new SocialAuthError('unavailable', 'Google Sign-In is not configured (web client id).');
+    throw new SocialAuthError('unavailable', 'Google Sign-In is not configured.');
   }
   GoogleSignin.configure({
     webClientId,

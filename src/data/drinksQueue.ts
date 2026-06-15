@@ -158,6 +158,13 @@ export function removeQueuedDrink(clientId: string): Promise<boolean> {
   });
 }
 
+/** Drop all pending private drink uploads without attempting delivery. */
+export function clearDrinksQueue(): Promise<void> {
+  return runMutation(async () => {
+    await saveQueue([]);
+  });
+}
+
 /**
  * Retries all pending drinks. Call on app launch and on returning to the
  * foreground — both fire-and-forget. Never throws.

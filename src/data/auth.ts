@@ -22,6 +22,7 @@ import {
   setSession,
 } from './account';
 import { getBackendEndpoint } from './backendConfig';
+import { clearLocalPrivateAccountData } from './privateAccountData';
 import { getAppleCredential, getGoogleIdToken, SocialAuthError } from './socialAuth';
 import { trackApiFailure } from './telemetryClient';
 
@@ -507,6 +508,7 @@ export async function logout(options?: { all?: boolean }): Promise<AuthActionRes
     body: { all: options?.all === true },
   });
   // Even if the network call fails, drop the local session so the UI signs out.
+  await clearLocalPrivateAccountData();
   await revertToAnonymous();
   if ('networkError' in res) return { ok: true };
   return { ok: true };
@@ -518,6 +520,7 @@ export async function deleteAccount(): Promise<AuthActionResult> {
   if (!res.ok && res.status !== 204) {
     return { ok: false, ...extractError(res.data, res.status) };
   }
+  await clearLocalPrivateAccountData();
   await revertToAnonymous();
   return { ok: true };
 }

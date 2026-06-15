@@ -38,7 +38,7 @@ import { AppleIcon, GoogleIcon } from '@/components/shared/BrandIcon';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
-import { isAppleSignInSupported } from '@/data/socialAuth';
+import { isAppleSignInSupported, isGoogleSignInConfigured } from '@/data/socialAuth';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD = 8;
@@ -153,6 +153,7 @@ export default function AuthScreen() {
   const [resetEmail, setResetEmail] = useState('');
 
   const appleSupported = useMemo(() => isAppleSignInSupported(), []);
+  const googleConfigured = useMemo(() => isGoogleSignInConfigured(), []);
 
   const switchMode = useCallback((next: Mode) => {
     setMode(next);
@@ -425,13 +426,15 @@ export default function AuthScreen() {
               disabled={busy != null}
             />
           )}
-          <SocialButton
-            label={cs.account.continueWithGoogle}
-            icon={<GoogleIcon size={20} color={Colors.foam} />}
-            onPress={() => handleSocial('google')}
-            accessibilityLabel={cs.a11y.authSignInGoogle}
-            disabled={busy != null}
-          />
+          {googleConfigured && (
+            <SocialButton
+              label={cs.account.continueWithGoogle}
+              icon={<GoogleIcon size={20} color={Colors.foam} />}
+              onPress={() => handleSocial('google')}
+              accessibilityLabel={cs.a11y.authSignInGoogle}
+              disabled={busy != null}
+            />
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </View>

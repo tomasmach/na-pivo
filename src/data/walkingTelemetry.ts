@@ -75,7 +75,9 @@ export function flushWalkingDistance(): void {
   sendDistance(flushed);
 }
 
-export function resetWalkingTelemetryForTests(): void {
+export function clearWalkingTelemetry(): void {
   lastSample = null;
   pendingDistanceM = 0;
 }
+
+export const resetWalkingTelemetryForTests = clearWalkingTelemetry;

@@ -75,6 +75,7 @@ export default function ProfileSetupScreen() {
 
   // STEP 3
   const [isPublic, setIsPublic] = useState(true);
+  const [visibilityError, setVisibilityError] = useState('');
 
   const [busy, setBusy] = useState(false);
 
@@ -137,11 +138,14 @@ export default function ProfileSetupScreen() {
   // ── STEP 3 finish ──
   const handleFinish = useCallback(async () => {
     if (busy) return;
+    setVisibilityError('');
     setBusy(true);
     try {
-      await updateProfile({ isPublic });
-      // Whether or not the visibility write succeeded, the nickname (the hard
-      // gate) is set — land the user on their profile rather than trapping them.
+      const result = await updateProfile({ isPublic });
+      if (!result.ok) {
+        setVisibilityError(result.detail || cs.profile.setup.visibilitySaveError);
+        return;
+      }
       router.replace('/(tabs)/profile');
       showToast(cs.profile.edit.savedToast);
     } finally {
@@ -281,7 +285,10 @@ export default function ProfileSetupScreen() {
               <View style={styles.consentCard}>
                 <VisibilityToggle
                   value={isPublic}
-                  onToggle={setIsPublic}
+                  onToggle={(next) => {
+                    setIsPublic(next);
+                    if (visibilityError) setVisibilityError('');
+                  }}
                   label={cs.profile.setup.visibilityToggleLabel}
                   accessibilityLabel={cs.a11y.profileVisibilityToggle(
                     isPublic ? cs.a11y.toggleOn : cs.a11y.toggleOff,
@@ -305,6 +312,11 @@ export default function ProfileSetupScreen() {
                   glow={busy ? 'none' : 'soft'}
                   accessibilityLabel={cs.profile.setup.finish}
                 />
+                {!!visibilityError && (
+                  <Text style={styles.errorText} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {visibilityError}
+                  </Text>
+                )}
               </View>
             </>
           )}

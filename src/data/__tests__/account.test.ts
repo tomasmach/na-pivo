@@ -66,6 +66,7 @@ async function seedAccount(blob: {
   deviceId: string;
   accountId: string;
   token: string;
+  authenticated?: boolean;
 }): Promise<void> {
   await SecureStore.setItemAsync(ACCOUNT_KEY, JSON.stringify(blob));
 }
@@ -485,7 +486,7 @@ describe('account preferences', () => {
     });
   });
 
-  it('clears the cached account when preferences fetch gets a 401', async () => {
+  it('clears an anonymous cached account when preferences fetch gets a 401', async () => {
     await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-1');
     await seedAccount({ deviceId: 'dev-1', accountId: 'acc-1', token: 'tok-1' });
     setBackend('https://api.example.com');
@@ -497,5 +498,24 @@ describe('account preferences', () => {
 
     await expect(fetchAccountPreferences()).resolves.toBeNull();
     expect(await SecureStore.getItemAsync(ACCOUNT_KEY)).toBeNull();
+  });
+
+  it('keeps an authenticated cached account when preferences fetch gets a 401', async () => {
+    await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-1');
+    await seedAccount({
+      deviceId: 'dev-1',
+      accountId: 'acc-1',
+      token: 'tok-1',
+      authenticated: true,
+    });
+    setBackend('https://api.example.com');
+    global.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 401,
+      json: async () => ({}),
+    })) as unknown as typeof fetch;
+
+    await expect(fetchAccountPreferences()).resolves.toBeNull();
+    expect(await SecureStore.getItemAsync(ACCOUNT_KEY)).not.toBeNull();
   });
 });

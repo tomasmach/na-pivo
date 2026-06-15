@@ -165,6 +165,13 @@ export function enqueueRatingOp(item: RatingQueueItem): Promise<void> {
   });
 }
 
+/** Drop all pending private rating sync operations without attempting delivery. */
+export function clearPubRatingsQueue(): Promise<void> {
+  return runLocked(async () => {
+    await saveQueue([]);
+  });
+}
+
 /**
  * Retries all pending rating operations. Call on app launch and on returning to
  * the foreground — both fire-and-forget. Never throws.

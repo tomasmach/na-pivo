@@ -12,6 +12,7 @@ import { useAccountStore, selectIsSignedIn } from '@/stores/accountStore';
 import * as auth from '@/data/auth';
 import type { AccountProfile, AuthResult } from '@/data/auth';
 import { ensureAccount } from '@/data/account';
+import { setTelemetrySession } from '@/data/telemetryClient';
 
 jest.mock('@/data/auth');
 jest.mock('@/data/account', () => ({
@@ -23,6 +24,9 @@ jest.mock('@/data/account', () => ({
   })),
   fetchAccountPreferences: jest.fn(async () => null),
 }));
+jest.mock('@/data/telemetryClient', () => ({
+  setTelemetrySession: jest.fn(),
+}));
 jest.mock('@/stores/settingsStore', () => ({
   useSettingsStore: {
     getState: () => ({ setHidePubNames: jest.fn() }),
@@ -31,6 +35,7 @@ jest.mock('@/stores/settingsStore', () => ({
 
 const mockedAuth = auth as jest.Mocked<typeof auth>;
 const mockEnsureAccount = ensureAccount as jest.MockedFunction<typeof ensureAccount>;
+const mockSetTelemetrySession = setTelemetrySession as jest.MockedFunction<typeof setTelemetrySession>;
 
 function signedInProfile(overrides: Partial<AccountProfile> = {}): AccountProfile {
   return {
@@ -96,6 +101,12 @@ describe('register', () => {
     // applyAuthResult re-reads the (rotated) session via ensureAccount.
     expect(mockEnsureAccount).toHaveBeenCalledTimes(1);
     expect(useAccountStore.getState().status).toBe('ready');
+    expect(mockSetTelemetrySession).toHaveBeenCalledWith({
+      deviceId: 'd',
+      accountId: 'a',
+      token: 'tok',
+      authenticated: true,
+    });
   });
 
   it('leaves the profile null and does not sync on failure', async () => {
@@ -208,6 +219,12 @@ describe('logout', () => {
       authenticated: false,
     });
     expect(mockEnsureAccount).toHaveBeenCalled();
+    expect(mockSetTelemetrySession).toHaveBeenCalledWith({
+      deviceId: 'd2',
+      accountId: 'a2',
+      token: 'anon2',
+      authenticated: false,
+    });
   });
 
   it('forwards the {all} option to auth.logout', async () => {

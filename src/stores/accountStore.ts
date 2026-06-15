@@ -6,6 +6,7 @@ import {
   type AccountSession,
 } from '@/data/account';
 import * as auth from '@/data/auth';
+import { setTelemetrySession } from '@/data/telemetryClient';
 import type {
   AccountProfile,
   AccountSettings,
@@ -97,6 +98,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
   /** Re-read the (possibly rotated) session token into the store. */
   const syncSession = async () => {
     const session = await ensureAccount();
+    setTelemetrySession(session);
     set({ session, status: session ? 'ready' : 'idle' });
   };
 
@@ -120,6 +122,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
       set({ status: 'loading' });
       try {
         const session = await ensureAccount();
+        setTelemetrySession(session);
         set({ session, status: session ? 'ready' : 'idle' });
         if (session) {
           const [preferences, profile] = await Promise.all([

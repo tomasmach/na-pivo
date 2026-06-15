@@ -1,5 +1,5 @@
 import { buildDrinkEntry, submitDrink, deleteDrink, type DrinkInput } from '../drinksClient';
-import { clearCachedAccount, ensureAccount } from '../account';
+import { clearCachedAnonymousAccount, ensureAccount } from '../account';
 
 // drinksClient → account → expo-secure-store, which isn't transformed for the
 // node test env; mock it so the module loads. We also stub ensureAccount so the
@@ -13,7 +13,7 @@ jest.mock('expo-secure-store', () => ({
 
 jest.mock('../account', () => ({
   ...jest.requireActual('../account'),
-  clearCachedAccount: jest.fn(async () => undefined),
+  clearCachedAnonymousAccount: jest.fn(async () => undefined),
   ensureAccount: jest.fn(async () => ({ deviceId: 'd', accountId: 'a', token: 'tok' })),
 }));
 
@@ -121,11 +121,42 @@ describe('submitDrink', () => {
     await expect(submitDrink(entry)).resolves.toBe('retry');
   });
 
-  it('clears the cached account and retries later on 401', async () => {
+  it('lets anonymous sessions recover on 401 and retry later', async () => {
     setBackend('https://api.example.com');
+    (ensureAccount as jest.Mock).mockResolvedValueOnce({
+      deviceId: 'd',
+      accountId: 'a',
+      token: 'tok',
+      authenticated: false,
+    });
     global.fetch = jest.fn(async () => ({ ok: false, status: 401, json: async () => ({}) })) as unknown as typeof fetch;
     await expect(submitDrink(entry)).resolves.toBe('retry');
-    expect(clearCachedAccount).toHaveBeenCalledTimes(1);
+    expect(clearCachedAnonymousAccount).toHaveBeenCalledWith({
+      deviceId: 'd',
+      accountId: 'a',
+      token: 'tok',
+      authenticated: false,
+    });
+  });
+
+  it('does not clear an authenticated session on 401', async () => {
+    setBackend('https://api.example.com');
+    (ensureAccount as jest.Mock).mockResolvedValueOnce({
+      deviceId: 'd',
+      accountId: 'a',
+      token: 'tok',
+      authenticated: true,
+    });
+    global.fetch = jest.fn(async () => ({ ok: false, status: 401, json: async () => ({}) })) as unknown as typeof fetch;
+
+    await expect(submitDrink(entry)).resolves.toBe('retry');
+
+    expect(clearCachedAnonymousAccount).toHaveBeenCalledWith({
+      deviceId: 'd',
+      accountId: 'a',
+      token: 'tok',
+      authenticated: true,
+    });
   });
 
   it('returns retry on 429 (throttled)', async () => {
@@ -200,11 +231,22 @@ describe('deleteDrink', () => {
     await expect(deleteDrink('c')).resolves.toBe('retry');
   });
 
-  it('clears the cached account and keeps delete queued on 401', async () => {
+  it('keeps delete queued on 401 and delegates only anonymous recovery', async () => {
     setBackend('https://api.example.com');
+    (ensureAccount as jest.Mock).mockResolvedValueOnce({
+      deviceId: 'd',
+      accountId: 'a',
+      token: 'tok',
+      authenticated: true,
+    });
     global.fetch = jest.fn(async () => ({ ok: false, status: 401, json: async () => ({}) })) as unknown as typeof fetch;
     await expect(deleteDrink('c')).resolves.toBe('retry');
-    expect(clearCachedAccount).toHaveBeenCalledTimes(1);
+    expect(clearCachedAnonymousAccount).toHaveBeenCalledWith({
+      deviceId: 'd',
+      accountId: 'a',
+      token: 'tok',
+      authenticated: true,
+    });
   });
 
   it('returns retry when there is no account session', async () => {

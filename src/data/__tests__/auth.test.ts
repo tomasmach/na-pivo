@@ -16,6 +16,7 @@
 import * as auth from '@/data/auth';
 import { ensureAccount, getSessionToken, revertToAnonymous, setSession } from '@/data/account';
 import { getBackendEndpoint } from '@/data/backendConfig';
+import { clearLocalPrivateAccountData } from '@/data/privateAccountData';
 import { getAppleCredential, getGoogleIdToken, SocialAuthError } from '@/data/socialAuth';
 import { trackApiFailure } from '@/data/telemetryClient';
 import * as efs from 'expo-file-system';
@@ -34,6 +35,10 @@ jest.mock('@/data/account', () => ({
   getSessionToken: jest.fn(async () => 'cur-tok'),
   setSession: jest.fn(async () => undefined),
   revertToAnonymous: jest.fn(async () => null),
+}));
+
+jest.mock('@/data/privateAccountData', () => ({
+  clearLocalPrivateAccountData: jest.fn(async () => undefined),
 }));
 
 jest.mock('@/data/socialAuth', () => {
@@ -83,6 +88,9 @@ const mockEnsureAccount = ensureAccount as jest.MockedFunction<typeof ensureAcco
 const mockGetSessionToken = getSessionToken as jest.MockedFunction<typeof getSessionToken>;
 const mockSetSession = setSession as jest.MockedFunction<typeof setSession>;
 const mockRevertToAnonymous = revertToAnonymous as jest.MockedFunction<typeof revertToAnonymous>;
+const mockClearLocalPrivateAccountData = clearLocalPrivateAccountData as jest.MockedFunction<
+  typeof clearLocalPrivateAccountData
+>;
 const mockGetGoogleIdToken = getGoogleIdToken as jest.MockedFunction<typeof getGoogleIdToken>;
 const mockGetAppleCredential = getAppleCredential as jest.MockedFunction<typeof getAppleCredential>;
 const mockTrackApiFailure = trackApiFailure as jest.MockedFunction<typeof trackApiFailure>;
@@ -135,6 +143,7 @@ beforeEach(() => {
   mockGetSessionToken.mockResolvedValue('cur-tok');
   mockSetSession.mockResolvedValue(undefined);
   mockRevertToAnonymous.mockResolvedValue(null);
+  mockClearLocalPrivateAccountData.mockResolvedValue(undefined);
   mockGetGoogleIdToken.mockResolvedValue('gtok');
   mockGetAppleCredential.mockResolvedValue({
     identityToken: 'atok',
@@ -484,6 +493,7 @@ describe('logout', () => {
     expect(url).toBe('https://api.test/v1/auth/logout');
     expect(authHeader(init)).toBe('Bearer cur-tok');
     expect(bodyOf(init)).toEqual({ all: false });
+    expect(mockClearLocalPrivateAccountData).toHaveBeenCalledTimes(1);
     expect(mockRevertToAnonymous).toHaveBeenCalledTimes(1);
   });
 
@@ -499,6 +509,7 @@ describe('logout', () => {
     const result = await auth.logout();
 
     expect(result).toEqual({ ok: true });
+    expect(mockClearLocalPrivateAccountData).toHaveBeenCalledTimes(1);
     expect(mockRevertToAnonymous).toHaveBeenCalledTimes(1);
   });
 });
@@ -517,6 +528,7 @@ describe('deleteAccount', () => {
     expect(url).toBe('https://api.test/v1/account/me');
     expect(init.method).toBe('DELETE');
     expect(authHeader(init)).toBe('Bearer cur-tok');
+    expect(mockClearLocalPrivateAccountData).toHaveBeenCalledTimes(1);
     expect(mockRevertToAnonymous).toHaveBeenCalledTimes(1);
   });
 
@@ -526,6 +538,7 @@ describe('deleteAccount', () => {
     const result = await auth.deleteAccount();
 
     expect(result).toEqual({ ok: false, code: 'forbidden', detail: 'Nelze smazat účet.' });
+    expect(mockClearLocalPrivateAccountData).not.toHaveBeenCalled();
     expect(mockRevertToAnonymous).not.toHaveBeenCalled();
   });
 
@@ -537,6 +550,7 @@ describe('deleteAccount', () => {
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error('expected failure');
     expect(result.code).toBe('network');
+    expect(mockClearLocalPrivateAccountData).not.toHaveBeenCalled();
     expect(mockRevertToAnonymous).not.toHaveBeenCalled();
   });
 });

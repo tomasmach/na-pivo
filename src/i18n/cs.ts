@@ -452,6 +452,7 @@ export const cs = {
       consentPublic:
         'Veřejný profil znamená, že tě podle přezdívky a fotky najdou ostatní v žebříčcích a vyhledávání. Tvoje přesná poloha ani jednotlivá piva se nikdy nezveřejňují. Kdykoli to vypneš v nastavení profilu.',
       consentPrivate: 'Když vypneš, uvidí tě jen tví kamarádi.',
+      visibilitySaveError: 'Viditelnost profilu se nepodařilo uložit. Zkus to prosím znovu.',
       finish: 'Hotovo',
     },
 
@@ -629,13 +630,18 @@ export const cs = {
   privacy: {
     title: 'Soukromí',
     body: [
-      'Sbíráme jen omezené anonymní provozní statistiky: otevření aplikace, technické chyby a součet nachozených metrů.',
+      'Sbíráme jen omezené provozní statistiky: otevření aplikace, návrat do popředí, technické chyby, verzi aplikace a součet nachozených metrů.',
       'Pro stažení okolních hospod může aplikace poslat aktuální nebo přibližnou polohu na náš server, který pro vyhledávání využívá Mapy.cz.',
       'Nachozené metry se počítají v telefonu a na server se posílá jen součet po dávkách, nikdy GPS body ani trasa.',
       'Průběžnou GPS historii, trasu pohybu ani jednotlivé GPS body neukládáme.',
       'Pro zobrazení otevírací doby aplikace pošle název a polohu vybrané hospody na vlastní server provozovatele, který dohledá otevírací dobu.',
       'Aplikace vytvoří anonymní náhodný identifikátor zařízení a odešle ho na náš server, aby každému zařízení patřil dočasný účet. Identifikátor neobsahuje žádné osobní údaje a slouží jen k odlišení zařízení.',
-      'Když dobrovolně doplníš otevírací dobu nebo piva na čepu, aplikace tyto údaje odešle na náš server pod anonymním účtem zařízení. Údaje se zobrazují veřejně ostatním uživatelům a neobsahují žádné osobní informace o tobě.',
+      'Účet je dobrovolný. Když se zaregistruješ e-mailem, ukládáme e-mail a heslo jen v zahashované podobě. Přes Google nebo Apple dostaneme identifikátor účtu, e-mail a případně jméno; heslo od poskytovatele nikdy nevidíme.',
+      'Profil může obsahovat přezdívku, jméno a avatar. U veřejného profilu tě podle přezdívky a fotky můžou najít ostatní; přesná poloha, deníček a jednotlivá piva se veřejně nezobrazují.',
+      'Počítadlo, historie večerů, návštěvy hospod a tvoje soukromá hodnocení se ukládají lokálně a synchronizují se jen k tvému účtu. Po odhlášení nebo smazání účtu appka lokální soukromý deníček, hodnocení a čekající private sync fronty z tohohle zařízení vyčistí.',
+      'Když dobrovolně doplníš otevírací dobu, piva na čepu nebo chybějící hospodu, aplikace tyto údaje odešle na náš server. Tyhle příspěvky pomáhají ostatním a můžou se zobrazit veřejně, ale bez tvé přesné polohy.',
+      'V účtu si můžeš vyžádat JSON export svých dat e-mailem nebo účet smazat. Po smazání vyčistíme lokální soukromá data v appce a serverová data se smažou podle zásad ochrany osobních údajů.',
+      'Transakční e-maily, například ověření adresy, obnova hesla, export dat nebo potvrzení smazání účtu, posíláme přes Resend. Téhle službě předáme jen e-mailovou adresu a obsah nutný k odeslání zprávy.',
     ],
     contactLabel: 'Kontakt',
     contactEmail: 'tomades1@gmail.com',

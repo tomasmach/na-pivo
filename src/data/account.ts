@@ -31,7 +31,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
 import { getBackendEndpoint } from './backendConfig';
-import { trackApiFailure } from './telemetryClient';
+import { setTelemetrySession, trackApiFailure } from './telemetryClient';
 
 export interface AccountSession {
   /** Stable client-generated device identifier (UUID v4). */
@@ -261,6 +261,18 @@ export async function clearCachedAccount(): Promise<void> {
   } catch {
     // best effort
   }
+  setTelemetrySession(null);
+}
+
+/**
+ * Recover from a 401 only for anonymous/device sessions. A credential-backed
+ * session must not silently fall forward into a fresh anonymous account because
+ * private retry queues could then upload the signed-in user's data elsewhere.
+ */
+export async function clearCachedAnonymousAccount(session: AccountSession | null): Promise<boolean> {
+  if (!session || session.authenticated) return false;
+  await clearCachedAccount();
+  return true;
 }
 
 /**
@@ -396,7 +408,7 @@ export async function fetchAccountPreferences(
     });
 
     if (resp.status === 401) {
-      await clearCachedAccount();
+      await clearCachedAnonymousAccount(session);
       return null;
     }
     if (!resp.ok) {
@@ -478,7 +490,7 @@ export async function updateAccountPreferences(
     });
 
     if (resp.status === 401) {
-      await clearCachedAccount();
+      await clearCachedAnonymousAccount(session);
       return null;
     }
     if (!resp.ok) {
@@ -528,12 +540,14 @@ export async function setSession(session: {
   authenticated: boolean;
 }): Promise<void> {
   const deviceId = session.deviceId ?? (await getOrCreateDeviceId());
-  await writeCachedAccount({
+  const nextSession: AccountSession = {
     deviceId,
     accountId: session.accountId,
     token: session.token,
     authenticated: session.authenticated,
-  });
+  };
+  await writeCachedAccount(nextSession);
+  setTelemetrySession(nextSession);
 }
 
 /**
@@ -545,5 +559,7 @@ export async function setSession(session: {
 export async function revertToAnonymous(signal?: AbortSignal): Promise<AccountSession | null> {
   await clearCachedAccount();
   await replaceDeviceId();
-  return ensureAccount(signal);
+  const session = await ensureAccount(signal);
+  setTelemetrySession(session);
+  return session;
 }

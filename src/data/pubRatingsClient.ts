@@ -23,7 +23,7 @@
  * throws), mirroring submitPubCommunity's null-on-failure shape.
  */
 
-import { clearCachedAccount, ensureAccount } from './account';
+import { clearCachedAnonymousAccount, ensureAccount, type AccountSession } from './account';
 import { getBackendEndpoint } from './backendConfig';
 import { trackClientEvent } from './telemetryClient';
 
@@ -59,9 +59,12 @@ export type SubmitRatingResult = 'ok' | 'permanent-error' | 'retry';
 
 const REQUEST_TIMEOUT_MS = 8000;
 
-async function classifyRatingHttpFailure(status: number): Promise<SubmitRatingResult> {
+async function classifyRatingHttpFailure(
+  status: number,
+  session: AccountSession,
+): Promise<SubmitRatingResult> {
   if (status === 401) {
-    await clearCachedAccount();
+    await clearCachedAnonymousAccount(session);
     return 'retry';
   }
   // Validation errors are permanent for this byte-stable payload; other 4xx can
@@ -162,7 +165,7 @@ export async function submitRatingUpsert(
       trackRatingSynced('submit_rating');
       return 'ok';
     }
-    const result = await classifyRatingHttpFailure(resp.status);
+    const result = await classifyRatingHttpFailure(resp.status, session);
     trackRatingSyncFailed('submit_rating', {
       status: resp.status,
       reason: 'http_error',
@@ -226,7 +229,7 @@ export async function submitRatingDelete(
       trackRatingSynced('delete_rating');
       return 'ok';
     }
-    const result = await classifyRatingHttpFailure(resp.status);
+    const result = await classifyRatingHttpFailure(resp.status, session);
     trackRatingSyncFailed('delete_rating', {
       status: resp.status,
       reason: 'http_error',
@@ -279,7 +282,7 @@ export async function fetchRatings(signal?: AbortSignal): Promise<WireRating[] |
     });
 
     if (resp.status === 401) {
-      await clearCachedAccount();
+      await clearCachedAnonymousAccount(session);
       return null;
     }
     if (!resp.ok) {

@@ -16,7 +16,7 @@ jest.mock('../pubRatingsQueue', () => ({
   getQueuedRatingDeletePubKeys: () => getQueuedRatingDeletePubKeys(),
 }));
 
-import { restorePubRatings, installPubRatingsSync } from '../pubRatingsSync';
+import { restorePubRatings, installPubRatingsSync, runWithoutPubRatingsSync } from '../pubRatingsSync';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { useTallyStore } from '@/stores/tallyStore';
 
@@ -137,6 +137,18 @@ describe('installPubRatingsSync — push subscribe-diff', () => {
         }),
       }),
     );
+    unsub();
+  });
+
+  it('does not enqueue deletes for an account-boundary local wipe', () => {
+    usePubRatingsStore.getState().setRating(PUB, { verdict: 'like' });
+    const unsub = installPubRatingsSync();
+
+    runWithoutPubRatingsSync(() => {
+      usePubRatingsStore.setState({ ratings: {} });
+    });
+
+    expect(enqueueRatingOp).not.toHaveBeenCalled();
     unsub();
   });
 });

@@ -148,6 +148,13 @@ export function enqueueVisitOp(item: VisitQueueItem): Promise<void> {
   });
 }
 
+/** Drop all pending private visit sync operations without attempting delivery. */
+export function clearVisitsQueue(): Promise<void> {
+  return runLocked(async () => {
+    await saveQueue([]);
+  });
+}
+
 /**
  * Retries all pending visit operations. Call on app launch and on returning to
  * the foreground — both fire-and-forget. Never throws.
