@@ -119,6 +119,18 @@ def _municipality(item: dict) -> str | None:
     return None
 
 
+def _fmt_duration(seconds: float) -> str:
+    """Compact h/m/s string for an ETA (e.g. '1h52m', '7m03s', '12s')."""
+    total = int(seconds)
+    h, rem = divmod(total, 3600)
+    m, s = divmod(rem, 60)
+    if h:
+        return f"{h}h{m:02d}m"
+    if m:
+        return f"{m}m{s:02d}s"
+    return f"{s}s"
+
+
 # ---------------------------------------------------------------------------
 # Command
 # ---------------------------------------------------------------------------
@@ -316,6 +328,23 @@ class Command(BaseCommand):
         # No proxy: this run is expected to come from a residential (home) IP.
         source = FirmyHoursSource(proxy_url=None, min_interval=throttle, daily_cap=daily_cap)
 
+        total = len(todo)
+        # Live \r progress bar only on a real terminal (tmux). When piped to a
+        # file (nohup) or captured in tests, fall back to a periodic line so the
+        # carriage returns don't smear the log.
+        show_bar = bool(getattr(self.stdout, "isatty", lambda: False)())
+
+        # A clean bar needs a quiet stream — silence the per-pub INFO spam from
+        # the scraper (e.g. "search ... returned HTTP 410") while the bar is live.
+        noisy = [
+            logging.getLogger("pubs.enrichment.firmy"),
+            logging.getLogger("pubs.management.commands.refresh_hours"),
+        ]
+        saved_levels = [lg.level for lg in noisy]
+        if show_bar:
+            for lg in noisy:
+                lg.setLevel(logging.WARNING)
+
         filled = matched = unmatched = 0
         consecutive_transient = 0
         aborted = False
@@ -324,6 +353,7 @@ class Command(BaseCommand):
         try:
             for idx, pub in enumerate(todo):
                 if limit > 0 and filled >= limit:
+                    self._close_bar(show_bar)
                     self.stdout.write(self.style.WARNING(f"Reached --limit {limit}."))
                     self._dump_remaining(todo[idx:], remaining_path)
                     aborted = True
@@ -337,15 +367,18 @@ class Command(BaseCommand):
                     logger.warning("bulk: transient (%d/%d) on %r: %s",
                                    consecutive_transient, ban_threshold, name, exc)
                     if consecutive_transient >= ban_threshold:
+                        self._close_bar(show_bar)
                         self.stdout.write(self.style.ERROR(
-                            f"\n{consecutive_transient} consecutive consent-wall/transient failures "
+                            f"{consecutive_transient} consecutive consent-wall/transient failures "
                             f"— firmy.cz has likely flagged this IP. Aborting."
                         ))
                         self._dump_remaining(todo[idx:], remaining_path)
                         aborted = True
                         break
+                    self._render(show_bar, idx + 1, total, matched, unmatched, t0)
                     continue
                 except RuntimeError as exc:
+                    self._close_bar(show_bar)
                     self.stdout.write(self.style.WARNING(f"Daily cap reached: {exc}"))
                     self._dump_remaining(todo[idx:], remaining_path)
                     aborted = True
@@ -360,14 +393,11 @@ class Command(BaseCommand):
                 else:
                     unmatched += 1
 
-                if filled % 25 == 0:
-                    dt = time.monotonic() - t0
-                    self.stdout.write(
-                        f"  {filled}/{len(todo)} filled "
-                        f"({matched} matched, {unmatched} no-match), "
-                        f"{dt / max(filled, 1):.1f}s/pub"
-                    )
+                self._render(show_bar, idx + 1, total, matched, unmatched, t0)
         finally:
+            self._close_bar(show_bar)
+            for lg, lvl in zip(noisy, saved_levels):
+                lg.setLevel(lvl)
             if source._owns_session:
                 source._session.close()
 
@@ -383,6 +413,48 @@ class Command(BaseCommand):
             ))
         else:
             self.stdout.write(self.style.SUCCESS("Catalogue fully filled."))
+
+    # ------------------------------------------------------------------
+    # Progress rendering
+    # ------------------------------------------------------------------
+
+    def _render(
+        self, show_bar: bool, done: int, total: int,
+        matched: int, unmatched: int, t0: float,
+    ) -> None:
+        """Update the live bar (tty) or emit a periodic line (piped/file)."""
+        frac = done / total if total else 1.0
+        elapsed = time.monotonic() - t0
+        rate = elapsed / done if done else 0.0
+        eta = _fmt_duration(rate * (total - done)) if done else "—"
+
+        if show_bar:
+            width = 24
+            fill = int(frac * width)
+            bar = "█" * fill + "░" * (width - fill)
+            self.stdout.write(
+                f"\r[{bar}] {done}/{total} ({frac * 100:4.1f}%)  "
+                f"✓{matched} ✗{unmatched}  {rate:.1f}s/pub  ETA {eta}",
+                ending="",
+            )
+            self._flush()
+        elif done % 25 == 0 or done == total:
+            self.stdout.write(
+                f"  {done}/{total} ({frac * 100:.0f}%)  "
+                f"✓{matched} ✗{unmatched}  {rate:.1f}s/pub  ETA {eta}"
+            )
+
+    def _close_bar(self, show_bar: bool) -> None:
+        """End the current \\r bar line so following output starts cleanly."""
+        if show_bar:
+            self.stdout.write("\n", ending="")
+            self._flush()
+
+    def _flush(self) -> None:
+        try:
+            self.stdout.flush()
+        except Exception:  # noqa: BLE001 — flushing is best-effort
+            pass
 
     def _dump_remaining(self, remaining: list[dict], path: Path) -> None:
         """Write the not-yet-filled pubs (Apify-ready, without the internal key)."""
