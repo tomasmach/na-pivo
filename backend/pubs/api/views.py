@@ -1474,13 +1474,17 @@ class PubLocationGeocodeView(_PubLocationLookupBaseView):
 
 class ReleaseNotesView(APIView):
     """
-    GET /v1/release-notes?version=<app-version>
+    GET /v1/release-notes              → full published changelog (newest first)
+    GET /v1/release-notes?version=<v>  → the published note for that version, 404 if none
 
-    Return the published "what's new" note for the given app version, or 404 if
-    none exists. Unauthenticated by design — the mobile app calls this on launch
-    right after an update, with no account required. The app shows the note once
-    and remembers it locally, so a 404 (no note for this version) is an expected,
-    cheap response, not an error.
+    Two read shapes on one endpoint, both unauthenticated:
+
+    - With ``version``: the launch popup's single-note lookup. The app calls this
+      right after an update; a 404 (no note for this version) is an expected,
+      cheap miss, not an error.
+    - Without ``version``: the collection, used by the in-app "O appce" screen to
+      let the user scroll through every update. Returns ``{"notes": [...]}``
+      ordered newest-first (ReleaseNote.Meta.ordering = ["-created_at"]).
     """
 
     authentication_classes: list = []
@@ -1488,10 +1492,13 @@ class ReleaseNotesView(APIView):
 
     def get(self, request: Request) -> Response:
         version = (request.query_params.get("version") or "").strip()
+
+        # No version → the whole published changelog for the "O appce" screen.
         if not version:
+            notes = ReleaseNote.objects.filter(is_published=True).prefetch_related("items")
             return Response(
-                {"detail": "Query param 'version' is required."},
-                status=status.HTTP_400_BAD_REQUEST,
+                {"notes": ReleaseNoteSerializer(notes, many=True).data},
+                status=status.HTTP_200_OK,
             )
 
         note = (

@@ -89,20 +89,67 @@ def test_newer_version_note_is_not_returned_for_older_version(client):
 
 
 # ---------------------------------------------------------------------------
-# Request validation
+# GET /v1/release-notes (no version) — full changelog collection
+#
+# NOTE: data migrations seed real notes (1.1.2, 1.1.3), so the test DB is never
+# empty. These tests assert membership against that baseline using high, unique
+# version strings, never an exact full list.
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
-def test_missing_version_param_returns_400(client):
+def test_no_version_returns_all_published_notes(client):
+    _make_note("9.0.0")
+    _make_note("9.1.0")
+
     resp = client.get("/v1/release-notes")
-    assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+    assert resp.status_code == status.HTTP_200_OK
+    body = resp.json()
+    versions = {note["version"] for note in body["notes"]}
+    assert {"9.0.0", "9.1.0"} <= versions
+    # Each note keeps the full single-note shape (title + ordered items).
+    by_version = {note["version"]: note for note in body["notes"]}
+    mine = by_version["9.0.0"]
+    assert set(mine.keys()) == {"version", "title", "items"}
+    assert [it["text"] for it in mine["items"]] == ["První novinka", "Druhá novinka"]
 
 
 @pytest.mark.django_db
-def test_blank_version_param_returns_400(client):
+def test_blank_version_param_returns_full_list(client):
+    """A blank/whitespace version is treated as "no version" → the collection."""
+    _make_note("9.2.0")
+
     resp = client.get("/v1/release-notes", {"version": "   "})
-    assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert "9.2.0" in {note["version"] for note in resp.json()["notes"]}
+
+
+@pytest.mark.django_db
+def test_list_excludes_draft_notes(client):
+    _make_note("9.0.0", published=True)
+    _make_note("9.1.0", published=False)
+
+    resp = client.get("/v1/release-notes")
+
+    assert resp.status_code == status.HTTP_200_OK
+    versions = {note["version"] for note in resp.json()["notes"]}
+    assert "9.0.0" in versions
+    assert "9.1.0" not in versions
+
+
+@pytest.mark.django_db
+def test_list_is_ordered_newest_first(client):
+    """Ordering follows ReleaseNote.Meta (-created_at): the most recently created
+    note appears before an earlier one."""
+    _make_note("9.0.0")
+    _make_note("9.1.0")
+
+    resp = client.get("/v1/release-notes")
+
+    versions = [note["version"] for note in resp.json()["notes"]]
+    assert versions.index("9.1.0") < versions.index("9.0.0")
 
 
 # ---------------------------------------------------------------------------
