@@ -173,7 +173,7 @@ def test_cross_account_same_cell_does_not_overwrite(client):
 
 
 @pytest.mark.django_db
-def test_add_pub_deactivates_existing_reports_for_same_cell(client):
+def test_add_pub_preserves_existing_reports_for_same_cell(client):
     token = _register(client)
     PubReport.objects.create(
         account=Account.objects.get(device_id=_DEVICE_ID),
@@ -189,7 +189,7 @@ def test_add_pub_deactivates_existing_reports_for_same_cell(client):
     resp = client.post("/v1/pubs", data=_payload(), format="json", **_auth(token))
 
     assert resp.status_code == status.HTTP_201_CREATED
-    assert PubReport.objects.get().active is False
+    assert PubReport.objects.get().active is True
 
 
 @pytest.mark.django_db

@@ -120,6 +120,8 @@ All settings are read from environment variables (or a `.env` file).  See `.env.
 | `CORS_ALLOWED_ORIGINS` | Expo localhost | Comma-separated CORS origins |
 | `ACCOUNT_REGISTER_THROTTLE_RATE` | `120/min` | Per-IP rate limit for `POST /v1/account` (DRF throttle rate string) |
 | `PUBS_NEAR_THROTTLE_RATE` | `60/min` | Per-IP rate limit for `GET /v1/pubs/near` (DRF throttle rate string) |
+| `PUB_HOURS_THROTTLE_RATE` | `120/min` | Per-IP rate limit for `POST /v1/pub-hours` |
+| `PUB_REPORTS_THROTTLE_RATE` | `30/min` | Per-IP rate limit for `POST /v1/pub-reports` |
 | `CLIENT_EVENTS_THROTTLE_RATE` | `120/min` | Per-IP rate limit for `POST /v1/client-events` |
 | `LOG_LEVEL` | `INFO` | Structured JSON log level |
 
@@ -131,12 +133,12 @@ Every install gets an anonymous, device-bound account automatically — there is
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| `POST` | `/v1/account` | none (throttled, scope `account`) | Idempotently ensure an account for a `device_id`; returns `{id, device_id, token, created, created_at}`. |
+| `POST` | `/v1/account` | none for new `device_id`; Bearer required to rotate an existing account token (throttled, scope `account`) | Ensure an account for a `device_id`; returns `{id, device_id, token, created, created_at}` on creation or authenticated rotation. |
 | `GET` | `/v1/account/me` | `Authorization: Bearer <token>` | Return the calling account (`id, device_id, created_at, last_seen_at`); never echoes the token. |
 
-- The bearer token is a server-issued secret (`secrets.token_urlsafe`), returned **once** at registration and stored only as a **SHA-256 hash** (`token_hash`) — a DB leak exposes no usable tokens. Re-registration **rotates** it (the old raw value is unrecoverable from its hash). It is never derived from client input and is excluded from `/v1/account/me`.
+- The bearer token is a server-issued secret (`secrets.token_urlsafe`), returned **once** at registration and stored only as a **SHA-256 hash** (`token_hash`) — a DB leak exposes no usable tokens. Re-registration for an existing `device_id` **rotates** it only when the request already presents the valid Bearer token for that same account. It is never derived from client input and is excluded from `/v1/account/me`.
 - **Future per-user data must FK to `Account` (its PK), not to `public_id`, and never join on `token`** — see the `Account` model docstring for the `on_delete` guidance.
-- **Security TODO before attaching real credentials / personal data:** today a re-POST of a known `device_id` returns that account's token (idempotent recovery), so `device_id` is effectively a bearer-equivalent key. That is acceptable only while accounts hold nothing sensitive. Before then, registration must stop letting `device_id` unilaterally recover the token, and the `account` throttle should be backed by a **shared cache** (Redis/Memcached) — the default `LocMemCache` is per-process, so under multiple gunicorn workers the effective limit is `rate × workers`.
+- The `account` and other DRF throttles should be backed by a **shared cache** (Redis/Memcached) for exact global limits in production — the default `LocMemCache` is per-process, so under multiple gunicorn workers the effective limit is `rate × workers`.
 
 ---
 

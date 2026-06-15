@@ -66,27 +66,35 @@ def test_register_is_idempotent(client):
     first = client.post("/v1/account", data={"device_id": _DEVICE_ID}, format="json")
     assert first.status_code == status.HTTP_201_CREATED
 
-    second = client.post("/v1/account", data={"device_id": _DEVICE_ID}, format="json")
+    second = client.post(
+        "/v1/account",
+        data={"device_id": _DEVICE_ID},
+        format="json",
+        HTTP_AUTHORIZATION=f"Bearer {first.json()['token']}",
+    )
     assert second.status_code == status.HTTP_200_OK
 
     first_body = first.json()
     second_body = second.json()
     assert second_body["created"] is False
-    # Idempotent on the ACCOUNT (same row), not on the token: re-registration
-    # returns the same id but rotates the token (the old raw value is unrecoverable
-    # from its stored hash). See test_reregistration_rotates_token.
+    # Idempotent on the ACCOUNT (same row), not on the token: authenticated
+    # re-registration returns the same id but rotates the token.
     assert second_body["id"] == first_body["id"]
 
     assert Account.objects.count() == 1
 
 
 @pytest.mark.django_db
-def test_reregistration_rotates_token(client):
-    """Re-POSTing a known device_id issues a new token and invalidates the old one."""
+def test_authenticated_reregistration_rotates_token(client):
+    """Re-POSTing a known device_id with its valid token rotates that token."""
     first = client.post("/v1/account", data={"device_id": _DEVICE_ID}, format="json")
-    second = client.post("/v1/account", data={"device_id": _DEVICE_ID}, format="json")
-
     first_token = first.json()["token"]
+    second = client.post(
+        "/v1/account",
+        data={"device_id": _DEVICE_ID},
+        format="json",
+        HTTP_AUTHORIZATION=f"Bearer {first_token}",
+    )
     second_token = second.json()["token"]
     assert first_token != second_token
 
@@ -95,6 +103,47 @@ def test_reregistration_rotates_token(client):
     assert old.status_code == status.HTTP_401_UNAUTHORIZED
     new = client.get("/v1/account/me", HTTP_AUTHORIZATION=f"Bearer {second_token}")
     assert new.status_code == status.HTTP_200_OK
+
+
+@pytest.mark.django_db
+def test_reregistration_without_bearer_does_not_rotate_token(client):
+    """A known device_id alone cannot recover or rotate a bearer token."""
+    first = client.post("/v1/account", data={"device_id": _DEVICE_ID}, format="json")
+    assert first.status_code == status.HTTP_201_CREATED
+    token = first.json()["token"]
+    original_hash = Account.objects.get(device_id=_DEVICE_ID).token_hash
+
+    second = client.post("/v1/account", data={"device_id": _DEVICE_ID}, format="json")
+
+    assert second.status_code == status.HTTP_401_UNAUTHORIZED
+    assert "token" not in second.json()
+    assert Account.objects.get(device_id=_DEVICE_ID).token_hash == original_hash
+    resp = client.get("/v1/account/me", HTTP_AUTHORIZATION=f"Bearer {token}")
+    assert resp.status_code == status.HTTP_200_OK
+
+
+@pytest.mark.django_db
+def test_reregistration_with_other_account_token_does_not_rotate_token(client):
+    first = client.post("/v1/account", data={"device_id": _DEVICE_ID}, format="json")
+    other = client.post("/v1/account", data={"device_id": _OTHER_DEVICE_ID}, format="json")
+    assert first.status_code == status.HTTP_201_CREATED
+    assert other.status_code == status.HTTP_201_CREATED
+
+    token = first.json()["token"]
+    original_hash = Account.objects.get(device_id=_DEVICE_ID).token_hash
+
+    resp = client.post(
+        "/v1/account",
+        data={"device_id": _DEVICE_ID},
+        format="json",
+        HTTP_AUTHORIZATION=f"Bearer {other.json()['token']}",
+    )
+
+    assert resp.status_code == status.HTTP_403_FORBIDDEN
+    assert "token" not in resp.json()
+    assert Account.objects.get(device_id=_DEVICE_ID).token_hash == original_hash
+    me = client.get("/v1/account/me", HTTP_AUTHORIZATION=f"Bearer {token}")
+    assert me.status_code == status.HTTP_200_OK
 
 
 @pytest.mark.django_db
@@ -235,8 +284,14 @@ def test_register_canonicalizes_device_id(client):
     # Stored/echoed in canonical lowercase form, NOT the uppercase input.
     assert first.json()["device_id"] == _DEVICE_ID
 
-    # Re-POST the canonical form: same logical id → recovered, not duplicated.
-    second = client.post("/v1/account", data={"device_id": _DEVICE_ID}, format="json")
+    # Re-POST the canonical form with the current token: same logical id →
+    # recovered, not duplicated.
+    second = client.post(
+        "/v1/account",
+        data={"device_id": _DEVICE_ID},
+        format="json",
+        HTTP_AUTHORIZATION=f"Bearer {first.json()['token']}",
+    )
     assert second.status_code == status.HTTP_200_OK
     assert second.json()["id"] == first.json()["id"]
     assert Account.objects.count() == 1
@@ -249,9 +304,10 @@ def test_register_canonicalizes_device_id(client):
 
 @pytest.mark.django_db
 def test_register_advances_last_seen_at(client):
-    """Re-POSTing a known device_id advances last_seen_at but preserves created_at/id/token."""
+    """Authenticated re-POST advances last_seen_at but preserves created_at/id."""
     register = client.post("/v1/account", data={"device_id": _DEVICE_ID}, format="json")
     assert register.status_code == status.HTTP_201_CREATED
+    token = register.json()["token"]
 
     account = Account.objects.get(device_id=_DEVICE_ID)
     created_before = account.created_at
@@ -260,7 +316,12 @@ def test_register_advances_last_seen_at(client):
     past = created_before - timedelta(days=1)
     Account.objects.filter(pk=account.pk).update(last_seen_at=past)
 
-    second = client.post("/v1/account", data={"device_id": _DEVICE_ID}, format="json")
+    second = client.post(
+        "/v1/account",
+        data={"device_id": _DEVICE_ID},
+        format="json",
+        HTTP_AUTHORIZATION=f"Bearer {token}",
+    )
     assert second.status_code == status.HTTP_200_OK
 
     account.refresh_from_db()

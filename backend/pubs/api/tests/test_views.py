@@ -11,9 +11,11 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
+from django.core.cache import cache
 from django.utils import timezone as dj_tz
 from rest_framework import status
 from rest_framework.test import APIClient
+from rest_framework.throttling import ScopedRateThrottle
 
 from pubs.enrichment import RawHours, geohash8
 from pubs.models import EnrichTask, PubHours
@@ -131,6 +133,24 @@ def test_pub_hours_sync_budget_too_large_returns_400(client):
         format="json",
     )
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
+def test_pub_hours_is_throttled(client, monkeypatch):
+    cache.clear()
+    monkeypatch.setattr(ScopedRateThrottle, "THROTTLE_RATES", {"pub_hours": "2/min"})
+    _make_fresh_row()
+    payload = {"pubs": [{"name": _FLEKY_NAME, "lat": _FLEKY_LAT, "lng": _FLEKY_LNG}]}
+
+    try:
+        for _ in range(2):
+            resp = client.post("/v1/pub-hours", data=payload, format="json")
+            assert resp.status_code == status.HTTP_200_OK
+
+        throttled = client.post("/v1/pub-hours", data=payload, format="json")
+        assert throttled.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    finally:
+        cache.clear()
 
 
 # ---------------------------------------------------------------------------

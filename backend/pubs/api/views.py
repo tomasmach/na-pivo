@@ -27,6 +27,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import F
 from django.utils import timezone as dj_timezone
 from rest_framework import status
+from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -47,11 +48,9 @@ from pubs.models import (
     AccountUsageStats,
     ClientEvent,
     DrinkLog,
-    EnrichTask,
     FeedbackReport,
     PubCommunityData,
     PubContributionLog,
-    PubHours,
     PubRating,
     PubReport,
     PubSearchCache,
@@ -138,6 +137,9 @@ class PubHoursView(APIView):
     up to sync_budget, with the remainder queued as EnrichTask rows.
     """
 
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "pub_hours"
+
     def post(self, request: Request) -> Response:
         req_serializer = PubHoursRequestSerializer(data=request.data)
         if not req_serializer.is_valid():
@@ -171,6 +173,8 @@ class PubReportView(APIView):
 
     authentication_classes = [AccountTokenAuthentication]
     permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "pub_reports"
 
     def post(self, request: Request) -> Response:
         serializer = PubReportRequestSerializer(data=request.data)
@@ -196,8 +200,6 @@ class PubReportView(APIView):
                     "active": True,
                 },
             )
-            PubHours.objects.filter(cache_key=cache_key).delete()
-            EnrichTask.objects.filter(cache_key=cache_key).delete()
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "pub-report: unexpected error saving report for cache key %s: %s",
@@ -264,15 +266,6 @@ class UserAddedPubView(APIView):
                         "address": data.get("address") or "",
                         "active": True,
                     },
-                )
-
-                # A user adding the same physical place is a stronger signal than
-                # an older block report for that geohash cell; otherwise the
-                # mobile client would fetch this new row and immediately filter it
-                # out by cache_key.
-                PubReport.objects.filter(cache_key=cache_key, active=True).update(
-                    active=False,
-                    updated_at=dj_timezone.now(),
                 )
         except Exception as exc:  # noqa: BLE001
             logger.error(
@@ -1521,10 +1514,9 @@ class AccountView(APIView):
 
     Idempotently register (ensure) an anonymous device-bound account. The mobile
     app sends the device_id it generated and persisted locally; we get_or_create
-    the Account and return it with a token. Re-posting a known device_id returns
-    the same account with a freshly ROTATED token (only the token's hash is
-    stored, so the original cannot be re-returned), letting a client that lost its
-    token recover.
+    the Account and return it with a token. Re-posting a known device_id rotates
+    and returns a fresh token only when the request already carries a valid Bearer
+    token for that same account.
 
     Unauthenticated by design — this is how a brand-new device gets its first
     credentials — but throttled per-IP (scope "account") to blunt scripted mass
@@ -1550,28 +1542,41 @@ class AccountView(APIView):
             # never creates a duplicate Account.
             #
             # Only the SHA-256 hash of the token is stored, so the raw token cannot
-            # be recovered later — re-registration therefore ROTATES it (issues a
-            # fresh token). For the mobile client this happens only on recovery (it
-            # caches the token and re-registers solely after a cache miss), where a
-            # fresh working token is exactly what it needs.
-            #
-            # SECURITY TODO (blocker for the future credentials feature): a re-POST
-            # of a known device_id still hands back a usable token, so device_id is
-            # effectively a bearer-equivalent recovery key. Acceptable ONLY while
-            # accounts hold no personal data. Once real credentials / per-user data
-            # attach to Account, device_id must NOT recover a token for a *claimed*
-            # account — require the verified credential — and stop differentiating
-            # 200/201 here to avoid account-existence enumeration.
+            # be recovered later. A known device_id is therefore allowed to rotate
+            # only when the caller proves possession of the current token for this
+            # same account; otherwise device_id would act as a bearer-equivalent
+            # recovery key.
             account, created = Account.objects.get_or_create(
                 device_id=device_id,
                 defaults={"token_hash": hash_account_token(raw_token)},
             )
             if not created:
+                auth_result = AccountTokenAuthentication().authenticate(request)
+                if auth_result is None:
+                    return Response(
+                        {"detail": "Authentication credentials were not provided."},
+                        status=status.HTTP_401_UNAUTHORIZED,
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+
+                authenticated_account, _presented_token = auth_result
+                if authenticated_account.pk != account.pk:
+                    return Response(
+                        {"detail": "Bearer token does not match device account."},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+
                 # Rotate the token (old hash discarded) and touch last_seen_at
                 # (auto_now fires because the field is in update_fields).
                 raw_token = generate_account_token()
                 account.token_hash = hash_account_token(raw_token)
                 account.save(update_fields=["token_hash", "last_seen_at"])
+        except AuthenticationFailed as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_401_UNAUTHORIZED,
+                headers={"WWW-Authenticate": "Bearer"},
+            )
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "account: unexpected error registering account: %s",

@@ -188,6 +188,18 @@ PUB_VISITS_THROTTLE_RATE: str = os.environ.get("PUB_VISITS_THROTTLE_RATE", "120/
 # Format: DRF throttle rate string.
 PUBS_NEAR_THROTTLE_RATE: str = os.environ.get("PUBS_NEAR_THROTTLE_RATE", "60/min")
 
+# Per-IP rate limit for the unauthenticated opening-hours batch endpoint
+# (POST /v1/pub-hours). It protects request parsing, cache lookup, and sync
+# enrichment budget from scripted bursts while keeping normal app refreshes
+# unaffected. Format: DRF throttle rate string.
+PUB_HOURS_THROTTLE_RATE: str = os.environ.get("PUB_HOURS_THROTTLE_RATE", "120/min")
+
+# Per-IP rate limit for the authenticated pub-report endpoint
+# (POST /v1/pub-reports). Reports affect shared search filtering, so cap write
+# bursts while leaving normal manual reports untouched.
+# Format: DRF throttle rate string.
+PUB_REPORTS_THROTTLE_RATE: str = os.environ.get("PUB_REPORTS_THROTTLE_RATE", "30/min")
+
 # Per-IP rate limit for privacy-safe client telemetry events. The client sends a
 # small lifecycle/error/distance whitelist only; this cap protects the endpoint
 # from noisy loops and scripted spam.
@@ -204,9 +216,8 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.AllowAny",
     ],
-    # Scoped throttle rates. Only AccountView opts into the "account" scope (via
-    # throttle_classes = [ScopedRateThrottle]); pub-hours is intentionally left
-    # unthrottled here (it has its own Firmy.cz rate limiting downstream).
+    # Scoped throttle rates. Views opt in with throttle_classes =
+    # [ScopedRateThrottle] and throttle_scope.
     # NOTE: DRF throttling uses the Django cache. The default LocMemCache is
     # per-process, so under multiple gunicorn workers the effective limit is
     # rate × workers — configure a shared cache (Redis/Memcached) for an exact
@@ -220,6 +231,8 @@ REST_FRAMEWORK = {
         "pub_ratings": PUB_RATINGS_THROTTLE_RATE,
         "pub_visits": PUB_VISITS_THROTTLE_RATE,
         "pubs_near": PUBS_NEAR_THROTTLE_RATE,
+        "pub_hours": PUB_HOURS_THROTTLE_RATE,
+        "pub_reports": PUB_REPORTS_THROTTLE_RATE,
         "client_events": CLIENT_EVENTS_THROTTLE_RATE,
     },
 }

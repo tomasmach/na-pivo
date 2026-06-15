@@ -7,6 +7,7 @@ from __future__ import annotations
 import pytest
 from rest_framework import status
 from rest_framework.test import APIClient
+from rest_framework.throttling import ScopedRateThrottle
 
 from pubs.enrichment import geohash8
 from pubs.models import Account, EnrichTask, PubHours, PubReport
@@ -22,6 +23,15 @@ _KEY = geohash8(_LAT, _LNG)
 @pytest.fixture
 def client():
     return APIClient()
+
+
+@pytest.fixture(autouse=True)
+def _clear_throttle_cache():
+    from django.core.cache import cache
+
+    cache.clear()
+    yield
+    cache.clear()
 
 
 def _register(client: APIClient, device_id: str = _DEVICE_ID) -> str:
@@ -68,22 +78,22 @@ def test_create_pub_report(client):
 
 
 @pytest.mark.django_db
-def test_create_pub_report_deletes_cached_hours_and_enrich_task(client):
+def test_create_pub_report_preserves_cached_hours_and_enrich_task(client):
     token = _register(client)
-    PubHours.objects.create(
+    hours = PubHours.objects.create(
         cache_key=_KEY,
         name=_NAME,
         lat=_LAT,
         lng=_LNG,
         status=PubHours.Status.OK,
     )
-    EnrichTask.objects.create(cache_key=_KEY, name=_NAME, lat=_LAT, lng=_LNG)
+    task = EnrichTask.objects.create(cache_key=_KEY, name=_NAME, lat=_LAT, lng=_LNG)
 
     resp = client.post("/v1/pub-reports", data=_payload(), format="json", **_auth(token))
 
     assert resp.status_code == status.HTTP_201_CREATED
-    assert not PubHours.objects.filter(cache_key=_KEY).exists()
-    assert not EnrichTask.objects.filter(cache_key=_KEY).exists()
+    assert PubHours.objects.filter(pk=hours.pk, cache_key=_KEY).exists()
+    assert EnrichTask.objects.filter(pk=task.pk, cache_key=_KEY).exists()
 
 
 @pytest.mark.django_db
@@ -134,6 +144,30 @@ def test_create_pub_report_validation(client):
     assert bad_reason.status_code == status.HTTP_400_BAD_REQUEST
     assert bad_lat.status_code == status.HTTP_400_BAD_REQUEST
     assert PubReport.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_create_pub_report_is_throttled(client, monkeypatch):
+    token = _register(client)
+    monkeypatch.setattr(ScopedRateThrottle, "THROTTLE_RATES", {"pub_reports": "2/min"})
+
+    for i in range(2):
+        resp = client.post(
+            "/v1/pub-reports",
+            data=_payload(lat=_LAT + (i * 0.001), lng=_LNG + (i * 0.001)),
+            format="json",
+            **_auth(token),
+        )
+        assert resp.status_code == status.HTTP_201_CREATED
+
+    throttled = client.post(
+        "/v1/pub-reports",
+        data=_payload(lat=_LAT + 0.003, lng=_LNG + 0.003),
+        format="json",
+        **_auth(token),
+    )
+
+    assert throttled.status_code == status.HTTP_429_TOO_MANY_REQUESTS
 
 
 @pytest.mark.django_db

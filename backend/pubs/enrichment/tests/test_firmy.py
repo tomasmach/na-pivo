@@ -590,6 +590,8 @@ class TestHttpGuardrails:
         # Hostile / foreign hosts rejected
         assert not FirmyHoursSource._host_allowed("https://evil.example.com/")
         assert not FirmyHoursSource._host_allowed("https://firmy.cz.evil.com/")
+        assert not FirmyHoursSource._host_allowed("https://evilfirmy.cz/bad")
+        assert not FirmyHoursSource._host_allowed("https://badseznam.cz/bad")
         assert not FirmyHoursSource._host_allowed(None)
         assert not FirmyHoursSource._host_allowed("")
 

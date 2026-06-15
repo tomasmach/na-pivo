@@ -130,10 +130,11 @@ _MAX_REDIRECTS = 10
 # well under this.
 _MAX_BODY_BYTES = 2 * 1024 * 1024
 
-# Hosts whose responses we are willing to parse. The FINAL URL of every request
-# (after redirects) must end in one of these — a hostile proxy must not be able
-# to redirect us to an arbitrary host and have us parse its JSON-LD.
-_ALLOWED_HOST_SUFFIXES = (".firmy.cz", ".seznam.cz", "firmy.cz", "seznam.cz")
+# Registered domains whose responses we are willing to parse. The FINAL URL of
+# every request (after redirects) must be either the exact domain or a real
+# subdomain — a hostile proxy must not be able to redirect us to an arbitrary
+# lookalike host and have us parse its JSON-LD.
+_ALLOWED_HOST_DOMAINS = ("firmy.cz", "seznam.cz")
 
 # Regex to extract detail links from search page HTML
 _DETAIL_RE = re.compile(
@@ -376,8 +377,8 @@ class FirmyHoursSource:
         if not host:
             return False
         return any(
-            host == suffix.lstrip(".") or host.endswith(suffix)
-            for suffix in _ALLOWED_HOST_SUFFIXES
+            host == domain or host.endswith(f".{domain}")
+            for domain in _ALLOWED_HOST_DOMAINS
         )
 
     @staticmethod
