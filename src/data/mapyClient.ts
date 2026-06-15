@@ -159,6 +159,9 @@ interface BackendLocationLookupResponse {
   items?: MapyGeocodeItem[];
 }
 
+const MAPY_SUGGEST_URL = 'https://api.mapy.cz/v1/suggest';
+const MAPY_GEOCODE_URL = 'https://api.mapy.cz/v1/geocode';
+
 /**
  * Try the backend pubs-near proxy. Returns the raw Mapy items on success, or
  * null on ANY failure (no backend configured, non-200 incl. 503, network error,
@@ -244,6 +247,68 @@ async function backendLocationLookup(
   }
 }
 
+function getPublicMapyApiKey(): string {
+  return (process.env.EXPO_PUBLIC_MAPY_API_KEY ?? '').trim();
+}
+
+function buildDirectMapyLocationUrl(
+  kind: 'suggest' | 'geocode',
+  query: string,
+  near?: { lat: number; lng: number } | null,
+): string | null {
+  const apiKey = getPublicMapyApiKey();
+  if (!apiKey) return null;
+
+  const url = new URL(kind === 'suggest' ? MAPY_SUGGEST_URL : MAPY_GEOCODE_URL);
+  url.searchParams.set('query', query);
+  url.searchParams.set('lang', 'cs');
+  url.searchParams.set('limit', kind === 'suggest' ? '8' : '3');
+  url.searchParams.append('type', 'poi');
+  if (kind === 'geocode') url.searchParams.append('type', 'regional.address');
+  url.searchParams.set('locality', 'cz');
+  url.searchParams.set('apikey', apiKey);
+  if (near) {
+    url.searchParams.set('preferNear', `${near.lng},${near.lat}`);
+    url.searchParams.set('preferNearPrecision', '2500');
+  }
+  return url.toString();
+}
+
+async function directMapyLocationLookup(
+  kind: 'suggest' | 'geocode',
+  query: string,
+  near?: { lat: number; lng: number } | null,
+  signal?: AbortSignal,
+): Promise<MapyGeocodeItem[] | null> {
+  if (signal?.aborted) return null;
+
+  const url = buildDirectMapyLocationUrl(kind, query, near);
+  if (!url) return null;
+
+  try {
+    const resp = await fetch(url, { signal });
+    if (!resp.ok) {
+      trackApiFailure(kind === 'suggest' ? 'pub_location_suggest_mapy' : 'pub_location_geocode_mapy', {
+        endpoint: kind === 'suggest' ? MAPY_SUGGEST_URL : MAPY_GEOCODE_URL,
+        status: resp.status,
+      });
+      return null;
+    }
+    const data = (await resp.json()) as BackendLocationLookupResponse;
+    return data.items ?? [];
+  } catch (err) {
+    const isAbortError = err instanceof Error && err.name === 'AbortError';
+    if (!signal?.aborted && !isAbortError) {
+      trackApiFailure(kind === 'suggest' ? 'pub_location_suggest_mapy' : 'pub_location_geocode_mapy', {
+        endpoint: kind === 'suggest' ? MAPY_SUGGEST_URL : MAPY_GEOCODE_URL,
+        reason: 'exception',
+        error: err,
+      });
+    }
+    return null;
+  }
+}
+
 function pickCity(item: MapyGeocodeItem): string | undefined {
   const rs = item.regionalStructure;
   if (!rs) return undefined;
@@ -294,19 +359,18 @@ export async function geocodePubLocation(
   if (!query) return null;
 
   const backendItems = await backendLocationLookup('/v1/pubs/geocode', query, input.near, signal);
-  if (backendItems !== null) {
-    const item = backendItems.find((candidate) => isValidPosition(candidate.position));
-    if (!item || !isValidPosition(item.position)) return null;
-    return {
-      lat: item.position.lat,
-      lng: item.position.lon,
-      city: pickCity(item),
-      address: pickAddress(item),
-      type: item.type,
-    };
-  }
+  const items =
+    backendItems ?? (await directMapyLocationLookup('geocode', query, input.near, signal));
 
-  return null;
+  const item = items?.find((candidate) => isValidPosition(candidate.position));
+  if (!item || !isValidPosition(item.position)) return null;
+  return {
+    lat: item.position.lat,
+    lng: item.position.lon,
+    city: pickCity(item),
+    address: pickAddress(item),
+    type: item.type,
+  };
 }
 
 function itemToLocationSuggestion(item: MapyGeocodeItem): PubLocationSuggestion | null {
@@ -337,19 +401,19 @@ export async function suggestPubLocations(
   if (query.length < 2) return [];
 
   const backendItems = await backendLocationLookup('/v1/pubs/suggest', query, input.near, signal);
-  if (backendItems !== null) {
-    const seen = new Set<string>();
-    const suggestions: PubLocationSuggestion[] = [];
-    for (const item of backendItems) {
-      const suggestion = itemToLocationSuggestion(item);
-      if (!suggestion || seen.has(suggestion.id)) continue;
-      seen.add(suggestion.id);
-      suggestions.push(suggestion);
-    }
-    return suggestions;
-  }
+  const items =
+    backendItems ?? (await directMapyLocationLookup('suggest', query, input.near, signal));
+  if (items === null) return [];
 
-  return [];
+  const seen = new Set<string>();
+  const suggestions: PubLocationSuggestion[] = [];
+  for (const item of items) {
+    const suggestion = itemToLocationSuggestion(item);
+    if (!suggestion || seen.has(suggestion.id)) continue;
+    seen.add(suggestion.id);
+    suggestions.push(suggestion);
+  }
+  return suggestions;
 }
 
 function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
