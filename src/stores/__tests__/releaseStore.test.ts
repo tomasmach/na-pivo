@@ -4,9 +4,9 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
 
-// The expo-constants mock reports version '1.1.3' — that is the "current"
+// The expo-constants mock reports version '1.1.4' — that is the "current"
 // running build in every test here.
-const CURRENT_VERSION = '1.1.3';
+const CURRENT_VERSION = '1.1.4';
 
 const ORIGINAL_FETCH = global.fetch;
 const ORIGINAL_URL = process.env.EXPO_PUBLIC_BACKEND_URL;

@@ -54,13 +54,13 @@ describe('trackClientEvent', () => {
     const [url, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe('https://api.example.com/v1/client-events');
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer secret-token');
-    expect((init.headers as Record<string, string>)['X-Na-Pivo-App-Version']).toBe('v1.1.3 (4)');
+    expect((init.headers as Record<string, string>)['X-Na-Pivo-App-Version']).toBe('v1.1.4 (4)');
 
     const body = JSON.parse(init.body as string);
     expect(body).toMatchObject({
       event: 'console_error',
       severity: 'error',
-      app_version: 'v1.1.3 (4)',
+      app_version: 'v1.1.4 (4)',
       platform: 'ios',
       os_version: '18.1',
     });
