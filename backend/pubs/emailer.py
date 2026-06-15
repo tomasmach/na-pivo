@@ -56,36 +56,39 @@ def _render(
     title: str,
     message_html: str,
     *,
-    button_label: str | None = None,
-    button_url: str | None = None,
     code: str | None = None,
+    code_label: str = "Tvůj kód:",
+    link: str | None = None,
+    link_label: str | None = None,
 ) -> str:
     """Build a consistent inline-styled HTML body shared by all e-mails.
 
-    ``message_html`` is treated as trusted markup (our own strings only). The
-    optional button and code blocks are rendered only when provided.
+    ``message_html`` is trusted markup (our own strings only). The CODE is the
+    hero action — the user types it into the app. ``link`` is an optional small
+    secondary text link (a ``napivo://`` deep link), NOT a button: it only does
+    anything when the mail is opened on a phone that has the app installed, so we
+    keep it subtle and let the code carry the flow.
     """
-    button_block = ""
-    if button_label and button_url:
-        button_block = (
-            '<tr><td align="center" style="padding:8px 0 24px 0;">'
-            f'<a href="{button_url}" '
-            f'style="display:inline-block;background:{_ACCENT};color:{_ACCENT_TEXT};'
-            "text-decoration:none;font-weight:700;font-size:16px;"
-            'padding:14px 28px;border-radius:10px;">'
-            f"{button_label}</a></td></tr>"
-        )
-
     code_block = ""
     if code:
         code_block = (
-            '<tr><td align="center" style="padding:0 0 24px 0;">'
-            f'<div style="color:{_MUTED};font-size:13px;margin-bottom:8px;">'
-            "nebo zadej tento kód v aplikaci:</div>"
+            '<tr><td align="center" style="padding:0 0 20px 0;">'
+            f'<div style="color:{_MUTED};font-size:13px;margin-bottom:10px;">'
+            f"{code_label}</div>"
             f'<div style="display:inline-block;background:{_BG};'
-            f"border:1px solid {_BORDER};border-radius:10px;padding:12px 20px;"
-            f"font-family:Menlo,Consolas,monospace;font-size:24px;font-weight:700;"
-            f'letter-spacing:6px;color:{_TEXT};">{code}</div></td></tr>'
+            f"border:1px solid {_BORDER};border-radius:12px;padding:16px 26px;"
+            f"font-family:Menlo,Consolas,monospace;font-size:28px;font-weight:700;"
+            f'letter-spacing:8px;color:{_TEXT};">{code}</div></td></tr>'
+        )
+
+    link_block = ""
+    if link and link_label:
+        link_block = (
+            '<tr><td align="center" style="padding:0 0 24px 0;'
+            "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;"
+            f'font-size:13px;color:{_MUTED};">'
+            f'<a href="{link}" style="color:{_ACCENT};text-decoration:underline;">'
+            f"{link_label}</a></td></tr>"
         )
 
     return (
@@ -112,9 +115,9 @@ def _render(
         f'<tr><td align="center" style="padding:12px 32px 24px 32px;'
         f"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;"
         f'font-size:15px;line-height:1.55;color:{_MUTED};">{message_html}</td></tr>'
-        # Optional button + code
+        # Optional code (hero) + small "open in app" link
         f'<tr><td style="padding:0 32px;"><table role="presentation" width="100%" '
-        f'cellpadding="0" cellspacing="0">{button_block}{code_block}</table></td></tr>'
+        f'cellpadding="0" cellspacing="0">{code_block}{link_block}</table></td></tr>'
         # Footer
         f'<tr><td align="center" style="padding:8px 32px 28px 32px;'
         f"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;"
@@ -163,94 +166,81 @@ def _html_to_text_fallback(subject: str) -> str:
 
 
 def send_verification_email(to: str, *, link: str, code: str) -> bool:
-    """Send the e-mail verification message (button + manual code)."""
-    subject = "Ověř svůj e-mail – Na Pivo"
+    """Send the e-mail verification message.
+
+    Code-only by design: e-mail clients (Gmail etc.) don't open custom ``napivo://``
+    schemes, so we never put a fake "link" in the mail. ``link`` is accepted for a
+    future https Universal/App Link but is intentionally not rendered yet.
+    """
+    subject = "Ověř si e-mail – Na Pivo"
     message = (
-        "Ahoj! Díky, že jsi s námi. Pro dokončení "
-        "registrace ověř svou e-mailovou adresu – klepni na "
-        "tlačítko níže, nebo zadej kód v aplikaci.<br><br>"
-        "Odkaz brzy vyprší, takže to nenechávej na dlouho."
+        "Čau! Ještě jedna věc, než to roztočíme. "
+        "Mrkni zpátky do appky Na Pivo a zadej tenhle kód. "
+        "Platí jen chvíli, tak s tím nečekej."
     )
-    html = _render(
-        "Ověř svůj e-mail",
-        message,
-        button_label="Ověřit e-mail",
-        button_url=link,
-        code=code,
-    )
+    html = _render("Ověř si e-mail", message, code=code)
     text = (
-        "Ahoj!\n\n"
-        "Pro dokončení registrace ověř svou e-mailovou adresu.\n\n"
-        f"Otevři tento odkaz: {link}\n"
-        f"Nebo zadej v aplikaci tento kód: {code}\n\n"
-        "Odkaz brzy vyprší.\n\nNa Pivo"
+        "Čau!\n\n"
+        "Vrať se do appky Na Pivo a zadej tenhle kód:\n\n"
+        f"    {code}\n\n"
+        "Platí jen chvíli.\n\nNa Pivo"
     )
     return send_email(to, subject, html, text=text)
 
 
 def send_password_reset_email(to: str, *, link: str, code: str) -> bool:
-    """Send the password-reset message (button + manual code)."""
-    subject = "Obnova hesla – Na Pivo"
+    """Send the password-reset message.
+
+    Code-only (see send_verification_email for why). ``link`` is accepted for a
+    future https Universal/App Link but is intentionally not rendered yet.
+    """
+    subject = "Nové heslo – Na Pivo"
     message = (
-        "Někdo požádal o obnovu hesla k tomuto účtu. "
-        "Klepni na tlačítko níže, nebo zadej kód "
-        "v aplikaci a nastav si nové heslo.<br><br>"
-        "Pokud jsi to nebyl ty, tento e-mail klidně ignoruj — nic "
-        "se nestane. Odkaz brzy vyprší."
+        "Někdo si řekl o nové heslo k tvému účtu. Snad ty. "
+        "Vrať se do appky, zadej tenhle kód a nastav si nové.<br><br>"
+        "Jestli to nebyl ty, klidně to nech být, nic se nestane."
     )
-    html = _render(
-        "Obnova hesla",
-        message,
-        button_label="Nastavit nové heslo",
-        button_url=link,
-        code=code,
-    )
+    html = _render("Nové heslo", message, code=code)
     text = (
-        "Někdo požádal o obnovu hesla k tomuto účtu.\n\n"
-        f"Otevři tento odkaz: {link}\n"
-        f"Nebo zadej v aplikaci tento kód: {code}\n\n"
-        "Pokud jsi to nebyl ty, e-mail ignoruj. Odkaz brzy vyprší.\n\n"
-        "Na Pivo"
+        "Někdo si řekl o nové heslo k tvému účtu. Snad ty.\n\n"
+        "Vrať se do appky, zadej tenhle kód a nastav si nové heslo:\n\n"
+        f"    {code}\n\n"
+        "Jestli to nebyl ty, nech to být. Kód platí jen chvíli.\n\nNa Pivo"
     )
     return send_email(to, subject, html, text=text)
 
 
 def send_account_deletion_scheduled_email(to: str, *, cancel_by: str) -> bool:
     """Notify the user that their account is scheduled for deletion."""
-    subject = "Tvůj účet bude smazán – Na Pivo"
+    subject = "Mažeme ti účet – Na Pivo"
     message = (
-        "Tvůj účet Na Pivo je naplánován ke "
-        "smazání. Po datu <strong>"
-        f"{cancel_by}</strong> bude trvale odstraněn včetně "
-        "všech tvých dat.<br><br>"
-        "Změnil jsi názor? Stačí se do té doby znovu "
-        "přihlásit a smazání se zruší."
+        "Dali jsme tvůj účet do fronty na smazání. "
+        f"Po <strong>{cancel_by}</strong> zmizí napořád, i se všemi daty.<br><br>"
+        "Rozmyslel sis to? Než ten den přijde, stačí se přihlásit "
+        "a je to zase tvoje."
     )
-    html = _render("Tvůj účet bude smazán", message)
+    html = _render("Mažeme ti účet", message)
     text = (
-        "Tvůj účet Na Pivo je naplánován ke "
-        "smazání.\n\n"
-        f"Po datu {cancel_by} bude trvale odstraněn včetně "
-        "všech tvých dat.\n\n"
-        "Smazání zrušíš tím, že se do té "
-        "doby znovu přihlásíš.\n\nNa Pivo"
+        "Dali jsme tvůj účet do fronty na smazání.\n\n"
+        f"Po {cancel_by} zmizí napořád, i se všemi daty.\n\n"
+        "Rozmyslel sis to? Než ten den přijde, stačí se přihlásit "
+        "a je to zase tvoje.\n\nNa Pivo"
     )
     return send_email(to, subject, html, text=text)
 
 
 def send_account_deleted_email(to: str) -> bool:
     """Confirm to the user that their account and data have been deleted."""
-    subject = "Účet byl smazán – Na Pivo"
+    subject = "Účet je pryč – Na Pivo"
     message = (
-        "Tvůj účet a všechna související data byla "
-        "trvale smazána.<br><br>"
-        "Děkujeme, že jsi byl s námi. Kdykoli se můžeš "
-        "vrátit a založit si nový účet. \U0001f37b"
+        "A je to. Tvůj účet i všechna data jsme smazali natrvalo.<br><br>"
+        "Díky, žes s námi chvíli vydržel. Kdyby ses někdy chtěl vrátit, "
+        "hospoda je pořád otevřená. \U0001f37b"
     )
-    html = _render("Účet byl smazán", message)
+    html = _render("Účet je pryč", message)
     text = (
-        "Tvůj účet a všechna související data byla "
-        "trvale smazána.\n\n"
-        "Děkujeme, že jsi byl s námi.\n\nNa Pivo"
+        "A je to. Tvůj účet i všechna data jsme smazali natrvalo.\n\n"
+        "Díky, žes s námi chvíli vydržel. Kdyby ses chtěl vrátit, "
+        "hospoda je pořád otevřená.\n\nNa Pivo"
     )
     return send_email(to, subject, html, text=text)
