@@ -28,6 +28,7 @@ from django.db.models import F
 from django.utils import timezone as dj_timezone
 from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -35,6 +36,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from pubs import accounts
+from pubs.accounts import AccountError
 from pubs.enrichment import (
     MapyAllQueriesFailedError,
     MapyDailyCapExceededError,
@@ -65,9 +67,9 @@ from .authentication import AccountTokenAuthentication
 from .cache import get_or_enrich
 from .serializers import (
     AccountMeSerializer,
-    AccountPreferencesSerializer,
     AccountRegisterSerializer,
     AccountSerializer,
+    AccountUpdateSerializer,
     BlockedPubsResponseSerializer,
     ClientEventRequestSerializer,
     DrinkRequestSerializer,
@@ -1603,6 +1605,27 @@ class AccountView(APIView):
         )
 
 
+def _first_error_detail_and_code(errors) -> tuple[str, str | None]:
+    """Pull the first human message + machine code out of a DRF errors dict.
+
+    DRF wraps each message in an ``ErrorDetail`` whose ``.code`` carries the
+    stable code we attached in ``validate_nickname`` (e.g. ``nickname_taken``).
+    Returns ``(detail, code)`` where ``code`` is ``None`` for generic field
+    errors that have no custom code (so the caller falls back to the raw dict).
+    """
+    for value in errors.values():
+        items = value if isinstance(value, list) else [value]
+        for item in items:
+            code = getattr(item, "code", None)
+            # DRF's default field codes ('required', 'invalid', 'null', 'blank',
+            # 'max_length', 'min_length') are not our nickname_* contract codes;
+            # only surface a code that looks like ours.
+            if isinstance(code, str) and code.startswith("nickname_"):
+                return str(item), code
+            return str(item), None
+    return "Neplatný požadavek.", None
+
+
 class AccountMeView(APIView):
     """
     GET/PATCH /v1/account/me
@@ -1616,20 +1639,52 @@ class AccountMeView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request: Request) -> Response:
-        # request.user is the authenticated Account instance.
-        return Response(AccountMeSerializer(request.user).data, status=status.HTTP_200_OK)
+        # request.user is the authenticated Account instance. Pass the request as
+        # context so avatar_url is built absolute (the highest-leverage bug).
+        return Response(
+            AccountMeSerializer(request.user, context={"request": request}).data,
+            status=status.HTTP_200_OK,
+        )
 
     def patch(self, request: Request) -> Response:
-        serializer = AccountPreferencesSerializer(
+        serializer = AccountUpdateSerializer(
             request.user,
             data=request.data,
             partial=True,
         )
         if not serializer.is_valid():
+            # A nickname validation error carries a stable machine code (set by
+            # AccountUpdateSerializer.validate_nickname); surface it as
+            # {detail, code} like the auth endpoints, not DRF's field-error dict.
+            detail, code = _first_error_detail_and_code(serializer.errors)
+            if code:
+                # nickname_taken is a 409 (a uniqueness conflict), matching both
+                # the DB IntegrityError backstop below and the contract; the other
+                # nickname_* codes (invalid/reserved/too_short/too_long) are 400.
+                http_status = (
+                    status.HTTP_409_CONFLICT
+                    if code == "nickname_taken"
+                    else status.HTTP_400_BAD_REQUEST
+                )
+                return Response({"detail": detail, "code": code}, status=http_status)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        account = serializer.save()
-        return Response(AccountMeSerializer(account).data, status=status.HTTP_200_OK)
+        try:
+            account = serializer.save()
+        except IntegrityError:
+            # DB UniqueConstraint backstop for a nickname TOCTOU race.
+            return Response(
+                {"detail": "Tuto přezdívku už někdo používá.", "code": "nickname_taken"},
+                status=status.HTTP_409_CONFLICT,
+            )
+        except AccountError as exc:
+            return Response(
+                {"detail": exc.message, "code": exc.code}, status=exc.http_status
+            )
+        return Response(
+            AccountMeSerializer(account, context={"request": request}).data,
+            status=status.HTTP_200_OK,
+        )
 
     def delete(self, request: Request) -> Response:
         """Delete the account — required in-app by the App Store and Google Play.
@@ -1648,3 +1703,89 @@ class AccountMeView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AccountAvatarView(APIView):
+    """
+    PUT/POST/DELETE /v1/account/me/avatar
+
+    Upload, replace, or remove the authenticated account's avatar. The upload is
+    ``multipart/form-data`` with a single ``avatar`` file part (jpeg/png/webp/heic
+    accepted, but the server NEVER trusts the declared type — every image is
+    re-decoded and re-encoded to a 256px square webp with EXIF stripped). POST is
+    accepted as a mobile alias for PUT. DELETE resets to the initials fallback and
+    is idempotent (200 even when there was no avatar).
+
+    ``parser_classes`` is overridden LOCALLY to MultiPartParser — the global
+    default stays JSON-only so no other endpoint is affected.
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "avatar"
+
+    def _store(self, request: Request) -> Response:
+        upload = request.FILES.get("avatar")
+        if upload is None:
+            return Response(
+                {"detail": "Chybí soubor s obrázkem.", "code": "avatar_missing"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            accounts.set_avatar(request.user, upload)
+        except AccountError as exc:
+            return Response(
+                {"detail": exc.message, "code": exc.code}, status=exc.http_status
+            )
+        return Response(
+            AccountMeSerializer(request.user, context={"request": request}).data,
+            status=status.HTTP_200_OK,
+        )
+
+    def put(self, request: Request) -> Response:
+        return self._store(request)
+
+    def post(self, request: Request) -> Response:
+        # Mobile alias for PUT (some HTTP clients can't send multipart PUT).
+        return self._store(request)
+
+    def delete(self, request: Request) -> Response:
+        accounts.clear_avatar(request.user)
+        return Response(
+            AccountMeSerializer(request.user, context={"request": request}).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class NicknameAvailableView(APIView):
+    """
+    GET /v1/account/nickname-available?nickname=<candidate>
+
+    Probe whether a nickname can be claimed. Public (AllowAny) with OPTIONAL auth:
+    when a Bearer token is supplied, the caller's OWN current nickname reports as
+    available (so the edit screen doesn't flag the unchanged value as taken).
+    Returns ``200 {nickname, available, reason}``; ``400`` when the param is
+    missing. Throttled per-IP (scope ``nickname_check``).
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "nickname_check"
+
+    def get(self, request: Request) -> Response:
+        nickname = request.query_params.get("nickname")
+        if nickname is None or not nickname.strip():
+            return Response(
+                {"detail": "Chybí parametr 'nickname'.", "code": "nickname_missing"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        nickname = nickname.strip()
+        account = request.user if isinstance(request.user, Account) else None
+        available, reason = accounts.check_nickname(nickname, account=account)
+        return Response(
+            {"nickname": nickname, "available": available, "reason": reason},
+            status=status.HTTP_200_OK,
+        )

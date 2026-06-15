@@ -143,6 +143,25 @@ STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # ---------------------------------------------------------------------------
+# Media files (user-uploaded avatars)
+# ---------------------------------------------------------------------------
+# Avatars are stored on the local disk under MEDIA_ROOT and served from
+# MEDIA_URL. In production MEDIA_ROOT points at a Docker named volume
+# (napivo_media:/data/media) and Caddy serves /media/* directly with a long
+# immutable cache (Django does NOT serve media in prod). In DEBUG/tests Django
+# serves it via config.urls (see static(MEDIA_URL, ...)).
+MEDIA_URL = "/media/"
+MEDIA_ROOT = os.environ.get("MEDIA_ROOT", str(BASE_DIR / "media"))
+
+# Avatar upload / processing limits.
+# Reject uploads larger than this BEFORE decoding (decompression-bomb guard).
+AVATAR_MAX_UPLOAD_BYTES: int = int(os.environ.get("AVATAR_MAX_UPLOAD_BYTES", str(5 * 1024 * 1024)))
+# Final square avatar edge in pixels (stored as webp).
+AVATAR_SIZE_PX: int = int(os.environ.get("AVATAR_SIZE_PX", "256"))
+# webp encoder quality for the stored avatar.
+AVATAR_WEBP_QUALITY: int = int(os.environ.get("AVATAR_WEBP_QUALITY", "82"))
+
+# ---------------------------------------------------------------------------
 # Default primary key type
 # ---------------------------------------------------------------------------
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -223,6 +242,15 @@ AUTH_THROTTLE_RATE: str = os.environ.get("AUTH_THROTTLE_RATE", "20/min")
 # request email verification). Tighter, because each call can send an email.
 AUTH_EMAIL_THROTTLE_RATE: str = os.environ.get("AUTH_EMAIL_THROTTLE_RATE", "5/min")
 
+# Per-IP rate limit for the nickname-availability probe
+# (GET /v1/account/nickname-available). Generous, because the edit UI checks as
+# the user types, but capped to blunt scripted handle enumeration.
+NICKNAME_CHECK_THROTTLE_RATE: str = os.environ.get("NICKNAME_CHECK_THROTTLE_RATE", "60/min")
+
+# Per-IP rate limit for avatar upload/delete (PUT/POST/DELETE
+# /v1/account/me/avatar). Each upload re-encodes an image, so keep it modest.
+AVATAR_THROTTLE_RATE: str = os.environ.get("AVATAR_THROTTLE_RATE", "10/min")
+
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
@@ -254,6 +282,8 @@ REST_FRAMEWORK = {
         "client_events": CLIENT_EVENTS_THROTTLE_RATE,
         "auth": AUTH_THROTTLE_RATE,
         "auth_email": AUTH_EMAIL_THROTTLE_RATE,
+        "nickname_check": NICKNAME_CHECK_THROTTLE_RATE,
+        "avatar": AVATAR_THROTTLE_RATE,
     },
 }
 

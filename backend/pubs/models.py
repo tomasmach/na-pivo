@@ -18,6 +18,8 @@ import secrets
 import uuid
 
 from django.db import models
+from django.db.models import Q
+from django.db.models.functions import Lower
 from django.utils import timezone
 
 
@@ -209,6 +211,19 @@ def hash_account_token(raw_token: str) -> str:
     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
 
+def account_avatar_path(instance, filename: str) -> str:
+    """Storage path for an account avatar: one stable file per account.
+
+    Keyed on ``public_id`` (never the PK), and always ``.webp`` because the
+    avatar pipeline re-encodes every upload to webp. The path is stable so a
+    re-upload OVERWRITES the previous file instead of accumulating orphans; the
+    ``?v=<last_seen epoch>`` cache-bust on ``avatar_url`` lets clients bypass a
+    stale CDN/browser cache after a change. ``filename`` is ignored on purpose —
+    we never trust the client-supplied name or extension.
+    """
+    return f"avatars/{instance.public_id}.webp"
+
+
 class Account(models.Model):
     """
     An anonymous, device-bound user account.
@@ -278,11 +293,36 @@ class Account(models.Model):
     )
 
     # ---------- profile (populated once the account is claimed) ----------
+    nickname = models.CharField(
+        max_length=20,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Unique public handle (3–20 chars [a-zA-Z0-9_.]), user-picked. "
+        "Casing is preserved; uniqueness is case-insensitive via the "
+        "uniq_account_nickname_ci functional constraint. NULL for accounts that "
+        "have not set one yet.",
+    )
     display_name = models.CharField(
         max_length=120,
         blank=True,
         default="",
-        help_text="Optional display name, set on sign-up or from a social provider.",
+        help_text="Optional real name (free text).",
+    )
+    avatar = models.ImageField(
+        upload_to=account_avatar_path,
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Uploaded profile picture, stored on local disk as a 256px "
+        "square webp. Empty when the account has no avatar (client renders an "
+        "initials fallback).",
+    )
+    is_public = models.BooleanField(
+        default=True,
+        db_index=True,
+        help_text="Public profile (opt-out). Gates global search and "
+        "leaderboards; friends always see the profile regardless.",
     )
 
     # ---------- lifecycle / deletion ----------
@@ -307,6 +347,21 @@ class Account(models.Model):
         verbose_name = "Account"
         verbose_name_plural = "Accounts"
         ordering = ["-created_at"]
+        constraints = [
+            # Case-insensitive unique handle as a functional PARTIAL index on
+            # Lower(nickname). The partial condition skips NULL/'' rows so every
+            # account without a handle coexists. This works identically on
+            # sqlite and Postgres (Django >= 4.0) and — crucially — adds a plain
+            # functional unique index, NOT the varchar_pattern_ops "_like" index
+            # that a column-level unique=True / db_index pairing produces (the
+            # footgun that broke migration 0004). Uniqueness comes ONLY from this
+            # constraint; the column itself is a plain btree (db_index=True).
+            models.UniqueConstraint(
+                Lower("nickname"),
+                name="uniq_account_nickname_ci",
+                condition=~Q(nickname="") & Q(nickname__isnull=False),
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"Account({self.public_id} — device {self.device_id})"

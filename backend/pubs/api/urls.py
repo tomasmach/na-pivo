@@ -32,6 +32,7 @@ from .auth_views import (
     VerifyEmailView,
 )
 from .views import (
+    AccountAvatarView,
     AccountMeView,
     AccountView,
     BlockedPubReportsView,
@@ -39,6 +40,7 @@ from .views import (
     DrinksView,
     FeedbackView,
     HealthView,
+    NicknameAvailableView,
     PubCommunityView,
     PubHoursView,
     PubLocationGeocodeView,
@@ -72,6 +74,12 @@ urlpatterns = [
     path("health", HealthView.as_view(), name="health"),
     path("account", AccountView.as_view(), name="account"),
     path("account/me", AccountMeView.as_view(), name="account-me"),
+    path("account/me/avatar", AccountAvatarView.as_view(), name="account-me-avatar"),
+    path(
+        "account/nickname-available",
+        NicknameAvailableView.as_view(),
+        name="account-nickname-available",
+    ),
     # --- user accounts / auth ---
     path("auth/register", RegisterView.as_view(), name="auth-register"),
     path("auth/login", LoginView.as_view(), name="auth-login"),

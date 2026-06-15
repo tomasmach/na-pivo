@@ -49,8 +49,17 @@ logger = logging.getLogger("pubs.api.auth")
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
-def _account_state(account: Account, *, token: str | None = None, created: bool | None = None) -> dict:
-    data = dict(AccountMeSerializer(account).data)
+def _account_state(
+    account: Account,
+    *,
+    request: Request | None = None,
+    token: str | None = None,
+    created: bool | None = None,
+) -> dict:
+    # Thread the request into the serializer context so avatar_url is built
+    # ABSOLUTE — the highest-leverage bug if omitted (mobile <Image> can't load a
+    # relative /media/ path). Every auth response goes through here.
+    data = dict(AccountMeSerializer(account, context={"request": request}).data)
     if token is not None:
         data["token"] = token
     if created is not None:
@@ -111,7 +120,7 @@ class RegisterView(_AuthView):
                 display_name=ser.validated_data.get("display_name", ""),
             )
             return Response(
-                _account_state(account, token=token, created=True),
+                _account_state(account, request=request, token=token, created=True),
                 status=status.HTTP_201_CREATED,
             )
 
@@ -132,7 +141,10 @@ class LoginView(_AuthView):
                 email=ser.validated_data["email"],
                 password=ser.validated_data["password"],
             )
-            return Response(_account_state(account, token=token), status=status.HTTP_200_OK)
+            return Response(
+                _account_state(account, request=request, token=token),
+                status=status.HTTP_200_OK,
+            )
 
         return self._safe(run)
 
@@ -157,9 +169,13 @@ class GoogleAuthView(_AuthView):
                 _current_account(request),
                 provider=AuthIdentity.Provider.GOOGLE,
                 claims=claims,
+                # Forward Google's asserted name so display_name is captured (the
+                # token also carries `picture`, captured in resolve_social).
+                full_name=claims.get("name", ""),
             )
             return Response(
-                _account_state(account, token=token, created=created), status=status.HTTP_200_OK
+                _account_state(account, request=request, token=token, created=created),
+                status=status.HTTP_200_OK,
             )
 
         return self._safe(run)
@@ -188,7 +204,8 @@ class AppleAuthView(_AuthView):
                 apple_refresh_token=refresh,
             )
             return Response(
-                _account_state(account, token=token, created=created), status=status.HTTP_200_OK
+                _account_state(account, request=request, token=token, created=created),
+                status=status.HTTP_200_OK,
             )
 
         return self._safe(run)
@@ -222,7 +239,9 @@ class LinkView(_AuthView):
                 apple_refresh_token=refresh,
                 full_name=data.get("full_name", ""),
             )
-            return Response(_account_state(request.user), status=status.HTTP_200_OK)
+            return Response(
+                _account_state(request.user, request=request), status=status.HTTP_200_OK
+            )
 
         return self._safe(run)
 
@@ -238,7 +257,9 @@ class UnlinkView(_AuthView):
 
         def run() -> Response:
             accounts.unlink(request.user, provider=ser.validated_data["provider"])
-            return Response(_account_state(request.user), status=status.HTTP_200_OK)
+            return Response(
+                _account_state(request.user, request=request), status=status.HTTP_200_OK
+            )
 
         return self._safe(run)
 
@@ -260,7 +281,9 @@ class SetPasswordView(_AuthView):
             )
             # If this just attached an email, kick off verification.
             accounts.request_email_verification(request.user)
-            return Response(_account_state(request.user), status=status.HTTP_200_OK)
+            return Response(
+                _account_state(request.user, request=request), status=status.HTTP_200_OK
+            )
 
         return self._safe(run)
 
@@ -323,7 +346,10 @@ class ResetPasswordView(_AuthView):
             )
             # Reset revoked all sessions; issue a fresh one so the user is logged in.
             token = accounts.issue_token(account)
-            return Response(_account_state(account, token=token), status=status.HTTP_200_OK)
+            return Response(
+                _account_state(account, request=request, token=token),
+                status=status.HTTP_200_OK,
+            )
 
         return self._safe(run)
 

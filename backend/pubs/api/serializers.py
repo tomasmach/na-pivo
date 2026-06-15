@@ -39,8 +39,11 @@ import uuid
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import EmailValidator
+from django.db import IntegrityError
 from rest_framework import serializers
 
+from pubs import accounts
+from pubs.accounts import AccountError
 from pubs.models import (
     Account,
     ClientEvent,
@@ -866,6 +869,14 @@ class AccountSerializer(serializers.ModelSerializer):
         fields = ["id", "device_id", "hide_pub_names", "created_at"]
 
 
+class AccountUsageSerializer(serializers.Serializer):
+    """Nested usage block — currently just the distance tile the mobile profile
+    screen renders. Reads from the related AccountUsageStats row when present,
+    defaulting to 0 so the key is always there."""
+
+    walked_distance_m = serializers.IntegerField(read_only=True)
+
+
 class AccountMeSerializer(serializers.ModelSerializer):
     """Canonical account state returned by GET /v1/account/me and by every auth
     endpoint (with the raw ``token`` injected by the view). NEVER exposes a token.
@@ -873,6 +884,12 @@ class AccountMeSerializer(serializers.ModelSerializer):
     ``is_anonymous`` is True for a fresh device account with no credential yet;
     ``providers`` lists the sign-in methods ('email', 'google', 'apple') and
     drives the link/unlink UI.
+
+    ``avatar_url`` is the ABSOLUTE media URL (so the mobile ``<Image>`` can load
+    it) with a ``?v=<last_seen epoch>`` cache-bust — built only when the view
+    passes ``context={'request': request}``. Without that context it degrades to
+    a relative ``/media/`` path (never crashes), which is why every call site
+    must thread the request.
     """
 
     id = serializers.UUIDField(source="public_id", read_only=True)
@@ -880,19 +897,27 @@ class AccountMeSerializer(serializers.ModelSerializer):
     email_verified = serializers.BooleanField(source="email_is_verified", read_only=True)
     is_anonymous = serializers.SerializerMethodField()
     providers = serializers.SerializerMethodField()
+    avatar_url = serializers.SerializerMethodField()
+    has_avatar = serializers.SerializerMethodField()
+    usage = serializers.SerializerMethodField()
 
     class Meta:
         model = Account
         fields = [
             "id",
             "device_id",
+            "nickname",
             "display_name",
+            "avatar_url",
+            "has_avatar",
+            "is_public",
             "email",
             "email_verified",
             "providers",
             "is_anonymous",
             "status",
             "hide_pub_names",
+            "usage",
             "created_at",
             "last_seen_at",
         ]
@@ -903,13 +928,90 @@ class AccountMeSerializer(serializers.ModelSerializer):
     def get_providers(self, obj: Account) -> list[str]:
         return obj.auth_methods()
 
+    def get_has_avatar(self, obj: Account) -> bool:
+        return bool(obj.avatar)
 
-class AccountPreferencesSerializer(serializers.ModelSerializer):
-    """Writable account preferences accepted by PATCH /v1/account/me."""
+    def get_avatar_url(self, obj: Account) -> str | None:
+        """Absolute avatar URL + ?v=<last_seen epoch> cache-bust, or None.
+
+        Null-guarded against a missing request context: if the view forgot to
+        pass it, fall back to the relative storage URL rather than crashing
+        (the absolute build is what mobile needs, so this should never happen in
+        practice — see the context note in the serializer docstring)."""
+        if not obj.avatar:
+            return None
+        try:
+            url = obj.avatar.url
+        except (ValueError, AttributeError):
+            return None
+        request = self.context.get("request")
+        if request is not None:
+            url = request.build_absolute_uri(url)
+        # Cache-bust on last_seen_at so a fresh upload is fetched even behind an
+        # immutable CDN cache. last_seen_at advances on every authenticated call.
+        last_seen = getattr(obj, "last_seen_at", None)
+        if last_seen is not None:
+            sep = "&" if "?" in url else "?"
+            url = f"{url}{sep}v={int(last_seen.timestamp())}"
+        return url
+
+    def get_usage(self, obj: Account) -> dict:
+        stats = getattr(obj, "usage_stats", None)
+        walked = stats.walked_distance_m if stats is not None else 0
+        return AccountUsageSerializer({"walked_distance_m": walked}).data
+
+
+class AccountUpdateSerializer(serializers.ModelSerializer):
+    """Writable account subset accepted by PATCH /v1/account/me.
+
+    Replaces the old AccountPreferencesSerializer in the view: it keeps
+    ``hide_pub_names`` working and adds the profile fields. ``nickname`` is
+    validated by the single source of truth (:func:`accounts.validate_nickname`);
+    an empty string is coerced to NULL (clearing the handle frees it). The DB
+    UniqueConstraint is the race backstop — a concurrent claim surfaces as an
+    ``IntegrityError`` on save, mapped to 409 ``nickname_taken``.
+    """
+
+    # Allow null + blank so the client can CLEAR the handle. ModelSerializer would
+    # otherwise reject "" because the model field rejects blank on a CharField with
+    # null=True; we coerce ""→None in validate_nickname/save.
+    #
+    # NO ``max_length`` here: DRF runs a field-level max_length check BEFORE
+    # validate_nickname, and it raises with the built-in code 'max_length' (not our
+    # contract code). The single source of truth (accounts.validate_nickname) owns
+    # the 20-char ceiling and emits code='nickname_too_long' in the {detail, code}
+    # shape the mobile client branches on.
+    nickname = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
     class Meta:
         model = Account
-        fields = ["hide_pub_names"]
+        fields = ["nickname", "display_name", "is_public", "hide_pub_names"]
+
+    def validate_nickname(self, value: str | None) -> str | None:
+        # Coerce empty → None (clear). Otherwise run the canonical validator,
+        # which raises AccountError; re-raise as a DRF ValidationError carrying the
+        # stable code so the view can map it to {detail, code}.
+        if value is None or not value.strip():
+            return None
+        try:
+            return accounts.validate_nickname(value, account=self.instance)
+        except AccountError as exc:
+            raise serializers.ValidationError(exc.message, code=exc.code) from exc
+
+    def save(self, **kwargs) -> Account:
+        # The DB UniqueConstraint is the last line of defence against a TOCTOU
+        # race between validate_nickname's existence check and the write. Let the
+        # view translate IntegrityError into a 409; we only re-raise it here.
+        try:
+            return super().save(**kwargs)
+        except IntegrityError:
+            raise
+
+
+# Backwards-compatible alias: the old name pointed at the preferences-only
+# serializer; PATCH now uses AccountUpdateSerializer. Kept so any import of the
+# old symbol keeps resolving.
+AccountPreferencesSerializer = AccountUpdateSerializer
 
 
 # ---------------------------------------------------------------------------

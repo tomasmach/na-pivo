@@ -33,15 +33,21 @@ token because Apple requires it.
 
 from __future__ import annotations
 
+import io
 import logging
+import re
 from datetime import timedelta
 
+import requests
 from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.files.base import ContentFile
 from django.db import IntegrityError, transaction
 from django.utils import timezone
+from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL.Image import DecompressionBombError
 
 from pubs import emailer, oauth
 from pubs.models import (
@@ -89,6 +95,264 @@ def validate_password_strength(raw_password: str, *, account: Account | None = N
             code="weak_password",
             http_status=400,
         ) from exc
+
+
+# ---------------------------------------------------------------------------
+# Nickname (unique public handle)
+# ---------------------------------------------------------------------------
+# Handles users may NOT take — system terms, brand names, route-conflicting
+# words, and the falsy literals that often leak through clients. Compared
+# lowercase against the lowercased candidate.
+RESERVED_NICKNAMES = frozenset(
+    {
+        "admin",
+        "administrator",
+        "root",
+        "superuser",
+        "mod",
+        "moderator",
+        "support",
+        "help",
+        "staff",
+        "team",
+        "official",
+        "napivo",
+        "na-pivo",
+        "na_pivo",
+        "system",
+        "api",
+        "www",
+        "me",
+        "null",
+        "none",
+        "undefined",
+        "anonymous",
+        "user",
+        "account",
+        "settings",
+        "auth",
+        "login",
+        "register",
+        "privacy",
+        "terms",
+        "about",
+        "contact",
+        "pivo",
+        "beer",
+    }
+)
+
+# 3–20 chars from [a-zA-Z0-9_.]. Dot rules (no '..', no leading/trailing '.')
+# are enforced separately so each gets its own clear error.
+_NICKNAME_RE = re.compile(r"^[a-zA-Z0-9_.]{3,20}$")
+
+
+def validate_nickname(value: str, *, account: Account | None = None) -> str:
+    """Validate a candidate nickname; return it verbatim (casing preserved).
+
+    Order: charset/length → reserved → taken. Raises :class:`AccountError` with a
+    stable ``code`` the mobile app branches on. ``account`` (when given) is
+    excluded from the taken-check so re-saving an account's own current nickname
+    is idempotent.
+    """
+    value = (value or "").strip()
+    if len(value) < 3:
+        raise AccountError("Přezdívka je příliš krátká.", code="nickname_too_short")
+    if len(value) > 20:
+        raise AccountError("Přezdívka je příliš dlouhá.", code="nickname_too_long")
+    if (
+        not _NICKNAME_RE.match(value)
+        or ".." in value
+        or value.startswith(".")
+        or value.endswith(".")
+    ):
+        raise AccountError(
+            "Přezdívka smí obsahovat jen písmena, číslice, tečku a podtržítko.",
+            code="nickname_invalid",
+        )
+    if value.lower() in RESERVED_NICKNAMES:
+        raise AccountError("Tuto přezdívku nelze použít.", code="nickname_reserved")
+
+    taken = Account.objects.filter(nickname__iexact=value)
+    if account is not None and account.pk is not None:
+        taken = taken.exclude(pk=account.pk)
+    if taken.exists():
+        raise AccountError(
+            "Tuto přezdívku už někdo používá.", code="nickname_taken", http_status=409
+        )
+    return value
+
+
+def check_nickname(value: str, account: Account | None = None) -> tuple[bool, str | None]:
+    """Non-raising availability probe for the nickname-available endpoint.
+
+    Returns ``(available, reason)`` where ``reason`` is one of
+    ``invalid|reserved|taken|too_short|too_long`` (or ``None`` when available).
+    Mirrors :func:`validate_nickname` exactly — same order — but never raises.
+    """
+    try:
+        validate_nickname(value, account=account)
+    except AccountError as exc:
+        # Strip the "nickname_" prefix to the bare reason the contract specifies.
+        reason = exc.code.removeprefix("nickname_")
+        return False, reason
+    return True, None
+
+
+def set_nickname(account: Account, value: str | None) -> Account:
+    """Set (or clear) the account's nickname. Empty/None clears it to NULL.
+
+    Validation is the single source of truth (:func:`validate_nickname`); the DB
+    UniqueConstraint is the race backstop — the caller catches ``IntegrityError``
+    and maps it to 409 ``nickname_taken``.
+    """
+    if value is None or not value.strip():
+        account.nickname = None
+        account.save(update_fields=["nickname"])
+        return account
+    account.nickname = validate_nickname(value, account=account)
+    account.save(update_fields=["nickname"])
+    return account
+
+
+# ---------------------------------------------------------------------------
+# Avatar pipeline (local-disk upload → 256px square webp, EXIF stripped)
+# ---------------------------------------------------------------------------
+def process_avatar(file_or_bytes) -> ContentFile:
+    """Re-encode an uploaded image to a 256px square webp ContentFile.
+
+    NEVER trusts the client's content-type or extension — every upload is decoded
+    and re-encoded. Guards run BEFORE decode (size cap + decompression-bomb
+    ceiling). Pipeline: ``exif_transpose`` (honour orientation) → ``RGB`` →
+    ``ImageOps.fit`` (centre-crop to square) → webp. Raises :class:`AccountError`
+    (``avatar_too_large`` | ``avatar_invalid``).
+    """
+    max_bytes = settings.AVATAR_MAX_UPLOAD_BYTES
+
+    # --- size guard (before any decode) ---
+    size = getattr(file_or_bytes, "size", None)
+    if size is None and isinstance(file_or_bytes, (bytes, bytearray)):
+        size = len(file_or_bytes)
+    if size is not None and size > max_bytes:
+        raise AccountError("Obrázek je příliš velký.", code="avatar_too_large", http_status=400)
+
+    if isinstance(file_or_bytes, (bytes, bytearray)):
+        raw = bytes(file_or_bytes)
+    else:
+        # Read at most max_bytes + 1 so a lying/streaming Content-Length cannot
+        # let an oversized body slip past the size attribute above.
+        try:
+            file_or_bytes.seek(0)
+        except (AttributeError, OSError):
+            pass
+        raw = file_or_bytes.read(max_bytes + 1)
+    if len(raw) > max_bytes:
+        raise AccountError("Obrázek je příliš velký.", code="avatar_too_large", http_status=400)
+    if not raw:
+        raise AccountError("Obrázek nelze načíst.", code="avatar_invalid", http_status=400)
+
+    # --- decompression-bomb ceiling (before decode) ---
+    # Cap the decoded pixel count so a tiny highly-compressed file cannot blow up
+    # memory. Restored in a finally so we never leak the override across calls.
+    edge = settings.AVATAR_SIZE_PX
+    previous_limit = Image.MAX_IMAGE_PIXELS
+    Image.MAX_IMAGE_PIXELS = 50_000_000  # ~50 MP, generous for phone photos
+    try:
+        try:
+            with Image.open(io.BytesIO(raw)) as img:
+                img.load()
+                img = ImageOps.exif_transpose(img)
+                img = img.convert("RGB")
+                img = ImageOps.fit(
+                    img, (edge, edge), Image.Resampling.LANCZOS, centering=(0.5, 0.5)
+                )
+                out = io.BytesIO()
+                img.save(
+                    out,
+                    format="WEBP",
+                    quality=settings.AVATAR_WEBP_QUALITY,
+                    method=6,
+                )
+        except (DecompressionBombError, UnidentifiedImageError, OSError, ValueError) as exc:
+            raise AccountError(
+                "Obrázek nelze načíst.", code="avatar_invalid", http_status=400
+            ) from exc
+    finally:
+        Image.MAX_IMAGE_PIXELS = previous_limit
+
+    return ContentFile(out.getvalue(), name="avatar.webp")
+
+
+def set_avatar(account: Account, file) -> Account:
+    """Process and store an uploaded avatar, overwriting any previous one.
+
+    The storage path is stable (``avatars/<public_id>.webp``). Django's default
+    storage NEVER overwrites — ``get_available_name`` appends a random suffix when
+    the target exists — so a naive re-upload would leak the old file AND drift the
+    field off the stable path. We therefore delete the existing file first, then
+    save to the stable path. ``last_seen_at`` is touched in the same save so the
+    ``avatar_url`` ``?v=`` cache-bust advances and clients/CDNs bypass the stale
+    immutable cache after a change.
+    """
+    content = process_avatar(file)
+    # Default FileSystemStorage won't overwrite, so drop the previous file first
+    # to guarantee the stable path and avoid orphans.
+    if account.avatar:
+        account.avatar.delete(save=False)
+    # Pass save=False then a single save() to avoid two writes; the upload_to
+    # callable ignores the supplied name and returns the stable path.
+    account.avatar.save("avatar.webp", content, save=False)
+    account.save(update_fields=["avatar", "last_seen_at"])
+    return account
+
+
+def clear_avatar(account: Account) -> Account:
+    """Remove the stored avatar file and reset the field. Idempotent."""
+    if account.avatar:
+        account.avatar.delete(save=False)
+    account.avatar = ""
+    account.save(update_fields=["avatar"])
+    return account
+
+
+def _maybe_capture_social_avatar(account: Account, claims: dict, provider: str) -> None:
+    """Capture a Google profile picture into the avatar ONCE, best-effort.
+
+    Only fires when the account has no avatar yet AND the provider is Google AND
+    the token carried a ``picture`` URL. Apple has no picture → no-op. ALL errors
+    are swallowed with a warning: a flaky picture fetch must never break sign-in.
+    """
+    if account.avatar:
+        return
+    if provider != AuthIdentity.Provider.GOOGLE:
+        return
+    picture_url = (claims.get("picture") or "").strip()
+    if not picture_url:
+        return
+    if not picture_url.lower().startswith("https://"):
+        return
+    try:
+        resp = requests.get(picture_url, timeout=10, stream=True)
+        resp.raise_for_status()
+        content_type = resp.headers.get("Content-Type", "")
+        if not content_type.lower().startswith("image/"):
+            logger.warning("social avatar: non-image content-type %r, skipping", content_type)
+            return
+        # Stream-cap at the upload limit so a hostile picture URL can't exhaust
+        # memory; iter_content honours the cap regardless of Content-Length.
+        max_bytes = settings.AVATAR_MAX_UPLOAD_BYTES
+        chunks = io.BytesIO()
+        total = 0
+        for chunk in resp.iter_content(chunk_size=64 * 1024):
+            total += len(chunk)
+            if total > max_bytes:
+                logger.warning("social avatar: picture exceeded %d bytes, skipping", max_bytes)
+                return
+            chunks.write(chunk)
+        set_avatar(account, chunks.getvalue())
+        logger.info("captured social avatar for account %s", account.public_id)
+    except Exception as exc:  # noqa: BLE001 — best-effort, must never break sign-in
+        logger.warning("social avatar capture failed (ignored): %s", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -296,7 +560,8 @@ def resolve_social(
             updated.append("email")
         if updated:
             existing.save(update_fields=updated)
-        _maybe_set_display_name(account, full_name)
+        _maybe_set_display_name(account, full_name or claims.get("name", ""))
+        _maybe_capture_social_avatar(account, claims, provider)
         return account, issue_token(account), False
 
     # New identity. Decide which account it attaches to.
@@ -336,7 +601,7 @@ def resolve_social(
                 email=email,
                 apple_refresh_token=apple_refresh_token,
             )
-            _maybe_set_display_name(account, full_name)
+            _maybe_set_display_name(account, full_name or claims.get("name", ""))
     except IntegrityError:
         # Concurrent first sign-in for the same (provider, subject) — re-resolve.
         existing = (
@@ -348,6 +613,9 @@ def resolve_social(
             raise
         return existing.account, issue_token(existing.account), False
 
+    # Avatar capture does network I/O + a file write, so run it AFTER the
+    # identity transaction has committed (best-effort, never fatal).
+    _maybe_capture_social_avatar(account, claims, provider)
     return account, issue_token(account), created
 
 
@@ -399,7 +667,8 @@ def link_social(
         email=email,
         apple_refresh_token=apple_refresh_token,
     )
-    _maybe_set_display_name(account, full_name)
+    _maybe_set_display_name(account, full_name or claims.get("name", ""))
+    _maybe_capture_social_avatar(account, claims, provider)
     return identity
 
 

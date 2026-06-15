@@ -13,6 +13,12 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # User-uploaded avatars live on a named volume so they survive deploys.
+    # MEDIA_ROOT=/data/media (set in .env) must match this mount; Caddy serves
+    # /media/* from the same path on the host (Django does not serve media in
+    # prod). The worker mounts it too so it can clean up avatars on purge.
+    volumes:
+      - napivo_media:/data/media
     networks:
       - internal
       - caddy
@@ -43,6 +49,10 @@ services:
       # so the worker never queries tables that don't exist yet.
       napivo-web:
         condition: service_healthy
+    # Share the avatar volume so the worker can purge avatar files for deleted
+    # accounts. Same path as web (MEDIA_ROOT=/data/media).
+    volumes:
+      - napivo_media:/data/media
     networks:
       - internal
     # Override the web entrypoint: loop refresh_hours every 5 minutes.
@@ -84,3 +94,6 @@ networks:
 
 volumes:
   napivo_pg:
+  # User-uploaded avatars (MEDIA_ROOT=/data/media). Caddy serves /media/* from
+  # this volume's host path; it persists across container rebuilds/deploys.
+  napivo_media:

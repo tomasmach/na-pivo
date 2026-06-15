@@ -58,8 +58,9 @@ class EnrichTaskAdmin(admin.ModelAdmin):
 
 @admin.register(Account)
 class AccountAdmin(admin.ModelAdmin):
-    list_display = ("public_id", "device_id", "created_at", "last_seen_at")
-    search_fields = ("public_id", "device_id")
+    list_display = ("public_id", "nickname", "device_id", "is_public", "created_at", "last_seen_at")
+    list_filter = ("is_public",)
+    search_fields = ("public_id", "device_id", "nickname")
     # Only the SHA-256 token_hash is stored (never the raw bearer secret), so it
     # is safe to surface read-only — it cannot be reversed into a usable token.
     readonly_fields = ("public_id", "token_hash", "created_at", "last_seen_at")
