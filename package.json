@@ -34,6 +34,7 @@
     "expo-audio": "~56.0.12",
     "expo-build-properties": "~56.0.19",
     "expo-constants": "~56.0.14",
+    "expo-file-system": "~56.0.8",
     "expo-font": "~56.0.5",
     "expo-haptics": "~56.0.3",
     "expo-image-manipulator": "~56.0.19",

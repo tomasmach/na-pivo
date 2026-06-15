@@ -13,6 +13,8 @@
  * native SDK wrappers in src/data/socialAuth.ts.
  */
 
+import { File, UploadType } from 'expo-file-system';
+
 import {
   ensureAccount,
   getSessionToken,
@@ -469,11 +471,13 @@ export async function checkNicknameAvailable(nickname: string): Promise<Nickname
  * Upload an avatar image (POST /v1/account/me/avatar, multipart field `avatar`).
  *
  * MUST bypass `authFetch` — that helper hardcodes `Content-Type: application/json`,
- * which would corrupt a multipart body. We build a dedicated multipart request:
- * pull the bearer token directly, append a React-Native file object to FormData,
- * and set ONLY the Authorization header (RN injects the multipart boundary into
- * Content-Type for us; setting it manually would drop the boundary). Uses its own
- * 30s AbortController rather than the shared 12s budget — uploads are slower.
+ * which would corrupt a multipart body. We also CANNOT use the global `fetch` with
+ * a FormData file part: Expo SDK 56 swaps in a WinterCG `fetch` whose
+ * `convertFormDataAsync` rejects the legacy RN `{uri,name,type}` file object with
+ * "Unsupported FormDataPart implementation" (it only accepts string/Blob/File).
+ * Instead we hand the local file to expo-file-system's native multipart uploader,
+ * which reads the file and builds the body in native code. Its own AbortSignal gives
+ * a 30s budget (uploads are slower than the shared 12s API budget).
  */
 export async function uploadAvatar(localUri: string): Promise<AuthResult> {
   const endpoint = getBackendEndpoint('/v1/account/me/avatar');
@@ -482,28 +486,26 @@ export async function uploadAvatar(localUri: string): Promise<AuthResult> {
   const token = await getSessionToken();
   if (!token) return { ok: false, code: 'unauthenticated', detail: '' };
 
-  const form = new FormData();
-  // RN file object — the typings expect a Blob/string, so cast.
-  form.append('avatar', { uri: localUri, name: 'avatar.jpg', type: 'image/jpeg' } as unknown as Blob);
-
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 30000);
   try {
-    const resp = await fetch(endpoint, {
-      method: 'POST',
-      // ONLY Authorization — do NOT set Content-Type (RN adds the boundary).
+    const resp = await new File(localUri).upload(endpoint, {
+      httpMethod: 'POST',
+      uploadType: UploadType.MULTIPART,
+      fieldName: 'avatar',
+      mimeType: 'image/jpeg',
       headers: { Authorization: `Bearer ${token}` },
-      body: form,
       signal: controller.signal,
     });
     let data: Record<string, unknown> = {};
     try {
-      const text = await resp.text();
-      data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+      data = resp.body ? (JSON.parse(resp.body) as Record<string, unknown>) : {};
     } catch {
       data = {};
     }
-    if (!resp.ok) return { ok: false, ...extractError(data, resp.status) };
+    if (resp.status < 200 || resp.status >= 300) {
+      return { ok: false, ...extractError(data, resp.status) };
+    }
     return { ok: true, profile: parseProfile(data) };
   } catch (err) {
     const isAbort = err instanceof Error && err.name === 'AbortError';

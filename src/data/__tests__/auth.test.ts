@@ -17,6 +17,8 @@ import * as auth from '@/data/auth';
 import { ensureAccount, getSessionToken, revertToAnonymous, setSession } from '@/data/account';
 import { getBackendEndpoint } from '@/data/backendConfig';
 import { getAppleCredential, getGoogleIdToken, SocialAuthError } from '@/data/socialAuth';
+import { trackApiFailure } from '@/data/telemetryClient';
+import * as efs from 'expo-file-system';
 
 jest.mock('@/data/backendConfig', () => ({
   getBackendEndpoint: jest.fn((path: string) => `https://api.test${path}`),
@@ -61,6 +63,21 @@ jest.mock('@/data/telemetryClient', () => ({
   trackClientEvent: jest.fn(async () => undefined),
 }));
 
+// expo-file-system: avatar upload uses the native multipart uploader (File.upload)
+// rather than the global fetch, because Expo SDK 56's WinterCG fetch rejects the
+// legacy RN {uri,name,type} FormData part. `__upload`/`__ctor` expose the spies.
+jest.mock('expo-file-system', () => {
+  const upload = jest.fn();
+  const ctor = jest.fn();
+  class File {
+    upload = upload;
+    constructor(...uris: string[]) {
+      ctor(...uris);
+    }
+  }
+  return { File, UploadType: { BINARY_CONTENT: 0, MULTIPART: 1 }, __upload: upload, __ctor: ctor };
+});
+
 const mockGetBackendEndpoint = getBackendEndpoint as jest.MockedFunction<typeof getBackendEndpoint>;
 const mockEnsureAccount = ensureAccount as jest.MockedFunction<typeof ensureAccount>;
 const mockGetSessionToken = getSessionToken as jest.MockedFunction<typeof getSessionToken>;
@@ -68,6 +85,9 @@ const mockSetSession = setSession as jest.MockedFunction<typeof setSession>;
 const mockRevertToAnonymous = revertToAnonymous as jest.MockedFunction<typeof revertToAnonymous>;
 const mockGetGoogleIdToken = getGoogleIdToken as jest.MockedFunction<typeof getGoogleIdToken>;
 const mockGetAppleCredential = getAppleCredential as jest.MockedFunction<typeof getAppleCredential>;
+const mockTrackApiFailure = trackApiFailure as jest.MockedFunction<typeof trackApiFailure>;
+const mockFileUpload = (efs as unknown as { __upload: jest.Mock }).__upload;
+const mockFileCtor = (efs as unknown as { __ctor: jest.Mock }).__ctor;
 
 const ORIGINAL_FETCH = global.fetch;
 
@@ -533,5 +553,85 @@ describe('verifyEmail', () => {
     const result = await auth.verifyEmail('bad');
 
     expect(result).toEqual({ ok: false, code: 'invalid_token', detail: 'Neplatný odkaz.' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// uploadAvatar
+// ---------------------------------------------------------------------------
+describe('uploadAvatar', () => {
+  /** Resolve File.upload to a {status, body, headers} result like the native module. */
+  function uploadResolving(status: number, body: unknown): void {
+    mockFileUpload.mockResolvedValue({
+      status,
+      body: body === undefined ? '' : JSON.stringify(body),
+      headers: {},
+    });
+  }
+
+  it('uploads via the native multipart uploader (NOT fetch) and returns the parsed profile', async () => {
+    uploadResolving(200, { id: 'acc', is_anonymous: false, avatar_url: 'https://cdn/x.webp' });
+    const fetchSpy = installFetch(jest.fn());
+
+    const result = await auth.uploadAvatar('file:///tmp/avatar.jpg');
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.profile.avatarUrl).toBe('https://cdn/x.webp');
+
+    // The legacy fetch+FormData path must never be taken (it throws under SDK 56).
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    // File constructed from the local URI; upload targets the avatar endpoint as
+    // a multipart POST with field `avatar` and the current bearer token.
+    expect(mockFileCtor).toHaveBeenCalledWith('file:///tmp/avatar.jpg');
+    const [url, opts] = mockFileUpload.mock.calls[0] as [string, Record<string, unknown>];
+    expect(url).toBe('https://api.test/v1/account/me/avatar');
+    expect(opts.httpMethod).toBe('POST');
+    expect(opts.uploadType).toBe(efs.UploadType.MULTIPART);
+    expect(opts.fieldName).toBe('avatar');
+    expect((opts.headers as Record<string, string>).Authorization).toBe('Bearer cur-tok');
+  });
+
+  it('returns unauthenticated and never uploads when there is no session token', async () => {
+    mockGetSessionToken.mockResolvedValueOnce(null);
+
+    const result = await auth.uploadAvatar('file:///tmp/avatar.jpg');
+
+    expect(result).toEqual({ ok: false, code: 'unauthenticated', detail: '' });
+    expect(mockFileUpload).not.toHaveBeenCalled();
+  });
+
+  it('maps a non-2xx upload response to the error payload', async () => {
+    uploadResolving(413, { detail: 'Obrázek je příliš velký.', code: 'too_large' });
+
+    const result = await auth.uploadAvatar('file:///tmp/avatar.jpg');
+
+    expect(result).toEqual({ ok: false, code: 'too_large', detail: 'Obrázek je příliš velký.' });
+  });
+
+  it('returns the network sentinel and tracks the failure when the upload throws', async () => {
+    mockFileUpload.mockRejectedValue(new Error('Unsupported FormDataPart implementation'));
+
+    const result = await auth.uploadAvatar('file:///tmp/avatar.jpg');
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected failure');
+    expect(result.code).toBe('network');
+    expect(mockTrackApiFailure).toHaveBeenCalledWith(
+      'auth_request',
+      expect.objectContaining({ endpoint: '/v1/account/me/avatar', reason: 'exception' }),
+    );
+  });
+
+  it('returns the network sentinel when no backend endpoint is configured', async () => {
+    mockGetBackendEndpoint.mockReturnValue(null);
+
+    const result = await auth.uploadAvatar('file:///tmp/avatar.jpg');
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected failure');
+    expect(result.code).toBe('network');
+    expect(mockFileUpload).not.toHaveBeenCalled();
   });
 });
