@@ -325,7 +325,7 @@ export default function ProfileScreen() {
   return (
     <View style={styles.root}>
       {/* Header — a tab screen, so no back button. */}
-      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+      <View style={[styles.header, { paddingTop: insets.top }]}>
         <Text style={styles.headerTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
           {cs.profile.title}
         </Text>
