@@ -20,7 +20,10 @@
             },
             "channel": "preview",
             "env": {
-                "EXPO_PUBLIC_BACKEND_URL": "https://api.na-pivo.cz"
+                "EXPO_PUBLIC_BACKEND_URL": "https://api.na-pivo.cz",
+                "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "861192856487-pf6vcnrer282mb4peaqfdnmdru2181d2.apps.googleusercontent.com",
+                "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "861192856487-5le0j3ujjggh7qr7roikgvrg0r18352e.apps.googleusercontent.com",
+                "EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME": "com.googleusercontent.apps.861192856487-5le0j3ujjggh7qr7roikgvrg0r18352e"
             }
         },
         "production": {
@@ -36,7 +39,10 @@
             },
             "channel": "production",
             "env": {
-                "EXPO_PUBLIC_BACKEND_URL": "https://api.na-pivo.cz"
+                "EXPO_PUBLIC_BACKEND_URL": "https://api.na-pivo.cz",
+                "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "861192856487-pf6vcnrer282mb4peaqfdnmdru2181d2.apps.googleusercontent.com",
+                "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "861192856487-5le0j3ujjggh7qr7roikgvrg0r18352e.apps.googleusercontent.com",
+                "EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME": "com.googleusercontent.apps.861192856487-5le0j3ujjggh7qr7roikgvrg0r18352e"
             }
         }
     },
