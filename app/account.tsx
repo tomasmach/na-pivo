@@ -25,7 +25,7 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
@@ -272,7 +272,7 @@ export default function AccountScreen() {
         {/* ── Identity card ── */}
         <View style={styles.identityCard}>
           <Pressable
-            onPress={() => router.push('/profile/edit')}
+            onPress={() => router.push('/profile/edit' as Href)}
             style={({ pressed }) => [styles.avatarWrap, pressed && styles.pressed]}
             accessibilityRole="button"
             accessibilityLabel={cs.a11y.profileEdit}

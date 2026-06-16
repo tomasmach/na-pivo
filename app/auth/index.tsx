@@ -226,7 +226,11 @@ export default function AuthScreen() {
       return;
     }
     setError('');
-    await requestPasswordReset(trimmed);
+    const result = await requestPasswordReset(trimmed);
+    if (!result.ok) {
+      setError(result.detail || cs.account.errorGeneric);
+      return;
+    }
     setResetOpen(false);
     setResetEmail('');
     showToast(cs.account.resetSentToast);

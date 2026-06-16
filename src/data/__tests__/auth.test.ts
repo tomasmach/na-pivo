@@ -300,7 +300,7 @@ describe('registerEmail', () => {
 // loginEmail
 // ---------------------------------------------------------------------------
 describe('loginEmail', () => {
-  it('logs in without a bearer header and stores the session on success', async () => {
+  it('logs in without a bearer header, clears local private data, and stores the session on success', async () => {
     const spy = installFetch(
       fetchResolving(200, { id: 'acc-2', token: 'login-tok', is_anonymous: false, providers: ['email'] }),
     );
@@ -323,6 +323,10 @@ describe('loginEmail', () => {
       token: 'login-tok',
       authenticated: true,
     });
+    expect(mockClearLocalPrivateAccountData).toHaveBeenCalledTimes(1);
+    expect(mockClearLocalPrivateAccountData.mock.invocationCallOrder[0]).toBeLessThan(
+      mockSetSession.mock.invocationCallOrder[0],
+    );
   });
 
   it('returns invalid_credentials on a 401', async () => {
@@ -336,6 +340,7 @@ describe('loginEmail', () => {
       detail: 'Špatný e-mail nebo heslo.',
     });
     expect(mockSetSession).not.toHaveBeenCalled();
+    expect(mockClearLocalPrivateAccountData).not.toHaveBeenCalled();
   });
 });
 
@@ -556,10 +561,35 @@ describe('deleteAccount', () => {
 });
 
 // ---------------------------------------------------------------------------
+// requestPasswordReset
+// ---------------------------------------------------------------------------
+describe('requestPasswordReset', () => {
+  it('returns ok for the backend 202 no-enumeration response', async () => {
+    const spy = installFetch(fetchResolving(202, {}));
+
+    const result = await auth.requestPasswordReset('jan@example.com');
+
+    expect(result).toEqual({ ok: true });
+    const { url, init } = firstCall(spy);
+    expect(url).toBe('https://api.test/v1/auth/request-password-reset');
+    expect(authHeader(init)).toBeUndefined();
+    expect(bodyOf(init)).toEqual({ email: 'jan@example.com' });
+  });
+
+  it('returns the backend error when the reset email cannot be requested', async () => {
+    installFetch(fetchResolving(500, { detail: 'Pošta teď nefunguje.', code: 'mail_failed' }));
+
+    const result = await auth.requestPasswordReset('jan@example.com');
+
+    expect(result).toEqual({ ok: false, code: 'mail_failed', detail: 'Pošta teď nefunguje.' });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // resetPassword
 // ---------------------------------------------------------------------------
 describe('resetPassword', () => {
-  it('exchanges the token for a fresh session (applyAuthSuccess) on success', async () => {
+  it('exchanges the token for a fresh session after clearing local private data on success', async () => {
     const spy = installFetch(
       fetchResolving(200, { id: 'acc-r', token: 'reset-tok', is_anonymous: false, providers: ['email'] }),
     );
@@ -577,6 +607,10 @@ describe('resetPassword', () => {
       token: 'reset-tok',
       authenticated: true,
     });
+    expect(mockClearLocalPrivateAccountData).toHaveBeenCalledTimes(1);
+    expect(mockClearLocalPrivateAccountData.mock.invocationCallOrder[0]).toBeLessThan(
+      mockSetSession.mock.invocationCallOrder[0],
+    );
   });
 
   it('returns the error on an invalid/expired token (400)', async () => {
@@ -586,6 +620,7 @@ describe('resetPassword', () => {
 
     expect(result).toEqual({ ok: false, code: 'invalid_token', detail: 'Odkaz vypršel.' });
     expect(mockSetSession).not.toHaveBeenCalled();
+    expect(mockClearLocalPrivateAccountData).not.toHaveBeenCalled();
   });
 });
 
@@ -611,6 +646,31 @@ describe('verifyEmail', () => {
     const result = await auth.verifyEmail('bad');
 
     expect(result).toEqual({ ok: false, code: 'invalid_token', detail: 'Neplatný odkaz.' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// requestEmailVerification
+// ---------------------------------------------------------------------------
+describe('requestEmailVerification', () => {
+  it('requests a verification email with the current bearer token', async () => {
+    const spy = installFetch(fetchResolving(202, {}));
+
+    const result = await auth.requestEmailVerification();
+
+    expect(result).toEqual({ ok: true });
+    const { url, init } = firstCall(spy);
+    expect(url).toBe('https://api.test/v1/auth/request-email-verify');
+    expect(authHeader(init)).toBe('Bearer cur-tok');
+    expect(bodyOf(init)).toEqual({});
+  });
+
+  it('returns the backend error when verification email cannot be requested', async () => {
+    installFetch(fetchResolving(429, { detail: 'Zkus to za chvíli.', code: 'rate_limited' }));
+
+    const result = await auth.requestEmailVerification();
+
+    expect(result).toEqual({ ok: false, code: 'rate_limited', detail: 'Zkus to za chvíli.' });
   });
 });
 

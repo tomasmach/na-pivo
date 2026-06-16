@@ -28,7 +28,7 @@ import {
   Linking,
   StyleSheet,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
@@ -148,7 +148,7 @@ export default function ProfileSetupScreen() {
         setVisibilityError(result.detail || cs.profile.setup.visibilitySaveError);
         return;
       }
-      router.replace('/(tabs)/profile');
+      router.replace('/(tabs)/profile' as Href);
       showToast(cs.profile.edit.savedToast);
     } finally {
       setBusy(false);

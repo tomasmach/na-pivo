@@ -347,9 +347,15 @@ const NETWORK_ERROR = {
 };
 
 /** Apply a successful auth response: persist the new session, return the profile. */
-async function applyAuthSuccess(data: RawAccount): Promise<AuthResult> {
+async function applyAuthSuccess(
+  data: RawAccount,
+  options?: { clearLocalPrivateData?: boolean },
+): Promise<AuthResult> {
   const profile = parseProfile(data);
   if (data.token && profile.id) {
+    if (options?.clearLocalPrivateData) {
+      await clearLocalPrivateAccountData();
+    }
     await setSession({
       deviceId: profile.deviceId || undefined,
       accountId: profile.id,
@@ -388,7 +394,7 @@ export async function loginEmail(params: { email: string; password: string }): P
   });
   if ('networkError' in res) return NETWORK_ERROR;
   if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
-  return applyAuthSuccess(res.data);
+  return applyAuthSuccess(res.data, { clearLocalPrivateData: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -531,7 +537,8 @@ export async function requestPasswordReset(email: string): Promise<AuthActionRes
     body: { email },
   });
   if ('networkError' in res) return NETWORK_ERROR;
-  // The backend always 202s (no account enumeration); treat any 2xx as success.
+  if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
+  // The backend 202s without account enumeration; any real 2xx is success.
   return { ok: true };
 }
 
@@ -542,12 +549,13 @@ export async function resetPassword(params: { token: string; password: string })
   });
   if ('networkError' in res) return NETWORK_ERROR;
   if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
-  return applyAuthSuccess(res.data);
+  return applyAuthSuccess(res.data, { clearLocalPrivateData: true });
 }
 
 export async function requestEmailVerification(): Promise<AuthActionResult> {
   const res = await authFetch('/v1/auth/request-email-verify', { bearer: 'current', body: {} });
   if ('networkError' in res) return NETWORK_ERROR;
+  if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
   return { ok: true };
 }
 

@@ -1,4 +1,4 @@
-import { Stack, useRouter, usePathname } from 'expo-router';
+import { Stack, useRouter, usePathname, type Href } from 'expo-router';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -47,7 +47,7 @@ function ProfileGate() {
 
   useEffect(() => {
     if (status === 'ready' && needsSetup && pathname !== '/profile/setup') {
-      router.replace('/profile/setup');
+      router.replace('/profile/setup' as Href);
     }
   }, [status, needsSetup, pathname, router]);
 

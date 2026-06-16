@@ -16,7 +16,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -363,7 +363,7 @@ export default function ProfileScreen() {
               {/* Action pair: full edit + inline visibility flip. */}
               <View style={styles.identityActions}>
                 <Pressable
-                  onPress={() => router.push('/profile/edit')}
+                  onPress={() => router.push('/profile/edit' as Href)}
                   style={({ pressed }) => [styles.editPill, pressed && styles.pressed]}
                   accessibilityRole="button"
                   accessibilityLabel={cs.a11y.profileEdit}
@@ -415,7 +415,7 @@ export default function ProfileScreen() {
             <View style={styles.heroCta}>
               <GlowButton
                 label={cs.profile.signedOutCta}
-                onPress={() => router.push('/auth')}
+                onPress={() => router.push('/auth' as Href)}
                 glow="soft"
                 accessibilityLabel={cs.a11y.profileSignUp}
               />
@@ -498,7 +498,7 @@ export default function ProfileScreen() {
           <NavRow
             icon={<UserIcon size={18} color={Colors.foamMuted} />}
             title={isSignedIn ? cs.profile.manageAccount : cs.profile.signedOutCta}
-            onPress={() => router.push((isSignedIn ? '/account' : '/auth'))}
+            onPress={() => router.push((isSignedIn ? '/account' : '/auth') as Href)}
             accessibilityLabel={isSignedIn ? cs.a11y.profileManageAccount : cs.a11y.profileSignUp}
           />
           <NavRow
