@@ -18,6 +18,8 @@ export type ClientTelemetryEvent =
   | 'walking_distance'
   | 'counter_tab_opened'
   | 'counter_session_started'
+  | 'counter_session_closed'
+  | 'counter_session_resumed'
   | 'drink_added'
   | 'drink_removed'
   | 'drink_synced'

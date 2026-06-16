@@ -1,4 +1,4 @@
-import { Stack } from 'expo-router';
+import { Stack, useRouter, usePathname, type Href } from 'expo-router';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -25,10 +25,34 @@ import {
   trackClientEvent,
 } from '@/data/telemetryClient';
 import { flushWalkingDistance } from '@/data/walkingTelemetry';
-import { useAccountStore } from '@/stores/accountStore';
+import { useAccountStore, selectNeedsProfileSetup } from '@/stores/accountStore';
 import { useReleaseStore } from '@/stores/releaseStore';
+import { useTallyStore } from '@/stores/tallyStore';
 import { WhatsNewModal } from '@/components/shared/WhatsNewModal';
 import { Toast } from '@/components/shared/Toast';
+
+/**
+ * Onboarding gate: once auth resolves (`status==='ready'`) and a signed-in
+ * account has no nickname yet, push the user into the setup wizard. Runs after
+ * initAccount/auth settles so it catches email/Google/Apple sign-ups AND
+ * returning users upgrading from an older build. Re-entrancy is naturally
+ * guarded — `selectNeedsProfileSetup` flips to false the moment a nickname is
+ * set — and we never redirect while already on the setup route.
+ */
+function ProfileGate() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const status = useAccountStore((s) => s.status);
+  const needsSetup = useAccountStore(selectNeedsProfileSetup);
+
+  useEffect(() => {
+    if (status === 'ready' && needsSetup && pathname !== '/profile/setup') {
+      router.replace('/profile/setup' as Href);
+    }
+  }, [status, needsSetup, pathname, router]);
+
+  return null;
+}
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   // ignore — splash may already be hidden
@@ -92,9 +116,13 @@ export default function RootLayout() {
     void flushPubRatingsQueue();
     void seedVisitsFromHistory();
     void flushVisitsQueue();
+    // Close an evening left idle past the timeout while the app was away, so the
+    // counter reopens clean (the evening stays resumable for the same day/pub).
+    useTallyStore.getState().maybeAutoArchive();
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         void trackClientEvent({ event: 'app_foreground', severity: 'info' });
+        useTallyStore.getState().maybeAutoArchive();
         void flushPubReportQueue();
         void flushFeedbackQueue();
         void flushCommunityQueue();
@@ -194,7 +222,57 @@ export default function RootLayout() {
               gestureEnabled: false,
             }}
           />
+          <Stack.Screen
+            name="auth/index"
+            options={{
+              presentation: 'fullScreenModal',
+              animation: 'slide_from_bottom',
+              gestureEnabled: false,
+            }}
+          />
+          <Stack.Screen
+            name="auth/reset"
+            options={{
+              presentation: 'fullScreenModal',
+              animation: 'slide_from_bottom',
+              gestureEnabled: false,
+            }}
+          />
+          <Stack.Screen
+            name="auth/verify"
+            options={{
+              presentation: 'fullScreenModal',
+              animation: 'slide_from_bottom',
+              gestureEnabled: false,
+            }}
+          />
+          <Stack.Screen
+            name="account"
+            options={{
+              presentation: 'fullScreenModal',
+              animation: 'slide_from_bottom',
+              gestureEnabled: false,
+            }}
+          />
+          <Stack.Screen
+            name="profile/setup"
+            options={{
+              presentation: 'fullScreenModal',
+              animation: 'slide_from_bottom',
+              // The nickname step is the hard gate — it must not be swipe-dismissable.
+              gestureEnabled: false,
+            }}
+          />
+          <Stack.Screen
+            name="profile/edit"
+            options={{
+              presentation: 'fullScreenModal',
+              animation: 'slide_from_bottom',
+              gestureEnabled: false,
+            }}
+          />
         </Stack>
+        <ProfileGate />
         <WhatsNewModal />
         <Toast />
       </SafeAreaProvider>

@@ -20,6 +20,10 @@ import {
   sessionCount,
   sessionTotalCzk,
   sessionBeerCounts,
+  sessionLastActivityMs,
+  isSessionIdle,
+  resumableSession,
+  IDLE_TIMEOUT_MS,
   migrateTally,
   type TallySession,
 } from '../tallyStore';
@@ -253,6 +257,148 @@ describe('clientId', () => {
     const id = useTallyStore.getState().current?.clientId;
     useTallyStore.getState().addDrink(PUB_A, beer());
     expect(useTallyStore.getState().current?.clientId).toBe(id);
+  });
+});
+
+describe('idle detection', () => {
+  it('sessionLastActivityMs reports the latest counted beer', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer({ at: '2026-06-12T19:00:00' }));
+    useTallyStore.getState().addDrink(PUB_A, beer({ at: '2026-06-12T20:30:00' }));
+    const ms = sessionLastActivityMs(useTallyStore.getState().current!);
+    expect(ms).toBe(Date.parse('2026-06-12T20:30:00'));
+  });
+
+  it('isSessionIdle flips once the idle window passes since the last drink', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer({ at: '2026-06-12T19:00:00' }));
+    const last = Date.parse('2026-06-12T19:00:00');
+    const session = useTallyStore.getState().current;
+    expect(isSessionIdle(session, last + IDLE_TIMEOUT_MS - 1)).toBe(false);
+    expect(isSessionIdle(session, last + IDLE_TIMEOUT_MS)).toBe(true);
+  });
+
+  it('an empty or absent session is never idle', () => {
+    expect(isSessionIdle(null, Date.now())).toBe(false);
+    useTallyStore.getState().addDrink(PUB_A, beer());
+    useTallyStore.getState().undoLast();
+    expect(isSessionIdle(useTallyStore.getState().current, Date.now() + IDLE_TIMEOUT_MS * 10)).toBe(false);
+  });
+});
+
+describe('maybeAutoArchive', () => {
+  it('archives an idle session with reason "timeout" and clears current', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer({ at: '2026-06-12T19:00:00' }));
+    const archived = useTallyStore.getState().maybeAutoArchive(
+      Date.parse('2026-06-12T19:00:00') + IDLE_TIMEOUT_MS,
+    );
+    expect(archived).toBe(true);
+    const { current, history } = useTallyStore.getState();
+    expect(current).toBeNull();
+    expect(history).toHaveLength(1);
+    expect(history[0].archivedReason).toBe('timeout');
+    expect(history[0].drinks).toHaveLength(1);
+  });
+
+  it('leaves a still-active session untouched', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer({ at: '2026-06-12T19:00:00' }));
+    const archived = useTallyStore.getState().maybeAutoArchive(
+      Date.parse('2026-06-12T19:00:00') + IDLE_TIMEOUT_MS - 1,
+    );
+    expect(archived).toBe(false);
+    expect(useTallyStore.getState().current?.drinks).toHaveLength(1);
+    expect(useTallyStore.getState().history).toHaveLength(0);
+  });
+
+  it('is a no-op when there is no session', () => {
+    expect(useTallyStore.getState().maybeAutoArchive(Date.now())).toBe(false);
+    expect(useTallyStore.getState().history).toHaveLength(0);
+  });
+});
+
+describe('archiveCurrent (Dopito)', () => {
+  it('archives the current session with the given reason and clears it', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer());
+    useTallyStore.getState().archiveCurrent('manual');
+    const { current, history } = useTallyStore.getState();
+    expect(current).toBeNull();
+    expect(history).toHaveLength(1);
+    expect(history[0].archivedReason).toBe('manual');
+  });
+
+  it('drops an empty pinned session without archiving it', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer());
+    useTallyStore.getState().undoLast(); // session object stays, but empty
+    useTallyStore.getState().archiveCurrent('manual');
+    expect(useTallyStore.getState().current).toBeNull();
+    expect(useTallyStore.getState().history).toHaveLength(0);
+  });
+});
+
+describe('resumeLast', () => {
+  // Open a session, then auto-archive it as a timeout so it is resumable.
+  function openThenTimeout(at: string) {
+    useTallyStore.getState().addDrink(PUB_A, beer({ at }));
+    useTallyStore.getState().maybeAutoArchive(Date.parse(at) + IDLE_TIMEOUT_MS);
+  }
+
+  it('pops a same-pub, same-day timeout evening back to current without the reason flag', () => {
+    openThenTimeout('2026-06-12T19:00:00');
+    const archivedClientId = useTallyStore.getState().history[0].clientId;
+
+    const resumed = useTallyStore.getState().resumeLast(PUB_A.pubKey, Date.parse('2026-06-12T22:30:00'));
+    expect(resumed).toBe(true);
+    const { current, history } = useTallyStore.getState();
+    expect(history).toHaveLength(0);
+    expect(current?.clientId).toBe(archivedClientId); // same backend visit
+    expect(current?.drinks).toHaveLength(1);
+    expect(current?.archivedReason).toBeUndefined();
+  });
+
+  it('refuses to resume an evening at a different pub', () => {
+    openThenTimeout('2026-06-12T19:00:00');
+    const resumed = useTallyStore.getState().resumeLast(PUB_B.pubKey, Date.parse('2026-06-12T22:30:00'));
+    expect(resumed).toBe(false);
+    expect(useTallyStore.getState().history).toHaveLength(1);
+  });
+
+  it('refuses to resume across the drinking-day boundary', () => {
+    openThenTimeout('2026-06-12T19:00:00');
+    const resumed = useTallyStore.getState().resumeLast(PUB_A.pubKey, Date.parse('2026-06-13T20:00:00'));
+    expect(resumed).toBe(false);
+  });
+
+  it('refuses to resume a rollover archive (pub change), only a timeout', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer({ at: '2026-06-12T19:00:00' }));
+    useTallyStore.getState().addDrink(PUB_B, beer({ at: '2026-06-12T19:30:00' })); // archives PUB_A as 'pub-change'
+    expect(useTallyStore.getState().history[0].archivedReason).toBe('pub-change');
+    // Empty PUB_A again would need to be current=null; force the resumable check directly.
+    const resumed = useTallyStore.getState().resumeLast(PUB_A.pubKey, Date.parse('2026-06-12T20:00:00'));
+    expect(resumed).toBe(false);
+  });
+});
+
+describe('resumableSession', () => {
+  const archived: TallySession = {
+    clientId: 'c1',
+    pubKey: PUB_A.pubKey,
+    pubName: PUB_A.pubName,
+    startedAt: '2026-06-12T19:00:00',
+    drinks: [{ id: 'd1', beerName: 'Plzeň', priceCzk: 50, at: '2026-06-12T19:00:00' }],
+    archivedReason: 'timeout',
+  };
+  const now = Date.parse('2026-06-12T22:00:00');
+
+  it('returns the newest timeout evening at the same pub on the same day', () => {
+    expect(resumableSession(null, [archived], PUB_A.pubKey, now)).toBe(archived);
+  });
+
+  it('is suppressed while a live session is in progress', () => {
+    const live: TallySession = { ...archived, clientId: 'live', archivedReason: undefined };
+    expect(resumableSession(live, [archived], PUB_A.pubKey, now)).toBeNull();
+  });
+
+  it('returns null for a non-timeout reason or a different pub', () => {
+    expect(resumableSession(null, [{ ...archived, archivedReason: 'manual' }], PUB_A.pubKey, now)).toBeNull();
+    expect(resumableSession(null, [archived], PUB_B.pubKey, now)).toBeNull();
   });
 });
 

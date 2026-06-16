@@ -95,6 +95,13 @@ export function enqueueDelete(clientId: string): Promise<void> {
   });
 }
 
+/** Drop all pending private drink deletions without attempting delivery. */
+export function clearDeleteDrinksQueue(): Promise<void> {
+  return runLocked(async () => {
+    await saveQueue([]);
+  });
+}
+
 /**
  * Retries all pending deletions. Call on app launch and on returning to the
  * foreground — both fire-and-forget. Never throws.

@@ -54,6 +54,7 @@ jest.mock('@/components/shared/IconGlyph', () => ({
   MinusIcon: jest.fn(() => null),
   Undo2Icon: jest.fn(() => null),
   RefreshCwIcon: jest.fn(() => null),
+  CheckIcon: jest.fn(() => null),
   XIcon: jest.fn(() => null),
 }));
 

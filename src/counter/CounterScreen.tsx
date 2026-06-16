@@ -41,6 +41,8 @@ import {
   PlusIcon,
   MinusIcon,
   RefreshCwIcon,
+  CheckIcon,
+  Undo2Icon,
 } from '@/components/shared/IconGlyph';
 
 import { geohash8 } from '@/data/geohash';
@@ -62,6 +64,7 @@ import {
   sessionCount,
   sessionTotalCzk,
   sessionBeerCounts,
+  resumableSession,
 } from '@/stores/tallyStore';
 import type { Pub } from '@/data/pubs';
 
@@ -74,13 +77,15 @@ import { BeerFormModal, type BeerFormMode, type BeerFormResult } from '@/counter
 function PermissionScreen({
   permissionState,
   requestPermission,
+  embedded,
 }: {
   permissionState: 'denied' | 'undetermined';
   requestPermission: () => Promise<void>;
+  embedded: boolean;
 }) {
   const insets = useSafeAreaInsets();
   return (
-    <View style={[styles.root, styles.centered, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <View style={[styles.root, styles.centered, { paddingTop: embedded ? 0 : insets.top, paddingBottom: insets.bottom }]}>
       <View style={styles.permIconWrap}>
         <BeerIcon size={56} color={Colors.amber} />
       </View>
@@ -115,10 +120,10 @@ function PermissionScreen({
 
 // ─── Detecting + empty ────────────────────────────────────────────────────────
 
-function DetectingScreen() {
+function DetectingScreen({ embedded }: { embedded: boolean }) {
   const insets = useSafeAreaInsets();
   return (
-    <View style={[styles.root, styles.centered, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <View style={[styles.root, styles.centered, { paddingTop: embedded ? 0 : insets.top, paddingBottom: insets.bottom }]}>
       <View style={[styles.permIconWrap, amberGlow(16)]}>
         <MapPinIcon size={48} color={Colors.amber} />
       </View>
@@ -129,10 +134,10 @@ function DetectingScreen() {
   );
 }
 
-function NoPubScreen({ onRetry }: { onRetry: () => void }) {
+function NoPubScreen({ onRetry, embedded }: { onRetry: () => void; embedded: boolean }) {
   const insets = useSafeAreaInsets();
   return (
-    <View style={[styles.root, styles.centered, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <View style={[styles.root, styles.centered, { paddingTop: embedded ? 0 : insets.top, paddingBottom: insets.bottom }]}>
       <View style={styles.permIconWrap}>
         <BeerIcon size={56} color={Colors.amber} />
       </View>
@@ -265,6 +270,9 @@ interface ActiveCounterProps {
   pub: Pub;
   candidatesCount: number;
   onChangePub: () => void;
+  /** Hosted inside the merged "Pivo" tab: the parent owns the top safe-area
+   *  inset and the segment header, so the counter drops its own top padding. */
+  embedded: boolean;
 }
 
 /** A stable identity key for a menu beer (normalized name + volume). */
@@ -302,12 +310,15 @@ export function shouldWarnRapidDrink(lastDrinkAt: string | undefined, nowMs: num
   return elapsedMs >= 0 && elapsedMs < RAPID_DRINK_WARNING_MS;
 }
 
-function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps) {
+function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCounterProps) {
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
   const reducedMotion = useReducedMotion();
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
+  // The top edge the parent has NOT already padded: 0 when embedded (the "Pivo"
+  // tab owns the inset + segment), the safe-area inset when standalone.
+  const topInset = embedded ? 0 : insets.top;
 
   const cell = useMemo(() => geohash8(pub.lat, pub.lng), [pub.lat, pub.lng]);
 
@@ -315,9 +326,12 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
   const override = useCommunityStore((s) => s.overrides[cell]);
 
   const current = useTallyStore((s) => s.current);
+  const history = useTallyStore((s) => s.history);
   const addDrink = useTallyStore((s) => s.addDrink);
   const removeDrink = useTallyStore((s) => s.removeDrink);
   const markDrinkSynced = useTallyStore((s) => s.markDrinkSynced);
+  const archiveCurrent = useTallyStore((s) => s.archiveCurrent);
+  const resumeLast = useTallyStore((s) => s.resumeLast);
 
   const [formMode, setFormMode] = useState<BeerFormMode | null>(null);
   const [formBeer, setFormBeer] = useState<CommunityBeer | null>(null);
@@ -364,6 +378,15 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
     () => (isThisPubSession ? sessionBeerCounts(current) : new Map<string, number>()),
     [isThisPubSession, current],
   );
+
+  // A recently auto-completed evening at THIS pub that the user can pick back up
+  // instead of starting a fresh count. Only surfaced when this pub has no live
+  // count (count === 0); recomputed when the session/history change.
+  const resumable = useMemo(
+    () => (count === 0 ? resumableSession(current, history, cell) : null),
+    [count, current, history, cell],
+  );
+  const resumeSummary = resumable ? beerCountLabel(sessionCount(resumable)) : null;
 
   useEffect(() => {
     if (!latestDrinkAt) return undefined;
@@ -573,20 +596,49 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
     [cell, current, hapticEnabled, removeDrink],
   );
 
+  // "Dopito" — confirm, then archive the evening into history. The deferred
+  // sends already in flight still deliver; we only close the local session.
+  const handleDone = useCallback(() => {
+    Alert.alert(cs.counter.doneTitle, cs.counter.doneBody, [
+      { text: cs.counter.cancel, style: 'cancel' },
+      {
+        text: cs.counter.doneConfirm,
+        onPress: () => {
+          archiveCurrent('manual');
+          void trackClientEvent({ event: 'counter_session_closed', context: { reason: 'manual' } });
+          if (hapticEnabled) fireLightImpactHaptic();
+        },
+      },
+    ]);
+  }, [archiveCurrent, hapticEnabled]);
+
+  // "Pokračovat ve večeru" — pop the auto-completed evening back to live so the
+  // next count continues the same session (same backend visit).
+  const handleResume = useCallback(() => {
+    const ok = resumeLast(cell);
+    if (ok) {
+      void trackClientEvent({ event: 'counter_session_resumed' });
+      if (hapticEnabled) fireLightImpactHaptic();
+    }
+  }, [cell, hapticEnabled, resumeLast]);
+
   const hasMenu = menu.length > 0;
   const bubbleFieldWidth = Math.min(screenWidth - Spacing.lg * 2, 340);
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top + 8 }]}>
+    <View style={[styles.root, { paddingTop: topInset + 8 }]}>
       {count > 0 && !reducedMotion && (
-        <View style={[styles.counterBubbleOverlay, { top: insets.top + 58 }]} pointerEvents="none">
+        <View style={[styles.counterBubbleOverlay, { top: topInset + 58 }]} pointerEvents="none">
           <View style={[styles.counterBubbleField, { width: bubbleFieldWidth }]}>
             <BeerBubbles width={bubbleFieldWidth} height={310} bubbleCount={20} overflowVisible />
           </View>
         </View>
       )}
 
-      {/* Header: pub name + change */}
+      {/* Header: pub name + session actions. "Změnit" (when several candidates)
+          and "Dopito" live here as compact chips — both act on the SESSION, sit
+          above the scroll so they're always discoverable, and stay subordinate
+          to the big amber +/- counting in the body. */}
       <View style={styles.header}>
         <MapPinIcon size={18} color={Colors.amber} />
         <Text style={styles.headerPub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
@@ -605,6 +657,20 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
             </Text>
           </Pressable>
         )}
+        {count > 0 && (
+          <Pressable
+            onPress={handleDone}
+            style={({ pressed }) => [styles.doneButton, pressed && styles.doneButtonPressed]}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={cs.a11y.counterDone}
+          >
+            <CheckIcon size={15} color={Colors.amber} />
+            <Text style={styles.doneButtonText} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.counter.doneDrinking}
+            </Text>
+          </Pressable>
+        )}
       </View>
 
       <ScrollView
@@ -619,6 +685,8 @@ function ActiveCounter({ pub, candidatesCount, onChangePub }: ActiveCounterProps
           latestDrinkText={latestDrinkText}
           reducedMotion={reducedMotion}
           priceCurrency={priceCurrency}
+          onResume={resumable ? handleResume : undefined}
+          resumeSummary={resumeSummary}
         />
 
         {/* Flexible gap — pushes the menu down so a short session doesn't
@@ -702,12 +770,18 @@ function Hero({
   latestDrinkText,
   reducedMotion,
   priceCurrency,
+  onResume,
+  resumeSummary,
 }: {
   count: number;
   totalCzk: number;
   latestDrinkText: string | null;
   reducedMotion: boolean;
   priceCurrency: PriceCurrency;
+  /** Resume a recent auto-completed evening — only shown when count === 0. */
+  onResume?: () => void;
+  /** Short "3 piva" recap of the resumable evening, for the hint line. */
+  resumeSummary?: string | null;
 }) {
   if (count === 0) {
     return (
@@ -718,6 +792,22 @@ function Hero({
         <Text style={styles.heroEmptyTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
           {cs.counter.heroEmptyTitle}
         </Text>
+        {onResume && (
+          <View style={styles.resumeWrap}>
+            <GlowButton
+              label={cs.counter.resumeEvening}
+              onPress={onResume}
+              glow="soft"
+              icon={<Undo2Icon size={20} color={Colors.stout} />}
+              accessibilityLabel={cs.a11y.counterResume}
+            />
+            {resumeSummary && (
+              <Text style={styles.resumeHint} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.counter.resumeHint(resumeSummary)}
+              </Text>
+            )}
+          </View>
+        )}
       </View>
     );
   }
@@ -758,7 +848,7 @@ function Hero({
 
 // ─── Screen root ──────────────────────────────────────────────────────────────
 
-export default function CounterScreen() {
+export default function CounterScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const { candidates, selected, selectPub, permissionState, requestPermission, loading, retry } =
     useNearbyPub();
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -775,20 +865,31 @@ export default function CounterScreen() {
   const activeKey = activePub ? geohash8(activePub.lat, activePub.lng) : null;
 
   if (permissionState !== 'granted') {
-    return <PermissionScreen permissionState={permissionState} requestPermission={requestPermission} />;
+    return (
+      <PermissionScreen
+        permissionState={permissionState}
+        requestPermission={requestPermission}
+        embedded={embedded}
+      />
+    );
   }
 
   if (loading) {
-    return <DetectingScreen />;
+    return <DetectingScreen embedded={embedded} />;
   }
 
   if (!activePub) {
-    return <NoPubScreen onRetry={retry} />;
+    return <NoPubScreen onRetry={retry} embedded={embedded} />;
   }
 
   return (
     <>
-      <ActiveCounter pub={activePub} candidatesCount={candidates.length} onChangePub={() => setPickerOpen(true)} />
+      <ActiveCounter
+        pub={activePub}
+        candidatesCount={candidates.length}
+        onChangePub={() => setPickerOpen(true)}
+        embedded={embedded}
+      />
       <PubPickerModal
         visible={pickerOpen}
         candidates={candidates}
@@ -967,6 +1068,42 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.mutedText,
     marginTop: 10,
+  },
+  // "Dopito" — a compact session chip in the header. Same outline treatment as
+  // "Změnit" (stout2 fill + border + amber label) so the two read as a matched
+  // pair of secondary actions, never competing with the body's counting.
+  doneButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout2,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  doneButtonPressed: {
+    opacity: 0.7,
+  },
+  doneButtonText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 13,
+    color: Colors.amber,
+  },
+  // Resume CTA under the empty-state title when a recent evening can continue.
+  resumeWrap: {
+    alignSelf: 'stretch',
+    marginTop: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
+    gap: Spacing.sm,
+  },
+  resumeHint: {
+    fontFamily: Fonts.ui.regular,
+    fontSize: 13,
+    color: Colors.mutedText,
+    textAlign: 'center',
+    lineHeight: 19,
   },
 
   // — Menu —

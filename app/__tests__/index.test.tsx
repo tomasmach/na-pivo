@@ -86,9 +86,16 @@ jest.mock('@/hooks/useCompass', () => ({
   useCompass: jest.fn(),
 }));
 
+jest.mock('@/data/account', () => ({
+  updateAccountPreferences: jest.fn(async () => null),
+}));
+
 const CompassScreen = require('../(tabs)/index').default;
 const { useCompass } = require('@/hooks/useCompass') as {
   useCompass: jest.Mock;
+};
+const { updateAccountPreferences } = require('@/data/account') as {
+  updateAccountPreferences: jest.Mock;
 };
 const mockedUseRouter = useRouter as jest.Mock;
 
@@ -303,6 +310,28 @@ describe('CompassScreen', () => {
     expect(surpriseLabel.props.numberOfLines).toBe(1);
     expect(surpriseLabel.props.adjustsFontSizeToFit).toBe(true);
     expect(surpriseLabel.props.minimumFontScale).toBeLessThan(1);
+  });
+
+  it('syncs compass mode changes to the account preferences endpoint', () => {
+    const setMode = jest.fn();
+    useCompass.mockReturnValue({ ...baseCompassState(), setMode });
+
+    let renderer: any;
+
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(CompassScreen));
+    });
+
+    const surpriseButton = renderer!.root.findByProps({
+      accessibilityLabel: cs.a11y.modeSurpriseButton,
+    });
+
+    act(() => {
+      surpriseButton.props.onPress();
+    });
+
+    expect(setMode).toHaveBeenCalledWith('surprise');
+    expect(updateAccountPreferences).toHaveBeenCalledWith({ mode: 'surprise' });
   });
 
   it('opens the report reason sheet from the revealed pub pill', () => {

@@ -22,7 +22,7 @@
  *                          queue and retry on the next flush.
  */
 
-import { clearCachedAccount, ensureAccount } from './account';
+import { clearCachedAnonymousAccount, ensureAccount, type AccountSession } from './account';
 import { getBackendEndpoint } from './backendConfig';
 import type { CommunityBeer } from './communityHours';
 import { trackClientEvent } from './telemetryClient';
@@ -67,9 +67,12 @@ export type SubmitDrinkResult = 'ok' | 'permanent-error' | 'retry';
 
 const REQUEST_TIMEOUT_MS = 8000;
 
-async function classifyDrinkHttpFailure(status: number): Promise<SubmitDrinkResult> {
+async function classifyDrinkHttpFailure(
+  status: number,
+  session: AccountSession,
+): Promise<SubmitDrinkResult> {
   if (status === 401) {
-    await clearCachedAccount();
+    await clearCachedAnonymousAccount(session);
     return 'retry';
   }
 
@@ -193,7 +196,7 @@ export async function submitDrink(
       trackDrinkSynced('submit_drink');
       return 'ok';
     }
-    const result = await classifyDrinkHttpFailure(resp.status);
+    const result = await classifyDrinkHttpFailure(resp.status, session);
     trackDrinkSyncFailed('submit_drink', {
       status: resp.status,
       reason: 'http_error',
@@ -270,7 +273,7 @@ export async function deleteDrink(
     });
 
     if (resp.ok) return 'ok';
-    const result = await classifyDrinkHttpFailure(resp.status);
+    const result = await classifyDrinkHttpFailure(resp.status, session);
     trackDrinkSyncFailed('delete_drink', {
       status: resp.status,
       reason: 'http_error',

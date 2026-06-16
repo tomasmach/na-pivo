@@ -1,55 +1,81 @@
-# Na pivo 🍺
+# Na pivo
 
-**Namíříme tě na nejbližší hospodu.** Kompas ukazuje přímo k pivu — žádné mapy, žádné reklamy.
+Moderní mobilní pivní deníček pro české a slovenské hospody, piva, večery a party kamarádů.
 
----
+Na pivo začalo jako jednoduchá iOS appka s kompasem do nejbližší hospody. Kompas je pořád důležitá a rozpoznatelná část produktu, ale aplikace se posouvá směrem k plnohodnotnému pivnímu deníčku: záznamy večerů, vypitá piva, navštívené hospody, profily, statistiky, komunita, hodnocení a objevování nových míst.
 
-Na pivo is a novelty iOS app that points a compass arrow toward the nearest (or a randomly
-chosen) pub in your area. All pub data is bundled on-device — no internet connection required
-after install. Nothing inside the app is purchased or unlocked — it's free and ad-free.
+Produktový tón je český, hospodský, hravý a lidský. UI copy uživateli tyká. Kód, komentáře a internals jsou anglicky.
+
+## What is in this repo
+
+This repository contains the Expo / React Native mobile app.
+
+The backend lives next to it in `../na-pivo-backend` and powers accounts, profiles, community data, pub hours, ratings, visits, drink logs, telemetry, feedback and other synced features.
+
+The app should degrade gracefully without internet: local state and queued changes matter. Server-backed features still require sync, but the mobile experience should not collapse just because the network is unavailable.
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Runtime | Expo, React Native, React 19 |
+| Navigation | Expo Router |
+| State | Zustand + local queues where needed |
+| Native builds | EAS / Expo prebuild |
+| Tests | Jest + React Native Testing Library |
+| Language | TypeScript |
 
 ## Run locally
 
 ```bash
 npm install
-npm run start        # Expo dev server (scan QR with Expo Go or custom dev client)
+npm run start
 ```
 
-To test against the local backend instead of the deployed API:
+Useful checks:
 
 ```bash
-# terminal 1 — backend
+npm run typecheck
+npm test
+npm run lint
+```
+
+## Run against the local backend
+
+Start the Django backend on the LAN interface:
+
+```bash
 cd ../na-pivo-backend
 uv run python manage.py runserver 0.0.0.0:8000
+```
 
-# terminal 2 — build and run the local iOS app
+Then build and run the local iOS app with backend mode enabled:
+
+```bash
 cd ../na-pivo
 npm run ios:local
 ```
 
-`ios:local` is the local-backend equivalent of `npx expo run:ios`. It passes the
-Mac's LAN IP into the app so the simulator/device talks to the local Django
-server instead of `https://api.na-pivo.cz`. Override the port with
-`EXPO_PUBLIC_BACKEND_PORT=8765` if needed.
+`ios:local` passes the Mac's LAN IP into the app so the simulator or device talks to the local Django server instead of `https://api.na-pivo.cz`.
 
-Raw command equivalent:
+Override the backend port when needed:
 
 ```bash
-EXPO_PUBLIC_BACKEND_MODE=local \
-EXPO_PUBLIC_BACKEND_HOST=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo localhost) \
-npx expo run:ios
+EXPO_PUBLIC_BACKEND_PORT=8765 npm run ios:local
 ```
 
-Use `npm run start:local` only when you want to start Metro without rebuilding
-the native iOS app.
+Use `npm run start:local` only when you want to start Metro in local-backend mode without rebuilding the native iOS app.
 
-## Refresh pub dataset
+## Native app commands
 
 ```bash
-npm run fetch-pubs   # downloads pubs from Overpass API and writes src/data/pubs.json
+npm run ios
+npm run ios:local
+npm run android
+npm run android:local
 ```
 
-## Build (EAS)
+## Build with EAS
 
 ```bash
 # development build (custom dev client, physical device)
@@ -62,11 +88,24 @@ eas build -p ios --profile preview
 eas build -p ios --profile production
 ```
 
+## Data and privacy notes
+
+Na pivo works with sensitive data: location, pubs, alcohol history, profiles and social activity.
+
+The app should prefer user-confirmed visits, local calculations, queued sync and coarse or aggregated location data where possible. Do not introduce raw GPS history or route storage without an explicit product decision.
+
+Never log bearer tokens, raw GPS, contact details, cookies, proxy credentials or request bodies containing personal data.
+
+## Agent instructions
+
+Agent-facing product and engineering guidance lives in `AGENTS.md`. Claude-compatible instructions live in `CLAUDE.md` and point to the same source.
+
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT - see [LICENSE](LICENSE).
 
 ## Data attribution
 
-Pub data © [OpenStreetMap](https://www.openstreetmap.org/) contributors, available under the
-[Open Database Licence (ODbL)](https://opendatacommons.org/licenses/odbl/).
+Pub data includes OpenStreetMap-derived data where applicable.
+
+OpenStreetMap data is © [OpenStreetMap](https://www.openstreetmap.org/) contributors and available under the [Open Database Licence (ODbL)](https://opendatacommons.org/licenses/odbl/).

@@ -31,7 +31,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
 import { getBackendEndpoint } from './backendConfig';
-import { trackApiFailure } from './telemetryClient';
+import { setTelemetrySession, trackApiFailure } from './telemetryClient';
 
 export interface AccountSession {
   /** Stable client-generated device identifier (UUID v4). */
@@ -40,10 +40,24 @@ export interface AccountSession {
   accountId: string;
   /** Server-issued opaque bearer secret. */
   token: string;
+  /**
+   * True once a real credential (email/password or Google/Apple) is attached —
+   * i.e. the user is SIGNED IN. A signed-in session is no longer device-bound,
+   * so ensureAccount returns it regardless of the current deviceId and never
+   * silently forks a new anonymous account on a 401.
+   */
+  authenticated?: boolean;
 }
 
 export interface AccountPreferences {
+  mode?: 'nearest' | 'surprise';
+  maxDistanceKm?: number | null;
+  priceCurrency?: 'CZK' | 'EUR';
+  hapticEnabled?: boolean;
+  soundEnabled?: boolean;
+  hideClosedPubs?: boolean;
   hidePubNames: boolean;
+  marketingEmailsEnabled?: boolean;
 }
 
 // The non-secret device anchor lives in AsyncStorage; the account blob — which
@@ -67,6 +81,16 @@ interface AccountMeResponse {
   id?: string;
   device_id?: string;
   hide_pub_names?: boolean;
+  settings?: {
+    mode?: string;
+    max_distance_km?: number | null;
+    price_currency?: string;
+    haptic_enabled?: boolean;
+    sound_enabled?: boolean;
+    hide_closed_pubs?: boolean;
+    hide_pub_names?: boolean;
+    marketing_emails_enabled?: boolean;
+  };
 }
 
 /**
@@ -79,6 +103,8 @@ interface CachedAccount {
   deviceId: string;
   accountId: string;
   token: string;
+  /** True when this session is credential-backed (signed in), not anonymous. */
+  authenticated?: boolean;
 }
 
 function chainAbortSignal(signal?: AbortSignal): {
@@ -107,9 +133,34 @@ function chainAbortSignal(signal?: AbortSignal): {
 }
 
 function preferencesFromResponse(data: AccountMeResponse): AccountPreferences {
-  return {
-    hidePubNames: data.hide_pub_names === true,
+  const settings = data.settings ?? {};
+  const mode = settings.mode === 'surprise' || settings.mode === 'nearest' ? settings.mode : undefined;
+  const priceCurrency =
+    settings.price_currency === 'EUR' || settings.price_currency === 'CZK'
+      ? settings.price_currency
+      : undefined;
+
+  const preferences: AccountPreferences = {
+    hidePubNames: (settings.hide_pub_names ?? data.hide_pub_names) === true,
   };
+  if (mode) preferences.mode = mode;
+  if (typeof settings.max_distance_km === 'number' || settings.max_distance_km === null) {
+    preferences.maxDistanceKm = settings.max_distance_km;
+  }
+  if (priceCurrency) preferences.priceCurrency = priceCurrency;
+  if (typeof settings.haptic_enabled === 'boolean') {
+    preferences.hapticEnabled = settings.haptic_enabled;
+  }
+  if (typeof settings.sound_enabled === 'boolean') {
+    preferences.soundEnabled = settings.sound_enabled;
+  }
+  if (typeof settings.hide_closed_pubs === 'boolean') {
+    preferences.hideClosedPubs = settings.hide_closed_pubs;
+  }
+  if (typeof settings.marketing_emails_enabled === 'boolean') {
+    preferences.marketingEmailsEnabled = settings.marketing_emails_enabled;
+  }
+  return preferences;
 }
 
 // Precomputed 00..ff byte→hex table for the getRandomValues UUID path.
@@ -184,6 +235,7 @@ async function readCachedAccount(): Promise<CachedAccount | null> {
         deviceId: parsed.deviceId,
         accountId: parsed.accountId,
         token: parsed.token,
+        authenticated: parsed.authenticated === true,
       };
     }
   } catch {
@@ -209,6 +261,18 @@ export async function clearCachedAccount(): Promise<void> {
   } catch {
     // best effort
   }
+  setTelemetrySession(null);
+}
+
+/**
+ * Recover from a 401 only for anonymous/device sessions. A credential-backed
+ * session must not silently fall forward into a fresh anonymous account because
+ * private retry queues could then upload the signed-in user's data elsewhere.
+ */
+export async function clearCachedAnonymousAccount(session: AccountSession | null): Promise<boolean> {
+  if (!session || session.authenticated) return false;
+  await clearCachedAccount();
+  return true;
 }
 
 /**
@@ -227,11 +291,23 @@ export async function ensureAccount(signal?: AbortSignal): Promise<AccountSessio
   let deviceId = await getOrCreateDeviceId();
   const cached = await readCachedAccount();
 
-  // Already established for THIS device — no network call needed. A cached blob
-  // minted for a different deviceId is ignored (re-register below), so a token
-  // is never paired with a mismatched deviceId.
+  // A SIGNED-IN session is credential-backed, not device-bound: return it as-is
+  // (it may have been minted on another device / after a deviceId change), and
+  // never re-register or fork it. Sign-out is explicit (revertToAnonymous).
+  if (cached && cached.authenticated) {
+    return {
+      deviceId: cached.deviceId,
+      accountId: cached.accountId,
+      token: cached.token,
+      authenticated: true,
+    };
+  }
+
+  // Anonymous: already established for THIS device — no network call needed. A
+  // cached blob minted for a different deviceId is ignored (re-register below),
+  // so a token is never paired with a mismatched deviceId.
   if (cached && cached.deviceId === deviceId) {
-    return { deviceId, accountId: cached.accountId, token: cached.token };
+    return { deviceId, accountId: cached.accountId, token: cached.token, authenticated: false };
   }
 
   const endpoint = getBackendEndpoint('/v1/account');
@@ -276,9 +352,19 @@ export async function ensureAccount(signal?: AbortSignal): Promise<AccountSessio
 
       const data = (await resp.json()) as RegisterResponse;
       if (data?.id && data?.token) {
-        const account: CachedAccount = { deviceId, accountId: data.id, token: data.token };
+        const account: CachedAccount = {
+          deviceId,
+          accountId: data.id,
+          token: data.token,
+          authenticated: false,
+        };
         await writeCachedAccount(account);
-        return { deviceId, accountId: account.accountId, token: account.token };
+        return {
+          deviceId,
+          accountId: account.accountId,
+          token: account.token,
+          authenticated: false,
+        };
       }
       return null;
     }
@@ -322,7 +408,7 @@ export async function fetchAccountPreferences(
     });
 
     if (resp.status === 401) {
-      await clearCachedAccount();
+      await clearCachedAnonymousAccount(session);
       return null;
     }
     if (!resp.ok) {
@@ -362,9 +448,33 @@ export async function updateAccountPreferences(
   const session = await ensureAccount(signal);
   if (!session || signal?.aborted) return null;
 
-  const body: Record<string, boolean> = {};
+  const body: Record<string, unknown> = {};
+  if (preferences.mode === 'nearest' || preferences.mode === 'surprise') {
+    body.compass_mode = preferences.mode;
+  }
+  if (
+    typeof preferences.maxDistanceKm === 'number' ||
+    preferences.maxDistanceKm === null
+  ) {
+    body.max_distance_km = preferences.maxDistanceKm;
+  }
+  if (preferences.priceCurrency === 'CZK' || preferences.priceCurrency === 'EUR') {
+    body.price_currency = preferences.priceCurrency;
+  }
+  if (typeof preferences.hapticEnabled === 'boolean') {
+    body.haptic_enabled = preferences.hapticEnabled;
+  }
+  if (typeof preferences.soundEnabled === 'boolean') {
+    body.sound_enabled = preferences.soundEnabled;
+  }
+  if (typeof preferences.hideClosedPubs === 'boolean') {
+    body.hide_closed_pubs = preferences.hideClosedPubs;
+  }
   if (typeof preferences.hidePubNames === 'boolean') {
     body.hide_pub_names = preferences.hidePubNames;
+  }
+  if (typeof preferences.marketingEmailsEnabled === 'boolean') {
+    body.marketing_emails_enabled = preferences.marketingEmailsEnabled;
   }
 
   const abort = chainAbortSignal(signal);
@@ -380,7 +490,7 @@ export async function updateAccountPreferences(
     });
 
     if (resp.status === 401) {
-      await clearCachedAccount();
+      await clearCachedAnonymousAccount(session);
       return null;
     }
     if (!resp.ok) {
@@ -406,4 +516,50 @@ export async function updateAccountPreferences(
   } finally {
     abort.cleanup();
   }
+}
+
+// ---------------------------------------------------------------------------
+// Session helpers (used by the auth layer in src/data/auth.ts)
+// ---------------------------------------------------------------------------
+
+/** Current bearer token, or null when there is no cached session. */
+export async function getSessionToken(): Promise<string | null> {
+  const cached = await readCachedAccount();
+  return cached?.token ?? null;
+}
+
+/**
+ * Persist a signed-in session: the server-issued token + account id, flagged
+ * ``authenticated`` so ensureAccount() stops treating it as a device-bound
+ * anonymous account (it survives deviceId changes and never silently forks).
+ */
+export async function setSession(session: {
+  deviceId?: string;
+  accountId: string;
+  token: string;
+  authenticated: boolean;
+}): Promise<void> {
+  const deviceId = session.deviceId ?? (await getOrCreateDeviceId());
+  const nextSession: AccountSession = {
+    deviceId,
+    accountId: session.accountId,
+    token: session.token,
+    authenticated: session.authenticated,
+  };
+  await writeCachedAccount(nextSession);
+  setTelemetrySession(nextSession);
+}
+
+/**
+ * Sign out: drop the cached session, mint a FRESH device identity (the old one
+ * is now tied to a claimed account that needs a token we no longer hold), then
+ * re-establish a clean anonymous device account so the app keeps working.
+ * Always resolves; never throws.
+ */
+export async function revertToAnonymous(signal?: AbortSignal): Promise<AccountSession | null> {
+  await clearCachedAccount();
+  await replaceDeviceId();
+  const session = await ensureAccount(signal);
+  setTelemetrySession(session);
+  return session;
 }

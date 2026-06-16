@@ -14,6 +14,7 @@ interface SettingsState {
   soundEnabled: boolean;
   hideClosedPubs: boolean;
   hidePubNames: boolean;
+  marketingEmailsEnabled: boolean;
   surpriseSeed: number;
   setMode: (m: Mode) => void;
   setMaxDistanceKm: (km: number | null) => void;
@@ -22,6 +23,7 @@ interface SettingsState {
   setSoundEnabled: (v: boolean) => void;
   setHideClosedPubs: (v: boolean) => void;
   setHidePubNames: (v: boolean) => void;
+  setMarketingEmailsEnabled: (v: boolean) => void;
   bumpSurpriseSeed: () => void;
 }
 
@@ -35,6 +37,7 @@ export const useSettingsStore = create<SettingsState>()(
       soundEnabled: false,
       hideClosedPubs: true,
       hidePubNames: false,
+      marketingEmailsEnabled: false,
       surpriseSeed: 1,
 
       setMode: (m) => set({ mode: m }),
@@ -44,6 +47,7 @@ export const useSettingsStore = create<SettingsState>()(
       setSoundEnabled: (v) => set({ soundEnabled: v }),
       setHideClosedPubs: (v) => set({ hideClosedPubs: v }),
       setHidePubNames: (v) => set({ hidePubNames: v }),
+      setMarketingEmailsEnabled: (v) => set({ marketingEmailsEnabled: v }),
       bumpSurpriseSeed: () =>
         set((state) => ({ surpriseSeed: state.surpriseSeed + 1 })),
     }),
@@ -58,6 +62,7 @@ export const useSettingsStore = create<SettingsState>()(
         soundEnabled: state.soundEnabled,
         hideClosedPubs: state.hideClosedPubs,
         hidePubNames: state.hidePubNames,
+        marketingEmailsEnabled: state.marketingEmailsEnabled,
         surpriseSeed: state.surpriseSeed,
       }),
     }

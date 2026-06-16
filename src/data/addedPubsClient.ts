@@ -7,7 +7,7 @@
  * camelCase.
  */
 
-import { ensureAccount, clearCachedAccount } from './account';
+import { ensureAccount, clearCachedAnonymousAccount } from './account';
 import { getBackendEndpoint } from './backendConfig';
 import { trackApiFailure } from './telemetryClient';
 
@@ -112,7 +112,7 @@ export async function submitAddedPub(
     });
 
     if (resp.status === 401) {
-      await clearCachedAccount();
+      await clearCachedAnonymousAccount(session);
       return null;
     }
     if (!resp.ok) {

@@ -30,6 +30,16 @@ import { generateUuidV4 } from '@/data/account';
 const DAY_CUTOFF_HOURS = 4;
 /** Keep at most this many finished sessions in history. */
 const MAX_HISTORY = 50;
+/** Idle window after which a still-open session auto-completes into history. A
+ *  session left untouched this long (since its last counted beer) is treated as
+ *  "the evening is over" — we archive it so the counter starts clean. Measured
+ *  from the last drink, NOT the session start. */
+export const IDLE_TIMEOUT_MS = 3 * 60 * 60 * 1000;
+
+/** Why a session was archived into history. `timeout` marks an auto-completed
+ *  evening that the user can still resume (same pub, same drinking day); the
+ *  rollover reasons are recorded for completeness and are never resumable. */
+export type ArchivedReason = 'timeout' | 'pub-change' | 'day-rollover' | 'manual';
 
 /** A single counted beer. `id` doubles as the drink's client_id (idempotency
  *  key) so the caller can dequeue / undo the exact same event. */
@@ -56,6 +66,9 @@ export interface TallySession {
   /** ISO-8601 timestamp of when the session started (first drink). */
   startedAt: string;
   drinks: TallyDrink[];
+  /** Set only on archived (history) sessions — why the evening was closed. The
+   *  live `current` session never carries it. Drives the resume affordance. */
+  archivedReason?: ArchivedReason;
 }
 
 /** The minimal pub identity a count needs. */
@@ -99,6 +112,26 @@ interface TallyState {
   removeDrink: (id: string) => string | null;
   /** Mark a drink as no longer queued, so the UI does not offer a local-only undo. */
   markDrinkSynced: (id: string) => void;
+  /**
+   * Close the current session explicitly, archiving it into history with the
+   * given reason ('manual' for the user's "Dopito", 'timeout' for the idle
+   * sweeper). A no-op on an empty/absent session — except it clears an empty
+   * pinned session object so the counter resets cleanly.
+   */
+  archiveCurrent: (reason: ArchivedReason) => void;
+  /**
+   * Auto-complete the current session IFF it has gone idle (no drink within
+   * IDLE_TIMEOUT_MS). Archives it with reason 'timeout' so it stays resumable.
+   * Returns true when it archived. Safe to call on launch/foreground.
+   */
+  maybeAutoArchive: (nowMs?: number) => boolean;
+  /**
+   * Bring the most recently auto-completed evening back to `current` so counting
+   * continues the SAME session (same clientId → same backend visit). Only the
+   * newest history entry qualifies, and only when it was archived by timeout,
+   * sits at `pubKey`, and is still the same drinking day. Returns true on resume.
+   */
+  resumeLast: (pubKey: string, nowMs?: number) => boolean;
   /** Wipe the current session AND history (e.g. a "start over" affordance). */
   reset: () => void;
 }
@@ -175,10 +208,14 @@ export const useTallyStore = create<TallyState>()(
           const rollover = shouldStartNewSession(state.current, pub.pubKey, atDate);
 
           if (rollover) {
-            // Archive a non-empty current session before opening a fresh one.
+            // Archive a non-empty current session before opening a fresh one,
+            // tagging WHY it closed (a different pub vs the drinking day rolling
+            // over) so it is distinguishable from a resumable timeout archive.
+            const reason: ArchivedReason =
+              state.current && state.current.pubKey !== pub.pubKey ? 'pub-change' : 'day-rollover';
             const history =
               state.current && state.current.drinks.length > 0
-                ? [state.current, ...state.history].slice(0, MAX_HISTORY)
+                ? [{ ...state.current, archivedReason: reason }, ...state.history].slice(0, MAX_HISTORY)
                 : state.history;
             return {
               current: {
@@ -244,6 +281,46 @@ export const useTallyStore = create<TallyState>()(
           if (!changed) return state;
           return { current: { ...state.current, drinks } };
         }),
+
+      archiveCurrent: (reason) =>
+        set((state) => {
+          if (!state.current) return state;
+          // An empty pinned session is not an evening — just drop it.
+          if (state.current.drinks.length === 0) return { current: null };
+          const archived: TallySession = { ...state.current, archivedReason: reason };
+          return { current: null, history: [archived, ...state.history].slice(0, MAX_HISTORY) };
+        }),
+
+      maybeAutoArchive: (nowMs = Date.now()) => {
+        let archived = false;
+        set((state) => {
+          if (!state.current || state.current.drinks.length === 0) return state;
+          if (nowMs - sessionLastActivityMs(state.current) < IDLE_TIMEOUT_MS) return state;
+          archived = true;
+          const arch: TallySession = { ...state.current, archivedReason: 'timeout' };
+          return { current: null, history: [arch, ...state.history].slice(0, MAX_HISTORY) };
+        });
+        return archived;
+      },
+
+      resumeLast: (pubKey, nowMs = Date.now()) => {
+        let resumed = false;
+        set((state) => {
+          // A live session takes priority — never clobber an in-progress evening.
+          if (state.current && state.current.drinks.length > 0) return state;
+          const last = state.history[0];
+          if (!last || last.archivedReason !== 'timeout' || last.pubKey !== pubKey) return state;
+          // Only the same drinking day: across the 04:00 cutoff it's a new evening,
+          // and reopening it would make the next drink immediately roll it over.
+          if (drinkingDayKey(new Date(last.startedAt)) !== drinkingDayKey(new Date(nowMs))) {
+            return state;
+          }
+          resumed = true;
+          const { archivedReason: _omit, ...restored } = last;
+          return { current: restored, history: state.history.slice(1) };
+        });
+        return resumed;
+      },
 
       reset: () =>
         set((state) => {
@@ -313,6 +390,43 @@ export function findSessionByStart(
   startedAt: string,
 ): TallySession | null {
   return allSessionsNewestFirst(current, history).find((s) => s.startedAt === startedAt) ?? null;
+}
+
+/** Epoch-ms of the session's last activity: the latest counted beer, falling
+ *  back to the session start when (defensively) it holds no drinks. */
+export function sessionLastActivityMs(session: TallySession): number {
+  let maxMs = Date.parse(session.startedAt);
+  for (const drink of session.drinks) {
+    const ms = Date.parse(drink.at);
+    if (Number.isFinite(ms) && ms > maxMs) maxMs = ms;
+  }
+  return Number.isFinite(maxMs) ? maxMs : 0;
+}
+
+/** True when a session has sat untouched past the idle window — the signal to
+ *  auto-complete it. An empty session is never "idle" (nothing to close). */
+export function isSessionIdle(session: TallySession | null, nowMs: number = Date.now()): boolean {
+  if (!session || session.drinks.length === 0) return false;
+  return nowMs - sessionLastActivityMs(session) >= IDLE_TIMEOUT_MS;
+}
+
+/**
+ * The evening the counter can offer to resume at `pubKey`, or null. It is the
+ * newest history session, but only when it was auto-completed by timeout, sits
+ * at the same pub, and falls on the current drinking day — i.e. "you stepped
+ * away and came back to the same place tonight". A live session suppresses it.
+ */
+export function resumableSession(
+  current: TallySession | null,
+  history: TallySession[],
+  pubKey: string,
+  nowMs: number = Date.now(),
+): TallySession | null {
+  if (current && current.drinks.length > 0) return null;
+  const last = history[0];
+  if (!last || last.archivedReason !== 'timeout' || last.pubKey !== pubKey) return null;
+  if (drinkingDayKey(new Date(last.startedAt)) !== drinkingDayKey(new Date(nowMs))) return null;
+  return last;
 }
 
 /** Per-beer counts in the current session, keyed by normalized name + volume —

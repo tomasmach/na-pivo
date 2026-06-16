@@ -45,6 +45,19 @@ import { useTallyStore } from '@/stores/tallyStore';
  */
 let suppressSync = false;
 
+/** Run local-only rating mutations without enqueueing server upsert/delete
+ *  operations. Used for account-boundary wipes where local data must disappear
+ *  from this device without deleting the signed-in account's server copy. */
+export function runWithoutPubRatingsSync(task: () => void): void {
+  const previous = suppressSync;
+  suppressSync = true;
+  try {
+    task();
+  } finally {
+    suppressSync = previous;
+  }
+}
+
 /** Best-effort pub name for a pubKey from the tally history (any session at the
  *  same cell), or '' when we have never counted a beer there. */
 function pubNameForKey(pubKey: string): string {

@@ -119,6 +119,10 @@ export const cs = {
       czk: 'Kč',
       eur: '€',
     },
+    marketingEmails: {
+      title: 'Novinky e-mailem',
+      subtitle: 'Tipy a nabídky můžeš kdykoli vypnout',
+    },
     about: {
       title: 'O appce',
     },
@@ -227,10 +231,247 @@ export const cs = {
     savedToast: 'Hospoda přidána',
   },
 
+  account: {
+    // — Auth screen (sign in / sign up) —
+    authTitle: 'Účet',
+    tabLogin: 'Přihlásit se',
+    tabRegister: 'Registrovat',
+    intro: 'Přihlas se a měj svá piva a hodnocení synchronizovaná na všech zařízeních.',
+    emailLabel: 'E-mail',
+    emailPlaceholder: 'tvuj@email.cz',
+    passwordLabel: 'Heslo',
+    passwordPlaceholder: 'Alespoň 8 znaků',
+    nameLabel: 'Jméno (nepovinné)',
+    namePlaceholder: 'Jak ti máme říkat',
+    submitLogin: 'Přihlásit se',
+    submitRegister: 'Vytvořit účet',
+    loading: 'Pracuji…',
+    orDivider: 'nebo',
+    continueWithApple: 'Pokračovat přes Apple',
+    continueWithGoogle: 'Pokračovat přes Google',
+    forgotPassword: 'Zapomenuté heslo?',
+
+    // — Inline validation —
+    errorEmailInvalid: 'Zadej platný e-mail.',
+    errorPasswordShort: 'Heslo musí mít alespoň 8 znaků.',
+    errorGeneric: 'Něco se pokazilo. Zkus to prosím znovu.',
+
+    // — Forgot password (inline) —
+    resetPrompt: 'Zadej e-mail a pošleme ti odkaz na obnovu hesla.',
+    resetSend: 'Poslat odkaz',
+    resetSentToast: 'Pokud účet existuje, poslali jsme odkaz na obnovu.',
+
+    // — Post-register / verification —
+    verifyEmailSentToast: 'Ověřovací e-mail je na cestě.',
+
+    // — Account management screen —
+    accountTitle: 'Účet',
+    emailVerified: 'E-mail ověřen',
+    emailUnverified: 'E-mail není ověřen',
+    verifyEmailCta: 'Ověřit e-mail',
+    verifyEmailRequestedToast: 'Ověřovací e-mail je na cestě.',
+    anonymousName: 'Tvůj účet',
+
+    // — Sign-in methods card —
+    methodsHeader: 'ZPŮSOBY PŘIHLÁŠENÍ',
+    methodEmail: 'E-mail a heslo',
+    methodGoogle: 'Google',
+    methodApple: 'Apple',
+    linkCta: 'Propojit',
+    unlinkCta: 'Odpojit',
+    linkedLabel: 'Propojeno',
+    linkedGoogleToast: 'Google propojen.',
+    linkedAppleToast: 'Apple propojen.',
+    unlinkedToast: 'Odpojeno.',
+    setPasswordCta: 'Nastavit heslo',
+    setPasswordHeader: 'Nastavit heslo',
+    setPasswordSave: 'Uložit heslo',
+    setPasswordToast: 'Heslo nastaveno.',
+
+    // — Data export —
+    dataHeader: 'DATA',
+    exportData: 'Poslat moje data e-mailem',
+    exportDataSubtitle: 'JSON export profilu, deníku a hodnocení pošleme na tvůj e-mail',
+    exportDataToast: 'Export dat je na cestě.',
+    exportDataSentTitle: 'Export odeslán',
+    exportDataSentBody: 'Data jsme poslali na e-mail připojený k tvému účtu.',
+    subscriptionTitle: 'Na Pivo+',
+    subscriptionFree: 'Free',
+    subscriptionPlus: 'Plus',
+    subscriptionInactive: 'Neaktivní',
+    subscriptionPending: 'Čeká na ověření',
+    subscriptionActive: 'Aktivní',
+    subscriptionRestore: 'Obnovit nákupy',
+    subscriptionRestoreUnavailableTitle: 'Na Pivo+ ještě není spuštěné',
+    subscriptionRestoreUnavailableBody:
+      'Účet už je připravený držet obnovu nákupů. Jakmile přibude nákupní SDK, napojí se sem ověření účtenky.',
+    reportProfile: 'Nahlásit profil',
+    reportProfileSubtitle: 'Přezdívka nebo avatar porušuje pravidla',
+
+    // — Sign out —
+    logout: 'Odhlásit se',
+
+    // — Danger zone —
+    dangerHeader: 'NEBEZPEČNÁ ZÓNA',
+    deleteAccount: 'Smazat účet',
+    deleteConfirmTitle: 'Smazat účet?',
+    deleteConfirmBody:
+      'Tvůj účet a data se po krátké lhůtě nevratně smažou. Tuto akci nelze vzít zpět.',
+    deleteConfirmCancel: 'Zrušit',
+    deleteConfirmConfirm: 'Smazat',
+    deleteToast: 'Účet bude smazán.',
+
+    // — Password reset screen (deep link) —
+    resetTitle: 'Obnova hesla',
+    resetNewPasswordLabel: 'Nové heslo',
+    resetSubmit: 'Změnit heslo',
+    resetDoneToast: 'Heslo změněno.',
+    resetInvalidTitle: 'Neplatný odkaz',
+    resetInvalidBody: 'Tento odkaz na obnovu hesla už neplatí. Vyžádej si nový.',
+    resetInvalidCta: 'Zpět do aplikace',
+
+    // — Email verification screen (deep link) —
+    verifyTitle: 'Ověření e-mailu',
+    verifyLoading: 'Ověřuji e-mail…',
+    verifySuccessTitle: 'E-mail ověřen ✅',
+    verifySuccessBody: 'Díky! Tvůj e-mail je teď ověřený.',
+    verifyErrorTitle: 'Ověření se nezdařilo',
+    verifyErrorBody: 'Odkaz už neplatí nebo je neplatný. Zkus si nechat poslat nový.',
+    verifyInvalidBody: 'Chybí ověřovací kód. Otevři odkaz z e-mailu znovu.',
+    verifyDoneCta: 'Zpět do aplikace',
+  },
+
   tabs: {
     compass: 'Kompas',
     counter: 'Počítadlo',
     myBeers: 'Moje piva',
+    // Počítadlo + Moje piva live behind one tab now, switched by a segment.
+    beer: 'Štamgast',
+    profile: 'Profil',
+  },
+
+  // The merged "Pivo" tab — a segmented control flips between counting and the
+  // personal history; the two screens below it are unchanged.
+  beer: {
+    segmentCount: 'Počítat',
+    segmentHistory: 'Historie',
+  },
+
+  profile: {
+    // — Tab header —
+    title: 'Profil',
+
+    // — Identity —
+    editProfile: 'Upravit profil',
+    // Fallback name under the avatar when no display name is set.
+    noDisplayName: 'Bez jména',
+
+    // — Visibility badge —
+    visibilityPublic: 'Veřejný profil',
+    visibilityPrivate: 'Soukromý profil',
+
+    // — Stats grid —
+    statsHeader: 'TVOJE ČÍSLA',
+    statBeers: 'PIV NAPOČÍTÁNO',
+    statPubs: 'HOSPOD NAVŠTÍVENO',
+    statRatings: 'HODNOCENÍ',
+    statWalked: 'NACHOZENO',
+    statSpent: 'UTRACENO',
+    // Walked distance: "4,2 km" / fallback "—" when the server hasn't reported it.
+    kmShort: 'km',
+    notAvailable: '—',
+
+    // — Achievements —
+    achievementsHeader: 'ODZNAKY',
+    badgeFirstTenTitle: 'Prvních 10 piv',
+    badgeFirstTenLocked: 'Napočítej 10 piv',
+    badgeRegularTitle: 'Stálý host',
+    badgeRegularLocked: 'Navštiv jednu hospodu 5×',
+    badgeReviewerTitle: 'Recenzent',
+    badgeReviewerLocked: 'Ohodnoť 10 hospod',
+
+    // — Recent activity —
+    recentHeader: 'POSLEDNÍ AKTIVITA',
+
+    // — Account & settings rows —
+    manageAccount: 'Spravovat účet',
+    settingsRow: 'Nastavení',
+
+    report: {
+      button: 'Nahlásit',
+      profileFallback: 'tenhle profil',
+      confirmTitle: 'Nahlásit profil?',
+      confirmBody: (profile: string) =>
+        `Pošleme moderátorovi hlášení na ${profile}. Použij to pro nevhodnou přezdívku, fotku nebo spam.`,
+      confirmSubmit: 'Nahlásit',
+      sentToast: 'Hlášení odesláno.',
+    },
+
+    // — Signed-out hero —
+    signedOutTitle: 'Založ si profil',
+    signedOutBody:
+      'Vytvoř si účet a měj svá piva, hodnocení a odznaky synchronizované na všech zařízeních. Brzy přibydou i kamarádi a žebříčky.',
+    signedOutCta: 'Vytvořit účet',
+
+    // — Onboarding wizard —
+    setup: {
+      // STEP 1 — nickname + photo (one screen)
+      step1Eyebrow: 'KROK 1 ZE 2',
+      step1Title: 'Vytvoř si profil',
+      step1Body: 'Vyber si přezdívku a klidně přidej fotku. Obojí změníš kdykoli později.',
+      nicknamePlaceholder: 'prezdivka',
+      nicknameChecking: 'Ověřuji…',
+      nicknameAvailable: 'Volné',
+      nicknameTaken: 'Tahle přezdívka je zabraná',
+      nicknameInvalid: 'Neplatná přezdívka',
+      nicknameTooShort: 'Aspoň 3 znaky',
+      nicknameTooLong: 'Nejvíc 20 znaků',
+      nicknameCharset: 'Jen písmena bez diakritiky, číslice, _ a .',
+      nicknameReserved: 'Tahle přezdívka není dostupná',
+      // Photo affordance: tap the avatar. Optional, so there is no skip button —
+      // you just leave it empty and continue.
+      photoHintEmpty: 'Klepni a přidej fotku (nepovinné)',
+      photoHintSet: 'Klepni a změň fotku',
+      avatarUploadError: 'Fotku se nepodařilo nahrát. Zkus to prosím znovu.',
+      permissionBody: 'Pro výběr fotky potřebujeme přístup ke knihovně fotek. Povol ho v Nastavení.',
+      // Shown when the OS won't re-prompt (canAskAgain=false) — the only path is Settings.
+      permissionBlockedBody: 'Přístup k fotkám je zakázaný. Povol ho v systémovém Nastavení a zkus to znovu.',
+      openSettings: 'Otevřít Nastavení',
+      continue: 'Pokračovat',
+
+      // STEP 2 — visibility
+      step2Eyebrow: 'KROK 2 ZE 2',
+      step2Title: 'Viditelnost profilu',
+      visibilityToggleLabel: 'Veřejný profil',
+      // The GDPR consent copy the user MUST see on the visibility step (locked).
+      consentPublic:
+        'Veřejný profil znamená, že tě podle přezdívky a fotky najdou ostatní v žebříčcích a vyhledávání. Tvoje přesná poloha ani jednotlivá piva se nikdy nezveřejňují. Kdykoli to vypneš v nastavení profilu.',
+      consentPrivate: 'Když vypneš, uvidí tě jen tví kamarádi.',
+      visibilitySaveError: 'Viditelnost profilu se nepodařilo uložit. Zkus to prosím znovu.',
+      finish: 'Hotovo',
+    },
+
+    // — Edit screen —
+    edit: {
+      title: 'Upravit profil',
+      avatarHeader: 'FOTKA',
+      changePhoto: 'Změnit fotku',
+      removePhoto: 'Odebrat fotku',
+      nicknameHeader: 'PŘEZDÍVKA',
+      displayNameHeader: 'JMÉNO',
+      displayNameLabel: 'Jméno (nepovinné)',
+      displayNamePlaceholder: 'Jak ti máme říkat',
+      visibilityHeader: 'VIDITELNOST',
+      visibilityToggleLabel: 'Veřejný profil',
+      // Short GDPR copy on the edit screen (the wizard carries the full version).
+      consent:
+        'Veřejný profil tě zviditelní v žebříčcích a vyhledávání podle přezdívky a fotky. Poloha ani jednotlivá piva se nikdy nezveřejňují.',
+      consentPrivate: 'Když vypneš, uvidí tě jen tví kamarádi.',
+      save: 'Uložit',
+      saving: 'Ukládám…',
+      savedToast: 'Profil uložen',
+      errorGeneric: 'Něco se pokazilo. Zkus to prosím znovu.',
+    },
   },
 
   counter: {
@@ -277,6 +518,16 @@ export const cs = {
 
     // — Undo —
     undoLast: 'Vrátit poslední',
+
+    // — Closing / resuming an evening —
+    // Explicit "I'm done" — archives the session to history.
+    doneDrinking: 'Dopito',
+    doneTitle: 'Dopito?',
+    doneBody: 'Zavřeme tenhle večer a najdeš ho v Historii.',
+    doneConfirm: 'Dopito',
+    // Offered when a recent evening at this pub auto-completed and can continue.
+    resumeEvening: 'Pokračovat ve večeru',
+    resumeHint: (summary: string) => `Posledně tu padlo ${summary}. Naváž, nebo začni ťuknutím nový.`,
 
     // — Beer / price modal —
     priceModalTitle: 'Kolik stojí?',
@@ -377,13 +628,18 @@ export const cs = {
   privacy: {
     title: 'Soukromí',
     body: [
-      'Sbíráme jen omezené anonymní provozní statistiky: otevření aplikace, technické chyby a součet nachozených metrů.',
+      'Sbíráme jen omezené provozní statistiky: otevření aplikace, návrat do popředí, technické chyby, verzi aplikace a součet nachozených metrů.',
       'Pro stažení okolních hospod může aplikace poslat aktuální nebo přibližnou polohu na náš server, který pro vyhledávání využívá Mapy.cz.',
       'Nachozené metry se počítají v telefonu a na server se posílá jen součet po dávkách, nikdy GPS body ani trasa.',
       'Průběžnou GPS historii, trasu pohybu ani jednotlivé GPS body neukládáme.',
       'Pro zobrazení otevírací doby aplikace pošle název a polohu vybrané hospody na vlastní server provozovatele, který dohledá otevírací dobu.',
       'Aplikace vytvoří anonymní náhodný identifikátor zařízení a odešle ho na náš server, aby každému zařízení patřil dočasný účet. Identifikátor neobsahuje žádné osobní údaje a slouží jen k odlišení zařízení.',
-      'Když dobrovolně doplníš otevírací dobu nebo piva na čepu, aplikace tyto údaje odešle na náš server pod anonymním účtem zařízení. Údaje se zobrazují veřejně ostatním uživatelům a neobsahují žádné osobní informace o tobě.',
+      'Účet je dobrovolný. Když se zaregistruješ e-mailem, ukládáme e-mail a heslo jen v zahashované podobě. Přes Google nebo Apple dostaneme identifikátor účtu, e-mail a případně jméno; heslo od poskytovatele nikdy nevidíme.',
+      'Profil může obsahovat přezdívku, jméno a avatar. U veřejného profilu tě podle přezdívky a fotky můžou najít ostatní; přesná poloha, deníček a jednotlivá piva se veřejně nezobrazují.',
+      'Počítadlo, historie večerů, návštěvy hospod a tvoje soukromá hodnocení se ukládají lokálně a synchronizují se jen k tvému účtu. Po odhlášení nebo smazání účtu appka lokální soukromý deníček, hodnocení a čekající private sync fronty z tohohle zařízení vyčistí.',
+      'Když dobrovolně doplníš otevírací dobu, piva na čepu nebo chybějící hospodu, aplikace tyto údaje odešle na náš server. Tyhle příspěvky pomáhají ostatním a můžou se zobrazit veřejně, ale bez tvé přesné polohy.',
+      'V účtu si můžeš vyžádat JSON export svých dat e-mailem nebo účet smazat. Po smazání vyčistíme lokální soukromá data v appce a serverová data se smažou podle zásad ochrany osobních údajů.',
+      'Transakční e-maily, například ověření adresy, obnova hesla, export dat nebo potvrzení smazání účtu, posíláme přes Resend. Téhle službě předáme jen e-mailovou adresu a obsah nutný k odeslání zprávy.',
     ],
     contactLabel: 'Kontakt',
     contactEmail: 'tomades1@gmail.com',
@@ -434,6 +690,12 @@ export const cs = {
     tabCompass: 'Záložka Kompas',
     tabCounter: 'Záložka Počítadlo',
     tabMyBeers: 'Záložka Moje piva',
+    tabBeer: 'Záložka Štamgast',
+    beerSegmentCount: 'Přepnout na počítání piv',
+    beerSegmentHistory: 'Přepnout na historii večerů',
+    counterDone: 'Dopito, zavřít tenhle večer',
+    counterResume: 'Pokračovat v předchozím večeru',
+    tabProfile: 'Záložka Profil',
 
     // — Counter —
     counterChangePub: 'Změnit hospodu',
@@ -460,6 +722,41 @@ export const cs = {
     ratingDislike: (pub: string) => `Hodnotit ${pub} jako slabou`,
     ratingNote: (note: string) => `Štítek: ${note}`,
     ratingNoteInput: (pub: string) => `Vlastní poznámka k hospodě ${pub}`,
+
+    // — Účet / přihlášení —
+    accountRow: 'Otevřít účet',
+    authEmailInput: 'E-mail',
+    authPasswordInput: 'Heslo',
+    authNameInput: 'Jméno',
+    authResetEmailInput: 'E-mail pro obnovu hesla',
+    authNewPasswordInput: 'Nové heslo',
+    authTabLogin: 'Přepnout na přihlášení',
+    authTabRegister: 'Přepnout na registraci',
+    authForgotPassword: 'Zapomenuté heslo',
+    authSignInApple: 'Pokračovat přes Apple',
+    authSignInGoogle: 'Pokračovat přes Google',
+    accountVerifyEmail: 'Ověřit e-mail',
+    accountLinkProvider: (provider: string) => `Propojit ${provider}`,
+    accountUnlinkProvider: (provider: string) => `Odpojit ${provider}`,
+    accountSetPassword: 'Nastavit heslo',
+    accountExportData: 'Stáhnout moje data',
+    accountRestorePurchases: 'Obnovit nákupy',
+    accountReportProfile: 'Nahlásit profil',
+    accountLogout: 'Odhlásit se',
+    accountDelete: 'Smazat účet',
+
+    // — Profil —
+    profileEdit: 'Upravit profil',
+    profileVisibility: 'Změnit viditelnost profilu',
+    profileManageAccount: 'Spravovat účet',
+    profileSettings: 'Otevřít nastavení',
+    profileSignUp: 'Vytvořit účet',
+    profileNicknameInput: 'Přezdívka',
+    profilePickPhoto: 'Vybrat fotku z knihovny',
+    profileRemovePhoto: 'Odebrat fotku',
+    profileDisplayNameInput: 'Jméno',
+    profileVisibilityToggle: (state: string) => `Veřejný profil: ${state}`,
+    profileClose: 'Zavřít',
   },
 } as const;
 

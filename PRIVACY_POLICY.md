@@ -23,6 +23,9 @@ Když je vybraná hospoda zobrazena, aplikace pošle její název a polohu (zem�
 ### Anonymní identifikátor zařízení
 Aplikace při prvním spuštění vytvoří anonymní náhodný identifikátor zařízení (náhodné UUID) a odešle ho na náš vlastní server, aby každému zařízení patřil dočasný anonymní účet. Tento identifikátor neobsahuje žádné osobní údaje – nevzniká z e-mailu, jména, telefonního čísla ani z hardwarového identifikátoru telefonu – a slouží výhradně k odlišení jednotlivých zařízení. Registrace je nepovinná funkce; pokud server není dostupný nebo dotaz selže, aplikace funguje dál bez vytvořeného účtu. Server v odpovědi vrátí náhodný přístupový token, který aplikace ukládá pouze lokálně na zařízení a nikam jinam ho neodesílá; slouží k ověření zařízení u budoucích funkcí. Více v sekci „Služby třetích stran".
 
+### Uživatelský účet (volitelné přihlášení)
+Přihlášení je **nepovinné** – aplikaci lze plně používat anonymně. Pokud si dobrovolně vytvoříte účet, abyste si svá data (např. Pivní deník) přenesli mezi zařízeními, zpracováváme podle zvoleného způsobu: u **e-mailu a hesla** ukládáme e-mailovou adresu a heslo pouze v nečitelné (zahashované) podobě; u přihlášení přes **Google / Apple** dostaneme od poskytovatele stabilní identifikátor účtu a e-mail (u Applu může jít o skrytý přeposílací e-mail), případně jméno – heslo poskytovatele nikdy nevidíme. Při přihlášení se k účtu připojí dosavadní anonymní data zařízení. Jeden účet lze propojit s více způsoby přihlášení a kdykoli je v nastavení odpojit. Účet i všechna data můžete kdykoli smazat (Nastavení → Účet → Smazat účet); po 14denní ochranné lhůtě se trvale odstraní.
+
 ### Provozní statistiky a technické chyby
 Aplikace posílá na náš vlastní server omezené provozní údaje, abychom poznali, jestli aplikace funguje: otevření aplikace, návrat do popředí, typ technické chyby, verzi aplikace, platformu a stavové kódy vybraných požadavků. K anonymnímu účtu ukládáme také součet nachozených metrů v aplikaci. **Součet metrů se počítá přímo v telefonu a na server se odesílají pouze přírůstky v metrech – neposíláme GPS body, trasu ani historii polohy.** Tyto údaje nepoužíváme k reklamě ani profilování.
 
@@ -33,9 +36,8 @@ Aplikace umožňuje dobrovolně doplnit otevírací dobu vybrané hospody a sezn
 Aplikace ukládá počítadlo piv, historii večerů a vaše soukromé hodnocení hospod (například palec nahoru/dolů, rychlý štítek nebo vlastní poznámku). Aby se tyto údaje po reinstalaci nebo na stejném anonymním účtu obnovily, aplikace je synchronizuje na náš vlastní server pod anonymním účtem zařízení. Tyto údaje jsou **soukromé pro daný anonymní účet**, veřejně se nezobrazují ostatním uživatelům a nepoužíváme je k reklamě ani profilování. U návštěvy hospody ukládáme identifikátor večera, název hospody, přibližnou polohu hospody, čas začátku a případně čas posledního započítaného piva; neukládáme průběžné GPS body ani trasu pohybu.
 
 ### Co NEsbíráme
-- Nepoužíváme přihlašování ani osobní uživatelské účty (anonymní identifikátor zařízení neobsahuje žádné osobní údaje a nevyžaduje registraci).
+- Přihlášení je nepovinné; e-mail ani jméno nesbíráme, dokud si dobrovolně nevytvoříte účet.
 - Nepoužíváme reklamní SDK ani sledování napříč aplikacemi.
-- Nesbíráme e-mailovou adresu, jméno ani žádné kontaktní údaje.
 - Nesledujeme vás napříč aplikacemi ani webovými stránkami.
 - Neukládáme průběžnou historii vaší polohy, GPS body ani trasu.
 
@@ -66,12 +68,15 @@ Při prvním spuštění aplikace odešle na náš vlastní server anonymní ná
 ### Provozní statistiky a technické chyby (provozovatel aplikace)
 Provozní statistiky a technické chyby zpracováváme na vlastním serveru. Slouží pouze k údržbě a zlepšování aplikace. Neposíláme je žádné reklamní síti ani externímu analytickému nástroji.
 
+### Odesílání e-mailů (Resend)
+Pokud máte účet s e-mailem, posíláme transakční e-maily (ověření adresy, obnova hesla, export vašich dat, potvrzení smazání účtu) přes službu **Resend**, které k tomu předáme vaši e-mailovou adresu. Zásady: [https://resend.com/legal/privacy-policy](https://resend.com/legal/privacy-policy)
+
 ### Doplněné údaje o hospodách (provozovatel aplikace)
 Když dobrovolně doplníte otevírací dobu nebo piva na čepu, aplikace tyto údaje odešle na náš vlastní server pod anonymním účtem zařízení. Server je uloží a veřejně je zobrazí ostatním uživatelům aplikace. Údaje popisují danou hospodu, nikoli vaši osobu, a neobsahují žádné osobní informace. Jde o dobrovolnou funkci; pokud nic nevyplníte, nic se neodesílá.
 
 ## Doba uchování dat
 
-Na našich serverech uchováváme anonymní identifikátor zařízení a k němu vázaný dočasný účet, provozní statistiky, technické chyby a dobrovolně odeslané údaje o hospodách. Aktuální nebo přibližná poloha se může použít pro jednorázové vyhledání hospod v okolí; neukládáme průběžnou GPS historii, jednotlivé GPS body ani trasu. Služby třetích stran (Mapy.cz) uchovávají případná data podle vlastních zásad.
+Na našich serverech uchováváme anonymní identifikátor zařízení a k němu vázaný dočasný účet, provozní statistiky, technické chyby a dobrovolně odeslané údaje o hospodách. Aktuální nebo přibližná poloha se může použít pro jednorázové vyhledání hospod v okolí; neukládáme průběžnou GPS historii, jednotlivé GPS body ani trasu. Služby třetích stran (Mapy.cz, Resend) uchovávají případná data podle vlastních zásad.
 
 ## Vaše práva
 

@@ -66,6 +66,7 @@ async function seedAccount(blob: {
   deviceId: string;
   accountId: string;
   token: string;
+  authenticated?: boolean;
 }): Promise<void> {
   await SecureStore.setItemAsync(ACCOUNT_KEY, JSON.stringify(blob));
 }
@@ -144,6 +145,7 @@ describe('ensureAccount — registration (no cache yet)', () => {
       deviceId: persistedDeviceId,
       accountId: 'acc-123',
       token: 'secret-token',
+      authenticated: false,
     });
 
     // The token-bearing blob lands in SecureStore, NOT AsyncStorage.
@@ -153,6 +155,7 @@ describe('ensureAccount — registration (no cache yet)', () => {
       deviceId: persistedDeviceId,
       accountId: 'acc-123',
       token: 'secret-token',
+      authenticated: false,
     });
   });
 
@@ -195,7 +198,12 @@ describe('ensureAccount — registration (no cache yet)', () => {
     expect(replacementDeviceId).toMatch(UUID_RE);
     expect(replacementDeviceId).not.toBe('dev-locked');
     expect(await AsyncStorage.getItem(DEVICE_ID_KEY)).toBe(replacementDeviceId);
-    expect(session).toEqual({ deviceId: replacementDeviceId, accountId: 'acc-2', token: 'tok-2' });
+    expect(session).toEqual({
+      deviceId: replacementDeviceId,
+      accountId: 'acc-2',
+      token: 'tok-2',
+      authenticated: false,
+    });
   });
 
   it('resolves to null on a 2xx body missing id/token and caches nothing', async () => {
@@ -231,7 +239,12 @@ describe('ensureAccount — already established (once-per-install)', () => {
     const session = await ensureAccount();
 
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(session).toEqual({ deviceId: 'dev-1', accountId: 'acc-1', token: 'tok-1' });
+    expect(session).toEqual({
+      deviceId: 'dev-1',
+      accountId: 'acc-1',
+      token: 'tok-1',
+      authenticated: false,
+    });
   });
 
   it('returns the cached session even when the backend is dormant', async () => {
@@ -244,7 +257,12 @@ describe('ensureAccount — already established (once-per-install)', () => {
     const session = await ensureAccount();
 
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(session).toEqual({ deviceId: 'dev-1', accountId: 'acc-1', token: 'tok-1' });
+    expect(session).toEqual({
+      deviceId: 'dev-1',
+      accountId: 'acc-1',
+      token: 'tok-1',
+      authenticated: false,
+    });
   });
 });
 
@@ -263,11 +281,21 @@ describe('ensureAccount — cache desync guard', () => {
     const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
     expect(JSON.parse(init.body as string)).toEqual({ device_id: 'dev-A' });
 
-    expect(session).toEqual({ deviceId: 'dev-A', accountId: 'new-acc', token: 'new-tok' });
+    expect(session).toEqual({
+      deviceId: 'dev-A',
+      accountId: 'new-acc',
+      token: 'new-tok',
+      authenticated: false,
+    });
 
     // Cache was overwritten with the current device's account (in SecureStore).
     const cached = JSON.parse((await SecureStore.getItemAsync(ACCOUNT_KEY)) as string);
-    expect(cached).toEqual({ deviceId: 'dev-A', accountId: 'new-acc', token: 'new-tok' });
+    expect(cached).toEqual({
+      deviceId: 'dev-A',
+      accountId: 'new-acc',
+      token: 'new-tok',
+      authenticated: false,
+    });
   });
 });
 
@@ -360,6 +388,35 @@ describe('account preferences', () => {
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok-1');
   });
 
+  it('maps the backend settings block into account preferences', async () => {
+    await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-1');
+    await seedAccount({ deviceId: 'dev-1', accountId: 'acc-1', token: 'tok-1' });
+    setBackend('https://api.example.com');
+    global.fetch = mockFetchOk({
+      id: 'acc-1',
+      device_id: 'dev-1',
+      settings: {
+        mode: 'surprise',
+        max_distance_km: 5,
+        price_currency: 'EUR',
+        haptic_enabled: false,
+        sound_enabled: true,
+        hide_closed_pubs: false,
+        hide_pub_names: true,
+      },
+    }) as unknown as typeof fetch;
+
+    await expect(fetchAccountPreferences()).resolves.toEqual({
+      mode: 'surprise',
+      maxDistanceKm: 5,
+      priceCurrency: 'EUR',
+      hapticEnabled: false,
+      soundEnabled: true,
+      hideClosedPubs: false,
+      hidePubNames: true,
+    });
+  });
+
   it('PATCHes hidePubNames as hide_pub_names and returns the updated preferences', async () => {
     await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-1');
     await seedAccount({ deviceId: 'dev-1', accountId: 'acc-1', token: 'tok-1' });
@@ -379,7 +436,57 @@ describe('account preferences', () => {
     expect(JSON.parse(init.body as string)).toEqual({ hide_pub_names: false });
   });
 
-  it('clears the cached account when preferences fetch gets a 401', async () => {
+  it('PATCHes expanded preferences using the backend field names', async () => {
+    await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-1');
+    await seedAccount({ deviceId: 'dev-1', accountId: 'acc-1', token: 'tok-1' });
+    setBackend('https://api.example.com');
+    const fetchSpy = mockFetchOk({
+      id: 'acc-1',
+      device_id: 'dev-1',
+      settings: {
+        mode: 'nearest',
+        max_distance_km: null,
+        price_currency: 'CZK',
+        haptic_enabled: true,
+        sound_enabled: false,
+        hide_closed_pubs: true,
+        hide_pub_names: false,
+      },
+    });
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    const preferences = await updateAccountPreferences({
+      mode: 'nearest',
+      maxDistanceKm: null,
+      priceCurrency: 'CZK',
+      hapticEnabled: true,
+      soundEnabled: false,
+      hideClosedPubs: true,
+      hidePubNames: false,
+    });
+
+    expect(preferences).toEqual({
+      mode: 'nearest',
+      maxDistanceKm: null,
+      priceCurrency: 'CZK',
+      hapticEnabled: true,
+      soundEnabled: false,
+      hideClosedPubs: true,
+      hidePubNames: false,
+    });
+    const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({
+      compass_mode: 'nearest',
+      max_distance_km: null,
+      price_currency: 'CZK',
+      haptic_enabled: true,
+      sound_enabled: false,
+      hide_closed_pubs: true,
+      hide_pub_names: false,
+    });
+  });
+
+  it('clears an anonymous cached account when preferences fetch gets a 401', async () => {
     await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-1');
     await seedAccount({ deviceId: 'dev-1', accountId: 'acc-1', token: 'tok-1' });
     setBackend('https://api.example.com');
@@ -391,5 +498,24 @@ describe('account preferences', () => {
 
     await expect(fetchAccountPreferences()).resolves.toBeNull();
     expect(await SecureStore.getItemAsync(ACCOUNT_KEY)).toBeNull();
+  });
+
+  it('keeps an authenticated cached account when preferences fetch gets a 401', async () => {
+    await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-1');
+    await seedAccount({
+      deviceId: 'dev-1',
+      accountId: 'acc-1',
+      token: 'tok-1',
+      authenticated: true,
+    });
+    setBackend('https://api.example.com');
+    global.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 401,
+      json: async () => ({}),
+    })) as unknown as typeof fetch;
+
+    await expect(fetchAccountPreferences()).resolves.toBeNull();
+    expect(await SecureStore.getItemAsync(ACCOUNT_KEY)).not.toBeNull();
   });
 });

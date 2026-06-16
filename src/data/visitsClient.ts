@@ -20,7 +20,7 @@
  *   - 'retry'           → network/timeout/5xx/429/401/dormant: keep + retry.
  */
 
-import { clearCachedAccount, ensureAccount } from './account';
+import { clearCachedAnonymousAccount, ensureAccount, type AccountSession } from './account';
 import { getBackendEndpoint } from './backendConfig';
 import { trackClientEvent } from './telemetryClient';
 
@@ -60,9 +60,12 @@ export type SubmitVisitResult = 'ok' | 'permanent-error' | 'retry';
 
 const REQUEST_TIMEOUT_MS = 8000;
 
-async function classifyVisitHttpFailure(status: number): Promise<SubmitVisitResult> {
+async function classifyVisitHttpFailure(
+  status: number,
+  session: AccountSession,
+): Promise<SubmitVisitResult> {
   if (status === 401) {
-    await clearCachedAccount();
+    await clearCachedAnonymousAccount(session);
     return 'retry';
   }
   if (status === 400 || status === 422) {
@@ -160,7 +163,7 @@ export async function submitVisit(
       trackVisitSynced('submit_visit');
       return 'ok';
     }
-    const result = await classifyVisitHttpFailure(resp.status);
+    const result = await classifyVisitHttpFailure(resp.status, session);
     trackVisitSyncFailed('submit_visit', {
       status: resp.status,
       reason: 'http_error',
@@ -223,7 +226,7 @@ export async function deleteVisit(
       trackVisitSynced('delete_visit');
       return 'ok';
     }
-    const result = await classifyVisitHttpFailure(resp.status);
+    const result = await classifyVisitHttpFailure(resp.status, session);
     trackVisitSyncFailed('delete_visit', {
       status: resp.status,
       reason: 'http_error',
@@ -277,7 +280,7 @@ export async function fetchVisits(signal?: AbortSignal): Promise<WireVisit[] | n
     });
 
     if (resp.status === 401) {
-      await clearCachedAccount();
+      await clearCachedAnonymousAccount(session);
       return null;
     }
     if (!resp.ok) {

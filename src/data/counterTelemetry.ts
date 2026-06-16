@@ -70,6 +70,8 @@ export async function trackCounterTabOpened(hadActiveSession: boolean): Promise<
   await saveState({ lastOpenedAt: now.toISOString() });
 }
 
-export async function resetCounterTelemetryForTests(): Promise<void> {
+export async function clearCounterTelemetry(): Promise<void> {
   await AsyncStorage.removeItem(STORAGE_KEY);
 }
+
+export const resetCounterTelemetryForTests = clearCounterTelemetry;

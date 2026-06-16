@@ -41,6 +41,17 @@ import {
   ThumbsUp,
   ThumbsDown,
   History,
+  User,
+  Mail,
+  LogOut,
+  Link,
+  Unlink,
+  Check,
+  BadgeCheck,
+  KeyRound,
+  Download,
+  Crown,
+  Camera,
   LucideProps,
 } from 'lucide-react-native';
 
@@ -92,3 +103,14 @@ export const StarIcon = wrap(Star, 'StarIcon');
 export const ThumbsUpIcon = wrap(ThumbsUp, 'ThumbsUpIcon');
 export const ThumbsDownIcon = wrap(ThumbsDown, 'ThumbsDownIcon');
 export const HistoryIcon = wrap(History, 'HistoryIcon');
+export const UserIcon = wrap(User, 'UserIcon');
+export const MailIcon = wrap(Mail, 'MailIcon');
+export const LogOutIcon = wrap(LogOut, 'LogOutIcon');
+export const LinkIcon = wrap(Link, 'LinkIcon');
+export const UnlinkIcon = wrap(Unlink, 'UnlinkIcon');
+export const CheckIcon = wrap(Check, 'CheckIcon');
+export const BadgeCheckIcon = wrap(BadgeCheck, 'BadgeCheckIcon');
+export const KeyRoundIcon = wrap(KeyRound, 'KeyRoundIcon');
+export const DownloadIcon = wrap(Download, 'DownloadIcon');
+export const CrownIcon = wrap(Crown, 'CrownIcon');
+export const CameraIcon = wrap(Camera, 'CameraIcon');
