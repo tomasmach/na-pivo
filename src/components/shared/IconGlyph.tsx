@@ -51,6 +51,7 @@ import {
   KeyRound,
   Download,
   Crown,
+  Camera,
   LucideProps,
 } from 'lucide-react-native';
 
@@ -112,3 +113,4 @@ export const BadgeCheckIcon = wrap(BadgeCheck, 'BadgeCheckIcon');
 export const KeyRoundIcon = wrap(KeyRound, 'KeyRoundIcon');
 export const DownloadIcon = wrap(Download, 'DownloadIcon');
 export const CrownIcon = wrap(Crown, 'CrownIcon');
+export const CameraIcon = wrap(Camera, 'CameraIcon');

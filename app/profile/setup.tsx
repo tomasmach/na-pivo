@@ -1,15 +1,16 @@
 /**
  * Onboarding wizard (route `/profile/setup`) — shown once, right after a user
  * signs in/up without a nickname (the ProfileGate in app/_layout.tsx redirects
- * here). A 3-step flow inside a single fullScreenModal with `gestureEnabled:
+ * here). A 2-step flow inside a single fullScreenModal with `gestureEnabled:
  * false` so STEP 1 (nickname) cannot be swiped away — it is the hard gate.
  *
- *   STEP 1  Nickname — "@" input + live availability. "Pokračovat" disabled
- *           until valid + available; submit calls updateProfile({nickname});
- *           a 409 re-shows "taken".
- *   STEP 2  Avatar (optional) — Google pre-fill shown when present; pick → upload;
- *           "Přeskočit" advances with whatever avatar (or none) is set.
- *   STEP 3  Visibility — toggle DEFAULT ON + the locked GDPR consent copy.
+ *   STEP 1  Nickname + photo (one screen) — "@" input + live availability, plus a
+ *           tappable avatar (camera badge) that picks → uploads immediately. The
+ *           photo is optional, so there is no skip button: leave it empty and
+ *           continue. "Pokračovat" is disabled until the nickname is valid +
+ *           available; submit calls updateProfile({nickname}); a 409 re-shows
+ *           "taken".
+ *   STEP 2  Visibility — toggle DEFAULT ON + the locked GDPR consent copy.
  *           "Hotovo" persists is_public then router.replace → the profile tab.
  *
  * Every store action is an AuthResult (never throws); failures surface inline.
@@ -35,6 +36,7 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
 import { GlowButton } from '@/components/shared/GlowButton';
+import { CameraIcon } from '@/components/shared/IconGlyph';
 import { Avatar } from '@/profile/Avatar';
 import { NicknameField } from '@/profile/NicknameField';
 import { VisibilityToggle } from '@/profile/VisibilityToggle';
@@ -47,7 +49,7 @@ import {
 } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
 
-type Step = 1 | 2 | 3;
+type Step = 1 | 2;
 
 export default function ProfileSetupScreen() {
   const router = useRouter();
@@ -171,7 +173,7 @@ export default function ProfileSetupScreen() {
         >
           {/* Step dots */}
           <View style={styles.dots}>
-            {[1, 2, 3].map((n) => (
+            {[1, 2].map((n) => (
               <View key={n} style={[styles.dot, n === step && styles.dotActive, n < step && styles.dotDone]} />
             ))}
           </View>
@@ -186,6 +188,40 @@ export default function ProfileSetupScreen() {
                 {cs.profile.setup.step1Body}
               </Text>
 
+              {/* Tappable avatar — the photo IS the affordance; no separate button.
+                  Picking uploads immediately, so continuing just keeps it. */}
+              <View style={styles.avatarBlock}>
+                <Pressable
+                  onPress={permissionBlocked ? () => void Linking.openSettings() : handlePickAvatar}
+                  disabled={avatarBusy}
+                  style={({ pressed }) => [styles.avatarTap, pressed && styles.pressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel={cs.a11y.profilePickPhoto}
+                  hitSlop={8}
+                >
+                  <Avatar uri={avatarUrl} nickname={nickname} displayName={displayName} size={104} />
+                  <View style={styles.avatarBadge}>
+                    {avatarBusy ? (
+                      <ActivityIndicator size="small" color={Colors.stout} />
+                    ) : (
+                      <CameraIcon size={18} color={Colors.stout} />
+                    )}
+                  </View>
+                </Pressable>
+                <Text style={styles.photoHint} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {permissionBlocked
+                    ? cs.profile.setup.openSettings
+                    : avatarUrl
+                      ? cs.profile.setup.photoHintSet
+                      : cs.profile.setup.photoHintEmpty}
+                </Text>
+                {!!avatarError && (
+                  <Text style={[styles.errorText, styles.avatarErrorText]} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {avatarError}
+                  </Text>
+                )}
+              </View>
+
               <View style={styles.fieldBlock}>
                 <NicknameField
                   value={nicknameInput}
@@ -194,7 +230,6 @@ export default function ProfileSetupScreen() {
                     if (nicknameError) setNicknameError('');
                   }}
                   onReadyChange={setNicknameReady}
-                  autoFocus
                 />
                 {!!nicknameError && (
                   <Text style={styles.errorText} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -220,66 +255,6 @@ export default function ProfileSetupScreen() {
               <Text style={styles.eyebrow}>{cs.profile.setup.step2Eyebrow}</Text>
               <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
                 {cs.profile.setup.step2Title}
-              </Text>
-              <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.profile.setup.step2Body}
-              </Text>
-
-              <View style={styles.avatarBlock}>
-                <Avatar uri={avatarUrl} nickname={nickname} displayName={displayName} size={120} />
-              </View>
-
-              {!!avatarError && (
-                <Text style={[styles.errorText, styles.avatarErrorText]} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {avatarError}
-                </Text>
-              )}
-
-              <View style={styles.cta}>
-                {permissionBlocked ? (
-                  <GlowButton
-                    label={cs.profile.setup.openSettings}
-                    onPress={() => void Linking.openSettings()}
-                    variant="secondary"
-                    glow="none"
-                    accessibilityLabel={cs.profile.setup.openSettings}
-                  />
-                ) : (
-                  <GlowButton
-                    label={
-                      avatarBusy
-                        ? cs.account.loading
-                        : avatarUrl
-                          ? cs.profile.setup.changePhoto
-                          : cs.profile.setup.pickPhoto
-                    }
-                    onPress={handlePickAvatar}
-                    variant="secondary"
-                    glow="none"
-                    accessibilityLabel={cs.a11y.profilePickPhoto}
-                  />
-                )}
-              </View>
-
-              <Pressable
-                onPress={() => setStep(3)}
-                style={({ pressed }) => [styles.skip, pressed && styles.pressed]}
-                accessibilityRole="button"
-                accessibilityLabel={cs.profile.setup.skip}
-                hitSlop={8}
-              >
-                <Text style={styles.skipText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.profile.setup.skip}
-                </Text>
-              </Pressable>
-            </>
-          )}
-
-          {step === 3 && (
-            <>
-              <Text style={styles.eyebrow}>{cs.profile.setup.step3Eyebrow}</Text>
-              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {cs.profile.setup.step3Title}
               </Text>
 
               <View style={styles.consentCard}>
@@ -323,7 +298,7 @@ export default function ProfileSetupScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {busy && step === 3 && (
+      {busy && step === 2 && (
         <View style={styles.fullSpinner} pointerEvents="none">
           <ActivityIndicator color={Colors.amber} />
         </View>
@@ -409,23 +384,37 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.stout, 0.55),
   },
 
-  // ── Avatar step ──
+  // ── Avatar (tappable, on the nickname step) ──
   avatarBlock: {
     alignItems: 'center',
-    paddingVertical: Spacing.lg,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  avatarTap: {
+    position: 'relative',
+  },
+  avatarBadge: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 34,
+    height: 34,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.amber,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: Colors.stout,
+  },
+  photoHint: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 13,
+    color: Colors.amber,
+    textAlign: 'center',
   },
   avatarErrorText: {
     textAlign: 'center',
-  },
-  skip: {
-    alignSelf: 'center',
-    paddingVertical: Spacing.sm,
-    marginTop: Spacing.xs,
-  },
-  skipText: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 15,
-    color: Colors.mutedText,
   },
 
   // ── Visibility step ──

@@ -415,10 +415,10 @@ export const cs = {
 
     // — Onboarding wizard —
     setup: {
-      // STEP 1 — nickname
-      step1Eyebrow: 'KROK 1 ZE 3',
-      step1Title: 'Vyber si přezdívku',
-      step1Body: 'Pod touhle přezdívkou tě uvidí ostatní. Můžeš ji později změnit.',
+      // STEP 1 — nickname + photo (one screen)
+      step1Eyebrow: 'KROK 1 ZE 2',
+      step1Title: 'Vytvoř si profil',
+      step1Body: 'Vyber si přezdívku a klidně přidej fotku. Obojí změníš kdykoli později.',
       nicknamePlaceholder: 'prezdivka',
       nicknameChecking: 'Ověřuji…',
       nicknameAvailable: 'Volné',
@@ -428,25 +428,20 @@ export const cs = {
       nicknameTooLong: 'Nejvíc 20 znaků',
       nicknameCharset: 'Jen písmena bez diakritiky, číslice, _ a .',
       nicknameReserved: 'Tahle přezdívka není dostupná',
-      continue: 'Pokračovat',
-
-      // STEP 2 — avatar
-      step2Eyebrow: 'KROK 2 ZE 3',
-      step2Title: 'Přidej fotku',
-      step2Body: 'Fotka je nepovinná. Můžeš ji kdykoli změnit v profilu.',
-      pickPhoto: 'Vybrat fotku',
-      changePhoto: 'Změnit fotku',
-      skip: 'Přeskočit',
+      // Photo affordance: tap the avatar. Optional, so there is no skip button —
+      // you just leave it empty and continue.
+      photoHintEmpty: 'Klepni a přidej fotku (nepovinné)',
+      photoHintSet: 'Klepni a změň fotku',
       avatarUploadError: 'Fotku se nepodařilo nahrát. Zkus to prosím znovu.',
-      permissionTitle: 'Přístup k fotkám',
       permissionBody: 'Pro výběr fotky potřebujeme přístup ke knihovně fotek. Povol ho v Nastavení.',
       // Shown when the OS won't re-prompt (canAskAgain=false) — the only path is Settings.
       permissionBlockedBody: 'Přístup k fotkám je zakázaný. Povol ho v systémovém Nastavení a zkus to znovu.',
       openSettings: 'Otevřít Nastavení',
+      continue: 'Pokračovat',
 
-      // STEP 3 — visibility
-      step3Eyebrow: 'KROK 3 ZE 3',
-      step3Title: 'Viditelnost profilu',
+      // STEP 2 — visibility
+      step2Eyebrow: 'KROK 2 ZE 2',
+      step2Title: 'Viditelnost profilu',
       visibilityToggleLabel: 'Veřejný profil',
       // The GDPR consent copy the user MUST see on the visibility step (locked).
       consentPublic:
