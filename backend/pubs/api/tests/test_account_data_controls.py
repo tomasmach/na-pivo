@@ -82,6 +82,32 @@ def test_send_email_logs_no_recipient_or_message_pii(settings, caplog):
     assert "Private text" not in caplog.text
 
 
+def test_verification_email_renders_app_link(monkeypatch):
+    captured: dict[str, str | None] = {}
+
+    def fake_send_email(to, subject, html, *, text=None, attachments=None):
+        captured["to"] = to
+        captured["subject"] = subject
+        captured["html"] = html
+        captured["text"] = text
+        return True
+
+    monkeypatch.setattr(emailer, "send_email", fake_send_email)
+
+    sent = emailer.send_verification_email(
+        "person@example.com",
+        link="napivo://auth/verify?token=verify-token",
+        code="verify-token",
+    )
+
+    assert sent is True
+    assert captured["to"] == "person@example.com"
+    assert captured["subject"] == "Ověř si e-mail – Na Pivo"
+    assert 'href="napivo://auth/verify?token=verify-token"' in captured["html"]
+    assert "Otevřít Na Pivo" in captured["html"]
+    assert "napivo://auth/verify?token=verify-token" in (captured["text"] or "")
+
+
 @pytest.mark.django_db
 def test_marketing_email_preference_is_returned_and_patchable(client):
     token, _ = _bootstrap(client)

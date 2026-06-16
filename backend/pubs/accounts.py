@@ -37,6 +37,7 @@ import io
 import logging
 import re
 from datetime import timedelta
+from urllib.parse import urlencode
 
 import requests
 from django.conf import settings
@@ -785,7 +786,7 @@ def _consume_one_time_token(raw_token: str, *, purpose: str) -> Account:
 def _deep_link(path: str, raw_token: str) -> str:
     """Build the app deep link carried in an email."""
     scheme = settings.APP_DEEP_LINK_SCHEME
-    return f"{scheme}://auth/{path}?token={raw_token}"
+    return f"{scheme}://auth/{path}?{urlencode({'token': raw_token})}"
 
 
 def request_email_verification(account: Account) -> bool:

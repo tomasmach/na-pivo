@@ -71,11 +71,9 @@ def _render(
 ) -> str:
     """Build a consistent inline-styled HTML body shared by all e-mails.
 
-    ``message_html`` is trusted markup (our own strings only). The CODE is the
-    hero action — the user types it into the app. ``link`` is an optional small
-    secondary text link (a ``napivo://`` deep link), NOT a button: it only does
-    anything when the mail is opened on a phone that has the app installed, so we
-    keep it subtle and let the code carry the flow.
+    ``message_html`` is trusted markup (our own strings only). ``link`` is the
+    main action when present and ``code`` is the manual fallback for mail clients
+    that do not hand custom app links to the OS.
     """
     code_block = ""
     if code:
@@ -92,10 +90,12 @@ def _render(
     link_block = ""
     if link and link_label:
         link_block = (
-            '<tr><td align="center" style="padding:0 0 24px 0;'
+            '<tr><td align="center" style="padding:0 0 18px 0;'
             "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;"
-            f'font-size:13px;color:{_MUTED};">'
-            f'<a href="{link}" style="color:{_ACCENT};text-decoration:underline;">'
+            f'font-size:16px;color:{_ACCENT_TEXT};">'
+            f'<a href="{link}" style="display:inline-block;background:{_ACCENT};'
+            f"border-radius:999px;padding:13px 22px;color:{_ACCENT_TEXT};"
+            'font-weight:800;text-decoration:none;">'
             f"{link_label}</a></td></tr>"
         )
 
@@ -189,20 +189,29 @@ def _html_to_text_fallback(subject: str) -> str:
 def send_verification_email(to: str, *, link: str, code: str) -> bool:
     """Send the e-mail verification message.
 
-    Code-only by design: e-mail clients (Gmail etc.) don't open custom ``napivo://``
-    schemes, so we never put a fake "link" in the mail. ``link`` is accepted for a
-    future https Universal/App Link but is intentionally not rendered yet.
+    The app deep link is the primary action. The raw one-time token stays in the
+    mail as a fallback for clients that refuse to open custom ``napivo://`` links.
     """
     subject = "Ověř si e-mail – Na Pivo"
     message = (
         "Čau! Ještě jedna věc, než to roztočíme. "
-        "Mrkni zpátky do appky Na Pivo a zadej tenhle kód. "
+        "Klepni na tlačítko a e-mail ověříme rovnou v appce. "
+        "Kdyby se odkaz neotevřel, zadej v appce kód níž. "
         "Platí jen chvíli, tak s tím nečekej."
     )
-    html = _render("Ověř si e-mail", message, code=code)
+    html = _render(
+        "Ověř si e-mail",
+        message,
+        code=code,
+        code_label="Kód pro ruční zadání:",
+        link=link,
+        link_label="Otevřít Na Pivo",
+    )
     text = (
         "Čau!\n\n"
-        "Vrať se do appky Na Pivo a zadej tenhle kód:\n\n"
+        "Klepni na odkaz a e-mail ověříme rovnou v appce:\n\n"
+        f"{link}\n\n"
+        "Kdyby se odkaz neotevřel, vrať se do appky Na Pivo a zadej tenhle kód:\n\n"
         f"    {code}\n\n"
         "Platí jen chvíli.\n\nNa Pivo"
     )
