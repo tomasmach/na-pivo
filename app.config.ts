@@ -59,6 +59,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       infoPlist: {
         NSLocationWhenInUseUsageDescription: LOCATION_REASON,
         NSMotionUsageDescription: 'Pomocí senzorů otáčíme šipku, když se otočíš.',
+        NSMicrophoneUsageDescription:
+          'Mikrofon se použije jen pro zvukové funkce aplikace a nikdy bez tvého souhlasu.',
         NSPhotoLibraryUsageDescription:
           'Na pivo otevře tvou fotogalerii, aby sis mohl vybrat profilový obrázek.',
         ITSAppUsesNonExemptEncryption: false,
