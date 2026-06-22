@@ -197,6 +197,7 @@ export const cs = {
     },
     beersHeader: 'Piva na čepu',
     beerNamePlaceholder: 'Název piva, např. Pilsner Urquell 12°',
+    beerSuggestionsLoading: 'Hledám piva…',
     pricePlaceholder: 'Cena (Kč)',
     priceLabel: 'Cena za',
     volumeSmall: '0,3 l',

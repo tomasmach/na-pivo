@@ -11,7 +11,7 @@
  * the same params, or the local override store.
  */
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -47,6 +47,7 @@ import {
 import { generateUuidV4 } from '@/data/account';
 import { buildCommunityEntry, type CommunityBeer } from '@/data/communityClient';
 import { enqueuePubCommunity, flushCommunityQueue } from '@/data/communityQueue';
+import { suggestBeerBrands, type BeerBrandSuggestion } from '@/data/beerSuggestionsClient';
 import { useCommunityStore } from '@/stores/communityStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
@@ -64,12 +65,19 @@ const VOLUME_SMALL = 300;
 const VOLUME_DEFAULT = 500;
 const MAX_BEERS = 12;
 const MAX_INTERVALS = 3;
+let beerRowIdSequence = 0;
 
 /** Editable beer row — strings while typing, parsed on submit. */
 interface BeerRow {
+  id: string;
   name: string;
   priceText: string;
   volumeMl: number | undefined;
+}
+
+function nextBeerRowId(): string {
+  beerRowIdSequence += 1;
+  return `beer-row-${beerRowIdSequence}`;
 }
 
 /** Coerce typed text toward an HH:MM shape without fighting the user: keep only
@@ -134,6 +142,7 @@ export default function ContributeScreen() {
     const fromParam = decodeJsonParam<CommunityBeer[] | null>(params.beers, null);
     const source = fromParam ?? storedOverride?.beers ?? [];
     return source.map((b) => ({
+      id: nextBeerRowId(),
       name: b.name,
       priceText: typeof b.priceCzk === 'number' ? formatPriceInputFromCzk(b.priceCzk, priceCurrency) : '',
       volumeMl: b.volumeMl,
@@ -145,6 +154,9 @@ export default function ContributeScreen() {
   const [beers, setBeers] = useState<BeerRow[]>(prefillBeers);
   const [hoursTouched, setHoursTouched] = useState(false);
   const [beersTouched, setBeersTouched] = useState(false);
+  const [activeBeerId, setActiveBeerId] = useState<string | null>(null);
+  const [beerSuggestions, setBeerSuggestions] = useState<BeerBrandSuggestion[]>([]);
+  const [beerSuggestionsLoading, setBeerSuggestionsLoading] = useState(false);
 
   // ── Hours editing ─────────────────────────────────────────────────────────
 
@@ -209,7 +221,9 @@ export default function ContributeScreen() {
   const addBeer = useCallback(() => {
     if (beers.length >= MAX_BEERS) return;
     setBeersTouched(true);
-    setBeers((prev) => [...prev, { name: '', priceText: '', volumeMl: VOLUME_DEFAULT }]);
+    const row = { id: nextBeerRowId(), name: '', priceText: '', volumeMl: VOLUME_DEFAULT };
+    setBeers((prev) => [...prev, row]);
+    setActiveBeerId(row.id);
   }, [beers.length]);
 
   const removeBeer = useCallback((index: number) => {
@@ -221,6 +235,39 @@ export default function ContributeScreen() {
     setBeersTouched(true);
     setBeers((prev) => prev.map((b, i) => (i === index ? { ...b, ...patch } : b)));
   }, []);
+
+  const activeBeer = useMemo(
+    () => beers.find((beer) => beer.id === activeBeerId) ?? null,
+    [activeBeerId, beers],
+  );
+
+  useEffect(() => {
+    const query = activeBeer?.name.trim() ?? '';
+    if (!activeBeer || query.length < 2) {
+      const reset = setTimeout(() => {
+        setBeerSuggestions([]);
+        setBeerSuggestionsLoading(false);
+      }, 0);
+      return () => clearTimeout(reset);
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      if (!controller.signal.aborted) setBeerSuggestionsLoading(true);
+      suggestBeerBrands(query, controller.signal, 6)
+        .then((items) => {
+          if (!controller.signal.aborted) setBeerSuggestions(items);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setBeerSuggestionsLoading(false);
+        });
+    }, 220);
+
+    return () => {
+      controller.abort();
+      clearTimeout(timeout);
+    };
+  }, [activeBeer]);
 
   // ── Validation + submit ───────────────────────────────────────────────────
 
@@ -389,9 +436,22 @@ export default function ContributeScreen() {
 
           {beers.map((beer, index) => (
             <BeerRowView
-              key={index}
+              key={beer.id}
               beer={beer}
-              onChangeName={(name) => updateBeer(index, { name })}
+              onFocusName={() => setActiveBeerId(beer.id)}
+              onChangeName={(name) => {
+                setActiveBeerId(beer.id);
+                setBeerSuggestions([]);
+                setBeerSuggestionsLoading(name.trim().length >= 2);
+                updateBeer(index, { name });
+              }}
+              suggestions={activeBeerId === beer.id ? beerSuggestions : []}
+              suggesting={activeBeerId === beer.id && beerSuggestionsLoading}
+              onSelectSuggestion={(suggestion) => {
+                setActiveBeerId(beer.id);
+                setBeerSuggestions([]);
+                updateBeer(index, { name: suggestion.name });
+              }}
               onChangePrice={(priceText) =>
                 updateBeer(index, { priceText: sanitizePriceInput(priceText, priceCurrency) })
               }
@@ -548,7 +608,11 @@ function DayRow({
 
 interface BeerRowViewProps {
   beer: BeerRow;
+  suggestions: BeerBrandSuggestion[];
+  suggesting: boolean;
+  onFocusName: () => void;
   onChangeName: (name: string) => void;
+  onSelectSuggestion: (suggestion: BeerBrandSuggestion) => void;
   onChangePrice: (price: string) => void;
   onChangeVolume: (volumeMl: number | undefined) => void;
   onRemove: () => void;
@@ -563,7 +627,11 @@ const VOLUME_OPTIONS: { value: number | undefined; labelKey: 'volumeSmall' | 'vo
 
 function BeerRowView({
   beer,
+  suggestions,
+  suggesting,
+  onFocusName,
   onChangeName,
+  onSelectSuggestion,
   onChangePrice,
   onChangeVolume,
   onRemove,
@@ -577,6 +645,7 @@ function BeerRowView({
         <TextInput
           style={styles.beerNameInput}
           value={beer.name}
+          onFocus={onFocusName}
           onChangeText={onChangeName}
           placeholder={cs.contribute.beerNamePlaceholder}
           placeholderTextColor={Colors.mutedText}
@@ -593,6 +662,29 @@ function BeerRowView({
           <Trash2Icon size={16} color={Colors.mutedText} />
         </Pressable>
       </View>
+      {(suggestions.length > 0 || suggesting) && (
+        <View style={styles.suggestionsWrap}>
+          {suggestions.map((suggestion) => (
+            <Pressable
+              key={suggestion.slug}
+              onPress={() => onSelectSuggestion(suggestion)}
+              style={styles.suggestionPill}
+              hitSlop={4}
+              accessibilityRole="button"
+              accessibilityLabel={suggestion.name}
+            >
+              <Text style={styles.suggestionPillText} maxFontSizeMultiplier={FontScaleCap.body}>
+                {suggestion.name}
+              </Text>
+            </Pressable>
+          ))}
+          {suggesting && suggestions.length === 0 ? (
+            <Text style={styles.suggestingText} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.contribute.beerSuggestionsLoading}
+            </Text>
+          ) : null}
+        </View>
+      )}
       <View style={styles.beerBottomRow}>
         <TextInput
           style={styles.priceInput}
@@ -822,6 +914,30 @@ const styles = StyleSheet.create({
     fontSize: 15,
     paddingHorizontal: 12,
     paddingVertical: 10,
+  },
+  suggestionsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  suggestionPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout2,
+    borderWidth: 1,
+    borderColor: Colors.amber,
+  },
+  suggestionPillText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 13,
+    color: Colors.amber,
+  },
+  suggestingText: {
+    fontFamily: Fonts.ui.regular,
+    fontSize: 13,
+    color: Colors.mutedText,
+    paddingVertical: 7,
   },
   beerBottomRow: {
     flexDirection: 'row',
