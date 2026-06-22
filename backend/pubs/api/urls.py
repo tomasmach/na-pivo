@@ -9,6 +9,7 @@ POST   pub-reports/ → PubReportView
 GET    pub-reports/blocked → BlockedPubReportsView
 GET    pubs/suggest → PubLocationSuggestView
 GET    pubs/geocode → PubLocationGeocodeView
+GET    beer-brands/suggest → BeerBrandSuggestView
 POST   drinks       → DrinksView
 DELETE drinks/<client_id> → DrinksView
 GET    release-notes → ReleaseNotesView
@@ -36,6 +37,7 @@ from .views import (
     AccountExportView,
     AccountMeView,
     AccountView,
+    BeerBrandSuggestView,
     BlockedPubReportsView,
     ClientEventsView,
     ContentReportView,
@@ -61,6 +63,7 @@ urlpatterns = [
     path("pub-community", PubCommunityView.as_view(), name="pub-community"),
     path("drinks", DrinksView.as_view(), name="drinks"),
     path("drinks/<uuid:client_id>", DrinksView.as_view(), name="drinks-delete"),
+    path("beer-brands/suggest", BeerBrandSuggestView.as_view(), name="beer-brands-suggest"),
     path("pub-ratings", PubRatingView.as_view(), name="pub-ratings"),
     path("pub-ratings/<str:cache_key>", PubRatingView.as_view(), name="pub-ratings-delete"),
     path("pub-visits", PubVisitView.as_view(), name="pub-visits"),

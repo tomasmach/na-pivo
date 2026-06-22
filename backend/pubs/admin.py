@@ -4,11 +4,13 @@ from django.utils import timezone
 from .models import (
     Account,
     AccountUsageStats,
+    BeerBrand,
     ClientEvent,
     ContentReport,
     DrinkLog,
     EnrichTask,
     FeedbackReport,
+    PubBeerBrand,
     PubCommunityData,
     PubContributionLog,
     PubHours,
@@ -306,6 +308,24 @@ class PubCommunityDataAdmin(admin.ModelAdmin):
     ordering = ("-updated_at",)
 
 
+@admin.register(BeerBrand)
+class BeerBrandAdmin(admin.ModelAdmin):
+    list_display = ("name", "key", "rank", "active", "updated_at")
+    list_filter = ("active",)
+    search_fields = ("name", "key", "aliases")
+    readonly_fields = ("created_at", "updated_at")
+    ordering = ("rank", "name")
+
+
+@admin.register(PubBeerBrand)
+class PubBeerBrandAdmin(admin.ModelAdmin):
+    list_display = ("brand_name", "name", "cache_key", "last_price_czk", "last_volume_ml", "source", "active", "last_seen_at")
+    list_filter = ("brand_key", "source", "active", "last_seen_at")
+    search_fields = ("brand_name", "name", "cache_key", "city", "external_id")
+    readonly_fields = ("created_at", "updated_at")
+    ordering = ("-last_seen_at",)
+
+
 @admin.register(PubContributionLog)
 class PubContributionLogAdmin(admin.ModelAdmin):
     # Append-only audit history — fully read-only.
@@ -336,9 +356,9 @@ class PubContributionLogAdmin(admin.ModelAdmin):
 class DrinkLogAdmin(admin.ModelAdmin):
     # Append-only per-user drink history — fully read-only, like the
     # contribution log.
-    list_display = ("drank_at", "beer_name", "price_czk", "volume_ml", "name", "cache_key", "account")
-    list_filter = ("volume_ml", "drank_at")
-    search_fields = ("beer_name", "name", "cache_key", "city")
+    list_display = ("drank_at", "beer_name", "beer_brand_name", "price_czk", "volume_ml", "name", "cache_key", "account")
+    list_filter = ("beer_brand_key", "volume_ml", "drank_at")
+    search_fields = ("beer_name", "beer_brand_name", "name", "cache_key", "city")
     readonly_fields = (
         "account",
         "client_id",
@@ -349,6 +369,9 @@ class DrinkLogAdmin(admin.ModelAdmin):
         "city",
         "external_id",
         "beer_name",
+        "beer_brand",
+        "beer_brand_key",
+        "beer_brand_name",
         "price_czk",
         "volume_ml",
         "drank_at",

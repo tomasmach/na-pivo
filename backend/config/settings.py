@@ -198,6 +198,11 @@ ADDED_PUBS_THROTTLE_RATE: str = os.environ.get("ADDED_PUBS_THROTTLE_RATE", "20/m
 # it still blunts scripted mass logging. Format: DRF throttle rate string.
 DRINKS_THROTTLE_RATE: str = os.environ.get("DRINKS_THROTTLE_RATE", "60/min")
 
+# Per-IP rate limit for the unauthenticated beer-brand suggestion endpoint
+# (GET /v1/beer-brands/suggest). The response is tiny and cacheable, but the
+# autocomplete UI can call it while typing.
+BEER_BRANDS_THROTTLE_RATE: str = os.environ.get("BEER_BRANDS_THROTTLE_RATE", "120/min")
+
 # Per-IP rate limit for the authenticated pub-rating sync endpoint
 # (PUT/GET/DELETE /v1/pub-ratings). A two-way sync may upsert several ratings in
 # a burst when a fresh install pushes its local history, so this is generous;
@@ -274,6 +279,7 @@ REST_FRAMEWORK = {
         "community": COMMUNITY_THROTTLE_RATE,
         "added_pubs": ADDED_PUBS_THROTTLE_RATE,
         "drinks": DRINKS_THROTTLE_RATE,
+        "beer_brands": BEER_BRANDS_THROTTLE_RATE,
         "pub_ratings": PUB_RATINGS_THROTTLE_RATE,
         "pub_visits": PUB_VISITS_THROTTLE_RATE,
         "pubs_near": PUBS_NEAR_THROTTLE_RATE,

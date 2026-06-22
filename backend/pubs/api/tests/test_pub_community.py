@@ -13,6 +13,7 @@ from pubs.enrichment import community_hours_to_osm, geohash8
 from pubs.models import (
     Account,
     EnrichTask,
+    PubBeerBrand,
     PubCommunityData,
     PubContributionLog,
 )
@@ -309,6 +310,35 @@ def test_submit_accepts_optional_beer_fields(client):
     assert resp.status_code == status.HTTP_200_OK
     record = PubCommunityData.objects.get()
     assert record.beers == [{"name": "Tap beer", "price_czk": None, "volume_ml": None}]
+
+
+@pytest.mark.django_db
+def test_submit_beers_normalizes_exact_brand_shorthand_and_indexes_brand(client):
+    token = _register(client)
+    resp = client.post(
+        "/v1/pub-community",
+        data=_payload(
+            hours=None,
+            beers=[{"name": "Plzeň", "price_czk": 62, "volume_ml": 500}],
+        ),
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["beers"] == [
+        {"name": "Pilsner Urquell", "price_czk": 62, "volume_ml": 500}
+    ]
+
+    record = PubCommunityData.objects.get()
+    assert record.beers == [{"name": "Pilsner Urquell", "price_czk": 62, "volume_ml": 500}]
+
+    link = PubBeerBrand.objects.get(cache_key=_KEY)
+    assert link.brand_key == "pilsner-urquell"
+    assert link.brand_name == "Pilsner Urquell"
+    assert link.last_price_czk == 62
+    assert link.last_volume_ml == 500
+    assert link.source == PubBeerBrand.Source.COMMUNITY
 
 
 # ---------------------------------------------------------------------------

@@ -1276,6 +1276,113 @@ class PubCommunityData(models.Model):
         return f"PubCommunityData({self.name} [{self.cache_key}])"
 
 
+class BeerBrand(models.Model):
+    """
+    Canonical beer brand used for suggestions and brand-level pub filtering.
+
+    User-entered beer rows stay free-text in PubCommunityData.beers because
+    people often type product details ("Gambrinus 10", "Radegast Ryze hořká").
+    This lookup provides the stable brand key that the backend can attach to
+    drink logs and the per-pub beer-brand index without making older clients
+    understand a new schema.
+    """
+
+    key = models.SlugField(
+        max_length=80,
+        unique=True,
+        db_index=True,
+        help_text="Stable ASCII identifier, e.g. pilsner-urquell.",
+    )
+    name = models.CharField(max_length=120, help_text="Canonical display name.")
+    aliases = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Common typed aliases used for matching and suggestions.",
+    )
+    rank = models.PositiveSmallIntegerField(
+        default=1000,
+        db_index=True,
+        help_text="Lower ranks appear earlier in suggestions.",
+    )
+    source_label = models.CharField(max_length=160, blank=True, default="")
+    source_url = models.URLField(max_length=500, blank=True, default="")
+    active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Beer Brand"
+        verbose_name_plural = "Beer Brands"
+        ordering = ["rank", "name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class PubBeerBrand(models.Model):
+    """
+    Brand-level index of what beer brands are known to be served at a pub.
+
+    This is deliberately separate from PubCommunityData.beers. The JSON menu is
+    the user-facing current menu; this table is the queryable path for future
+    "show pubs that serve Pilsner Urquell" filtering.
+    """
+
+    class Source(models.TextChoices):
+        COMMUNITY = "community", "Community menu"
+        DRINK = "drink", "Drink log"
+
+    cache_key = models.CharField(
+        max_length=12,
+        db_index=True,
+        help_text="Geohash-8 of (lat, lng) — matches PubCommunityData.cache_key.",
+    )
+    name = models.TextField(help_text="Pub name as submitted by the client.")
+    lat = models.FloatField()
+    lng = models.FloatField()
+    city = models.TextField(blank=True, default="")
+    external_id = models.TextField(blank=True, default="")
+    brand = models.ForeignKey(
+        BeerBrand,
+        on_delete=models.CASCADE,
+        related_name="pub_links",
+    )
+    brand_key = models.SlugField(max_length=80, db_index=True)
+    brand_name = models.CharField(max_length=120)
+    last_price_czk = models.PositiveSmallIntegerField(null=True, blank=True)
+    last_volume_ml = models.PositiveSmallIntegerField(null=True, blank=True)
+    source = models.CharField(max_length=16, choices=Source.choices)
+    active = models.BooleanField(default=True, db_index=True)
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="pub_beer_brands",
+    )
+    last_seen_at = models.DateTimeField(default=timezone.now, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Pub Beer Brand"
+        verbose_name_plural = "Pub Beer Brands"
+        ordering = ["-last_seen_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["cache_key", "brand"],
+                name="unique_pub_beer_brand",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["brand_key", "active"]),
+            models.Index(fields=["cache_key", "active"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.brand_name} @ {self.name} [{self.cache_key}]"
+
+
 class DrinkLog(models.Model):
     """
     A single beer the user logged via the in-app beer counter.
@@ -1324,6 +1431,27 @@ class DrinkLog(models.Model):
 
     # ---------- the drunk beer ----------
     beer_name = models.TextField(help_text="Beer name (1..80 chars, enforced by the serializer).")
+    beer_brand = models.ForeignKey(
+        BeerBrand,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="drinks",
+        help_text="Matched canonical brand, if the submitted beer name was recognized.",
+    )
+    beer_brand_key = models.SlugField(
+        max_length=80,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="Denormalized BeerBrand.key for future stats/filter queries.",
+    )
+    beer_brand_name = models.CharField(
+        max_length=120,
+        blank=True,
+        default="",
+        help_text="Denormalized BeerBrand.name as it was at log time.",
+    )
     price_czk = models.PositiveSmallIntegerField(
         help_text="Price paid in CZK (1..1000) — mandatory; this is the community-sourcing hook.",
     )

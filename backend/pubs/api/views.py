@@ -9,6 +9,7 @@ POST   /v1/pub-reports → PubReportView
 GET    /v1/pub-reports/blocked → BlockedPubReportsView
 GET    /v1/pubs/suggest → PubLocationSuggestView
 GET    /v1/pubs/geocode → PubLocationGeocodeView
+GET    /v1/beer-brands/suggest → BeerBrandSuggestView
 POST   /v1/drinks      → DrinksView
 DELETE /v1/drinks/<client_id> → DrinksView
 GET    /v1/release-notes → ReleaseNotesView
@@ -38,6 +39,7 @@ from rest_framework.views import APIView
 
 from pubs import accounts, emailer
 from pubs.accounts import AccountError
+from pubs.beer_catalog import match_beer_brand, suggest_beer_brands, upsert_pub_beer_brand
 from pubs.enrichment import (
     MapyAllQueriesFailedError,
     MapyDailyCapExceededError,
@@ -56,6 +58,7 @@ from pubs.models import (
     DrinkLog,
     EmailCredential,
     FeedbackReport,
+    PubBeerBrand,
     PubCommunityData,
     PubContributionLog,
     PubRating,
@@ -73,6 +76,8 @@ from .serializers import (
     AccountRegisterSerializer,
     AccountSerializer,
     AccountUpdateSerializer,
+    BeerBrandSuggestionSerializer,
+    BeerBrandSuggestQuerySerializer,
     BlockedPubsResponseSerializer,
     ClientEventRequestSerializer,
     ContentReportRequestSerializer,
@@ -374,6 +379,14 @@ class PubCommunityView(APIView):
                         "payload": data["beers"],
                     },
                 )
+                for beer in data["beers"]:
+                    upsert_pub_beer_brand(
+                        cache_key=cache_key,
+                        data=data,
+                        beer=beer,
+                        source=PubBeerBrand.Source.COMMUNITY,
+                        account=request.user,
+                    )
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "pub-community: unexpected error saving contribution for cache key %s: %s",
@@ -394,6 +407,34 @@ class PubCommunityView(APIView):
             }
         ).data
         return Response(body, status=status.HTTP_200_OK)
+
+
+class BeerBrandSuggestView(APIView):
+    """
+    GET /v1/beer-brands/suggest
+
+    Lightweight canonical beer-brand suggestions for manual beer entry. Public
+    and read-only; failures are non-critical because the mobile form remains
+    free-text.
+    """
+
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "beer_brands"
+
+    def get(self, request: Request) -> Response:
+        query = BeerBrandSuggestQuerySerializer(data=request.query_params)
+        if not query.is_valid():
+            return Response(query.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        brands = suggest_beer_brands(
+            query.validated_data.get("q") or "",
+            limit=query.validated_data["limit"],
+        )
+        return Response(
+            {"suggestions": BeerBrandSuggestionSerializer(brands, many=True).data},
+            status=status.HTTP_200_OK,
+        )
 
 
 # Mirror the community menu cap (serializers._MAX_BEERS): a community beer menu
@@ -476,6 +517,7 @@ class DrinksView(APIView):
         data = serializer.validated_data
         cache_key = geohash8(data["lat"], data["lng"])
         beer = data["beer"]
+        brand_match = match_beer_brand(beer["name"])
         drank_at = data.get("drank_at") or dj_timezone.now()
 
         try:
@@ -491,6 +533,9 @@ class DrinksView(APIView):
                         "city": data.get("city") or "",
                         "external_id": data.get("external_id") or "",
                         "beer_name": beer["name"],
+                        "beer_brand": brand_match.brand if brand_match else None,
+                        "beer_brand_key": brand_match.brand.key if brand_match else "",
+                        "beer_brand_name": brand_match.brand.name if brand_match else "",
                         "price_czk": beer["price_czk"],
                         "volume_ml": beer.get("volume_ml"),
                         "drank_at": drank_at,
@@ -603,6 +648,13 @@ class DrinksView(APIView):
                         ],
                         beers_updated_at=now,
                     )
+                upsert_pub_beer_brand(
+                    cache_key=cache_key,
+                    data=data,
+                    beer=beer,
+                    source=PubBeerBrand.Source.DRINK,
+                    account=account,
+                )
                 return True
             except IntegrityError:
                 # A concurrent first-drink for this brand-new cell won the race and
@@ -635,6 +687,13 @@ class DrinksView(APIView):
             # Refresh the most-recent-contributor pointer; never touch hours.
             row.account = account
             row.save(update_fields=["beers", "beers_updated_at", "account", "updated_at"])
+            upsert_pub_beer_brand(
+                cache_key=cache_key,
+                data=data,
+                beer=beer,
+                source=PubBeerBrand.Source.DRINK,
+                account=account,
+            )
         return changed
 
 

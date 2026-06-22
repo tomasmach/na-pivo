@@ -45,8 +45,10 @@ from rest_framework import serializers
 
 from pubs import accounts
 from pubs.accounts import AccountError
+from pubs.beer_catalog import normalize_beer_payload
 from pubs.models import (
     Account,
+    BeerBrand,
     ClientEvent,
     ContentReport,
     FeedbackReport,
@@ -438,6 +440,28 @@ class CommunityBeerSerializer(serializers.Serializer):
         }
 
 
+class BeerBrandSuggestQuerySerializer(serializers.Serializer):
+    """Query parameters for GET /v1/beer-brands/suggest."""
+
+    q = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=80,
+        trim_whitespace=True,
+    )
+    limit = serializers.IntegerField(required=False, min_value=1, max_value=20, default=12)
+
+
+class BeerBrandSuggestionSerializer(serializers.ModelSerializer):
+    """A single canonical beer-brand suggestion."""
+
+    slug = serializers.CharField(source="key")
+
+    class Meta:
+        model = BeerBrand
+        fields = ("slug", "name")
+
+
 class PubCommunityRequestSerializer(PubInputSerializer):
     """Request body for POST /v1/pub-community.
 
@@ -507,11 +531,7 @@ class PubCommunityRequestSerializer(PubInputSerializer):
         # /v1/pub-hours read path) has a stable shape regardless of which
         # optional fields the client sent.
         return [
-            {
-                "name": beer["name"],
-                "price_czk": beer.get("price_czk"),
-                "volume_ml": beer.get("volume_ml"),
-            }
+            normalize_beer_payload(beer)
             for beer in value
         ]
 
@@ -576,11 +596,7 @@ class DrinkRequestSerializer(PubInputSerializer):
     def validate_beer(self, value: dict) -> dict:
         # Canonicalise to all three keys so the merge + stored JSON have a stable
         # shape, matching CommunityBeerSerializer.to_representation output.
-        return {
-            "name": value["name"],
-            "price_czk": value["price_czk"],
-            "volume_ml": value.get("volume_ml"),
-        }
+        return normalize_beer_payload(value)
 
 
 # ---------------------------------------------------------------------------

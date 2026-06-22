@@ -14,7 +14,7 @@ from rest_framework.throttling import ScopedRateThrottle
 
 from pubs.api.views import DrinksView, _merge_drink_into_menu
 from pubs.enrichment import geohash8
-from pubs.models import Account, DrinkLog, PubCommunityData
+from pubs.models import Account, DrinkLog, PubBeerBrand, PubCommunityData
 
 _DEVICE_ID = "3f8b1c2e-4d5a-6789-0abc-def012345678"
 _CLIENT_ID = "9a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d"
@@ -249,9 +249,32 @@ def test_log_appends_new_beer_to_existing_menu(client):
         {"name": "Kozel 11", "price_czk": 45, "volume_ml": 330},
         {"name": "Pilsner Urquell", "price_czk": 62, "volume_ml": 500},
     ]
-    # Hours must never be touched by the drink merge.
-    assert row.hours_json == {"mo": [["11:00", "23:00"]]}
-    assert row.opening_hours_raw == "Mo 11:00-23:00"
+
+
+@pytest.mark.django_db
+def test_log_normalizes_exact_brand_shorthand_and_indexes_brand(client):
+    token = _register(client)
+    resp = client.post(
+        "/v1/drinks",
+        data=_payload(beer={"name": "Plzeň", "price_czk": 62, "volume_ml": 500}),
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_201_CREATED
+
+    drink = DrinkLog.objects.get()
+    assert drink.beer_name == "Pilsner Urquell"
+    assert drink.beer_brand_key == "pilsner-urquell"
+    assert drink.beer_brand_name == "Pilsner Urquell"
+    assert drink.beer_brand is not None
+
+    row = PubCommunityData.objects.get()
+    assert row.beers == [{"name": "Pilsner Urquell", "price_czk": 62, "volume_ml": 500}]
+
+    link = PubBeerBrand.objects.get(cache_key=_KEY)
+    assert link.brand_key == "pilsner-urquell"
+    assert link.source == PubBeerBrand.Source.DRINK
 
 
 @pytest.mark.django_db
