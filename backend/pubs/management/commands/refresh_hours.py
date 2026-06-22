@@ -58,10 +58,12 @@ def _persist_result(
     rating_value: float | None = None
     rating_count: int | None = None
     rating_label: str | None = None
+    has_garden: bool | None = None
     error: str | None = None
     # No-match rows carry no classification — keep the safe 'unknown' default.
     venue_kind = PubHours.VenueKind.UNKNOWN
     venue_categories: list[str] = []
+    venue_tags: list[str] = []
 
     if result is not None:
         if result.opening_hours_raw:
@@ -78,6 +80,8 @@ def _persist_result(
         # Classify the venue (draft beer?) from the scraped categories/tags.
         venue_kind = classify_venue(result.categories, result.tags)
         venue_categories = result.categories
+        venue_tags = result.tags
+        has_garden = "se-zahradkou" in result.tags
 
     PubHours.objects.update_or_create(
         cache_key=cache_key,
@@ -92,8 +96,10 @@ def _persist_result(
             "rating_value": rating_value,
             "rating_count": rating_count,
             "rating_label": rating_label,
+            "has_garden": has_garden,
             "venue_kind": venue_kind,
             "venue_categories": venue_categories,
+            "venue_tags": venue_tags,
             "status": status,
             "error": error,
             "fetched_at": timezone.now(),

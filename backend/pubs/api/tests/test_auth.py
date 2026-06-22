@@ -292,6 +292,56 @@ def test_login_correct_credentials_returns_working_token(client, sent_emails):
 
 
 @pytest.mark.django_db
+def test_login_with_anonymous_bearer_merges_progress_into_existing_account(
+    client, sent_emails
+):
+    _register(client, "merge-login@x.cz", "Tr0ub4dor&3")
+    target = EmailCredential.objects.get(email="merge-login@x.cz").account
+
+    anon_token, anon_id = _bootstrap_anon(client)
+    anon = Account.objects.get(public_id=anon_id)
+    drink = DrinkLog.objects.create(
+        account=anon,
+        client_id=uuid.uuid4(),
+        cache_key="u2fkbnhz",
+        name="U Vystřelenýho oka",
+        lat=50.08,
+        lng=14.45,
+        beer_name="Plzeň",
+        price_czk=55,
+        drank_at="2026-06-01T18:00:00Z",
+    )
+
+    resp = client.post(
+        "/v1/auth/login",
+        data={"email": "merge-login@x.cz", "password": "Tr0ub4dor&3"},
+        format="json",
+        **_auth(anon_token),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    assert resp.json()["id"] == str(target.public_id)
+    assert Account.objects.count() == 1
+    drink.refresh_from_db()
+    assert drink.account_id == target.id
+
+
+@pytest.mark.django_db
+def test_login_ignores_invalid_optional_bearer(client, sent_emails):
+    _register(client, "invalid-hint@x.cz", "Tr0ub4dor&3")
+
+    resp = client.post(
+        "/v1/auth/login",
+        data={"email": "invalid-hint@x.cz", "password": "Tr0ub4dor&3"},
+        format="json",
+        HTTP_AUTHORIZATION="Bearer not-a-real-token",
+    )
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    assert resp.json()["providers"] == ["email"]
+
+
+@pytest.mark.django_db
 def test_login_wrong_password_returns_401_invalid_credentials(client, sent_emails):
     _register(client, "login2@x.cz", "Tr0ub4dor&3")
     resp = client.post(

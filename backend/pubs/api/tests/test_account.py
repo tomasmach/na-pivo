@@ -123,6 +123,29 @@ def test_reregistration_without_bearer_does_not_rotate_token(client):
 
 
 @pytest.mark.django_db
+def test_reregistration_with_invalid_bearer_does_not_rotate_token(client):
+    """A stale or unknown Bearer token cannot recover a known device account."""
+    first = client.post("/v1/account", data={"device_id": _DEVICE_ID}, format="json")
+    assert first.status_code == status.HTTP_201_CREATED
+    token = first.json()["token"]
+    original_hash = AuthToken.objects.get(account__device_id=_DEVICE_ID).token_hash
+
+    resp = client.post(
+        "/v1/account",
+        data={"device_id": _DEVICE_ID},
+        format="json",
+        HTTP_AUTHORIZATION="Bearer not-a-real-token",
+    )
+
+    assert resp.status_code == status.HTTP_401_UNAUTHORIZED
+    assert resp.json() == {"detail": "Invalid account token."}
+    assert "token" not in resp.json()
+    assert AuthToken.objects.get(account__device_id=_DEVICE_ID).token_hash == original_hash
+    me = client.get("/v1/account/me", HTTP_AUTHORIZATION=f"Bearer {token}")
+    assert me.status_code == status.HTTP_200_OK
+
+
+@pytest.mark.django_db
 def test_reregistration_with_other_account_token_does_not_rotate_token(client):
     first = client.post("/v1/account", data={"device_id": _DEVICE_ID}, format="json")
     other = client.post("/v1/account", data={"device_id": _OTHER_DEVICE_ID}, format="json")

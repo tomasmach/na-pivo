@@ -91,6 +91,7 @@ def test_cache_hit_returns_without_scraping():
     assert r["rating"] == pytest.approx(4.1)
     assert r["ratingCount"] == 364
     assert r["ratingLabel"] == "Velmi dobré"
+    assert r["hasGarden"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -121,6 +122,7 @@ def test_cache_miss_within_budget_triggers_fetch_and_persists():
     assert r["rating"] == pytest.approx(4.1)
     assert r["ratingCount"] == 364
     assert r["ratingLabel"] == "Velmi dobré"
+    assert r["hasGarden"] is False
 
     # Row must be persisted
     row = PubHours.objects.get(cache_key=_FLEKY_KEY)
@@ -130,6 +132,8 @@ def test_cache_miss_within_budget_triggers_fetch_and_persists():
     assert row.rating_value == pytest.approx(4.1)
     assert row.rating_count == 364
     assert row.rating_label == "Velmi dobré"
+    assert row.has_garden is False
+    assert row.venue_tags == []
 
 
 # ---------------------------------------------------------------------------

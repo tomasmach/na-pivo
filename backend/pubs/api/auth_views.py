@@ -29,6 +29,7 @@ import logging
 import uuid
 
 from rest_framework import status
+from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -71,6 +72,18 @@ def _current_account(request: Request) -> Account | None:
     """The Account behind an optional Bearer token, or None when unauthenticated."""
     user = getattr(request, "user", None)
     return user if isinstance(user, Account) else None
+
+
+def _optional_bearer_account(request: Request) -> Account | None:
+    """Best-effort bearer lookup for endpoints where auth is only a merge hint."""
+    try:
+        result = AccountTokenAuthentication().authenticate(request)
+    except AuthenticationFailed:
+        return None
+    if result is None:
+        return None
+    account, _raw_token = result
+    return account if isinstance(account, Account) else None
 
 
 def _error_response(exc: AccountError) -> Response:
@@ -140,6 +153,7 @@ class LoginView(_AuthView):
             account, token = accounts.login_email(
                 email=ser.validated_data["email"],
                 password=ser.validated_data["password"],
+                current_account=_optional_bearer_account(request),
             )
             return Response(
                 _account_state(account, request=request, token=token),

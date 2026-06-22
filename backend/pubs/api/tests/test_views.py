@@ -190,6 +190,7 @@ def test_response_shape_from_cache(client):
     assert r["rating"] == pytest.approx(4.1)
     assert r["ratingCount"] == 364
     assert r["ratingLabel"] == "Velmi dobré"
+    assert r["hasGarden"] is None
     # venue_kind defaults to 'unknown' on a row that wasn't classified.
     assert r["venueKind"] == "unknown"
 
@@ -214,6 +215,25 @@ def test_response_includes_venue_kind_from_row(client):
 
 
 @pytest.mark.django_db
+def test_response_includes_garden_flag_from_row(client):
+    """A PubHours row surfaces the garden metadata as hasGarden."""
+    _make_fresh_row(has_garden=True, venue_tags=["se-zahradkou"])
+
+    from pubs.api import cache as cache_module
+
+    with patch.object(cache_module, "is_open_now", return_value=True), \
+         patch.object(cache_module, "next_change", return_value=None):
+        resp = client.post(
+            "/v1/pub-hours",
+            data={"pubs": [{"name": _FLEKY_NAME, "lat": _FLEKY_LAT, "lng": _FLEKY_LNG}]},
+            format="json",
+        )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["results"][0]["hasGarden"] is True
+
+
+@pytest.mark.django_db
 def test_sync_fetch_persists_classified_venue_kind(client):
     """A sync fetch classifies the venue from scraped categories/tags and the
     response + persisted row both carry venueKind 'pub'."""
@@ -226,7 +246,7 @@ def test_sync_fetch_persists_classified_venue_kind(client):
         matched_lng=_FLEKY_LNG,
         confidence=0.95,
         categories=["České a staročeské restaurace", "Restaurace"],
-        tags=["tocene-pivo"],
+        tags=["tocene-pivo", "se-zahradkou"],
     )
     mock_source = MagicMock()
     mock_source.fetch.return_value = raw
@@ -243,9 +263,12 @@ def test_sync_fetch_persists_classified_venue_kind(client):
 
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json()["results"][0]["venueKind"] == "pub"
+    assert resp.json()["results"][0]["hasGarden"] is True
     row = PubHours.objects.get(cache_key=_FLEKY_KEY)
     assert row.venue_kind == "pub"
     assert row.venue_categories == ["České a staročeské restaurace", "Restaurace"]
+    assert row.has_garden is True
+    assert row.venue_tags == ["tocene-pivo", "se-zahradkou"]
 
 
 @pytest.mark.django_db

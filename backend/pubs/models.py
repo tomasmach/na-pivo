@@ -92,6 +92,12 @@ class PubHours(models.Model):
         null=True,
         help_text="Human rating label from the source listing, e.g. 'Velmi dobré'.",
     )
+    has_garden = models.BooleanField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Whether the source listing explicitly marks a beer garden/outdoor seating.",
+    )
     status = models.CharField(
         max_length=16,
         choices=Status.choices,
@@ -122,6 +128,11 @@ class PubHours(models.Model):
         default=list,
         blank=True,
         help_text="Firmy.cz category names the classification was derived from.",
+    )
+    venue_tags = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Firmy.cz tag slugs used for lightweight pub metadata such as garden.",
     )
 
     # ---------- timestamps ----------

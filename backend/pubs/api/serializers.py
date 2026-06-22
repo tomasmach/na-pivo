@@ -26,6 +26,7 @@ Response body:
                 "rating": float|null,       -- source star rating, 0-5
                 "ratingCount": int|null,    -- number of source ratings
                 "ratingLabel": str|null,    -- source label, e.g. "Velmi dobré"
+                "hasGarden": bool|null,     -- source says there is a garden/outdoor seating
                 "venueKind": "pub|maybe|not_pub|unknown"  -- draft-beer classification
             }
         ]
@@ -598,6 +599,22 @@ class DrinkRequestSerializer(PubInputSerializer):
         return normalize_beer_payload(value)
 
 
+class DrinkUpdateSerializer(serializers.Serializer):
+    """Request body for PATCH /v1/drinks/<client_id>.
+
+    This is deliberately narrow: the mobile app only needs to fix a typo in the
+    user's private drink log. Pub, price, time and community menu contributions
+    are not rewritten by this endpoint.
+    """
+
+    beer_name = serializers.CharField(max_length=80, trim_whitespace=True)
+
+    def validate_beer_name(self, value: str) -> str:
+        if not value:
+            raise serializers.ValidationError("Beer name must not be empty.")
+        return value
+
+
 # ---------------------------------------------------------------------------
 # Pub ratings (PUT/GET /v1/pub-ratings, DELETE /v1/pub-ratings/<cache_key>)
 # ---------------------------------------------------------------------------
@@ -701,6 +718,12 @@ class PubsNearQuerySerializer(serializers.Serializer):
     lat = serializers.FloatField()
     lng = serializers.FloatField()
     radius_km = serializers.FloatField(required=False, allow_null=True)
+    beer_brand = serializers.SlugField(
+        required=False,
+        allow_blank=True,
+        max_length=80,
+        trim_whitespace=True,
+    )
 
     def validate_lat(self, value: float) -> float:
         if not (-90.0 <= value <= 90.0):
@@ -726,6 +749,8 @@ class PubsNearQuerySerializer(serializers.Serializer):
         # Ensure radius_km is always present in validated_data even when omitted
         # (validate_radius_km only runs when the field is supplied).
         attrs.setdefault("radius_km", PUBS_NEAR_DEFAULT_RADIUS_KM)
+        if not attrs.get("beer_brand"):
+            attrs.pop("beer_brand", None)
         return attrs
 
 
@@ -785,6 +810,7 @@ class PubHoursResultSerializer(serializers.Serializer):
     rating = serializers.FloatField(allow_null=True)
     ratingCount = serializers.IntegerField(allow_null=True)
     ratingLabel = serializers.CharField(allow_null=True)
+    hasGarden = serializers.BooleanField(allow_null=True)
     # Draft-beer classification: one of "pub" | "maybe" | "not_pub" | "unknown".
     # A pub with no PubHours row, or one we couldn't classify, is "unknown".
     # Non-empty community beers force "pub" (the community knows best).

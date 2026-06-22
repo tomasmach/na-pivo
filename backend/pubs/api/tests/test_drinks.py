@@ -677,3 +677,97 @@ def test_delete_does_not_change_community_menu(client):
     row_after = PubCommunityData.objects.get(cache_key=_KEY)
     assert row_after.pk == row_before.pk
     assert row_after.beers == beers_before
+
+
+# PATCH /v1/drinks/<client_id> — private beer-name typo fix
+# ---------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_patch_updates_logged_drink_beer_name(client):
+    token = _register(client)
+    client.post("/v1/drinks", data=_payload(), format="json", **_auth(token))
+
+    resp = client.patch(
+        f"/v1/drinks/{_CLIENT_ID}",
+        data={"beer_name": "Velkopopovický Kozel 11°"},
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json() == {"updated": True}
+    drink = DrinkLog.objects.get(client_id=_CLIENT_ID)
+    assert drink.beer_name == "Velkopopovický Kozel 11°"
+    assert drink.beer_brand_name == "Velkopopovický Kozel"
+    assert drink.beer_product_name == "Velkopopovický Kozel 11°"
+
+
+@pytest.mark.django_db
+def test_patch_unknown_client_id_is_idempotent_success(client):
+    token = _register(client)
+    resp = client.patch(
+        f"/v1/drinks/{_CLIENT_ID}",
+        data={"beer_name": "Kozel"},
+        format="json",
+        **_auth(token),
+    )
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json() == {"updated": False}
+
+
+@pytest.mark.django_db
+def test_patch_rejects_empty_beer_name(client):
+    token = _register(client)
+    resp = client.patch(
+        f"/v1/drinks/{_CLIENT_ID}",
+        data={"beer_name": "   "},
+        format="json",
+        **_auth(token),
+    )
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
+def test_patch_requires_account_token(client):
+    resp = client.patch(
+        f"/v1/drinks/{_CLIENT_ID}",
+        data={"beer_name": "Kozel"},
+        format="json",
+    )
+    assert resp.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+@pytest.mark.django_db
+def test_patch_cannot_update_another_accounts_drink(client):
+    token_a = _register(client)
+    client.post("/v1/drinks", data=_payload(), format="json", **_auth(token_a))
+
+    token_b = _register(client, device_id=_OTHER_DEVICE_ID)
+    resp = client.patch(
+        f"/v1/drinks/{_CLIENT_ID}",
+        data={"beer_name": "Kozel"},
+        format="json",
+        **_auth(token_b),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json() == {"updated": False}
+    assert DrinkLog.objects.get(client_id=_CLIENT_ID).beer_name == "Pilsner Urquell"
+
+
+@pytest.mark.django_db
+def test_patch_does_not_change_community_menu(client):
+    token = _register(client)
+    client.post("/v1/drinks", data=_payload(), format="json", **_auth(token))
+    beers_before = PubCommunityData.objects.get(cache_key=_KEY).beers
+
+    resp = client.patch(
+        f"/v1/drinks/{_CLIENT_ID}",
+        data={"beer_name": "Kozel"},
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert PubCommunityData.objects.get(cache_key=_KEY).beers == beers_before

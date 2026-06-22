@@ -487,11 +487,18 @@ def register_email(
     return current_account, token
 
 
-def login_email(*, email: str, password: str) -> tuple[Account, str]:
+def login_email(
+    *,
+    email: str,
+    password: str,
+    current_account: Account | None = None,
+) -> tuple[Account, str]:
     """Authenticate email+password. Returns ``(account, raw_session_token)``.
 
     Uses a single generic error for both unknown-email and wrong-password to
     avoid account enumeration. Reactivates an account that was pending deletion.
+    When an anonymous account token is supplied, its already-synced local progress
+    is merged into the signed-in account after the password has been proven.
     """
     norm = normalize_email(email)
     cred = EmailCredential.objects.select_related("account").filter(email=norm).first()
@@ -503,6 +510,7 @@ def login_email(*, email: str, password: str) -> tuple[Account, str]:
 
     account = cred.account
     _reactivate_if_pending(account)
+    _merge_anonymous_account(current_account, account)
     token = issue_token(account)
     return account, token
 

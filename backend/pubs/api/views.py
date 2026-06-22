@@ -11,6 +11,7 @@ GET    /v1/pubs/suggest → PubLocationSuggestView
 GET    /v1/pubs/geocode → PubLocationGeocodeView
 GET    /v1/beer-brands/suggest → BeerBrandSuggestView
 POST   /v1/drinks      → DrinksView
+PATCH  /v1/drinks/<client_id> → DrinksView
 DELETE /v1/drinks/<client_id> → DrinksView
 GET    /v1/release-notes → ReleaseNotesView
 GET    /v1/health      → HealthView
@@ -58,6 +59,7 @@ from pubs.models import (
     Account,
     AccountUsageStats,
     AuthToken,
+    BeerBrand,
     ClientEvent,
     ContentReport,
     DrinkLog,
@@ -88,6 +90,7 @@ from .serializers import (
     ContentReportRequestSerializer,
     ContentReportSerializer,
     DrinkRequestSerializer,
+    DrinkUpdateSerializer,
     FeedbackReportSerializer,
     FeedbackRequestSerializer,
     PubCommunityRequestSerializer,
@@ -485,6 +488,7 @@ def _merge_drink_into_menu(beers: list[dict], beer: dict) -> bool:
 class DrinksView(APIView):
     """
     POST   /v1/drinks
+    PATCH  /v1/drinks/<client_id>
     DELETE /v1/drinks/<client_id>
 
     Log one beer the user drank via the in-app beer counter. Every drink carries
@@ -506,6 +510,10 @@ class DrinksView(APIView):
     idempotent (a missing row is a success with ``deleted: false``, so the
     client's offline delete queue can retry safely) and NEVER touches
     PubCommunityData: the contributed price was real community data and stays.
+
+    PATCH fixes the private beer name on a single DrinkLog row. It is scoped to
+    the account, idempotent for repeated retries, and deliberately does NOT edit
+    PubCommunityData, price, volume, pub or timestamps.
     """
 
     authentication_classes = [AccountTokenAuthentication]
@@ -591,6 +599,44 @@ class DrinksView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+    def patch(self, request: Request, client_id) -> Response:
+        serializer = DrinkUpdateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        beer_name = serializer.validated_data["beer_name"]
+        brand_match = match_beer_brand(beer_name)
+
+        try:
+            updated_count = DrinkLog.objects.filter(
+                account=request.user, client_id=client_id
+            ).update(
+                beer_name=beer_name,
+                beer_brand=brand_match.brand if brand_match else None,
+                beer_brand_key=brand_match.brand.key if brand_match else "",
+                beer_brand_name=brand_match.brand.name if brand_match else "",
+                beer_product=brand_match.product if brand_match else None,
+                beer_product_key=(
+                    brand_match.product.key if brand_match and brand_match.product else ""
+                ),
+                beer_product_name=(
+                    brand_match.product.name if brand_match and brand_match.product else ""
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "drinks: unexpected error updating drink %r: %s",
+                client_id,
+                exc,
+                exc_info=True,
+            )
+            return Response(
+                {"detail": "Internal server error."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response({"updated": updated_count > 0}, status=status.HTTP_200_OK)
 
     def delete(self, request: Request, client_id) -> Response:
         # Idempotent delete of the per-user drink. The account filter means a
@@ -1275,6 +1321,8 @@ def _user_added_pub_item(pub: UserAddedPub) -> dict:
 # nearest MAX so the rows we drop are the most distant ones, not arbitrary ones.
 _USER_ADDED_SCAN_LIMIT = 200
 _USER_ADDED_MAX_RESULTS = 50
+_BEER_BRAND_SCAN_LIMIT = 200
+_BEER_BRAND_MAX_RESULTS = 50
 
 
 def _nearby_user_added_pub_items(lat: float, lng: float, radius_km: float) -> list[dict]:
@@ -1304,6 +1352,78 @@ def _nearby_user_added_pub_items(lat: float, lng: float, radius_km: float) -> li
 
     within.sort(key=lambda pair: pair[0])
     return [_user_added_pub_item(pub) for _, pub in within[:_USER_ADDED_MAX_RESULTS]]
+
+
+def _pub_beer_brand_item(link: PubBeerBrand) -> dict:
+    item = {
+        "name": link.name,
+        "label": "Hospoda",
+        "position": {"lat": link.lat, "lon": link.lng},
+        "source": "beer_signal",
+        "beerBrand": {
+            "slug": link.brand_key,
+            "name": link.brand_name,
+            "source": link.source,
+        },
+    }
+    if link.external_id:
+        item["id"] = link.external_id
+    if link.city:
+        item["regionalStructure"] = [
+            {"name": link.city, "type": "regional.municipality"},
+        ]
+        item["location"] = link.city
+    return item
+
+
+def _item_cache_key(item: dict) -> str:
+    pos = item.get("position") or {}
+    lat = pos.get("lat")
+    lng = pos.get("lon")
+    if not isinstance(lat, (int, float)) or not isinstance(lng, (int, float)):
+        return ""
+    return geohash8(float(lat), float(lng))
+
+
+def _nearby_pub_beer_brand_items(
+    *,
+    brand_key: str,
+    lat: float,
+    lng: float,
+    radius_km: float,
+) -> tuple[list[dict], set[str]]:
+    """Known pubs serving a brand, based on community menus and drink logs."""
+
+    lat_delta = radius_km / 111.0
+    lng_delta = radius_km / (111.0 * max(math.cos(math.radians(lat)), 0.01))
+
+    rows = (
+        PubBeerBrand.objects.filter(
+            active=True,
+            brand_key=brand_key,
+            lat__gte=lat - lat_delta,
+            lat__lte=lat + lat_delta,
+            lng__gte=lng - lng_delta,
+            lng__lte=lng + lng_delta,
+        )
+        .order_by("-last_seen_at")[:_BEER_BRAND_SCAN_LIMIT]
+    )
+
+    within = []
+    for link in rows:
+        distance = _haversine_km(lat, lng, link.lat, link.lng)
+        if distance <= radius_km:
+            within.append((distance, link))
+
+    within.sort(key=lambda pair: pair[0])
+    links = [link for _, link in within[:_BEER_BRAND_MAX_RESULTS]]
+    return [_pub_beer_brand_item(link) for link in links], {link.cache_key for link in links}
+
+
+def _filter_items_by_cache_key(items: list[dict], cache_keys: set[str]) -> list[dict]:
+    if not cache_keys:
+        return []
+    return [item for item in items if _item_cache_key(item) in cache_keys]
 
 
 def _pub_near_dedupe_key(item: dict) -> str:
@@ -1370,7 +1490,35 @@ class PubsNearView(APIView):
 
         data = serializer.validated_data
         radius_km: float = data["radius_km"]
+        beer_brand_key = data.get("beer_brand") or ""
+        if beer_brand_key and not BeerBrand.objects.filter(
+            key=beer_brand_key,
+            active=True,
+        ).exists():
+            return Response(
+                {"beer_brand": ["Unknown beer brand."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         user_added_items = _nearby_user_added_pub_items(data["lat"], data["lng"], radius_km)
+        beer_brand_items: list[dict] = []
+        beer_brand_cache_keys: set[str] = set()
+        if beer_brand_key:
+            beer_brand_items, beer_brand_cache_keys = _nearby_pub_beer_brand_items(
+                brand_key=beer_brand_key,
+                lat=data["lat"],
+                lng=data["lng"],
+                radius_km=radius_km,
+            )
+            user_added_items = _filter_items_by_cache_key(user_added_items, beer_brand_cache_keys)
+
+        def apply_beer_brand_filter(items: list[dict]) -> list[dict]:
+            if not beer_brand_key:
+                return _with_user_added_items(user_added_items, items)
+            return _with_user_added_items(
+                beer_brand_items,
+                _filter_items_by_cache_key(items, beer_brand_cache_keys),
+            )
 
         # Quantize to a small shared cache cell but run the search from the user's
         # actual position. The old geohash-5 centre search could be >2 km away at
@@ -1389,7 +1537,7 @@ class PubsNearView(APIView):
         if row is not None and row.fetched_at >= cutoff:
             return Response(
                 {
-                    "items": _with_user_added_items(user_added_items, row.items),
+                    "items": apply_beer_brand_filter(row.items),
                     "cached": True,
                     "fetched_at": row.fetched_at.isoformat(),
                 },
@@ -1407,16 +1555,17 @@ class PubsNearView(APIView):
                 )
                 return Response(
                     {
-                        "items": _with_user_added_items(user_added_items, row.items),
+                        "items": apply_beer_brand_filter(row.items),
                         "cached": True,
                         "fetched_at": row.fetched_at.isoformat(),
                     },
                     status=status.HTTP_200_OK,
                 )
-            if user_added_items:
+            fallback_items = apply_beer_brand_filter([])
+            if fallback_items:
                 return Response(
                     {
-                        "items": user_added_items,
+                        "items": fallback_items,
                         "cached": True,
                         "fetched_at": dj_timezone.now().isoformat(),
                     },
@@ -1443,16 +1592,17 @@ class PubsNearView(APIView):
                 )
                 return Response(
                     {
-                        "items": _with_user_added_items(user_added_items, row.items),
+                        "items": apply_beer_brand_filter(row.items),
                         "cached": True,
                         "fetched_at": row.fetched_at.isoformat(),
                     },
                     status=status.HTTP_200_OK,
                 )
-            if user_added_items:
+            fallback_items = apply_beer_brand_filter([])
+            if fallback_items:
                 return Response(
                     {
-                        "items": user_added_items,
+                        "items": fallback_items,
                         "cached": True,
                         "fetched_at": dj_timezone.now().isoformat(),
                     },
@@ -1474,16 +1624,17 @@ class PubsNearView(APIView):
             if row is not None:
                 return Response(
                     {
-                        "items": _with_user_added_items(user_added_items, row.items),
+                        "items": apply_beer_brand_filter(row.items),
                         "cached": True,
                         "fetched_at": row.fetched_at.isoformat(),
                     },
                     status=status.HTTP_200_OK,
                 )
-            if user_added_items:
+            fallback_items = apply_beer_brand_filter([])
+            if fallback_items:
                 return Response(
                     {
-                        "items": user_added_items,
+                        "items": fallback_items,
                         "cached": True,
                         "fetched_at": dj_timezone.now().isoformat(),
                     },
@@ -1511,7 +1662,7 @@ class PubsNearView(APIView):
 
         return Response(
             {
-                "items": _with_user_added_items(user_added_items, result.items),
+                "items": apply_beer_brand_filter(result.items),
                 "cached": False,
                 "fetched_at": now.isoformat(),
             },

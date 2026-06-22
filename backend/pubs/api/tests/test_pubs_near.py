@@ -21,8 +21,9 @@ from pubs.enrichment import (
     MapyDailyCapExceededError,
     MapySuggestResult,
     geohash6,
+    geohash8,
 )
-from pubs.models import PubSearchCache, UserAddedPub
+from pubs.models import BeerBrand, PubBeerBrand, PubSearchCache, UserAddedPub
 
 # Prague centre-ish coordinates.
 _LAT = 50.0812
@@ -128,6 +129,105 @@ def test_response_shape_only_expected_keys(client):
         resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG})
     body = resp.json()
     assert set(body.keys()) == {"items", "cached", "fetched_at"}
+
+
+@pytest.mark.django_db
+def test_beer_brand_filter_returns_only_known_brand_pubs_from_cache(client):
+    brand, _ = BeerBrand.objects.get_or_create(
+        key="pilsner-urquell",
+        defaults={"name": "Pilsner Urquell"},
+    )
+    PubBeerBrand.objects.create(
+        cache_key=geohash8(50.08, 14.42),
+        name="Hospoda U Testu",
+        lat=50.08,
+        lng=14.42,
+        brand=brand,
+        brand_key=brand.key,
+        brand_name=brand.name,
+        source=PubBeerBrand.Source.COMMUNITY,
+    )
+    other_item = {
+        "name": "Hospoda Bez Plzně",
+        "label": "Hospoda",
+        "position": {"lat": 50.09, "lon": 14.43},
+    }
+    PubSearchCache.objects.create(
+        cache_key=_KEY,
+        radius_bucket=50,
+        items=[_ITEM, other_item],
+        fetched_at=dj_tz.now(),
+    )
+
+    resp = client.get(
+        "/v1/pubs/near",
+        data={
+            "lat": _LAT,
+            "lng": _LNG,
+            "radius_km": 25,
+            "beer_brand": "pilsner-urquell",
+        },
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    names = [item["name"] for item in resp.json()["items"]]
+    assert names == ["Hospoda U Testu"]
+    assert resp.json()["items"][0]["source"] == "beer_signal"
+
+
+@pytest.mark.django_db
+def test_beer_brand_filter_can_serve_known_pub_without_mapy_cache(client, settings):
+    settings.MAPY_API_KEY = ""
+    brand, _ = BeerBrand.objects.get_or_create(
+        key="pilsner-urquell",
+        defaults={"name": "Pilsner Urquell"},
+    )
+    PubBeerBrand.objects.create(
+        cache_key=geohash8(_LAT, _LNG),
+        name="Hospoda Se Záznamem",
+        lat=_LAT,
+        lng=_LNG,
+        city="Praha",
+        brand=brand,
+        brand_key=brand.key,
+        brand_name=brand.name,
+        source=PubBeerBrand.Source.DRINK,
+    )
+
+    resp = client.get(
+        "/v1/pubs/near",
+        data={
+            "lat": _LAT,
+            "lng": _LNG,
+            "radius_km": 1,
+            "beer_brand": "pilsner-urquell",
+        },
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    body = resp.json()
+    assert body["cached"] is True
+    assert body["items"][0]["name"] == "Hospoda Se Záznamem"
+    assert body["items"][0]["beerBrand"] == {
+        "slug": "pilsner-urquell",
+        "name": "Pilsner Urquell",
+        "source": "drink",
+    }
+
+
+@pytest.mark.django_db
+def test_beer_brand_filter_rejects_unknown_brand(client):
+    resp = client.get(
+        "/v1/pubs/near",
+        data={
+            "lat": _LAT,
+            "lng": _LNG,
+            "radius_km": 25,
+            "beer_brand": "unknown-brand",
+        },
+    )
+
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST
 
 
 @pytest.mark.django_db

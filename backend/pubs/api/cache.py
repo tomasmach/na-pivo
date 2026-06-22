@@ -51,6 +51,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _FRESH_STATUSES = {PubHours.Status.OK, PubHours.Status.UNKNOWN}
+_GARDEN_TAG = "se-zahradkou"
 
 
 def _is_fresh(row: PubHours, ttl_days: int) -> bool:
@@ -94,6 +95,7 @@ def _result_from_row(row: PubHours) -> dict[str, Any]:
         "rating": row.rating_value,
         "ratingCount": row.rating_count,
         "ratingLabel": row.rating_label or None,
+        "hasGarden": row.has_garden,
         "venueKind": row.venue_kind,
         "beers": [],
         "hours_json": None,
@@ -113,6 +115,7 @@ def _pending_result(cache_key: str, name: str) -> dict[str, Any]:
         "rating": None,
         "ratingCount": None,
         "ratingLabel": None,
+        "hasGarden": None,
         "venueKind": PubHours.VenueKind.UNKNOWN,
         "beers": [],
         "hours_json": None,
@@ -134,6 +137,7 @@ def _unknown_result(cache_key: str, name: str) -> dict[str, Any]:
         "rating": None,
         "ratingCount": None,
         "ratingLabel": None,
+        "hasGarden": None,
         "venueKind": PubHours.VenueKind.UNKNOWN,
         "beers": [],
         "hours_json": None,
@@ -197,6 +201,7 @@ def _community_result(
         "rating": hours_row.rating_value if hours_row is not None else None,
         "ratingCount": hours_row.rating_count if hours_row is not None else None,
         "ratingLabel": hours_row.rating_label if hours_row is not None else None,
+        "hasGarden": hours_row.has_garden if hours_row is not None else None,
         "venueKind": venue_kind,
         "beers": row.beers or [],
         "hours_json": row.hours_json,
@@ -300,8 +305,10 @@ def _enrich_sync(
                 "rating_value": None,
                 "rating_count": None,
                 "rating_label": None,
+                "has_garden": None,
                 "venue_kind": PubHours.VenueKind.UNKNOWN,
                 "venue_categories": [],
+                "venue_tags": [],
                 "error": None,
                 "fetched_at": now,
             },
@@ -316,6 +323,7 @@ def _enrich_sync(
 
     # Classify the venue (draft beer?) from the scraped Firmy.cz categories/tags.
     venue_kind = classify_venue(raw.categories, raw.tags)
+    has_garden = _GARDEN_TAG in raw.tags
 
     row, _ = PubHours.objects.update_or_create(
         cache_key=cache_key,
@@ -331,8 +339,10 @@ def _enrich_sync(
             "rating_value": raw.rating_value,
             "rating_count": raw.rating_count,
             "rating_label": raw.rating_label,
+            "has_garden": has_garden,
             "venue_kind": venue_kind,
             "venue_categories": raw.categories,
+            "venue_tags": raw.tags,
             "error": None,
             "fetched_at": now,
         },
