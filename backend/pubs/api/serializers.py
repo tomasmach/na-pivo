@@ -48,7 +48,6 @@ from pubs.accounts import AccountError
 from pubs.beer_catalog import normalize_beer_payload
 from pubs.models import (
     Account,
-    BeerBrand,
     ClientEvent,
     ContentReport,
     FeedbackReport,
@@ -452,14 +451,14 @@ class BeerBrandSuggestQuerySerializer(serializers.Serializer):
     limit = serializers.IntegerField(required=False, min_value=1, max_value=20, default=12)
 
 
-class BeerBrandSuggestionSerializer(serializers.ModelSerializer):
-    """A single canonical beer-brand suggestion."""
+class BeerBrandSuggestionSerializer(serializers.Serializer):
+    """A single beer autocomplete suggestion, product-first with brand metadata."""
 
-    slug = serializers.CharField(source="key")
-
-    class Meta:
-        model = BeerBrand
-        fields = ("slug", "name")
+    slug = serializers.CharField()
+    name = serializers.CharField()
+    kind = serializers.ChoiceField(choices=("product", "brand"))
+    brand_slug = serializers.CharField()
+    brand_name = serializers.CharField()
 
 
 class PubCommunityRequestSerializer(PubInputSerializer):

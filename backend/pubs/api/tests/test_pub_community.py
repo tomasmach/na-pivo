@@ -14,6 +14,7 @@ from pubs.models import (
     Account,
     EnrichTask,
     PubBeerBrand,
+    PubBeerProduct,
     PubCommunityData,
     PubContributionLog,
 )
@@ -38,7 +39,7 @@ _FULL_HOURS = {
 
 _BEERS = [
     {"name": "Pilsner Urquell", "price_czk": 59, "volume_ml": 500},
-    {"name": "Kozel 11", "price_czk": 45, "volume_ml": 330},
+    {"name": "Velkopopovický Kozel 11°", "price_czk": 45, "volume_ml": 330},
 ]
 
 
@@ -339,6 +340,35 @@ def test_submit_beers_normalizes_exact_brand_shorthand_and_indexes_brand(client)
     assert link.last_price_czk == 62
     assert link.last_volume_ml == 500
     assert link.source == PubBeerBrand.Source.COMMUNITY
+
+
+@pytest.mark.django_db
+def test_submit_beers_normalizes_product_and_indexes_brand_and_product(client):
+    token = _register(client)
+    resp = client.post(
+        "/v1/pub-community",
+        data=_payload(
+            hours=None,
+            beers=[{"name": "Kozel 11", "price_czk": 49, "volume_ml": 500}],
+        ),
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["beers"] == [
+        {"name": "Velkopopovický Kozel 11°", "price_czk": 49, "volume_ml": 500}
+    ]
+
+    brand_link = PubBeerBrand.objects.get(cache_key=_KEY)
+    assert brand_link.brand_key == "velkopopovicky-kozel"
+    assert brand_link.brand_name == "Velkopopovický Kozel"
+
+    product_link = PubBeerProduct.objects.get(cache_key=_KEY)
+    assert product_link.product_key == "velkopopovicky-kozel-11"
+    assert product_link.product_name == "Velkopopovický Kozel 11°"
+    assert product_link.brand_key == "velkopopovicky-kozel"
+    assert product_link.last_price_czk == 49
 
 
 # ---------------------------------------------------------------------------

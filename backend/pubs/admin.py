@@ -5,12 +5,14 @@ from .models import (
     Account,
     AccountUsageStats,
     BeerBrand,
+    BeerProduct,
     ClientEvent,
     ContentReport,
     DrinkLog,
     EnrichTask,
     FeedbackReport,
     PubBeerBrand,
+    PubBeerProduct,
     PubCommunityData,
     PubContributionLog,
     PubHours,
@@ -317,11 +319,29 @@ class BeerBrandAdmin(admin.ModelAdmin):
     ordering = ("rank", "name")
 
 
+@admin.register(BeerProduct)
+class BeerProductAdmin(admin.ModelAdmin):
+    list_display = ("name", "brand_name", "key", "rank", "active", "updated_at")
+    list_filter = ("brand_key", "active")
+    search_fields = ("name", "key", "brand_name", "aliases")
+    readonly_fields = ("created_at", "updated_at")
+    ordering = ("rank", "name")
+
+
 @admin.register(PubBeerBrand)
 class PubBeerBrandAdmin(admin.ModelAdmin):
     list_display = ("brand_name", "name", "cache_key", "last_price_czk", "last_volume_ml", "source", "active", "last_seen_at")
     list_filter = ("brand_key", "source", "active", "last_seen_at")
     search_fields = ("brand_name", "name", "cache_key", "city", "external_id")
+    readonly_fields = ("created_at", "updated_at")
+    ordering = ("-last_seen_at",)
+
+
+@admin.register(PubBeerProduct)
+class PubBeerProductAdmin(admin.ModelAdmin):
+    list_display = ("product_name", "brand_name", "name", "cache_key", "last_price_czk", "last_volume_ml", "source", "active", "last_seen_at")
+    list_filter = ("brand_key", "product_key", "source", "active", "last_seen_at")
+    search_fields = ("product_name", "brand_name", "name", "cache_key", "city", "external_id")
     readonly_fields = ("created_at", "updated_at")
     ordering = ("-last_seen_at",)
 
@@ -356,9 +376,9 @@ class PubContributionLogAdmin(admin.ModelAdmin):
 class DrinkLogAdmin(admin.ModelAdmin):
     # Append-only per-user drink history — fully read-only, like the
     # contribution log.
-    list_display = ("drank_at", "beer_name", "beer_brand_name", "price_czk", "volume_ml", "name", "cache_key", "account")
-    list_filter = ("beer_brand_key", "volume_ml", "drank_at")
-    search_fields = ("beer_name", "beer_brand_name", "name", "cache_key", "city")
+    list_display = ("drank_at", "beer_name", "beer_brand_name", "beer_product_name", "price_czk", "volume_ml", "name", "cache_key", "account")
+    list_filter = ("beer_brand_key", "beer_product_key", "volume_ml", "drank_at")
+    search_fields = ("beer_name", "beer_brand_name", "beer_product_name", "name", "cache_key", "city")
     readonly_fields = (
         "account",
         "client_id",
@@ -372,6 +392,9 @@ class DrinkLogAdmin(admin.ModelAdmin):
         "beer_brand",
         "beer_brand_key",
         "beer_brand_name",
+        "beer_product",
+        "beer_product_key",
+        "beer_product_name",
         "price_czk",
         "volume_ml",
         "drank_at",

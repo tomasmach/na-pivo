@@ -536,6 +536,13 @@ class DrinksView(APIView):
                         "beer_brand": brand_match.brand if brand_match else None,
                         "beer_brand_key": brand_match.brand.key if brand_match else "",
                         "beer_brand_name": brand_match.brand.name if brand_match else "",
+                        "beer_product": brand_match.product if brand_match else None,
+                        "beer_product_key": (
+                            brand_match.product.key if brand_match and brand_match.product else ""
+                        ),
+                        "beer_product_name": (
+                            brand_match.product.name if brand_match and brand_match.product else ""
+                        ),
                         "price_czk": beer["price_czk"],
                         "volume_ml": beer.get("volume_ml"),
                         "drank_at": drank_at,

@@ -1319,6 +1319,57 @@ class BeerBrand(models.Model):
         return self.name
 
 
+class BeerProduct(models.Model):
+    """
+    Concrete beer under a brand, used for full-name suggestions.
+
+    Examples: "Velkopopovický Kozel 11°", "Radegast Rázná 10°". Product
+    suggestions fill the menu with the specific beer, while the linked
+    BeerBrand remains the queryable parent for future brand-level pub filters.
+    """
+
+    key = models.SlugField(
+        max_length=100,
+        unique=True,
+        db_index=True,
+        help_text="Stable ASCII identifier, e.g. velkopopovicky-kozel-11.",
+    )
+    brand = models.ForeignKey(
+        BeerBrand,
+        on_delete=models.CASCADE,
+        related_name="products",
+    )
+    brand_key = models.SlugField(max_length=80, db_index=True)
+    brand_name = models.CharField(max_length=120)
+    name = models.CharField(max_length=160, help_text="Canonical beer product display name.")
+    aliases = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Common typed aliases used for matching and suggestions.",
+    )
+    rank = models.PositiveSmallIntegerField(
+        default=1000,
+        db_index=True,
+        help_text="Lower ranks appear earlier in suggestions.",
+    )
+    source_label = models.CharField(max_length=160, blank=True, default="")
+    source_url = models.URLField(max_length=500, blank=True, default="")
+    active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Beer Product"
+        verbose_name_plural = "Beer Products"
+        ordering = ["rank", "name"]
+        indexes = [
+            models.Index(fields=["brand_key", "active"]),
+        ]
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class PubBeerBrand(models.Model):
     """
     Brand-level index of what beer brands are known to be served at a pub.
@@ -1381,6 +1432,77 @@ class PubBeerBrand(models.Model):
 
     def __str__(self) -> str:
         return f"{self.brand_name} @ {self.name} [{self.cache_key}]"
+
+
+class PubBeerProduct(models.Model):
+    """
+    Product-level index of concrete beers known to be served at a pub.
+
+    Future UI can filter by brand via PubBeerBrand, or narrow to a specific
+    product via this table. The current feature only writes the index.
+    """
+
+    class Source(models.TextChoices):
+        COMMUNITY = "community", "Community menu"
+        DRINK = "drink", "Drink log"
+
+    cache_key = models.CharField(
+        max_length=12,
+        db_index=True,
+        help_text="Geohash-8 of (lat, lng) — matches PubCommunityData.cache_key.",
+    )
+    name = models.TextField(help_text="Pub name as submitted by the client.")
+    lat = models.FloatField()
+    lng = models.FloatField()
+    city = models.TextField(blank=True, default="")
+    external_id = models.TextField(blank=True, default="")
+    brand = models.ForeignKey(
+        BeerBrand,
+        on_delete=models.CASCADE,
+        related_name="pub_product_links",
+    )
+    product = models.ForeignKey(
+        BeerProduct,
+        on_delete=models.CASCADE,
+        related_name="pub_links",
+    )
+    brand_key = models.SlugField(max_length=80, db_index=True)
+    brand_name = models.CharField(max_length=120)
+    product_key = models.SlugField(max_length=100, db_index=True)
+    product_name = models.CharField(max_length=160)
+    last_price_czk = models.PositiveSmallIntegerField(null=True, blank=True)
+    last_volume_ml = models.PositiveSmallIntegerField(null=True, blank=True)
+    source = models.CharField(max_length=16, choices=Source.choices)
+    active = models.BooleanField(default=True, db_index=True)
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="pub_beer_products",
+    )
+    last_seen_at = models.DateTimeField(default=timezone.now, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Pub Beer Product"
+        verbose_name_plural = "Pub Beer Products"
+        ordering = ["-last_seen_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["cache_key", "product"],
+                name="unique_pub_beer_product",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["brand_key", "active"]),
+            models.Index(fields=["product_key", "active"]),
+            models.Index(fields=["cache_key", "active"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.product_name} @ {self.name} [{self.cache_key}]"
 
 
 class DrinkLog(models.Model):
@@ -1451,6 +1573,27 @@ class DrinkLog(models.Model):
         blank=True,
         default="",
         help_text="Denormalized BeerBrand.name as it was at log time.",
+    )
+    beer_product = models.ForeignKey(
+        BeerProduct,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="drinks",
+        help_text="Matched canonical product, if the submitted beer name was recognized.",
+    )
+    beer_product_key = models.SlugField(
+        max_length=100,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="Denormalized BeerProduct.key for future stats/filter queries.",
+    )
+    beer_product_name = models.CharField(
+        max_length=160,
+        blank=True,
+        default="",
+        help_text="Denormalized BeerProduct.name as it was at log time.",
     )
     price_czk = models.PositiveSmallIntegerField(
         help_text="Price paid in CZK (1..1000) — mandatory; this is the community-sourcing hook.",

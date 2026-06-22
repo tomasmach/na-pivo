@@ -1,4 +1,4 @@
-"""Beer brand catalogue helpers for suggestions and name normalization."""
+"""Beer catalogue helpers for suggestions and name normalization."""
 
 from __future__ import annotations
 
@@ -6,19 +6,29 @@ import re
 import unicodedata
 from dataclasses import dataclass
 
-from pubs.models import BeerBrand, PubBeerBrand
+from pubs.models import BeerBrand, BeerProduct, PubBeerBrand, PubBeerProduct
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
 
 @dataclass(frozen=True)
-class BeerBrandMatch:
+class BeerMatch:
     brand: BeerBrand
+    product: BeerProduct | None
     submitted_name: str
 
     @property
     def beer_name(self) -> str:
-        return self.brand.name
+        return self.product.name if self.product else self.brand.name
+
+
+@dataclass(frozen=True)
+class BeerSuggestion:
+    slug: str
+    name: str
+    kind: str
+    brand_slug: str
+    brand_name: str
 
 
 def normalize_beer_text(value: str) -> str:
@@ -43,14 +53,47 @@ def _alias_candidates(brand: BeerBrand) -> list[str]:
     return normalized
 
 
-def match_beer_brand(name: str, *, fuzzy: bool = True) -> BeerBrandMatch | None:
-    """Find a canonical brand for a submitted beer name, if recognized."""
+def _product_alias_candidates(product: BeerProduct) -> list[str]:
+    values = [product.name, *(product.aliases or [])]
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        candidate = normalize_beer_text(value)
+        if not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
+        normalized.append(candidate)
+    return normalized
+
+
+def match_beer(name: str, *, fuzzy: bool = True) -> BeerMatch | None:
+    """Find a canonical product/brand for a submitted beer name, if recognized."""
     submitted = name.strip()
     normalized = normalize_beer_text(submitted)
     if not normalized:
         return None
 
-    best: tuple[int, int, BeerBrand] | None = None
+    best_product: tuple[int, int, BeerProduct] | None = None
+    products = BeerProduct.objects.select_related("brand").filter(active=True, brand__active=True)
+    for product in products.order_by("rank", "name"):
+        for alias in _product_alias_candidates(product):
+            exact = normalized == alias
+            prefix = normalized.startswith(f"{alias} ")
+            contained = f" {alias} " in f" {normalized} "
+            if not (exact or (fuzzy and (prefix or contained))):
+                continue
+            score = 0 if exact else 1 if prefix else 2
+            candidate = (score, product.rank, product)
+            if best_product is None or candidate[:2] < best_product[:2]:
+                best_product = candidate
+
+    if best_product is not None:
+        product = best_product[2]
+        return BeerMatch(brand=product.brand, product=product, submitted_name=submitted)
+
+    best_brand: tuple[int, int, BeerBrand] | None = None
     for brand in BeerBrand.objects.filter(active=True).order_by("rank", "name"):
         for alias in _alias_candidates(brand):
             exact = normalized == alias
@@ -62,12 +105,17 @@ def match_beer_brand(name: str, *, fuzzy: bool = True) -> BeerBrandMatch | None:
                 continue
             score = 0 if exact else 1 if prefix else 2
             candidate = (score, brand.rank, brand)
-            if best is None or candidate[:2] < best[:2]:
-                best = candidate
+            if best_brand is None or candidate[:2] < best_brand[:2]:
+                best_brand = candidate
 
-    if best is None:
+    if best_brand is None:
         return None
-    return BeerBrandMatch(brand=best[2], submitted_name=submitted)
+    return BeerMatch(brand=best_brand[2], product=None, submitted_name=submitted)
+
+
+def match_beer_brand(name: str, *, fuzzy: bool = True) -> BeerMatch | None:
+    """Compatibility wrapper for callers that only need the parent brand."""
+    return match_beer(name, fuzzy=fuzzy)
 
 
 def normalize_beer_payload(beer: dict) -> dict:
@@ -78,7 +126,7 @@ def normalize_beer_payload(beer: dict) -> dict:
         "price_czk": beer.get("price_czk"),
         "volume_ml": beer.get("volume_ml"),
     }
-    match = match_beer_brand(raw_name, fuzzy=False)
+    match = match_beer(raw_name, fuzzy=False)
     if match is None:
         return out
 
@@ -95,7 +143,7 @@ def upsert_pub_beer_brand(
     account,
 ) -> None:
     """Update the queryable per-pub brand index for a normalized beer payload."""
-    match = match_beer_brand(str(beer.get("name") or ""))
+    match = match_beer(str(beer.get("name") or ""))
     if match is None:
         return
 
@@ -120,17 +168,52 @@ def upsert_pub_beer_brand(
         },
     )
 
+    if match.product is None:
+        return
 
-def suggest_beer_brands(query: str, *, limit: int = 12) -> list[BeerBrand]:
-    """Return active brands ranked for a short autocomplete query."""
+    product = match.product
+    PubBeerProduct.objects.update_or_create(
+        cache_key=cache_key,
+        product=product,
+        defaults={
+            "name": data["name"],
+            "lat": data["lat"],
+            "lng": data["lng"],
+            "city": data.get("city") or "",
+            "external_id": data.get("external_id") or "",
+            "brand": brand,
+            "brand_key": brand.key,
+            "brand_name": brand.name,
+            "product_key": product.key,
+            "product_name": product.name,
+            "last_price_czk": beer.get("price_czk"),
+            "last_volume_ml": beer.get("volume_ml"),
+            "source": source,
+            "active": True,
+            "account": account,
+        },
+    )
+
+
+def suggest_beers(query: str, *, limit: int = 12) -> list[BeerSuggestion]:
+    """Return active product-first suggestions for beer autocomplete."""
     normalized_query = normalize_beer_text(query)
-    qs = BeerBrand.objects.filter(active=True).order_by("rank", "name")
+    products = BeerProduct.objects.select_related("brand").filter(active=True, brand__active=True)
     if len(normalized_query) < 2:
-        return list(qs[:limit])
+        return [
+            BeerSuggestion(
+                slug=product.key,
+                name=product.name,
+                kind="product",
+                brand_slug=product.brand.key,
+                brand_name=product.brand.name,
+            )
+            for product in products.order_by("rank", "name")[:limit]
+        ]
 
-    scored: list[tuple[int, int, BeerBrand]] = []
-    for brand in qs:
-        aliases = _alias_candidates(brand)
+    scored: list[tuple[int, int, str, BeerSuggestion]] = []
+    for product in products.order_by("rank", "name"):
+        aliases = _product_alias_candidates(product)
         if not aliases:
             continue
         score = 3
@@ -142,7 +225,53 @@ def suggest_beer_brands(query: str, *, limit: int = 12) -> list[BeerBrand]:
             elif normalized_query in alias:
                 score = min(score, 2)
         if score < 3:
-            scored.append((score, brand.rank, brand))
+            scored.append(
+                (
+                    score,
+                    product.rank,
+                    product.name,
+                    BeerSuggestion(
+                        slug=product.key,
+                        name=product.name,
+                        kind="product",
+                        brand_slug=product.brand.key,
+                        brand_name=product.brand.name,
+                    ),
+                )
+            )
 
-    scored.sort(key=lambda item: (item[0], item[1], item[2].name))
-    return [brand for _, _, brand in scored[:limit]]
+    for brand in BeerBrand.objects.filter(active=True).order_by("rank", "name"):
+        aliases = _alias_candidates(brand)
+        if not aliases:
+            continue
+        score = 7
+        for alias in aliases:
+            if alias == normalized_query:
+                score = min(score, 4)
+            elif alias.startswith(normalized_query) or normalized_query.startswith(f"{alias} "):
+                score = min(score, 5)
+            elif normalized_query in alias:
+                score = min(score, 6)
+        if score < 7:
+            scored.append(
+                (
+                    score,
+                    brand.rank,
+                    brand.name,
+                    BeerSuggestion(
+                        slug=brand.key,
+                        name=brand.name,
+                        kind="brand",
+                        brand_slug=brand.key,
+                        brand_name=brand.name,
+                    ),
+                )
+            )
+
+    scored.sort(key=lambda item: (item[0], item[1], item[2]))
+    return [item for _, _, _, item in scored[:limit]]
+
+
+def suggest_beer_brands(query: str, *, limit: int = 12) -> list[BeerSuggestion]:
+    """Compatibility wrapper: endpoint now suggests concrete beers first."""
+    return suggest_beers(query, limit=limit)
