@@ -448,8 +448,9 @@ export default function ContributeScreen() {
               suggestions={activeBeerId === beer.id ? beerSuggestions : []}
               suggesting={activeBeerId === beer.id && beerSuggestionsLoading}
               onSelectSuggestion={(suggestion) => {
-                setActiveBeerId(beer.id);
                 setBeerSuggestions([]);
+                setBeerSuggestionsLoading(false);
+                setActiveBeerId(null);
                 updateBeer(index, { name: suggestion.name });
               }}
               onChangePrice={(priceText) =>
