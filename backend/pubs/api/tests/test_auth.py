@@ -393,6 +393,51 @@ def test_google_returning_sub_signs_into_same_account(client, fake_oauth):
     assert AuthIdentity.objects.filter(provider="google", subject="G-SUB-3").count() == 1
 
 
+@pytest.mark.django_db
+def test_apple_signin_merges_into_existing_google_account_by_verified_email(client, fake_oauth):
+    google = client.post(
+        "/v1/auth/google",
+        data={"id_token": "google:G-MERGE:same@x.cz"},
+        format="json",
+    )
+    google_id = google.json()["id"]
+
+    token, anon_id = _bootstrap_anon(client)
+    anon = Account.objects.get(public_id=anon_id)
+    drink = DrinkLog.objects.create(
+        account=anon,
+        client_id=uuid.uuid4(),
+        cache_key="u2fkbnhz",
+        name="U Vystřelenýho oka",
+        lat=50.08,
+        lng=14.45,
+        beer_name="Plzeň",
+        price_czk=55,
+        drank_at="2026-06-01T18:00:00Z",
+    )
+
+    apple = client.post(
+        "/v1/auth/apple",
+        data={
+            "identity_token": "apple:A-MERGE:same@x.cz",
+            "authorization_code": "apple-auth-code",
+        },
+        format="json",
+        **_auth(token),
+    )
+
+    assert apple.status_code == status.HTTP_200_OK, apple.content
+    body = apple.json()
+    assert body["id"] == google_id
+    assert body["created"] is False
+    assert sorted(body["providers"]) == ["apple", "google"]
+    assert Account.objects.count() == 1
+    assert AuthIdentity.objects.filter(provider="google", subject="G-MERGE").exists()
+    assert AuthIdentity.objects.filter(provider="apple", subject="A-MERGE").exists()
+    drink.refresh_from_db()
+    assert str(drink.account.public_id) == google_id
+
+
 # ===========================================================================
 # 4. Apple sign-in
 # ===========================================================================
@@ -457,6 +502,32 @@ def test_apple_full_name_stored_as_display_name_on_first_signin(client, fake_oau
     assert resp.json()["display_name"] == "Tomáš Macháček"
     account = AuthIdentity.objects.get(provider="apple", subject="A-SUB-3").account
     assert account.display_name == "Tomáš Macháček"
+
+
+@pytest.mark.django_db
+def test_google_signin_merges_into_existing_apple_account_by_verified_email(client, fake_oauth):
+    apple = client.post(
+        "/v1/auth/apple",
+        data={
+            "identity_token": "apple:A-MERGE-FIRST:both@x.cz",
+            "authorization_code": "apple-auth-code",
+        },
+        format="json",
+    )
+    apple_id = apple.json()["id"]
+
+    google = client.post(
+        "/v1/auth/google",
+        data={"id_token": "google:G-MERGE-SECOND:both@x.cz"},
+        format="json",
+    )
+
+    assert google.status_code == status.HTTP_200_OK, google.content
+    body = google.json()
+    assert body["id"] == apple_id
+    assert body["created"] is False
+    assert sorted(body["providers"]) == ["apple", "google"]
+    assert Account.objects.count() == 1
 
 
 # ===========================================================================
