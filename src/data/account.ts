@@ -343,6 +343,14 @@ export async function ensureAccount(signal?: AbortSignal): Promise<AccountSessio
       }
 
       if (!resp.ok) {
+        if (resp.status === 401) {
+          trackApiFailure('account_register_recovery', {
+            endpoint: '/v1/account',
+            status: resp.status,
+            reason: 'claimed_device_id',
+          });
+          return null;
+        }
         trackApiFailure('account_register', {
           endpoint: '/v1/account',
           status: resp.status,

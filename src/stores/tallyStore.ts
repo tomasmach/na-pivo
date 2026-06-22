@@ -87,6 +87,12 @@ export interface TallyBeerInput {
   at?: string;
 }
 
+export interface RemovedDrinkResult {
+  drinkId: string;
+  sessionClientId: string;
+  remainingDrinks: number;
+}
+
 interface TallyState {
   current: TallySession | null;
   history: TallySession[];
@@ -110,6 +116,14 @@ interface TallyState {
    * removed id, or null when no drink matched. A no-op on the empty session.
    */
   removeDrink: (id: string) => string | null;
+  /**
+   * Remove a specific drink from the selected evening, including archived
+   * history sessions. Empty archived evenings are dropped; an empty current
+   * session remains pinned until normal counter/session cleanup.
+   */
+  removeDrinkFromSession: (startedAt: string, drinkId: string) => RemovedDrinkResult | null;
+  /** Rename one logged beer in the selected evening. Used for typo fixes. */
+  updateDrinkNameInSession: (startedAt: string, drinkId: string, beerName: string) => boolean;
   /** Mark a drink as no longer queued, so the UI does not offer a local-only undo. */
   markDrinkSynced: (id: string) => void;
   /**
@@ -267,6 +281,83 @@ export const useTallyStore = create<TallyState>()(
           return { current: { ...state.current, drinks } };
         });
         return removedId;
+      },
+
+      removeDrinkFromSession: (startedAt, drinkId) => {
+        let result: RemovedDrinkResult | null = null;
+        set((state) => {
+          if (state.current?.startedAt === startedAt) {
+            let removed = false;
+            const drinks = state.current.drinks.filter((drink) => {
+              if (!removed && drink.id === drinkId) {
+                removed = true;
+                return false;
+              }
+              return true;
+            });
+            if (!removed) return state;
+            result = {
+              drinkId,
+              sessionClientId: state.current.clientId,
+              remainingDrinks: drinks.length,
+            };
+            return { current: { ...state.current, drinks } };
+          }
+
+          let changed = false;
+          const history = state.history.flatMap((session) => {
+            if (session.startedAt !== startedAt) return [session];
+            let removed = false;
+            const drinks = session.drinks.filter((drink) => {
+              if (!removed && drink.id === drinkId) {
+                removed = true;
+                return false;
+              }
+              return true;
+            });
+            if (!removed) return [session];
+            changed = true;
+            result = {
+              drinkId,
+              sessionClientId: session.clientId,
+              remainingDrinks: drinks.length,
+            };
+            return drinks.length > 0 ? [{ ...session, drinks }] : [];
+          });
+          if (!changed) return state;
+          return { history };
+        });
+        return result;
+      },
+
+      updateDrinkNameInSession: (startedAt, drinkId, beerName) => {
+        const trimmed = beerName.trim();
+        if (!trimmed) return false;
+        let changed = false;
+        set((state) => {
+          if (state.current?.startedAt === startedAt) {
+            const drinks = state.current.drinks.map((drink) => {
+              if (drink.id !== drinkId) return drink;
+              if (drink.beerName === trimmed) return drink;
+              changed = true;
+              return { ...drink, beerName: trimmed };
+            });
+            return changed ? { current: { ...state.current, drinks } } : state;
+          }
+
+          const history = state.history.map((session) => {
+            if (session.startedAt !== startedAt) return session;
+            const drinks = session.drinks.map((drink) => {
+              if (drink.id !== drinkId) return drink;
+              if (drink.beerName === trimmed) return drink;
+              changed = true;
+              return { ...drink, beerName: trimmed };
+            });
+            return changed ? { ...session, drinks } : session;
+          });
+          return changed ? { history } : state;
+        });
+        return changed;
       },
 
       markDrinkSynced: (id) =>

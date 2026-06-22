@@ -15,6 +15,7 @@ import { flushCommunityQueue } from '@/data/communityQueue';
 import { flushAddedPubsQueue } from '@/data/addedPubsQueue';
 import { flushDrinksQueue } from '@/data/drinksQueue';
 import { flushDeleteDrinksQueue } from '@/data/deleteDrinksQueue';
+import { flushUpdateDrinksQueue } from '@/data/updateDrinksQueue';
 import { installPubRatingsSync, restorePubRatings } from '@/data/pubRatingsSync';
 import { flushPubRatingsQueue } from '@/data/pubRatingsQueue';
 import { flushVisitsQueue } from '@/data/visitsQueue';
@@ -110,6 +111,7 @@ export default function RootLayout() {
     void flushAddedPubsQueue();
     void flushDrinksQueue();
     void flushDeleteDrinksQueue();
+    void flushUpdateDrinksQueue();
     // Personal ratings: pull + merge the server set (LWW), pushing local-newer
     // ratings, then flush. Visits: one-time seed of existing history, then flush.
     void restorePubRatings();
@@ -129,6 +131,7 @@ export default function RootLayout() {
         void flushAddedPubsQueue();
         void flushDrinksQueue();
         void flushDeleteDrinksQueue();
+        void flushUpdateDrinksQueue();
         void restorePubRatings();
         void flushPubRatingsQueue();
         void flushVisitsQueue();

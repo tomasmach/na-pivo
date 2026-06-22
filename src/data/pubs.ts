@@ -62,6 +62,8 @@ export type Pub = {
   ratingCount?: number | null;
   /** Human rating label from the source, e.g. "Velmi dobré". */
   ratingLabel?: string | null;
+  /** Whether the backend source explicitly marks this pub as having a garden. */
+  hasGarden?: boolean | null;
   /**
    * Backend verdict on whether this place is a pub. Resolved asynchronously with
    * opening hours; 'not_pub' places are auto-excluded from compass targeting.
@@ -80,6 +82,7 @@ let _cacheKeys: string[] = [];
 let _loaded = false;
 let _lastFetchCenter: { lat: number; lng: number } | null = null;
 let _lastFetchRadiusKm: number | null = null;
+let _lastFetchBeerBrandKey = "";
 let _inflight: Promise<void> | null = null;
 /** Whether we have already attempted to hydrate from AsyncStorage this session.
  *  The persisted snapshot is only consulted once, on the first fetchPubsNear
@@ -89,6 +92,7 @@ let _hydrationAttempted = false;
 interface FetchPubsNearOptions {
   force?: boolean;
   radiusKm?: number;
+  beerBrandKey?: string | null;
 }
 
 /** Re-fetch nearby pubs when the user has moved more than this distance from
@@ -230,6 +234,7 @@ export function _reset(): void {
   _loaded = false;
   _lastFetchCenter = null;
   _lastFetchRadiusKm = null;
+  _lastFetchBeerBrandKey = "";
   _inflight = null;
   _hydrationAttempted = false;
 }
@@ -272,10 +277,14 @@ export async function fetchPubsNear(
   const radiusKm = Number.isFinite(options.radiusKm)
     ? Math.max(options.radiusKm ?? DEFAULT_FETCH_RADIUS_KM, 0.1)
     : DEFAULT_FETCH_RADIUS_KM;
+  const beerBrandKey = (options.beerBrandKey ?? "").trim();
 
   // In-memory short-circuit (also covers the post-hydration session).
   if (!options.force && _loaded && _lastFetchCenter) {
-    if (gateCovers(_lastFetchCenter.lat, _lastFetchCenter.lng, _lastFetchRadiusKm ?? 0, lat, lng, radiusKm)) {
+    if (
+      beerBrandKey === _lastFetchBeerBrandKey &&
+      gateCovers(_lastFetchCenter.lat, _lastFetchCenter.lng, _lastFetchRadiusKm ?? 0, lat, lng, radiusKm)
+    ) {
       return;
     }
   }
@@ -286,7 +295,7 @@ export async function fetchPubsNear(
       // Cold-start hydration: consult the persisted snapshot exactly once, and
       // only when not force-refetching. A covering, fresh snapshot lets us skip
       // the network entirely.
-      if (!options.force && !_hydrationAttempted) {
+      if (!options.force && !beerBrandKey && !_hydrationAttempted) {
         _hydrationAttempted = true;
         const snapshot = await loadSnapshot();
         if (signal?.aborted) return;
@@ -297,11 +306,12 @@ export async function fetchPubsNear(
           _init(snapshot.pubs);
           _lastFetchCenter = { lat: snapshot.centerLat, lng: snapshot.centerLng };
           _lastFetchRadiusKm = snapshot.radiusKm;
+          _lastFetchBeerBrandKey = "";
           return;
         }
       }
 
-      const pubs = await searchPubsNear(lat, lng, radiusKm, signal);
+      const pubs = await searchPubsNear(lat, lng, radiusKm, signal, { beerBrandKey });
       if (signal?.aborted) return;
       const blockedReports = await fetchBlockedPubReports(lat, lng, radiusKm, signal);
       if (signal?.aborted) return;
@@ -321,9 +331,12 @@ export async function fetchPubsNear(
       _init(filtered);
       _lastFetchCenter = { lat, lng };
       _lastFetchRadiusKm = radiusKm;
+      _lastFetchBeerBrandKey = beerBrandKey;
       // Persist the post-block-filtering result so the next cold start can skip
       // the network. Fire-and-forget — saveSnapshot never throws.
-      void saveSnapshot({ pubs: filtered, centerLat: lat, centerLng: lng, radiusKm, savedAt: Date.now() });
+      if (!beerBrandKey) {
+        void saveSnapshot({ pubs: filtered, centerLat: lat, centerLng: lng, radiusKm, savedAt: Date.now() });
+      }
     } finally {
       _inflight = null;
     }

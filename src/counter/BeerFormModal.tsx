@@ -10,8 +10,8 @@
  * Keyboard handling: a React Native `Modal` hosts its own UIWindow, so
  * `KeyboardAvoidingView` measures the keyboard against the wrong window on iOS
  * and the lower inputs end up hidden behind the keyboard. Instead we track the
- * real keyboard height via `Keyboard` events and lift the bottom sheet by that
- * amount, capping it with `maxHeight` + an inner `ScrollView` so it always fits.
+ * real keyboard height via `Keyboard` events and lift the bottom sheet above
+ * it, capping it with `maxHeight` + an inner `ScrollView` so it always fits.
  */
 
 import React, { useEffect, useState } from 'react';
@@ -188,14 +188,17 @@ function BeerFormBody({ mode, beer, onCancel, onSubmit }: BeerFormBodyProps) {
     onSubmit(result);
   };
 
-  // Lift the sheet above the keyboard; cap height so it always fits on screen.
-  const bottomPad = keyboardHeight > 0 ? keyboardHeight : Math.max(insets.bottom, Spacing.lg);
-  const maxHeight = windowHeight - insets.top - Spacing.lg;
+  // Lift the whole sheet above the keyboard; keep bottom padding for safe-area
+  // comfort only. Padding the card by the keyboard height grows the hidden part
+  // of the sheet instead of moving inputs into view inside a modal UIWindow.
+  const sheetBottomOffset = keyboardHeight > 0 ? keyboardHeight : 0;
+  const bottomPad = Math.max(insets.bottom, Spacing.lg);
+  const maxHeight = windowHeight - insets.top - sheetBottomOffset - Spacing.lg;
 
   return (
     <View style={styles.backdrop}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onCancel} accessibilityRole="button" accessibilityLabel={cs.counter.cancel} />
-      <View style={[styles.card, { paddingBottom: bottomPad, maxHeight }]}>
+      <View style={[styles.card, { marginBottom: sheetBottomOffset, paddingBottom: bottomPad, maxHeight }]}>
         <ScrollView
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}

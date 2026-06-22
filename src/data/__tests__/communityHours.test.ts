@@ -1,6 +1,7 @@
 import {
   computeOpenState,
   isWeeklyHours,
+  isValidHoursInterval,
   emptyWeeklyHours,
   parseHhMm,
   formatHhMm,
@@ -96,6 +97,18 @@ describe('parseOsmOpeningHoursToWeeklyHours', () => {
   });
 });
 
+describe('isValidHoursInterval', () => {
+  it('rejects empty equal-time intervals', () => {
+    expect(isValidHoursInterval(['00:00', '00:00'])).toBe(false);
+    expect(isValidHoursInterval(['17:00', '17:00'])).toBe(false);
+  });
+
+  it('accepts regular and overnight intervals', () => {
+    expect(isValidHoursInterval(['17:00', '22:00'])).toBe(true);
+    expect(isValidHoursInterval(['17:00', '02:00'])).toBe(true);
+  });
+});
+
 describe('isWeeklyHours', () => {
   it('accepts a well-formed weekly object', () => {
     expect(isWeeklyHours(everyDay([['11:00', '23:00']]))).toBe(true);
@@ -107,6 +120,7 @@ describe('isWeeklyHours', () => {
     expect(isWeeklyHours({ ...emptyWeeklyHours(), mo: 'nope' })).toBe(false);
     expect(isWeeklyHours({ ...emptyWeeklyHours(), mo: [['11:00']] })).toBe(false);
     expect(isWeeklyHours({ ...emptyWeeklyHours(), mo: [['25:00', '23:00']] })).toBe(false);
+    expect(isWeeklyHours({ ...emptyWeeklyHours(), mo: [['00:00', '00:00']] })).toBe(false);
     expect(isWeeklyHours(null)).toBe(false);
   });
 });

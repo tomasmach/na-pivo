@@ -14,7 +14,6 @@ import {
   ScrollView,
   Pressable,
   TextInput,
-  KeyboardAvoidingView,
   Platform,
   StyleSheet,
 } from 'react-native';
@@ -115,123 +114,117 @@ export default function ReportScreen() {
           </View>
         </View>
       ) : (
-        <KeyboardAvoidingView
+        <ScrollView
           style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          // Full-height view down to the screen bottom: the 'padding' formula
-          // already yields the exact keyboard height, so any positive offset is
-          // added as dead space (an empty brown band above the keyboard).
-          keyboardVerticalOffset={0}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: Math.max(insets.bottom + 24, 32) },
+          ]}
+          automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          <ScrollView
-            contentContainerStyle={[
-              styles.scrollContent,
-              { paddingBottom: Math.max(insets.bottom + 24, 32) },
-            ]}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            <Text style={styles.intro}>{cs.report.intro}</Text>
+          <Text style={styles.intro}>{cs.report.intro}</Text>
 
-            {/* ── Category selector ── */}
-            <View style={styles.segmented}>
-              {CATEGORIES.map((item) => {
-                const selected = item.value === category;
-                return (
-                  <Pressable
-                    key={item.value}
-                    onPress={() => setCategory(item.value)}
-                    style={[styles.segment, selected && styles.segmentSelected]}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                    accessibilityLabel={cs.a11y.feedbackCategory(item.label)}
-                  >
-                    <Text
-                      style={[
-                        styles.segmentLabel,
-                        selected && styles.segmentLabelSelected,
-                      ]}
-                    >
-                      {item.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            {/* ── Message ── */}
-            <TextInput
-              style={styles.messageInput}
-              value={message}
-              onChangeText={setMessage}
-              placeholder={cs.report.messagePlaceholder}
-              placeholderTextColor={Colors.mutedText}
-              multiline
-              textAlignVertical="top"
-              maxLength={4000}
-              accessibilityLabel={cs.report.messagePlaceholder}
-            />
-
-            {/* ── Optional contact ── */}
-            <Text style={styles.contactCaption}>{cs.report.contactCaption}</Text>
-            <View style={styles.contactChannels}>
-              {CONTACT_CHANNELS.map((channel) => {
-                const selected = channel.value === contactType;
-                return (
-                  <Pressable
-                    key={channel.value}
-                    onPress={() => setContactType(channel.value)}
+          {/* ── Category selector ── */}
+          <View style={styles.segmented}>
+            {CATEGORIES.map((item) => {
+              const selected = item.value === category;
+              return (
+                <Pressable
+                  key={item.value}
+                  onPress={() => setCategory(item.value)}
+                  style={[styles.segment, selected && styles.segmentSelected]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={cs.a11y.feedbackCategory(item.label)}
+                >
+                  <Text
                     style={[
-                      styles.contactPill,
-                      selected && styles.contactPillSelected,
+                      styles.segmentLabel,
+                      selected && styles.segmentLabelSelected,
                     ]}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                    accessibilityLabel={cs.a11y.feedbackContactChannel(channel.label)}
                   >
-                    <Text
-                      style={[
-                        styles.contactPillLabel,
-                        selected && styles.contactPillLabelSelected,
-                      ]}
-                    >
-                      {channel.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-            <TextInput
-              style={styles.contactInput}
-              value={contact}
-              onChangeText={setContact}
-              placeholder={CONTACT_PLACEHOLDERS[contactType]}
-              placeholderTextColor={Colors.mutedText}
-              keyboardType={contactType === 'email' ? 'email-address' : 'default'}
-              autoCapitalize="none"
-              autoCorrect={false}
-              maxLength={254}
-              accessibilityLabel={cs.a11y.feedbackContactInput}
+                    {item.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {/* ── Message ── */}
+          <TextInput
+            style={styles.messageInput}
+            value={message}
+            onChangeText={setMessage}
+            placeholder={cs.report.messagePlaceholder}
+            placeholderTextColor={Colors.mutedText}
+            multiline
+            textAlignVertical="top"
+            maxLength={4000}
+            accessibilityLabel={cs.report.messagePlaceholder}
+          />
+
+          {/* ── Optional contact ── */}
+          <Text style={styles.contactCaption}>{cs.report.contactCaption}</Text>
+          <View style={styles.contactChannels}>
+            {CONTACT_CHANNELS.map((channel) => {
+              const selected = channel.value === contactType;
+              return (
+                <Pressable
+                  key={channel.value}
+                  onPress={() => setContactType(channel.value)}
+                  style={[
+                    styles.contactPill,
+                    selected && styles.contactPillSelected,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={cs.a11y.feedbackContactChannel(channel.label)}
+                >
+                  <Text
+                    style={[
+                      styles.contactPillLabel,
+                      selected && styles.contactPillLabelSelected,
+                    ]}
+                  >
+                    {channel.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <TextInput
+            style={styles.contactInput}
+            value={contact}
+            onChangeText={setContact}
+            placeholder={CONTACT_PLACEHOLDERS[contactType]}
+            placeholderTextColor={Colors.mutedText}
+            keyboardType={contactType === 'email' ? 'email-address' : 'default'}
+            autoCapitalize="none"
+            autoCorrect={false}
+            maxLength={254}
+            accessibilityLabel={cs.a11y.feedbackContactInput}
+          />
+
+          {/* ── Submit ── */}
+          <View style={styles.submitButton}>
+            <GlowButton
+              label={cs.report.submit}
+              onPress={handleSubmit}
+              glow={canSubmit ? 'soft' : 'none'}
+              accessibilityLabel={cs.a11y.feedbackSubmitButton}
             />
+            {!canSubmit && <View style={styles.submitDisabledOverlay} />}
+          </View>
 
-            {/* ── Submit ── */}
-            <View style={styles.submitButton}>
-              <GlowButton
-                label={cs.report.submit}
-                onPress={handleSubmit}
-                glow={canSubmit ? 'soft' : 'none'}
-                accessibilityLabel={cs.a11y.feedbackSubmitButton}
-              />
-              {!canSubmit && <View style={styles.submitDisabledOverlay} />}
-            </View>
-
-            {appVersionLabel ? (
-              <Text style={styles.versionCaption}>
-                {cs.report.versionCaption(appVersionLabel)}
-              </Text>
-            ) : null}
-          </ScrollView>
-        </KeyboardAvoidingView>
+          {appVersionLabel ? (
+            <Text style={styles.versionCaption}>
+              {cs.report.versionCaption(appVersionLabel)}
+            </Text>
+          ) : null}
+        </ScrollView>
       )}
     </View>
   );

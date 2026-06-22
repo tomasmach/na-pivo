@@ -26,6 +26,7 @@ const PRIVATE_KEYS = [
   'na-pivo-visits-seeded',
   'na-pivo-drinks-queue',
   'na-pivo-delete-drinks-queue',
+  'na-pivo-update-drinks-queue',
   'na-pivo-visits-queue',
   'na-pivo-pub-ratings-queue',
 ];

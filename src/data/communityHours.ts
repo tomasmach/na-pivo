@@ -140,6 +140,11 @@ export function parseHhMm(value: string): number | null {
   return h * 60 + min;
 }
 
+/** True when an editable interval is well-formed and non-empty. */
+export function isValidHoursInterval([start, end]: HoursInterval): boolean {
+  return parseHhMm(start) !== null && parseHhMm(end) !== null && start !== end;
+}
+
 /** Format minutes-since-midnight (may exceed 24h) back into `HH:MM` (mod 24h). */
 export function formatHhMm(totalMinutes: number): string {
   const wrapped = ((totalMinutes % 1440) + 1440) % 1440;
@@ -159,8 +164,7 @@ export function isWeeklyHours(value: unknown): value is WeeklyHours {
       (iv) =>
         Array.isArray(iv) &&
         iv.length === 2 &&
-        parseHhMm(iv[0] as string) !== null &&
-        parseHhMm(iv[1] as string) !== null,
+        isValidHoursInterval([iv[0] as string, iv[1] as string]),
     );
   });
 }

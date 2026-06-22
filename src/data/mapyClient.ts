@@ -172,6 +172,7 @@ async function backendSuggest(
   lat: number,
   lng: number,
   kmRadius: number,
+  beerBrandKey?: string,
   signal?: AbortSignal,
 ): Promise<MapyGeocodeItem[] | null> {
   const endpoint = getBackendEndpoint('/v1/pubs/near');
@@ -181,6 +182,7 @@ async function backendSuggest(
   url.searchParams.set('lat', String(lat));
   url.searchParams.set('lng', String(lng));
   url.searchParams.set('radius_km', String(kmRadius));
+  if (beerBrandKey) url.searchParams.set('beer_brand', beerBrandKey);
 
   try {
     const resp = await fetch(url.toString(), { signal });
@@ -568,8 +570,9 @@ export async function searchPubsNear(
   lng: number,
   kmRadius = 25,
   signal?: AbortSignal,
+  options: { beerBrandKey?: string } = {},
 ): Promise<Pub[]> {
-  const backendItems = await backendSuggest(lat, lng, kmRadius, signal);
+  const backendItems = await backendSuggest(lat, lng, kmRadius, options.beerBrandKey, signal);
   if (backendItems !== null) {
     return itemsToPubs(backendItems, lat, lng, kmRadius);
   }

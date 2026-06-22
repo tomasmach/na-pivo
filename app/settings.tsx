@@ -56,6 +56,8 @@ import {
   MailIcon,
   MessageSquareIcon,
   MapPinIcon,
+  StarIcon,
+  TreePineIcon,
 } from '@/components/shared/IconGlyph';
 import { InstagramIcon, LinkedinIcon } from '@/components/shared/BrandIcon';
 import { MapyLogo } from '@/components/shared/MapyLogo';
@@ -391,6 +393,8 @@ export default function SettingsScreen() {
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
   const soundEnabled = useSettingsStore((s) => s.soundEnabled);
   const hideClosedPubs = useSettingsStore((s) => s.hideClosedPubs);
+  const preferRatedPubs = useSettingsStore((s) => s.preferRatedPubs);
+  const preferGardenPubs = useSettingsStore((s) => s.preferGardenPubs);
   const hidePubNames = useSettingsStore((s) => s.hidePubNames);
   const marketingEmailsEnabled = useSettingsStore((s) => s.marketingEmailsEnabled);
   const setMaxDistanceKm = useSettingsStore((s) => s.setMaxDistanceKm);
@@ -398,6 +402,8 @@ export default function SettingsScreen() {
   const setHapticEnabled = useSettingsStore((s) => s.setHapticEnabled);
   const setSoundEnabled = useSettingsStore((s) => s.setSoundEnabled);
   const setHideClosedPubs = useSettingsStore((s) => s.setHideClosedPubs);
+  const setPreferRatedPubs = useSettingsStore((s) => s.setPreferRatedPubs);
+  const setPreferGardenPubs = useSettingsStore((s) => s.setPreferGardenPubs);
   const setHidePubNames = useSettingsStore((s) => s.setHidePubNames);
   const setMarketingEmailsEnabled = useSettingsStore((s) => s.setMarketingEmailsEnabled);
 
@@ -430,6 +436,14 @@ export default function SettingsScreen() {
     setHideClosedPubs(next);
     void updateAccountPreferences({ hideClosedPubs: next });
   }, [hideClosedPubs, setHideClosedPubs]);
+
+  const togglePreferRated = useCallback(() => {
+    setPreferRatedPubs(!preferRatedPubs);
+  }, [preferRatedPubs, setPreferRatedPubs]);
+
+  const togglePreferGarden = useCallback(() => {
+    setPreferGardenPubs(!preferGardenPubs);
+  }, [preferGardenPubs, setPreferGardenPubs]);
 
   const toggleHidePubNames = useCallback(() => {
     const next = !hidePubNames;
@@ -557,6 +571,24 @@ export default function SettingsScreen() {
             value={hideClosedPubs}
             onToggle={toggleHideClosed}
             toggleLabel={`${cs.settings.hideClosed.title}: ${hideClosedPubs ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+            borderTop
+          />
+          <PrefRow
+            icon={<StarIcon size={18} color={Colors.foamMuted} />}
+            title={cs.settings.preferRated.title}
+            subtitle={cs.settings.preferRated.subtitle}
+            value={preferRatedPubs}
+            onToggle={togglePreferRated}
+            toggleLabel={`${cs.settings.preferRated.title}: ${preferRatedPubs ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+            borderTop
+          />
+          <PrefRow
+            icon={<TreePineIcon size={18} color={Colors.foamMuted} />}
+            title={cs.settings.preferGarden.title}
+            subtitle={cs.settings.preferGarden.subtitle}
+            value={preferGardenPubs}
+            onToggle={togglePreferGarden}
+            toggleLabel={`${cs.settings.preferGarden.title}: ${preferGardenPubs ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
             borderTop
           />
           <PrefRow

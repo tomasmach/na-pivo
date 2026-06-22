@@ -48,12 +48,16 @@ export const cs = {
     hoursUnknown: 'Otevírací doba neznámá',
     detailsLoading: 'Načítám info',
     contribute: 'Doplnit info',
+    addMissingPub: 'Chybí hospoda',
     // The leading beer glyph is a line-art icon rendered next to this text in
     // the pub card (see RevealedPubPill), not an emoji baked into the string.
     beerWithPrice: (name: string, price: string) => `${name} · ${price}`,
     beerNoPrice: (name: string) => name,
     beerAndMore: 'a další',
     ratingCount: (count: string) => `${count} hodnocení`,
+    gardenBadge: 'Zahrádka',
+    beerFilterPlaceholder: 'Značka piva',
+    beerFilterActive: (name: string) => `Podle záznamů: ${name}`,
   },
 
   permissions: {
@@ -108,6 +112,14 @@ export const cs = {
     hideClosed: {
       title: 'Skrýt zavřené hospody',
       subtitle: 'Ukázat jen otevřené a ty s neznámou dobou',
+    },
+    preferRated: {
+      title: 'Radši dobře hodnocené',
+      subtitle: 'Přeskočí známé podniky pod 4 hvězdy',
+    },
+    preferGarden: {
+      title: 'Radši se zahrádkou',
+      subtitle: 'Když víme, že zahrádku nemají, jdeme dál',
     },
     hidePubNames: {
       title: 'Schovávat názvy hospod',
@@ -589,6 +601,18 @@ export const cs = {
     // Meta shown to the right of a beer name, e.g. "2× · 124 Kč" (count × subtotal).
     // The volume is appended to the name separately in EveningBreakdown.
     breakdownLine: (count: number, price: string) => `${count}× · ${price}`,
+    drinkActionsHeader: 'JEDNOTLIVÁ PIVA',
+    editDrink: 'Upravit',
+    deleteDrink: 'Smazat',
+    editDrinkTitle: 'Opravit název piva',
+    editDrinkPlaceholder: 'Název piva',
+    editDrinkSave: 'Uložit',
+    editDrinkCancel: 'Zrušit',
+    editDrinkEmpty: 'Bez názvu to nepůjde.',
+    deleteDrinkTitle: 'Smazat pivo?',
+    deleteDrinkBody: 'Když bylo navíc nebo patří jiné hospodě, smažeme ho z večera.',
+    deleteDrinkConfirm: 'Smazat',
+    deleteDrinkCancel: 'Zrušit',
     totalLabel: 'Celkem',
 
     // — Personal pub rating ("Stálo to za návrat?") —
@@ -656,6 +680,7 @@ export const cs = {
     openStatus: (status: string) => `Stav otevírací doby: ${status}`,
     pubRating: (rating: string, count?: string) =>
       count ? `Hodnocení: ${rating} z 5, ${count} hodnocení` : `Hodnocení: ${rating} z 5`,
+    pubGarden: 'Má zahrádku',
     toggleOn: 'zapnuto',
     toggleOff: 'vypnuto',
     settingsButton: 'Otevřít nastavení',
@@ -686,6 +711,9 @@ export const cs = {
     backButton: 'Zpět',
     modeNearestButton: 'Mód: Nejbližší hospoda',
     modeSurpriseButton: 'Mód: Překvap mě',
+    beerBrandFilterInput: 'Filtrovat hospody podle značky piva ze záznamů',
+    beerBrandFilterSuggestion: (name: string) => `Vybrat značku ${name}`,
+    clearBeerBrandFilter: 'Zrušit filtr značky piva',
 
     // — Tabs —
     tabCompass: 'Záložka Kompas',

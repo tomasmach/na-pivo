@@ -13,7 +13,6 @@ import {
   ScrollView,
   Pressable,
   TextInput,
-  KeyboardAvoidingView,
   Platform,
   StyleSheet,
 } from 'react-native';
@@ -261,154 +260,147 @@ export default function AddPubScreen() {
         <View style={styles.headerSpacer} />
       </View>
 
-      <KeyboardAvoidingView
+      <ScrollView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        // This view spans down to the screen bottom, so the 'padding' formula
-        // (frame.bottom − keyboardTop) already equals the keyboard height.
-        // Any positive offset here is added on top as dead space — it was what
-        // left an empty brown band above the keyboard.
-        keyboardVerticalOffset={0}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: Math.max(insets.bottom + 24, 32) },
+        ]}
+        automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        <ScrollView
-          contentContainerStyle={[
-            styles.scrollContent,
-            { paddingBottom: Math.max(insets.bottom + 24, 32) },
-          ]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.iconRow}>
-            <View style={styles.iconWell}>
-              <MapPinIcon size={18} color={Colors.amber} />
+        <View style={styles.iconRow}>
+          <View style={styles.iconWell}>
+            <MapPinIcon size={18} color={Colors.amber} />
+          </View>
+          <Text style={styles.intro} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.addPub.intro}
+          </Text>
+        </View>
+
+        <View style={styles.locationCard}>
+          <Text style={styles.locationHeader}>{cs.addPub.locationHeader}</Text>
+          <Text style={styles.locationBody} maxFontSizeMultiplier={FontScaleCap.body}>
+            {initialCoords ? cs.addPub.locationWithCurrent : cs.addPub.locationFromAddress}
+          </Text>
+        </View>
+
+        <View style={styles.fieldGroup}>
+          <Text style={styles.label}>{cs.addPub.nameLabel}</Text>
+          <TextInput
+            style={styles.input}
+            value={name}
+            onChangeText={handleNameChange}
+            placeholder={cs.addPub.namePlaceholder}
+            placeholderTextColor={Colors.mutedText}
+            maxLength={200}
+            accessibilityLabel={cs.a11y.addPubNameInput}
+          />
+          {(suggestions.length > 0 || suggesting || selectedLocation) && (
+            <View style={styles.suggestions}>
+              {selectedLocation && (
+                <View style={styles.selectedSuggestion}>
+                  <MapPinIcon size={16} color={Colors.amber} />
+                  <View style={styles.suggestionText}>
+                    <Text style={styles.suggestionName} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {cs.addPub.selectedPlace}
+                    </Text>
+                    <Text
+                      style={styles.suggestionLocation}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                      numberOfLines={2}
+                    >
+                      {selectedLocation.displayLocation || [address, city].filter(Boolean).join(', ')}
+                    </Text>
+                  </View>
+                </View>
+              )}
+              {!selectedLocation &&
+                suggestions.map((suggestion) => (
+                  <Pressable
+                    key={suggestion.id}
+                    onPress={() => handleSuggestionPress(suggestion)}
+                    style={({ pressed }) => [styles.suggestionRow, pressed && styles.suggestionPressed]}
+                    accessibilityRole="button"
+                    accessibilityLabel={cs.a11y.addPubSuggestion(suggestion.name)}
+                  >
+                    <View style={styles.suggestionIcon}>
+                      <MapPinIcon size={15} color={Colors.amber} />
+                    </View>
+                    <View style={styles.suggestionText}>
+                      <Text
+                        style={styles.suggestionName}
+                        maxFontSizeMultiplier={FontScaleCap.body}
+                        numberOfLines={1}
+                      >
+                        {suggestion.name}
+                      </Text>
+                      {!!suggestion.location && (
+                        <Text
+                          style={styles.suggestionLocation}
+                          maxFontSizeMultiplier={FontScaleCap.body}
+                          numberOfLines={2}
+                        >
+                          {suggestion.location}
+                        </Text>
+                      )}
+                    </View>
+                  </Pressable>
+                ))}
+              {!selectedLocation && suggesting && (
+                <Text style={styles.suggestionHint} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {cs.addPub.searchingPlaces}
+                </Text>
+              )}
             </View>
-            <Text style={styles.intro} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.addPub.intro}
-            </Text>
-          </View>
+          )}
+        </View>
 
-          <View style={styles.locationCard}>
-            <Text style={styles.locationHeader}>{cs.addPub.locationHeader}</Text>
-            <Text style={styles.locationBody} maxFontSizeMultiplier={FontScaleCap.body}>
-              {initialCoords ? cs.addPub.locationWithCurrent : cs.addPub.locationFromAddress}
-            </Text>
-          </View>
-
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>{cs.addPub.nameLabel}</Text>
+        <View style={styles.twoColumn}>
+          <View style={styles.column}>
+            <Text style={styles.label}>{cs.addPub.cityLabel}</Text>
             <TextInput
               style={styles.input}
-              value={name}
-              onChangeText={handleNameChange}
-              placeholder={cs.addPub.namePlaceholder}
+              value={city}
+              onChangeText={setCity}
+              placeholder={cs.addPub.cityPlaceholder}
               placeholderTextColor={Colors.mutedText}
-              maxLength={200}
-              accessibilityLabel={cs.a11y.addPubNameInput}
+              maxLength={128}
+              accessibilityLabel={cs.a11y.addPubCityInput}
             />
-            {(suggestions.length > 0 || suggesting || selectedLocation) && (
-              <View style={styles.suggestions}>
-                {selectedLocation && (
-                  <View style={styles.selectedSuggestion}>
-                    <MapPinIcon size={16} color={Colors.amber} />
-                    <View style={styles.suggestionText}>
-                      <Text style={styles.suggestionName} maxFontSizeMultiplier={FontScaleCap.body}>
-                        {cs.addPub.selectedPlace}
-                      </Text>
-                      <Text
-                        style={styles.suggestionLocation}
-                        maxFontSizeMultiplier={FontScaleCap.body}
-                        numberOfLines={2}
-                      >
-                        {selectedLocation.displayLocation || [address, city].filter(Boolean).join(', ')}
-                      </Text>
-                    </View>
-                  </View>
-                )}
-                {!selectedLocation &&
-                  suggestions.map((suggestion) => (
-                    <Pressable
-                      key={suggestion.id}
-                      onPress={() => handleSuggestionPress(suggestion)}
-                      style={({ pressed }) => [styles.suggestionRow, pressed && styles.suggestionPressed]}
-                      accessibilityRole="button"
-                      accessibilityLabel={cs.a11y.addPubSuggestion(suggestion.name)}
-                    >
-                      <View style={styles.suggestionIcon}>
-                        <MapPinIcon size={15} color={Colors.amber} />
-                      </View>
-                      <View style={styles.suggestionText}>
-                        <Text
-                          style={styles.suggestionName}
-                          maxFontSizeMultiplier={FontScaleCap.body}
-                          numberOfLines={1}
-                        >
-                          {suggestion.name}
-                        </Text>
-                        {!!suggestion.location && (
-                          <Text
-                            style={styles.suggestionLocation}
-                            maxFontSizeMultiplier={FontScaleCap.body}
-                            numberOfLines={2}
-                          >
-                            {suggestion.location}
-                          </Text>
-                        )}
-                      </View>
-                    </Pressable>
-                  ))}
-                {!selectedLocation && suggesting && (
-                  <Text style={styles.suggestionHint} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {cs.addPub.searchingPlaces}
-                  </Text>
-                )}
-              </View>
-            )}
           </View>
-
-          <View style={styles.twoColumn}>
-            <View style={styles.column}>
-              <Text style={styles.label}>{cs.addPub.cityLabel}</Text>
-              <TextInput
-                style={styles.input}
-                value={city}
-                onChangeText={setCity}
-                placeholder={cs.addPub.cityPlaceholder}
-                placeholderTextColor={Colors.mutedText}
-                maxLength={128}
-                accessibilityLabel={cs.a11y.addPubCityInput}
-              />
-            </View>
-            <View style={styles.column}>
-              <Text style={styles.label}>{cs.addPub.addressLabel}</Text>
-              <TextInput
-                style={styles.input}
-                value={address}
-                onChangeText={setAddress}
-                placeholder={cs.addPub.addressPlaceholder}
-                placeholderTextColor={Colors.mutedText}
-                maxLength={255}
-                accessibilityLabel={cs.a11y.addPubAddressInput}
-              />
-            </View>
-          </View>
-
-          {!!locationError && (
-            <Text style={styles.invalidText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {locationError}
-            </Text>
-          )}
-
-          <View style={styles.submitButton}>
-            <GlowButton
-              label={submitted ? cs.addPub.saving : cs.addPub.save}
-              onPress={handleSubmit}
-              glow={canSubmit ? 'soft' : 'none'}
-              accessibilityLabel={cs.a11y.addPubSaveButton}
+          <View style={styles.column}>
+            <Text style={styles.label}>{cs.addPub.addressLabel}</Text>
+            <TextInput
+              style={styles.input}
+              value={address}
+              onChangeText={setAddress}
+              placeholder={cs.addPub.addressPlaceholder}
+              placeholderTextColor={Colors.mutedText}
+              maxLength={255}
+              accessibilityLabel={cs.a11y.addPubAddressInput}
             />
-            {!canSubmit && <View style={styles.submitDisabledOverlay} />}
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </View>
+
+        {!!locationError && (
+          <Text style={styles.invalidText} maxFontSizeMultiplier={FontScaleCap.body}>
+            {locationError}
+          </Text>
+        )}
+
+        <View style={styles.submitButton}>
+          <GlowButton
+            label={submitted ? cs.addPub.saving : cs.addPub.save}
+            onPress={handleSubmit}
+            glow={canSubmit ? 'soft' : 'none'}
+            accessibilityLabel={cs.a11y.addPubSaveButton}
+          />
+          {!canSubmit && <View style={styles.submitDisabledOverlay} />}
+        </View>
+      </ScrollView>
     </View>
   );
 }

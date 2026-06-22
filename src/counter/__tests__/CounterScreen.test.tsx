@@ -184,6 +184,7 @@ describe('CounterScreen counting', () => {
             rating: null,
             ratingCount: null,
             ratingLabel: null,
+            hasGarden: null,
             venueKind: 'pub',
           },
         ],

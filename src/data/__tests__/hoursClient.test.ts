@@ -99,6 +99,7 @@ describe('fetchPubHours — happy path', () => {
       rating: null,
       ratingCount: null,
       ratingLabel: null,
+      hasGarden: null,
       venueKind: 'unknown',
     });
     expect(result.get(PUB_B.id)).toEqual({
@@ -112,6 +113,7 @@ describe('fetchPubHours — happy path', () => {
       rating: null,
       ratingCount: null,
       ratingLabel: null,
+      hasGarden: null,
       venueKind: 'unknown',
     });
   });
@@ -193,6 +195,7 @@ describe('fetchPubHours — happy path', () => {
       rating: null,
       ratingCount: null,
       ratingLabel: null,
+      hasGarden: null,
       venueKind: 'unknown',
     });
   });
@@ -253,6 +256,7 @@ describe('fetchPubHours — happy path', () => {
     expect(entry?.rating).toBeNull();
     expect(entry?.ratingCount).toBeNull();
     expect(entry?.ratingLabel).toBeNull();
+    expect(entry?.hasGarden).toBeNull();
     // Missing venueKind on an older backend must default to 'unknown'.
     expect(entry?.venueKind).toBe('unknown');
   });
@@ -277,6 +281,25 @@ describe('fetchPubHours — happy path', () => {
     expect(entry?.rating).toBe(4.1);
     expect(entry?.ratingCount).toBe(364);
     expect(entry?.ratingLabel).toBe('Velmi dobré');
+  });
+
+  it('parses the optional garden flag', async () => {
+    setBackend('https://api.example.com');
+    const fetchSpy = jest.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        results: [
+          { status: 'ok', hasGarden: true },
+          { status: 'ok', hasGarden: false },
+        ],
+      }),
+    }));
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    const result = await fetchPubHours([PUB_A, PUB_B]);
+
+    expect(result.get(PUB_A.id)?.hasGarden).toBe(true);
+    expect(result.get(PUB_B.id)?.hasGarden).toBe(false);
   });
 
   it.each(['pub', 'maybe', 'not_pub', 'unknown'] as const)(

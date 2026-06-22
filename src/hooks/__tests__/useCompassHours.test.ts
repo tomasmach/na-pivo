@@ -143,6 +143,7 @@ function result(overrides: Partial<PubHoursResult> = {}): PubHoursResult {
     rating: null,
     ratingCount: null,
     ratingLabel: null,
+    hasGarden: null,
     venueKind: 'unknown',
     ...overrides,
   };

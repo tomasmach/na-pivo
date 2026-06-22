@@ -8,6 +8,7 @@ import {
   getOrCreateDeviceId,
   updateAccountPreferences,
 } from '../account';
+import { trackApiFailure } from '../telemetryClient';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
@@ -35,9 +36,15 @@ jest.mock('expo-secure-store', () => {
   };
 });
 
+jest.mock('../telemetryClient', () => ({
+  setTelemetrySession: jest.fn(),
+  trackApiFailure: jest.fn(),
+}));
+
 const secureStoreMock = SecureStore as unknown as {
   __setStore: (s: Record<string, string>) => void;
 };
+const mockTrackApiFailure = trackApiFailure as jest.MockedFunction<typeof trackApiFailure>;
 
 const ORIGINAL_FETCH = global.fetch;
 const ORIGINAL_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
@@ -177,9 +184,13 @@ describe('ensureAccount — registration (no cache yet)', () => {
     })) as unknown as typeof fetch;
 
     await expect(ensureAccount()).resolves.toBeNull();
+    expect(mockTrackApiFailure).toHaveBeenCalledWith('account_register', {
+      endpoint: '/v1/account',
+      status: 500,
+    });
   });
 
-  it('mints a fresh device account when the persisted deviceId is already claimed', async () => {
+  it('mints a fresh device account when the persisted deviceId is already claimed without account_register telemetry', async () => {
     await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-locked');
     setBackend('https://api.example.com');
     const fetchSpy = jest
@@ -204,6 +215,33 @@ describe('ensureAccount — registration (no cache yet)', () => {
       token: 'tok-2',
       authenticated: false,
     });
+    expect(mockTrackApiFailure).not.toHaveBeenCalledWith(
+      'account_register',
+      expect.objectContaining({ status: 401 })
+    );
+  });
+
+  it('reports a distinct recovery failure if the replacement deviceId is also rejected', async () => {
+    await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-locked');
+    setBackend('https://api.example.com');
+    const fetchSpy = jest
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({}) })
+      .mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({}) });
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    await expect(ensureAccount()).resolves.toBeNull();
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(mockTrackApiFailure).toHaveBeenCalledWith('account_register_recovery', {
+      endpoint: '/v1/account',
+      status: 401,
+      reason: 'claimed_device_id',
+    });
+    expect(mockTrackApiFailure).not.toHaveBeenCalledWith(
+      'account_register',
+      expect.objectContaining({ status: 401 })
+    );
   });
 
   it('resolves to null on a 2xx body missing id/token and caches nothing', async () => {

@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { enqueueDrink, flushDrinksQueue, removeQueuedDrink } from '../drinksQueue';
+import { enqueueDrink, flushDrinksQueue, removeQueuedDrink, updateQueuedDrinkBeerName } from '../drinksQueue';
 import { submitDrink, type DrinkEntry } from '../drinksClient';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
@@ -181,5 +181,21 @@ describe('removeQueuedDrink', () => {
   it('is a no-op when the drink already flushed', async () => {
     await expect(removeQueuedDrink('missing')).resolves.toBe(false);
     expect(await readQueue()).toEqual([]);
+  });
+});
+
+describe('updateQueuedDrinkBeerName', () => {
+  it('updates the beer name on a drink that has not been delivered yet', async () => {
+    (submitDrink as jest.Mock).mockResolvedValue('retry');
+    await enqueueDrink(entry({ client_id: 'a', beer: { name: 'Plzen', price_czk: 62, volume_ml: 500 } }));
+
+    await expect(updateQueuedDrinkBeerName('a', 'Plzeň')).resolves.toBe(true);
+
+    const queue = await readQueue();
+    expect(queue[0].beer.name).toBe('Plzeň');
+  });
+
+  it('returns false when the drink is no longer queued', async () => {
+    await expect(updateQueuedDrinkBeerName('missing', 'Kozel')).resolves.toBe(false);
   });
 });

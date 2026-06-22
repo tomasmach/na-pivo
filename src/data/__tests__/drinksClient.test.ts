@@ -1,4 +1,4 @@
-import { buildDrinkEntry, submitDrink, deleteDrink, type DrinkInput } from '../drinksClient';
+import { buildDrinkEntry, submitDrink, deleteDrink, updateDrinkName, type DrinkInput } from '../drinksClient';
 import { clearCachedAnonymousAccount, ensureAccount } from '../account';
 
 // drinksClient → account → expo-secure-store, which isn't transformed for the
@@ -255,5 +255,47 @@ describe('deleteDrink', () => {
     global.fetch = jest.fn() as unknown as typeof fetch;
     await expect(deleteDrink('c')).resolves.toBe('retry');
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('updateDrinkName', () => {
+  it('is a dormant no-op (retry) when no backend is configured', async () => {
+    setBackend(undefined);
+    global.fetch = jest.fn() as unknown as typeof fetch;
+    await expect(updateDrinkName('client-1', 'Kozel')).resolves.toBe('retry');
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('PATCHes /v1/drinks/<client_id> with the Bearer token and returns ok on 2xx', async () => {
+    setBackend('https://api.example.com');
+    const fetchSpy = jest.fn(async () => ({ ok: true, status: 200, json: async () => ({ updated: true }) }));
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    await expect(updateDrinkName('client-1', 'Kozel')).resolves.toBe('ok');
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('https://api.example.com/v1/drinks/client-1');
+    expect(init.method).toBe('PATCH');
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok');
+    expect(JSON.parse(init.body as string)).toEqual({ beer_name: 'Kozel' });
+  });
+
+  it('returns permanent-error on validation 4xx and retry on recoverable failures', async () => {
+    setBackend('https://api.example.com');
+
+    global.fetch = jest.fn(async () => ({ ok: false, status: 400, json: async () => ({}) })) as unknown as typeof fetch;
+    await expect(updateDrinkName('c', '')).resolves.toBe('permanent-error');
+
+    global.fetch = jest.fn(async () => ({ ok: false, status: 404, json: async () => ({}) })) as unknown as typeof fetch;
+    await expect(updateDrinkName('c', 'Kozel')).resolves.toBe('retry');
+
+    global.fetch = jest.fn(async () => ({ ok: false, status: 429, json: async () => ({}) })) as unknown as typeof fetch;
+    await expect(updateDrinkName('c', 'Kozel')).resolves.toBe('retry');
+
+    global.fetch = jest.fn(async () => {
+      throw new Error('network down');
+    }) as unknown as typeof fetch;
+    await expect(updateDrinkName('c', 'Kozel')).resolves.toBe('retry');
   });
 });

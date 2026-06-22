@@ -52,6 +52,7 @@ import {
   Download,
   Crown,
   Camera,
+  TreePine,
   LucideProps,
 } from 'lucide-react-native';
 
@@ -114,3 +115,4 @@ export const KeyRoundIcon = wrap(KeyRound, 'KeyRoundIcon');
 export const DownloadIcon = wrap(Download, 'DownloadIcon');
 export const CrownIcon = wrap(Crown, 'CrownIcon');
 export const CameraIcon = wrap(Camera, 'CameraIcon');
+export const TreePineIcon = wrap(TreePine, 'TreePineIcon');

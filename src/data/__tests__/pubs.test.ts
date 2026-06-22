@@ -56,7 +56,19 @@ describe("fetchPubsNear", () => {
   it("passes the requested fetch radius to the Mapy client", async () => {
     await fetchPubsNear(50.08, 14.42, undefined, { force: true, radiusKm: 100 });
 
-    expect(searchPubsNear).toHaveBeenCalledWith(50.08, 14.42, 100, undefined);
+    expect(searchPubsNear).toHaveBeenCalledWith(50.08, 14.42, 100, undefined, { beerBrandKey: "" });
+  });
+
+  it("passes the beer brand filter to the Mapy client", async () => {
+    await fetchPubsNear(50.08, 14.42, undefined, {
+      force: true,
+      radiusKm: 25,
+      beerBrandKey: "pilsner-urquell",
+    });
+
+    expect(searchPubsNear).toHaveBeenCalledWith(50.08, 14.42, 25, undefined, {
+      beerBrandKey: "pilsner-urquell",
+    });
   });
 
   it("filters backend-blocked Mapy results before rebuilding the index", async () => {
@@ -135,6 +147,27 @@ describe("fetchPubsNear — persistent snapshot cache", () => {
 
     expect(searchPubsNear).not.toHaveBeenCalled();
     expect(getPubById("mapy:cached-1")?.name).toBe("U Cache");
+  });
+
+  it("ignores the unfiltered snapshot when a beer brand filter is active", async () => {
+    await writeSnapshot({
+      pubs: SNAPSHOT_PUBS,
+      centerLat: PRAGUE.lat,
+      centerLng: PRAGUE.lng,
+      radiusKm: 25,
+      savedAt: Date.now(),
+    });
+
+    await fetchPubsNear(PRAGUE.lat, PRAGUE.lng, undefined, {
+      radiusKm: 25,
+      beerBrandKey: "pilsner-urquell",
+    });
+
+    expect(searchPubsNear).toHaveBeenCalledTimes(1);
+    expect(searchPubsNear).toHaveBeenCalledWith(PRAGUE.lat, PRAGUE.lng, 25, undefined, {
+      beerBrandKey: "pilsner-urquell",
+    });
+    expect(getPubById("mapy:cached-1")).toBeNull();
   });
 
   it("fetches when the snapshot is older than the 24h TTL", async () => {

@@ -300,7 +300,7 @@ describe('registerEmail', () => {
 // loginEmail
 // ---------------------------------------------------------------------------
 describe('loginEmail', () => {
-  it('logs in without a bearer header, clears local private data, and stores the session on success', async () => {
+  it('logs in with the anonymous bearer claim and stores the session without clearing local progress', async () => {
     const spy = installFetch(
       fetchResolving(200, { id: 'acc-2', token: 'login-tok', is_anonymous: false, providers: ['email'] }),
     );
@@ -311,9 +311,9 @@ describe('loginEmail', () => {
     const { url, init } = firstCall(spy);
     expect(url).toBe('https://api.test/v1/auth/login');
     expect(init.method).toBe('POST');
-    // bearer: 'none' → no Authorization header, no ensure/getSessionToken.
-    expect(authHeader(init)).toBeUndefined();
-    expect(mockEnsureAccount).not.toHaveBeenCalled();
+    // bearer: 'claim' → best-effort anonymous claim for merging local progress.
+    expect(authHeader(init)).toBe('Bearer anon-tok');
+    expect(mockEnsureAccount).toHaveBeenCalledTimes(1);
     expect(mockGetSessionToken).not.toHaveBeenCalled();
     expect(bodyOf(init)).toEqual({ email: 'jan@example.com', password: 'pw' });
 
@@ -323,10 +323,31 @@ describe('loginEmail', () => {
       token: 'login-tok',
       authenticated: true,
     });
-    expect(mockClearLocalPrivateAccountData).toHaveBeenCalledTimes(1);
-    expect(mockClearLocalPrivateAccountData.mock.invocationCallOrder[0]).toBeLessThan(
-      mockSetSession.mock.invocationCallOrder[0],
+    expect(mockClearLocalPrivateAccountData).not.toHaveBeenCalled();
+  });
+
+  it('does not send an authenticated stale session as a login claim bearer', async () => {
+    mockEnsureAccount.mockResolvedValueOnce({
+      deviceId: 'd',
+      accountId: 'signed-in',
+      token: 'stale-signed-in-token',
+      authenticated: true,
+    });
+    const spy = installFetch(
+      fetchResolving(200, { id: 'acc-2', token: 'login-tok', is_anonymous: false, providers: ['email'] }),
     );
+
+    const result = await auth.loginEmail({ email: 'jan@example.com', password: 'pw' });
+
+    expect(result.ok).toBe(true);
+    expect(authHeader(firstCall(spy).init)).toBeUndefined();
+    expect(mockSetSession).toHaveBeenCalledWith({
+      deviceId: undefined,
+      accountId: 'acc-2',
+      token: 'login-tok',
+      authenticated: true,
+    });
+    expect(mockClearLocalPrivateAccountData).not.toHaveBeenCalled();
   });
 
   it('returns invalid_credentials on a 401', async () => {

@@ -11,6 +11,7 @@ jest.mock('react-native', () => ({
   Alert: {
     alert: jest.fn(),
   },
+  TextInput: jest.fn(() => null),
 }));
 
 jest.mock('@react-native-async-storage/async-storage', () =>
@@ -61,6 +62,8 @@ jest.mock('@/components/shared/IconGlyph', () => ({
   FlagIcon: jest.fn(() => null),
   PencilIcon: jest.fn(() => null),
   StarIcon: jest.fn(() => null),
+  TreePineIcon: jest.fn(() => null),
+  XIcon: jest.fn(() => null),
 }));
 
 jest.mock('@/utils/maps', () => ({
@@ -128,6 +131,7 @@ function baseCompassState() {
     requestPermission: jest.fn(),
     isLoading: false,
     searchFailed: false,
+    currentPosition: null,
   };
 }
 
@@ -408,6 +412,38 @@ describe('CompassScreen', () => {
       fr: [['11:00', '23:00']],
       sa: [['12:00', '00:00']],
       su: [],
+    });
+  });
+
+  it('opens add-pub from the revealed pub pill with current coordinates', () => {
+    const push = jest.fn();
+    mockedUseRouter.mockReturnValue({ push });
+    useCompass.mockReturnValue({
+      ...baseCompassState(),
+      revealed: true,
+      currentPosition: { lat: 50.0821, lng: 14.4213, accuracyMeters: 12 },
+    });
+
+    let renderer: any;
+
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(CompassScreen));
+    });
+
+    const addPubButton = renderer!.root.findAllByProps({
+      accessibilityLabel: cs.a11y.addPubButton,
+    })[0];
+
+    act(() => {
+      addPubButton.props.onPress();
+    });
+
+    expect(push).toHaveBeenCalledWith({
+      pathname: '/add-pub',
+      params: {
+        lat: '50.0821',
+        lng: '14.4213',
+      },
     });
   });
 });

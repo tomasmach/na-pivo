@@ -189,6 +189,69 @@ describe('removeDrink', () => {
   });
 });
 
+describe('removeDrinkFromSession', () => {
+  it('removes a drink from an archived evening and reports the session id', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer()); // id-1
+    const sessionClientId = useTallyStore.getState().current?.clientId as string;
+    const startedAt = useTallyStore.getState().current?.startedAt as string;
+    useTallyStore.getState().archiveCurrent('manual');
+
+    const removed = useTallyStore.getState().removeDrinkFromSession(startedAt, 'id-1');
+
+    expect(removed).toEqual({ drinkId: 'id-1', sessionClientId, remainingDrinks: 0 });
+    expect(useTallyStore.getState().history).toHaveLength(0);
+  });
+
+  it('keeps the evening when other drinks remain', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer()); // id-1
+    useTallyStore.getState().addDrink(PUB_A, beer()); // id-2
+    const startedAt = useTallyStore.getState().current?.startedAt as string;
+    useTallyStore.getState().archiveCurrent('manual');
+
+    const removed = useTallyStore.getState().removeDrinkFromSession(startedAt, 'id-1');
+
+    expect(removed?.remainingDrinks).toBe(1);
+    expect(useTallyStore.getState().history[0].drinks.map((drink) => drink.id)).toEqual(['id-2']);
+  });
+
+  it('returns null for an unknown drink in the selected evening', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer());
+    const startedAt = useTallyStore.getState().current?.startedAt as string;
+    expect(useTallyStore.getState().removeDrinkFromSession(startedAt, 'missing')).toBeNull();
+    expect(useTallyStore.getState().current?.drinks).toHaveLength(1);
+  });
+});
+
+describe('updateDrinkNameInSession', () => {
+  it('renames a drink in the current session', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer({ beerName: 'Plzen' }));
+    const startedAt = useTallyStore.getState().current?.startedAt as string;
+
+    expect(useTallyStore.getState().updateDrinkNameInSession(startedAt, 'id-1', ' Plzeň ')).toBe(true);
+
+    expect(useTallyStore.getState().current?.drinks[0].beerName).toBe('Plzeň');
+  });
+
+  it('renames a drink in an archived evening', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer({ beerName: 'Plzen' }));
+    const startedAt = useTallyStore.getState().current?.startedAt as string;
+    useTallyStore.getState().archiveCurrent('manual');
+
+    expect(useTallyStore.getState().updateDrinkNameInSession(startedAt, 'id-1', 'Plzeň')).toBe(true);
+
+    expect(useTallyStore.getState().history[0].drinks[0].beerName).toBe('Plzeň');
+  });
+
+  it('rejects an empty name and leaves the drink untouched', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer({ beerName: 'Plzeň' }));
+    const startedAt = useTallyStore.getState().current?.startedAt as string;
+
+    expect(useTallyStore.getState().updateDrinkNameInSession(startedAt, 'id-1', '   ')).toBe(false);
+
+    expect(useTallyStore.getState().current?.drinks[0].beerName).toBe('Plzeň');
+  });
+});
+
 describe('history cap', () => {
   it('keeps at most 50 archived sessions, newest first', () => {
     // 52 sittings at alternating pubs → 51 archived after the 52nd opens.

@@ -61,6 +61,8 @@ type PubHoursState = {
   ratingCount?: number | null;
   /** Human rating label from the source, when known. */
   ratingLabel?: string | null;
+  /** Whether the backend source explicitly marks this pub as having a garden. */
+  hasGarden?: boolean | null;
   /** Backend pub-vs-not verdict; 'not_pub' triggers auto-exclusion. */
   venueKind?: VenueKind;
 };
@@ -100,7 +102,7 @@ export interface UseCompassResult {
   currentPosition: { lat: number; lng: number; accuracyMeters: number } | null;
 }
 
-export function useCompass(): UseCompassResult {
+export function useCompass(beerBrandKey: string | null = null): UseCompassResult {
   // — Settings from store —
   const mode = useSettingsStore((s) => s.mode);
   const setMode = useSettingsStore((s) => s.setMode);
@@ -108,6 +110,8 @@ export function useCompass(): UseCompassResult {
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
   const soundEnabled = useSettingsStore((s) => s.soundEnabled);
   const hideClosedPubs = useSettingsStore((s) => s.hideClosedPubs);
+  const preferRatedPubs = useSettingsStore((s) => s.preferRatedPubs);
+  const preferGardenPubs = useSettingsStore((s) => s.preferGardenPubs);
   const surpriseSeed = useSettingsStore((s) => s.surpriseSeed);
   const bumpSurpriseSeed = useSettingsStore((s) => s.bumpSurpriseSeed);
 
@@ -158,8 +162,10 @@ export function useCompass(): UseCompassResult {
   // is a network lookup. Debouncing here, the layer that actually sees the
   // churn, coalesces a drag into a single fetch.
   const lastFetchedMaxKmRef = useRef<number | null | undefined>(undefined);
+  const lastFetchedBeerBrandKeyRef = useRef<string>("");
   const radiusDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const RADIUS_DEBOUNCE_MS = 700;
+  const activeBeerBrandKey = (beerBrandKey ?? "").trim();
 
   // Fetch pubs through the backend/Mapy lookup whenever the user's position changes. The data
   // layer short-circuits if the user hasn't moved more than ~2 km from the
@@ -173,12 +179,18 @@ export function useCompass(): UseCompassResult {
 
     const runFetch = () => {
       if (cancelled) return;
-      const force = forceNextSearchRef.current;
+      const brandFilterChanged = activeBeerBrandKey !== lastFetchedBeerBrandKeyRef.current;
+      const force = forceNextSearchRef.current || brandFilterChanged;
       const radiusKm = maxDistanceKm ?? UNLIMITED_SEARCH_RADIUS_KM;
       forceNextSearchRef.current = false;
       lastFetchedMaxKmRef.current = maxDistanceKm;
+      lastFetchedBeerBrandKeyRef.current = activeBeerBrandKey;
 
-      fetchPubsNear(position.lat, position.lng, undefined, { force, radiusKm })
+      fetchPubsNear(position.lat, position.lng, undefined, {
+        force,
+        radiusKm,
+        beerBrandKey: activeBeerBrandKey || null,
+      })
         .then(() => {
           if (!cancelled) {
             setSearchFailed(false);
@@ -202,6 +214,7 @@ export function useCompass(): UseCompassResult {
     const radiusOnlyChange =
       lastFetchedMaxKmRef.current !== undefined &&
       maxDistanceKm !== lastFetchedMaxKmRef.current &&
+      activeBeerBrandKey === lastFetchedBeerBrandKeyRef.current &&
       !forceNextSearchRef.current;
 
     if (radiusOnlyChange) {
@@ -218,7 +231,7 @@ export function useCompass(): UseCompassResult {
         radiusDebounceRef.current = undefined;
       }
     };
-  }, [position?.lat, position?.lng, maxDistanceKm, searchRetryNonce]);
+  }, [position?.lat, position?.lng, maxDistanceKm, activeBeerBrandKey, searchRetryNonce]);
 
   // — Permission check on mount —
   useEffect(() => {
@@ -254,6 +267,8 @@ export function useCompass(): UseCompassResult {
   //     pubs at all, so the compass must never lead to them. Treated exactly like
   //     auto-closed for selection: added to excludeIds, drives a re-selection.
   const notPubIdsRef = useRef<Set<string>>(new Set());
+  const lowRatedIdsRef = useRef<Set<string>>(new Set());
+  const noGardenIdsRef = useRef<Set<string>>(new Set());
   const [excludeRevision, setExcludeRevision] = useState(0);
 
   // Track last position used to select a target, to avoid re-selecting on every tiny GPS twitch.
@@ -265,6 +280,8 @@ export function useCompass(): UseCompassResult {
   const lastReportedPubIdsRef = useRef<string[]>(reportedPubIds);
   const lastReportedCacheKeysRef = useRef<string[]>(reportedCacheKeys);
   const lastCatalogRevisionRef = useRef<number>(catalogRevision);
+  const lastBeerBrandKeyRef = useRef<string>(activeBeerBrandKey);
+  const lastPubDataRevisionRef = useRef<number>(pubDataRevision);
   // Track the excludeRevision the current target was selected against, so the
   // selection effect recomputes when (and only when) the exclusion set changes.
   const lastExcludeRevisionRef = useRef<number>(0);
@@ -277,10 +294,14 @@ export function useCompass(): UseCompassResult {
     const hadAny =
       skippedIdsRef.current.size > 0 ||
       autoClosedIdsRef.current.size > 0 ||
-      notPubIdsRef.current.size > 0;
+      notPubIdsRef.current.size > 0 ||
+      lowRatedIdsRef.current.size > 0 ||
+      noGardenIdsRef.current.size > 0;
     if (skippedIdsRef.current.size > 0) skippedIdsRef.current = new Set();
     if (autoClosedIdsRef.current.size > 0) autoClosedIdsRef.current = new Set();
     if (notPubIdsRef.current.size > 0) notPubIdsRef.current = new Set();
+    if (lowRatedIdsRef.current.size > 0) lowRatedIdsRef.current = new Set();
+    if (noGardenIdsRef.current.size > 0) noGardenIdsRef.current = new Set();
     return hadAny;
   }, []);
 
@@ -306,13 +327,15 @@ export function useCompass(): UseCompassResult {
       reportedPubIds !== lastReportedPubIdsRef.current ||
       reportedCacheKeys !== lastReportedCacheKeysRef.current;
     const catalogChanged = catalogRevision !== lastCatalogRevisionRef.current;
+    const beerBrandChanged = activeBeerBrandKey !== lastBeerBrandKeyRef.current;
+    const pubDataChanged = beerBrandChanged && pubDataRevision !== lastPubDataRevisionRef.current;
 
     // A genuine context change (the user moved enough, or switched mode/maxKm)
     // means the accumulated skip/auto-closed exclusions are stale: they only
     // apply while standing in one place. Clear them BEFORE building excludeIds so
     // the next selection starts from a clean slate. seed/excludeRevision changes
     // are NOT context changes — they intentionally keep accumulating.
-    const contextChanged = modeChanged || maxKmChanged || positionMoved;
+    const contextChanged = modeChanged || maxKmChanged || positionMoved || pubDataChanged;
     if (contextChanged) {
       resetExclusions();
     }
@@ -324,7 +347,8 @@ export function useCompass(): UseCompassResult {
       positionMoved ||
       excludeChanged ||
       reportedChanged ||
-      catalogChanged
+      catalogChanged ||
+      pubDataChanged
     ) {
       lastTargetPosRef.current = currentPos;
       setHasSelectedTarget(true);
@@ -334,6 +358,8 @@ export function useCompass(): UseCompassResult {
       lastReportedPubIdsRef.current = reportedPubIds;
       lastReportedCacheKeysRef.current = reportedCacheKeys;
       lastCatalogRevisionRef.current = catalogRevision;
+      lastBeerBrandKeyRef.current = activeBeerBrandKey;
+      lastPubDataRevisionRef.current = pubDataRevision;
       lastExcludeRevisionRef.current = excludeRevision;
 
       const excludeIds = Array.from(new Set([
@@ -341,6 +367,8 @@ export function useCompass(): UseCompassResult {
         ...skippedIdsRef.current,
         ...autoClosedIdsRef.current,
         ...notPubIdsRef.current,
+        ...lowRatedIdsRef.current,
+        ...noGardenIdsRef.current,
       ]));
       // Reported places are excluded by geohash-8 cell too — the coordinate-
       // derived Mapy.cz ids change between fetches, the cell does not.
@@ -366,6 +394,7 @@ export function useCompass(): UseCompassResult {
       });
       bumpTargetSelectionRevision((revision) => revision + 1);
     }
+    lastPubDataRevisionRef.current = pubDataRevision;
   }, [
     position,
     pubsLoaded,
@@ -377,6 +406,7 @@ export function useCompass(): UseCompassResult {
     reportedPubIds,
     reportedCacheKeys,
     excludeRevision,
+    activeBeerBrandKey,
     resetExclusions,
   ]);
 
@@ -460,6 +490,7 @@ export function useCompass(): UseCompassResult {
               rating: result.rating,
               ratingCount: result.ratingCount,
               ratingLabel: result.ratingLabel,
+              hasGarden: result.hasGarden,
               venueKind: result.venueKind,
             });
           } else {
@@ -573,6 +604,7 @@ export function useCompass(): UseCompassResult {
       rating: hoursForCurrent?.rating ?? currentPub.rating ?? null,
       ratingCount: hoursForCurrent?.ratingCount ?? currentPub.ratingCount ?? null,
       ratingLabel: hoursForCurrent?.ratingLabel ?? currentPub.ratingLabel ?? null,
+      hasGarden: hoursForCurrent?.hasGarden ?? currentPub.hasGarden ?? null,
       venueKind: hoursForCurrent?.venueKind ?? currentPub.venueKind,
     };
   }, [currentPub, hoursForCurrent, overrideForCurrent]);
@@ -679,6 +711,7 @@ export function useCompass(): UseCompassResult {
               rating: result.rating,
               ratingCount: result.ratingCount,
               ratingLabel: result.ratingLabel,
+              hasGarden: result.hasGarden,
               venueKind: result.venueKind,
             });
             return next;
@@ -731,6 +764,32 @@ export function useCompass(): UseCompassResult {
     notPubIdsRef.current = new Set(notPubIdsRef.current).add(currentPubId);
     setExcludeRevision((revision) => revision + 1);
   }, [currentPubId, revealed, venueKindForCurrent]);
+
+  // — Lightweight discovery preferences (NON-BLOCKING) —
+  // Skip only definite misses. Unknown rating/garden metadata remains eligible,
+  // so old backends, pending enrichment and offline use do not empty the compass.
+  const ratingForCurrent = hoursForCurrent?.rating;
+  useEffect(() => {
+    if (!preferRatedPubs || !currentPubId) return;
+    if (revealed) return;
+    if (typeof ratingForCurrent !== 'number' || !Number.isFinite(ratingForCurrent)) return;
+    if (ratingForCurrent >= 4) return;
+    if (lowRatedIdsRef.current.has(currentPubId)) return;
+
+    lowRatedIdsRef.current = new Set(lowRatedIdsRef.current).add(currentPubId);
+    setExcludeRevision((revision) => revision + 1);
+  }, [currentPubId, preferRatedPubs, revealed, ratingForCurrent]);
+
+  const hasGardenForCurrent = hoursForCurrent?.hasGarden;
+  useEffect(() => {
+    if (!preferGardenPubs || !currentPubId) return;
+    if (revealed) return;
+    if (hasGardenForCurrent !== false) return;
+    if (noGardenIdsRef.current.has(currentPubId)) return;
+
+    noGardenIdsRef.current = new Set(noGardenIdsRef.current).add(currentPubId);
+    setExcludeRevision((revision) => revision + 1);
+  }, [currentPubId, preferGardenPubs, revealed, hasGardenForCurrent]);
 
   // — Expire resolved hours at their nextChange boundary (NON-BLOCKING) —
   // isOpenNow / openUntil are a snapshot from when the lookup resolved. A user
@@ -886,6 +945,7 @@ export function useCompass(): UseCompassResult {
     lastMaxKmRef.current = undefined;
     lastSeedRef.current = null;
     lastCatalogRevisionRef.current = catalogRevision;
+    lastBeerBrandKeyRef.current = activeBeerBrandKey;
     // Clear accumulated skip / auto-closed exclusions so the retry starts fresh.
     // The selection effect will re-run via the state resets below; align the
     // tracked revision so it does not also fire an extra excludeChanged pass.
@@ -896,7 +956,7 @@ export function useCompass(): UseCompassResult {
     setSearchFailed(false);
     setPubsLoaded(false);
     setSearchRetryNonce((nonce) => nonce + 1);
-  }, [catalogRevision, excludeRevision, resetExclusions]);
+  }, [activeBeerBrandKey, catalogRevision, excludeRevision, resetExclusions]);
 
   const requestPermission = useCallback(async () => {
     const state = await ensureLocationPermission();

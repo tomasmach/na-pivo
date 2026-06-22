@@ -299,6 +299,7 @@ describe('useCompass', () => {
     });
 
     expect(fetchPubsNear).toHaveBeenLastCalledWith(50.08, 14.42, undefined, {
+      beerBrandKey: null,
       force: true,
       radiusKm: 100,
     });
@@ -365,6 +366,7 @@ describe('useCompass', () => {
       // Exactly one extra fetch for the whole drag, with the final radius.
       expect(fetchPubsNear).toHaveBeenCalledTimes(2);
       expect(fetchPubsNear).toHaveBeenLastCalledWith(50.08, 14.42, undefined, {
+        beerBrandKey: null,
         force: false,
         radiusKm: 20,
       });
@@ -386,6 +388,7 @@ describe('useCompass', () => {
 
       expect(fetchPubsNear).toHaveBeenCalledTimes(2);
       expect(fetchPubsNear).toHaveBeenLastCalledWith(51.0, 15.0, undefined, {
+        beerBrandKey: null,
         force: false,
         radiusKm: 100,
       });

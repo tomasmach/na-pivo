@@ -39,7 +39,7 @@ import { geohash8 } from '@/data/geohash';
 import {
   DAY_KEYS,
   emptyWeeklyHours,
-  parseHhMm,
+  isValidHoursInterval,
   type DayKey,
   type WeeklyHours,
   type HoursInterval,
@@ -275,7 +275,7 @@ export default function ContributeScreen() {
   const hoursValid = useMemo(
     () =>
       DAY_KEYS.every((day) =>
-        hours[day].every(([s, e]) => parseHhMm(s) !== null && parseHhMm(e) !== null),
+        hours[day].every((interval) => isValidHoursInterval(interval)),
       ),
     [hours],
   );

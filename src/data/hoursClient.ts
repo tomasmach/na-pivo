@@ -35,6 +35,8 @@ export interface PubHoursResult {
   ratingCount: number | null;
   /** Human rating label from the source, when known. */
   ratingLabel: string | null;
+  /** Whether the backend source explicitly marks this pub as having a garden. */
+  hasGarden: boolean | null;
   /**
    * Backend verdict on whether this place is actually a pub, classified from
    * Firmy.cz categories (community beer reports override to 'pub' server-side).
@@ -80,6 +82,8 @@ interface BackendResult {
   ratingCount?: number | null;
   /** Human rating label (may be absent on older backends). */
   ratingLabel?: string | null;
+  /** Garden / outdoor seating flag (may be absent on older backends). */
+  hasGarden?: boolean | null;
   /** Pub-vs-not verdict (may be absent on older backends). */
   venueKind?: string | null;
 }
@@ -139,6 +143,7 @@ function toResult(entry: BackendResult | undefined): PubHoursResult {
       rating: null,
       ratingCount: null,
       ratingLabel: null,
+      hasGarden: null,
       venueKind: 'unknown',
     };
   }
@@ -161,6 +166,7 @@ function toResult(entry: BackendResult | undefined): PubHoursResult {
         ? entry.ratingCount
         : null,
     ratingLabel: typeof entry.ratingLabel === 'string' ? entry.ratingLabel : null,
+    hasGarden: typeof entry.hasGarden === 'boolean' ? entry.hasGarden : null,
     venueKind: normalizeVenueKind(entry.venueKind),
   };
 }

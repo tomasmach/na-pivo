@@ -290,12 +290,13 @@ interface FetchOutcome {
  * POST/DELETE a JSON body to an auth endpoint. `bearer`:
  *  - 'current'  → attach the current session token (authenticated calls);
  *  - 'ensure'   → ensure an anonymous account first, attach its token (claim);
+ *  - 'claim'    → attach only an anonymous session token (best-effort merge hint);
  *  - 'none'     → no Authorization header.
  * Returns a network-error sentinel instead of throwing.
  */
 async function authFetch(
   path: string,
-  opts: { method?: string; body?: unknown; bearer?: 'current' | 'ensure' | 'none' },
+  opts: { method?: string; body?: unknown; bearer?: 'current' | 'ensure' | 'claim' | 'none' },
 ): Promise<FetchOutcome | { networkError: true }> {
   const endpoint = getBackendEndpoint(path);
   if (!endpoint) return { networkError: true };
@@ -304,6 +305,9 @@ async function authFetch(
   if (opts.bearer === 'ensure') {
     const session = await ensureAccount();
     token = session?.token ?? null;
+  } else if (opts.bearer === 'claim') {
+    const session = await ensureAccount();
+    token = session && !session.authenticated ? session.token : null;
   } else if (opts.bearer === 'current') {
     token = await getSessionToken();
   }
@@ -389,12 +393,12 @@ export async function registerEmail(params: {
 
 export async function loginEmail(params: { email: string; password: string }): Promise<AuthResult> {
   const res = await authFetch('/v1/auth/login', {
-    bearer: 'none',
+    bearer: 'claim',
     body: { email: params.email, password: params.password },
   });
   if ('networkError' in res) return NETWORK_ERROR;
   if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
-  return applyAuthSuccess(res.data, { clearLocalPrivateData: true });
+  return applyAuthSuccess(res.data);
 }
 
 // ---------------------------------------------------------------------------

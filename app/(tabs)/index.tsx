@@ -15,6 +15,7 @@ import {
   Linking,
   Alert,
   Platform,
+  TextInput,
   useWindowDimensions,
   type LayoutChangeEvent,
 } from 'react-native';
@@ -32,6 +33,7 @@ import type { CommunityBeer } from '@/data/communityClient';
 import { parseOsmOpeningHoursToWeeklyHours } from '@/data/communityHours';
 import type { PubReportReason } from '@/data/pubReportsClient';
 import { updateAccountPreferences } from '@/data/account';
+import { suggestBeerBrands, type BeerBrandSuggestion } from '@/data/beerSuggestionsClient';
 import { usePubStore } from '@/stores/pubStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { shortestRotationTarget } from '@/compass/rotation';
@@ -55,6 +57,8 @@ import {
   PencilIcon,
   StarIcon,
   MapPinIcon,
+  TreePineIcon,
+  XIcon,
 } from '@/components/shared/IconGlyph';
 
 import { Colors } from '@/theme/colors';
@@ -80,6 +84,11 @@ const ARROW_SPRING_CONFIG = {
 // the Android navigation area on shorter devices.
 const PUB_PILL_MIN_HEIGHT = 166;
 const ACTIVE_CHROME_HEIGHT = 430;
+
+interface BeerBrandFilterValue {
+  key: string;
+  label: string;
+}
 
 // ─── Permission screen ────────────────────────────────────────────────────────
 
@@ -273,6 +282,7 @@ function getActiveCompassLayout(
   topInset: number,
   bottomInset: number,
   fontScale: number,
+  extraChromeHeight = 0,
 ): ActiveCompassLayout {
   const usableHeight = height - topInset - bottomInset;
 
@@ -281,7 +291,7 @@ function getActiveCompassLayout(
   // the reserve grows by the same capped factor — without this, large system
   // font sizes (Samsung goes up to ~2.0) push the bottom controls off-screen.
   const effectiveFontScale = clamp(fontScale, 1, FontScaleCap.body);
-  const VERTICAL_CHROME = Math.round(ACTIVE_CHROME_HEIGHT * effectiveFontScale);
+  const VERTICAL_CHROME = Math.round((ACTIVE_CHROME_HEIGHT + extraChromeHeight) * effectiveFontScale);
   const widthBudget = width - 48; // 24pt side padding on each edge
   const heightBudget = usableHeight - VERTICAL_CHROME;
 
@@ -343,12 +353,14 @@ interface RevealedPubPillProps {
   onOpenMaps: () => void;
   onReport: () => void;
   onContribute: () => void;
+  onAddPub: () => void;
   isOpenNow: boolean | null;
   hoursStatus?: HoursStatus;
   nextChange?: string | null;
   beers?: CommunityBeer[];
   rating?: number | null;
   ratingCount?: number | null;
+  hasGarden?: boolean | null;
 }
 
 /** A compact one-liner for the cheapest/first beer, with "a další" when more. */
@@ -378,12 +390,14 @@ function RevealedPubPill({
   onOpenMaps,
   onReport,
   onContribute,
+  onAddPub,
   isOpenNow,
   hoursStatus,
   nextChange,
   beers,
   rating,
   ratingCount,
+  hasGarden,
 }: RevealedPubPillProps) {
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const hasRating = typeof rating === 'number' && Number.isFinite(rating);
@@ -415,6 +429,7 @@ function RevealedPubPill({
   const accessibilityParts = [cs.a11y.pubPillRevealed(pubName)];
   if (statusWord) accessibilityParts.push(cs.a11y.openStatus(statusWord));
   if (ratingValue) accessibilityParts.push(cs.a11y.pubRating(ratingValue, ratingCountText ?? undefined));
+  if (hasGarden === true) accessibilityParts.push(cs.a11y.pubGarden);
   const accessibilityLabel = accessibilityParts.join('. ');
 
   const beerLine = beers && beers.length > 0 ? formatBeerLine(beers, priceCurrency) : null;
@@ -458,6 +473,18 @@ function RevealedPubPill({
               </Text>
             </View>
           )}
+          {hasGarden === true && (
+            <View style={styles.gardenBadge}>
+              <TreePineIcon size={13} color={Colors.success} />
+              <Text
+                style={styles.gardenBadgeText}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {cs.compass.gardenBadge}
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Beers on tap — a compact line for the cheapest/first beer. Tapping it
@@ -494,6 +521,19 @@ function RevealedPubPill({
           <PencilIcon size={14} color={Colors.amber} />
           <Text style={styles.contributeButtonText} maxFontSizeMultiplier={FontScaleCap.body}>
             {cs.compass.contribute}
+          </Text>
+        </Pressable>
+
+        <Pressable
+          onPress={onAddPub}
+          hitSlop={10}
+          style={({ pressed }) => [styles.footerButton, pressed && { opacity: 0.75 }]}
+          accessibilityLabel={cs.a11y.addPubButton}
+          accessibilityRole="button"
+        >
+          <MapPinIcon size={14} color={Colors.amber} />
+          <Text style={styles.contributeButtonText} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.compass.addMissingPub}
           </Text>
         </Pressable>
 
@@ -576,6 +616,113 @@ function ModeToggle({ mode, onNearest, onSurprise }: ModeToggleProps) {
   );
 }
 
+interface BeerBrandFilterProps {
+  value: BeerBrandFilterValue | null;
+  onChange: (value: BeerBrandFilterValue | null) => void;
+}
+
+function BeerBrandFilter({ value, onChange }: BeerBrandFilterProps) {
+  const [query, setQuery] = useState(value?.label ?? '');
+  const [suggestions, setSuggestions] = useState<BeerBrandSuggestion[]>([]);
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (value && query === value.label) return;
+    if (query.trim().length < 2) return;
+
+    const controller = new AbortController();
+    suggestBeerBrands(query, controller.signal, 6)
+      .then((items) => {
+        if (!controller.signal.aborted) setSuggestions(items);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setSuggestions([]);
+      });
+    return () => controller.abort();
+  }, [query, value]);
+
+  const handleSelect = useCallback((suggestion: BeerBrandSuggestion) => {
+    const key = suggestion.brandSlug ?? suggestion.slug;
+    const label = suggestion.brandName ?? suggestion.name;
+    onChange({ key, label });
+    setQuery(label);
+    setSuggestions([]);
+    setFocused(false);
+  }, [onChange]);
+
+  const handleClear = useCallback(() => {
+    onChange(null);
+    setQuery('');
+    setSuggestions([]);
+  }, [onChange]);
+
+  const showSuggestions = focused && suggestions.length > 0;
+
+  return (
+    <View style={styles.beerFilterWrap}>
+      <View style={[styles.beerFilterInputRow, value && styles.beerFilterInputRowActive]}>
+        <BeerIcon size={15} color={value ? Colors.amber : Colors.mutedText} />
+        <TextInput
+          value={query}
+          onChangeText={(text) => {
+            if (value) onChange(null);
+            if (text.trim().length < 2) setSuggestions([]);
+            setQuery(text);
+          }}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setTimeout(() => setFocused(false), 120)}
+          placeholder={cs.compass.beerFilterPlaceholder}
+          placeholderTextColor={Colors.mutedText}
+          style={styles.beerFilterInput}
+          autoCapitalize="words"
+          autoCorrect={false}
+          returnKeyType="search"
+          maxFontSizeMultiplier={FontScaleCap.body}
+          accessibilityLabel={cs.a11y.beerBrandFilterInput}
+        />
+        {value && (
+          <Pressable
+            onPress={handleClear}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={cs.a11y.clearBeerBrandFilter}
+            style={({ pressed }) => [styles.beerFilterClear, pressed && { opacity: 0.7 }]}
+          >
+            <XIcon size={15} color={Colors.foamMuted} />
+          </Pressable>
+        )}
+      </View>
+      {value && (
+        <Text style={styles.beerFilterCaption} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+          {cs.compass.beerFilterActive(value.label)}
+        </Text>
+      )}
+      {showSuggestions && (
+        <View style={styles.beerFilterSuggestions}>
+          {suggestions.map((suggestion) => (
+            <Pressable
+              key={suggestion.slug}
+              onPress={() => handleSelect(suggestion)}
+              style={({ pressed }) => [styles.beerFilterSuggestion, pressed && { opacity: 0.75 }]}
+              accessibilityRole="button"
+              accessibilityLabel={cs.a11y.beerBrandFilterSuggestion(suggestion.name)}
+            >
+              <Text style={styles.beerFilterSuggestionText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                {suggestion.name}
+              </Text>
+              {suggestion.kind === 'product' && suggestion.brandName && (
+                <Text style={styles.beerFilterSuggestionMeta} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {suggestion.brandName}
+                </Text>
+              )}
+            </Pressable>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
 // ─── Distance display ─────────────────────────────────────────────────────────
 
 interface DistanceDisplayProps {
@@ -654,6 +801,7 @@ export default function CompassScreen() {
   const insets = useSafeAreaInsets();
   const { width: screenWidth, height: screenHeight, fontScale } = useWindowDimensions();
   const [sceneSize, setSceneSize] = useState<{ width: number; height: number } | null>(null);
+  const [beerBrandFilter, setBeerBrandFilter] = useState<BeerBrandFilterValue | null>(null);
 
   const {
     arrowRotation,
@@ -676,7 +824,7 @@ export default function CompassScreen() {
     isLoading,
     searchFailed,
     currentPosition,
-  } = useCompass();
+  } = useCompass(beerBrandFilter?.key ?? null);
   const hidePubNames = useSettingsStore((s) => s.hidePubNames);
   const showPubDetails = !hidePubNames || revealed;
   const handleModeChange = useCallback(
@@ -692,6 +840,7 @@ export default function CompassScreen() {
     insets.top,
     Math.max(insets.bottom, 16),
     fontScale,
+    beerBrandFilter ? 48 : 0,
   );
 
   const handleSceneLayout = useCallback((event: LayoutChangeEvent) => {
@@ -835,6 +984,7 @@ export default function CompassScreen() {
     return (
       <View style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <TitleBar showGear onSettings={handleSettings} />
+        <BeerBrandFilter value={beerBrandFilter} onChange={setBeerBrandFilter} />
         <EmptyScreen
           onSettings={handleSettings}
           onRetry={retrySearch}
@@ -858,6 +1008,7 @@ export default function CompassScreen() {
         onSettings={handleSettings}
         onSettingsLongPress={handleDevArrival}
       />
+      <BeerBrandFilter value={beerBrandFilter} onChange={setBeerBrandFilter} />
 
       {/* Calibration hint (optional, subtle) */}
       {isHeadingAccuracyLow(headingAccuracy, Platform.OS) && (
@@ -902,12 +1053,14 @@ export default function CompassScreen() {
             onOpenMaps={handleOpenMaps}
             onReport={handleReport}
             onContribute={handleContribute}
+            onAddPub={handleAddPub}
             isOpenNow={pub.isOpenNow ?? null}
             hoursStatus={pub.hoursStatus}
             nextChange={pub.nextChange}
             beers={pub.beers}
             rating={pub.rating}
             ratingCount={pub.ratingCount}
+            hasGarden={pub.hasGarden}
           />
         ) : (
           <HiddenPubPill onReveal={reveal} />
@@ -999,6 +1152,77 @@ const styles = StyleSheet.create({
   },
 
   // ── Compass area (State C) ──
+  beerFilterWrap: {
+    paddingHorizontal: 24,
+    paddingTop: 4,
+    zIndex: 5,
+  },
+  beerFilterInputRow: {
+    minHeight: 38,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.stout2,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  beerFilterInputRowActive: {
+    borderColor: Colors.amber,
+  },
+  beerFilterInput: {
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: 0,
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 14,
+    color: Colors.foam,
+  },
+  beerFilterClear: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  beerFilterCaption: {
+    marginTop: 5,
+    paddingHorizontal: 4,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 11,
+    color: Colors.mutedText,
+  },
+  beerFilterSuggestions: {
+    position: 'absolute',
+    left: 24,
+    right: 24,
+    top: 46,
+    borderRadius: Radius.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.stout2,
+    overflow: 'hidden',
+    zIndex: 10,
+  },
+  beerFilterSuggestion: {
+    minHeight: 42,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    justifyContent: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  beerFilterSuggestionText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 14,
+    color: Colors.foam,
+  },
+  beerFilterSuggestionMeta: {
+    marginTop: 2,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 11,
+    color: Colors.mutedText,
+  },
   calibrationRow: {
     paddingHorizontal: Spacing.xl,
     paddingBottom: Spacing.xs,
@@ -1179,6 +1403,18 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.foam,
+  },
+  gardenBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 5,
+    minHeight: 18,
+  },
+  gardenBadgeText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 13,
+    color: Colors.foamMuted,
   },
   pubPillFooter: {
     flexDirection: 'row',

@@ -13,6 +13,8 @@ interface SettingsState {
   hapticEnabled: boolean;
   soundEnabled: boolean;
   hideClosedPubs: boolean;
+  preferRatedPubs: boolean;
+  preferGardenPubs: boolean;
   hidePubNames: boolean;
   marketingEmailsEnabled: boolean;
   surpriseSeed: number;
@@ -22,6 +24,8 @@ interface SettingsState {
   setHapticEnabled: (v: boolean) => void;
   setSoundEnabled: (v: boolean) => void;
   setHideClosedPubs: (v: boolean) => void;
+  setPreferRatedPubs: (v: boolean) => void;
+  setPreferGardenPubs: (v: boolean) => void;
   setHidePubNames: (v: boolean) => void;
   setMarketingEmailsEnabled: (v: boolean) => void;
   bumpSurpriseSeed: () => void;
@@ -36,6 +40,8 @@ export const useSettingsStore = create<SettingsState>()(
       hapticEnabled: true,
       soundEnabled: false,
       hideClosedPubs: true,
+      preferRatedPubs: false,
+      preferGardenPubs: false,
       hidePubNames: false,
       marketingEmailsEnabled: false,
       surpriseSeed: 1,
@@ -46,6 +52,8 @@ export const useSettingsStore = create<SettingsState>()(
       setHapticEnabled: (v) => set({ hapticEnabled: v }),
       setSoundEnabled: (v) => set({ soundEnabled: v }),
       setHideClosedPubs: (v) => set({ hideClosedPubs: v }),
+      setPreferRatedPubs: (v) => set({ preferRatedPubs: v }),
+      setPreferGardenPubs: (v) => set({ preferGardenPubs: v }),
       setHidePubNames: (v) => set({ hidePubNames: v }),
       setMarketingEmailsEnabled: (v) => set({ marketingEmailsEnabled: v }),
       bumpSurpriseSeed: () =>
@@ -61,6 +69,8 @@ export const useSettingsStore = create<SettingsState>()(
         hapticEnabled: state.hapticEnabled,
         soundEnabled: state.soundEnabled,
         hideClosedPubs: state.hideClosedPubs,
+        preferRatedPubs: state.preferRatedPubs,
+        preferGardenPubs: state.preferGardenPubs,
         hidePubNames: state.hidePubNames,
         marketingEmailsEnabled: state.marketingEmailsEnabled,
         surpriseSeed: state.surpriseSeed,

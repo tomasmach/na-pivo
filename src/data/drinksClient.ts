@@ -86,7 +86,9 @@ async function classifyDrinkHttpFailure(
   return 'retry';
 }
 
-function trackDrinkSynced(operation: 'submit_drink' | 'delete_drink'): void {
+type DrinkSyncOperation = 'submit_drink' | 'delete_drink' | 'update_drink';
+
+function trackDrinkSynced(operation: DrinkSyncOperation): void {
   void trackClientEvent({
     event: 'drink_synced',
     context: { operation },
@@ -94,7 +96,7 @@ function trackDrinkSynced(operation: 'submit_drink' | 'delete_drink'): void {
 }
 
 function trackDrinkSyncFailed(
-  operation: 'submit_drink' | 'delete_drink',
+  operation: DrinkSyncOperation,
   details: { status?: number; reason: string; result?: SubmitDrinkResult; retryable?: boolean },
 ): void {
   void trackClientEvent({
@@ -283,6 +285,85 @@ export async function deleteDrink(
     return result;
   } catch {
     trackDrinkSyncFailed('delete_drink', {
+      reason: 'network_or_timeout',
+      result: 'retry',
+      retryable: true,
+    });
+    return 'retry';
+  } finally {
+    clearTimeout(timeoutId);
+    if (signal) signal.removeEventListener('abort', onExternalAbort);
+  }
+}
+
+/**
+ * PATCH one previously-logged drink's private beer name by client_id. This is a
+ * narrow typo-fix path: it does not rewrite pub, price, volume, timestamp or the
+ * public community menu contribution.
+ */
+export async function updateDrinkName(
+  clientId: string,
+  beerName: string,
+  signal?: AbortSignal,
+): Promise<SubmitDrinkResult> {
+  if (signal?.aborted) return 'retry';
+
+  const endpoint = getBackendEndpoint(`/v1/drinks/${clientId}`);
+  if (!endpoint) {
+    trackDrinkSyncFailed('update_drink', {
+      reason: 'backend_unconfigured',
+      result: 'retry',
+      retryable: true,
+    });
+    return 'retry';
+  }
+
+  const session = await ensureAccount(signal);
+  if (!session || signal?.aborted) {
+    trackDrinkSyncFailed('update_drink', {
+      reason: signal?.aborted ? 'aborted' : 'account_unavailable',
+      result: 'retry',
+      retryable: true,
+    });
+    return 'retry';
+  }
+
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
+  const onExternalAbort = () => timeoutController.abort();
+  if (signal) {
+    if (signal.aborted) {
+      timeoutController.abort();
+    } else {
+      signal.addEventListener('abort', onExternalAbort);
+    }
+  }
+
+  try {
+    const resp = await fetch(endpoint, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.token}`,
+      },
+      body: JSON.stringify({ beer_name: beerName }),
+      signal: timeoutController.signal,
+    });
+
+    if (resp.ok) {
+      trackDrinkSynced('update_drink');
+      return 'ok';
+    }
+    const result = await classifyDrinkHttpFailure(resp.status, session);
+    trackDrinkSyncFailed('update_drink', {
+      status: resp.status,
+      reason: 'http_error',
+      result,
+      retryable: result === 'retry',
+    });
+    return result;
+  } catch {
+    trackDrinkSyncFailed('update_drink', {
       reason: 'network_or_timeout',
       result: 'retry',
       retryable: true,

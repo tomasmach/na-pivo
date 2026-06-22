@@ -167,6 +167,23 @@ describe('searchPubsNear — backend proxy only', () => {
     expect(pubs[0].name).toBe('Hospoda U Testu');
   });
 
+  it('passes a beer brand filter to the backend pubs/near endpoint', async () => {
+    setBackend('https://api.example.com');
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ items: [PUB_ITEM] }),
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await searchPubsNear(50.08, 14.42, 25, undefined, {
+      beerBrandKey: 'pilsner-urquell',
+    });
+
+    const calledUrl = new URL(String((fetchMock.mock.calls[0] as unknown[])[0]));
+    expect(calledUrl.searchParams.get('beer_brand')).toBe('pilsner-urquell');
+  });
+
   it('feeds backend items through the existing filter pipeline (drops non-pubs)', async () => {
     setBackend('https://api.example.com');
     global.fetch = jest.fn(async () => ({

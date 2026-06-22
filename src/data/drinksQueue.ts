@@ -158,6 +158,24 @@ export function removeQueuedDrink(clientId: string): Promise<boolean> {
   });
 }
 
+/**
+ * Update a drink that is still queued for its initial POST. This avoids sending
+ * an old name followed by a PATCH when the typo is fixed before delivery.
+ */
+export function updateQueuedDrinkBeerName(clientId: string, beerName: string): Promise<boolean> {
+  return runMutation(async () => {
+    const queue = await loadQueue();
+    let changed = false;
+    const next = queue.map((entry) => {
+      if (entry.client_id !== clientId) return entry;
+      changed = true;
+      return { ...entry, beer: { ...entry.beer, name: beerName } };
+    });
+    if (changed) await saveQueue(next);
+    return changed;
+  });
+}
+
 /** Drop all pending private drink uploads without attempting delivery. */
 export function clearDrinksQueue(): Promise<void> {
   return runMutation(async () => {

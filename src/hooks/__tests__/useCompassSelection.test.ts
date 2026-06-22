@@ -158,6 +158,7 @@ function hours(overrides: Partial<PubHoursResult> = {}): PubHoursResult {
     rating: null,
     ratingCount: null,
     ratingLabel: null,
+    hasGarden: null,
     venueKind: 'unknown',
     ...overrides,
   };
@@ -213,6 +214,8 @@ describe('useCompass — hours-aware selection (Skrýt zavřené hospody)', () =
       hapticEnabled: true,
       soundEnabled: false,
       hideClosedPubs: true,
+      preferRatedPubs: false,
+      preferGardenPubs: false,
       surpriseSeed: 17,
     });
     usePubStore.setState({
@@ -693,5 +696,92 @@ describe('useCompass — venueKind not_pub hiding', () => {
       (c) => c[0]?.excludeIds ?? []
     );
     expect(allExcludes).not.toContain(PLACE.id);
+  });
+});
+
+describe('useCompass — rating and garden preferences', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (useDevicePosition as jest.Mock).mockReturnValue({
+      position: { lat: 50.08, lng: 14.42, accuracyMeters: 8 },
+    });
+    useSettingsStore.setState({
+      mode: 'nearest',
+      maxDistanceKm: null,
+      hapticEnabled: true,
+      soundEnabled: false,
+      hideClosedPubs: true,
+      preferRatedPubs: false,
+      preferGardenPubs: false,
+      surpriseSeed: 17,
+    });
+    usePubStore.setState({
+      revealedPub: null,
+      reportedPubIds: [],
+      reportedCacheKeys: [],
+      isDataLoaded: false,
+    });
+    (findRandomPubInRadius as jest.Mock).mockReturnValue(OPEN);
+  });
+
+  afterEach(() => {
+    for (const cleanup of hookCleanups.splice(0)) cleanup();
+  });
+
+  it('skips a known low-rated pub when the 4+ preference is enabled', async () => {
+    useSettingsStore.setState({ preferRatedPubs: true });
+    const LOW: Pub = { id: 'mapy:low', name: 'Slabší šenk', lat: 50.08, lng: 14.42 };
+    wireNearestWalk([LOW, OPEN]);
+    wireHours({
+      [LOW.id]: hours({ rating: 3.7 }),
+      [OPEN.id]: hours({ rating: 4.3 }),
+    });
+
+    const hook = renderCompassHook();
+    await flush();
+    await flush();
+
+    expect(hook.result.pub?.id).toBe(OPEN.id);
+    const lastCall = (findNearestPub as jest.Mock).mock.calls.at(-1)?.[0];
+    expect(lastCall?.excludeIds).toContain(LOW.id);
+  });
+
+  it('keeps unknown ratings eligible under the 4+ preference', async () => {
+    useSettingsStore.setState({ preferRatedPubs: true });
+    const UNKNOWN_RATING: Pub = {
+      id: 'mapy:unknown-rating',
+      name: 'Bez hvězd',
+      lat: 50.08,
+      lng: 14.42,
+    };
+    wireNearestWalk([UNKNOWN_RATING, OPEN]);
+    wireHours({
+      [UNKNOWN_RATING.id]: hours({ rating: null }),
+      [OPEN.id]: hours({ rating: 4.5 }),
+    });
+
+    const hook = renderCompassHook();
+    await flush();
+    await flush();
+
+    expect(hook.result.pub?.id).toBe(UNKNOWN_RATING.id);
+  });
+
+  it('skips a known no-garden pub when the garden preference is enabled', async () => {
+    useSettingsStore.setState({ preferGardenPubs: true });
+    const INSIDE: Pub = { id: 'mapy:inside', name: 'Jen uvnitř', lat: 50.08, lng: 14.42 };
+    wireNearestWalk([INSIDE, OPEN]);
+    wireHours({
+      [INSIDE.id]: hours({ hasGarden: false }),
+      [OPEN.id]: hours({ hasGarden: true }),
+    });
+
+    const hook = renderCompassHook();
+    await flush();
+    await flush();
+
+    expect(hook.result.pub?.id).toBe(OPEN.id);
+    const lastCall = (findNearestPub as jest.Mock).mock.calls.at(-1)?.[0];
+    expect(lastCall?.excludeIds).toContain(INSIDE.id);
   });
 });
