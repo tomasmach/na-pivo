@@ -44,18 +44,30 @@ describe('suggestBeerBrands', () => {
       ok: true,
       json: async () => ({
         suggestions: [
-          { slug: 'pilsner-urquell', name: 'Pilsner Urquell' },
+          {
+            slug: 'pilsner-urquell',
+            name: 'Pilsner Urquell',
+            kind: 'product',
+            brand_slug: 'pilsner-urquell',
+            brand_name: 'Pilsner Urquell',
+          },
           { slug: '', name: 'Broken' },
           { slug: 'pilsner-urquell', name: 'Duplicate' },
-          { slug: 'gambrinus', name: 'Gambrinus' },
+          { slug: 'gambrinus-10', name: 'Gambrinus 10°', kind: 'product' },
         ],
       }),
     }));
     global.fetch = fetchSpy as unknown as typeof fetch;
 
     await expect(suggestBeerBrands('plz', undefined, 2)).resolves.toEqual([
-      { slug: 'pilsner-urquell', name: 'Pilsner Urquell' },
-      { slug: 'gambrinus', name: 'Gambrinus' },
+      {
+        slug: 'pilsner-urquell',
+        name: 'Pilsner Urquell',
+        kind: 'product',
+        brandSlug: 'pilsner-urquell',
+        brandName: 'Pilsner Urquell',
+      },
+      { slug: 'gambrinus-10', name: 'Gambrinus 10°', kind: 'product' },
     ]);
 
     const [url, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
@@ -71,7 +83,10 @@ describe('suggestBeerBrands', () => {
     })) as unknown as typeof fetch;
 
     await expect(suggestBeerBrands('kozel')).resolves.toEqual([
-      { slug: 'velkopopovicky-kozel', name: 'Velkopopovický Kozel' },
+      { slug: 'velkopopovicky-kozel-10', name: 'Velkopopovický Kozel 10°' },
+      { slug: 'velkopopovicky-kozel-11', name: 'Velkopopovický Kozel 11°' },
+      { slug: 'velkopopovicky-kozel-12', name: 'Velkopopovický Kozel 12°' },
+      { slug: 'velkopopovicky-kozel-cerny', name: 'Velkopopovický Kozel Černý' },
     ]);
   });
 

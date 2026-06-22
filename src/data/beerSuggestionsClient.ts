@@ -3,11 +3,17 @@ import { getBackendEndpoint } from './backendConfig';
 export interface BeerBrandSuggestion {
   slug: string;
   name: string;
+  kind?: 'product' | 'brand';
+  brandSlug?: string;
+  brandName?: string;
 }
 
 interface WireSuggestion {
   slug?: unknown;
   name?: unknown;
+  kind?: unknown;
+  brand_slug?: unknown;
+  brand_name?: unknown;
 }
 
 interface WireResponse {
@@ -23,17 +29,23 @@ const DEFAULT_LIMIT = 8;
 
 export const LOCAL_BEER_BRAND_SUGGESTIONS: LocalBeerBrandSuggestion[] = [
   { slug: 'pilsner-urquell', name: 'Pilsner Urquell', aliases: ['Plzeň', 'Plzen', 'Prazdroj'] },
-  { slug: 'gambrinus', name: 'Gambrinus', aliases: ['Gambáč', 'Gambac'] },
-  { slug: 'velkopopovicky-kozel', name: 'Velkopopovický Kozel', aliases: ['Kozel'] },
-  { slug: 'radegast', name: 'Radegast' },
-  { slug: 'staropramen', name: 'Staropramen', aliases: ['Staráč', 'Starac'] },
-  { slug: 'budweiser-budvar', name: 'Budweiser Budvar', aliases: ['Budvar'] },
-  { slug: 'krusovice', name: 'Krušovice', aliases: ['Krusovice'] },
-  { slug: 'starobrno', name: 'Starobrno' },
-  { slug: 'zlaty-bazant', name: 'Zlatý Bažant', aliases: ['Zlaty Bazant', 'Bažant', 'Bazant'] },
-  { slug: 'saris', name: 'Šariš', aliases: ['Saris'] },
-  { slug: 'topvar', name: 'Topvar' },
-  { slug: 'corgon', name: 'Corgoň', aliases: ['Corgon'] },
+  { slug: 'gambrinus-10', name: 'Gambrinus 10°', aliases: ['Gambrinus 10', 'Gambáč 10', 'Gambac 10'] },
+  { slug: 'gambrinus-11', name: 'Gambrinus 11°', aliases: ['Gambrinus 11', 'Gambáč 11', 'Gambac 11'] },
+  { slug: 'gambrinus-12', name: 'Gambrinus 12°', aliases: ['Gambrinus 12'] },
+  { slug: 'velkopopovicky-kozel-10', name: 'Velkopopovický Kozel 10°', aliases: ['Kozel 10'] },
+  { slug: 'velkopopovicky-kozel-11', name: 'Velkopopovický Kozel 11°', aliases: ['Kozel 11'] },
+  { slug: 'velkopopovicky-kozel-12', name: 'Velkopopovický Kozel 12°', aliases: ['Kozel 12'] },
+  { slug: 'velkopopovicky-kozel-cerny', name: 'Velkopopovický Kozel Černý', aliases: ['Kozel černý', 'Kozel cerny'] },
+  { slug: 'radegast-razna-10', name: 'Radegast Rázná 10°', aliases: ['Radegast 10'] },
+  { slug: 'radegast-ryze-horka-12', name: 'Radegast Ryzí hořká 12°', aliases: ['Radegast 12', 'Radegast Ryze horka'] },
+  { slug: 'staropramen-10', name: 'Staropramen 10°', aliases: ['Staráč 10', 'Starac 10'] },
+  { slug: 'staropramen-11', name: 'Staropramen 11°', aliases: ['Staráč 11', 'Starac 11'] },
+  { slug: 'budweiser-budvar-original', name: 'Budweiser Budvar Original', aliases: ['Budvar', 'Budvar Original'] },
+  { slug: 'krusovice-10', name: 'Krušovice 10°', aliases: ['Krusovice 10'] },
+  { slug: 'krusovice-11', name: 'Krušovice 11°', aliases: ['Krusovice 11'] },
+  { slug: 'starobrno-medium', name: 'Starobrno Medium', aliases: ['Starobrno 11'] },
+  { slug: 'zlaty-bazant-10', name: 'Zlatý Bažant 10°', aliases: ['Zlaty Bazant 10', 'Bažant 10', 'Bazant 10'] },
+  { slug: 'saris-10', name: 'Šariš 10°', aliases: ['Saris 10'] },
 ];
 
 function normalizeText(value: string): string {
@@ -72,7 +84,16 @@ function normalizeSuggestions(raw: unknown, limit: number): BeerBrandSuggestion[
     const name = item.name.trim();
     if (!slug || !name || seen.has(slug)) continue;
     seen.add(slug);
-    out.push({ slug, name });
+    const kind = item.kind === 'product' || item.kind === 'brand' ? item.kind : undefined;
+    const brandSlug = typeof item.brand_slug === 'string' ? item.brand_slug.trim() : undefined;
+    const brandName = typeof item.brand_name === 'string' ? item.brand_name.trim() : undefined;
+    out.push({
+      slug,
+      name,
+      ...(kind ? { kind } : {}),
+      ...(brandSlug ? { brandSlug } : {}),
+      ...(brandName ? { brandName } : {}),
+    });
     if (out.length >= limit) break;
   }
   return out;
