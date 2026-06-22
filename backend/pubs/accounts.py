@@ -53,10 +53,21 @@ from PIL.Image import DecompressionBombError
 from pubs import emailer, oauth
 from pubs.models import (
     Account,
+    AccountUsageStats,
     AuthIdentity,
     AuthToken,
+    ClientEvent,
+    ContentReport,
+    DrinkLog,
     EmailCredential,
+    FeedbackReport,
     OneTimeToken,
+    PubCommunityData,
+    PubContributionLog,
+    PubRating,
+    PubReport,
+    PubVisit,
+    UserAddedPub,
     generate_account_token,
     hash_account_token,
 )
@@ -527,6 +538,137 @@ def apple_refresh_from_code(authorization_code: str) -> str:
         return ""
 
 
+def _claims_email_is_verified(provider: str, claims: dict) -> bool:
+    if provider == AuthIdentity.Provider.GOOGLE:
+        return claims.get("email_verified") is True
+    if provider == AuthIdentity.Provider.APPLE:
+        value = claims.get("email_verified", True)
+        return value is True or str(value).lower() == "true"
+    return False
+
+
+def _delete_or_move_account_rows(
+    model,
+    *,
+    source: Account,
+    target: Account,
+    unique_fields: tuple[str, ...],
+) -> None:
+    for row in model.objects.filter(account=source).order_by("pk"):
+        conflict_filter = {field: getattr(row, field) for field in unique_fields}
+        if model.objects.filter(account=target, **conflict_filter).exists():
+            row.delete()
+            continue
+        row.account = target
+        row.save(update_fields=["account"])
+
+
+def _merge_usage_stats(source: Account, target: Account) -> None:
+    source_stats = AccountUsageStats.objects.filter(account=source).first()
+    if source_stats is None:
+        return
+
+    target_stats = AccountUsageStats.objects.filter(account=target).first()
+    if target_stats is None:
+        source_stats.account = target
+        source_stats.save(update_fields=["account"])
+        return
+
+    target_stats.app_open_count += source_stats.app_open_count
+    target_stats.app_foreground_count += source_stats.app_foreground_count
+    target_stats.walked_distance_m += source_stats.walked_distance_m
+    target_stats.client_warning_count += source_stats.client_warning_count
+    target_stats.client_error_count += source_stats.client_error_count
+    target_stats.api_failure_count += source_stats.api_failure_count
+
+    if source_stats.last_app_open_at and (
+        target_stats.last_app_open_at is None
+        or source_stats.last_app_open_at > target_stats.last_app_open_at
+    ):
+        target_stats.last_app_open_at = source_stats.last_app_open_at
+
+    if source_stats.last_event_at and (
+        target_stats.last_event_at is None
+        or source_stats.last_event_at > target_stats.last_event_at
+    ):
+        target_stats.last_event_at = source_stats.last_event_at
+        target_stats.last_app_version = source_stats.last_app_version
+        target_stats.last_platform = source_stats.last_platform
+        target_stats.last_os_version = source_stats.last_os_version
+
+    target_stats.save()
+    source_stats.delete()
+
+
+def _merge_anonymous_account(source: Account | None, target: Account) -> None:
+    """Move best-effort anonymous data onto an existing signed-in account.
+
+    This is only used when a social sign-in resolves to an existing social
+    account by verified cross-provider e-mail while the request also carries a
+    fresh anonymous bearer. Unique-key conflicts keep the target account's
+    existing row and drop the anonymous duplicate.
+    """
+    if source is None or source.pk == target.pk or source.is_claimed:
+        return
+
+    source.auth_tokens.all().delete()
+    source.one_time_tokens.all().delete()
+
+    _delete_or_move_account_rows(
+        DrinkLog, source=source, target=target, unique_fields=("client_id",)
+    )
+    _delete_or_move_account_rows(
+        PubRating, source=source, target=target, unique_fields=("cache_key",)
+    )
+    _delete_or_move_account_rows(
+        PubVisit, source=source, target=target, unique_fields=("client_id",)
+    )
+    _delete_or_move_account_rows(
+        UserAddedPub, source=source, target=target, unique_fields=("client_id",)
+    )
+    _delete_or_move_account_rows(
+        FeedbackReport, source=source, target=target, unique_fields=("client_id",)
+    )
+    _delete_or_move_account_rows(
+        PubContributionLog,
+        source=source,
+        target=target,
+        unique_fields=("client_id", "kind"),
+    )
+    _delete_or_move_account_rows(
+        PubReport,
+        source=source,
+        target=target,
+        unique_fields=("cache_key", "reason"),
+    )
+
+    PubCommunityData.objects.filter(account=source).update(account=target)
+    ClientEvent.objects.filter(account=source).update(account=target)
+    ContentReport.objects.filter(reporter=source).update(reporter=target)
+    ContentReport.objects.filter(target_account=source).update(target_account=target)
+    _merge_usage_stats(source, target)
+
+    source.delete()
+
+
+def _social_account_for_verified_email(
+    provider: str,
+    *,
+    email: str,
+    claims: dict,
+) -> Account | None:
+    if not email or not _claims_email_is_verified(provider, claims):
+        return None
+    identity = (
+        AuthIdentity.objects.select_related("account")
+        .filter(email=email)
+        .exclude(provider=provider)
+        .order_by("created_at")
+        .first()
+    )
+    return identity.account if identity is not None else None
+
+
 def resolve_social(
     current_account: Account | None,
     *,
@@ -599,6 +741,23 @@ def resolve_social(
                 http_status=409,
             )
 
+    email_match_account = _social_account_for_verified_email(
+        provider,
+        email=email,
+        claims=claims,
+    )
+    if email_match_account is not None and (
+        claim_target is None or email_match_account.pk != claim_target.pk
+    ):
+        if AuthIdentity.objects.filter(account=email_match_account, provider=provider).exists():
+            raise AccountError(
+                "Tenhle poskytovatel už je propojený s jiným účtem.",
+                code="provider_already_linked",
+                http_status=409,
+            )
+        _reactivate_if_pending(email_match_account)
+        claim_target = email_match_account
+
     if provider == AuthIdentity.Provider.APPLE and not apple_refresh_token:
         raise AccountError(
             "Přihlášení přes Apple teď potřebuje nový autorizační kód.",
@@ -622,6 +781,8 @@ def resolve_social(
                 apple_refresh_token=apple_refresh_token,
             )
             _maybe_set_display_name(account, full_name or claims.get("name", ""))
+            if account.pk == getattr(email_match_account, "pk", None):
+                _merge_anonymous_account(current_account, account)
     except IntegrityError:
         # Concurrent first sign-in for the same (provider, subject) — re-resolve.
         existing = (
