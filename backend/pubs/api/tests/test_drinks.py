@@ -384,6 +384,8 @@ def test_log_menu_full_logs_drink_but_does_not_merge(client):
     assert DrinkLog.objects.count() == 1
     row = PubCommunityData.objects.get()
     assert row.beers == full_menu
+    assert PubBeerBrand.objects.get(cache_key=_KEY).brand_key == "pilsner-urquell"
+    assert PubBeerProduct.objects.get(cache_key=_KEY).product_key == "pilsner-urquell"
 
 
 @pytest.mark.django_db

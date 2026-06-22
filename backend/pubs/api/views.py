@@ -39,7 +39,12 @@ from rest_framework.views import APIView
 
 from pubs import accounts, emailer
 from pubs.accounts import AccountError
-from pubs.beer_catalog import match_beer_brand, suggest_beer_brands, upsert_pub_beer_brand
+from pubs.beer_catalog import (
+    match_beer_brand,
+    suggest_beer_brands,
+    sync_pub_beer_indexes_for_menu,
+    upsert_pub_beer_brand,
+)
 from pubs.enrichment import (
     MapyAllQueriesFailedError,
     MapyDailyCapExceededError,
@@ -379,14 +384,13 @@ class PubCommunityView(APIView):
                         "payload": data["beers"],
                     },
                 )
-                for beer in data["beers"]:
-                    upsert_pub_beer_brand(
-                        cache_key=cache_key,
-                        data=data,
-                        beer=beer,
-                        source=PubBeerBrand.Source.COMMUNITY,
-                        account=request.user,
-                    )
+                sync_pub_beer_indexes_for_menu(
+                    cache_key=cache_key,
+                    data=data,
+                    beers=data["beers"],
+                    source=PubBeerBrand.Source.COMMUNITY,
+                    account=request.user,
+                )
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "pub-community: unexpected error saving contribution for cache key %s: %s",
@@ -694,13 +698,13 @@ class DrinksView(APIView):
             # Refresh the most-recent-contributor pointer; never touch hours.
             row.account = account
             row.save(update_fields=["beers", "beers_updated_at", "account", "updated_at"])
-            upsert_pub_beer_brand(
-                cache_key=cache_key,
-                data=data,
-                beer=beer,
-                source=PubBeerBrand.Source.DRINK,
-                account=account,
-            )
+        upsert_pub_beer_brand(
+            cache_key=cache_key,
+            data=data,
+            beer=beer,
+            source=PubBeerBrand.Source.DRINK,
+            account=account,
+        )
         return changed
 
 

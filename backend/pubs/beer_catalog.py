@@ -6,6 +6,8 @@ import re
 import unicodedata
 from dataclasses import dataclass
 
+from django.utils import timezone
+
 from pubs.models import BeerBrand, BeerProduct, PubBeerBrand, PubBeerProduct
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
@@ -141,13 +143,14 @@ def upsert_pub_beer_brand(
     beer: dict,
     source: str,
     account,
-) -> None:
+) -> BeerMatch | None:
     """Update the queryable per-pub brand index for a normalized beer payload."""
     match = match_beer(str(beer.get("name") or ""))
     if match is None:
-        return
+        return None
 
     brand = match.brand
+    now = timezone.now()
 
     PubBeerBrand.objects.update_or_create(
         cache_key=cache_key,
@@ -165,11 +168,12 @@ def upsert_pub_beer_brand(
             "source": source,
             "active": True,
             "account": account,
+            "last_seen_at": now,
         },
     )
 
     if match.product is None:
-        return
+        return match
 
     product = match.product
     PubBeerProduct.objects.update_or_create(
@@ -191,8 +195,48 @@ def upsert_pub_beer_brand(
             "source": source,
             "active": True,
             "account": account,
+            "last_seen_at": now,
         },
     )
+    return match
+
+
+def sync_pub_beer_indexes_for_menu(
+    *,
+    cache_key: str,
+    data: dict,
+    beers: list[dict],
+    source: str,
+    account,
+) -> None:
+    """Make the active per-pub beer indexes match a full community menu write."""
+    active_brand_keys: set[str] = set()
+    active_product_keys: set[str] = set()
+
+    for beer in beers:
+        match = upsert_pub_beer_brand(
+            cache_key=cache_key,
+            data=data,
+            beer=beer,
+            source=source,
+            account=account,
+        )
+        if match is None:
+            continue
+        active_brand_keys.add(match.brand.key)
+        if match.product is not None:
+            active_product_keys.add(match.product.key)
+
+    now = timezone.now()
+    stale_brands = PubBeerBrand.objects.filter(cache_key=cache_key, active=True)
+    if active_brand_keys:
+        stale_brands = stale_brands.exclude(brand_key__in=active_brand_keys)
+    stale_brands.update(active=False, last_seen_at=now)
+
+    stale_products = PubBeerProduct.objects.filter(cache_key=cache_key, active=True)
+    if active_product_keys:
+        stale_products = stale_products.exclude(product_key__in=active_product_keys)
+    stale_products.update(active=False, last_seen_at=now)
 
 
 def suggest_beers(query: str, *, limit: int = 12) -> list[BeerSuggestion]:

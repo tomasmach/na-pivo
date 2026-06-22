@@ -371,6 +371,93 @@ def test_submit_beers_normalizes_product_and_indexes_brand_and_product(client):
     assert product_link.last_price_czk == 49
 
 
+@pytest.mark.django_db
+def test_submit_beers_replaces_active_brand_and_product_indexes(client):
+    token = _register(client)
+    first = client.post(
+        "/v1/pub-community",
+        data=_payload(
+            hours=None,
+            beers=[{"name": "Kozel 11", "price_czk": 49, "volume_ml": 500}],
+            client_id="aaaaaaaa-0000-0000-0000-000000000001",
+        ),
+        format="json",
+        **_auth(token),
+    )
+    assert first.status_code == status.HTTP_200_OK
+
+    second = client.post(
+        "/v1/pub-community",
+        data=_payload(
+            hours=None,
+            beers=[{"name": "Pilsner Urquell", "price_czk": 62, "volume_ml": 500}],
+            client_id="aaaaaaaa-0000-0000-0000-000000000002",
+        ),
+        format="json",
+        **_auth(token),
+    )
+    assert second.status_code == status.HTTP_200_OK
+
+    active_brand_keys = set(
+        PubBeerBrand.objects.filter(cache_key=_KEY, active=True).values_list(
+            "brand_key", flat=True
+        )
+    )
+    inactive_brand_keys = set(
+        PubBeerBrand.objects.filter(cache_key=_KEY, active=False).values_list(
+            "brand_key", flat=True
+        )
+    )
+    active_product_keys = set(
+        PubBeerProduct.objects.filter(cache_key=_KEY, active=True).values_list(
+            "product_key", flat=True
+        )
+    )
+    inactive_product_keys = set(
+        PubBeerProduct.objects.filter(cache_key=_KEY, active=False).values_list(
+            "product_key", flat=True
+        )
+    )
+
+    assert active_brand_keys == {"pilsner-urquell"}
+    assert inactive_brand_keys == {"velkopopovicky-kozel"}
+    assert active_product_keys == {"pilsner-urquell"}
+    assert inactive_product_keys == {"velkopopovicky-kozel-11"}
+
+
+@pytest.mark.django_db
+def test_submit_empty_beers_deactivates_existing_beer_indexes(client):
+    token = _register(client)
+    first = client.post(
+        "/v1/pub-community",
+        data=_payload(
+            hours=None,
+            beers=[{"name": "Kozel 11", "price_czk": 49, "volume_ml": 500}],
+            client_id="aaaaaaaa-0000-0000-0000-000000000001",
+        ),
+        format="json",
+        **_auth(token),
+    )
+    assert first.status_code == status.HTTP_200_OK
+
+    second = client.post(
+        "/v1/pub-community",
+        data=_payload(
+            hours=None,
+            beers=[],
+            client_id="aaaaaaaa-0000-0000-0000-000000000002",
+        ),
+        format="json",
+        **_auth(token),
+    )
+    assert second.status_code == status.HTTP_200_OK
+
+    assert PubBeerBrand.objects.filter(cache_key=_KEY, active=True).count() == 0
+    assert PubBeerProduct.objects.filter(cache_key=_KEY, active=True).count() == 0
+    assert PubBeerBrand.objects.filter(cache_key=_KEY, active=False).count() == 1
+    assert PubBeerProduct.objects.filter(cache_key=_KEY, active=False).count() == 1
+
+
 # ---------------------------------------------------------------------------
 # Read-path precedence (POST /v1/pub-hours)
 # ---------------------------------------------------------------------------
