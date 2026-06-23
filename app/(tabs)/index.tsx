@@ -932,8 +932,8 @@ export default function CompassScreen() {
     return (
       <View style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <TitleBar
-          showGear
-          onSettings={handleSettings}
+          align="left"
+          showGear={false}
           filterSlot={
             <BeerFilterButton
               value={beerBrandFilter}
@@ -964,12 +964,13 @@ export default function CompassScreen() {
       onLayout={handleSceneLayout}
       style={[styles.root, { paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, 16) }]}
     >
-      {/* Header */}
+      {/* Header — settings now lives in the Profile tab; the gear is gone so the
+          filter pill sits right-aligned, mirroring the logo on the left. Dev
+          arrival shortcut moved to the logo. */}
       <TitleBar
         align="left"
-        showGear
-        onSettings={handleSettings}
-        onSettingsLongPress={handleDevArrival}
+        showGear={false}
+        onLogoLongPress={handleDevArrival}
         filterSlot={
           <BeerFilterButton
             value={beerBrandFilter}

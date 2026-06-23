@@ -25,7 +25,7 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
-import { useRouter, type Href } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
@@ -36,7 +36,6 @@ import {
   ChevronLeftIcon,
   CheckIcon,
   MailIcon,
-  PencilIcon,
   LinkIcon,
   KeyRoundIcon,
 } from '@/components/shared/IconGlyph';
@@ -269,20 +268,12 @@ export default function AccountScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Identity card ── */}
+        {/* ── Identity card (display only — profile editing lives on the Profile
+            tab so there is a single edit entry point). ── */}
         <View style={styles.identityCard}>
-          <Pressable
-            onPress={() => router.push('/profile/edit' as Href)}
-            style={({ pressed }) => [styles.avatarWrap, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel={cs.a11y.profileEdit}
-            hitSlop={6}
-          >
+          <View style={styles.avatarWrap}>
             <Avatar uri={avatarUrl} nickname={nickname} displayName={profile.displayName} size={72} />
-            <View style={styles.avatarEditBadge}>
-              <PencilIcon size={13} color={Colors.stout} />
-            </View>
-          </Pressable>
+          </View>
           <Text style={styles.identityName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
             {nickname ? `@${nickname}` : displayTitle}
           </Text>
@@ -634,19 +625,6 @@ const styles = StyleSheet.create({
   },
   avatarWrap: {
     marginBottom: Spacing.xs,
-  },
-  avatarEditBadge: {
-    position: 'absolute',
-    right: -2,
-    bottom: -2,
-    width: 26,
-    height: 26,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.amber,
-    borderWidth: 2,
-    borderColor: Colors.stout2,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   identityName: {
     fontFamily: Fonts.display.extrabold,

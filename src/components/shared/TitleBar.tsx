@@ -12,7 +12,9 @@ interface TitleBarProps {
   onSettings?: () => void;
   onSettingsLongPress?: () => void;
   showGear?: boolean;
-  /** Optional control rendered in the header, just left of the gear. */
+  /** Hidden long-press on the logo (used as a dev shortcut). */
+  onLogoLongPress?: () => void;
+  /** Optional control rendered centered in the header. */
   filterSlot?: ReactNode;
 }
 
@@ -38,21 +40,33 @@ export const TitleBar = memo(function TitleBar({
   onSettings,
   onSettingsLongPress,
   showGear = true,
+  onLogoLongPress,
   filterSlot,
 }: TitleBarProps) {
   const isLeftAligned = align === 'left';
 
   return (
     <View style={[styles.container, isLeftAligned && styles.containerLeft]}>
-      <View style={styles.logoRow}>
+      <Pressable
+        style={styles.logoRow}
+        onLongPress={onLogoLongPress}
+        // Long-press is a hidden dev shortcut; the logo is otherwise inert, so
+        // disable the press ripple/feedback to keep it feeling non-interactive.
+        android_disableSound
+      >
         <BeerIcon size={20} color={Colors.amber} />
         <Text style={styles.titleText} maxFontSizeMultiplier={FontScaleCap.heading}>
           {cs.compass.headerTitle}
         </Text>
-      </View>
+      </Pressable>
 
+      {/* Centered in the header. box-none so the empty side areas pass touches
+          through to the logo behind it (only the control itself is tappable). */}
       {filterSlot ? (
-        <View style={[styles.filterSlot, isLeftAligned && styles.filterSlotLeft]}>
+        <View
+          style={[styles.filterSlot, isLeftAligned && styles.filterSlotLeft]}
+          pointerEvents="box-none"
+        >
           {filterSlot}
         </View>
       ) : null}
@@ -110,10 +124,13 @@ const styles = StyleSheet.create({
   gearTouchableLeft: {
     top: 2,
   },
-  // Sits between the logo and the gear, right-aligned against the gear.
+  // Right-aligned to mirror the logo on the left — both sit 24px from their
+  // edge for a symmetric header. left:0 keeps the box full-width (with box-none
+  // the empty left area still passes touches to the logo).
   filterSlot: {
     position: 'absolute',
-    right: 20 + HitArea.min,
+    left: 0,
+    right: 24,
     top: 8,
     bottom: 8,
     alignItems: 'flex-end',

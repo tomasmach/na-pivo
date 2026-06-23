@@ -34,7 +34,7 @@ import {
 } from 'react-native-gesture-handler';
 
 import { Colors } from '@/theme/colors';
-import { Fonts } from '@/theme/fonts';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
@@ -57,10 +57,17 @@ import {
   MessageSquareIcon,
   MapPinIcon,
   StarIcon,
-  TreePineIcon,
+  CheckIcon,
 } from '@/components/shared/IconGlyph';
 import { InstagramIcon, LinkedinIcon } from '@/components/shared/BrandIcon';
 import { MapyLogo } from '@/components/shared/MapyLogo';
+import { Avatar } from '@/profile/Avatar';
+import {
+  useAccountStore,
+  selectIsSignedIn,
+  selectNickname,
+  selectAvatarUrl,
+} from '@/stores/accountStore';
 import type { PriceCurrency } from '@/utils/currency';
 
 // ---------------------------------------------------------------------------
@@ -381,6 +388,76 @@ function SocialButton({ icon, label, url }: SocialButtonProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Section header — uppercase amber micro-label grouping the cards below it.
+// ---------------------------------------------------------------------------
+
+function SectionHeader({ label }: { label: string }) {
+  return <Text style={styles.sectionHeader}>{label}</Text>;
+}
+
+// ---------------------------------------------------------------------------
+// Account hub card — the single entry into account management. Drills into
+// /account when signed in, into /auth when signed out. Editing the profile
+// itself stays on the Profile tab so there is exactly one edit entry point.
+// ---------------------------------------------------------------------------
+
+function AccountCard() {
+  const router = useRouter();
+  const isSignedIn = useAccountStore(selectIsSignedIn);
+  const profile = useAccountStore((s) => s.profile);
+  const nickname = useAccountStore(selectNickname);
+  const avatarUrl = useAccountStore(selectAvatarUrl);
+
+  const displayName = profile?.displayName?.trim() || '';
+  const title = isSignedIn
+    ? nickname
+      ? `@${nickname}`
+      : displayName || cs.settings.accountCard.signedOutTitle
+    : cs.settings.accountCard.signedOutTitle;
+  const verified = isSignedIn && !!profile?.email && profile.emailVerified;
+
+  return (
+    <Pressable
+      onPress={() => router.push((isSignedIn ? '/account' : '/auth') as Href)}
+      style={({ pressed }) => [styles.accountCard, pressed && styles.rowPressed]}
+      accessibilityRole="button"
+      accessibilityLabel={isSignedIn ? cs.a11y.profileManageAccount : cs.a11y.profileSignUp}
+    >
+      <Avatar
+        uri={isSignedIn ? avatarUrl : undefined}
+        nickname={nickname}
+        displayName={displayName}
+        size={52}
+      />
+      <View style={styles.accountText}>
+        <Text style={styles.accountTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
+          {title}
+        </Text>
+        {isSignedIn ? (
+          <View style={styles.accountSubRow}>
+            {verified && <CheckIcon size={13} color={Colors.success} />}
+            <Text
+              style={[styles.accountSubtitle, verified && styles.accountSubtitleVerified]}
+              numberOfLines={1}
+              maxFontSizeMultiplier={FontScaleCap.body}
+            >
+              {verified
+                ? cs.settings.accountCard.verified
+                : profile?.email || cs.profile.manageAccount}
+            </Text>
+          </View>
+        ) : (
+          <Text style={styles.accountSubtitle} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.settings.accountCard.signedOutSubtitle}
+          </Text>
+        )}
+      </View>
+      <ChevronRightIcon size={18} color={Colors.mutedText} />
+    </Pressable>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main screen
 // ---------------------------------------------------------------------------
 
@@ -394,7 +471,6 @@ export default function SettingsScreen() {
   const soundEnabled = useSettingsStore((s) => s.soundEnabled);
   const hideClosedPubs = useSettingsStore((s) => s.hideClosedPubs);
   const preferRatedPubs = useSettingsStore((s) => s.preferRatedPubs);
-  const preferGardenPubs = useSettingsStore((s) => s.preferGardenPubs);
   const hidePubNames = useSettingsStore((s) => s.hidePubNames);
   const marketingEmailsEnabled = useSettingsStore((s) => s.marketingEmailsEnabled);
   const setMaxDistanceKm = useSettingsStore((s) => s.setMaxDistanceKm);
@@ -403,7 +479,6 @@ export default function SettingsScreen() {
   const setSoundEnabled = useSettingsStore((s) => s.setSoundEnabled);
   const setHideClosedPubs = useSettingsStore((s) => s.setHideClosedPubs);
   const setPreferRatedPubs = useSettingsStore((s) => s.setPreferRatedPubs);
-  const setPreferGardenPubs = useSettingsStore((s) => s.setPreferGardenPubs);
   const setHidePubNames = useSettingsStore((s) => s.setHidePubNames);
   const setMarketingEmailsEnabled = useSettingsStore((s) => s.setMarketingEmailsEnabled);
 
@@ -440,10 +515,6 @@ export default function SettingsScreen() {
   const togglePreferRated = useCallback(() => {
     setPreferRatedPubs(!preferRatedPubs);
   }, [preferRatedPubs, setPreferRatedPubs]);
-
-  const togglePreferGarden = useCallback(() => {
-    setPreferGardenPubs(!preferGardenPubs);
-  }, [preferGardenPubs, setPreferGardenPubs]);
 
   const toggleHidePubNames = useCallback(() => {
     const next = !hidePubNames;
@@ -508,7 +579,12 @@ export default function SettingsScreen() {
         showsVerticalScrollIndicator={false}
       >
 
-        {/* ── Distance card ── */}
+        {/* ── Account hub ── */}
+        <SectionHeader label={cs.settings.accountCard.header} />
+        <AccountCard />
+
+        {/* ── Search (compass) ── */}
+        <SectionHeader label={cs.settings.sections.search} />
         <View style={styles.card}>
           {/* Section header */}
           <View style={styles.cardSectionHeader}>
@@ -531,21 +607,38 @@ export default function SettingsScreen() {
           <Text style={styles.distanceHelper}>{cs.settings.distance.helper}</Text>
         </View>
 
-        {/* ── Contribution CTAs (surfaced high so they're visible without scrolling) ── */}
-        <ActionCta
-          icon={<MapPinIcon size={20} color={Colors.amber} />}
-          title={cs.settings.addPub}
-          subtitle={cs.settings.addPubCtaSubtitle}
-          onPress={() => router.push('/add-pub' as Href)}
-        />
-        <ActionCta
-          icon={<MessageSquareIcon size={20} color={Colors.amber} />}
-          title={cs.settings.feedback}
-          subtitle={cs.settings.feedbackCtaSubtitle}
-          onPress={() => router.push('/report')}
-        />
+        {/* Search filters — what shows up on the compass. */}
+        <View style={[styles.card, styles.cardNoPaddingV]}>
+          <PrefRow
+            icon={<BeerOffIcon size={18} color={Colors.foamMuted} />}
+            title={cs.settings.hideClosed.title}
+            subtitle={cs.settings.hideClosed.subtitle}
+            value={hideClosedPubs}
+            onToggle={toggleHideClosed}
+            toggleLabel={`${cs.settings.hideClosed.title}: ${hideClosedPubs ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+          />
+          <PrefRow
+            icon={<StarIcon size={18} color={Colors.foamMuted} />}
+            title={cs.settings.preferRated.title}
+            subtitle={cs.settings.preferRated.subtitle}
+            value={preferRatedPubs}
+            onToggle={togglePreferRated}
+            toggleLabel={`${cs.settings.preferRated.title}: ${preferRatedPubs ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+            borderTop
+          />
+          <PrefRow
+            icon={<EyeOffIcon size={18} color={Colors.foamMuted} />}
+            title={cs.settings.hidePubNames.title}
+            subtitle={cs.settings.hidePubNames.subtitle}
+            value={hidePubNames}
+            onToggle={toggleHidePubNames}
+            toggleLabel={`${cs.settings.hidePubNames.title}: ${hidePubNames ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+            borderTop
+          />
+        </View>
 
-        {/* ── Preferences card ── */}
+        {/* ── App preferences ── */}
+        <SectionHeader label={cs.settings.sections.app} />
         <View style={[styles.card, styles.cardNoPaddingV]}>
           <PrefRow
             icon={<BellRingIcon size={18} color={Colors.foamMuted} />}
@@ -564,42 +657,6 @@ export default function SettingsScreen() {
             toggleLabel={`${cs.settings.sound.title}: ${soundEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
             borderTop
           />
-          <PrefRow
-            icon={<BeerOffIcon size={18} color={Colors.foamMuted} />}
-            title={cs.settings.hideClosed.title}
-            subtitle={cs.settings.hideClosed.subtitle}
-            value={hideClosedPubs}
-            onToggle={toggleHideClosed}
-            toggleLabel={`${cs.settings.hideClosed.title}: ${hideClosedPubs ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
-            borderTop
-          />
-          <PrefRow
-            icon={<StarIcon size={18} color={Colors.foamMuted} />}
-            title={cs.settings.preferRated.title}
-            subtitle={cs.settings.preferRated.subtitle}
-            value={preferRatedPubs}
-            onToggle={togglePreferRated}
-            toggleLabel={`${cs.settings.preferRated.title}: ${preferRatedPubs ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
-            borderTop
-          />
-          <PrefRow
-            icon={<TreePineIcon size={18} color={Colors.foamMuted} />}
-            title={cs.settings.preferGarden.title}
-            subtitle={cs.settings.preferGarden.subtitle}
-            value={preferGardenPubs}
-            onToggle={togglePreferGarden}
-            toggleLabel={`${cs.settings.preferGarden.title}: ${preferGardenPubs ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
-            borderTop
-          />
-          <PrefRow
-            icon={<EyeOffIcon size={18} color={Colors.foamMuted} />}
-            title={cs.settings.hidePubNames.title}
-            subtitle={cs.settings.hidePubNames.subtitle}
-            value={hidePubNames}
-            onToggle={toggleHidePubNames}
-            toggleLabel={`${cs.settings.hidePubNames.title}: ${hidePubNames ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
-            borderTop
-          />
           <CurrencyRow
             value={priceCurrency}
             onSelect={handleCurrencySelect}
@@ -616,7 +673,23 @@ export default function SettingsScreen() {
           />
         </View>
 
+        {/* ── Contribution ── */}
+        <SectionHeader label={cs.settings.sections.contribute} />
+        <ActionCta
+          icon={<MapPinIcon size={20} color={Colors.amber} />}
+          title={cs.settings.addPub}
+          subtitle={cs.settings.addPubCtaSubtitle}
+          onPress={() => router.push('/add-pub' as Href)}
+        />
+        <ActionCta
+          icon={<MessageSquareIcon size={20} color={Colors.amber} />}
+          title={cs.settings.feedback}
+          subtitle={cs.settings.feedbackCtaSubtitle}
+          onPress={() => router.push('/report')}
+        />
+
         {/* ── About card ── */}
+        <SectionHeader label={cs.settings.sections.about} />
         <View style={[styles.card, styles.cardNoPaddingV]}>
           <AboutRow
             icon={<InfoIcon size={18} color={Colors.foamMuted} />}
@@ -734,6 +807,52 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: Spacing.lg,
     gap: Spacing.sm + 2,
+  },
+
+  // ── Section header (group label above cards) ──
+  sectionHeader: {
+    fontFamily: Fonts.ui.bold,
+    fontSize: 11,
+    letterSpacing: 1.5,
+    color: Colors.amber,
+    marginTop: Spacing.sm,
+    marginLeft: Spacing.xs,
+  },
+
+  // ── Account hub card ──
+  accountCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: Colors.stout2,
+    borderRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    minHeight: 76,
+  },
+  accountText: {
+    flex: 1,
+    gap: 3,
+  },
+  accountTitle: {
+    fontFamily: Fonts.display.bold,
+    fontSize: 17,
+    color: Colors.foam,
+  },
+  accountSubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  accountSubtitle: {
+    fontFamily: Fonts.ui.regular,
+    fontSize: 13,
+    color: Colors.mutedText,
+  },
+  accountSubtitleVerified: {
+    color: Colors.success,
   },
 
   // ── Cards ──

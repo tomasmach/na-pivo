@@ -29,7 +29,6 @@ import {
   EyeIcon,
   EyeOffIcon,
   ChevronRightIcon,
-  UserIcon,
   SettingsIcon,
   BeerIcon,
   MapPinIcon,
@@ -232,35 +231,6 @@ function RecentRow({
   );
 }
 
-function NavRow({
-  icon,
-  title,
-  onPress,
-  accessibilityLabel,
-  borderTop,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  onPress: () => void;
-  accessibilityLabel: string;
-  borderTop?: boolean;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [styles.navRow, borderTop && styles.rowBorderTop, pressed && styles.pressed]}
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-    >
-      <View style={styles.navIconWell}>{icon}</View>
-      <Text style={styles.navTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-        {title}
-      </Text>
-      <ChevronRightIcon size={16} color={Colors.mutedText} />
-    </Pressable>
-  );
-}
-
 // ─── Screen ──────────────────────────────────────────────────────────────────
 
 export default function ProfileScreen() {
@@ -324,11 +294,21 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.root}>
-      {/* Header — a tab screen, so no back button. */}
+      {/* Header — a tab screen, so no back button. The gear is the single entry
+          into the unified settings hub (account management lives inside it). */}
       <View style={[styles.header, { paddingTop: insets.top }]}>
         <Text style={styles.headerTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
           {cs.profile.title}
         </Text>
+        <Pressable
+          onPress={() => router.push('/settings')}
+          style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel={cs.a11y.profileSettings}
+          hitSlop={4}
+        >
+          <SettingsIcon size={22} color={Colors.foam} />
+        </Pressable>
       </View>
 
       <ScrollView
@@ -492,23 +472,6 @@ export default function ProfileScreen() {
             </View>
           </>
         )}
-
-        {/* ── Account & settings ── */}
-        <View style={styles.listCard}>
-          <NavRow
-            icon={<UserIcon size={18} color={Colors.foamMuted} />}
-            title={isSignedIn ? cs.profile.manageAccount : cs.profile.signedOutCta}
-            onPress={() => router.push((isSignedIn ? '/account' : '/auth') as Href)}
-            accessibilityLabel={isSignedIn ? cs.a11y.profileManageAccount : cs.a11y.profileSignUp}
-          />
-          <NavRow
-            icon={<SettingsIcon size={18} color={Colors.foamMuted} />}
-            title={cs.profile.settingsRow}
-            onPress={() => router.push('/settings')}
-            accessibilityLabel={cs.a11y.profileSettings}
-            borderTop
-          />
-        </View>
       </ScrollView>
     </View>
   );
@@ -522,6 +485,9 @@ const styles = StyleSheet.create({
 
   // ── Header ──
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingBottom: 12,
     paddingHorizontal: 20,
   },
@@ -529,6 +495,16 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.display.extrabold,
     fontSize: 28,
     color: Colors.foam,
+  },
+  settingsButton: {
+    width: 44,
+    height: 44,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout2,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // ── Scroll ──
@@ -833,30 +809,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.amber,
-  },
-
-  // ── Nav rows ──
-  navRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    minHeight: 56,
-  },
-  navIconWell: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: Colors.stout3,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  navTitle: {
-    flex: 1,
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 15,
-    color: Colors.foam,
   },
 
   pressed: {

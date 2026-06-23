@@ -278,8 +278,10 @@ describe('CompassScreen', () => {
       TestRenderer.create(React.createElement(CompassScreen));
     });
 
+    // Settings now lives in the Profile tab, so the compass header drops the
+    // gear and only carries the left-aligned title (plus the centered filter).
     expect(TitleBar).toHaveBeenCalledWith(
-      expect.objectContaining({ align: 'left', showGear: true }),
+      expect.objectContaining({ align: 'left', showGear: false }),
       undefined,
     );
   });

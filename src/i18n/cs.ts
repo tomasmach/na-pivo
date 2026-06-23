@@ -100,6 +100,21 @@ export const cs = {
 
   settings: {
     title: 'Nastavení',
+    // Section group labels — one clear meaning per group.
+    sections: {
+      search: 'HLEDÁNÍ',
+      app: 'APLIKACE',
+      contribute: 'PŘISPĚJ',
+      about: 'O APLIKACI',
+    },
+    // Account hub card at the top of settings (drills into /account when signed
+    // in, into /auth when signed out).
+    accountCard: {
+      header: 'ÚČET',
+      verified: 'E-mail ověřen',
+      signedOutTitle: 'Přihlásit se',
+      signedOutSubtitle: 'Sync piv, hodnocení a odznaků na všech zařízeních',
+    },
     distance: {
       header: 'MAXIMÁLNÍ VZDÁLENOST',
       helper: 'Hledáme hospody jen v této vzdálenosti od tebe.',
