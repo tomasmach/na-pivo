@@ -228,6 +228,17 @@ def test_register_without_bearer_creates_fresh_account(client, sent_emails):
 
 
 @pytest.mark.django_db
+def test_register_ignores_invalid_optional_bearer(client, sent_emails):
+    resp = _register(client, "stale-bearer@x.cz", token="stale-token")
+
+    assert resp.status_code == status.HTTP_201_CREATED, resp.content
+    body = resp.json()
+    assert body["created"] is True
+    assert body["token"]
+    assert EmailCredential.objects.filter(email="stale-bearer@x.cz").exists()
+
+
+@pytest.mark.django_db
 def test_register_duplicate_email_returns_409_email_taken(client, sent_emails):
     _register(client, "dup@x.cz")
     resp = _register(APIClient(), "dup@x.cz")
@@ -423,6 +434,22 @@ def test_google_new_identity_with_anon_bearer_claims_it(client, fake_oauth):
     assert body["created"] is False  # claimed, not created
     assert body["id"] == anon_id
     assert Account.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_google_signin_ignores_invalid_optional_bearer(client, fake_oauth):
+    resp = client.post(
+        "/v1/auth/google",
+        data={"id_token": "google:G-STALE:stale@x.cz"},
+        format="json",
+        **_auth("stale-token"),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    body = resp.json()
+    assert body["created"] is True
+    assert body["providers"] == ["google"]
+    assert body["token"]
 
 
 @pytest.mark.django_db

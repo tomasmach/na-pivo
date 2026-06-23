@@ -114,7 +114,7 @@ class _AuthView(APIView):
 class RegisterView(_AuthView):
     # Optional auth: a Bearer token identifies the anonymous account to CLAIM so
     # its already-synced data follows the new credential.
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes: list = []
     permission_classes = [AllowAny]
     throttle_scope = "auth"
 
@@ -123,7 +123,7 @@ class RegisterView(_AuthView):
         ser.is_valid(raise_exception=True)
 
         def run() -> Response:
-            account = _current_account(request)
+            account = _optional_bearer_account(request)
             if account is None:
                 account = Account.objects.create(device_id=f"reg-{uuid.uuid4()}")
             account, token = accounts.register_email(
@@ -167,7 +167,7 @@ class LoginView(_AuthView):
 # Social sign-in / claim
 # ---------------------------------------------------------------------------
 class GoogleAuthView(_AuthView):
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes: list = []
     permission_classes = [AllowAny]
     throttle_scope = "auth"
 
@@ -180,7 +180,7 @@ class GoogleAuthView(_AuthView):
                 AuthIdentity.Provider.GOOGLE, ser.validated_data["id_token"]
             )
             account, token, created = accounts.resolve_social(
-                _current_account(request),
+                _optional_bearer_account(request),
                 provider=AuthIdentity.Provider.GOOGLE,
                 claims=claims,
                 # Forward Google's asserted name so display_name is captured (the
@@ -196,7 +196,7 @@ class GoogleAuthView(_AuthView):
 
 
 class AppleAuthView(_AuthView):
-    authentication_classes = [AccountTokenAuthentication]
+    authentication_classes: list = []
     permission_classes = [AllowAny]
     throttle_scope = "auth"
 
@@ -211,7 +211,7 @@ class AppleAuthView(_AuthView):
             )
             refresh = accounts.apple_refresh_from_code(data.get("authorization_code", ""))
             account, token, created = accounts.resolve_social(
-                _current_account(request),
+                _optional_bearer_account(request),
                 provider=AuthIdentity.Provider.APPLE,
                 claims=claims,
                 full_name=data.get("full_name", ""),
