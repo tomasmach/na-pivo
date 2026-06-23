@@ -216,6 +216,76 @@ def test_beer_brand_filter_can_serve_known_pub_without_mapy_cache(client, settin
 
 
 @pytest.mark.django_db
+def test_beer_brand_filter_does_not_call_mapy_when_no_local_signals(client):
+    BeerBrand.objects.get_or_create(
+        key="pilsner-urquell",
+        defaults={"name": "Pilsner Urquell"},
+    )
+    factory, _ = _mock_source(MapySuggestResult(items=[_ITEM]))
+
+    with patch("pubs.api.views.MapySuggestSource", factory):
+        resp = client.get(
+            "/v1/pubs/near",
+            data={
+                "lat": _LAT,
+                "lng": _LNG,
+                "radius_km": 25,
+                "beer_brand": "pilsner-urquell",
+            },
+        )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["items"] == []
+    factory.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_beer_brand_filter_keeps_nearest_pub_over_recent_far_rows(client):
+    brand, _ = BeerBrand.objects.get_or_create(
+        key="pilsner-urquell",
+        defaults={"name": "Pilsner Urquell"},
+    )
+    now = dj_tz.now()
+    for i in range(200):
+        lat = _LAT + 0.01 + i * 0.0005
+        PubBeerBrand.objects.create(
+            cache_key=geohash8(lat, _LNG),
+            name=f"Vzdálená hospoda {i}",
+            lat=lat,
+            lng=_LNG,
+            brand=brand,
+            brand_key=brand.key,
+            brand_name=brand.name,
+            source=PubBeerBrand.Source.DRINK,
+            last_seen_at=now,
+        )
+    PubBeerBrand.objects.create(
+        cache_key=geohash8(_LAT + 0.0001, _LNG),
+        name="Nejbližší starší hospoda",
+        lat=_LAT + 0.0001,
+        lng=_LNG,
+        brand=brand,
+        brand_key=brand.key,
+        brand_name=brand.name,
+        source=PubBeerBrand.Source.DRINK,
+        last_seen_at=now - timedelta(days=30),
+    )
+
+    resp = client.get(
+        "/v1/pubs/near",
+        data={
+            "lat": _LAT,
+            "lng": _LNG,
+            "radius_km": 25,
+            "beer_brand": "pilsner-urquell",
+        },
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["items"][0]["name"] == "Nejbližší starší hospoda"
+
+
+@pytest.mark.django_db
 def test_beer_brand_filter_rejects_unknown_brand(client):
     resp = client.get(
         "/v1/pubs/near",

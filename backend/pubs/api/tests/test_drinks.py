@@ -8,13 +8,14 @@ from __future__ import annotations
 
 import pytest
 from django.core.cache import cache
+from django.utils import timezone as dj_timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework.throttling import ScopedRateThrottle
 
 from pubs.api.views import DrinksView, _merge_drink_into_menu
 from pubs.enrichment import geohash8
-from pubs.models import Account, DrinkLog, PubBeerBrand, PubBeerProduct, PubCommunityData
+from pubs.models import Account, BeerBrand, DrinkLog, PubBeerBrand, PubBeerProduct, PubCommunityData
 
 _DEVICE_ID = "3f8b1c2e-4d5a-6789-0abc-def012345678"
 _CLIENT_ID = "9a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d"
@@ -687,6 +688,8 @@ def test_delete_does_not_change_community_menu(client):
 def test_patch_updates_logged_drink_beer_name(client):
     token = _register(client)
     client.post("/v1/drinks", data=_payload(), format="json", **_auth(token))
+    assert PubBeerBrand.objects.get(cache_key=_KEY, brand_key="pilsner-urquell").active is True
+    assert PubBeerProduct.objects.get(cache_key=_KEY, product_key="pilsner-urquell").active is True
 
     resp = client.patch(
         f"/v1/drinks/{_CLIENT_ID}",
@@ -701,6 +704,64 @@ def test_patch_updates_logged_drink_beer_name(client):
     assert drink.beer_name == "Velkopopovický Kozel 11°"
     assert drink.beer_brand_name == "Velkopopovický Kozel"
     assert drink.beer_product_name == "Velkopopovický Kozel 11°"
+    # PATCH is private and does not rewrite the community menu, so the original
+    # public Pilsner signal remains. The corrected private brand is added too.
+    assert PubBeerBrand.objects.get(cache_key=_KEY, brand_key="pilsner-urquell").active is True
+    assert PubBeerProduct.objects.get(cache_key=_KEY, product_key="pilsner-urquell").active is True
+    assert PubBeerBrand.objects.get(cache_key=_KEY, brand_key="velkopopovicky-kozel").active is True
+    assert (
+        PubBeerProduct.objects.get(cache_key=_KEY, product_key="velkopopovicky-kozel-11").active
+        is True
+    )
+
+
+@pytest.mark.django_db
+def test_patch_deactivates_old_private_brand_signal_without_community_menu(client):
+    token = _register(client)
+    account = Account.objects.get(device_id=_DEVICE_ID)
+    old_brand = BeerBrand.objects.get(key="pilsner-urquell")
+    DrinkLog.objects.create(
+        account=account,
+        client_id=_CLIENT_ID,
+        cache_key=_KEY,
+        name=_NAME,
+        lat=_LAT,
+        lng=_LNG,
+        city="Praha",
+        external_id="mapy:50.08755,14.42141",
+        beer_name="Pilsner Urquell",
+        beer_brand=old_brand,
+        beer_brand_key=old_brand.key,
+        beer_brand_name=old_brand.name,
+        price_czk=62,
+        volume_ml=500,
+        drank_at=dj_timezone.now(),
+    )
+    PubBeerBrand.objects.create(
+        cache_key=_KEY,
+        name=_NAME,
+        lat=_LAT,
+        lng=_LNG,
+        city="Praha",
+        external_id="mapy:50.08755,14.42141",
+        brand=old_brand,
+        brand_key=old_brand.key,
+        brand_name=old_brand.name,
+        source=PubBeerBrand.Source.DRINK,
+        active=True,
+        account=account,
+    )
+
+    resp = client.patch(
+        f"/v1/drinks/{_CLIENT_ID}",
+        data={"beer_name": "Velkopopovický Kozel 11°"},
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert PubBeerBrand.objects.get(cache_key=_KEY, brand_key="pilsner-urquell").active is False
+    assert PubBeerBrand.objects.get(cache_key=_KEY, brand_key="velkopopovicky-kozel").active is True
 
 
 @pytest.mark.django_db

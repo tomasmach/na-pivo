@@ -27,7 +27,7 @@ from datetime import timedelta
 import requests
 from django.conf import settings
 from django.db import IntegrityError, transaction
-from django.db.models import F
+from django.db.models import ExpressionWrapper, F, FloatField, Value
 from django.utils import timezone as dj_timezone
 from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed
@@ -66,6 +66,7 @@ from pubs.models import (
     EmailCredential,
     FeedbackReport,
     PubBeerBrand,
+    PubBeerProduct,
     PubCommunityData,
     PubContributionLog,
     PubRating,
@@ -609,21 +610,47 @@ class DrinksView(APIView):
         brand_match = match_beer_brand(beer_name)
 
         try:
-            updated_count = DrinkLog.objects.filter(
-                account=request.user, client_id=client_id
-            ).update(
-                beer_name=beer_name,
-                beer_brand=brand_match.brand if brand_match else None,
-                beer_brand_key=brand_match.brand.key if brand_match else "",
-                beer_brand_name=brand_match.brand.name if brand_match else "",
-                beer_product=brand_match.product if brand_match else None,
-                beer_product_key=(
+            with transaction.atomic():
+                drink = (
+                    DrinkLog.objects.select_for_update()
+                    .filter(account=request.user, client_id=client_id)
+                    .first()
+                )
+                if drink is None:
+                    return Response({"updated": False}, status=status.HTTP_200_OK)
+
+                old_brand_key = drink.beer_brand_key
+                old_product_key = drink.beer_product_key
+
+                drink.beer_name = beer_name
+                drink.beer_brand = brand_match.brand if brand_match else None
+                drink.beer_brand_key = brand_match.brand.key if brand_match else ""
+                drink.beer_brand_name = brand_match.brand.name if brand_match else ""
+                drink.beer_product = brand_match.product if brand_match else None
+                drink.beer_product_key = (
                     brand_match.product.key if brand_match and brand_match.product else ""
-                ),
-                beer_product_name=(
+                )
+                drink.beer_product_name = (
                     brand_match.product.name if brand_match and brand_match.product else ""
-                ),
-            )
+                )
+                drink.save(
+                    update_fields=[
+                        "beer_name",
+                        "beer_brand",
+                        "beer_brand_key",
+                        "beer_brand_name",
+                        "beer_product",
+                        "beer_product_key",
+                        "beer_product_name",
+                    ]
+                )
+
+                self._refresh_drink_brand_indexes_after_patch(
+                    drink=drink,
+                    old_brand_key=old_brand_key,
+                    old_product_key=old_product_key,
+                    account=request.user,
+                )
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "drinks: unexpected error updating drink %r: %s",
@@ -636,7 +663,7 @@ class DrinksView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-        return Response({"updated": updated_count > 0}, status=status.HTTP_200_OK)
+        return Response({"updated": True}, status=status.HTTP_200_OK)
 
     def delete(self, request: Request, client_id) -> Response:
         # Idempotent delete of the per-user drink. The account filter means a
@@ -752,6 +779,84 @@ class DrinksView(APIView):
             account=account,
         )
         return changed
+
+    @staticmethod
+    def _community_has_brand_signal(cache_key: str, brand_key: str) -> bool:
+        row = PubCommunityData.objects.filter(cache_key=cache_key).first()
+        if row is None:
+            return False
+        for beer in row.beers or []:
+            match = match_beer_brand(str(beer.get("name") or ""))
+            if match is not None and match.brand.key == brand_key:
+                return True
+        return False
+
+    @staticmethod
+    def _community_has_product_signal(cache_key: str, product_key: str) -> bool:
+        row = PubCommunityData.objects.filter(cache_key=cache_key).first()
+        if row is None:
+            return False
+        for beer in row.beers or []:
+            match = match_beer_brand(str(beer.get("name") or ""))
+            if match is not None and match.product is not None and match.product.key == product_key:
+                return True
+        return False
+
+    @staticmethod
+    def _refresh_drink_brand_indexes_after_patch(
+        *,
+        drink: DrinkLog,
+        old_brand_key: str,
+        old_product_key: str,
+        account: Account,
+    ) -> None:
+        data = {
+            "name": drink.name,
+            "lat": drink.lat,
+            "lng": drink.lng,
+            "city": drink.city,
+            "external_id": drink.external_id,
+        }
+        beer = {
+            "name": drink.beer_name,
+            "price_czk": drink.price_czk,
+            "volume_ml": drink.volume_ml,
+        }
+        upsert_pub_beer_brand(
+            cache_key=drink.cache_key,
+            data=data,
+            beer=beer,
+            source=PubBeerBrand.Source.DRINK,
+            account=account,
+        )
+
+        if old_brand_key and old_brand_key != drink.beer_brand_key:
+            has_other_drink = DrinkLog.objects.filter(
+                cache_key=drink.cache_key,
+                beer_brand_key=old_brand_key,
+            ).exists()
+            if not has_other_drink and not DrinksView._community_has_brand_signal(
+                drink.cache_key, old_brand_key
+            ):
+                PubBeerBrand.objects.filter(
+                    cache_key=drink.cache_key,
+                    brand_key=old_brand_key,
+                    active=True,
+                ).update(active=False, last_seen_at=dj_timezone.now())
+
+        if old_product_key and old_product_key != drink.beer_product_key:
+            has_other_product = DrinkLog.objects.filter(
+                cache_key=drink.cache_key,
+                beer_product_key=old_product_key,
+            ).exists()
+            if not has_other_product and not DrinksView._community_has_product_signal(
+                drink.cache_key, old_product_key
+            ):
+                PubBeerProduct.objects.filter(
+                    cache_key=drink.cache_key,
+                    product_key=old_product_key,
+                    active=True,
+                ).update(active=False, last_seen_at=dj_timezone.now())
 
 
 class FeedbackView(APIView):
@@ -1395,7 +1500,14 @@ def _nearby_pub_beer_brand_items(
     """Known pubs serving a brand, based on community menus and drink logs."""
 
     lat_delta = radius_km / 111.0
-    lng_delta = radius_km / (111.0 * max(math.cos(math.radians(lat)), 0.01))
+    lng_scale = max(math.cos(math.radians(lat)), 0.01)
+    lng_delta = radius_km / (111.0 * lng_scale)
+    lat_distance = F("lat") - Value(lat)
+    lng_distance = (F("lng") - Value(lng)) * Value(lng_scale)
+    distance_score = ExpressionWrapper(
+        lat_distance * lat_distance + lng_distance * lng_distance,
+        output_field=FloatField(),
+    )
 
     rows = (
         PubBeerBrand.objects.filter(
@@ -1406,7 +1518,8 @@ def _nearby_pub_beer_brand_items(
             lng__gte=lng - lng_delta,
             lng__lte=lng + lng_delta,
         )
-        .order_by("-last_seen_at")[:_BEER_BRAND_SCAN_LIMIT]
+        .annotate(distance_score=distance_score)
+        .order_by("distance_score", "-last_seen_at")[:_BEER_BRAND_SCAN_LIMIT]
     )
 
     within = []
@@ -1511,6 +1624,15 @@ class PubsNearView(APIView):
                 radius_km=radius_km,
             )
             user_added_items = _filter_items_by_cache_key(user_added_items, beer_brand_cache_keys)
+            if not beer_brand_cache_keys:
+                return Response(
+                    {
+                        "items": [],
+                        "cached": True,
+                        "fetched_at": dj_timezone.now().isoformat(),
+                    },
+                    status=status.HTTP_200_OK,
+                )
 
         def apply_beer_brand_filter(items: list[dict]) -> list[dict]:
             if not beer_brand_key:
