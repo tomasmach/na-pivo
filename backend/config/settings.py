@@ -256,6 +256,32 @@ NICKNAME_CHECK_THROTTLE_RATE: str = os.environ.get("NICKNAME_CHECK_THROTTLE_RATE
 # /v1/account/me/avatar). Each upload re-encodes an image, so keep it modest.
 AVATAR_THROTTLE_RATE: str = os.environ.get("AVATAR_THROTTLE_RATE", "10/min")
 
+# --- Pub amenities ("Zmapuj hospodu") ---
+# Per-IP rate limit for the authenticated amenity-vote sync endpoint
+# (PUT/GET/DELETE /v1/pub-amenities/votes). A sync may upsert several votes in a
+# burst when a fresh install pushes its local mapping; matches pub_ratings.
+# Format: DRF throttle rate string.
+PUB_AMENITIES_THROTTLE_RATE: str = os.environ.get("PUB_AMENITIES_THROTTLE_RATE", "120/min")
+# Per-IP rate limit for the public taxonomy endpoint (GET /v1/pub-amenities/kinds).
+AMENITY_KINDS_THROTTLE_RATE: str = os.environ.get("AMENITY_KINDS_THROTTLE_RATE", "120/min")
+# Per-IP rate limit for the public aggregate read (GET /v1/pub-amenities). This
+# is local-DB-only — DEDICATED scope, NOT pubs_near, which protects metered
+# Mapy credits. Format: DRF throttle rate string.
+AMENITY_READS_THROTTLE_RATE: str = os.environ.get("AMENITY_READS_THROTTLE_RATE", "60/min")
+# Hard cap on cache_keys per GET /v1/pub-amenities batch read.
+AMENITY_READ_MAX_KEYS: int = int(os.environ.get("AMENITY_READ_MAX_KEYS", "60"))
+# Aggregation tunables (§5.4): below AMENITY_MIN_VOTES a fact stays "unknown";
+# a minority share >= AMENITY_DISPUTE_RATIO marks the aggregate "disputed".
+AMENITY_MIN_VOTES: int = int(os.environ.get("AMENITY_MIN_VOTES", "3"))
+AMENITY_DISPUTE_RATIO: float = float(os.environ.get("AMENITY_DISPUTE_RATIO", "0.34"))
+# Anti-grind: per-account daily distinct-cache_key vote cap (enforcement in step 2).
+AMENITY_MAX_PUBS_PER_DAY: int = int(os.environ.get("AMENITY_MAX_PUBS_PER_DAY", "200"))
+# Mapér XP constants (env-default; surfaced via GET /me xp_rules in step 2).
+MAPER_XP_FIRST_FACT: int = int(os.environ.get("MAPER_XP_FIRST_FACT", "15"))
+MAPER_XP_FIRST_MAPPER_BONUS: int = int(os.environ.get("MAPER_XP_FIRST_MAPPER_BONUS", "25"))
+MAPER_XP_CONFIRM: int = int(os.environ.get("MAPER_XP_CONFIRM", "5"))
+MAPER_XP_PUB_COMPLETE_BONUS: int = int(os.environ.get("MAPER_XP_PUB_COMPLETE_BONUS", "30"))
+
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
@@ -290,6 +316,9 @@ REST_FRAMEWORK = {
         "auth_email": AUTH_EMAIL_THROTTLE_RATE,
         "nickname_check": NICKNAME_CHECK_THROTTLE_RATE,
         "avatar": AVATAR_THROTTLE_RATE,
+        "pub_amenities": PUB_AMENITIES_THROTTLE_RATE,
+        "amenity_kinds": AMENITY_KINDS_THROTTLE_RATE,
+        "amenity_reads": AMENITY_READS_THROTTLE_RATE,
     },
 }
 

@@ -58,6 +58,7 @@ from pubs.enrichment import (
 from pubs.models import (
     Account,
     AccountUsageStats,
+    AmenityKind,
     AuthToken,
     BeerBrand,
     ClientEvent,
@@ -65,6 +66,8 @@ from pubs.models import (
     DrinkLog,
     EmailCredential,
     FeedbackReport,
+    PubAmenity,
+    PubAmenityVote,
     PubBeerBrand,
     PubBeerProduct,
     PubCommunityData,
@@ -94,6 +97,9 @@ from .serializers import (
     DrinkUpdateSerializer,
     FeedbackReportSerializer,
     FeedbackRequestSerializer,
+    PubAmenityKindSerializer,
+    PubAmenityReadQuerySerializer,
+    PubAmenityVotesRequestSerializer,
     PubCommunityRequestSerializer,
     PubCommunityResponseSerializer,
     PubHoursRequestSerializer,
@@ -109,6 +115,8 @@ from .serializers import (
     RestorePurchasesRequestSerializer,
     UserAddedPubRequestSerializer,
     UserAddedPubSerializer,
+    _amenity_aggregate_item,
+    _amenity_vote_item,
 )
 
 logger = logging.getLogger(__name__)
@@ -2042,6 +2050,24 @@ def _export_account_data(account: Account) -> dict:
             }
             for report in account.content_reports_made.all()
         ],
+        # PubAmenityVote is a per-account, location-adjacent dataset (§8.5): the
+        # owner's own export includes it (name/city/coords are what they supplied).
+        "amenity_votes": [
+            {
+                "cache_key": vote.cache_key,
+                "amenity_key": vote.amenity_key,
+                "name": vote.name,
+                "lat": vote.lat,
+                "lng": vote.lng,
+                "city": vote.city,
+                "external_id": vote.external_id,
+                "value": vote.value,
+                "taxonomy_version": vote.taxonomy_version,
+                "client_updated_at": _iso(vote.client_updated_at),
+                "created_at": _iso(vote.created_at),
+            }
+            for vote in account.amenity_votes.all()
+        ],
     }
 
 
@@ -2417,3 +2443,506 @@ class NicknameAvailableView(APIView):
             {"nickname": nickname, "available": available, "reason": reason},
             status=status.HTTP_200_OK,
         )
+
+
+# ---------------------------------------------------------------------------
+# Pub amenities ("Zmapuj hospodu")
+# ---------------------------------------------------------------------------
+
+
+def _amenity_status(yes: int, no: int) -> tuple[str, float]:
+    """Map (yes, no) vote counts to a (status, confidence) pair (§5.4).
+
+    Pure + env-tunable. Below AMENITY_MIN_VOTES the fact stays "unknown" (the
+    completeness meter still ticks via the moving confidence); a minority share
+    >= AMENITY_DISPUTE_RATIO marks it "disputed". Confidence is agreement×volume,
+    rounded to 4, so the Nth confirming voter barely moves it (diminishing
+    reward for confirming known facts).
+    """
+    total = yes + no
+    if total == 0:
+        return (PubAmenity.Status.UNKNOWN, 0.0)
+    majority, minority = max(yes, no), min(yes, no)
+    agreement = majority / total  # 0.5..1.0
+    volume = total / (total + 2)  # diminishing-returns weight
+    confidence = round(agreement * volume, 4)  # 0.0..1.0
+    if total < settings.AMENITY_MIN_VOTES:
+        return (PubAmenity.Status.UNKNOWN, confidence)  # 1-2 votes: meter ticks, not yet truth
+    if minority / total >= settings.AMENITY_DISPUTE_RATIO:
+        return (PubAmenity.Status.DISPUTED, confidence)
+    return ((PubAmenity.Status.YES if yes >= no else PubAmenity.Status.NO), confidence)
+
+
+def _active_amenity_keys() -> set[str]:
+    """The set of currently-active AmenityKind keys (the read/write allow-list)."""
+    return set(AmenityKind.objects.filter(active=True).values_list("key", flat=True))
+
+
+def _recompute_amenity_aggregate(
+    cache_key: str,
+    amenity_key: str,
+    account: Account,
+    data: dict,
+) -> tuple[PubAmenity, bool]:
+    """Recompute the PubAmenity aggregate for one (cache_key, amenity_key).
+
+    Must be called inside a transaction. get_or_create the aggregate row, then
+    select_for_update it so concurrent voters on a hot pub serialize and counts
+    never lost-update (§5.3). Returns (aggregate, was_first_map) where
+    was_first_map is True only when THIS call created the row. first_mapper /
+    first_mapped_at are set ONLY on creation and NEVER reassigned.
+    """
+    now = dj_timezone.now()
+    agg, created = PubAmenity.objects.get_or_create(
+        cache_key=cache_key,
+        amenity_key=amenity_key,
+        defaults={
+            "name": data.get("name") or "",
+            "lat": data["lat"],
+            "lng": data["lng"],
+            "city": data.get("city") or "",
+            "external_id": data.get("external_id") or "",
+            "first_mapper": account,
+            "first_mapped_at": now,
+            "last_updated": now,
+        },
+    )
+    # Lock THIS aggregate row (it exists now) so the recount is atomic on both
+    # backends without relying on locking a phantom (not-yet-existing) vote row.
+    agg = PubAmenity.objects.select_for_update().get(pk=agg.pk)
+
+    votes = PubAmenityVote.objects.filter(cache_key=cache_key, amenity_key=amenity_key)
+    yes_count = votes.filter(value=PubAmenityVote.Value.YES).count()
+    no_count = votes.filter(value=PubAmenityVote.Value.NO).count()
+
+    agg.yes_count = yes_count
+    agg.no_count = no_count
+    agg.distinct_voter_count = yes_count + no_count  # one vote per account by unique constraint
+    agg.status, agg.confidence = _amenity_status(yes_count, no_count)
+    # Keep the denormalised identity fresh from the latest vote (dominant name).
+    agg.name = data.get("name") or agg.name
+    agg.lat = data["lat"]
+    agg.lng = data["lng"]
+    agg.city = data.get("city") or agg.city
+    agg.external_id = data.get("external_id") or agg.external_id
+    agg.last_updated = now
+    # first_mapper / first_mapped_at are NEVER touched after creation.
+    agg.save(
+        update_fields=[
+            "name",
+            "lat",
+            "lng",
+            "city",
+            "external_id",
+            "yes_count",
+            "no_count",
+            "distinct_voter_count",
+            "status",
+            "confidence",
+            "last_updated",
+            "updated_at",
+        ]
+    )
+    return agg, created
+
+
+class PubAmenityKindsView(APIView):
+    """
+    GET /v1/pub-amenities/kinds → the server-driven amenity taxonomy.
+
+    Public (AllowAny, like PubsNearView) and cacheable: the client GETs this to
+    render the mapping sheet. Only active kinds are returned, ordered by
+    (order, key). ``version`` is the full ISO-8601 max(updated_at) across active
+    kinds so two same-day edits produce distinct versions. Throttled per-IP
+    (scope "amenity_kinds").
+    """
+
+    # Truly public: no auth class at all (like PubsNearView), so a stale/invalid
+    # bearer can never 401 this read — the taxonomy never needs an account.
+    authentication_classes: list = []
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "amenity_kinds"
+
+    def get(self, request: Request) -> Response:
+        try:
+            kinds = list(
+                AmenityKind.objects.filter(active=True).order_by("rank", "key")
+            )
+            version = (
+                max(k.updated_at for k in kinds).isoformat()
+                if kinds
+                else dj_timezone.now().isoformat()
+            )
+            items = PubAmenityKindSerializer(kinds, many=True).data
+        except Exception as exc:  # noqa: BLE001
+            logger.error("pub-amenities/kinds: unexpected error: %s", exc, exc_info=True)
+            return Response(
+                {"detail": "Internal server error."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        return Response({"kinds": items, "version": version}, status=status.HTTP_200_OK)
+
+
+class PubAmenityVoteView(APIView):
+    """
+    PUT    /v1/pub-amenities/votes                          → upsert votes (per-amenity LWW)
+    GET    /v1/pub-amenities/votes                          → list the account's own votes
+    DELETE /v1/pub-amenities/votes/<cache_key>/<amenity_key> → idempotent retract
+
+    Two-way sync of a user's PUBLIC per-(pub, amenity) yes/no votes, each keyed
+    by the geohash-8 ``cache_key`` computed server-side. The body is a
+    ``{"votes": [...]}`` array (one row per amenity — §4.2); conflict resolution
+    is LAST-WRITE-WINS on each row's ``client_updated_at`` so a stale push of one
+    amenity can never clobber another. A ``value`` of null is an explicit
+    retraction. On every write the (cache_key, amenity_key) aggregate is
+    recomputed synchronously under a row lock. Throttled per-IP (scope
+    "pub_amenities").
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "pub_amenities"
+
+    def get(self, request: Request) -> Response:
+        try:
+            votes = PubAmenityVote.objects.filter(account=request.user)
+            items = [_amenity_vote_item(vote) for vote in votes]
+        except Exception as exc:  # noqa: BLE001
+            logger.error("pub-amenities/votes: unexpected error listing votes: %s", exc, exc_info=True)
+            return Response(
+                {"detail": "Internal server error."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        return Response({"votes": items}, status=status.HTTP_200_OK)
+
+    def put(self, request: Request) -> Response:
+        serializer = PubAmenityVotesRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            active_keys = _active_amenity_keys()
+            results = [
+                self._apply_one(request.user, row, active_keys)
+                for row in serializer.validated_data["votes"]
+            ]
+        except Exception as exc:  # noqa: BLE001
+            logger.error("pub-amenities/votes: unexpected error saving votes: %s", exc, exc_info=True)
+            return Response(
+                {"detail": "Internal server error."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        # mapper: fresh Mapér snapshot is returned ONCE at the envelope level.
+        # TODO step 2: Mapér XP — populate the real snapshot from AccountUsageStats.
+        return Response({"results": results, "mapper": None}, status=status.HTTP_200_OK)
+
+    def _apply_one(self, account: Account, data: dict, active_keys: set[str]) -> dict:
+        """Apply one amenity vote row and return its result object.
+
+        Each row runs in its own atomic block so one stale/ignored row does not
+        roll back its siblings. ``cache_key`` is derived from lat/lng; lat/lng
+        are never logged or echoed.
+        """
+        amenity_key = data["amenity_key"]
+        cache_key = geohash8(data["lat"], data["lng"])
+        client_updated_at = data["client_updated_at"]
+        # The wire sends value omitted/null as an explicit retraction.
+        value = data.get("value")
+
+        # Unknown/inactive key → ignore (NOT 400): additive forward-compat so an
+        # old server tolerates a newer client's key without breaking its queue.
+        if amenity_key not in active_keys:
+            return {
+                "applied": False,
+                "ignored_unknown_amenity": True,
+                "deleted": False,
+                "was_first_map": False,
+                "xp_awarded": 0,  # TODO step 2: Mapér XP
+                "vote": None,
+                "aggregate": None,
+            }
+
+        with transaction.atomic():
+            existing = (
+                PubAmenityVote.objects.select_for_update()
+                .filter(account=account, cache_key=cache_key, amenity_key=amenity_key)
+                .first()
+            )
+
+            # Geohash-8 collision guard: if the stored vote's name does not match
+            # the new one, this is a logged collision signal; v1 keeps writing
+            # (the read path's names_match guard protects consumers). §2.6.
+            new_name = data.get("name") or ""
+            if existing is not None and new_name and existing.name and not names_match(
+                new_name, existing.name
+            ):
+                logger.info(
+                    "pub-amenities/votes: geohash-8 name collision for %s/%s",
+                    cache_key,
+                    amenity_key,
+                )
+
+            # Last-write-wins per amenity: a stale push (<= stored timestamp) is
+            # ignored → applied: false, return the current aggregate.
+            if existing is not None and existing.client_updated_at >= client_updated_at:
+                agg = PubAmenity.objects.filter(
+                    cache_key=cache_key, amenity_key=amenity_key
+                ).first()
+                return {
+                    "applied": False,
+                    "ignored_unknown_amenity": False,
+                    "deleted": False,
+                    "was_first_map": False,
+                    "xp_awarded": 0,  # TODO step 2: Mapér XP
+                    "vote": _vote_minimal(existing),
+                    "aggregate": (
+                        _amenity_aggregate_item(agg, my_value=existing.value)
+                        if agg is not None
+                        else None
+                    ),
+                }
+
+            # value: null → explicit retraction (delete the user's row),
+            # guarded by the same LWW timestamp above.
+            if value is None:
+                deleted = existing is not None
+                if existing is not None:
+                    existing.delete()
+                agg, _ = _recompute_amenity_aggregate(cache_key, amenity_key, account, data)
+                return {
+                    "applied": True,
+                    "ignored_unknown_amenity": False,
+                    "deleted": deleted,
+                    "was_first_map": False,
+                    "xp_awarded": 0,  # TODO step 2: Mapér XP
+                    "vote": None,
+                    "aggregate": _amenity_aggregate_item(agg, my_value=None),
+                }
+
+            # Upsert the user's own vote row (unique per account). update_or_create
+            # is IntegrityError-safe for two concurrent first voters: one inserts,
+            # the other updates the same unique row.
+            vote, _ = PubAmenityVote.objects.update_or_create(
+                account=account,
+                cache_key=cache_key,
+                amenity_key=amenity_key,
+                defaults={
+                    "name": data.get("name") or "",
+                    "lat": data["lat"],
+                    "lng": data["lng"],
+                    "city": data.get("city") or "",
+                    "external_id": data.get("external_id") or "",
+                    "value": value,
+                    "client_updated_at": client_updated_at,
+                    "taxonomy_version": data.get("taxonomy_version"),
+                },
+            )
+            agg, was_first_map = _recompute_amenity_aggregate(
+                cache_key, amenity_key, account, data
+            )
+            # Re-read so the echoed client_updated_at is the DB-normalised UTC
+            # value, matching the GET restore path / _rating_item exactly.
+            vote.refresh_from_db(fields=["client_updated_at", "value"])
+
+        return {
+            "applied": True,
+            "ignored_unknown_amenity": False,
+            "deleted": False,
+            # was_first_map is an AGGREGATE fact (this write created the row), kept
+            # in step 1; XP awarding for it is step 2.
+            "was_first_map": was_first_map,
+            "xp_awarded": 0,  # TODO step 2: Mapér XP
+            # Echo the persisted row (client_updated_at normalised to UTC, like
+            # the GET restore path and _rating_item), not the raw request offset.
+            "vote": _vote_minimal(vote),
+            "aggregate": _amenity_aggregate_item(agg, my_value=value),
+        }
+
+    def delete(self, request: Request, cache_key: str, amenity_key: str) -> Response:
+        # Idempotent delete scoped to the account, filtering only by (account,
+        # cache_key, amenity_key) with NO AmenityKind existence check, so a vote
+        # for a since-deactivated kind can always be cleared. Recompute the
+        # aggregate so the public truth reflects the removal.
+        try:
+            with transaction.atomic():
+                existing = (
+                    PubAmenityVote.objects.select_for_update()
+                    .filter(account=request.user, cache_key=cache_key, amenity_key=amenity_key)
+                    .first()
+                )
+                deleted = existing is not None
+                if existing is not None:
+                    data = {
+                        "name": existing.name,
+                        "lat": existing.lat,
+                        "lng": existing.lng,
+                        "city": existing.city,
+                        "external_id": existing.external_id,
+                    }
+                    existing.delete()
+                    # Only recompute if the aggregate row exists (it should).
+                    if PubAmenity.objects.filter(
+                        cache_key=cache_key, amenity_key=amenity_key
+                    ).exists():
+                        _recompute_amenity_aggregate(
+                            cache_key, amenity_key, request.user, data
+                        )
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "pub-amenities/votes: unexpected error deleting vote %s/%s: %s",
+                cache_key,
+                amenity_key,
+                exc,
+                exc_info=True,
+            )
+            return Response(
+                {"detail": "Internal server error."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        return Response({"deleted": deleted}, status=status.HTTP_200_OK)
+
+
+def _vote_minimal(vote: PubAmenityVote) -> dict:
+    """The minimal {amenity_key, value, client_updated_at} echoed on a PUT result."""
+    return {
+        "amenity_key": vote.amenity_key,
+        "value": vote.value,
+        "client_updated_at": vote.client_updated_at.isoformat(),
+    }
+
+
+def _optional_amenity_account(request: Request) -> Account | None:
+    """Best-effort bearer → Account for the public amenity read.
+
+    The read is truly AllowAny (authentication_classes=[]) so a stale/invalid
+    token can never 401 it (§4.4, like PubsNearView). We still want ``my_value``
+    for a valid token, so we resolve the account out-of-band and SWALLOW any
+    AuthenticationFailed — a bad token simply degrades to an anonymous read.
+    """
+    try:
+        result = AccountTokenAuthentication().authenticate(request)
+    except AuthenticationFailed:
+        return None
+    if result is None:
+        return None
+    account, _raw_token = result
+    return account if isinstance(account, Account) else None
+
+
+class PubAmenityReadView(APIView):
+    """
+    GET /v1/pub-amenities?cache_keys=<k1>,<k2>...&name=<pub name>
+
+    Public, cheap, local-DB-only aggregate read (the sheet/read path). Served
+    from PubAmenity with its OWN short TTL, deliberately NOT bolted onto the
+    metered Mapy ``/pubs/near`` proxy (§4.4). Each row is gated against the
+    requesting client's pub ``name`` via names_match (§2.6): a mismatch treats
+    the row as unmapped rather than leaking a neighbouring business's votes.
+    Only active kinds are returned; completeness uses the active denominator and
+    is clamped to [0, 1] so a pub never shows >100%. ``my_value`` is populated
+    only for authenticated callers. Throttled per-IP (scope "amenity_reads").
+    """
+
+    # Truly public (like PubsNearView): no auth class, so a stale token can never
+    # 401 this read. ``my_value`` is resolved best-effort via the optional bearer
+    # lookup below, which degrades a bad token to an anonymous read.
+    authentication_classes: list = []
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "amenity_reads"
+
+    def get(self, request: Request) -> Response:
+        serializer = PubAmenityReadQuerySerializer(data=request.query_params)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        request_name = serializer.validated_data.get("name") or ""
+        raw_keys = serializer.validated_data["cache_keys"]
+        # Comma-split, strip, dedup (preserve order), cap to AMENITY_READ_MAX_KEYS.
+        seen: set[str] = set()
+        cache_keys: list[str] = []
+        for k in raw_keys.split(","):
+            k = k.strip()
+            if k and k not in seen:
+                seen.add(k)
+                cache_keys.append(k)
+            if len(cache_keys) >= settings.AMENITY_READ_MAX_KEYS:
+                break
+
+        # AllowAny + authentication_classes=[] means request.user is anonymous;
+        # resolve my_value best-effort (a bad token degrades to anonymous, no 401).
+        account = _optional_amenity_account(request)
+
+        try:
+            active_keys = _active_amenity_keys()
+            total_kinds = len(active_keys)
+
+            # My own live votes for these cells, so my_value comes from ONE query.
+            my_votes: dict[tuple[str, str], str] = {}
+            if account is not None and cache_keys:
+                for v in PubAmenityVote.objects.filter(
+                    account=account, cache_key__in=cache_keys
+                ).values_list("cache_key", "amenity_key", "value"):
+                    my_votes[(v[0], v[1])] = v[2]
+
+            aggregates = (
+                PubAmenity.objects.filter(cache_key__in=cache_keys)
+                if cache_keys
+                else PubAmenity.objects.none()
+            )
+            by_cache: dict[str, list[PubAmenity]] = {}
+            for agg in aggregates:
+                # names_match collision guard (§2.6). When the caller sent a
+                # name, a row can only be served if it carries a name that
+                # matches: a stored EMPTY name can't be verified against the
+                # request, so drop it rather than leak it to any business sharing
+                # the ~38m geohash-8 cell. (The write path requires a non-blank
+                # name, so guardless aggregates can no longer be created; this
+                # also defends any legacy empty-name rows.)
+                if request_name and (not agg.name or not names_match(request_name, agg.name)):
+                    continue
+                # Only active kinds are surfaced (deactivated kinds excluded).
+                if agg.amenity_key not in active_keys:
+                    continue
+                by_cache.setdefault(agg.cache_key, []).append(agg)
+
+            pubs = []
+            for cache_key in cache_keys:
+                rows = by_cache.get(cache_key, [])
+                mapper_count = (
+                    max((r.distinct_voter_count for r in rows), default=0) if rows else 0
+                )
+                mapped_count = sum(
+                    1 for r in rows if r.status != PubAmenity.Status.UNKNOWN
+                )
+                pct = (mapped_count / total_kinds) if total_kinds else 0.0
+                pct = max(0.0, min(1.0, pct))  # clamp to [0, 1]
+                amenities = [
+                    _amenity_aggregate_item(
+                        r, my_value=my_votes.get((cache_key, r.amenity_key))
+                    )
+                    for r in rows
+                ]
+                pubs.append(
+                    {
+                        "cache_key": cache_key,
+                        "mapper_count": mapper_count,
+                        "completeness": {
+                            "mapped_count": mapped_count,
+                            "total_kinds": total_kinds,
+                            "pct": round(pct, 4),
+                        },
+                        "amenities": amenities,
+                    }
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.error("pub-amenities: unexpected error reading aggregates: %s", exc, exc_info=True)
+            return Response(
+                {"detail": "Internal server error."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response({"pubs": pubs}, status=status.HTTP_200_OK)

@@ -45,6 +45,9 @@ from .views import (
     FeedbackView,
     HealthView,
     NicknameAvailableView,
+    PubAmenityKindsView,
+    PubAmenityReadView,
+    PubAmenityVoteView,
     PubCommunityView,
     PubHoursView,
     PubLocationGeocodeView,
@@ -68,6 +71,18 @@ urlpatterns = [
     path("pub-ratings/<str:cache_key>", PubRatingView.as_view(), name="pub-ratings-delete"),
     path("pub-visits", PubVisitView.as_view(), name="pub-visits"),
     path("pub-visits/<uuid:client_id>", PubVisitView.as_view(), name="pub-visits-delete"),
+    path("pub-amenities/kinds", PubAmenityKindsView.as_view(), name="pub-amenity-kinds"),
+    path("pub-amenities/votes", PubAmenityVoteView.as_view(), name="pub-amenity-votes"),
+    # Retraction is the null-value PUT above; this DELETE is an idempotent
+    # convenience filtering only by (account, cache_key, amenity_key) with NO
+    # AmenityKind existence check, so a vote for a since-deactivated kind can
+    # always be cleared. Both segments are URL-encoded.
+    path(
+        "pub-amenities/votes/<str:cache_key>/<str:amenity_key>",
+        PubAmenityVoteView.as_view(),
+        name="pub-amenity-votes-delete",
+    ),
+    path("pub-amenities", PubAmenityReadView.as_view(), name="pub-amenities-read"),
     path("pubs", UserAddedPubView.as_view(), name="user-added-pubs"),
     path("pubs/near", PubsNearView.as_view(), name="pubs-near"),
     path("pubs/suggest", PubLocationSuggestView.as_view(), name="pubs-suggest"),

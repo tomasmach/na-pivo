@@ -1914,3 +1914,248 @@ class PubContributionLog(models.Model):
 
     def __str__(self) -> str:
         return f"PubContributionLog({self.name} [{self.cache_key}] — {self.kind})"
+
+
+class AmenityKind(models.Model):
+    """
+    Canonical catalogue of mappable pub amenities ("Zmapuj hospodu").
+
+    Server-driven so the set can grow without a mobile release. The client GETs
+    this list (GET /v1/pub-amenities/kinds) to render the mapping sheet. Voting
+    against an unknown/inactive key on the WRITE path is IGNORED (not 400) for
+    additive forward-compat; the future map FILTER param is the only place an
+    unknown key is a 400 (a client bug). Mirrors BeerBrand: stable slug + rank.
+    """
+
+    class Group(models.TextChoices):
+        PAYMENT = "payment", "Platba"
+        SEATING = "seating", "Posezení"
+        GAMES = "games", "Zábava"
+        ATMOSPHERE = "atmosphere", "Atmosféra"
+        PRACTICAL = "practical", "Praktické"
+
+    key = models.SlugField(
+        max_length=40,
+        unique=True,
+        db_index=True,
+        help_text="Stable ASCII id, e.g. payment_card, seating_garden, game_darts. NEVER renamed/reused.",
+    )
+    label = models.CharField(max_length=80, help_text="Czech display label, e.g. 'Platba kartou'.")
+    short_label = models.CharField(
+        max_length=40,
+        blank=True,
+        default="",
+        help_text="Optional compact chip label.",
+    )
+    icon = models.CharField(
+        max_length=40,
+        blank=True,
+        default="",
+        help_text="IconGlyph export name the client renders, e.g. 'CreditCardIcon'. NO emoji.",
+    )
+    group = models.CharField(max_length=16, choices=Group.choices, db_index=True)
+    rank = models.PositiveSmallIntegerField(
+        default=1000,
+        db_index=True,
+        help_text="Lower ranks render earlier.",
+    )
+    filter_candidate = models.BooleanField(
+        default=True,
+        help_text="Whether this is a planned map-filter facet (design signal; filter is future).",
+    )
+    active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Amenity Kind"
+        verbose_name_plural = "Amenity Kinds"
+        ordering = ["rank", "key"]
+
+    def __str__(self) -> str:
+        return f"AmenityKind({self.key} — {self.label})"
+
+
+class PubAmenityVote(models.Model):
+    """
+    One user's yes/no vote that a pub has a given amenity, keyed by geohash-8.
+
+    PUBLIC community input (NOT private, unlike PubRating): every vote feeds the
+    confidence-weighted PubAmenity aggregate everyone sees and the future map
+    filter. Identity is (account, cache_key, amenity_key) so the same physical
+    pub + amenity collapses to ONE current vote per account regardless of which
+    provider id the client saw — a flip yes->no OVERWRITES, it does not stack.
+
+    Two-way sync, LAST-WRITE-WINS on the client's ``client_updated_at`` (NOT the
+    server's updated_at), per AMENITY (not per report) — see §5.2. A wire vote
+    value of null is an explicit RETRACTION (tombstone): it deletes the user's
+    row, guarded by the same LWW timestamp. Absent-from-payload means 'no change'
+    (the client sends one amenity per request — §4.2).
+    """
+
+    class Value(models.TextChoices):
+        YES = "yes", "Has it"
+        NO = "no", "Doesn't have it"
+
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name="amenity_votes",
+        help_text="The user who cast this vote.",
+    )
+    cache_key = models.CharField(
+        max_length=12,
+        db_index=True,
+        help_text="Geohash-8 of (lat, lng) — matches PubHours / PubRating.cache_key.",
+    )
+    amenity_key = models.SlugField(
+        max_length=40,
+        db_index=True,
+        help_text="AmenityKind.key this vote is about.",
+    )
+    # Free text the client controls → TextField, NEVER bounded CharField (SQLite
+    # truncates silently, Postgres raises DataError). Bound enforced in the
+    # serializer. name is also the geohash-8 collision guard (§2.6).
+    name = models.TextField(blank=True, default="", help_text="Pub name as the client saw it.")
+    lat = models.FloatField(help_text="Server-side only: derives cache_key; never exposed in reads.")
+    lng = models.FloatField(help_text="Server-side only: derives cache_key; never exposed in reads.")
+    city = models.TextField(blank=True, default="")
+    external_id = models.TextField(blank=True, default="", help_text="Client provider id (Mapy item id).")
+    value = models.CharField(
+        max_length=3,
+        choices=Value.choices,
+        help_text='"yes" | "no". A retraction deletes the row instead of storing empty.',
+    )
+    awarded_xp = models.PositiveIntegerField(
+        default=0,
+        help_text="XP this row has EVER paid out. Gates idempotent XP — a flip/re-vote pays 0 (§7.3).",
+    )
+    client_updated_at = models.DateTimeField(
+        help_text="Client's local updatedAt; the last-write-wins conflict key (per amenity).",
+    )
+    taxonomy_version = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Which bundled taxonomy version the client captured this vote under "
+            "(mobile CURRENT_TAXONOMY_VERSION). Optional, analytics-only — NEVER a "
+            "validation gate. Lets us spot votes cast under an old amenity set and "
+            "drive future re-check nudges. Absent (legacy/unknown clients) is fine."
+        ),
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Pub Amenity Vote"
+        verbose_name_plural = "Pub Amenity Votes"
+        ordering = ["-client_updated_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "cache_key", "amenity_key"],
+                name="unique_amenity_vote_per_account_pub",
+            )
+        ]
+        indexes = [
+            # GET /v1/pub-amenities/votes lists by account; restore on reinstall.
+            models.Index(fields=["account", "cache_key"]),
+            # Aggregate recount slice: all votes for one (pub, amenity).
+            models.Index(fields=["cache_key", "amenity_key"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"PubAmenityVote({self.amenity_key}={self.value} [{self.cache_key}])"
+
+
+class PubAmenity(models.Model):
+    """
+    Confidence-weighted community truth for one (pub, amenity), aggregated from
+    PubAmenityVote. One row per (cache_key, amenity_key). PUBLIC (no account FK on
+    the row identity). This is the everyone-sees-it fact AND the queryable path
+    for the FUTURE map filter ("pubs with garden + wifi"), exactly as PubBeerBrand
+    is for "pubs serving brand X".
+
+    Recomputed synchronously on every vote write (no Celery). The recompute holds
+    a row lock on THIS aggregate row (get_or_create then select_for_update) so
+    concurrent voters on a hot pub serialize and counts never lost-update (§5.3).
+    """
+
+    class Status(models.TextChoices):
+        YES = "yes", "Has it"
+        NO = "no", "Doesn't have it"
+        DISPUTED = "disputed", "Disputed"
+        UNKNOWN = "unknown", "Not enough votes"
+
+    cache_key = models.CharField(
+        max_length=12,
+        db_index=True,
+        help_text="Geohash-8 of (lat, lng) — matches PubAmenityVote / PubHours.",
+    )
+    amenity_key = models.SlugField(max_length=40, db_index=True)
+
+    # Last-known pub identity (denormalised from the most recent vote, same as
+    # PubBeerBrand stores name/lat/lng/city). Free text → TextField. name is the
+    # collision guard surfaced in reads (§2.6); lat/lng feed the future bbox scan
+    # and are NOT exposed in the read payload (§6 privacy).
+    name = models.TextField(blank=True, default="")
+    lat = models.FloatField()
+    lng = models.FloatField()
+    city = models.TextField(blank=True, default="")
+    external_id = models.TextField(blank=True, default="")
+
+    yes_count = models.PositiveIntegerField(default=0)
+    no_count = models.PositiveIntegerField(default=0)
+    distinct_voter_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Distinct accounts that have a live vote here (one per account by unique constraint).",
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=Status.choices,
+        default=Status.UNKNOWN,
+        db_index=True,
+    )
+    confidence = models.FloatField(
+        default=0.0,
+        help_text="0.0–1.0 agreement×volume score; stored (indexable), recomputed on write. See §5.4.",
+    )
+    first_mapper = models.ForeignKey(
+        Account,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="amenities_first_mapped",
+        help_text="Account that created this aggregate row (the FIRST vote). IMMUTABLE — never reattributed.",
+    )
+    first_mapped_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Server time the first vote created this row. Immutable.",
+    )
+    last_updated = models.DateTimeField(
+        default=timezone.now,
+        db_index=True,
+        help_text="Server time of the last vote that touched this aggregate.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Pub Amenity"
+        verbose_name_plural = "Pub Amenities"
+        ordering = ["-last_updated"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["cache_key", "amenity_key"],
+                name="unique_pub_amenity",
+            )
+        ]
+        indexes = [
+            # FUTURE map filter: "which pubs have amenity X with status yes".
+            models.Index(fields=["amenity_key", "status"]),
+            # Read all amenities for one pub (dedicated GET, §4.4).
+            models.Index(fields=["cache_key"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"PubAmenity({self.amenity_key} [{self.cache_key}] — {self.status})"

@@ -52,6 +52,7 @@ from pubs.models import (
     ClientEvent,
     ContentReport,
     FeedbackReport,
+    PubAmenityVote,
     PubRating,
     PubReport,
     ReleaseNote,
@@ -1277,3 +1278,113 @@ class ReleaseNoteSerializer(serializers.ModelSerializer):
         model = ReleaseNote
         fields = ["version", "title", "items"]
         read_only_fields = fields
+
+
+# ---------------------------------------------------------------------------
+# Pub amenities ("Zmapuj hospodu")
+# ---------------------------------------------------------------------------
+
+
+class PubAmenityVoteRequestSerializer(serializers.Serializer):
+    """One row of the PUT /v1/pub-amenities/votes {"votes": [...]} array.
+
+    ``lat``/``lng`` are bounds-checked but ``cache_key`` is NEVER accepted from
+    the client — it is always derived server-side via geohash8(lat, lng). There
+    is deliberately NO validation that ``value`` or ``amenity_key`` is a known
+    active kind, so a stale-or-newer client can never get a 4xx and break its
+    offline queue (the active-kind check is done in the VIEW: ignore, not 400).
+    A ``value`` of null is an explicit retraction. ``taxonomy_version`` is
+    analytics-only and never gates the write.
+    """
+
+    # name is REQUIRED and non-blank: it is the geohash-8 collision guard
+    # (§2.6/§4.2 "name is always sent"). A blank name would create a guardless
+    # aggregate whose votes then leak to any business sharing the ~38m cell, so
+    # reject it here rather than store "". (Unlike value/amenity_key, name is NOT
+    # part of the forward-compat "never 4xx" contract — only unknown KEYS are.)
+    name = serializers.CharField(max_length=255)
+    lat = serializers.FloatField(min_value=-90, max_value=90)
+    lng = serializers.FloatField(min_value=-180, max_value=180)
+    city = serializers.CharField(
+        max_length=128, required=False, allow_null=True, allow_blank=True, default=""
+    )
+    external_id = serializers.CharField(
+        max_length=128, required=False, allow_null=True, allow_blank=True, default=""
+    )
+    amenity_key = serializers.SlugField(max_length=40)  # active-kind check in the VIEW (ignore-not-400)
+    value = serializers.ChoiceField(
+        choices=PubAmenityVote.Value.choices, required=False, allow_null=True
+    )  # null => retract
+    client_updated_at = serializers.DateTimeField()  # wire field; the per-amenity LWW key
+    taxonomy_version = serializers.IntegerField(
+        required=False, allow_null=True, min_value=1
+    )  # analytics-only; stored, never validated
+
+
+class PubAmenityVotesRequestSerializer(serializers.Serializer):
+    """Top-level {"votes": [...]} wrapper for PUT /v1/pub-amenities/votes."""
+
+    votes = PubAmenityVoteRequestSerializer(many=True, min_length=1)
+
+    def validate_votes(self, value: list) -> list:
+        if len(value) > 50:
+            raise serializers.ValidationError("At most 50 amenity votes may be sent at once.")
+        return value
+
+
+class PubAmenityKindSerializer(serializers.Serializer):
+    """Output-only — emits the canonical wire field names for one AmenityKind.
+
+    The model keeps the columns named label/short_label/filter_candidate/rank/
+    active; the wire contract (and the mobile WireAmenityKind type) uses
+    label_cs/short_label_cs/map_filterable/is_active/order.
+    """
+
+    key = serializers.CharField()
+    group = serializers.CharField()
+    label_cs = serializers.CharField(source="label")
+    short_label_cs = serializers.CharField(source="short_label")
+    icon = serializers.CharField()
+    map_filterable = serializers.BooleanField(source="filter_candidate")
+    is_active = serializers.BooleanField(source="active")
+    order = serializers.IntegerField(source="rank")
+
+
+class PubAmenityReadQuerySerializer(serializers.Serializer):
+    """Query params for GET /v1/pub-amenities (public aggregate read)."""
+
+    cache_keys = serializers.CharField()  # comma-split + cap to AMENITY_READ_MAX_KEYS in the view
+    name = serializers.CharField(required=False, allow_blank=True, default="")  # names_match guard
+
+
+def _amenity_vote_item(vote: PubAmenityVote) -> dict:
+    """Serialize one PubAmenityVote for GET /v1/pub-amenities/votes (restore).
+
+    Carries the LWW key (client_updated_at) for cross-device restore; lat/lng/
+    name are omitted (privacy + the client already has them).
+    """
+    return {
+        "cache_key": vote.cache_key,
+        "amenity_key": vote.amenity_key,
+        "value": vote.value,
+        "client_updated_at": vote.client_updated_at.isoformat(),
+    }
+
+
+def _amenity_aggregate_item(agg, my_value=None) -> dict:
+    """Serialize one PubAmenity aggregate to the <Aggregate> wire shape.
+
+    ``my_value`` is the authenticated caller's own vote ("yes"|"no"|None),
+    populated ONLY when the request is authenticated; None for anonymous reads.
+    lat/lng/name are NEVER emitted (privacy, §6). ``confidence`` is rounded to 2
+    on the wire.
+    """
+    return {
+        "amenity_key": agg.amenity_key,
+        "yes_count": agg.yes_count,
+        "no_count": agg.no_count,
+        "distinct_voter_count": agg.distinct_voter_count,
+        "status": agg.status,
+        "confidence": round(agg.confidence, 2),
+        "my_value": my_value,
+    }

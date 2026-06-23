@@ -62,6 +62,8 @@ from pubs.models import (
     EmailCredential,
     FeedbackReport,
     OneTimeToken,
+    PubAmenity,
+    PubAmenityVote,
     PubCommunityData,
     PubContributionLog,
     PubRating,
@@ -571,6 +573,47 @@ def _delete_or_move_account_rows(
         row.save(update_fields=["account"])
 
 
+def _recount_amenity_aggregate(cache_key: str, amenity_key: str) -> None:
+    """Recompute one EXISTING PubAmenity aggregate from its live votes.
+
+    Used after a merge moves/deletes votes so the public counts stay derived from
+    PubAmenityVote and never drift. Must run inside the merge transaction. Does
+    NOT create a row (unlike the write-path recompute) — if no aggregate exists
+    there is nothing to keep consistent. ``first_mapper`` is never touched here.
+    """
+    # Lazy import: pubs.api.views imports pubs.accounts at module load, so a
+    # top-level import here would be circular. _amenity_status is the pure
+    # status/confidence function shared with the write path.
+    from pubs.api.views import _amenity_status
+
+    agg = (
+        PubAmenity.objects.select_for_update()
+        .filter(cache_key=cache_key, amenity_key=amenity_key)
+        .first()
+    )
+    if agg is None:
+        return
+    votes = PubAmenityVote.objects.filter(cache_key=cache_key, amenity_key=amenity_key)
+    yes_count = votes.filter(value=PubAmenityVote.Value.YES).count()
+    no_count = votes.filter(value=PubAmenityVote.Value.NO).count()
+    agg.yes_count = yes_count
+    agg.no_count = no_count
+    agg.distinct_voter_count = yes_count + no_count
+    agg.status, agg.confidence = _amenity_status(yes_count, no_count)
+    agg.last_updated = timezone.now()
+    agg.save(
+        update_fields=[
+            "yes_count",
+            "no_count",
+            "distinct_voter_count",
+            "status",
+            "confidence",
+            "last_updated",
+            "updated_at",
+        ]
+    )
+
+
 def _merge_usage_stats(source: Account, target: Account) -> None:
     source_stats = AccountUsageStats.objects.filter(account=source).first()
     if source_stats is None:
@@ -649,6 +692,25 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
         target=target,
         unique_fields=("cache_key", "reason"),
     )
+
+    # Amenity votes are PUBLIC: moving (or dropping on conflict) the source's
+    # votes changes the aggregate counts, so we must recompute every affected
+    # (cache_key, amenity_key) or the public PubAmenity row over-counts a merged
+    # user forever. Capture the affected pairs BEFORE the move (some rows may be
+    # dropped as target-duplicates), then recount after.
+    affected_amenities = set(
+        PubAmenityVote.objects.filter(account=source).values_list(
+            "cache_key", "amenity_key"
+        )
+    )
+    _delete_or_move_account_rows(
+        PubAmenityVote,
+        source=source,
+        target=target,
+        unique_fields=("cache_key", "amenity_key"),
+    )
+    for cache_key, amenity_key in affected_amenities:
+        _recount_amenity_aggregate(cache_key, amenity_key)
 
     PubCommunityData.objects.filter(account=source).update(account=target)
     ClientEvent.objects.filter(account=source).update(account=target)
