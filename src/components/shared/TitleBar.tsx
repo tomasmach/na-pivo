@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import React, { memo, type ReactNode } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Colors } from '@/theme/colors';
@@ -12,6 +12,8 @@ interface TitleBarProps {
   onSettings?: () => void;
   onSettingsLongPress?: () => void;
   showGear?: boolean;
+  /** Optional control rendered in the header, just left of the gear. */
+  filterSlot?: ReactNode;
 }
 
 function GearIcon({ size = 20, color }: { size?: number; color: string }) {
@@ -36,6 +38,7 @@ export const TitleBar = memo(function TitleBar({
   onSettings,
   onSettingsLongPress,
   showGear = true,
+  filterSlot,
 }: TitleBarProps) {
   const isLeftAligned = align === 'left';
 
@@ -47,6 +50,12 @@ export const TitleBar = memo(function TitleBar({
           {cs.compass.headerTitle}
         </Text>
       </View>
+
+      {filterSlot ? (
+        <View style={[styles.filterSlot, isLeftAligned && styles.filterSlotLeft]}>
+          {filterSlot}
+        </View>
+      ) : null}
 
       {showGear && onSettings ? (
         <Pressable
@@ -100,5 +109,18 @@ const styles = StyleSheet.create({
   },
   gearTouchableLeft: {
     top: 2,
+  },
+  // Sits between the logo and the gear, right-aligned against the gear.
+  filterSlot: {
+    position: 'absolute',
+    right: 20 + HitArea.min,
+    top: 8,
+    bottom: 8,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  filterSlotLeft: {
+    top: 2,
+    bottom: 2,
   },
 });

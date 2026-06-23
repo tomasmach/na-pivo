@@ -174,6 +174,29 @@ export const LOCAL_BEER_BRAND_SUGGESTIONS: LocalBeerBrandSuggestion[] = [
   },
 ];
 
+/**
+ * Curated brand-level quick picks for the filter sheet. These let the user tap
+ * the dominant Czech/Slovak brands without typing — `key` is the brand slug sent
+ * to the backend (`beer_brand`), `label` is the stored/shown name, `short` is the
+ * compact chip caption. Anything outside this list is reachable via search.
+ */
+export interface PopularBeerBrand {
+  key: string;
+  label: string;
+  short: string;
+}
+
+export const POPULAR_BEER_BRANDS: PopularBeerBrand[] = [
+  { key: 'pilsner-urquell', label: 'Pilsner Urquell', short: 'Plzeň' },
+  { key: 'gambrinus', label: 'Gambrinus', short: 'Gambrinus' },
+  { key: 'velkopopovicky-kozel', label: 'Velkopopovický Kozel', short: 'Kozel' },
+  { key: 'radegast', label: 'Radegast', short: 'Radegast' },
+  { key: 'staropramen', label: 'Staropramen', short: 'Staropramen' },
+  { key: 'budweiser-budvar', label: 'Budweiser Budvar', short: 'Budvar' },
+  { key: 'krusovice', label: 'Krušovice', short: 'Krušovice' },
+  { key: 'starobrno', label: 'Starobrno', short: 'Starobrno' },
+];
+
 function normalizeText(value: string): string {
   return value
     .normalize('NFD')

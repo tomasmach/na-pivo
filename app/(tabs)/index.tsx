@@ -15,7 +15,6 @@ import {
   Linking,
   Alert,
   Platform,
-  TextInput,
   useWindowDimensions,
   type LayoutChangeEvent,
 } from 'react-native';
@@ -33,7 +32,10 @@ import type { CommunityBeer } from '@/data/communityClient';
 import { parseOsmOpeningHoursToWeeklyHours } from '@/data/communityHours';
 import type { PubReportReason } from '@/data/pubReportsClient';
 import { updateAccountPreferences } from '@/data/account';
-import { suggestBeerBrands, type BeerBrandSuggestion } from '@/data/beerSuggestionsClient';
+import {
+  BeerBrandFilterSheet,
+  type BeerBrandFilterValue,
+} from '@/components/compass/BeerBrandFilterSheet';
 import { usePubStore } from '@/stores/pubStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { shortestRotationTarget } from '@/compass/rotation';
@@ -61,7 +63,7 @@ import {
   XIcon,
 } from '@/components/shared/IconGlyph';
 
-import { Colors } from '@/theme/colors';
+import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, CompassSize } from '@/theme/layout';
 import { amberGlowStrong } from '@/theme/shadows';
@@ -84,11 +86,6 @@ const ARROW_SPRING_CONFIG = {
 // the Android navigation area on shorter devices.
 const PUB_PILL_MIN_HEIGHT = 166;
 const ACTIVE_CHROME_HEIGHT = 430;
-
-interface BeerBrandFilterValue {
-  key: string;
-  label: string;
-}
 
 // ─── Permission screen ────────────────────────────────────────────────────────
 
@@ -622,110 +619,51 @@ function ModeToggle({ mode, onNearest, onSurprise }: ModeToggleProps) {
   );
 }
 
-interface BeerBrandFilterProps {
+interface BeerFilterButtonProps {
   value: BeerBrandFilterValue | null;
-  onChange: (value: BeerBrandFilterValue | null) => void;
+  onOpen: () => void;
+  onClear: () => void;
 }
 
-function BeerBrandFilter({ value, onChange }: BeerBrandFilterProps) {
-  const [query, setQuery] = useState(value?.label ?? '');
-  const [suggestions, setSuggestions] = useState<BeerBrandSuggestion[]>([]);
-  const [focused, setFocused] = useState(false);
-
-  useEffect(() => {
-    if (value && query === value.label) return;
-    if (query.trim().length < 2) return;
-
-    const controller = new AbortController();
-    suggestBeerBrands(query, controller.signal, 6)
-      .then((items) => {
-        if (!controller.signal.aborted) setSuggestions(items);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setSuggestions([]);
-      });
-    return () => controller.abort();
-  }, [query, value]);
-
-  const handleSelect = useCallback((suggestion: BeerBrandSuggestion) => {
-    const key = suggestion.brandSlug ?? suggestion.slug;
-    const label = suggestion.brandName ?? suggestion.name;
-    onChange({ key, label });
-    setQuery(label);
-    setSuggestions([]);
-    setFocused(false);
-  }, [onChange]);
-
-  const handleClear = useCallback(() => {
-    onChange(null);
-    setQuery('');
-    setSuggestions([]);
-  }, [onChange]);
-
-  const showSuggestions = focused && suggestions.length > 0;
-
+// Compact labeled control that lives in the header (the dead space between the
+// logo and the gear). Idle it reads "Filtruj piva" and opens the picker sheet;
+// once a brand is chosen it turns amber and shows the brand with an X to clear.
+// Keeping it in the header means the compass keeps its full row below.
+function BeerFilterButton({ value, onOpen, onClear }: BeerFilterButtonProps) {
+  const active = value !== null;
   return (
-    <View style={styles.beerFilterWrap}>
-      <View style={[styles.beerFilterInputRow, value && styles.beerFilterInputRowActive]}>
-        <BeerIcon size={15} color={value ? Colors.amber : Colors.mutedText} />
-        <TextInput
-          value={query}
-          onChangeText={(text) => {
-            if (value) onChange(null);
-            if (text.trim().length < 2) setSuggestions([]);
-            setQuery(text);
-          }}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setTimeout(() => setFocused(false), 120)}
-          placeholder={cs.compass.beerFilterPlaceholder}
-          placeholderTextColor={Colors.mutedText}
-          style={styles.beerFilterInput}
-          autoCapitalize="words"
-          autoCorrect={false}
-          returnKeyType="search"
-          maxFontSizeMultiplier={FontScaleCap.body}
-          accessibilityLabel={cs.a11y.beerBrandFilterInput}
-        />
-        {value && (
-          <Pressable
-            onPress={handleClear}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel={cs.a11y.clearBeerBrandFilter}
-            style={({ pressed }) => [styles.beerFilterClear, pressed && { opacity: 0.7 }]}
-          >
-            <XIcon size={15} color={Colors.foamMuted} />
-          </Pressable>
-        )}
-      </View>
-      {value && (
-        <Text style={styles.beerFilterCaption} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.compass.beerFilterActive(value.label)}
-        </Text>
+    <Pressable
+      onPress={onOpen}
+      style={({ pressed }) => [
+        styles.filterButton,
+        active && styles.filterButtonActive,
+        pressed && { opacity: 0.8 },
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={
+        active ? cs.a11y.beerBrandFilterActive(value!.label) : cs.a11y.openBeerBrandFilter
+      }
+    >
+      <BeerIcon size={15} color={active ? Colors.amber : Colors.foamMuted} />
+      <Text
+        style={[styles.filterButtonText, active && styles.filterButtonTextActive]}
+        numberOfLines={1}
+        maxFontSizeMultiplier={FontScaleCap.body}
+      >
+        {active ? value!.label : cs.compass.beerFilterButton}
+      </Text>
+      {active && (
+        <Pressable
+          onPress={onClear}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={cs.a11y.clearBeerBrandFilter}
+          style={({ pressed }) => [styles.filterButtonClear, pressed && { opacity: 0.6 }]}
+        >
+          <XIcon size={14} color={Colors.amberLight} />
+        </Pressable>
       )}
-      {showSuggestions && (
-        <View style={styles.beerFilterSuggestions}>
-          {suggestions.map((suggestion) => (
-            <Pressable
-              key={suggestion.slug}
-              onPress={() => handleSelect(suggestion)}
-              style={({ pressed }) => [styles.beerFilterSuggestion, pressed && { opacity: 0.75 }]}
-              accessibilityRole="button"
-              accessibilityLabel={cs.a11y.beerBrandFilterSuggestion(suggestion.name)}
-            >
-              <Text style={styles.beerFilterSuggestionText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                {suggestion.name}
-              </Text>
-              {suggestion.kind === 'product' && suggestion.brandName && (
-                <Text style={styles.beerFilterSuggestionMeta} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {suggestion.brandName}
-                </Text>
-              )}
-            </Pressable>
-          ))}
-        </View>
-      )}
-    </View>
+    </Pressable>
   );
 }
 
@@ -808,6 +746,7 @@ export default function CompassScreen() {
   const { width: screenWidth, height: screenHeight, fontScale } = useWindowDimensions();
   const [sceneSize, setSceneSize] = useState<{ width: number; height: number } | null>(null);
   const [beerBrandFilter, setBeerBrandFilter] = useState<BeerBrandFilterValue | null>(null);
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
 
   const {
     arrowRotation,
@@ -846,7 +785,6 @@ export default function CompassScreen() {
     insets.top,
     Math.max(insets.bottom, 16),
     fontScale,
-    beerBrandFilter ? 48 : 0,
   );
 
   const handleSceneLayout = useCallback((event: LayoutChangeEvent) => {
@@ -903,6 +841,10 @@ export default function CompassScreen() {
   const handleSettings = useCallback(() => {
     router.push('/settings');
   }, [router]);
+
+  const handleOpenFilter = useCallback(() => setFilterSheetOpen(true), []);
+  const handleCloseFilter = useCallback(() => setFilterSheetOpen(false), []);
+  const handleClearFilter = useCallback(() => setBeerBrandFilter(null), []);
 
   const handleAddPub = useCallback(() => {
     router.push({
@@ -989,13 +931,28 @@ export default function CompassScreen() {
   if (pub === null) {
     return (
       <View style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-        <TitleBar showGear onSettings={handleSettings} />
-        <BeerBrandFilter value={beerBrandFilter} onChange={setBeerBrandFilter} />
+        <TitleBar
+          showGear
+          onSettings={handleSettings}
+          filterSlot={
+            <BeerFilterButton
+              value={beerBrandFilter}
+              onOpen={handleOpenFilter}
+              onClear={handleClearFilter}
+            />
+          }
+        />
         <EmptyScreen
           onSettings={handleSettings}
           onRetry={retrySearch}
           onAddPub={handleAddPub}
           searchFailed={searchFailed}
+        />
+        <BeerBrandFilterSheet
+          visible={filterSheetOpen}
+          value={beerBrandFilter}
+          onClose={handleCloseFilter}
+          onSelect={setBeerBrandFilter}
         />
       </View>
     );
@@ -1013,8 +970,14 @@ export default function CompassScreen() {
         showGear
         onSettings={handleSettings}
         onSettingsLongPress={handleDevArrival}
+        filterSlot={
+          <BeerFilterButton
+            value={beerBrandFilter}
+            onOpen={handleOpenFilter}
+            onClear={handleClearFilter}
+          />
+        }
       />
-      <BeerBrandFilter value={beerBrandFilter} onChange={setBeerBrandFilter} />
 
       {/* Calibration hint (optional, subtle) */}
       {isHeadingAccuracyLow(headingAccuracy, Platform.OS) && (
@@ -1101,6 +1064,13 @@ export default function CompassScreen() {
           <RefreshCwIcon size={18} color={Colors.foamMuted} />
         </Pressable>
       </View>
+
+      <BeerBrandFilterSheet
+        visible={filterSheetOpen}
+        value={beerBrandFilter}
+        onClose={handleCloseFilter}
+        onSelect={setBeerBrandFilter}
+      />
     </View>
   );
 }
@@ -1158,76 +1128,38 @@ const styles = StyleSheet.create({
   },
 
   // ── Compass area (State C) ──
-  beerFilterWrap: {
-    paddingHorizontal: 24,
-    paddingTop: 4,
-    zIndex: 5,
-  },
-  beerFilterInputRow: {
-    minHeight: 38,
+  filterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 32,
+    maxWidth: 200,
+    paddingLeft: 12,
+    paddingRight: 12,
     borderRadius: Radius.pill,
     borderWidth: 1,
     borderColor: Colors.border,
     backgroundColor: Colors.stout2,
-    paddingHorizontal: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
   },
-  beerFilterInputRowActive: {
+  filterButtonActive: {
     borderColor: Colors.amber,
+    backgroundColor: withAlpha(Colors.amber, 0.12),
+    paddingRight: 4,
   },
-  beerFilterInput: {
-    flex: 1,
-    minWidth: 0,
-    paddingVertical: 0,
+  filterButtonText: {
+    flexShrink: 1,
     fontFamily: Fonts.ui.semibold,
-    fontSize: 14,
-    color: Colors.foam,
+    fontSize: 13,
+    color: Colors.foamMuted,
   },
-  beerFilterClear: {
-    width: 28,
-    height: 28,
+  filterButtonTextActive: {
+    color: Colors.amberLight,
+  },
+  filterButtonClear: {
+    width: 24,
+    height: 24,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  beerFilterCaption: {
-    marginTop: 5,
-    paddingHorizontal: 4,
-    fontFamily: Fonts.ui.medium,
-    fontSize: 11,
-    color: Colors.mutedText,
-  },
-  beerFilterSuggestions: {
-    position: 'absolute',
-    left: 24,
-    right: 24,
-    top: 46,
-    borderRadius: Radius.card,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.stout2,
-    overflow: 'hidden',
-    zIndex: 10,
-  },
-  beerFilterSuggestion: {
-    minHeight: 42,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    justifyContent: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  beerFilterSuggestionText: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 14,
-    color: Colors.foam,
-  },
-  beerFilterSuggestionMeta: {
-    marginTop: 2,
-    fontFamily: Fonts.ui.medium,
-    fontSize: 11,
-    color: Colors.mutedText,
   },
   calibrationRow: {
     paddingHorizontal: Spacing.xl,

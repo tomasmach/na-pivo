@@ -42,6 +42,10 @@ jest.mock('@/components/compass/CompassContainer', () => ({
   CompassContainer: jest.fn(() => null),
 }));
 
+jest.mock('@/components/compass/BeerBrandFilterSheet', () => ({
+  BeerBrandFilterSheet: jest.fn(() => null),
+}));
+
 jest.mock('@/components/shared/TitleBar', () => ({
   TitleBar: jest.fn(() => null),
 }));
@@ -394,11 +398,18 @@ describe('CompassScreen', () => {
     });
 
     const contributeButton = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.contributePubButton,
+      accessibilityLabel: cs.a11y.contributeOrAddButton,
     });
 
     act(() => {
       contributeButton.props.onPress();
+    });
+
+    // The compact pub card funnels contribute/add through an action sheet;
+    // pick the first option ("Doplnit / přidat" → contribute).
+    const [, , buttons] = (Alert.alert as jest.Mock).mock.calls[0];
+    act(() => {
+      buttons?.[0]?.onPress?.();
     });
 
     expect(push).toHaveBeenCalledTimes(1);
@@ -430,12 +441,18 @@ describe('CompassScreen', () => {
       renderer = TestRenderer.create(React.createElement(CompassScreen));
     });
 
-    const addPubButton = renderer!.root.findAllByProps({
-      accessibilityLabel: cs.a11y.addPubButton,
-    })[0];
+    const addPubButton = renderer!.root.findByProps({
+      accessibilityLabel: cs.a11y.contributeOrAddButton,
+    });
 
     act(() => {
       addPubButton.props.onPress();
+    });
+
+    // Second action-sheet option ("Přidat hospodu" → add-pub).
+    const [, , buttons] = (Alert.alert as jest.Mock).mock.calls[0];
+    act(() => {
+      buttons?.[1]?.onPress?.();
     });
 
     expect(push).toHaveBeenCalledWith({

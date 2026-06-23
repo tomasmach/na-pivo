@@ -58,8 +58,14 @@ export const cs = {
     beerAndMore: 'a další',
     ratingCount: (count: string) => `${count} hodnocení`,
     gardenBadge: 'Zahrádka',
-    beerFilterPlaceholder: 'Značka piva',
-    beerFilterActive: (name: string) => `Podle záznamů: ${name}`,
+    // Filter sheet (brand quick-pick) copy
+    beerFilterButton: 'Filtruj piva',
+    beerFilterSheetTitle: 'Na co máš chuť?',
+    beerFilterSheetSubtitle: 'Ukážu jen hospody, kde to podle záznamů točí.',
+    beerFilterAll: 'Všechna piva',
+    beerFilterPopular: 'Oblíbené',
+    beerFilterSearchPlaceholder: 'Hledat jinou značku…',
+    beerFilterNoResults: 'Nic takového v záznamech není.',
   },
 
   permissions: {
@@ -717,6 +723,10 @@ export const cs = {
     beerBrandFilterInput: 'Filtrovat hospody podle značky piva ze záznamů',
     beerBrandFilterSuggestion: (name: string) => `Vybrat značku ${name}`,
     clearBeerBrandFilter: 'Zrušit filtr značky piva',
+    openBeerBrandFilter: 'Otevřít filtr značky piva',
+    beerBrandFilterActive: (name: string) => `Filtr piva: ${name}. Klepni pro změnu`,
+    selectBeerBrand: (name: string) => `Filtrovat na ${name}`,
+    closeBeerBrandFilter: 'Zavřít filtr',
 
     // — Tabs —
     tabCompass: 'Záložka Kompas',
