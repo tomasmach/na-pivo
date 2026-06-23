@@ -430,6 +430,17 @@ describe('suggestPubLocations', () => {
             type: 'poi',
             position: { lat: 50.082, lon: 14.422 },
           },
+          {
+            name: 'Vinotéka & Vinárna U Dómu',
+            label: 'Vinotéka',
+            type: 'poi',
+            position: { lat: 49.59715, lon: 17.26232 },
+            regionalStructure: [
+              { name: '861/3', type: 'regional.address' },
+              { name: 'Komenského', type: 'regional.street' },
+              { name: 'Olomouc', type: 'regional.municipality' },
+            ],
+          },
         ],
       }),
     }));
@@ -449,6 +460,24 @@ describe('suggestPubLocations', () => {
         city: 'Praha',
         address: 'Testovací 12',
         location: 'Testovací 12, Praha',
+      },
+      {
+        id: 'mapy:50.08200,14.42200:Kafe v Presu',
+        name: 'Kafe v Presu',
+        lat: 50.082,
+        lng: 14.422,
+        city: undefined,
+        address: undefined,
+        location: undefined,
+      },
+      {
+        id: 'mapy:49.59715,17.26232:Vinotéka & Vinárna U Dómu',
+        name: 'Vinotéka & Vinárna U Dómu',
+        lat: 49.59715,
+        lng: 17.26232,
+        city: 'Olomouc',
+        address: 'Komenského 861/3',
+        location: 'Komenského 861/3, Olomouc',
       },
     ]);
     const calledUrl = new URL(String((fetchMock.mock.calls[0] as unknown[])[0]));

@@ -377,7 +377,6 @@ export async function geocodePubLocation(
 
 function itemToLocationSuggestion(item: MapyGeocodeItem): PubLocationSuggestion | null {
   if (!item.name || !isValidPosition(item.position)) return null;
-  if (item.label && !isAcceptablePubName(item.name, item.label)) return null;
 
   const city = pickCity(item);
   const address = pickAddress(item);
