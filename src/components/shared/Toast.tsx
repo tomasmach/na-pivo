@@ -9,7 +9,7 @@
  */
 
 import React, { useEffect, useRef } from 'react';
-import { StyleSheet, Text, Pressable } from 'react-native';
+import { StyleSheet, Text, Pressable, View } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -24,6 +24,7 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { useToastStore } from '@/stores/toastStore';
+import { useReduceMotion } from '@/utils/useReduceMotion';
 
 /** How long the toast stays fully visible before auto-dismissing. */
 const VISIBLE_MS = 2400;
@@ -31,8 +32,10 @@ const VISIBLE_MS = 2400;
 export function Toast() {
   const message = useToastStore((s) => s.message);
   const token = useToastStore((s) => s.token);
+  const icon = useToastStore((s) => s.icon);
   const hide = useToastStore((s) => s.hide);
   const insets = useSafeAreaInsets();
+  const reduceMotion = useReduceMotion();
 
   const progress = useSharedValue(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -52,8 +55,11 @@ export function Toast() {
 
   useEffect(() => {
     if (!message) return;
-    // Spring in, then arm the auto-dismiss. Re-runs on every token bump.
-    progress.value = withSpring(1, { damping: 18, stiffness: 180, mass: 0.8 });
+    // Spring in (or snap directly when the user asked for reduced motion), then
+    // arm the auto-dismiss. Re-runs on every token bump.
+    progress.value = reduceMotion
+      ? withTiming(1, { duration: 0 })
+      : withSpring(1, { damping: 18, stiffness: 180, mass: 0.8 });
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(dismiss, VISIBLE_MS);
     return () => {
@@ -61,7 +67,7 @@ export function Toast() {
     };
     // progress/dismiss are stable enough for this animation effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, message]);
+  }, [token, message, reduceMotion]);
 
   const anim = useAnimatedStyle(() => ({
     opacity: progress.value,
@@ -80,7 +86,13 @@ export function Toast() {
         style={[styles.toast, softDrop()]}
         accessibilityRole="button"
       >
-        <Text style={styles.emoji}>🍺</Text>
+        {/* Leading visual: a caller-supplied IconGlyph (e.g. Mapér events) or
+            the default 🍺. The emoji stays for every legacy caller. */}
+        {icon != null ? (
+          <View style={styles.iconSlot}>{icon}</View>
+        ) : (
+          <Text style={styles.emoji}>🍺</Text>
+        )}
         <Text
           style={styles.text}
           numberOfLines={2}
@@ -116,6 +128,12 @@ const styles = StyleSheet.create({
   emoji: {
     fontSize: 18,
     lineHeight: 22,
+  },
+  iconSlot: {
+    width: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   text: {
     flexShrink: 1,

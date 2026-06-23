@@ -308,6 +308,120 @@ export async function submitAmenityVotes(
   }
 }
 
+/**
+ * The detailed outcome of an ONLINE submit, for the sheet's live vote handler:
+ * the three-state result plus the parsed envelope body (when the PUT was 2xx and
+ * the body parsed). The queue keeps using `submitAmenityVotes` for its keep/drop
+ * decision — this sibling does NOT change that contract; it only surfaces the
+ * extra envelope (xp_awarded + mapper snapshot) the sheet needs for the instant
+ * XP toast + the Profile mapper refresh. `body` is null unless `status === 'ok'`
+ * and the response parsed cleanly.
+ */
+export interface SubmitAmenityDetailed {
+  status: SubmitAmenityResult;
+  body: WireAmenityVotesResponse | null;
+}
+
+function isWireMapperSnapshot(value: unknown): value is WireMapperSnapshot {
+  const m = value as WireMapperSnapshot;
+  return (
+    !!m &&
+    typeof m.xp === 'number' &&
+    typeof m.level === 'number' &&
+    typeof m.title === 'string'
+  );
+}
+
+function isWireAmenityVoteResponse(value: unknown): value is WireAmenityVoteResponse {
+  const r = value as WireAmenityVoteResponse;
+  return !!r && typeof r.xp_awarded === 'number' && typeof r.was_first_map === 'boolean';
+}
+
+function parseVotesResponse(data: unknown): WireAmenityVotesResponse | null {
+  const d = data as { results?: unknown; mapper?: unknown };
+  if (!d || !Array.isArray(d.results)) return null;
+  return {
+    results: d.results.filter(isWireAmenityVoteResponse),
+    mapper: isWireMapperSnapshot(d.mapper) ? d.mapper : null,
+  };
+}
+
+/**
+ * PUT one or more amenity votes and return BOTH the three-state queue result and
+ * the parsed envelope (results + mapper snapshot). Same best-effort, never-throws
+ * contract as submitAmenityVotes — the only difference is it reads the 2xx body.
+ * The sheet uses this on the live (online) path so it can fire the instant XP
+ * toast from the authoritative `xp_awarded` and feed the fresh mapper snapshot to
+ * Profile in one round-trip. Offline / dormant / failure → { status:'retry', body:null }.
+ */
+export async function submitAmenityVotesDetailed(
+  votes: WireAmenityVote[],
+  signal?: AbortSignal,
+): Promise<SubmitAmenityDetailed> {
+  if (signal?.aborted) return { status: 'retry', body: null };
+
+  const endpoint = getBackendEndpoint('/v1/pub-amenities/votes');
+  if (!endpoint) {
+    trackAmenitySyncFailed('submit_votes', {
+      reason: 'backend_unconfigured',
+      result: 'retry',
+      retryable: true,
+    });
+    return { status: 'retry', body: null };
+  }
+
+  const session = await ensureAccount(signal);
+  if (!session || signal?.aborted) {
+    trackAmenitySyncFailed('submit_votes', {
+      reason: signal?.aborted ? 'aborted' : 'account_unavailable',
+      result: 'retry',
+      retryable: true,
+    });
+    return { status: 'retry', body: null };
+  }
+
+  const abort = chainTimeout(signal);
+  try {
+    const resp = await fetch(endpoint, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.token}`,
+      },
+      body: JSON.stringify({ votes }),
+      signal: abort.signal,
+    });
+
+    if (resp.ok) {
+      trackAmenitySynced('submit_votes');
+      let body: WireAmenityVotesResponse | null = null;
+      try {
+        body = parseVotesResponse(await resp.json());
+      } catch {
+        body = null; // a 2xx with an unparseable body is still 'ok' for the queue.
+      }
+      return { status: 'ok', body };
+    }
+    const result = await classifyAmenityHttpFailure(resp.status, session);
+    trackAmenitySyncFailed('submit_votes', {
+      status: resp.status,
+      reason: 'http_error',
+      result,
+      retryable: result === 'retry',
+    });
+    return { status: result, body: null };
+  } catch {
+    trackAmenitySyncFailed('submit_votes', {
+      reason: 'network_or_timeout',
+      result: 'retry',
+      retryable: true,
+    });
+    return { status: 'retry', body: null };
+  } finally {
+    abort.cleanup();
+  }
+}
+
 function isWireMyAmenityVote(value: unknown): value is WireMyAmenityVote {
   const v = value as WireMyAmenityVote;
   return (

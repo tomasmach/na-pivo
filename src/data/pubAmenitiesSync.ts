@@ -86,6 +86,33 @@ function pubNameForKey(pubKey: string): string {
   return match?.pubName || pubKey;
 }
 
+/**
+ * Build the wire payload for ONE vote (set or retract), with an explicit name.
+ * Exported so the sheet's live (online) submit path can PUT the exact same body
+ * the queue would — same geohash-derived lat/lng, same taxonomy version — and
+ * read back the XP envelope. `value: null` is a retraction tombstone. The pub
+ * name is required non-blank by the backend (geohash-8 collision guard); callers
+ * pass the live pub name (the sheet always has it).
+ */
+export function buildAmenityVoteWire(params: {
+  pubKey: string;
+  pubName: string;
+  amenityKey: AmenityKey;
+  value: 'yes' | 'no' | null;
+  clientUpdatedAt: string;
+}): WireAmenityVote {
+  const { lat, lng } = decodeGeohash8(params.pubKey);
+  return {
+    name: params.pubName || params.pubKey,
+    lat,
+    lng,
+    amenity_key: params.amenityKey,
+    value: params.value,
+    taxonomy_version: CURRENT_TAXONOMY_VERSION,
+    client_updated_at: params.clientUpdatedAt,
+  };
+}
+
 /** Build the upsert wire payload for a single local vote. */
 function buildUpsertPayload(
   pubKey: string,

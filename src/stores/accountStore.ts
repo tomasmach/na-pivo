@@ -21,6 +21,19 @@ import { useSettingsStore } from '@/stores/settingsStore';
 
 export type AccountStatus = 'idle' | 'loading' | 'ready' | 'error';
 
+/**
+ * The compact Mapér snapshot fields the PUT /pub-amenities/votes envelope
+ * returns (camelCased). Patches the live XP/level/title on `profile.mapper` so
+ * Profile updates without a refetch.
+ */
+export interface MapperSnapshotPatch {
+  xp: number;
+  level: number;
+  title: string;
+  xpIntoLevel: number;
+  xpForNextLevel: number | null;
+}
+
 interface AccountState {
   session: AccountSession | null;
   status: AccountStatus;
@@ -34,6 +47,14 @@ interface AccountState {
   initAccount: () => Promise<void>;
   /** Re-fetch GET /v1/account/me into `profile`. */
   refreshProfile: () => Promise<void>;
+  /**
+   * Patch the live Mapér XP/level/title from a PUT /pub-amenities/votes envelope
+   * snapshot so Profile climbs immediately after a vote, without a second GET.
+   * Only patches when a full `mapper` block already exists (the durable counters
+   * + levels + xpRules ride only on GET /account/me); the compact snapshot can't
+   * synthesize them, and the durable number reconciles on the next refresh.
+   */
+  applyMapperSnapshot: (snapshot: MapperSnapshotPatch) => void;
 
   // --- credential auth (these change the session token) ---
   register: (params: { email: string; password: string; displayName?: string }) => Promise<AuthResult>;
@@ -148,6 +169,27 @@ export const useAccountStore = create<AccountState>((set, get) => {
         set({ profile });
         applyAccountSettings(profile.settings);
       }
+    },
+
+    applyMapperSnapshot: (snapshot) => {
+      const current = get().profile;
+      // Only patch a live full mapper block — the snapshot lacks the durable
+      // counters/levels/xpRules, which reconcile on the next GET /account/me.
+      if (!current?.mapper) return;
+      const xpForNextLevel = snapshot.xpForNextLevel ?? current.mapper.xpForNextLevel;
+      set({
+        profile: {
+          ...current,
+          mapper: {
+            ...current.mapper,
+            xp: snapshot.xp,
+            level: snapshot.level,
+            title: snapshot.title,
+            xpIntoLevel: snapshot.xpIntoLevel,
+            xpForNextLevel,
+          },
+        },
+      });
     },
 
     register: (params) => auth.registerEmail(params).then(applyAuthResult),

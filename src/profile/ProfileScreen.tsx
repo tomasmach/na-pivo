@@ -13,14 +13,20 @@
  * stores as the offline/anonymous fallback.
  */
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
+import { amberGlow } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
 import { beerCountLabel } from '@/i18n/plural';
 import { formatPrice } from '@/utils/currency';
@@ -36,7 +42,15 @@ import {
   RadiusIcon,
   CoinsIcon,
   LockKeyholeIcon,
+  SproutIcon,
+  CompassIcon,
+  MapPinnedIcon,
+  StarIcon,
+  BadgeCheckIcon,
+  ClipboardListIcon,
 } from '@/components/shared/IconGlyph';
+import { useReduceMotion } from '@/utils/useReduceMotion';
+import type { AccountMapper, AccountAchievements } from '@/data/auth';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { Avatar } from '@/profile/Avatar';
 import {
@@ -170,7 +184,12 @@ function Badge({
   unlocked: boolean;
 }) {
   return (
-    <View style={styles.badge}>
+    <View
+      style={styles.badge}
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={unlocked ? cs.a11y.badgeUnlocked(title) : cs.a11y.badgeLocked(title, subtitle)}
+    >
       <View style={[styles.medallion, unlocked ? styles.medallionOn : styles.medallionOff]}>
         {unlocked ? (
           icon
@@ -189,6 +208,182 @@ function Badge({
         {subtitle}
       </Text>
     </View>
+  );
+}
+
+/** The amber XP progress bar inside the Mapér level card. Width animates from 0
+ *  to the fill fraction, gated by reduce-motion. */
+function XpBar({ fraction }: { fraction: number }) {
+  const reduceMotion = useReduceMotion();
+  const clamped = Math.max(0, Math.min(1, Number.isFinite(fraction) ? fraction : 0));
+  const progress = useSharedValue(reduceMotion ? clamped : 0);
+  useEffect(() => {
+    progress.value = reduceMotion ? clamped : withTiming(clamped, { duration: 320 });
+  }, [clamped, reduceMotion, progress]);
+  const fillStyle = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` }));
+
+  return (
+    <View style={styles.xpTrack}>
+      <Animated.View style={[styles.xpFill, amberGlow(6), fillStyle]} />
+    </View>
+  );
+}
+
+/**
+ * The MAPÉR section (spec §5.4 / Mockup 3): a level card with an XP bar, a 2×2
+ * StatTile grid of mapper counters, and the five new badges. Rendered between
+ * TVOJE ČÍSLA and ODZNAKY. `mapper` is the backend snapshot; when it is absent
+ * (backend dormant / signed out) the caller shows the empty state instead.
+ */
+function MapperSection({ mapper, signedIn }: { mapper: AccountMapper; signedIn: boolean }) {
+  const xpForNext = mapper.xpForNextLevel;
+  const isMaxed = xpForNext == null || xpForNext <= 0;
+  // xpIntoLevel / xpForNextLevel → bar fill; a maxed level shows a full bar.
+  const fraction = isMaxed ? 1 : mapper.xpIntoLevel / xpForNext;
+  const cur = mapper.xpIntoLevel;
+  const next = isMaxed ? mapper.xpIntoLevel : xpForNext;
+  const remaining = isMaxed ? 0 : Math.max(0, xpForNext - mapper.xpIntoLevel);
+
+  return (
+    <>
+      <Text style={styles.sectionHeader}>{cs.mapPub.mapperHeader}</Text>
+
+      <View
+        style={styles.levelCard}
+        accessibilityLabel={cs.a11y.mapperLevel(
+          mapper.level,
+          mapper.title,
+          mapper.xpIntoLevel,
+          isMaxed ? null : xpForNext,
+        )}
+      >
+        <View style={styles.levelHeaderRow}>
+          <View style={styles.levelIconWell}>
+            <SproutIcon size={22} color={Colors.amber} />
+          </View>
+          <Text style={styles.levelTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
+            {cs.mapPub.mapperLevel(mapper.level, mapper.title)}
+          </Text>
+        </View>
+
+        <XpBar fraction={fraction} />
+
+        <View style={styles.xpRow}>
+          <Text style={styles.xpProgress} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.mapPub.mapperXpProgress(cur, next)}
+          </Text>
+          <Text style={styles.xpToNext} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+            {isMaxed ? cs.mapPub.mapperXpMaxed : cs.mapPub.mapperXpToNext(remaining)}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.statsGrid}>
+        <StatTile
+          icon={<MapPinnedIcon size={18} color={Colors.amber} />}
+          value={String(mapper.distinctMappedPubs)}
+          caption={cs.mapPub.mapperStatMappedPubs}
+        />
+        <StatTile
+          icon={<CompassIcon size={18} color={Colors.amber} />}
+          value={String(mapper.amenityVotesCount)}
+          caption={cs.mapPub.mapperStatAnswers}
+        />
+        <StatTile
+          icon={<SproutIcon size={18} color={Colors.amber} />}
+          value={String(mapper.firstMapperCount)}
+          caption={cs.mapPub.mapperStatFirstMaps}
+        />
+        <StatTile
+          icon={<StarIcon size={18} color={Colors.amber} />}
+          value={String(mapper.completedPubsCount)}
+          caption={cs.mapPub.mapperStatCompleted}
+        />
+      </View>
+
+      {/* The signed-out hint doubles as a reason to claim an account. */}
+      {!signedIn && (
+        <Text style={styles.mapperHint} maxFontSizeMultiplier={FontScaleCap.body}>
+          {cs.mapPub.mapperSignedOut}
+        </Text>
+      )}
+    </>
+  );
+}
+
+/** The empty MAPÉR state — shown when no backend mapper block exists yet. */
+function MapperEmptySection({ signedIn }: { signedIn: boolean }) {
+  return (
+    <>
+      <Text style={styles.sectionHeader}>{cs.mapPub.mapperHeader}</Text>
+      <View style={styles.mapperEmptyCard}>
+        <View style={styles.levelIconWell}>
+          <SproutIcon size={22} color={Colors.amber} />
+        </View>
+        <Text style={styles.mapperEmptyText} maxFontSizeMultiplier={FontScaleCap.body}>
+          {signedIn ? cs.mapPub.mapperEmpty : cs.mapPub.mapperSignedOut}
+        </Text>
+      </View>
+    </>
+  );
+}
+
+/** The five Mapér badges (spec §5.3), rendered in the existing badge row. */
+function MapperBadges({
+  mapper,
+  achievements,
+}: {
+  mapper: AccountMapper | undefined;
+  achievements: AccountAchievements;
+}) {
+  // The server achievement booleans are authoritative when present; fall back to
+  // deriving from the durable mapper counters (e.g. an older backend that returns
+  // mapper counters but not the new badge flags). Absent both → locked.
+  const firstMap = achievements.firstMap || (mapper?.firstMapperCount ?? 0) >= 1;
+  const explorer = achievements.explorer || (mapper?.distinctMappedPubs ?? 0) >= 10;
+  const cartographer = achievements.cartographer || (mapper?.distinctMappedPubs ?? 0) >= 25;
+  const completionist = achievements.completionist || (mapper?.completedPubsCount ?? 0) >= 1;
+  const factMachine = achievements.factMachine || (mapper?.amenityVotesCount ?? 0) >= 100;
+
+  return (
+    <>
+      <View style={styles.badgeRow}>
+        <Badge
+          icon={<SproutIcon size={20} color={Colors.amber} />}
+          title={cs.mapPub.badgeFirstMapTitle}
+          subtitle={cs.mapPub.badgeFirstMapLocked}
+          unlocked={firstMap}
+        />
+        <Badge
+          icon={<MapPinnedIcon size={20} color={Colors.amber} />}
+          title={cs.mapPub.badgeExplorerTitle}
+          subtitle={cs.mapPub.badgeExplorerLocked}
+          unlocked={explorer}
+        />
+        <Badge
+          icon={<MapPinnedIcon size={20} color={Colors.amber} />}
+          title={cs.mapPub.badgeCartographerTitle}
+          subtitle={cs.mapPub.badgeCartographerLocked}
+          unlocked={cartographer}
+        />
+      </View>
+      <View style={styles.badgeRow}>
+        <Badge
+          icon={<BadgeCheckIcon size={20} color={Colors.amber} />}
+          title={cs.mapPub.badgeCompletionistTitle}
+          subtitle={cs.mapPub.badgeCompletionistLocked}
+          unlocked={completionist}
+        />
+        <Badge
+          icon={<ClipboardListIcon size={20} color={Colors.amber} />}
+          title={cs.mapPub.badgeFactMachineTitle}
+          subtitle={cs.mapPub.badgeFactMachineLocked}
+          unlocked={factMachine}
+        />
+        {/* Keep the row a stable 3-up grid; an empty slot balances the layout. */}
+        <View style={styles.badgeSpacer} />
+      </View>
+    </>
   );
 }
 
@@ -281,11 +476,18 @@ export default function ProfileScreen() {
     };
   }, [isSignedIn, localStats, profile?.stats]);
   const totalRatings = isSignedIn && profile?.stats ? profile.stats.ratingsCount : ratingsCount;
-  const achievements = profile?.achievements ?? {
+  const achievements: AccountAchievements = profile?.achievements ?? {
     firstTen: stats.totalBeers >= 10,
     regular: stats.maxVisitsToOnePub >= 5,
     reviewer: totalRatings >= 10,
+    // Mapér badges are server-derived; with the backend dormant they stay locked.
+    firstMap: false,
+    explorer: false,
+    cartographer: false,
+    completionist: false,
+    factMachine: false,
   };
+  const mapper = profile?.mapper;
   const walkedM = isSignedIn ? profile?.usage?.walkedDistanceM ?? null : null;
   const recent = useMemo(() => sessions.slice(0, 3), [sessions]);
   const now = useMemo(() => new Date(), []);
@@ -430,6 +632,13 @@ export default function ProfileScreen() {
           />
         </View>
 
+        {/* ── Mapér (between TVOJE ČÍSLA and ODZNAKY) ── */}
+        {mapper ? (
+          <MapperSection mapper={mapper} signedIn={isSignedIn} />
+        ) : (
+          <MapperEmptySection signedIn={isSignedIn} />
+        )}
+
         {/* ── Achievements ── */}
         <Text style={styles.sectionHeader}>{cs.profile.achievementsHeader}</Text>
         <View style={styles.badgeRow}>
@@ -452,6 +661,8 @@ export default function ProfileScreen() {
             unlocked={achievements.reviewer}
           />
         </View>
+        {/* The five Mapér badges share the ODZNAKY section. */}
+        <MapperBadges mapper={mapper} achievements={achievements} />
 
         {/* ── Recent activity (hidden when empty) ── */}
         {recent.length > 0 && (
@@ -716,10 +927,98 @@ const styles = StyleSheet.create({
     color: Colors.mutedText,
   },
 
+  // ── Mapér level card ──
+  levelCard: {
+    backgroundColor: Colors.stout3,
+    borderRadius: Radius.card,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.25),
+    padding: Spacing.lg,
+    gap: Spacing.md,
+  },
+  levelHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  levelIconWell: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: withAlpha(Colors.amber, 0.16),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.4),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  levelTitle: {
+    flex: 1,
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 18,
+    color: Colors.foam,
+  },
+  xpTrack: {
+    height: 10,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout,
+    overflow: 'hidden',
+  },
+  xpFill: {
+    height: '100%',
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.amber,
+  },
+  xpRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
+  xpProgress: {
+    fontFamily: Fonts.display.bold,
+    fontSize: 13,
+    color: Colors.foam,
+    fontVariant: ['tabular-nums'],
+  },
+  xpToNext: {
+    flexShrink: 1,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 12,
+    color: Colors.mutedText,
+    textAlign: 'right',
+  },
+  mapperHint: {
+    fontFamily: Fonts.ui.regular,
+    fontSize: 12,
+    lineHeight: 17,
+    color: Colors.mutedText,
+    marginLeft: 4,
+  },
+  mapperEmptyCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    backgroundColor: Colors.stout2,
+    borderRadius: Radius.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.lg,
+  },
+  mapperEmptyText: {
+    flex: 1,
+    fontFamily: Fonts.ui.regular,
+    fontSize: 13,
+    lineHeight: 19,
+    color: Colors.mutedText,
+  },
+
   // ── Achievements ──
   badgeRow: {
     flexDirection: 'row',
     gap: Spacing.sm + 2,
+  },
+  badgeSpacer: {
+    flex: 1,
   },
   badge: {
     flex: 1,

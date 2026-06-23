@@ -6,6 +6,7 @@
 
 import {
   submitAmenityVotes,
+  submitAmenityVotesDetailed,
   fetchMyAmenityVotes,
   fetchPubAmenities,
   getAmenityKinds,
@@ -223,4 +224,99 @@ describe('getAmenityKinds — taxonomy overlay', () => {
     installFetch(fetchResolving(500, {}));
     expect(await getAmenityKinds()).toBeNull();
   });
+});
+
+describe('submitAmenityVotesDetailed — live XP envelope', () => {
+  it('parses the { results, mapper } envelope on 2xx', async () => {
+    installFetch(
+      fetchResolving(200, {
+        results: [
+          {
+            applied: true,
+            ignored_unknown_amenity: false,
+            deleted: false,
+            was_first_map: true,
+            xp_awarded: 40,
+            vote: { amenity_key: 'game_darts', value: 'yes', client_updated_at: 'x' },
+            aggregate: {
+              amenity_key: 'game_darts',
+              status: 'yes',
+              confidence: 0.9,
+              yes_count: 1,
+              no_count: 0,
+              distinct_voter_count: 1,
+            },
+          },
+        ],
+        mapper: { xp: 40, level: 1, title: 'Nováček', xp_into_level: 40, xp_for_next_level: 10 },
+      }),
+    );
+    const res = await submitAmenityVotesDetailed([vote()]);
+    expect(res.status).toBe('ok');
+    expect(res.body?.results[0].xp_awarded).toBe(40);
+    expect(res.body?.results[0].was_first_map).toBe(true);
+    expect(res.body?.mapper?.title).toBe('Nováček');
+  });
+
+  it('returns ok with a null body when the 2xx body is unparseable', async () => {
+    installFetch(
+      jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => {
+          throw new Error('bad json');
+        },
+      }),
+    );
+    const res = await submitAmenityVotesDetailed([vote()]);
+    expect(res.status).toBe('ok');
+    expect(res.body).toBeNull();
+  });
+
+  it('returns retry / null body when offline (network error)', async () => {
+    installFetch(jest.fn().mockRejectedValue(new Error('network')));
+    const res = await submitAmenityVotesDetailed([vote()]);
+    expect(res.status).toBe('retry');
+    expect(res.body).toBeNull();
+  });
+
+  it('classifies a 400 as permanent-error with a null body', async () => {
+    installFetch(fetchResolving(400, {}));
+    const res = await submitAmenityVotesDetailed([vote()]);
+    expect(res.status).toBe('permanent-error');
+    expect(res.body).toBeNull();
+  });
+
+  it('returns retry when the backend is unconfigured', async () => {
+    mockGetBackendEndpoint.mockReturnValue(null);
+    const res = await submitAmenityVotesDetailed([vote()]);
+    expect(res.status).toBe('retry');
+    expect(res.body).toBeNull();
+  });
+
+  it('drops a malformed mapper snapshot to null but keeps results', async () => {
+    installFetch(
+      fetchResolving(200, {
+        results: [
+          {
+            applied: true,
+            ignored_unknown_amenity: false,
+            deleted: false,
+            was_first_map: false,
+            xp_awarded: 5,
+            vote: null,
+            aggregate: { amenity_key: 'game_darts', status: 'yes', confidence: 1, yes_count: 2, no_count: 0, distinct_voter_count: 2 },
+          },
+        ],
+        mapper: { nonsense: true },
+      }),
+    );
+    const res = await submitAmenityVotesDetailed([vote()]);
+    expect(res.body?.results).toHaveLength(1);
+    expect(res.body?.mapper).toBeNull();
+  });
+});
+
+afterAll(() => {
+  global.fetch = ORIGINAL_FETCH;
 });

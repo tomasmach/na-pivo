@@ -41,6 +41,12 @@ export const cs = {
     closeA11y: 'Zavřít mapování hospody',
     offline: 'Teď jsi offline — odpovědi se uloží a pošlou později.',
     ringA11y: (pct: number) => `Zmapováno z ${pct} procent`,
+    // Makes the public-vs-private distinction explicit: this is shared community
+    // data, unlike the private rating on the evening card.
+    publicNote: 'Veřejné — pomáháš ostatním pivařům.',
+    // Entry button on the evening card (an alternate, friendlier label).
+    entryQuestion: 'Co tady mají?',
+    entryA11yPublic: 'Otevře veřejné mapování hospody, viditelné pro ostatní',
 
     // Sections (uppercase, matching the statsHeader convention)
     sectionPayment: 'PLATBA',
@@ -835,6 +841,18 @@ export const cs = {
     beerBrandFilterActive: (name: string) => `Filtr piva: ${name}. Klepni pro změnu`,
     selectBeerBrand: (name: string) => `Filtrovat na ${name}`,
     closeBeerBrandFilter: 'Zavřít filtr',
+
+    // — "Zmapuj hospodu" / Mapér —
+    // `into`/`next` are the into-level XP numbers shown on the visible bar so the
+    // spoken progress matches the rendered progress. `next == null` = maxed level.
+    mapperLevel: (n: number, title: string, into: number, next: number | null) =>
+      next == null
+        ? `Mapér úroveň ${n}, ${title}, máš všechno`
+        : `Mapér úroveň ${n}, ${title}, ${into} z ${next} XP`,
+    // Mapér badge state (announced after the title so VoiceOver reads e.g.
+    // "Objevitel, splněno" or "Objevitel, zamčeno, Zmapuj 10 hospod").
+    badgeUnlocked: (title: string) => `${title}, splněno`,
+    badgeLocked: (title: string, hint: string) => `${title}, zamčeno, ${hint}`,
 
     // — Tabs —
     tabCompass: 'Záložka Kompas',

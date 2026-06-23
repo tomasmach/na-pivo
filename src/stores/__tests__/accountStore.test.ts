@@ -10,7 +10,7 @@
 
 import { useAccountStore, selectIsSignedIn } from '@/stores/accountStore';
 import * as auth from '@/data/auth';
-import type { AccountProfile, AuthResult } from '@/data/auth';
+import type { AccountMapper, AccountProfile, AuthResult } from '@/data/auth';
 import { ensureAccount } from '@/data/account';
 import { setTelemetrySession } from '@/data/telemetryClient';
 
@@ -50,6 +50,29 @@ function signedInProfile(overrides: Partial<AccountProfile> = {}): AccountProfil
     providers: ['email'],
     isAnonymous: false,
     status: 'active',
+    ...overrides,
+  };
+}
+
+/** A full Mapér block with distinctive durable counters/levels/xpRules so a test
+ *  can prove applyMapperSnapshot preserves them while patching the live XP. */
+function fullMapper(overrides: Partial<AccountMapper> = {}): AccountMapper {
+  return {
+    xp: 285,
+    level: 3,
+    title: 'Štamgast',
+    xpIntoLevel: 135,
+    xpForNextLevel: 250,
+    amenityVotesCount: 42,
+    distinctMappedPubs: 7,
+    firstMapperCount: 2,
+    completedPubsCount: 1,
+    levels: [
+      { level: 1, title: 'Nováček', xp: 0 },
+      { level: 2, title: 'Všímálek', xp: 100 },
+      { level: 3, title: 'Štamgast', xp: 150 },
+    ],
+    xpRules: { firstFact: 10, firstMapperBonus: 25, confirm: 2, pubCompleteBonus: 50 },
     ...overrides,
   };
 }
@@ -282,6 +305,73 @@ describe('verifyEmail', () => {
     await useAccountStore.getState().verifyEmail('bad');
 
     expect(mockedAuth.fetchAccountProfile).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// applyMapperSnapshot — live XP/level patch from the PUT votes envelope
+// ---------------------------------------------------------------------------
+describe('applyMapperSnapshot', () => {
+  it('patches the live XP/level/title + into-level while preserving the durable block', () => {
+    const mapper = fullMapper();
+    useAccountStore.setState({ profile: signedInProfile({ mapper }) });
+
+    useAccountStore.getState().applyMapperSnapshot({
+      xp: 320,
+      level: 4,
+      title: 'Znalec',
+      xpIntoLevel: 20,
+      xpForNextLevel: 300,
+    });
+
+    const patched = useAccountStore.getState().profile?.mapper;
+    // Live fields climb to the snapshot.
+    expect(patched?.xp).toBe(320);
+    expect(patched?.level).toBe(4);
+    expect(patched?.title).toBe('Znalec');
+    expect(patched?.xpIntoLevel).toBe(20);
+    expect(patched?.xpForNextLevel).toBe(300);
+    // Durable counters + levels + xpRules ride only on GET /account/me — preserved.
+    expect(patched?.distinctMappedPubs).toBe(mapper.distinctMappedPubs);
+    expect(patched?.amenityVotesCount).toBe(mapper.amenityVotesCount);
+    expect(patched?.firstMapperCount).toBe(mapper.firstMapperCount);
+    expect(patched?.completedPubsCount).toBe(mapper.completedPubsCount);
+    expect(patched?.levels).toEqual(mapper.levels);
+    expect(patched?.xpRules).toEqual(mapper.xpRules);
+  });
+
+  it('is a no-op when no full mapper block exists yet', () => {
+    const profile = signedInProfile();
+    expect(profile.mapper).toBeUndefined();
+    useAccountStore.setState({ profile });
+
+    useAccountStore.getState().applyMapperSnapshot({
+      xp: 999,
+      level: 9,
+      title: 'Legenda',
+      xpIntoLevel: 0,
+      xpForNextLevel: null,
+    });
+
+    // The compact snapshot can't synthesize durable counters → nothing patched.
+    expect(useAccountStore.getState().profile?.mapper).toBeUndefined();
+  });
+
+  it('keeps the previous xpForNextLevel when the snapshot sends null', () => {
+    const mapper = fullMapper({ xpForNextLevel: 250 });
+    useAccountStore.setState({ profile: signedInProfile({ mapper }) });
+
+    useAccountStore.getState().applyMapperSnapshot({
+      xp: 400,
+      level: 5,
+      title: 'Hospodský mudrc',
+      xpIntoLevel: 80,
+      xpForNextLevel: null,
+    });
+
+    const patched = useAccountStore.getState().profile?.mapper;
+    expect(patched?.xp).toBe(400);
+    expect(patched?.xpForNextLevel).toBe(250);
   });
 });
 

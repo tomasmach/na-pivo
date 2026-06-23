@@ -38,6 +38,7 @@ import { usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { sessionBreakdown, eveningDateLabel, eveningDayRelation } from '@/myBeers/eveningModel';
 import { EveningBreakdown } from '@/myBeers/EveningBreakdown';
 import { PubRatingControl } from '@/myBeers/PubRatingControl';
+import { MapPubEntry } from '@/components/amenities/MapPubEntry';
 import { VerdictBadge } from '@/myBeers/VerdictBadge';
 import type { PriceCurrency } from '@/utils/currency';
 
@@ -100,6 +101,11 @@ function CurrentEveningCard({
 
       <View style={styles.divider} />
       <PubRatingControl pubKey={session.pubKey} pubName={session.pubName} />
+
+      {/* Public community mapping — distinct from the private rating above. One
+          clear trigger; the sheet holds the detail so the card stays compact. */}
+      <View style={styles.divider} />
+      <MapPubEntry pubKey={session.pubKey} pubName={session.pubName} />
     </View>
   );
 }

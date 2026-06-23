@@ -74,6 +74,14 @@ export const AppState = {
   addEventListener: jest.fn(() => ({ remove: jest.fn() })),
 };
 
+export const AccessibilityInfo = {
+  isReduceMotionEnabled: jest.fn().mockResolvedValue(false),
+  addEventListener: jest.fn(() => ({ remove: jest.fn() })),
+};
+
+export const KeyboardAvoidingView = createComponent('KeyboardAvoidingView');
+export const TextInput = createComponent('TextInput');
+
 export const NativeModules = {};
 export const NativeEventEmitter = jest.fn(() => ({
   addListener: jest.fn(),

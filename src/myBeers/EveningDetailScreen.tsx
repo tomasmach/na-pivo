@@ -43,6 +43,7 @@ import {
 import { sessionBreakdown, eveningDateLabel } from '@/myBeers/eveningModel';
 import { EveningBreakdown } from '@/myBeers/EveningBreakdown';
 import { PubRatingControl } from '@/myBeers/PubRatingControl';
+import { MapPubEntry } from '@/components/amenities/MapPubEntry';
 
 export default function EveningDetailScreen() {
   const router = useRouter();
@@ -221,6 +222,12 @@ export default function EveningDetailScreen() {
           {/* Rating */}
           <View style={styles.card}>
             <PubRatingControl pubKey={session.pubKey} pubName={session.pubName} />
+          </View>
+
+          {/* Public community mapping — separate card so the public/private split
+              is visually obvious next to the private rating above. */}
+          <View style={styles.card}>
+            <MapPubEntry pubKey={session.pubKey} pubName={session.pubName} />
           </View>
 
           <View style={{ height: Spacing.lg }} />
