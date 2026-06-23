@@ -39,7 +39,7 @@ export const cs = {
     reportBody: (pubName: string) =>
       `Schováme „${pubName}“ z kompasu. Co je špatně?`,
     reportClosed: 'Už nefunguje',
-    reportNotPub: 'Nemají točené',
+    reportNotPub: 'Nečepují pivo',
     calibrationHint: 'Otoč telefonem do osmičky pro kalibraci kompasu',
     openNow: 'Otevřeno',
     openUntil: (t: string) => `Otevřeno do ${t}`,
