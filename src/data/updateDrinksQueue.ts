@@ -78,6 +78,16 @@ export function enqueueDrinkUpdate(entry: DrinkUpdateEntry): Promise<void> {
   });
 }
 
+export function removeQueuedDrinkUpdate(clientId: string): Promise<boolean> {
+  return runLocked(async () => {
+    const queue = await loadQueue();
+    const filtered = queue.filter((entry) => entry.client_id !== clientId);
+    if (filtered.length === queue.length) return false;
+    await saveQueue(filtered);
+    return true;
+  });
+}
+
 export function clearUpdateDrinksQueue(): Promise<void> {
   return runLocked(async () => {
     await saveQueue([]);

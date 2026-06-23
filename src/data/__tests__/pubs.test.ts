@@ -41,6 +41,12 @@ const SYNTHETIC_PUBS: Pub[] = [
   { id: "osm:5", name: "Bratislavský pivovar", lat: 48.1486, lng: 17.1077 },
 ];
 
+async function flushMicrotasks(times = 5): Promise<void> {
+  for (let i = 0; i < times; i++) {
+    await Promise.resolve();
+  }
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   _init(SYNTHETIC_PUBS);
@@ -69,6 +75,36 @@ describe("fetchPubsNear", () => {
     expect(searchPubsNear).toHaveBeenCalledWith(50.08, 14.42, 25, undefined, {
       beerBrandKey: "pilsner-urquell",
     });
+  });
+
+  it("runs a fresh fetch when the beer brand changes during an in-flight request", async () => {
+    let resolveFirst!: (value: Pub[]) => void;
+    const firstFetch = new Promise<Pub[]>((resolve) => {
+      resolveFirst = resolve;
+    });
+    (searchPubsNear as jest.Mock)
+      .mockReturnValueOnce(firstFetch)
+      .mockResolvedValueOnce([{ id: "brand", name: "U Značky", lat: 50.08, lng: 14.42 }]);
+
+    const unfiltered = fetchPubsNear(50.08, 14.42, undefined, { force: true, radiusKm: 25 });
+    await flushMicrotasks();
+    const filtered = fetchPubsNear(50.08, 14.42, undefined, {
+      force: true,
+      radiusKm: 25,
+      beerBrandKey: "pilsner-urquell",
+    });
+
+    expect(searchPubsNear).toHaveBeenCalledTimes(1);
+    resolveFirst([{ id: "old", name: "U Starého dotazu", lat: 50.08, lng: 14.42 }]);
+
+    await unfiltered;
+    await filtered;
+
+    expect(searchPubsNear).toHaveBeenCalledTimes(2);
+    expect(searchPubsNear).toHaveBeenLastCalledWith(50.08, 14.42, 25, undefined, {
+      beerBrandKey: "pilsner-urquell",
+    });
+    expect(getPubById("brand")?.name).toBe("U Značky");
   });
 
   it("filters backend-blocked Mapy results before rebuilding the index", async () => {

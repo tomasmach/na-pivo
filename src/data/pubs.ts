@@ -84,6 +84,7 @@ let _lastFetchCenter: { lat: number; lng: number } | null = null;
 let _lastFetchRadiusKm: number | null = null;
 let _lastFetchBeerBrandKey = "";
 let _inflight: Promise<void> | null = null;
+let _inflightRequestKey = "";
 /** Whether we have already attempted to hydrate from AsyncStorage this session.
  *  The persisted snapshot is only consulted once, on the first fetchPubsNear
  *  call — afterwards the in-memory state is authoritative. */
@@ -236,6 +237,7 @@ export function _reset(): void {
   _lastFetchRadiusKm = null;
   _lastFetchBeerBrandKey = "";
   _inflight = null;
+  _inflightRequestKey = "";
   _hydrationAttempted = false;
 }
 
@@ -278,6 +280,7 @@ export async function fetchPubsNear(
     ? Math.max(options.radiusKm ?? DEFAULT_FETCH_RADIUS_KM, 0.1)
     : DEFAULT_FETCH_RADIUS_KM;
   const beerBrandKey = (options.beerBrandKey ?? "").trim();
+  const requestKey = `${lat}:${lng}:${radiusKm}:${beerBrandKey}`;
 
   // In-memory short-circuit (also covers the post-hydration session).
   if (!options.force && _loaded && _lastFetchCenter) {
@@ -288,8 +291,15 @@ export async function fetchPubsNear(
       return;
     }
   }
-  if (_inflight) return _inflight;
+  if (_inflight) {
+    if (!options.force && requestKey === _inflightRequestKey) return _inflight;
+    return _inflight.then(() => {
+      if (signal?.aborted) return;
+      return fetchPubsNear(lat, lng, signal, options);
+    });
+  }
 
+  _inflightRequestKey = requestKey;
   _inflight = (async () => {
     try {
       // Cold-start hydration: consult the persisted snapshot exactly once, and
@@ -339,6 +349,7 @@ export async function fetchPubsNear(
       }
     } finally {
       _inflight = null;
+      _inflightRequestKey = "";
     }
   })();
   return _inflight;

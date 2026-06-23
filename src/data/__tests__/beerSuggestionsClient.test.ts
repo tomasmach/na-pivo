@@ -33,7 +33,13 @@ describe('suggestBeerBrands', () => {
     global.fetch = fetchSpy as unknown as typeof fetch;
 
     await expect(suggestBeerBrands('plz')).resolves.toEqual([
-      { slug: 'pilsner-urquell', name: 'Pilsner Urquell' },
+      {
+        slug: 'pilsner-urquell',
+        name: 'Pilsner Urquell',
+        kind: 'product',
+        brandSlug: 'pilsner-urquell',
+        brandName: 'Pilsner Urquell',
+      },
     ]);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -83,10 +89,34 @@ describe('suggestBeerBrands', () => {
     })) as unknown as typeof fetch;
 
     await expect(suggestBeerBrands('kozel')).resolves.toEqual([
-      { slug: 'velkopopovicky-kozel-10', name: 'Velkopopovický Kozel 10°' },
-      { slug: 'velkopopovicky-kozel-11', name: 'Velkopopovický Kozel 11°' },
-      { slug: 'velkopopovicky-kozel-12', name: 'Velkopopovický Kozel 12°' },
-      { slug: 'velkopopovicky-kozel-cerny', name: 'Velkopopovický Kozel Černý' },
+      {
+        slug: 'velkopopovicky-kozel-10',
+        name: 'Velkopopovický Kozel 10°',
+        kind: 'product',
+        brandSlug: 'velkopopovicky-kozel',
+        brandName: 'Velkopopovický Kozel',
+      },
+      {
+        slug: 'velkopopovicky-kozel-11',
+        name: 'Velkopopovický Kozel 11°',
+        kind: 'product',
+        brandSlug: 'velkopopovicky-kozel',
+        brandName: 'Velkopopovický Kozel',
+      },
+      {
+        slug: 'velkopopovicky-kozel-12',
+        name: 'Velkopopovický Kozel 12°',
+        kind: 'product',
+        brandSlug: 'velkopopovicky-kozel',
+        brandName: 'Velkopopovický Kozel',
+      },
+      {
+        slug: 'velkopopovicky-kozel-cerny',
+        name: 'Velkopopovický Kozel Černý',
+        kind: 'product',
+        brandSlug: 'velkopopovicky-kozel',
+        brandName: 'Velkopopovický Kozel',
+      },
     ]);
   });
 

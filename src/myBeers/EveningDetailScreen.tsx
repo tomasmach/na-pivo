@@ -29,7 +29,7 @@ import { beerCountLabel } from '@/i18n/plural';
 import { formatPrice } from '@/utils/currency';
 import { updateQueuedDrinkBeerName, removeQueuedDrink } from '@/data/drinksQueue';
 import { enqueueDelete } from '@/data/deleteDrinksQueue';
-import { enqueueDrinkUpdate } from '@/data/updateDrinksQueue';
+import { enqueueDrinkUpdate, removeQueuedDrinkUpdate } from '@/data/updateDrinksQueue';
 import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
 import { ChevronLeftIcon, MapPinIcon, PencilIcon, Trash2Icon, XIcon } from '@/components/shared/IconGlyph';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -84,8 +84,8 @@ export default function EveningDetailScreen() {
     );
     if (nextSession) syncVisit(nextSession, new Date().toISOString());
 
-    void updateQueuedDrinkBeerName(drink.id, trimmed).then((updatedQueuedPost) => {
-      if (!updatedQueuedPost) void enqueueDrinkUpdate({ client_id: drink.id, beer_name: trimmed });
+    void updateQueuedDrinkBeerName(drink.id, trimmed).then((updateState) => {
+      if (updateState !== 'queued') void enqueueDrinkUpdate({ client_id: drink.id, beer_name: trimmed });
     });
   };
 
@@ -109,6 +109,7 @@ export default function EveningDetailScreen() {
           } else {
             deleteVisitByClientId(removed.sessionClientId);
           }
+          void removeQueuedDrinkUpdate(removed.drinkId);
           void removeQueuedDrink(removed.drinkId).then((pulledFromQueue) => {
             if (!pulledFromQueue) void enqueueDelete(removed.drinkId);
           });

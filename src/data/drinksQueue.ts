@@ -26,6 +26,8 @@ const STORAGE_KEY = 'na-pivo-drinks-queue';
 /** Hard cap — a queue this long means the backend has been unreachable for a
  *  very long time; dropping the oldest drinks beats unbounded growth. */
 const MAX_QUEUE_LENGTH = 200;
+export type QueuedDrinkUpdateResult = 'queued' | 'in-flight' | 'missing';
+const deliveringIds = new Set<string>();
 
 function isDrinkEntry(entry: unknown): entry is DrinkEntry {
   const e = entry as DrinkEntry;
@@ -86,8 +88,13 @@ async function flushUnlocked(): Promise<void> {
   const deliveredOrDropped = new Set<string>();
   const snapshotIds = new Set(queue.map((entry) => entry.client_id));
   for (const entry of queue) {
-    const result = await submitDrink(entry);
-    if (result !== 'retry') deliveredOrDropped.add(entry.client_id);
+    deliveringIds.add(entry.client_id);
+    try {
+      const result = await submitDrink(entry);
+      if (result !== 'retry') deliveredOrDropped.add(entry.client_id);
+    } finally {
+      deliveringIds.delete(entry.client_id);
+    }
   }
 
   await runMutation(async () => {
@@ -162,7 +169,10 @@ export function removeQueuedDrink(clientId: string): Promise<boolean> {
  * Update a drink that is still queued for its initial POST. This avoids sending
  * an old name followed by a PATCH when the typo is fixed before delivery.
  */
-export function updateQueuedDrinkBeerName(clientId: string, beerName: string): Promise<boolean> {
+export function updateQueuedDrinkBeerName(
+  clientId: string,
+  beerName: string,
+): Promise<QueuedDrinkUpdateResult> {
   return runMutation(async () => {
     const queue = await loadQueue();
     let changed = false;
@@ -172,7 +182,8 @@ export function updateQueuedDrinkBeerName(clientId: string, beerName: string): P
       return { ...entry, beer: { ...entry.beer, name: beerName } };
     });
     if (changed) await saveQueue(next);
-    return changed;
+    if (!changed) return 'missing';
+    return deliveringIds.has(clientId) ? 'in-flight' : 'queued';
   });
 }
 

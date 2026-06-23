@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { enqueueDrinkUpdate, flushUpdateDrinksQueue } from '../updateDrinksQueue';
+import { enqueueDrinkUpdate, flushUpdateDrinksQueue, removeQueuedDrinkUpdate } from '../updateDrinksQueue';
 import { updateDrinkName } from '../drinksClient';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
@@ -48,6 +48,21 @@ describe('enqueueDrinkUpdate', () => {
     (updateDrinkName as jest.Mock).mockResolvedValue('permanent-error');
     await enqueueDrinkUpdate({ client_id: 'a', beer_name: 'Kozel' });
     expect(await readQueue()).toEqual([]);
+  });
+});
+
+describe('removeQueuedDrinkUpdate', () => {
+  it('removes a pending update without sending it again', async () => {
+    (updateDrinkName as jest.Mock).mockResolvedValue('retry');
+    await enqueueDrinkUpdate({ client_id: 'a', beer_name: 'Plzeň' });
+
+    await expect(removeQueuedDrinkUpdate('a')).resolves.toBe(true);
+
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('is a no-op when there is no pending update for the drink', async () => {
+    await expect(removeQueuedDrinkUpdate('missing')).resolves.toBe(false);
   });
 });
 

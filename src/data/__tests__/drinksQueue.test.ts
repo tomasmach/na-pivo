@@ -189,13 +189,35 @@ describe('updateQueuedDrinkBeerName', () => {
     (submitDrink as jest.Mock).mockResolvedValue('retry');
     await enqueueDrink(entry({ client_id: 'a', beer: { name: 'Plzen', price_czk: 62, volume_ml: 500 } }));
 
-    await expect(updateQueuedDrinkBeerName('a', 'Plzeň')).resolves.toBe(true);
+    await expect(updateQueuedDrinkBeerName('a', 'Plzeň')).resolves.toBe('queued');
 
     const queue = await readQueue();
     expect(queue[0].beer.name).toBe('Plzeň');
   });
 
-  it('returns false when the drink is no longer queued', async () => {
-    await expect(updateQueuedDrinkBeerName('missing', 'Kozel')).resolves.toBe(false);
+  it('reports in-flight when the original POST may already be sending the old name', async () => {
+    let resolveSubmit!: (value: 'ok') => void;
+    const slowSubmit = new Promise<'ok'>((resolve) => {
+      resolveSubmit = resolve;
+    });
+
+    (submitDrink as jest.Mock).mockReturnValueOnce(slowSubmit);
+    await AsyncStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify([entry({ client_id: 'a', beer: { name: 'Plzen', price_czk: 62, volume_ml: 500 } })]),
+    );
+
+    const flushing = flushDrinksQueue();
+    await flushMicrotasks();
+
+    await expect(updateQueuedDrinkBeerName('a', 'Plzeň')).resolves.toBe('in-flight');
+    expect((await readQueue())[0].beer.name).toBe('Plzeň');
+
+    resolveSubmit('ok');
+    await flushing;
+  });
+
+  it('reports missing when the drink is no longer queued', async () => {
+    await expect(updateQueuedDrinkBeerName('missing', 'Kozel')).resolves.toBe('missing');
   });
 });
