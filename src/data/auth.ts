@@ -63,6 +63,44 @@ export interface AccountAchievements {
   firstTen: boolean;
   regular: boolean;
   reviewer: boolean;
+  /** Mapér badges (spec §5.3) — additive; absent on older backends → false. */
+  firstMap: boolean;
+  explorer: boolean;
+  cartographer: boolean;
+  completionist: boolean;
+  factMachine: boolean;
+}
+
+/** One level rung of the Mapér ladder (server copy of the locked table). */
+export interface MapperLevel {
+  level: number;
+  title: string;
+  xp: number;
+}
+
+/** Env-default XP constants exposed so the optimistic toast estimates from a
+ *  shared source of truth (spec §5.1/§5.4). */
+export interface MapperXpRules {
+  firstFact: number;
+  firstMapperBonus: number;
+  confirm: number;
+  pubCompleteBonus: number;
+}
+
+/** The Mapér gamification block off GET /v1/account/me (spec §5.4). */
+export interface AccountMapper {
+  /** Durable XP total. */
+  xp: number;
+  level: number;
+  title: string;
+  xpIntoLevel: number;
+  xpForNextLevel: number;
+  amenityVotesCount: number;
+  distinctMappedPubs: number;
+  firstMapperCount: number;
+  completedPubsCount: number;
+  levels: MapperLevel[];
+  xpRules: MapperXpRules;
 }
 
 export interface AccountProfile {
@@ -86,6 +124,8 @@ export interface AccountProfile {
   stats?: AccountStats;
   achievements?: AccountAchievements;
   usage?: { walkedDistanceM: number };
+  /** Mapér gamification snapshot — attached only when the backend returns it. */
+  mapper?: AccountMapper;
 }
 
 /** Success carries the fresh account state; failure carries a code + message. */
@@ -136,8 +176,31 @@ interface RawAccount {
     first_ten?: boolean;
     regular?: boolean;
     reviewer?: boolean;
+    first_map?: boolean;
+    explorer?: boolean;
+    cartographer?: boolean;
+    completionist?: boolean;
+    fact_machine?: boolean;
   };
   usage?: { walked_distance_m?: number };
+  mapper?: {
+    xp?: number;
+    level?: number;
+    title?: string;
+    xp_into_level?: number;
+    xp_for_next_level?: number | null;
+    amenity_votes_count?: number;
+    distinct_mapped_pubs?: number;
+    first_mapper_count?: number;
+    completed_pubs_count?: number;
+    levels?: { level?: number; title?: string; xp?: number }[];
+    xp_rules?: {
+      first_fact?: number;
+      first_mapper_bonus?: number;
+      confirm?: number;
+      pub_complete_bonus?: number;
+    };
+  };
   email?: string;
   email_verified?: boolean;
   providers?: string[];
@@ -215,10 +278,60 @@ function parseStats(data: RawAccount): AccountStats | undefined {
 function parseAchievements(data: RawAccount): AccountAchievements | undefined {
   const raw = data.achievements;
   if (!raw) return undefined;
+  // Existing badges stay untouched; the new Mapér badges are additive and
+  // default to false when the field is absent (older backends).
   return {
     firstTen: raw.first_ten === true,
     regular: raw.regular === true,
     reviewer: raw.reviewer === true,
+    firstMap: raw.first_map === true,
+    explorer: raw.explorer === true,
+    cartographer: raw.cartographer === true,
+    completionist: raw.completionist === true,
+    factMachine: raw.fact_machine === true,
+  };
+}
+
+function numberOr(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+/**
+ * Parse the Mapér block off GET /v1/account/me (spec §5.4). Returns undefined when
+ * the block is absent so the Profile can distinguish "no Mapér data yet" from a
+ * real zero. The `xp` key (NOT `mapper_xp`) is the durable XP total; level/title/
+ * xp_into_level/xp_for_next_level are server-derived; `levels` is the server copy
+ * of the locked ladder; `xp_rules` is required so the optimistic toast estimates
+ * from a shared source of truth.
+ */
+function parseMapper(data: RawAccount): AccountMapper | undefined {
+  const raw = data.mapper;
+  if (!raw) return undefined;
+  const levels: MapperLevel[] = Array.isArray(raw.levels)
+    ? raw.levels.map((l) => ({
+        level: numberOr(l?.level, 0),
+        title: typeof l?.title === 'string' ? l.title : '',
+        xp: numberOr(l?.xp, 0),
+      }))
+    : [];
+  const rules = raw.xp_rules ?? {};
+  return {
+    xp: numberOr(raw.xp, 0),
+    level: numberOr(raw.level, 1),
+    title: typeof raw.title === 'string' ? raw.title : '',
+    xpIntoLevel: numberOr(raw.xp_into_level, 0),
+    xpForNextLevel: numberOr(raw.xp_for_next_level, 0),
+    amenityVotesCount: numberOr(raw.amenity_votes_count, 0),
+    distinctMappedPubs: numberOr(raw.distinct_mapped_pubs, 0),
+    firstMapperCount: numberOr(raw.first_mapper_count, 0),
+    completedPubsCount: numberOr(raw.completed_pubs_count, 0),
+    levels,
+    xpRules: {
+      firstFact: numberOr(rules.first_fact, 0),
+      firstMapperBonus: numberOr(rules.first_mapper_bonus, 0),
+      confirm: numberOr(rules.confirm, 0),
+      pubCompleteBonus: numberOr(rules.pub_complete_bonus, 0),
+    },
   };
 }
 
@@ -251,11 +364,13 @@ function parseProfile(data: RawAccount): AccountProfile {
   const stats = parseStats(data);
   const achievements = parseAchievements(data);
   const usage = parseUsage(data);
+  const mapper = parseMapper(data);
   if (settings) profile.settings = settings;
   if (subscription) profile.subscription = subscription;
   if (stats) profile.stats = stats;
   if (achievements) profile.achievements = achievements;
   if (usage) profile.usage = usage;
+  if (mapper) profile.mapper = mapper;
   return profile;
 }
 

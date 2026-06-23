@@ -237,6 +237,11 @@ describe('registerEmail', () => {
         firstTen: true,
         regular: true,
         reviewer: false,
+        firstMap: false,
+        explorer: false,
+        cartographer: false,
+        completionist: false,
+        factMachine: false,
       },
       usage: { walkedDistanceM: 1234 },
     });
@@ -722,6 +727,105 @@ describe('exportAccountData', () => {
       code: 'missing_email',
       detail: 'K účtu nemáme e-mail.',
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// fetchAccountProfile — parseMapper + extended parseAchievements (spec §5)
+// ---------------------------------------------------------------------------
+describe('fetchAccountProfile — Mapér block + new badges', () => {
+  it('parses the mapper block (xp key, levels, xp_rules) and the 5 new badges', async () => {
+    installFetch(
+      fetchResolving(200, {
+        id: 'acc',
+        is_anonymous: false,
+        achievements: {
+          first_ten: true,
+          regular: false,
+          reviewer: false,
+          first_map: true,
+          explorer: true,
+          cartographer: false,
+          completionist: true,
+          fact_machine: false,
+        },
+        mapper: {
+          xp: 285,
+          level: 3,
+          title: 'Štamgast',
+          xp_into_level: 135,
+          xp_for_next_level: 250,
+          amenity_votes_count: 41,
+          distinct_mapped_pubs: 9,
+          first_mapper_count: 3,
+          completed_pubs_count: 1,
+          levels: [
+            { level: 1, title: 'Nováček', xp: 0 },
+            { level: 2, title: 'Všímálek', xp: 50 },
+            { level: 3, title: 'Štamgast', xp: 150 },
+            { level: 4, title: 'Znalec', xp: 400 },
+            { level: 5, title: 'Hospodský mudrc', xp: 900 },
+          ],
+          xp_rules: { first_fact: 15, first_mapper_bonus: 25, confirm: 5, pub_complete_bonus: 30 },
+        },
+      }),
+    );
+
+    const profile = await auth.fetchAccountProfile();
+    expect(profile).not.toBeNull();
+    expect(profile?.achievements).toEqual({
+      firstTen: true,
+      regular: false,
+      reviewer: false,
+      firstMap: true,
+      explorer: true,
+      cartographer: false,
+      completionist: true,
+      factMachine: false,
+    });
+    expect(profile?.mapper).toEqual({
+      xp: 285,
+      level: 3,
+      title: 'Štamgast',
+      xpIntoLevel: 135,
+      xpForNextLevel: 250,
+      amenityVotesCount: 41,
+      distinctMappedPubs: 9,
+      firstMapperCount: 3,
+      completedPubsCount: 1,
+      levels: [
+        { level: 1, title: 'Nováček', xp: 0 },
+        { level: 2, title: 'Všímálek', xp: 50 },
+        { level: 3, title: 'Štamgast', xp: 150 },
+        { level: 4, title: 'Znalec', xp: 400 },
+        { level: 5, title: 'Hospodský mudrc', xp: 900 },
+      ],
+      xpRules: { firstFact: 15, firstMapperBonus: 25, confirm: 5, pubCompleteBonus: 30 },
+    });
+  });
+
+  it('tolerates an absent mapper block and missing new-badge fields', async () => {
+    installFetch(
+      fetchResolving(200, {
+        id: 'acc',
+        is_anonymous: false,
+        achievements: { first_ten: true },
+      }),
+    );
+
+    const profile = await auth.fetchAccountProfile();
+    // The old badges keep working; the new ones default to false; mapper is absent.
+    expect(profile?.achievements).toEqual({
+      firstTen: true,
+      regular: false,
+      reviewer: false,
+      firstMap: false,
+      explorer: false,
+      cartographer: false,
+      completionist: false,
+      factMachine: false,
+    });
+    expect(profile?.mapper).toBeUndefined();
   });
 });
 

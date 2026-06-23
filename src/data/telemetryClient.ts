@@ -26,6 +26,8 @@ export type ClientTelemetryEvent =
   | 'drink_sync_failed'
   | 'rating_synced'
   | 'rating_sync_failed'
+  | 'amenity_synced'
+  | 'amenity_sync_failed'
   | 'visit_synced'
   | 'visit_sync_failed'
   | 'beer_form_opened'

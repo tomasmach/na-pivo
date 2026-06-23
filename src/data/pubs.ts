@@ -5,6 +5,7 @@ import { searchPubsNear } from "./mapyClient";
 import { fetchBlockedPubReports } from "./pubReportsClient";
 import { geohash8 } from "./geohash";
 import type { CommunityBeer, WeeklyHours } from "./communityHours";
+import type { WireAmenityAggregate } from "./pubAmenitiesClient";
 
 /**
  * Lifecycle of an opening-hours lookup for a single pub.
@@ -71,7 +72,44 @@ export type Pub = {
    * 'unknown' (shown).
    */
   venueKind?: VenueKind;
+  /**
+   * "Zmapuj hospodu" community amenity truth (spec §4.6). Server-owned + cached,
+   * NEVER written by the client. `undefined` = unresolved / backend dormant. These
+   * fields are deliberately STRIPPED before saveSnapshot so there is only one
+   * source per aggregate (a dedicated short-TTL amenities snapshot, not the 24h
+   * pubs snapshot) — see stripAmenitySummary.
+   */
+  amenities?: WireAmenityAggregate[];
+  /** Community completeness meter, 0..1. */
+  amenityCompleteness?: number;
+  /** Distinct active amenities with a non-unknown status. */
+  amenityMappedCount?: number;
+  /** Active amenity count = the server-authoritative completeness denominator. */
+  amenityTotalKinds?: number;
 };
+
+/**
+ * Strip the server-owned amenity-summary fields from a pub before it is persisted
+ * into the 24h pubs snapshot. Serializing them here would create a second,
+ * longer-TTL copy that disagrees with the sheet's dedicated short-TTL amenities
+ * cache (spec §4.6: ONE source per aggregate).
+ */
+export function stripAmenitySummary(pub: Pub): Pub {
+  if (
+    pub.amenities === undefined &&
+    pub.amenityCompleteness === undefined &&
+    pub.amenityMappedCount === undefined &&
+    pub.amenityTotalKinds === undefined
+  ) {
+    return pub;
+  }
+  const { amenities, amenityCompleteness, amenityMappedCount, amenityTotalKinds, ...rest } = pub;
+  void amenities;
+  void amenityCompleteness;
+  void amenityMappedCount;
+  void amenityTotalKinds;
+  return rest;
+}
 
 let _pubs: Pub[] = [];
 let _index: KDBush | null = null;
@@ -345,7 +383,15 @@ export async function fetchPubsNear(
       // Persist the post-block-filtering result so the next cold start can skip
       // the network. Fire-and-forget — saveSnapshot never throws.
       if (!beerBrandKey) {
-        void saveSnapshot({ pubs: filtered, centerLat: lat, centerLng: lng, radiusKm, savedAt: Date.now() });
+        // Strip server-owned amenity summaries so they aren't double-cached in the
+        // 24h snapshot (spec §4.6); they rehydrate from their own short-TTL cache.
+        void saveSnapshot({
+          pubs: filtered.map(stripAmenitySummary),
+          centerLat: lat,
+          centerLng: lng,
+          radiusKm,
+          savedAt: Date.now(),
+        });
       }
     } finally {
       _inflight = null;

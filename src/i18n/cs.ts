@@ -22,6 +22,99 @@ export const cs = {
     cancel: 'Zrušit',
   },
 
+  // — "Zmapuj hospodu" (community pub amenities + Mapér) —
+  mapPub: {
+    // Trigger (MapPubButton)
+    triggerDefault: 'Zmapuj hospodu',
+    triggerPartial: 'Doplň mapu hospody',
+    triggerDone: 'Hospoda je zmapovaná',
+    triggerPartialSuffix: (pct: number) => ` · ${pct} %`,
+    triggerA11y: (pub: string, pct: number) => `Zmapuj hospodu ${pub}, zmapováno z ${pct} procent`,
+
+    // Sheet header
+    subtitleEmpty: 'pomoz ostatním — co tady je?',
+    subtitleSome: 'jdeš ti to, mapére',
+    subtitleDone: 'paráda, máš to celé!',
+    ringCaption: 'zmapováno',
+    personal: (n: number, total: number) => `ty jsi zmapoval/a ${n} z ${total}`,
+    footerHint: 'Každá odpověď se uloží sama. Díky!',
+    closeA11y: 'Zavřít mapování hospody',
+    offline: 'Teď jsi offline — odpovědi se uloží a pošlou později.',
+    ringA11y: (pct: number) => `Zmapováno z ${pct} procent`,
+
+    // Sections (uppercase, matching the statsHeader convention)
+    sectionPayment: 'PLATBA',
+    sectionSeating: 'POSEZENÍ',
+    sectionGames: 'ZÁBAVA',
+    sectionAtmosphere: 'ATMOSFÉRA',
+    sectionPractical: 'PRAKTICKÉ',
+
+    // Row controls
+    yes: 'Ano',
+    no: 'Ne',
+    unmapped: 'nezmapováno',
+    firstMapped: 'prvně zmapováno!',
+    signal: (yes: number, no: number) => `${yes}× ano · ${no}× ne`,
+    disputed: 'lidi se neshodnou',
+    yesA11y: (amenity: string) => `${amenity}: ano`,
+    noA11y: (amenity: string) => `${amenity}: ne`,
+    clearHint: 'Ťukni znovu pro zrušení',
+    cashSuggest: 'Bereš že tu platí jen hotovost? Klepni na Ne u karty.',
+
+    // Amenity labels / chips (mirror the catalogue in src/data/amenities.ts)
+    amenities: {
+      payment_card: { label: 'Platba kartou', short: 'Karta' },
+      payment_cash_only: { label: 'Jen hotovost', short: 'Hotovost' },
+      seating_garden: { label: 'Zahrádka / terasa', short: 'Zahrádka' },
+      seating_barrier_free: { label: 'Bezbariérový přístup', short: 'Bezbariér' },
+      seating_kids_corner: { label: 'Dětský koutek', short: 'Děti' },
+      game_darts: { label: 'Šipky', short: 'Šipky' },
+      game_billiards: { label: 'Kulečník', short: 'Kulečník' },
+      game_foosball: { label: 'Stolní fotbal', short: 'Fotbálek' },
+      game_jukebox: { label: 'Jukebox', short: 'Jukebox' },
+      atmosphere_live_music: { label: 'Živá hudba', short: 'Živá hudba' },
+      atmosphere_sports_tv: { label: 'Sport v televizi', short: 'Sport v TV' },
+      atmosphere_dogs_welcome: { label: 'Psi vítáni', short: 'Psi' },
+      atmosphere_smoking: { label: 'Kuřárna / kouření povoleno', short: 'Kouření' },
+      practical_wifi: { label: 'Wi-Fi', short: 'Wi-Fi' },
+      practical_parking: { label: 'Parkování', short: 'Parkování' },
+      practical_food: { label: 'Kuchyně / dá se najíst', short: 'Kuchyně' },
+    },
+
+    // XP toasts
+    xpFirstMapper: (xp: number) => `Prvomapér! +${xp} XP`,
+    xpSession: (n: number, xp: number) => `Zmapováno ${n} věcí · +${xp} XP`,
+    xpLevelUp: (title: string) => `Level up — teď jsi ${title}!`,
+
+    // Profile — MAPÉR
+    mapperHeader: 'MAPÉR',
+    mapperLevel: (n: number, title: string) => `Úroveň ${n} · ${title}`,
+    mapperXpProgress: (cur: number, next: number) => `${cur} / ${next} XP`,
+    mapperXpToNext: (n: number) => `ještě ${n} XP do dalšího levelu`,
+    mapperXpMaxed: 'máš všechno — jsi legenda',
+    mapperStatMappedPubs: 'zmapovaných hospod',
+    mapperStatAnswers: 'odpovědí celkem',
+    mapperStatFirstMaps: 'prvně zmapováno',
+    mapperStatCompleted: 'hospod hotových',
+    mapperEmpty: 'Ještě jsi nic nezmapoval. Najdi hospodu a řekni, co v ní je.',
+    mapperSignedOut: 'Přihlas se a tvoje mapování se ti uloží napříč zařízeními.',
+
+    // Badges
+    badgeFirstMapTitle: 'Prvomapér',
+    badgeFirstMapLocked: 'Buď první, kdo hospodu zmapuje',
+    badgeExplorerTitle: 'Objevitel',
+    badgeExplorerLocked: 'Zmapuj 10 hospod',
+    badgeCartographerTitle: 'Kartograf',
+    badgeCartographerLocked: 'Zmapuj 25 hospod',
+    badgeCompletionistTitle: 'Pořádkumil',
+    badgeCompletionistLocked: 'Zmapuj jednu hospodu naplno',
+    badgeFactMachineTitle: 'Pivní detektiv',
+    badgeFactMachineLocked: 'Zaznamenej 100 faktů',
+
+    // Level titles (5 locked); also bundled in the threshold fallback table.
+    levelTitles: ['Nováček', 'Všímálek', 'Štamgast', 'Znalec', 'Hospodský mudrc'],
+  },
+
   compass: {
     headerTitle: 'na pivo',
     hiddenPubHint: 'Ťukni pro odhalení',

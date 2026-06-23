@@ -3,15 +3,19 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { clearDeleteDrinksQueue } from './deleteDrinksQueue';
 import { clearDrinksQueue } from './drinksQueue';
 import { clearUpdateDrinksQueue } from './updateDrinksQueue';
+import { clearPubAmenitiesQueue } from './pubAmenitiesQueue';
+import { runWithoutPubAmenitiesSync } from './pubAmenitiesSync';
 import { clearPubRatingsQueue } from './pubRatingsQueue';
 import { runWithoutPubRatingsSync } from './pubRatingsSync';
 import { clearVisitsQueue } from './visitsQueue';
+import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { useTallyStore } from '@/stores/tallyStore';
 
 const PRIVATE_STORAGE_KEYS = [
   'na-pivo-tally',
   'na-pivo-pub-ratings',
+  'na-pivo-pub-amenities',
   'na-pivo-visits-seeded',
 ];
 
@@ -28,6 +32,11 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   runWithoutPubRatingsSync(() => {
     usePubRatingsStore.setState({ ratings: {} });
   });
+  // Community amenity votes are location-adjacent private data — wipe them under
+  // the suppress flag so the reset is not echoed out as server deletes.
+  runWithoutPubAmenitiesSync(() => {
+    usePubAmenitiesStore.setState({ votes: {} });
+  });
 
   await Promise.all([
     clearDrinksQueue(),
@@ -35,6 +44,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
     clearUpdateDrinksQueue(),
     clearVisitsQueue(),
     clearPubRatingsQueue(),
+    clearPubAmenitiesQueue(),
     ...PRIVATE_STORAGE_KEYS.map((key) => AsyncStorage.removeItem(key)),
   ]);
 }

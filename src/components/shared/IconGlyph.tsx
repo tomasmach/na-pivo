@@ -54,6 +54,23 @@ import {
   Camera,
   TreePine,
   Search,
+  CreditCard,
+  Banknote,
+  Accessibility,
+  Baby,
+  Target,
+  Dices,
+  Gamepad2,
+  Radio,
+  Mic,
+  Tv,
+  Dog,
+  Cigarette,
+  SquareParking,
+  Utensils,
+  MapPinned,
+  Sprout,
+  ClipboardList,
   LucideProps,
 } from 'lucide-react-native';
 
@@ -118,3 +135,21 @@ export const CrownIcon = wrap(Crown, 'CrownIcon');
 export const CameraIcon = wrap(Camera, 'CameraIcon');
 export const TreePineIcon = wrap(TreePine, 'TreePineIcon');
 export const SearchIcon = wrap(Search, 'SearchIcon');
+// "Zmapuj hospodu" amenity + Mapér glyphs.
+export const CreditCardIcon = wrap(CreditCard, 'CreditCardIcon');
+export const BanknoteIcon = wrap(Banknote, 'BanknoteIcon');
+export const AccessibilityIcon = wrap(Accessibility, 'AccessibilityIcon');
+export const BabyIcon = wrap(Baby, 'BabyIcon');
+export const TargetIcon = wrap(Target, 'TargetIcon');
+export const DicesIcon = wrap(Dices, 'DicesIcon');
+export const Gamepad2Icon = wrap(Gamepad2, 'Gamepad2Icon');
+export const RadioIcon = wrap(Radio, 'RadioIcon');
+export const MicIcon = wrap(Mic, 'MicIcon');
+export const TvIcon = wrap(Tv, 'TvIcon');
+export const DogIcon = wrap(Dog, 'DogIcon');
+export const CigaretteIcon = wrap(Cigarette, 'CigaretteIcon');
+export const SquareParkingIcon = wrap(SquareParking, 'SquareParkingIcon');
+export const UtensilsIcon = wrap(Utensils, 'UtensilsIcon');
+export const MapPinnedIcon = wrap(MapPinned, 'MapPinnedIcon');
+export const SproutIcon = wrap(Sprout, 'SproutIcon');
+export const ClipboardListIcon = wrap(ClipboardList, 'ClipboardListIcon');

@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { clearLocalPrivateAccountData } from '../privateAccountData';
+import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
 
@@ -23,12 +24,14 @@ jest.mock('../telemetryClient', () => ({
 const PRIVATE_KEYS = [
   'na-pivo-tally',
   'na-pivo-pub-ratings',
+  'na-pivo-pub-amenities',
   'na-pivo-visits-seeded',
   'na-pivo-drinks-queue',
   'na-pivo-delete-drinks-queue',
   'na-pivo-update-drinks-queue',
   'na-pivo-visits-queue',
   'na-pivo-pub-ratings-queue',
+  'na-pivo-pub-amenities-queue',
 ];
 
 function session(overrides: Partial<TallySession> = {}): TallySession {
@@ -54,6 +57,7 @@ beforeEach(async () => {
   await AsyncStorage.clear();
   useTallyStore.setState({ current: null, history: [] });
   usePubRatingsStore.setState({ ratings: {} });
+  usePubAmenitiesStore.setState({ votes: {} });
 });
 
 it('clears local private stores and private sync queue storage', async () => {
@@ -70,6 +74,13 @@ it('clears local private stores and private sync queue storage', async () => {
       },
     },
   });
+  usePubAmenitiesStore.setState({
+    votes: {
+      u2fkbn1x: {
+        game_darts: { vote: 'yes', updatedAt: '2026-06-14T20:00:00.000Z' },
+      },
+    },
+  });
 
   for (const key of PRIVATE_KEYS) {
     await AsyncStorage.setItem(key, JSON.stringify({ private: true }));
@@ -80,6 +91,7 @@ it('clears local private stores and private sync queue storage', async () => {
   expect(useTallyStore.getState().current).toBeNull();
   expect(useTallyStore.getState().history).toEqual([]);
   expect(usePubRatingsStore.getState().ratings).toEqual({});
+  expect(usePubAmenitiesStore.getState().votes).toEqual({});
 
   for (const key of PRIVATE_KEYS) {
     expect(await AsyncStorage.getItem(key)).toBeNull();

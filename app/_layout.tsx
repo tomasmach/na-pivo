@@ -18,6 +18,8 @@ import { flushDeleteDrinksQueue } from '@/data/deleteDrinksQueue';
 import { flushUpdateDrinksQueue } from '@/data/updateDrinksQueue';
 import { installPubRatingsSync, restorePubRatings } from '@/data/pubRatingsSync';
 import { flushPubRatingsQueue } from '@/data/pubRatingsQueue';
+import { installPubAmenitiesSync, restorePubAmenities } from '@/data/pubAmenitiesSync';
+import { flushPubAmenitiesQueue } from '@/data/pubAmenitiesQueue';
 import { flushVisitsQueue } from '@/data/visitsQueue';
 import { seedVisitsFromHistory } from '@/data/visitsSync';
 import {
@@ -102,6 +104,14 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
+    // Install the "Zmapuj hospodu" amenity-vote push subscriber once for the
+    // process lifetime, mirroring the ratings subscriber: it diffs every store
+    // change into a queued per-amenity upsert/delete tombstone.
+    const unsubscribeAmenities = installPubAmenitiesSync();
+    return unsubscribeAmenities;
+  }, []);
+
+  useEffect(() => {
     // Fire-and-forget: re-send pub reports and feedback whose first delivery
     // failed. Runs on launch and whenever the app returns to the foreground;
     // never throws.
@@ -116,6 +126,9 @@ export default function RootLayout() {
     // ratings, then flush. Visits: one-time seed of existing history, then flush.
     void restorePubRatings();
     void flushPubRatingsQueue();
+    // Amenity votes: same pull + merge + push + flush as ratings (spec §4.7).
+    void restorePubAmenities();
+    void flushPubAmenitiesQueue();
     void seedVisitsFromHistory();
     void flushVisitsQueue();
     // Close an evening left idle past the timeout while the app was away, so the
@@ -134,6 +147,8 @@ export default function RootLayout() {
         void flushUpdateDrinksQueue();
         void restorePubRatings();
         void flushPubRatingsQueue();
+        void restorePubAmenities();
+        void flushPubAmenitiesQueue();
         void flushVisitsQueue();
       } else {
         flushWalkingDistance();
