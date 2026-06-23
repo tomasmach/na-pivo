@@ -14,7 +14,7 @@
  * it, capping it with `maxHeight` + an inner `ScrollView` so it always fits.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Modal,
   View,
@@ -36,6 +36,7 @@ import { Radius, Spacing } from '@/theme/layout';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { cs } from '@/i18n/cs';
 import type { CommunityBeer } from '@/data/communityHours';
+import { suggestBeerBrands, type BeerBrandSuggestion } from '@/data/beerSuggestionsClient';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
   currencySuffix,
@@ -139,6 +140,25 @@ function BeerFormBody({ mode, beer, onCancel, onSubmit }: BeerFormBodyProps) {
 
   // Initialized once at mount from props (the body is remounted per open).
   const [name, setName] = useState(beer?.name ?? '');
+
+  // Beer-name autocomplete (only in 'add' mode; 'price'/'edit' lock the name).
+  const [suggestions, setSuggestions] = useState<BeerBrandSuggestion[]>([]);
+  // After picking a suggestion we keep the list dismissed until the user edits
+  // the field again — otherwise the effect would instantly re-fetch the pick.
+  const pickedNameRef = useRef<string | null>(null);
+
+  const onChangeName = (text: string) => {
+    pickedNameRef.current = null;
+    setName(text);
+  };
+
+  const selectSuggestion = (suggestion: BeerBrandSuggestion) => {
+    pickedNameRef.current = suggestion.name;
+    setName(suggestion.name);
+    setSuggestions([]);
+    Keyboard.dismiss();
+  };
+
   const [priceText, setPriceText] = useState(
     typeof beer?.priceCzk === 'number' ? formatPriceInputFromCzk(beer.priceCzk, priceCurrency) : '',
   );
@@ -158,6 +178,27 @@ function BeerFormBody({ mode, beer, onCancel, onSubmit }: BeerFormBodyProps) {
   const nameValid = nameLocked || trimmedName.length > 0;
   const canSubmit = priceValid && nameValid;
   const placeholder = pricePlaceholder(priceCurrency);
+
+  // Debounced beer-name suggestions: fetch once the name is 2+ chars and was
+  // typed (not just picked). Falls back to a local brand list when offline.
+  useEffect(() => {
+    if (nameLocked) return;
+    const query = trimmedName;
+    if (query.length < 2 || pickedNameRef.current === name) {
+      setSuggestions([]);
+      return;
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      suggestBeerBrands(query, controller.signal, 6).then((items) => {
+        if (!controller.signal.aborted) setSuggestions(items);
+      });
+    }, 220);
+    return () => {
+      controller.abort();
+      clearTimeout(timeout);
+    };
+  }, [name, trimmedName, nameLocked]);
 
   // The effective volume: custom ml when "Jiné" is active, otherwise the pill.
   // Volume stays optional — an empty/invalid custom field simply omits it.
@@ -192,7 +233,9 @@ function BeerFormBody({ mode, beer, onCancel, onSubmit }: BeerFormBodyProps) {
   // comfort only. Padding the card by the keyboard height grows the hidden part
   // of the sheet instead of moving inputs into view inside a modal UIWindow.
   const sheetBottomOffset = keyboardHeight > 0 ? keyboardHeight : 0;
-  const bottomPad = Math.max(insets.bottom, Spacing.lg);
+  // Behind the keyboard there is no home-indicator to clear, so the safe-area
+  // bottom padding would just be a dead brown strip sitting on the keyboard.
+  const bottomPad = keyboardHeight > 0 ? Spacing.sm : Math.max(insets.bottom, Spacing.lg);
   const maxHeight = windowHeight - insets.top - sheetBottomOffset - Spacing.lg;
 
   return (
@@ -217,7 +260,7 @@ function BeerFormBody({ mode, beer, onCancel, onSubmit }: BeerFormBodyProps) {
             <TextInput
               style={styles.nameInput}
               value={name}
-              onChangeText={setName}
+              onChangeText={onChangeName}
               placeholder={cs.counter.beerNamePlaceholder}
               placeholderTextColor={Colors.mutedText}
               maxLength={80}
@@ -225,6 +268,24 @@ function BeerFormBody({ mode, beer, onCancel, onSubmit }: BeerFormBodyProps) {
               accessibilityLabel={cs.counter.beerNamePlaceholder}
             />
           )}
+
+          {!nameLocked && suggestions.length > 0 ? (
+            <View style={styles.suggestionsBox}>
+              {suggestions.map((suggestion, index) => (
+                <Pressable
+                  key={suggestion.slug}
+                  onPress={() => selectSuggestion(suggestion)}
+                  style={[styles.suggestionRow, index > 0 && styles.suggestionRowDivider]}
+                  accessibilityRole="button"
+                  accessibilityLabel={suggestion.name}
+                >
+                  <Text style={styles.suggestionText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {suggestion.name}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
 
           <View style={styles.priceRow}>
             <TextInput
@@ -369,6 +430,27 @@ const styles = StyleSheet.create({
     fontSize: 16,
     paddingHorizontal: 14,
     paddingVertical: Platform.OS === 'ios' ? 14 : 10,
+  },
+  suggestionsBox: {
+    marginTop: -8,
+    backgroundColor: Colors.stout3,
+    borderColor: Colors.border,
+    borderWidth: 1,
+    borderRadius: Radius.small,
+    overflow: 'hidden',
+  },
+  suggestionRow: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  suggestionRowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.border,
+  },
+  suggestionText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 15,
+    color: Colors.foam,
   },
   priceRow: {
     flexDirection: 'row',
