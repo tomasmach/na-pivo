@@ -433,6 +433,13 @@ function RevealedPubPill({
   const accessibilityLabel = accessibilityParts.join('. ');
 
   const beerLine = beers && beers.length > 0 ? formatBeerLine(beers, priceCurrency) : null;
+  const handleContributeOrAdd = useCallback(() => {
+    Alert.alert(cs.compass.contributeMenuTitle, undefined, [
+      { text: cs.compass.contribute, onPress: onContribute },
+      { text: cs.compass.addMissingPub, onPress: onAddPub },
+      { text: cs.common.cancel, style: 'cancel' },
+    ]);
+  }, [onAddPub, onContribute]);
 
   return (
     <View style={[styles.pubPill, styles.pubPillRevealed]}>
@@ -509,31 +516,24 @@ function RevealedPubPill({
         )}
       </Pressable>
 
-      {/* Footer actions: contribute info + report problem. Wraps at large fonts. */}
+      {/* Footer actions: compact contribution menu + report problem on one row. */}
       <View style={styles.pubPillFooter}>
         <Pressable
-          onPress={onContribute}
+          onPress={handleContributeOrAdd}
           hitSlop={10}
           style={({ pressed }) => [styles.footerButton, pressed && { opacity: 0.75 }]}
-          accessibilityLabel={cs.a11y.contributePubButton}
+          accessibilityLabel={cs.a11y.contributeOrAddButton}
           accessibilityRole="button"
         >
           <PencilIcon size={14} color={Colors.amber} />
-          <Text style={styles.contributeButtonText} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.compass.contribute}
-          </Text>
-        </Pressable>
-
-        <Pressable
-          onPress={onAddPub}
-          hitSlop={10}
-          style={({ pressed }) => [styles.footerButton, pressed && { opacity: 0.75 }]}
-          accessibilityLabel={cs.a11y.addPubButton}
-          accessibilityRole="button"
-        >
-          <MapPinIcon size={14} color={Colors.amber} />
-          <Text style={styles.contributeButtonText} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.compass.addMissingPub}
+          <Text
+            style={styles.contributeButtonText}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.86}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
+            {cs.compass.contributeOrAdd}
           </Text>
         </Pressable>
 
@@ -545,7 +545,13 @@ function RevealedPubPill({
           accessibilityRole="button"
         >
           <FlagIcon size={14} color={Colors.mutedText} />
-          <Text style={styles.reportButtonText} maxFontSizeMultiplier={FontScaleCap.body}>
+          <Text
+            style={styles.reportButtonText}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.86}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
             {cs.compass.reportProblem}
           </Text>
         </Pressable>
@@ -1420,27 +1426,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    flexWrap: 'wrap',
     alignSelf: 'stretch',
     borderTopWidth: 1,
     borderTopColor: Colors.border,
     paddingTop: 8,
-    gap: 16,
+    gap: 10,
   },
   footerButton: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
     minHeight: 32,
-    paddingHorizontal: 4,
+    paddingHorizontal: 2,
   },
   contributeButtonText: {
+    flexShrink: 1,
     fontFamily: Fonts.ui.semibold,
     fontSize: 12,
     color: Colors.amber,
   },
   reportButtonText: {
+    flexShrink: 1,
     fontFamily: Fonts.ui.semibold,
     fontSize: 12,
     color: Colors.mutedText,

@@ -49,6 +49,8 @@ export const cs = {
     detailsLoading: 'Načítám info',
     contribute: 'Doplnit info',
     addMissingPub: 'Chybí hospoda',
+    contributeOrAdd: 'Doplnit / přidat',
+    contributeMenuTitle: 'Co chceš doplnit?',
     // The leading beer glyph is a line-art icon rendered next to this text in
     // the pub card (see RevealedPubPill), not an emoji baked into the string.
     beerWithPrice: (name: string, price: string) => `${name} · ${price}`,
@@ -689,6 +691,7 @@ export const cs = {
     skipButtonHint: 'Vynechá tuhle hospodu a najde další nejbližší',
     reportPubButton: 'Nahlásit problém s hospodou',
     contributePubButton: 'Doplnit otevírací dobu a piva',
+    contributeOrAddButton: 'Doplnit informace nebo přidat chybějící hospodu',
     contributeBeersLine: (text: string) => `Piva na čepu: ${text}. Ťukni pro doplnění.`,
     contributeDayClosedToggle: (day: string) => `${day}: přepnout zavřeno`,
     contributeAddInterval: (day: string) => `${day}: přidat čas`,
