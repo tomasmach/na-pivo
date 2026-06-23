@@ -912,7 +912,17 @@ def test_get_me_returns_backend_profile_stats_and_achievements(client):
         "first_ten": True,
         "regular": True,
         "reviewer": True,
+        # Mapér badges are additive and locked off here (no amenity votes yet).
+        "first_map": False,
+        "explorer": False,
+        "cartographer": False,
+        "completionist": False,
+        "fact_machine": False,
     }
+    # The additive Mapér block is present even for an account that never voted.
+    assert body["mapper"]["xp"] == 0
+    assert body["mapper"]["level"] == 1
+    assert body["mapper"]["title"] == "Nováček"
 
 
 # ===========================================================================

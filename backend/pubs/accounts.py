@@ -53,7 +53,9 @@ from PIL.Image import DecompressionBombError
 from pubs import emailer, oauth
 from pubs.models import (
     Account,
+    AccountPubCompletion,
     AccountUsageStats,
+    AmenityXpLedger,
     AuthIdentity,
     AuthToken,
     ClientEvent,
@@ -631,6 +633,17 @@ def _merge_usage_stats(source: Account, target: Account) -> None:
     target_stats.client_warning_count += source_stats.client_warning_count
     target_stats.client_error_count += source_stats.client_error_count
     target_stats.api_failure_count += source_stats.api_failure_count
+    # Mapér gamification counters (§7.2). XP + the personal-progress counters sum
+    # across the merged accounts (matching the established sum-on-merge pattern);
+    # the anonymous source's mapping work follows the user onto the signed-in
+    # account, exactly as XP "follows the account through claim" (§7.1). Distinct-
+    # pub double-counting across both accounts is accepted as a soft over-count on
+    # a cosmetic counter (the public PubAmenity aggregate is recounted separately).
+    target_stats.mapper_xp += source_stats.mapper_xp
+    target_stats.mapped_pubs_count += source_stats.mapped_pubs_count
+    target_stats.first_mapper_count += source_stats.first_mapper_count
+    target_stats.amenity_votes_count += source_stats.amenity_votes_count
+    target_stats.completed_pubs_count += source_stats.completed_pubs_count
 
     if source_stats.last_app_open_at and (
         target_stats.last_app_open_at is None
@@ -711,6 +724,24 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
     )
     for cache_key, amenity_key in affected_amenities:
         _recount_amenity_aggregate(cache_key, amenity_key)
+
+    # Durable Mapér XP-idempotency markers (§7.3): move them so the merged
+    # account can't re-farm base/complete XP on a pub/amenity it already mapped.
+    # The summed counters live on AccountUsageStats (_merge_usage_stats); these
+    # rows are only the gates, so dedup-on-conflict is correct and never double
+    # counts.
+    _delete_or_move_account_rows(
+        AmenityXpLedger,
+        source=source,
+        target=target,
+        unique_fields=("cache_key", "amenity_key"),
+    )
+    _delete_or_move_account_rows(
+        AccountPubCompletion,
+        source=source,
+        target=target,
+        unique_fields=("cache_key",),
+    )
 
     PubCommunityData.objects.filter(account=source).update(account=target)
     ClientEvent.objects.filter(account=source).update(account=target)

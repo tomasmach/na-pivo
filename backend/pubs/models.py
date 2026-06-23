@@ -1116,6 +1116,9 @@ class ClientEvent(models.Model):
         CONSOLE_ERROR = "console_error", "Console error"
         UNHANDLED_ERROR = "unhandled_error", "Unhandled error"
         API_FAILURE = "api_failure", "API failure"
+        AMENITY_VOTED = "amenity_voted", "Amenity voted"
+        AMENITY_VOTE_SYNCED = "amenity_vote_synced", "Amenity vote synced"
+        AMENITY_VOTE_FAILED = "amenity_vote_failed", "Amenity vote sync failed"
 
     account = models.ForeignKey(
         Account,
@@ -1174,6 +1177,20 @@ class AccountUsageStats(models.Model):
     client_warning_count = models.PositiveIntegerField(default=0)
     client_error_count = models.PositiveIntegerField(default=0)
     api_failure_count = models.PositiveIntegerField(default=0)
+    # --- Mapér gamification ("Zmapuj hospodu", §7.2) ---
+    # Server-authoritative XP + counters, stored here (NOT on the hot Account row)
+    # and incremented with F() inside the vote transaction. level/title/progress are
+    # derived on read (pure function of mapper_xp), not stored. mapper_xp is indexed
+    # against the future Mapér leaderboard (distance-leaderboard precedent).
+    mapper_xp = models.PositiveIntegerField(default=0, db_index=True)
+    # Distinct pubs (cache_keys) the account has cast any amenity vote on.
+    mapped_pubs_count = models.PositiveIntegerField(default=0)
+    # Times this account was the FIRST mapper of a (pub, amenity) aggregate.
+    first_mapper_count = models.PositiveIntegerField(default=0)
+    # Total amenity vote rows this account has ever paid first-fact XP on.
+    amenity_votes_count = models.PositiveIntegerField(default=0)
+    # Pubs this account's votes brought to 100% completeness (one-time per pub).
+    completed_pubs_count = models.PositiveIntegerField(default=0)
     last_app_open_at = models.DateTimeField(null=True, blank=True, db_index=True)
     last_event_at = models.DateTimeField(null=True, blank=True, db_index=True)
     last_app_version = models.CharField(max_length=64, blank=True, default="")
@@ -2159,3 +2176,79 @@ class PubAmenity(models.Model):
 
     def __str__(self) -> str:
         return f"PubAmenity({self.amenity_key} [{self.cache_key}] — {self.status})"
+
+
+class AmenityXpLedger(models.Model):
+    """
+    Durable "base Mapér XP already paid" marker for one (account, cache_key,
+    amenity_key) — survives a vote-row delete (§7.3).
+
+    The PubAmenityVote.awarded_xp gate cannot survive a retraction (which HARD-
+    deletes the row), so a retract-then-revote would re-pay base XP and re-count
+    the distinct pub. This ledger row is written the first time base XP is paid
+    for a (account, pub, amenity) and is NEVER deleted, so re-voting the same
+    fact after a retraction pays 0 (the only way to earn XP is to map facts you
+    have never mapped). It also backs the distinct-mapped-pub counter: a pub is
+    "new for the account" only when no ledger row exists yet for its cache_key.
+    """
+
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name="amenity_xp_ledger",
+    )
+    cache_key = models.CharField(max_length=12, db_index=True)
+    amenity_key = models.SlugField(max_length=40)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Amenity XP Ledger"
+        verbose_name_plural = "Amenity XP Ledger"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "cache_key", "amenity_key"],
+                name="unique_amenity_xp_ledger",
+            )
+        ]
+        indexes = [
+            # Distinct-mapped-pub check: any ledger row for (account, cache_key).
+            models.Index(fields=["account", "cache_key"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"AmenityXpLedger({self.amenity_key} [{self.cache_key}])"
+
+
+class AccountPubCompletion(models.Model):
+    """
+    Durable "this account's votes brought this pub to 100%" marker, one row per
+    (account, cache_key) — pays the pub-complete bonus AT MOST ONCE per
+    (account, pub), ever (§7.3).
+
+    Gating the bonus on the live _pub_is_complete() check alone let a
+    retract-then-revote re-pay the +pub_complete_bonus and re-bump
+    completed_pubs_count while the pub stayed complete via other voters. This
+    marker is created the first time the account completes the pub and is never
+    deleted, so completion never re-pays.
+    """
+
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name="pub_completions",
+    )
+    cache_key = models.CharField(max_length=12, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Account Pub Completion"
+        verbose_name_plural = "Account Pub Completions"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "cache_key"],
+                name="unique_account_pub_completion",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"AccountPubCompletion([{self.cache_key}])"

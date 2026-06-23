@@ -55,10 +55,13 @@ from pubs.enrichment import (
     geohash8,
     names_match,
 )
+from pubs.mapper import maper_snapshot
 from pubs.models import (
     Account,
+    AccountPubCompletion,
     AccountUsageStats,
     AmenityKind,
+    AmenityXpLedger,
     AuthToken,
     BeerBrand,
     ClientEvent,
@@ -2546,6 +2549,152 @@ def _recompute_amenity_aggregate(
     return agg, created
 
 
+def _pub_is_complete(cache_key: str, active_keys: set[str]) -> bool:
+    """Whether every active amenity kind for this pub has a known (non-unknown)
+    aggregate status — the 100%-completeness condition for the pub-complete bonus.
+
+    Uses the same active-set denominator as the public completeness meter (§4.4):
+    a deactivated kind never blocks completion. An empty active set is never
+    "complete" (no facts to map yet).
+    """
+    if not active_keys:
+        return False
+    known = set(
+        PubAmenity.objects.filter(
+            cache_key=cache_key,
+            amenity_key__in=active_keys,
+        )
+        .exclude(status=PubAmenity.Status.UNKNOWN)
+        .values_list("amenity_key", flat=True)
+    )
+    return active_keys.issubset(known)
+
+
+def _first_touched_pub_count_today(account: Account, now) -> int:
+    """Distinct cache_keys this account FIRST cast a vote on since UTC midnight.
+
+    The daily soft cap (AMENITY_MAX_PUBS_PER_DAY) is on distinct pubs first
+    touched today, to blunt first-mapper farming. Counts the account's own vote
+    rows created today (created_at is the server time the row first appeared);
+    a flip/re-vote updates the row but does not move created_at, so it never
+    re-counts an already-mapped pub.
+    """
+    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    return (
+        PubAmenityVote.objects.filter(
+            account=account,
+            created_at__gte=start_of_day,
+        )
+        .values("cache_key")
+        .distinct()
+        .count()
+    )
+
+
+def _award_mapper_xp(
+    account: Account,
+    cache_key: str,
+    amenity_key: str,
+    vote: PubAmenityVote,
+    was_first_map: bool,
+    active_keys: set[str],
+    now,
+) -> int:
+    """Award server-authoritative Mapér XP for one applied vote and return the
+    total XP this write paid (the wire ``xp_awarded``). Must run inside the vote
+    transaction. F()-increments AccountUsageStats (never a read-modify-write on
+    the hot Account row).
+
+    Idempotency is anchored on DURABLE markers that outlive the vote row (§7.3),
+    NOT on PubAmenityVote.awarded_xp — a retraction HARD-deletes the vote row, so
+    a per-row gate would be reset and let a retract-then-revote re-farm:
+      * base per-fact XP and the distinct-pub / first-fact counters are gated on
+        the per-(account, cache_key, amenity_key) :class:`AmenityXpLedger` row,
+        which is created on first pay and never deleted;
+      * the pub-complete bonus is gated on the per-(account, cache_key)
+        :class:`AccountPubCompletion` row, paid at most once per (account, pub).
+
+    Award rules (§7.3):
+      * base per-fact XP is paid AT MOST ONCE per (account, cache_key,
+        amenity_key) — a flip/re-vote/retract-then-revote pays 0;
+      * the base is ``first_fact`` (this account created the aggregate) or
+        ``confirm`` (someone already answered it);
+      * ``first_mapper_bonus`` is added when this write set the immutable
+        aggregate first_mapper to this account (``was_first_map``), UNLESS the
+        account is over the daily distinct-pub cap (soft anti-farm: accept the
+        vote, suppress only the bonus — §7.3);
+      * ``pub_complete_bonus`` is paid once when this fresh fact brings the pub to
+        100% completeness.
+
+    Counters incremented:
+      * ``amenity_votes_count`` + 1 only when base XP is first paid for the row;
+      * ``mapped_pubs_count`` + 1 the first time the account votes on a new pub;
+      * ``first_mapper_count`` + 1 on a first-map (regardless of bonus suppression);
+      * ``completed_pubs_count`` + 1 on a pub-complete bonus.
+    """
+    # A pub is "new for the account" only when no durable ledger row exists yet
+    # for this cache_key — checked BEFORE creating the current ledger row so a
+    # retract-all-then-revote on the same pub can never re-count it.
+    is_new_pub_for_account = not AmenityXpLedger.objects.filter(
+        account=account, cache_key=cache_key
+    ).exists()
+
+    # Durable base-XP gate: the first pay creates the ledger row; a flip/re-vote/
+    # retract-then-revote finds it already present and pays 0.
+    _ledger, pays_base = AmenityXpLedger.objects.get_or_create(
+        account=account, cache_key=cache_key, amenity_key=amenity_key
+    )
+
+    xp_awarded = 0
+    inc: dict[str, object] = {}
+
+    if pays_base:
+        if was_first_map:
+            xp_awarded += settings.MAPER_XP_FIRST_FACT
+            inc["first_mapper_count"] = F("first_mapper_count") + 1
+            # Daily soft cap: over the cap, accept the vote but suppress the
+            # first-mapper bonus (NOT a 4xx) to blunt city-grid farming (§7.3).
+            over_cap = (
+                _first_touched_pub_count_today(account, now)
+                > settings.AMENITY_MAX_PUBS_PER_DAY
+            )
+            if not over_cap:
+                xp_awarded += settings.MAPER_XP_FIRST_MAPPER_BONUS
+        else:
+            xp_awarded += settings.MAPER_XP_CONFIRM
+
+        inc["amenity_votes_count"] = F("amenity_votes_count") + 1
+
+        # Pub-complete bonus: this fresh fact brought the pub to 100%. Gated on
+        # both paying base XP AND a durable per-(account, pub) completion marker
+        # so a retract-then-revote can never re-trigger it.
+        if _pub_is_complete(cache_key, active_keys):
+            _completion, first_completion = AccountPubCompletion.objects.get_or_create(
+                account=account, cache_key=cache_key
+            )
+            if first_completion:
+                xp_awarded += settings.MAPER_XP_PUB_COMPLETE_BONUS
+                inc["completed_pubs_count"] = F("completed_pubs_count") + 1
+
+    if is_new_pub_for_account:
+        inc["mapped_pubs_count"] = F("mapped_pubs_count") + 1
+
+    # Mirror the XP onto the vote row for observability (the durable gate is the
+    # ledger, NOT this field — a deleted row no longer matters).
+    if pays_base and xp_awarded > 0:
+        vote.awarded_xp = xp_awarded
+        vote.save(update_fields=["awarded_xp"])
+
+    if xp_awarded > 0:
+        inc["mapper_xp"] = F("mapper_xp") + xp_awarded
+
+    if inc:
+        stats, _ = AccountUsageStats.objects.get_or_create(account=account)
+        AccountUsageStats.objects.filter(pk=stats.pk).update(**inc)
+
+    return xp_awarded
+
+
 class PubAmenityKindsView(APIView):
     """
     GET /v1/pub-amenities/kinds → the server-driven amenity taxonomy.
@@ -2635,9 +2784,12 @@ class PubAmenityVoteView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-        # mapper: fresh Mapér snapshot is returned ONCE at the envelope level.
-        # TODO step 2: Mapér XP — populate the real snapshot from AccountUsageStats.
-        return Response({"results": results, "mapper": None}, status=status.HTTP_200_OK)
+        # mapper: fresh Mapér snapshot is returned ONCE at the envelope level so
+        # Profile updates without a second GET. Re-read the durable XP from
+        # AccountUsageStats AFTER all rows applied (F()-increments are committed).
+        stats = AccountUsageStats.objects.filter(account=request.user).first()
+        mapper = maper_snapshot(stats.mapper_xp if stats is not None else 0)
+        return Response({"results": results, "mapper": mapper}, status=status.HTTP_200_OK)
 
     def _apply_one(self, account: Account, data: dict, active_keys: set[str]) -> dict:
         """Apply one amenity vote row and return its result object.
@@ -2660,7 +2812,7 @@ class PubAmenityVoteView(APIView):
                 "ignored_unknown_amenity": True,
                 "deleted": False,
                 "was_first_map": False,
-                "xp_awarded": 0,  # TODO step 2: Mapér XP
+                "xp_awarded": 0,  # an ignored unknown key never pays XP
                 "vote": None,
                 "aggregate": None,
             }
@@ -2696,7 +2848,7 @@ class PubAmenityVoteView(APIView):
                     "ignored_unknown_amenity": False,
                     "deleted": False,
                     "was_first_map": False,
-                    "xp_awarded": 0,  # TODO step 2: Mapér XP
+                    "xp_awarded": 0,  # a stale (LWW-rejected) write pays nothing
                     "vote": _vote_minimal(existing),
                     "aggregate": (
                         _amenity_aggregate_item(agg, my_value=existing.value)
@@ -2717,11 +2869,15 @@ class PubAmenityVoteView(APIView):
                     "ignored_unknown_amenity": False,
                     "deleted": deleted,
                     "was_first_map": False,
-                    "xp_awarded": 0,  # TODO step 2: Mapér XP
+                    "xp_awarded": 0,  # retraction never pays (and never claws back)
                     "vote": None,
                     "aggregate": _amenity_aggregate_item(agg, my_value=None),
                 }
 
+            # XP idempotency gate is the DURABLE AmenityXpLedger / AccountPubCompletion
+            # marker (checked inside _award_mapper_xp), NOT the vote row — a
+            # retraction hard-deletes the row, so a per-row gate would re-farm on
+            # revote (§7.3).
             # Upsert the user's own vote row (unique per account). update_or_create
             # is IntegrityError-safe for two concurrent first voters: one inserts,
             # the other updates the same unique row.
@@ -2743,6 +2899,17 @@ class PubAmenityVoteView(APIView):
             agg, was_first_map = _recompute_amenity_aggregate(
                 cache_key, amenity_key, account, data
             )
+            # Award server-authoritative XP + bump counters in the SAME transaction
+            # (F()-increments, never a read-modify-write on the hot Account row).
+            xp_awarded = _award_mapper_xp(
+                account=account,
+                cache_key=cache_key,
+                amenity_key=amenity_key,
+                vote=vote,
+                was_first_map=was_first_map,
+                active_keys=active_keys,
+                now=dj_timezone.now(),
+            )
             # Re-read so the echoed client_updated_at is the DB-normalised UTC
             # value, matching the GET restore path / _rating_item exactly.
             vote.refresh_from_db(fields=["client_updated_at", "value"])
@@ -2751,10 +2918,11 @@ class PubAmenityVoteView(APIView):
             "applied": True,
             "ignored_unknown_amenity": False,
             "deleted": False,
-            # was_first_map is an AGGREGATE fact (this write created the row), kept
-            # in step 1; XP awarding for it is step 2.
+            # was_first_map is an AGGREGATE fact (this write created the row); the
+            # first-mapper XP bonus rides on it (subject to the daily cap).
             "was_first_map": was_first_map,
-            "xp_awarded": 0,  # TODO step 2: Mapér XP
+            # The authoritative per-vote award for the optimistic toast (§7.1).
+            "xp_awarded": xp_awarded,
             # Echo the persisted row (client_updated_at normalised to UTC, like
             # the GET restore path and _rating_item), not the raw request offset.
             "vote": _vote_minimal(vote),

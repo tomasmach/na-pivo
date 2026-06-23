@@ -1,5 +1,5 @@
 """
-Tests for the "Zmapuj hospodu" pub-amenity endpoints (step 1 — data layer):
+Tests for the "Zmapuj hospodu" pub-amenity endpoints (data layer + Mapér XP):
 
     GET    /v1/pub-amenities/kinds                          — server taxonomy
     PUT    /v1/pub-amenities/votes                          — upsert votes (per-amenity LWW)
@@ -11,8 +11,8 @@ Covers per-amenity LWW (stale push ignored, sibling amenity not clobbered),
 retraction via null, unknown-amenity ignored (NOT 400), synchronous aggregate
 recompute (counts + status), first_mapper immutability, the geohash-8 collision
 guard on reads, the kinds endpoint (active-only, ordered, ISO version),
-completeness clamping, and auth requirements. step-2 XP is deferred so
-``xp_awarded`` is asserted to be 0 here.
+completeness clamping, and auth requirements. The Mapér XP / level / badge /
+daily-cap behaviour is covered in test_pub_amenities_mapper.py.
 """
 
 from __future__ import annotations
@@ -24,7 +24,13 @@ from rest_framework.test import APIClient
 from rest_framework.throttling import ScopedRateThrottle
 
 from pubs.enrichment import geohash8
-from pubs.models import Account, AmenityKind, PubAmenity, PubAmenityVote
+from pubs.models import (
+    Account,
+    AccountUsageStats,
+    AmenityKind,
+    PubAmenity,
+    PubAmenityVote,
+)
 
 _DEVICE_ID = "3f8b1c2e-4d5a-6789-0abc-def012345678"
 _DEVICE_2 = "11112222-3333-4444-5555-666677778888"
@@ -195,13 +201,14 @@ def test_put_creates_vote_and_aggregate(client):
     assert resp.status_code == status.HTTP_200_OK
     body = resp.json()
 
-    assert "mapper" in body  # envelope-level snapshot present (step 2 fills it)
+    assert "mapper" in body  # envelope-level Mapér snapshot present
     result = body["results"][0]
     assert result["applied"] is True
     assert result["ignored_unknown_amenity"] is False
     assert result["deleted"] is False
     assert result["was_first_map"] is True  # first vote created the aggregate row
-    assert result["xp_awarded"] == 0  # step 2 will award; the wire field stays present
+    # First mapper of a fresh amenity: first_fact (15) + first_mapper_bonus (25).
+    assert result["xp_awarded"] == 40
     assert result["vote"] == {
         "amenity_key": "seating_garden",
         "value": "yes",
@@ -493,6 +500,31 @@ def test_delete_removes_vote_and_recomputes(client):
     assert resp.json() == {"deleted": True}
     assert PubAmenityVote.objects.count() == 0
     assert PubAmenity.objects.get().yes_count == 0
+
+
+@pytest.mark.django_db
+def test_delete_never_changes_xp_and_revote_does_not_refarm(client):
+    """The DELETE retract path is a separate handler from PUT value:null — it
+    must never pay, never claw back XP, and a later re-vote must not re-farm
+    (§7.3). The durable AmenityXpLedger outlives the deleted row."""
+    token = _register(client)
+    _put(client, token, _vote(value="yes"))
+    account = Account.objects.get(device_id=_DEVICE_ID)
+    xp_before = AccountUsageStats.objects.get(account=account).mapper_xp
+    assert xp_before > 0  # first map earned XP
+
+    resp = client.delete(f"/v1/pub-amenities/votes/{_KEY}/seating_garden", **_auth(token))
+    assert resp.json() == {"deleted": True}
+    # DELETE never touches durable XP.
+    assert AccountUsageStats.objects.get(account=account).mapper_xp == xp_before
+
+    # Re-vote the same amenity via PUT: the ledger row survived the hard delete,
+    # so the base XP gate is tripped and the re-vote pays 0 (no double claw).
+    revote = _put(
+        client, token, _vote(value="yes", client_updated_at="2026-06-23T20:00:00+02:00")
+    )
+    assert revote.json()["results"][0]["xp_awarded"] == 0
+    assert AccountUsageStats.objects.get(account=account).mapper_xp == xp_before
 
 
 @pytest.mark.django_db

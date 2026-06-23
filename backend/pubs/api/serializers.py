@@ -47,6 +47,7 @@ from rest_framework import serializers
 from pubs import accounts
 from pubs.accounts import AccountError
 from pubs.beer_catalog import normalize_beer_payload
+from pubs.mapper import maper_levels, maper_progress, maper_xp_rules
 from pubs.models import (
     Account,
     ClientEvent,
@@ -1010,11 +1011,21 @@ class AccountStatsSerializer(serializers.Serializer):
 
 
 class AccountAchievementsSerializer(serializers.Serializer):
-    """Server-derived achievement unlock state for the profile screen."""
+    """Server-derived achievement unlock state for the profile screen.
+
+    The first three are the original drink/visit/rating badges; the five Mapér
+    badges (§7.2) are additive — released apps ignore the unknown keys.
+    """
 
     first_ten = serializers.BooleanField(read_only=True)
     regular = serializers.BooleanField(read_only=True)
     reviewer = serializers.BooleanField(read_only=True)
+    # Mapér badges, derived from the stored AccountUsageStats counters (§7.2).
+    first_map = serializers.BooleanField(read_only=True)
+    explorer = serializers.BooleanField(read_only=True)
+    cartographer = serializers.BooleanField(read_only=True)
+    completionist = serializers.BooleanField(read_only=True)
+    fact_machine = serializers.BooleanField(read_only=True)
 
 
 def _account_stats(obj: Account) -> dict:
@@ -1033,12 +1044,24 @@ def _account_stats(obj: Account) -> dict:
         .first()
     )
 
+    # Mapér counters live on the stored AccountUsageStats row (NOT derived per
+    # request, §7.2) — read them off the prefetched relation, defaulting to 0 for
+    # an account that has never voted (no usage_stats row yet).
+    usage = getattr(obj, "usage_stats", None)
+
     return {
         "total_beers": int(drink_totals["total_beers"] or 0),
         "distinct_pubs": len(pub_keys),
         "ratings_count": obj.pub_ratings.count(),
         "total_spent_czk": int(drink_totals["total_spent_czk"] or 0),
         "max_visits_to_one_pub": int(max_visit_row["n"]) if max_visit_row else 0,
+        # Mapér stored counters (§7.2). Wire names map distinct_mapped_pubs ←
+        # mapped_pubs_count in the mapper block below.
+        "mapper_xp": int(getattr(usage, "mapper_xp", 0) or 0),
+        "mapped_pubs_count": int(getattr(usage, "mapped_pubs_count", 0) or 0),
+        "first_mapper_count": int(getattr(usage, "first_mapper_count", 0) or 0),
+        "amenity_votes_count": int(getattr(usage, "amenity_votes_count", 0) or 0),
+        "completed_pubs_count": int(getattr(usage, "completed_pubs_count", 0) or 0),
     }
 
 
@@ -1069,6 +1092,7 @@ class AccountMeSerializer(serializers.ModelSerializer):
     subscription = serializers.SerializerMethodField()
     stats = serializers.SerializerMethodField()
     achievements = serializers.SerializerMethodField()
+    mapper = serializers.SerializerMethodField()
 
     class Meta:
         model = Account
@@ -1090,6 +1114,7 @@ class AccountMeSerializer(serializers.ModelSerializer):
             "subscription",
             "stats",
             "achievements",
+            "mapper",
             "usage",
             "created_at",
             "last_seen_at",
@@ -1179,8 +1204,42 @@ class AccountMeSerializer(serializers.ModelSerializer):
                 "first_ten": stats["total_beers"] >= 10,
                 "regular": stats["max_visits_to_one_pub"] >= 5,
                 "reviewer": stats["ratings_count"] >= 10,
+                # Mapér badges, derived server-side from the stored counters (§7.2).
+                "first_map": stats["first_mapper_count"] >= 1,
+                "explorer": stats["mapped_pubs_count"] >= 10,
+                "cartographer": stats["mapped_pubs_count"] >= 25,
+                "completionist": stats["completed_pubs_count"] >= 1,
+                "fact_machine": stats["amenity_votes_count"] >= 100,
             }
         ).data
+
+    def get_mapper(self, obj: Account) -> dict:
+        """The additive Mapér block (§7.2): derived level/title/progress from the
+        stored ``mapper_xp`` + the raw counters + the level ladder + xp_rules so the
+        client can render the meter and estimate optimistic level-ups locally."""
+        stats = self._stats_for(obj)
+        xp = stats["mapper_xp"]
+        progress = maper_progress(xp)
+        # Wire field names are the locked canonical contract (§7.2): the GET /me
+        # block uses ``xp`` / ``distinct_mapped_pubs`` / ``first_mapper_count`` /
+        # ``levels[].xp``. The PUT-response snapshot in mapper.py uses the SAME
+        # ``xp`` key so the two endpoints can never disagree.
+        return {
+            "xp": xp,
+            "level": progress["level"],
+            "title": progress["title"],
+            "xp_into_level": progress["xp_into_level"],
+            "xp_for_next_level": progress["xp_for_next_level"],
+            "distinct_mapped_pubs": stats["mapped_pubs_count"],
+            "amenity_votes_count": stats["amenity_votes_count"],
+            "first_mapper_count": stats["first_mapper_count"],
+            "completed_pubs_count": stats["completed_pubs_count"],
+            "levels": [
+                {"level": lvl["level"], "title": lvl["title"], "xp": lvl["xp"]}
+                for lvl in maper_levels()
+            ],
+            "xp_rules": maper_xp_rules(),
+        }
 
 
 class AccountUpdateSerializer(serializers.ModelSerializer):
