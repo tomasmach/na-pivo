@@ -39,7 +39,7 @@ export const cs = {
     personal: (n: number, total: number) => `Zmapováno ${n} z ${total}`,
     footerHint: 'Každá odpověď se uloží sama. Díky!',
     closeA11y: 'Zavřít mapování hospody',
-    offline: 'Teď jsi offline — odpovědi se uloží a pošlou později.',
+    offline: 'Teď jsi offline. Odpovědi se uloží a pošlou později.',
     ringA11y: (pct: number) => `Zmapováno z ${pct} procent`,
     // Makes the public-vs-private distinction explicit: this is shared community
     // data, unlike the private rating on the evening card.
@@ -84,20 +84,20 @@ export const cs = {
     // XP toasts
     xpFirstMapper: (xp: number) => `Prvomapér! +${xp} XP`,
     xpSession: (n: number, xp: number) => `Zmapováno ${n} věcí · +${xp} XP`,
-    xpLevelUp: (title: string) => `Level up — teď jsi ${title}!`,
+    xpLevelUp: (title: string) => `Level up! Teď jsi ${title}.`,
 
     // Profile — MAPÉR
     mapperHeader: 'MAPÉR',
     mapperLevel: (n: number, title: string) => `Úroveň ${n} · ${title}`,
     mapperXpProgress: (cur: number, next: number) => `${cur} / ${next} XP`,
     mapperXpToNext: (n: number) => `ještě ${n} XP do dalšího levelu`,
-    mapperXpMaxed: 'máš všechno — jsi legenda',
+    mapperXpMaxed: 'máš všechno, jsi legenda',
     mapperStatMappedPubs: 'zmapovaných hospod',
     mapperStatAnswers: 'odpovědí celkem',
     mapperStatFirstMaps: 'prvně zmapováno',
     mapperStatCompleted: 'hospod hotových',
     mapperEmpty: 'Ještě jsi nic nezmapoval. Najdi hospodu a řekni, co v ní je.',
-    mapperSignedOut: 'Přihlas se a tvoje mapování se ti uloží napříč zařízeními.',
+    mapperSignedOut: 'Přihlas se a mapování se ti uloží na všech zařízeních.',
 
     // Badges
     badgeFirstMapTitle: 'Prvomapér',
