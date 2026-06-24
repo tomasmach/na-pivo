@@ -30,6 +30,7 @@ from pubs.models import (
     AmenityKind,
     PubAmenity,
     PubAmenityVote,
+    PubAmenityVoteTombstone,
 )
 
 _DEVICE_ID = "3f8b1c2e-4d5a-6789-0abc-def012345678"
@@ -101,10 +102,11 @@ def test_kinds_returns_only_active_ordered_with_wire_names(client):
     body = resp.json()
 
     keys = [k["key"] for k in body["kinds"]]
-    # Exactly the 12 active kinds; the two reserved (active=False) and the four
+    # Exactly the 11 active kinds; the two reserved (active=False), smoking, and the four
     # deactivated kinds (seating_kids_corner, payment_cash_only,
     # atmosphere_dogs_welcome, practical_food) are excluded.
-    assert len(keys) == 12
+    assert len(keys) == 11
+    assert "atmosphere_smoking" not in keys
     assert "practical_outdoor_tap" not in keys
     assert "practical_tank_beer" not in keys
     assert "seating_kids_corner" not in keys
@@ -214,6 +216,9 @@ def test_put_creates_vote_and_aggregate(client):
     # First mapper of a fresh amenity: first_fact (15) + first_mapper_bonus (25).
     assert result["xp_awarded"] == 40
     assert result["vote"] == {
+        "cache_key": _KEY,
+        "pub_identity_key": f"{_KEY}::u černého vola",
+        "name": _NAME,
         "amenity_key": "seating_garden",
         "value": "yes",
         "client_updated_at": "2026-06-23T16:30:00+00:00",
@@ -229,6 +234,7 @@ def test_put_creates_vote_and_aggregate(client):
     vote = PubAmenityVote.objects.get()
     assert vote.account == Account.objects.get(device_id=_DEVICE_ID)
     assert vote.cache_key == _KEY
+    assert vote.pub_identity_key == f"{_KEY}::u černého vola"
     assert vote.amenity_key == "seating_garden"
     assert vote.value == "yes"
     assert vote.taxonomy_version == 1
@@ -343,6 +349,34 @@ def test_retract_is_lww_guarded(client):
     resp = _put(client, token, _vote(value=None, client_updated_at="2026-06-23T08:00:00+02:00"))
     assert resp.json()["results"][0]["applied"] is False
     assert PubAmenityVote.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_newer_retraction_tombstone_blocks_stale_resurrection(client):
+    token = _register(client)
+    _put(client, token, _vote(value="yes", client_updated_at="2026-06-23T18:30:00+02:00"))
+    _put(client, token, _vote(value=None, client_updated_at="2026-06-23T19:30:00+02:00"))
+    assert PubAmenityVote.objects.count() == 0
+    assert PubAmenityVoteTombstone.objects.count() == 1
+
+    stale = _put(client, token, _vote(value="yes", client_updated_at="2026-06-23T19:00:00+02:00"))
+    result = stale.json()["results"][0]
+    assert result["applied"] is False
+    assert result["vote"] is None
+    assert PubAmenityVote.objects.count() == 0
+    assert PubAmenity.objects.get().yes_count == 0
+
+
+@pytest.mark.django_db
+def test_retract_without_existing_vote_does_not_create_aggregate(client):
+    token = _register(client)
+    resp = _put(client, token, _vote(value=None, client_updated_at="2026-06-23T19:30:00+02:00"))
+    result = resp.json()["results"][0]
+    assert result["applied"] is True
+    assert result["deleted"] is False
+    assert result["aggregate"] is None
+    assert PubAmenity.objects.count() == 0
+    assert PubAmenityVoteTombstone.objects.count() == 1
 
 
 # ---------------------------------------------------------------------------
@@ -486,8 +520,16 @@ def test_get_votes_lists_own_only(client):
     keys = {v["amenity_key"] for v in votes}
     assert keys == {"seating_garden", "practical_wifi"}
     item = next(v for v in votes if v["amenity_key"] == "seating_garden")
-    assert set(item.keys()) == {"cache_key", "amenity_key", "value", "client_updated_at"}
+    assert set(item.keys()) == {
+        "cache_key",
+        "pub_identity_key",
+        "name",
+        "amenity_key",
+        "value",
+        "client_updated_at",
+    }
     assert item["cache_key"] == _KEY
+    assert item["pub_identity_key"] == f"{_KEY}::u černého vola"
 
 
 # ---------------------------------------------------------------------------
@@ -567,10 +609,10 @@ def test_read_aggregates_and_completeness(client):
     pub = resp.json()["pubs"][0]
     assert pub["cache_key"] == _KEY
     assert pub["mapper_count"] == 3  # distinct accounts (garden had 3)
-    assert pub["completeness"]["total_kinds"] == 12
+    assert pub["completeness"]["total_kinds"] == 11
     # Only garden has status != unknown (wifi has 1 vote).
     assert pub["completeness"]["mapped_count"] == 1
-    assert pub["completeness"]["pct"] == pytest.approx(1 / 12, abs=1e-4)
+    assert pub["completeness"]["pct"] == pytest.approx(1 / 11, abs=1e-4)
 
     by_key = {a["amenity_key"]: a for a in pub["amenities"]}
     assert by_key["seating_garden"]["status"] == "yes"
@@ -606,6 +648,35 @@ def test_read_names_match_collision_guard(client):
 
 
 @pytest.mark.django_db
+def test_same_geohash_different_names_keep_separate_aggregates_and_my_value(client):
+    token = _register(client)
+    other_name = "U Dvou sládků"
+    _put(client, token, _vote(name=_NAME, value="yes"))
+    _put(
+        client,
+        token,
+        _vote(
+            name=other_name,
+            value="no",
+            client_updated_at="2026-06-23T19:30:00+02:00",
+        ),
+    )
+
+    assert PubAmenity.objects.filter(cache_key=_KEY, amenity_key="seating_garden").count() == 2
+
+    first = client.get("/v1/pub-amenities", {"cache_keys": _KEY, "name": _NAME}, **_auth(token))
+    second = client.get("/v1/pub-amenities", {"cache_keys": _KEY, "name": other_name}, **_auth(token))
+    first_amenity = first.json()["pubs"][0]["amenities"][0]
+    second_amenity = second.json()["pubs"][0]["amenities"][0]
+    assert first_amenity["yes_count"] == 1
+    assert first_amenity["no_count"] == 0
+    assert first_amenity["my_value"] == "yes"
+    assert second_amenity["yes_count"] == 0
+    assert second_amenity["no_count"] == 1
+    assert second_amenity["my_value"] == "no"
+
+
+@pytest.mark.django_db
 def test_read_deactivated_kind_excluded_and_completeness_clamped(client):
     # Map garden to status yes (3 votes), then deactivate the kind.
     for device in (_DEVICE_ID, _DEVICE_2, _DEVICE_3):
@@ -617,9 +688,9 @@ def test_read_deactivated_kind_excluded_and_completeness_clamped(client):
     resp = client.get("/v1/pub-amenities", {"cache_keys": _KEY, "name": _NAME})
     pub = resp.json()["pubs"][0]
     # Deactivated kind is excluded from amenities AND completeness numerator;
-    # the denominator drops to 11. pct stays clamped within [0, 1].
+    # the denominator drops to 10. pct stays clamped within [0, 1].
     assert all(a["amenity_key"] != "seating_garden" for a in pub["amenities"])
-    assert pub["completeness"]["total_kinds"] == 11
+    assert pub["completeness"]["total_kinds"] == 10
     assert pub["completeness"]["mapped_count"] == 0
     assert 0.0 <= pub["completeness"]["pct"] <= 1.0
 
@@ -630,7 +701,7 @@ def test_read_empty_for_unmapped_cell(client):
     pub = resp.json()["pubs"][0]
     assert pub["amenities"] == []
     assert pub["completeness"]["mapped_count"] == 0
-    assert pub["completeness"]["total_kinds"] == 12
+    assert pub["completeness"]["total_kinds"] == 11
 
 
 @pytest.mark.django_db
@@ -675,10 +746,16 @@ def test_put_validation_errors(client):
         **_auth(token),
     )
     bad_lat = _put(client, token, _vote(lat=999))
+    missing_value = client.put(
+        "/v1/pub-amenities/votes",
+        data={"votes": [{k: v for k, v in _vote().items() if k != "value"}]},
+        format="json",
+        **_auth(token),
+    )
     empty = client.put(
         "/v1/pub-amenities/votes", data={"votes": []}, format="json", **_auth(token)
     )
-    for resp in (missing_ts, bad_lat, empty):
+    for resp in (missing_ts, bad_lat, missing_value, empty):
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
     assert PubAmenityVote.objects.count() == 0
 
@@ -809,19 +886,23 @@ def test_export_includes_amenity_votes(client):
 
 @pytest.mark.django_db
 def test_account_deletion_cascades_votes_and_nulls_first_mapper(client):
+    from pubs.accounts import hard_delete
+
     token = _register(client)
     _put(client, token, _vote(value="yes"))
     account = Account.objects.get(device_id=_DEVICE_ID)
     assert PubAmenityVote.objects.filter(account=account).count() == 1
     assert PubAmenity.objects.get().first_mapper == account
 
-    account.delete()
+    hard_delete(account)
 
     # Vote rows cascade with the account FK; the public aggregate survives with
-    # first_mapper SET_NULL (immutable identity is lost, the row is not).
+    # first_mapper SET_NULL and counts recomputed from remaining live votes.
     assert PubAmenityVote.objects.count() == 0
     row = PubAmenity.objects.get()
     assert row.first_mapper is None
+    assert row.yes_count == 0
+    assert row.distinct_voter_count == 0
 
 
 # ---------------------------------------------------------------------------

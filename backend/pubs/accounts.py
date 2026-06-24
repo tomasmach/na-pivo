@@ -53,6 +53,7 @@ from PIL.Image import DecompressionBombError
 from pubs import emailer, oauth
 from pubs.models import (
     Account,
+    AccountMappedPub,
     AccountPubCompletion,
     AccountUsageStats,
     AmenityXpLedger,
@@ -66,6 +67,7 @@ from pubs.models import (
     OneTimeToken,
     PubAmenity,
     PubAmenityVote,
+    PubAmenityVoteTombstone,
     PubCommunityData,
     PubContributionLog,
     PubRating,
@@ -575,7 +577,9 @@ def _delete_or_move_account_rows(
         row.save(update_fields=["account"])
 
 
-def _recount_amenity_aggregate(cache_key: str, amenity_key: str) -> None:
+def _recount_amenity_aggregate(
+    cache_key: str, pub_identity_key: str, amenity_key: str
+) -> None:
     """Recompute one EXISTING PubAmenity aggregate from its live votes.
 
     Used after a merge moves/deletes votes so the public counts stay derived from
@@ -590,12 +594,15 @@ def _recount_amenity_aggregate(cache_key: str, amenity_key: str) -> None:
 
     agg = (
         PubAmenity.objects.select_for_update()
-        .filter(cache_key=cache_key, amenity_key=amenity_key)
+        .filter(pub_identity_key=pub_identity_key, amenity_key=amenity_key)
         .first()
     )
     if agg is None:
         return
-    votes = PubAmenityVote.objects.filter(cache_key=cache_key, amenity_key=amenity_key)
+    votes = PubAmenityVote.objects.filter(
+        pub_identity_key=pub_identity_key,
+        amenity_key=amenity_key,
+    )
     yes_count = votes.filter(value=PubAmenityVote.Value.YES).count()
     no_count = votes.filter(value=PubAmenityVote.Value.NO).count()
     agg.yes_count = yes_count
@@ -708,22 +715,28 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
 
     # Amenity votes are PUBLIC: moving (or dropping on conflict) the source's
     # votes changes the aggregate counts, so we must recompute every affected
-    # (cache_key, amenity_key) or the public PubAmenity row over-counts a merged
+    # (pub_identity_key, amenity_key) or the public PubAmenity row over-counts a merged
     # user forever. Capture the affected pairs BEFORE the move (some rows may be
     # dropped as target-duplicates), then recount after.
     affected_amenities = set(
         PubAmenityVote.objects.filter(account=source).values_list(
-            "cache_key", "amenity_key"
+            "cache_key", "pub_identity_key", "amenity_key"
         )
     )
     _delete_or_move_account_rows(
         PubAmenityVote,
         source=source,
         target=target,
-        unique_fields=("cache_key", "amenity_key"),
+        unique_fields=("pub_identity_key", "amenity_key"),
     )
-    for cache_key, amenity_key in affected_amenities:
-        _recount_amenity_aggregate(cache_key, amenity_key)
+    _delete_or_move_account_rows(
+        PubAmenityVoteTombstone,
+        source=source,
+        target=target,
+        unique_fields=("pub_identity_key", "amenity_key"),
+    )
+    for cache_key, pub_identity_key, amenity_key in affected_amenities:
+        _recount_amenity_aggregate(cache_key, pub_identity_key, amenity_key)
 
     # Durable Mapér XP-idempotency markers (§7.3): move them so the merged
     # account can't re-farm base/complete XP on a pub/amenity it already mapped.
@@ -734,13 +747,19 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
         AmenityXpLedger,
         source=source,
         target=target,
-        unique_fields=("cache_key", "amenity_key"),
+        unique_fields=("pub_identity_key", "amenity_key"),
+    )
+    _delete_or_move_account_rows(
+        AccountMappedPub,
+        source=source,
+        target=target,
+        unique_fields=("pub_identity_key",),
     )
     _delete_or_move_account_rows(
         AccountPubCompletion,
         source=source,
         target=target,
-        unique_fields=("cache_key",),
+        unique_fields=("pub_identity_key",),
     )
 
     PubCommunityData.objects.filter(account=source).update(account=target)
@@ -1136,7 +1155,15 @@ def hard_delete(account: Account) -> None:
         emailer.send_account_deleted_email(email)
     if account.avatar:
         account.avatar.delete(save=False)
-    account.delete()
+    affected_amenities = set(
+        PubAmenityVote.objects.filter(account=account).values_list(
+            "cache_key", "pub_identity_key", "amenity_key"
+        )
+    )
+    with transaction.atomic():
+        account.delete()
+        for cache_key, pub_identity_key, amenity_key in affected_amenities:
+            _recount_amenity_aggregate(cache_key, pub_identity_key, amenity_key)
 
 
 def _revoke_apple_identities(account: Account, *, fail_on_error: bool = False) -> None:

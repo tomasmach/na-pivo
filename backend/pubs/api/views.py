@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import re
 from datetime import timedelta
 
 import requests
@@ -58,6 +59,7 @@ from pubs.enrichment import (
 from pubs.mapper import maper_snapshot
 from pubs.models import (
     Account,
+    AccountMappedPub,
     AccountPubCompletion,
     AccountUsageStats,
     AmenityKind,
@@ -71,6 +73,7 @@ from pubs.models import (
     FeedbackReport,
     PubAmenity,
     PubAmenityVote,
+    PubAmenityVoteTombstone,
     PubBeerBrand,
     PubBeerProduct,
     PubCommunityData,
@@ -125,6 +128,7 @@ from .serializers import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_BLOCKED_REPORT_RADIUS_KM = 25.0
+_IDENTITY_SPACE_RE = re.compile(r"\s+")
 
 # Radius buckets (km) for the Mapy "pubs near" cache — the same widening steps
 # the search itself uses. radius_bucket = the smallest bucket >= the requested
@@ -152,6 +156,12 @@ def _haversine_km(a_lat: float, a_lng: float, b_lat: float, b_lng: float) -> flo
         + math.cos(lat1) * math.cos(lat2) * math.sin(d_lng / 2) ** 2
     )
     return 2 * radius_km * math.asin(math.sqrt(h))
+
+
+def _pub_identity_key(cache_key: str, name: str) -> str:
+    """Stable per-business key inside a geohash-8 cell."""
+    normalized_name = _IDENTITY_SPACE_RE.sub(" ", (name or "").strip().casefold())
+    return f"{cache_key}::{normalized_name}" if normalized_name else cache_key
 
 
 class HealthView(APIView):
@@ -2483,6 +2493,7 @@ def _active_amenity_keys() -> set[str]:
 
 def _recompute_amenity_aggregate(
     cache_key: str,
+    pub_identity_key: str,
     amenity_key: str,
     account: Account,
     data: dict,
@@ -2497,9 +2508,10 @@ def _recompute_amenity_aggregate(
     """
     now = dj_timezone.now()
     agg, created = PubAmenity.objects.get_or_create(
-        cache_key=cache_key,
+        pub_identity_key=pub_identity_key,
         amenity_key=amenity_key,
         defaults={
+            "cache_key": cache_key,
             "name": data.get("name") or "",
             "lat": data["lat"],
             "lng": data["lng"],
@@ -2514,7 +2526,10 @@ def _recompute_amenity_aggregate(
     # backends without relying on locking a phantom (not-yet-existing) vote row.
     agg = PubAmenity.objects.select_for_update().get(pk=agg.pk)
 
-    votes = PubAmenityVote.objects.filter(cache_key=cache_key, amenity_key=amenity_key)
+    votes = PubAmenityVote.objects.filter(
+        pub_identity_key=pub_identity_key,
+        amenity_key=amenity_key,
+    )
     yes_count = votes.filter(value=PubAmenityVote.Value.YES).count()
     no_count = votes.filter(value=PubAmenityVote.Value.NO).count()
 
@@ -2549,7 +2564,7 @@ def _recompute_amenity_aggregate(
     return agg, created
 
 
-def _pub_is_complete(cache_key: str, active_keys: set[str]) -> bool:
+def _pub_is_complete(pub_identity_key: str, active_keys: set[str]) -> bool:
     """Whether every active amenity kind for this pub has a known (non-unknown)
     aggregate status — the 100%-completeness condition for the pub-complete bonus.
 
@@ -2561,7 +2576,7 @@ def _pub_is_complete(cache_key: str, active_keys: set[str]) -> bool:
         return False
     known = set(
         PubAmenity.objects.filter(
-            cache_key=cache_key,
+            pub_identity_key=pub_identity_key,
             amenity_key__in=active_keys,
         )
         .exclude(status=PubAmenity.Status.UNKNOWN)
@@ -2580,20 +2595,16 @@ def _first_touched_pub_count_today(account: Account, now) -> int:
     re-counts an already-mapped pub.
     """
     start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    return (
-        PubAmenityVote.objects.filter(
-            account=account,
-            created_at__gte=start_of_day,
-        )
-        .values("cache_key")
-        .distinct()
-        .count()
-    )
+    return AccountMappedPub.objects.filter(
+        account=account,
+        created_at__gte=start_of_day,
+    ).count()
 
 
 def _award_mapper_xp(
     account: Account,
     cache_key: str,
+    pub_identity_key: str,
     amenity_key: str,
     vote: PubAmenityVote,
     was_first_map: bool,
@@ -2632,17 +2643,22 @@ def _award_mapper_xp(
       * ``first_mapper_count`` + 1 on a first-map (regardless of bonus suppression);
       * ``completed_pubs_count`` + 1 on a pub-complete bonus.
     """
-    # A pub is "new for the account" only when no durable ledger row exists yet
-    # for this cache_key — checked BEFORE creating the current ledger row so a
-    # retract-all-then-revote on the same pub can never re-count it.
-    is_new_pub_for_account = not AmenityXpLedger.objects.filter(
-        account=account, cache_key=cache_key
-    ).exists()
+    # A pub is "new for the account" only when this durable per-pub marker is
+    # created. The unique row makes mapped_pubs_count race-safe across concurrent
+    # first votes for different amenities on the same pub.
+    _mapped_pub, is_new_pub_for_account = AccountMappedPub.objects.get_or_create(
+        account=account,
+        pub_identity_key=pub_identity_key,
+        defaults={"cache_key": cache_key},
+    )
 
     # Durable base-XP gate: the first pay creates the ledger row; a flip/re-vote/
     # retract-then-revote finds it already present and pays 0.
     _ledger, pays_base = AmenityXpLedger.objects.get_or_create(
-        account=account, cache_key=cache_key, amenity_key=amenity_key
+        account=account,
+        pub_identity_key=pub_identity_key,
+        amenity_key=amenity_key,
+        defaults={"cache_key": cache_key},
     )
 
     xp_awarded = 0
@@ -2668,9 +2684,11 @@ def _award_mapper_xp(
         # Pub-complete bonus: this fresh fact brought the pub to 100%. Gated on
         # both paying base XP AND a durable per-(account, pub) completion marker
         # so a retract-then-revote can never re-trigger it.
-        if _pub_is_complete(cache_key, active_keys):
+        if _pub_is_complete(pub_identity_key, active_keys):
             _completion, first_completion = AccountPubCompletion.objects.get_or_create(
-                account=account, cache_key=cache_key
+                account=account,
+                pub_identity_key=pub_identity_key,
+                defaults={"cache_key": cache_key},
             )
             if first_completion:
                 xp_awarded += settings.MAPER_XP_PUB_COMPLETE_BONUS
@@ -2757,7 +2775,19 @@ class PubAmenityVoteView(APIView):
     def get(self, request: Request) -> Response:
         try:
             votes = PubAmenityVote.objects.filter(account=request.user)
+            tombstones = PubAmenityVoteTombstone.objects.filter(account=request.user)
             items = [_amenity_vote_item(vote) for vote in votes]
+            items.extend(
+                {
+                    "cache_key": tombstone.cache_key,
+                    "pub_identity_key": tombstone.pub_identity_key,
+                    "name": tombstone.name,
+                    "amenity_key": tombstone.amenity_key,
+                    "value": None,
+                    "client_updated_at": tombstone.client_updated_at.isoformat(),
+                }
+                for tombstone in tombstones
+            )
         except Exception as exc:  # noqa: BLE001
             logger.error("pub-amenities/votes: unexpected error listing votes: %s", exc, exc_info=True)
             return Response(
@@ -2800,8 +2830,9 @@ class PubAmenityVoteView(APIView):
         """
         amenity_key = data["amenity_key"]
         cache_key = geohash8(data["lat"], data["lng"])
+        pub_identity_key = _pub_identity_key(cache_key, data.get("name") or "")
         client_updated_at = data["client_updated_at"]
-        # The wire sends value omitted/null as an explicit retraction.
+        # The wire sends explicit null as a retraction.
         value = data.get("value")
 
         # Unknown/inactive key → ignore (NOT 400): additive forward-compat so an
@@ -2820,7 +2851,12 @@ class PubAmenityVoteView(APIView):
         with transaction.atomic():
             existing = (
                 PubAmenityVote.objects.select_for_update()
-                .filter(account=account, cache_key=cache_key, amenity_key=amenity_key)
+                .filter(account=account, pub_identity_key=pub_identity_key, amenity_key=amenity_key)
+                .first()
+            )
+            tombstone = (
+                PubAmenityVoteTombstone.objects.select_for_update()
+                .filter(account=account, pub_identity_key=pub_identity_key, amenity_key=amenity_key)
                 .first()
             )
 
@@ -2841,7 +2877,7 @@ class PubAmenityVoteView(APIView):
             # ignored → applied: false, return the current aggregate.
             if existing is not None and existing.client_updated_at >= client_updated_at:
                 agg = PubAmenity.objects.filter(
-                    cache_key=cache_key, amenity_key=amenity_key
+                    pub_identity_key=pub_identity_key, amenity_key=amenity_key
                 ).first()
                 return {
                     "applied": False,
@@ -2857,13 +2893,54 @@ class PubAmenityVoteView(APIView):
                     ),
                 }
 
+            # A newer/equal durable retraction wins even when the live vote row is
+            # gone, preventing stale offline upserts from resurrecting a cleared
+            # answer.
+            if tombstone is not None and tombstone.client_updated_at >= client_updated_at:
+                agg = PubAmenity.objects.filter(
+                    pub_identity_key=pub_identity_key, amenity_key=amenity_key
+                ).first()
+                return {
+                    "applied": False,
+                    "ignored_unknown_amenity": False,
+                    "deleted": False,
+                    "was_first_map": False,
+                    "xp_awarded": 0,
+                    "vote": None,
+                    "aggregate": (
+                        _amenity_aggregate_item(agg, my_value=None)
+                        if agg is not None
+                        else None
+                    ),
+                }
+
             # value: null → explicit retraction (delete the user's row),
             # guarded by the same LWW timestamp above.
             if value is None:
                 deleted = existing is not None
                 if existing is not None:
                     existing.delete()
-                agg, _ = _recompute_amenity_aggregate(cache_key, amenity_key, account, data)
+                PubAmenityVoteTombstone.objects.update_or_create(
+                    account=account,
+                    cache_key=cache_key,
+                    pub_identity_key=pub_identity_key,
+                    amenity_key=amenity_key,
+                    defaults={
+                        "name": data.get("name") or "",
+                        "client_updated_at": client_updated_at,
+                    },
+                )
+                agg = None
+                if deleted or PubAmenity.objects.filter(
+                    pub_identity_key=pub_identity_key, amenity_key=amenity_key
+                ).exists():
+                    agg, _ = _recompute_amenity_aggregate(
+                        cache_key,
+                        pub_identity_key,
+                        amenity_key,
+                        account,
+                        data,
+                    )
                 return {
                     "applied": True,
                     "ignored_unknown_amenity": False,
@@ -2871,7 +2948,11 @@ class PubAmenityVoteView(APIView):
                     "was_first_map": False,
                     "xp_awarded": 0,  # retraction never pays (and never claws back)
                     "vote": None,
-                    "aggregate": _amenity_aggregate_item(agg, my_value=None),
+                    "aggregate": (
+                        _amenity_aggregate_item(agg, my_value=None)
+                        if agg is not None
+                        else None
+                    ),
                 }
 
             # XP idempotency gate is the DURABLE AmenityXpLedger / AccountPubCompletion
@@ -2883,9 +2964,10 @@ class PubAmenityVoteView(APIView):
             # the other updates the same unique row.
             vote, _ = PubAmenityVote.objects.update_or_create(
                 account=account,
-                cache_key=cache_key,
+                pub_identity_key=pub_identity_key,
                 amenity_key=amenity_key,
                 defaults={
+                    "cache_key": cache_key,
                     "name": data.get("name") or "",
                     "lat": data["lat"],
                     "lng": data["lng"],
@@ -2896,14 +2978,17 @@ class PubAmenityVoteView(APIView):
                     "taxonomy_version": data.get("taxonomy_version"),
                 },
             )
+            if tombstone is not None:
+                tombstone.delete()
             agg, was_first_map = _recompute_amenity_aggregate(
-                cache_key, amenity_key, account, data
+                cache_key, pub_identity_key, amenity_key, account, data
             )
             # Award server-authoritative XP + bump counters in the SAME transaction
             # (F()-increments, never a read-modify-write on the hot Account row).
             xp_awarded = _award_mapper_xp(
                 account=account,
                 cache_key=cache_key,
+                pub_identity_key=pub_identity_key,
                 amenity_key=amenity_key,
                 vote=vote,
                 was_first_map=was_first_map,
@@ -2943,6 +3028,7 @@ class PubAmenityVoteView(APIView):
                 )
                 deleted = existing is not None
                 if existing is not None:
+                    tombstone_at = dj_timezone.now()
                     data = {
                         "name": existing.name,
                         "lat": existing.lat,
@@ -2951,12 +3037,22 @@ class PubAmenityVoteView(APIView):
                         "external_id": existing.external_id,
                     }
                     existing.delete()
+                    PubAmenityVoteTombstone.objects.update_or_create(
+                        account=request.user,
+                        cache_key=cache_key,
+                        pub_identity_key=existing.pub_identity_key,
+                        amenity_key=amenity_key,
+                        defaults={
+                            "name": existing.name,
+                            "client_updated_at": tombstone_at,
+                        },
+                    )
                     # Only recompute if the aggregate row exists (it should).
                     if PubAmenity.objects.filter(
-                        cache_key=cache_key, amenity_key=amenity_key
+                        pub_identity_key=existing.pub_identity_key, amenity_key=amenity_key
                     ).exists():
                         _recompute_amenity_aggregate(
-                            cache_key, amenity_key, request.user, data
+                            cache_key, existing.pub_identity_key, amenity_key, request.user, data
                         )
         except Exception as exc:  # noqa: BLE001
             logger.error(
@@ -2976,6 +3072,9 @@ class PubAmenityVoteView(APIView):
 def _vote_minimal(vote: PubAmenityVote) -> dict:
     """The minimal {amenity_key, value, client_updated_at} echoed on a PUT result."""
     return {
+        "cache_key": vote.cache_key,
+        "pub_identity_key": vote.pub_identity_key,
+        "name": vote.name,
         "amenity_key": vote.amenity_key,
         "value": vote.value,
         "client_updated_at": vote.client_updated_at.isoformat(),
@@ -3053,7 +3152,7 @@ class PubAmenityReadView(APIView):
             if account is not None and cache_keys:
                 for v in PubAmenityVote.objects.filter(
                     account=account, cache_key__in=cache_keys
-                ).values_list("cache_key", "amenity_key", "value"):
+                ).values_list("pub_identity_key", "amenity_key", "value"):
                     my_votes[(v[0], v[1])] = v[2]
 
             aggregates = (
@@ -3090,7 +3189,7 @@ class PubAmenityReadView(APIView):
                 pct = max(0.0, min(1.0, pct))  # clamp to [0, 1]
                 amenities = [
                     _amenity_aggregate_item(
-                        r, my_value=my_votes.get((cache_key, r.amenity_key))
+                        r, my_value=my_votes.get((r.pub_identity_key, r.amenity_key))
                     )
                     for r in rows
                 ]

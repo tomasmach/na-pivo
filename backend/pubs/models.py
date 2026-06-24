@@ -2033,6 +2033,12 @@ class PubAmenityVote(models.Model):
         db_index=True,
         help_text="Geohash-8 of (lat, lng) — matches PubHours / PubRating.cache_key.",
     )
+    pub_identity_key = models.CharField(
+        max_length=320,
+        db_index=True,
+        default="",
+        help_text="cache_key plus normalized pub name; separates businesses sharing one geohash cell.",
+    )
     amenity_key = models.SlugField(
         max_length=40,
         db_index=True,
@@ -2077,19 +2083,62 @@ class PubAmenityVote(models.Model):
         ordering = ["-client_updated_at"]
         constraints = [
             models.UniqueConstraint(
-                fields=["account", "cache_key", "amenity_key"],
+                fields=["account", "pub_identity_key", "amenity_key"],
                 name="unique_amenity_vote_per_account_pub",
             )
         ]
         indexes = [
             # GET /v1/pub-amenities/votes lists by account; restore on reinstall.
             models.Index(fields=["account", "cache_key"]),
-            # Aggregate recount slice: all votes for one (pub, amenity).
-            models.Index(fields=["cache_key", "amenity_key"]),
+            # Aggregate recount slice: all votes for one pub identity + amenity.
+            models.Index(fields=["pub_identity_key", "amenity_key"]),
         ]
 
     def __str__(self) -> str:
         return f"PubAmenityVote({self.amenity_key}={self.value} [{self.cache_key}])"
+
+
+class PubAmenityVoteTombstone(models.Model):
+    """
+    Durable LWW marker for a retracted amenity vote.
+
+    The live PubAmenityVote row is hard-deleted on retraction so it no longer
+    contributes to public aggregates, but the deletion timestamp must survive.
+    Otherwise an older offline yes/no retry can arrive later, find no live row,
+    and resurrect a vote that the user already cleared.
+    """
+
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name="amenity_vote_tombstones",
+    )
+    cache_key = models.CharField(max_length=12, db_index=True)
+    pub_identity_key = models.CharField(max_length=320, db_index=True, default="")
+    amenity_key = models.SlugField(max_length=40)
+    name = models.TextField(blank=True, default="")
+    client_updated_at = models.DateTimeField(
+        help_text="Client timestamp of the latest retraction for LWW conflict checks.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Pub Amenity Vote Tombstone"
+        verbose_name_plural = "Pub Amenity Vote Tombstones"
+        ordering = ["-client_updated_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "pub_identity_key", "amenity_key"],
+                name="unique_amenity_vote_tombstone",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["account", "cache_key"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"PubAmenityVoteTombstone({self.amenity_key} [{self.cache_key}])"
 
 
 class PubAmenity(models.Model):
@@ -2115,6 +2164,12 @@ class PubAmenity(models.Model):
         max_length=12,
         db_index=True,
         help_text="Geohash-8 of (lat, lng) — matches PubAmenityVote / PubHours.",
+    )
+    pub_identity_key = models.CharField(
+        max_length=320,
+        db_index=True,
+        default="",
+        help_text="cache_key plus normalized pub name; aggregate identity for one business.",
     )
     amenity_key = models.SlugField(max_length=40, db_index=True)
 
@@ -2171,15 +2226,17 @@ class PubAmenity(models.Model):
         ordering = ["-last_updated"]
         constraints = [
             models.UniqueConstraint(
-                fields=["cache_key", "amenity_key"],
+                fields=["pub_identity_key", "amenity_key"],
                 name="unique_pub_amenity",
             )
         ]
         indexes = [
             # FUTURE map filter: "which pubs have amenity X with status yes".
             models.Index(fields=["amenity_key", "status"]),
-            # Read all amenities for one pub (dedicated GET, §4.4).
+            # Read all amenities for one pub cell (dedicated GET, §4.4).
             models.Index(fields=["cache_key"]),
+            # Recompute/read the exact business inside a geohash collision cell.
+            models.Index(fields=["pub_identity_key", "amenity_key"]),
         ]
 
     def __str__(self) -> str:
@@ -2206,6 +2263,7 @@ class AmenityXpLedger(models.Model):
         related_name="amenity_xp_ledger",
     )
     cache_key = models.CharField(max_length=12, db_index=True)
+    pub_identity_key = models.CharField(max_length=320, db_index=True, default="")
     amenity_key = models.SlugField(max_length=40)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -2214,17 +2272,49 @@ class AmenityXpLedger(models.Model):
         verbose_name_plural = "Amenity XP Ledger"
         constraints = [
             models.UniqueConstraint(
-                fields=["account", "cache_key", "amenity_key"],
+                fields=["account", "pub_identity_key", "amenity_key"],
                 name="unique_amenity_xp_ledger",
             )
         ]
         indexes = [
-            # Distinct-mapped-pub check: any ledger row for (account, cache_key).
-            models.Index(fields=["account", "cache_key"]),
+            # Distinct-mapped-pub check: any ledger row for (account, pub identity).
+            models.Index(fields=["account", "pub_identity_key"]),
         ]
 
     def __str__(self) -> str:
         return f"AmenityXpLedger({self.amenity_key} [{self.cache_key}])"
+
+
+class AccountMappedPub(models.Model):
+    """
+    Durable "this account has ever mapped this pub" marker.
+
+    `mapped_pubs_count` is incremented from this unique row, not from a pre-check
+    over AmenityXpLedger, so two concurrent first votes on different amenities at
+    the same pub cannot double-count the pub.
+    """
+
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name="mapped_pubs",
+    )
+    cache_key = models.CharField(max_length=12, db_index=True)
+    pub_identity_key = models.CharField(max_length=320, db_index=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Account Mapped Pub"
+        verbose_name_plural = "Account Mapped Pubs"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "pub_identity_key"],
+                name="unique_account_mapped_pub",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"AccountMappedPub([{self.cache_key}])"
 
 
 class AccountPubCompletion(models.Model):
@@ -2246,6 +2336,7 @@ class AccountPubCompletion(models.Model):
         related_name="pub_completions",
     )
     cache_key = models.CharField(max_length=12, db_index=True)
+    pub_identity_key = models.CharField(max_length=320, db_index=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -2253,7 +2344,7 @@ class AccountPubCompletion(models.Model):
         verbose_name_plural = "Account Pub Completions"
         constraints = [
             models.UniqueConstraint(
-                fields=["account", "cache_key"],
+                fields=["account", "pub_identity_key"],
                 name="unique_account_pub_completion",
             )
         ]

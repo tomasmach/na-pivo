@@ -1372,7 +1372,7 @@ class PubAmenityVoteRequestSerializer(serializers.Serializer):
     )
     amenity_key = serializers.SlugField(max_length=40)  # active-kind check in the VIEW (ignore-not-400)
     value = serializers.ChoiceField(
-        choices=PubAmenityVote.Value.choices, required=False, allow_null=True
+        choices=PubAmenityVote.Value.choices, required=True, allow_null=True
     )  # null => retract
     client_updated_at = serializers.DateTimeField()  # wire field; the per-amenity LWW key
     taxonomy_version = serializers.IntegerField(
@@ -1419,11 +1419,14 @@ class PubAmenityReadQuerySerializer(serializers.Serializer):
 def _amenity_vote_item(vote: PubAmenityVote) -> dict:
     """Serialize one PubAmenityVote for GET /v1/pub-amenities/votes (restore).
 
-    Carries the LWW key (client_updated_at) for cross-device restore; lat/lng/
-    name are omitted (privacy + the client already has them).
+    Carries the LWW key (client_updated_at) for cross-device restore. Lat/lng
+    stay omitted; name + pub_identity_key let clients keep neighbouring pubs in
+    the same geohash cell separated.
     """
     return {
         "cache_key": vote.cache_key,
+        "pub_identity_key": vote.pub_identity_key,
+        "name": vote.name,
         "amenity_key": vote.amenity_key,
         "value": vote.value,
         "client_updated_at": vote.client_updated_at.isoformat(),

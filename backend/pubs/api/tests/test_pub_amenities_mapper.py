@@ -535,6 +535,41 @@ def test_daily_cap_counts_distinct_pubs_not_votes(client, settings):
     assert _stats(_DEVICE_A).mapped_pubs_count == 1
 
 
+@pytest.mark.django_db
+def test_daily_cap_marker_survives_retract_all_votes(client, settings):
+    settings.AMENITY_MAX_PUBS_PER_DAY = 1
+    token = _register(client)
+
+    first = _put(
+        client,
+        token,
+        _vote(amenity_key="seating_garden", value="yes", client_updated_at="2026-06-23T18:00:00+02:00"),
+    )
+    _put(
+        client,
+        token,
+        _vote(amenity_key="seating_garden", value=None, client_updated_at="2026-06-23T18:01:00+02:00"),
+    )
+    second = _put(
+        client,
+        token,
+        _vote(
+            name=_NAME2,
+            lat=_LAT2,
+            lng=_LNG2,
+            amenity_key="seating_garden",
+            value="yes",
+            client_updated_at="2026-06-23T18:02:00+02:00",
+        ),
+    )
+
+    assert first.json()["results"][0]["xp_awarded"] == (
+        settings.MAPER_XP_FIRST_FACT + settings.MAPER_XP_FIRST_MAPPER_BONUS
+    )
+    assert second.json()["results"][0]["xp_awarded"] == settings.MAPER_XP_FIRST_FACT
+    assert _stats(_DEVICE_A).mapped_pubs_count == 2
+
+
 # ---------------------------------------------------------------------------
 # Ignored / stale / retract paths never pay
 # ---------------------------------------------------------------------------
