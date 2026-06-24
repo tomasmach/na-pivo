@@ -50,3 +50,7 @@ Thumbs.db
 
 # Playwright MCP scratch artifacts
 .playwright-mcp/
+
+# Local pub-catalogue data dumps (large, regenerated)
+scripts/*.json
+scripts/__pycache__/
