@@ -223,6 +223,35 @@ def test_retract_then_revote_does_not_refarm(client):
     assert _stats(_DEVICE_A).mapper_xp == 40
 
 
+@pytest.mark.django_db
+def test_retract_keeps_lifetime_counters(client):
+    """Lifetime-achievement model (§7.3): retracting a vote recomputes the public
+    aggregate away but NEVER decrements the account's stored XP or its monotonic
+    counters — guarded for BOTH retract paths (PUT value:null AND the DELETE
+    endpoint). A future "decrement on retract" regression must fail here."""
+    token = _register(client)
+    _put(client, token, _vote(value="yes", client_updated_at="2026-06-23T18:30:00+02:00"))
+
+    def _counters():
+        s = _stats(_DEVICE_A)
+        return (s.mapper_xp, s.amenity_votes_count, s.mapped_pubs_count, s.first_mapper_count)
+
+    assert _counters() == (40, 1, 1, 1)
+
+    # (a) Retract via PUT value:null — vote row gone, counters untouched.
+    _put(client, token, _vote(value=None, client_updated_at="2026-06-23T19:00:00+02:00"))
+    assert PubAmenityVote.objects.count() == 0
+    assert _counters() == (40, 1, 1, 1)
+
+    # (b) Re-vote (pays 0, ledger tripped), then retract via the DELETE endpoint.
+    _put(client, token, _vote(value="yes", client_updated_at="2026-06-23T20:00:00+02:00"))
+    resp = client.delete(f"/v1/pub-amenities/votes/{_KEY}/seating_garden", **_auth(token))
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["deleted"] is True
+    assert PubAmenityVote.objects.count() == 0
+    assert _counters() == (40, 1, 1, 1)
+
+
 # ---------------------------------------------------------------------------
 # Confirm XP for later voters; first-mapper bonus only to the first
 # ---------------------------------------------------------------------------

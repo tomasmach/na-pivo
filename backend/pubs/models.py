@@ -1182,8 +1182,16 @@ class AccountUsageStats(models.Model):
     # and incremented with F() inside the vote transaction. level/title/progress are
     # derived on read (pure function of mapper_xp), not stored. mapper_xp is indexed
     # against the future Mapér leaderboard (distance-leaderboard precedent).
+    #
+    # LIFETIME-ACHIEVEMENT MODEL (Google Local Guides precedent): every field below
+    # is MONOTONIC — it counts what the account has EVER done and is NEVER
+    # decremented. Retracting a vote corrects only the public PubAmenity aggregate
+    # (the current truth about a pub); it never claws back XP or these counters.
+    # Do NOT add a decrement on the retract/delete paths — the durable AmenityXpLedger
+    # / AccountPubCompletion markers already make re-farming impossible, and a number
+    # that drops when a user fixes their own mistake is a deliberate non-goal (§7.3).
     mapper_xp = models.PositiveIntegerField(default=0, db_index=True)
-    # Distinct pubs (cache_keys) the account has cast any amenity vote on.
+    # Distinct pubs (cache_keys) the account has EVER cast an amenity vote on.
     mapped_pubs_count = models.PositiveIntegerField(default=0)
     # Times this account was the FIRST mapper of a (pub, amenity) aggregate.
     first_mapper_count = models.PositiveIntegerField(default=0)
