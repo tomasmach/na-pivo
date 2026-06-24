@@ -57,6 +57,7 @@ import {
   SettingsIcon,
   FlagIcon,
   MapPinnedIcon,
+  MapPinPlusIcon,
   StarIcon,
   MapPinIcon,
   TreePineIcon,
@@ -514,9 +515,9 @@ function RevealedPubPill({
         )}
       </Pressable>
 
-      {/* Footer actions: unified "Zmapuj hospodu" hub entry + report problem. The
-          hub covers all three info groups (otevíračka + piva + vybavení) and is
-          the same surface reachable from the counter. */}
+      {/* Footer actions on ONE row (no extra height — the compass needs the space):
+          the primary "Zmapuj hospodu" hub entry as a labelled button, plus two
+          compact icon escapes — add a missing pub + report a wrong one. */}
       <View style={styles.pubPillFooter}>
         <Pressable
           onPress={() => setMapOpen(true)}
@@ -538,42 +539,25 @@ function RevealedPubPill({
         </Pressable>
 
         <Pressable
+          onPress={onAddPub}
+          hitSlop={12}
+          style={({ pressed }) => [styles.footerIconButton, pressed && { opacity: 0.6 }]}
+          accessibilityLabel={cs.compass.addMissingPubLink}
+          accessibilityRole="button"
+        >
+          <MapPinPlusIcon size={17} color={Colors.mutedText} />
+        </Pressable>
+
+        <Pressable
           onPress={onReport}
-          hitSlop={10}
-          style={({ pressed }) => [styles.footerButton, pressed && { opacity: 0.75 }]}
+          hitSlop={12}
+          style={({ pressed }) => [styles.footerIconButton, pressed && { opacity: 0.6 }]}
           accessibilityLabel={cs.a11y.reportPubButton}
           accessibilityRole="button"
         >
-          <FlagIcon size={14} color={Colors.mutedText} />
-          <Text
-            style={styles.reportButtonText}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.86}
-            maxFontSizeMultiplier={FontScaleCap.body}
-          >
-            {cs.compass.reportProblem}
-          </Text>
+          <FlagIcon size={17} color={Colors.mutedText} />
         </Pressable>
       </View>
-
-      {/* "Není to ta hospoda?" — the add-missing-pub escape. A slim always-visible
-          link (a rare action, so low prominence) rather than buried in the hub. */}
-      <Pressable
-        onPress={onAddPub}
-        hitSlop={8}
-        style={({ pressed }) => [styles.addMissingLink, pressed && { opacity: 0.7 }]}
-        accessibilityRole="button"
-        accessibilityLabel={cs.compass.addMissingPubLink}
-      >
-        <Text
-          style={styles.addMissingLinkText}
-          numberOfLines={1}
-          maxFontSizeMultiplier={FontScaleCap.body}
-        >
-          {cs.compass.addMissingPubLink}
-        </Text>
-      </Pressable>
 
       <MapPubSheet
         visible={mapOpen}
@@ -1413,24 +1397,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.amber,
   },
-  addMissingLink: {
-    alignSelf: 'center',
+  footerIconButton: {
+    width: 40,
+    minHeight: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 8,
-    paddingBottom: 2,
-    minHeight: 32,
-  },
-  addMissingLinkText: {
-    fontFamily: Fonts.ui.medium,
-    fontSize: 12,
-    color: Colors.mutedText,
-  },
-  reportButtonText: {
-    flexShrink: 1,
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 12,
-    color: Colors.mutedText,
   },
 
   // ── Mode toggle ──

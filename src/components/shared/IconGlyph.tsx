@@ -70,6 +70,7 @@ import {
   SquareParking,
   Utensils,
   MapPinned,
+  MapPinPlus,
   Sprout,
   ClipboardList,
   LucideProps,
@@ -173,5 +174,6 @@ export const CigaretteIcon = wrap(Cigarette, 'CigaretteIcon');
 export const SquareParkingIcon = wrap(SquareParking, 'SquareParkingIcon');
 export const UtensilsIcon = wrap(Utensils, 'UtensilsIcon');
 export const MapPinnedIcon = wrap(MapPinned, 'MapPinnedIcon');
+export const MapPinPlusIcon = wrap(MapPinPlus, 'MapPinPlusIcon');
 export const SproutIcon = wrap(Sprout, 'SproutIcon');
 export const ClipboardListIcon = wrap(ClipboardList, 'ClipboardListIcon');

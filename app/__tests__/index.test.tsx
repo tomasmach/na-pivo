@@ -70,6 +70,7 @@ jest.mock('@/components/shared/IconGlyph', () => ({
   SettingsIcon: jest.fn(() => null),
   FlagIcon: jest.fn(() => null),
   MapPinnedIcon: jest.fn(() => null),
+  MapPinPlusIcon: jest.fn(() => null),
   StarIcon: jest.fn(() => null),
   TreePineIcon: jest.fn(() => null),
   XIcon: jest.fn(() => null),
