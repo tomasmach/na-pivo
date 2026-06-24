@@ -230,12 +230,18 @@ export function MapPubSheet({
 
   const aggregatesResolved = aggregates !== undefined;
 
-  // Header subtitle reflects the user's personal progress (the honest "how am I
-  // doing here" line). Done = the user answered every active amenity.
+  // Header progress mirrors the ring so they can never disagree: with a pub-info
+  // context it spans all three groups (otevíračka + piva + vybavení), so it can't
+  // claim "máš to celé" while hours are still missing. Without it, it's the
+  // amenities-only personal progress.
+  const headerProgress = facts
+    ? { answered: completeness.mappedCount, total: completeness.totalKinds }
+    : { answered: personal.answered, total: personal.total };
+
   const subtitle =
-    personal.answered === 0
+    headerProgress.answered === 0
       ? cs.mapPub.subtitleEmpty
-      : personal.answered >= personal.total
+      : headerProgress.answered >= headerProgress.total
         ? cs.mapPub.subtitleDone
         : cs.mapPub.subtitleSome;
 
@@ -492,7 +498,7 @@ export function MapPubSheet({
                   {subtitle}
                 </Text>
                 <Text style={styles.personal} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.mapPub.personal(personal.answered, personal.total)}
+                  {cs.mapPub.personal(headerProgress.answered, headerProgress.total)}
                 </Text>
               </View>
               <CompletenessRing pct={completeness.pct} reduceMotion={reduceMotion} />
