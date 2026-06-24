@@ -80,7 +80,6 @@ export const cs = {
       atmosphere_smoking: { label: 'Kuřárna / kouření povoleno', short: 'Kouření' },
       practical_wifi: { label: 'Wi-Fi', short: 'Wi-Fi' },
       practical_parking: { label: 'Parkování', short: 'Parkování' },
-      practical_food: { label: 'Kuchyně / dá se najíst', short: 'Kuchyně' },
     },
 
     // XP toasts

@@ -14,20 +14,19 @@ const EXPECTED: { key: AmenityKey; group: string; icon: string; order: number }[
   { key: 'seating_garden', group: 'seating', icon: 'TreePineIcon', order: 30 },
   { key: 'seating_barrier_free', group: 'seating', icon: 'AccessibilityIcon', order: 40 },
   { key: 'game_darts', group: 'games', icon: 'TargetIcon', order: 60 },
-  { key: 'game_billiards', group: 'games', icon: 'DicesIcon', order: 70 },
-  { key: 'game_foosball', group: 'games', icon: 'Gamepad2Icon', order: 80 },
+  { key: 'game_billiards', group: 'games', icon: 'CircleDotIcon', order: 70 },
+  { key: 'game_foosball', group: 'games', icon: 'SoccerBallIcon', order: 80 },
   { key: 'game_jukebox', group: 'games', icon: 'RadioIcon', order: 90 },
   { key: 'atmosphere_live_music', group: 'atmosphere', icon: 'MicIcon', order: 100 },
   { key: 'atmosphere_sports_tv', group: 'atmosphere', icon: 'TvIcon', order: 110 },
   { key: 'atmosphere_smoking', group: 'atmosphere', icon: 'CigaretteIcon', order: 130 },
   { key: 'practical_wifi', group: 'practical', icon: 'WifiIcon', order: 140 },
   { key: 'practical_parking', group: 'practical', icon: 'SquareParkingIcon', order: 150 },
-  { key: 'practical_food', group: 'practical', icon: 'UtensilsIcon', order: 160 },
 ];
 
 describe('amenity catalogue integrity', () => {
-  it('ships exactly 13 active amenities', () => {
-    expect(AMENITIES).toHaveLength(13);
+  it('ships exactly 12 active amenities', () => {
+    expect(AMENITIES).toHaveLength(12);
   });
 
   it('matches the canonical key/group/icon/order table from the spec', () => {

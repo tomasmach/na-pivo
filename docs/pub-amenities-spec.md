@@ -24,52 +24,36 @@ The taxonomy is **client-bundled and authoritative for rendering** (labels, chip
 
 > **`value` semantics.** Each amenity is a per-user **tri-state**: `'yes'` (je tu to), `'no'` (není tu to), or **unknown = no vote** (the key is simply absent — never a stored third enum). Unknown is the absence of an answer, so the wire stays tiny, "nezmapováno" is the natural default, and a released app forward-compatibly omits keys it doesn't know. This mirrors `PubRating` (verdict absent = no opinion). Booleans were rejected: a boolean conflates "no" with "not answered", which would manufacture phantom "no" votes, poison the public aggregate, and make the completeness meter (which counts *answered* amenities) meaningless. To **retract** a vote across devices, the wire sends `value: null` (an explicit tombstone) — distinct from an absent key (which always means "no change / unknown"). Absent never means "clear" (§4.1).
 
-Section headers are uppercase, matching the existing `statsHeader = 'TVOJE ČÍSLA'` convention. v1 ships **14 active amenities** (≤20, scannable at a pub table) across five groups. `practical_outdoor_tap` and `practical_tank_beer` are **reserved keys, not rendered in v1** (`is_active=false`): present in the seed/catalogue, excluded from `GET /kinds`, the sheet, and both numerator and denominator of completeness — reserving the keys now means activating them later is a taxonomy bump, never a collision. `nekuřácká` + `kuřárna` collapse into the single tri-state `atmosphere_smoking` (§ note below).
+Section headers are uppercase, matching the existing `statsHeader = 'TVOJE ČÍSLA'` convention. v1 ships **12 active amenities** (≤20, scannable at a pub table) across five groups. Six rows are `is_active=false`: two **reserved keys, not rendered in v1** (`practical_outdoor_tap`, `practical_tank_beer`) plus four **deactivated by migration `0040`** (`seating_kids_corner`, `payment_cash_only`, `atmosphere_dogs_welcome`, `practical_food`). All inactive rows are present in the seed/catalogue but excluded from `GET /kinds`, the sheet, and both numerator and denominator of completeness — reserving keys (rather than deleting) means a future activation is a taxonomy bump, never a collision, and existing votes/aggregates survive deactivation. `nekuřácká` + `kuřárna` collapse into the single tri-state `atmosphere_smoking` (§ note below).
 
-The canonical taxonomy table below is the locked single source. Columns: `key | group | label (cs) | chip (cs) | IconGlyph / NEW glyph | map-filter candidate | is_active | order`. `order` is the integer render rank (lower first). Only `is_active=true` rows are returned by `GET /kinds`, rendered in the sheet, and counted in `total_kinds`.
+The canonical taxonomy table below is the locked single source. `order` is the integer render rank (lower first). Only `is_active=true` rows are returned by `GET /kinds`, rendered in the sheet, and counted in `total_kinds`.
 
-### Section `payment` — "PLATBA"
+The single consolidated table below lists every seeded row, grouped by section. Columns: `amenity_key | section | label (cs) | chip (cs) | IconGlyph / NEW glyph | map-filter candidate | is_active | order | status`. The 12 active rows render in the sheet and `GET /kinds`; the 6 inactive rows are struck through and marked with the deactivation reason — they stay in the seed/catalogue but are excluded from `GET /kinds`, the sheet, and both ends of completeness.
 
-| amenity_key | label (cs) | chip (cs) | IconGlyph / NEW glyph | map-filter candidate | is_active | order |
-|---|---|---|---|---|---|---|
-| `payment_card` | Platba kartou (`ano` = platí kartou, `ne` = jen hotovost) | Karta | **NEW** `CreditCardIcon` (lucide `CreditCard`) | yes | true | 10 |
+| amenity_key | section | label (cs) | chip (cs) | IconGlyph / NEW glyph | map-filter | is_active | order | status |
+|---|---|---|---|---|---|---|---|---|
+| `payment_card` | payment | Platba kartou (`ano` = platí kartou, `ne` = jen hotovost) | Karta | **NEW** `CreditCardIcon` (lucide `CreditCard`) | yes | true | 10 | active |
+| ~~`payment_cash_only`~~ | ~~payment~~ | ~~Jen hotovost~~ | ~~Hotovost~~ | ~~`BanknoteIcon`~~ | ~~yes~~ | **false** | ~~20~~ | inactive — deactivated by `0040` (exact inverse of `payment_card`) |
+| `seating_garden` | seating | Zahrádka / terasa | Zahrádka | `TreePineIcon` (exists) | yes | true | 30 | active |
+| `seating_barrier_free` | seating | Bezbariérový přístup | Bezbariér | **NEW** `AccessibilityIcon` (lucide `Accessibility`) | yes | true | 40 | active |
+| ~~`seating_kids_corner`~~ | ~~seating~~ | ~~Dětský koutek~~ | ~~Děti~~ | ~~`BabyIcon`~~ | ~~yes~~ | **false** | ~~50~~ | inactive — deactivated by `0040` (unnecessary) |
+| `game_darts` | games | Šipky | Šipky | **NEW** `TargetIcon` (lucide `Target`) | yes | true | 60 | active |
+| `game_billiards` | games | Kulečník | Kulečník | **NEW** `CircleDotIcon` (lucide `CircleDot` — a cue ball) | yes | true | 70 | active |
+| `game_foosball` | games | Stolní fotbal | Fotbálek | **NEW** `SoccerBallIcon` (custom hand-rolled `react-native-svg` glyph — see note) | yes | true | 80 | active |
+| `game_jukebox` | games | Jukebox | Jukebox | **NEW** `RadioIcon` (lucide `Radio`) | no | true | 90 | active |
+| `atmosphere_live_music` | atmosphere | Živá hudba | Živá hudba | **NEW** `MicIcon` (lucide `Mic`) | no | true | 100 | active |
+| `atmosphere_sports_tv` | atmosphere | Sport v televizi | Sport v TV | **NEW** `TvIcon` (lucide `Tv`) | yes | true | 110 | active |
+| ~~`atmosphere_dogs_welcome`~~ | ~~atmosphere~~ | ~~Psi vítáni~~ | ~~Psi~~ | ~~`DogIcon`~~ | ~~yes~~ | **false** | ~~120~~ | inactive — deactivated by `0040` (dropped by product) |
+| `atmosphere_smoking` | atmosphere | Kuřárna / kouření povoleno | Kouření | **NEW** `CigaretteIcon` (lucide `Cigarette`) | yes | true | 130 | active |
+| `practical_wifi` | practical | Wi-Fi | Wi-Fi | `WifiIcon` (exists) | yes | true | 140 | active |
+| `practical_parking` | practical | Parkování | Parkování | **NEW** `SquareParkingIcon` (lucide `SquareParking`) | yes | true | 150 | active |
+| ~~`practical_food`~~ | ~~practical~~ | ~~Kuchyně / dá se najíst~~ | ~~Kuchyně~~ | ~~`UtensilsIcon`~~ | ~~yes~~ | **false** | ~~160~~ | inactive — deactivated by `0040` (assumed for a pub, low signal) |
+| `practical_outdoor_tap` | practical | Venkovní výčep | Výčep | **NEW glyph required before activation** (NOT `BeerIcon` reuse) | no | **false** | 170 | inactive — reserved (seeded `active=False`) |
+| `practical_tank_beer` | practical | Tankové pivo | Tank | `BeerIcon` (exists) | yes | **false** | 180 | inactive — reserved (seeded `active=False`) |
 
-### Section `seating` — "POSEZENÍ"
+**Active set = exactly the 12 rows with `is_active=true`.** Six rows are `is_active=false`: two RESERVED (`practical_outdoor_tap`, `practical_tank_beer`, seeded `active=False`) plus four DEACTIVATED by migration `0040_deactivate_unused_amenity_kinds` (`seating_kids_corner`, `payment_cash_only`, `atmosphere_dogs_welcome`, `practical_food`). => `total_kinds` (active) = **12**, so per-pub completeness can reach 100%.
 
-| amenity_key | label (cs) | chip (cs) | IconGlyph / NEW glyph | map-filter candidate | is_active | order |
-|---|---|---|---|---|---|---|
-| `seating_garden` | Zahrádka / terasa | Zahrádka | `TreePineIcon` (exists) | yes | true | 30 |
-| `seating_barrier_free` | Bezbariérový přístup | Bezbariér | **NEW** `AccessibilityIcon` (lucide `Accessibility`) | yes | true | 40 |
-
-### Section `games` — "ZÁBAVA"
-
-| amenity_key | label (cs) | chip (cs) | IconGlyph / NEW glyph | map-filter candidate | is_active | order |
-|---|---|---|---|---|---|---|
-| `game_darts` | Šipky | Šipky | **NEW** `TargetIcon` (lucide `Target`) | yes | true | 60 |
-| `game_billiards` | Kulečník | Kulečník | **NEW** `DicesIcon` (lucide `Dices`) | yes | true | 70 |
-| `game_foosball` | Stolní fotbal | Fotbálek | **NEW** `Gamepad2Icon` (lucide `Gamepad2`) | yes | true | 80 |
-| `game_jukebox` | Jukebox | Jukebox | **NEW** `RadioIcon` (lucide `Radio`) | no | true | 90 |
-
-### Section `atmosphere` — "ATMOSFÉRA"
-
-| amenity_key | label (cs) | chip (cs) | IconGlyph / NEW glyph | map-filter candidate | is_active | order |
-|---|---|---|---|---|---|---|
-| `atmosphere_live_music` | Živá hudba | Živá hudba | **NEW** `MicIcon` (lucide `Mic`) | no | true | 100 |
-| `atmosphere_sports_tv` | Sport v televizi | Sport v TV | **NEW** `TvIcon` (lucide `Tv`) | yes | true | 110 |
-| `atmosphere_dogs_welcome` | Psi vítáni | Psi | **NEW** `DogIcon` (lucide `Dog`) | yes | true | 120 |
-| `atmosphere_smoking` | Kuřárna / kouření povoleno | Kouření | **NEW** `CigaretteIcon` (lucide `Cigarette`) | yes | true | 130 |
-
-### Section `practical` — "PRAKTICKÉ"
-
-| amenity_key | label (cs) | chip (cs) | IconGlyph / NEW glyph | map-filter candidate | is_active | order |
-|---|---|---|---|---|---|---|
-| `practical_wifi` | Wi-Fi | Wi-Fi | `WifiIcon` (exists) | yes | true | 140 |
-| `practical_parking` | Parkování | Parkování | **NEW** `SquareParkingIcon` (lucide `SquareParking`) | yes | true | 150 |
-| `practical_food` | Kuchyně / dá se najíst | Kuchyně | **NEW** `UtensilsIcon` (lucide `Utensils`) | yes | true | 160 |
-| `practical_outdoor_tap` *(reserved, not rendered v1)* | Venkovní výčep | Výčep | **NEW glyph required before activation** (NOT `BeerIcon` reuse) | no | **false** | 170 |
-| `practical_tank_beer` *(reserved, not rendered v1)* | Tankové pivo | Tank | `BeerIcon` (exists) | yes | **false** | 180 |
-
-**Active set = exactly the 14 rows with `is_active=true`.** The two `is_active=false` rows (`practical_outdoor_tap`, `practical_tank_beer`) are RESERVED. => `total_kinds` (active) = **14**, so per-pub completeness can reach 100%.
+> **`game_foosball` icon — the one custom glyph.** Lucide ships NO soccer/football icon and the project has no other icon pack, so `SoccerBallIcon` is a deliberate hand-rolled `react-native-svg` glyph in `src/components/shared/IconGlyph.tsx` (outer circle + central pentagon + radial seams). This is the single intentional exception to the otherwise-locked "lucide owns all icon paths" rule — every other glyph is a one-line lucide wrap.
 
 > **Smoking is ONE tri-state amenity (`atmosphere_smoking`).** `yes` = lze kouřit / je kuřárna; `no` = nekuřácká; unknown = nezmapováno. Modeling `kuřárna` and `nekuřácká` as two keys recreates the boolean trap (both could read "yes" → contradictory public truth). Czech indoor-smoking law makes granularity low-value. If "dedicated smoking room" granularity is ever needed, it is an additive `atmosphere_smoking_room` in a later version, never a v1 second key.
 
@@ -132,7 +116,7 @@ Ring fill animates `withTiming(pct, { duration: 280 })`, **gated by reduce-motio
 
 On every *new or changed* vote that the optimistic estimator thinks earns points, fire the existing `Toast` + `toastStore`. The Mapér toast must be **emoji-free** (the current `Toast.tsx` renders a literal 🍺 at the leading slot): add an optional leading-`IconGlyph` slot to `toastStore.show`/`Toast` that defaults to the existing 🍺 (so the existing beer toast stays byte-identical — this is a required *additive* refactor of a globally-mounted component, not a silent cleanup), and pass `CompassIcon`/`SproutIcon` in `Colors.amber` for Mapér events.
 
-XP is **estimated locally for the instant toast and reconciled from the server** (the server is the truth — it knows global state the client can't, like "were you truly first"). The toast is a transient feel-good estimate, never a ledger; the durable number on Profile only ever comes from `GET /v1/account/me` (§5). To avoid slot-machine spam when a user taps 5–16 rows in one session, **coalesce XP into one summary toast** (debounced ~600ms after the last tap, or fired on sheet close): *"Zmapováno 6 věcí · +24 XP"*. A first-mapper hit and a level-up still warrant their own stronger toast (*"Prvomapér! +40 XP"*, *"Level up — teď jsi Štamgast!"*) — the level name comes from the bundled threshold table so an optimistic level-up can be named locally, with server `level`/`title` as truth on reconcile.
+XP is **estimated locally for the instant toast and reconciled from the server** (the server is the truth — it knows global state the client can't, like "were you truly first"). The toast is a transient feel-good estimate, never a ledger; the durable number on Profile only ever comes from `GET /v1/account/me` (§5). To avoid slot-machine spam when a user taps 5–12 rows in one session, **coalesce XP into one summary toast** (debounced ~600ms after the last tap, or fired on sheet close): *"Zmapováno 6 věcí · +24 XP"*. A first-mapper hit and a level-up still warrant their own stronger toast (*"Prvomapér! +40 XP"*, *"Level up — teď jsi Štamgast!"*) — the level name comes from the bundled threshold table so an optimistic level-up can be named locally, with server `level`/`title` as truth on reconcile.
 
 ### 3.6 Entry points, accessibility, reduced-motion, Dynamic Type
 
@@ -166,16 +150,15 @@ XP is **estimated locally for the instant toast and reconciled from the server**
 │                                                     │
 │  PLATBA                                            │  sectionLabel 12 caps muted
 │  [card] Platba kartou        nezmapováno [ ANO|NE ] │  icon mutedText, control stout3
-│  [cash] Jen hotovost         nezmapováno [ ANO|NE ] │
 │                                                     │
 │  POSEZENÍ                                           │
 │  [tree] Zahrádka / terasa    nezmapováno [ ANO|NE ] │
 │  [♿]   Bezbariérový přístup nezmapováno [ ANO|NE ] │
-│  [baby] Dětský koutek        nezmapováno [ ANO|NE ] │
 │                                                     │
 │  ZÁBAVA                                             │
 │  [tgt]  Šipky                nezmapováno [ ANO|NE ] │
-│  [dice] Kulečník             nezmapováno [ ANO|NE ] │
+│  [ball] Kulečník             nezmapováno [ ANO|NE ] │  CircleDot cue ball
+│  [⚽]   Stolní fotbal        nezmapováno [ ANO|NE ] │  SoccerBall (custom glyph)
 │  ...                                                │
 │                                                     │
 │  Každá odpověď se uloží sama. Díky!                 │  footer hint 12 muted
@@ -195,13 +178,12 @@ XP is **estimated locally for the instant toast and reconciled from the server**
 │                      ▬▬▬▬                           │
 │  U Zlatého tygra                       ╭───────╮    │
 │  jdeš ti to, mapére                    │ 38%   │    │  ring arc amber + amberGlow(8)
-│  ty jsi zmapoval 5 z 16                ╰───────╯    │  personal sub-line muted
+│  ty jsi zmapoval 5 z 12                ╰───────╯    │  personal sub-line muted
 │                                        zmapováno    │
 │                                                     │
 │  PLATBA                                            │
 │  [card] Platba kartou    8× ano · 1× ne [⬛ANO| ne ]│  ANO half amber, stout text,
-│  [cash] Jen hotovost     0× ano · 6× ne [ ano |⬛NE ]│  CheckIcon. icon → amber
-│                                                     │
+│                                                     │  CheckIcon. icon → amber
 │  POSEZENÍ                                           │
 │  [tree] Zahrádka…        5× ano · 0× ne [⬛ANO| ne ]│  NE half = muted fill (calm)
 │  [♿]   Bezbariérový…    2× ano · 0× ne [⬛ANO| ne ]│
@@ -212,7 +194,7 @@ XP is **estimated locally for the instant toast and reconciled from the server**
 │                                                     │
 │  ZÁBAVA                                             │
 │  [tgt]  Šipky            4× ano · 0× ne [⬛ANO| ne ]│
-│  [dice] Kulečník        lidi se neshodnou[ ano |⬛NE]│  disputed verdict copy
+│  [ball] Kulečník        lidi se neshodnou[ ano |⬛NE]│  disputed; CircleDot cue ball
 │                                                     │
 │  Každá odpověď se uloží sama. Díky!                 │
 ╰───────────────────────────────────────────────────╯
@@ -261,7 +243,7 @@ Mirrors the `pubRatings` trio (store + queue + client + sync) but with a **per-a
 
 ### 4.1 The critical merge decision — per-key LWW, NOT report-level
 
-A `PubRating` is one scalar; an amenity report is a **map of up to 16 independent facts**. Report-level LWW would be data loss: device A maps darts=yes at 19:00; device B (offline, stale) maps wifi=yes at 19:05 and pushes a full map *without* darts → B's newer timestamp clobbers darts. So the merge unit is the **individual amenity vote**, with `updatedAt` stored **per amenity**, and both the client store and the server upsert do per-`(pubKey, amenityKey)` LWW. **PUT is a partial merge of one vote, not a replace of the whole report** — this diverges from the ratings "replace the whole object" semantics on purpose. **Absent key always = "unknown / no change"; retraction is the explicit `value: null` tombstone** — never overload absence as both.
+A `PubRating` is one scalar; an amenity report is a **map of up to 12 independent facts**. Report-level LWW would be data loss: device A maps darts=yes at 19:00; device B (offline, stale) maps wifi=yes at 19:05 and pushes a full map *without* darts → B's newer timestamp clobbers darts. So the merge unit is the **individual amenity vote**, with `updatedAt` stored **per amenity**, and both the client store and the server upsert do per-`(pubKey, amenityKey)` LWW. **PUT is a partial merge of one vote, not a replace of the whole report** — this diverges from the ratings "replace the whole object" semantics on purpose. **Absent key always = "unknown / no change"; retraction is the explicit `value: null` tombstone** — never overload absence as both.
 
 ### 4.2 Catalogue — `src/data/amenities.ts` (new)
 
@@ -271,9 +253,11 @@ export type AmenityKey =
   | 'payment_card'
   | 'seating_garden' | 'seating_barrier_free'
   | 'game_darts' | 'game_billiards' | 'game_foosball' | 'game_jukebox'
-  | 'atmosphere_live_music' | 'atmosphere_sports_tv' | 'atmosphere_dogs_welcome' | 'atmosphere_smoking'
-  | 'practical_wifi' | 'practical_parking' | 'practical_food';
-// 'practical_outdoor_tap' + 'practical_tank_beer' reserved (is_active=false), not in the active union.
+  | 'atmosphere_live_music' | 'atmosphere_sports_tv' | 'atmosphere_smoking'
+  | 'practical_wifi' | 'practical_parking';
+// Inactive keys NOT in the active union: 'practical_outdoor_tap' + 'practical_tank_beer'
+// (reserved, is_active=false); 'seating_kids_corner', 'payment_cash_only',
+// 'atmosphere_dogs_welcome', 'practical_food' (deactivated by migration 0040).
 
 export interface AmenityDef {
   key: AmenityKey;
@@ -331,7 +315,7 @@ export type AmenityQueueItem =
 function dedupKey(i: AmenityQueueItem): string { return `${i.pubKey} ${i.amenityKey}`; }
 ```
 
-Reuse verbatim: `runLocked` mutex, `loadQueue`/`saveQueue`, `enqueueAmenityOp` (filter-by-`dedupKey`, push, `slice(-MAX)`), `flushLocked` (keep on `'retry'`, drop on `'ok'`/`'permanent-error'`, mid-flush content-signature preservation), `getQueuedAmenityDeletes()` (set of `dedupKey`s with a pending delete, so restore doesn't re-hydrate a not-yet-applied retraction), `flushPubAmenitiesQueue`/`clearPubAmenitiesQueue`. **The queued payload is the FULL current local entry for that `(pubKey, amenityKey)` at flush time (snapshot, not diff)** so coalescing is safe. **Do not flush per enqueue** — debounce a single `flushPubAmenitiesQueue()` (~250ms microtask) after the subscriber settles, so mapping one pub doesn't fire 16 serial 8s-timeout attempts and block the mutex. `MAX_QUEUE_LENGTH` is effectively unreachable for a realistic offline crawl (~10 pubs × 16 ≈ 160 ≪ 500); keep the ratings cap of 500 and the silent `slice(-MAX)` oldest-drop — the concern is theoretical.
+Reuse verbatim: `runLocked` mutex, `loadQueue`/`saveQueue`, `enqueueAmenityOp` (filter-by-`dedupKey`, push, `slice(-MAX)`), `flushLocked` (keep on `'retry'`, drop on `'ok'`/`'permanent-error'`, mid-flush content-signature preservation), `getQueuedAmenityDeletes()` (set of `dedupKey`s with a pending delete, so restore doesn't re-hydrate a not-yet-applied retraction), `flushPubAmenitiesQueue`/`clearPubAmenitiesQueue`. **The queued payload is the FULL current local entry for that `(pubKey, amenityKey)` at flush time (snapshot, not diff)** so coalescing is safe. **Do not flush per enqueue** — debounce a single `flushPubAmenitiesQueue()` (~250ms microtask) after the subscriber settles, so mapping one pub doesn't fire 12 serial 8s-timeout attempts and block the mutex. `MAX_QUEUE_LENGTH` is effectively unreachable for a realistic offline crawl (~10 pubs × 12 ≈ 120 ≪ 500); keep the ratings cap of 500 and the silent `slice(-MAX)` oldest-drop — the concern is theoretical.
 
 ### 4.5 Client — `src/data/pubAmenitiesClient.ts` (new)
 
@@ -390,7 +374,7 @@ export interface WirePubAmenities {
   mapper_count: number;                  // distinct accounts who voted any amenity at this pub
   completeness: {                        // nested object (canonical shape)
     mapped_count: number;                // distinct ACTIVE amenities with status != 'unknown'
-    total_kinds: number;                 // active amenity count = 14 (server-authoritative denominator)
+    total_kinds: number;                 // active amenity count = 12 (server-authoritative denominator)
     pct: number;                         // mapped_count / total_kinds, 0..1, clamped
   };
   amenities: WireAmenityAggregate[];
@@ -503,7 +487,7 @@ Level titles {Nováček, Všímálek, Štamgast, Znalec, Hospodský mudrc} and b
 
 ### 5.2 Completeness
 
-The sheet ring shows **community** completeness from the nested `completeness: { mapped_count, total_kinds, pct }` object on the aggregate read — `total_kinds` is server-authoritative (= **14** active kinds) so the meter survives amenity additions and per-pub completeness can reach 100%; a personal sub-line shows "ty jsi zmapoval/a {n} z {total}". Do not hard-code the denominator client-side.
+The sheet ring shows **community** completeness from the nested `completeness: { mapped_count, total_kinds, pct }` object on the aggregate read — `total_kinds` is server-authoritative (= **12** active kinds) so the meter survives amenity additions and per-pub completeness can reach 100%; a personal sub-line shows "ty jsi zmapoval/a {n} z {total}". Do not hard-code the denominator client-side.
 
 ### 5.3 New badges (extending the `Badge` pattern)
 
@@ -631,25 +615,27 @@ badge.factMachine.locked    = "Zaznamenej 100 faktů"
 
 All are one-line `lucide-react-native` adds (one `import` + one `wrap(...)` line each, matching `export const TreePineIcon = wrap(TreePine, 'TreePineIcon');`). **No SVG authoring, no emoji.** Already present and reused: `BeerIcon`, `TreePineIcon`, `WifiIcon`, `CheckIcon`, `XIcon`, `CompassIcon`, `BadgeCheckIcon`, `MapPinIcon`, `CrownIcon`, `StarIcon`, `CoinsIcon`, `LockKeyholeIcon`.
 
+All are one-line lucide wraps **except `SoccerBallIcon`**, which is a custom hand-rolled `react-native-svg` glyph (see note below). The icons for the four `0040`-deactivated amenities (`BanknoteIcon`, `BabyIcon`, `DogIcon`, `UtensilsIcon`) are NOT needed — those amenities are inactive and never render.
+
 | lucide source | new export | used for |
 |---|---|---|
 | `CreditCard` | `CreditCardIcon` | payment_card |
 | `Accessibility` | `AccessibilityIcon` | seating_barrier_free |
 | `Target` | `TargetIcon` | game_darts |
-| `Dices` | `DicesIcon` | game_billiards |
-| `Gamepad2` | `Gamepad2Icon` | game_foosball |
+| `CircleDot` | `CircleDotIcon` | game_billiards (a cue ball) |
+| *(none — custom SVG)* | `SoccerBallIcon` | game_foosball (hand-rolled glyph — see note) |
 | `Radio` | `RadioIcon` | game_jukebox |
 | `Mic` | `MicIcon` | atmosphere_live_music |
 | `Tv` | `TvIcon` | atmosphere_sports_tv |
-| `Dog` | `DogIcon` | atmosphere_dogs_welcome |
 | `Cigarette` | `CigaretteIcon` | atmosphere_smoking |
 | `SquareParking` | `SquareParkingIcon` | practical_parking |
-| `Utensils` | `UtensilsIcon` | practical_food |
 | `MapPinned` | `MapPinnedIcon` | trigger button + Objevitel/Kartograf badges + Profile stat |
 | `Sprout` | `SproutIcon` | Mapér level card + Prvomapér badge + toast |
 | `ClipboardList` | `ClipboardListIcon` | Pivní detektiv (fact_machine) badge |
 
-> **Icon clash resolution (locked).** Four prior clashes are resolved by choosing the clearer, non-ambiguous lucide glyph (no ambiguous bare discs): `game_billiards`→`DicesIcon` (reads as a game instantly, not another disc next to darts' `Target`); `game_jukebox`→`RadioIcon` (a boxy radio shape, not a disc); `atmosphere_live_music`→`MicIcon` (a mic reads "live performance" better than a generic note); `practical_parking`→`SquareParkingIcon` (the literal "P" sign is unambiguous). Dropped: `Disc3Icon`, `DiscIcon`, `MusicIcon`. `practical_tank_beer` keeps `BeerIcon` (reserved, inactive). `practical_outdoor_tap` must NOT reuse `BeerIcon` — reserve the key without a glyph until a distinct one is added. Validate `Target` (darts) vs `Dices` (billiards) on a real device before shipping; if they don't read, that's a design-dimension blocker (possible custom SVG, which the no-emoji rule makes more expensive), not a footnote.
+> **`SoccerBallIcon` is the one custom glyph (intentional exception).** Lucide ships NO soccer/football icon and the project has no other icon pack, so `game_foosball` uses a deliberate hand-rolled `react-native-svg` glyph in `src/components/shared/IconGlyph.tsx` (outer circle + central pentagon + radial seams). This is the single intentional exception to the "lucide owns all icon paths" rule; every other glyph above is a one-line lucide `wrap(...)`.
+
+> **Icon clash resolution (locked).** Prior clashes are resolved by choosing the clearer, non-ambiguous glyph: `game_billiards`→`CircleDotIcon` (lucide `CircleDot`, a cue ball); `game_foosball`→`SoccerBallIcon` (the custom glyph above); `game_jukebox`→`RadioIcon` (a boxy radio shape, not a disc); `atmosphere_live_music`→`MicIcon` (a mic reads "live performance" better than a generic note); `practical_parking`→`SquareParkingIcon` (the literal "P" sign is unambiguous). Dropped from the plan: `Disc3Icon`, `DiscIcon`, `MusicIcon`, and (with their amenities now inactive) `DicesIcon`, `Gamepad2Icon`. `practical_tank_beer` keeps `BeerIcon` (reserved, inactive). `practical_outdoor_tap` must NOT reuse `BeerIcon` — reserve the key without a glyph until a distinct one is added. Validate `TargetIcon` (darts) vs `CircleDotIcon` (billiards) on a real device before shipping; if they don't read, that's a design-dimension blocker, not a footnote.
 
 ## 8. Open questions & risks
 
@@ -660,6 +646,6 @@ All are one-line `lucide-react-native` adds (one `import` + one `wrap(...)` line
 - **Seasonal facts** (zahrádka v zimě, živá hudba o víkendu) look identical to "nezmapováno" and pollute the year-round truth + completeness meter. v1 scopes amenities to **structural** facts ("má prostor pro zahrádku" yes/no, not "je dnes otevřená"); revisit a "sezónně" nuance only if demand appears.
 - **Toast refactor touches a globally-mounted component.** Adding the leading-icon slot is a real (if small) change with a regression surface across every existing toast caller; default to 🍺 to keep existing toasts identical. (§3.5)
 - **Completeness denominator drift.** Hard-coding `total_kinds` client-side makes the client and server meters disagree when an amenity is added/deactivated, and can show a "100% complete" pub dropping below 100%. The client reads `total_kinds` from the backend and frames the personal ring as progress, not a permanent score; the backend must clamp `completeness` to [0,1] and use the same active-kind set for numerator and denominator. (§5.2)
-- **Glyph recognizability** (Target darts vs Dices billiards, adjacent in `games`) — on-device validation blocker before ship. (§7)
+- **Glyph recognizability** (Target darts vs CircleDot billiards cue ball, adjacent in `games`) — on-device validation blocker before ship. (§7)
 - **Shared-cache read placement.** The aggregate read must stay off the Mapy-cached `/v1/pubs/near`; the dedicated batch GET needs its own throttle scope (not `pubs_near`) and its own short TTL so amenity scraping can't eat the Mapy budget. (§4.5)
 ```

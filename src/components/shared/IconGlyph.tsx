@@ -5,6 +5,7 @@
  */
 
 import React, { memo, ComponentType } from 'react';
+import Svg, { Circle as SvgCircle, Path as SvgPath } from 'react-native-svg';
 import {
   Beer,
   BeerOff,
@@ -59,8 +60,7 @@ import {
   Accessibility,
   Baby,
   Target,
-  Dices,
-  Gamepad2,
+  CircleDot,
   Radio,
   Mic,
   Tv,
@@ -141,8 +141,28 @@ export const BanknoteIcon = wrap(Banknote, 'BanknoteIcon');
 export const AccessibilityIcon = wrap(Accessibility, 'AccessibilityIcon');
 export const BabyIcon = wrap(Baby, 'BabyIcon');
 export const TargetIcon = wrap(Target, 'TargetIcon');
-export const DicesIcon = wrap(Dices, 'DicesIcon');
-export const Gamepad2Icon = wrap(Gamepad2, 'Gamepad2Icon');
+export const CircleDotIcon = wrap(CircleDot, 'CircleDotIcon');
+// Soccer ball — lucide ships no soccer/football glyph, so this is a deliberate
+// hand-rolled exception (owner wanted a real football for "stolní fotbal"):
+// outer circle + central pentagon + radial seams, drawn to match the lucide look.
+export const SoccerBallIcon = memo(function SoccerBallIcon({ size = 20, color }: IconProps) {
+  return (
+    <Svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <SvgCircle cx={12} cy={12} r={9} />
+      <SvgPath d="M12 8.8 L15.04 11.01 L13.88 14.59 L10.12 14.59 L8.96 11.01 Z M12 8.8 L12 3 M15.04 11.01 L20.56 9.22 M13.88 14.59 L17.29 19.28 M10.12 14.59 L6.71 19.28 M8.96 11.01 L3.44 9.22" />
+    </Svg>
+  );
+});
+SoccerBallIcon.displayName = 'SoccerBallIcon';
 export const RadioIcon = wrap(Radio, 'RadioIcon');
 export const MicIcon = wrap(Mic, 'MicIcon');
 export const TvIcon = wrap(Tv, 'TvIcon');

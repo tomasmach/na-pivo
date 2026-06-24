@@ -38,8 +38,7 @@ export type AmenityKey =
   | 'atmosphere_sports_tv'
   | 'atmosphere_smoking'
   | 'practical_wifi'
-  | 'practical_parking'
-  | 'practical_food';
+  | 'practical_parking';
 
 /** The five amenity groups, in sheet + GET /kinds display order. */
 export type AmenityGroup = 'payment' | 'seating' | 'games' | 'atmosphere' | 'practical';
@@ -91,8 +90,8 @@ export const AMENITIES: readonly AmenityDef[] = [
   { key: 'seating_barrier_free', group: 'seating', label: 'Bezbariérový přístup', shortLabel: 'Bezbariér', icon: 'AccessibilityIcon', mapFilterable: true, order: 40 },
   // — games —
   { key: 'game_darts', group: 'games', label: 'Šipky', shortLabel: 'Šipky', icon: 'TargetIcon', mapFilterable: true, order: 60 },
-  { key: 'game_billiards', group: 'games', label: 'Kulečník', shortLabel: 'Kulečník', icon: 'DicesIcon', mapFilterable: true, order: 70 },
-  { key: 'game_foosball', group: 'games', label: 'Stolní fotbal', shortLabel: 'Fotbálek', icon: 'Gamepad2Icon', mapFilterable: true, order: 80 },
+  { key: 'game_billiards', group: 'games', label: 'Kulečník', shortLabel: 'Kulečník', icon: 'CircleDotIcon', mapFilterable: true, order: 70 },
+  { key: 'game_foosball', group: 'games', label: 'Stolní fotbal', shortLabel: 'Fotbálek', icon: 'SoccerBallIcon', mapFilterable: true, order: 80 },
   { key: 'game_jukebox', group: 'games', label: 'Jukebox', shortLabel: 'Jukebox', icon: 'RadioIcon', mapFilterable: false, order: 90 },
   // — atmosphere —
   { key: 'atmosphere_live_music', group: 'atmosphere', label: 'Živá hudba', shortLabel: 'Živá hudba', icon: 'MicIcon', mapFilterable: false, order: 100 },
@@ -101,7 +100,6 @@ export const AMENITIES: readonly AmenityDef[] = [
   // — practical —
   { key: 'practical_wifi', group: 'practical', label: 'Wi-Fi', shortLabel: 'Wi-Fi', icon: 'WifiIcon', mapFilterable: true, order: 140 },
   { key: 'practical_parking', group: 'practical', label: 'Parkování', shortLabel: 'Parkování', icon: 'SquareParkingIcon', mapFilterable: true, order: 150 },
-  { key: 'practical_food', group: 'practical', label: 'Kuchyně / dá se najíst', shortLabel: 'Kuchyně', icon: 'UtensilsIcon', mapFilterable: true, order: 160 },
 ];
 
 /**
