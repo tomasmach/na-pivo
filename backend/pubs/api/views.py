@@ -2564,25 +2564,25 @@ def _recompute_amenity_aggregate(
     return agg, created
 
 
-def _pub_is_complete(pub_identity_key: str, active_keys: set[str]) -> bool:
-    """Whether every active amenity kind for this pub has a known (non-unknown)
-    aggregate status — the 100%-completeness condition for the pub-complete bonus.
+def _account_completed_pub(account: Account, pub_identity_key: str, active_keys: set[str]) -> bool:
+    """Whether this account has answered every active amenity for this pub.
 
-    Uses the same active-set denominator as the public completeness meter (§4.4):
-    a deactivated kind never blocks completion. An empty active set is never
-    "complete" (no facts to map yet).
+    The public completeness meter still depends on aggregate confidence, but the
+    Pořádkumil badge copy is personal: "Zmapuj jednu hospodu naplno". A user who
+    fills every visible row should unlock it even when the crowd has not reached
+    AMENITY_MIN_VOTES yet. Deactivated kinds never block completion.
     """
     if not active_keys:
         return False
-    known = set(
-        PubAmenity.objects.filter(
+    answered = set(
+        PubAmenityVote.objects.filter(
+            account=account,
             pub_identity_key=pub_identity_key,
             amenity_key__in=active_keys,
         )
-        .exclude(status=PubAmenity.Status.UNKNOWN)
         .values_list("amenity_key", flat=True)
     )
-    return active_keys.issubset(known)
+    return active_keys.issubset(answered)
 
 
 def _first_touched_pub_count_today(account: Account, now) -> int:
@@ -2681,18 +2681,20 @@ def _award_mapper_xp(
 
         inc["amenity_votes_count"] = F("amenity_votes_count") + 1
 
-        # Pub-complete bonus: this fresh fact brought the pub to 100%. Gated on
-        # both paying base XP AND a durable per-(account, pub) completion marker
-        # so a retract-then-revote can never re-trigger it.
-        if _pub_is_complete(pub_identity_key, active_keys):
-            _completion, first_completion = AccountPubCompletion.objects.get_or_create(
-                account=account,
-                pub_identity_key=pub_identity_key,
-                defaults={"cache_key": cache_key},
-            )
-            if first_completion:
+    # Completion marker: once the account has live answers for every active row,
+    # unlock "Pořádkumil" and bump the completed-pub counter exactly once. The XP
+    # bonus is paid only when this same write also paid fresh base XP; that keeps
+    # legacy/revote repairs from showing fake +XP while still unlocking the badge.
+    if _account_completed_pub(account, pub_identity_key, active_keys):
+        _completion, first_completion = AccountPubCompletion.objects.get_or_create(
+            account=account,
+            pub_identity_key=pub_identity_key,
+            defaults={"cache_key": cache_key},
+        )
+        if first_completion:
+            inc["completed_pubs_count"] = F("completed_pubs_count") + 1
+            if pays_base:
                 xp_awarded += settings.MAPER_XP_PUB_COMPLETE_BONUS
-                inc["completed_pubs_count"] = F("completed_pubs_count") + 1
 
     if is_new_pub_for_account:
         inc["mapped_pubs_count"] = F("mapped_pubs_count") + 1
@@ -2818,7 +2820,15 @@ class PubAmenityVoteView(APIView):
         # Profile updates without a second GET. Re-read the durable XP from
         # AccountUsageStats AFTER all rows applied (F()-increments are committed).
         stats = AccountUsageStats.objects.filter(account=request.user).first()
-        mapper = maper_snapshot(stats.mapper_xp if stats is not None else 0)
+        counters = None
+        if stats is not None:
+            counters = {
+                "mapped_pubs_count": stats.mapped_pubs_count,
+                "amenity_votes_count": stats.amenity_votes_count,
+                "first_mapper_count": stats.first_mapper_count,
+                "completed_pubs_count": stats.completed_pubs_count,
+            }
+        mapper = maper_snapshot(stats.mapper_xp if stats is not None else 0, counters=counters)
         return Response({"results": results, "mapper": mapper}, status=status.HTTP_200_OK)
 
     def _apply_one(self, account: Account, data: dict, active_keys: set[str]) -> dict:

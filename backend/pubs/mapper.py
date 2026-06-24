@@ -102,23 +102,35 @@ def maper_progress(xp: int) -> dict:
     }
 
 
-def maper_snapshot(xp: int) -> dict:
+def maper_snapshot(xp: int, counters: dict | None = None) -> dict:
     """The compact ``mapper`` envelope returned on the vote PUT (§4.2 / §7.2).
 
     { xp, level, title, xp_into_level, xp_for_next_level } — derived purely
-    from the stored ``mapper_xp`` so Profile updates without a second GET. The
-    full ``levels`` ladder + ``xp_rules`` + counters are only on GET /account/me.
+    from the stored ``mapper_xp`` so Profile updates without a second GET.
+    Fresh counter fields may be attached additively on write responses so the
+    client can unlock Mapér badges immediately; the full ``levels`` ladder +
+    ``xp_rules`` stay only on GET /account/me.
     The wire key is ``xp`` (NOT ``mapper_xp``) so it is identical to the §7.2
     GET /account/me snapshot — the two endpoints must never disagree.
     """
     progress = maper_progress(xp)
-    return {
+    snapshot = {
         "xp": max(0, int(xp)),
         "level": progress["level"],
         "title": progress["title"],
         "xp_into_level": progress["xp_into_level"],
         "xp_for_next_level": progress["xp_for_next_level"],
     }
+    if counters:
+        snapshot.update(
+            {
+                "distinct_mapped_pubs": int(counters.get("mapped_pubs_count", 0) or 0),
+                "amenity_votes_count": int(counters.get("amenity_votes_count", 0) or 0),
+                "first_mapper_count": int(counters.get("first_mapper_count", 0) or 0),
+                "completed_pubs_count": int(counters.get("completed_pubs_count", 0) or 0),
+            }
+        )
+    return snapshot
 
 
 def maper_xp_rules() -> dict:

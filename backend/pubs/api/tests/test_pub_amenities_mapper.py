@@ -33,6 +33,7 @@ from rest_framework.test import APIClient
 from pubs.enrichment import geohash8
 from pubs.models import (
     Account,
+    AccountPubCompletion,
     AccountUsageStats,
     AmenityKind,
     PubAmenity,
@@ -143,6 +144,10 @@ def test_first_mapper_earns_first_fact_plus_bonus(client):
     assert mapper["title"] == "Nováček"
     assert mapper["xp_into_level"] == 40
     assert mapper["xp_for_next_level"] == 50
+    assert mapper["distinct_mapped_pubs"] == 1
+    assert mapper["amenity_votes_count"] == 1
+    assert mapper["first_mapper_count"] == 1
+    assert mapper["completed_pubs_count"] == 0
 
 
 @pytest.mark.django_db
@@ -172,6 +177,8 @@ def test_put_envelope_crosses_level_boundary(client):
     assert mapper["title"] == "Všímálek"
     assert mapper["xp_into_level"] == 30  # 80 - 50
     assert mapper["xp_for_next_level"] == 100  # 150 - 50
+    assert mapper["distinct_mapped_pubs"] == 1
+    assert mapper["amenity_votes_count"] == 2
 
 
 @pytest.mark.django_db
@@ -337,90 +344,96 @@ def _map_all_amenities(client, token, *, value="yes", base_minute=0, **pub):
 
 
 @pytest.mark.django_db
-def test_pub_complete_bonus_paid_once_at_100pct(client):
+def test_pub_complete_bonus_paid_once_when_account_maps_every_active_amenity(client):
     token_a = _register(client, _DEVICE_A)
-    token_b = _register(client, _DEVICE_B)
-    token_c = _register(client, _DEVICE_C)
 
-    # Need AMENITY_MIN_VOTES (3) agreeing voters per amenity for status != unknown.
-    _map_all_amenities(client, token_a, base_minute=0)
-    _map_all_amenities(client, token_b, base_minute=1)
-    # Before C, no amenity has 3 votes → pub is NOT complete, no bonus yet.
-    assert _stats(_DEVICE_A).completed_pubs_count == 0
+    # Personal completion does not wait for the public aggregate to reach
+    # AMENITY_MIN_VOTES. The user has not completed anything before the final row.
+    assert AccountUsageStats.objects.filter(account__device_id=_DEVICE_A).count() == 0
 
-    # C is the third agreeing voter; their LAST amenity flips the pub to 100%.
     keys = list(AmenityKind.objects.filter(active=True).values_list("key", flat=True))
     completed = False
     for i, key in enumerate(keys):
         resp = _put(
             client,
-            token_c,
-            _vote(amenity_key=key, value="yes", client_updated_at=f"2026-06-23T13:{i:02d}:00+02:00"),
+            token_a,
+            _vote(amenity_key=key, value="yes", client_updated_at=f"2026-06-23T12:{i:02d}:00+02:00"),
         )
         xp = resp.json()["results"][0]["xp_awarded"]
         if i < len(keys) - 1:
-            assert xp == settings.MAPER_XP_CONFIRM  # confirm only
+            assert xp == settings.MAPER_XP_FIRST_FACT + settings.MAPER_XP_FIRST_MAPPER_BONUS
         else:
-            # The final amenity completes the pub: confirm (5) + complete (30).
-            assert xp == settings.MAPER_XP_CONFIRM + settings.MAPER_XP_PUB_COMPLETE_BONUS
+            # The final personal answer completes the pub for this account.
+            assert xp == (
+                settings.MAPER_XP_FIRST_FACT
+                + settings.MAPER_XP_FIRST_MAPPER_BONUS
+                + settings.MAPER_XP_PUB_COMPLETE_BONUS
+            )
             completed = True
     assert completed
 
-    c_stats = _stats(_DEVICE_C)
-    assert c_stats.completed_pubs_count == 1
-    # A/B never cast the completing vote → no complete bonus.
-    assert _stats(_DEVICE_A).completed_pubs_count == 0
-    assert _stats(_DEVICE_B).completed_pubs_count == 0
+    a_stats = _stats(_DEVICE_A)
+    assert a_stats.completed_pubs_count == 1
 
     # A later flip/re-vote does NOT re-pay the complete bonus.
     resp = _put(
         client,
-        token_c,
+        token_a,
         _vote(amenity_key=keys[0], value="no", client_updated_at="2026-06-23T14:00:00+02:00"),
     )
     assert resp.json()["results"][0]["xp_awarded"] == 0
-    assert _stats(_DEVICE_C).completed_pubs_count == 1
+    assert _stats(_DEVICE_A).completed_pubs_count == 1
 
 
 @pytest.mark.django_db
 def test_completion_via_recross_does_not_repay_bonus(client):
-    """Crossing INTO 100% again (after dropping below) NEVER re-pays the bonus.
-
-    C completes a pub (earns the +pub_complete_bonus once). C then retracts one
-    amenity — dropping it below AMENITY_MIN_VOTES so the pub is no longer 100% —
-    and re-votes it, re-crossing into completion. Because completion is gated on
-    a DURABLE per-(account, pub) marker (NOT the live _pub_is_complete check),
-    the re-cross pays 0 complete-bonus and completed_pubs_count stays 1. A
-    regression moving the completeness check outside the durable gate would
-    re-farm the 30 XP here.
-    """
+    """Crossing INTO personal completion again NEVER re-pays the bonus."""
     token_a = _register(client, _DEVICE_A)
-    token_b = _register(client, _DEVICE_B)
-    token_c = _register(client, _DEVICE_C)
 
     _map_all_amenities(client, token_a, base_minute=0)
-    _map_all_amenities(client, token_b, base_minute=1)
-    _map_all_amenities(client, token_c, base_minute=2)  # C completes the pub here
 
-    assert _stats(_DEVICE_C).completed_pubs_count == 1
-    c_xp_after_complete = _stats(_DEVICE_C).mapper_xp
+    assert _stats(_DEVICE_A).completed_pubs_count == 1
+    a_xp_after_complete = _stats(_DEVICE_A).mapper_xp
 
     keys = list(AmenityKind.objects.filter(active=True).values_list("key", flat=True))
     target = keys[0]
 
-    # C retracts the target amenity → only A,B remain (2 votes < MIN_VOTES) so the
-    # aggregate falls to UNKNOWN and the pub is no longer 100%.
-    _put(client, token_c, _vote(amenity_key=target, value=None, client_updated_at="2026-06-23T15:00:00+02:00"))
-    assert _pub_amenity_status(target) == PubAmenity.Status.UNKNOWN
+    # A retracts the target amenity, so their personal completion drops below
+    # 100%. Retraction never claws back the durable completion marker.
+    _put(client, token_a, _vote(amenity_key=target, value=None, client_updated_at="2026-06-23T15:00:00+02:00"))
 
-    # C re-votes it → 3 votes again, the amenity returns to YES and the pub is
-    # complete again. This re-cross must NOT re-pay the bonus (durable marker).
+    # A re-votes it and becomes personally complete again. This re-cross must NOT
+    # re-pay the bonus because the durable marker already exists.
     recross = _put(
-        client, token_c, _vote(amenity_key=target, value="yes", client_updated_at="2026-06-23T16:00:00+02:00")
+        client, token_a, _vote(amenity_key=target, value="yes", client_updated_at="2026-06-23T16:00:00+02:00")
     )
     assert recross.json()["results"][0]["xp_awarded"] == 0  # base gated by ledger + completion gated by marker
-    assert _stats(_DEVICE_C).completed_pubs_count == 1
-    assert _stats(_DEVICE_C).mapper_xp == c_xp_after_complete
+    assert _stats(_DEVICE_A).completed_pubs_count == 1
+    assert _stats(_DEVICE_A).mapper_xp == a_xp_after_complete
+
+
+@pytest.mark.django_db
+def test_personal_completion_marker_can_be_repaired_without_fake_xp(client):
+    token = _register(client, _DEVICE_A)
+    _map_all_amenities(client, token, base_minute=0)
+
+    account = Account.objects.get(device_id=_DEVICE_A)
+    stats = _stats(_DEVICE_A)
+    xp_after_complete = stats.mapper_xp
+    stats.completed_pubs_count = 0
+    stats.save(update_fields=["completed_pubs_count"])
+    AccountPubCompletion.objects.filter(account=account).delete()
+
+    keys = list(AmenityKind.objects.filter(active=True).values_list("key", flat=True))
+    resp = _put(
+        client,
+        token,
+        _vote(amenity_key=keys[0], value="no", client_updated_at="2026-06-23T16:00:00+02:00"),
+    )
+
+    assert resp.json()["results"][0]["xp_awarded"] == 0
+    assert _stats(_DEVICE_A).completed_pubs_count == 1
+    assert _stats(_DEVICE_A).mapper_xp == xp_after_complete
 
 
 # ---------------------------------------------------------------------------
