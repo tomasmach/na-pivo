@@ -19,7 +19,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { submitPubCommunity, type CommunityEntry } from './communityClient';
+import { submitPubCommunity, type CommunityEntry, type CommunityResponse } from './communityClient';
 import { geohash8 } from './geohash';
 
 const STORAGE_KEY = 'na-pivo-community-queue';
@@ -81,28 +81,34 @@ function enqueueTask<T>(task: () => Promise<T>): Promise<T> {
   return next;
 }
 
-/** Attempts to send every queued entry, keeping only the ones that failed. */
-async function flushLocked(): Promise<void> {
+/** Attempts to send every queued entry, keeping only the ones that failed.
+ *  Returns the delivered responses keyed by client_id so a caller can read the
+ *  backend envelope (the Mapér XP snapshot) for the entry it just enqueued. */
+async function flushLocked(): Promise<Map<string, CommunityResponse>> {
+  const delivered = new Map<string, CommunityResponse>();
   const queue = await loadQueue();
-  if (queue.length === 0) return;
+  if (queue.length === 0) return delivered;
 
   const remaining: CommunityEntry[] = [];
   for (const entry of queue) {
     const result = await submitPubCommunity(entry);
-    if (!result) remaining.push(entry);
+    if (result) delivered.set(entry.client_id, result);
+    else remaining.push(entry);
   }
   await saveQueue(remaining);
+  return delivered;
 }
 
 /**
  * Persists the contribution and immediately tries to sync the whole queue.
- * Resolves true when this entry reached the backend on the first attempt; false
- * means it stays queued for a later flush. Never throws.
+ * Resolves the backend response (incl. the Mapér XP envelope) when this entry
+ * reached the backend on the first attempt, or null when it stays queued for a
+ * later flush. Never throws.
  *
  * A newer edit of the same pub (same geohash-8 cell) replaces any older queued
  * submission for that pub — the older one is stale.
  */
-export function enqueuePubCommunity(entry: CommunityEntry): Promise<boolean> {
+export function enqueuePubCommunity(entry: CommunityEntry): Promise<CommunityResponse | null> {
   return enqueueTask(async () => {
     const queue = await loadQueue();
     const cell = entryCell(entry);
@@ -110,9 +116,8 @@ export function enqueuePubCommunity(entry: CommunityEntry): Promise<boolean> {
     deduped.push(entry);
     await saveQueue(deduped.slice(-MAX_QUEUE_LENGTH));
 
-    await flushLocked();
-    const after = await loadQueue();
-    return !after.some((queued) => queued.client_id === entry.client_id);
+    const delivered = await flushLocked();
+    return delivered.get(entry.client_id) ?? null;
   });
 }
 
@@ -121,5 +126,7 @@ export function enqueuePubCommunity(entry: CommunityEntry): Promise<boolean> {
  * foreground — both fire-and-forget. Never throws.
  */
 export function flushCommunityQueue(): Promise<void> {
-  return enqueueTask(flushLocked);
+  return enqueueTask(async () => {
+    await flushLocked();
+  });
 }

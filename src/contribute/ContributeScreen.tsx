@@ -33,6 +33,7 @@ import {
   PlusIcon,
   Trash2Icon,
   CopyIcon,
+  CompassIcon,
 } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { geohash8 } from '@/data/geohash';
@@ -46,11 +47,12 @@ import {
 } from '@/data/communityHours';
 import { generateUuidV4 } from '@/data/account';
 import { buildCommunityEntry, type CommunityBeer } from '@/data/communityClient';
-import { enqueuePubCommunity, flushCommunityQueue } from '@/data/communityQueue';
+import { enqueuePubCommunity } from '@/data/communityQueue';
 import { suggestBeerBrands, type BeerBrandSuggestion } from '@/data/beerSuggestionsClient';
 import { useCommunityStore } from '@/stores/communityStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
+import { useAccountStore } from '@/stores/accountStore';
 import { fireSuccessHaptic } from '@/utils/haptics';
 import {
   formatPriceInputFromCzk,
@@ -338,9 +340,31 @@ export default function ContributeScreen() {
       beers: sendBeers ? cleanedBeers : undefined,
     });
 
-    // Fire-and-forget: the queue persists before the first send and retries.
-    void enqueuePubCommunity(entry);
-    void flushCommunityQueue();
+    // Fire-and-forget: the queue persists before the first send and retries. Its
+    // resolved value carries the Mapér XP envelope when delivery succeeds, so a
+    // first-time hours/beers contribution nudges Mapér progress + a +XP toast
+    // (the same lifetime-achievement reward amenity votes earn).
+    void enqueuePubCommunity(entry).then((res) => {
+      if (!res) return;
+      if (res.mapper) {
+        useAccountStore.getState().applyMapperSnapshot({
+          xp: res.mapper.xp,
+          level: res.mapper.level,
+          title: res.mapper.title,
+          xpIntoLevel: res.mapper.xp_into_level,
+          xpForNextLevel: res.mapper.xp_for_next_level,
+          distinctMappedPubs: res.mapper.distinct_mapped_pubs,
+          amenityVotesCount: res.mapper.amenity_votes_count,
+          firstMapperCount: res.mapper.first_mapper_count,
+          completedPubsCount: res.mapper.completed_pubs_count,
+        });
+      }
+      if (res.xpAwarded > 0) {
+        useToastStore.getState().show(cs.contribute.xpToast(res.xpAwarded), {
+          icon: <CompassIcon size={18} color={Colors.amber} />,
+        });
+      }
+    });
 
     // No success screen: the edit already shows instantly via the optimistic
     // override, so just confirm with a haptic + toast and pop back to it.

@@ -3,6 +3,7 @@ import { Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { cs } from '@/i18n/cs';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { MapPubSheet } from '@/components/amenities/MapPubSheet';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -46,6 +47,10 @@ jest.mock('@/components/compass/BeerBrandFilterSheet', () => ({
   BeerBrandFilterSheet: jest.fn(() => null),
 }));
 
+jest.mock('@/components/amenities/MapPubSheet', () => ({
+  MapPubSheet: jest.fn(() => null),
+}));
+
 jest.mock('@/components/shared/TitleBar', () => ({
   TitleBar: jest.fn(() => null),
 }));
@@ -64,7 +69,7 @@ jest.mock('@/components/shared/IconGlyph', () => ({
   RefreshCwIcon: jest.fn(() => null),
   SettingsIcon: jest.fn(() => null),
   FlagIcon: jest.fn(() => null),
-  PencilIcon: jest.fn(() => null),
+  MapPinnedIcon: jest.fn(() => null),
   StarIcon: jest.fn(() => null),
   TreePineIcon: jest.fn(() => null),
   XIcon: jest.fn(() => null),
@@ -376,9 +381,7 @@ describe('CompassScreen', () => {
     expect(reportCurrentPub).toHaveBeenCalledWith('not_pub');
   });
 
-  it('prefills contribute hours from Firmy.cz opening hours when community hours are absent', () => {
-    const push = jest.fn();
-    mockedUseRouter.mockReturnValue({ push });
+  it('passes Firmy.cz opening hours to the map hub when community hours are absent', () => {
     useCompass.mockReturnValue({
       ...baseCompassState(),
       revealed: true,
@@ -399,36 +402,16 @@ describe('CompassScreen', () => {
       renderer = TestRenderer.create(React.createElement(CompassScreen));
     });
 
-    const contributeButton = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.contributeOrAddButton,
-    });
-
-    act(() => {
-      contributeButton.props.onPress();
-    });
-
-    // The compact pub card funnels contribute/add through an action sheet;
-    // pick the first option ("Doplnit / přidat" → contribute).
-    const [, , buttons] = (Alert.alert as jest.Mock).mock.calls[0];
-    act(() => {
-      buttons?.[0]?.onPress?.();
-    });
-
-    expect(push).toHaveBeenCalledTimes(1);
-    const route = push.mock.calls[0][0];
-    expect(route.pathname).toBe('/contribute');
-    expect(JSON.parse(route.params.hours)).toEqual({
-      mo: [['11:00', '23:00']],
-      tu: [['11:00', '23:00']],
-      we: [['11:00', '23:00']],
-      th: [['11:00', '23:00']],
-      fr: [['11:00', '23:00']],
-      sa: [['12:00', '00:00']],
-      su: [],
-    });
+    // The unified "Zmapuj hospodu" footer button opens the map hub; the raw
+    // Firmy.cz OSM string rides into it as info.openingHours (the hub parses it
+    // for the hours editor prefill). prefillHours is null without community data.
+    const sheet = renderer!.root.findByType(MapPubSheet);
+    expect(sheet.props.info.openingHours).toBe('Mo-Fr 11:00-23:00; Sa 12:00-00:00');
+    expect(sheet.props.info.prefillHours).toBeNull();
+    expect(sheet.props.pubName).toBe('U Testu');
   });
 
-  it('opens add-pub from the revealed pub pill with current coordinates', () => {
+  it('opens add-pub through the map hub with current coordinates', () => {
     const push = jest.fn();
     mockedUseRouter.mockReturnValue({ push });
     useCompass.mockReturnValue({
@@ -443,18 +426,11 @@ describe('CompassScreen', () => {
       renderer = TestRenderer.create(React.createElement(CompassScreen));
     });
 
-    const addPubButton = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.contributeOrAddButton,
-    });
-
+    // "Není to tahle hospoda?" lives inside the hub; the compass passes its
+    // add-pub handler through, which routes to /add-pub with the current coords.
+    const sheet = renderer!.root.findByType(MapPubSheet);
     act(() => {
-      addPubButton.props.onPress();
-    });
-
-    // Second action-sheet option ("Přidat hospodu" → add-pub).
-    const [, , buttons] = (Alert.alert as jest.Mock).mock.calls[0];
-    act(() => {
-      buttons?.[1]?.onPress?.();
+      sheet.props.onAddPub();
     });
 
     expect(push).toHaveBeenCalledWith({

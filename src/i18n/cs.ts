@@ -354,6 +354,8 @@ export const cs = {
     save: 'Uložit',
     invalidHint: 'Zkontroluj zadané časy (formát HH:MM).',
     savedToast: 'Díky! Uloženo',
+    // Mapér reward for a first-time hours/beers contribution to a pub.
+    xpToast: (xp: number) => `Díky za zmapování! +${xp} XP`,
   },
 
   addPub: {

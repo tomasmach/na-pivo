@@ -16,6 +16,7 @@ import { ensureAccount } from './account';
 import { getBackendEndpoint } from './backendConfig';
 import type { CommunityBeer, WeeklyHours, WireBeer } from './communityHours';
 import { DAY_KEYS, beerFromWire, beerToWire } from './communityHours';
+import type { WireMapperSnapshot } from './pubAmenitiesClient';
 
 export type { CommunityBeer, WeeklyHours };
 export { beerFromWire, beerToWire };
@@ -51,12 +52,19 @@ export interface CommunityResponse {
   cacheKey: string;
   hours: WeeklyHours | null;
   beers: CommunityBeer[];
+  /** Mapér XP this submission paid (0 when the pub's facts were already
+   *  contributed by this account). Additive field — 0 on older backends. */
+  xpAwarded: number;
+  /** Fresh Mapér snapshot to feed Profile, or null when XP was skipped. */
+  mapper: WireMapperSnapshot | null;
 }
 
 interface WireResponse {
   cache_key?: string;
   hours?: WeeklyHours | null;
   beers?: WireBeer[];
+  xp_awarded?: number;
+  mapper?: WireMapperSnapshot | null;
 }
 
 const REQUEST_TIMEOUT_MS = 8000;
@@ -143,6 +151,8 @@ export async function submitPubCommunity(
       cacheKey: data.cache_key,
       hours: data.hours ?? null,
       beers: Array.isArray(data.beers) ? data.beers.map(beerFromWire) : [],
+      xpAwarded: typeof data.xp_awarded === 'number' ? data.xp_awarded : 0,
+      mapper: data.mapper ?? null,
     };
   } catch {
     return null;

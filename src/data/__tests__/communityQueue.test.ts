@@ -45,14 +45,14 @@ beforeEach(async () => {
 
 describe('enqueuePubCommunity', () => {
   it('sends the entry and leaves the queue empty on success', async () => {
-    await expect(enqueuePubCommunity(entry())).resolves.toBe(true);
+    await expect(enqueuePubCommunity(entry())).resolves.toMatchObject({ cacheKey: 'k' });
     expect(submitPubCommunity).toHaveBeenCalledTimes(1);
     await expect(readQueue()).resolves.toEqual([]);
   });
 
   it('keeps a failed entry queued instead of dropping it', async () => {
     (submitPubCommunity as jest.Mock).mockResolvedValue(null);
-    await expect(enqueuePubCommunity(entry())).resolves.toBe(false);
+    await expect(enqueuePubCommunity(entry())).resolves.toBeNull();
     expect(await readQueue()).toHaveLength(1);
   });
 
