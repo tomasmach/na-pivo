@@ -248,7 +248,17 @@ describe('submitAmenityVotesDetailed — live XP envelope', () => {
             },
           },
         ],
-        mapper: { xp: 40, level: 1, title: 'Nováček', xp_into_level: 40, xp_for_next_level: 10 },
+        mapper: {
+          xp: 40,
+          level: 1,
+          title: 'Nováček',
+          xp_into_level: 40,
+          xp_for_next_level: 10,
+          distinct_mapped_pubs: 1,
+          amenity_votes_count: 1,
+          first_mapper_count: 1,
+          completed_pubs_count: 0,
+        },
       }),
     );
     const res = await submitAmenityVotesDetailed([vote()]);
@@ -256,6 +266,8 @@ describe('submitAmenityVotesDetailed — live XP envelope', () => {
     expect(res.body?.results[0].xp_awarded).toBe(40);
     expect(res.body?.results[0].was_first_map).toBe(true);
     expect(res.body?.mapper?.title).toBe('Nováček');
+    expect(res.body?.mapper?.distinct_mapped_pubs).toBe(1);
+    expect(res.body?.mapper?.completed_pubs_count).toBe(0);
   });
 
   it('returns ok with a null body when the 2xx body is unparseable', async () => {

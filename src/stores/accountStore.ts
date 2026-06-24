@@ -22,9 +22,10 @@ import { useSettingsStore } from '@/stores/settingsStore';
 export type AccountStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 /**
- * The compact Mapér snapshot fields the PUT /pub-amenities/votes envelope
- * returns (camelCased). Patches the live XP/level/title on `profile.mapper` so
- * Profile updates without a refetch.
+ * The Mapér snapshot fields the PUT /pub-amenities/votes envelope returns
+ * (camelCased). XP/level are always present; counters are additive and optional
+ * so newer backends can unlock badges immediately while older responses still
+ * patch only the progress bar.
  */
 export interface MapperSnapshotPatch {
   xp: number;
@@ -32,6 +33,10 @@ export interface MapperSnapshotPatch {
   title: string;
   xpIntoLevel: number;
   xpForNextLevel: number | null;
+  distinctMappedPubs?: number;
+  amenityVotesCount?: number;
+  firstMapperCount?: number;
+  completedPubsCount?: number;
 }
 
 interface AccountState {
@@ -50,9 +55,8 @@ interface AccountState {
   /**
    * Patch the live Mapér XP/level/title from a PUT /pub-amenities/votes envelope
    * snapshot so Profile climbs immediately after a vote, without a second GET.
-   * Only patches when a full `mapper` block already exists (the durable counters
-   * + levels + xpRules ride only on GET /account/me); the compact snapshot can't
-   * synthesize them, and the durable number reconciles on the next refresh.
+   * Only patches when a full `mapper` block already exists; levels + xpRules ride
+   * only on GET /account/me, while newer PUT snapshots may include counters.
    */
   applyMapperSnapshot: (snapshot: MapperSnapshotPatch) => void;
 
@@ -173,8 +177,8 @@ export const useAccountStore = create<AccountState>((set, get) => {
 
     applyMapperSnapshot: (snapshot) => {
       const current = get().profile;
-      // Only patch a live full mapper block — the snapshot lacks the durable
-      // counters/levels/xpRules, which reconcile on the next GET /account/me.
+      // Only patch a live full mapper block — levels/xpRules reconcile on the
+      // next GET /account/me, and optional counters patch when present.
       if (!current?.mapper) return;
       const xpForNextLevel = snapshot.xpForNextLevel ?? current.mapper.xpForNextLevel;
       set({
@@ -187,6 +191,10 @@ export const useAccountStore = create<AccountState>((set, get) => {
             title: snapshot.title,
             xpIntoLevel: snapshot.xpIntoLevel,
             xpForNextLevel,
+            distinctMappedPubs: snapshot.distinctMappedPubs ?? current.mapper.distinctMappedPubs,
+            amenityVotesCount: snapshot.amenityVotesCount ?? current.mapper.amenityVotesCount,
+            firstMapperCount: snapshot.firstMapperCount ?? current.mapper.firstMapperCount,
+            completedPubsCount: snapshot.completedPubsCount ?? current.mapper.completedPubsCount,
           },
         },
       });

@@ -165,7 +165,13 @@ export interface WireMapper {
 export type WireMapperSnapshot = Pick<
   WireMapper,
   'xp' | 'level' | 'title' | 'xp_into_level' | 'xp_for_next_level'
->;
+> &
+  Partial<
+    Pick<
+      WireMapper,
+      'distinct_mapped_pubs' | 'amenity_votes_count' | 'first_mapper_count' | 'completed_pubs_count'
+    >
+  >;
 
 /** The full PUT /v1/pub-amenities/votes response envelope. */
 export interface WireAmenityVotesResponse {

@@ -299,9 +299,10 @@ export function MapPubSheet({ visible, pubKey, pubName, onClose }: MapPubSheetPr
         });
       }
 
-      // A local best-effort XP estimate for a newly-set vote, used when there is
-      // no live envelope (no backend, or offline). The server truth reconciles
-      // on Profile later; the estimate is only the transient toast.
+      // A local best-effort XP estimate for a newly-set vote, used only when no
+      // backend is configured. If the online PUT merely retries, stay silent:
+      // a retract→revote can legitimately be worth 0 XP server-side, and showing
+      // a local estimate there creates a fake +XP toast.
       const addLocalEstimate = () => {
         if (next != null && wasUnanswered) {
           xpAccum.current.count += 1;
@@ -326,9 +327,6 @@ export function MapPubSheet({ visible, pubKey, pubName, onClose }: MapPubSheetPr
       });
       void submitAmenityVotesDetailed([wire]).then((res) => {
         if (res.status !== 'ok' || !res.body) {
-          // Offline / dormant: fall back to the local estimate while the queue
-          // retries. Permanent validation errors do not earn optimistic XP.
-          if (res.status === 'retry') addLocalEstimate();
           return;
         }
         const result = res.body.results[0];
@@ -346,6 +344,10 @@ export function MapPubSheet({ visible, pubKey, pubName, onClose }: MapPubSheetPr
             title: snap.title,
             xpIntoLevel: snap.xp_into_level,
             xpForNextLevel: snap.xp_for_next_level,
+            distinctMappedPubs: snap.distinct_mapped_pubs,
+            amenityVotesCount: snap.amenity_votes_count,
+            firstMapperCount: snap.first_mapper_count,
+            completedPubsCount: snap.completed_pubs_count,
           });
           maybeLevelUpToast(snap.level, snap.title, lastLevel, showToast);
         }

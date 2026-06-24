@@ -54,8 +54,8 @@ function signedInProfile(overrides: Partial<AccountProfile> = {}): AccountProfil
   };
 }
 
-/** A full Mapér block with distinctive durable counters/levels/xpRules so a test
- *  can prove applyMapperSnapshot preserves them while patching the live XP. */
+/** A full Mapér block with distinctive durable counters/levels/xpRules so tests
+ *  can prove applyMapperSnapshot preserves absent fields and patches present ones. */
 function fullMapper(overrides: Partial<AccountMapper> = {}): AccountMapper {
   return {
     xp: 285,
@@ -312,7 +312,7 @@ describe('verifyEmail', () => {
 // applyMapperSnapshot — live XP/level patch from the PUT votes envelope
 // ---------------------------------------------------------------------------
 describe('applyMapperSnapshot', () => {
-  it('patches the live XP/level/title + into-level while preserving the durable block', () => {
+  it('patches the live XP/level/title + into-level while preserving absent counters', () => {
     const mapper = fullMapper();
     useAccountStore.setState({ profile: signedInProfile({ mapper }) });
 
@@ -331,11 +331,36 @@ describe('applyMapperSnapshot', () => {
     expect(patched?.title).toBe('Znalec');
     expect(patched?.xpIntoLevel).toBe(20);
     expect(patched?.xpForNextLevel).toBe(300);
-    // Durable counters + levels + xpRules ride only on GET /account/me — preserved.
+    // Older compact snapshots omit counters, so the previous values are preserved.
     expect(patched?.distinctMappedPubs).toBe(mapper.distinctMappedPubs);
     expect(patched?.amenityVotesCount).toBe(mapper.amenityVotesCount);
     expect(patched?.firstMapperCount).toBe(mapper.firstMapperCount);
     expect(patched?.completedPubsCount).toBe(mapper.completedPubsCount);
+    expect(patched?.levels).toEqual(mapper.levels);
+    expect(patched?.xpRules).toEqual(mapper.xpRules);
+  });
+
+  it('patches optional mapper counters when the PUT snapshot includes them', () => {
+    const mapper = fullMapper({ completedPubsCount: 0 });
+    useAccountStore.setState({ profile: signedInProfile({ mapper }) });
+
+    useAccountStore.getState().applyMapperSnapshot({
+      xp: 350,
+      level: 4,
+      title: 'Znalec',
+      xpIntoLevel: 50,
+      xpForNextLevel: 250,
+      distinctMappedPubs: 8,
+      amenityVotesCount: 43,
+      firstMapperCount: 3,
+      completedPubsCount: 1,
+    });
+
+    const patched = useAccountStore.getState().profile?.mapper;
+    expect(patched?.distinctMappedPubs).toBe(8);
+    expect(patched?.amenityVotesCount).toBe(43);
+    expect(patched?.firstMapperCount).toBe(3);
+    expect(patched?.completedPubsCount).toBe(1);
     expect(patched?.levels).toEqual(mapper.levels);
     expect(patched?.xpRules).toEqual(mapper.xpRules);
   });
