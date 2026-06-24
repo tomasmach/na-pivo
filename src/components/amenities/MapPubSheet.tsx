@@ -39,7 +39,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -131,6 +131,21 @@ export function MapPubSheet({
   const reduceMotion = useReduceMotion();
   const router = useRouter();
   const facts = usePubInfoFacts(info);
+
+  // The sheet is an RN Modal (a native window above everything), so opening the
+  // contribute editor needs it to step aside — otherwise it would cover the
+  // editor. Tie its visibility to screen focus instead of hard-closing it:
+  // pushing /contribute blurs this screen → the Modal hides → the editor shows;
+  // popping back refocuses → the Modal returns. The host's `visible` flag never
+  // changes, so the user lands back ON the hub (not the bare tab) after editing.
+  const [screenFocused, setScreenFocused] = useState(true);
+  useFocusEffect(
+    useCallback(() => {
+      setScreenFocused(true);
+      return () => setScreenFocused(false);
+    }, []),
+  );
+  const showSheet = visible && screenFocused;
 
   // The user's own votes — reactive; buildAmenityRows merges these over the
   // cached aggregate so the pill state always reflects the freshest local tap.
@@ -388,7 +403,7 @@ export function MapPubSheet({
   // ── Sheet slide-up animation (clone of BeerBrandFilterSheet). ──
   const progress = useSharedValue(0);
   useEffect(() => {
-    if (visible) {
+    if (showSheet) {
       progress.value = 0;
       progress.value = reduceMotion
         ? withTiming(1, { duration: 0 })
@@ -396,7 +411,7 @@ export function MapPubSheet({
     } else {
       progress.value = withTiming(0, { duration: reduceMotion ? 0 : 140 });
     }
-  }, [visible, reduceMotion, progress]);
+  }, [showSheet, reduceMotion, progress]);
 
   const cardAnim = useAnimatedStyle(() => ({
     opacity: progress.value,
@@ -407,13 +422,13 @@ export function MapPubSheet({
   const grouped = useMemo(() => groupRows(rows), [rows]);
 
   // ── Otevíračka / piva: deep-link into the contribute editor ──
-  // Close the sheet first (a push over an open Modal stacks awkwardly on iOS),
-  // then route with the current data pre-filled and a `focus` so the editor
+  // Don't close the sheet — focus-gated visibility (showSheet) hides the Modal
+  // while the editor is up and restores it on return, so the user comes back to
+  // the hub. Route with the current data pre-filled + a `focus` so the editor
   // lands on the tapped section.
   const openContribute = useCallback(
     (focus: 'hours' | 'beers') => {
       if (!info) return;
-      onClose();
       const prefillHours = info.prefillHours ?? parseOsmOpeningHoursToWeeklyHours(info.openingHours);
       router.push({
         pathname: '/contribute',
@@ -431,12 +446,12 @@ export function MapPubSheet({
         },
       });
     },
-    [info, onClose, router],
+    [info, router],
   );
 
   return (
     <Modal
-      visible={visible}
+      visible={showSheet}
       transparent
       animationType="fade"
       statusBarTranslucent
