@@ -163,38 +163,53 @@ export function buildAmenityRows({ aggregates, myVotes }: BuildAmenityRowsInput)
 }
 
 /**
- * Completeness selector — the COMMUNITY meter for the header ring. Counts the
- * distinct active amenities the crowd has resolved to a non-unknown verdict;
- * the denominator is the active amenity count (= AMENITIES.length).
+ * Completeness selector — the COMMUNITY meter for the header ring. An active
+ * amenity counts as "mapped" once it has a non-unknown verdict — that means
+ * EITHER the crowd has resolved it (`signalState === 'known'`) OR the tapping
+ * user has just voted it (`myValue != null`), because their own vote alone makes
+ * the amenity's status non-unknown. The denominator is the active amenity count.
  *
- * The server is authoritative for completeness (it may apply confidence
- * weighting the client can't see), so when the backend supplies a nested
- * `completeness` object the sheet should prefer it (passed in via
- * `serverCompleteness`); this local computation is the offline / dormant
- * fallback so the ring is never blank.
+ * The ring is computed LOCALLY from the (already server-recomputed) rows so it
+ * tracks every vote in the same round-trip — counting `myValue` also makes it
+ * move instantly and offline, before/independent of the aggregate echoing back.
+ * The optional `serverCompleteness` snapshot is ONLY a pre-resolution fallback:
+ * it fills the ring during the very first load (before any aggregate has
+ * resolved and before any local vote) so it isn't a flash of 0%. The moment any
+ * row resolves or the user votes, the live local count takes over — which is why
+ * a stale server snapshot can no longer freeze the ring after a vote.
  */
 export function selectCompleteness(
   rows: AmenityRow[],
   serverCompleteness?: { mappedCount: number; totalKinds: number; pct: number } | null,
 ): AmenityCompletenessView {
+  const totalKinds = rows.length;
+  let mappedCount = 0;
+  let anyResolved = false;
+  for (const row of rows) {
+    if (row.signalState !== 'loading') anyResolved = true;
+    if (row.signalState === 'known' || row.myValue != null) mappedCount += 1;
+  }
+
+  // Initial load only: nothing has resolved and the user hasn't voted yet — show
+  // the cached server snapshot instead of 0%. Once rows resolve or a vote lands,
+  // mappedCount/anyResolved take over and the snapshot is ignored.
   if (
+    !anyResolved &&
+    mappedCount === 0 &&
     serverCompleteness &&
     typeof serverCompleteness.totalKinds === 'number' &&
     serverCompleteness.totalKinds > 0
   ) {
-    const totalKinds = serverCompleteness.totalKinds;
-    const mappedCount = clampInt(serverCompleteness.mappedCount, 0, totalKinds);
+    const serverTotal = serverCompleteness.totalKinds;
+    const serverMapped = clampInt(serverCompleteness.mappedCount, 0, serverTotal);
     const pct = clamp01(
-      typeof serverCompleteness.pct === 'number' ? serverCompleteness.pct : mappedCount / totalKinds,
+      typeof serverCompleteness.pct === 'number'
+        ? serverCompleteness.pct
+        : serverMapped / serverTotal,
     );
-    return { mappedCount, totalKinds, pct };
+    return { mappedCount: serverMapped, totalKinds: serverTotal, pct };
   }
 
-  const totalKinds = rows.length;
-  let mappedCount = 0;
-  for (const row of rows) {
-    if (row.signalState === 'known') mappedCount += 1;
-  }
   const pct = totalKinds > 0 ? mappedCount / totalKinds : 0;
   return { mappedCount, totalKinds, pct };
 }

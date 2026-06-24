@@ -37,7 +37,6 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
   withTiming,
-  withSequence,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -48,15 +47,16 @@ import { softDrop } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
 import {
   XIcon,
-  CheckIcon,
   CompassIcon,
   SproutIcon,
 } from '@/components/shared/IconGlyph';
 import { CompletenessRing } from '@/components/amenities/CompletenessRing';
+import { Toast } from '@/components/shared/Toast';
 import { renderAmenityIcon } from '@/components/amenities/amenityIcons';
 import {
-  AMENITY_SECTIONS,
-  type AmenityGroup,
+  AMENITY_DISPLAY_SECTIONS,
+  sectionForGroup,
+  type AmenitySection,
   type AmenityKey,
 } from '@/data/amenities';
 import {
@@ -89,11 +89,9 @@ import { fireLightImpactHaptic } from '@/utils/haptics';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 import { FALLBACK_LEVELS, FALLBACK_XP_RULES, levelForXp } from '@/data/mapperXp';
 
-const SECTION_LABEL: Record<AmenityGroup, string> = {
-  payment: cs.mapPub.sectionPayment,
+const SECTION_LABEL: Record<AmenitySection, string> = {
   seating: cs.mapPub.sectionSeating,
-  games: cs.mapPub.sectionGames,
-  atmosphere: cs.mapPub.sectionAtmosphere,
+  fun: cs.mapPub.sectionFun,
   practical: cs.mapPub.sectionPractical,
 };
 
@@ -447,17 +445,16 @@ export function MapPubSheet({ visible, pubKey, pubName, onClose }: MapPubSheetPr
               showsVerticalScrollIndicator={false}
               bounces={false}
             >
-              {grouped.map(({ group, items }) => (
-                <View key={group}>
+              {grouped.map(({ section, items }) => (
+                <View key={section}>
                   <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {SECTION_LABEL[group]}
+                    {SECTION_LABEL[section]}
                   </Text>
                   {items.map((row) => (
                     <AmenityRowView
                       key={row.amenityKey}
                       row={row}
                       aggregatesResolved={aggregatesResolved}
-                      reduceMotion={reduceMotion}
                       onVote={onVote}
                     />
                   ))}
@@ -469,6 +466,13 @@ export function MapPubSheet({ visible, pubKey, pubName, onClose }: MapPubSheetPr
               </Text>
             </ScrollView>
           </Animated.View>
+
+        {/* Toast host INSIDE the modal. The root <Toast> in _layout sits below
+            this Modal's native window on iOS, so XP/level-up toasts fired from
+            the sheet would surface behind it; this in-sheet instance reads the
+            same store and renders above the card (box-none, so it never blocks
+            taps). The root instance keeps serving every other screen. */}
+        <Toast />
       </View>
     </Modal>
   );
@@ -479,14 +483,12 @@ export function MapPubSheet({ visible, pubKey, pubName, onClose }: MapPubSheetPr
 interface AmenityRowViewProps {
   row: AmenityRow;
   aggregatesResolved: boolean;
-  reduceMotion: boolean;
   onVote: (row: AmenityRow, half: AmenityVote) => void;
 }
 
 const AmenityRowView = React.memo(function AmenityRowView({
   row,
   aggregatesResolved,
-  reduceMotion,
   onVote,
 }: AmenityRowViewProps) {
   const isYes = row.myValue === 'yes';
@@ -503,7 +505,7 @@ const AmenityRowView = React.memo(function AmenityRowView({
         </Text>
         <CommunitySignal row={row} aggregatesResolved={aggregatesResolved} />
       </View>
-      <SegmentedVote row={row} reduceMotion={reduceMotion} onVote={onVote} isYes={isYes} isNo={isNo} />
+      <SegmentedVote row={row} onVote={onVote} isYes={isYes} isNo={isNo} />
     </View>
   );
 });
@@ -550,13 +552,11 @@ function CommunitySignal({
 /** The segmented two-button ANO|NE control. Two independent ≥44pt targets. */
 function SegmentedVote({
   row,
-  reduceMotion,
   onVote,
   isYes,
   isNo,
 }: {
   row: AmenityRow;
-  reduceMotion: boolean;
   onVote: (row: AmenityRow, half: AmenityVote) => void;
   isYes: boolean;
   isNo: boolean;
@@ -566,7 +566,6 @@ function SegmentedVote({
       <VoteHalf
         side="yes"
         active={isYes}
-        reduceMotion={reduceMotion}
         label={cs.mapPub.yes}
         a11yLabel={cs.mapPub.yesA11y(row.label)}
         onPress={() => onVote(row, 'yes')}
@@ -574,7 +573,6 @@ function SegmentedVote({
       <VoteHalf
         side="no"
         active={isNo}
-        reduceMotion={reduceMotion}
         label={cs.mapPub.no}
         a11yLabel={cs.mapPub.noA11y(row.label)}
         onPress={() => onVote(row, 'no')}
@@ -586,44 +584,28 @@ function SegmentedVote({
 function VoteHalf({
   side,
   active,
-  reduceMotion,
   label,
   a11yLabel,
   onPress,
 }: {
   side: 'yes' | 'no';
   active: boolean;
-  reduceMotion: boolean;
   label: string;
   a11yLabel: string;
   onPress: () => void;
 }) {
-  // Press-pop scale 0.95 → 1.05 → 1.0, gated by reduce-motion. Color flips
-  // immediately via the `active` style (<100ms), independent of the scale.
-  // Plain handler (not memoized): the immutability rule forbids mutating a shared
-  // value inside a hook callback that captured it, so `scale` stays out of every
-  // deps list and is driven from here directly (mirrors Toast.tsx).
-  const scale = useSharedValue(1);
-  const handlePress = () => {
-    if (!reduceMotion) {
-      scale.value = withSequence(
-        withTiming(0.95, { duration: 60 }),
-        withSpring(1, { damping: 12, stiffness: 260 }),
-      );
-    }
-    onPress();
-  };
-
-  const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-
+  // No scale animation — the control must hold its exact size on tap. The only
+  // press feedback is the opacity dip below; the active state flips the amber
+  // fill immediately (<100ms).
   const isYes = side === 'yes';
-  const activeStyle = active ? (isYes ? styles.halfYesActive : styles.halfNoActive) : null;
-  const textActiveStyle = active ? (isYes ? styles.halfTextYesActive : styles.halfTextNoActive) : null;
-  const iconColor = isYes ? Colors.stout : Colors.foam;
+  // Both halves highlight the SAME amber when selected (Ano and Ne alike). Only
+  // one can be active at a time; the Ano/Ne label alone keeps them distinct.
+  const activeStyle = active ? styles.halfActive : null;
+  const textActiveStyle = active ? styles.halfTextActive : null;
 
   return (
     <Pressable
-      onPress={handlePress}
+      onPress={onPress}
       style={({ pressed }) => [pressed && { opacity: 0.85 }]}
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
@@ -632,32 +614,32 @@ function VoteHalf({
       // tap that actually clears the vote. An unselected half just sets it.
       accessibilityHint={active ? cs.mapPub.clearHint : undefined}
     >
-      <Animated.View
+      <View
         style={[
           styles.half,
-          isYes ? styles.halfLeft : styles.halfRight,
+          // Only the right half carries the single centre divider.
+          !isYes && styles.halfRight,
           activeStyle,
-          animStyle,
         ]}
       >
-        {active && (isYes ? <CheckIcon size={14} color={iconColor} /> : <XIcon size={14} color={iconColor} />)}
         <Text
           style={[styles.halfText, textActiveStyle]}
           maxFontSizeMultiplier={FontScaleCap.body}
         >
           {label}
         </Text>
-      </Animated.View>
+      </View>
     </Pressable>
   );
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-function groupRows(rows: AmenityRow[]): { group: AmenityGroup; items: AmenityRow[] }[] {
-  return AMENITY_SECTIONS.map((group) => ({
-    group,
-    items: rows.filter((r) => r.group === group),
+function groupRows(rows: AmenityRow[]): { section: AmenitySection; items: AmenityRow[] }[] {
+  return AMENITY_DISPLAY_SECTIONS.map((section) => ({
+    section,
+    // rows keep catalogue order, so within "fun" games precede atmosphere.
+    items: rows.filter((r) => sectionForGroup(r.group) === section),
   })).filter((g) => g.items.length > 0);
 }
 
@@ -803,52 +785,41 @@ const styles = StyleSheet.create({
     color: Colors.amberLight,
   },
   // ── Segmented ANO|NE control ──
-  // No overflow:'hidden' here — it would crop the press-pop 1.05 overshoot
-  // (spec §3.2). The halfLeft/halfRight radii already round the pill ends.
+  // ONE bordered pill with a single inner divider. Two separately-bordered halves
+  // butting together rendered a faint glowy seam at the centre (sub-pixel border
+  // overlap); a single border + overflow:hidden clips the amber fill to the pill.
   segment: {
     flexDirection: 'row',
     borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.stout3,
+    overflow: 'hidden',
   },
   half: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    minWidth: 52,
+    minWidth: 44,
     minHeight: HitArea.min,
-    paddingHorizontal: 12,
-    backgroundColor: Colors.stout3,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    paddingHorizontal: Spacing.sm,
   },
-  halfLeft: {
-    borderTopLeftRadius: Radius.pill,
-    borderBottomLeftRadius: Radius.pill,
-    borderRightWidth: 0,
-  },
+  // The single centre divider lives on the right half's leading edge.
   halfRight: {
-    borderTopRightRadius: Radius.pill,
-    borderBottomRightRadius: Radius.pill,
+    borderLeftWidth: 1,
+    borderLeftColor: Colors.border,
   },
-  halfYesActive: {
+  // Either half turns the SAME amber when selected (Ano and Ne alike).
+  halfActive: {
     backgroundColor: Colors.amber,
-    borderColor: Colors.amber,
-  },
-  // "Ne" is deliberately calm — a muted fill, never red.
-  halfNoActive: {
-    backgroundColor: withAlpha(Colors.mutedText, 0.25),
-    borderColor: withAlpha(Colors.mutedText, 0.4),
   },
   halfText: {
     fontFamily: Fonts.ui.bold,
     fontSize: 13,
     color: Colors.foamMuted,
   },
-  halfTextYesActive: {
+  halfTextActive: {
     color: Colors.stout,
-  },
-  halfTextNoActive: {
-    color: Colors.foam,
   },
   footerHint: {
     marginTop: Spacing.lg,

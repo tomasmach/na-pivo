@@ -21,7 +21,7 @@
  * Stable, group-prefixed wire slug. NEVER rename — persisted, sent over the wire,
  * future map-filter key. Add only.
  *
- * The 14 active keys. The two reserved keys (`practical_outdoor_tap`,
+ * The 11 active keys. The two reserved keys (`practical_outdoor_tap`,
  * `practical_tank_beer`) are intentionally NOT part of the active union — they are
  * defined in RESERVED_AMENITY_KEYS below with is_active=false and are never
  * rendered in v1.
@@ -36,7 +36,6 @@ export type AmenityKey =
   | 'game_jukebox'
   | 'atmosphere_live_music'
   | 'atmosphere_sports_tv'
-  | 'atmosphere_smoking'
   | 'practical_wifi'
   | 'practical_parking';
 
@@ -78,8 +77,8 @@ export interface ReservedAmenityDef {
 }
 
 /**
- * The 14 ACTIVE amenities, ordered and grouped by section. The order values match
- * the backend seed (10, 30, ... 160). Section order: payment, seating, games,
+ * The 11 ACTIVE amenities, ordered and grouped by section. The order values match
+ * the backend seed (10, 30, ... 150). Section order: payment, seating, games,
  * atmosphere, practical.
  */
 export const AMENITIES: readonly AmenityDef[] = [
@@ -96,7 +95,6 @@ export const AMENITIES: readonly AmenityDef[] = [
   // — atmosphere —
   { key: 'atmosphere_live_music', group: 'atmosphere', label: 'Živá hudba', shortLabel: 'Živá hudba', icon: 'MicIcon', mapFilterable: false, order: 100 },
   { key: 'atmosphere_sports_tv', group: 'atmosphere', label: 'Sport v televizi', shortLabel: 'Sport v TV', icon: 'TvIcon', mapFilterable: true, order: 110 },
-  { key: 'atmosphere_smoking', group: 'atmosphere', label: 'Kuřárna / kouření povoleno', shortLabel: 'Kouření', icon: 'CigaretteIcon', mapFilterable: true, order: 130 },
   // — practical —
   { key: 'practical_wifi', group: 'practical', label: 'Wi-Fi', shortLabel: 'Wi-Fi', icon: 'WifiIcon', mapFilterable: true, order: 140 },
   { key: 'practical_parking', group: 'practical', label: 'Parkování', shortLabel: 'Parkování', icon: 'SquareParkingIcon', mapFilterable: true, order: 150 },
@@ -113,7 +111,7 @@ export const RESERVED_AMENITIES: readonly ReservedAmenityDef[] = [
   { key: 'practical_tank_beer', group: 'practical', label: 'Tankové pivo', shortLabel: 'Tank', icon: 'BeerIcon', mapFilterable: true, order: 180 },
 ];
 
-/** Group display order (sheet + GET /v1/pub-amenities/kinds). */
+/** Group display order (GET /v1/pub-amenities/kinds + wire order). */
 export const AMENITY_SECTIONS: readonly AmenityGroup[] = [
   'payment',
   'seating',
@@ -121,6 +119,32 @@ export const AMENITY_SECTIONS: readonly AmenityGroup[] = [
   'atmosphere',
   'practical',
 ];
+
+/**
+ * Sheet DISPLAY sections — a UI-only grouping laid OVER the wire `group` field.
+ * Several wire groups collapse into one section so the sheet never shows a header
+ * for a single row (e.g. the lone `payment` amenity). This changes RENDERING only;
+ * the wire `group` / `amenity_key` prefixes, store keys and completeness math are
+ * untouched. `games` + `atmosphere` → "Zábava"; `payment` + `practical` → "Praktické".
+ */
+export type AmenitySection = 'seating' | 'fun' | 'practical';
+
+/** Section render order in the sheet. */
+export const AMENITY_DISPLAY_SECTIONS: readonly AmenitySection[] = ['fun', 'practical', 'seating'];
+
+/** Which display section each wire group folds into. */
+const GROUP_TO_SECTION: Record<AmenityGroup, AmenitySection> = {
+  seating: 'seating',
+  games: 'fun',
+  atmosphere: 'fun',
+  payment: 'practical',
+  practical: 'practical',
+};
+
+/** Map a wire group to its sheet display section. */
+export function sectionForGroup(group: AmenityGroup): AmenitySection {
+  return GROUP_TO_SECTION[group];
+}
 
 /**
  * Bundled taxonomy version, sent as `taxonomy_version` metadata so votes record

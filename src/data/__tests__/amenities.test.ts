@@ -19,14 +19,13 @@ const EXPECTED: { key: AmenityKey; group: string; icon: string; order: number }[
   { key: 'game_jukebox', group: 'games', icon: 'RadioIcon', order: 90 },
   { key: 'atmosphere_live_music', group: 'atmosphere', icon: 'MicIcon', order: 100 },
   { key: 'atmosphere_sports_tv', group: 'atmosphere', icon: 'TvIcon', order: 110 },
-  { key: 'atmosphere_smoking', group: 'atmosphere', icon: 'CigaretteIcon', order: 130 },
   { key: 'practical_wifi', group: 'practical', icon: 'WifiIcon', order: 140 },
   { key: 'practical_parking', group: 'practical', icon: 'SquareParkingIcon', order: 150 },
 ];
 
 describe('amenity catalogue integrity', () => {
-  it('ships exactly 12 active amenities', () => {
-    expect(AMENITIES).toHaveLength(12);
+  it('ships exactly 11 active amenities', () => {
+    expect(AMENITIES).toHaveLength(11);
   });
 
   it('matches the canonical key/group/icon/order table from the spec', () => {

@@ -116,7 +116,7 @@ describe('buildAmenityRows', () => {
 });
 
 describe('selectCompleteness', () => {
-  it('counts only known rows for the local fallback meter', () => {
+  it('counts known crowd rows', () => {
     const aggregates = [
       agg({ amenity_key: 'payment_card', status: 'yes', yes_count: 2 }),
       agg({ amenity_key: 'game_darts', status: 'no', no_count: 1 }),
@@ -128,6 +128,28 @@ describe('selectCompleteness', () => {
     expect(c.pct).toBeCloseTo(2 / AMENITIES.length);
   });
 
+  it("counts the user's own vote even on an otherwise-unmapped amenity", () => {
+    // The crowd aggregate is empty, but the user just voted two amenities — their
+    // own votes make those amenities non-unknown, so the ring must reflect them.
+    const myVotes: PubAmenityVotes = {
+      payment_card: { vote: 'yes', updatedAt: '2026-01-01T00:00:00.000Z' },
+      practical_wifi: { vote: 'no', updatedAt: '2026-01-01T00:00:00.000Z' },
+    };
+    const rows = buildAmenityRows({ aggregates: [], myVotes });
+    const c = selectCompleteness(rows);
+    expect(c.mappedCount).toBe(2);
+    expect(c.pct).toBeCloseTo(2 / AMENITIES.length);
+  });
+
+  it('does not double-count a known crowd row the user also voted', () => {
+    const aggregates = [agg({ amenity_key: 'payment_card', status: 'yes', yes_count: 3, my_value: 'yes' })];
+    const myVotes: PubAmenityVotes = {
+      payment_card: { vote: 'yes', updatedAt: '2026-01-01T00:00:00.000Z' },
+    };
+    const rows = buildAmenityRows({ aggregates, myVotes });
+    expect(selectCompleteness(rows).mappedCount).toBe(1);
+  });
+
   it('reports 0% while everything is loading', () => {
     const rows = buildAmenityRows({ aggregates: undefined, myVotes: undefined });
     const c = selectCompleteness(rows);
@@ -135,12 +157,25 @@ describe('selectCompleteness', () => {
     expect(c.pct).toBe(0);
   });
 
-  it('prefers the server completeness object and clamps it', () => {
-    const rows = buildAmenityRows({ aggregates: [], myVotes: undefined });
+  it('uses the server snapshot ONLY as a pre-resolution fallback (aggregates undefined, no votes)', () => {
+    const rows = buildAmenityRows({ aggregates: undefined, myVotes: undefined });
     const c = selectCompleteness(rows, { mappedCount: 99, totalKinds: 14, pct: 1.5 });
     expect(c.totalKinds).toBe(14);
     expect(c.mappedCount).toBe(14); // clamped to totalKinds
     expect(c.pct).toBe(1); // clamped to 1
+  });
+
+  it('ignores a stale server snapshot once rows resolve — the live local count wins', () => {
+    // The regression: the sheet opened at 0% server completeness, then the user
+    // voted (rows resolve / myValue set). The freshest local count must win, or
+    // the ring freezes at the stale server value forever.
+    const myVotes: PubAmenityVotes = {
+      payment_card: { vote: 'yes', updatedAt: '2026-01-01T00:00:00.000Z' },
+    };
+    const rows = buildAmenityRows({ aggregates: [], myVotes });
+    const c = selectCompleteness(rows, { mappedCount: 0, totalKinds: AMENITIES.length, pct: 0 });
+    expect(c.mappedCount).toBe(1);
+    expect(c.pct).toBeCloseTo(1 / AMENITIES.length);
   });
 
   it('falls back to local computation when server completeness has a zero denominator', () => {

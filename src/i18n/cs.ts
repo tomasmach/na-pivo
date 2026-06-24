@@ -32,27 +32,27 @@ export const cs = {
     triggerA11y: (pub: string, pct: number) => `Zmapuj hospodu ${pub}, zmapováno z ${pct} procent`,
 
     // Sheet header
-    subtitleEmpty: 'pomoz ostatním — co tady je?',
-    subtitleSome: 'jdeš ti to, mapére',
-    subtitleDone: 'paráda, máš to celé!',
+    subtitleEmpty: 'Co tady mají? Dej vědět.',
+    subtitleSome: 'Jde ti to!',
+    subtitleDone: 'Paráda, máš to celé!',
     ringCaption: 'zmapováno',
-    personal: (n: number, total: number) => `ty jsi zmapoval/a ${n} z ${total}`,
+    personal: (n: number, total: number) => `Zmapováno ${n} z ${total}`,
     footerHint: 'Každá odpověď se uloží sama. Díky!',
     closeA11y: 'Zavřít mapování hospody',
     offline: 'Teď jsi offline — odpovědi se uloží a pošlou později.',
     ringA11y: (pct: number) => `Zmapováno z ${pct} procent`,
     // Makes the public-vs-private distinction explicit: this is shared community
     // data, unlike the private rating on the evening card.
-    publicNote: 'Veřejné — pomáháš ostatním pivařům.',
+    publicNote: 'Veřejné. Uvidí to ostatní pivaři.',
     // Entry button on the evening card (an alternate, friendlier label).
     entryQuestion: 'Co tady mají?',
     entryA11yPublic: 'Otevře veřejné mapování hospody, viditelné pro ostatní',
 
-    // Sections (uppercase, matching the statsHeader convention)
-    sectionPayment: 'PLATBA',
+    // Sections (uppercase, matching the statsHeader convention). Merged to 3 so
+    // no section is a single row: games+atmosphere → ZÁBAVA, payment+wifi/parking
+    // → PRAKTICKÉ.
     sectionSeating: 'POSEZENÍ',
-    sectionGames: 'ZÁBAVA',
-    sectionAtmosphere: 'ATMOSFÉRA',
+    sectionFun: 'ZÁBAVA',
     sectionPractical: 'PRAKTICKÉ',
 
     // Row controls
@@ -77,7 +77,6 @@ export const cs = {
       game_jukebox: { label: 'Jukebox', short: 'Jukebox' },
       atmosphere_live_music: { label: 'Živá hudba', short: 'Živá hudba' },
       atmosphere_sports_tv: { label: 'Sport v televizi', short: 'Sport v TV' },
-      atmosphere_smoking: { label: 'Kuřárna / kouření povoleno', short: 'Kouření' },
       practical_wifi: { label: 'Wi-Fi', short: 'Wi-Fi' },
       practical_parking: { label: 'Parkování', short: 'Parkování' },
     },

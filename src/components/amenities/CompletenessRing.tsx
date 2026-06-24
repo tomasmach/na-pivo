@@ -20,7 +20,6 @@ import Animated, {
 
 import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
-import { amberGlow } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
@@ -62,7 +61,7 @@ export const CompletenessRing = memo(function CompletenessRing({
       accessibilityLabel={cs.mapPub.ringA11y(percent)}
       accessibilityValue={{ now: percent, min: 0, max: 100 }}
     >
-      <View style={[clamped > 0 && amberGlow(8)]}>
+      <View>
         <Svg width={size} height={size}>
           <Circle
             cx={center}
