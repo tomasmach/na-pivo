@@ -1,10 +1,11 @@
 # Hand-written: deactivate unused amenity kinds via the deactivation contract.
 #
-# Product decision drops the v1 active set from 16 to 13:
+# Product decision drops the v1 active set from 16 to 12:
 #   * seating_kids_corner (Dětský koutek) — unnecessary.
 #   * payment_cash_only (Jen hotovost) — exact inverse of payment_card
 #     (card=yes ⇒ cash-only=no), so asking both is redundant and can contradict.
 #   * atmosphere_dogs_welcome (Psi vítáni) — dropped by product.
+#   * practical_food (Kuchyně / dá se najíst) — assumed for a pub, low signal.
 #
 # Per the deactivation contract (spec §3): we set active=False rather than
 # delete, so any existing votes/aggregates survive and stay excluded from
@@ -13,7 +14,12 @@
 
 from django.db import migrations
 
-DEACTIVATED_KEYS = ["seating_kids_corner", "payment_cash_only", "atmosphere_dogs_welcome"]
+DEACTIVATED_KEYS = [
+    "seating_kids_corner",
+    "payment_cash_only",
+    "atmosphere_dogs_welcome",
+    "practical_food",
+]
 
 
 def deactivate_amenity_kinds(apps, schema_editor):

@@ -101,10 +101,10 @@ def test_kinds_returns_only_active_ordered_with_wire_names(client):
     body = resp.json()
 
     keys = [k["key"] for k in body["kinds"]]
-    # Exactly the 13 active kinds; the two reserved (active=False) and the three
+    # Exactly the 12 active kinds; the two reserved (active=False) and the four
     # deactivated kinds (seating_kids_corner, payment_cash_only,
-    # atmosphere_dogs_welcome) are excluded.
-    assert len(keys) == 13
+    # atmosphere_dogs_welcome, practical_food) are excluded.
+    assert len(keys) == 12
     assert "practical_outdoor_tap" not in keys
     assert "practical_tank_beer" not in keys
     assert "seating_kids_corner" not in keys
@@ -567,10 +567,10 @@ def test_read_aggregates_and_completeness(client):
     pub = resp.json()["pubs"][0]
     assert pub["cache_key"] == _KEY
     assert pub["mapper_count"] == 3  # distinct accounts (garden had 3)
-    assert pub["completeness"]["total_kinds"] == 13
+    assert pub["completeness"]["total_kinds"] == 12
     # Only garden has status != unknown (wifi has 1 vote).
     assert pub["completeness"]["mapped_count"] == 1
-    assert pub["completeness"]["pct"] == pytest.approx(1 / 13, abs=1e-4)
+    assert pub["completeness"]["pct"] == pytest.approx(1 / 12, abs=1e-4)
 
     by_key = {a["amenity_key"]: a for a in pub["amenities"]}
     assert by_key["seating_garden"]["status"] == "yes"
@@ -617,9 +617,9 @@ def test_read_deactivated_kind_excluded_and_completeness_clamped(client):
     resp = client.get("/v1/pub-amenities", {"cache_keys": _KEY, "name": _NAME})
     pub = resp.json()["pubs"][0]
     # Deactivated kind is excluded from amenities AND completeness numerator;
-    # the denominator drops to 12. pct stays clamped within [0, 1].
+    # the denominator drops to 11. pct stays clamped within [0, 1].
     assert all(a["amenity_key"] != "seating_garden" for a in pub["amenities"])
-    assert pub["completeness"]["total_kinds"] == 12
+    assert pub["completeness"]["total_kinds"] == 11
     assert pub["completeness"]["mapped_count"] == 0
     assert 0.0 <= pub["completeness"]["pct"] <= 1.0
 
@@ -630,7 +630,7 @@ def test_read_empty_for_unmapped_cell(client):
     pub = resp.json()["pubs"][0]
     assert pub["amenities"] == []
     assert pub["completeness"]["mapped_count"] == 0
-    assert pub["completeness"]["total_kinds"] == 13
+    assert pub["completeness"]["total_kinds"] == 12
 
 
 @pytest.mark.django_db
