@@ -289,6 +289,14 @@ export function MapPubSheet({ visible, pubKey, pubName, onClose }: MapPubSheetPr
       // durability (fully offline-safe).
       setVote(pubKey as string, row.amenityKey as AmenityKey, next);
 
+      // Retraction never touches XP/counters (lifetime-achievement model), but a
+      // silent removal feels like a bug — confirm the vote left the public map.
+      if (next == null && !wasUnanswered) {
+        showToast(cs.mapPub.retracted, {
+          icon: <XIcon size={18} color={Colors.mutedText} />,
+        });
+      }
+
       // A local best-effort XP estimate for a newly-set vote, used when there is
       // no live envelope (no backend, or offline). The server truth reconciles
       // on Profile later; the estimate is only the transient toast.

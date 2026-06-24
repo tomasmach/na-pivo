@@ -85,6 +85,9 @@ export const cs = {
     xpFirstMapper: (xp: number) => `Prvomapér! +${xp} XP`,
     xpSession: (n: number, xp: number) => `Zmapováno ${n} věcí · +${xp} XP`,
     xpLevelUp: (title: string) => `Level up! Teď jsi ${title}.`,
+    // Retracting a vote only corrects the public map; the user keeps their XP
+    // and counters (lifetime-achievement model — never clawed back).
+    retracted: 'Smazáno z mapy. Body ti zůstávají.',
 
     // Profile — MAPÉR
     mapperHeader: 'MAPÉR',
@@ -93,7 +96,7 @@ export const cs = {
     mapperXpToNext: (n: number) => `ještě ${n} XP do dalšího levelu`,
     mapperXpMaxed: 'máš všechno, jsi legenda',
     mapperStatMappedPubs: 'zmapovaných hospod',
-    mapperStatAnswers: 'odpovědí celkem',
+    mapperStatAnswers: 'odpovědí nasbíráno',
     mapperStatFirstMaps: 'prvně zmapováno',
     mapperStatCompleted: 'hospod hotových',
     mapperEmpty: 'Ještě jsi nic nezmapoval. Najdi hospodu a řekni, co v ní je.',
