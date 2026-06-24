@@ -12,7 +12,7 @@ import type { WireAmenityAggregate, WireAmenityCompleteness } from '../pubAmenit
 
 const PUB = 'u2fkbf8x';
 
-const COMPLETENESS: WireAmenityCompleteness = { mapped_count: 2, total_kinds: 16, pct: 2 / 16 };
+const COMPLETENESS: WireAmenityCompleteness = { mapped_count: 2, total_kinds: 14, pct: 2 / 14 };
 const AGGREGATES: WireAmenityAggregate[] = [
   { amenity_key: 'game_darts', status: 'yes', confidence: 0.9, yes_count: 4, no_count: 0, distinct_voter_count: 4 },
 ];
@@ -26,7 +26,7 @@ it('round-trips a fresh snapshot', async () => {
   await writePubAmenitiesSnapshot(PUB, { amenities: AGGREGATES, completeness: COMPLETENESS, mapperCount: 4 });
   const cached = await readPubAmenitiesSnapshot(PUB);
   expect(cached?.amenities[0].yes_count).toBe(4);
-  expect(cached?.completeness.total_kinds).toBe(16);
+  expect(cached?.completeness.total_kinds).toBe(14);
   expect(cached?.mapperCount).toBe(4);
 });
 

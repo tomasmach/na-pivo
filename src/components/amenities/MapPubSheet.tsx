@@ -385,10 +385,18 @@ export function MapPubSheet({ visible, pubKey, pubName, onClose }: MapPubSheetPr
       statusBarTranslucent
       onRequestClose={onClose}
     >
-      <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button">
-        {/* Stop backdrop dismissal when tapping inside the card. */}
-        <Pressable onPress={() => undefined} style={styles.cardPress}>
-          <Animated.View
+      <View style={styles.backdrop}>
+        {/* Backdrop sits BEHIND the card as an absolute-fill sibling, so tapping
+            outside dismisses while taps on the card are absorbed by its own views.
+            The card must NOT be wrapped in a Pressable — a Pressable ancestor would
+            steal the vertical pan gesture and the amenity ScrollView could not scroll. */}
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel={cs.mapPub.closeA11y}
+        />
+        <Animated.View
             style={[
               styles.card,
               softDrop(),
@@ -461,8 +469,7 @@ export function MapPubSheet({ visible, pubKey, pubName, onClose }: MapPubSheetPr
               </Text>
             </ScrollView>
           </Animated.View>
-        </Pressable>
-      </Pressable>
+      </View>
     </Modal>
   );
 }
@@ -691,10 +698,8 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.black, 0.6),
     justifyContent: 'flex-end',
   },
-  cardPress: {
-    width: '100%',
-  },
   card: {
+    maxHeight: '90%',
     backgroundColor: Colors.stout2,
     borderTopLeftRadius: Radius.cardLarge,
     borderTopRightRadius: Radius.cardLarge,
@@ -755,7 +760,7 @@ const styles = StyleSheet.create({
     color: withAlpha(Colors.amberLight, 0.85),
   },
   body: {
-    maxHeight: 460,
+    flexShrink: 1,
     marginTop: Spacing.xs,
   },
   sectionLabel: {

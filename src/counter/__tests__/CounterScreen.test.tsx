@@ -12,13 +12,19 @@ jest.mock('react-native-safe-area-context', () => ({
 
 jest.mock('react-native-reanimated', () => ({
   __esModule: true,
-  default: { View: 'AnimatedView' },
+  default: { View: 'AnimatedView', createAnimatedComponent: (c: unknown) => c },
   useSharedValue: jest.fn((value) => ({ value })),
   useAnimatedStyle: jest.fn((factory) => factory()),
+  useAnimatedProps: jest.fn((factory) => factory()),
   withSpring: jest.fn((value) => value),
+  withTiming: jest.fn((value) => value),
   withSequence: jest.fn((value) => value),
   useReducedMotion: jest.fn(() => true),
 }));
+
+// The public "Zmapuj hospodu" entry is its own feature (sheet/store/icons tested
+// elsewhere); stub it so these beer-counting tests stay isolated from its deps.
+jest.mock('@/components/amenities/MapPubEntry', () => ({ MapPubEntry: () => null }));
 
 jest.mock('expo-haptics', () => ({
   NotificationFeedbackType: { Success: 'success' },

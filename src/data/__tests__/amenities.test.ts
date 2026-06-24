@@ -2,7 +2,6 @@ import {
   AMENITIES,
   RESERVED_AMENITIES,
   AMENITY_SECTIONS,
-  AMENITY_RULES,
   CURRENT_TAXONOMY_VERSION,
   isKnownAmenityKey,
   getAmenityDef,
@@ -12,17 +11,14 @@ import {
 /** Source of truth cross-check — must match the backend seed (spec §2 table). */
 const EXPECTED: { key: AmenityKey; group: string; icon: string; order: number }[] = [
   { key: 'payment_card', group: 'payment', icon: 'CreditCardIcon', order: 10 },
-  { key: 'payment_cash_only', group: 'payment', icon: 'BanknoteIcon', order: 20 },
   { key: 'seating_garden', group: 'seating', icon: 'TreePineIcon', order: 30 },
   { key: 'seating_barrier_free', group: 'seating', icon: 'AccessibilityIcon', order: 40 },
-  { key: 'seating_kids_corner', group: 'seating', icon: 'BabyIcon', order: 50 },
   { key: 'game_darts', group: 'games', icon: 'TargetIcon', order: 60 },
   { key: 'game_billiards', group: 'games', icon: 'DicesIcon', order: 70 },
   { key: 'game_foosball', group: 'games', icon: 'Gamepad2Icon', order: 80 },
   { key: 'game_jukebox', group: 'games', icon: 'RadioIcon', order: 90 },
   { key: 'atmosphere_live_music', group: 'atmosphere', icon: 'MicIcon', order: 100 },
   { key: 'atmosphere_sports_tv', group: 'atmosphere', icon: 'TvIcon', order: 110 },
-  { key: 'atmosphere_dogs_welcome', group: 'atmosphere', icon: 'DogIcon', order: 120 },
   { key: 'atmosphere_smoking', group: 'atmosphere', icon: 'CigaretteIcon', order: 130 },
   { key: 'practical_wifi', group: 'practical', icon: 'WifiIcon', order: 140 },
   { key: 'practical_parking', group: 'practical', icon: 'SquareParkingIcon', order: 150 },
@@ -30,8 +26,8 @@ const EXPECTED: { key: AmenityKey; group: string; icon: string; order: number }[
 ];
 
 describe('amenity catalogue integrity', () => {
-  it('ships exactly 16 active amenities', () => {
-    expect(AMENITIES).toHaveLength(16);
+  it('ships exactly 13 active amenities', () => {
+    expect(AMENITIES).toHaveLength(13);
   });
 
   it('matches the canonical key/group/icon/order table from the spec', () => {
@@ -77,12 +73,6 @@ describe('amenity catalogue integrity', () => {
 
   it('pins the taxonomy version to 1', () => {
     expect(CURRENT_TAXONOMY_VERSION).toBe(1);
-  });
-});
-
-describe('AMENITY_RULES.softExclusive', () => {
-  it('pairs payment_card with payment_cash_only', () => {
-    expect(AMENITY_RULES.softExclusive).toEqual([['payment_card', 'payment_cash_only']]);
   });
 });
 

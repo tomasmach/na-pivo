@@ -24,7 +24,7 @@ The taxonomy is **client-bundled and authoritative for rendering** (labels, chip
 
 > **`value` semantics.** Each amenity is a per-user **tri-state**: `'yes'` (je tu to), `'no'` (není tu to), or **unknown = no vote** (the key is simply absent — never a stored third enum). Unknown is the absence of an answer, so the wire stays tiny, "nezmapováno" is the natural default, and a released app forward-compatibly omits keys it doesn't know. This mirrors `PubRating` (verdict absent = no opinion). Booleans were rejected: a boolean conflates "no" with "not answered", which would manufacture phantom "no" votes, poison the public aggregate, and make the completeness meter (which counts *answered* amenities) meaningless. To **retract** a vote across devices, the wire sends `value: null` (an explicit tombstone) — distinct from an absent key (which always means "no change / unknown"). Absent never means "clear" (§4.1).
 
-Section headers are uppercase, matching the existing `statsHeader = 'TVOJE ČÍSLA'` convention. v1 ships **16 active amenities** (≤20, scannable at a pub table) across five groups. `practical_outdoor_tap` and `practical_tank_beer` are **reserved keys, not rendered in v1** (`is_active=false`): present in the seed/catalogue, excluded from `GET /kinds`, the sheet, and both numerator and denominator of completeness — reserving the keys now means activating them later is a taxonomy bump, never a collision. `nekuřácká` + `kuřárna` collapse into the single tri-state `atmosphere_smoking` (§ note below).
+Section headers are uppercase, matching the existing `statsHeader = 'TVOJE ČÍSLA'` convention. v1 ships **14 active amenities** (≤20, scannable at a pub table) across five groups. `practical_outdoor_tap` and `practical_tank_beer` are **reserved keys, not rendered in v1** (`is_active=false`): present in the seed/catalogue, excluded from `GET /kinds`, the sheet, and both numerator and denominator of completeness — reserving the keys now means activating them later is a taxonomy bump, never a collision. `nekuřácká` + `kuřárna` collapse into the single tri-state `atmosphere_smoking` (§ note below).
 
 The canonical taxonomy table below is the locked single source. Columns: `key | group | label (cs) | chip (cs) | IconGlyph / NEW glyph | map-filter candidate | is_active | order`. `order` is the integer render rank (lower first). Only `is_active=true` rows are returned by `GET /kinds`, rendered in the sheet, and counted in `total_kinds`.
 
@@ -32,8 +32,7 @@ The canonical taxonomy table below is the locked single source. Columns: `key | 
 
 | amenity_key | label (cs) | chip (cs) | IconGlyph / NEW glyph | map-filter candidate | is_active | order |
 |---|---|---|---|---|---|---|
-| `payment_card` | Platba kartou | Karta | **NEW** `CreditCardIcon` (lucide `CreditCard`) | yes | true | 10 |
-| `payment_cash_only` | Jen hotovost | Hotovost | **NEW** `BanknoteIcon` (lucide `Banknote`) | yes | true | 20 |
+| `payment_card` | Platba kartou (`ano` = platí kartou, `ne` = jen hotovost) | Karta | **NEW** `CreditCardIcon` (lucide `CreditCard`) | yes | true | 10 |
 
 ### Section `seating` — "POSEZENÍ"
 
@@ -41,7 +40,6 @@ The canonical taxonomy table below is the locked single source. Columns: `key | 
 |---|---|---|---|---|---|---|
 | `seating_garden` | Zahrádka / terasa | Zahrádka | `TreePineIcon` (exists) | yes | true | 30 |
 | `seating_barrier_free` | Bezbariérový přístup | Bezbariér | **NEW** `AccessibilityIcon` (lucide `Accessibility`) | yes | true | 40 |
-| `seating_kids_corner` | Dětský koutek | Děti | **NEW** `BabyIcon` (lucide `Baby`) | yes | true | 50 |
 
 ### Section `games` — "ZÁBAVA"
 
@@ -71,11 +69,11 @@ The canonical taxonomy table below is the locked single source. Columns: `key | 
 | `practical_outdoor_tap` *(reserved, not rendered v1)* | Venkovní výčep | Výčep | **NEW glyph required before activation** (NOT `BeerIcon` reuse) | no | **false** | 170 |
 | `practical_tank_beer` *(reserved, not rendered v1)* | Tankové pivo | Tank | `BeerIcon` (exists) | yes | **false** | 180 |
 
-**Active set = exactly the 16 rows with `is_active=true`.** The two `is_active=false` rows (`practical_outdoor_tap`, `practical_tank_beer`) are RESERVED. => `total_kinds` (active) = **16**, so per-pub completeness can reach 100%.
+**Active set = exactly the 14 rows with `is_active=true`.** The two `is_active=false` rows (`practical_outdoor_tap`, `practical_tank_beer`) are RESERVED. => `total_kinds` (active) = **14**, so per-pub completeness can reach 100%.
 
 > **Smoking is ONE tri-state amenity (`atmosphere_smoking`).** `yes` = lze kouřit / je kuřárna; `no` = nekuřácká; unknown = nezmapováno. Modeling `kuřárna` and `nekuřácká` as two keys recreates the boolean trap (both could read "yes" → contradictory public truth). Czech indoor-smoking law makes granularity low-value. If "dedicated smoking room" granularity is ever needed, it is an additive `atmosphere_smoking_room` in a later version, never a v1 second key.
 
-> **`payment_card` vs `payment_cash_only` — soft mutual exclusion, not auto-toggle.** Reality is messy ("karta od 200 Kč"), so they are two independent tri-state votes. The sheet *suggests* the opposite (pre-highlights `payment_cash_only = no` when you set `payment_card = yes`, one tap to confirm) but never forces it. The aggregate treats them as two facts; a venue high-confidence "yes" on both is a flagged conflict for the backend to resolve, not a client bug. **Open risk (§8):** the labels invite "bere obojí" double-taps; if conflicts pollute the aggregate, the fallback is to collapse to a single `payment_card` tri-state where `no` = jen hotovost.
+> **Payment is ONE tri-state amenity (`payment_card`).** `yes` = platí kartou; `no` = jen hotovost; unknown = nezmapováno. The earlier two-key model (`payment_card` + `payment_cash_only`) was dropped: cash-only is the exact inverse of card (card=yes ⇒ cash-only=no; card=no ⇒ cash-only=yes), so asking both was redundant and invited contradictory "bere obojí" double-yes votes. Collapsing to the single `payment_card` tri-state makes the contradiction structurally impossible and there is no soft-exclusion rule to maintain. If "dedicated cash-only / card-from-X-Kč" granularity is ever needed it is an additive later-version key, never a v1 second payment key.
 
 > **`seating_garden` vs the existing `hasGarden`.** `Pub.hasGarden` is the firmy.cz-derived server fact powering the existing `gardenBadge = 'Zahrádka'`. The `seating_garden` amenity is the **community-voted** version. They coexist; **neither overwrites the other on the wire** (API compat). The backend may *seed* the `seating_garden` aggregate's prior from `has_garden`. The badge precedence rule (community overrides firmy only above a confidence threshold; otherwise "podle Firmy.cz") is a backend read-path decision — the mobile client just renders whichever the aggregate/Pub exposes and never writes votes into `hasGarden` (§4.6).
 
@@ -138,7 +136,7 @@ XP is **estimated locally for the instant toast and reconciled from the server**
 
 ### 3.6 Entry points, accessibility, reduced-motion, Dynamic Type
 
-**Entry point.** The sheet launches from the **pub context** — primary host is the evening card (the locked decision's "evening card / pub context"). Extract a single `MapPubButton` component (icon + label + %-nudge dot + a11y) so a future second host (compass/discovery pub rows) is a one-line mount and the partial-% logic never drifts. The trigger is a pill (`Radius.pill`, `minHeight: 44`, `Colors.stout3` fill, `1px Colors.border`, `MapPinnedIcon size={16} Colors.amber` + `Colors.foamMuted` label), styled like `GlowButton secondary` (glow `none`):
+**Entry point.** The sheet launches from the **pub context** — hosts are the evening card / evening-detail screen (the locked decision's "evening card / pub context") **and the Štamgast (Počítadlo) counter screen**, where it sits directly under the pub header (above the hero/menu) so it is visible without scrolling for the pub the user is currently at; the counter passes the same geohash-8 `pubKey` (`geohash8(pub.lat, pub.lng)`) + `pub.name` the amenities store/sheet expect. The single `MapPubButton` component (icon + label + %-nudge dot + a11y) is extracted so each additional host (and a future compass/discovery pub row) is a one-line `MapPubEntry` mount and the partial-% logic never drifts. The trigger is a pill (`Radius.pill`, `minHeight: 44`, `Colors.stout3` fill, `1px Colors.border`, `MapPinnedIcon size={16} Colors.amber` + `Colors.foamMuted` label), styled like `GlowButton secondary` (glow `none`):
 
 - Not mapped at all → `Zmapuj hospodu`.
 - Partially mapped → `Doplň mapu hospody` + trailing `· {pct} %` in `Colors.amber` + a 6×6 amber dot.
@@ -270,8 +268,8 @@ A `PubRating` is one scalar; an amenity report is a **map of up to 16 independen
 ```ts
 /** Stable, group-prefixed wire slug. NEVER rename — persisted, sent over the wire, future map-filter key. Add only. */
 export type AmenityKey =
-  | 'payment_card' | 'payment_cash_only'
-  | 'seating_garden' | 'seating_barrier_free' | 'seating_kids_corner'
+  | 'payment_card'
+  | 'seating_garden' | 'seating_barrier_free'
   | 'game_darts' | 'game_billiards' | 'game_foosball' | 'game_jukebox'
   | 'atmosphere_live_music' | 'atmosphere_sports_tv' | 'atmosphere_dogs_welcome' | 'atmosphere_smoking'
   | 'practical_wifi' | 'practical_parking' | 'practical_food';
@@ -293,9 +291,6 @@ export interface AmenityDef {
 export const AMENITIES: readonly AmenityDef[] = [ /* ordered, grouped by section */ ];
 export const AMENITY_SECTIONS = ['payment', 'seating', 'games', 'atmosphere', 'practical'] as const;
 export const CURRENT_TAXONOMY_VERSION = 1;
-
-/** Soft UX hints only — never auto-write the implied vote, only suggest it. */
-export const AMENITY_RULES = { softExclusive: [['payment_card', 'payment_cash_only']] } as const;
 
 const AMENITY_KEY_SET = new Set<string>(AMENITIES.map((a) => a.key));
 /** Drop unknown keys from wire/persist (forward-compat: a newer backend key this build lacks). */
@@ -395,7 +390,7 @@ export interface WirePubAmenities {
   mapper_count: number;                  // distinct accounts who voted any amenity at this pub
   completeness: {                        // nested object (canonical shape)
     mapped_count: number;                // distinct ACTIVE amenities with status != 'unknown'
-    total_kinds: number;                 // active amenity count = 16 (server-authoritative denominator)
+    total_kinds: number;                 // active amenity count = 14 (server-authoritative denominator)
     pct: number;                         // mapped_count / total_kinds, 0..1, clamped
   };
   amenities: WireAmenityAggregate[];
@@ -508,7 +503,7 @@ Level titles {Nováček, Všímálek, Štamgast, Znalec, Hospodský mudrc} and b
 
 ### 5.2 Completeness
 
-The sheet ring shows **community** completeness from the nested `completeness: { mapped_count, total_kinds, pct }` object on the aggregate read — `total_kinds` is server-authoritative (= **16** active kinds) so the meter survives amenity additions and per-pub completeness can reach 100%; a personal sub-line shows "ty jsi zmapoval/a {n} z {total}". Do not hard-code the denominator client-side.
+The sheet ring shows **community** completeness from the nested `completeness: { mapped_count, total_kinds, pct }` object on the aggregate read — `total_kinds` is server-authoritative (= **14** active kinds) so the meter survives amenity additions and per-pub completeness can reach 100%; a personal sub-line shows "ty jsi zmapoval/a {n} z {total}". Do not hard-code the denominator client-side.
 
 ### 5.3 New badges (extending the `Badge` pattern)
 
@@ -596,7 +591,6 @@ row.disputed         = "lidi se neshodnou"
 row.yes.a11y         = "{amenity}: ano"
 row.no.a11y          = "{amenity}: ne"
 row.clear.hint       = "Ťukni znovu pro zrušení"
-row.cashSuggest      = "Bereš že tu platí jen hotovost? Klepni na Ne u karty."   // soft nudge
 
 // Amenity labels / chips (see §2 tables): payment_card="Platba kartou"/"Karta", etc.
 
@@ -640,9 +634,7 @@ All are one-line `lucide-react-native` adds (one `import` + one `wrap(...)` line
 | lucide source | new export | used for |
 |---|---|---|
 | `CreditCard` | `CreditCardIcon` | payment_card |
-| `Banknote` | `BanknoteIcon` | payment_cash_only |
 | `Accessibility` | `AccessibilityIcon` | seating_barrier_free |
-| `Baby` | `BabyIcon` | seating_kids_corner |
 | `Target` | `TargetIcon` | game_darts |
 | `Dices` | `DicesIcon` | game_billiards |
 | `Gamepad2` | `Gamepad2Icon` | game_foosball |
@@ -663,7 +655,7 @@ All are one-line `lucide-react-native` adds (one `import` + one `wrap(...)` line
 
 - **Geohash-8 collisions on PUBLIC truth.** Two pubs in one ~38 m cell merge into one aggregate shown to everyone + fed to the future filter — worse than the private-ratings case. Mobile mitigation: always send `name`, key the local entry by `pubKey` + name, don't trust bare `cache_key` for "is this the same pub". Authoritative bucketing (votes per `(cache_key, normalized name)` via the existing `names_match`) is a backend aggregate decision that must land before the map filter ships. (§4.6)
 - **Anti-abuse is a HARD precondition for XP, not deferred.** Anonymous device accounts + client-supplied lat/lng make first-mapper/flip-flop/sock-puppet farming trivial. Mobile contributes: per-`(pubKey,amenityKey)` idempotent votes, queue dedup so flip-flop collapses, no brand-new `client_updated_at` on a no-op re-vote. The real guards are server-side and MUST exist before any leaderboard: first-mapper keyed off the existence of ANY prior `(account, cache_key)` row (one-time, concurrency-safe), XP idempotent per `(account, cache_key, amenity_key)`, a per-account `pub_amenities` throttle, and a soft proximity/visit weighting (PubVisit already exists). v1 XP is cosmetic/non-competitive; the first žebříček must recompute XP server-side. (§5)
-- **`payment_card` ↔ `payment_cash_only` contradictions.** "Suggest don't force" still invites "bere obojí" double-yes that pollute the aggregate. If real-world conflict rate is high, fall back to a single `payment_card` tri-state (`no` = jen hotovost). Decide after measuring. (§2)
+- **Payment contradictions — RESOLVED.** The earlier two-key `payment_card` + `payment_cash_only` model invited contradictory "bere obojí" double-yes votes (cash-only is the exact inverse of card). v1 collapses payment to the single `payment_card` tri-state (`no` = jen hotovost), so the contradiction is structurally impossible and there is no soft-exclusion rule. (§2)
 - **`seating_garden` double truth.** A pub can show the firmy `gardenBadge` while the community amenity disagrees. Backend must define the precedence/seed-origin rule (community overrides firmy only above a confidence threshold; mark seeded aggregates as `podle Firmy.cz`, not a fake crowd verdict, and don't let the seed count toward "answered" before a human votes). (§2, §4.6)
 - **Seasonal facts** (zahrádka v zimě, živá hudba o víkendu) look identical to "nezmapováno" and pollute the year-round truth + completeness meter. v1 scopes amenities to **structural** facts ("má prostor pro zahrádku" yes/no, not "je dnes otevřená"); revisit a "sezónně" nuance only if demand appears.
 - **Toast refactor touches a globally-mounted component.** Adding the leading-icon slot is a real (if small) change with a regression surface across every existing toast caller; default to 🍺 to keep existing toasts identical. (§3.5)

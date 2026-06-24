@@ -21,24 +21,21 @@
  * Stable, group-prefixed wire slug. NEVER rename — persisted, sent over the wire,
  * future map-filter key. Add only.
  *
- * The 16 active keys. The two reserved keys (`practical_outdoor_tap`,
+ * The 14 active keys. The two reserved keys (`practical_outdoor_tap`,
  * `practical_tank_beer`) are intentionally NOT part of the active union — they are
  * defined in RESERVED_AMENITY_KEYS below with is_active=false and are never
  * rendered in v1.
  */
 export type AmenityKey =
   | 'payment_card'
-  | 'payment_cash_only'
   | 'seating_garden'
   | 'seating_barrier_free'
-  | 'seating_kids_corner'
   | 'game_darts'
   | 'game_billiards'
   | 'game_foosball'
   | 'game_jukebox'
   | 'atmosphere_live_music'
   | 'atmosphere_sports_tv'
-  | 'atmosphere_dogs_welcome'
   | 'atmosphere_smoking'
   | 'practical_wifi'
   | 'practical_parking'
@@ -82,18 +79,16 @@ export interface ReservedAmenityDef {
 }
 
 /**
- * The 16 ACTIVE amenities, ordered and grouped by section. The order values match
- * the backend seed (10, 20, ... 160). Section order: payment, seating, games,
+ * The 14 ACTIVE amenities, ordered and grouped by section. The order values match
+ * the backend seed (10, 30, ... 160). Section order: payment, seating, games,
  * atmosphere, practical.
  */
 export const AMENITIES: readonly AmenityDef[] = [
   // — payment —
   { key: 'payment_card', group: 'payment', label: 'Platba kartou', shortLabel: 'Karta', icon: 'CreditCardIcon', mapFilterable: true, order: 10 },
-  { key: 'payment_cash_only', group: 'payment', label: 'Jen hotovost', shortLabel: 'Hotovost', icon: 'BanknoteIcon', mapFilterable: true, order: 20 },
   // — seating —
   { key: 'seating_garden', group: 'seating', label: 'Zahrádka / terasa', shortLabel: 'Zahrádka', icon: 'TreePineIcon', mapFilterable: true, order: 30 },
   { key: 'seating_barrier_free', group: 'seating', label: 'Bezbariérový přístup', shortLabel: 'Bezbariér', icon: 'AccessibilityIcon', mapFilterable: true, order: 40 },
-  { key: 'seating_kids_corner', group: 'seating', label: 'Dětský koutek', shortLabel: 'Děti', icon: 'BabyIcon', mapFilterable: true, order: 50 },
   // — games —
   { key: 'game_darts', group: 'games', label: 'Šipky', shortLabel: 'Šipky', icon: 'TargetIcon', mapFilterable: true, order: 60 },
   { key: 'game_billiards', group: 'games', label: 'Kulečník', shortLabel: 'Kulečník', icon: 'DicesIcon', mapFilterable: true, order: 70 },
@@ -102,7 +97,6 @@ export const AMENITIES: readonly AmenityDef[] = [
   // — atmosphere —
   { key: 'atmosphere_live_music', group: 'atmosphere', label: 'Živá hudba', shortLabel: 'Živá hudba', icon: 'MicIcon', mapFilterable: false, order: 100 },
   { key: 'atmosphere_sports_tv', group: 'atmosphere', label: 'Sport v televizi', shortLabel: 'Sport v TV', icon: 'TvIcon', mapFilterable: true, order: 110 },
-  { key: 'atmosphere_dogs_welcome', group: 'atmosphere', label: 'Psi vítáni', shortLabel: 'Psi', icon: 'DogIcon', mapFilterable: true, order: 120 },
   { key: 'atmosphere_smoking', group: 'atmosphere', label: 'Kuřárna / kouření povoleno', shortLabel: 'Kouření', icon: 'CigaretteIcon', mapFilterable: true, order: 130 },
   // — practical —
   { key: 'practical_wifi', group: 'practical', label: 'Wi-Fi', shortLabel: 'Wi-Fi', icon: 'WifiIcon', mapFilterable: true, order: 140 },
@@ -136,15 +130,6 @@ export const AMENITY_SECTIONS: readonly AmenityGroup[] = [
  * backend must 2xx an unknown/future version.
  */
 export const CURRENT_TAXONOMY_VERSION = 1;
-
-/**
- * Soft UX hints only — NEVER auto-write the implied vote, only suggest it. Setting
- * `payment_card = yes` may suggest `payment_cash_only = no` (one tap to confirm),
- * but the two stay independent tri-state facts.
- */
-export const AMENITY_RULES = {
-  softExclusive: [['payment_card', 'payment_cash_only']],
-} as const;
 
 /** All known active amenity keys, for the type guard below. */
 const AMENITY_KEY_SET = new Set<string>(AMENITIES.map((a) => a.key));

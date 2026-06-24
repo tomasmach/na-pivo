@@ -174,7 +174,7 @@ describe('fetchPubAmenities — batch aggregates', () => {
           {
             cache_key: 'aaaaaaaa',
             mapper_count: 3,
-            completeness: { mapped_count: 5, total_kinds: 16, pct: 0.31 },
+            completeness: { mapped_count: 5, total_kinds: 14, pct: 0.31 },
             amenities: [
               { amenity_key: 'game_darts', status: 'yes', confidence: 0.8, yes_count: 4, no_count: 0, distinct_voter_count: 4, my_value: 'yes' },
             ],
@@ -183,7 +183,7 @@ describe('fetchPubAmenities — batch aggregates', () => {
       }),
     );
     const result = await fetchPubAmenities(['aaaaaaaa', 'bbbbbbbb']);
-    expect(result?.[0].completeness.total_kinds).toBe(16);
+    expect(result?.[0].completeness.total_kinds).toBe(14);
     expect(result?.[0].amenities[0].my_value).toBe('yes');
 
     const [url, init] = spy.mock.calls[0] as [string, RequestInit];

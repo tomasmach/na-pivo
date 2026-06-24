@@ -137,9 +137,9 @@ describe('selectCompleteness', () => {
 
   it('prefers the server completeness object and clamps it', () => {
     const rows = buildAmenityRows({ aggregates: [], myVotes: undefined });
-    const c = selectCompleteness(rows, { mappedCount: 99, totalKinds: 16, pct: 1.5 });
-    expect(c.totalKinds).toBe(16);
-    expect(c.mappedCount).toBe(16); // clamped to totalKinds
+    const c = selectCompleteness(rows, { mappedCount: 99, totalKinds: 14, pct: 1.5 });
+    expect(c.totalKinds).toBe(14);
+    expect(c.mappedCount).toBe(14); // clamped to totalKinds
     expect(c.pct).toBe(1); // clamped to 1
   });
 

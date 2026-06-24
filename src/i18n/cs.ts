@@ -65,22 +65,18 @@ export const cs = {
     yesA11y: (amenity: string) => `${amenity}: ano`,
     noA11y: (amenity: string) => `${amenity}: ne`,
     clearHint: 'Ťukni znovu pro zrušení',
-    cashSuggest: 'Bereš že tu platí jen hotovost? Klepni na Ne u karty.',
 
     // Amenity labels / chips (mirror the catalogue in src/data/amenities.ts)
     amenities: {
       payment_card: { label: 'Platba kartou', short: 'Karta' },
-      payment_cash_only: { label: 'Jen hotovost', short: 'Hotovost' },
       seating_garden: { label: 'Zahrádka / terasa', short: 'Zahrádka' },
       seating_barrier_free: { label: 'Bezbariérový přístup', short: 'Bezbariér' },
-      seating_kids_corner: { label: 'Dětský koutek', short: 'Děti' },
       game_darts: { label: 'Šipky', short: 'Šipky' },
       game_billiards: { label: 'Kulečník', short: 'Kulečník' },
       game_foosball: { label: 'Stolní fotbal', short: 'Fotbálek' },
       game_jukebox: { label: 'Jukebox', short: 'Jukebox' },
       atmosphere_live_music: { label: 'Živá hudba', short: 'Živá hudba' },
       atmosphere_sports_tv: { label: 'Sport v televizi', short: 'Sport v TV' },
-      atmosphere_dogs_welcome: { label: 'Psi vítáni', short: 'Psi' },
       atmosphere_smoking: { label: 'Kuřárna / kouření povoleno', short: 'Kouření' },
       practical_wifi: { label: 'Wi-Fi', short: 'Wi-Fi' },
       practical_parking: { label: 'Parkování', short: 'Parkování' },

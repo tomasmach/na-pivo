@@ -71,6 +71,7 @@ import type { Pub } from '@/data/pubs';
 import { useNearbyPub } from '@/counter/useNearbyPub';
 import { PubPickerModal } from '@/counter/PubPickerModal';
 import { BeerFormModal, type BeerFormMode, type BeerFormResult } from '@/counter/BeerFormModal';
+import { MapPubEntry } from '@/components/amenities/MapPubEntry';
 
 // ─── Permission gate ──────────────────────────────────────────────────────────
 
@@ -673,6 +674,13 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
         )}
       </View>
 
+      {/* "Zmapuj hospodu" — the community pub-amenities entry for the CURRENT pub.
+          Sits directly under the header so it's the first thing visible without
+          scrolling; opens the same MapPubSheet keyed on this pub's geohash-8. */}
+      <View style={styles.mapPubWrap}>
+        <MapPubEntry pubKey={cell} pubName={pub.name} />
+      </View>
+
       <ScrollView
         style={styles.flex}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom + 16, 28) }]}
@@ -960,6 +968,14 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.amber,
+  },
+
+  // "Zmapuj hospodu" entry — full-width pill under the header, on the same
+  // gutter as the header + scroll content so it reads as a primary, always-
+  // visible action for the current pub (never buried below the fold).
+  mapPubWrap: {
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.sm,
   },
 
   scrollContent: {
