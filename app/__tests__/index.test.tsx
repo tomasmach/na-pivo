@@ -411,7 +411,7 @@ describe('CompassScreen', () => {
     expect(sheet.props.pubName).toBe('U Testu');
   });
 
-  it('opens add-pub through the map hub with current coordinates', () => {
+  it('opens add-pub from the always-visible "není to ta hospoda?" link', () => {
     const push = jest.fn();
     mockedUseRouter.mockReturnValue({ push });
     useCompass.mockReturnValue({
@@ -426,11 +426,13 @@ describe('CompassScreen', () => {
       renderer = TestRenderer.create(React.createElement(CompassScreen));
     });
 
-    // "Není to tahle hospoda?" lives inside the hub; the compass passes its
-    // add-pub handler through, which routes to /add-pub with the current coords.
-    const sheet = renderer!.root.findByType(MapPubSheet);
+    // The add-missing-pub link lives on the pub pill (not buried in the hub) and
+    // routes straight to /add-pub with the current coordinates.
+    const addPubLink = renderer!.root.findByProps({
+      accessibilityLabel: cs.compass.addMissingPubLink,
+    });
     act(() => {
-      sheet.props.onAddPub();
+      addPubLink.props.onPress();
     });
 
     expect(push).toHaveBeenCalledWith({

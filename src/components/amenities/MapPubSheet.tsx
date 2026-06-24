@@ -53,7 +53,6 @@ import {
   ClockIcon,
   BeerIcon,
   ChevronRightIcon,
-  PlusIcon,
 } from '@/components/shared/IconGlyph';
 import { CompletenessRing } from '@/components/amenities/CompletenessRing';
 import { Toast } from '@/components/shared/Toast';
@@ -115,8 +114,6 @@ interface MapPubSheetProps {
   /** When set, the sheet also shows the otevíračka + piva fact rows and the ring
    *  spans all three info groups. Without it the sheet is amenities-only. */
   info?: PubInfoContext;
-  /** Optional "this isn't the right pub" escape (compass host). */
-  onAddPub?: () => void;
 }
 
 function haptic() {
@@ -129,7 +126,6 @@ export function MapPubSheet({
   pubName,
   onClose,
   info,
-  onAddPub,
 }: MapPubSheetProps) {
   const insets = useSafeAreaInsets();
   const reduceMotion = useReduceMotion();
@@ -438,12 +434,6 @@ export function MapPubSheet({
     [info, onClose, router],
   );
 
-  const handleAddPub = useCallback(() => {
-    if (!onAddPub) return;
-    onClose();
-    onAddPub();
-  }, [onAddPub, onClose]);
-
   return (
     <Modal
       visible={visible}
@@ -559,20 +549,6 @@ export function MapPubSheet({
               <Text style={styles.footerHint} maxFontSizeMultiplier={FontScaleCap.body}>
                 {cs.mapPub.footerHint}
               </Text>
-
-              {onAddPub && (
-                <Pressable
-                  onPress={handleAddPub}
-                  style={({ pressed }) => [styles.addPubRow, pressed && { opacity: 0.7 }]}
-                  accessibilityRole="button"
-                  accessibilityLabel={cs.mapPub.addMissingPubRow}
-                >
-                  <PlusIcon size={15} color={Colors.mutedText} />
-                  <Text style={styles.addPubText} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {cs.mapPub.addMissingPubRow}
-                  </Text>
-                </Pressable>
-              )}
             </ScrollView>
           </Animated.View>
 
@@ -980,19 +956,6 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
     fontFamily: Fonts.ui.regular,
     fontSize: 12,
-    color: Colors.mutedText,
-  },
-  addPubRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    minHeight: HitArea.min,
-    marginBottom: Spacing.xs,
-  },
-  addPubText: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 13,
     color: Colors.mutedText,
   },
 });

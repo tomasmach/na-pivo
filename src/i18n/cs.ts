@@ -60,8 +60,6 @@ export const cs = {
       n === 1 ? '1 pivo · uprav' : n >= 2 && n <= 4 ? `${n} piva · uprav` : `${n} piv · uprav`,
     factEditA11y: (label: string, filled: boolean) =>
       filled ? `Upravit: ${label}` : `Doplnit: ${label}`,
-    // Footer link inside the sheet: this isn't the right pub after all.
-    addMissingPubRow: 'Není to tahle hospoda? Přidej chybějící',
 
     // Sections (uppercase, matching the statsHeader convention). Merged to 3 so
     // no section is a single row: games+atmosphere → ZÁBAVA, payment+wifi/parking
@@ -160,6 +158,7 @@ export const cs = {
     detailsLoading: 'Načítám info',
     contribute: 'Doplnit info',
     addMissingPub: 'Chybí hospoda',
+    addMissingPubLink: 'Není to ta hospoda? Přidej ji',
     contributeOrAdd: 'Doplnit / přidat',
     contributeMenuTitle: 'Co chceš doplnit?',
     // The leading beer glyph is a line-art icon rendered next to this text in

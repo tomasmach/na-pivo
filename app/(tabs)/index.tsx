@@ -557,12 +557,29 @@ function RevealedPubPill({
         </Pressable>
       </View>
 
+      {/* "Není to ta hospoda?" — the add-missing-pub escape. A slim always-visible
+          link (a rare action, so low prominence) rather than buried in the hub. */}
+      <Pressable
+        onPress={onAddPub}
+        hitSlop={8}
+        style={({ pressed }) => [styles.addMissingLink, pressed && { opacity: 0.7 }]}
+        accessibilityRole="button"
+        accessibilityLabel={cs.compass.addMissingPubLink}
+      >
+        <Text
+          style={styles.addMissingLinkText}
+          numberOfLines={1}
+          maxFontSizeMultiplier={FontScaleCap.body}
+        >
+          {cs.compass.addMissingPubLink}
+        </Text>
+      </Pressable>
+
       <MapPubSheet
         visible={mapOpen}
         pubKey={pubKey}
         pubName={pubName}
         info={mapInfo}
-        onAddPub={onAddPub}
         onClose={() => setMapOpen(false)}
       />
     </View>
@@ -1395,6 +1412,19 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.semibold,
     fontSize: 12,
     color: Colors.amber,
+  },
+  addMissingLink: {
+    alignSelf: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 8,
+    paddingBottom: 2,
+    minHeight: 32,
+  },
+  addMissingLinkText: {
+    fontFamily: Fonts.ui.medium,
+    fontSize: 12,
+    color: Colors.mutedText,
   },
   reportButtonText: {
     flexShrink: 1,
