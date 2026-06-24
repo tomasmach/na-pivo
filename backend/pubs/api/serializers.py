@@ -827,6 +827,10 @@ class PubCommunityResponseSerializer(serializers.Serializer):
     cache_key = serializers.CharField()
     hours = serializers.JSONField(allow_null=True)
     beers = serializers.ListField(child=serializers.DictField())
+    # Additive Mapér fields (older clients ignore them). `mapper` mirrors the
+    # vote-PUT snapshot; null when XP awarding was skipped/failed.
+    xp_awarded = serializers.IntegerField(required=False, default=0)
+    mapper = serializers.DictField(required=False, allow_null=True)
 
 
 class PubHoursResponseSerializer(serializers.Serializer):

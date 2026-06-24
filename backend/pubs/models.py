@@ -2351,3 +2351,44 @@ class AccountPubCompletion(models.Model):
 
     def __str__(self) -> str:
         return f"AccountPubCompletion([{self.cache_key}])"
+
+
+class PubCommunityXpLedger(models.Model):
+    """
+    Durable "first-fact Mapér XP already paid for this pub's hours/beers" marker,
+    one row per (account, cache_key, kind).
+
+    Opening hours and beers are last-writer-wins community data (no vote
+    aggregate), so unlike amenities there is no retract/flip to guard against —
+    but the contribution queue retries the same POST for durability and the user
+    can re-edit a pub any time. This ledger pays the per-fact XP AT MOST ONCE per
+    (account, cache_key, kind): the first time an account contributes hours (or
+    beers) to a pub earns XP; every later edit or retried POST pays 0. Mirrors
+    AmenityXpLedger and is NEVER deleted.
+    """
+
+    class Kind(models.TextChoices):
+        HOURS = "hours", "Opening hours"
+        BEERS = "beers", "Beers on tap"
+
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name="community_xp_ledger",
+    )
+    cache_key = models.CharField(max_length=12, db_index=True)
+    kind = models.CharField(max_length=8, choices=Kind.choices)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Pub Community XP Ledger"
+        verbose_name_plural = "Pub Community XP Ledger"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "cache_key", "kind"],
+                name="unique_pub_community_xp_ledger",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"PubCommunityXpLedger({self.kind} [{self.cache_key}])"

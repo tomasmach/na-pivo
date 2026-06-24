@@ -649,3 +649,93 @@ def test_community_hours_without_beers_does_not_force_pub(client):
 
 def test_community_throttle_scope_configured(settings):
     assert "community" in settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]
+
+
+# ---------------------------------------------------------------------------
+# Mapér XP for hours/beers contributions
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_first_contribution_awards_first_fact_xp_per_kind(client, settings):
+    from pubs.models import AccountUsageStats, PubCommunityXpLedger
+
+    token = _register(client)
+    resp = client.post("/v1/pub-community", data=_payload(), format="json", **_auth(token))
+    assert resp.status_code == status.HTTP_200_OK
+    body = resp.json()
+
+    # hours + beers = two first-facts.
+    assert body["xp_awarded"] == 2 * settings.MAPER_XP_FIRST_FACT
+    mapper = body["mapper"]
+    assert mapper is not None
+    assert mapper["xp"] == 2 * settings.MAPER_XP_FIRST_FACT
+    assert mapper["distinct_mapped_pubs"] == 1
+    assert mapper["amenity_votes_count"] == 2
+    assert {"level", "title", "xp_into_level", "xp_for_next_level"} <= set(mapper)
+
+    assert PubCommunityXpLedger.objects.count() == 2
+    stats = AccountUsageStats.objects.get()
+    assert stats.mapper_xp == 2 * settings.MAPER_XP_FIRST_FACT
+
+
+@pytest.mark.django_db
+def test_reedit_same_pub_pays_zero(client, settings):
+    """A retried/edited contribution to a pub already mapped by the account
+    pays no further XP (durable per-(account, cache_key, kind) ledger)."""
+    token = _register(client)
+    client.post("/v1/pub-community", data=_payload(), format="json", **_auth(token))
+
+    # Re-edit with a fresh client_id (the contribution log row differs, but the
+    # XP ledger key is (account, cache_key, kind), so XP stays put).
+    resp = client.post(
+        "/v1/pub-community",
+        data=_payload(client_id=_OTHER_DEVICE_ID),
+        format="json",
+        **_auth(token),
+    )
+    assert resp.status_code == status.HTTP_200_OK
+    body = resp.json()
+    assert body["xp_awarded"] == 0
+    assert body["mapper"]["xp"] == 2 * settings.MAPER_XP_FIRST_FACT
+
+
+@pytest.mark.django_db
+def test_hours_only_then_beers_only_each_award_once(client, settings):
+    token = _register(client)
+
+    r1 = client.post(
+        "/v1/pub-community",
+        data={"name": _NAME, "lat": _LAT, "lng": _LNG, "client_id": _CLIENT_ID, "hours": _FULL_HOURS},
+        format="json",
+        **_auth(token),
+    ).json()
+    assert r1["xp_awarded"] == settings.MAPER_XP_FIRST_FACT
+
+    # Beers later (different client_id) — a new kind, so it pays its own first-fact.
+    r2 = client.post(
+        "/v1/pub-community",
+        data={"name": _NAME, "lat": _LAT, "lng": _LNG, "client_id": _OTHER_DEVICE_ID, "beers": _BEERS},
+        format="json",
+        **_auth(token),
+    ).json()
+    assert r2["xp_awarded"] == settings.MAPER_XP_FIRST_FACT
+    assert r2["mapper"]["xp"] == 2 * settings.MAPER_XP_FIRST_FACT
+    # The pub is counted once across both contributions.
+    assert r2["mapper"]["distinct_mapped_pubs"] == 1
+
+
+@pytest.mark.django_db
+def test_xp_shares_distinct_pub_marker_with_amenities(client):
+    """An hours contribution must not double-count a pub the account already
+    mapped via an amenity vote (shared AccountMappedPub marker)."""
+    from pubs.models import AccountMappedPub
+
+    token = _register(client)
+    client.post(
+        "/v1/pub-community",
+        data={"name": _NAME, "lat": _LAT, "lng": _LNG, "client_id": _CLIENT_ID, "hours": _FULL_HOURS},
+        format="json",
+        **_auth(token),
+    )
+    assert AccountMappedPub.objects.count() == 1

@@ -77,6 +77,7 @@ from pubs.models import (
     PubBeerBrand,
     PubBeerProduct,
     PubCommunityData,
+    PubCommunityXpLedger,
     PubContributionLog,
     PubRating,
     PubReport,
@@ -428,11 +429,41 @@ class PubCommunityView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+        # ── Mapér XP (additive; an XP failure must never break a saved edit) ──
+        xp_awarded = 0
+        mapper = None
+        try:
+            pub_identity_key = _pub_identity_key(cache_key, data["name"])
+            kinds: set[str] = set()
+            if has_hours:
+                kinds.add(PubCommunityXpLedger.Kind.HOURS)
+            if has_beers:
+                kinds.add(PubCommunityXpLedger.Kind.BEERS)
+            xp_awarded = _award_community_xp(
+                request.user, cache_key, pub_identity_key, kinds
+            )
+            stats, _ = AccountUsageStats.objects.get_or_create(account=request.user)
+            mapper = maper_snapshot(
+                stats.mapper_xp,
+                {
+                    "mapped_pubs_count": stats.mapped_pubs_count,
+                    "amenity_votes_count": stats.amenity_votes_count,
+                    "first_mapper_count": stats.first_mapper_count,
+                    "completed_pubs_count": stats.completed_pubs_count,
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "pub-community: XP award failed for cache key %s: %s", cache_key, exc
+            )
+
         body = PubCommunityResponseSerializer(
             {
                 "cache_key": record.cache_key,
                 "hours": record.hours_json,
                 "beers": record.beers or [],
+                "xp_awarded": xp_awarded,
+                "mapper": mapper,
             }
         ).data
         return Response(body, status=status.HTTP_200_OK)
@@ -2599,6 +2630,60 @@ def _first_touched_pub_count_today(account: Account, now) -> int:
         account=account,
         created_at__gte=start_of_day,
     ).count()
+
+
+def _award_community_xp(
+    account: Account,
+    cache_key: str,
+    pub_identity_key: str,
+    kinds: set[str],
+) -> int:
+    """Award first-fact Mapér XP for opening-hours / beers contributions and
+    return the XP this request paid (the wire ``xp_awarded``).
+
+    Mirrors :func:`_award_mapper_xp`'s durable-ledger idempotency: each kind pays
+    ``MAPER_XP_FIRST_FACT`` AT MOST ONCE per (account, cache_key, kind) via
+    :class:`PubCommunityXpLedger`, so a later edit or a retried offline POST pays
+    0. F()-increments AccountUsageStats (never a read-modify-write on the hot
+    Account row).
+
+    The pub also counts toward ``distinct_mapped_pubs`` the first time the account
+    touches it through ANY channel — reusing the shared :class:`AccountMappedPub`
+    marker keeps an hours contribution and an amenity vote on the same pub from
+    double-counting it. No first-mapper / pub-complete bonuses apply here: those
+    are amenity-aggregate concepts, and hours/beers are last-writer-wins data.
+    """
+    _mapped_pub, is_new_pub = AccountMappedPub.objects.get_or_create(
+        account=account,
+        pub_identity_key=pub_identity_key,
+        defaults={"cache_key": cache_key},
+    )
+
+    xp_awarded = 0
+    facts = 0
+    for kind in kinds:
+        _ledger, pays_base = PubCommunityXpLedger.objects.get_or_create(
+            account=account,
+            cache_key=cache_key,
+            kind=kind,
+        )
+        if pays_base:
+            xp_awarded += settings.MAPER_XP_FIRST_FACT
+            facts += 1
+
+    inc: dict[str, object] = {}
+    if facts:
+        inc["amenity_votes_count"] = F("amenity_votes_count") + facts
+    if is_new_pub:
+        inc["mapped_pubs_count"] = F("mapped_pubs_count") + 1
+    if xp_awarded > 0:
+        inc["mapper_xp"] = F("mapper_xp") + xp_awarded
+
+    if inc:
+        stats, _ = AccountUsageStats.objects.get_or_create(account=account)
+        AccountUsageStats.objects.filter(pk=stats.pk).update(**inc)
+
+    return xp_awarded
 
 
 def _award_mapper_xp(
