@@ -52,6 +52,31 @@ describe('restorePubAmenities — pull + merge (LWW)', () => {
     expect(flushPubAmenitiesQueue).toHaveBeenCalled();
   });
 
+  it('restores server votes under pub_identity_key when present', async () => {
+    const identityKey = `${PUB}::u fleku`;
+    fetchMyAmenityVotes.mockResolvedValue([wire({ pub_identity_key: identityKey, name: 'U Fleků' })]);
+    await restorePubAmenities();
+    expect(usePubAmenitiesStore.getState().votes[identityKey]?.game_darts?.vote).toBe('yes');
+    expect(usePubAmenitiesStore.getState().votes[PUB]).toBeUndefined();
+  });
+
+  it('applies a server tombstone as an LWW retraction', async () => {
+    const identityKey = `${PUB}::u fleku`;
+    usePubAmenitiesStore.setState({
+      votes: { [identityKey]: { game_darts: { vote: 'yes', updatedAt: '2026-06-14T11:00:00.000Z' } } },
+    });
+    fetchMyAmenityVotes.mockResolvedValue([
+      wire({
+        pub_identity_key: identityKey,
+        value: null,
+        client_updated_at: '2026-06-14T12:00:00.000Z',
+      }),
+    ]);
+    await restorePubAmenities();
+    expect(usePubAmenitiesStore.getState().votes[identityKey]).toBeUndefined();
+    expect(enqueueAmenityOp).not.toHaveBeenCalled();
+  });
+
   it('does NOT echo a pulled vote back out as an upsert (suppress flag)', async () => {
     fetchMyAmenityVotes.mockResolvedValue([wire()]);
     const unsub = installPubAmenitiesSync();

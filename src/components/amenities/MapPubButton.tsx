@@ -28,6 +28,7 @@ import { usePubAmenitiesStore, selectPubVotes } from '@/stores/pubAmenitiesStore
 import { buildAmenityRows, selectCompleteness, selectPersonalProgress } from '@/data/pubAmenitiesView';
 import { readPubAmenitiesSnapshot } from '@/data/pubAmenitiesSnapshot';
 import type { WireAmenityAggregate } from '@/data/pubAmenitiesClient';
+import { pubIdentityKey } from '@/data/pubIdentity';
 
 interface MapPubButtonProps {
   pubKey: string;
@@ -36,20 +37,26 @@ interface MapPubButtonProps {
 }
 
 export function MapPubButton({ pubKey, pubName, onPress }: MapPubButtonProps) {
-  const myVotes = usePubAmenitiesStore(selectPubVotes(pubKey));
+  const identityKey = useMemo(() => pubIdentityKey(pubKey, pubName), [pubKey, pubName]);
+  const myVotes = usePubAmenitiesStore(selectPubVotes(identityKey));
   const [aggregates, setAggregates] = useState<WireAmenityAggregate[] | undefined>(undefined);
+  const [loadedIdentityKey, setLoadedIdentityKey] = useState(identityKey);
+  if (identityKey !== loadedIdentityKey) {
+    setLoadedIdentityKey(identityKey);
+    setAggregates(undefined);
+  }
 
   // Read the cached community aggregate for the label %; the snapshot is the same
   // cheap source the sheet uses, so opening the sheet won't disagree.
   useEffect(() => {
     let cancelled = false;
-    void readPubAmenitiesSnapshot(pubKey).then((cached) => {
+    void readPubAmenitiesSnapshot(identityKey).then((cached) => {
       if (!cancelled && cached) setAggregates(cached.amenities);
     });
     return () => {
       cancelled = true;
     };
-  }, [pubKey]);
+  }, [identityKey]);
 
   const rows = useMemo(() => buildAmenityRows({ aggregates, myVotes }), [aggregates, myVotes]);
   const community = useMemo(() => selectCompleteness(rows), [rows]);

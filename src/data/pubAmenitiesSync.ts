@@ -24,13 +24,10 @@
  * module-level `suppressSync` flag is raised STRICTLY SYNCHRONOUSLY around the
  * hydrateVotes call only (never across an await).
  *
- * Deriving the wire payload from a pubKey: the store keys votes only by their
- * geohash-8 pubKey and stores no lat/lng/name. We reconstruct lat/lng from the cell
- * centre via decodeGeohash8 (the server re-derives the SAME cache_key from it) and
- * look the pub name up from the tally history; when unknown we fall back to the
- * (always non-empty) pubKey. A non-blank name is always carried because the backend
- * rejects a blank name (the geohash-8 collision guard) and the queue would then drop
- * the vote permanently.
+ * Deriving the wire payload from a pub identity: the store keys votes by
+ * cache_key::normalized_name so neighbouring businesses in one geohash-8 cell do
+ * not mix. We decode lat/lng from the cache_key portion and look the display name
+ * up from current/history, falling back to the normalized name in the identity.
  */
 
 import { CURRENT_TAXONOMY_VERSION, isKnownAmenityKey, type AmenityKey } from './amenities';
@@ -43,8 +40,14 @@ import {
 } from './pubAmenitiesQueue';
 import { fetchMyAmenityVotes, type WireAmenityVote } from './pubAmenitiesClient';
 import {
+  cacheKeyFromPubIdentityKey,
+  nameFromPubIdentityKey,
+  pubIdentityKey,
+} from './pubIdentity';
+import {
   usePubAmenitiesStore,
   type AmenityVoteEntry,
+  type HydrateAmenityRow,
   type PubAmenityVotes,
 } from '@/stores/pubAmenitiesStore';
 import { useTallyStore } from '@/stores/tallyStore';
@@ -80,10 +83,11 @@ export function runWithoutPubAmenitiesSync(task: () => void): void {
  * we genuinely don't know the name, which is strictly better than losing the vote.
  */
 function pubNameForKey(pubKey: string): string {
+  const cacheKey = cacheKeyFromPubIdentityKey(pubKey);
   const { current, history } = useTallyStore.getState();
-  if (current?.pubKey === pubKey && current.pubName) return current.pubName;
-  const match = history.find((session) => session.pubKey === pubKey);
-  return match?.pubName || pubKey;
+  if (current?.pubKey === cacheKey && current.pubName) return current.pubName;
+  const match = history.find((session) => session.pubKey === cacheKey);
+  return match?.pubName || nameFromPubIdentityKey(pubKey) || cacheKey;
 }
 
 /**
@@ -119,7 +123,8 @@ function buildUpsertPayload(
   amenityKey: AmenityKey,
   entry: AmenityVoteEntry,
 ): WireAmenityVote {
-  const { lat, lng } = decodeGeohash8(pubKey);
+  const cacheKey = cacheKeyFromPubIdentityKey(pubKey);
+  const { lat, lng } = decodeGeohash8(cacheKey);
   return {
     name: pubNameForKey(pubKey),
     lat,
@@ -133,7 +138,8 @@ function buildUpsertPayload(
 
 /** Build a timestamped value:null tombstone for an LWW-safe retraction. */
 function buildDeletePayload(pubKey: string, amenityKey: AmenityKey): WireAmenityVote {
-  const { lat, lng } = decodeGeohash8(pubKey);
+  const cacheKey = cacheKeyFromPubIdentityKey(pubKey);
+  const { lat, lng } = decodeGeohash8(cacheKey);
   return {
     name: pubNameForKey(pubKey),
     lat,
@@ -231,17 +237,27 @@ export async function restorePubAmenities(signal?: AbortSignal): Promise<void> {
     return;
   }
 
-  // Map wire → entries, keyed by (pubKey, amenityKey). Track the server copy so we
-  // can decide which local votes to push afterwards.
+  // Map wire → entries, keyed by (pubIdentityKey, amenityKey). Track the live
+  // server copy so we can decide which local votes to push afterwards.
   const serverByPair = new Map<string, AmenityVoteEntry>();
-  const merged: { pubKey: string; amenityKey: AmenityKey; entry: AmenityVoteEntry | null }[] = [];
+  const merged: HydrateAmenityRow[] = [];
   for (const wire of serverVotes) {
     if (!isKnownAmenityKey(wire.amenity_key)) continue;
-    const pair = `${wire.cache_key} ${wire.amenity_key}`;
+    const identityKey =
+      wire.pub_identity_key || pubIdentityKey(wire.cache_key, wire.name ?? null);
+    const pair = `${identityKey} ${wire.amenity_key}`;
     if (pendingDeletes.has(pair)) continue;
+    if (wire.value == null) {
+      merged.push({
+        pubKey: identityKey,
+        amenityKey: wire.amenity_key,
+        entry: { tombstone: true, updatedAt: wire.client_updated_at },
+      });
+      continue;
+    }
     const entry: AmenityVoteEntry = { vote: wire.value, updatedAt: wire.client_updated_at };
     serverByPair.set(pair, entry);
-    merged.push({ pubKey: wire.cache_key, amenityKey: wire.amenity_key, entry });
+    merged.push({ pubKey: identityKey, amenityKey: wire.amenity_key, entry });
   }
 
   // Merge server → local (LWW), suppressing the push echo for the write.

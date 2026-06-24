@@ -88,6 +88,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 import { FALLBACK_LEVELS, FALLBACK_XP_RULES, levelForXp } from '@/data/mapperXp';
+import { pubIdentityKey } from '@/data/pubIdentity';
 
 const SECTION_LABEL: Record<AmenitySection, string> = {
   seating: cs.mapPub.sectionSeating,
@@ -115,7 +116,8 @@ export function MapPubSheet({ visible, pubKey, pubName, onClose }: MapPubSheetPr
 
   // The user's own votes — reactive; buildAmenityRows merges these over the
   // cached aggregate so the pill state always reflects the freshest local tap.
-  const myVotes = usePubAmenitiesStore(selectPubVotes(pubKey));
+  const identityKey = useMemo(() => pubIdentityKey(pubKey, pubName), [pubKey, pubName]);
+  const myVotes = usePubAmenitiesStore(selectPubVotes(identityKey));
   const setVote = usePubAmenitiesStore((s) => s.setVote);
   const showToast = useToastStore((s) => s.show);
   const applyMapperSnapshot = useAccountStore((s) => s.applyMapperSnapshot);
@@ -128,9 +130,9 @@ export function MapPubSheet({ visible, pubKey, pubName, onClose }: MapPubSheetPr
   // Reset to "loading" during render when the pub changes, so a previous pub's
   // data never bleeds into a new open (the React-recommended alternative to a
   // setState-in-effect; mirrors PubRatingControl's draft reset).
-  const [loadedPubKey, setLoadedPubKey] = useState(pubKey);
-  if (pubKey !== loadedPubKey) {
-    setLoadedPubKey(pubKey);
+  const [loadedPubKey, setLoadedPubKey] = useState(identityKey);
+  if (identityKey !== loadedPubKey) {
+    setLoadedPubKey(identityKey);
     setAggregates(undefined);
     setServerCompleteness(null);
   }
@@ -146,13 +148,13 @@ export function MapPubSheet({ visible, pubKey, pubName, onClose }: MapPubSheetPr
     let cancelled = false;
     const controller = new AbortController();
 
-    void readPubAmenitiesSnapshot(pubKey).then((cached) => {
+    void readPubAmenitiesSnapshot(identityKey).then((cached) => {
       if (cancelled || !cached) return;
       setAggregates(cached.amenities);
       setServerCompleteness(cached.completeness);
     });
 
-    void fetchPubAmenities([pubKey], controller.signal).then((pubs) => {
+    void fetchPubAmenities([pubKey], controller.signal, pubName).then((pubs) => {
       if (cancelled || !pubs) return;
       const pub = pubs.find((p) => p.cache_key === pubKey) ?? pubs[0];
       if (!pub) {
@@ -163,7 +165,7 @@ export function MapPubSheet({ visible, pubKey, pubName, onClose }: MapPubSheetPr
       }
       setAggregates(pub.amenities);
       setServerCompleteness(pub.completeness ?? null);
-      void writePubAmenitiesSnapshot(pubKey, {
+      void writePubAmenitiesSnapshot(identityKey, {
         amenities: pub.amenities,
         completeness: pub.completeness,
         mapperCount: pub.mapper_count,
@@ -174,7 +176,7 @@ export function MapPubSheet({ visible, pubKey, pubName, onClose }: MapPubSheetPr
       cancelled = true;
       controller.abort();
     };
-  }, [visible, pubKey]);
+  }, [visible, pubKey, pubName, identityKey]);
 
   const rows = useMemo(() => buildAmenityRows({ aggregates, myVotes }), [aggregates, myVotes]);
   const completeness = useMemo(
@@ -287,7 +289,7 @@ export function MapPubSheet({ visible, pubKey, pubName, onClose }: MapPubSheetPr
 
       // Optimistic local commit — the sync subscriber enqueues + flushes this for
       // durability (fully offline-safe).
-      setVote(pubKey as string, row.amenityKey as AmenityKey, next);
+      setVote(identityKey, row.amenityKey as AmenityKey, next);
 
       // Retraction never touches XP/counters (lifetime-achievement model), but a
       // silent removal feels like a bug — confirm the vote left the public map.
@@ -324,9 +326,9 @@ export function MapPubSheet({ visible, pubKey, pubName, onClose }: MapPubSheetPr
       });
       void submitAmenityVotesDetailed([wire]).then((res) => {
         if (res.status !== 'ok' || !res.body) {
-          // Offline / dormant / rejected: fall back to the local estimate so the
-          // user still gets feel-good feedback; the queue retries the durable PUT.
-          addLocalEstimate();
+          // Offline / dormant: fall back to the local estimate while the queue
+          // retries. Permanent validation errors do not earn optimistic XP.
+          if (res.status === 'retry') addLocalEstimate();
           return;
         }
         const result = res.body.results[0];
@@ -351,6 +353,7 @@ export function MapPubSheet({ visible, pubKey, pubName, onClose }: MapPubSheetPr
     },
     [
       backendConfigured,
+      identityKey,
       pubKey,
       pubName,
       setVote,

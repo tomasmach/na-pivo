@@ -117,8 +117,10 @@ export interface WirePubAmenities {
 /** The account's own votes, for cross-device restore. */
 export interface WireMyAmenityVote {
   cache_key: string;
+  pub_identity_key?: string;
+  name?: string;
   amenity_key: string;
-  value: 'yes' | 'no';
+  value: 'yes' | 'no' | null;
   client_updated_at: string;
 }
 
@@ -198,7 +200,7 @@ async function classifyAmenityHttpFailure(
 
 function trackAmenitySynced(operation: 'submit_votes'): void {
   void trackClientEvent({
-    event: 'amenity_synced',
+    event: 'amenity_vote_synced',
     context: { operation },
   });
 }
@@ -208,7 +210,7 @@ function trackAmenitySyncFailed(
   details: { status?: number; reason: string; result?: SubmitAmenityResult; retryable?: boolean },
 ): void {
   void trackClientEvent({
-    event: 'amenity_sync_failed',
+    event: 'amenity_vote_failed',
     severity: 'warning',
     context: {
       operation,
@@ -428,7 +430,7 @@ function isWireMyAmenityVote(value: unknown): value is WireMyAmenityVote {
     !!v &&
     typeof v.cache_key === 'string' &&
     typeof v.amenity_key === 'string' &&
-    (v.value === 'yes' || v.value === 'no') &&
+    (v.value === 'yes' || v.value === 'no' || v.value === null) &&
     typeof v.client_updated_at === 'string'
   );
 }
@@ -506,13 +508,15 @@ function isWirePubAmenities(value: unknown): value is WirePubAmenities {
 export async function fetchPubAmenities(
   cacheKeys: string[],
   signal?: AbortSignal,
+  name?: string,
 ): Promise<WirePubAmenities[] | null> {
   if (signal?.aborted) return null;
   const keys = cacheKeys.filter((k) => typeof k === 'string' && k.length > 0);
   if (keys.length === 0) return [];
 
   const query = keys.map((k) => encodeURIComponent(k)).join(',');
-  const endpoint = getBackendEndpoint(`/v1/pub-amenities?cache_keys=${query}`);
+  const nameQuery = name ? `&name=${encodeURIComponent(name)}` : '';
+  const endpoint = getBackendEndpoint(`/v1/pub-amenities?cache_keys=${query}${nameQuery}`);
   if (!endpoint) return null;
 
   // Aggregates are AllowAny, but we still attach a Bearer when we have one so the

@@ -182,12 +182,12 @@ describe('fetchPubAmenities — batch aggregates', () => {
         ],
       }),
     );
-    const result = await fetchPubAmenities(['aaaaaaaa', 'bbbbbbbb']);
+    const result = await fetchPubAmenities(['aaaaaaaa', 'bbbbbbbb'], undefined, 'U Fleků');
     expect(result?.[0].completeness.total_kinds).toBe(14);
     expect(result?.[0].amenities[0].my_value).toBe('yes');
 
     const [url, init] = spy.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('https://api.test/v1/pub-amenities?cache_keys=aaaaaaaa,bbbbbbbb');
+    expect(url).toBe('https://api.test/v1/pub-amenities?cache_keys=aaaaaaaa,bbbbbbbb&name=U%20Flek%C5%AF');
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer anon-tok');
   });
 
