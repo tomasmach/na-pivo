@@ -516,11 +516,19 @@ function RevealedPubPill({
       </Pressable>
 
       {/* Footer actions on ONE row (no extra height — the compass needs the space).
-          The primary "Zmapuj hospodu" hub entry is optically centred in the pill:
-          an empty left side balances the two right-hand icon escapes (add a missing
-          pub + report a wrong one), so the label sits in the true centre. */}
+          Symmetric bookend: a grey icon escape on each edge (add a missing pub
+          left, report a wrong one right) flanking the centred primary "Zmapuj
+          hospodu" hub entry. space-between pins the label to the true centre. */}
       <View style={styles.pubPillFooter}>
-        <View style={styles.footerSide} />
+        <Pressable
+          onPress={onAddPub}
+          hitSlop={12}
+          style={({ pressed }) => [styles.footerIconButton, pressed && { opacity: 0.6 }]}
+          accessibilityLabel={cs.compass.addMissingPubLink}
+          accessibilityRole="button"
+        >
+          <MapPinPlusIcon size={17} color={Colors.mutedText} />
+        </Pressable>
 
         <Pressable
           onPress={() => setMapOpen(true)}
@@ -541,27 +549,15 @@ function RevealedPubPill({
           </Text>
         </Pressable>
 
-        <View style={styles.footerSide}>
-          <Pressable
-            onPress={onAddPub}
-            hitSlop={12}
-            style={({ pressed }) => [styles.footerIconButton, pressed && { opacity: 0.6 }]}
-            accessibilityLabel={cs.compass.addMissingPubLink}
-            accessibilityRole="button"
-          >
-            <MapPinPlusIcon size={17} color={Colors.mutedText} />
-          </Pressable>
-
-          <Pressable
-            onPress={onReport}
-            hitSlop={12}
-            style={({ pressed }) => [styles.footerIconButton, pressed && { opacity: 0.6 }]}
-            accessibilityLabel={cs.a11y.reportPubButton}
-            accessibilityRole="button"
-          >
-            <FlagIcon size={17} color={Colors.mutedText} />
-          </Pressable>
-        </View>
+        <Pressable
+          onPress={onReport}
+          hitSlop={12}
+          style={({ pressed }) => [styles.footerIconButton, pressed && { opacity: 0.6 }]}
+          accessibilityLabel={cs.a11y.reportPubButton}
+          accessibilityRole="button"
+        >
+          <FlagIcon size={17} color={Colors.mutedText} />
+        </Pressable>
       </View>
 
       <MapPubSheet
@@ -1379,16 +1375,14 @@ const styles = StyleSheet.create({
   pubPillFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     alignSelf: 'stretch',
     borderTopWidth: 1,
     borderTopColor: Colors.border,
     paddingTop: 8,
-    gap: 10,
   },
   footerButton: {
-    flex: 1,
-    minWidth: 0,
+    flexShrink: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1401,14 +1395,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.semibold,
     fontSize: 12,
     color: Colors.amber,
-  },
-  // Fixed-width sides: the right one holds the two icon escapes, the left is an
-  // empty twin that balances them so the primary button centres in the pill.
-  footerSide: {
-    width: 80,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
   },
   footerIconButton: {
     width: 40,
