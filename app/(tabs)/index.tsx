@@ -888,6 +888,7 @@ export default function CompassScreen() {
     router.push({
       pathname: '/contribute',
       params: {
+        focus: 'beers',
         id: pub.id,
         name: pub.name,
         lat: String(pub.lat),

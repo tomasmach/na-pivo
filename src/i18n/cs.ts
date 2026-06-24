@@ -317,6 +317,8 @@ export const cs = {
     title: 'Doplnit info',
     intro:
       'Doplň otevírací dobu nebo piva na čepu. Údaje uvidí ostatní, kteří k téhle hospodě dorazí.',
+    introHours: 'Kdy mají otevřeno? Údaje uvidí ostatní, co k téhle hospodě dorazí.',
+    introBeers: 'Co tady točí? Údaje uvidí ostatní, co k téhle hospodě dorazí.',
     hoursHeader: 'Otevírací doba',
     closedToggle: 'Zavřeno',
     addInterval: 'Přidat čas',

@@ -11,7 +11,7 @@
  * the same params, or the local override store.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -127,18 +127,12 @@ export default function ContributeScreen() {
     [params.id, params.name, params.lat, params.lng, params.city],
   );
 
-  // When the hub deep-links straight to a section ("piva"), scroll there once the
-  // beers header has measured its position in the scroll content.
+  // The hub deep-links to ONE section ("hours" / "beers"); render only that one
+  // so the editor matches what the user tapped. No focus param (e.g. the compass
+  // beers line, or a legacy entry) → the full both-sections editor.
   const focus = parseStringParam(params.focus);
-  const scrollRef = useRef<ScrollView>(null);
-  const beersHeaderY = useRef(0);
-  const didFocusScroll = useRef(false);
-  const maybeFocusBeers = useCallback(() => {
-    if (focus !== 'beers' || didFocusScroll.current) return;
-    if (beersHeaderY.current <= 0) return;
-    didFocusScroll.current = true;
-    scrollRef.current?.scrollTo({ y: Math.max(beersHeaderY.current - 12, 0), animated: true });
-  }, [focus]);
+  const showHours = focus !== 'beers';
+  const showBeers = focus !== 'hours';
 
   const cell = useMemo(() => geohash8(pub.lat, pub.lng), [pub.lat, pub.lng]);
   const setOverride = useCommunityStore((s) => s.setOverride);
@@ -313,7 +307,9 @@ export default function ContributeScreen() {
       .slice(0, MAX_BEERS);
   }, [beers, priceCurrency]);
 
-  const canSubmit = (hoursTouched || beersTouched) && hoursValid;
+  // Hours validity only blocks the submit when the hours section is actually
+  // shown — a beers-only editor must never be gated by (hidden) prefill hours.
+  const canSubmit = (hoursTouched || beersTouched) && (!showHours || hoursValid);
 
   const handleSubmit = useCallback(() => {
     const sendHours = hoursTouched;
@@ -413,7 +409,6 @@ export default function ContributeScreen() {
       </View>
 
       <ScrollView
-          ref={scrollRef}
           style={styles.flex}
           contentContainerStyle={[
             styles.scrollContent,
@@ -430,100 +425,108 @@ export default function ContributeScreen() {
             </Text>
           ) : null}
           <Text style={styles.intro} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.contribute.intro}
+            {showHours && showBeers
+              ? cs.contribute.intro
+              : showHours
+                ? cs.contribute.introHours
+                : cs.contribute.introBeers}
           </Text>
 
           {/* ── Otevírací doba ── */}
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.contribute.hoursHeader}
-            </Text>
-            <Pressable
-              onPress={copyMondayToAll}
-              style={styles.copyButton}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={cs.a11y.contributeCopyToAll}
-            >
-              <CopyIcon size={14} color={Colors.amber} />
-              <Text style={styles.copyButtonText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.contribute.copyToAll}
-              </Text>
-            </Pressable>
-          </View>
+          {showHours && (
+            <>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.heading}>
+                  {cs.contribute.hoursHeader}
+                </Text>
+                <Pressable
+                  onPress={copyMondayToAll}
+                  style={styles.copyButton}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={cs.a11y.contributeCopyToAll}
+                >
+                  <CopyIcon size={14} color={Colors.amber} />
+                  <Text style={styles.copyButtonText} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {cs.contribute.copyToAll}
+                  </Text>
+                </Pressable>
+              </View>
 
-          {DAY_KEYS.map((day) => (
-            <DayRow
-              key={day}
-              day={day}
-              intervals={hours[day]}
-              onToggleClosed={() => toggleClosed(day)}
-              onAddInterval={() => addInterval(day)}
-              onRemoveInterval={(i) => removeInterval(day, i)}
-              onChangeTime={(i, which, value) => setIntervalValue(day, i, which, value)}
-            />
-          ))}
-
-          {/* ── Piva na čepu ── */}
-          <Text
-            style={[styles.sectionHeader, styles.sectionHeaderSpaced]}
-            maxFontSizeMultiplier={FontScaleCap.heading}
-            onLayout={(e) => {
-              beersHeaderY.current = e.nativeEvent.layout.y;
-              maybeFocusBeers();
-            }}
-          >
-            {cs.contribute.beersHeader}
-          </Text>
-
-          {beers.map((beer, index) => (
-            <BeerRowView
-              key={beer.id}
-              beer={beer}
-              onFocusName={() => setActiveBeerId(beer.id)}
-              onChangeName={(name) => {
-                setActiveBeerId(beer.id);
-                setBeerSuggestions([]);
-                setBeerSuggestionsLoading(name.trim().length >= 2);
-                updateBeer(index, { name });
-              }}
-              suggestions={activeBeerId === beer.id ? beerSuggestions : []}
-              suggesting={activeBeerId === beer.id && beerSuggestionsLoading}
-              onSelectSuggestion={(suggestion) => {
-                setBeerSuggestions([]);
-                setBeerSuggestionsLoading(false);
-                setActiveBeerId(null);
-                updateBeer(index, { name: suggestion.name });
-              }}
-              onChangePrice={(priceText) =>
-                updateBeer(index, { priceText: sanitizePriceInput(priceText, priceCurrency) })
-              }
-              onChangeVolume={(volumeMl) => updateBeer(index, { volumeMl })}
-              onRemove={() => removeBeer(index)}
-              priceCurrency={priceCurrency}
-            />
-          ))}
-
-          {beers.length < MAX_BEERS ? (
-            <Pressable
-              onPress={addBeer}
-              style={styles.addRow}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={cs.a11y.contributeAddBeer}
-            >
-              <PlusIcon size={16} color={Colors.amber} />
-              <Text style={styles.addRowText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.contribute.addBeer}
-              </Text>
-            </Pressable>
-          ) : (
-            <Text style={styles.maxHint} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.contribute.maxBeersReached}
-            </Text>
+              {DAY_KEYS.map((day) => (
+                <DayRow
+                  key={day}
+                  day={day}
+                  intervals={hours[day]}
+                  onToggleClosed={() => toggleClosed(day)}
+                  onAddInterval={() => addInterval(day)}
+                  onRemoveInterval={(i) => removeInterval(day, i)}
+                  onChangeTime={(i, which, value) => setIntervalValue(day, i, which, value)}
+                />
+              ))}
+            </>
           )}
 
-          {!hoursValid && (
+          {/* ── Piva na čepu ── */}
+          {showBeers && (
+            <>
+              <Text
+                style={[styles.sectionHeader, showHours && styles.sectionHeaderSpaced]}
+                maxFontSizeMultiplier={FontScaleCap.heading}
+              >
+                {cs.contribute.beersHeader}
+              </Text>
+
+              {beers.map((beer, index) => (
+                <BeerRowView
+                  key={beer.id}
+                  beer={beer}
+                  onFocusName={() => setActiveBeerId(beer.id)}
+                  onChangeName={(name) => {
+                    setActiveBeerId(beer.id);
+                    setBeerSuggestions([]);
+                    setBeerSuggestionsLoading(name.trim().length >= 2);
+                    updateBeer(index, { name });
+                  }}
+                  suggestions={activeBeerId === beer.id ? beerSuggestions : []}
+                  suggesting={activeBeerId === beer.id && beerSuggestionsLoading}
+                  onSelectSuggestion={(suggestion) => {
+                    setBeerSuggestions([]);
+                    setBeerSuggestionsLoading(false);
+                    setActiveBeerId(null);
+                    updateBeer(index, { name: suggestion.name });
+                  }}
+                  onChangePrice={(priceText) =>
+                    updateBeer(index, { priceText: sanitizePriceInput(priceText, priceCurrency) })
+                  }
+                  onChangeVolume={(volumeMl) => updateBeer(index, { volumeMl })}
+                  onRemove={() => removeBeer(index)}
+                  priceCurrency={priceCurrency}
+                />
+              ))}
+
+              {beers.length < MAX_BEERS ? (
+                <Pressable
+                  onPress={addBeer}
+                  style={styles.addRow}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={cs.a11y.contributeAddBeer}
+                >
+                  <PlusIcon size={16} color={Colors.amber} />
+                  <Text style={styles.addRowText} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {cs.contribute.addBeer}
+                  </Text>
+                </Pressable>
+              ) : (
+                <Text style={styles.maxHint} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {cs.contribute.maxBeersReached}
+                </Text>
+              )}
+            </>
+          )}
+
+          {showHours && !hoursValid && (
             <Text style={styles.invalidHint} maxFontSizeMultiplier={FontScaleCap.body}>
               {cs.contribute.invalidHint}
             </Text>
