@@ -214,6 +214,43 @@ export function selectCompleteness(
   return { mappedCount, totalKinds, pct };
 }
 
+/** The two non-amenity info facts the unified "Zmapuj hospodu" surface tracks
+ *  alongside the amenities: a pub's opening hours and its beers on tap. */
+export interface PubInfoFacts {
+  hasHours: boolean;
+  hasBeers: boolean;
+}
+
+/**
+ * Unified pub-info completeness — the single meter the "Zmapuj hospodu" entry and
+ * header ring show across ALL THREE info groups (otevíračka + piva + vybavení).
+ *
+ * It is the amenities community meter PLUS two extra fact slots. Hours/beers
+ * presence is known locally and immediately (the override store / the enriched
+ * pub), so those two slots count the moment the data exists — no aggregate
+ * round-trip. The amenities part keeps its existing rule: the community-known
+ * count, falling back to the user's own answered count before any aggregate
+ * resolves (mirrors the trigger's pre-resolution fallback so the % never flashes
+ * empty).
+ */
+export function selectPubInfoCompleteness(
+  rows: AmenityRow[],
+  facts: PubInfoFacts,
+  serverCompleteness?: { mappedCount: number; totalKinds: number; pct: number } | null,
+): AmenityCompletenessView {
+  const community = selectCompleteness(rows, serverCompleteness);
+  const personal = selectPersonalProgress(rows);
+  const amenityMapped = Math.min(
+    community.mappedCount > 0 ? community.mappedCount : personal.answered,
+    rows.length,
+  );
+  const factsMapped = (facts.hasHours ? 1 : 0) + (facts.hasBeers ? 1 : 0);
+  const totalKinds = rows.length + 2;
+  const mappedCount = amenityMapped + factsMapped;
+  const pct = totalKinds > 0 ? mappedCount / totalKinds : 0;
+  return { mappedCount, totalKinds, pct };
+}
+
 /**
  * The user's PERSONAL progress (the "ty jsi zmapoval/a {n} z {total}" sub-line).
  * Counts how many active amenities the user themselves has answered.

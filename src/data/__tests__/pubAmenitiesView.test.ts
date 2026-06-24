@@ -2,6 +2,7 @@ import {
   buildAmenityRows,
   selectCompleteness,
   selectPersonalProgress,
+  selectPubInfoCompleteness,
   type AmenityRow,
 } from '../pubAmenitiesView';
 import { AMENITIES } from '../amenities';
@@ -203,5 +204,51 @@ describe('selectPersonalProgress', () => {
     const aggregates = [agg({ amenity_key: 'practical_wifi', my_value: 'yes', yes_count: 3, status: 'yes' })];
     const rows = buildAmenityRows({ aggregates, myVotes: undefined });
     expect(selectPersonalProgress(rows).answered).toBe(1);
+  });
+});
+
+describe('selectPubInfoCompleteness', () => {
+  const TOTAL = AMENITIES.length + 2; // amenities + otevíračka + piva
+
+  it('adds two fact slots to the denominator', () => {
+    const rows = buildAmenityRows({ aggregates: [], myVotes: undefined });
+    const c = selectPubInfoCompleteness(rows, { hasHours: false, hasBeers: false });
+    expect(c.totalKinds).toBe(TOTAL);
+    expect(c.mappedCount).toBe(0);
+    expect(c.pct).toBe(0);
+  });
+
+  it('counts hours + beers presence immediately, with no amenities', () => {
+    const rows = buildAmenityRows({ aggregates: [], myVotes: undefined });
+    const c = selectPubInfoCompleteness(rows, { hasHours: true, hasBeers: true });
+    expect(c.mappedCount).toBe(2);
+    expect(c.pct).toBeCloseTo(2 / TOTAL);
+  });
+
+  it('combines resolved amenities with the fact slots', () => {
+    const aggregates = [
+      agg({ amenity_key: 'payment_card', yes_count: 3, status: 'yes' }),
+      agg({ amenity_key: 'game_darts', no_count: 2, status: 'no' }),
+    ];
+    const rows = buildAmenityRows({ aggregates, myVotes: undefined });
+    const c = selectPubInfoCompleteness(rows, { hasHours: true, hasBeers: false });
+    expect(c.mappedCount).toBe(3); // 2 amenities + hours
+  });
+
+  it('uses the personal-answered fallback before aggregates resolve', () => {
+    const myVotes: PubAmenityVotes = {
+      payment_card: { vote: 'yes', updatedAt: '2026-01-01T00:00:00.000Z' },
+    };
+    const rows = buildAmenityRows({ aggregates: undefined, myVotes });
+    const c = selectPubInfoCompleteness(rows, { hasHours: false, hasBeers: true });
+    expect(c.mappedCount).toBe(2); // 1 own vote + beers
+  });
+
+  it('never exceeds the denominator when fully mapped', () => {
+    const aggregates = AMENITIES.map((a) => agg({ amenity_key: a.key, yes_count: 1, status: 'yes' }));
+    const rows = buildAmenityRows({ aggregates, myVotes: undefined });
+    const c = selectPubInfoCompleteness(rows, { hasHours: true, hasBeers: true });
+    expect(c.mappedCount).toBe(TOTAL);
+    expect(c.pct).toBe(1);
   });
 });

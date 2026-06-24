@@ -42,6 +42,7 @@ import {
   ThumbsUp,
   ThumbsDown,
   History,
+  Clock,
   User,
   Mail,
   LogOut,
@@ -122,6 +123,7 @@ export const StarIcon = wrap(Star, 'StarIcon');
 export const ThumbsUpIcon = wrap(ThumbsUp, 'ThumbsUpIcon');
 export const ThumbsDownIcon = wrap(ThumbsDown, 'ThumbsDownIcon');
 export const HistoryIcon = wrap(History, 'HistoryIcon');
+export const ClockIcon = wrap(Clock, 'ClockIcon');
 export const UserIcon = wrap(User, 'UserIcon');
 export const MailIcon = wrap(Mail, 'MailIcon');
 export const LogOutIcon = wrap(LogOut, 'LogOutIcon');

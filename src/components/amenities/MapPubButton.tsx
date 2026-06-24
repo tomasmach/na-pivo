@@ -25,18 +25,26 @@ import { Radius, HitArea } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
 import { MapPinnedIcon, BadgeCheckIcon } from '@/components/shared/IconGlyph';
 import { usePubAmenitiesStore, selectPubVotes } from '@/stores/pubAmenitiesStore';
-import { buildAmenityRows, selectCompleteness, selectPersonalProgress } from '@/data/pubAmenitiesView';
+import {
+  buildAmenityRows,
+  selectCompleteness,
+  selectPersonalProgress,
+  selectPubInfoCompleteness,
+} from '@/data/pubAmenitiesView';
 import { readPubAmenitiesSnapshot } from '@/data/pubAmenitiesSnapshot';
 import type { WireAmenityAggregate } from '@/data/pubAmenitiesClient';
 import { pubIdentityKey } from '@/data/pubIdentity';
+import { usePubInfoFacts, type PubInfoContext } from '@/components/amenities/pubInfoContext';
 
 interface MapPubButtonProps {
   pubKey: string;
   pubName: string;
   onPress: () => void;
+  /** When set, the % spans all three groups (otevíračka + piva + vybavení). */
+  info?: PubInfoContext;
 }
 
-export function MapPubButton({ pubKey, pubName, onPress }: MapPubButtonProps) {
+export function MapPubButton({ pubKey, pubName, onPress, info }: MapPubButtonProps) {
   const identityKey = useMemo(() => pubIdentityKey(pubKey, pubName), [pubKey, pubName]);
   const myVotes = usePubAmenitiesStore(selectPubVotes(identityKey));
   const [aggregates, setAggregates] = useState<WireAmenityAggregate[] | undefined>(undefined);
@@ -58,13 +66,21 @@ export function MapPubButton({ pubKey, pubName, onPress }: MapPubButtonProps) {
     };
   }, [identityKey]);
 
+  const facts = usePubInfoFacts(info);
   const rows = useMemo(() => buildAmenityRows({ aggregates, myVotes }), [aggregates, myVotes]);
   const community = useMemo(() => selectCompleteness(rows), [rows]);
   const personal = useMemo(() => selectPersonalProgress(rows), [rows]);
 
-  // The headline % is the community meter; before any aggregate resolves it falls
-  // back to the user's own answered fraction so the trigger reflects their work.
-  const fraction = community.mappedCount > 0 ? community.pct : personal.answered / personal.total;
+  // With a pub-info context the headline % spans all three groups; hours/beers
+  // are known locally so they fold in immediately. Without it (legacy amenities-
+  // only mounts) keep the community meter with the personal-answered fallback.
+  const fraction = facts
+    ? selectPubInfoCompleteness(rows, facts).pct
+    : community.mappedCount > 0
+      ? community.pct
+      : personal.total > 0
+        ? personal.answered / personal.total
+        : 0;
   const pct = Math.round(fraction * 100);
 
   const isDone = pct >= 100;

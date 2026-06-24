@@ -13,21 +13,34 @@ import React, { useCallback, useState } from 'react';
 
 import { MapPubButton } from '@/components/amenities/MapPubButton';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
+import type { PubInfoContext } from '@/components/amenities/pubInfoContext';
 
 interface MapPubEntryProps {
   pubKey: string;
   pubName: string;
+  /** Pub-info context — when set, the entry covers all three info groups
+   *  (otevíračka + piva + vybavení) instead of amenities only. */
+  info?: PubInfoContext;
+  /** Optional "this isn't the right pub" escape, surfaced inside the sheet. */
+  onAddPub?: () => void;
 }
 
-export function MapPubEntry({ pubKey, pubName }: MapPubEntryProps) {
+export function MapPubEntry({ pubKey, pubName, info, onAddPub }: MapPubEntryProps) {
   const [open, setOpen] = useState(false);
   const handleOpen = useCallback(() => setOpen(true), []);
   const handleClose = useCallback(() => setOpen(false), []);
 
   return (
     <>
-      <MapPubButton pubKey={pubKey} pubName={pubName} onPress={handleOpen} />
-      <MapPubSheet visible={open} pubKey={pubKey} pubName={pubName} onClose={handleClose} />
+      <MapPubButton pubKey={pubKey} pubName={pubName} onPress={handleOpen} info={info} />
+      <MapPubSheet
+        visible={open}
+        pubKey={pubKey}
+        pubName={pubName}
+        info={info}
+        onAddPub={onAddPub}
+        onClose={handleClose}
+      />
     </>
   );
 }

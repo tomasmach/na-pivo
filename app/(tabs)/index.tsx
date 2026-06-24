@@ -56,12 +56,15 @@ import {
   RefreshCwIcon,
   SettingsIcon,
   FlagIcon,
-  PencilIcon,
+  MapPinnedIcon,
   StarIcon,
   MapPinIcon,
   TreePineIcon,
   XIcon,
 } from '@/components/shared/IconGlyph';
+import { MapPubSheet } from '@/components/amenities/MapPubSheet';
+import { pubInfoFromPub, type PubInfoContext } from '@/components/amenities/pubInfoContext';
+import { geohash8 } from '@/data/geohash';
 
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -347,6 +350,8 @@ function HiddenPubPill({ onReveal }: HiddenPubPillProps) {
 
 interface RevealedPubPillProps {
   pubName: string;
+  pubKey: string;
+  mapInfo: PubInfoContext;
   onOpenMaps: () => void;
   onReport: () => void;
   onContribute: () => void;
@@ -384,6 +389,8 @@ function formatRatingValue(rating: number): string {
 
 function RevealedPubPill({
   pubName,
+  pubKey,
+  mapInfo,
   onOpenMaps,
   onReport,
   onContribute,
@@ -396,6 +403,7 @@ function RevealedPubPill({
   ratingCount,
   hasGarden,
 }: RevealedPubPillProps) {
+  const [mapOpen, setMapOpen] = useState(false);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const hasRating = typeof rating === 'number' && Number.isFinite(rating);
   const ratingValue = hasRating ? formatRatingValue(rating) : null;
@@ -430,13 +438,6 @@ function RevealedPubPill({
   const accessibilityLabel = accessibilityParts.join('. ');
 
   const beerLine = beers && beers.length > 0 ? formatBeerLine(beers, priceCurrency) : null;
-  const handleContributeOrAdd = useCallback(() => {
-    Alert.alert(cs.compass.contributeMenuTitle, undefined, [
-      { text: cs.compass.contribute, onPress: onContribute },
-      { text: cs.compass.addMissingPub, onPress: onAddPub },
-      { text: cs.common.cancel, style: 'cancel' },
-    ]);
-  }, [onAddPub, onContribute]);
 
   return (
     <View style={[styles.pubPill, styles.pubPillRevealed]}>
@@ -513,16 +514,18 @@ function RevealedPubPill({
         )}
       </Pressable>
 
-      {/* Footer actions: compact contribution menu + report problem on one row. */}
+      {/* Footer actions: unified "Zmapuj hospodu" hub entry + report problem. The
+          hub covers all three info groups (otevíračka + piva + vybavení) and is
+          the same surface reachable from the counter. */}
       <View style={styles.pubPillFooter}>
         <Pressable
-          onPress={handleContributeOrAdd}
+          onPress={() => setMapOpen(true)}
           hitSlop={10}
           style={({ pressed }) => [styles.footerButton, pressed && { opacity: 0.75 }]}
-          accessibilityLabel={cs.a11y.contributeOrAddButton}
+          accessibilityLabel={cs.mapPub.triggerDefault}
           accessibilityRole="button"
         >
-          <PencilIcon size={14} color={Colors.amber} />
+          <MapPinnedIcon size={14} color={Colors.amber} />
           <Text
             style={styles.contributeButtonText}
             numberOfLines={1}
@@ -530,7 +533,7 @@ function RevealedPubPill({
             minimumFontScale={0.86}
             maxFontSizeMultiplier={FontScaleCap.body}
           >
-            {cs.compass.contributeOrAdd}
+            {cs.mapPub.triggerDefault}
           </Text>
         </Pressable>
 
@@ -553,6 +556,15 @@ function RevealedPubPill({
           </Text>
         </Pressable>
       </View>
+
+      <MapPubSheet
+        visible={mapOpen}
+        pubKey={pubKey}
+        pubName={pubName}
+        info={mapInfo}
+        onAddPub={onAddPub}
+        onClose={() => setMapOpen(false)}
+      />
     </View>
   );
 }
@@ -1020,6 +1032,8 @@ export default function CompassScreen() {
         {showPubDetails && pub !== null ? (
           <RevealedPubPill
             pubName={pub.name}
+            pubKey={geohash8(pub.lat, pub.lng)}
+            mapInfo={pubInfoFromPub(pub)}
             onOpenMaps={handleOpenMaps}
             onReport={handleReport}
             onContribute={handleContribute}

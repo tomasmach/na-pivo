@@ -48,6 +48,21 @@ export const cs = {
     entryQuestion: 'Co tady mají?',
     entryA11yPublic: 'Otevře veřejné mapování hospody, viditelné pro ostatní',
 
+    // Info fact rows (otevíračka + piva) — the two non-amenity groups the hub
+    // also covers. Each row taps through to the contribute editor.
+    infoSection: 'OTEVÍRAČKA A PIVA',
+    factHoursLabel: 'Otevírací doba',
+    factHoursFilled: 'Vyplněno · uprav',
+    factHoursMissing: 'Chybí — doplň',
+    factBeersLabel: 'Piva na čepu',
+    factBeersMissing: 'Chybí — doplň, co točí',
+    factBeersCount: (n: number) =>
+      n === 1 ? '1 pivo · uprav' : n >= 2 && n <= 4 ? `${n} piva · uprav` : `${n} piv · uprav`,
+    factEditA11y: (label: string, filled: boolean) =>
+      filled ? `Upravit: ${label}` : `Doplnit: ${label}`,
+    // Footer link inside the sheet: this isn't the right pub after all.
+    addMissingPubRow: 'Není to tahle hospoda? Přidej chybějící',
+
     // Sections (uppercase, matching the statsHeader convention). Merged to 3 so
     // no section is a single row: games+atmosphere → ZÁBAVA, payment+wifi/parking
     // → PRAKTICKÉ.

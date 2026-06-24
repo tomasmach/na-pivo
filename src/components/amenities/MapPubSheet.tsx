@@ -39,6 +39,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -49,6 +50,10 @@ import {
   XIcon,
   CompassIcon,
   SproutIcon,
+  ClockIcon,
+  BeerIcon,
+  ChevronRightIcon,
+  PlusIcon,
 } from '@/components/shared/IconGlyph';
 import { CompletenessRing } from '@/components/amenities/CompletenessRing';
 import { Toast } from '@/components/shared/Toast';
@@ -63,8 +68,11 @@ import {
   buildAmenityRows,
   selectCompleteness,
   selectPersonalProgress,
+  selectPubInfoCompleteness,
   type AmenityRow,
 } from '@/data/pubAmenitiesView';
+import { usePubInfoFacts, type PubInfoContext } from '@/components/amenities/pubInfoContext';
+import { parseOsmOpeningHoursToWeeklyHours } from '@/data/communityHours';
 import {
   usePubAmenitiesStore,
   selectPubVotes,
@@ -104,15 +112,29 @@ interface MapPubSheetProps {
   pubKey: string;
   pubName: string;
   onClose: () => void;
+  /** When set, the sheet also shows the otevíračka + piva fact rows and the ring
+   *  spans all three info groups. Without it the sheet is amenities-only. */
+  info?: PubInfoContext;
+  /** Optional "this isn't the right pub" escape (compass host). */
+  onAddPub?: () => void;
 }
 
 function haptic() {
   if (useSettingsStore.getState().hapticEnabled) fireLightImpactHaptic();
 }
 
-export function MapPubSheet({ visible, pubKey, pubName, onClose }: MapPubSheetProps) {
+export function MapPubSheet({
+  visible,
+  pubKey,
+  pubName,
+  onClose,
+  info,
+  onAddPub,
+}: MapPubSheetProps) {
   const insets = useSafeAreaInsets();
   const reduceMotion = useReduceMotion();
+  const router = useRouter();
+  const facts = usePubInfoFacts(info);
 
   // The user's own votes — reactive; buildAmenityRows merges these over the
   // cached aggregate so the pill state always reflects the freshest local tap.
@@ -179,20 +201,20 @@ export function MapPubSheet({ visible, pubKey, pubName, onClose }: MapPubSheetPr
   }, [visible, pubKey, pubName, identityKey]);
 
   const rows = useMemo(() => buildAmenityRows({ aggregates, myVotes }), [aggregates, myVotes]);
-  const completeness = useMemo(
-    () =>
-      selectCompleteness(
-        rows,
-        serverCompleteness
-          ? {
-              mappedCount: serverCompleteness.mapped_count,
-              totalKinds: serverCompleteness.total_kinds,
-              pct: serverCompleteness.pct,
-            }
-          : null,
-      ),
-    [rows, serverCompleteness],
-  );
+  const completeness = useMemo(() => {
+    const snap = serverCompleteness
+      ? {
+          mappedCount: serverCompleteness.mapped_count,
+          totalKinds: serverCompleteness.total_kinds,
+          pct: serverCompleteness.pct,
+        }
+      : null;
+    // With a pub-info context the ring spans all three groups (otevíračka + piva
+    // + vybavení); otherwise it is the amenities-only community meter.
+    return facts
+      ? selectPubInfoCompleteness(rows, facts, snap)
+      : selectCompleteness(rows, snap);
+  }, [rows, serverCompleteness, facts]);
   const personal = useMemo(() => selectPersonalProgress(rows), [rows]);
 
   const aggregatesResolved = aggregates !== undefined;
@@ -388,6 +410,40 @@ export function MapPubSheet({ visible, pubKey, pubName, onClose }: MapPubSheetPr
   // Group rows by section for rendering, preserving catalogue order.
   const grouped = useMemo(() => groupRows(rows), [rows]);
 
+  // ── Otevíračka / piva: deep-link into the contribute editor ──
+  // Close the sheet first (a push over an open Modal stacks awkwardly on iOS),
+  // then route with the current data pre-filled and a `focus` so the editor
+  // lands on the tapped section.
+  const openContribute = useCallback(
+    (focus: 'hours' | 'beers') => {
+      if (!info) return;
+      onClose();
+      const prefillHours = info.prefillHours ?? parseOsmOpeningHoursToWeeklyHours(info.openingHours);
+      router.push({
+        pathname: '/contribute',
+        params: {
+          focus,
+          ...(info.externalId ? { id: info.externalId } : {}),
+          name: info.name,
+          lat: String(info.lat),
+          lng: String(info.lng),
+          ...(info.city ? { city: info.city } : {}),
+          ...(prefillHours ? { hours: JSON.stringify(prefillHours) } : {}),
+          ...(info.prefillBeers && info.prefillBeers.length > 0
+            ? { beers: JSON.stringify(info.prefillBeers) }
+            : {}),
+        },
+      });
+    },
+    [info, onClose, router],
+  );
+
+  const handleAddPub = useCallback(() => {
+    if (!onAddPub) return;
+    onClose();
+    onAddPub();
+  }, [onAddPub, onClose]);
+
   return (
     <Modal
       visible={visible}
@@ -458,6 +514,32 @@ export function MapPubSheet({ visible, pubKey, pubName, onClose }: MapPubSheetPr
               showsVerticalScrollIndicator={false}
               bounces={false}
             >
+              {facts && (
+                <View>
+                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {cs.mapPub.infoSection}
+                  </Text>
+                  <InfoFactRow
+                    icon={<ClockIcon size={24} color={facts.hasHours ? Colors.amber : Colors.mutedText} />}
+                    label={cs.mapPub.factHoursLabel}
+                    value={facts.hasHours ? cs.mapPub.factHoursFilled : cs.mapPub.factHoursMissing}
+                    filled={facts.hasHours}
+                    onPress={() => openContribute('hours')}
+                  />
+                  <InfoFactRow
+                    icon={<BeerIcon size={24} color={facts.hasBeers ? Colors.amber : Colors.mutedText} />}
+                    label={cs.mapPub.factBeersLabel}
+                    value={
+                      facts.hasBeers
+                        ? cs.mapPub.factBeersCount(facts.beerCount)
+                        : cs.mapPub.factBeersMissing
+                    }
+                    filled={facts.hasBeers}
+                    onPress={() => openContribute('beers')}
+                  />
+                </View>
+              )}
+
               {grouped.map(({ section, items }) => (
                 <View key={section}>
                   <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -477,6 +559,20 @@ export function MapPubSheet({ visible, pubKey, pubName, onClose }: MapPubSheetPr
               <Text style={styles.footerHint} maxFontSizeMultiplier={FontScaleCap.body}>
                 {cs.mapPub.footerHint}
               </Text>
+
+              {onAddPub && (
+                <Pressable
+                  onPress={handleAddPub}
+                  style={({ pressed }) => [styles.addPubRow, pressed && { opacity: 0.7 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={cs.mapPub.addMissingPubRow}
+                >
+                  <PlusIcon size={15} color={Colors.mutedText} />
+                  <Text style={styles.addPubText} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {cs.mapPub.addMissingPubRow}
+                  </Text>
+                </Pressable>
+              )}
             </ScrollView>
           </Animated.View>
 
@@ -646,6 +742,48 @@ function VoteHalf({
   );
 }
 
+// ─── Info fact row (otevíračka / piva) ───────────────────────────────────────
+
+/** A navigation row for the two non-amenity info groups. Unlike an amenity row
+ *  it has no ANO|NE control — tapping it routes to the contribute editor. */
+function InfoFactRow({
+  icon,
+  label,
+  value,
+  filled,
+  onPress,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  filled: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.row, pressed && { opacity: 0.7 }]}
+      accessibilityRole="button"
+      accessibilityLabel={cs.mapPub.factEditA11y(label, filled)}
+    >
+      {icon}
+      <View style={styles.rowTextWrap}>
+        <Text style={styles.rowLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+          {label}
+        </Text>
+        <Text
+          style={[styles.signal, !filled && styles.signalMuted, filled && styles.signalFilled]}
+          numberOfLines={1}
+          maxFontSizeMultiplier={FontScaleCap.body}
+        >
+          {value}
+        </Text>
+      </View>
+      <ChevronRightIcon size={20} color={Colors.mutedText} />
+    </Pressable>
+  );
+}
+
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 function groupRows(rows: AmenityRow[]): { section: AmenitySection; items: AmenityRow[] }[] {
@@ -797,6 +935,9 @@ const styles = StyleSheet.create({
   signalFirst: {
     color: Colors.amberLight,
   },
+  signalFilled: {
+    color: Colors.foamMuted,
+  },
   // ── Segmented ANO|NE control ──
   // ONE bordered pill with a single inner divider. Two separately-bordered halves
   // butting together rendered a faint glowy seam at the centre (sub-pixel border
@@ -839,6 +980,19 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
     fontFamily: Fonts.ui.regular,
     fontSize: 12,
+    color: Colors.mutedText,
+  },
+  addPubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: HitArea.min,
+    marginBottom: Spacing.xs,
+  },
+  addPubText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 13,
     color: Colors.mutedText,
   },
 });

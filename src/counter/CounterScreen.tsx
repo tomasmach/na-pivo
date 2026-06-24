@@ -72,6 +72,7 @@ import { useNearbyPub } from '@/counter/useNearbyPub';
 import { PubPickerModal } from '@/counter/PubPickerModal';
 import { BeerFormModal, type BeerFormMode, type BeerFormResult } from '@/counter/BeerFormModal';
 import { MapPubEntry } from '@/components/amenities/MapPubEntry';
+import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
 
 // ─── Permission gate ──────────────────────────────────────────────────────────
 
@@ -678,7 +679,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
           Sits directly under the header so it's the first thing visible without
           scrolling; opens the same MapPubSheet keyed on this pub's geohash-8. */}
       <View style={styles.mapPubWrap}>
-        <MapPubEntry pubKey={cell} pubName={pub.name} />
+        <MapPubEntry pubKey={cell} pubName={pub.name} info={pubInfoFromPub(pub)} />
       </View>
 
       <ScrollView

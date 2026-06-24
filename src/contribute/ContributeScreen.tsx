@@ -11,7 +11,7 @@
  * the same params, or the local override store.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -124,6 +124,19 @@ export default function ContributeScreen() {
     }),
     [params.id, params.name, params.lat, params.lng, params.city],
   );
+
+  // When the hub deep-links straight to a section ("piva"), scroll there once the
+  // beers header has measured its position in the scroll content.
+  const focus = parseStringParam(params.focus);
+  const scrollRef = useRef<ScrollView>(null);
+  const beersHeaderY = useRef(0);
+  const didFocusScroll = useRef(false);
+  const maybeFocusBeers = useCallback(() => {
+    if (focus !== 'beers' || didFocusScroll.current) return;
+    if (beersHeaderY.current <= 0) return;
+    didFocusScroll.current = true;
+    scrollRef.current?.scrollTo({ y: Math.max(beersHeaderY.current - 12, 0), animated: true });
+  }, [focus]);
 
   const cell = useMemo(() => geohash8(pub.lat, pub.lng), [pub.lat, pub.lng]);
   const setOverride = useCommunityStore((s) => s.setOverride);
@@ -376,6 +389,7 @@ export default function ContributeScreen() {
       </View>
 
       <ScrollView
+          ref={scrollRef}
           style={styles.flex}
           contentContainerStyle={[
             styles.scrollContent,
@@ -430,6 +444,10 @@ export default function ContributeScreen() {
           <Text
             style={[styles.sectionHeader, styles.sectionHeaderSpaced]}
             maxFontSizeMultiplier={FontScaleCap.heading}
+            onLayout={(e) => {
+              beersHeaderY.current = e.nativeEvent.layout.y;
+              maybeFocusBeers();
+            }}
           >
             {cs.contribute.beersHeader}
           </Text>
