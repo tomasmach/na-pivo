@@ -1,6 +1,6 @@
 # Zásady ochrany osobních údajů – Na pivo
 
-*Poslední aktualizace: 13. června 2026*
+*Poslední aktualizace: 25. června 2026*
 
 ## Kdo jsme
 
@@ -25,6 +25,9 @@ Aplikace při prvním spuštění vytvoří anonymní náhodný identifikátor z
 
 ### Uživatelský účet (volitelné přihlášení)
 Přihlášení je **nepovinné** – aplikaci lze plně používat anonymně. Pokud si dobrovolně vytvoříte účet, abyste si svá data (např. Pivní deník) přenesli mezi zařízeními, zpracováváme podle zvoleného způsobu: u **e-mailu a hesla** ukládáme e-mailovou adresu a heslo pouze v nečitelné (zahashované) podobě; u přihlášení přes **Google / Apple** dostaneme od poskytovatele stabilní identifikátor účtu a e-mail (u Applu může jít o skrytý přeposílací e-mail), případně jméno – heslo poskytovatele nikdy nevidíme. Při přihlášení se k účtu připojí dosavadní anonymní data zařízení. Jeden účet lze propojit s více způsoby přihlášení a kdykoli je v nastavení odpojit. Účet i všechna data můžete kdykoli smazat (Nastavení → Účet → Smazat účet); po 14denní ochranné lhůtě se trvale odstraní.
+
+### Veřejný profil (přezdívka a profilová fotka)
+Když si vytvoříte účet, můžete si zvolit **přezdívku** a nahrát **profilovou fotku (avatar)**. Ukládáme je na našem serveru a tvoří váš profil v aplikaci. Profil s přezdívkou a fotkou je **viditelný pro ostatní uživatele** – je součástí komunitní a objevovací části aplikace. Vaše konkrétní záznamy v Pivním deníku přitom zůstávají soukromé; veřejné je jen to, co sami zveřejníte. Přezdívku i profilovou fotku můžete kdykoli změnit nebo úplně odstranit.
 
 ### Provozní statistiky a technické chyby
 Aplikace posílá na náš vlastní server omezené provozní údaje, abychom poznali, jestli aplikace funguje: otevření aplikace, návrat do popředí, typ technické chyby, verzi aplikace, platformu a stavové kódy vybraných požadavků. K anonymnímu účtu ukládáme také součet nachozených metrů v aplikaci. **Součet metrů se počítá přímo v telefonu a na server se odesílají pouze přírůstky v metrech – neposíláme GPS body, trasu ani historii polohy.** Tyto údaje nepoužíváme k reklamě ani profilování.
@@ -51,6 +54,7 @@ Zpracovávaná data slouží výhradně k fungování aplikace:
 - **Provozní statistiky a technické chyby** – zjištění, kolik zařízení aplikaci používá, kolikrát byla otevřena, kde padá nebo kde selhávají backendové funkce.
 - **Součet nachozených metrů** – anonymní souhrnné statistiky a žebříčky bez ukládání polohové historie.
 - **Údaje doplněné uživatelem (otevírací doba, piva na čepu)** – uložení a veřejné zobrazení ostatním uživatelům, aby aplikace ukazovala aktuální informace o hospodách.
+- **Veřejný profil (přezdívka a profilová fotka)** – zobrazení vašeho profilu ostatním uživatelům v komunitní a objevovací části aplikace.
 
 Data nepoužíváme k profilování, cílení reklamy ani k žádnému dalšímu účelu.
 
@@ -76,7 +80,7 @@ Když dobrovolně doplníte otevírací dobu nebo piva na čepu, aplikace tyto �
 
 ## Doba uchování dat
 
-Na našich serverech uchováváme anonymní identifikátor zařízení a k němu vázaný dočasný účet, provozní statistiky, technické chyby a dobrovolně odeslané údaje o hospodách. Aktuální nebo přibližná poloha se může použít pro jednorázové vyhledání hospod v okolí; neukládáme průběžnou GPS historii, jednotlivé GPS body ani trasu. Služby třetích stran (Mapy.cz, Resend) uchovávají případná data podle vlastních zásad.
+Na našich serverech uchováváme anonymní identifikátor zařízení a k němu vázaný dočasný účet, případný uživatelský účet včetně profilu (přezdívka a profilová fotka), provozní statistiky, technické chyby a dobrovolně odeslané údaje o hospodách. Aktuální nebo přibližná poloha se může použít pro jednorázové vyhledání hospod v okolí; neukládáme průběžnou GPS historii, jednotlivé GPS body ani trasu. Služby třetích stran (Mapy.cz, Resend) uchovávají případná data podle vlastních zásad.
 
 ## Vaše práva
 
