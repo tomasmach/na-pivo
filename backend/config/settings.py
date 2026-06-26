@@ -291,7 +291,7 @@ MAPER_XP_PUB_COMPLETE_BONUS: int = int(os.environ.get("MAPER_XP_PUB_COMPLETE_BON
 # 1-indexed; titles are fixed (the client maps level→title for the level-up toast).
 MAPER_LEVEL_THRESHOLDS: list[int] = [
     int(x.strip())
-    for x in os.environ.get("MAPER_LEVEL_THRESHOLDS", "0,50,150,400,900").split(",")
+    for x in os.environ.get("MAPER_LEVEL_THRESHOLDS", "0,300,900,2500,6000").split(",")
     if x.strip() != ""
 ]
 

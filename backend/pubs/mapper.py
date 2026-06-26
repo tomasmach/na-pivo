@@ -36,7 +36,7 @@ def _level_thresholds() -> list[int]:
     or out-of-order list so a bad env value can never crash the read path: the
     ladder is clamped to the number of fixed titles and forced non-decreasing.
     """
-    raw = list(getattr(settings, "MAPER_LEVEL_THRESHOLDS", [0, 50, 150, 400, 900]))
+    raw = list(getattr(settings, "MAPER_LEVEL_THRESHOLDS", [0, 300, 900, 2500, 6000]))
     if not raw:
         raw = [0]
     # Clamp to the fixed title count (extra thresholds have no title to show).
