@@ -8,6 +8,8 @@ import {
 import * as auth from '@/data/auth';
 import { setTelemetrySession } from '@/data/telemetryClient';
 import type {
+  AccountAchievements,
+  AccountMapper,
   AccountProfile,
   AccountSettings,
   AuthActionResult,
@@ -17,6 +19,7 @@ import type {
   ContentReportReason,
   NicknameAvailability,
 } from '@/data/auth';
+import { FALLBACK_LEVELS, FALLBACK_XP_RULES } from '@/data/mapperXp';
 import { useSettingsStore } from '@/stores/settingsStore';
 
 export type AccountStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -39,6 +42,42 @@ export interface MapperSnapshotPatch {
   completedPubsCount?: number;
 }
 
+function mapperFromSnapshot(
+  current: AccountMapper | undefined,
+  snapshot: MapperSnapshotPatch,
+): AccountMapper {
+  const xpForNextLevel = snapshot.xpForNextLevel ?? current?.xpForNextLevel ?? null;
+  return {
+    xp: snapshot.xp,
+    level: snapshot.level,
+    title: snapshot.title,
+    xpIntoLevel: snapshot.xpIntoLevel,
+    xpForNextLevel,
+    distinctMappedPubs: snapshot.distinctMappedPubs ?? current?.distinctMappedPubs ?? 0,
+    amenityVotesCount: snapshot.amenityVotesCount ?? current?.amenityVotesCount ?? 0,
+    firstMapperCount: snapshot.firstMapperCount ?? current?.firstMapperCount ?? 0,
+    completedPubsCount: snapshot.completedPubsCount ?? current?.completedPubsCount ?? 0,
+    levels: current?.levels ?? [...FALLBACK_LEVELS],
+    xpRules: current?.xpRules ?? FALLBACK_XP_RULES,
+  };
+}
+
+function achievementsFromMapper(
+  current: AccountAchievements | undefined,
+  mapper: AccountMapper,
+): AccountAchievements {
+  return {
+    firstTen: current?.firstTen ?? false,
+    regular: current?.regular ?? false,
+    reviewer: current?.reviewer ?? false,
+    firstMap: (current?.firstMap ?? false) || mapper.firstMapperCount >= 1,
+    explorer: (current?.explorer ?? false) || mapper.distinctMappedPubs >= 10,
+    cartographer: (current?.cartographer ?? false) || mapper.distinctMappedPubs >= 25,
+    completionist: (current?.completionist ?? false) || mapper.completedPubsCount >= 1,
+    factMachine: (current?.factMachine ?? false) || mapper.amenityVotesCount >= 100,
+  };
+}
+
 interface AccountState {
   session: AccountSession | null;
   status: AccountStatus;
@@ -55,8 +94,8 @@ interface AccountState {
   /**
    * Patch the live Mapér XP/level/title from a PUT /pub-amenities/votes envelope
    * snapshot so Profile climbs immediately after a vote, without a second GET.
-   * Only patches when a full `mapper` block already exists; levels + xpRules ride
-   * only on GET /account/me, while newer PUT snapshots may include counters.
+   * Creates a fallback mapper block when a live profile has not fetched one yet;
+   * the next GET /account/me reconciles server levels + xpRules.
    */
   applyMapperSnapshot: (snapshot: MapperSnapshotPatch) => void;
 
@@ -177,25 +216,13 @@ export const useAccountStore = create<AccountState>((set, get) => {
 
     applyMapperSnapshot: (snapshot) => {
       const current = get().profile;
-      // Only patch a live full mapper block — levels/xpRules reconcile on the
-      // next GET /account/me, and optional counters patch when present.
-      if (!current?.mapper) return;
-      const xpForNextLevel = snapshot.xpForNextLevel ?? current.mapper.xpForNextLevel;
+      if (!current) return;
+      const mapper = mapperFromSnapshot(current.mapper, snapshot);
       set({
         profile: {
           ...current,
-          mapper: {
-            ...current.mapper,
-            xp: snapshot.xp,
-            level: snapshot.level,
-            title: snapshot.title,
-            xpIntoLevel: snapshot.xpIntoLevel,
-            xpForNextLevel,
-            distinctMappedPubs: snapshot.distinctMappedPubs ?? current.mapper.distinctMappedPubs,
-            amenityVotesCount: snapshot.amenityVotesCount ?? current.mapper.amenityVotesCount,
-            firstMapperCount: snapshot.firstMapperCount ?? current.mapper.firstMapperCount,
-            completedPubsCount: snapshot.completedPubsCount ?? current.mapper.completedPubsCount,
-          },
+          mapper,
+          achievements: achievementsFromMapper(current.achievements, mapper),
         },
       });
     },

@@ -94,7 +94,7 @@ export interface AccountMapper {
   level: number;
   title: string;
   xpIntoLevel: number;
-  xpForNextLevel: number;
+  xpForNextLevel: number | null;
   amenityVotesCount: number;
   distinctMappedPubs: number;
   firstMapperCount: number;
@@ -320,7 +320,7 @@ function parseMapper(data: RawAccount): AccountMapper | undefined {
     level: numberOr(raw.level, 1),
     title: typeof raw.title === 'string' ? raw.title : '',
     xpIntoLevel: numberOr(raw.xp_into_level, 0),
-    xpForNextLevel: numberOr(raw.xp_for_next_level, 0),
+    xpForNextLevel: raw.xp_for_next_level === null ? null : numberOr(raw.xp_for_next_level, 0),
     amenityVotesCount: numberOr(raw.amenity_votes_count, 0),
     distinctMappedPubs: numberOr(raw.distinct_mapped_pubs, 0),
     firstMapperCount: numberOr(raw.first_mapper_count, 0),
