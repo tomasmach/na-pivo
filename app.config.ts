@@ -80,12 +80,12 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       package: 'com.tomasmach.na_pivo',
       versionCode: 1,
       permissions: [
+        // Geofencing (Android Geofencing API) wakes the app via a broadcast
+        // receiver — no foreground service, so no permanent "tracking" notice.
         'android.permission.ACCESS_COARSE_LOCATION',
         'android.permission.ACCESS_FINE_LOCATION',
         'android.permission.ACCESS_BACKGROUND_LOCATION',
         'android.permission.POST_NOTIFICATIONS',
-        'android.permission.FOREGROUND_SERVICE',
-        'android.permission.FOREGROUND_SERVICE_LOCATION',
       ],
       adaptiveIcon: {
         foregroundImage: './assets/images/icon.png',

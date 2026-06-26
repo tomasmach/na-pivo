@@ -1,101 +1,109 @@
 import {
   PUB_REMINDER_COOLDOWN_MS,
-  PUB_REMINDER_RECHECK_AFTER_MS,
-  decidePubReminder,
+  decidePubReminderOnEnter,
   isPubReminderEveningWindow,
   type PubReminderState,
 } from '../pubReminderDecision';
 
-const PUB = {
-  id: 'pub-1',
-  name: 'U Tygra',
-  distanceMeters: 42,
-};
+const PUB = { id: 'pub-1', name: 'U Tygra' };
+const OTHER_PUB = { id: 'pub-2', name: 'U Vejvodů' };
 
-describe('decidePubReminder', () => {
-  it('stores a first nearby pub candidate and switches to recheck mode', () => {
-    const decision = decidePubReminder({
+describe('decidePubReminderOnEnter', () => {
+  it('notifies when entering a pub in the evening with no cooldown', () => {
+    const decision = decidePubReminderOnEnter({
       nowMs: 1_000,
       isEveningWindow: true,
       hasActiveCounterSession: false,
-      nearestPub: PUB,
+      pub: PUB,
+      previousState: {},
+    });
+
+    expect(decision.shouldNotify).toBe(true);
+    expect(decision.notificationPub).toEqual(PUB);
+    expect(decision.nextState).toEqual({
+      lastNotificationAtMs: 1_000,
+      lastNotificationPubId: PUB.id,
+    });
+  });
+
+  it('does not notify outside the evening window', () => {
+    const decision = decidePubReminderOnEnter({
+      nowMs: 1_000,
+      isEveningWindow: false,
+      hasActiveCounterSession: false,
+      pub: PUB,
       previousState: {},
     });
 
     expect(decision.shouldNotify).toBe(false);
-    expect(decision.mode).toBe('recheck');
-    expect(decision.nextState.candidate).toEqual({
-      pubId: PUB.id,
-      pubName: PUB.name,
-      seenAtMs: 1_000,
-    });
-  });
-
-  it('notifies after the same nearby pub is confirmed on a later sample', () => {
-    const previousState: PubReminderState = {
-      candidate: {
-        pubId: PUB.id,
-        pubName: PUB.name,
-        seenAtMs: 1_000,
-      },
-    };
-
-    const decision = decidePubReminder({
-      nowMs: 1_000 + PUB_REMINDER_RECHECK_AFTER_MS,
-      isEveningWindow: true,
-      hasActiveCounterSession: false,
-      nearestPub: PUB,
-      previousState,
-    });
-
-    expect(decision.shouldNotify).toBe(true);
-    expect(decision.mode).toBe('hourly');
-    expect(decision.notificationPub).toEqual({ id: PUB.id, name: PUB.name });
-    expect(decision.nextState.candidate).toBeUndefined();
-    expect(decision.nextState.lastNotificationPubId).toBe(PUB.id);
   });
 
   it('does not notify when the counter already has an active session', () => {
-    const decision = decidePubReminder({
-      nowMs: 1_000 + PUB_REMINDER_RECHECK_AFTER_MS,
+    const decision = decidePubReminderOnEnter({
+      nowMs: 1_000,
       isEveningWindow: true,
       hasActiveCounterSession: true,
-      nearestPub: PUB,
-      previousState: {
-        candidate: {
-          pubId: PUB.id,
-          pubName: PUB.name,
-          seenAtMs: 1_000,
-        },
-      },
+      pub: PUB,
+      previousState: {},
     });
 
     expect(decision.shouldNotify).toBe(false);
-    expect(decision.mode).toBe('hourly');
-    expect(decision.nextState.candidate).toBeUndefined();
+  });
+
+  it('does not notify when the entered pub is unknown', () => {
+    const decision = decidePubReminderOnEnter({
+      nowMs: 1_000,
+      isEveningWindow: true,
+      hasActiveCounterSession: false,
+      pub: null,
+      previousState: {},
+    });
+
+    expect(decision.shouldNotify).toBe(false);
   });
 
   it('respects a per-pub cooldown after a notification', () => {
     const previousState: PubReminderState = {
-      candidate: {
-        pubId: PUB.id,
-        pubName: PUB.name,
-        seenAtMs: 1_000,
-      },
       lastNotificationAtMs: 1_500,
       lastNotificationPubId: PUB.id,
     };
 
-    const decision = decidePubReminder({
+    const decision = decidePubReminderOnEnter({
       nowMs: 1_500 + PUB_REMINDER_COOLDOWN_MS - 1,
       isEveningWindow: true,
       hasActiveCounterSession: false,
-      nearestPub: PUB,
+      pub: PUB,
       previousState,
     });
 
     expect(decision.shouldNotify).toBe(false);
-    expect(decision.mode).toBe('recheck');
+    expect(decision.nextState).toEqual(previousState);
+  });
+
+  it('notifies a different pub even while the first pub is still cooling down', () => {
+    const decision = decidePubReminderOnEnter({
+      nowMs: 1_500 + 1_000,
+      isEveningWindow: true,
+      hasActiveCounterSession: false,
+      pub: OTHER_PUB,
+      previousState: { lastNotificationAtMs: 1_500, lastNotificationPubId: PUB.id },
+    });
+
+    expect(decision.shouldNotify).toBe(true);
+    expect(decision.notificationPub).toEqual(OTHER_PUB);
+  });
+
+  it('notifies the same pub again once the cooldown has elapsed', () => {
+    const decision = decidePubReminderOnEnter({
+      nowMs: 1_500 + PUB_REMINDER_COOLDOWN_MS,
+      isEveningWindow: true,
+      hasActiveCounterSession: false,
+      pub: PUB,
+      previousState: { lastNotificationAtMs: 1_500, lastNotificationPubId: PUB.id },
+    });
+
+    expect(decision.shouldNotify).toBe(true);
+    expect(decision.notificationPub).toEqual(PUB);
   });
 });
 

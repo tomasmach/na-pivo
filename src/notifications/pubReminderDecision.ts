@@ -1,39 +1,26 @@
-export const PUB_REMINDER_NEAR_RADIUS_M = 90;
-export const PUB_REMINDER_RECHECK_AFTER_MS = 10 * 60 * 1000;
-export const PUB_REMINDER_RECHECK_STALE_MS = 45 * 60 * 1000;
 export const PUB_REMINDER_COOLDOWN_MS = 12 * 60 * 60 * 1000;
 
-export type PubReminderMode = 'hourly' | 'recheck';
-
-export interface PubReminderCandidate {
-  pubId: string;
-  pubName: string;
-  seenAtMs: number;
-}
-
+/**
+ * Persisted, cross-launch reminder bookkeeping. With geofencing the OS already
+ * debounces arrivals, so the only state we keep is the per-pub cooldown so a
+ * place can't nudge the user twice in one evening.
+ */
 export interface PubReminderState {
-  candidate?: PubReminderCandidate;
   lastNotificationAtMs?: number;
   lastNotificationPubId?: string;
 }
 
-export interface PubReminderNearestPub {
-  id: string;
-  name: string;
-  distanceMeters: number;
-}
-
-export interface PubReminderDecisionInput {
+export interface PubReminderEnterInput {
   nowMs: number;
   isEveningWindow: boolean;
   hasActiveCounterSession: boolean;
-  nearestPub: PubReminderNearestPub | null;
+  /** The pub whose geofence the device just entered, or null when unknown. */
+  pub: { id: string; name: string } | null;
   previousState: PubReminderState;
 }
 
 export interface PubReminderDecision {
   nextState: PubReminderState;
-  mode: PubReminderMode;
   shouldNotify: boolean;
   notificationPub?: {
     id: string;
@@ -50,66 +37,38 @@ function recentlyNotified(
   return nowMs - state.lastNotificationAtMs < PUB_REMINDER_COOLDOWN_MS;
 }
 
-export function decidePubReminder(input: PubReminderDecisionInput): PubReminderDecision {
-  const { nowMs, isEveningWindow, hasActiveCounterSession, nearestPub, previousState } = input;
+/**
+ * Pure decision for a geofence "Enter" event: should we nudge the user that
+ * they're sitting in a pub? A reminder fires only in the evening window, when no
+ * counter session is already running, and when this exact pub hasn't already
+ * nudged within the cooldown. The arrival itself is trusted — the OS only
+ * delivers Enter after the device actually crosses into the region.
+ */
+export function decidePubReminderOnEnter(input: PubReminderEnterInput): PubReminderDecision {
+  const { nowMs, isEveningWindow, hasActiveCounterSession, pub, previousState } = input;
   const baseState: PubReminderState = {
     lastNotificationAtMs: previousState.lastNotificationAtMs,
     lastNotificationPubId: previousState.lastNotificationPubId,
   };
 
-  if (!isEveningWindow || hasActiveCounterSession || !nearestPub) {
-    return { nextState: baseState, mode: 'hourly', shouldNotify: false };
+  if (!isEveningWindow || hasActiveCounterSession || !pub) {
+    return { nextState: baseState, shouldNotify: false };
   }
 
-  if (nearestPub.distanceMeters > PUB_REMINDER_NEAR_RADIUS_M) {
-    return { nextState: baseState, mode: 'hourly', shouldNotify: false };
-  }
-
-  const candidate = previousState.candidate;
-  const isSameCandidate = candidate?.pubId === nearestPub.id;
-  const candidateAgeMs = isSameCandidate ? nowMs - candidate.seenAtMs : 0;
-  const candidateIsFresh =
-    isSameCandidate &&
-    candidateAgeMs >= PUB_REMINDER_RECHECK_AFTER_MS &&
-    candidateAgeMs <= PUB_REMINDER_RECHECK_STALE_MS;
-
-  if (candidateIsFresh && !recentlyNotified(previousState, nearestPub.id, nowMs)) {
-    return {
-      nextState: {
-        lastNotificationAtMs: nowMs,
-        lastNotificationPubId: nearestPub.id,
-      },
-      mode: 'hourly',
-      shouldNotify: true,
-      notificationPub: {
-        id: nearestPub.id,
-        name: nearestPub.name,
-      },
-    };
-  }
-
-  if (isSameCandidate && candidateAgeMs < PUB_REMINDER_RECHECK_STALE_MS) {
-    return {
-      nextState: {
-        ...baseState,
-        candidate,
-      },
-      mode: 'recheck',
-      shouldNotify: false,
-    };
+  if (recentlyNotified(previousState, pub.id, nowMs)) {
+    return { nextState: baseState, shouldNotify: false };
   }
 
   return {
     nextState: {
-      ...baseState,
-      candidate: {
-        pubId: nearestPub.id,
-        pubName: nearestPub.name,
-        seenAtMs: nowMs,
-      },
+      lastNotificationAtMs: nowMs,
+      lastNotificationPubId: pub.id,
     },
-    mode: 'recheck',
-    shouldNotify: false,
+    shouldNotify: true,
+    notificationPub: {
+      id: pub.id,
+      name: pub.name,
+    },
   };
 }
 

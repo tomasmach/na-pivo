@@ -6,34 +6,38 @@ import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
 
 import { disablePushDevice, registerPushDevice } from '@/data/pushDeviceClient';
-import { fetchPubsNear, findNearestPub } from '@/data/pubs';
-import { haversineMeters } from '@/compass/distance';
+import { fetchPubsNear, findNearbyPubs } from '@/data/pubs';
 import {
-  decidePubReminder,
+  decidePubReminderOnEnter,
   isPubReminderEveningWindow,
-  type PubReminderMode,
   type PubReminderState,
 } from '@/notifications/pubReminderDecision';
 import { useSettingsStore } from '@/stores/settingsStore';
 
-const PUB_REMINDER_TASK_NAME = 'na-pivo-pub-reminder-location';
+const PUB_REMINDER_GEOFENCE_TASK = 'na-pivo-pub-reminder-geofence';
 const PUB_REMINDER_CHANNEL_ID = 'pub-reminders';
 const PUB_REMINDER_ENABLED_KEY = 'na-pivo-pub-reminders-enabled';
 const PUB_REMINDER_STATE_KEY = 'na-pivo-pub-reminder-state';
+const PUB_REMINDER_GEOFENCES_KEY = 'na-pivo-pub-reminder-geofences';
 const PUSH_TOKEN_KEY = 'na-pivo-expo-push-token';
 const TALLY_STORE_KEY = 'na-pivo-tally';
 
-const HOURLY_INTERVAL_MS = 60 * 60 * 1000;
-const RECHECK_INTERVAL_MS = 15 * 60 * 1000;
-const SEARCH_RADIUS_KM = 0.5;
-const FIND_RADIUS_KM = 0.2;
+const PUB_REMINDER_NOTIFICATION_KIND = 'pub_reminder';
+
+/** iOS monitors at most 20 regions per app — cap the fleet to the nearest pubs. */
+const MAX_GEOFENCES = 20;
+/** Radius of each pub geofence (m). Tight enough that you're at the bar, not the street. */
+const GEOFENCE_RADIUS_M = 75;
+/** How far around the user we look for pubs to geofence (km). */
+const GEOFENCE_FETCH_RADIUS_KM = 5;
 
 export type PubReminderEnableResult =
   | { ok: true }
   | { ok: false; reason: 'notifications-denied' | 'foreground-location-denied' | 'background-location-denied' };
 
-type LocationTaskData = {
-  locations?: Location.LocationObject[];
+type GeofenceTaskData = {
+  eventType?: Location.GeofencingEventType;
+  region?: Location.LocationRegion;
 };
 
 Notifications.setNotificationHandler({
@@ -59,32 +63,6 @@ function permissionStatus(status: string | null | undefined): 'granted' | 'denie
   if (status === 'granted') return 'granted';
   if (status === 'denied') return 'denied';
   return 'undetermined';
-}
-
-function locationOptions(mode: PubReminderMode) {
-  const recheck = mode === 'recheck';
-  return {
-    accuracy: Location.Accuracy.Balanced,
-    timeInterval: recheck ? RECHECK_INTERVAL_MS : HOURLY_INTERVAL_MS,
-    distanceInterval: recheck ? 60 : 500,
-    deferredUpdatesInterval: recheck ? RECHECK_INTERVAL_MS : HOURLY_INTERVAL_MS,
-    deferredUpdatesDistance: recheck ? 60 : 500,
-    pausesUpdatesAutomatically: true,
-    showsBackgroundLocationIndicator: false,
-    foregroundService: {
-      notificationTitle: 'Na pivo hlídá hospodu',
-      notificationBody: 'Jen večer a úsporně. Ať víš, kdy počítat piva.',
-      notificationColor: '#f6c45c',
-    },
-  };
-}
-
-async function configureLocationUpdates(mode: PubReminderMode): Promise<void> {
-  const started = await Location.hasStartedLocationUpdatesAsync(PUB_REMINDER_TASK_NAME);
-  if (started) {
-    await Location.stopLocationUpdatesAsync(PUB_REMINDER_TASK_NAME);
-  }
-  await Location.startLocationUpdatesAsync(PUB_REMINDER_TASK_NAME, locationOptions(mode));
 }
 
 async function readJson<T>(key: string, fallback: T): Promise<T> {
@@ -134,7 +112,7 @@ async function schedulePubReminder(pubName: string): Promise<void> {
     content: {
       title: 'Hele, nejsi náhodou v hospodě?',
       body: `${pubName}: vyber hospodu a počítej piva, ať večer neutíká bokem.`,
-      data: { kind: 'pub_reminder' },
+      data: { kind: PUB_REMINDER_NOTIFICATION_KIND },
     },
     trigger: null,
   });
@@ -157,52 +135,104 @@ async function getAndRegisterPushToken(status: 'granted' | 'denied' | 'undetermi
   }
 }
 
-async function handleLocationSample(location: Location.LocationObject): Promise<void> {
-  if (!(await isReminderEnabled())) return;
+/** Best-effort current position: prefer a cached fix, fall back to a fresh one. */
+async function resolveCoords(): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const last = await Location.getLastKnownPositionAsync();
+    if (last) return { lat: last.coords.latitude, lng: last.coords.longitude };
+  } catch {
+    // ignore — try a fresh fix below
+  }
+  try {
+    const current = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+    return { lat: current.coords.latitude, lng: current.coords.longitude };
+  } catch {
+    return null;
+  }
+}
 
-  const now = new Date();
-  const nowMs = now.getTime();
-  const isEveningWindow = isPubReminderEveningWindow(now);
-  const state = await readJson<PubReminderState>(PUB_REMINDER_STATE_KEY, {});
+async function stopGeofencing(): Promise<void> {
+  try {
+    if (await Location.hasStartedGeofencingAsync(PUB_REMINDER_GEOFENCE_TASK)) {
+      await Location.stopGeofencingAsync(PUB_REMINDER_GEOFENCE_TASK);
+    }
+  } catch {
+    // Nothing registered, or the task is unknown — treat as already stopped.
+  }
+}
 
-  if (!isEveningWindow) {
-    const decision = decidePubReminder({
-      nowMs,
-      isEveningWindow,
-      hasActiveCounterSession: false,
-      nearestPub: null,
-      previousState: state,
-    });
-    await writeJson(PUB_REMINDER_STATE_KEY, decision.nextState);
-    await configureLocationUpdates(decision.mode);
+/**
+ * (Re)register geofences around the user's current area. We fetch nearby pubs
+ * (cheap: fetchPubsNear short-circuits within ~2 km and serves a 24h snapshot),
+ * keep the nearest MAX_GEOFENCES, and hand them to the OS. The pubId→name map is
+ * persisted so the background task can title the notification without any
+ * in-memory pub index, which a cold background launch wouldn't have.
+ *
+ * Limitation: geofences track the area sampled here. If the user travels far
+ * with the app closed they won't be re-seeded until the app next runs — by
+ * design we never keep a live background location stream. Worst case is a missed
+ * nudge, never a wrong one.
+ */
+async function refreshGeofences(coords?: { lat: number; lng: number }): Promise<void> {
+  const center = coords ?? (await resolveCoords());
+  if (!center) return;
+
+  try {
+    await fetchPubsNear(center.lat, center.lng, undefined, { radiusKm: GEOFENCE_FETCH_RADIUS_KM });
+  } catch {
+    // Offline / fetch failure: fall through to whatever the in-memory index holds.
+  }
+
+  const nearby = findNearbyPubs({
+    lat: center.lat,
+    lng: center.lng,
+    limit: MAX_GEOFENCES,
+    maxKm: GEOFENCE_FETCH_RADIUS_KM,
+  });
+
+  if (nearby.length === 0) {
+    await stopGeofencing();
+    await writeJson(PUB_REMINDER_GEOFENCES_KEY, {});
     return;
   }
 
-  const coords = location.coords;
-  await fetchPubsNear(coords.latitude, coords.longitude, undefined, {
-    radiusKm: SEARCH_RADIUS_KM,
+  const nameById: Record<string, string> = {};
+  const regions = nearby.map(({ pub }) => {
+    nameById[pub.id] = pub.name;
+    return {
+      identifier: pub.id,
+      latitude: pub.lat,
+      longitude: pub.lng,
+      radius: GEOFENCE_RADIUS_M,
+      notifyOnEnter: true,
+      notifyOnExit: false,
+    };
   });
-  const pub = findNearestPub({
-    lat: coords.latitude,
-    lng: coords.longitude,
-    maxKm: FIND_RADIUS_KM,
-  });
-  const nearestPub = pub
-    ? {
-        id: pub.id,
-        name: pub.name,
-        distanceMeters: haversineMeters(
-          { lat: coords.latitude, lng: coords.longitude },
-          { lat: pub.lat, lng: pub.lng },
-        ),
-      }
-    : null;
 
-  const decision = decidePubReminder({
-    nowMs,
-    isEveningWindow,
+  await writeJson(PUB_REMINDER_GEOFENCES_KEY, nameById);
+  try {
+    await Location.startGeofencingAsync(PUB_REMINDER_GEOFENCE_TASK, regions);
+  } catch {
+    // Permissions revoked between the gate and here — leave geofencing stopped.
+  }
+}
+
+async function handleGeofenceEnter(pubId: string): Promise<void> {
+  if (!(await isReminderEnabled())) return;
+
+  const now = new Date();
+  if (!isPubReminderEveningWindow(now)) return;
+
+  const nameById = await readJson<Record<string, string>>(PUB_REMINDER_GEOFENCES_KEY, {});
+  const pubName = nameById[pubId];
+  if (!pubName) return;
+
+  const state = await readJson<PubReminderState>(PUB_REMINDER_STATE_KEY, {});
+  const decision = decidePubReminderOnEnter({
+    nowMs: now.getTime(),
+    isEveningWindow: true,
     hasActiveCounterSession: await hasActiveCounterSession(),
-    nearestPub,
+    pub: { id: pubId, name: pubName },
     previousState: state,
   });
 
@@ -210,15 +240,15 @@ async function handleLocationSample(location: Location.LocationObject): Promise<
   if (decision.shouldNotify && decision.notificationPub) {
     await schedulePubReminder(decision.notificationPub.name);
   }
-  await configureLocationUpdates(decision.mode);
 }
 
-TaskManager.defineTask(PUB_REMINDER_TASK_NAME, async ({ data, error }) => {
+TaskManager.defineTask(PUB_REMINDER_GEOFENCE_TASK, async ({ data, error }) => {
   if (error) return;
-  const locations = (data as LocationTaskData | undefined)?.locations ?? [];
-  const latest = locations[locations.length - 1];
-  if (!latest) return;
-  await handleLocationSample(latest);
+  const { eventType, region } = (data as GeofenceTaskData | undefined) ?? {};
+  if (eventType !== Location.GeofencingEventType.Enter) return;
+  const pubId = region?.identifier;
+  if (!pubId) return;
+  await handleGeofenceEnter(pubId);
 });
 
 export async function initializePubReminderNotifications(): Promise<void> {
@@ -226,7 +256,7 @@ export async function initializePubReminderNotifications(): Promise<void> {
   const enabled = useSettingsStore.getState().pubReminderEnabled;
   await setReminderEnabled(enabled);
   if (!enabled) {
-    await stopPubReminderNotifications();
+    await stopGeofencing();
     return;
   }
 
@@ -239,7 +269,7 @@ export async function initializePubReminderNotifications(): Promise<void> {
   }
 
   void getAndRegisterPushToken(permissionStatus(notificationPermission.status));
-  await configureLocationUpdates('hourly');
+  await refreshGeofences();
 }
 
 export async function enablePubReminderNotifications(): Promise<PubReminderEnableResult> {
@@ -271,24 +301,55 @@ export async function enablePubReminderNotifications(): Promise<PubReminderEnabl
 
   await setReminderEnabled(true);
   void getAndRegisterPushToken(permissionStatus(notificationPermission.status));
-  await configureLocationUpdates('hourly');
+  await refreshGeofences();
   return { ok: true };
 }
 
-export async function stopPubReminderNotifications(): Promise<void> {
-  const started = await Location.hasStartedLocationUpdatesAsync(PUB_REMINDER_TASK_NAME);
-  if (started) {
-    await Location.stopLocationUpdatesAsync(PUB_REMINDER_TASK_NAME);
+/**
+ * Re-seed geofences for the user's current area. Safe and cheap to call on every
+ * app foreground: it no-ops when the feature is off or background location isn't
+ * granted, and fetchPubsNear short-circuits unless the user moved a few km.
+ */
+export async function refreshPubReminderGeofences(): Promise<void> {
+  if (!useSettingsStore.getState().pubReminderEnabled) return;
+  try {
+    const background = await Location.getBackgroundPermissionsAsync();
+    if (background.status !== 'granted') return;
+  } catch {
+    return;
   }
+  await refreshGeofences();
 }
 
 export async function disablePubReminderNotifications(): Promise<void> {
   await setReminderEnabled(false);
-  await stopPubReminderNotifications();
+  await stopGeofencing();
   try {
     const token = await AsyncStorage.getItem(PUSH_TOKEN_KEY);
     void disablePushDevice(token);
   } catch {
     void disablePushDevice();
+  }
+}
+
+function isPubReminderResponse(response: Notifications.NotificationResponse | null): boolean {
+  const kind = response?.notification.request.content.data?.kind;
+  return kind === PUB_REMINDER_NOTIFICATION_KIND;
+}
+
+/** Subscribe to taps on a pub-reminder notification while the app is running. */
+export function subscribePubReminderTap(onTap: () => void): Notifications.Subscription {
+  return Notifications.addNotificationResponseReceivedListener((response) => {
+    if (isPubReminderResponse(response)) onTap();
+  });
+}
+
+/** Handle a cold-start launch triggered by tapping a pub-reminder notification. */
+export async function consumeInitialPubReminderTap(onTap: () => void): Promise<void> {
+  try {
+    const response = await Notifications.getLastNotificationResponseAsync();
+    if (isPubReminderResponse(response)) onTap();
+  } catch {
+    // No launch notification, or the API is unavailable — nothing to route to.
   }
 }
