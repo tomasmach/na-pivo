@@ -28,7 +28,7 @@ from datetime import timedelta
 import requests
 from django.conf import settings
 from django.db import IntegrityError, transaction
-from django.db.models import ExpressionWrapper, F, FloatField, Value
+from django.db.models import ExpressionWrapper, F, FloatField, Q, Value
 from django.utils import timezone as dj_timezone
 from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed
@@ -71,6 +71,9 @@ from pubs.models import (
     DrinkLog,
     EmailCredential,
     FeedbackReport,
+    FriendNotification,
+    FriendPubActivity,
+    Friendship,
     PubAmenity,
     PubAmenityVote,
     PubAmenityVoteTombstone,
@@ -105,6 +108,13 @@ from .serializers import (
     DrinkUpdateSerializer,
     FeedbackReportSerializer,
     FeedbackRequestSerializer,
+    FriendActivityRequestSerializer,
+    FriendNotificationSerializer,
+    FriendProfileSerializer,
+    FriendRequestCreateSerializer,
+    FriendSearchQuerySerializer,
+    FriendPubActivitySerializer,
+    FriendshipSerializer,
     PubAmenityKindSerializer,
     PubAmenityReadQuerySerializer,
     PubAmenityVotesRequestSerializer,
@@ -167,6 +177,164 @@ def _pub_identity_key(cache_key: str, name: str) -> str:
     """Stable per-business key inside a geohash-8 cell."""
     normalized_name = _IDENTITY_SPACE_RE.sub(" ", (name or "").strip().casefold())
     return f"{cache_key}::{normalized_name}" if normalized_name else cache_key
+
+
+FRIEND_ACTIVITY_DEFAULT_TTL = timedelta(hours=4)
+FRIEND_ACTIVITY_MAX_TTL = timedelta(hours=8)
+
+
+def _friend_display_name(account: Account | None) -> str:
+    if account is None:
+        return "Kamarád"
+    if account.nickname:
+        return f"@{account.nickname}"
+    if account.display_name:
+        return account.display_name
+    return "Kamarád"
+
+
+def _accepted_friend_ids(account: Account) -> list[int]:
+    rows = Friendship.objects.filter(status=Friendship.Status.ACCEPTED).filter(
+        Q(requester=account) | Q(recipient=account)
+    )
+    friend_ids: list[int] = []
+    for row in rows.only("requester_id", "recipient_id"):
+        friend_ids.append(row.recipient_id if row.requester_id == account.id else row.requester_id)
+    return friend_ids
+
+
+def _shared_pub_stats(account: Account, friend_ids: list[int]) -> dict[int, dict[str, object]]:
+    """Return lightweight shared-evening stats keyed by friend account id.
+
+    A shared evening is currently a same-day visit to the same geohash-8 pub.
+    This avoids storing any route or raw GPS history and stays cheap enough for
+    the friend dashboard; a future version can tighten it to true time overlap.
+    """
+
+    if not friend_ids:
+        return {}
+    my_visits = list(PubVisit.objects.filter(account=account).only("cache_key", "started_at", "name"))
+    if not my_visits:
+        return {friend_id: {"shared_count": 0, "last_shared_at": None, "last_pub_name": ""} for friend_id in friend_ids}
+
+    my_keys = {(visit.cache_key, visit.started_at.date()) for visit in my_visits}
+    my_pub_names = {(visit.cache_key, visit.started_at.date()): visit.name for visit in my_visits}
+    stats: dict[int, dict[str, object]] = {
+        friend_id: {"shared_count": 0, "last_shared_at": None, "last_pub_name": ""}
+        for friend_id in friend_ids
+    }
+    friend_visits = (
+        PubVisit.objects.filter(account_id__in=friend_ids)
+        .only("account_id", "cache_key", "started_at", "name")
+        .order_by("-started_at")
+    )
+    seen_pairs: set[tuple[int, str, object]] = set()
+    for visit in friend_visits:
+        key = (visit.cache_key, visit.started_at.date())
+        if key not in my_keys:
+            continue
+        pair = (visit.account_id, visit.cache_key, visit.started_at.date())
+        if pair in seen_pairs:
+            continue
+        seen_pairs.add(pair)
+        item = stats[visit.account_id]
+        item["shared_count"] = int(item["shared_count"]) + 1
+        last_shared_at = item["last_shared_at"]
+        if last_shared_at is None or visit.started_at > last_shared_at:
+            item["last_shared_at"] = visit.started_at
+            item["last_pub_name"] = my_pub_names.get(key) or visit.name
+    return stats
+
+
+def _friend_rituals(shared_count: int) -> list[dict[str, str]]:
+    rituals: list[dict[str, str]] = []
+    if shared_count >= 1:
+        rituals.append({"key": "first_round", "title": "První společné pivo"})
+    if shared_count >= 3:
+        rituals.append({"key": "regular_table", "title": "Už máte svůj stůl"})
+    if shared_count >= 10:
+        rituals.append({"key": "house_crew", "title": "Hospodská dvojka"})
+    return rituals
+
+
+def _friend_profile_context(request: Request) -> dict:
+    return {"request": request}
+
+
+def _send_friend_push(account_ids: list[int], title: str, body: str, data: dict) -> None:
+    """Best-effort Expo push fanout.
+
+    Push tokens are secrets. This helper never logs token values, request bodies
+    or response payloads; the in-app FriendNotification row is the durable truth
+    if Expo is down or the device has disabled pushes.
+    """
+
+    if not account_ids:
+        return
+    tokens = list(
+        PushDevice.objects.filter(
+            account_id__in=account_ids,
+            enabled=True,
+            permission_status=PushDevice.PermissionStatus.GRANTED,
+        ).values_list("push_token", flat=True)
+    )
+    if not tokens:
+        return
+
+    messages = [
+        {
+            "to": token,
+            "title": title,
+            "body": body,
+            "sound": "default",
+            "data": data,
+        }
+        for token in tokens
+    ]
+    try:
+        response = requests.post(
+            "https://exp.host/--/api/v2/push/send",
+            json=messages,
+            timeout=3,
+        )
+        response.raise_for_status()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "friend push delivery failed",
+            extra={
+                "event": "friend_push_failed",
+                "observability": {
+                    "recipient_count": len(account_ids),
+                    "token_count": len(tokens),
+                    "error": exc.__class__.__name__,
+                },
+            },
+        )
+
+
+def _create_friend_notification(
+    *,
+    recipient: Account,
+    actor: Account,
+    kind: str,
+    title: str,
+    body: str,
+    friendship: Friendship | None = None,
+    activity: FriendPubActivity | None = None,
+    pub_cache_key: str = "",
+    pub_name: str = "",
+) -> FriendNotification:
+    return FriendNotification.objects.create(
+        recipient=recipient,
+        actor=actor,
+        kind=kind,
+        title=title,
+        body=body,
+        friendship=friendship,
+        activity=activity,
+        pub_cache_key=pub_cache_key,
+        pub_name=pub_name,
+    )
 
 
 class HealthView(APIView):
@@ -1463,6 +1631,443 @@ class PushDeviceView(APIView):
             )
 
         return Response({"disabled": disabled}, status=status.HTTP_200_OK)
+
+
+class FriendsView(APIView):
+    """
+    GET /v1/friends
+
+    Social dashboard payload: accepted friends, incoming/outgoing requests,
+    active friend pub statuses and recent in-app notifications.
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends"
+
+    def get(self, request: Request) -> Response:
+        now = dj_timezone.now()
+        context = _friend_profile_context(request)
+
+        friendships = (
+            Friendship.objects.filter(Q(requester=request.user) | Q(recipient=request.user))
+            .select_related("requester", "recipient")
+            .order_by("-updated_at")
+        )
+        accepted = [row for row in friendships if row.status == Friendship.Status.ACCEPTED]
+        incoming = [
+            row
+            for row in friendships
+            if row.status == Friendship.Status.PENDING and row.recipient_id == request.user.id
+        ]
+        outgoing = [
+            row
+            for row in friendships
+            if row.status == Friendship.Status.PENDING and row.requester_id == request.user.id
+        ]
+
+        friend_accounts = [
+            row.recipient if row.requester_id == request.user.id else row.requester
+            for row in accepted
+        ]
+        friend_ids = [account.id for account in friend_accounts]
+        shared_stats = _shared_pub_stats(request.user, friend_ids)
+        active = (
+            FriendPubActivity.objects.filter(
+                account_id__in=friend_ids,
+                active=True,
+                expires_at__gt=now,
+            )
+            .select_related("account")
+            .order_by("-started_at")[:20]
+        )
+        notifications = (
+            FriendNotification.objects.filter(recipient=request.user)
+            .select_related("actor", "friendship", "activity")
+            .order_by("-created_at")[:30]
+        )
+        unread_count = FriendNotification.objects.filter(
+            recipient=request.user,
+            read_at__isnull=True,
+        ).count()
+
+        return Response(
+            {
+                "friends": FriendProfileSerializer(friend_accounts, many=True, context=context).data,
+                "friend_stats": {
+                    str(account.public_id): {
+                        "shared_pub_count": int(shared_stats.get(account.id, {}).get("shared_count") or 0),
+                        "last_shared_at": (
+                            shared_stats.get(account.id, {}).get("last_shared_at").isoformat()
+                            if shared_stats.get(account.id, {}).get("last_shared_at")
+                            else None
+                        ),
+                        "last_pub_name": shared_stats.get(account.id, {}).get("last_pub_name") or "",
+                        "rituals": _friend_rituals(
+                            int(shared_stats.get(account.id, {}).get("shared_count") or 0)
+                        ),
+                    }
+                    for account in friend_accounts
+                },
+                "incoming_requests": FriendshipSerializer(incoming, many=True, context=context).data,
+                "outgoing_requests": FriendshipSerializer(outgoing, many=True, context=context).data,
+                "active_friends": FriendPubActivitySerializer(active, many=True, context=context).data,
+                "notifications": FriendNotificationSerializer(notifications, many=True, context=context).data,
+                "unread_count": unread_count,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class FriendSearchView(APIView):
+    """GET /v1/friends/search?q=nick — public profile lookup for adding friends."""
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends"
+
+    def get(self, request: Request) -> Response:
+        serializer = FriendSearchQuerySerializer(data=request.query_params)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        q = serializer.validated_data["q"]
+        profiles = (
+            Account.objects.filter(
+                status=Account.Status.ACTIVE,
+                is_public=True,
+            )
+            .exclude(pk=request.user.pk)
+            .filter(Q(nickname__icontains=q) | Q(display_name__icontains=q))
+            .order_by("nickname", "display_name")[:20]
+        )
+        return Response(
+            {
+                "results": FriendProfileSerializer(
+                    profiles,
+                    many=True,
+                    context=_friend_profile_context(request),
+                ).data
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class FriendRequestView(APIView):
+    """POST /v1/friends/requests — send a friend request by id or nickname."""
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends"
+
+    def post(self, request: Request) -> Response:
+        serializer = FriendRequestCreateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        target_query = Account.objects.filter(status=Account.Status.ACTIVE)
+        if data.get("target_account_id"):
+            target = target_query.filter(public_id=data["target_account_id"]).first()
+        else:
+            target = target_query.filter(nickname__iexact=data["nickname"]).first()
+
+        if target is None or (not target.is_public and target.pk not in _accepted_friend_ids(request.user)):
+            return Response(
+                {"detail": "Profil se nepodařilo najít.", "code": "profile_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if target.pk == request.user.pk:
+            return Response(
+                {"detail": "Sám sobě žádost neposílej. To by bylo moc smutné.", "code": "self_request"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        now = dj_timezone.now()
+        try:
+            with transaction.atomic():
+                reverse = (
+                    Friendship.objects.select_for_update()
+                    .filter(requester=target, recipient=request.user)
+                    .first()
+                )
+                if reverse is not None:
+                    if reverse.status != Friendship.Status.ACCEPTED:
+                        reverse.status = Friendship.Status.ACCEPTED
+                        reverse.responded_at = now
+                        reverse.save(update_fields=["status", "responded_at", "updated_at"])
+                        title = "Žádost přijata"
+                        body = f"{_friend_display_name(request.user)} si tě přidal mezi kamarády."
+                        _create_friend_notification(
+                            recipient=target,
+                            actor=request.user,
+                            kind=FriendNotification.Kind.FRIEND_ACCEPTED,
+                            title=title,
+                            body=body,
+                            friendship=reverse,
+                        )
+                        _send_friend_push(
+                            [target.id],
+                            title,
+                            body,
+                            {"kind": "friend_accepted", "friendship_id": str(reverse.public_id)},
+                        )
+                    return Response(
+                        FriendshipSerializer(reverse, context=_friend_profile_context(request)).data,
+                        status=status.HTTP_200_OK,
+                    )
+
+                friendship, created = Friendship.objects.select_for_update().get_or_create(
+                    requester=request.user,
+                    recipient=target,
+                    defaults={"status": Friendship.Status.PENDING},
+                )
+                if not created and friendship.status == Friendship.Status.DECLINED:
+                    friendship.status = Friendship.Status.PENDING
+                    friendship.responded_at = None
+                    friendship.save(update_fields=["status", "responded_at", "updated_at"])
+                    created = True
+                if friendship.status == Friendship.Status.ACCEPTED:
+                    return Response(
+                        FriendshipSerializer(friendship, context=_friend_profile_context(request)).data,
+                        status=status.HTTP_200_OK,
+                    )
+        except Exception as exc:  # noqa: BLE001
+            logger.error("friends: request create failed: %s", exc, exc_info=True)
+            return Response(
+                {"detail": "Internal server error."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        if created:
+            title = "Nový kámoš na pivo?"
+            body = f"{_friend_display_name(request.user)} si tě chce přidat mezi kamarády."
+            _create_friend_notification(
+                recipient=target,
+                actor=request.user,
+                kind=FriendNotification.Kind.FRIEND_REQUEST,
+                title=title,
+                body=body,
+                friendship=friendship,
+            )
+            _send_friend_push(
+                [target.id],
+                title,
+                body,
+                {"kind": "friend_request", "friendship_id": str(friendship.public_id)},
+            )
+
+        return Response(
+            FriendshipSerializer(friendship, context=_friend_profile_context(request)).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+
+class FriendRequestActionView(APIView):
+    """POST /v1/friends/requests/<id>/accept|decline."""
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends"
+
+    def post(self, request: Request, request_id, action: str) -> Response:
+        friendship = (
+            Friendship.objects.select_related("requester", "recipient")
+            .filter(public_id=request_id, recipient=request.user)
+            .first()
+        )
+        if friendship is None:
+            return Response(
+                {"detail": "Žádost neexistuje.", "code": "request_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if action not in {"accept", "decline"}:
+            return Response(
+                {"detail": "Neznámá akce.", "code": "unknown_action"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        now = dj_timezone.now()
+        if action == "accept":
+            created_notification = friendship.status != Friendship.Status.ACCEPTED
+            friendship.status = Friendship.Status.ACCEPTED
+            friendship.responded_at = friendship.responded_at or now
+            friendship.save(update_fields=["status", "responded_at", "updated_at"])
+            if created_notification:
+                title = "Jde se na pivo"
+                body = f"{_friend_display_name(request.user)} přijal tvoji žádost."
+                _create_friend_notification(
+                    recipient=friendship.requester,
+                    actor=request.user,
+                    kind=FriendNotification.Kind.FRIEND_ACCEPTED,
+                    title=title,
+                    body=body,
+                    friendship=friendship,
+                )
+                _send_friend_push(
+                    [friendship.requester_id],
+                    title,
+                    body,
+                    {"kind": "friend_accepted", "friendship_id": str(friendship.public_id)},
+                )
+        else:
+            friendship.status = Friendship.Status.DECLINED
+            friendship.responded_at = now
+            friendship.save(update_fields=["status", "responded_at", "updated_at"])
+
+        return Response(
+            FriendshipSerializer(friendship, context=_friend_profile_context(request)).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class FriendDetailView(APIView):
+    """DELETE /v1/friends/<account_id> — remove an accepted friend."""
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends"
+
+    def delete(self, request: Request, account_id) -> Response:
+        friend = Account.objects.filter(public_id=account_id).first()
+        if friend is None:
+            return Response({"removed": False}, status=status.HTTP_200_OK)
+        deleted, _ = Friendship.objects.filter(
+            status=Friendship.Status.ACCEPTED,
+        ).filter(
+            Q(requester=request.user, recipient=friend)
+            | Q(requester=friend, recipient=request.user)
+        ).delete()
+        return Response({"removed": deleted > 0}, status=status.HTTP_200_OK)
+
+
+class FriendActivityView(APIView):
+    """POST /v1/friends/pub-activity — share "I'm at this pub" to accepted friends."""
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends"
+
+    def post(self, request: Request) -> Response:
+        serializer = FriendActivityRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        now = dj_timezone.now()
+        started_at = data.get("started_at") or now
+        requested_expiry = data.get("expires_at")
+        max_expiry = started_at + FRIEND_ACTIVITY_MAX_TTL
+        expires_at = requested_expiry or started_at + FRIEND_ACTIVITY_DEFAULT_TTL
+        if expires_at <= now:
+            return Response(
+                {"detail": "expires_at must be in the future.", "code": "expired_activity"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if expires_at > max_expiry:
+            expires_at = max_expiry
+
+        cache_key = geohash8(data["lat"], data["lng"])
+        should_notify = False
+        try:
+            with transaction.atomic():
+                existing = (
+                    FriendPubActivity.objects.select_for_update()
+                    .filter(account=request.user, client_id=data["client_id"])
+                    .first()
+                )
+                should_notify = existing is None or not existing.active or existing.expires_at <= now
+                activity, _created = FriendPubActivity.objects.update_or_create(
+                    account=request.user,
+                    client_id=data["client_id"],
+                    defaults={
+                        "cache_key": cache_key,
+                        "name": data["name"],
+                        "lat": data["lat"],
+                        "lng": data["lng"],
+                        "city": data.get("city") or "",
+                        "external_id": data.get("external_id") or "",
+                        "message": data.get("message") or "",
+                        "started_at": started_at,
+                        "expires_at": expires_at,
+                        "active": True,
+                    },
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.error("friends: pub activity failed: %s", exc, exc_info=True)
+            return Response(
+                {"detail": "Internal server error."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        friend_ids = _accepted_friend_ids(request.user)
+        if should_notify and friend_ids:
+            title = "Kamarád je na pivu"
+            actor = _friend_display_name(request.user)
+            body = f"{actor} sedí v {activity.name}. Nechceš se přidat?"
+            recipients = list(Account.objects.filter(id__in=friend_ids))
+            for recipient in recipients:
+                _create_friend_notification(
+                    recipient=recipient,
+                    actor=request.user,
+                    kind=FriendNotification.Kind.FRIEND_AT_PUB,
+                    title=title,
+                    body=body,
+                    activity=activity,
+                    pub_cache_key=activity.cache_key,
+                    pub_name=activity.name[:200],
+                )
+            _send_friend_push(
+                friend_ids,
+                title,
+                body,
+                {
+                    "kind": "friend_at_pub",
+                    "activity_id": str(activity.public_id),
+                    "pub_cache_key": activity.cache_key,
+                },
+            )
+
+        return Response(
+            FriendPubActivitySerializer(activity, context=_friend_profile_context(request)).data,
+            status=status.HTTP_201_CREATED if should_notify else status.HTTP_200_OK,
+        )
+
+    def delete(self, request: Request, activity_id) -> Response:
+        updated = FriendPubActivity.objects.filter(
+            account=request.user,
+            public_id=activity_id,
+            active=True,
+        ).update(active=False, updated_at=dj_timezone.now())
+        return Response({"ended": updated > 0}, status=status.HTTP_200_OK)
+
+
+class FriendNotificationReadView(APIView):
+    """POST /v1/friends/notifications/read — mark selected or all notifications read."""
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends"
+
+    def post(self, request: Request) -> Response:
+        ids = request.data.get("ids")
+        queryset = FriendNotification.objects.filter(recipient=request.user, read_at__isnull=True)
+        if ids is not None:
+            if not isinstance(ids, list):
+                return Response(
+                    {"detail": "ids must be a list.", "code": "invalid_ids"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            queryset = queryset.filter(public_id__in=ids)
+        updated = queryset.update(read_at=dj_timezone.now())
+        return Response({"marked_read": updated}, status=status.HTTP_200_OK)
 
 
 class BlockedPubReportsView(APIView):

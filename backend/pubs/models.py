@@ -638,6 +638,166 @@ class PushDevice(models.Model):
         return f"PushDevice({self.platform} for account {self.account_id})"
 
 
+class Friendship(models.Model):
+    """A friend request or accepted friendship between two accounts.
+
+    The directed requester/recipient pair preserves who asked whom while the
+    view layer treats ACCEPTED rows as an undirected friendship. A reverse
+    pending request is accepted instead of creating a duplicate row.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        ACCEPTED = "accepted", "Accepted"
+        DECLINED = "declined", "Declined"
+
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
+    requester = models.ForeignKey(
+        "pubs.Account",
+        on_delete=models.CASCADE,
+        related_name="sent_friendships",
+    )
+    recipient = models.ForeignKey(
+        "pubs.Account",
+        on_delete=models.CASCADE,
+        related_name="received_friendships",
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    requested_at = models.DateTimeField(auto_now_add=True)
+    responded_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Friendship"
+        verbose_name_plural = "Friendships"
+        ordering = ["-updated_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["requester", "recipient"],
+                name="unique_directed_friendship",
+            ),
+            models.CheckConstraint(
+                condition=~Q(requester=models.F("recipient")),
+                name="friendship_no_self_request",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["requester", "status"]),
+            models.Index(fields=["recipient", "status"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"Friendship({self.requester_id}->{self.recipient_id} {self.status})"
+
+
+class FriendPubActivity(models.Model):
+    """An explicit, short-lived "I'm at this pub" activity shared to friends.
+
+    This is not a GPS trail. The row is created only from a user-confirmed pub
+    session, stores the pub identity needed for friends to join, and expires so
+    old evenings stop being visible.
+    """
+
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
+    account = models.ForeignKey(
+        "pubs.Account",
+        on_delete=models.CASCADE,
+        related_name="friend_pub_activities",
+    )
+    client_id = models.UUIDField(help_text="Client-generated idempotency key for the shared pub session.")
+    cache_key = models.CharField(max_length=12, db_index=True)
+    name = models.TextField(help_text="Pub name as the client saw it.")
+    lat = models.FloatField()
+    lng = models.FloatField()
+    city = models.TextField(blank=True, default="")
+    external_id = models.TextField(blank=True, default="")
+    message = models.CharField(max_length=160, blank=True, default="")
+    started_at = models.DateTimeField()
+    expires_at = models.DateTimeField(db_index=True)
+    active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Friend pub activity"
+        verbose_name_plural = "Friend pub activities"
+        ordering = ["-started_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "client_id"],
+                name="unique_friend_activity_per_account_client_id",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["account", "active", "expires_at"]),
+            models.Index(fields=["cache_key", "active", "expires_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"FriendPubActivity({self.account_id} @ {self.name} until {self.expires_at:%Y-%m-%d %H:%M})"
+
+
+class FriendNotification(models.Model):
+    """In-app social notification, optionally mirrored as an Expo push."""
+
+    class Kind(models.TextChoices):
+        FRIEND_REQUEST = "friend_request", "Friend request"
+        FRIEND_ACCEPTED = "friend_accepted", "Friend accepted"
+        FRIEND_AT_PUB = "friend_at_pub", "Friend at pub"
+
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
+    recipient = models.ForeignKey(
+        "pubs.Account",
+        on_delete=models.CASCADE,
+        related_name="friend_notifications",
+    )
+    actor = models.ForeignKey(
+        "pubs.Account",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="friend_notifications_sent",
+    )
+    friendship = models.ForeignKey(
+        "pubs.Friendship",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="notifications",
+    )
+    activity = models.ForeignKey(
+        "pubs.FriendPubActivity",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="notifications",
+    )
+    kind = models.CharField(max_length=32, choices=Kind.choices, db_index=True)
+    title = models.CharField(max_length=120)
+    body = models.CharField(max_length=240)
+    pub_cache_key = models.CharField(max_length=12, blank=True, default="")
+    pub_name = models.CharField(max_length=200, blank=True, default="")
+    read_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        verbose_name = "Friend notification"
+        verbose_name_plural = "Friend notifications"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["recipient", "read_at", "created_at"]),
+            models.Index(fields=["recipient", "kind", "created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"FriendNotification({self.kind} -> {self.recipient_id})"
+
+
 class EmailCredential(models.Model):
     """Email + password credential for an Account (0 or 1 per account).
 
