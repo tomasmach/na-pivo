@@ -32,6 +32,7 @@ import { useAccountStore, selectNeedsProfileSetup } from '@/stores/accountStore'
 import { useReleaseStore } from '@/stores/releaseStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import { WhatsNewModal } from '@/components/shared/WhatsNewModal';
+import { PubReminderOnboardingModal } from '@/components/shared/PubReminderOnboardingModal';
 import { Toast } from '@/components/shared/Toast';
 import {
   consumeInitialPubReminderTap,
@@ -314,6 +315,7 @@ export default function RootLayout() {
         </Stack>
         <ProfileGate />
         <WhatsNewModal />
+        <PubReminderOnboardingModal />
         <Toast />
       </SafeAreaProvider>
     </GestureHandlerRootView>

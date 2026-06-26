@@ -299,6 +299,22 @@ export const cs = {
     attributionAfter: '(Seznam.cz). Otevírací doba: samostatné vyhledávání.',
   },
 
+  pubReminderOnboarding: {
+    eyebrow: 'NOVINKA PRO VEČERY',
+    title: 'Až sedneš do hospody, cinkneme ti.',
+    body:
+      'Na pivo umí večer připomenout počítadlo, když dorazíš k hospodě. Stačí zapnout notifikace a polohu na pozadí.',
+    notificationTitle: 'Notifikace',
+    notificationBody: 'Pošleme jen krátké připomenutí, ať večer nezmizí bez zápisu.',
+    locationTitle: 'Poloha „vždy“',
+    locationBody: 'Systém ji potřebuje pro hospodský okruh i když appka zrovna neběží.',
+    privacyTitle: 'Bez GPS deníčku',
+    privacyBody: 'Trasy neukládáme. Hlídáme jen vstup do blízkosti hospody.',
+    cta: 'Zapnout připomínky',
+    ctaBusy: 'Zapínám…',
+    skip: 'Teď ne, nech mě pít v klidu',
+  },
+
   report: {
     title: 'Napiš nám',
     intro: 'Našel jsi chybu nebo ti něco chybí? Napiš nám pár slov, pomůže to.',
