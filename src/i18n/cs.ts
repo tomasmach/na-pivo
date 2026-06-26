@@ -251,14 +251,14 @@ export const cs = {
             'Připomínku bez notifikací nemáme jak poslat. Zapni je v Nastavení a zkus to znovu.',
         },
         'foreground-location-denied': {
-          title: 'Poloha zůstala vypnutá',
+          title: 'Nejdřív povol základní polohu',
           body:
-            'Nejdřív potřebujeme polohu při používání appky, jinak neumíme vybrat hospody v okolí.',
+            'Poloha při používání je základ pro kompas i hospody v okolí. Až ji povolíš, můžeme řešit extra polohu „vždy“ pro připomínky.',
         },
         'background-location-denied': {
-          title: 'iOS povolil jen polohu při používání',
+          title: 'Chybí poloha „vždy“',
           body:
-            'Tlačítko „povolit“ nestačí, pokud zůstane poloha jen při používání appky. Pro hospodskou připomínku musí být poloha nastavená na „Vždy“.',
+            'Poloha při používání stačí pro kompas. Hospodská připomínka ale běží i se zamčenou appkou, takže iOS musí mít polohu nastavenou na „Vždy“.',
         },
       },
     },
@@ -323,7 +323,8 @@ export const cs = {
       'Na pivo umí večer připomenout počítadlo, když dorazíš k hospodě. Stačí zapnout notifikace a polohu na pozadí.',
     introCta: 'Ukázat, co povoluju',
     detailsTitle: 'Co bude iOS chtít povolit',
-    detailsBody: 'Zapínáš jednu hospodskou připomínku. Systém se zeptá postupně.',
+    detailsBody:
+      'Kompasu stačí poloha při používání. Připomínka navíc potřebuje polohu „vždy“.',
     notificationTitle: 'Notifikace',
     notificationBody: 'Pošleme jen krátké připomenutí, ať večer nezmizí bez zápisu.',
     locationTitle: 'Poloha „vždy“',

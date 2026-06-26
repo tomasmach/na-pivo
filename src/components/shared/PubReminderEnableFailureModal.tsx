@@ -8,7 +8,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { BellRingIcon, MapPinIcon, ShieldIcon } from '@/components/shared/IconGlyph';
+import { BellRingIcon, MapPinIcon } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { cs } from '@/i18n/cs';
 import {
@@ -23,8 +23,7 @@ import { softDrop } from '@/theme/shadows';
 function FailureIcon({ reason }: { reason: PubReminderEnableFailureReason }) {
   const color = Colors.amberLight;
   if (reason === 'notifications-denied') return <BellRingIcon size={28} color={color} />;
-  if (reason === 'foreground-location-denied') return <MapPinIcon size={28} color={color} />;
-  return <ShieldIcon size={28} color={color} />;
+  return <MapPinIcon size={28} color={color} />;
 }
 
 export function PubReminderEnableFailureModal() {

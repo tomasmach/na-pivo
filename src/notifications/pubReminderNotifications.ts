@@ -275,6 +275,12 @@ export async function initializePubReminderNotifications(): Promise<void> {
 export async function enablePubReminderNotifications(): Promise<PubReminderEnableResult> {
   await setAndroidChannel();
 
+  const foreground = await Location.requestForegroundPermissionsAsync();
+  if (foreground.status !== 'granted') {
+    await setReminderEnabled(false);
+    return { ok: false, reason: 'foreground-location-denied' };
+  }
+
   const notificationPermission = await Notifications.requestPermissionsAsync({
     ios: {
       allowAlert: true,
@@ -285,12 +291,6 @@ export async function enablePubReminderNotifications(): Promise<PubReminderEnabl
   if (notificationPermission.status !== 'granted') {
     await setReminderEnabled(false);
     return { ok: false, reason: 'notifications-denied' };
-  }
-
-  const foreground = await Location.requestForegroundPermissionsAsync();
-  if (foreground.status !== 'granted') {
-    await setReminderEnabled(false);
-    return { ok: false, reason: 'foreground-location-denied' };
   }
 
   const background = await Location.requestBackgroundPermissionsAsync();
