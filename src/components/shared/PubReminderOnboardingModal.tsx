@@ -9,7 +9,7 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -30,6 +30,7 @@ import { cs } from '@/i18n/cs';
 import {
   enablePubReminderNotifications,
 } from '@/notifications/pubReminderNotifications';
+import { showPubReminderEnableFailureAlert } from '@/notifications/pubReminderEnableAlert';
 import {
   getSeenPubReminderOnboardingVersion,
   markPubReminderOnboardingSeen,
@@ -180,7 +181,7 @@ export function PubReminderOnboardingModal() {
       setPubReminderEnabled(false);
       setEligible(false);
       setStep('intro');
-      Alert.alert(cs.settings.pubReminders.deniedTitle, cs.settings.pubReminders.deniedBody);
+      showPubReminderEnableFailureAlert(result.reason);
     } finally {
       setBusy(false);
     }

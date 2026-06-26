@@ -19,7 +19,6 @@ import {
   StyleSheet,
   LayoutChangeEvent,
   Linking,
-  Alert,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
@@ -74,6 +73,7 @@ import {
   disablePubReminderNotifications,
   enablePubReminderNotifications,
 } from '@/notifications/pubReminderNotifications';
+import { showPubReminderEnableFailureAlert } from '@/notifications/pubReminderEnableAlert';
 
 // ---------------------------------------------------------------------------
 // Discrete slider positions
@@ -557,7 +557,7 @@ export default function SettingsScreen() {
       }
 
       setPubReminderEnabled(false);
-      Alert.alert(cs.settings.pubReminders.deniedTitle, cs.settings.pubReminders.deniedBody);
+      showPubReminderEnableFailureAlert(result.reason);
     } finally {
       setPubReminderBusy(false);
     }

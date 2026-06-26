@@ -20,6 +20,7 @@ export const cs = {
 
   common: {
     cancel: 'Zrušit',
+    ok: 'OK',
   },
 
   // — "Zmapuj hospodu" (community pub amenities + Mapér) —
@@ -241,9 +242,24 @@ export const cs = {
     pubReminders: {
       title: 'Připomenout v hospodě',
       subtitle: 'Večer občas koukneme, jestli nesedíš u výčepu. Bez ukládání trasy.',
-      deniedTitle: 'Bez povolení to nepůjde',
-      deniedBody:
-        'Zapni notifikace a polohu „vždy“, jinak ti hospodu na pozadí připomenout neumíme.',
+      openSettings: 'Otevřít Nastavení',
+      denied: {
+        'notifications-denied': {
+          title: 'Notifikace zůstaly vypnuté',
+          body:
+            'Připomínku bez notifikací nemáme jak poslat. Zapni je v Nastavení a zkus to znovu.',
+        },
+        'foreground-location-denied': {
+          title: 'Poloha zůstala vypnutá',
+          body:
+            'Nejdřív potřebujeme polohu při používání appky, jinak neumíme vybrat hospody v okolí.',
+        },
+        'background-location-denied': {
+          title: 'iOS povolil jen polohu při používání',
+          body:
+            'Tlačítko „povolit“ nestačí, pokud zůstane poloha jen při používání appky. Pro hospodskou připomínku musí být poloha nastavená na „Vždy“.',
+        },
+      },
     },
     sound: {
       title: 'Zvuk cinknutí',
