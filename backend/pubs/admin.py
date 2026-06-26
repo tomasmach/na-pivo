@@ -20,6 +20,7 @@ from .models import (
     PubReport,
     PubSearchCache,
     PubVisit,
+    PushDevice,
     ReleaseNote,
     ReleaseNoteItem,
     UserAddedPub,
@@ -86,6 +87,23 @@ class AccountAdmin(admin.ModelAdmin):
     # is safe to surface read-only — it cannot be reversed into a usable token.
     readonly_fields = ("public_id", "token_hash", "created_at", "last_seen_at")
     ordering = ("-created_at",)
+
+
+@admin.register(PushDevice)
+class PushDeviceAdmin(admin.ModelAdmin):
+    list_display = (
+        "created_at",
+        "account",
+        "platform",
+        "permission_status",
+        "enabled",
+        "app_version",
+        "last_registered_at",
+    )
+    list_filter = ("platform", "permission_status", "enabled")
+    search_fields = ("account__public_id", "account__nickname")
+    readonly_fields = ("push_token", "created_at", "updated_at", "last_registered_at")
+    ordering = ("-last_registered_at",)
 
 
 @admin.register(ContentReport)

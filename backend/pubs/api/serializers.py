@@ -56,6 +56,7 @@ from pubs.models import (
     PubAmenityVote,
     PubRating,
     PubReport,
+    PushDevice,
     ReleaseNote,
     UserAddedPub,
 )
@@ -387,6 +388,64 @@ class ClientEventRequestSerializer(serializers.Serializer):
             if len(sanitized) >= _MAX_CLIENT_EVENT_CONTEXT_KEYS:
                 break
         return sanitized
+
+
+class PushDeviceRequestSerializer(serializers.Serializer):
+    """Request body for PUT /v1/push-device."""
+
+    push_token = serializers.CharField(max_length=512, trim_whitespace=True)
+    platform = serializers.ChoiceField(
+        choices=PushDevice.Platform.choices,
+        required=False,
+        default=PushDevice.Platform.UNKNOWN,
+    )
+    permission_status = serializers.ChoiceField(
+        choices=PushDevice.PermissionStatus.choices,
+        required=False,
+        default=PushDevice.PermissionStatus.GRANTED,
+    )
+    enabled = serializers.BooleanField(required=False, default=True)
+    app_version = serializers.CharField(
+        max_length=64,
+        required=False,
+        allow_blank=True,
+        default="",
+        trim_whitespace=True,
+    )
+
+    def validate_push_token(self, value: str) -> str:
+        if not value:
+            raise serializers.ValidationError("push_token must not be empty.")
+        return value
+
+
+class PushDeviceDeleteSerializer(serializers.Serializer):
+    """Request body for DELETE /v1/push-device."""
+
+    push_token = serializers.CharField(
+        max_length=512,
+        required=False,
+        allow_blank=True,
+        trim_whitespace=True,
+    )
+
+
+class PushDeviceResponseSerializer(serializers.ModelSerializer):
+    """Response body for a push-device registration. The token is intentionally omitted."""
+
+    class Meta:
+        model = PushDevice
+        fields = [
+            "id",
+            "platform",
+            "permission_status",
+            "enabled",
+            "app_version",
+            "created_at",
+            "updated_at",
+            "last_registered_at",
+        ]
+        read_only_fields = fields
 
 
 # ---------------------------------------------------------------------------

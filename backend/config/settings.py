@@ -238,6 +238,11 @@ PUB_REPORTS_THROTTLE_RATE: str = os.environ.get("PUB_REPORTS_THROTTLE_RATE", "30
 # from noisy loops and scripted spam.
 CLIENT_EVENTS_THROTTLE_RATE: str = os.environ.get("CLIENT_EVENTS_THROTTLE_RATE", "120/min")
 
+# Per-IP rate limit for authenticated push-token registration
+# (PUT/DELETE /v1/push-device). DB-only, but can be retried on app start and
+# permission changes.
+PUSH_DEVICES_THROTTLE_RATE: str = os.environ.get("PUSH_DEVICES_THROTTLE_RATE", "60/min")
+
 # Per-IP rate limit for credential auth endpoints (register / login / social /
 # link / unlink / verify-email / set-password). Kept tight to blunt credential
 # stuffing and enumeration while leaving a real human's few attempts untouched.
@@ -320,6 +325,7 @@ REST_FRAMEWORK = {
         "pub_hours": PUB_HOURS_THROTTLE_RATE,
         "pub_reports": PUB_REPORTS_THROTTLE_RATE,
         "client_events": CLIENT_EVENTS_THROTTLE_RATE,
+        "push_devices": PUSH_DEVICES_THROTTLE_RATE,
         "auth": AUTH_THROTTLE_RATE,
         "auth_email": AUTH_EMAIL_THROTTLE_RATE,
         "nickname_check": NICKNAME_CHECK_THROTTLE_RATE,

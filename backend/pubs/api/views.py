@@ -83,6 +83,7 @@ from pubs.models import (
     PubReport,
     PubSearchCache,
     PubVisit,
+    PushDevice,
     ReleaseNote,
     UserAddedPub,
 )
@@ -118,6 +119,9 @@ from .serializers import (
     PubReportSerializer,
     PubsNearQuerySerializer,
     PubVisitRequestSerializer,
+    PushDeviceDeleteSerializer,
+    PushDeviceRequestSerializer,
+    PushDeviceResponseSerializer,
     ReleaseNoteSerializer,
     RestorePurchasesRequestSerializer,
     UserAddedPubRequestSerializer,
@@ -1391,6 +1395,72 @@ class ClientEventsView(APIView):
             },
         )
         return Response({"accepted": True}, status=status.HTTP_202_ACCEPTED)
+
+
+class PushDeviceView(APIView):
+    """
+    PUT/DELETE /v1/push-device
+
+    Register or disable this install's Expo push token. The endpoint stores no
+    coordinates, pub identity or notification history; reminder decisions stay
+    local on the mobile device.
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "push_devices"
+
+    def put(self, request: Request) -> Response:
+        serializer = PushDeviceRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        try:
+            device, _created = PushDevice.objects.update_or_create(
+                push_token=data["push_token"],
+                defaults={
+                    "account": request.user,
+                    "platform": data["platform"],
+                    "permission_status": data["permission_status"],
+                    "enabled": data["enabled"],
+                    "app_version": data.get("app_version") or "",
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error("push-device: unexpected error registering token: %s", exc, exc_info=True)
+            return Response(
+                {"detail": "Internal server error."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response(PushDeviceResponseSerializer(device).data, status=status.HTTP_200_OK)
+
+    def delete(self, request: Request) -> Response:
+        serializer = PushDeviceDeleteSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        push_token = (serializer.validated_data.get("push_token") or "").strip()
+        queryset = PushDevice.objects.filter(account=request.user, enabled=True)
+        if push_token:
+            queryset = queryset.filter(push_token=push_token)
+
+        try:
+            disabled = queryset.update(
+                enabled=False,
+                permission_status=PushDevice.PermissionStatus.DENIED,
+                updated_at=dj_timezone.now(),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error("push-device: unexpected error disabling token: %s", exc, exc_info=True)
+            return Response(
+                {"detail": "Internal server error."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response({"disabled": disabled}, status=status.HTTP_200_OK)
 
 
 class BlockedPubReportsView(APIView):
