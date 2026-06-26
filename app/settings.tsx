@@ -10,7 +10,7 @@
  *  5. Footer  (attribution)
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -111,15 +111,19 @@ interface ToggleProps {
 function Toggle({ value, onToggle, accessibilityLabel }: ToggleProps) {
   const offset = useSharedValue(value ? 24 : 2);
 
-  const handlePress = useCallback(() => {
-    onToggle();
-    // eslint-disable-next-line react-hooks/immutability -- Reanimated shared values are mutable boxes; assigning .value is their API
-    offset.value = withSpring(value ? 2 : 24, {
+  useEffect(() => {
+    // Keep the thumb in sync when an async toggle rejects and the controlled
+    // value stays where it was.
+    offset.value = withSpring(value ? 24 : 2, {
       mass: 0.6,
       damping: 14,
       stiffness: 200,
     });
-  }, [value, onToggle, offset]);
+  }, [value, offset]);
+
+  const handlePress = useCallback(() => {
+    onToggle();
+  }, [onToggle]);
 
   const thumbStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: offset.value }],

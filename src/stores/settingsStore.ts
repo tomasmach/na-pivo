@@ -83,3 +83,22 @@ export const useSettingsStore = create<SettingsState>()(
     }
   )
 );
+
+export async function waitForSettingsHydration(): Promise<void> {
+  const persist = useSettingsStore.persist;
+  if (persist.hasHydrated()) return;
+
+  await new Promise<void>((resolve) => {
+    const unsubscribe = persist.onFinishHydration(() => {
+      unsubscribe();
+      resolve();
+    });
+
+    if (persist.hasHydrated()) {
+      unsubscribe();
+      resolve();
+    } else {
+      void persist.rehydrate();
+    }
+  });
+}

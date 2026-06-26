@@ -23,6 +23,7 @@ import {
 } from './account';
 import { getBackendEndpoint } from './backendConfig';
 import { clearLocalPrivateAccountData } from './privateAccountData';
+import { disableCachedPushDeviceWithBearer } from './pushDeviceClient';
 import { getAppleCredential, getGoogleIdToken, SocialAuthError } from './socialAuth';
 import { trackApiFailure } from './telemetryClient';
 
@@ -465,6 +466,14 @@ const NETWORK_ERROR = {
   detail: 'Nepodařilo se spojit se serverem. Zkontroluj připojení a zkus to znovu.',
 };
 
+async function disablePushDeviceForCurrentSession(): Promise<void> {
+  try {
+    await disableCachedPushDeviceWithBearer(await getSessionToken());
+  } catch {
+    // Logout/delete must still proceed if push cleanup is offline or unavailable.
+  }
+}
+
 /** Apply a successful auth response: persist the new session, return the profile. */
 async function applyAuthSuccess(
   data: RawAccount,
@@ -628,6 +637,7 @@ export async function setPassword(params: { password: string; email?: string }):
 // Session / lifecycle
 // ---------------------------------------------------------------------------
 export async function logout(options?: { all?: boolean }): Promise<AuthActionResult> {
+  await disablePushDeviceForCurrentSession();
   const res = await authFetch('/v1/auth/logout', {
     bearer: 'current',
     body: { all: options?.all === true },

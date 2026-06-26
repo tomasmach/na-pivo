@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
 import { clearCachedAnonymousAccount, ensureAccount, type AccountSession } from './account';
@@ -8,6 +9,7 @@ import { getAppVersionLabel } from '@/utils/appVersion';
 export type PushPermissionStatus = 'granted' | 'denied' | 'undetermined';
 
 const REQUEST_TIMEOUT_MS = 8000;
+export const PUSH_TOKEN_KEY = 'na-pivo-expo-push-token';
 
 function abortWithTimeout(signal?: AbortSignal): { signal: AbortSignal; cleanup: () => void } {
   const controller = new AbortController();
@@ -93,7 +95,7 @@ export async function disablePushDevice(
   signal?: AbortSignal,
 ): Promise<boolean> {
   const endpoint = getBackendEndpoint('/v1/push-device');
-  if (!endpoint || signal?.aborted) return false;
+  if (!endpoint || !pushToken || signal?.aborted) return false;
 
   const session = await ensureAccount(signal);
   if (!session || signal?.aborted) return false;
@@ -106,7 +108,7 @@ export async function disablePushDevice(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.token}`,
       },
-      body: JSON.stringify({ push_token: pushToken ?? '' }),
+      body: JSON.stringify({ push_token: pushToken }),
       signal: abort.signal,
     });
 
@@ -114,6 +116,56 @@ export async function disablePushDevice(
       await handleUnauthorized(session);
       return false;
     }
+    if (!resp.ok) {
+      trackApiFailure('push_device_disable', {
+        endpoint: '/v1/push-device',
+        status: resp.status,
+      });
+      return false;
+    }
+    return true;
+  } catch (err) {
+    const isAbortError = err instanceof Error && err.name === 'AbortError';
+    if (!signal?.aborted && !isAbortError) {
+      trackApiFailure('push_device_disable', {
+        endpoint: '/v1/push-device',
+        reason: 'exception',
+        error: err,
+      });
+    }
+    return false;
+  } finally {
+    abort.cleanup();
+  }
+}
+
+export async function disableCachedPushDeviceWithBearer(
+  bearerToken: string | null,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const endpoint = getBackendEndpoint('/v1/push-device');
+  if (!endpoint || !bearerToken || signal?.aborted) return false;
+
+  let pushToken: string | null = null;
+  try {
+    pushToken = await AsyncStorage.getItem(PUSH_TOKEN_KEY);
+  } catch {
+    return false;
+  }
+  if (!pushToken || signal?.aborted) return false;
+
+  const abort = abortWithTimeout(signal);
+  try {
+    const resp = await fetch(endpoint, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${bearerToken}`,
+      },
+      body: JSON.stringify({ push_token: pushToken }),
+      signal: abort.signal,
+    });
+
     if (!resp.ok) {
       trackApiFailure('push_device_disable', {
         endpoint: '/v1/push-device',

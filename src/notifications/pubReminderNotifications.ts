@@ -5,21 +5,20 @@ import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
 
-import { disablePushDevice, registerPushDevice } from '@/data/pushDeviceClient';
+import { disablePushDevice, PUSH_TOKEN_KEY, registerPushDevice } from '@/data/pushDeviceClient';
 import { fetchPubsNear, findNearbyPubs } from '@/data/pubs';
 import {
   decidePubReminderOnEnter,
   isPubReminderEveningWindow,
   type PubReminderState,
 } from '@/notifications/pubReminderDecision';
-import { useSettingsStore } from '@/stores/settingsStore';
+import { useSettingsStore, waitForSettingsHydration } from '@/stores/settingsStore';
 
 const PUB_REMINDER_GEOFENCE_TASK = 'na-pivo-pub-reminder-geofence';
 const PUB_REMINDER_CHANNEL_ID = 'pub-reminders';
 const PUB_REMINDER_ENABLED_KEY = 'na-pivo-pub-reminders-enabled';
 const PUB_REMINDER_STATE_KEY = 'na-pivo-pub-reminder-state';
 const PUB_REMINDER_GEOFENCES_KEY = 'na-pivo-pub-reminder-geofences';
-const PUSH_TOKEN_KEY = 'na-pivo-expo-push-token';
 const TALLY_STORE_KEY = 'na-pivo-tally';
 
 const PUB_REMINDER_NOTIFICATION_KIND = 'pub_reminder';
@@ -253,6 +252,7 @@ TaskManager.defineTask(PUB_REMINDER_GEOFENCE_TASK, async ({ data, error }) => {
 
 export async function initializePubReminderNotifications(): Promise<void> {
   await setAndroidChannel();
+  await waitForSettingsHydration();
   const enabled = useSettingsStore.getState().pubReminderEnabled;
   await setReminderEnabled(enabled);
   if (!enabled) {
@@ -326,9 +326,9 @@ export async function disablePubReminderNotifications(): Promise<void> {
   await stopGeofencing();
   try {
     const token = await AsyncStorage.getItem(PUSH_TOKEN_KEY);
-    void disablePushDevice(token);
+    if (token) void disablePushDevice(token);
   } catch {
-    void disablePushDevice();
+    // Without the local token, avoid disabling every device on the account.
   }
 }
 
@@ -348,7 +348,10 @@ export function subscribePubReminderTap(onTap: () => void): Notifications.Subscr
 export async function consumeInitialPubReminderTap(onTap: () => void): Promise<void> {
   try {
     const response = await Notifications.getLastNotificationResponseAsync();
-    if (isPubReminderResponse(response)) onTap();
+    if (isPubReminderResponse(response)) {
+      onTap();
+      await Notifications.clearLastNotificationResponseAsync();
+    }
   } catch {
     // No launch notification, or the API is unavailable — nothing to route to.
   }
