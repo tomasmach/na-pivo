@@ -73,6 +73,7 @@ from pubs.models import (
     PubRating,
     PubReport,
     PubVisit,
+    PushDevice,
     UserAddedPub,
     generate_account_token,
     hash_account_token,
@@ -761,6 +762,12 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
         target=target,
         unique_fields=("pub_identity_key",),
     )
+    _delete_or_move_account_rows(
+        PushDevice,
+        source=source,
+        target=target,
+        unique_fields=("push_token",),
+    )
 
     PubCommunityData.objects.filter(account=source).update(account=target)
     ClientEvent.objects.filter(account=source).update(account=target)
@@ -1126,6 +1133,11 @@ def schedule_deletion(account: Account) -> None:
     email the user a cancel-by date. The purge command hard-deletes later."""
     revoke_all_tokens(account)
     _revoke_apple_identities(account)
+    PushDevice.objects.filter(account=account, enabled=True).update(
+        enabled=False,
+        permission_status=PushDevice.PermissionStatus.DENIED,
+        updated_at=timezone.now(),
+    )
 
     account.status = Account.Status.PENDING_DELETION
     account.deleted_at = timezone.now()

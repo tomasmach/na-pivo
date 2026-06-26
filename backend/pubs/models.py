@@ -579,6 +579,65 @@ class AuthToken(models.Model):
         return self.expires_at is not None and self.expires_at <= timezone.now()
 
 
+class PushDevice(models.Model):
+    """One Expo push-token registration for an account-owned device.
+
+    Stores no location or pub context. The mobile app decides locally when a pub
+    reminder is appropriate; this row only keeps the server ready for future
+    account/device-targeted pushes and lets users disable a token cleanly.
+    """
+
+    class Platform(models.TextChoices):
+        IOS = "ios", "iOS"
+        ANDROID = "android", "Android"
+        UNKNOWN = "unknown", "Unknown"
+
+    class PermissionStatus(models.TextChoices):
+        GRANTED = "granted", "Granted"
+        DENIED = "denied", "Denied"
+        UNDETERMINED = "undetermined", "Undetermined"
+
+    account = models.ForeignKey(
+        "pubs.Account",
+        on_delete=models.CASCADE,
+        related_name="push_devices",
+    )
+    push_token = models.CharField(
+        max_length=512,
+        unique=True,
+        help_text="Expo push token. Needed to send notifications; never log it.",
+    )
+    platform = models.CharField(
+        max_length=16,
+        choices=Platform.choices,
+        default=Platform.UNKNOWN,
+        db_index=True,
+    )
+    permission_status = models.CharField(
+        max_length=16,
+        choices=PermissionStatus.choices,
+        default=PermissionStatus.UNDETERMINED,
+        db_index=True,
+    )
+    enabled = models.BooleanField(default=True, db_index=True)
+    app_version = models.CharField(max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    last_registered_at = models.DateTimeField(auto_now=True, db_index=True)
+
+    class Meta:
+        verbose_name = "Push device"
+        verbose_name_plural = "Push devices"
+        ordering = ["-last_registered_at"]
+        indexes = [
+            models.Index(fields=["account", "enabled"]),
+            models.Index(fields=["platform", "enabled"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"PushDevice({self.platform} for account {self.account_id})"
+
+
 class EmailCredential(models.Model):
     """Email + password credential for an Account (0 or 1 per account).
 

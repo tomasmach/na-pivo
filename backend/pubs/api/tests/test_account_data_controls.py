@@ -10,7 +10,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from pubs import emailer
-from pubs.models import Account, ContentReport, DrinkLog, EmailCredential
+from pubs.models import Account, ContentReport, DrinkLog, EmailCredential, PushDevice
 
 
 @pytest.fixture
@@ -174,6 +174,14 @@ def test_account_export_includes_diary_data_and_excludes_secrets(client):
         volume_ml=500,
         drank_at=timezone.now(),
     )
+    PushDevice.objects.create(
+        account=account,
+        push_token="ExponentPushToken[exportDevice]",
+        platform=PushDevice.Platform.IOS,
+        permission_status=PushDevice.PermissionStatus.GRANTED,
+        enabled=True,
+        app_version="1.2.0",
+    )
 
     resp = client.get("/v1/account/export", **_auth(token))
 
@@ -182,11 +190,23 @@ def test_account_export_includes_diary_data_and_excludes_secrets(client):
     body = resp.json()
     assert body["account"]["id"] == account_id
     assert body["drinks"][0]["beer_name"] == "Ležák"
+    assert body["push_devices"] == [
+        {
+            "platform": "ios",
+            "permission_status": "granted",
+            "enabled": True,
+            "app_version": "1.2.0",
+            "created_at": body["push_devices"][0]["created_at"],
+            "updated_at": body["push_devices"][0]["updated_at"],
+            "last_registered_at": body["push_devices"][0]["last_registered_at"],
+        }
+    ]
     assert body["settings"]["marketing_emails_enabled"] is False
     serialized = str(body)
     assert "token_hash" not in serialized
     assert "password" not in serialized
     assert token not in serialized
+    assert "ExponentPushToken[exportDevice]" not in serialized
 
 
 @pytest.mark.django_db
