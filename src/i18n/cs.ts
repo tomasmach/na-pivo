@@ -304,6 +304,9 @@ export const cs = {
     title: 'Až sedneš do hospody, cinkneme ti.',
     body:
       'Na pivo umí večer připomenout počítadlo, když dorazíš k hospodě. Stačí zapnout notifikace a polohu na pozadí.',
+    introCta: 'Ukázat, co povoluju',
+    detailsTitle: 'Co bude iOS chtít povolit',
+    detailsBody: 'Zapínáš jednu hospodskou připomínku. Systém se zeptá postupně.',
     notificationTitle: 'Notifikace',
     notificationBody: 'Pošleme jen krátké připomenutí, ať večer nezmizí bez zápisu.',
     locationTitle: 'Poloha „vždy“',
@@ -312,6 +315,7 @@ export const cs = {
     privacyBody: 'Trasy neukládáme. Hlídáme jen vstup do blízkosti hospody.',
     cta: 'Zapnout připomínky',
     ctaBusy: 'Zapínám…',
+    back: 'Zpět',
     skip: 'Teď ne, nech mě pít v klidu',
   },
 
