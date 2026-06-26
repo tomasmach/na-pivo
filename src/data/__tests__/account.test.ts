@@ -166,6 +166,35 @@ describe('ensureAccount — registration (no cache yet)', () => {
     });
   });
 
+  it('shares an in-flight registration so startup callers do not race the same deviceId', async () => {
+    setBackend('https://api.example.com');
+    const fetchSpy = mockFetchOk({
+      id: 'acc-123',
+      token: 'secret-token',
+      created: true,
+      created_at: '2026-06-09T12:00:00+02:00',
+    });
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    const [first, second, third] = await Promise.all([
+      ensureAccount(),
+      ensureAccount(),
+      ensureAccount(),
+    ]);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(second).toEqual(first);
+    expect(third).toEqual(first);
+
+    const persistedDeviceId = (await AsyncStorage.getItem(DEVICE_ID_KEY)) as string;
+    expect(first).toEqual({
+      deviceId: persistedDeviceId,
+      accountId: 'acc-123',
+      token: 'secret-token',
+      authenticated: false,
+    });
+  });
+
   it('resolves to null (never throws) on a network failure with no cache', async () => {
     setBackend('https://api.example.com');
     global.fetch = jest.fn(async () => {

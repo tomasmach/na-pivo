@@ -35,6 +35,7 @@ describe('useSettingsStore', () => {
     expect(state.soundEnabled).toBe(false);
     expect(state.hideClosedPubs).toBe(true);
     expect(state.hidePubNames).toBe(false);
+    expect(state.pubReminderEnabled).toBe(false);
     expect(typeof state.surpriseSeed).toBe('number');
   });
 
@@ -46,6 +47,11 @@ describe('useSettingsStore', () => {
   it('defaults hideClosedPubs to true (hide known-closed pubs out of the box)', () => {
     const { useSettingsStore } = require('../settingsStore');
     expect(useSettingsStore.getState().hideClosedPubs).toBe(true);
+  });
+
+  it('defaults pub reminders to false (background location is explicit opt-in)', () => {
+    const { useSettingsStore } = require('../settingsStore');
+    expect(useSettingsStore.getState().pubReminderEnabled).toBe(false);
   });
 
   it('setHideClosedPubs toggles the filter off and back on', () => {
@@ -111,6 +117,19 @@ describe('useSettingsStore', () => {
     expect(raw).not.toBeNull();
     const persisted = JSON.parse(raw as string).state;
     expect(persisted.hidePubNames).toBe(true);
+  });
+
+  it('keeps pub reminders in the partialized payload', async () => {
+    const { useSettingsStore } = require('../settingsStore');
+    await (useSettingsStore.persist as any).rehydrate?.();
+
+    useSettingsStore.getState().setPubReminderEnabled(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const raw = await currentAsyncStorage().getItem('na-pivo-settings');
+    expect(raw).not.toBeNull();
+    const persisted = JSON.parse(raw as string).state;
+    expect(persisted.pubReminderEnabled).toBe(true);
   });
 
   it('setMode updates the mode', () => {

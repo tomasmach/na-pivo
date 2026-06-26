@@ -10,7 +10,7 @@
  *  5. Footer  (attribution)
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -69,6 +69,11 @@ import {
   selectAvatarUrl,
 } from '@/stores/accountStore';
 import type { PriceCurrency } from '@/utils/currency';
+import {
+  disablePubReminderNotifications,
+  enablePubReminderNotifications,
+} from '@/notifications/pubReminderNotifications';
+import { showPubReminderEnableFailure } from '@/notifications/pubReminderEnableFailure';
 
 // ---------------------------------------------------------------------------
 // Discrete slider positions
@@ -106,15 +111,19 @@ interface ToggleProps {
 function Toggle({ value, onToggle, accessibilityLabel }: ToggleProps) {
   const offset = useSharedValue(value ? 24 : 2);
 
-  const handlePress = useCallback(() => {
-    onToggle();
-    // eslint-disable-next-line react-hooks/immutability -- Reanimated shared values are mutable boxes; assigning .value is their API
-    offset.value = withSpring(value ? 2 : 24, {
+  useEffect(() => {
+    // Keep the thumb in sync when an async toggle rejects and the controlled
+    // value stays where it was.
+    offset.value = withSpring(value ? 24 : 2, {
       mass: 0.6,
       damping: 14,
       stiffness: 200,
     });
-  }, [value, onToggle, offset]);
+  }, [value, offset]);
+
+  const handlePress = useCallback(() => {
+    onToggle();
+  }, [onToggle]);
 
   const thumbStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: offset.value }],
@@ -473,6 +482,7 @@ export default function SettingsScreen() {
   const preferRatedPubs = useSettingsStore((s) => s.preferRatedPubs);
   const hidePubNames = useSettingsStore((s) => s.hidePubNames);
   const marketingEmailsEnabled = useSettingsStore((s) => s.marketingEmailsEnabled);
+  const pubReminderEnabled = useSettingsStore((s) => s.pubReminderEnabled);
   const setMaxDistanceKm = useSettingsStore((s) => s.setMaxDistanceKm);
   const setPriceCurrency = useSettingsStore((s) => s.setPriceCurrency);
   const setHapticEnabled = useSettingsStore((s) => s.setHapticEnabled);
@@ -481,6 +491,8 @@ export default function SettingsScreen() {
   const setPreferRatedPubs = useSettingsStore((s) => s.setPreferRatedPubs);
   const setHidePubNames = useSettingsStore((s) => s.setHidePubNames);
   const setMarketingEmailsEnabled = useSettingsStore((s) => s.setMarketingEmailsEnabled);
+  const setPubReminderEnabled = useSettingsStore((s) => s.setPubReminderEnabled);
+  const [pubReminderBusy, setPubReminderBusy] = useState(false);
 
   const sliderIndex = positionIndexForKm(maxDistanceKm);
   const appVersionLabel = getAppVersionLabel();
@@ -527,6 +539,29 @@ export default function SettingsScreen() {
     setMarketingEmailsEnabled(next);
     void updateAccountPreferences({ marketingEmailsEnabled: next });
   }, [marketingEmailsEnabled, setMarketingEmailsEnabled]);
+
+  const togglePubReminders = useCallback(async () => {
+    if (pubReminderBusy) return;
+    setPubReminderBusy(true);
+    try {
+      if (pubReminderEnabled) {
+        setPubReminderEnabled(false);
+        await disablePubReminderNotifications();
+        return;
+      }
+
+      const result = await enablePubReminderNotifications();
+      if (result.ok) {
+        setPubReminderEnabled(true);
+        return;
+      }
+
+      setPubReminderEnabled(false);
+      showPubReminderEnableFailure(result.reason);
+    } finally {
+      setPubReminderBusy(false);
+    }
+  }, [pubReminderBusy, pubReminderEnabled, setPubReminderEnabled]);
 
   const handleCurrencySelect = useCallback(
     (currency: PriceCurrency) => {
@@ -642,11 +677,20 @@ export default function SettingsScreen() {
         <View style={[styles.card, styles.cardNoPaddingV]}>
           <PrefRow
             icon={<BellRingIcon size={18} color={Colors.foamMuted} />}
+            title={cs.settings.pubReminders.title}
+            subtitle={cs.settings.pubReminders.subtitle}
+            value={pubReminderEnabled}
+            onToggle={() => void togglePubReminders()}
+            toggleLabel={`${cs.settings.pubReminders.title}: ${pubReminderEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+          />
+          <PrefRow
+            icon={<BellRingIcon size={18} color={Colors.foamMuted} />}
             title={cs.settings.haptics.title}
             subtitle={cs.settings.haptics.subtitle}
             value={hapticEnabled}
             onToggle={toggleHaptic}
             toggleLabel={`${cs.settings.haptics.title}: ${hapticEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+            borderTop
           />
           <PrefRow
             icon={<Volume2Icon size={18} color={Colors.foamMuted} />}

@@ -32,7 +32,15 @@ import { useAccountStore, selectNeedsProfileSetup } from '@/stores/accountStore'
 import { useReleaseStore } from '@/stores/releaseStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import { WhatsNewModal } from '@/components/shared/WhatsNewModal';
+import { PubReminderOnboardingModal } from '@/components/shared/PubReminderOnboardingModal';
+import { PubReminderEnableFailureModal } from '@/components/shared/PubReminderEnableFailureModal';
 import { Toast } from '@/components/shared/Toast';
+import {
+  consumeInitialPubReminderTap,
+  initializePubReminderNotifications,
+  refreshPubReminderGeofences,
+  subscribePubReminderTap,
+} from '@/notifications/pubReminderNotifications';
 
 /**
  * Onboarding gate: once auth resolves (`status==='ready'`) and a signed-in
@@ -63,6 +71,7 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts(fontAssets);
+  const router = useRouter();
 
   useEffect(() => {
     if (fontsLoaded || fontError) {
@@ -72,7 +81,19 @@ export default function RootLayout() {
 
   useEffect(() => {
     installClientTelemetry();
+    void initializePubReminderNotifications();
   }, []);
+
+  useEffect(() => {
+    // Tapping a "nejsi v hospodě?" reminder jumps straight to the beer counter.
+    // Handle both a running app (listener) and a cold start from the tap.
+    const navigateToCounter = () => router.push('/beer' as Href);
+    if (fontsLoaded || fontError) {
+      void consumeInitialPubReminderTap(navigateToCounter);
+    }
+    const subscription = subscribePubReminderTap(navigateToCounter);
+    return () => subscription.remove();
+  }, [fontsLoaded, fontError, router]);
 
   useEffect(() => {
     // Fire-and-forget: ensure an anonymous device account exists. Non-blocking.
@@ -150,6 +171,9 @@ export default function RootLayout() {
         void restorePubAmenities();
         void flushPubAmenitiesQueue();
         void flushVisitsQueue();
+        // Re-seed pub geofences for wherever the user is now (no-op when the
+        // feature is off; cheap unless they moved a few km since last fetch).
+        void refreshPubReminderGeofences();
       } else {
         flushWalkingDistance();
       }
@@ -292,6 +316,8 @@ export default function RootLayout() {
         </Stack>
         <ProfileGate />
         <WhatsNewModal />
+        <PubReminderOnboardingModal />
+        <PubReminderEnableFailureModal />
         <Toast />
       </SafeAreaProvider>
     </GestureHandlerRootView>

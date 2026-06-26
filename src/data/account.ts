@@ -67,6 +67,7 @@ export interface AccountPreferences {
 const DEVICE_ID_KEY = 'na-pivo-device-id';
 const ACCOUNT_KEY = 'na-pivo-account';
 const REQUEST_TIMEOUT_MS = 8000;
+let ensureAccountInFlight: Promise<AccountSession | null> | null = null;
 
 interface RegisterResponse {
   id?: string;
@@ -287,7 +288,7 @@ export async function clearCachedAnonymousAccount(session: AccountSession | null
  *
  * @param signal Optional caller AbortSignal, layered with an internal 8s timeout.
  */
-export async function ensureAccount(signal?: AbortSignal): Promise<AccountSession | null> {
+async function ensureAccountOnce(signal?: AbortSignal): Promise<AccountSession | null> {
   let deviceId = await getOrCreateDeviceId();
   const cached = await readCachedAccount();
 
@@ -394,6 +395,17 @@ export async function ensureAccount(signal?: AbortSignal): Promise<AccountSessio
       signal.removeEventListener('abort', onExternalAbort);
     }
   }
+}
+
+export async function ensureAccount(signal?: AbortSignal): Promise<AccountSession | null> {
+  if (signal) {
+    return ensureAccountOnce(signal);
+  }
+
+  ensureAccountInFlight ??= ensureAccountOnce().finally(() => {
+    ensureAccountInFlight = null;
+  });
+  return ensureAccountInFlight;
 }
 
 export async function fetchAccountPreferences(

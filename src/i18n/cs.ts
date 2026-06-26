@@ -20,6 +20,7 @@ export const cs = {
 
   common: {
     cancel: 'Zrušit',
+    ok: 'OK',
   },
 
   // — "Zmapuj hospodu" (community pub amenities + Mapér) —
@@ -238,6 +239,29 @@ export const cs = {
       title: 'Vibrace u cíle',
       subtitle: 'Zachrochtá ti to v kapse',
     },
+    pubReminders: {
+      title: 'Připomenout v hospodě',
+      subtitle: 'Večer občas koukneme, jestli nesedíš u výčepu. Bez ukládání trasy.',
+      failureEyebrow: 'PŘIPOMÍNKY NEBĚŽÍ',
+      openSettings: 'Otevřít Nastavení',
+      denied: {
+        'notifications-denied': {
+          title: 'Notifikace zůstaly vypnuté',
+          body:
+            'Připomínku bez notifikací nemáme jak poslat. Zapni je v Nastavení a zkus to znovu.',
+        },
+        'foreground-location-denied': {
+          title: 'Nejdřív povol základní polohu',
+          body:
+            'Poloha při používání je základ pro kompas i hospody v okolí. Až ji povolíš, dořešíme polohu „vždy“ pro připomínky.',
+        },
+        'background-location-denied': {
+          title: 'Chybí poloha „vždy“',
+          body:
+            'Poloha při používání stačí pro kompas. Hospodská připomínka ale běží i se zamčenou appkou, takže iOS musí mít polohu nastavenou na „Vždy“.',
+        },
+      },
+    },
     sound: {
       title: 'Zvuk cinknutí',
       subtitle: 'Drobné „cink“ u cíle',
@@ -290,6 +314,27 @@ export const cs = {
     // (Seznam.cz). …" — see app/settings.tsx footer.
     attributionBefore: 'Data o místech:',
     attributionAfter: '(Seznam.cz). Otevírací doba: samostatné vyhledávání.',
+  },
+
+  pubReminderOnboarding: {
+    eyebrow: 'NOVINKA PRO VEČERY',
+    title: 'Až sedneš do hospody, cinkneme ti.',
+    body:
+      'Počítadlo ti večer připomene, když dorazíš k hospodě. Stačí zapnout notifikace a polohu na pozadí.',
+    introCta: 'Ukázat, co povoluju',
+    detailsTitle: 'Co bude iOS chtít povolit',
+    detailsBody:
+      'Kompasu stačí poloha při používání. Připomínka navíc potřebuje polohu „vždy“.',
+    notificationTitle: 'Notifikace',
+    notificationBody: 'Pošleme jen krátké připomenutí, ať večer nezmizí bez zápisu.',
+    locationTitle: 'Poloha „vždy“',
+    locationBody: 'iOS ji potřebuje pro hospodský okruh, i když appka zrovna neběží.',
+    privacyTitle: 'Bez GPS deníčku',
+    privacyBody: 'Trasy neukládáme. Hlídáme jen, jestli ses přiblížil k hospodě.',
+    cta: 'Zapnout připomínky',
+    ctaBusy: 'Zapínám…',
+    back: 'Zpět',
+    skip: 'Teď ne, nech mě pít v klidu',
   },
 
   report: {

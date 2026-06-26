@@ -365,21 +365,45 @@ describe('applyMapperSnapshot', () => {
     expect(patched?.xpRules).toEqual(mapper.xpRules);
   });
 
-  it('is a no-op when no full mapper block exists yet', () => {
+  it('creates a fallback mapper block when no full mapper block exists yet', () => {
     const profile = signedInProfile();
     expect(profile.mapper).toBeUndefined();
     useAccountStore.setState({ profile });
 
     useAccountStore.getState().applyMapperSnapshot({
-      xp: 999,
-      level: 9,
-      title: 'Legenda',
-      xpIntoLevel: 0,
-      xpForNextLevel: null,
+      xp: 40,
+      level: 1,
+      title: 'Nováček',
+      xpIntoLevel: 40,
+      xpForNextLevel: 50,
+      distinctMappedPubs: 1,
+      amenityVotesCount: 1,
+      firstMapperCount: 1,
+      completedPubsCount: 0,
     });
 
-    // The compact snapshot can't synthesize durable counters → nothing patched.
-    expect(useAccountStore.getState().profile?.mapper).toBeUndefined();
+    const patched = useAccountStore.getState().profile;
+    expect(patched?.mapper).toEqual({
+      xp: 40,
+      level: 1,
+      title: 'Nováček',
+      xpIntoLevel: 40,
+      xpForNextLevel: 50,
+      distinctMappedPubs: 1,
+      amenityVotesCount: 1,
+      firstMapperCount: 1,
+      completedPubsCount: 0,
+      levels: [
+        { level: 1, title: 'Nováček', xp: 0 },
+        { level: 2, title: 'Všímálek', xp: 50 },
+        { level: 3, title: 'Štamgast', xp: 150 },
+        { level: 4, title: 'Znalec', xp: 400 },
+        { level: 5, title: 'Hospodský mudrc', xp: 900 },
+      ],
+      xpRules: { firstFact: 15, firstMapperBonus: 25, confirm: 5, pubCompleteBonus: 30 },
+    });
+    expect(patched?.achievements?.firstMap).toBe(true);
+    expect(patched?.achievements?.explorer).toBe(false);
   });
 
   it('keeps the previous xpForNextLevel when the snapshot sends null', () => {
@@ -397,6 +421,47 @@ describe('applyMapperSnapshot', () => {
     const patched = useAccountStore.getState().profile?.mapper;
     expect(patched?.xp).toBe(400);
     expect(patched?.xpForNextLevel).toBe(250);
+  });
+
+  it('updates Mapér achievements from snapshot counters without clearing old badges', () => {
+    useAccountStore.setState({
+      profile: signedInProfile({
+        achievements: {
+          firstTen: true,
+          regular: false,
+          reviewer: true,
+          firstMap: false,
+          explorer: false,
+          cartographer: false,
+          completionist: false,
+          factMachine: false,
+        },
+        mapper: fullMapper({ distinctMappedPubs: 9, amenityVotesCount: 99, completedPubsCount: 0 }),
+      }),
+    });
+
+    useAccountStore.getState().applyMapperSnapshot({
+      xp: 500,
+      level: 4,
+      title: 'Znalec',
+      xpIntoLevel: 100,
+      xpForNextLevel: 500,
+      distinctMappedPubs: 25,
+      amenityVotesCount: 100,
+      firstMapperCount: 1,
+      completedPubsCount: 1,
+    });
+
+    expect(useAccountStore.getState().profile?.achievements).toEqual({
+      firstTen: true,
+      regular: false,
+      reviewer: true,
+      firstMap: true,
+      explorer: true,
+      cartographer: true,
+      completionist: true,
+      factMachine: true,
+    });
   });
 });
 

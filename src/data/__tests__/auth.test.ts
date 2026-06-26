@@ -17,6 +17,7 @@ import * as auth from '@/data/auth';
 import { ensureAccount, getSessionToken, revertToAnonymous, setSession } from '@/data/account';
 import { getBackendEndpoint } from '@/data/backendConfig';
 import { clearLocalPrivateAccountData } from '@/data/privateAccountData';
+import { disableCachedPushDeviceWithBearer } from '@/data/pushDeviceClient';
 import { getAppleCredential, getGoogleIdToken, SocialAuthError } from '@/data/socialAuth';
 import { trackApiFailure } from '@/data/telemetryClient';
 import * as efs from 'expo-file-system';
@@ -39,6 +40,10 @@ jest.mock('@/data/account', () => ({
 
 jest.mock('@/data/privateAccountData', () => ({
   clearLocalPrivateAccountData: jest.fn(async () => undefined),
+}));
+
+jest.mock('@/data/pushDeviceClient', () => ({
+  disableCachedPushDeviceWithBearer: jest.fn(async () => true),
 }));
 
 jest.mock('@/data/socialAuth', () => {
@@ -91,6 +96,10 @@ const mockRevertToAnonymous = revertToAnonymous as jest.MockedFunction<typeof re
 const mockClearLocalPrivateAccountData = clearLocalPrivateAccountData as jest.MockedFunction<
   typeof clearLocalPrivateAccountData
 >;
+const mockDisableCachedPushDeviceWithBearer =
+  disableCachedPushDeviceWithBearer as jest.MockedFunction<
+    typeof disableCachedPushDeviceWithBearer
+  >;
 const mockGetGoogleIdToken = getGoogleIdToken as jest.MockedFunction<typeof getGoogleIdToken>;
 const mockGetAppleCredential = getAppleCredential as jest.MockedFunction<typeof getAppleCredential>;
 const mockTrackApiFailure = trackApiFailure as jest.MockedFunction<typeof trackApiFailure>;
@@ -524,6 +533,7 @@ describe('logout', () => {
     expect(url).toBe('https://api.test/v1/auth/logout');
     expect(authHeader(init)).toBe('Bearer cur-tok');
     expect(bodyOf(init)).toEqual({ all: false });
+    expect(mockDisableCachedPushDeviceWithBearer).toHaveBeenCalledWith('cur-tok');
     expect(mockClearLocalPrivateAccountData).toHaveBeenCalledTimes(1);
     expect(mockRevertToAnonymous).toHaveBeenCalledTimes(1);
   });
@@ -540,6 +550,7 @@ describe('logout', () => {
     const result = await auth.logout();
 
     expect(result).toEqual({ ok: true });
+    expect(mockDisableCachedPushDeviceWithBearer).toHaveBeenCalledWith('cur-tok');
     expect(mockClearLocalPrivateAccountData).toHaveBeenCalledTimes(1);
     expect(mockRevertToAnonymous).toHaveBeenCalledTimes(1);
   });

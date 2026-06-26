@@ -23,6 +23,7 @@ import {
 } from './account';
 import { getBackendEndpoint } from './backendConfig';
 import { clearLocalPrivateAccountData } from './privateAccountData';
+import { disableCachedPushDeviceWithBearer } from './pushDeviceClient';
 import { getAppleCredential, getGoogleIdToken, SocialAuthError } from './socialAuth';
 import { trackApiFailure } from './telemetryClient';
 
@@ -94,7 +95,7 @@ export interface AccountMapper {
   level: number;
   title: string;
   xpIntoLevel: number;
-  xpForNextLevel: number;
+  xpForNextLevel: number | null;
   amenityVotesCount: number;
   distinctMappedPubs: number;
   firstMapperCount: number;
@@ -320,7 +321,7 @@ function parseMapper(data: RawAccount): AccountMapper | undefined {
     level: numberOr(raw.level, 1),
     title: typeof raw.title === 'string' ? raw.title : '',
     xpIntoLevel: numberOr(raw.xp_into_level, 0),
-    xpForNextLevel: numberOr(raw.xp_for_next_level, 0),
+    xpForNextLevel: raw.xp_for_next_level === null ? null : numberOr(raw.xp_for_next_level, 0),
     amenityVotesCount: numberOr(raw.amenity_votes_count, 0),
     distinctMappedPubs: numberOr(raw.distinct_mapped_pubs, 0),
     firstMapperCount: numberOr(raw.first_mapper_count, 0),
@@ -464,6 +465,14 @@ const NETWORK_ERROR = {
   code: 'network',
   detail: 'Nepodařilo se spojit se serverem. Zkontroluj připojení a zkus to znovu.',
 };
+
+async function disablePushDeviceForCurrentSession(): Promise<void> {
+  try {
+    await disableCachedPushDeviceWithBearer(await getSessionToken());
+  } catch {
+    // Logout/delete must still proceed if push cleanup is offline or unavailable.
+  }
+}
 
 /** Apply a successful auth response: persist the new session, return the profile. */
 async function applyAuthSuccess(
@@ -628,6 +637,7 @@ export async function setPassword(params: { password: string; email?: string }):
 // Session / lifecycle
 // ---------------------------------------------------------------------------
 export async function logout(options?: { all?: boolean }): Promise<AuthActionResult> {
+  await disablePushDeviceForCurrentSession();
   const res = await authFetch('/v1/auth/logout', {
     bearer: 'current',
     body: { all: options?.all === true },
