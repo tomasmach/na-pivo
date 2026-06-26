@@ -553,6 +553,95 @@ export const cs = {
     segmentHistory: 'Historie',
   },
 
+  beerTrail: {
+    freeEyebrow: 'NA PIVO+',
+    plusEyebrow: 'PIVNÍ STOPA',
+    freeTitle: 'Odemkni svou pivní stopu',
+    plusTitle: 'Pivní stopa odemčená',
+    teaserEmpty: 'Zatím čeká na první večer. Kompas ví, co má dělat.',
+    teaserWithCities: (pubs: number, cities: number) =>
+      `Byl jsi v ${pubs} ${czechPlural(pubs, {
+        one: 'hospodě',
+        few: 'hospodách',
+        many: 'hospodách',
+      })} ve ${cities} ${czechPlural(cities, {
+        one: 'městě',
+        few: 'městech',
+        many: 'městech',
+      })}.`,
+    teaserWithoutCities: (pubs: number) =>
+      `Byl jsi v ${pubs} ${czechPlural(pubs, {
+        one: 'hospodě',
+        few: 'hospodách',
+        many: 'hospodách',
+      })}.`,
+    freeBody:
+      'Na Pivo je free. Pivní stopa je pro lidi, kteří z hospod dělají mapu života. Což zní dramaticky, ale víš jak.',
+    plusBody: 'Mapa, reporty a návraty na jednom místě. Žádné žebříčky v pití, jen tvůj cestopis.',
+    unlock: 'Odemknout Pivní stopu',
+    openMap: 'Mapa',
+    openReport: 'Report',
+
+    paywallTitle: 'Na Pivo+',
+    paywallHeadline: 'Pivní stopa pro lidi, co se vrací i objevují.',
+    paywallBody:
+      'Kompas, navigace, počítadlo a základní deník zůstávají zdarma. Plus odemyká hezčí návrat do historie: mapu, reporty, pokročilé statistiky a share karty.',
+    featureMap: 'Pivní mapa navštívených hospod a měst',
+    featureTrail: 'Celá pivní stopa, návraty a oblíbené podniky',
+    featureReports: 'Měsíční a roční reporty bez firemní analytiky',
+    featureShare: 'Sdílené karty, když chceš poslat důkaz bez tabulky',
+    freeStaysTitle: 'Free zůstává free',
+    freeStaysBody:
+      'Najít hospodu, otevřít mapu, počítat piva, vidět poslední večery a hlásit chyby ti nikdo nebere.',
+    purchaseSoonTitle: 'Platby ještě nejsou zapojené',
+    purchaseSoonBody:
+      'Produktová vrstva je připravená. Nákupní SDK a ověření účtenek přijde jako další krok, ať to není slepené izolepou.',
+    openAccount: 'Otevřít účet',
+
+    mapTitle: 'Pivní mapa',
+    reportTitle: 'Pivní report',
+    loading: 'Načítám pivní stopu…',
+    loadFailed: 'Pivní stopu se teď nepodařilo načíst. Deník zůstává v klidu.',
+    lockedTitle: 'Tohle je v Na Pivo+',
+    lockedBody: 'Free funkce zůstávají. Mapa a reporty jsou nová vrstva navíc.',
+    mapHeadline: 'Tvoje hospody na jedné mapě',
+    statPubs: 'HOSPOD',
+    statCities: 'MĚST',
+    statReturns: 'NÁVRATŮ',
+    statBeers: 'PIV',
+    statAverage: 'PRŮMĚR',
+    favoritePubs: 'OBLÍBENÉ PODNIKY',
+    returningPubs: 'KAM SE VRACÍŠ',
+    citiesTitle: 'MĚSTA A OBLASTI',
+    cityMeta: (pubs: number, beers: number) =>
+      `${pubs} ${czechPlural(pubs, { one: 'hospoda', few: 'hospody', many: 'hospod' })} · ${beers} ${czechPlural(beers, {
+        one: 'pivo',
+        few: 'piva',
+        many: 'piv',
+      })}`,
+    pubMeta: (visits: number, beers: number) =>
+      `${visits} ${czechPlural(visits, { one: 'večer', few: 'večery', many: 'večerů' })} · ${beers} ${czechPlural(beers, {
+        one: 'pivo',
+        few: 'piva',
+        many: 'piv',
+      })}`,
+    noTrailYet: 'Zatím tu není co špendlit. Dej první večer a mapa se chytí.',
+    noReturnsYet: 'Zatím samé jednorázovky. Štamgastství chce trpělivost.',
+    noCitiesYet: 'Města zatím neznáme. Server je doplní ze synchronizovaných večerů.',
+
+    periodMonth: 'Měsíc',
+    periodYear: 'Rok',
+    reportHeadingMonth: (month: number, year: number) => `${month}/${year}`,
+    reportHeadingYear: (year: number) => `${year}`,
+    noReportYet: 'Report zatím nemá z čeho vařit.',
+    topPub: 'Nejčastěji',
+    topBeer: 'Nejčastější pivo',
+    discovery: 'Objev',
+    priceRange: 'Cenové rozpětí',
+    shareReport: 'Sdílet report',
+    eveningTrailNote: 'Tenhle večer se počítá do tvojí pivní stopy.',
+  },
+
   profile: {
     // — Tab header —
     title: 'Profil',
@@ -951,6 +1040,9 @@ export const cs = {
     ratingDislike: (pub: string) => `Hodnotit ${pub} jako slabou`,
     ratingNote: (note: string) => `Štítek: ${note}`,
     ratingNoteInput: (pub: string) => `Vlastní poznámka k hospodě ${pub}`,
+    beerTrailUnlock: 'Odemknout Pivní stopu',
+    beerTrailMapPoint: (pub: string) => `Bod na pivní mapě: ${pub}`,
+    beerTrailShare: 'Sdílet pivní report',
 
     // — Účet / přihlášení —
     accountRow: 'Otevřít účet',

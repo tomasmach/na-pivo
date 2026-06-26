@@ -167,6 +167,9 @@ export default function EveningDetailScreen() {
                 formatPrice(sessionTotalCzk(session), priceCurrency),
               )}
             </Text>
+            <Text style={styles.trailNote} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.beerTrail.eveningTrailNote}
+            </Text>
           </View>
 
           {/* Breakdown */}
@@ -387,6 +390,13 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.amber,
+  },
+  trailNote: {
+    marginTop: 8,
+    fontFamily: Fonts.ui.regular,
+    fontSize: 13,
+    lineHeight: 18,
+    color: Colors.mutedText,
   },
   cardSectionHeader: {
     flexDirection: 'row',

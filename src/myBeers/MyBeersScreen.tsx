@@ -32,6 +32,7 @@ import {
   useTallyStore,
   sessionCount,
   sessionTotalCzk,
+  allSessionsNewestFirst,
   type TallySession,
 } from '@/stores/tallyStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
@@ -41,6 +42,8 @@ import { PubRatingControl } from '@/myBeers/PubRatingControl';
 import { MapPubEntry } from '@/components/amenities/MapPubEntry';
 import { VerdictBadge } from '@/myBeers/VerdictBadge';
 import type { PriceCurrency } from '@/utils/currency';
+import { BeerTrailTeaserCard } from '@/beerTrail/BeerTrailTeaserCard';
+import { deriveLocalBeerTrailTeaser } from '@/beerTrail/beerTrailModel';
 
 function lastDrinkText(session: TallySession, now: Date): string | null {
   if (eveningDayRelation(session.startedAt, now) !== 'today') return null;
@@ -176,6 +179,10 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
 
   const currentEvening = current && current.drinks.length > 0 ? current : null;
   const pastEvenings = history;
+  const beerTrailTeaser = useMemo(
+    () => deriveLocalBeerTrailTeaser(allSessionsNewestFirst(current, history)),
+    [current, history],
+  );
   const isEmpty = !currentEvening && pastEvenings.length === 0;
 
   return (
@@ -218,6 +225,8 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
               now={now}
             />
           )}
+
+          <BeerTrailTeaserCard fallbackTeaser={beerTrailTeaser} />
 
           {pastEvenings.length > 0 && (
             <>

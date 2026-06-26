@@ -71,6 +71,8 @@ import {
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { eveningDateLabel } from '@/myBeers/eveningModel';
+import { BeerTrailTeaserCard } from '@/beerTrail/BeerTrailTeaserCard';
+import { deriveLocalBeerTrailTeaser } from '@/beerTrail/beerTrailModel';
 
 // ─── Local stat derivations ─────────────────────────────────────────────────
 
@@ -468,6 +470,7 @@ export default function ProfileScreen() {
     [current, history],
   );
   const localStats = useMemo(() => deriveStats(sessions), [sessions]);
+  const beerTrailTeaser = useMemo(() => deriveLocalBeerTrailTeaser(sessions), [sessions]);
   const stats = useMemo(() => {
     const backend = profile?.stats;
     if (!isSignedIn || !backend) return localStats;
@@ -634,6 +637,8 @@ export default function ProfileScreen() {
             caption={cs.profile.statSpent}
           />
         </View>
+
+        <BeerTrailTeaserCard fallbackTeaser={beerTrailTeaser} />
 
         {/* ── Mapér (between TVOJE ČÍSLA and ODZNAKY) ── */}
         {mapper ? (
