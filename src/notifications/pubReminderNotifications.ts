@@ -109,8 +109,8 @@ async function hasActiveCounterSession(): Promise<boolean> {
 async function schedulePubReminder(pubName: string): Promise<void> {
   await Notifications.scheduleNotificationAsync({
     content: {
-      title: 'Hele, nejsi náhodou v hospodě?',
-      body: `${pubName}: vyber hospodu a počítej piva, ať večer neutíká bokem.`,
+      title: `Sedíš v ${pubName}?`,
+      body: 'Naťukni počítadlo a sečti dnešní rundy.',
       data: { kind: PUB_REMINDER_NOTIFICATION_KIND },
     },
     trigger: null,

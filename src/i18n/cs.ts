@@ -253,7 +253,7 @@ export const cs = {
         'foreground-location-denied': {
           title: 'Nejdřív povol základní polohu',
           body:
-            'Poloha při používání je základ pro kompas i hospody v okolí. Až ji povolíš, můžeme řešit extra polohu „vždy“ pro připomínky.',
+            'Poloha při používání je základ pro kompas i hospody v okolí. Až ji povolíš, dořešíme polohu „vždy“ pro připomínky.',
         },
         'background-location-denied': {
           title: 'Chybí poloha „vždy“',
@@ -320,7 +320,7 @@ export const cs = {
     eyebrow: 'NOVINKA PRO VEČERY',
     title: 'Až sedneš do hospody, cinkneme ti.',
     body:
-      'Na pivo umí večer připomenout počítadlo, když dorazíš k hospodě. Stačí zapnout notifikace a polohu na pozadí.',
+      'Počítadlo ti večer připomene, když dorazíš k hospodě. Stačí zapnout notifikace a polohu na pozadí.',
     introCta: 'Ukázat, co povoluju',
     detailsTitle: 'Co bude iOS chtít povolit',
     detailsBody:
@@ -328,9 +328,9 @@ export const cs = {
     notificationTitle: 'Notifikace',
     notificationBody: 'Pošleme jen krátké připomenutí, ať večer nezmizí bez zápisu.',
     locationTitle: 'Poloha „vždy“',
-    locationBody: 'Systém ji potřebuje pro hospodský okruh i když appka zrovna neběží.',
+    locationBody: 'iOS ji potřebuje pro hospodský okruh, i když appka zrovna neběží.',
     privacyTitle: 'Bez GPS deníčku',
-    privacyBody: 'Trasy neukládáme. Hlídáme jen vstup do blízkosti hospody.',
+    privacyBody: 'Trasy neukládáme. Hlídáme jen, jestli ses přiblížil k hospodě.',
     cta: 'Zapnout připomínky',
     ctaBusy: 'Zapínám…',
     back: 'Zpět',
