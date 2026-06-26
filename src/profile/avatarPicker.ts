@@ -16,13 +16,34 @@
  * client rebuild to be present at runtime; this module only imports their JS.
  */
 
-import * as ImagePicker from 'expo-image-picker';
-import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import type * as ExpoImagePicker from 'expo-image-picker';
+import type * as ExpoImageManipulator from 'expo-image-manipulator';
 
 /** Longest edge we downscale to before upload — comfortably above the 256px the backend keeps. */
 const MAX_EDGE = 512;
 /** JPEG quality for the pre-upload downscale. */
 const JPEG_QUALITY = 0.85;
+
+type ImagePickerModule = typeof ExpoImagePicker;
+type ImageManipulatorModule = typeof ExpoImageManipulator;
+
+function loadImagePicker(): ImagePickerModule | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('expo-image-picker') as ImagePickerModule;
+  } catch {
+    return null;
+  }
+}
+
+function loadImageManipulator(): ImageManipulatorModule | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('expo-image-manipulator') as ImageManipulatorModule;
+  } catch {
+    return null;
+  }
+}
 
 export type AvatarPickResult =
   | { status: 'picked'; uri: string }
@@ -36,6 +57,9 @@ export type AvatarPickResult =
  * with a square crop, then downscale. Never throws.
  */
 export async function pickAndPrepareAvatar(): Promise<AvatarPickResult> {
+  const ImagePicker = loadImagePicker();
+  if (!ImagePicker) return { status: 'error' };
+
   try {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
@@ -70,10 +94,13 @@ export async function pickAndPrepareAvatar(): Promise<AvatarPickResult> {
  * accept and re-encode it.
  */
 async function downscale(uri: string): Promise<string> {
+  const ImageManipulator = loadImageManipulator();
+  if (!ImageManipulator) return uri;
+
   try {
-    const out = await manipulateAsync(uri, [{ resize: { width: MAX_EDGE } }], {
+    const out = await ImageManipulator.manipulateAsync(uri, [{ resize: { width: MAX_EDGE } }], {
       compress: JPEG_QUALITY,
-      format: SaveFormat.JPEG,
+      format: ImageManipulator.SaveFormat.JPEG,
     });
     return out.uri;
   } catch {

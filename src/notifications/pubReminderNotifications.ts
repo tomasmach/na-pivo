@@ -1,9 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as Location from 'expo-location';
-import * as Notifications from 'expo-notifications';
-import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
+import type * as ExpoNotifications from 'expo-notifications';
+import type * as ExpoTaskManager from 'expo-task-manager';
 
 import { disablePushDevice, PUSH_TOKEN_KEY, registerPushDevice } from '@/data/pushDeviceClient';
 import { fetchPubsNear, findNearbyPubs } from '@/data/pubs';
@@ -39,7 +39,35 @@ type GeofenceTaskData = {
   region?: Location.LocationRegion;
 };
 
-Notifications.setNotificationHandler({
+type NotificationsModule = typeof ExpoNotifications;
+type TaskManagerModule = typeof ExpoTaskManager;
+
+function loadNotifications(): NotificationsModule | null {
+  try {
+    // Some local dev builds can miss ExpoPushTokenManager even when the JS
+    // package is present. Keep the app usable; push features no-op until the
+    // native module is available in the installed build.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('expo-notifications') as NotificationsModule;
+  } catch {
+    return null;
+  }
+}
+
+const Notifications = loadNotifications();
+
+function loadTaskManager(): TaskManagerModule | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('expo-task-manager') as TaskManagerModule;
+  } catch {
+    return null;
+  }
+}
+
+const TaskManager = loadTaskManager();
+
+Notifications?.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowBanner: true,
     shouldShowList: true,
@@ -49,7 +77,7 @@ Notifications.setNotificationHandler({
 });
 
 async function setAndroidChannel(): Promise<void> {
-  if (Platform.OS !== 'android') return;
+  if (Platform.OS !== 'android' || !Notifications) return;
   await Notifications.setNotificationChannelAsync(PUB_REMINDER_CHANNEL_ID, {
     name: 'Připomínky v hospodě',
     importance: Notifications.AndroidImportance.DEFAULT,
@@ -107,6 +135,7 @@ async function hasActiveCounterSession(): Promise<boolean> {
 }
 
 async function schedulePubReminder(pubName: string): Promise<void> {
+  if (!Notifications) return;
   await Notifications.scheduleNotificationAsync({
     content: {
       title: `Sedíš v ${pubName}?`,
@@ -118,7 +147,7 @@ async function schedulePubReminder(pubName: string): Promise<void> {
 }
 
 async function getAndRegisterPushToken(status: 'granted' | 'denied' | 'undetermined'): Promise<string | null> {
-  if (status !== 'granted') return null;
+  if (status !== 'granted' || !Notifications) return null;
   try {
     const projectId =
       Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
@@ -241,7 +270,7 @@ async function handleGeofenceEnter(pubId: string): Promise<void> {
   }
 }
 
-TaskManager.defineTask(PUB_REMINDER_GEOFENCE_TASK, async ({ data, error }) => {
+TaskManager?.defineTask(PUB_REMINDER_GEOFENCE_TASK, async ({ data, error }) => {
   if (error) return;
   const { eventType, region } = (data as GeofenceTaskData | undefined) ?? {};
   if (eventType !== Location.GeofencingEventType.Enter) return;
@@ -252,6 +281,7 @@ TaskManager.defineTask(PUB_REMINDER_GEOFENCE_TASK, async ({ data, error }) => {
 
 export async function initializePubReminderNotifications(): Promise<void> {
   await setAndroidChannel();
+  if (!Notifications || !TaskManager) return;
   await waitForSettingsHydration();
   const enabled = useSettingsStore.getState().pubReminderEnabled;
   await setReminderEnabled(enabled);
@@ -261,7 +291,7 @@ export async function initializePubReminderNotifications(): Promise<void> {
   }
 
   const [notificationPermission, backgroundPermission] = await Promise.all([
-    Notifications.getPermissionsAsync(),
+    Notifications?.getPermissionsAsync() ?? Promise.resolve({ status: 'denied' }),
     Location.getBackgroundPermissionsAsync(),
   ]);
   if (notificationPermission.status !== 'granted' || backgroundPermission.status !== 'granted') {
@@ -274,6 +304,10 @@ export async function initializePubReminderNotifications(): Promise<void> {
 
 export async function enablePubReminderNotifications(): Promise<PubReminderEnableResult> {
   await setAndroidChannel();
+  if (!Notifications || !TaskManager) {
+    await setReminderEnabled(false);
+    return { ok: false, reason: 'notifications-denied' };
+  }
 
   const foreground = await Location.requestForegroundPermissionsAsync();
   if (foreground.status !== 'granted') {
@@ -311,6 +345,7 @@ export async function enablePubReminderNotifications(): Promise<PubReminderEnabl
  * granted, and fetchPubsNear short-circuits unless the user moved a few km.
  */
 export async function refreshPubReminderGeofences(): Promise<void> {
+  if (!TaskManager) return;
   if (!useSettingsStore.getState().pubReminderEnabled) return;
   try {
     const background = await Location.getBackgroundPermissionsAsync();
@@ -332,24 +367,43 @@ export async function disablePubReminderNotifications(): Promise<void> {
   }
 }
 
-function isPubReminderResponse(response: Notifications.NotificationResponse | null): boolean {
+function isPubReminderResponse(response: ExpoNotifications.NotificationResponse | null): boolean {
   const kind = response?.notification.request.content.data?.kind;
   return kind === PUB_REMINDER_NOTIFICATION_KIND;
 }
 
+function isFriendResponse(response: ExpoNotifications.NotificationResponse | null): boolean {
+  const kind = response?.notification.request.content.data?.kind;
+  return kind === 'friend_request' || kind === 'friend_accepted' || kind === 'friend_at_pub';
+}
+
 /** Subscribe to taps on a pub-reminder notification while the app is running. */
-export function subscribePubReminderTap(onTap: () => void): Notifications.Subscription {
+export function subscribePubReminderTap(
+  onTap: () => void,
+  onFriendTap?: () => void,
+): ExpoNotifications.Subscription {
+  if (!Notifications) {
+    return { remove: () => undefined };
+  }
   return Notifications.addNotificationResponseReceivedListener((response) => {
     if (isPubReminderResponse(response)) onTap();
+    else if (onFriendTap && isFriendResponse(response)) onFriendTap();
   });
 }
 
 /** Handle a cold-start launch triggered by tapping a pub-reminder notification. */
-export async function consumeInitialPubReminderTap(onTap: () => void): Promise<void> {
+export async function consumeInitialPubReminderTap(
+  onTap: () => void,
+  onFriendTap?: () => void,
+): Promise<void> {
+  if (!Notifications) return;
   try {
     const response = await Notifications.getLastNotificationResponseAsync();
     if (isPubReminderResponse(response)) {
       onTap();
+      await Notifications.clearLastNotificationResponseAsync();
+    } else if (onFriendTap && isFriendResponse(response)) {
+      onFriendTap();
       await Notifications.clearLastNotificationResponseAsync();
     }
   } catch {

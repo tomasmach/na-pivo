@@ -542,7 +542,52 @@ export const cs = {
     myBeers: 'Moje piva',
     // Počítadlo + Moje piva live behind one tab now, switched by a segment.
     beer: 'Štamgast',
+    friends: 'Parta',
     profile: 'Profil',
+  },
+
+  friends: {
+    title: 'Parta',
+    heroTitle: 'Kdo jde dneska na jedno?',
+    heroBody: 'Přidej kámoše, uvidíš jejich hospodské signály a pozveš je ke stolu.',
+    refresh: 'Obnovit',
+    searchPlaceholder: 'Přezdívka kámoše',
+    searchCta: 'Najít',
+    addByNickname: 'Pozvat',
+    emptyFriends: 'Zatím tu sedíš sám. Najdi přezdívku a pošli první pozvánku.',
+    emptyActive: 'Nikdo z party teď nesvítí v hospodě.',
+    activeHeader: 'TEĎ NA PIVU',
+    requestsHeader: 'ČEKAJÍ NA TEBE',
+    friendsHeader: 'KÁMOŠI',
+    feedHeader: 'CINKLO V PARTĚ',
+    outgoingHeader: 'ODESLANÉ POZVÁNKY',
+    accept: 'Přijmout',
+    decline: 'Nechat být',
+    remove: 'Odebrat',
+    removeTitle: 'Odebrat kámoše?',
+    removeBody: (name: string) => `${name} už neuvidí tvoje hospodské signály a zmizí z party.`,
+    removeConfirm: 'Odebrat',
+    requestSent: 'Pozvánka letí ke stolu.',
+    requestAccepted: 'Je v partě.',
+    requestDeclined: 'Žádost je pryč.',
+    friendRemoved: 'Kamarád odebrán.',
+    shareHere: 'Dát partě vědět',
+    shareHereShort: 'Cinknout partě',
+    shareSuccess: 'Parta dostala signál.',
+    shareError: 'Nepodařilo se dát vědět partě.',
+    sharedCount: (n: number) =>
+      n === 0
+        ? 'Ještě žádné společné pivo'
+        : n === 1
+          ? '1 společné pivo'
+          : n >= 2 && n <= 4
+            ? `${n} společná piva`
+            : `${n} společných piv`,
+    lastTogether: (pub: string) => `Naposledy spolu: ${pub}`,
+    inviteLine: (name: string, pub: string) => `${name} sedí v ${pub}. Nechceš se přidat?`,
+    atPubMessage: 'Máme tu volno u stolu.',
+    noResults: 'Nikoho takového jsme nenašli.',
+    offline: 'Parta se teď nenačetla. Zkus to za chvíli.',
   },
 
   // The merged "Pivo" tab — a segmented control flips between counting and the
@@ -919,6 +964,7 @@ export const cs = {
     tabCounter: 'Záložka Počítadlo',
     tabMyBeers: 'Záložka Moje piva',
     tabBeer: 'Záložka Štamgast',
+    tabFriends: 'Záložka Parta',
     beerSegmentCount: 'Přepnout na počítání piv',
     beerSegmentHistory: 'Přepnout na historii večerů',
     counterDone: 'Dopito, zavřít tenhle večer',

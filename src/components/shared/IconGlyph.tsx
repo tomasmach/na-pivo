@@ -44,6 +44,8 @@ import {
   History,
   Clock,
   User,
+  Users,
+  UserPlus,
   Mail,
   LogOut,
   Link,
@@ -126,6 +128,8 @@ export const ThumbsDownIcon = wrap(ThumbsDown, 'ThumbsDownIcon');
 export const HistoryIcon = wrap(History, 'HistoryIcon');
 export const ClockIcon = wrap(Clock, 'ClockIcon');
 export const UserIcon = wrap(User, 'UserIcon');
+export const UsersIcon = wrap(Users, 'UsersIcon');
+export const UserPlusIcon = wrap(UserPlus, 'UserPlusIcon');
 export const MailIcon = wrap(Mail, 'MailIcon');
 export const LogOutIcon = wrap(LogOut, 'LogOutIcon');
 export const LinkIcon = wrap(Link, 'LinkIcon');
