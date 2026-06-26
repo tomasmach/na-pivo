@@ -37,6 +37,7 @@ from pubs.models import (
     DrinkLog,
     EmailCredential,
     OneTimeToken,
+    PushDevice,
 )
 
 # ---------------------------------------------------------------------------
@@ -322,6 +323,13 @@ def test_login_with_anonymous_bearer_merges_progress_into_existing_account(
         price_czk=55,
         drank_at="2026-06-01T18:00:00Z",
     )
+    push_device = PushDevice.objects.create(
+        account=anon,
+        push_token="ExponentPushToken[mergeLogin]",
+        platform=PushDevice.Platform.IOS,
+        permission_status=PushDevice.PermissionStatus.GRANTED,
+        enabled=True,
+    )
 
     resp = client.post(
         "/v1/auth/login",
@@ -335,6 +343,8 @@ def test_login_with_anonymous_bearer_merges_progress_into_existing_account(
     assert Account.objects.count() == 1
     drink.refresh_from_db()
     assert drink.account_id == target.id
+    push_device.refresh_from_db()
+    assert push_device.account_id == target.id
 
 
 @pytest.mark.django_db
@@ -1010,13 +1020,23 @@ def test_delete_account_soft_deletes_and_revokes_token(client, fake_oauth, sent_
         price_czk=50,
         drank_at="2026-06-01T18:00:00Z",
     )
+    push_device = PushDevice.objects.create(
+        account=account,
+        push_token="ExponentPushToken[deleteAccount]",
+        platform=PushDevice.Platform.IOS,
+        permission_status=PushDevice.PermissionStatus.GRANTED,
+        enabled=True,
+    )
 
     resp = client.delete("/v1/account/me", **_auth(token))
     assert resp.status_code == status.HTTP_204_NO_CONTENT
 
     account.refresh_from_db()
+    push_device.refresh_from_db()
     assert account.status == Account.Status.PENDING_DELETION
     assert account.deleted_at is not None
+    assert push_device.enabled is False
+    assert push_device.permission_status == PushDevice.PermissionStatus.DENIED
 
     # Token no longer authenticates. NOTE: schedule_deletion REVOKES (deletes)
     # all AuthToken rows before flipping status, so the presented token is gone

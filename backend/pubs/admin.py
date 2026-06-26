@@ -1,3 +1,5 @@
+import hashlib
+
 from django.contrib import admin
 from django.utils import timezone
 
@@ -102,8 +104,16 @@ class PushDeviceAdmin(admin.ModelAdmin):
     )
     list_filter = ("platform", "permission_status", "enabled")
     search_fields = ("account__public_id", "account__nickname")
-    readonly_fields = ("push_token", "created_at", "updated_at", "last_registered_at")
+    exclude = ("push_token",)
+    readonly_fields = ("token_fingerprint", "created_at", "updated_at", "last_registered_at")
     ordering = ("-last_registered_at",)
+
+    @admin.display(description="Push token hash")
+    def token_fingerprint(self, obj: PushDevice) -> str:
+        return hashlib.sha256(obj.push_token.encode("utf-8")).hexdigest()[:16]
+
+    def has_add_permission(self, request) -> bool:
+        return False
 
 
 @admin.register(ContentReport)

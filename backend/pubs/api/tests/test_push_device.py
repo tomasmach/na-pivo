@@ -142,3 +142,32 @@ def test_push_device_rejects_unknown_platform(client):
 
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
     assert PushDevice.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_push_device_rejects_invalid_push_token(client):
+    token = _register(client)
+
+    resp = client.put(
+        "/v1/push-device",
+        data={"push_token": "not-a-real-token", "platform": "ios"},
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST
+    assert PushDevice.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_push_device_delete_requires_valid_token(client):
+    token = _register(client)
+
+    resp = client.delete(
+        "/v1/push-device",
+        data={"push_token": ""},
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST

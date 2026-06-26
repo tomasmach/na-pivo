@@ -65,6 +65,8 @@ from pubs.models import (
 # Request serializers
 # ---------------------------------------------------------------------------
 
+EXPO_PUSH_TOKEN_RE = re.compile(r"^(?:Expo|Exponent)PushToken\[[A-Za-z0-9_-]+\]$")
+
 
 class PubInputSerializer(serializers.Serializer):
     """A single pub entry in the request body."""
@@ -416,18 +418,22 @@ class PushDeviceRequestSerializer(serializers.Serializer):
     def validate_push_token(self, value: str) -> str:
         if not value:
             raise serializers.ValidationError("push_token must not be empty.")
+        if EXPO_PUSH_TOKEN_RE.fullmatch(value) is None:
+            raise serializers.ValidationError("push_token must be a valid Expo push token.")
         return value
 
 
 class PushDeviceDeleteSerializer(serializers.Serializer):
     """Request body for DELETE /v1/push-device."""
 
-    push_token = serializers.CharField(
-        max_length=512,
-        required=False,
-        allow_blank=True,
-        trim_whitespace=True,
-    )
+    push_token = serializers.CharField(max_length=512, trim_whitespace=True)
+
+    def validate_push_token(self, value: str) -> str:
+        if not value:
+            raise serializers.ValidationError("push_token must not be empty.")
+        if EXPO_PUSH_TOKEN_RE.fullmatch(value) is None:
+            raise serializers.ValidationError("push_token must be a valid Expo push token.")
+        return value
 
 
 class PushDeviceResponseSerializer(serializers.ModelSerializer):

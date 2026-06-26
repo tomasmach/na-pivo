@@ -1442,10 +1442,12 @@ class PushDeviceView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        push_token = (serializer.validated_data.get("push_token") or "").strip()
-        queryset = PushDevice.objects.filter(account=request.user, enabled=True)
-        if push_token:
-            queryset = queryset.filter(push_token=push_token)
+        push_token = serializer.validated_data["push_token"]
+        queryset = PushDevice.objects.filter(
+            account=request.user,
+            enabled=True,
+            push_token=push_token,
+        )
 
         try:
             disabled = queryset.update(
@@ -2080,6 +2082,18 @@ def _export_account_data(account: Account) -> dict:
             "expires_at": _iso(account.subscription_expires_at),
             "updated_at": _iso(account.subscription_updated_at),
         },
+        "push_devices": [
+            {
+                "platform": device.platform,
+                "permission_status": device.permission_status,
+                "enabled": device.enabled,
+                "app_version": device.app_version,
+                "created_at": _iso(device.created_at),
+                "updated_at": _iso(device.updated_at),
+                "last_registered_at": _iso(device.last_registered_at),
+            }
+            for device in account.push_devices.all()
+        ],
         "usage": {
             "app_open_count": usage.app_open_count if usage else 0,
             "app_foreground_count": usage.app_foreground_count if usage else 0,
