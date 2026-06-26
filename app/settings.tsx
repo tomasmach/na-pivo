@@ -73,7 +73,7 @@ import {
   disablePubReminderNotifications,
   enablePubReminderNotifications,
 } from '@/notifications/pubReminderNotifications';
-import { showPubReminderEnableFailureAlert } from '@/notifications/pubReminderEnableAlert';
+import { showPubReminderEnableFailure } from '@/notifications/pubReminderEnableFailure';
 
 // ---------------------------------------------------------------------------
 // Discrete slider positions
@@ -557,7 +557,7 @@ export default function SettingsScreen() {
       }
 
       setPubReminderEnabled(false);
-      showPubReminderEnableFailureAlert(result.reason);
+      showPubReminderEnableFailure(result.reason);
     } finally {
       setPubReminderBusy(false);
     }

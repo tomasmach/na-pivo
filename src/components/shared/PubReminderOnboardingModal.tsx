@@ -30,7 +30,7 @@ import { cs } from '@/i18n/cs';
 import {
   enablePubReminderNotifications,
 } from '@/notifications/pubReminderNotifications';
-import { showPubReminderEnableFailureAlert } from '@/notifications/pubReminderEnableAlert';
+import { showPubReminderEnableFailure } from '@/notifications/pubReminderEnableFailure';
 import {
   getSeenPubReminderOnboardingVersion,
   markPubReminderOnboardingSeen,
@@ -181,7 +181,7 @@ export function PubReminderOnboardingModal() {
       setPubReminderEnabled(false);
       setEligible(false);
       setStep('intro');
-      showPubReminderEnableFailureAlert(result.reason);
+      showPubReminderEnableFailure(result.reason);
     } finally {
       setBusy(false);
     }

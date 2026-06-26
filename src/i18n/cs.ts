@@ -242,6 +242,7 @@ export const cs = {
     pubReminders: {
       title: 'Připomenout v hospodě',
       subtitle: 'Večer občas koukneme, jestli nesedíš u výčepu. Bez ukládání trasy.',
+      failureEyebrow: 'PŘIPOMÍNKY NEBĚŽÍ',
       openSettings: 'Otevřít Nastavení',
       denied: {
         'notifications-denied': {
