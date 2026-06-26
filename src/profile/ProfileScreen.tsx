@@ -243,6 +243,9 @@ function MapperSection({ mapper, signedIn }: { mapper: AccountMapper; signedIn: 
   const cur = mapper.xpIntoLevel;
   const next = isMaxed ? mapper.xpIntoLevel : xpForNext;
   const remaining = isMaxed ? 0 : Math.max(0, xpForNext - mapper.xpIntoLevel);
+  const progressText = isMaxed
+    ? cs.mapPub.mapperXpTotal(mapper.xp)
+    : cs.mapPub.mapperXpProgress(cur, next);
 
   return (
     <>
@@ -253,7 +256,7 @@ function MapperSection({ mapper, signedIn }: { mapper: AccountMapper; signedIn: 
         accessibilityLabel={cs.a11y.mapperLevel(
           mapper.level,
           mapper.title,
-          mapper.xpIntoLevel,
+          isMaxed ? mapper.xp : mapper.xpIntoLevel,
           isMaxed ? null : xpForNext,
         )}
       >
@@ -270,7 +273,7 @@ function MapperSection({ mapper, signedIn }: { mapper: AccountMapper; signedIn: 
 
         <View style={styles.xpRow}>
           <Text style={styles.xpProgress} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.mapPub.mapperXpProgress(cur, next)}
+            {progressText}
           </Text>
           <Text style={styles.xpToNext} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
             {isMaxed ? cs.mapPub.mapperXpMaxed : cs.mapPub.mapperXpToNext(remaining)}

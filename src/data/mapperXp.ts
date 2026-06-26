@@ -17,10 +17,10 @@ import type { MapperLevel, MapperXpRules } from './auth';
 /** The locked 5-level ladder (titles locked; thresholds are the env defaults). */
 export const FALLBACK_LEVELS: readonly MapperLevel[] = [
   { level: 1, title: 'Nováček', xp: 0 },
-  { level: 2, title: 'Všímálek', xp: 50 },
-  { level: 3, title: 'Štamgast', xp: 150 },
-  { level: 4, title: 'Znalec', xp: 400 },
-  { level: 5, title: 'Hospodský mudrc', xp: 900 },
+  { level: 2, title: 'Všímálek', xp: 300 },
+  { level: 3, title: 'Štamgast', xp: 900 },
+  { level: 4, title: 'Znalec', xp: 2500 },
+  { level: 5, title: 'Hospodský mudrc', xp: 6000 },
 ];
 
 /** The env-default XP awards (spec §5.4 xp_rules). Used when no live block. */

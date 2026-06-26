@@ -35,7 +35,7 @@ export interface MapperSnapshotPatch {
   level: number;
   title: string;
   xpIntoLevel: number;
-  xpForNextLevel: number | null;
+  xpForNextLevel?: number | null;
   distinctMappedPubs?: number;
   amenityVotesCount?: number;
   firstMapperCount?: number;
@@ -46,7 +46,10 @@ function mapperFromSnapshot(
   current: AccountMapper | undefined,
   snapshot: MapperSnapshotPatch,
 ): AccountMapper {
-  const xpForNextLevel = snapshot.xpForNextLevel ?? current?.xpForNextLevel ?? null;
+  const xpForNextLevel =
+    snapshot.xpForNextLevel === undefined
+      ? current?.xpForNextLevel ?? null
+      : snapshot.xpForNextLevel;
   return {
     xp: snapshot.xp,
     level: snapshot.level,

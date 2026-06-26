@@ -107,6 +107,7 @@ export const cs = {
     mapperHeader: 'MAPÉR',
     mapperLevel: (n: number, title: string) => `Úroveň ${n} · ${title}`,
     mapperXpProgress: (cur: number, next: number) => `${cur} / ${next} XP`,
+    mapperXpTotal: (xp: number) => `${xp} XP celkem`,
     mapperXpToNext: (n: number) => `ještě ${n} XP do dalšího levelu`,
     mapperXpMaxed: 'máš všechno, jsi legenda',
     mapperStatMappedPubs: 'zmapovaných hospod',

@@ -69,8 +69,8 @@ function fullMapper(overrides: Partial<AccountMapper> = {}): AccountMapper {
     completedPubsCount: 1,
     levels: [
       { level: 1, title: 'Nováček', xp: 0 },
-      { level: 2, title: 'Všímálek', xp: 100 },
-      { level: 3, title: 'Štamgast', xp: 150 },
+      { level: 2, title: 'Všímálek', xp: 300 },
+      { level: 3, title: 'Štamgast', xp: 900 },
     ],
     xpRules: { firstFact: 10, firstMapperBonus: 25, confirm: 2, pubCompleteBonus: 50 },
     ...overrides,
@@ -395,10 +395,10 @@ describe('applyMapperSnapshot', () => {
       completedPubsCount: 0,
       levels: [
         { level: 1, title: 'Nováček', xp: 0 },
-        { level: 2, title: 'Všímálek', xp: 50 },
-        { level: 3, title: 'Štamgast', xp: 150 },
-        { level: 4, title: 'Znalec', xp: 400 },
-        { level: 5, title: 'Hospodský mudrc', xp: 900 },
+        { level: 2, title: 'Všímálek', xp: 300 },
+        { level: 3, title: 'Štamgast', xp: 900 },
+        { level: 4, title: 'Znalec', xp: 2500 },
+        { level: 5, title: 'Hospodský mudrc', xp: 6000 },
       ],
       xpRules: { firstFact: 15, firstMapperBonus: 25, confirm: 5, pubCompleteBonus: 30 },
     });
@@ -406,21 +406,35 @@ describe('applyMapperSnapshot', () => {
     expect(patched?.achievements?.explorer).toBe(false);
   });
 
-  it('keeps the previous xpForNextLevel when the snapshot sends null', () => {
-    const mapper = fullMapper({ xpForNextLevel: 250 });
+  it('treats a null xpForNextLevel snapshot as max level', () => {
+    const mapper = fullMapper({ xpForNextLevel: 50 });
     useAccountStore.setState({ profile: signedInProfile({ mapper }) });
 
     useAccountStore.getState().applyMapperSnapshot({
-      xp: 400,
+      xp: 2820,
       level: 5,
       title: 'Hospodský mudrc',
-      xpIntoLevel: 80,
+      xpIntoLevel: 1920,
       xpForNextLevel: null,
     });
 
     const patched = useAccountStore.getState().profile?.mapper;
-    expect(patched?.xp).toBe(400);
-    expect(patched?.xpForNextLevel).toBe(250);
+    expect(patched?.xp).toBe(2820);
+    expect(patched?.xpForNextLevel).toBeNull();
+  });
+
+  it('keeps the previous xpForNextLevel only when the snapshot omits it', () => {
+    const mapper = fullMapper({ xpForNextLevel: 250 });
+    useAccountStore.setState({ profile: signedInProfile({ mapper }) });
+
+    useAccountStore.getState().applyMapperSnapshot({
+      xp: 350,
+      level: 4,
+      title: 'Znalec',
+      xpIntoLevel: 50,
+    });
+
+    expect(useAccountStore.getState().profile?.mapper?.xpForNextLevel).toBe(250);
   });
 
   it('updates Mapér achievements from snapshot counters without clearing old badges', () => {
