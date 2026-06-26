@@ -19,6 +19,7 @@ import {
   StyleSheet,
   LayoutChangeEvent,
   Linking,
+  Alert,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
@@ -69,6 +70,10 @@ import {
   selectAvatarUrl,
 } from '@/stores/accountStore';
 import type { PriceCurrency } from '@/utils/currency';
+import {
+  disablePubReminderNotifications,
+  enablePubReminderNotifications,
+} from '@/notifications/pubReminderNotifications';
 
 // ---------------------------------------------------------------------------
 // Discrete slider positions
@@ -473,6 +478,7 @@ export default function SettingsScreen() {
   const preferRatedPubs = useSettingsStore((s) => s.preferRatedPubs);
   const hidePubNames = useSettingsStore((s) => s.hidePubNames);
   const marketingEmailsEnabled = useSettingsStore((s) => s.marketingEmailsEnabled);
+  const pubReminderEnabled = useSettingsStore((s) => s.pubReminderEnabled);
   const setMaxDistanceKm = useSettingsStore((s) => s.setMaxDistanceKm);
   const setPriceCurrency = useSettingsStore((s) => s.setPriceCurrency);
   const setHapticEnabled = useSettingsStore((s) => s.setHapticEnabled);
@@ -481,6 +487,8 @@ export default function SettingsScreen() {
   const setPreferRatedPubs = useSettingsStore((s) => s.setPreferRatedPubs);
   const setHidePubNames = useSettingsStore((s) => s.setHidePubNames);
   const setMarketingEmailsEnabled = useSettingsStore((s) => s.setMarketingEmailsEnabled);
+  const setPubReminderEnabled = useSettingsStore((s) => s.setPubReminderEnabled);
+  const [pubReminderBusy, setPubReminderBusy] = useState(false);
 
   const sliderIndex = positionIndexForKm(maxDistanceKm);
   const appVersionLabel = getAppVersionLabel();
@@ -527,6 +535,29 @@ export default function SettingsScreen() {
     setMarketingEmailsEnabled(next);
     void updateAccountPreferences({ marketingEmailsEnabled: next });
   }, [marketingEmailsEnabled, setMarketingEmailsEnabled]);
+
+  const togglePubReminders = useCallback(async () => {
+    if (pubReminderBusy) return;
+    setPubReminderBusy(true);
+    try {
+      if (pubReminderEnabled) {
+        setPubReminderEnabled(false);
+        await disablePubReminderNotifications();
+        return;
+      }
+
+      const result = await enablePubReminderNotifications();
+      if (result.ok) {
+        setPubReminderEnabled(true);
+        return;
+      }
+
+      setPubReminderEnabled(false);
+      Alert.alert(cs.settings.pubReminders.deniedTitle, cs.settings.pubReminders.deniedBody);
+    } finally {
+      setPubReminderBusy(false);
+    }
+  }, [pubReminderBusy, pubReminderEnabled, setPubReminderEnabled]);
 
   const handleCurrencySelect = useCallback(
     (currency: PriceCurrency) => {
@@ -642,11 +673,20 @@ export default function SettingsScreen() {
         <View style={[styles.card, styles.cardNoPaddingV]}>
           <PrefRow
             icon={<BellRingIcon size={18} color={Colors.foamMuted} />}
+            title={cs.settings.pubReminders.title}
+            subtitle={cs.settings.pubReminders.subtitle}
+            value={pubReminderEnabled}
+            onToggle={() => void togglePubReminders()}
+            toggleLabel={`${cs.settings.pubReminders.title}: ${pubReminderEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+          />
+          <PrefRow
+            icon={<BellRingIcon size={18} color={Colors.foamMuted} />}
             title={cs.settings.haptics.title}
             subtitle={cs.settings.haptics.subtitle}
             value={hapticEnabled}
             onToggle={toggleHaptic}
             toggleLabel={`${cs.settings.haptics.title}: ${hapticEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+            borderTop
           />
           <PrefRow
             icon={<Volume2Icon size={18} color={Colors.foamMuted} />}

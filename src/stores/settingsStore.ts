@@ -17,6 +17,7 @@ interface SettingsState {
   preferGardenPubs: boolean;
   hidePubNames: boolean;
   marketingEmailsEnabled: boolean;
+  pubReminderEnabled: boolean;
   surpriseSeed: number;
   setMode: (m: Mode) => void;
   setMaxDistanceKm: (km: number | null) => void;
@@ -28,6 +29,7 @@ interface SettingsState {
   setPreferGardenPubs: (v: boolean) => void;
   setHidePubNames: (v: boolean) => void;
   setMarketingEmailsEnabled: (v: boolean) => void;
+  setPubReminderEnabled: (v: boolean) => void;
   bumpSurpriseSeed: () => void;
 }
 
@@ -44,6 +46,7 @@ export const useSettingsStore = create<SettingsState>()(
       preferGardenPubs: false,
       hidePubNames: false,
       marketingEmailsEnabled: false,
+      pubReminderEnabled: false,
       surpriseSeed: 1,
 
       setMode: (m) => set({ mode: m }),
@@ -56,6 +59,7 @@ export const useSettingsStore = create<SettingsState>()(
       setPreferGardenPubs: (v) => set({ preferGardenPubs: v }),
       setHidePubNames: (v) => set({ hidePubNames: v }),
       setMarketingEmailsEnabled: (v) => set({ marketingEmailsEnabled: v }),
+      setPubReminderEnabled: (v) => set({ pubReminderEnabled: v }),
       bumpSurpriseSeed: () =>
         set((state) => ({ surpriseSeed: state.surpriseSeed + 1 })),
     }),
@@ -73,6 +77,7 @@ export const useSettingsStore = create<SettingsState>()(
         preferGardenPubs: state.preferGardenPubs,
         hidePubNames: state.hidePubNames,
         marketingEmailsEnabled: state.marketingEmailsEnabled,
+        pubReminderEnabled: state.pubReminderEnabled,
         surpriseSeed: state.surpriseSeed,
       }),
     }

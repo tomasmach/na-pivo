@@ -238,6 +238,13 @@ export const cs = {
       title: 'Vibrace u cíle',
       subtitle: 'Zachrochtá ti to v kapse',
     },
+    pubReminders: {
+      title: 'Připomenout v hospodě',
+      subtitle: 'Večer občas koukneme, jestli nesedíš u výčepu. Bez ukládání trasy.',
+      deniedTitle: 'Bez povolení to nepůjde',
+      deniedBody:
+        'Zapni notifikace a polohu „vždy“, jinak ti hospodu na pozadí připomenout neumíme.',
+    },
     sound: {
       title: 'Zvuk cinknutí',
       subtitle: 'Drobné „cink“ u cíle',

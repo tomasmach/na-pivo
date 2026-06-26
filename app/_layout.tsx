@@ -33,6 +33,7 @@ import { useReleaseStore } from '@/stores/releaseStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import { WhatsNewModal } from '@/components/shared/WhatsNewModal';
 import { Toast } from '@/components/shared/Toast';
+import { initializePubReminderNotifications } from '@/notifications/pubReminderNotifications';
 
 /**
  * Onboarding gate: once auth resolves (`status==='ready'`) and a signed-in
@@ -72,6 +73,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     installClientTelemetry();
+    void initializePubReminderNotifications();
   }, []);
 
   useEffect(() => {
