@@ -96,16 +96,21 @@ def test_verification_email_renders_app_link(monkeypatch):
 
     sent = emailer.send_verification_email(
         "person@example.com",
-        link="napivo://auth/verify?token=verify-token",
+        link="https://api.na-pivo.cz/v1/auth/verify-email?token=verify-token",
         code="verify-token",
     )
 
     assert sent is True
     assert captured["to"] == "person@example.com"
     assert captured["subject"] == "Ověř si e-mail – Na Pivo"
-    assert 'href="napivo://auth/verify?token=verify-token"' in captured["html"]
-    assert "Otevřít Na Pivo" in captured["html"]
-    assert "napivo://auth/verify?token=verify-token" in (captured["text"] or "")
+    assert 'href="https://api.na-pivo.cz/v1/auth/verify-email?token=verify-token"' in captured[
+        "html"
+    ]
+    assert "Ověřit e-mail" in captured["html"]
+    assert "Kód pro ruční zadání" not in captured["html"]
+    assert "https://api.na-pivo.cz/v1/auth/verify-email?token=verify-token" in (
+        captured["text"] or ""
+    )
 
 
 @pytest.mark.django_db

@@ -21,6 +21,7 @@ cache around every test (same pattern as test_account.py). Individual tests keep
 from __future__ import annotations
 
 import uuid
+from urllib.parse import urlsplit
 
 import pytest
 from django.core.cache import cache
@@ -167,6 +168,14 @@ def _verify_code(sent_emails, tag: str) -> str:
     for record in reversed(sent_emails):
         if record["tag"] == tag:
             return record["code"]
+    raise AssertionError(f"no {tag} email captured in {sent_emails!r}")
+
+
+def _email_record(sent_emails, tag: str) -> dict:
+    """Pull the most recent captured email record for a tag."""
+    for record in reversed(sent_emails):
+        if record["tag"] == tag:
+            return record
     raise AssertionError(f"no {tag} email captured in {sent_emails!r}")
 
 
@@ -973,6 +982,40 @@ def test_request_email_verify_resends(client, sent_emails):
     assert resp.status_code == status.HTTP_202_ACCEPTED
     after = sum(1 for r in sent_emails if r["tag"] == "verify")
     assert after == before + 1
+
+
+@pytest.mark.django_db
+def test_verification_email_uses_web_action_link(client, sent_emails):
+    _register_and_token(client, "web-link@x.cz", "Tr0ub4dor&3")
+    record = _email_record(sent_emails, "verify")
+
+    link = record["link"]
+    assert link.startswith("http://testserver/v1/auth/verify-email?")
+    assert f"token={record['code']}" in link
+    assert not link.startswith("napivo://")
+
+
+@pytest.mark.django_db
+def test_verify_email_get_link_consumes_token(client, sent_emails):
+    _, token = _register_and_token(client, "web-consume@x.cz", "Tr0ub4dor&3")
+    link = _email_record(sent_emails, "verify")["link"]
+    parsed = urlsplit(link)
+
+    resp = client.get(f"{parsed.path}?{parsed.query}")
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    assert resp["Content-Type"].startswith("text/html")
+    assert "E-mail ověřen" in resp.content.decode("utf-8")
+    assert client.get("/v1/account/me", **_auth(token)).json()["email_verified"] is True
+
+
+@pytest.mark.django_db
+def test_verify_email_get_link_rejects_bad_token(client):
+    resp = client.get("/v1/auth/verify-email?token=bogus")
+
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST, resp.content
+    assert resp["Content-Type"].startswith("text/html")
+    assert "Ověření se nezdařilo" in resp.content.decode("utf-8")
 
 
 @pytest.mark.django_db

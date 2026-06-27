@@ -16,6 +16,10 @@ from rest_framework.test import APIClient
 
 from pubs.models import ReleaseNote, ReleaseNoteItem
 
+TEST_VERSION = "99.2.0"
+OLDER_TEST_VERSION = "99.1.0"
+NEWER_TEST_VERSION = "99.1.1"
+
 
 @pytest.fixture
 def client():
@@ -37,13 +41,13 @@ def _make_note(version: str, *, published: bool = True, title: str = "Co je nov�
 
 @pytest.mark.django_db
 def test_returns_published_note_for_version(client):
-    _make_note("1.2.0")
+    _make_note(TEST_VERSION)
 
-    resp = client.get("/v1/release-notes", {"version": "1.2.0"})
+    resp = client.get("/v1/release-notes", {"version": TEST_VERSION})
 
     assert resp.status_code == status.HTTP_200_OK
     body = resp.json()
-    assert body["version"] == "1.2.0"
+    assert body["version"] == TEST_VERSION
     assert body["title"] == "Co je nového"
     # Items come back ordered by `order`, not by insertion / PK.
     assert [it["text"] for it in body["items"]] == ["První novinka", "Druhá novinka"]
@@ -52,7 +56,7 @@ def test_returns_published_note_for_version(client):
 
 @pytest.mark.django_db
 def test_publishing_stamps_published_at(client):
-    note = _make_note("1.2.0")
+    note = _make_note(TEST_VERSION)
     assert note.published_at is not None
 
 
@@ -63,16 +67,16 @@ def test_publishing_stamps_published_at(client):
 
 @pytest.mark.django_db
 def test_draft_note_is_not_returned(client):
-    _make_note("1.2.0", published=False)
+    _make_note(TEST_VERSION, published=False)
 
-    resp = client.get("/v1/release-notes", {"version": "1.2.0"})
+    resp = client.get("/v1/release-notes", {"version": TEST_VERSION})
 
     assert resp.status_code == status.HTTP_404_NOT_FOUND
 
 
 @pytest.mark.django_db
 def test_unknown_version_returns_404(client):
-    _make_note("1.2.0")
+    _make_note(TEST_VERSION)
 
     resp = client.get("/v1/release-notes", {"version": "9.9.9"})
 
@@ -81,9 +85,9 @@ def test_unknown_version_returns_404(client):
 
 @pytest.mark.django_db
 def test_newer_version_note_is_not_returned_for_older_version(client):
-    _make_note("1.1.1")
+    _make_note(NEWER_TEST_VERSION)
 
-    resp = client.get("/v1/release-notes", {"version": "1.1.0"})
+    resp = client.get("/v1/release-notes", {"version": OLDER_TEST_VERSION})
 
     assert resp.status_code == status.HTTP_404_NOT_FOUND
 
@@ -160,9 +164,9 @@ def test_list_is_ordered_newest_first(client):
 @pytest.mark.django_db
 def test_endpoint_is_public(client):
     """No Authorization header is needed — the app calls this before/without an account."""
-    _make_note("1.2.0")
+    _make_note(TEST_VERSION)
 
-    resp = client.get("/v1/release-notes", {"version": "1.2.0"})
+    resp = client.get("/v1/release-notes", {"version": TEST_VERSION})
 
     assert resp.status_code == status.HTTP_200_OK
 
@@ -170,9 +174,9 @@ def test_endpoint_is_public(client):
 @pytest.mark.django_db
 def test_note_without_items_still_serializes(client):
     """A published note with no highlight rows returns an empty items list (not 500)."""
-    ReleaseNote.objects.create(version="1.2.0", is_published=True)
+    ReleaseNote.objects.create(version=TEST_VERSION, is_published=True)
 
-    resp = client.get("/v1/release-notes", {"version": "1.2.0"})
+    resp = client.get("/v1/release-notes", {"version": TEST_VERSION})
 
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json()["items"] == []

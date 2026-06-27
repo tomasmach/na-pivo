@@ -72,8 +72,8 @@ def _render(
     """Build a consistent inline-styled HTML body shared by all e-mails.
 
     ``message_html`` is trusted markup (our own strings only). ``link`` is the
-    main action when present and ``code`` is the manual fallback for mail clients
-    that do not hand custom app links to the OS.
+    main action when present and ``code`` is shown only for flows that have a
+    real in-app/manual entry screen.
     """
     code_block = ""
     if code:
@@ -189,31 +189,28 @@ def _html_to_text_fallback(subject: str) -> str:
 def send_verification_email(to: str, *, link: str, code: str) -> bool:
     """Send the e-mail verification message.
 
-    The app deep link is the primary action. The raw one-time token stays in the
-    mail as a fallback for clients that refuse to open custom ``napivo://`` links.
+    The HTTPS verification link is the primary action. The raw one-time token is
+    still accepted as an argument for the test hooks and service contract, but
+    it is intentionally not rendered because the app has no manual-entry screen
+    for verification codes.
     """
     subject = "Ověř si e-mail – Na Pivo"
     message = (
         "Čau! Ještě jedna věc, než to roztočíme. "
-        "Klepni na tlačítko a e-mail ověříme rovnou v appce. "
-        "Kdyby se odkaz neotevřel, zadej v appce kód níž. "
-        "Platí jen chvíli, tak s tím nečekej."
+        "Klepni na tlačítko a e-mail ověříme v prohlížeči. "
+        "Pak se jen vrať do appky. Platí jen chvíli, tak s tím nečekej."
     )
     html = _render(
         "Ověř si e-mail",
         message,
-        code=code,
-        code_label="Kód pro ruční zadání:",
         link=link,
-        link_label="Otevřít Na Pivo",
+        link_label="Ověřit e-mail",
     )
     text = (
         "Čau!\n\n"
-        "Klepni na odkaz a e-mail ověříme rovnou v appce:\n\n"
+        "Klepni na odkaz a e-mail ověříme v prohlížeči:\n\n"
         f"{link}\n\n"
-        "Kdyby se odkaz neotevřel, vrať se do appky Na Pivo a zadej tenhle kód:\n\n"
-        f"    {code}\n\n"
-        "Platí jen chvíli.\n\nNa Pivo"
+        "Pak se vrať do appky Na Pivo. Odkaz platí jen chvíli.\n\nNa Pivo"
     )
     return send_email(to, subject, html, text=text)
 

@@ -37,7 +37,7 @@ import io
 import logging
 import re
 from datetime import timedelta
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit, urlunsplit
 
 import requests
 from django.conf import settings
@@ -457,6 +457,7 @@ def register_email(
     email: str,
     password: str,
     display_name: str = "",
+    verification_link_base: str | None = None,
 ) -> tuple[Account, str]:
     """Register email+password, claiming the current anonymous account.
 
@@ -490,7 +491,7 @@ def register_email(
             current_account.save(update_fields=["display_name"])
 
     token = issue_token(current_account, device_label=display_name)
-    request_email_verification(current_account)
+    request_email_verification(current_account, link_base=verification_link_base)
     return current_account, token
 
 
@@ -1077,7 +1078,14 @@ def _deep_link(path: str, raw_token: str) -> str:
     return f"{scheme}://auth/{path}?{urlencode({'token': raw_token})}"
 
 
-def request_email_verification(account: Account) -> bool:
+def _append_token(url: str, raw_token: str) -> str:
+    """Append a one-time token query parameter to an absolute action URL."""
+    parts = urlsplit(url)
+    query = "&".join(part for part in (parts.query, urlencode({"token": raw_token})) if part)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, query, parts.fragment))
+
+
+def request_email_verification(account: Account, *, link_base: str | None = None) -> bool:
     """Send (or re-send) the email-verification message. No-op without an email."""
     cred = EmailCredential.objects.filter(account=account).first()
     if cred is None or cred.email_verified:
@@ -1087,7 +1095,8 @@ def request_email_verification(account: Account) -> bool:
         purpose=OneTimeToken.Purpose.VERIFY_EMAIL,
         ttl=timedelta(hours=settings.EMAIL_VERIFY_TTL_HOURS),
     )
-    return emailer.send_verification_email(cred.email, link=_deep_link("verify", raw), code=raw)
+    link = _append_token(link_base, raw) if link_base else _deep_link("verify", raw)
+    return emailer.send_verification_email(cred.email, link=link, code=raw)
 
 
 def verify_email(raw_token: str) -> Account:

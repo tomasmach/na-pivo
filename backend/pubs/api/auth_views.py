@@ -19,7 +19,8 @@ Endpoint map (all under /v1/):
   POST auth/request-password-reset  — email a reset link (always 202)
   POST auth/reset-password          — consume reset token, set new password
   POST auth/request-email-verify    — (re)send the verification email
-  POST auth/verify-email            — consume an email-verification token
+  GET  auth/verify-email?token=...  — browser-friendly verification link from e-mail
+  POST auth/verify-email            — consume an email-verification token from the app
 Account deletion is DELETE /v1/account/me (see pubs.api.views.AccountMeView).
 """
 
@@ -28,6 +29,9 @@ from __future__ import annotations
 import logging
 import uuid
 
+from django.conf import settings
+from django.http import HttpResponse
+from django.urls import reverse
 from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -90,6 +94,105 @@ def _error_response(exc: AccountError) -> Response:
     return Response({"detail": exc.message, "code": exc.code}, status=exc.http_status)
 
 
+def _verification_link_base(request: Request) -> str:
+    """Absolute HTTPS action URL used by verification e-mails."""
+    return request.build_absolute_uri(reverse("auth-verify-email"))
+
+
+def _verify_email_page(
+    *,
+    title: str,
+    body: str,
+    success: bool,
+    status_code: int,
+) -> HttpResponse:
+    """Small standalone HTML page for users opening verification links from e-mail."""
+    accent = "#46c173" if success else "#d99a2b"
+    app_link = f"{settings.APP_DEEP_LINK_SCHEME}://"
+    html = f"""<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{title} - Na Pivo</title>
+  <style>
+    :root {{
+      color-scheme: dark;
+      --bg: #1c1410;
+      --card: #241a13;
+      --text: #f3e9dd;
+      --muted: #b9a896;
+      --border: #3a2c20;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }}
+    main {{
+      width: min(100%, 440px);
+      padding: 32px 24px;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: var(--card);
+      text-align: center;
+    }}
+    .brand {{
+      margin-bottom: 14px;
+      color: #d99a2b;
+      font-size: 22px;
+      font-weight: 800;
+    }}
+    h1 {{
+      margin: 0 0 12px;
+      font-size: 28px;
+      line-height: 1.15;
+    }}
+    p {{
+      margin: 0;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.55;
+    }}
+    .dot {{
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 18px;
+      border-radius: 999px;
+      background: {accent};
+      box-shadow: 0 0 0 8px rgba(217, 154, 43, 0.12);
+    }}
+    a {{
+      display: inline-block;
+      margin-top: 24px;
+      padding: 13px 20px;
+      border-radius: 999px;
+      background: #d99a2b;
+      color: #1c1410;
+      font-weight: 800;
+      text-decoration: none;
+    }}
+  </style>
+</head>
+<body>
+  <main>
+    <div class="brand">Na Pivo</div>
+    <div class="dot" aria-hidden="true"></div>
+    <h1>{title}</h1>
+    <p>{body}</p>
+    <a href="{app_link}">Otevřít Na Pivo</a>
+  </main>
+</body>
+</html>"""
+    return HttpResponse(html, status=status_code, content_type="text/html; charset=utf-8")
+
+
 class _AuthView(APIView):
     """Base view: scoped throttling + uniform AccountError / 500 handling."""
 
@@ -131,6 +234,7 @@ class RegisterView(_AuthView):
                 email=ser.validated_data["email"],
                 password=ser.validated_data["password"],
                 display_name=ser.validated_data.get("display_name", ""),
+                verification_link_base=_verification_link_base(request),
             )
             return Response(
                 _account_state(account, request=request, token=token, created=True),
@@ -294,7 +398,9 @@ class SetPasswordView(_AuthView):
                 email=ser.validated_data.get("email") or None,
             )
             # If this just attached an email, kick off verification.
-            accounts.request_email_verification(request.user)
+            accounts.request_email_verification(
+                request.user, link_base=_verification_link_base(request)
+            )
             return Response(
                 _account_state(request.user, request=request), status=status.HTTP_200_OK
             )
@@ -375,7 +481,9 @@ class RequestEmailVerificationView(_AuthView):
 
     def post(self, request: Request) -> Response:
         def run() -> Response:
-            accounts.request_email_verification(request.user)
+            accounts.request_email_verification(
+                request.user, link_base=_verification_link_base(request)
+            )
             return Response({"ok": True}, status=status.HTTP_202_ACCEPTED)
 
         return self._safe(run)
@@ -385,6 +493,44 @@ class VerifyEmailView(_AuthView):
     authentication_classes: list = []
     permission_classes = [AllowAny]
     throttle_scope = "auth"
+
+    def get(self, request: Request) -> HttpResponse:
+        raw_token = str(request.query_params.get("token") or "").strip()
+        if not raw_token:
+            return _verify_email_page(
+                title="Chybí ověřovací kód",
+                body="Odkaz vypadá neúplně. V appce si nech poslat nový ověřovací e-mail.",
+                success=False,
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            accounts.verify_email(raw_token)
+        except AccountError:
+            return _verify_email_page(
+                title="Ověření se nezdařilo",
+                body=(
+                    "Odkaz už neplatí nebo byl použitý. "
+                    "V appce si nech poslat nový ověřovací e-mail."
+                ),
+                success=False,
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error("auth: unexpected email verification link error: %s", exc, exc_info=True)
+            return _verify_email_page(
+                title="Něco se pokazilo",
+                body="Ověření teď neproběhlo. Zkus odkaz otevřít za chvíli znovu.",
+                success=False,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return _verify_email_page(
+            title="E-mail ověřen",
+            body="Hotovo. E-mail máš ověřený, můžeš se vrátit do appky.",
+            success=True,
+            status_code=status.HTTP_200_OK,
+        )
 
     def post(self, request: Request) -> Response:
         ser = s.VerifyEmailSerializer(data=request.data)

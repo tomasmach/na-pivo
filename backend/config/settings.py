@@ -356,10 +356,11 @@ AUTH_TOKEN_TTL_DAYS: int | None = int(_auth_token_ttl_days) if _auth_token_ttl_d
 # Soft-delete grace window before a pending-deletion account is hard-purged.
 ACCOUNT_DELETION_GRACE_DAYS: int = int(os.environ.get("ACCOUNT_DELETION_GRACE_DAYS", "14"))
 
-# --- Deep links / web fallback (used in verification & reset emails) ---
-# Custom URL scheme of the mobile app (app.config.ts `scheme`). Email links use
-# napivo://auth/... and the web base URL is the https fallback + the Play-required
-# public account-deletion page.
+# --- Deep links / web fallback (used in transactional emails) ---
+# Custom URL scheme of the mobile app (app.config.ts `scheme`). Password reset
+# can still use napivo://auth/...; email verification uses the public HTTPS API
+# endpoint when sent from a request so mail clients do not have to support custom
+# schemes. The web base URL hosts the Play-required public account-deletion page.
 APP_DEEP_LINK_SCHEME: str = os.environ.get("APP_DEEP_LINK_SCHEME", "napivo")
 WEB_BASE_URL: str = os.environ.get("WEB_BASE_URL", "https://tomasmach.github.io/na-pivo")
 
