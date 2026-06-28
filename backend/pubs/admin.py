@@ -18,6 +18,7 @@ from .models import (
     PubCommunityData,
     PubContributionLog,
     PubHours,
+    PubNameCorrection,
     PubRating,
     PubReport,
     PubSearchCache,
@@ -193,6 +194,23 @@ class PubReportAdmin(admin.ModelAdmin):
     search_fields = ("name", "cache_key", "external_id", "city", "address")
     readonly_fields = ("cache_key", "created_at", "updated_at")
     ordering = ("-created_at",)
+
+
+@admin.register(PubNameCorrection)
+class PubNameCorrectionAdmin(admin.ModelAdmin):
+    list_display = (
+        "suggested_name",
+        "original_name",
+        "active",
+        "cache_key",
+        "external_id",
+        "account",
+        "updated_at",
+    )
+    list_filter = ("active",)
+    search_fields = ("suggested_name", "original_name", "cache_key", "external_id", "city", "address")
+    readonly_fields = ("cache_key", "client_id", "created_at", "updated_at")
+    ordering = ("-updated_at",)
 
 
 @admin.register(FeedbackReport)

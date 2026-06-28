@@ -54,6 +54,7 @@ from pubs.models import (
     ContentReport,
     FeedbackReport,
     PubAmenityVote,
+    PubNameCorrection,
     PubRating,
     PubReport,
     PushDevice,
@@ -124,6 +125,35 @@ class PubReportRequestSerializer(PubInputSerializer):
         allow_blank=True,
         trim_whitespace=True,
     )
+
+
+class PubNameCorrectionRequestSerializer(PubInputSerializer):
+    """Request body for POST /v1/pub-name-corrections."""
+
+    client_id = serializers.UUIDField()
+    suggested_name = serializers.CharField(max_length=200, trim_whitespace=True)
+    external_id = serializers.CharField(
+        max_length=128,
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        trim_whitespace=True,
+    )
+    address = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        trim_whitespace=True,
+    )
+
+    def validate_suggested_name(self, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Suggested pub name must not be empty.")
+        if len(value) > 200:
+            raise serializers.ValidationError("Suggested pub name must be at most 200 characters.")
+        return value
 
 
 class UserAddedPubRequestSerializer(PubInputSerializer):
@@ -921,6 +951,29 @@ class PubReportSerializer(serializers.ModelSerializer):
             "reason",
             "active",
             "created_at",
+        ]
+        read_only_fields = fields
+
+
+class PubNameCorrectionSerializer(serializers.ModelSerializer):
+    """Response body for a saved pub name correction."""
+
+    class Meta:
+        model = PubNameCorrection
+        fields = [
+            "id",
+            "cache_key",
+            "client_id",
+            "external_id",
+            "original_name",
+            "suggested_name",
+            "lat",
+            "lng",
+            "city",
+            "address",
+            "active",
+            "created_at",
+            "updated_at",
         ]
         read_only_fields = fields
 

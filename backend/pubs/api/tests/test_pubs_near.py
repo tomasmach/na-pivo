@@ -23,7 +23,7 @@ from pubs.enrichment import (
     geohash6,
     geohash8,
 )
-from pubs.models import BeerBrand, PubBeerBrand, PubSearchCache, UserAddedPub
+from pubs.models import BeerBrand, PubBeerBrand, PubNameCorrection, PubSearchCache, UserAddedPub
 
 # Prague centre-ish coordinates.
 _LAT = 50.0812
@@ -129,6 +129,101 @@ def test_response_shape_only_expected_keys(client):
         resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG})
     body = resp.json()
     assert set(body.keys()) == {"items", "cached", "fetched_at"}
+
+
+@pytest.mark.django_db
+def test_name_correction_renames_fetched_items_without_changing_shape(client):
+    PubNameCorrection.objects.create(
+        client_id="aaaaaaaa-1111-2222-3333-444444444444",
+        cache_key=geohash8(50.08, 14.42),
+        external_id="mapy:50.08000,14.42000",
+        original_name="Hospoda U Testu",
+        suggested_name="U Testu po novém",
+        lat=50.08,
+        lng=14.42,
+        active=True,
+    )
+    factory, _ = _mock_source(MapySuggestResult(items=[_ITEM]))
+
+    with patch("pubs.api.views.MapySuggestSource", factory):
+        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG})
+
+    assert resp.status_code == status.HTTP_200_OK
+    body = resp.json()
+    assert set(body.keys()) == {"items", "cached", "fetched_at"}
+    assert body["items"][0]["name"] == "U Testu po novém"
+    assert PubSearchCache.objects.get().items[0]["name"] == "Hospoda U Testu"
+
+
+@pytest.mark.django_db
+def test_inactive_name_correction_is_ignored(client):
+    PubNameCorrection.objects.create(
+        client_id="aaaaaaaa-1111-2222-3333-444444444445",
+        cache_key=geohash8(50.08, 14.42),
+        original_name="Hospoda U Testu",
+        suggested_name="U Testu po novém",
+        lat=50.08,
+        lng=14.42,
+        active=False,
+    )
+    factory, _ = _mock_source(MapySuggestResult(items=[_ITEM]))
+
+    with patch("pubs.api.views.MapySuggestSource", factory):
+        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG})
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["items"][0]["name"] == "Hospoda U Testu"
+
+
+@pytest.mark.django_db
+def test_name_correction_cache_key_fallback_requires_matching_original_name(client):
+    PubNameCorrection.objects.create(
+        client_id="aaaaaaaa-1111-2222-3333-444444444446",
+        cache_key=geohash8(50.08, 14.42),
+        original_name="Hospoda U Testu",
+        suggested_name="U Testu po novém",
+        lat=50.08,
+        lng=14.42,
+        active=True,
+    )
+    other_item = {
+        **_ITEM,
+        "name": "Pivnice Za Rohem",
+        "position": {"lat": 50.08, "lon": 14.42},
+    }
+    factory, _ = _mock_source(MapySuggestResult(items=[other_item]))
+
+    with patch("pubs.api.views.MapySuggestSource", factory):
+        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG})
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["items"][0]["name"] == "Pivnice Za Rohem"
+
+
+@pytest.mark.django_db
+def test_name_correction_external_id_wins_without_original_name_match(client):
+    PubNameCorrection.objects.create(
+        client_id="aaaaaaaa-1111-2222-3333-444444444447",
+        cache_key=geohash8(50.08, 14.42),
+        external_id="provider-stable-id",
+        original_name="Starý název",
+        suggested_name="Nový název",
+        lat=50.08,
+        lng=14.42,
+        active=True,
+    )
+    item = {
+        **_ITEM,
+        "id": "provider-stable-id",
+        "name": "Úplně jiný upstream název",
+    }
+    factory, _ = _mock_source(MapySuggestResult(items=[item]))
+
+    with patch("pubs.api.views.MapySuggestSource", factory):
+        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG})
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["items"][0]["name"] == "Nový název"
 
 
 @pytest.mark.django_db

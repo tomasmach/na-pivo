@@ -6,6 +6,7 @@ Routes
 POST   pub-hours/   → PubHoursView
 POST   pubs/        → UserAddedPubView
 POST   pub-reports/ → PubReportView
+POST   pub-name-corrections/ → PubNameCorrectionView
 GET    pub-reports/blocked → BlockedPubReportsView
 GET    pubs/suggest → PubLocationSuggestView
 GET    pubs/geocode → PubLocationGeocodeView
@@ -52,6 +53,7 @@ from .views import (
     PubHoursView,
     PubLocationGeocodeView,
     PubLocationSuggestView,
+    PubNameCorrectionView,
     PubRatingView,
     PubReportView,
     PubsNearView,
@@ -88,6 +90,7 @@ urlpatterns = [
     path("pubs/near", PubsNearView.as_view(), name="pubs-near"),
     path("pubs/suggest", PubLocationSuggestView.as_view(), name="pubs-suggest"),
     path("pubs/geocode", PubLocationGeocodeView.as_view(), name="pubs-geocode"),
+    path("pub-name-corrections", PubNameCorrectionView.as_view(), name="pub-name-corrections"),
     path("pub-reports", PubReportView.as_view(), name="pub-reports"),
     path("pub-reports/blocked", BlockedPubReportsView.as_view(), name="pub-reports-blocked"),
     path("content-reports", ContentReportView.as_view(), name="content-reports"),

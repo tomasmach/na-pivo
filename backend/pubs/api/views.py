@@ -28,7 +28,7 @@ from datetime import timedelta
 import requests
 from django.conf import settings
 from django.db import IntegrityError, transaction
-from django.db.models import ExpressionWrapper, F, FloatField, Value
+from django.db.models import ExpressionWrapper, F, FloatField, Q, Value
 from django.utils import timezone as dj_timezone
 from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed
@@ -79,6 +79,7 @@ from pubs.models import (
     PubCommunityData,
     PubCommunityXpLedger,
     PubContributionLog,
+    PubNameCorrection,
     PubRating,
     PubReport,
     PubSearchCache,
@@ -114,6 +115,8 @@ from .serializers import (
     PubHoursRequestSerializer,
     PubHoursResponseSerializer,
     PubLocationLookupQuerySerializer,
+    PubNameCorrectionRequestSerializer,
+    PubNameCorrectionSerializer,
     PubRatingRequestSerializer,
     PubReportBlockedQuerySerializer,
     PubReportRequestSerializer,
@@ -264,6 +267,73 @@ class PubReportView(APIView):
         return Response(
             PubReportSerializer(report).data,
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+
+class PubNameCorrectionView(APIView):
+    """
+    POST /v1/pub-name-corrections
+
+    Save a user-submitted display-name correction for a pub. The correction is
+    applied when /v1/pubs/near serves matching items; the upstream cache remains
+    untouched so this is reversible from admin by deactivating the correction.
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "pub_reports"
+
+    def post(self, request: Request) -> Response:
+        serializer = PubNameCorrectionRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        cache_key = geohash8(data["lat"], data["lng"])
+        external_id = data.get("external_id") or None
+
+        try:
+            with transaction.atomic():
+                existing = (
+                    PubNameCorrection.objects.select_for_update()
+                    .filter(account=request.user, client_id=data["client_id"])
+                    .first()
+                )
+                if existing is not None:
+                    return Response(
+                        PubNameCorrectionSerializer(existing).data,
+                        status=status.HTTP_200_OK,
+                    )
+
+                correction = PubNameCorrection.objects.create(
+                    account=request.user,
+                    client_id=data["client_id"],
+                    cache_key=cache_key,
+                    external_id=external_id,
+                    original_name=data["name"],
+                    suggested_name=data["suggested_name"],
+                    lat=data["lat"],
+                    lng=data["lng"],
+                    city=data.get("city") or None,
+                    address=data.get("address") or None,
+                    active=True,
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "pub-name-correction: unexpected error saving correction for cache key %s: %s",
+                cache_key,
+                exc,
+                exc_info=True,
+            )
+            return Response(
+                {"detail": "Internal server error."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response(
+            PubNameCorrectionSerializer(correction).data,
+            status=status.HTTP_201_CREATED,
         )
 
 
@@ -1634,6 +1704,69 @@ def _item_cache_key(item: dict) -> str:
     return geohash8(float(lat), float(lng))
 
 
+def _item_external_id(item: dict) -> str | None:
+    external_id = item.get("id")
+    if isinstance(external_id, str) and external_id.strip():
+        return external_id.strip()
+
+    pos = item.get("position") or {}
+    lat = pos.get("lat")
+    lng = pos.get("lon")
+    if not isinstance(lat, (int, float)) or not isinstance(lng, (int, float)):
+        return None
+    return f"mapy:{float(lat):.5f},{float(lng):.5f}"
+
+
+def _with_pub_name_corrections(items: list[dict]) -> list[dict]:
+    """Apply active display-name corrections to Mapy-shaped nearby items."""
+
+    if not items:
+        return items
+
+    cache_keys = {_item_cache_key(item) for item in items}
+    cache_keys.discard("")
+    external_ids = {_item_external_id(item) for item in items}
+    external_ids.discard(None)
+    if not cache_keys and not external_ids:
+        return items
+
+    corrections = (
+        PubNameCorrection.objects.filter(active=True)
+        .filter(Q(cache_key__in=cache_keys) | Q(external_id__in=external_ids))
+        .order_by("updated_at", "id")
+    )
+    by_external_id: dict[str, str] = {}
+    cache_key_fallbacks: list[PubNameCorrection] = []
+    for correction in corrections:
+        name = correction.suggested_name.strip()
+        if not name:
+            continue
+        if correction.external_id:
+            by_external_id[correction.external_id] = name
+        else:
+            cache_key_fallbacks.append(correction)
+
+    if not cache_key_fallbacks and not by_external_id:
+        return items
+
+    corrected_items: list[dict] = []
+    for item in items:
+        external_id = _item_external_id(item)
+        cache_key = _item_cache_key(item)
+        corrected_name = by_external_id.get(external_id or "")
+        if not corrected_name:
+            item_name = str(item.get("name") or "")
+            for correction in cache_key_fallbacks:
+                if correction.cache_key == cache_key and names_match(correction.original_name, item_name):
+                    corrected_name = correction.suggested_name.strip()
+        if not corrected_name or corrected_name == item.get("name"):
+            corrected_items.append(item)
+            continue
+        corrected = {**item, "name": corrected_name}
+        corrected_items.append(corrected)
+    return corrected_items
+
+
 def _nearby_pub_beer_brand_items(
     *,
     brand_key: str,
@@ -1786,6 +1919,9 @@ class PubsNearView(APIView):
                 _filter_items_by_cache_key(items, beer_brand_cache_keys),
             )
 
+        def final_items(items: list[dict]) -> list[dict]:
+            return _with_pub_name_corrections(apply_beer_brand_filter(items))
+
         # Quantize to a small shared cache cell but run the search from the user's
         # actual position. The old geohash-5 centre search could be >2 km away at
         # a cell edge, which made dense-city results point to the wrong quarter.
@@ -1803,7 +1939,7 @@ class PubsNearView(APIView):
         if row is not None and row.fetched_at >= cutoff:
             return Response(
                 {
-                    "items": apply_beer_brand_filter(row.items),
+                    "items": final_items(row.items),
                     "cached": True,
                     "fetched_at": row.fetched_at.isoformat(),
                 },
@@ -1821,13 +1957,13 @@ class PubsNearView(APIView):
                 )
                 return Response(
                     {
-                        "items": apply_beer_brand_filter(row.items),
+                    "items": final_items(row.items),
                         "cached": True,
                         "fetched_at": row.fetched_at.isoformat(),
                     },
                     status=status.HTTP_200_OK,
                 )
-            fallback_items = apply_beer_brand_filter([])
+            fallback_items = final_items([])
             if fallback_items:
                 return Response(
                     {
@@ -1858,13 +1994,13 @@ class PubsNearView(APIView):
                 )
                 return Response(
                     {
-                        "items": apply_beer_brand_filter(row.items),
+                    "items": final_items(row.items),
                         "cached": True,
                         "fetched_at": row.fetched_at.isoformat(),
                     },
                     status=status.HTTP_200_OK,
                 )
-            fallback_items = apply_beer_brand_filter([])
+            fallback_items = final_items([])
             if fallback_items:
                 return Response(
                     {
@@ -1890,13 +2026,13 @@ class PubsNearView(APIView):
             if row is not None:
                 return Response(
                     {
-                        "items": apply_beer_brand_filter(row.items),
+                    "items": final_items(row.items),
                         "cached": True,
                         "fetched_at": row.fetched_at.isoformat(),
                     },
                     status=status.HTTP_200_OK,
                 )
-            fallback_items = apply_beer_brand_filter([])
+            fallback_items = final_items([])
             if fallback_items:
                 return Response(
                     {
@@ -1928,7 +2064,7 @@ class PubsNearView(APIView):
 
         return Response(
             {
-                "items": apply_beer_brand_filter(result.items),
+                "items": final_items(result.items),
                 "cached": False,
                 "fetched_at": now.isoformat(),
             },

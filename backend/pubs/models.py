@@ -4,6 +4,7 @@ Data models for the na-pivo pub-hours enrichment service.
 PubHours  — the cached result of enriching a pub with opening hours from Firmy.cz.
 EnrichTask — a queued enrichment job for pubs that missed the sync_budget.
 PubReport — user reports for places that should no longer be shown as pubs.
+PubNameCorrection — community-submitted pub rename/name fixes.
 UserAddedPub — community-added pubs missing from Mapy.cz / suggest results.
 ReleaseNote — a "what's new" entry shown once after the app updates to a version.
 FeedbackReport — an in-app feedback / bug report submitted by a user.
@@ -824,6 +825,72 @@ class PubReport(models.Model):
 
     def __str__(self) -> str:
         return f"PubReport({self.name} [{self.cache_key}] — {self.reason})"
+
+
+class PubNameCorrection(models.Model):
+    """
+    A community-submitted correction for a pub's public display name.
+
+    Corrections are keyed to the same geohash-8 physical-place identity used by
+    the rest of the pub data model, with an optional provider id for audit and
+    stricter matching. The original upstream/user-added name is preserved so the
+    admin can understand what was corrected.
+    """
+
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="pub_name_corrections",
+        help_text="The account that submitted this name correction.",
+    )
+    client_id = models.UUIDField(
+        db_index=True,
+        help_text="Client-generated UUID; idempotency key for offline retries.",
+    )
+    cache_key = models.CharField(
+        max_length=12,
+        db_index=True,
+        help_text="Geohash-8 of the corrected place coordinates.",
+    )
+    external_id = models.CharField(
+        max_length=128,
+        blank=True,
+        null=True,
+        db_index=True,
+        help_text="Client-side provider id, e.g. Mapy.cz item id.",
+    )
+    original_name = models.CharField(max_length=255)
+    suggested_name = models.CharField(max_length=255)
+    lat = models.FloatField()
+    lng = models.FloatField()
+    city = models.CharField(max_length=128, blank=True, null=True)
+    address = models.CharField(max_length=255, blank=True, null=True)
+    active = models.BooleanField(
+        default=True,
+        db_index=True,
+        help_text="Inactive corrections are retained for audit but no longer rename /v1/pubs/near results.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Pub Name Correction"
+        verbose_name_plural = "Pub Name Corrections"
+        ordering = ["-updated_at"]
+        indexes = [
+            models.Index(fields=["active", "cache_key", "updated_at"], name="pubname_active_key_upd_idx"),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "client_id"],
+                name="unique_pub_name_correction_per_account_client_id",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"PubNameCorrection({self.original_name} -> {self.suggested_name} [{self.cache_key}])"
 
 
 class UserAddedPub(models.Model):
