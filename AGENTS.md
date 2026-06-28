@@ -103,6 +103,8 @@ Mobilní lokální build proti lokálnímu backendu spouštěj hlavně přes:
 npm run ios:local
 ```
 
+Když potřebuješ rozjet iOS simulator pro ruční ověření aplikace, používej také `npm run ios:local`.
+
 Respektuj existující Expo Router, React Native, store, queue a theme strukturu. Nezaváděj nový state management, navigační pattern nebo design systém bez silného důvodu.
 
 ## Git and deployment
