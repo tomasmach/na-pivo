@@ -23,7 +23,7 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
-import { ChevronLeftIcon, MapPinIcon } from '@/components/shared/IconGlyph';
+import { CheckIcon, ChevronLeftIcon, MapPinIcon, TargetIcon } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { generateUuidV4 } from '@/data/account';
 import { buildAddedPubEntry } from '@/data/addedPubsClient';
@@ -61,6 +61,7 @@ interface SelectedLocation {
   city?: string;
   address?: string;
   displayLocation?: string;
+  source?: 'suggestion' | 'current';
 }
 
 export default function AddPubScreen() {
@@ -95,8 +96,9 @@ export default function AddPubScreen() {
   const hasStreetAddress = address.trim().length > 0;
   const canSubmit =
     name.trim().length > 0 &&
-    (selectedLocation !== null || initialCoords !== null || hasStreetAddress) &&
+    (selectedLocation !== null || hasStreetAddress) &&
     !submitted;
+  const currentLocationSelected = selectedLocation?.source === 'current';
 
   useEffect(() => {
     const query = name.trim();
@@ -129,13 +131,13 @@ export default function AddPubScreen() {
     (value: string) => {
       setName(value);
       setLocationError('');
-      if (value.trim().length < 2) {
+      if (value.trim().length < 2 || selectedLocation?.source === 'current') {
         setSuggestions([]);
         setSuggesting(false);
       } else {
         setSuggesting(true);
       }
-      if (selectedLocation) setSelectedLocation(null);
+      if (selectedLocation && selectedLocation.source !== 'current') setSelectedLocation(null);
     },
     [selectedLocation],
   );
@@ -147,6 +149,7 @@ export default function AddPubScreen() {
       city: suggestion.city,
       address: suggestion.address,
       displayLocation: suggestion.location,
+      source: 'suggestion',
     });
     setName(suggestion.name);
     setCity(suggestion.city ?? '');
@@ -154,6 +157,19 @@ export default function AddPubScreen() {
     setSuggestions([]);
     setLocationError('');
   }, []);
+
+  const handleUseCurrentLocation = useCallback(() => {
+    if (!initialCoords) return;
+    setSelectedLocation({
+      ...initialCoords,
+      city: city.trim() || undefined,
+      displayLocation: cs.addPub.currentLocationSelectedBody,
+      source: 'current',
+    });
+    setSuggestions([]);
+    setSuggesting(false);
+    setLocationError('');
+  }, [city, initialCoords]);
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit) return;
@@ -190,7 +206,7 @@ export default function AddPubScreen() {
       }
     }
 
-    const location = selectedLocation ?? geocodedLocation ?? initialCoords;
+    const location = selectedLocation ?? geocodedLocation;
 
     if (!location) {
       setSubmitted(false);
@@ -281,6 +297,62 @@ export default function AddPubScreen() {
           <Text style={styles.locationBody} maxFontSizeMultiplier={FontScaleCap.body}>
             {initialCoords ? cs.addPub.locationWithCurrent : cs.addPub.locationFromAddress}
           </Text>
+          {initialCoords && (
+            <Pressable
+              onPress={handleUseCurrentLocation}
+              style={({ pressed }) => [
+                styles.currentLocationButton,
+                currentLocationSelected && styles.currentLocationButtonSelected,
+                pressed && styles.currentLocationButtonPressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={
+                currentLocationSelected
+                  ? cs.a11y.addPubCurrentLocationSelected
+                  : cs.a11y.addPubUseCurrentLocationButton
+              }
+              accessibilityState={{ selected: currentLocationSelected }}
+            >
+              <View
+                style={[
+                  styles.currentLocationIcon,
+                  currentLocationSelected && styles.currentLocationIconSelected,
+                ]}
+              >
+                <TargetIcon
+                  size={18}
+                  color={currentLocationSelected ? Colors.stout : Colors.amber}
+                />
+              </View>
+              <View style={styles.currentLocationCopy}>
+                <Text
+                  style={styles.currentLocationTitle}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {cs.addPub.useCurrentLocation}
+                </Text>
+                <Text
+                  style={styles.currentLocationBody}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                  numberOfLines={3}
+                >
+                  {cs.addPub.useCurrentLocationHint}
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.currentLocationStatus,
+                  currentLocationSelected && styles.currentLocationStatusSelected,
+                ]}
+              >
+                {currentLocationSelected ? (
+                  <CheckIcon size={15} color={Colors.stout} />
+                ) : (
+                  <MapPinIcon size={15} color={Colors.amber} />
+                )}
+              </View>
+            </Pressable>
+          )}
         </View>
 
         <View style={styles.fieldGroup}>
@@ -297,11 +369,21 @@ export default function AddPubScreen() {
           {(suggestions.length > 0 || suggesting || selectedLocation) && (
             <View style={styles.suggestions}>
               {selectedLocation && (
-                <View style={styles.selectedSuggestion}>
+                <View
+                  style={[
+                    styles.selectedSuggestion,
+                    currentLocationSelected && styles.selectedCurrentLocation,
+                  ]}
+                  accessibilityLabel={
+                    currentLocationSelected ? cs.a11y.addPubCurrentLocationSelected : undefined
+                  }
+                >
                   <MapPinIcon size={16} color={Colors.amber} />
                   <View style={styles.suggestionText}>
                     <Text style={styles.suggestionName} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {cs.addPub.selectedPlace}
+                      {currentLocationSelected
+                        ? cs.addPub.currentLocationSelectedTitle
+                        : cs.addPub.selectedPlace}
                     </Text>
                     <Text
                       style={styles.suggestionLocation}
@@ -492,6 +574,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     backgroundColor: withAlpha(Colors.amber, 0.12),
   },
+  selectedCurrentLocation: {
+    backgroundColor: withAlpha(Colors.amber, 0.18),
+  },
   suggestionPressed: {
     backgroundColor: withAlpha(Colors.amber, 0.1),
   },
@@ -570,6 +655,70 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: Colors.foamMuted,
+  },
+  currentLocationButton: {
+    minHeight: 76,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    borderRadius: Radius.medium,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.34),
+    backgroundColor: withAlpha(Colors.stout3, 0.72),
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  currentLocationButtonSelected: {
+    borderColor: Colors.amber,
+    backgroundColor: withAlpha(Colors.amber, 0.15),
+  },
+  currentLocationButtonPressed: {
+    transform: [{ scale: 0.99 }],
+    backgroundColor: withAlpha(Colors.amber, 0.2),
+  },
+  currentLocationIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.36),
+    backgroundColor: withAlpha(Colors.amber, 0.1),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  currentLocationIconSelected: {
+    borderColor: Colors.amber,
+    backgroundColor: Colors.amber,
+  },
+  currentLocationCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  currentLocationTitle: {
+    fontFamily: Fonts.ui.bold,
+    fontSize: 15,
+    lineHeight: 20,
+    color: Colors.foam,
+  },
+  currentLocationBody: {
+    fontFamily: Fonts.ui.regular,
+    fontSize: 13,
+    lineHeight: 18,
+    color: Colors.foamMuted,
+  },
+  currentLocationStatus: {
+    width: 30,
+    height: 30,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.36),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  currentLocationStatusSelected: {
+    borderColor: Colors.amber,
+    backgroundColor: Colors.amber,
   },
   invalidText: {
     fontFamily: Fonts.ui.medium,
