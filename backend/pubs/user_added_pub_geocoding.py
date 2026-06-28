@@ -45,6 +45,18 @@ def build_pub_location_query(*, name: str, address: str, city: str = "") -> str:
     )[:150]
 
 
+def build_address_location_query(*, address: str, city: str = "") -> str:
+    return ", ".join(
+        part
+        for part in [
+            address.strip(),
+            city.strip(),
+            "Česko",
+        ]
+        if part
+    )[:150]
+
+
 def pick_city(item: dict) -> str:
     regional_structure = item.get("regionalStructure")
     if not isinstance(regional_structure, list):
@@ -136,15 +148,25 @@ def resolve_user_added_pub_location(
     client-submitted coordinates rather than failing the public write endpoint.
     """
 
-    query = build_pub_location_query(name=name, address=address, city=city)
+    primary_query = build_pub_location_query(name=name, address=address, city=city)
     api_key = getattr(settings, "MAPY_API_KEY", "") or ""
-    if not api_key or not query:
+    if not api_key or not primary_query:
         return None
 
     daily_cap = int(getattr(settings, "MAPY_DAILY_CAP", 5000))
+    queries = [primary_query]
+    address_query = build_address_location_query(address=address, city=city)
+    if address_query and address_query != primary_query:
+        queries.append(address_query)
+
     try:
         with MapySuggestSource(api_key=api_key, daily_cap=daily_cap) as source:
-            result = source.geocode_location(query, lat=lat, lng=lng, limit=3)
+            for query in queries:
+                result = source.geocode_location(query, lat=lat, lng=lng, limit=3)
+                for item in result.items:
+                    resolved = resolved_pub_location_from_item(item, requested_name=name)
+                    if resolved is not None:
+                        return resolved
     except MapyDailyCapExceededError as exc:
         logger.warning("user-added-pub-geocode: Mapy daily cap hit: %s", exc)
         return None
@@ -152,8 +174,4 @@ def resolve_user_added_pub_location(
         logger.warning("user-added-pub-geocode: Mapy lookup failed: %s", exc)
         return None
 
-    for item in result.items:
-        resolved = resolved_pub_location_from_item(item, requested_name=name)
-        if resolved is not None:
-            return resolved
     return None

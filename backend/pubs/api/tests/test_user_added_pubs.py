@@ -4,15 +4,19 @@ Tests for POST /v1/pubs — community-added pubs missing from nearby search.
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from pubs.enrichment import geohash8
+from pubs.enrichment import MapySuggestResult, geohash8
 from pubs.models import Account, PubReport, UserAddedPub
-from pubs.user_added_pub_geocoding import ResolvedPubLocation
+from pubs.user_added_pub_geocoding import (
+    ResolvedPubLocation,
+    resolve_user_added_pub_location,
+    resolved_pub_location_from_item,
+)
 
 _DEVICE_ID = "3f8b1c2e-4d5a-6789-0abc-def012345678"
 _CLIENT_ID = "9a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d"
@@ -60,6 +64,72 @@ def _payload(**overrides):
     }
     data.update(overrides)
     return data
+
+
+def test_user_added_pub_geocode_falls_back_to_address_only_query(settings):
+    settings.MAPY_API_KEY = "test-key"
+    source = MagicMock()
+    source.geocode_location.side_effect = [
+        MapySuggestResult(
+            items=[
+                {
+                    "name": "Praha",
+                    "type": "regional.municipality",
+                    "position": {"lat": 50.0755, "lon": 14.4378},
+                }
+            ]
+        ),
+        MapySuggestResult(
+            items=[
+                {
+                    "name": "Testovací 12",
+                    "type": "regional.address",
+                    "position": {"lat": 50.081, "lon": 14.421},
+                    "regionalStructure": [
+                        {"name": "12", "type": "regional.address"},
+                        {"name": "Testovací", "type": "regional.street"},
+                        {"name": "Praha", "type": "regional.municipality"},
+                    ],
+                }
+            ]
+        ),
+    ]
+    cm = MagicMock()
+    cm.__enter__.return_value = source
+    cm.__exit__.return_value = False
+    factory = MagicMock(return_value=cm)
+
+    with patch("pubs.user_added_pub_geocoding.MapySuggestSource", factory):
+        resolved = resolve_user_added_pub_location(
+            name="Hospoda mimo Mapy",
+            address="Testovací 12",
+            city="Praha",
+            lat=50.08,
+            lng=14.42,
+        )
+
+    assert resolved is not None
+    assert resolved.lat == 50.081
+    assert resolved.lng == 14.421
+    assert resolved.city == "Praha"
+    assert resolved.address == "Testovací 12"
+    assert [call.args[0] for call in source.geocode_location.call_args_list] == [
+        "Hospoda mimo Mapy, Testovací 12, Praha, Česko",
+        "Testovací 12, Praha, Česko",
+    ]
+
+
+def test_user_added_pub_geocode_rejects_street_centroid():
+    resolved = resolved_pub_location_from_item(
+        {
+            "name": "Testovací",
+            "type": "regional.street",
+            "position": {"lat": 50.081, "lon": 14.421},
+        },
+        requested_name="Hospoda mimo Mapy",
+    )
+
+    assert resolved is None
 
 
 @pytest.mark.django_db
