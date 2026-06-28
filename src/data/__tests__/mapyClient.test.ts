@@ -307,6 +307,7 @@ describe('geocodePubLocation', () => {
           {
             name: 'Hospoda U Testu',
             label: 'Hospoda',
+            type: 'poi',
             position: { lat: 50.081, lon: 14.421 },
             regionalStructure: [{ name: 'Praha', type: 'regional.municipality' }],
           },
@@ -321,7 +322,7 @@ describe('geocodePubLocation', () => {
       near: { lat: 50.08, lng: 14.42 },
     });
 
-    expect(result).toEqual({ lat: 50.081, lng: 14.421, city: 'Praha', address: undefined, type: undefined });
+    expect(result).toEqual({ lat: 50.081, lng: 14.421, city: 'Praha', address: undefined, type: 'poi' });
     const calledUrl = new URL(String((fetchMock.mock.calls[0] as unknown[])[0]));
     expect(calledUrl.origin + calledUrl.pathname).toBe('https://api.example.com/v1/pubs/geocode');
     expect(calledUrl.searchParams.get('query')).toBe('Hospoda U Testu, Praha, Česko');

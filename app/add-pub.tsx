@@ -172,8 +172,8 @@ export default function AddPubScreen() {
 
     // Only geocode when there is a concrete street address. Geocoding from a
     // bare city name returns the municipality centroid, which must never be
-    // saved as the pub's location. A precise current location (initialCoords)
-    // is preferred over geocoding when there is no street address.
+    // saved as the pub's location. When the user did type an address, never
+    // silently fall back to current GPS; that would put the pub under their feet.
     let geocodedLocation = null;
     if (!selectedLocation && trimmedAddress) {
       const result = await geocodePubLocation({
@@ -182,11 +182,11 @@ export default function AddPubScreen() {
         address: trimmedAddress,
         near: initialCoords,
       });
-      // Reject area centroids (regional.municipality/region/…): if we cannot
-      // pin an exact place and have no fallback coords, ask for a precise pick.
+      // Reject area centroids (regional.municipality/region/…): if the typed
+      // address cannot pin an exact place, ask for a precise pick.
       if (result && isSpecificGeocodeResult(result)) {
         geocodedLocation = result;
-      } else if (!initialCoords) {
+      } else {
         setSubmitted(false);
         setLocationError(cs.addPub.locationImprecise);
         showToast(cs.addPub.locationImprecise);
