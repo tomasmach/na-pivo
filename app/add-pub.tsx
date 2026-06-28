@@ -165,6 +165,13 @@ export default function AddPubScreen() {
 
   const handleUseCurrentLocation = useCallback(() => {
     if (!initialCoords) return;
+    if (currentLocationSelected) {
+      setSelectedLocation(null);
+      setSuggestions([]);
+      setSuggesting(name.trim().length >= 2);
+      setLocationError('');
+      return;
+    }
     setSelectedLocation({
       ...initialCoords,
       city: city.trim() || undefined,
@@ -174,7 +181,7 @@ export default function AddPubScreen() {
     setSuggestions([]);
     setSuggesting(false);
     setLocationError('');
-  }, [city, initialCoords]);
+  }, [city, currentLocationSelected, initialCoords, name]);
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit) return;
@@ -643,6 +650,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   locationCard: {
+    overflow: 'hidden',
     borderRadius: Radius.card,
     borderWidth: 1,
     borderColor: withAlpha(Colors.amber, 0.28),

@@ -191,6 +191,41 @@ describe('AddPubScreen', () => {
     expect(mockBack).toHaveBeenCalledTimes(1);
   });
 
+  it('lets the user clear the current location selection', () => {
+    renderScreen();
+
+    const currentLocationButton = renderer!.root.findByProps({
+      accessibilityLabel: cs.a11y.addPubUseCurrentLocationButton,
+    });
+
+    act(() => {
+      currentLocationButton.props.onPress();
+    });
+
+    const selectedCurrentLocationButton = renderer!.root
+      .findAllByProps({
+        accessibilityLabel: cs.a11y.addPubCurrentLocationSelected,
+      })
+      .find((node) => typeof node.props.onPress === 'function');
+
+    expect(selectedCurrentLocationButton).toBeDefined();
+
+    act(() => {
+      selectedCurrentLocationButton!.props.onPress();
+    });
+
+    expect(
+      renderer!.root.findAllByProps({
+        accessibilityLabel: cs.a11y.addPubCurrentLocationSelected,
+      }),
+    ).toHaveLength(0);
+    expect(
+      renderer!.root.findAllByProps({
+        accessibilityLabel: cs.a11y.addPubUseCurrentLocationButton,
+      }).filter((node) => typeof node.props.onPress === 'function').length,
+    ).toBeGreaterThan(0);
+  });
+
   it('shows an error when address geocoding fails without explicit current location selection', async () => {
     renderScreen();
 
