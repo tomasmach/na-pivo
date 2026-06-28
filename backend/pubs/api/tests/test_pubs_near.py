@@ -201,6 +201,63 @@ def test_name_correction_cache_key_fallback_requires_matching_original_name(clie
 
 
 @pytest.mark.django_db
+def test_name_correction_coordinate_external_id_requires_matching_original_name(client):
+    PubNameCorrection.objects.create(
+        client_id="aaaaaaaa-1111-2222-3333-444444444448",
+        cache_key=geohash8(50.08, 14.42),
+        external_id="mapy:50.08000,14.42000",
+        original_name="Hospoda U Testu",
+        suggested_name="U Testu po novém",
+        lat=50.08,
+        lng=14.42,
+        active=True,
+    )
+    other_item = {
+        **_ITEM,
+        "name": "Pivnice Za Rohem",
+        "position": {"lat": 50.08, "lon": 14.42},
+    }
+    factory, _ = _mock_source(MapySuggestResult(items=[other_item]))
+
+    with patch("pubs.api.views.MapySuggestSource", factory):
+        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG})
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["items"][0]["name"] == "Pivnice Za Rohem"
+
+
+@pytest.mark.django_db
+def test_name_correction_coordinate_external_id_chains_renames(client):
+    PubNameCorrection.objects.create(
+        client_id="aaaaaaaa-1111-2222-3333-444444444449",
+        cache_key=geohash8(50.08, 14.42),
+        external_id="mapy:50.08000,14.42000",
+        original_name="Hospoda U Testu",
+        suggested_name="U Testu po novém",
+        lat=50.08,
+        lng=14.42,
+        active=True,
+    )
+    PubNameCorrection.objects.create(
+        client_id="aaaaaaaa-1111-2222-3333-444444444450",
+        cache_key=geohash8(50.08, 14.42),
+        external_id="mapy:50.08000,14.42000",
+        original_name="U Testu po novém",
+        suggested_name="U Testu",
+        lat=50.08,
+        lng=14.42,
+        active=True,
+    )
+    factory, _ = _mock_source(MapySuggestResult(items=[_ITEM]))
+
+    with patch("pubs.api.views.MapySuggestSource", factory):
+        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG})
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["items"][0]["name"] == "U Testu"
+
+
+@pytest.mark.django_db
 def test_name_correction_external_id_wins_without_original_name_match(client):
     PubNameCorrection.objects.create(
         client_id="aaaaaaaa-1111-2222-3333-444444444447",

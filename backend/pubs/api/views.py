@@ -1717,6 +1717,12 @@ def _item_external_id(item: dict) -> str | None:
     return f"mapy:{float(lat):.5f},{float(lng):.5f}"
 
 
+def _is_coordinate_external_id(external_id: str | None) -> bool:
+    if not external_id:
+        return False
+    return re.fullmatch(r"mapy:-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?", external_id) is not None
+
+
 def _with_pub_name_corrections(items: list[dict]) -> list[dict]:
     """Apply active display-name corrections to Mapy-shaped nearby items."""
 
@@ -1735,34 +1741,38 @@ def _with_pub_name_corrections(items: list[dict]) -> list[dict]:
         .filter(Q(cache_key__in=cache_keys) | Q(external_id__in=external_ids))
         .order_by("updated_at", "id")
     )
-    by_external_id: dict[str, str] = {}
-    cache_key_fallbacks: list[PubNameCorrection] = []
+    ordered_corrections: list[PubNameCorrection] = []
     for correction in corrections:
         name = correction.suggested_name.strip()
         if not name:
             continue
-        if correction.external_id:
-            by_external_id[correction.external_id] = name
-        else:
-            cache_key_fallbacks.append(correction)
+        ordered_corrections.append(correction)
 
-    if not cache_key_fallbacks and not by_external_id:
+    if not ordered_corrections:
         return items
 
     corrected_items: list[dict] = []
     for item in items:
         external_id = _item_external_id(item)
         cache_key = _item_cache_key(item)
-        corrected_name = by_external_id.get(external_id or "")
-        if not corrected_name:
-            item_name = str(item.get("name") or "")
-            for correction in cache_key_fallbacks:
-                if correction.cache_key == cache_key and names_match(correction.original_name, item_name):
-                    corrected_name = correction.suggested_name.strip()
-        if not corrected_name or corrected_name == item.get("name"):
+        current_name = str(item.get("name") or "")
+        for correction in ordered_corrections:
+            suggested_name = correction.suggested_name.strip()
+            has_strong_external_match = (
+                bool(correction.external_id)
+                and not _is_coordinate_external_id(correction.external_id)
+                and correction.external_id == external_id
+            )
+            has_name_checked_place_match = (
+                correction.cache_key == cache_key
+                and names_match(correction.original_name, current_name)
+            )
+            if has_strong_external_match or has_name_checked_place_match:
+                current_name = suggested_name
+        if not current_name or current_name == item.get("name"):
             corrected_items.append(item)
             continue
-        corrected = {**item, "name": corrected_name}
+        corrected = {**item, "name": current_name}
         corrected_items.append(corrected)
     return corrected_items
 
