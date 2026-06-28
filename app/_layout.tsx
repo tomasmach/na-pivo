@@ -10,6 +10,7 @@ import { useEffect } from 'react';
 import { fontAssets } from '@/theme/fonts';
 import { Colors } from '@/theme/colors';
 import { flushPubReportQueue } from '@/data/pubReportQueue';
+import { flushPubNameCorrectionsQueue } from '@/data/pubNameCorrectionsQueue';
 import { flushFeedbackQueue } from '@/data/feedbackQueue';
 import { flushCommunityQueue } from '@/data/communityQueue';
 import { flushAddedPubsQueue } from '@/data/addedPubsQueue';
@@ -137,6 +138,7 @@ export default function RootLayout() {
     // failed. Runs on launch and whenever the app returns to the foreground;
     // never throws.
     void flushPubReportQueue();
+    void flushPubNameCorrectionsQueue();
     void flushFeedbackQueue();
     void flushCommunityQueue();
     void flushAddedPubsQueue();
@@ -160,6 +162,7 @@ export default function RootLayout() {
         void trackClientEvent({ event: 'app_foreground', severity: 'info' });
         useTallyStore.getState().maybeAutoArchive();
         void flushPubReportQueue();
+        void flushPubNameCorrectionsQueue();
         void flushFeedbackQueue();
         void flushCommunityQueue();
         void flushAddedPubsQueue();

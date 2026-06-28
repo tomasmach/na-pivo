@@ -9,11 +9,20 @@ import {
   useSharedValue,
   type SharedValue,
 } from 'react-native-reanimated';
-import { fetchPubsNear, findNearestPub, findRandomPubInRadius, isLoaded } from '@/data/pubs';
+import {
+  clearPubsSnapshot,
+  fetchPubsNear,
+  findNearestPub,
+  findRandomPubInRadius,
+  isLoaded,
+  renameLocalPub,
+} from '@/data/pubs';
 import type { HoursStatus, Pub, VenueKind } from '@/data/pubs';
 import { fetchPubHours } from '@/data/hoursClient';
 import { enqueuePubReport } from '@/data/pubReportQueue';
 import type { PubReportReason } from '@/data/pubReportsClient';
+import { buildPubNameCorrectionEntry } from '@/data/pubNameCorrectionsClient';
+import { enqueuePubNameCorrection } from '@/data/pubNameCorrectionsQueue';
 import { geohash8 } from '@/data/geohash';
 import type { CommunityBeer, WeeklyHours } from '@/data/communityClient';
 import { computeOpenState } from '@/data/communityHours';
@@ -90,6 +99,7 @@ export interface UseCompassResult {
   reroll: () => void;
   skip: () => void;
   reportCurrentPub: (reason: PubReportReason) => Promise<boolean>;
+  renameCurrentPub: (suggestedName: string) => Promise<boolean>;
   retrySearch: () => void;
   arrived: boolean;
   dismissArrival: () => void;
@@ -121,6 +131,7 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
   const reportedCacheKeys = usePubStore((s) => s.reportedCacheKeys);
   const addReportedPub = usePubStore((s) => s.addReportedPub);
   const catalogRevision = usePubStore((s) => s.catalogRevision);
+  const bumpCatalogRevision = usePubStore((s) => s.bumpCatalogRevision);
 
   // — Permission state —
   const [permissionState, setPermissionState] = useState<PermissionState>('undetermined');
@@ -937,6 +948,22 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
     return enqueuePubReport(pub, reason);
   }, [addReportedPub, currentPub, setRevealedPub]);
 
+  const renameCurrentPub = useCallback(async (suggestedName: string): Promise<boolean> => {
+    const pub = currentPub;
+    const trimmedName = suggestedName.trim().slice(0, 200);
+    if (!pub || !trimmedName || trimmedName === pub.name) return false;
+
+    const renamedPub = { ...pub, name: trimmedName };
+    setCurrentPub(renamedPub);
+    setRevealedPub(renamedPub);
+    renameLocalPub(pub.id, trimmedName);
+    bumpCatalogRevision();
+    void clearPubsSnapshot();
+
+    const entry = buildPubNameCorrectionEntry(pub, trimmedName);
+    return enqueuePubNameCorrection(entry);
+  }, [bumpCatalogRevision, currentPub, setRevealedPub]);
+
   const retrySearch = useCallback(() => {
     forceNextSearchRef.current = true;
     lastTargetPosRef.current = null;
@@ -978,6 +1005,7 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
     reroll,
     skip,
     reportCurrentPub,
+    renameCurrentPub,
     retrySearch,
     arrived,
     dismissArrival,

@@ -1,0 +1,121 @@
+/**
+ * Client for pub display-name corrections.
+ *
+ * A rename is a public community correction, but it must not hide the pub like
+ * pub reports do. Callers should queue through pubNameCorrectionsQueue so an
+ * offline correction eventually reaches the backend.
+ */
+
+import { ensureAccount, clearCachedAnonymousAccount, generateUuidV4 } from './account';
+import { getBackendEndpoint } from './backendConfig';
+import { trackApiFailure } from './telemetryClient';
+import type { Pub } from './pubs';
+
+export interface PubNameCorrectionEntry {
+  client_id: string;
+  name: string;
+  suggested_name: string;
+  lat: number;
+  lng: number;
+  city?: string;
+  address?: string;
+  external_id?: string;
+}
+
+const REQUEST_TIMEOUT_MS = 8000;
+
+function chainAbortSignal(signal?: AbortSignal): {
+  signal: AbortSignal;
+  cleanup: () => void;
+} {
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
+  const onExternalAbort = () => timeoutController.abort();
+
+  if (signal) {
+    if (signal.aborted) {
+      timeoutController.abort();
+    } else {
+      signal.addEventListener('abort', onExternalAbort);
+    }
+  }
+
+  return {
+    signal: timeoutController.signal,
+    cleanup: () => {
+      clearTimeout(timeoutId);
+      if (signal) signal.removeEventListener('abort', onExternalAbort);
+    },
+  };
+}
+
+export function buildPubNameCorrectionEntry(
+  pub: Pub,
+  suggestedName: string,
+  clientId = generateUuidV4(),
+): PubNameCorrectionEntry {
+  const entry: PubNameCorrectionEntry = {
+    client_id: clientId,
+    name: pub.name.trim(),
+    suggested_name: suggestedName.trim(),
+    lat: pub.lat,
+    lng: pub.lng,
+  };
+  const city = pub.city?.trim();
+  const address = pub.address?.trim();
+  if (city) entry.city = city;
+  if (address) entry.address = address;
+  if (pub.id) entry.external_id = pub.id;
+  return entry;
+}
+
+export async function submitPubNameCorrection(
+  entry: PubNameCorrectionEntry,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  if (signal?.aborted) return false;
+
+  const endpoint = getBackendEndpoint('/v1/pub-name-corrections');
+  if (!endpoint) return false;
+
+  const session = await ensureAccount(signal);
+  if (!session || signal?.aborted) return false;
+
+  const abort = chainAbortSignal(signal);
+  try {
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.token}`,
+      },
+      body: JSON.stringify(entry),
+      signal: abort.signal,
+    });
+
+    if (resp.status === 401) {
+      await clearCachedAnonymousAccount(session);
+      return false;
+    }
+    if (!resp.ok) {
+      trackApiFailure('pub_name_correction_submit', {
+        endpoint: '/v1/pub-name-corrections',
+        status: resp.status,
+      });
+      return false;
+    }
+    return true;
+  } catch (err) {
+    const isAbortError = err instanceof Error && err.name === 'AbortError';
+    if (!signal?.aborted && !isAbortError) {
+      trackApiFailure('pub_name_correction_submit', {
+        endpoint: '/v1/pub-name-corrections',
+        reason: 'exception',
+        error: err,
+      });
+    }
+    return false;
+  } finally {
+    abort.cleanup();
+  }
+}

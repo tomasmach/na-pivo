@@ -260,6 +260,20 @@ export function upsertLocalPub(pub: Pub): void {
   _init(next);
 }
 
+/** Rename one already-loaded pub without collapsing neighbouring pubs that may
+ * share the same geohash-8 cell. */
+export function renameLocalPub(pubId: string, name: string): Pub | null {
+  let renamed: Pub | null = null;
+  const next = _pubs.map((pub) => {
+    if (pub.id !== pubId) return pub;
+    renamed = { ...pub, name };
+    return renamed;
+  });
+  if (!renamed) return null;
+  _init(next);
+  return renamed;
+}
+
 /**
  * Reset the module state to a fresh-launch baseline. Exposed for tests so each
  * case can exercise the one-shot cold-start hydration in isolation; clears the

@@ -9,6 +9,7 @@ import {
   findRandomPubInRadius,
   getPubById,
   isLoaded,
+  renameLocalPub,
   upsertLocalPub,
   type Pub,
 } from "../pubs";
@@ -353,6 +354,20 @@ describe("upsertLocalPub", () => {
 
     expect(getPubById("mapy:old")).toBeNull();
     expect(getPubById("mapy:new")?.name).toBe("Nový název");
+  });
+});
+
+describe("renameLocalPub", () => {
+  it("renames only the matching pub id and keeps same-cell neighbours", () => {
+    const first: Pub = { id: "mapy:first", name: "Starý název", lat: 50.0812, lng: 14.4182 };
+    const second: Pub = { id: "mapy:second", name: "Soused", lat: 50.08121, lng: 14.41821 };
+    _init([first, second]);
+
+    const renamed = renameLocalPub("mapy:first", "Nový název");
+
+    expect(renamed?.name).toBe("Nový název");
+    expect(getPubById("mapy:first")?.name).toBe("Nový název");
+    expect(getPubById("mapy:second")?.name).toBe("Soused");
   });
 });
 

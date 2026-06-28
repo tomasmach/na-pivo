@@ -7,13 +7,18 @@ import { MapPubSheet } from '@/components/amenities/MapPubSheet';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-jest.mock('react-native', () => ({
-  ...jest.requireActual('react-native'),
-  Alert: {
-    alert: jest.fn(),
-  },
-  TextInput: jest.fn(() => null),
-}));
+jest.mock('react-native', () => {
+  const RN = jest.requireActual('react-native');
+  return {
+    ...RN,
+    Alert: {
+      alert: jest.fn(),
+    },
+    KeyboardAvoidingView: jest.fn(({ children }) => <RN.View>{children}</RN.View>),
+    Modal: jest.fn(({ children, visible }) => (visible ? <RN.View>{children}</RN.View> : null)),
+    TextInput: jest.fn(() => null),
+  };
+});
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
@@ -71,6 +76,7 @@ jest.mock('@/components/shared/IconGlyph', () => ({
   FlagIcon: jest.fn(() => null),
   MapPinnedIcon: jest.fn(() => null),
   MapPinPlusIcon: jest.fn(() => null),
+  PencilIcon: jest.fn(() => null),
   StarIcon: jest.fn(() => null),
   TreePineIcon: jest.fn(() => null),
   XIcon: jest.fn(() => null),
@@ -132,6 +138,7 @@ function baseCompassState() {
     reroll: jest.fn(),
     skip: jest.fn(),
     reportCurrentPub: jest.fn(async () => true),
+    renameCurrentPub: jest.fn(async () => true),
     retrySearch: jest.fn(),
     arrived: false,
     dismissArrival: jest.fn(),
@@ -376,7 +383,7 @@ describe('CompassScreen', () => {
     expect(Alert.alert).toHaveBeenCalledTimes(1);
     const [, , buttons] = (Alert.alert as jest.Mock).mock.calls[0];
     act(() => {
-      buttons?.[2]?.onPress?.();
+      buttons?.[3]?.onPress?.();
     });
 
     expect(reportCurrentPub).toHaveBeenCalledWith('not_pub');
