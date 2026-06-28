@@ -13,7 +13,6 @@ import {
   Pressable,
   StyleSheet,
   Linking,
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -180,6 +179,142 @@ function RenamePubModal({
         </View>
       </KeyboardAvoidingView>
     </Modal>
+  );
+}
+
+interface ReportPubModalProps {
+  visible: boolean;
+  pubName: string;
+  onClose: () => void;
+  onRename: () => void;
+  onReportReason: (reason: PubReportReason) => void;
+}
+
+function ReportPubModal({
+  visible,
+  pubName,
+  onClose,
+  onRename,
+  onReportReason,
+}: ReportPubModalProps) {
+  const handleRename = useCallback(() => {
+    onClose();
+    onRename();
+  }, [onClose, onRename]);
+
+  const handleReportClosed = useCallback(() => {
+    onClose();
+    onReportReason('closed');
+  }, [onClose, onReportReason]);
+
+  const handleReportNotPub = useCallback(() => {
+    onClose();
+    onReportReason('not_pub');
+  }, [onClose, onReportReason]);
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <View style={styles.reportOverlay}>
+        <Pressable
+          style={styles.reportScrim}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel={cs.common.cancel}
+        />
+        <View style={styles.reportPanel}>
+          <View style={styles.reportHeader}>
+            <View style={styles.reportIconWell}>
+              <FlagIcon size={18} color={Colors.amber} />
+            </View>
+            <View style={styles.reportTitleWrap}>
+              <Text style={styles.reportTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {cs.compass.reportTitle}
+              </Text>
+              <Text style={styles.reportBody} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.compass.reportBody(pubName)}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.reportActions}>
+            <ReportActionButton
+              label={cs.compass.reportRename}
+              icon={<PencilIcon size={18} color={Colors.foam} />}
+              onPress={handleRename}
+            />
+            <ReportActionButton
+              label={cs.compass.reportClosed}
+              icon={<XIcon size={18} color={Colors.foamMuted} />}
+              onPress={handleReportClosed}
+              tone="muted"
+            />
+            <ReportActionButton
+              label={cs.compass.reportNotPub}
+              icon={<BeerOffIcon size={18} color={Colors.amberLight} />}
+              onPress={handleReportNotPub}
+              tone="danger"
+            />
+            <ReportActionButton
+              label={cs.common.cancel}
+              icon={<XIcon size={18} color={Colors.mutedText} />}
+              onPress={onClose}
+              tone="ghost"
+            />
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+interface ReportActionButtonProps {
+  label: string;
+  icon: React.ReactNode;
+  onPress: () => void;
+  tone?: 'default' | 'muted' | 'danger' | 'ghost';
+}
+
+function ReportActionButton({
+  label,
+  icon,
+  onPress,
+  tone = 'default',
+}: ReportActionButtonProps) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.reportAction,
+        tone === 'muted' && styles.reportActionMuted,
+        tone === 'danger' && styles.reportActionDanger,
+        tone === 'ghost' && styles.reportActionGhost,
+        pressed && styles.reportActionPressed,
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <View style={styles.reportActionIcon}>{icon}</View>
+      <Text
+        style={[
+          styles.reportActionText,
+          tone === 'danger' && styles.reportActionTextDanger,
+          tone === 'ghost' && styles.reportActionTextGhost,
+        ]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.82}
+        maxFontSizeMultiplier={FontScaleCap.heading}
+      >
+        {label}
+      </Text>
+      <View style={styles.reportActionIconSpacer} />
+    </Pressable>
   );
 }
 
@@ -853,6 +988,7 @@ export default function CompassScreen() {
   const [sceneSize, setSceneSize] = useState<{ width: number; height: number } | null>(null);
   const [beerBrandFilter, setBeerBrandFilter] = useState<BeerBrandFilterValue | null>(null);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
   const [renameSubmitting, setRenameSubmitting] = useState(false);
@@ -1003,6 +1139,10 @@ export default function CompassScreen() {
     reportCurrentPub(reason).catch(() => undefined);
   }, [reportCurrentPub]);
 
+  const handleReportClose = useCallback(() => {
+    setReportOpen(false);
+  }, []);
+
   const handleRenamePress = useCallback(() => {
     if (!pub) return;
     setRenameDraft(pub.name);
@@ -1030,28 +1170,8 @@ export default function CompassScreen() {
 
   const handleReport = useCallback(() => {
     if (!pub) return;
-    Alert.alert(
-      cs.compass.reportTitle,
-      cs.compass.reportBody(pub.name),
-      [
-        { text: cs.common.cancel, style: 'cancel' },
-        {
-          text: cs.compass.reportRename,
-          onPress: handleRenamePress,
-        },
-        {
-          text: cs.compass.reportClosed,
-          style: 'destructive',
-          onPress: () => handleReportReason('closed'),
-        },
-        {
-          text: cs.compass.reportNotPub,
-          style: 'destructive',
-          onPress: () => handleReportReason('not_pub'),
-        },
-      ],
-    );
-  }, [handleRenamePress, handleReportReason, pub]);
+    setReportOpen(true);
+  }, [pub]);
 
   // ── State A: permission not granted ──────────────────────────────────────
   if (permissionState === 'denied' || permissionState === 'undetermined') {
@@ -1215,6 +1335,13 @@ export default function CompassScreen() {
         onClose={handleCloseFilter}
         onSelect={setBeerBrandFilter}
       />
+      <ReportPubModal
+        visible={reportOpen}
+        pubName={pub.name}
+        onClose={handleReportClose}
+        onRename={handleRenamePress}
+        onReportReason={handleReportReason}
+      />
       <RenamePubModal
         visible={renameOpen}
         currentName={pub.name}
@@ -1234,6 +1361,114 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: Colors.stout,
+  },
+  reportOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  reportScrim: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: withAlpha(Colors.black, 0.68),
+  },
+  reportPanel: {
+    marginHorizontal: 14,
+    marginBottom: 18,
+    borderRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.34),
+    backgroundColor: Colors.stout2,
+    padding: 18,
+    gap: 16,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.36,
+    shadowRadius: 24,
+    elevation: 16,
+  },
+  reportHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  reportIconWell: {
+    width: 42,
+    height: 42,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.amber, 0.12),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.28),
+  },
+  reportTitleWrap: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  reportTitle: {
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 25,
+    lineHeight: 30,
+    color: Colors.foam,
+  },
+  reportBody: {
+    fontFamily: Fonts.ui.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    color: Colors.foamMuted,
+  },
+  reportActions: {
+    gap: 10,
+  },
+  reportAction: {
+    minHeight: 54,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.28),
+    backgroundColor: Colors.stout3,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    gap: 10,
+  },
+  reportActionMuted: {
+    borderColor: Colors.border,
+    backgroundColor: withAlpha(Colors.stout3, 0.86),
+  },
+  reportActionDanger: {
+    borderColor: withAlpha(Colors.amber, 0.42),
+    backgroundColor: withAlpha(Colors.glow, 0.13),
+  },
+  reportActionGhost: {
+    borderColor: Colors.border,
+    backgroundColor: withAlpha(Colors.stout, 0.45),
+  },
+  reportActionPressed: {
+    opacity: 0.82,
+    transform: [{ scale: 0.985 }],
+  },
+  reportActionIcon: {
+    width: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reportActionIconSpacer: {
+    width: 24,
+  },
+  reportActionText: {
+    flex: 1,
+    minWidth: 0,
+    textAlign: 'center',
+    fontFamily: Fonts.ui.bold,
+    fontSize: 16,
+    color: Colors.foam,
+  },
+  reportActionTextDanger: {
+    color: Colors.amberLight,
+  },
+  reportActionTextGhost: {
+    color: Colors.foamMuted,
   },
   renameOverlay: {
     flex: 1,

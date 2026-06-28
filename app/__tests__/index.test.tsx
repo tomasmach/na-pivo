@@ -1,5 +1,4 @@
 import React from 'react';
-import { Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { cs } from '@/i18n/cs';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -359,7 +358,6 @@ describe('CompassScreen', () => {
 
   it('opens the report reason sheet from the revealed pub pill', () => {
     const reportCurrentPub = jest.fn(async () => true);
-    (Alert.alert as jest.Mock).mockImplementation(() => undefined);
     useCompass.mockReturnValue({
       ...baseCompassState(),
       revealed: true,
@@ -380,10 +378,12 @@ describe('CompassScreen', () => {
       reportButton.props.onPress();
     });
 
-    expect(Alert.alert).toHaveBeenCalledTimes(1);
-    const [, , buttons] = (Alert.alert as jest.Mock).mock.calls[0];
+    const notPubButton = renderer!.root.findByProps({
+      accessibilityLabel: cs.compass.reportNotPub,
+    });
+
     act(() => {
-      buttons?.[3]?.onPress?.();
+      notPubButton.props.onPress();
     });
 
     expect(reportCurrentPub).toHaveBeenCalledWith('not_pub');
