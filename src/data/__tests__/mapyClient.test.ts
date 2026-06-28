@@ -18,6 +18,7 @@
 import {
   geocodePubLocation,
   isAcceptablePubName,
+  isSpecificGeocodeResult,
   searchPubsNear,
   suggestPubLocations,
 } from '../mapyClient';
@@ -328,6 +329,92 @@ describe('geocodePubLocation', () => {
     expect(calledUrl.searchParams.get('query')).toBe('Hospoda U Testu, Praha, Česko');
     expect(calledUrl.searchParams.get('lat')).toBe('50.08');
     expect(calledUrl.searchParams.get('lng')).toBe('14.42');
+  });
+
+  it('falls back to an address-only geocode when the named pub is not a Mapy POI', async () => {
+    process.env.EXPO_PUBLIC_BACKEND_URL = 'https://api.example.com';
+    const fetchMock = jest.fn(async (url: string) => {
+      const parsed = new URL(String(url));
+      const query = parsed.searchParams.get('query');
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          items:
+            query === 'Testovací 12, Praha, Česko'
+              ? [
+                  {
+                    name: 'Testovací 12',
+                    type: 'regional.address',
+                    position: { lat: 50.081, lon: 14.421 },
+                    regionalStructure: [
+                      { name: '12', type: 'regional.address' },
+                      { name: 'Testovací', type: 'regional.street' },
+                      { name: 'Praha', type: 'regional.municipality' },
+                    ],
+                  },
+                ]
+              : [
+                  {
+                    name: 'Praha',
+                    type: 'regional.municipality',
+                    position: { lat: 50.0755, lon: 14.4378 },
+                  },
+                ],
+        }),
+      };
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await geocodePubLocation({
+      name: 'Hospoda mimo Mapy',
+      city: 'Praha',
+      address: 'Testovací 12',
+      near: { lat: 50.08, lng: 14.42 },
+    });
+
+    expect(result).toEqual({
+      lat: 50.081,
+      lng: 14.421,
+      city: 'Praha',
+      address: 'Testovací 12',
+      type: 'regional.address',
+    });
+    const queries = fetchMock.mock.calls.map((call) =>
+      new URL(String((call as unknown[])[0])).searchParams.get('query'),
+    );
+    expect(queries).toEqual([
+      'Hospoda mimo Mapy, Testovací 12, Praha, Česko',
+      'Testovací 12, Praha, Česko',
+    ]);
+  });
+
+  it('does not treat a street centroid as a precise geocode result', async () => {
+    process.env.EXPO_PUBLIC_BACKEND_URL = 'https://api.example.com';
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        items: [
+          {
+            name: 'Testovací',
+            type: 'regional.street',
+            position: { lat: 50.081, lon: 14.421 },
+          },
+        ],
+      }),
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await geocodePubLocation({
+      name: 'Hospoda mimo Mapy',
+      city: 'Praha',
+      address: 'Testovací',
+      near: { lat: 50.08, lng: 14.42 },
+    });
+
+    expect(result?.type).toBe('regional.street');
+    expect(isSpecificGeocodeResult(result)).toBe(false);
   });
 
   it('falls back to direct Mapy geocode when the backend lookup is unavailable', async () => {

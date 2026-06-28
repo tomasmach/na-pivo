@@ -10,8 +10,8 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { submitAddedPub, type AddedPubEntry } from './addedPubsClient';
-import { clearPubsSnapshot } from './pubs';
+import { submitAddedPub, type AddedPubEntry, type AddedPubResponse } from './addedPubsClient';
+import { clearPubsSnapshot, pubIdForCoords, removeLocalPub, upsertLocalPub } from './pubs';
 
 const STORAGE_KEY = 'na-pivo-added-pubs-queue';
 const MAX_QUEUE_LENGTH = 30;
@@ -69,12 +69,43 @@ async function flushLocked(): Promise<void> {
   for (const entry of queue) {
     const result = await submitAddedPub(entry);
     if (result) {
+      applySubmittedPubResult(entry, result);
       await clearPubsSnapshot();
     } else {
       remaining.push(entry);
     }
   }
   await saveQueue(remaining);
+}
+
+function pubFromAddedEntry(entry: AddedPubEntry) {
+  return {
+    id: pubIdForCoords(entry.lat, entry.lng),
+    name: entry.name,
+    lat: entry.lat,
+    lng: entry.lng,
+    ...(entry.city ? { city: entry.city } : {}),
+    ...(entry.address ? { address: entry.address } : {}),
+    venueKind: 'pub' as const,
+  };
+}
+
+function applySubmittedPubResult(entry: AddedPubEntry, result: AddedPubResponse): void {
+  const previousId = pubIdForCoords(entry.lat, entry.lng);
+  const nextPub = {
+    id: pubIdForCoords(result.lat, result.lng),
+    name: result.name,
+    lat: result.lat,
+    lng: result.lng,
+    ...(result.city ? { city: result.city } : {}),
+    ...(result.address ? { address: result.address } : {}),
+    venueKind: 'pub' as const,
+  };
+
+  if (nextPub.id !== previousId) {
+    removeLocalPub(previousId);
+  }
+  upsertLocalPub(nextPub);
 }
 
 export function enqueueAddedPub(entry: AddedPubEntry): Promise<boolean> {
@@ -92,4 +123,14 @@ export function enqueueAddedPub(entry: AddedPubEntry): Promise<boolean> {
 
 export function flushAddedPubsQueue(): Promise<void> {
   return enqueueTask(flushLocked);
+}
+
+export function restoreQueuedAddedPubs(): Promise<number> {
+  return enqueueTask(async () => {
+    const queue = await loadQueue();
+    for (const entry of queue) {
+      upsertLocalPub(pubFromAddedEntry(entry));
+    }
+    return queue.length;
+  });
 }

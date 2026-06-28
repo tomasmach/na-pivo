@@ -131,7 +131,6 @@ export interface PubLocationGeocodeResult {
 const SPECIFIC_GEOCODE_TYPES = new Set<string>([
   'poi',
   'regional.address',
-  'regional.street',
 ]);
 
 /** True when a geocode result pins a concrete place rather than an area centroid. */
@@ -339,6 +338,14 @@ function buildPubLocationQuery(input: PubLocationGeocodeInput): string {
     .slice(0, 150);
 }
 
+function buildAddressLocationQuery(input: PubLocationGeocodeInput): string {
+  return [input.address, input.city, 'Česko']
+    .map((part) => part?.trim())
+    .filter(Boolean)
+    .join(', ')
+    .slice(0, 150);
+}
+
 function isValidPosition(position: MapyPosition | undefined): position is MapyPosition {
   return (
     !!position &&
@@ -351,21 +358,11 @@ function isValidPosition(position: MapyPosition | undefined): position is MapyPo
   );
 }
 
-export async function geocodePubLocation(
-  input: PubLocationGeocodeInput,
-  signal?: AbortSignal,
-): Promise<PubLocationGeocodeResult | null> {
-  if (signal?.aborted) return null;
+function isSpecificGeocodeItem(item: MapyGeocodeItem): boolean {
+  return !!item.type && SPECIFIC_GEOCODE_TYPES.has(item.type);
+}
 
-  const query = buildPubLocationQuery(input);
-  if (!query) return null;
-
-  const backendItems = await backendLocationLookup('/v1/pubs/geocode', query, input.near, signal);
-  const items =
-    backendItems ?? (await directMapyLocationLookup('geocode', query, input.near, signal));
-
-  const item = items?.find((candidate) => isValidPosition(candidate.position));
-  if (!item || !isValidPosition(item.position)) return null;
+function geocodeResultFromItem(item: MapyGeocodeItem): PubLocationGeocodeResult {
   return {
     lat: item.position.lat,
     lng: item.position.lon,
@@ -373,6 +370,45 @@ export async function geocodePubLocation(
     address: pickAddress(item),
     type: item.type,
   };
+}
+
+async function lookupGeocodeItems(
+  query: string,
+  near?: { lat: number; lng: number } | null,
+  signal?: AbortSignal,
+): Promise<MapyGeocodeItem[] | null> {
+  const backendItems = await backendLocationLookup('/v1/pubs/geocode', query, near, signal);
+  return backendItems ?? (await directMapyLocationLookup('geocode', query, near, signal));
+}
+
+export async function geocodePubLocation(
+  input: PubLocationGeocodeInput,
+  signal?: AbortSignal,
+): Promise<PubLocationGeocodeResult | null> {
+  if (signal?.aborted) return null;
+
+  const primaryQuery = buildPubLocationQuery(input);
+  if (!primaryQuery) return null;
+
+  const queries = [primaryQuery];
+  const addressQuery = buildAddressLocationQuery(input);
+  if (addressQuery && addressQuery !== primaryQuery) {
+    queries.push(addressQuery);
+  }
+
+  let firstValid: MapyGeocodeItem | null = null;
+  for (const query of queries) {
+    const items = await lookupGeocodeItems(query, input.near, signal);
+    if (items === null) continue;
+
+    for (const item of items) {
+      if (!isValidPosition(item.position)) continue;
+      if (!firstValid) firstValid = item;
+      if (isSpecificGeocodeItem(item)) return geocodeResultFromItem(item);
+    }
+  }
+
+  return firstValid ? geocodeResultFromItem(firstValid) : null;
 }
 
 function itemToLocationSuggestion(item: MapyGeocodeItem): PubLocationSuggestion | null {

@@ -9,6 +9,8 @@ import {
   findRandomPubInRadius,
   getPubById,
   isLoaded,
+  pubIdForCoords,
+  removeLocalPub,
   renameLocalPub,
   upsertLocalPub,
   type Pub,
@@ -354,6 +356,54 @@ describe("upsertLocalPub", () => {
 
     expect(getPubById("mapy:old")).toBeNull();
     expect(getPubById("mapy:new")?.name).toBe("Nový název");
+  });
+
+  it("keeps a locally added pub when a fresh backend fetch rebuilds the index", async () => {
+    const local: Pub = {
+      id: pubIdForCoords(50.0812, 14.4182),
+      name: "Ručně přidaná",
+      lat: 50.0812,
+      lng: 14.4182,
+    };
+    const backendSameCell: Pub = {
+      id: "mapy:backend",
+      name: "Stará Mapy hospoda",
+      lat: 50.0812,
+      lng: 14.4182,
+    };
+    upsertLocalPub(local);
+    (searchPubsNear as jest.Mock).mockResolvedValue([backendSameCell]);
+
+    await fetchPubsNear(50.08, 14.42, undefined, { force: true, radiusKm: 5 });
+
+    expect(getPubById(local.id)?.name).toBe("Ručně přidaná");
+    expect(getPubById("mapy:backend")).toBeNull();
+    expect(findNearestPub({ lat: local.lat, lng: local.lng, maxKm: 1 })?.id).toBe(local.id);
+  });
+});
+
+describe("removeLocalPub", () => {
+  it("removes a local override and exposes the fetched pub underneath", async () => {
+    const local: Pub = {
+      id: pubIdForCoords(50.0812, 14.4182),
+      name: "Ručně přidaná",
+      lat: 50.0812,
+      lng: 14.4182,
+    };
+    const fetched: Pub = {
+      id: "mapy:backend",
+      name: "Backend hospoda",
+      lat: 50.0812,
+      lng: 14.4182,
+    };
+    upsertLocalPub(local);
+    (searchPubsNear as jest.Mock).mockResolvedValue([fetched]);
+    await fetchPubsNear(50.08, 14.42, undefined, { force: true, radiusKm: 5 });
+
+    removeLocalPub(local.id);
+
+    expect(getPubById(local.id)).toBeNull();
+    expect(getPubById("mapy:backend")?.name).toBe("Backend hospoda");
   });
 });
 

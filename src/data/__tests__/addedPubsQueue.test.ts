@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { enqueueAddedPub, flushAddedPubsQueue } from '../addedPubsQueue';
+import { enqueueAddedPub, flushAddedPubsQueue, restoreQueuedAddedPubs } from '../addedPubsQueue';
 import { submitAddedPub, type AddedPubEntry } from '../addedPubsClient';
+import { clearPubsSnapshot, removeLocalPub, upsertLocalPub } from '../pubs';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
@@ -13,6 +14,9 @@ jest.mock('../addedPubsClient', () => ({
 
 jest.mock('../pubs', () => ({
   clearPubsSnapshot: jest.fn(async () => undefined),
+  pubIdForCoords: (lat: number, lng: number) => `mapy:${lat.toFixed(5)},${lng.toFixed(5)}`,
+  removeLocalPub: jest.fn(),
+  upsertLocalPub: jest.fn(),
 }));
 
 const STORAGE_KEY = 'na-pivo-added-pubs-queue';
@@ -55,6 +59,16 @@ describe('enqueueAddedPub', () => {
     await expect(enqueueAddedPub(PUB_A)).resolves.toBe(true);
 
     expect(submitAddedPub).toHaveBeenCalledWith(PUB_A);
+    expect(upsertLocalPub).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'mapy:50.08120,14.41820',
+        name: PUB_A.name,
+        lat: PUB_A.lat,
+        lng: PUB_A.lng,
+        venueKind: 'pub',
+      }),
+    );
+    expect(clearPubsSnapshot).toHaveBeenCalled();
     await expect(readQueue()).resolves.toEqual([]);
   });
 
@@ -132,6 +146,34 @@ describe('flushAddedPubsQueue', () => {
     await expect(readQueue()).resolves.toEqual([PUB_B]);
   });
 
+  it('replaces the optimistic local position when the backend geocodes a better address', async () => {
+    (submitAddedPub as jest.Mock).mockResolvedValue(null);
+    await enqueueAddedPub(PUB_A);
+    (submitAddedPub as jest.Mock).mockResolvedValue({
+      cacheKey: 'server-key',
+      name: PUB_A.name,
+      lat: 50.09,
+      lng: 14.43,
+      city: 'Praha',
+      address: 'Přesná 1',
+    });
+
+    await flushAddedPubsQueue();
+
+    expect(removeLocalPub).toHaveBeenCalledWith('mapy:50.08120,14.41820');
+    expect(upsertLocalPub).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        id: 'mapy:50.09000,14.43000',
+        name: PUB_A.name,
+        lat: 50.09,
+        lng: 14.43,
+        city: 'Praha',
+        address: 'Přesná 1',
+        venueKind: 'pub',
+      }),
+    );
+  });
+
   it('does nothing on an empty queue', async () => {
     await flushAddedPubsQueue();
     expect(submitAddedPub).not.toHaveBeenCalled();
@@ -154,5 +196,22 @@ describe('flushAddedPubsQueue', () => {
     await AsyncStorage.setItem(STORAGE_KEY, '{not json');
     await expect(flushAddedPubsQueue()).resolves.toBeUndefined();
     expect(submitAddedPub).not.toHaveBeenCalled();
+  });
+});
+
+describe('restoreQueuedAddedPubs', () => {
+  it('restores queued pubs into the local compass index without submitting them', async () => {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([PUB_A, PUB_B]));
+
+    await expect(restoreQueuedAddedPubs()).resolves.toBe(2);
+
+    expect(submitAddedPub).not.toHaveBeenCalled();
+    expect(upsertLocalPub).toHaveBeenCalledTimes(2);
+    expect(upsertLocalPub).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'mapy:50.08120,14.41820', name: PUB_A.name }),
+    );
+    expect(upsertLocalPub).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'mapy:50.08121,14.41821', name: PUB_B.name }),
+    );
   });
 });

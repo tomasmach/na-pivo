@@ -112,6 +112,8 @@ export function stripAmenitySummary(pub: Pub): Pub {
 }
 
 let _pubs: Pub[] = [];
+let _basePubs: Pub[] = [];
+let _localPubOverrides: Map<string, Pub> = new Map();
 let _index: KDBush | null = null;
 let _idMap: Map<string, Pub> = new Map();
 /** geohash-8 cell per pub, parallel to _pubs — precomputed so selection-time
@@ -222,12 +224,12 @@ function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): nu
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-/**
- * Builds a KDBush index from the given pubs array.
- * Exposed so tests can inject synthetic data without hitting the network.
- */
-export function _init(syntheticPubs: Pub[]): void {
-  _pubs = syntheticPubs.slice();
+export function pubIdForCoords(lat: number, lng: number): string {
+  return `mapy:${lat.toFixed(5)},${lng.toFixed(5)}`;
+}
+
+function rebuildIndex(pubs: Pub[]): void {
+  _pubs = pubs.slice();
   _idMap = new Map(_pubs.map((p) => [p.id, p]));
   _cacheKeys = _pubs.map((p) => geohash8(p.lat, p.lng));
 
@@ -246,31 +248,73 @@ export function _init(syntheticPubs: Pub[]): void {
   _loaded = true;
 }
 
+function mergeLocalPubOverrides(pubs: Pub[]): Pub[] {
+  if (_localPubOverrides.size === 0) return pubs;
+
+  const localPubs = Array.from(_localPubOverrides.values());
+  const localIds = new Set(localPubs.map((pub) => pub.id));
+  const localCacheKeys = new Set(localPubs.map((pub) => geohash8(pub.lat, pub.lng)));
+  return [
+    ...localPubs,
+    ...pubs.filter((pub) => !localIds.has(pub.id) && !localCacheKeys.has(geohash8(pub.lat, pub.lng))),
+  ];
+}
+
+function replaceBasePubs(pubs: Pub[]): void {
+  _basePubs = pubs.slice();
+  rebuildIndex(mergeLocalPubOverrides(_basePubs));
+}
+
+/**
+ * Builds a KDBush index from the given pubs array.
+ * Exposed so tests can inject synthetic data without hitting the network.
+ */
+export function _init(syntheticPubs: Pub[]): void {
+  _localPubOverrides = new Map();
+  replaceBasePubs(syntheticPubs);
+}
+
 /** Insert or replace a pub in the in-memory index. The geohash-8 replacement
  * keeps one visible entry per physical place, matching the backend cache key. */
 export function upsertLocalPub(pub: Pub): void {
   const cacheKey = geohash8(pub.lat, pub.lng);
-  const next = [
-    pub,
-    ..._pubs.filter((existing) => {
-      if (existing.id === pub.id) return false;
-      return geohash8(existing.lat, existing.lng) !== cacheKey;
-    }),
-  ];
-  _init(next);
+  const nextOverrides = new Map<string, Pub>();
+  for (const [id, existing] of _localPubOverrides.entries()) {
+    if (id === pub.id) continue;
+    if (geohash8(existing.lat, existing.lng) === cacheKey) continue;
+    nextOverrides.set(id, existing);
+  }
+  nextOverrides.set(pub.id, pub);
+  _localPubOverrides = nextOverrides;
+  rebuildIndex(mergeLocalPubOverrides(_basePubs));
+}
+
+export function removeLocalPub(pubId: string): void {
+  if (!_localPubOverrides.has(pubId)) return;
+  const nextOverrides = new Map(_localPubOverrides);
+  nextOverrides.delete(pubId);
+  _localPubOverrides = nextOverrides;
+  rebuildIndex(mergeLocalPubOverrides(_basePubs));
 }
 
 /** Rename one already-loaded pub without collapsing neighbouring pubs that may
  * share the same geohash-8 cell. */
 export function renameLocalPub(pubId: string, name: string): Pub | null {
   let renamed: Pub | null = null;
-  const next = _pubs.map((pub) => {
+  _basePubs = _basePubs.map((pub) => {
     if (pub.id !== pubId) return pub;
     renamed = { ...pub, name };
     return renamed;
   });
+
+  if (_localPubOverrides.has(pubId)) {
+    const pub = _localPubOverrides.get(pubId)!;
+    renamed = { ...pub, name };
+    _localPubOverrides = new Map(_localPubOverrides).set(pubId, renamed);
+  }
+
   if (!renamed) return null;
-  _init(next);
+  rebuildIndex(mergeLocalPubOverrides(_basePubs));
   return renamed;
 }
 
@@ -281,6 +325,8 @@ export function renameLocalPub(pubId: string, name: string): Pub | null {
  */
 export function _reset(): void {
   _pubs = [];
+  _basePubs = [];
+  _localPubOverrides = new Map();
   _index = null;
   _idMap = new Map();
   _cacheKeys = [];
@@ -365,7 +411,7 @@ export async function fetchPubsNear(
           snapshot &&
           gateCovers(snapshot.centerLat, snapshot.centerLng, snapshot.radiusKm, lat, lng, radiusKm)
         ) {
-          _init(snapshot.pubs);
+          replaceBasePubs(snapshot.pubs);
           _lastFetchCenter = { lat: snapshot.centerLat, lng: snapshot.centerLng };
           _lastFetchRadiusKm = snapshot.radiusKm;
           _lastFetchBeerBrandKey = "";
@@ -390,7 +436,7 @@ export async function fetchPubsNear(
           !blockedExternalIds.has(pub.id) &&
           !blockedCacheKeys.has(geohash8(pub.lat, pub.lng)),
       );
-      _init(filtered);
+      replaceBasePubs(filtered);
       _lastFetchCenter = { lat, lng };
       _lastFetchRadiusKm = radiusKm;
       _lastFetchBeerBrandKey = beerBrandKey;

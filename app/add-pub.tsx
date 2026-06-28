@@ -34,7 +34,7 @@ import {
   suggestPubLocations,
   type PubLocationSuggestion,
 } from '@/data/mapyClient';
-import { clearPubsSnapshot, upsertLocalPub } from '@/data/pubs';
+import { clearPubsSnapshot, pubIdForCoords, upsertLocalPub } from '@/data/pubs';
 import { usePubStore } from '@/stores/pubStore';
 import { useToastStore } from '@/stores/toastStore';
 import { fireSuccessHaptic } from '@/utils/haptics';
@@ -53,10 +53,6 @@ function isUsableCoordPair(lat: number | null, lng: number | null): lat is numbe
   if (lat === null || lng === null) return false;
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return false;
   return Math.abs(lat) > 0.0001 || Math.abs(lng) > 0.0001;
-}
-
-function pubIdForCoords(lat: number, lng: number): string {
-  return `mapy:${lat.toFixed(5)},${lng.toFixed(5)}`;
 }
 
 interface SelectedLocation {
@@ -227,7 +223,7 @@ export default function AddPubScreen() {
     });
     bumpCatalogRevision();
     void clearPubsSnapshot();
-    void enqueueAddedPub(entry);
+    void enqueueAddedPub(entry).then(() => bumpCatalogRevision());
     void fireSuccessHaptic();
     showToast(cs.addPub.savedToast);
     router.back();

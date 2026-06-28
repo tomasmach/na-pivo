@@ -13,7 +13,7 @@ import { flushPubReportQueue } from '@/data/pubReportQueue';
 import { flushPubNameCorrectionsQueue } from '@/data/pubNameCorrectionsQueue';
 import { flushFeedbackQueue } from '@/data/feedbackQueue';
 import { flushCommunityQueue } from '@/data/communityQueue';
-import { flushAddedPubsQueue } from '@/data/addedPubsQueue';
+import { flushAddedPubsQueue, restoreQueuedAddedPubs } from '@/data/addedPubsQueue';
 import { flushDrinksQueue } from '@/data/drinksQueue';
 import { flushDeleteDrinksQueue } from '@/data/deleteDrinksQueue';
 import { flushUpdateDrinksQueue } from '@/data/updateDrinksQueue';
@@ -30,6 +30,7 @@ import {
 } from '@/data/telemetryClient';
 import { flushWalkingDistance } from '@/data/walkingTelemetry';
 import { useAccountStore, selectNeedsProfileSetup } from '@/stores/accountStore';
+import { usePubStore } from '@/stores/pubStore';
 import { useReleaseStore } from '@/stores/releaseStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import { WhatsNewModal } from '@/components/shared/WhatsNewModal';
@@ -64,6 +65,21 @@ function ProfileGate() {
   }, [status, needsSetup, pathname, router]);
 
   return null;
+}
+
+function restoreAndFlushAddedPubsQueue(): void {
+  void restoreQueuedAddedPubs()
+    .then((restoredCount) => {
+      if (restoredCount > 0) {
+        usePubStore.getState().bumpCatalogRevision();
+      }
+      return flushAddedPubsQueue().then(() => restoredCount);
+    })
+    .then((restoredCount) => {
+      if (restoredCount > 0) {
+        usePubStore.getState().bumpCatalogRevision();
+      }
+    });
 }
 
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -141,7 +157,7 @@ export default function RootLayout() {
     void flushPubNameCorrectionsQueue();
     void flushFeedbackQueue();
     void flushCommunityQueue();
-    void flushAddedPubsQueue();
+    restoreAndFlushAddedPubsQueue();
     void flushDrinksQueue();
     void flushDeleteDrinksQueue();
     void flushUpdateDrinksQueue();
@@ -165,7 +181,7 @@ export default function RootLayout() {
         void flushPubNameCorrectionsQueue();
         void flushFeedbackQueue();
         void flushCommunityQueue();
-        void flushAddedPubsQueue();
+        restoreAndFlushAddedPubsQueue();
         void flushDrinksQueue();
         void flushDeleteDrinksQueue();
         void flushUpdateDrinksQueue();
