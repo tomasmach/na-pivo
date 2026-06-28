@@ -203,6 +203,9 @@ def _trim_location_item(item: dict) -> dict | None:
     trimmed = _trim_item(item)
     if trimmed is None:
         return None
+    item_type = item.get("type")
+    if isinstance(item_type, str) and item_type:
+        trimmed["type"] = item_type
     location = item.get("location")
     if isinstance(location, str) and location:
         trimmed["location"] = location

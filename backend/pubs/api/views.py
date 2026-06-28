@@ -87,6 +87,7 @@ from pubs.models import (
     ReleaseNote,
     UserAddedPub,
 )
+from pubs.user_added_pub_geocoding import resolve_user_added_pub_location
 
 from .authentication import AccountTokenAuthentication
 from .cache import get_or_enrich
@@ -287,7 +288,26 @@ class UserAddedPubView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         data = serializer.validated_data
-        cache_key = geohash8(data["lat"], data["lng"])
+        lat = data["lat"]
+        lng = data["lng"]
+        city = data.get("city") or ""
+        address = data.get("address") or ""
+
+        if address:
+            resolved_location = resolve_user_added_pub_location(
+                name=data["name"],
+                address=address,
+                city=city,
+                lat=lat,
+                lng=lng,
+            )
+            if resolved_location is not None:
+                lat = resolved_location.lat
+                lng = resolved_location.lng
+                city = city or resolved_location.city
+                address = address or resolved_location.address
+
+        cache_key = geohash8(lat, lng)
 
         try:
             with transaction.atomic():
@@ -308,10 +328,10 @@ class UserAddedPubView(APIView):
                     defaults={
                         "cache_key": cache_key,
                         "name": data["name"],
-                        "lat": data["lat"],
-                        "lng": data["lng"],
-                        "city": data.get("city") or "",
-                        "address": data.get("address") or "",
+                        "lat": lat,
+                        "lng": lng,
+                        "city": city,
+                        "address": address,
                         "active": True,
                     },
                 )

@@ -15,6 +15,7 @@ from pubs.enrichment import MapySuggestResult
 _ITEM = {
     "name": "Hospoda U Testu",
     "label": "Hospoda",
+    "type": "poi",
     "position": {"lat": 50.081, "lon": 14.421},
     "location": "Testovací 12, Praha",
     "regionalStructure": [

@@ -166,6 +166,34 @@ def test_item_missing_position_is_dropped():
     assert names == ["Ok"]
 
 
+def test_geocode_location_preserves_result_type_and_location():
+    def handler(req):
+        return _make_response(
+            {
+                "items": [
+                    {
+                        **_item("Hospoda U Test", "Hospoda", 50.01, 14.01),
+                        "type": "poi",
+                        "location": "Testovací 12, Praha",
+                    },
+                ]
+            }
+        )
+
+    src = _make_source(handler)
+    result = src.geocode_location("Hospoda U Test, Testovací 12, Praha")
+
+    assert result.items == [
+        {
+            "name": "Hospoda U Test",
+            "label": "Hospoda",
+            "position": {"lat": 50.01, "lon": 14.01},
+            "type": "poi",
+            "location": "Testovací 12, Praha",
+        }
+    ]
+
+
 def test_dedupe_by_rounded_position():
     # Same business from multiple term queries collapses to one.
     def handler(req):

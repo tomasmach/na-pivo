@@ -4,12 +4,15 @@ Tests for POST /v1/pubs — community-added pubs missing from nearby search.
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 from rest_framework import status
 from rest_framework.test import APIClient
 
 from pubs.enrichment import geohash8
 from pubs.models import Account, PubReport, UserAddedPub
+from pubs.user_added_pub_geocoding import ResolvedPubLocation
 
 _DEVICE_ID = "3f8b1c2e-4d5a-6789-0abc-def012345678"
 _CLIENT_ID = "9a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d"
@@ -85,6 +88,41 @@ def test_add_pub_creates_live_row(client):
     assert pub.cache_key == _KEY
     assert pub.city == "Praha"
     assert pub.address == "Testovací 12"
+
+
+@pytest.mark.django_db
+def test_add_pub_uses_precise_geocoded_address_over_client_coords(client):
+    token = _register(client)
+    resolved = ResolvedPubLocation(
+        name=_NAME,
+        lat=49.1951,
+        lng=16.6068,
+        city="Brno",
+        address="Pekařská 1",
+        result_type="regional.address",
+    )
+
+    with patch("pubs.api.views.resolve_user_added_pub_location", return_value=resolved) as geocode:
+        resp = client.post(
+            "/v1/pubs",
+            data=_payload(city="Brno", address="Pekařská 1"),
+            format="json",
+            **_auth(token),
+        )
+
+    assert resp.status_code == status.HTTP_201_CREATED
+    geocode.assert_called_once_with(
+        name=_NAME,
+        address="Pekařská 1",
+        city="Brno",
+        lat=_LAT,
+        lng=_LNG,
+    )
+    pub = UserAddedPub.objects.get()
+    assert pub.lat == resolved.lat
+    assert pub.lng == resolved.lng
+    assert pub.cache_key == geohash8(resolved.lat, resolved.lng)
+    assert resp.json()["cache_key"] == geohash8(resolved.lat, resolved.lng)
 
 
 @pytest.mark.django_db
