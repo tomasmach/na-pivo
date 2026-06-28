@@ -23,7 +23,12 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
-import { CheckIcon, ChevronLeftIcon, MapPinIcon, TargetIcon } from '@/components/shared/IconGlyph';
+import {
+  CheckIcon,
+  ChevronLeftIcon,
+  MapPinIcon,
+  TargetIcon,
+} from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { generateUuidV4 } from '@/data/account';
 import { buildAddedPubEntry } from '@/data/addedPubsClient';
@@ -638,47 +643,49 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   locationCard: {
-    gap: Spacing.md,
     borderRadius: Radius.card,
     borderWidth: 1,
     borderColor: withAlpha(Colors.amber, 0.28),
     backgroundColor: withAlpha(Colors.stout2, 0.78),
-    padding: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.md,
   },
   locationHeader: {
     fontFamily: Fonts.display.extrabold,
     fontSize: 18,
     color: Colors.foam,
+    marginBottom: Spacing.md,
   },
   locationBody: {
     fontFamily: Fonts.ui.regular,
     fontSize: 14,
     lineHeight: 20,
     color: Colors.foamMuted,
+    marginBottom: Spacing.md,
   },
   currentLocationButton: {
-    minHeight: 76,
+    minHeight: 68,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
-    borderRadius: Radius.medium,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.34),
-    backgroundColor: withAlpha(Colors.stout3, 0.72),
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    marginHorizontal: -Spacing.lg,
+    marginBottom: -Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: withAlpha(Colors.amber, 0.2),
+    paddingHorizontal: Spacing.lg,
+    paddingTop: 14,
+    paddingBottom: 15,
   },
   currentLocationButtonSelected: {
-    borderColor: Colors.amber,
-    backgroundColor: withAlpha(Colors.amber, 0.15),
+    backgroundColor: withAlpha(Colors.amber, 0.1),
   },
   currentLocationButtonPressed: {
-    transform: [{ scale: 0.99 }],
-    backgroundColor: withAlpha(Colors.amber, 0.2),
+    backgroundColor: withAlpha(Colors.amber, 0.16),
   },
   currentLocationIcon: {
-    width: 38,
-    height: 38,
+    width: 34,
+    height: 34,
     borderRadius: Radius.pill,
     borderWidth: 1,
     borderColor: withAlpha(Colors.amber, 0.36),
@@ -698,7 +705,7 @@ const styles = StyleSheet.create({
   currentLocationTitle: {
     fontFamily: Fonts.ui.bold,
     fontSize: 15,
-    lineHeight: 20,
+    lineHeight: 19,
     color: Colors.foam,
   },
   currentLocationBody: {
@@ -708,16 +715,13 @@ const styles = StyleSheet.create({
     color: Colors.foamMuted,
   },
   currentLocationStatus: {
-    width: 30,
-    height: 30,
+    width: 28,
+    height: 28,
     borderRadius: Radius.pill,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.36),
     alignItems: 'center',
     justifyContent: 'center',
   },
   currentLocationStatusSelected: {
-    borderColor: Colors.amber,
     backgroundColor: Colors.amber,
   },
   invalidText: {
