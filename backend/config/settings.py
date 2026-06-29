@@ -275,7 +275,7 @@ MENU_SCAN_THROTTLE_RATE: str = os.environ.get("MENU_SCAN_THROTTLE_RATE", "6/min"
 # it carries the same per-process caveat as the throttles above until a shared
 # cache (Redis/Memcached) is configured. 0 disables it.
 MENU_SCAN_DAILY_PER_ACCOUNT_CAP: int = int(
-    os.environ.get("MENU_SCAN_DAILY_PER_ACCOUNT_CAP", "50")
+    os.environ.get("MENU_SCAN_DAILY_PER_ACCOUNT_CAP", "100")
 )
 
 # --- Pub amenities ("Zmapuj hospodu") ---
@@ -543,12 +543,21 @@ OPENROUTER_MODEL: str = os.environ.get(
 OPENROUTER_TIMEOUT: int = int(os.environ.get("OPENROUTER_TIMEOUT", "30"))
 # Hard process-wide daily cap on OpenRouter chat requests (cost guard; counts
 # individual requests, resets at UTC midnight, mirroring MAPY_DAILY_CAP).
-OPENROUTER_DAILY_CAP: int = int(os.environ.get("OPENROUTER_DAILY_CAP", "2000"))
+OPENROUTER_DAILY_CAP: int = int(os.environ.get("OPENROUTER_DAILY_CAP", "5000"))
 
 # Menu-scan image pipeline limits (mirror the avatar guards).
-# Reject uploads larger than this BEFORE decoding (decompression-bomb guard).
+# Reject image files larger than this BEFORE decoding (decompression-bomb guard).
+# Mobile pre-downscales to ~1600px JPEG, but modern original phone photos can
+# still be large when client-side manipulation fails, so this is intentionally
+# roomier than the final image sent to the model.
 MENU_SCAN_MAX_UPLOAD_BYTES: int = int(
-    os.environ.get("MENU_SCAN_MAX_UPLOAD_BYTES", str(8 * 1024 * 1024))
+    os.environ.get("MENU_SCAN_MAX_UPLOAD_BYTES", str(20 * 1024 * 1024))
+)
+# Whole multipart request cap used before touching request.FILES. Keep slightly
+# above MENU_SCAN_MAX_UPLOAD_BYTES for boundaries/headers; mirror this in Caddy
+# with `request_body { max_size 24MB }` so giant bodies are rejected at the edge.
+MENU_SCAN_MAX_REQUEST_BYTES: int = int(
+    os.environ.get("MENU_SCAN_MAX_REQUEST_BYTES", str(24 * 1024 * 1024))
 )
 # Longest-edge pixel cap for the JPEG sent to the model (large enough for OCR).
 MENU_SCAN_IMAGE_PX: int = int(os.environ.get("MENU_SCAN_IMAGE_PX", "1600"))

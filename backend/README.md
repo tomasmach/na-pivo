@@ -251,6 +251,15 @@ Services:
 - DNS for your hostname -> the VPS IP
 - Residential proxy setup if Firmy.cz detail enrichment needs it in production
 
+The API host should reject oversized request bodies before they reach Django.
+Keep the Caddy site block aligned with `MENU_SCAN_MAX_REQUEST_BYTES`:
+
+```caddy
+request_body {
+    max_size 24MB
+}
+```
+
 ### First-time setup
 
 ```bash

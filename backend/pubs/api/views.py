@@ -23,11 +23,12 @@ import json
 import logging
 import math
 import re
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import requests
 from django.conf import settings
 from django.core.cache import cache as default_cache
+from django.core.files.uploadhandler import FileUploadHandler, StopUpload
 from django.db import IntegrityError, transaction
 from django.db.models import ExpressionWrapper, F, FloatField, Q, Value
 from django.utils import timezone as dj_timezone
@@ -2737,6 +2738,58 @@ def _menu_scan_count_today(account_id: int, now) -> int:
         return 1
 
 
+class _MenuScanUploadLimitHandler(FileUploadHandler):
+    """Stop a menu-scan file upload once it exceeds the configured byte cap."""
+
+    def __init__(self, request, max_bytes: int) -> None:
+        super().__init__(request)
+        self.max_bytes = max_bytes
+        self.total_bytes = 0
+
+    def receive_data_chunk(self, raw_data: bytes, start: int) -> bytes:  # noqa: ARG002
+        self.total_bytes += len(raw_data)
+        if self.total_bytes > self.max_bytes:
+            self.request.META["MENU_SCAN_UPLOAD_TOO_LARGE"] = "1"
+            raise StopUpload(connection_reset=True)
+        return raw_data
+
+    def file_complete(self, file_size: int):  # noqa: ANN201
+        return None
+
+
+def _menu_scan_too_large_response() -> Response:
+    return Response(
+        {"detail": "Fotka je příliš velká.", "code": "image_too_large"},
+        status=status.HTTP_400_BAD_REQUEST,
+    )
+
+
+def _menu_scan_request_too_large(request: Request) -> bool:
+    """Return True when Content-Length is over the whole-request menu cap."""
+    raw_length = request.META.get("CONTENT_LENGTH")
+    if raw_length in (None, ""):
+        return False
+    try:
+        content_length = int(raw_length)
+    except (TypeError, ValueError):
+        return False
+    return content_length > settings.MENU_SCAN_MAX_REQUEST_BYTES
+
+
+def _install_menu_scan_upload_limit(request: Request) -> None:
+    """Install a streaming file cap before request.FILES triggers multipart parse."""
+    django_request = request._request
+    if django_request.META.get("MENU_SCAN_UPLOAD_LIMIT_INSTALLED") == "1":
+        return
+    django_request.upload_handlers.insert(
+        0,
+        _MenuScanUploadLimitHandler(
+            django_request, settings.MENU_SCAN_MAX_UPLOAD_BYTES
+        ),
+    )
+    django_request.META["MENU_SCAN_UPLOAD_LIMIT_INSTALLED"] = "1"
+
+
 class MenuScanView(APIView):
     """
     POST /v1/pub-menu-scan
@@ -2769,7 +2822,13 @@ class MenuScanView(APIView):
     throttle_scope = "menu_scan"
 
     def post(self, request: Request) -> Response:
+        if _menu_scan_request_too_large(request):
+            return _menu_scan_too_large_response()
+
+        _install_menu_scan_upload_limit(request)
         upload = request.FILES.get("image")
+        if request._request.META.get("MENU_SCAN_UPLOAD_TOO_LARGE") == "1":
+            return _menu_scan_too_large_response()
         if upload is None:
             return Response(
                 {"detail": "Chybí fotka menu.", "code": "image_missing"},
@@ -2801,7 +2860,7 @@ class MenuScanView(APIView):
         if (
             cap
             and account_id is not None
-            and _menu_scan_count_today(account_id, dj_timezone.now()) > cap
+            and _menu_scan_count_today(account_id, datetime.now(tz=UTC)) > cap
         ):
             return Response(
                 {
