@@ -261,6 +261,23 @@ NICKNAME_CHECK_THROTTLE_RATE: str = os.environ.get("NICKNAME_CHECK_THROTTLE_RATE
 # /v1/account/me/avatar). Each upload re-encodes an image, so keep it modest.
 AVATAR_THROTTLE_RATE: str = os.environ.get("AVATAR_THROTTLE_RATE", "10/min")
 
+# Per-ACCOUNT rate limit for the authenticated AI menu-scan endpoint
+# (POST /v1/pub-menu-scan). ScopedRateThrottle keys authenticated requests on
+# request.user.pk (NOT the IP), so this is per signed-in account. Each call sends
+# a photo to a metered vision model, so keep it tight — this is the first line of
+# cost defence (the per-account daily cap below and the OpenRouter daily cap are
+# the second and third). Format: DRF throttle rate string.
+MENU_SCAN_THROTTLE_RATE: str = os.environ.get("MENU_SCAN_THROTTLE_RATE", "6/min")
+
+# Per-account daily cap on menu scans (UTC day). Bounds how much of the shared
+# OpenRouter daily pool a single actor can drain, so one account cannot deny the
+# feature to everyone else for the rest of the day. Backed by the Django cache, so
+# it carries the same per-process caveat as the throttles above until a shared
+# cache (Redis/Memcached) is configured. 0 disables it.
+MENU_SCAN_DAILY_PER_ACCOUNT_CAP: int = int(
+    os.environ.get("MENU_SCAN_DAILY_PER_ACCOUNT_CAP", "50")
+)
+
 # --- Pub amenities ("Zmapuj hospodu") ---
 # Per-IP rate limit for the authenticated amenity-vote sync endpoint
 # (PUT/GET/DELETE /v1/pub-amenities/votes). A sync may upsert several votes in a
@@ -333,6 +350,7 @@ REST_FRAMEWORK = {
         "pub_amenities": PUB_AMENITIES_THROTTLE_RATE,
         "amenity_kinds": AMENITY_KINDS_THROTTLE_RATE,
         "amenity_reads": AMENITY_READS_THROTTLE_RATE,
+        "menu_scan": MENU_SCAN_THROTTLE_RATE,
     },
 }
 
@@ -509,6 +527,31 @@ MAPY_DAILY_CAP: int = int(os.environ.get("MAPY_DAILY_CAP", "5000"))
 # server re-fetches from Mapy.cz. A stale row is still served if the upstream
 # fetch fails.
 PUBS_NEAR_TTL_DAYS: int = int(os.environ.get("PUBS_NEAR_TTL_DAYS", "7"))
+
+# OpenRouter vision (POST /v1/pub-menu-scan — beer-menu photo extraction).
+# The endpoint uploads a menu photo to an AI vision model and returns a parsed
+# beer list for the user to review (no DB writes, no XP, no image storage). If
+# OPENROUTER_API_KEY is unset the endpoint returns 503 — the feature degrades
+# gracefully and NEVER blocks startup.
+OPENROUTER_API_KEY: str = os.environ.get("OPENROUTER_API_KEY", "")
+# Vision model id (OpenAI-compatible chat-completions). Default is a fast, cheap
+# multimodal model; override to trade cost for accuracy.
+OPENROUTER_MODEL: str = os.environ.get("OPENROUTER_MODEL", "google/gemini-2.5-flash")
+# Per-request HTTP timeout in seconds (vision is slow).
+OPENROUTER_TIMEOUT: int = int(os.environ.get("OPENROUTER_TIMEOUT", "30"))
+# Hard process-wide daily cap on OpenRouter chat requests (cost guard; counts
+# individual requests, resets at UTC midnight, mirroring MAPY_DAILY_CAP).
+OPENROUTER_DAILY_CAP: int = int(os.environ.get("OPENROUTER_DAILY_CAP", "2000"))
+
+# Menu-scan image pipeline limits (mirror the avatar guards).
+# Reject uploads larger than this BEFORE decoding (decompression-bomb guard).
+MENU_SCAN_MAX_UPLOAD_BYTES: int = int(
+    os.environ.get("MENU_SCAN_MAX_UPLOAD_BYTES", str(8 * 1024 * 1024))
+)
+# Longest-edge pixel cap for the JPEG sent to the model (large enough for OCR).
+MENU_SCAN_IMAGE_PX: int = int(os.environ.get("MENU_SCAN_IMAGE_PX", "1600"))
+# JPEG encoder quality for the downscaled menu photo.
+MENU_SCAN_JPEG_QUALITY: int = int(os.environ.get("MENU_SCAN_JPEG_QUALITY", "80"))
 
 # ---------------------------------------------------------------------------
 # Enrichment / cache settings

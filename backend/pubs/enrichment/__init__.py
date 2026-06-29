@@ -23,6 +23,9 @@ TransientFetchError — raised by FirmyHoursSource on a retryable network/proxy 
 MapySuggestSource   — server-side Mapy.cz /v1/suggest 'pubs near' proxy; see mapy.py
 MapyDailyCapExceededError — raised by MapySuggestSource when the daily cap is hit
 MapyAllQueriesFailedError — raised by MapySuggestSource when every query failed
+OpenRouterVisionSource — AI vision client for the beer-menu scan; see openrouter.py
+OpenRouterDailyCapExceededError — raised by OpenRouterVisionSource when the daily cap is hit
+OpenRouterUnavailableError — raised by OpenRouterVisionSource when OpenRouter is unreachable
 """
 
 from .firmy import FirmyHoursSource, RawHours, TransientFetchError  # noqa: F401
@@ -42,6 +45,11 @@ from .matcher import (  # noqa: F401
     verify_match,
 )
 from .normalizer import community_hours_to_osm, normalize_to_osm  # noqa: F401
+from .openrouter import (  # noqa: F401
+    OpenRouterDailyCapExceededError,
+    OpenRouterUnavailableError,
+    OpenRouterVisionSource,
+)
 from .venue import classify_venue  # noqa: F401
 
 __all__ = [
@@ -52,6 +60,9 @@ __all__ = [
     "MapySuggestResult",
     "MapyDailyCapExceededError",
     "MapyAllQueriesFailedError",
+    "OpenRouterVisionSource",
+    "OpenRouterDailyCapExceededError",
+    "OpenRouterUnavailableError",
     "normalize_to_osm",
     "community_hours_to_osm",
     "is_open_now",

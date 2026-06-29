@@ -45,6 +45,7 @@ from .views import (
     DrinksView,
     FeedbackView,
     HealthView,
+    MenuScanView,
     NicknameAvailableView,
     PubAmenityKindsView,
     PubAmenityReadView,
@@ -67,6 +68,7 @@ from .views import (
 urlpatterns = [
     path("pub-hours", PubHoursView.as_view(), name="pub-hours"),
     path("pub-community", PubCommunityView.as_view(), name="pub-community"),
+    path("pub-menu-scan", MenuScanView.as_view(), name="pub-menu-scan"),
     path("drinks", DrinksView.as_view(), name="drinks"),
     path("drinks/<uuid:client_id>", DrinksView.as_view(), name="drinks-delete"),
     path("beer-brands/suggest", BeerBrandSuggestView.as_view(), name="beer-brands-suggest"),

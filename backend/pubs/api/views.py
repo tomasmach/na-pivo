@@ -27,6 +27,7 @@ from datetime import timedelta
 
 import requests
 from django.conf import settings
+from django.core.cache import cache as default_cache
 from django.db import IntegrityError, transaction
 from django.db.models import ExpressionWrapper, F, FloatField, Q, Value
 from django.utils import timezone as dj_timezone
@@ -51,12 +52,19 @@ from pubs.enrichment import (
     MapyAllQueriesFailedError,
     MapyDailyCapExceededError,
     MapySuggestSource,
+    OpenRouterDailyCapExceededError,
+    OpenRouterUnavailableError,
     community_hours_to_osm,
     geohash6,
     geohash8,
     names_match,
 )
 from pubs.mapper import maper_snapshot
+from pubs.menu_scan import (
+    MenuScanError,
+    extract_beers_from_image,
+    validate_and_prepare_image,
+)
 from pubs.models import (
     Account,
     AccountMappedPub,
@@ -107,6 +115,7 @@ from .serializers import (
     DrinkUpdateSerializer,
     FeedbackReportSerializer,
     FeedbackRequestSerializer,
+    MenuScanResultSerializer,
     PubAmenityKindSerializer,
     PubAmenityReadQuerySerializer,
     PubAmenityVotesRequestSerializer,
@@ -2705,6 +2714,128 @@ class AccountAvatarView(APIView):
             AccountMeSerializer(request.user, context={"request": request}).data,
             status=status.HTTP_200_OK,
         )
+
+
+def _menu_scan_count_today(account_id: int, now) -> int:
+    """Increment and return this account's menu-scan count since UTC midnight.
+
+    A per-account daily sub-cap bounds how much of the shared OpenRouter daily
+    pool one actor can drain (defence-in-depth behind the per-minute throttle and
+    the process-wide cap). Backed by the Django cache, so — like every cache-backed
+    counter and throttle here — it is per-process under the default LocMemCache; a
+    shared cache (Redis/Memcached) makes it exact across workers.
+    """
+    key = f"menu_scan:acct:{account_id}:{now:%Y%m%d}"
+    # add() seeds the key with a >24h TTL only on the day's first call; it is a
+    # no-op afterwards so the TTL keeps counting from that first request.
+    default_cache.add(key, 0, timeout=60 * 60 * 25)
+    try:
+        return default_cache.incr(key)
+    except ValueError:
+        # The key expired between add() and incr(); treat this as today's first.
+        default_cache.set(key, 1, timeout=60 * 60 * 25)
+        return 1
+
+
+class MenuScanView(APIView):
+    """
+    POST /v1/pub-menu-scan
+
+    Accept a photo of a pub beer menu (``multipart/form-data`` with a single
+    ``image`` file part), send it to an AI vision model via OpenRouter, and return
+    the extracted beers for the user to review.
+
+    This is a PURE extraction helper: NO DB writes, NO XP, NO image storage. The
+    user reviews/edits the result in ContributeScreen and the existing
+    ``POST /v1/pub-community`` path does the actual save + XP.
+
+    ``parser_classes`` is overridden LOCALLY to MultiPartParser (the global default
+    stays JSON-only). The endpoint degrades gracefully: when the OpenRouter key is
+    unset or the model is unreachable it returns 503 rather than 500/crashing.
+
+    Responses
+    ---------
+    200 ``{"beers": [{"name", "price_czk", "volume_ml"}, ...], "model": <str>}``
+        Up to 12 draft/bottled beers; detecting nothing returns ``"beers": []``.
+    400 ``{"detail", "code": image_missing | image_invalid | image_too_large}``
+    429 default DRF throttle response (scope ``menu_scan``).
+    503 ``{"detail", "code": vision_unavailable | daily_cap}``
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "menu_scan"
+
+    def post(self, request: Request) -> Response:
+        upload = request.FILES.get("image")
+        if upload is None:
+            return Response(
+                {"detail": "Chybí fotka menu.", "code": "image_missing"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            jpeg_bytes = validate_and_prepare_image(upload)
+        except MenuScanError as exc:
+            return Response(
+                {"detail": exc.message, "code": exc.code}, status=exc.http_status
+            )
+
+        # Feature degrades gracefully when the vision key is unconfigured.
+        if not settings.OPENROUTER_API_KEY:
+            return Response(
+                {
+                    "detail": "Skenování menu teď nejede, zkus to za chvíli.",
+                    "code": "vision_unavailable",
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        # Per-account daily cap: bounds how much of the shared OpenRouter pool one
+        # actor can drain before the (cheaply mintable) per-account throttle. Reuses
+        # the existing "daily_cap" code so released clients need no change.
+        cap = settings.MENU_SCAN_DAILY_PER_ACCOUNT_CAP
+        account_id = getattr(request.user, "pk", None)
+        if (
+            cap
+            and account_id is not None
+            and _menu_scan_count_today(account_id, dj_timezone.now()) > cap
+        ):
+            return Response(
+                {
+                    "detail": "Skenování menu má pro dnešek vyčerpaný limit. "
+                    "Zkus to zítra.",
+                    "code": "daily_cap",
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        try:
+            beers = extract_beers_from_image(jpeg_bytes)
+        except OpenRouterDailyCapExceededError:
+            return Response(
+                {
+                    "detail": "Skenování menu má pro dnešek vyčerpaný limit. "
+                    "Zkus to zítra.",
+                    "code": "daily_cap",
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except (OpenRouterUnavailableError, requests.RequestException):
+            return Response(
+                {
+                    "detail": "Skenování menu teď nejede, zkus to za chvíli.",
+                    "code": "vision_unavailable",
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        payload = MenuScanResultSerializer(
+            {"beers": beers, "model": settings.OPENROUTER_MODEL}
+        ).data
+        return Response(payload, status=status.HTTP_200_OK)
 
 
 class NicknameAvailableView(APIView):

@@ -537,6 +537,18 @@ class CommunityBeerSerializer(serializers.Serializer):
         }
 
 
+class MenuScanResultSerializer(serializers.Serializer):
+    """Response body for POST /v1/pub-menu-scan.
+
+    ``beers`` reuses CommunityBeerSerializer so each entry emits the same
+    ``name`` / ``price_czk`` / ``volume_ml`` wire shape mobile maps via
+    ``beerFromWire``; ``model`` is the vision model id that produced them.
+    """
+
+    beers = CommunityBeerSerializer(many=True)
+    model = serializers.CharField()
+
+
 class BeerBrandSuggestQuerySerializer(serializers.Serializer):
     """Query parameters for GET /v1/beer-brands/suggest."""
 
