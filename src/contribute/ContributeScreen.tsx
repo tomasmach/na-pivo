@@ -49,6 +49,7 @@ import {
   DAY_KEYS,
   emptyWeeklyHours,
   isAllowedBeerVolume,
+  isSameBeerIdentity,
   isValidHoursInterval,
   normalizeBeerName,
   type DayKey,
@@ -120,11 +121,8 @@ function mergeScannedIntoRows(
   let next = rows;
   let count = 0;
   for (const beer of scanned) {
-    const incomingName = normalizeBeerName(beer.name);
-    if (!incomingName) continue;
-    const idx = next.findIndex(
-      (r) => normalizeBeerName(r.name) === incomingName && r.volumeMl === beer.volumeMl,
-    );
+    if (!normalizeBeerName(beer.name)) continue;
+    const idx = next.findIndex((r) => isSameBeerIdentity(r, beer));
     if (idx >= 0) {
       // Same name+volume already present → refresh its price when the scan has one.
       if (typeof beer.priceCzk === 'number') {
@@ -211,12 +209,7 @@ export default function ContributeScreen() {
   const prefillBeers = useMemo<BeerRow[]>(() => {
     const fromParam = decodeJsonParam<CommunityBeer[] | null>(params.beers, null);
     const source = fromParam ?? storedOverride?.beers ?? [];
-    return source.map((b) => ({
-      id: nextBeerRowId(),
-      name: b.name,
-      priceText: typeof b.priceCzk === 'number' ? formatPriceInputFromCzk(b.priceCzk, priceCurrency) : '',
-      volumeMl: b.volumeMl,
-    }));
+    return source.map((b) => communityBeerToRow(b, priceCurrency));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [priceCurrency]);
 
@@ -411,6 +404,9 @@ export default function ContributeScreen() {
     },
     [runScan],
   );
+
+  // Stable so the memoized ScanMenuSheet does not re-render on every form keystroke.
+  const closeScanSheet = useCallback(() => setScanSourceVisible(false), []);
 
   const activeBeer = useMemo(
     () => beers.find((beer) => beer.id === activeBeerId) ?? null,
@@ -720,7 +716,7 @@ export default function ContributeScreen() {
 
         <ScanMenuSheet
           visible={scanSourceVisible}
-          onClose={() => setScanSourceVisible(false)}
+          onClose={closeScanSheet}
           onPick={handlePickScanSource}
         />
     </View>

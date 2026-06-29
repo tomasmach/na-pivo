@@ -10,7 +10,7 @@
  * Like uploadAvatar, the multipart body MUST go through expo-file-system's native
  * uploader: Expo SDK 56's WinterCG fetch rejects the legacy RN {uri,name,type}
  * FormData part with "Unsupported FormDataPart implementation". A manual 30s
- * AbortController budget is used because uploads are slower than the shared 12s
+ * AbortController budget caps the upload because it is slower than the shared 12s
  * API budget.
  *
  * Returns a discriminated result and NEVER throws, so the caller can render one
@@ -47,24 +47,15 @@ export type MenuScanResult =
  *   503 {detail,code}   → {status:'unavailable'}
  *   anything else/throw → {status:'error'}
  */
-export async function scanMenuPhoto(
-  localUri: string,
-  signal?: AbortSignal,
-): Promise<MenuScanResult> {
+export async function scanMenuPhoto(localUri: string): Promise<MenuScanResult> {
   const endpoint = getBackendEndpoint('/v1/pub-menu-scan');
   if (!endpoint) return { status: 'error' };
 
-  const session = await ensureAccount(signal);
+  const session = await ensureAccount();
   if (!session) return { status: 'error' };
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
-  // Chain external cancellation into our own controller so a screen unmount aborts.
-  const onExternalAbort = () => controller.abort();
-  if (signal) {
-    if (signal.aborted) controller.abort();
-    else signal.addEventListener('abort', onExternalAbort);
-  }
 
   try {
     const resp = await new File(localUri).upload(endpoint, {
@@ -109,6 +100,5 @@ export async function scanMenuPhoto(
     return { status: 'error' };
   } finally {
     clearTimeout(timeoutId);
-    if (signal) signal.removeEventListener('abort', onExternalAbort);
   }
 }

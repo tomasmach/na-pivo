@@ -10,7 +10,7 @@
  * + upload flow.
  */
 
-import React, { useEffect } from 'react';
+import React, { memo, useEffect } from 'react';
 import { Modal, View, Text, Pressable, StyleSheet } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -69,7 +69,7 @@ function OptionRow({ icon, label, helper, onPress, accessibilityLabel }: OptionR
   );
 }
 
-export function ScanMenuSheet({ visible, onClose, onPick }: ScanMenuSheetProps) {
+function ScanMenuSheetImpl({ visible, onClose, onPick }: ScanMenuSheetProps) {
   const insets = useSafeAreaInsets();
   const reduceMotion = useReduceMotion();
 
@@ -163,6 +163,8 @@ export function ScanMenuSheet({ visible, onClose, onPick }: ScanMenuSheetProps) 
     </Modal>
   );
 }
+
+export const ScanMenuSheet = memo(ScanMenuSheetImpl);
 
 const styles = StyleSheet.create({
   backdrop: {

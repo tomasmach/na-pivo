@@ -78,6 +78,20 @@ export function normalizeBeerName(name: string): string {
 }
 
 /**
+ * Two beers share a menu identity when their normalized names AND serving volumes
+ * both agree, so "Plzeň 0,5" and "Plzeň 0,3" stay separate rows. A missing volume
+ * is its own bucket (undefined === undefined matches). This single rule is shared
+ * by the community-menu merge and the scan-into-editor merge, and mirrors the
+ * backend merge rule — keep all three in sync via this one predicate.
+ */
+export function isSameBeerIdentity(
+  a: { name: string; volumeMl?: number },
+  b: { name: string; volumeMl?: number },
+): boolean {
+  return normalizeBeerName(a.name) === normalizeBeerName(b.name) && a.volumeMl === b.volumeMl;
+}
+
+/**
  * Merge one drunk/added beer into a community menu, returning a NEW list.
  *
  * Mirrors the backend merge rule exactly so the optimistic local menu matches
@@ -95,16 +109,9 @@ export function mergeBeerIntoMenu(
   menu: readonly CommunityBeer[],
   beer: CommunityBeer,
 ): CommunityBeer[] {
-  const incomingName = normalizeBeerName(beer.name);
-  const incomingVolume = beer.volumeMl;
-
   let matched = false;
   const next = menu.map((existing) => {
-    if (
-      !matched &&
-      normalizeBeerName(existing.name) === incomingName &&
-      existing.volumeMl === incomingVolume
-    ) {
+    if (!matched && isSameBeerIdentity(existing, beer)) {
       matched = true;
       const merged: CommunityBeer = { name: existing.name };
       if (typeof beer.priceCzk === 'number') merged.priceCzk = beer.priceCzk;
