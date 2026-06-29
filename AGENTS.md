@@ -113,6 +113,8 @@ Po dokončení coherent změny commitni a pushni.
 
 Commit message musí být jednorádková conventional commit zpráva bez scope, například `feat: add profile badges` nebo `fix: preserve queued drinks offline`.
 
+Když bumpneš verzi (`package.json` + `app.config.ts`), vytvoř po commitu i odpovídající git tag `vX.Y.Z` (například `git tag v1.2.1`). Tag drž v souladu s marketing verzí. Tagy ber jako součást bumpu, ne jako separátní krok.
+
 Produkční deployment nedělej bez explicitního požadavku člověka. Commit a push jsou běžné; release, EAS build, App Store/TestFlight kroky nebo zásahy do produkčního backendu jsou separátní rozhodnutí.
 
 ## General rules
