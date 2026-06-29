@@ -3,7 +3,7 @@
  * Structured by screen/component so adding a second locale later is trivial.
  */
 
-import { czechPlural } from './plural';
+import { beerCountLabel, czechPlural } from './plural';
 
 /** Format a serving volume in ml as a Czech litre string with a decimal comma:
  *  500 → "0,5 l", 300 → "0,3 l", 1000 → "1 l", 330 → "0,33 l". */
@@ -412,6 +412,23 @@ export const cs = {
     savedToast: 'Díky! Uloženo',
     // Mapér reward for a first-time hours/beers contribution to a pub.
     xpToast: (xp: number) => `Díky za zmapování! +${xp} XP`,
+    // "Vyfoť menu" — AI OCR helper that prefills the beer rows from a photo.
+    scanMenu: {
+      button: 'Vyfoť menu',
+      sheetTitle: 'Naskenovat menu',
+      camera: 'Vyfotit',
+      library: 'Z galerie',
+      cancel: 'Zrušit',
+      loading: 'Čtu menu…',
+      successToast: (count: number) => `Načteno ${beerCountLabel(count)} z menu, zkontroluj je`,
+      nothingNewToast: 'Tahle piva už v seznamu máš',
+      emptyToast: 'Na fotce jsme žádné pivo nenašli, zkus to znovu nebo přidej ručně',
+      unavailableToast: 'Skenování menu teď nejede, přidej piva ručně',
+      rateLimitedToast: 'Moc rychle po sobě, dej tomu chvíli',
+      badImageToast: 'S tou fotkou si AI neporadila, zkus ostřejší záběr',
+      permissionDenied: 'Pusť k tomu foťák nebo galerii v Nastavení a zkus to znovu',
+      errorToast: 'Skenování se nepovedlo, zkus to znovu',
+    },
   },
 
   addPub: {

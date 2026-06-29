@@ -65,7 +65,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         NSMicrophoneUsageDescription:
           'Mikrofon se použije jen pro zvukové funkce aplikace a nikdy bez tvého souhlasu.',
         NSPhotoLibraryUsageDescription:
-          'Na pivo otevře tvou fotogalerii, aby sis mohl vybrat profilový obrázek.',
+          'Na pivo otevře tvou fotogalerii, aby sis mohl vybrat profilový obrázek nebo fotku pivního menu.',
+        NSCameraUsageDescription:
+          'Na pivo potřebuje foťák, aby naskenoval pivní menu a vytáhl z něj piva.',
         ITSAppUsesNonExemptEncryption: false,
         ...(usesLocalBackend()
           ? {
@@ -86,6 +88,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         'android.permission.ACCESS_FINE_LOCATION',
         'android.permission.ACCESS_BACKGROUND_LOCATION',
         'android.permission.POST_NOTIFICATIONS',
+        // Snapping a pub's beer menu for the "Vyfoť menu" OCR helper.
+        'android.permission.CAMERA',
       ],
       adaptiveIcon: {
         foregroundImage: './assets/images/icon.png',

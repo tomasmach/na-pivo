@@ -20,11 +20,13 @@ import {
   TextInput,
   Platform,
   StyleSheet,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Colors } from '@/theme/colors';
+import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
@@ -34,17 +36,22 @@ import {
   Trash2Icon,
   CopyIcon,
   CompassIcon,
+  CameraIcon,
 } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { geohash8 } from '@/data/geohash';
 import {
   DAY_KEYS,
   emptyWeeklyHours,
+  isAllowedBeerVolume,
   isValidHoursInterval,
+  normalizeBeerName,
   type DayKey,
   type WeeklyHours,
   type HoursInterval,
 } from '@/data/communityHours';
+import { pickAndPrepareMenuPhoto, type MenuPhotoSource } from '@/data/menuPhotoPicker';
+import { scanMenuPhoto } from '@/data/menuScanClient';
 import { generateUuidV4 } from '@/data/account';
 import { buildCommunityEntry, type CommunityBeer } from '@/data/communityClient';
 import { enqueuePubCommunity } from '@/data/communityQueue';
@@ -80,6 +87,55 @@ interface BeerRow {
 function nextBeerRowId(): string {
   beerRowIdSequence += 1;
   return `beer-row-${beerRowIdSequence}`;
+}
+
+/** Convert a scanned/community beer into a fresh editable row. */
+function communityBeerToRow(beer: CommunityBeer, priceCurrency: PriceCurrency): BeerRow {
+  return {
+    id: nextBeerRowId(),
+    name: beer.name,
+    priceText:
+      typeof beer.priceCzk === 'number' ? formatPriceInputFromCzk(beer.priceCzk, priceCurrency) : '',
+    volumeMl: beer.volumeMl,
+  };
+}
+
+/**
+ * Fold OCR-extracted beers into the editor's current rows, mirroring
+ * mergeBeerIntoMenu's rule (dedup by normalized name + volume, refresh the price
+ * on a match, append new rows up to MAX_BEERS). Existing rows and their ids are
+ * preserved so in-progress edits survive the merge. Returns the next rows plus
+ * how many beers were actually pulled in (appended OR price-updated) for the toast.
+ */
+function mergeScannedIntoRows(
+  rows: BeerRow[],
+  scanned: readonly CommunityBeer[],
+  priceCurrency: PriceCurrency,
+): { rows: BeerRow[]; count: number } {
+  let next = rows;
+  let count = 0;
+  for (const beer of scanned) {
+    const incomingName = normalizeBeerName(beer.name);
+    if (!incomingName) continue;
+    const idx = next.findIndex(
+      (r) => normalizeBeerName(r.name) === incomingName && r.volumeMl === beer.volumeMl,
+    );
+    if (idx >= 0) {
+      // Same name+volume already present → refresh its price when the scan has one.
+      if (typeof beer.priceCzk === 'number') {
+        const priceText = formatPriceInputFromCzk(beer.priceCzk, priceCurrency);
+        if (next[idx].priceText !== priceText) {
+          next = next.map((r, i) => (i === idx ? { ...r, priceText } : r));
+          count += 1;
+        }
+      }
+      continue;
+    }
+    if (next.length >= MAX_BEERS) continue;
+    next = [...next, communityBeerToRow(beer, priceCurrency)];
+    count += 1;
+  }
+  return { rows: next, count };
 }
 
 /** Coerce typed text toward an HH:MM shape without fighting the user: keep only
@@ -166,6 +222,7 @@ export default function ContributeScreen() {
   const [activeBeerId, setActiveBeerId] = useState<string | null>(null);
   const [beerSuggestions, setBeerSuggestions] = useState<BeerBrandSuggestion[]>([]);
   const [beerSuggestionsLoading, setBeerSuggestionsLoading] = useState(false);
+  const [scanning, setScanning] = useState(false);
 
   // ── Hours editing ─────────────────────────────────────────────────────────
 
@@ -245,6 +302,73 @@ export default function ContributeScreen() {
     setBeers((prev) => prev.map((b, i) => (i === index ? { ...b, ...patch } : b)));
   }, []);
 
+  // ── Scan menu (AI OCR prefill) ───────────────────────────────────────────--
+  // Pick/snap a menu photo, upload it to the OCR helper, then MERGE the extracted
+  // beers into the current rows for the user to review. Never auto-submits — the
+  // existing Save button still does the real write.
+
+  const runScan = useCallback(
+    async (source: MenuPhotoSource) => {
+      const toast = useToastStore.getState().show;
+
+      const picked = await pickAndPrepareMenuPhoto(source);
+      if (picked.status === 'cancelled') return;
+      if (picked.status === 'denied' || picked.status === 'denied-permanent') {
+        toast(cs.contribute.scanMenu.permissionDenied);
+        return;
+      }
+      if (picked.status === 'error') {
+        toast(cs.contribute.scanMenu.errorToast);
+        return;
+      }
+
+      setScanning(true);
+      try {
+        const result = await scanMenuPhoto(picked.uri);
+        switch (result.status) {
+          case 'ok': {
+            const { rows, count } = mergeScannedIntoRows(beers, result.beers, priceCurrency);
+            if (count > 0) {
+              setBeers(rows);
+              setBeersTouched(true);
+              toast(cs.contribute.scanMenu.successToast(count));
+            } else {
+              // Everything found was already in the list (or the list was full).
+              toast(cs.contribute.scanMenu.nothingNewToast);
+            }
+            break;
+          }
+          case 'empty':
+            toast(cs.contribute.scanMenu.emptyToast);
+            break;
+          case 'unavailable':
+            toast(cs.contribute.scanMenu.unavailableToast);
+            break;
+          case 'rate-limited':
+            toast(cs.contribute.scanMenu.rateLimitedToast);
+            break;
+          case 'bad-image':
+            toast(cs.contribute.scanMenu.badImageToast);
+            break;
+          default:
+            toast(cs.contribute.scanMenu.errorToast);
+        }
+      } finally {
+        setScanning(false);
+      }
+    },
+    [beers, priceCurrency],
+  );
+
+  const handleScanMenu = useCallback(() => {
+    if (scanning) return;
+    Alert.alert(cs.contribute.scanMenu.sheetTitle, undefined, [
+      { text: cs.contribute.scanMenu.camera, onPress: () => void runScan('camera') },
+      { text: cs.contribute.scanMenu.library, onPress: () => void runScan('library') },
+      { text: cs.contribute.scanMenu.cancel, style: 'cancel' },
+    ]);
+  }, [scanning, runScan]);
+
   const activeBeer = useMemo(
     () => beers.find((beer) => beer.id === activeBeerId) ?? null,
     [activeBeerId, beers],
@@ -289,7 +413,12 @@ export default function ContributeScreen() {
     [hours],
   );
 
-  // Clean the beer rows: drop empty names, parse prices, cap at MAX_BEERS.
+  // Clean the beer rows into the exact shape the write endpoint accepts: drop
+  // empty names, cap at MAX_BEERS, and only keep values within the endpoint's
+  // bounds. parsePriceInputToCzk already nulls out prices outside 1–1000, and we
+  // drop any volume not in the allowed set (a menu scan can surface 250/700/750)
+  // so a single bad value can never turn the whole contribution into a permanent
+  // 400 that the retry queue re-sends on every launch.
   const cleanedBeers = useMemo<CommunityBeer[]>(() => {
     return beers
       .map((b): CommunityBeer | null => {
@@ -300,7 +429,7 @@ export default function ContributeScreen() {
         if (priceCzk !== null) {
           out.priceCzk = priceCzk;
         }
-        if (typeof b.volumeMl === 'number') out.volumeMl = b.volumeMl;
+        if (isAllowedBeerVolume(b.volumeMl)) out.volumeMl = b.volumeMl;
         return out;
       })
       .filter((b): b is CommunityBeer => b !== null)
@@ -476,6 +605,24 @@ export default function ContributeScreen() {
               >
                 {cs.contribute.beersHeader}
               </Text>
+
+              <Pressable
+                onPress={handleScanMenu}
+                disabled={scanning}
+                style={[styles.scanButton, scanning && styles.scanButtonDisabled]}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: scanning, busy: scanning }}
+                accessibilityLabel={cs.contribute.scanMenu.button}
+              >
+                {scanning ? (
+                  <ActivityIndicator size="small" color={Colors.amber} />
+                ) : (
+                  <CameraIcon size={18} color={Colors.amber} />
+                )}
+                <Text style={styles.scanButtonText} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {scanning ? cs.contribute.scanMenu.loading : cs.contribute.scanMenu.button}
+                </Text>
+              </Pressable>
 
               {beers.map((beer, index) => (
                 <BeerRowView
@@ -1028,6 +1175,28 @@ const styles = StyleSheet.create({
   },
   volumePillTextSelected: {
     color: Colors.stout,
+  },
+
+  scanButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: Radius.pill,
+    backgroundColor: withAlpha(Colors.amber, 0.12),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.36),
+    marginBottom: Spacing.md,
+  },
+  scanButtonDisabled: {
+    opacity: 0.6,
+  },
+  scanButtonText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 14,
+    color: Colors.amber,
   },
 
   addRow: {

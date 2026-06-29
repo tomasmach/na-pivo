@@ -1,11 +1,13 @@
 import {
   computeOpenState,
+  isAllowedBeerVolume,
   isWeeklyHours,
   isValidHoursInterval,
   emptyWeeklyHours,
   parseHhMm,
   formatHhMm,
   parseOsmOpeningHoursToWeeklyHours,
+  ALLOWED_BEER_VOLUMES_ML,
   type WeeklyHours,
 } from '../communityHours';
 
@@ -106,6 +108,30 @@ describe('isValidHoursInterval', () => {
   it('accepts regular and overnight intervals', () => {
     expect(isValidHoursInterval(['17:00', '22:00'])).toBe(true);
     expect(isValidHoursInterval(['17:00', '02:00'])).toBe(true);
+  });
+});
+
+describe('isAllowedBeerVolume', () => {
+  it('accepts exactly the volumes the write endpoint allows', () => {
+    for (const volume of ALLOWED_BEER_VOLUMES_ML) {
+      expect(isAllowedBeerVolume(volume)).toBe(true);
+    }
+    expect(ALLOWED_BEER_VOLUMES_ML).toEqual([300, 330, 400, 500, 1000]);
+  });
+
+  it('rejects in-range-but-disallowed volumes a menu scan can surface', () => {
+    // The menu-scan canonicalization clamps volume over a wide 100–2000 range,
+    // so it can hand back values that the write endpoint rejects. Dropping these
+    // before submit stops a single beer from looping forever in the retry queue.
+    expect(isAllowedBeerVolume(200)).toBe(false);
+    expect(isAllowedBeerVolume(250)).toBe(false);
+    expect(isAllowedBeerVolume(700)).toBe(false);
+    expect(isAllowedBeerVolume(750)).toBe(false);
+    expect(isAllowedBeerVolume(2000)).toBe(false);
+  });
+
+  it('rejects an absent volume', () => {
+    expect(isAllowedBeerVolume(undefined)).toBe(false);
   });
 });
 
