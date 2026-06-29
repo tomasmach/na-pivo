@@ -29,7 +29,8 @@ import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'reac
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, HitArea } from '@/theme/layout';
-import { CameraIcon, SparklesIcon } from '@/components/shared/IconGlyph';
+import { CameraIcon } from '@/components/shared/IconGlyph';
+import { BetaBadge } from '@/components/shared/BetaBadge';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 import { cs } from '@/i18n/cs';
@@ -121,7 +122,7 @@ function ScanMenuButtonImpl({ scanning, onPress }: ScanMenuButtonProps) {
       <Text style={styles.label} maxFontSizeMultiplier={FontScaleCap.body}>
         {cs.contribute.scanMenu.button}
       </Text>
-      <SparklesIcon size={15} color={Colors.amber} />
+      <BetaBadge tone="muted" />
     </Pressable>
   );
 }

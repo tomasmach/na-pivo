@@ -25,6 +25,7 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, HitArea } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { CameraIcon, ImagesIcon, SparklesIcon, XIcon } from '@/components/shared/IconGlyph';
+import { BetaBadge } from '@/components/shared/BetaBadge';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 import { cs } from '@/i18n/cs';
@@ -123,6 +124,7 @@ export function ScanMenuSheet({ visible, onClose, onPick }: ScanMenuSheetProps) 
                   <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
                     {cs.contribute.scanMenu.sheetTitle}
                   </Text>
+                  <BetaBadge tone="amber" />
                 </View>
                 <Text style={styles.subtitle} maxFontSizeMultiplier={FontScaleCap.body}>
                   {cs.contribute.scanMenu.sheetSubtitle}
@@ -200,6 +202,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   title: {
+    flexShrink: 1,
     fontFamily: Fonts.display.extrabold,
     fontSize: 22,
     color: Colors.foam,
