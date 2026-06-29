@@ -355,6 +355,30 @@ class Account(models.Model):
         help_text="Whether the user opted in to product/marketing e-mails.",
     )
 
+    # ---------- social / "parta" preferences ----------
+    # Ghost mode hides the user's own broadcast: a ghost still keeps their own
+    # FriendPubActivity row, but it is never fanned out (no notification, no push)
+    # and disappears from other users' active feed immediately. Quiet-hours
+    # suppresses friend PUSH (never the in-app notification row) inside a local
+    # Europe/Prague hour window that may wrap midnight (start inclusive, end
+    # exclusive); the defaults 23..9 mute pushes overnight.
+    ghost_mode = models.BooleanField(
+        default=False,
+        help_text="Hide my broadcast from friends: keep my own activity but skip fanout + feed visibility.",
+    )
+    quiet_hours_enabled = models.BooleanField(
+        default=True,
+        help_text="Whether friend pushes are suppressed during the local quiet-hours window.",
+    )
+    quiet_hours_start = models.PositiveSmallIntegerField(
+        default=23,
+        help_text="Local Europe/Prague hour (0-23) the quiet window starts, inclusive.",
+    )
+    quiet_hours_end = models.PositiveSmallIntegerField(
+        default=9,
+        help_text="Local Europe/Prague hour (0-23) the quiet window ends, exclusive.",
+    )
+
     # ---------- subscription / restore-purchases scaffold ----------
     subscription_tier = models.CharField(
         max_length=16,
@@ -749,6 +773,8 @@ class FriendNotification(models.Model):
         FRIEND_REQUEST = "friend_request", "Friend request"
         FRIEND_ACCEPTED = "friend_accepted", "Friend accepted"
         FRIEND_AT_PUB = "friend_at_pub", "Friend at pub"
+        # A friend RSVP'd "Jdu" to my active broadcast (the svolávací smyčka).
+        FRIEND_RSVP = "friend_rsvp", "Friend RSVP"
 
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
     recipient = models.ForeignKey(
@@ -796,6 +822,64 @@ class FriendNotification(models.Model):
 
     def __str__(self) -> str:
         return f"FriendNotification({self.kind} -> {self.recipient_id})"
+
+
+class FriendActivityResponse(models.Model):
+    """One friend's RSVP to a FriendPubActivity (the "svolávací smyčka" loop).
+
+    A responder picks Going / Maybe / Can't against an owner's active broadcast.
+    Identity is (activity, account) so a re-tap upserts the same row. Both FKs
+    CASCADE, so the row wipes naturally when either the activity expires-and is
+    pruned or the responder's account is deleted/merged-away — no per-account
+    merge handling is required (mirrors how FriendPubActivity itself is not moved
+    on account merge; an anonymous merge source holds no friend graph anyway).
+    Self-response on one's own activity is rejected in the view, not the DB.
+    """
+
+    class Response(models.TextChoices):
+        GOING = "going", "Going"
+        MAYBE = "maybe", "Maybe"
+        CANT = "cant", "Can't"
+
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
+    activity = models.ForeignKey(
+        "pubs.FriendPubActivity",
+        on_delete=models.CASCADE,
+        related_name="responses",
+    )
+    account = models.ForeignKey(
+        "pubs.Account",
+        on_delete=models.CASCADE,
+        related_name="activity_responses",
+    )
+    response = models.CharField(
+        max_length=8,
+        choices=Response.choices,
+        default=Response.GOING,
+        # No db_index: counts are tallied in Python over prefetched rows, and the
+        # composite Index(fields=["activity", "response"]) in Meta covers any
+        # future filtered query. A standalone btree + varchar_pattern_ops index on
+        # a 3-value enum on this write-path table would only add write cost.
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Friend activity response"
+        verbose_name_plural = "Friend activity responses"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["activity", "account"],
+                name="unique_activity_response_per_account",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["activity", "response"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"FriendActivityResponse({self.account_id} -> {self.activity_id}: {self.response})"
 
 
 class EmailCredential(models.Model):

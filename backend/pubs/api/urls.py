@@ -43,12 +43,14 @@ from .views import (
     ContentReportView,
     DrinksView,
     FeedbackView,
+    FriendActivityRespondView,
     FriendActivityView,
     FriendDetailView,
     FriendNotificationReadView,
     FriendRequestActionView,
     FriendRequestView,
     FriendSearchView,
+    FriendSettingsView,
     FriendsView,
     HealthView,
     NicknameAvailableView,
@@ -109,6 +111,14 @@ urlpatterns = [
         FriendRequestActionView.as_view(),
         name="friends-request-action",
     ),
+    # RSVP loop + social settings — placed ABOVE friends/<uuid:account_id> so the
+    # static segments are never shadowed by the account-id catch-all.
+    path(
+        "friends/pub-activity/<uuid:activity_id>/respond",
+        FriendActivityRespondView.as_view(),
+        name="friends-activity-respond",
+    ),
+    path("friends/settings", FriendSettingsView.as_view(), name="friends-settings"),
     path("friends/<uuid:account_id>", FriendDetailView.as_view(), name="friend-detail"),
     path("friends/pub-activity", FriendActivityView.as_view(), name="friends-pub-activity"),
     path(

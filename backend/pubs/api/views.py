@@ -23,12 +23,13 @@ import json
 import logging
 import math
 import re
-from datetime import timedelta
+from datetime import date, timedelta
+from zoneinfo import ZoneInfo
 
 import requests
 from django.conf import settings
 from django.db import IntegrityError, transaction
-from django.db.models import ExpressionWrapper, F, FloatField, Q, Value
+from django.db.models import Count, ExpressionWrapper, F, FloatField, Prefetch, Q, Value
 from django.utils import timezone as dj_timezone
 from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed
@@ -71,6 +72,7 @@ from pubs.models import (
     DrinkLog,
     EmailCredential,
     FeedbackReport,
+    FriendActivityResponse,
     FriendNotification,
     FriendPubActivity,
     Friendship,
@@ -109,11 +111,12 @@ from .serializers import (
     FeedbackReportSerializer,
     FeedbackRequestSerializer,
     FriendActivityRequestSerializer,
+    FriendActivityResponseSerializer,
     FriendNotificationSerializer,
     FriendProfileSerializer,
+    FriendPubActivitySerializer,
     FriendRequestCreateSerializer,
     FriendSearchQuerySerializer,
-    FriendPubActivitySerializer,
     FriendshipSerializer,
     PubAmenityKindSerializer,
     PubAmenityReadQuerySerializer,
@@ -182,6 +185,13 @@ def _pub_identity_key(cache_key: str, name: str) -> str:
 FRIEND_ACTIVITY_DEFAULT_TTL = timedelta(hours=4)
 FRIEND_ACTIVITY_MAX_TTL = timedelta(hours=8)
 
+# Quiet-hours and the party streak are evaluated against Czech local wall-clock,
+# never UTC, so an 11pm push is muted regardless of the server timezone.
+PRAGUE_TZ = ZoneInfo("Europe/Prague")
+
+# Party leaderboard window: pub visits in the trailing 30 days.
+LEADERBOARD_WINDOW = timedelta(days=30)
+
 
 def _friend_display_name(account: Account | None) -> str:
     if account is None:
@@ -203,26 +213,42 @@ def _accepted_friend_ids(account: Account) -> list[int]:
     return friend_ids
 
 
-def _shared_pub_stats(account: Account, friend_ids: list[int]) -> dict[int, dict[str, object]]:
-    """Return lightweight shared-evening stats keyed by friend account id.
+def _shared_pub_stats(
+    account: Account, friend_ids: list[int]
+) -> tuple[dict[int, dict[str, object]], set]:
+    """Return shared-evening stats plus the set of shared local dates.
 
-    A shared evening is currently a same-day visit to the same geohash-8 pub.
-    This avoids storing any route or raw GPS history and stays cheap enough for
-    the friend dashboard; a future version can tighten it to true time overlap.
+    A shared evening is currently a same-day visit to the same geohash-8 pub,
+    bucketed on the Europe/Prague local date so a late-night beer counts on the
+    night it actually happened for CZ/SK users (never the UTC rollover). This
+    avoids storing any route or raw GPS history and stays cheap enough for the
+    friend dashboard; a future version can tighten it to true time overlap.
+
+    Returns ``(stats, shared_dates)`` from a single pass over the same two
+    PubVisit scans: ``stats`` is keyed by friend account id, and ``shared_dates``
+    is the set of distinct local dates the party was out together — the raw
+    material for the consecutive-week streak. Privacy-safe: only geohash + local
+    date, never raw coordinates.
     """
 
     if not friend_ids:
-        return {}
-    my_visits = list(PubVisit.objects.filter(account=account).only("cache_key", "started_at", "name"))
-    if not my_visits:
-        return {friend_id: {"shared_count": 0, "last_shared_at": None, "last_pub_name": ""} for friend_id in friend_ids}
-
-    my_keys = {(visit.cache_key, visit.started_at.date()) for visit in my_visits}
-    my_pub_names = {(visit.cache_key, visit.started_at.date()): visit.name for visit in my_visits}
+        return {}, set()
     stats: dict[int, dict[str, object]] = {
         friend_id: {"shared_count": 0, "last_shared_at": None, "last_pub_name": ""}
         for friend_id in friend_ids
     }
+    my_visits = list(PubVisit.objects.filter(account=account).only("cache_key", "started_at", "name"))
+    if not my_visits:
+        return stats, set()
+
+    def _local_date(value):
+        return dj_timezone.localtime(value, PRAGUE_TZ).date()
+
+    my_keys = {(visit.cache_key, _local_date(visit.started_at)) for visit in my_visits}
+    my_pub_names = {
+        (visit.cache_key, _local_date(visit.started_at)): visit.name for visit in my_visits
+    }
+    shared_dates: set = set()
     friend_visits = (
         PubVisit.objects.filter(account_id__in=friend_ids)
         .only("account_id", "cache_key", "started_at", "name")
@@ -230,10 +256,12 @@ def _shared_pub_stats(account: Account, friend_ids: list[int]) -> dict[int, dict
     )
     seen_pairs: set[tuple[int, str, object]] = set()
     for visit in friend_visits:
-        key = (visit.cache_key, visit.started_at.date())
+        local_date = _local_date(visit.started_at)
+        key = (visit.cache_key, local_date)
         if key not in my_keys:
             continue
-        pair = (visit.account_id, visit.cache_key, visit.started_at.date())
+        shared_dates.add(local_date)
+        pair = (visit.account_id, visit.cache_key, local_date)
         if pair in seen_pairs:
             continue
         seen_pairs.add(pair)
@@ -243,7 +271,7 @@ def _shared_pub_stats(account: Account, friend_ids: list[int]) -> dict[int, dict
         if last_shared_at is None or visit.started_at > last_shared_at:
             item["last_shared_at"] = visit.started_at
             item["last_pub_name"] = my_pub_names.get(key) or visit.name
-    return stats
+    return stats, shared_dates
 
 
 def _friend_rituals(shared_count: int) -> list[dict[str, str]]:
@@ -261,6 +289,84 @@ def _friend_profile_context(request: Request) -> dict:
     return {"request": request}
 
 
+def _friend_activity_context(request: Request) -> dict:
+    """Serializer context for FriendPubActivitySerializer.
+
+    Carries ``request`` (avatar URLs) plus ``account`` so the serializer can
+    resolve ``my_response`` for the caller.
+    """
+    return {"request": request, "account": request.user}
+
+
+def _account_in_quiet_hours(account: Account, now=None) -> bool:
+    """Whether ``account`` is inside its local (Europe/Prague) quiet-hours window.
+
+    Returns False when quiet hours are disabled. The window runs from
+    ``quiet_hours_start`` (inclusive) to ``quiet_hours_end`` (exclusive) in local
+    hours and may wrap midnight (e.g. 23..9 mutes 23,0,1,..,8). A degenerate
+    start == end window is treated as never-quiet.
+    """
+    if not getattr(account, "quiet_hours_enabled", False):
+        return False
+    start = int(getattr(account, "quiet_hours_start", 23)) % 24
+    end = int(getattr(account, "quiet_hours_end", 9)) % 24
+    if start == end:
+        return False
+    now = now or dj_timezone.now()
+    hour = dj_timezone.localtime(now, PRAGUE_TZ).hour
+    if start < end:
+        return start <= hour < end
+    # Wrapping window: quiet from start..23 and 0..end-1.
+    return hour >= start or hour < end
+
+
+def _friend_settings_payload(account: Account) -> dict:
+    """The social-settings dict shared by the dashboard and FriendSettingsView."""
+    return {
+        "ghost_mode": bool(account.ghost_mode),
+        "quiet_hours_enabled": bool(account.quiet_hours_enabled),
+        "quiet_hours_start": int(account.quiet_hours_start),
+        "quiet_hours_end": int(account.quiet_hours_end),
+    }
+
+
+def _party_streak(shared_dates: set) -> dict:
+    """Consecutive-week party streak from a set of shared-evening local dates.
+
+    A week (ISO year, week, Europe/Prague) is "lit" when it holds >=1 shared
+    evening. Counting starts at the current week and walks backwards: the streak
+    stays standing if the current week is not yet lit but last week was. Returns
+    ``{"current_weeks": int, "this_week_lit": bool}``.
+    """
+    if not shared_dates:
+        return {"current_weeks": 0, "this_week_lit": False}
+
+    lit_weeks = {(d.isocalendar().year, d.isocalendar().week) for d in shared_dates}
+    today = dj_timezone.localtime(dj_timezone.now(), PRAGUE_TZ).date()
+    iso = today.isocalendar()
+    cursor_year, cursor_week = iso.year, iso.week
+    this_week_lit = (cursor_year, cursor_week) in lit_weeks
+
+    # Allow a not-yet-lit current week: start the walk at last week instead so a
+    # streak earned through last week is still reported as standing.
+    if not this_week_lit:
+        cursor_year, cursor_week = _previous_iso_week(cursor_year, cursor_week)
+
+    streak = 0
+    while (cursor_year, cursor_week) in lit_weeks:
+        streak += 1
+        cursor_year, cursor_week = _previous_iso_week(cursor_year, cursor_week)
+    return {"current_weeks": streak, "this_week_lit": this_week_lit}
+
+
+def _previous_iso_week(year: int, week: int) -> tuple[int, int]:
+    """The ISO (year, week) seven days before the Monday of (year, week)."""
+    monday = date.fromisocalendar(year, week, 1)
+    prev = monday - timedelta(days=7)
+    iso = prev.isocalendar()
+    return iso.year, iso.week
+
+
 def _send_friend_push(account_ids: list[int], title: str, body: str, data: dict) -> None:
     """Best-effort Expo push fanout.
 
@@ -271,9 +377,25 @@ def _send_friend_push(account_ids: list[int], title: str, body: str, data: dict)
 
     if not account_ids:
         return
+
+    # Drop any recipient currently inside their local quiet-hours window. This
+    # suppresses only the PUSH; the in-app FriendNotification row is created
+    # separately and is unaffected. Computed once against the same `now`.
+    now = dj_timezone.now()
+    quiet_account_ids = {
+        account.id
+        for account in Account.objects.filter(id__in=account_ids).only(
+            "id", "quiet_hours_enabled", "quiet_hours_start", "quiet_hours_end"
+        )
+        if _account_in_quiet_hours(account, now)
+    }
+    deliver_ids = [account_id for account_id in account_ids if account_id not in quiet_account_ids]
+    if not deliver_ids:
+        return
+
     tokens = list(
         PushDevice.objects.filter(
-            account_id__in=account_ids,
+            account_id__in=deliver_ids,
             enabled=True,
             permission_status=PushDevice.PermissionStatus.GRANTED,
         ).values_list("push_token", flat=True)
@@ -1649,6 +1771,12 @@ class FriendsView(APIView):
     def get(self, request: Request) -> Response:
         now = dj_timezone.now()
         context = _friend_profile_context(request)
+        activity_context = _friend_activity_context(request)
+        # Render the RSVP roster (counts + GOING profiles + my_response) without N+1.
+        responses_prefetch = Prefetch(
+            "responses",
+            queryset=FriendActivityResponse.objects.select_related("account"),
+        )
 
         friendships = (
             Friendship.objects.filter(Q(requester=request.user) | Q(recipient=request.user))
@@ -1672,15 +1800,30 @@ class FriendsView(APIView):
             for row in accepted
         ]
         friend_ids = [account.id for account in friend_accounts]
-        shared_stats = _shared_pub_stats(request.user, friend_ids)
+        shared_stats, shared_dates = _shared_pub_stats(request.user, friend_ids)
         active = (
             FriendPubActivity.objects.filter(
                 account_id__in=friend_ids,
                 active=True,
                 expires_at__gt=now,
             )
+            # A friend who toggles ghost mode vanishes from everyone else's feed
+            # immediately (their own broadcast row is kept for their own view).
+            .exclude(account__ghost_mode=True)
             .select_related("account")
+            .prefetch_related(responses_prefetch)
             .order_by("-started_at")[:20]
+        )
+        my_active_activity = (
+            FriendPubActivity.objects.filter(
+                account=request.user,
+                active=True,
+                expires_at__gt=now,
+            )
+            .select_related("account")
+            .prefetch_related(responses_prefetch)
+            .order_by("-started_at")
+            .first()
         )
         notifications = (
             FriendNotification.objects.filter(recipient=request.user)
@@ -1691,6 +1834,11 @@ class FriendsView(APIView):
             recipient=request.user,
             read_at__isnull=True,
         ).count()
+
+        streak = _party_streak(shared_dates)
+        leaderboard = self._build_leaderboard(
+            request, friend_accounts, shared_stats, now, context
+        )
 
         return Response(
             {
@@ -1712,12 +1860,68 @@ class FriendsView(APIView):
                 },
                 "incoming_requests": FriendshipSerializer(incoming, many=True, context=context).data,
                 "outgoing_requests": FriendshipSerializer(outgoing, many=True, context=context).data,
-                "active_friends": FriendPubActivitySerializer(active, many=True, context=context).data,
+                "active_friends": FriendPubActivitySerializer(
+                    active, many=True, context=activity_context
+                ).data,
+                "my_active_activity": (
+                    FriendPubActivitySerializer(my_active_activity, context=activity_context).data
+                    if my_active_activity is not None
+                    else None
+                ),
                 "notifications": FriendNotificationSerializer(notifications, many=True, context=context).data,
                 "unread_count": unread_count,
+                "settings": _friend_settings_payload(request.user),
+                "streak": streak,
+                "leaderboard": leaderboard,
             },
             status=status.HTTP_200_OK,
         )
+
+    @staticmethod
+    def _build_leaderboard(
+        request: Request,
+        friend_accounts: list,
+        shared_stats: dict,
+        now,
+        context: dict,
+    ) -> list[dict]:
+        """Party leaderboard: me + accepted friends ranked by 30-day pub visits.
+
+        Excludes accounts pending deletion. Visits come from ONE grouped query;
+        ``shared_count`` is the shared-evening tally with me (0 for myself).
+        Sorted desc by visits_30d, then shared_count.
+        """
+        members = [request.user] + [
+            account
+            for account in friend_accounts
+            if account.status != Account.Status.PENDING_DELETION
+        ]
+        member_ids = [account.id for account in members]
+        visit_rows = (
+            PubVisit.objects.filter(
+                account_id__in=member_ids,
+                started_at__gte=now - LEADERBOARD_WINDOW,
+            )
+            .values("account_id")
+            .annotate(c=Count("id"))
+        )
+        visits_by_account = {row["account_id"]: row["c"] for row in visit_rows}
+
+        entries = []
+        for account in members:
+            is_me = account.id == request.user.id
+            entries.append(
+                {
+                    "account": FriendProfileSerializer(account, context=context).data,
+                    "visits_30d": int(visits_by_account.get(account.id, 0)),
+                    "shared_count": 0
+                    if is_me
+                    else int(shared_stats.get(account.id, {}).get("shared_count") or 0),
+                    "is_me": is_me,
+                }
+            )
+        entries.sort(key=lambda e: (e["visits_30d"], e["shared_count"]), reverse=True)
+        return entries
 
 
 class FriendSearchView(APIView):
@@ -2007,7 +2211,12 @@ class FriendActivityView(APIView):
             )
 
         friend_ids = _accepted_friend_ids(request.user)
-        if should_notify and friend_ids:
+        # Ghost mode keeps the owner's own activity row (so they can still track
+        # their own RSVP roster) but broadcasts NOTHING: no notification rows, no
+        # push fanout. The activity also vanishes from friends' active feed via
+        # the ghost_mode exclusion in FriendsView.
+        is_ghost = bool(getattr(request.user, "ghost_mode", False))
+        if should_notify and friend_ids and not is_ghost:
             title = "Kamarád je na pivu"
             actor = _friend_display_name(request.user)
             body = f"{actor} sedí v {activity.name}. Nechceš se přidat?"
@@ -2035,7 +2244,7 @@ class FriendActivityView(APIView):
             )
 
         return Response(
-            FriendPubActivitySerializer(activity, context=_friend_profile_context(request)).data,
+            FriendPubActivitySerializer(activity, context=_friend_activity_context(request)).data,
             status=status.HTTP_201_CREATED if should_notify else status.HTTP_200_OK,
         )
 
@@ -2046,6 +2255,178 @@ class FriendActivityView(APIView):
             active=True,
         ).update(active=False, updated_at=dj_timezone.now())
         return Response({"ended": updated > 0}, status=status.HTTP_200_OK)
+
+
+class FriendActivityRespondView(APIView):
+    """POST/DELETE /v1/friends/pub-activity/<activity_id>/respond.
+
+    The svolávací smyčka: an accepted friend RSVPs Going / Maybe / Can't to an
+    owner's active broadcast. POST upserts my response; DELETE clears it. On a new
+    or changed-to-Going response the OWNER gets a FRIEND_RSVP notification + push
+    (regardless of broadcast gating — this is a direct reply to them).
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends"
+
+    def _load_active_activity(self, activity_id) -> FriendPubActivity | None:
+        now = dj_timezone.now()
+        return (
+            FriendPubActivity.objects.select_related("account")
+            .filter(public_id=activity_id, active=True, expires_at__gt=now)
+            .first()
+        )
+
+    def post(self, request: Request, activity_id) -> Response:
+        serializer = FriendActivityResponseSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        response_value = serializer.validated_data["response"]
+
+        activity = self._load_active_activity(activity_id)
+        if activity is None:
+            return Response(
+                {"detail": "Tahle hláška už vyšuměla.", "code": "activity_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if activity.account_id == request.user.pk:
+            return Response(
+                {"detail": "Na vlastní cinknutí reagovat nemusíš.", "code": "self_rsvp"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if activity.account_id not in _accepted_friend_ids(request.user):
+            return Response(
+                {"detail": "S tímhle člověkem ještě nejste parta.", "code": "not_friends"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            with transaction.atomic():
+                # Lock the activity row so concurrent RSVPs serialise around the
+                # owner-notification decision.
+                locked = (
+                    FriendPubActivity.objects.select_for_update()
+                    .filter(pk=activity.pk)
+                    .first()
+                )
+                if locked is None:
+                    return Response(
+                        {"detail": "Tahle hláška už vyšuměla.", "code": "activity_not_found"},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+                existing = (
+                    FriendActivityResponse.objects.filter(activity=locked, account=request.user)
+                    .only("response")
+                    .first()
+                )
+                previous = existing.response if existing is not None else None
+                FriendActivityResponse.objects.update_or_create(
+                    activity=locked,
+                    account=request.user,
+                    defaults={"response": response_value},
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.error("friends: rsvp failed: %s", exc, exc_info=True)
+            return Response(
+                {"detail": "Internal server error."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        is_going = response_value == FriendActivityResponse.Response.GOING
+        newly_going = is_going and previous != FriendActivityResponse.Response.GOING
+        if newly_going:
+            title = f"{_friend_display_name(request.user)} už jde za tebou"
+            body = activity.name[:240]
+            _create_friend_notification(
+                recipient=activity.account,
+                actor=request.user,
+                kind=FriendNotification.Kind.FRIEND_RSVP,
+                title=title[:120],
+                body=body,
+                activity=activity,
+                pub_cache_key=activity.cache_key,
+                pub_name=activity.name[:200],
+            )
+            _send_friend_push(
+                [activity.account_id],
+                title[:120],
+                body,
+                {
+                    "kind": "friend_rsvp",
+                    "activity_id": str(activity.public_id),
+                    "pub_cache_key": activity.cache_key,
+                },
+            )
+
+        fresh = (
+            FriendPubActivity.objects.select_related("account")
+            .prefetch_related(Prefetch("responses", queryset=FriendActivityResponse.objects.select_related("account")))
+            .get(pk=activity.pk)
+        )
+        return Response(
+            FriendPubActivitySerializer(fresh, context=_friend_activity_context(request)).data,
+            status=status.HTTP_200_OK,
+        )
+
+    def delete(self, request: Request, activity_id) -> Response:
+        # Idempotent: a missing row is still a success so an offline retry queue
+        # can replay safely. We do NOT require the activity to be active so a
+        # responder can always retract.
+        activity = FriendPubActivity.objects.filter(public_id=activity_id).first()
+        if activity is None:
+            return Response({"removed": False}, status=status.HTTP_200_OK)
+        deleted, _ = FriendActivityResponse.objects.filter(
+            activity=activity, account=request.user
+        ).delete()
+        return Response({"removed": deleted > 0}, status=status.HTTP_200_OK)
+
+
+class FriendSettingsView(APIView):
+    """GET/PATCH /v1/friends/settings — ghost mode + quiet-hours preferences."""
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends"
+
+    def get(self, request: Request) -> Response:
+        return Response(_friend_settings_payload(request.user), status=status.HTTP_200_OK)
+
+    def patch(self, request: Request) -> Response:
+        account = request.user
+        update_fields: list[str] = []
+        data = request.data if isinstance(request.data, dict) else {}
+
+        if "ghost_mode" in data:
+            account.ghost_mode = bool(data["ghost_mode"])
+            update_fields.append("ghost_mode")
+        if "quiet_hours_enabled" in data:
+            account.quiet_hours_enabled = bool(data["quiet_hours_enabled"])
+            update_fields.append("quiet_hours_enabled")
+        for key in ("quiet_hours_start", "quiet_hours_end"):
+            if key in data:
+                hour = self._validate_hour(data[key])
+                if hour is None:
+                    return Response(
+                        {"detail": "Hodina musí být mezi 0 a 23.", "code": "invalid_hour"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                setattr(account, key, hour)
+                update_fields.append(key)
+
+        if update_fields:
+            account.save(update_fields=update_fields)
+        return Response(_friend_settings_payload(account), status=status.HTTP_200_OK)
+
+    @staticmethod
+    def _validate_hour(value) -> int | None:
+        try:
+            hour = int(value)
+        except (TypeError, ValueError):
+            return None
+        return hour if 0 <= hour <= 23 else None
 
 
 class FriendNotificationReadView(APIView):

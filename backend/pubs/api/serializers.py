@@ -53,6 +53,7 @@ from pubs.models import (
     ClientEvent,
     ContentReport,
     FeedbackReport,
+    FriendActivityResponse,
     FriendNotification,
     FriendPubActivity,
     Friendship,
@@ -572,11 +573,25 @@ class FriendshipSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class FriendActivityResponseSerializer(serializers.Serializer):
+    """Request body for POST /v1/friends/pub-activity/<id>/respond (input only)."""
+
+    response = serializers.ChoiceField(choices=FriendActivityResponse.Response.choices)
+
+
 class FriendPubActivitySerializer(serializers.ModelSerializer):
-    """Active friend pub status exposed to accepted friends."""
+    """Active friend pub status exposed to accepted friends.
+
+    ``responses`` summarises the svolávací-smyčka roster: per-bucket counts plus
+    up to 8 GOING responders' compact profiles. ``my_response`` is the requesting
+    account's own RSVP (needs ``context['account']``). Both rely on the view
+    prefetching ``responses__account`` to keep the roster N+1-free.
+    """
 
     id = serializers.UUIDField(source="public_id", read_only=True)
     account = FriendProfileSerializer(read_only=True)
+    responses = serializers.SerializerMethodField()
+    my_response = serializers.SerializerMethodField()
 
     class Meta:
         model = FriendPubActivity
@@ -591,10 +606,44 @@ class FriendPubActivitySerializer(serializers.ModelSerializer):
             "started_at",
             "expires_at",
             "active",
+            "responses",
+            "my_response",
             "created_at",
             "updated_at",
         ]
         read_only_fields = fields
+
+    def get_responses(self, obj: FriendPubActivity) -> dict:
+        # Counts + GOING profiles computed in-Python over the prefetched rows so
+        # one query feeds the whole dashboard roster.
+        rows = list(obj.responses.all())
+        counts = {"going": 0, "maybe": 0, "cant": 0}
+        going_accounts = []
+        for row in rows:
+            if row.response in counts:
+                counts[row.response] += 1
+            if row.response == FriendActivityResponse.Response.GOING:
+                going_accounts.append(row.account)
+        going_accounts = going_accounts[:8]
+        going_profiles = FriendProfileSerializer(
+            going_accounts, many=True, context=self.context
+        ).data
+        return {
+            "going": counts["going"],
+            "maybe": counts["maybe"],
+            "cant": counts["cant"],
+            "going_profiles": going_profiles,
+        }
+
+    def get_my_response(self, obj: FriendPubActivity) -> str | None:
+        account = self.context.get("account")
+        if account is None:
+            return None
+        account_id = getattr(account, "pk", None)
+        for row in obj.responses.all():
+            if row.account_id == account_id:
+                return row.response
+        return None
 
 
 class FriendNotificationSerializer(serializers.ModelSerializer):

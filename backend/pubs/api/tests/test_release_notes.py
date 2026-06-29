@@ -22,6 +22,15 @@ def client():
     return APIClient()
 
 
+@pytest.fixture(autouse=True)
+def _isolate_release_notes(db):
+    # Data migrations (e.g. 0043_release_note_1_2_0) seed published notes — some
+    # at versions these tests also author — into the test database. Start each
+    # test from an empty table so authoring "1.2.0" does not hit the unique
+    # version constraint on the migration-seeded row.
+    ReleaseNote.objects.all().delete()
+
+
 def _make_note(version: str, *, published: bool = True, title: str = "Co je nového") -> ReleaseNote:
     note = ReleaseNote.objects.create(version=version, title=title, is_published=published)
     # Insert out of declaration order to prove ordering is by `order`, not PK.
