@@ -415,9 +415,12 @@ export const cs = {
     // "Vyfoť menu" — AI OCR helper that prefills the beer rows from a photo.
     scanMenu: {
       button: 'Vyfoť menu',
-      sheetTitle: 'Naskenovat menu',
+      sheetTitle: 'Naskenuju ti menu',
+      sheetSubtitle: 'Vyfoť nápoják a piva si přečtu sám. Pak je jen mrkneš a uložíš.',
       camera: 'Vyfotit',
+      cameraHelper: 'Namiř foťák na lístek',
       library: 'Z galerie',
+      libraryHelper: 'Vyber fotku, co už máš',
       cancel: 'Zrušit',
       loading: 'Čtu menu…',
       successToast: (count: number) => `Načteno ${beerCountLabel(count)} z menu, zkontroluj je`,

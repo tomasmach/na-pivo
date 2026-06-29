@@ -11,7 +11,7 @@
  * the same params, or the local override store.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -20,13 +20,11 @@ import {
   TextInput,
   Platform,
   StyleSheet,
-  ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Colors, withAlpha } from '@/theme/colors';
+import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
@@ -37,8 +35,15 @@ import {
   CopyIcon,
   CompassIcon,
   CameraIcon,
+  SparklesIcon,
+  CheckIcon,
+  SearchIcon,
+  InfoIcon,
+  ClockIcon,
 } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
+import { ScanMenuButton } from '@/components/contribute/ScanMenuButton';
+import { ScanMenuSheet, type MenuScanSource } from '@/components/contribute/ScanMenuSheet';
 import { geohash8 } from '@/data/geohash';
 import {
   DAY_KEYS,
@@ -223,6 +228,7 @@ export default function ContributeScreen() {
   const [beerSuggestions, setBeerSuggestions] = useState<BeerBrandSuggestion[]>([]);
   const [beerSuggestionsLoading, setBeerSuggestionsLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [scanSourceVisible, setScanSourceVisible] = useState(false);
 
   // ── Hours editing ─────────────────────────────────────────────────────────
 
@@ -307,67 +313,104 @@ export default function ContributeScreen() {
   // beers into the current rows for the user to review. Never auto-submits — the
   // existing Save button still does the real write.
 
+  // Guards against a double-fire: the source sheet's rows stay tappable through
+  // its fade-out, and `scanning` only flips true after the picker resolves — so a
+  // synchronous ref is what actually prevents two concurrent pickers/uploads.
+  const scanInFlightRef = useRef(false);
+
   const runScan = useCallback(
     async (source: MenuPhotoSource) => {
+      if (scanInFlightRef.current) return;
+      scanInFlightRef.current = true;
       const toast = useToastStore.getState().show;
 
-      const picked = await pickAndPrepareMenuPhoto(source);
-      if (picked.status === 'cancelled') return;
-      if (picked.status === 'denied' || picked.status === 'denied-permanent') {
-        toast(cs.contribute.scanMenu.permissionDenied);
-        return;
-      }
-      if (picked.status === 'error') {
-        toast(cs.contribute.scanMenu.errorToast);
-        return;
-      }
-
-      setScanning(true);
       try {
+        const picked = await pickAndPrepareMenuPhoto(source);
+        if (picked.status === 'cancelled') return;
+        if (picked.status === 'denied' || picked.status === 'denied-permanent') {
+          toast(cs.contribute.scanMenu.permissionDenied, {
+            icon: <CameraIcon size={18} color={Colors.amber} />,
+          });
+          return;
+        }
+        if (picked.status === 'error') {
+          toast(cs.contribute.scanMenu.errorToast, {
+            icon: <InfoIcon size={18} color={Colors.foamMuted} />,
+          });
+          return;
+        }
+
+        setScanning(true);
         const result = await scanMenuPhoto(picked.uri);
         switch (result.status) {
           case 'ok': {
-            const { rows, count } = mergeScannedIntoRows(beers, result.beers, priceCurrency);
-            if (count > 0) {
-              setBeers(rows);
+            // Merge against the LATEST rows (a functional update) so beers the user
+            // edits during the multi-second scan are not clobbered by a stale snapshot.
+            let merged = 0;
+            setBeers((prev) => {
+              const { rows, count } = mergeScannedIntoRows(prev, result.beers, priceCurrency);
+              merged = count;
+              return count > 0 ? rows : prev;
+            });
+            if (merged > 0) {
               setBeersTouched(true);
-              toast(cs.contribute.scanMenu.successToast(count));
+              fireSuccessHaptic();
+              toast(cs.contribute.scanMenu.successToast(merged), {
+                icon: <SparklesIcon size={18} color={Colors.amber} />,
+              });
             } else {
               // Everything found was already in the list (or the list was full).
-              toast(cs.contribute.scanMenu.nothingNewToast);
+              toast(cs.contribute.scanMenu.nothingNewToast, {
+                icon: <CheckIcon size={18} color={Colors.amber} />,
+              });
             }
             break;
           }
           case 'empty':
-            toast(cs.contribute.scanMenu.emptyToast);
+            toast(cs.contribute.scanMenu.emptyToast, {
+              icon: <SearchIcon size={18} color={Colors.foamMuted} />,
+            });
             break;
           case 'unavailable':
-            toast(cs.contribute.scanMenu.unavailableToast);
+            toast(cs.contribute.scanMenu.unavailableToast, {
+              icon: <InfoIcon size={18} color={Colors.foamMuted} />,
+            });
             break;
           case 'rate-limited':
-            toast(cs.contribute.scanMenu.rateLimitedToast);
+            toast(cs.contribute.scanMenu.rateLimitedToast, {
+              icon: <ClockIcon size={18} color={Colors.foamMuted} />,
+            });
             break;
           case 'bad-image':
-            toast(cs.contribute.scanMenu.badImageToast);
+            toast(cs.contribute.scanMenu.badImageToast, {
+              icon: <CameraIcon size={18} color={Colors.amber} />,
+            });
             break;
           default:
-            toast(cs.contribute.scanMenu.errorToast);
+            toast(cs.contribute.scanMenu.errorToast, {
+              icon: <InfoIcon size={18} color={Colors.foamMuted} />,
+            });
         }
       } finally {
+        scanInFlightRef.current = false;
         setScanning(false);
       }
     },
-    [beers, priceCurrency],
+    [priceCurrency],
   );
 
   const handleScanMenu = useCallback(() => {
     if (scanning) return;
-    Alert.alert(cs.contribute.scanMenu.sheetTitle, undefined, [
-      { text: cs.contribute.scanMenu.camera, onPress: () => void runScan('camera') },
-      { text: cs.contribute.scanMenu.library, onPress: () => void runScan('library') },
-      { text: cs.contribute.scanMenu.cancel, style: 'cancel' },
-    ]);
-  }, [scanning, runScan]);
+    setScanSourceVisible(true);
+  }, [scanning]);
+
+  const handlePickScanSource = useCallback(
+    (source: MenuScanSource) => {
+      setScanSourceVisible(false);
+      void runScan(source);
+    },
+    [runScan],
+  );
 
   const activeBeer = useMemo(
     () => beers.find((beer) => beer.id === activeBeerId) ?? null,
@@ -606,23 +649,7 @@ export default function ContributeScreen() {
                 {cs.contribute.beersHeader}
               </Text>
 
-              <Pressable
-                onPress={handleScanMenu}
-                disabled={scanning}
-                style={[styles.scanButton, scanning && styles.scanButtonDisabled]}
-                accessibilityRole="button"
-                accessibilityState={{ disabled: scanning, busy: scanning }}
-                accessibilityLabel={cs.contribute.scanMenu.button}
-              >
-                {scanning ? (
-                  <ActivityIndicator size="small" color={Colors.amber} />
-                ) : (
-                  <CameraIcon size={18} color={Colors.amber} />
-                )}
-                <Text style={styles.scanButtonText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {scanning ? cs.contribute.scanMenu.loading : cs.contribute.scanMenu.button}
-                </Text>
-              </Pressable>
+              <ScanMenuButton scanning={scanning} onPress={handleScanMenu} />
 
               {beers.map((beer, index) => (
                 <BeerRowView
@@ -690,6 +717,12 @@ export default function ContributeScreen() {
             {!canSubmit && <View style={styles.submitDisabledOverlay} />}
           </View>
         </ScrollView>
+
+        <ScanMenuSheet
+          visible={scanSourceVisible}
+          onClose={() => setScanSourceVisible(false)}
+          onPick={handlePickScanSource}
+        />
     </View>
   );
 }
@@ -1175,28 +1208,6 @@ const styles = StyleSheet.create({
   },
   volumePillTextSelected: {
     color: Colors.stout,
-  },
-
-  scanButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.amber, 0.12),
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.36),
-    marginBottom: Spacing.md,
-  },
-  scanButtonDisabled: {
-    opacity: 0.6,
-  },
-  scanButtonText: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 14,
-    color: Colors.amber,
   },
 
   addRow: {

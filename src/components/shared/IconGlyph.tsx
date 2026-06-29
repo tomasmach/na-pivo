@@ -54,6 +54,8 @@ import {
   Download,
   Crown,
   Camera,
+  Images,
+  Sparkles,
   TreePine,
   Search,
   CreditCard,
@@ -136,6 +138,8 @@ export const KeyRoundIcon = wrap(KeyRound, 'KeyRoundIcon');
 export const DownloadIcon = wrap(Download, 'DownloadIcon');
 export const CrownIcon = wrap(Crown, 'CrownIcon');
 export const CameraIcon = wrap(Camera, 'CameraIcon');
+export const ImagesIcon = wrap(Images, 'ImagesIcon');
+export const SparklesIcon = wrap(Sparkles, 'SparklesIcon');
 export const TreePineIcon = wrap(TreePine, 'TreePineIcon');
 export const SearchIcon = wrap(Search, 'SearchIcon');
 // "Zmapuj hospodu" amenity + Mapér glyphs.
