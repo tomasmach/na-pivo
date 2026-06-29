@@ -65,9 +65,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         NSMicrophoneUsageDescription:
           'Mikrofon se použije jen pro zvukové funkce aplikace a nikdy bez tvého souhlasu.',
         NSPhotoLibraryUsageDescription:
-          'Na pivo otevře tvou fotogalerii, aby sis mohl vybrat profilový obrázek nebo fotku pivního menu.',
+          'Otevřu ti galerii, ať si vybereš profilovku nebo fotku pivního menu.',
         NSCameraUsageDescription:
-          'Na pivo potřebuje foťák, aby naskenoval pivní menu a vytáhl z něj piva.',
+          'Foťák potřebuju, abych ti z menu přečetl piva.',
         ITSAppUsesNonExemptEncryption: false,
         ...(usesLocalBackend()
           ? {

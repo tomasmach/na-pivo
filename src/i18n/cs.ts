@@ -114,7 +114,7 @@ export const cs = {
     mapperStatAnswers: 'odpovědí nasbíráno',
     mapperStatFirstMaps: 'prvně zmapováno',
     mapperStatCompleted: 'hospod hotových',
-    mapperEmpty: 'Ještě jsi nic nezmapoval. Najdi hospodu a řekni, co v ní je.',
+    mapperEmpty: 'Ještě nemáš nic zmapováno. Najdi hospodu a řekni, co v ní je.',
     mapperSignedOut: 'Přihlas se a mapování se ti uloží na všech zařízeních.',
 
     // Badges
@@ -154,12 +154,12 @@ export const cs = {
     reportNotPub: 'Nečepují pivo',
     renameTitle: 'Jak se jmenuje?',
     renameBody: (pubName: string) =>
-      `Přejmenujeme „${pubName}“ i pro ostatní pivaře, když se oprava odešle.`,
+      `Přejmenuju „${pubName}“ i pro ostatní pivaře, když se oprava odešle.`,
     renamePlaceholder: 'Nový název hospody',
     renameSave: 'Uložit název',
     renameSaving: 'Ukládám',
     renameSavedToast: 'Název hospody je opravený.',
-    renameQueuedToast: 'Název je opravený tady. Až bude signál, pošleme ho dál.',
+    renameQueuedToast: 'Název je opravený tady. Až bude signál, pošlu ho dál.',
     calibrationHint: 'Otoč telefonem do osmičky pro kalibraci kompasu',
     openNow: 'Otevřeno',
     openUntil: (t: string) => `Otevřeno do ${t}`,
@@ -190,18 +190,18 @@ export const cs = {
   },
 
   permissions: {
-    title: 'Potřebujeme tvoji polohu',
+    title: 'Potřebuju tvoji polohu',
     body:
-      'Bez polohy neumíme najít hospody v okolí ani namířit šipku. Aktuální nebo přibližná poloha se může poslat našemu serveru, který pro vyhledávání využívá Mapy.cz; GPS trasu ani historii neukládáme.',
+      'Bez polohy neumím najít hospody v okolí ani namířit šipku. Aktuální nebo přibližná poloha se může poslat mému serveru, který pro vyhledávání využívá Mapy.cz; GPS trasu ani historii neukládám.',
     cta: 'Povolit polohu',
     openSettings: 'Otevřít Nastavení',
   },
 
   celebration: {
-    eyebrow: 'DORAZIL JSI DO',
+    eyebrow: 'VÍTEJ V',
     headlineLine1: 'Na',
     headlineLine2: 'zdraví!',
-    subtitle: 'Dej si jedno za nás',
+    subtitle: 'Dej si jedno za mě',
     backToCompass: 'Zpět na kompas',
     openInMaps: 'Otevřít v mapách',
   },
@@ -209,11 +209,11 @@ export const cs = {
   empty: {
     headlineLine1: 'Tady se',
     headlineLine2: 'nenapiješ',
-    body: 'V tvém okolí jsme nenašli hospodu. Zkus to znovu nebo uprav dosah v nastavení.',
+    body: 'V tvém okolí jsem nenašel žádnou hospodu. Zkus to znovu nebo uprav dosah v nastavení.',
     searchFailedHeadlineLine1: 'Hledání',
     searchFailedHeadlineLine2: 'spadlo',
     searchFailedBody:
-      'Nepodařilo se stáhnout hospody. Zkontroluj připojení a zkus to znovu.',
+      'Nepovedlo se mi stáhnout hospody. Zkontroluj připojení a zkus to znovu.',
     openSettings: 'Otevřít nastavení',
     retry: 'Zkusit znovu',
     addPub: 'Přidat hospodu',
@@ -238,7 +238,7 @@ export const cs = {
     },
     distance: {
       header: 'MAXIMÁLNÍ VZDÁLENOST',
-      helper: 'Hledáme hospody jen v této vzdálenosti od tebe.',
+      helper: 'Hledám hospody jen v této vzdálenosti od tebe.',
       unlimited: 'Bez limitu',
       kmShort: 'km',
       mShort: 'm',
@@ -251,19 +251,19 @@ export const cs = {
     },
     pubReminders: {
       title: 'Připomenout v hospodě',
-      subtitle: 'Večer občas koukneme, jestli nesedíš u výčepu. Bez ukládání trasy.',
+      subtitle: 'Večer občas kouknu, jestli nesedíš u výčepu. Bez ukládání trasy.',
       failureEyebrow: 'PŘIPOMÍNKY NEBĚŽÍ',
       openSettings: 'Otevřít Nastavení',
       denied: {
         'notifications-denied': {
           title: 'Notifikace zůstaly vypnuté',
           body:
-            'Připomínku bez notifikací nemáme jak poslat. Zapni je v Nastavení a zkus to znovu.',
+            'Připomínku bez notifikací nemám jak poslat. Zapni je v Nastavení a zkus to znovu.',
         },
         'foreground-location-denied': {
           title: 'Nejdřív povol základní polohu',
           body:
-            'Poloha při používání je základ pro kompas i hospody v okolí. Až ji povolíš, dořešíme polohu „vždy“ pro připomínky.',
+            'Poloha při používání je základ pro kompas i hospody v okolí. Až ji povolíš, dořeším polohu „vždy“ pro připomínky.',
         },
         'background-location-denied': {
           title: 'Chybí poloha „vždy“',
@@ -286,7 +286,7 @@ export const cs = {
     },
     preferGarden: {
       title: 'Radši se zahrádkou',
-      subtitle: 'Když víme, že zahrádku nemají, jdeme dál',
+      subtitle: 'Když vím, že zahrádku nemají, jdu dál',
     },
     hidePubNames: {
       title: 'Schovávat názvy hospod',
@@ -305,10 +305,10 @@ export const cs = {
     about: {
       title: 'O appce',
     },
-    feedback: 'Napiš nám / nahlas chybu',
-    feedbackCtaSubtitle: 'Něco nehraje nebo ti něco chybí? Dej nám vědět.',
+    feedback: 'Napiš mi / nahlas chybu',
+    feedbackCtaSubtitle: 'Něco nehraje nebo ti něco chybí? Dej mi vědět.',
     addPub: 'Přidat chybějící hospodu',
-    addPubCtaSubtitle: 'Nenašel jsi svůj podnik? Přidej ho mezi ostatní.',
+    addPubCtaSubtitle: 'Nevidíš svůj podnik? Přidej ho mezi ostatní.',
     privacy: 'Soukromí',
     creator: {
       header: 'TVŮRCE',
@@ -328,7 +328,7 @@ export const cs = {
 
   pubReminderOnboarding: {
     eyebrow: 'NOVINKA PRO VEČERY',
-    title: 'Až sedneš do hospody, cinkneme ti.',
+    title: 'Až sedneš do hospody, cinknu ti.',
     body:
       'Počítadlo ti večer připomene, když dorazíš k hospodě. Stačí zapnout notifikace a polohu na pozadí.',
     introCta: 'Ukázat, co povoluju',
@@ -336,11 +336,11 @@ export const cs = {
     detailsBody:
       'Kompasu stačí poloha při používání. Připomínka navíc potřebuje polohu „vždy“.',
     notificationTitle: 'Notifikace',
-    notificationBody: 'Pošleme jen krátké připomenutí, ať večer nezmizí bez zápisu.',
+    notificationBody: 'Pošlu jen krátké připomenutí, ať večer nezmizí bez zápisu.',
     locationTitle: 'Poloha „vždy“',
     locationBody: 'iOS ji potřebuje pro hospodský okruh, i když appka zrovna neběží.',
     privacyTitle: 'Bez GPS deníčku',
-    privacyBody: 'Trasy neukládáme. Hlídáme jen, jestli ses přiblížil k hospodě.',
+    privacyBody: 'Trasy neukládám. Hlídám jen, jestli nejsi kousek od hospody.',
     cta: 'Zapnout připomínky',
     ctaBusy: 'Zapínám…',
     back: 'Zpět',
@@ -348,22 +348,22 @@ export const cs = {
   },
 
   report: {
-    title: 'Napiš nám',
-    intro: 'Našel jsi chybu nebo ti něco chybí? Napiš nám pár slov, pomůže to.',
+    title: 'Napiš mi',
+    intro: 'Něco nefunguje nebo ti něco chybí? Napiš mi pár slov, pomůže to.',
     categoryBug: 'Chyba',
     categoryIdea: 'Nápad',
     categoryOther: 'Jiné',
     messagePlaceholder: 'Popiš, co se stalo nebo co ti chybí…',
-    contactCaption: 'Kam ti můžeme odepsat? (nepovinné)',
+    contactCaption: 'Kam ti můžu odepsat? (nepovinné)',
     contactInstagram: 'Instagram',
     contactEmail: 'E-mail',
     contactInstagramPlaceholder: '@tvujprofil',
     contactEmailPlaceholder: 'tvuj@email.cz',
     submit: 'Odeslat',
-    versionCaption: (version: string) => `Odesíláme i verzi aplikace: ${version}`,
+    versionCaption: (version: string) => `Odesílám i verzi aplikace: ${version}`,
     successTitle: 'Díky! 🍺',
     successBody:
-      'Zpráva dorazí, i kdyby teď zrovna nebylo připojení — odešleme ji, jakmile budeš online.',
+      'Zpráva dorazí, i kdyby teď zrovna nebylo připojení — odešlu ji, jakmile budeš online.',
     successClose: 'Zavřít',
   },
 
@@ -409,26 +409,26 @@ export const cs = {
     maxBeersReached: 'Víc piv už přidat nejde',
     save: 'Uložit',
     invalidHint: 'Zkontroluj zadané časy (formát HH:MM).',
-    savedToast: 'Díky! Uloženo',
+    savedToast: 'Díky! Mám to',
     // Mapér reward for a first-time hours/beers contribution to a pub.
     xpToast: (xp: number) => `Díky za zmapování! +${xp} XP`,
     // "Vyfoť menu" — AI OCR helper that prefills the beer rows from a photo.
     scanMenu: {
       button: 'Vyfoť menu',
       sheetTitle: 'Naskenuju ti menu',
-      sheetSubtitle: 'Vyfoť nápoják a piva si přečtu sám. Pak je jen mrkneš a uložíš.',
+      sheetSubtitle: 'Vyfoť nápoják a piva z něj přečtu. Pak na ně mrkneš a uložíš.',
       camera: 'Vyfotit',
       cameraHelper: 'Namiř foťák na lístek',
       library: 'Z galerie',
       libraryHelper: 'Vyber fotku, co už máš',
       cancel: 'Zrušit',
       loading: 'Čtu menu…',
-      successToast: (count: number) => `Načteno ${beerCountLabel(count)} z menu, zkontroluj je`,
+      successToast: (count: number) => `Mám z menu ${beerCountLabel(count)}, mrkni na ně`,
       nothingNewToast: 'Tahle piva už v seznamu máš',
-      emptyToast: 'Na fotce jsme žádné pivo nenašli, zkus to znovu nebo přidej ručně',
-      unavailableToast: 'Skenování menu teď nejede, přidej piva ručně',
+      emptyToast: 'Na fotce nevidím žádné pivo, dej ho víc do záběru nebo přidej ručně',
+      unavailableToast: 'Skenování teď nejede, přidej piva ručně',
       rateLimitedToast: 'Moc rychle po sobě, dej tomu chvíli',
-      badImageToast: 'S tou fotkou si AI neporadila, zkus ostřejší záběr',
+      badImageToast: 'Z téhle fotky to nepřečtu, zkus ostřejší záběr',
       permissionDenied: 'Pusť k tomu foťák nebo galerii v Nastavení a zkus to znovu',
       errorToast: 'Skenování se nepovedlo, zkus to znovu',
     },
@@ -442,7 +442,7 @@ export const cs = {
     locationWithCurrent: 'Začni psát název a vyber podnik z návrhů Mapy.cz. Když tam není, doplň adresu, nebo níže ručně potvrď aktuální polohu.',
     locationFromAddress: 'Začni psát název a vyber podnik z návrhů Mapy.cz. Když tam není, doplň ulici a číslo ručně.',
     useCurrentLocation: 'Použít moji aktuální polohu',
-    useCurrentLocationHint: 'Hodí se, když podnik na Mapy.cz vůbec není. Uložíme jen tuhle hospodu, žádnou trasu.',
+    useCurrentLocationHint: 'Hodí se, když podnik na Mapy.cz vůbec není. Uložím jen tuhle hospodu, žádnou trasu.',
     nameLabel: 'Název',
     namePlaceholder: 'Např. Hospoda U Komunity',
     searchingPlaces: 'Hledám podniky na Mapy.cz...',
@@ -454,10 +454,10 @@ export const cs = {
     addressLabel: 'Adresa',
     addressPlaceholder: 'Ulice a číslo',
     locationError: 'Polohu se nepodařilo najít. Zkus doplnit město nebo přesnější adresu.',
-    locationImprecise: 'Přesnou polohu neznáme. Vyber podnik z návrhů, nebo doplň ulici a číslo.',
+    locationImprecise: 'Přesnou polohu neznám. Vyber podnik z návrhů, nebo doplň ulici a číslo.',
     save: 'Přidat hospodu',
     saving: 'Hledám polohu...',
-    savedToast: 'Hospoda přidána',
+    savedToast: 'Mám ji, díky!',
   },
 
   account: {
@@ -471,7 +471,7 @@ export const cs = {
     passwordLabel: 'Heslo',
     passwordPlaceholder: 'Alespoň 8 znaků',
     nameLabel: 'Jméno (nepovinné)',
-    namePlaceholder: 'Jak ti máme říkat',
+    namePlaceholder: 'Jak ti mám říkat',
     submitLogin: 'Přihlásit se',
     submitRegister: 'Vytvořit účet',
     loading: 'Pracuji…',
@@ -486,9 +486,9 @@ export const cs = {
     errorGeneric: 'Něco se pokazilo. Zkus to prosím znovu.',
 
     // — Forgot password (inline) —
-    resetPrompt: 'Zadej e-mail a pošleme ti odkaz na obnovu hesla.',
+    resetPrompt: 'Zadej e-mail a pošlu ti odkaz na obnovu hesla.',
     resetSend: 'Poslat odkaz',
-    resetSentToast: 'Pokud účet existuje, poslali jsme odkaz na obnovu.',
+    resetSentToast: 'Pokud účet existuje, poslal jsem odkaz na obnovu.',
 
     // — Post-register / verification —
     verifyEmailSentToast: 'Ověřovací e-mail je na cestě.',
@@ -520,10 +520,10 @@ export const cs = {
     // — Data export —
     dataHeader: 'DATA',
     exportData: 'Poslat moje data e-mailem',
-    exportDataSubtitle: 'JSON export profilu, deníku a hodnocení pošleme na tvůj e-mail',
+    exportDataSubtitle: 'JSON export profilu, deníku a hodnocení pošlu na tvůj e-mail',
     exportDataToast: 'Export dat je na cestě.',
     exportDataSentTitle: 'Export odeslán',
-    exportDataSentBody: 'Data jsme poslali na e-mail připojený k tvému účtu.',
+    exportDataSentBody: 'Data jsem poslal na e-mail připojený k tvému účtu.',
     subscriptionTitle: 'Na Pivo+',
     subscriptionFree: 'Free',
     subscriptionPlus: 'Plus',
@@ -631,9 +631,9 @@ export const cs = {
       profileFallback: 'tenhle profil',
       confirmTitle: 'Nahlásit profil?',
       confirmBody: (profile: string) =>
-        `Pošleme moderátorovi hlášení na ${profile}. Použij to pro nevhodnou přezdívku, fotku nebo spam.`,
+        `Hlášení na ${profile} si projdu. Použij to pro nevhodnou přezdívku, fotku nebo spam.`,
       confirmSubmit: 'Nahlásit',
-      sentToast: 'Hlášení odesláno.',
+      sentToast: 'Hlášení mám, mrknu na to.',
     },
 
     // — Signed-out hero —
@@ -662,7 +662,7 @@ export const cs = {
       photoHintEmpty: 'Klepni a přidej fotku (nepovinné)',
       photoHintSet: 'Klepni a změň fotku',
       avatarUploadError: 'Fotku se nepodařilo nahrát. Zkus to prosím znovu.',
-      permissionBody: 'Pro výběr fotky potřebujeme přístup ke knihovně fotek. Povol ho v Nastavení.',
+      permissionBody: 'Pro výběr fotky potřebuju přístup ke knihovně fotek. Povol ho v Nastavení.',
       // Shown when the OS won't re-prompt (canAskAgain=false) — the only path is Settings.
       permissionBlockedBody: 'Přístup k fotkám je zakázaný. Povol ho v systémovém Nastavení a zkus to znovu.',
       openSettings: 'Otevřít Nastavení',
@@ -689,7 +689,7 @@ export const cs = {
       nicknameHeader: 'PŘEZDÍVKA',
       displayNameHeader: 'JMÉNO',
       displayNameLabel: 'Jméno (nepovinné)',
-      displayNamePlaceholder: 'Jak ti máme říkat',
+      displayNamePlaceholder: 'Jak ti mám říkat',
       visibilityHeader: 'VIDITELNOST',
       visibilityToggleLabel: 'Veřejný profil',
       // Short GDPR copy on the edit screen (the wizard carries the full version).
@@ -705,16 +705,16 @@ export const cs = {
 
   counter: {
     // — Permission gate —
-    permTitle: 'Potřebujeme tvoji polohu',
+    permTitle: 'Potřebuju tvoji polohu',
     permBody:
-      'Ať poznáme hospody v okolí a podnik, ve kterém sedíš. Aktuální nebo přibližná poloha se může poslat našemu serveru, který pro vyhledávání využívá Mapy.cz; GPS trasu ani historii neukládáme.',
+      'Ať poznám hospody v okolí a podnik, ve kterém sedíš. Aktuální nebo přibližná poloha se může poslat mému serveru, který pro vyhledávání využívá Mapy.cz; GPS trasu ani historii neukládám.',
     permCta: 'Povolit polohu',
     permOpenSettings: 'Otevřít Nastavení',
 
     // — Detecting / empty —
-    detecting: 'Hledáme, kde sedíš…',
+    detecting: 'Hledám, kde sedíš…',
     noPubTitle: 'Žádná hospoda nablízku',
-    noPubBody: 'Nenašli jsme hospodu ve tvém okolí. Zkus to znovu.',
+    noPubBody: 'Nenašel jsem hospodu ve tvém okolí. Zkus to znovu.',
     retry: 'Zkusit znovu',
 
     // — Active header —
@@ -731,7 +731,7 @@ export const cs = {
         few: 'minutami',
         many: 'minutami',
       })}`,
-    rapidDrinkTitle: 'Už sis pivo přidal',
+    rapidDrinkTitle: 'Pivo už máš přidané',
     rapidDrinkBody: (lastDrinkText: string) =>
       `${lastDrinkText}. Fakt chceš přidat další?`,
     rapidDrinkConfirm: 'Přidat další',
@@ -752,7 +752,7 @@ export const cs = {
     // Explicit "I'm done" — archives the session to history.
     doneDrinking: 'Dopito',
     doneTitle: 'Dopito?',
-    doneBody: 'Zavřeme tenhle večer a najdeš ho v Historii.',
+    doneBody: 'Zavřu tenhle večer a najdeš ho v Historii.',
     doneConfirm: 'Dopito',
     // Offered when a recent evening at this pub auto-completed and can continue.
     resumeEvening: 'Pokračovat ve večeru',
@@ -791,7 +791,7 @@ export const cs = {
     // — Empty state —
     emptyTitle: 'Zatím žádná pivní stopa',
     emptyBody:
-      'Ťukni na pivo v Počítadle a večer se uloží sem. Uvidíš, kde jsi byl, co jsi pil a kolik to dalo.',
+      'Ťukni na pivo v Počítadle a večer se uloží sem. Uvidíš, kde to bylo, co teklo a kolik to dalo.',
 
     // — Sections —
     currentHeader: 'AKTUÁLNÍ VEČER',
@@ -826,7 +826,7 @@ export const cs = {
     editDrinkCancel: 'Zrušit',
     editDrinkEmpty: 'Bez názvu to nepůjde.',
     deleteDrinkTitle: 'Smazat pivo?',
-    deleteDrinkBody: 'Když bylo navíc nebo patří jiné hospodě, smažeme ho z večera.',
+    deleteDrinkBody: 'Když bylo navíc nebo patří jiné hospodě, smažu ho z večera.',
     deleteDrinkConfirm: 'Smazat',
     deleteDrinkCancel: 'Zrušit',
     totalLabel: 'Celkem',
@@ -841,7 +841,7 @@ export const cs = {
     notePresets: ['Sem se vrátit', 'Nic moc', 'Dobrý tankový'] as const,
     // Free-text note in the user's own words.
     noteLabel: 'Vlastní poznámka',
-    notePlaceholder: 'Co sis chtěl zapamatovat? Třeba „skvělý výčep, ale draho".',
+    notePlaceholder: 'Co si chceš zapamatovat? Třeba „skvělý výčep, ale draho".',
   },
 
   whatsNew: {
@@ -859,7 +859,7 @@ export const cs = {
     // Shown while this version's release note is being fetched.
     loading: 'Načítám novinky…',
     // The backend has no note for this version (404 / empty).
-    empty: 'Pro tuhle verzi tu zatím žádné novinky nemáme.',
+    empty: 'Pro tuhle verzi tu zatím žádné novinky nemám.',
     // Offline / timeout / dormant backend — distinct from "empty" so the user
     // knows it's worth trying again later.
     error: 'Novinky se teď nepodařilo načíst. Mrkni na to za chvíli.',
@@ -869,18 +869,18 @@ export const cs = {
   privacy: {
     title: 'Soukromí',
     body: [
-      'Sbíráme jen omezené provozní statistiky: otevření aplikace, návrat do popředí, technické chyby, verzi aplikace a součet nachozených metrů.',
-      'Pro stažení okolních hospod může aplikace poslat aktuální nebo přibližnou polohu na náš server, který pro vyhledávání využívá Mapy.cz.',
+      'Sbírám jen omezené provozní statistiky: otevření aplikace, návrat do popředí, technické chyby, verzi aplikace a součet nachozených metrů.',
+      'Pro stažení okolních hospod může aplikace poslat aktuální nebo přibližnou polohu na můj server, který pro vyhledávání využívá Mapy.cz.',
       'Nachozené metry se počítají v telefonu a na server se posílá jen součet po dávkách, nikdy GPS body ani trasa.',
-      'Průběžnou GPS historii, trasu pohybu ani jednotlivé GPS body neukládáme.',
-      'Pro zobrazení otevírací doby aplikace pošle název a polohu vybrané hospody na vlastní server provozovatele, který dohledá otevírací dobu.',
-      'Aplikace vytvoří anonymní náhodný identifikátor zařízení a odešle ho na náš server, aby každému zařízení patřil dočasný účet. Identifikátor neobsahuje žádné osobní údaje a slouží jen k odlišení zařízení.',
-      'Účet je dobrovolný. Když se zaregistruješ e-mailem, ukládáme e-mail a heslo jen v zahashované podobě. Přes Google nebo Apple dostaneme identifikátor účtu, e-mail a případně jméno; heslo od poskytovatele nikdy nevidíme.',
+      'Průběžnou GPS historii, trasu pohybu ani jednotlivé GPS body neukládám.',
+      'Pro zobrazení otevírací doby aplikace pošle název a polohu vybrané hospody na můj server, který dohledá otevírací dobu.',
+      'Aplikace vytvoří anonymní náhodný identifikátor zařízení a odešle ho na můj server, aby každému zařízení patřil dočasný účet. Identifikátor neobsahuje žádné osobní údaje a slouží jen k odlišení zařízení.',
+      'Účet je dobrovolný. Když se zaregistruješ e-mailem, ukládám e-mail a heslo jen v zahashované podobě. Přes Google nebo Apple dostanu identifikátor účtu, e-mail a případně jméno; heslo od poskytovatele nikdy nevidím.',
       'Profil může obsahovat přezdívku, jméno a avatar. U veřejného profilu tě podle přezdívky a fotky můžou najít ostatní; přesná poloha, deníček a jednotlivá piva se veřejně nezobrazují.',
       'Počítadlo, historie večerů, návštěvy hospod a tvoje soukromá hodnocení se ukládají lokálně a synchronizují se jen k tvému účtu. Po odhlášení nebo smazání účtu appka lokální soukromý deníček, hodnocení a čekající private sync fronty z tohohle zařízení vyčistí.',
-      'Když dobrovolně doplníš otevírací dobu, piva na čepu nebo chybějící hospodu, aplikace tyto údaje odešle na náš server. Tyhle příspěvky pomáhají ostatním a můžou se zobrazit veřejně, ale bez tvé přesné polohy.',
-      'V účtu si můžeš vyžádat JSON export svých dat e-mailem nebo účet smazat. Po smazání vyčistíme lokální soukromá data v appce a serverová data se smažou podle zásad ochrany osobních údajů.',
-      'Transakční e-maily, například ověření adresy, obnova hesla, export dat nebo potvrzení smazání účtu, posíláme přes Resend. Téhle službě předáme jen e-mailovou adresu a obsah nutný k odeslání zprávy.',
+      'Když dobrovolně doplníš otevírací dobu, piva na čepu nebo chybějící hospodu, aplikace tyto údaje odešle na můj server. Tyhle příspěvky pomáhají ostatním a můžou se zobrazit veřejně, ale bez tvé přesné polohy.',
+      'V účtu si můžeš vyžádat JSON export svých dat e-mailem nebo účet smazat. Po smazání vyčistím lokální soukromá data v appce a serverová data se smažou podle zásad ochrany osobních údajů.',
+      'Transakční e-maily, například ověření adresy, obnova hesla, export dat nebo potvrzení smazání účtu, posílám přes Resend. Téhle službě předám jen e-mailovou adresu a obsah nutný k odeslání zprávy.',
     ],
     contactLabel: 'Kontakt',
     contactEmail: 'tomades1@gmail.com',
