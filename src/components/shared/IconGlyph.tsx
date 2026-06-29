@@ -75,6 +75,8 @@ import {
   MapPinPlus,
   Sprout,
   ClipboardList,
+  Flame,
+  Trophy,
   LucideProps,
 } from 'lucide-react-native';
 
@@ -181,3 +183,6 @@ export const MapPinnedIcon = wrap(MapPinned, 'MapPinnedIcon');
 export const MapPinPlusIcon = wrap(MapPinPlus, 'MapPinPlusIcon');
 export const SproutIcon = wrap(Sprout, 'SproutIcon');
 export const ClipboardListIcon = wrap(ClipboardList, 'ClipboardListIcon');
+// Parta 2.0 — streak flame + leaderboard trophy.
+export const FlameIcon = wrap(Flame, 'FlameIcon');
+export const TrophyIcon = wrap(Trophy, 'TrophyIcon');

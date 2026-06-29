@@ -1,4 +1,30 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+/**
+ * FriendsScreen — the premium "Parta 2.0" surface (layout spec §1–§12).
+ *
+ * One living table you watch fill: only what is happening *tonight* is elevated
+ * and amber (my own broadcast card, friends' live cards), everything else breathes
+ * in hairline rows on the bare stout ground. The screen is a single ScrollView with
+ * an amber RefreshControl; every top-level group is wrapped in <Reveal> for a
+ * mount-driven staggered entrance, and the inter-group rhythm is Spacing.xl while
+ * stacks breathe at Spacing.sm.
+ *
+ * Section order (§1): Hero → OfflineBanner → MyActivityCard → TEĎ NA PIVU →
+ * ČEKAJÍ NA TEBE → ŽEBŘÍČEK PARTY → PŘIDAT DO PARTY → KÁMOŠI → CINKLO V PARTĚ.
+ *
+ * State carries a dedicated `loadError` flag distinct from `dashboard` so a failed
+ * fetch (OfflineBanner) is never misread as "you have no friends" — the last-known
+ * dashboard stays rendered below the banner. Every mutating action (RSVP, accept,
+ * decline, remove, end broadcast, settings change) reloads the dashboard silently.
+ */
+
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -13,25 +39,26 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
+  DEFAULT_FRIEND_SOCIAL_SETTINGS,
   fetchFriendsDashboard,
   markFriendNotificationsRead,
   removeFriend,
   respondFriendRequest,
   searchFriends,
   sendFriendRequest,
-  type FriendNotification,
   type FriendProfile,
   type FriendsDashboard,
 } from '@/data/friendsClient';
 import { Avatar } from '@/profile/Avatar';
-import { GlowButton } from '@/components/shared/GlowButton';
 import {
   BellRingIcon,
   CheckIcon,
-  MessageSquareIcon,
+  EyeOffIcon,
   PlusIcon,
   SearchIcon,
+  SettingsIcon,
   Trash2Icon,
+  TrophyIcon,
   UserPlusIcon,
   UsersIcon,
   XIcon,
@@ -39,16 +66,34 @@ import {
 import { cs } from '@/i18n/cs';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
-import { amberGlow, softDrop } from '@/theme/shadows';
+import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { useToastStore } from '@/stores/toastStore';
 
+import FriendActiveCard from './FriendActiveCard';
+import FriendSettingsSheet from './FriendSettingsSheet';
+import FriendsSkeleton from './FriendsSkeleton';
+import HairlineRow from './HairlineRow';
+import { LeaderboardRow } from './LeaderboardRow';
+import LiveDot from './LiveDot';
+import LoopEmptyState from './LoopEmptyState';
+import MyActivityCard from './MyActivityCard';
+import OfflineBanner from './OfflineBanner';
+import Reveal from './Reveal';
+import SectionHeader from './SectionHeader';
+import StreakBadge from './StreakBadge';
+
+/** Leaderboard rows shown before the "+N dalších" cut (my row is always pinned). */
+const LEADERBOARD_CAP = 8;
+const ROUND_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
+
+/** `@nickname` (preferred) → display name → a friendly fallback. */
 function displayName(profile: FriendProfile | null | undefined): string {
   if (!profile) return 'Kamarád';
   if (profile.nickname) return `@${profile.nickname}`;
   return profile.displayName || 'Kamarád';
 }
 
+/** Short cs-CZ "29. 6. 23:45" stamp for the notification feed. */
 function timeLabel(iso: string): string {
   const ms = Date.parse(iso);
   if (!Number.isFinite(ms)) return '';
@@ -60,6 +105,7 @@ function timeLabel(iso: string): string {
   });
 }
 
+/** Avatar + resolved name — reused in requests, search results and the friend list. */
 function FriendMini({ profile }: { profile: FriendProfile }) {
   return (
     <View style={styles.friendMini}>
@@ -69,17 +115,33 @@ function FriendMini({ profile }: { profile: FriendProfile }) {
         displayName={profile.displayName}
         size={34}
       />
-      <Text style={styles.friendMiniText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+      <Text
+        style={styles.friendMiniText}
+        numberOfLines={1}
+        maxFontSizeMultiplier={FontScaleCap.body}
+      >
         {displayName(profile)}
       </Text>
     </View>
   );
 }
 
-function EmptyState({ text }: { text: string }) {
+/** Crafted empty strip: icon + one organic line on bare stout, zero amber. */
+function EmptyStrip({ icon, text }: { icon: ReactNode; text: string }) {
   return (
-    <View style={styles.emptyState}>
-      <Text style={styles.emptyText} maxFontSizeMultiplier={FontScaleCap.body}>
+    <View style={styles.emptyStrip}>
+      <View
+        importantForAccessibility="no"
+        accessibilityElementsHidden
+        pointerEvents="none"
+      >
+        {icon}
+      </View>
+      <Text
+        style={styles.emptyStripText}
+        numberOfLines={3}
+        maxFontSizeMultiplier={FontScaleCap.body}
+      >
         {text}
       </Text>
     </View>
@@ -89,47 +151,85 @@ function EmptyState({ text }: { text: string }) {
 export default function FriendsScreen() {
   const insets = useSafeAreaInsets();
   const showToast = useToastStore((s) => s.show);
+
   const [dashboard, setDashboard] = useState<FriendsDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // Distinct from `dashboard`: a failed fetch must never read as "no friends".
+  const [loadError, setLoadError] = useState(false);
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<FriendProfile[]>([]);
+  const [settingsVisible, setSettingsVisible] = useState(false);
 
-  const load = useCallback(async (mode: 'initial' | 'refresh' = 'refresh') => {
-    if (mode !== 'initial') setRefreshing(true);
-    const next = await fetchFriendsDashboard();
-    setDashboard(next);
-    setLoading(false);
-    setRefreshing(false);
-    if (next?.notifications.length) {
-      void markFriendNotificationsRead(next.notifications.map((n) => n.id));
-    }
-  }, []);
+  const mountedRef = useRef(true);
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+    },
+    [],
+  );
+
+  // Last locally-confirmed social settings. `load()` prefers this over a
+  // possibly-stale GET so a quiet-hours / ghost edit can't flash back to the
+  // pre-edit value while the close-time reload races the just-sent PATCH.
+  const settingsOverrideRef = useRef<FriendsDashboard['settings'] | null>(null);
+
+  const load = useCallback(
+    async (mode: 'initial' | 'refresh' | 'silent' = 'silent') => {
+      if (mode === 'refresh') setRefreshing(true);
+      const next = await fetchFriendsDashboard();
+      if (!mountedRef.current) return;
+      if (next) {
+        // Prefer the locally-confirmed settings over the fetched ones so an
+        // in-flight settings edit never flashes back to a stale server value.
+        const override = settingsOverrideRef.current;
+        setDashboard(override ? { ...next, settings: override } : next);
+        setLoadError(false);
+        // Read-on-open only: silent post-mutation reloads must not consume the
+        // unread feed (that's the open/refresh path's job).
+        if (
+          next.notifications.length &&
+          (mode === 'initial' || mode === 'refresh')
+        ) {
+          void markFriendNotificationsRead(next.notifications.map((n) => n.id));
+        }
+      } else {
+        // Keep the last-known dashboard rendered; only flip the error flag.
+        setLoadError(true);
+      }
+      if (mode === 'initial') setLoading(false);
+      if (mode === 'refresh') setRefreshing(false);
+    },
+    [],
+  );
 
   useEffect(() => {
-    let cancelled = false;
-    void fetchFriendsDashboard().then((next) => {
-      if (cancelled) return;
-      setDashboard(next);
-      setLoading(false);
-      if (next?.notifications.length) {
-        void markFriendNotificationsRead(next.notifications.map((n) => n.id));
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    // Kick the initial fetch off the synchronous effect pass (its setState resolves
+    // after the await, inside a scheduled task) so the React Compiler doesn't read
+    // it as a cascading-render trigger. The skeleton covers the one-tick gap.
+    const kickoff = setTimeout(() => void load('initial'), 0);
+    return () => clearTimeout(kickoff);
+  }, [load]);
+
+  /** Stable "reload the dashboard" used by every mutating child (RSVP / end). */
+  const reload = useCallback(() => {
+    void load();
+  }, [load]);
 
   const doSearch = useCallback(async () => {
     const q = query.trim();
     if (q.length < 2) return;
     setSearching(true);
     const found = await searchFriends(q);
+    if (!mountedRef.current) return;
     setSearching(false);
     setResults(found ?? []);
-    if (found === null) showToast(cs.friends.offline, { icon: <UsersIcon size={20} color={Colors.amber} /> });
+    if (found === null) {
+      showToast(cs.friends.offline, {
+        icon: <UsersIcon size={20} color={Colors.amber} />,
+      });
+    }
   }, [query, showToast]);
 
   const requestFriend = useCallback(
@@ -137,8 +237,11 @@ export default function FriendsScreen() {
       const result = profile
         ? await sendFriendRequest({ accountId: profile.id })
         : await sendFriendRequest({ nickname: query.trim().replace(/^@/, '') });
+      if (!mountedRef.current) return;
       if (result.ok) {
-        showToast(cs.friends.requestSent, { icon: <UserPlusIcon size={20} color={Colors.amber} /> });
+        showToast(cs.friends.requestSent, {
+          icon: <UserPlusIcon size={20} color={Colors.amber} />,
+        });
         setQuery('');
         setResults([]);
         await load();
@@ -153,9 +256,17 @@ export default function FriendsScreen() {
     async (id: string, action: 'accept' | 'decline') => {
       const result = await respondFriendRequest(id, action);
       if (result.ok) {
-        showToast(action === 'accept' ? cs.friends.requestAccepted : cs.friends.requestDeclined, {
-          icon: action === 'accept' ? <CheckIcon size={20} color={Colors.amber} /> : <XIcon size={20} color={Colors.amber} />,
-        });
+        showToast(
+          action === 'accept' ? cs.friends.requestAccepted : cs.friends.requestDeclined,
+          {
+            icon:
+              action === 'accept' ? (
+                <CheckIcon size={20} color={Colors.amber} />
+              ) : (
+                <XIcon size={20} color={Colors.amber} />
+              ),
+          },
+        );
         await load();
       } else {
         showToast(result.detail, { icon: <XIcon size={20} color={Colors.amber} /> });
@@ -174,11 +285,16 @@ export default function FriendsScreen() {
           style: 'destructive',
           onPress: () => {
             void removeFriend(friend.id).then(async (result) => {
+              if (!mountedRef.current) return;
               if (result.ok) {
-                showToast(cs.friends.friendRemoved, { icon: <Trash2Icon size={20} color={Colors.amber} /> });
+                showToast(cs.friends.friendRemoved, {
+                  icon: <Trash2Icon size={20} color={Colors.amber} />,
+                });
                 await load();
               } else {
-                showToast(result.detail, { icon: <XIcon size={20} color={Colors.amber} /> });
+                showToast(result.detail, {
+                  icon: <XIcon size={20} color={Colors.amber} />,
+                });
               }
             });
           },
@@ -188,228 +304,522 @@ export default function FriendsScreen() {
     [load, showToast],
   );
 
-  const activeNames = useMemo(() => {
-    const active = dashboard?.activeFriends ?? [];
-    return active.slice(0, 3).map((a) => displayName(a.account));
+  const handleSettingsSaved = useCallback((next: FriendsDashboard['settings']) => {
+    // Reflect the change locally at once and remember it as the override so the
+    // close-time reload can't clobber it with a stale GET.
+    settingsOverrideRef.current = next;
+    setDashboard((prev) => (prev ? { ...prev, settings: next } : prev));
+  }, []);
+
+  const closeSettings = useCallback(() => {
+    setSettingsVisible(false);
+    // Ghost mode flips active-feed visibility / streak server-side → resync.
+    void load();
+  }, [load]);
+
+  // Dynamic hero sub-line: folds the live social-proof and the streak loss-aversion
+  // into one line (priority order per §2), since the hero stays compact.
+  const heroSub = useMemo<{ text: string; color: string }>(() => {
+    if (!dashboard) return { text: '', color: Colors.mutedText };
+    const myGoing = dashboard.myActiveActivity
+      ? dashboard.myActiveActivity.responses.going
+      : 0;
+    const friendsLive = dashboard.activeFriends.length;
+    const iAmLive = dashboard.myActiveActivity != null;
+
+    if (iAmLive && myGoing > 0) {
+      return { text: cs.friends.heroLiveMine(myGoing), color: Colors.foam };
+    }
+    if (
+      dashboard.streak.currentWeeks > 0 &&
+      !dashboard.streak.thisWeekLit &&
+      friendsLive === 0 &&
+      !iAmLive
+    ) {
+      return { text: cs.friends.heroStreakRisk, color: Colors.amberLight };
+    }
+    if (friendsLive >= 1) {
+      return friendsLive === 1
+        ? {
+            text: cs.friends.heroFriendLive(displayName(dashboard.activeFriends[0].account)),
+            color: Colors.foamMuted,
+          }
+        : { text: cs.friends.heroManyLive(friendsLive), color: Colors.foamMuted };
+    }
+    return { text: cs.friends.heroQuiet, color: Colors.mutedText };
   }, [dashboard]);
+
+  const liveNow =
+    dashboard != null &&
+    (dashboard.activeFriends.length > 0 || dashboard.myActiveActivity != null);
 
   if (loading) {
     return (
-      <View style={[styles.root, styles.loading, { paddingTop: insets.top }]}>
-        <ActivityIndicator color={Colors.amber} />
+      <View style={[styles.root, { paddingTop: insets.top + 8 }]}>
+        <FriendsSkeleton />
       </View>
     );
   }
 
+  const d = dashboard;
+  const friendsLive = d ? d.activeFriends.length : 0;
+
+  // Leaderboard slicing: top rows + a "+N dalších" line, but ALWAYS pin my row.
+  const leaderboard = d?.leaderboard ?? [];
+  const maxVisits = leaderboard.reduce((m, e) => Math.max(m, e.visits30d), 0);
+  const visibleBoard = leaderboard.slice(0, LEADERBOARD_CAP);
+  const hiddenCount = leaderboard.length - visibleBoard.length;
+  const myIndex = leaderboard.findIndex((e) => e.isMe);
+  const myPinned = hiddenCount > 0 && myIndex >= LEADERBOARD_CAP;
+
+  // Running reveal index so the stagger stays tight regardless of absent sections.
+  // A fresh per-render counter object (its property is mutated, the binding is
+  // never reassigned) numbers only the sections that actually render while keeping
+  // the React Compiler's immutability rule satisfied.
+  const revealCounter = { next: 0 };
+  const nextReveal = () => revealCounter.next++;
+
   return (
-    <View style={[styles.root, { paddingTop: insets.top + 8 }]}>
+    <View style={styles.root}>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom + 18, 32) }]}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: Math.max(insets.bottom + 18, 32) },
+        ]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={() => void load()}
+            onRefresh={() => void load('refresh')}
             tintColor={Colors.amber}
           />
         }
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.hero, softDrop()]}>
-          <View style={styles.heroTop}>
-            <View style={[styles.heroIcon, amberGlow(12)]}>
-              <UsersIcon size={26} color={Colors.amber} />
-            </View>
-            <Text style={styles.heroKicker} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.friends.title}
-            </Text>
-          </View>
-          <Text style={styles.heroTitle} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.friends.heroTitle}
-          </Text>
-          <Text style={styles.heroBody} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.friends.heroBody}
-          </Text>
-          {activeNames.length > 0 && (
-            <View style={styles.liveStrip}>
-              <BellRingIcon size={17} color={Colors.amber} />
-              <Text style={styles.liveStripText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                {activeNames.join(', ')}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.searchBlock}>
-          <View style={styles.searchRow}>
-            <SearchIcon size={19} color={Colors.mutedText} />
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              placeholder={cs.friends.searchPlaceholder}
-              placeholderTextColor={Colors.mutedText}
-              autoCapitalize="none"
-              autoCorrect={false}
-              style={styles.searchInput}
-              returnKeyType="search"
-              onSubmitEditing={doSearch}
-            />
-            <Pressable onPress={doSearch} style={styles.searchButton} accessibilityRole="button">
-              {searching ? (
-                <ActivityIndicator color={Colors.stout} size="small" />
-              ) : (
-                <Text style={styles.searchButtonText}>{cs.friends.searchCta}</Text>
-              )}
-            </Pressable>
-          </View>
-          {results.length > 0 && (
-            <View style={styles.searchResults}>
-              {results.map((profile) => (
-                <View key={profile.id} style={styles.searchResultRow}>
-                  <FriendMini profile={profile} />
-                  <Pressable
-                    onPress={() => void requestFriend(profile)}
-                    style={styles.iconButton}
-                    accessibilityRole="button"
-                  >
-                    <PlusIcon size={18} color={Colors.stout} />
-                  </Pressable>
-                </View>
-              ))}
-            </View>
-          )}
-          {query.trim().length >= 2 && results.length === 0 && !searching && (
-            <Pressable
-              onPress={() => void requestFriend()}
-              style={styles.nicknameInvite}
-              accessibilityRole="button"
-            >
-              <UserPlusIcon size={18} color={Colors.amber} />
-              <Text style={styles.nicknameInviteText}>{cs.friends.addByNickname}</Text>
-            </Pressable>
-          )}
-        </View>
-
-        <Text style={styles.sectionHeader}>{cs.friends.activeHeader}</Text>
-        {dashboard?.activeFriends.length ? (
-          <View style={styles.stack}>
-            {dashboard.activeFriends.map((activity) => (
-              <View key={activity.id} style={styles.activeCard}>
-                <View style={styles.activeHeader}>
-                  <FriendMini profile={activity.account} />
-                  <Text style={styles.activeTime}>{timeLabel(activity.startedAt)}</Text>
-                </View>
-                <Text style={styles.activeTitle} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.heading}>
-                  {activity.name}
+        {/* §2 — Hero (compact masthead, no card, drawn straight on stout) */}
+        <Reveal index={nextReveal()}>
+          <View style={[styles.hero, { paddingTop: insets.top + 8 }]}>
+            <View style={styles.heroRow1}>
+              <View style={styles.heroTitleWrap}>
+                {liveNow ? <LiveDot /> : null}
+                <Text
+                  style={styles.heroTitle}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.heading}
+                >
+                  {cs.friends.title}
                 </Text>
-                <Text style={styles.activeBody} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {activity.message || cs.friends.inviteLine(displayName(activity.account), activity.name)}
-                </Text>
-                <View style={styles.tableBadge}>
-                  <MessageSquareIcon size={16} color={Colors.amber} />
-                  <Text style={styles.tableBadgeText}>{cs.friends.atPubMessage}</Text>
-                </View>
               </View>
-            ))}
-          </View>
-        ) : (
-          <EmptyState text={cs.friends.emptyActive} />
-        )}
 
-        {dashboard?.incomingRequests.length ? (
-          <>
-            <Text style={styles.sectionHeader}>{cs.friends.requestsHeader}</Text>
-            <View style={styles.stack}>
-              {dashboard.incomingRequests.map((request) => (
-                <View key={request.id} style={styles.requestCard}>
-                  <FriendMini profile={request.requester} />
-                  <View style={styles.requestActions}>
-                    <Pressable onPress={() => void respond(request.id, 'decline')} style={styles.secondaryRound}>
-                      <XIcon size={18} color={Colors.foam} />
-                    </Pressable>
-                    <Pressable onPress={() => void respond(request.id, 'accept')} style={styles.primaryRound}>
-                      <CheckIcon size={18} color={Colors.stout} />
-                    </Pressable>
-                  </View>
-                </View>
-              ))}
+              <View style={styles.heroRight}>
+                {d?.settings.ghostMode ? (
+                  <Pressable
+                    onPress={() => setSettingsVisible(true)}
+                    hitSlop={ROUND_HIT_SLOP}
+                    accessibilityRole="button"
+                    accessibilityLabel={cs.friends.ghostActive}
+                    style={({ pressed }) => [styles.ghostChip, pressed && styles.dim]}
+                  >
+                    <EyeOffIcon size={14} color={Colors.mutedText} />
+                    <Text
+                      style={styles.ghostChipText}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {cs.friends.ghostActive}
+                    </Text>
+                  </Pressable>
+                ) : null}
+                {d ? <StreakBadge streak={d.streak} /> : null}
+                <Pressable
+                  onPress={() => setSettingsVisible(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel={cs.friends.settingsOpen}
+                  style={({ pressed }) => [styles.gear, pressed && styles.dim]}
+                >
+                  <SettingsIcon size={22} color={Colors.mutedText} />
+                </Pressable>
+              </View>
             </View>
-          </>
+
+            {d ? (
+              <Text
+                style={[styles.heroSubline, { color: heroSub.color }]}
+                numberOfLines={2}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {heroSub.text}
+              </Text>
+            ) : null}
+
+            <View style={styles.heroRule} />
+          </View>
+        </Reveal>
+
+        {/* §11 — OfflineBanner (only on a failed/stale fetch; data stays below) */}
+        {loadError ? (
+          <Reveal index={nextReveal()}>
+            <View style={styles.section}>
+              <OfflineBanner onRetry={() => void load('refresh')} />
+            </View>
+          </Reveal>
         ) : null}
 
-        <Text style={styles.sectionHeader}>{cs.friends.friendsHeader}</Text>
-        {dashboard?.friends.length ? (
-          <View style={styles.stack}>
-            {dashboard.friends.map((friend) => {
-              const stats = dashboard.friendStats[friend.id];
-              return (
-                <View key={friend.id} style={styles.friendCard}>
-                  <View style={styles.friendCardTop}>
-                    <FriendMini profile={friend} />
-                    <Pressable onPress={() => confirmRemove(friend)} hitSlop={8}>
-                      <Trash2Icon size={18} color={Colors.mutedText} />
-                    </Pressable>
-                  </View>
-                  <Text style={styles.sharedCount}>{cs.friends.sharedCount(stats?.sharedPubCount ?? 0)}</Text>
-                  {!!stats?.lastPubName && <Text style={styles.lastTogether}>{cs.friends.lastTogether(stats.lastPubName)}</Text>}
-                  {!!stats?.rituals.length && (
-                    <View style={styles.ritualRow}>
-                      {stats.rituals.map((ritual) => (
-                        <View key={ritual.key} style={styles.ritualChip}>
-                          <Text style={styles.ritualText}>{ritual.title}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </View>
-              );
-            })}
-          </View>
-        ) : (
-          <EmptyState text={dashboard ? cs.friends.emptyFriends : cs.friends.offline} />
-        )}
-
-        {!!dashboard?.outgoingRequests.length && (
-          <>
-            <Text style={styles.sectionHeader}>{cs.friends.outgoingHeader}</Text>
-            <View style={styles.outgoingRow}>
-              {dashboard.outgoingRequests.map((request) => (
-                <View key={request.id} style={styles.outgoingChip}>
-                  <Text style={styles.outgoingText}>{displayName(request.recipient)}</Text>
-                </View>
-              ))}
+        {/* §3 — MyActivityCard: my own live broadcast, the one card with a glow */}
+        {d?.myActiveActivity ? (
+          <Reveal index={nextReveal()}>
+            <View style={styles.section}>
+              <MyActivityCard activity={d.myActiveActivity} onEnded={reload} />
             </View>
-          </>
-        )}
+          </Reveal>
+        ) : null}
 
-        {!!dashboard?.notifications.length && (
-          <>
-            <Text style={styles.sectionHeader}>{cs.friends.feedHeader}</Text>
-            <View style={styles.stack}>
-              {dashboard.notifications.slice(0, 6).map((notification: FriendNotification) => (
-                <View key={notification.id} style={styles.notificationRow}>
-                  <BellRingIcon size={18} color={notification.readAt ? Colors.mutedText : Colors.amber} />
-                  <View style={styles.notificationText}>
-                    <Text style={styles.notificationTitle}>{notification.title}</Text>
-                    <Text style={styles.notificationBody} numberOfLines={2}>
-                      {notification.body}
+        {/* §4 — TEĎ NA PIVU: the decision surface (friends' live cards) */}
+        {d ? (
+          <Reveal index={nextReveal()}>
+            <View style={styles.section}>
+              <SectionHeader label={cs.friends.activeHeader} live={friendsLive > 0} />
+              {friendsLive > 0 ? (
+                <View style={styles.stack}>
+                  {d.activeFriends.map((activity) => (
+                    <FriendActiveCard
+                      key={activity.id}
+                      activity={activity}
+                      onResponded={reload}
+                    />
+                  ))}
+                </View>
+              ) : d.myActiveActivity ? (
+                <Text
+                  style={styles.subtleNote}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {cs.friends.emptyActiveBroadcasting}
+                </Text>
+              ) : (
+                <LoopEmptyState />
+              )}
+            </View>
+          </Reveal>
+        ) : null}
+
+        {/* §5 — ČEKAJÍ NA TEBE: incoming requests (a11y accept / decline) */}
+        {d && d.incomingRequests.length > 0 ? (
+          <Reveal index={nextReveal()}>
+            <View style={styles.section}>
+              <SectionHeader label={cs.friends.requestsHeader} />
+              <View>
+                {d.incomingRequests.map((request, i) => (
+                  <HairlineRow key={request.id} first={i === 0}>
+                    <View style={styles.requestRow}>
+                      <FriendMini profile={request.requester} />
+                      <View style={styles.requestActions}>
+                        <Pressable
+                          onPress={() => void respond(request.id, 'decline')}
+                          hitSlop={ROUND_HIT_SLOP}
+                          accessibilityRole="button"
+                          accessibilityLabel={cs.friends.decline}
+                          style={({ pressed }) => [styles.declineBtn, pressed && styles.dim]}
+                        >
+                          <XIcon size={18} color={Colors.foam} />
+                        </Pressable>
+                        <Pressable
+                          onPress={() => void respond(request.id, 'accept')}
+                          hitSlop={ROUND_HIT_SLOP}
+                          accessibilityRole="button"
+                          accessibilityLabel={cs.friends.accept}
+                          style={({ pressed }) => [styles.acceptBtn, pressed && styles.dim]}
+                        >
+                          <CheckIcon size={18} color={Colors.stout} />
+                        </Pressable>
+                      </View>
+                    </View>
+                  </HairlineRow>
+                ))}
+              </View>
+            </View>
+          </Reveal>
+        ) : null}
+
+        {/* §8 — ŽEBŘÍČEK PARTY: hairline rows on bare stout, my row pinned */}
+        {d ? (
+          <Reveal index={nextReveal()}>
+            <View style={styles.section}>
+              <SectionHeader label={cs.friends.leaderboardHeader} />
+              {leaderboard.length <= 1 ? (
+                <EmptyStrip
+                  icon={<TrophyIcon size={28} color={Colors.mutedText} />}
+                  text={cs.friends.leaderboardEmpty}
+                />
+              ) : (
+                <View>
+                  {visibleBoard.map((entry, i) => (
+                    <LeaderboardRow
+                      key={entry.account.id || `rank-${i}`}
+                      entry={entry}
+                      rank={i + 1}
+                      maxVisits={maxVisits}
+                    />
+                  ))}
+                  {hiddenCount > 0 ? (
+                    <Text
+                      style={styles.moreLine}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {cs.friends.leaderboardMore(hiddenCount)}
+                    </Text>
+                  ) : null}
+                  {myPinned && myIndex >= 0 ? (
+                    <>
+                      <Text
+                        style={styles.dividerDots}
+                        allowFontScaling={false}
+                        accessibilityElementsHidden
+                        importantForAccessibility="no"
+                      >
+                        …
+                      </Text>
+                      <LeaderboardRow
+                        key="me-pinned"
+                        entry={leaderboard[myIndex]}
+                        rank={myIndex + 1}
+                        maxVisits={maxVisits}
+                      />
+                    </>
+                  ) : null}
+                </View>
+              )}
+            </View>
+          </Reveal>
+        ) : null}
+
+        {/* §7 — PŘIDAT DO PARTY: search/add, restyled to the hairline rhythm */}
+        {d ? (
+          <Reveal index={nextReveal()}>
+            <View style={styles.section}>
+              <SectionHeader label={cs.friends.addHeader} />
+              <View style={styles.searchRow}>
+                <SearchIcon size={19} color={Colors.mutedText} />
+                <TextInput
+                  value={query}
+                  onChangeText={setQuery}
+                  placeholder={cs.friends.searchPlaceholder}
+                  placeholderTextColor={Colors.mutedText}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  style={styles.searchInput}
+                  returnKeyType="search"
+                  onSubmitEditing={() => void doSearch()}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                />
+                <Pressable
+                  onPress={() => void doSearch()}
+                  accessibilityRole="button"
+                  accessibilityLabel={cs.friends.searchCta}
+                  style={({ pressed }) => [styles.searchButton, pressed && styles.dim]}
+                >
+                  {searching ? (
+                    <ActivityIndicator color={Colors.stout} size="small" />
+                  ) : (
+                    <Text
+                      style={styles.searchButtonText}
+                      maxFontSizeMultiplier={FontScaleCap.heading}
+                    >
+                      {cs.friends.searchCta}
+                    </Text>
+                  )}
+                </Pressable>
+              </View>
+
+              {results.length > 0 ? (
+                <View style={styles.searchResults}>
+                  {results.map((profile, i) => (
+                    <HairlineRow key={profile.id} first={i === 0}>
+                      <View style={styles.searchResultRow}>
+                        <FriendMini profile={profile} />
+                        <Pressable
+                          onPress={() => void requestFriend(profile)}
+                          hitSlop={ROUND_HIT_SLOP}
+                          accessibilityRole="button"
+                          accessibilityLabel={cs.friends.addByNickname}
+                          style={({ pressed }) => [styles.addBtn, pressed && styles.dim]}
+                        >
+                          <PlusIcon size={18} color={Colors.stout} />
+                        </Pressable>
+                      </View>
+                    </HairlineRow>
+                  ))}
+                </View>
+              ) : null}
+
+              {query.trim().length >= 2 && results.length === 0 && !searching ? (
+                <HairlineRow first onPress={() => void requestFriend()}>
+                  <View style={styles.nicknameInvite}>
+                    <UserPlusIcon size={18} color={Colors.amber} />
+                    <Text
+                      style={styles.nicknameInviteText}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {cs.friends.addByNickname}
                     </Text>
                   </View>
-                </View>
-              ))}
+                </HairlineRow>
+              ) : null}
             </View>
-          </>
-        )}
+          </Reveal>
+        ) : null}
 
-        <View style={styles.footerButton}>
-          <GlowButton
-            label={cs.friends.refresh}
-            onPress={() => void load()}
-            variant="secondary"
-            glow="none"
-            height={50}
-          />
-        </View>
+        {/* §8 — KÁMOŠI: hairline row per friend; outgoing invites in the footer */}
+        {d ? (
+          <Reveal index={nextReveal()}>
+            <View style={styles.section}>
+              <SectionHeader label={cs.friends.friendsHeader} />
+              {d.friends.length > 0 ? (
+                <View>
+                  {d.friends.map((friend, i) => {
+                    const stats = d.friendStats[friend.id];
+                    return (
+                      <HairlineRow key={friend.id} first={i === 0}>
+                        <View style={styles.friendRow}>
+                          <View style={styles.friendRowTop}>
+                            <FriendMini profile={friend} />
+                            <Pressable
+                              onPress={() => confirmRemove(friend)}
+                              hitSlop={ROUND_HIT_SLOP}
+                              accessibilityRole="button"
+                              accessibilityLabel={cs.friends.remove}
+                              style={({ pressed }) => [styles.removeBtn, pressed && styles.dim]}
+                            >
+                              <Trash2Icon size={18} color={Colors.mutedText} />
+                            </Pressable>
+                          </View>
+                          <Text
+                            style={styles.sharedCount}
+                            numberOfLines={1}
+                            maxFontSizeMultiplier={FontScaleCap.heading}
+                          >
+                            {cs.friends.sharedCount(stats?.sharedPubCount ?? 0)}
+                          </Text>
+                          {stats?.lastPubName ? (
+                            <Text
+                              style={styles.lastTogether}
+                              numberOfLines={1}
+                              maxFontSizeMultiplier={FontScaleCap.body}
+                            >
+                              {cs.friends.lastTogether(stats.lastPubName)}
+                            </Text>
+                          ) : null}
+                          {stats?.rituals.length ? (
+                            <View style={styles.ritualRow}>
+                              {stats.rituals.map((ritual) => (
+                                <View key={ritual.key} style={styles.ritualChip}>
+                                  <Text
+                                    style={styles.ritualText}
+                                    maxFontSizeMultiplier={FontScaleCap.body}
+                                  >
+                                    {ritual.title}
+                                  </Text>
+                                </View>
+                              ))}
+                            </View>
+                          ) : null}
+                        </View>
+                      </HairlineRow>
+                    );
+                  })}
+                </View>
+              ) : (
+                <EmptyStrip
+                  icon={<UserPlusIcon size={28} color={Colors.mutedText} />}
+                  text={cs.friends.emptyFriends}
+                />
+              )}
+
+              {d.outgoingRequests.length > 0 ? (
+                <View style={styles.outgoingWrap}>
+                  <Text
+                    style={styles.outgoingLabel}
+                    numberOfLines={1}
+                    maxFontSizeMultiplier={FontScaleCap.heading}
+                  >
+                    {cs.friends.outgoingHeader}
+                  </Text>
+                  <View style={styles.outgoingRow}>
+                    {d.outgoingRequests.map((request) => (
+                      <View key={request.id} style={styles.outgoingChip}>
+                        <Text
+                          style={styles.outgoingText}
+                          numberOfLines={1}
+                          maxFontSizeMultiplier={FontScaleCap.body}
+                        >
+                          {displayName(request.recipient)}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+            </View>
+          </Reveal>
+        ) : null}
+
+        {/* §9 — CINKLO V PARTĚ: ambient notification feed (read-on-open, no badge) */}
+        {d && d.notifications.length > 0 ? (
+          <Reveal index={nextReveal()}>
+            <View style={styles.section}>
+              <SectionHeader label={cs.friends.feedHeader} />
+              <View>
+                {d.notifications.slice(0, 6).map((notification, i) => {
+                  const when = timeLabel(notification.createdAt);
+                  return (
+                    <HairlineRow key={notification.id} first={i === 0}>
+                      <View style={styles.feedRow}>
+                        <BellRingIcon
+                          size={18}
+                          color={notification.readAt ? Colors.mutedText : Colors.amber}
+                        />
+                        <View style={styles.feedText}>
+                          <View style={styles.feedTitleRow}>
+                            <Text
+                              style={styles.feedTitle}
+                              numberOfLines={1}
+                              maxFontSizeMultiplier={FontScaleCap.body}
+                            >
+                              {notification.title}
+                            </Text>
+                            {when ? (
+                              <Text
+                                style={styles.feedTime}
+                                numberOfLines={1}
+                                allowFontScaling={false}
+                              >
+                                {when}
+                              </Text>
+                            ) : null}
+                          </View>
+                          <Text
+                            style={styles.feedBody}
+                            numberOfLines={2}
+                            maxFontSizeMultiplier={FontScaleCap.body}
+                          >
+                            {notification.body}
+                          </Text>
+                        </View>
+                      </View>
+                    </HairlineRow>
+                  );
+                })}
+              </View>
+            </View>
+          </Reveal>
+        ) : null}
       </ScrollView>
+
+      <FriendSettingsSheet
+        visible={settingsVisible}
+        onClose={closeSettings}
+        settings={d?.settings ?? DEFAULT_FRIEND_SOCIAL_SETTINGS}
+        onSaved={handleSettingsSaved}
+      />
     </View>
   );
 }
@@ -419,74 +829,157 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.stout,
   },
-  loading: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   content: {
     paddingHorizontal: Spacing.lg,
-    gap: Spacing.md,
   },
+
+  // — Hero —
   hero: {
-    backgroundColor: Colors.stout2,
-    borderRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.2),
-    padding: Spacing.lg,
-    overflow: 'hidden',
+    paddingBottom: Spacing.md,
   },
-  heroTop: {
+  heroRow1: {
+    height: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
+  heroTitleWrap: {
+    flexShrink: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    marginBottom: Spacing.md,
-  },
-  heroIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.12),
-  },
-  heroKicker: {
-    fontFamily: Fonts.display.extrabold,
-    color: Colors.amber,
-    fontSize: 18,
   },
   heroTitle: {
-    fontFamily: Fonts.display.black,
+    flexShrink: 1,
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 26,
+    lineHeight: 30,
     color: Colors.foam,
-    fontSize: 34,
-    lineHeight: 37,
-    letterSpacing: 0,
   },
-  heroBody: {
-    marginTop: Spacing.sm,
-    fontFamily: Fonts.ui.medium,
-    color: Colors.foamMuted,
-    fontSize: 15,
-    lineHeight: 21,
-  },
-  liveStrip: {
-    marginTop: Spacing.md,
+  heroRight: {
+    flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    backgroundColor: withAlpha(Colors.amber, 0.1),
+  },
+  gear: {
+    width: HitArea.min,
+    height: HitArea.min,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ghostChip: {
+    flexShrink: 1,
+    minWidth: 0,
+    minHeight: HitArea.min,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
     borderRadius: Radius.pill,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
+    backgroundColor: withAlpha(Colors.foam, 0.06),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.border, 0.6),
   },
-  liveStripText: {
-    flex: 1,
+  ghostChipText: {
+    flexShrink: 1,
     fontFamily: Fonts.ui.semibold,
-    color: Colors.foam,
-    fontSize: 14,
+    fontSize: 12,
+    color: Colors.mutedText,
   },
-  searchBlock: {
+  heroSubline: {
+    marginTop: Spacing.xs,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 14,
+    lineHeight: 19,
+  },
+  heroRule: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: withAlpha(Colors.border, 0.6),
+    marginTop: Spacing.md,
+    marginHorizontal: -Spacing.lg,
+  },
+
+  // — Section rhythm —
+  section: {
+    marginTop: Spacing.xl,
+  },
+  stack: {
     gap: Spacing.sm,
   },
+  dim: {
+    opacity: 0.6,
+  },
+  subtleNote: {
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
+    lineHeight: 18,
+    color: Colors.mutedText,
+  },
+
+  // — Requests —
+  requestRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
+  requestActions: {
+    flexShrink: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  acceptBtn: {
+    width: HitArea.min,
+    height: HitArea.min,
+    borderRadius: HitArea.min / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.amber,
+  },
+  declineBtn: {
+    width: HitArea.min,
+    height: HitArea.min,
+    borderRadius: HitArea.min / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.foam, 0.08),
+  },
+
+  // — Empty strips (leaderboard / friends) —
+  emptyStrip: {
+    alignItems: 'center',
+    paddingVertical: Spacing.lg,
+    gap: Spacing.sm,
+  },
+  emptyStripText: {
+    fontFamily: Fonts.ui.medium,
+    fontSize: 14,
+    lineHeight: 19,
+    color: Colors.mutedText,
+    textAlign: 'center',
+  },
+
+  // — Leaderboard —
+  moreLine: {
+    marginTop: Spacing.sm,
+    paddingHorizontal: 10,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
+    color: Colors.mutedText,
+  },
+  dividerDots: {
+    marginTop: Spacing.xs,
+    textAlign: 'center',
+    fontFamily: Fonts.display.semibold,
+    fontSize: 16,
+    color: Colors.mutedText,
+  },
+
+  // — Search / add —
   searchRow: {
     minHeight: 54,
     flexDirection: 'row',
@@ -508,7 +1001,7 @@ const styles = StyleSheet.create({
   },
   searchButton: {
     minWidth: 76,
-    height: 42,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: Radius.pill,
@@ -517,183 +1010,64 @@ const styles = StyleSheet.create({
   searchButtonText: {
     fontFamily: Fonts.display.extrabold,
     color: Colors.stout,
-    fontSize: 16,
+    fontSize: 15,
   },
   searchResults: {
-    backgroundColor: Colors.stout2,
-    borderRadius: Radius.card,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    overflow: 'hidden',
+    marginTop: Spacing.sm,
   },
   searchResultRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: Spacing.md,
+    gap: Spacing.md,
+  },
+  addBtn: {
+    width: HitArea.min,
+    height: HitArea.min,
+    borderRadius: HitArea.min / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.amber,
   },
   nicknameInvite: {
+    minHeight: HitArea.min,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
   },
   nicknameInviteText: {
     fontFamily: Fonts.ui.semibold,
     color: Colors.amber,
     fontSize: 15,
   },
-  sectionHeader: {
-    marginTop: Spacing.sm,
-    fontFamily: Fonts.display.extrabold,
-    color: Colors.amber,
-    fontSize: 17,
-    letterSpacing: 0,
-  },
-  stack: {
+
+  // — Friends list —
+  friendRow: {
     gap: Spacing.sm,
   },
-  friendMini: {
-    minWidth: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  friendMiniText: {
-    flexShrink: 1,
-    fontFamily: Fonts.ui.bold,
-    color: Colors.foam,
-    fontSize: 15,
-  },
-  emptyState: {
-    minHeight: 84,
-    justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.stout2, 0.72),
-    borderRadius: Radius.card,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: Spacing.lg,
-  },
-  emptyText: {
-    fontFamily: Fonts.ui.medium,
-    color: Colors.foamMuted,
-    fontSize: 15,
-    lineHeight: 21,
-  },
-  activeCard: {
-    backgroundColor: Colors.stout2,
-    borderRadius: Radius.card,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.32),
-    padding: Spacing.lg,
-  },
-  activeHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: Spacing.md,
-  },
-  activeTime: {
-    fontFamily: Fonts.ui.medium,
-    color: Colors.mutedText,
-    fontSize: 12,
-  },
-  activeTitle: {
-    marginTop: Spacing.md,
-    fontFamily: Fonts.display.extrabold,
-    color: Colors.foam,
-    fontSize: 25,
-    lineHeight: 28,
-  },
-  activeBody: {
-    marginTop: Spacing.xs,
-    fontFamily: Fonts.ui.medium,
-    color: Colors.foamMuted,
-    fontSize: 15,
-    lineHeight: 21,
-  },
-  tableBadge: {
-    alignSelf: 'flex-start',
-    marginTop: Spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    backgroundColor: withAlpha(Colors.amber, 0.1),
-    borderRadius: Radius.pill,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-  },
-  tableBadgeText: {
-    fontFamily: Fonts.ui.semibold,
-    color: Colors.foam,
-    fontSize: 13,
-  },
-  requestCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: Colors.stout2,
-    borderRadius: Radius.card,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: Spacing.md,
-  },
-  requestActions: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-  },
-  primaryRound: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.amber,
-  },
-  secondaryRound: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.foam, 0.08),
-  },
-  iconButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.amber,
-  },
-  friendCard: {
-    backgroundColor: Colors.stout2,
-    borderRadius: Radius.card,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: Spacing.lg,
-  },
-  friendCardTop: {
+  friendRowTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.md,
+  },
+  removeBtn: {
+    width: HitArea.min,
+    height: HitArea.min,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sharedCount: {
-    marginTop: Spacing.md,
     fontFamily: Fonts.display.extrabold,
-    color: Colors.foam,
     fontSize: 22,
+    color: Colors.foam,
   },
   lastTogether: {
-    marginTop: 2,
     fontFamily: Fonts.ui.medium,
-    color: Colors.foamMuted,
     fontSize: 14,
+    color: Colors.foamMuted,
   },
   ritualRow: {
-    marginTop: Spacing.md,
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Spacing.sm,
@@ -711,6 +1085,19 @@ const styles = StyleSheet.create({
     color: Colors.amber,
     fontSize: 12,
   },
+
+  // — Outgoing invites (KÁMOŠI footer) —
+  outgoingWrap: {
+    marginTop: Spacing.md,
+  },
+  outgoingLabel: {
+    marginBottom: Spacing.sm,
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 12,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    color: Colors.mutedText,
+  },
   outgoingRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -727,30 +1114,55 @@ const styles = StyleSheet.create({
     color: Colors.foamMuted,
     fontSize: 13,
   },
-  notificationRow: {
+
+  // — Notification feed —
+  feedRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: Spacing.sm,
-    backgroundColor: withAlpha(Colors.stout2, 0.7),
-    borderRadius: Radius.medium,
-    padding: Spacing.md,
   },
-  notificationText: {
+  feedText: {
     flex: 1,
+    minWidth: 0,
   },
-  notificationTitle: {
+  feedTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
+  feedTitle: {
+    flex: 1,
     fontFamily: Fonts.ui.bold,
     color: Colors.foam,
     fontSize: 14,
   },
-  notificationBody: {
+  feedTime: {
+    flexShrink: 0,
+    fontFamily: Fonts.ui.medium,
+    color: Colors.mutedText,
+    fontSize: 11,
+  },
+  feedBody: {
     marginTop: 2,
     fontFamily: Fonts.ui.medium,
     color: Colors.foamMuted,
     fontSize: 13,
     lineHeight: 18,
   },
-  footerButton: {
-    marginTop: Spacing.sm,
+
+  // — Local FriendMini —
+  friendMini: {
+    minWidth: 0,
+    flexShrink: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  friendMiniText: {
+    flexShrink: 1,
+    fontFamily: Fonts.ui.bold,
+    color: Colors.foam,
+    fontSize: 15,
   },
 });

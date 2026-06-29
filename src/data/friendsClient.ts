@@ -35,6 +35,8 @@ export interface FriendStats {
   rituals: FriendRitual[];
 }
 
+export type ActivityResponseKind = 'going' | 'maybe' | 'cant';
+
 export interface FriendPubActivity {
   id: string;
   account: FriendProfile;
@@ -48,11 +50,22 @@ export interface FriendPubActivity {
   active: boolean;
   createdAt: string;
   updatedAt: string;
+  responses: { going: number; maybe: number; cant: number; goingProfiles: FriendProfile[] };
+  myResponse: ActivityResponseKind | null;
 }
+
+export type FriendNotificationKind =
+  | 'friend_request'
+  | 'friend_accepted'
+  | 'friend_at_pub'
+  | 'friend_rsvp';
 
 export interface FriendNotification {
   id: string;
-  kind: 'friend_request' | 'friend_accepted' | 'friend_at_pub';
+  // Known kinds are listed above for autocomplete; any unknown server kind is
+  // preserved verbatim by the parser so a newer backend value is never silently
+  // rewritten to the wrong kind.
+  kind: FriendNotificationKind | (string & {});
   title: string;
   body: string;
   actor: FriendProfile | null;
@@ -64,12 +77,42 @@ export interface FriendNotification {
   createdAt: string;
 }
 
+export interface FriendStreak {
+  currentWeeks: number;
+  thisWeekLit: boolean;
+}
+
+export interface LeaderboardEntry {
+  account: FriendProfile;
+  visits30d: number;
+  sharedCount: number;
+  isMe: boolean;
+}
+
+export interface FriendSocialSettings {
+  ghostMode: boolean;
+  quietHoursEnabled: boolean;
+  quietHoursStart: number;
+  quietHoursEnd: number;
+}
+
+export const DEFAULT_FRIEND_SOCIAL_SETTINGS: FriendSocialSettings = {
+  ghostMode: false,
+  quietHoursEnabled: true,
+  quietHoursStart: 23,
+  quietHoursEnd: 9,
+};
+
 export interface FriendsDashboard {
   friends: FriendProfile[];
   friendStats: Record<string, FriendStats>;
   incomingRequests: Friendship[];
   outgoingRequests: Friendship[];
   activeFriends: FriendPubActivity[];
+  myActiveActivity: FriendPubActivity | null;
+  settings: FriendSocialSettings;
+  streak: FriendStreak;
+  leaderboard: LeaderboardEntry[];
   notifications: FriendNotification[];
   unreadCount: number;
 }
@@ -96,6 +139,13 @@ interface RawFriendship {
   updated_at?: string;
 }
 
+interface RawActivityResponses {
+  going?: number;
+  maybe?: number;
+  cant?: number;
+  going_profiles?: RawFriendProfile[];
+}
+
 interface RawFriendActivity {
   id?: string;
   account?: RawFriendProfile;
@@ -109,6 +159,27 @@ interface RawFriendActivity {
   active?: boolean;
   created_at?: string;
   updated_at?: string;
+  responses?: RawActivityResponses;
+  my_response?: string | null;
+}
+
+interface RawFriendStreak {
+  current_weeks?: number;
+  this_week_lit?: boolean;
+}
+
+interface RawLeaderboardEntry {
+  account?: RawFriendProfile;
+  visits_30d?: number;
+  shared_count?: number;
+  is_me?: boolean;
+}
+
+interface RawFriendSocialSettings {
+  ghost_mode?: boolean;
+  quiet_hours_enabled?: boolean;
+  quiet_hours_start?: number;
+  quiet_hours_end?: number;
 }
 
 interface RawFriendNotification {
@@ -190,6 +261,19 @@ function parseStats(raw: RawFriendStats | undefined): FriendStats {
   };
 }
 
+function parseResponseKind(value: unknown): ActivityResponseKind | null {
+  return value === 'going' || value === 'maybe' || value === 'cant' ? value : null;
+}
+
+function parseActivityResponses(raw: RawActivityResponses | undefined): FriendPubActivity['responses'] {
+  return {
+    going: typeof raw?.going === 'number' ? raw.going : 0,
+    maybe: typeof raw?.maybe === 'number' ? raw.maybe : 0,
+    cant: typeof raw?.cant === 'number' ? raw.cant : 0,
+    goingProfiles: Array.isArray(raw?.going_profiles) ? raw.going_profiles.map(parseProfile) : [],
+  };
+}
+
 function parseActivity(raw: RawFriendActivity): FriendPubActivity {
   return {
     id: raw.id ?? '',
@@ -204,14 +288,40 @@ function parseActivity(raw: RawFriendActivity): FriendPubActivity {
     active: raw.active !== false,
     createdAt: raw.created_at ?? '',
     updatedAt: raw.updated_at ?? '',
+    responses: parseActivityResponses(raw.responses),
+    myResponse: parseResponseKind(raw.my_response),
+  };
+}
+
+function parseStreak(raw: RawFriendStreak | undefined | null): FriendStreak {
+  return {
+    currentWeeks: typeof raw?.current_weeks === 'number' ? raw.current_weeks : 0,
+    thisWeekLit: raw?.this_week_lit === true,
+  };
+}
+
+function parseSocialSettings(raw: RawFriendSocialSettings | undefined | null): FriendSocialSettings {
+  return {
+    ghostMode: raw?.ghost_mode === true,
+    quietHoursEnabled: raw?.quiet_hours_enabled !== false,
+    quietHoursStart: typeof raw?.quiet_hours_start === 'number' ? raw.quiet_hours_start : 23,
+    quietHoursEnd: typeof raw?.quiet_hours_end === 'number' ? raw.quiet_hours_end : 9,
+  };
+}
+
+function parseLeaderboardEntry(raw: RawLeaderboardEntry): LeaderboardEntry {
+  return {
+    account: parseProfile(raw.account),
+    visits30d: typeof raw.visits_30d === 'number' ? raw.visits_30d : 0,
+    sharedCount: typeof raw.shared_count === 'number' ? raw.shared_count : 0,
+    isMe: raw.is_me === true,
   };
 }
 
 function parseNotification(raw: RawFriendNotification): FriendNotification {
-  const kind =
-    raw.kind === 'friend_request' || raw.kind === 'friend_accepted' || raw.kind === 'friend_at_pub'
-      ? raw.kind
-      : 'friend_at_pub';
+  // Recognised kinds pass through; unknown server kinds are kept verbatim so a
+  // newer backend value is never coerced. Only a missing/empty kind defaults.
+  const kind = typeof raw.kind === 'string' && raw.kind.length > 0 ? raw.kind : 'friend_at_pub';
   return {
     id: raw.id ?? '',
     kind,
@@ -312,6 +422,14 @@ export async function fetchFriendsDashboard(signal?: AbortSignal): Promise<Frien
     activeFriends: Array.isArray(res.data.active_friends)
       ? (res.data.active_friends as RawFriendActivity[]).map(parseActivity)
       : [],
+    myActiveActivity: res.data.my_active_activity
+      ? parseActivity(res.data.my_active_activity as RawFriendActivity)
+      : null,
+    settings: parseSocialSettings(res.data.settings as RawFriendSocialSettings | undefined),
+    streak: parseStreak(res.data.streak as RawFriendStreak | undefined),
+    leaderboard: Array.isArray(res.data.leaderboard)
+      ? (res.data.leaderboard as RawLeaderboardEntry[]).map(parseLeaderboardEntry)
+      : [],
     notifications: Array.isArray(res.data.notifications)
       ? (res.data.notifications as RawFriendNotification[]).map(parseNotification)
       : [],
@@ -372,6 +490,44 @@ export async function shareFriendPubActivity(pub: Pub, message?: string): Promis
       expires_at: expires.toISOString(),
     },
   });
+  return res.ok ? { ok: true } : res.result;
+}
+
+export async function respondToActivity(
+  activityId: string,
+  response: ActivityResponseKind,
+): Promise<FriendActionResult> {
+  const res = await requestJson(
+    `/v1/friends/pub-activity/${encodeURIComponent(activityId)}/respond`,
+    { method: 'POST', body: { response } },
+  );
+  return res.ok ? { ok: true } : res.result;
+}
+
+export async function clearActivityResponse(activityId: string): Promise<FriendActionResult> {
+  const res = await requestJson(
+    `/v1/friends/pub-activity/${encodeURIComponent(activityId)}/respond`,
+    { method: 'DELETE' },
+  );
+  return res.ok ? { ok: true } : res.result;
+}
+
+export async function endFriendPubActivity(activityId: string): Promise<FriendActionResult> {
+  const res = await requestJson(`/v1/friends/pub-activity/${encodeURIComponent(activityId)}`, {
+    method: 'DELETE',
+  });
+  return res.ok ? { ok: true } : res.result;
+}
+
+export async function updateFriendSettings(
+  patch: Partial<FriendSocialSettings>,
+): Promise<FriendActionResult> {
+  const body: Record<string, unknown> = {};
+  if (patch.ghostMode !== undefined) body.ghost_mode = patch.ghostMode;
+  if (patch.quietHoursEnabled !== undefined) body.quiet_hours_enabled = patch.quietHoursEnabled;
+  if (patch.quietHoursStart !== undefined) body.quiet_hours_start = patch.quietHoursStart;
+  if (patch.quietHoursEnd !== undefined) body.quiet_hours_end = patch.quietHoursEnd;
+  const res = await requestJson('/v1/friends/settings', { method: 'PATCH', body });
   return res.ok ? { ok: true } : res.result;
 }
 

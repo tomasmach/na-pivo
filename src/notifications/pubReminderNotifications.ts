@@ -374,7 +374,12 @@ function isPubReminderResponse(response: ExpoNotifications.NotificationResponse 
 
 function isFriendResponse(response: ExpoNotifications.NotificationResponse | null): boolean {
   const kind = response?.notification.request.content.data?.kind;
-  return kind === 'friend_request' || kind === 'friend_accepted' || kind === 'friend_at_pub';
+  return (
+    kind === 'friend_request' ||
+    kind === 'friend_accepted' ||
+    kind === 'friend_at_pub' ||
+    kind === 'friend_rsvp'
+  );
 }
 
 /** Subscribe to taps on a pub-reminder notification while the app is running. */
