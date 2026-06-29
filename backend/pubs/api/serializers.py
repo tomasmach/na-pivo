@@ -46,7 +46,12 @@ from rest_framework import serializers
 
 from pubs import accounts
 from pubs.accounts import AccountError
-from pubs.beer_catalog import normalize_beer_payload
+from pubs.beer_catalog import (
+    ALLOWED_BEER_VOLUMES_ML,
+    BEER_PRICE_MAX_CZK,
+    BEER_PRICE_MIN_CZK,
+    normalize_beer_payload,
+)
 from pubs.mapper import maper_levels, maper_progress, maper_xp_rules
 from pubs.models import (
     Account,
@@ -490,8 +495,9 @@ class PushDeviceResponseSerializer(serializers.ModelSerializer):
 
 # The 7 weekday keys the structured community hours dict must contain, in order.
 _COMMUNITY_DAY_KEYS = ("mo", "tu", "we", "th", "fr", "sa", "su")
-# Allowed beer glass volumes (ml). None is also allowed (unknown).
-_ALLOWED_VOLUMES_ML = {300, 330, 400, 500, 1000}
+# Allowed beer glass volumes (ml). None is also allowed (unknown). Sourced from
+# the domain layer so the menu-scan canonicalizer and this write contract agree.
+_ALLOWED_VOLUMES_ML = ALLOWED_BEER_VOLUMES_ML
 _MAX_INTERVALS_PER_DAY = 3
 _MAX_BEERS = 12
 
@@ -515,7 +521,10 @@ class CommunityBeerSerializer(serializers.Serializer):
 
     name = serializers.CharField(max_length=80, min_length=1, trim_whitespace=True)
     price_czk = serializers.IntegerField(
-        required=False, allow_null=True, min_value=1, max_value=1000
+        required=False,
+        allow_null=True,
+        min_value=BEER_PRICE_MIN_CZK,
+        max_value=BEER_PRICE_MAX_CZK,
     )
     volume_ml = serializers.IntegerField(required=False, allow_null=True)
 

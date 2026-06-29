@@ -24,11 +24,16 @@ from django.conf import settings
 from PIL import Image, ImageOps, UnidentifiedImageError
 from PIL.Image import DecompressionBombError
 
-# _ALLOWED_VOLUMES_ML is the SAME set the community-save endpoint validates
-# against (CommunityBeerSerializer.volume_ml); importing it here keeps the scan
-# output and the write contract from ever drifting apart.
-from pubs.api.serializers import _ALLOWED_VOLUMES_ML
-from pubs.beer_catalog import normalize_beer_payload
+# The volume set and price bounds are the SAME domain rules the community-save
+# endpoint (CommunityBeerSerializer) validates against; sourcing them from the
+# domain layer keeps the scan output and the write contract from ever drifting
+# apart — a canonicalized beer is then guaranteed to pass the write serializer.
+from pubs.beer_catalog import (
+    ALLOWED_BEER_VOLUMES_ML,
+    BEER_PRICE_MAX_CZK,
+    BEER_PRICE_MIN_CZK,
+    normalize_beer_payload,
+)
 from pubs.enrichment.openrouter import MAX_BEERS, OpenRouterVisionSource
 
 # Decoded-pixel ceiling so a tiny highly-compressed file cannot blow up memory
@@ -38,9 +43,9 @@ _MAX_IMAGE_PIXELS = 50_000_000
 # Bounds MUST match the community-save contract (CommunityBeerSerializer) so a
 # scanned value can never be prefilled into a row that POST /v1/pub-community
 # would 400 on — that would loop forever in the offline queue while the optimistic
-# UI claims the contribution was saved. Price: 1..1000 Kč (serializer max_value=
-# 1000). Volume: only the allowed glass sizes below; anything else is nulled out.
-_PRICE_MIN, _PRICE_MAX = 1, 1000
+# UI claims the contribution was saved. Both the price range and the allowed glass
+# volumes come from pubs.beer_catalog so the two paths can never drift apart.
+_PRICE_MIN, _PRICE_MAX = BEER_PRICE_MIN_CZK, BEER_PRICE_MAX_CZK
 
 
 class MenuScanError(Exception):
@@ -139,16 +144,18 @@ def _coerce_volume(value) -> int | None:
     """Coerce a model-supplied volume to an allowed glass size, else None.
 
     The community-save contract (CommunityBeerSerializer.volume_ml) accepts ONLY
-    ``_ALLOWED_VOLUMES_ML``, so a scanned volume outside that set (e.g. 250, 568,
-    700) is nulled out here rather than passed through — otherwise the prefilled
-    row would 400 on save and never land.
+    ``ALLOWED_BEER_VOLUMES_ML``, so a scanned volume outside that set (e.g. 250,
+    568, 700) is nulled out here rather than passed through — otherwise the
+    prefilled row would 400 on save and never land. Set membership is the whole
+    rule; no separate range bound is needed.
     """
-    number = _coerce_int(
-        value, low=min(_ALLOWED_VOLUMES_ML), high=max(_ALLOWED_VOLUMES_ML)
-    )
-    if number is None or number not in _ALLOWED_VOLUMES_ML:
+    if value is None:
         return None
-    return number
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number in ALLOWED_BEER_VOLUMES_ML else None
 
 
 def _canonicalize_beers(raw_beers: list[dict]) -> list[dict]:
