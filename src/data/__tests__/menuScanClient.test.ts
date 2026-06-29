@@ -123,6 +123,14 @@ describe('scanMenuPhoto', () => {
     expect(result).toEqual({ status: 'unavailable' });
   });
 
+  it('maps 503 daily_cap → daily-cap', async () => {
+    uploadResolving(503, { detail: 'Dnes už stačilo.', code: 'daily_cap' });
+
+    const result = await scanMenuPhoto('file:///tmp/menu.jpg');
+
+    expect(result).toEqual({ status: 'daily-cap' });
+  });
+
   it('maps 429 → rate-limited', async () => {
     uploadResolving(429, { detail: 'Moc rychle.' });
 

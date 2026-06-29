@@ -35,6 +35,7 @@ export type MenuScanResult =
   | { status: 'ok'; beers: CommunityBeer[]; model?: string }
   | { status: 'empty' }
   | { status: 'unavailable' }
+  | { status: 'daily-cap' }
   | { status: 'rate-limited' }
   | { status: 'bad-image'; code?: string }
   | { status: 'error' };
@@ -44,7 +45,8 @@ export type MenuScanResult =
  *   200 {beers,model}   → {status:'ok'} (or {status:'empty'} when beers is [])
  *   400 {detail,code}   → {status:'bad-image', code}
  *   429                 → {status:'rate-limited'}
- *   503 {detail,code}   → {status:'unavailable'}
+ *   503 code=daily_cap  → {status:'daily-cap'}
+ *   503 anything else   → {status:'unavailable'}
  *   anything else/throw → {status:'error'}
  */
 export async function scanMenuPhoto(localUri: string): Promise<MenuScanResult> {
@@ -67,14 +69,16 @@ export async function scanMenuPhoto(localUri: string): Promise<MenuScanResult> {
       signal: controller.signal,
     });
 
-    if (resp.status === 429) return { status: 'rate-limited' };
-    if (resp.status === 503) return { status: 'unavailable' };
-
     let data: Record<string, unknown> = {};
     try {
       data = resp.body ? (JSON.parse(resp.body) as Record<string, unknown>) : {};
     } catch {
       data = {};
+    }
+
+    if (resp.status === 429) return { status: 'rate-limited' };
+    if (resp.status === 503) {
+      return data.code === 'daily_cap' ? { status: 'daily-cap' } : { status: 'unavailable' };
     }
 
     if (resp.status === 400) {

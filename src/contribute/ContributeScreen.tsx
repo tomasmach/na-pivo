@@ -369,6 +369,11 @@ export default function ContributeScreen() {
               icon: <InfoIcon size={18} color={Colors.foamMuted} />,
             });
             break;
+          case 'daily-cap':
+            toast(cs.contribute.scanMenu.dailyCapToast, {
+              icon: <ClockIcon size={18} color={Colors.foamMuted} />,
+            });
+            break;
           case 'rate-limited':
             toast(cs.contribute.scanMenu.rateLimitedToast, {
               icon: <ClockIcon size={18} color={Colors.foamMuted} />,

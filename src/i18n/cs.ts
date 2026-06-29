@@ -427,6 +427,7 @@ export const cs = {
       nothingNewToast: 'Tahle piva už v seznamu máš',
       emptyToast: 'Na fotce nevidím žádné pivo, dej ho víc do záběru nebo přidej ručně',
       unavailableToast: 'Skenování teď nejede, přidej piva ručně',
+      dailyCapToast: 'Dnešní limit skenování je pryč, zkus to zase zítra',
       rateLimitedToast: 'Moc rychle po sobě, dej tomu chvíli',
       badImageToast: 'Z téhle fotky to nepřečtu, zkus ostřejší záběr',
       permissionDenied: 'Pusť k tomu foťák nebo galerii v Nastavení a zkus to znovu',
