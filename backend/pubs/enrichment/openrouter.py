@@ -66,13 +66,19 @@ _APP_TITLE = "Na pivo"
 # menus are Czech/Slovak; the instructions are explicit so we can parse strictly.
 _PROMPT = (
     "Jsi pomocník, který čte fotky nápojových a jídelních lístků z českých a "
-    "slovenských hospod. Z přiložené fotky vytáhni POUZE piva (točená i lahvová). "
-    "Ignoruj jídlo, víno, destiláty, kávu, čaj a nealkoholické nápoje. "
+    "slovenských hospod. Z přiložené fotky vytáhni POUZE piva: točená, lahvová, "
+    "plechovková, nealkoholická piva, radlery a pivní mixy. Ignoruj jídlo, víno, "
+    "destiláty, kávu, čaj, limonády, vodu a ostatní nealkoholické nápoje, které "
+    "nejsou pivo ani pivní mix. "
     "Vrať STRIKTNĚ validní JSON přesně ve tvaru "
     '{"beers":[{"name":<string>,"price_czk":<integer nebo null>,'
     '"volume_ml":<integer nebo null>}]}. '
     "Cena je celé číslo v korunách, nebo null, když není čitelná. "
-    "Objem je celé číslo v mililitrech (např. 500, 330, 400), nebo null. "
+    "Objem je celé číslo v mililitrech (např. 500, 400, 330, 300), nebo null. "
+    "Když je u jednoho piva více objemů a cen (např. 0,3 l / 0,5 l), vrať "
+    "přednostně půllitr 500 ml a jeho cenu. Pokud půllitr není uveden, vrať "
+    "jasně spárovaný objem a cenu, včetně běžných 0,4 l sklenic jako 400 ml. "
+    "Nehádej nečitelná jména, ceny ani objemy; nejasné hodnoty dej jako null. "
     "Maximálně 12 piv. Nevracej nic jiného než tento JSON."
 )
 

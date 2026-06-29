@@ -433,6 +433,37 @@ def test_request_payload_caps_cost_and_denies_data_collection(client, monkeypatc
     assert captured["provider"] == {"data_collection": "deny"}
 
 
+@pytest.mark.django_db
+def test_prompt_includes_non_alcoholic_beer_and_volume_pairing_rules(
+    client, monkeypatch
+):
+    """The model instructions must keep Czech menu edge cases explicit."""
+    captured: dict = {}
+
+    def handler(req):
+        captured.update(json.loads(req.body))
+        return _chat_response('{"beers": []}')
+
+    _patch_source(monkeypatch, _make_source(handler))
+
+    token = _register(client)
+    resp = client.post(
+        "/v1/pub-menu-scan",
+        data={"image": _upload()},
+        format="multipart",
+        **_auth(token),
+    )
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+
+    prompt = captured["messages"][0]["content"][0]["text"]
+    assert "nealkoholická piva" in prompt
+    assert "radlery" in prompt
+    assert "0,4 l" in prompt
+    assert "400 ml" in prompt
+    assert "přednostně půllitr 500 ml" in prompt
+    assert "Nehádej" in prompt
+
+
 # ---------------------------------------------------------------------------
 # Per-account daily cap (503 daily_cap)
 # ---------------------------------------------------------------------------
