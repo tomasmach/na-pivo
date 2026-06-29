@@ -39,8 +39,10 @@ logger = logging.getLogger(__name__)
 # OpenRouter's OpenAI-compatible chat-completions endpoint.
 _CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-# Default fast/cheap multimodal model; overridable via settings.OPENROUTER_MODEL.
-_DEFAULT_MODEL = "google/gemini-2.5-flash"
+# Default multimodal model; overridable via settings.OPENROUTER_MODEL. Picked for
+# best vision-per-cost: newest-gen Gemini vision (robust on poor phone photos) at
+# a cheap ~$0.0008/scan. Bump to google/gemini-3-flash-preview for max robustness.
+_DEFAULT_MODEL = "google/gemini-3.1-flash-lite"
 
 # Per-request HTTP timeout (seconds). Vision is slow, so this is generous.
 _DEFAULT_TIMEOUT = 30

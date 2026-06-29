@@ -536,7 +536,9 @@ PUBS_NEAR_TTL_DAYS: int = int(os.environ.get("PUBS_NEAR_TTL_DAYS", "7"))
 OPENROUTER_API_KEY: str = os.environ.get("OPENROUTER_API_KEY", "")
 # Vision model id (OpenAI-compatible chat-completions). Default is a fast, cheap
 # multimodal model; override to trade cost for accuracy.
-OPENROUTER_MODEL: str = os.environ.get("OPENROUTER_MODEL", "google/gemini-2.5-flash")
+OPENROUTER_MODEL: str = os.environ.get(
+    "OPENROUTER_MODEL", "google/gemini-3.1-flash-lite"
+)
 # Per-request HTTP timeout in seconds (vision is slow).
 OPENROUTER_TIMEOUT: int = int(os.environ.get("OPENROUTER_TIMEOUT", "30"))
 # Hard process-wide daily cap on OpenRouter chat requests (cost guard; counts
