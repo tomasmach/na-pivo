@@ -189,9 +189,9 @@ def exchange_apple_auth_code(code: str) -> dict:
 
     if response.status_code != 200:
         logger.warning(
-            "Apple auth-code exchange returned %s: %s",
+            "Apple auth-code exchange returned %s (error=%s)",
             response.status_code,
-            response.text,
+            _apple_response_error_code(response),
         )
         raise OAuthError("Apple authorization code exchange failed.")
 
@@ -228,11 +228,24 @@ def revoke_apple_token(token: str, token_type_hint: str = "refresh_token") -> No
 
     if response.status_code != 200:
         logger.warning(
-            "Apple token revoke returned %s: %s",
+            "Apple token revoke returned %s (error=%s)",
             response.status_code,
-            response.text,
+            _apple_response_error_code(response),
         )
         raise OAuthError("Apple token revocation failed.")
+
+
+def _apple_response_error_code(response: requests.Response) -> str:
+    try:
+        payload = response.json()
+    except ValueError:
+        return "unknown"
+    if not isinstance(payload, dict):
+        return "unknown"
+    value = payload.get("error")
+    if isinstance(value, str) and value:
+        return value[:80]
+    return "unknown"
 
 
 def _apple_client_id() -> str:
