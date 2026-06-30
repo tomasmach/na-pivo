@@ -34,7 +34,6 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSequence,
-  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 
@@ -46,7 +45,6 @@ import { Radius, Spacing } from '@/theme/layout';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 import type { FriendProfile } from '@/data/friendsClient';
 
-const POP_SPRING = { damping: 15, stiffness: 150 } as const;
 const PULSE_PEAK = 1.15;
 
 type RosterSize = 'standard' | 'large';
@@ -110,14 +108,12 @@ interface RosterCoinProps {
   marginLeft: number;
   surfaceColor: string;
   zIndex: number;
-  reduceMotion: boolean;
 }
 
 /**
- * A single Avatar coin. Pops scale 0.5→1 on mount (pop spring) so a fresh joiner
- * animates in as the table fills. Keyed by profile id + memoized upstream, so a
- * coin that already exists is never remounted (hence never re-pops) when the
- * roster array identity changes on refresh.
+ * A single Avatar coin. Renders flat — no scale-in/float; a joiner simply appears
+ * in the stack. Keyed by profile id + memoized upstream so existing coins are
+ * never remounted when the roster array identity changes on refresh.
  */
 const RosterCoin = memo(function RosterCoin({
   profile,
@@ -125,34 +121,16 @@ const RosterCoin = memo(function RosterCoin({
   marginLeft,
   surfaceColor,
   zIndex,
-  reduceMotion,
 }: RosterCoinProps) {
-  const scale = useSharedValue(reduceMotion ? 1 : 0.5);
-
-  useEffect(() => {
-    if (reduceMotion) {
-      scale.value = 1;
-      return;
-    }
-    scale.value = withSpring(1, POP_SPRING);
-    return () => {
-      cancelAnimation(scale);
-    };
-  }, [reduceMotion, scale]);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
   return (
-    <Animated.View style={[coinWrapperStyle(surfaceColor, marginLeft, zIndex), animatedStyle]}>
+    <View style={coinWrapperStyle(surfaceColor, marginLeft, zIndex)}>
       <Avatar
         uri={profile.avatarUrl}
         nickname={profile.nickname}
         displayName={profile.displayName}
         size={avatarSize}
       />
-    </Animated.View>
+    </View>
   );
 });
 
@@ -220,8 +198,8 @@ function GoingRosterBase({
   useEffect(() => {
     if (goingCount > prevCount.current && !reduceMotion) {
       countScale.value = withSequence(
-        withTiming(PULSE_PEAK, { duration: 140, easing: Easing.out(Easing.quad) }),
-        withSpring(1, POP_SPRING),
+        withTiming(PULSE_PEAK, { duration: 120, easing: Easing.out(Easing.quad) }),
+        withTiming(1, { duration: 160, easing: Easing.out(Easing.cubic) }),
       );
     }
     prevCount.current = goingCount;
@@ -276,7 +254,6 @@ function GoingRosterBase({
                 marginLeft={index === 0 ? 0 : config.overlap}
                 surfaceColor={surfaceColor}
                 zIndex={visibleProfiles.length - index}
-                reduceMotion={reduceMotion}
               />
             ))}
             {overflow > 0 ? (

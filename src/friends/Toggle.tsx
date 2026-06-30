@@ -2,7 +2,7 @@
  * Toggle — animated switch used inside the FriendSettingsSheet (ghost mode,
  * quiet hours). Cloned from the settings screen `Toggle` so the two read
  * identically: amber track when on, stout3 well when off, foam knob that
- * springs across.
+ * slides across.
  *
  * Self-contained: owns its own styles and imports only theme tokens. The thumb
  * stays in sync with the controlled `value` so an async PATCH that rejects
@@ -12,9 +12,9 @@
 import React, { useCallback, useEffect } from 'react';
 import { Pressable, StyleSheet } from 'react-native';
 import Animated, {
+  Easing,
   useSharedValue,
   useAnimatedStyle,
-  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 
@@ -38,9 +38,11 @@ function Toggle({ value, onToggle, accessibilityLabel }: ToggleProps) {
 
   useEffect(() => {
     const target = value ? THUMB_ON : THUMB_OFF;
-    offset.value = reduceMotion
-      ? withTiming(target, { duration: 0 })
-      : withSpring(target, { mass: 0.6, damping: 14, stiffness: 200 });
+    // Quick, no-bounce slide — the knob snaps across, it doesn't spring/float.
+    offset.value = withTiming(target, {
+      duration: reduceMotion ? 0 : 180,
+      easing: Easing.out(Easing.cubic),
+    });
   }, [value, reduceMotion, offset]);
 
   const handlePress = useCallback(() => {

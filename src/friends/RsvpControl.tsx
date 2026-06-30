@@ -44,7 +44,7 @@ import { useReduceMotion } from '@/utils/useReduceMotion';
 
 // Snappy slide: the thumb glides to the tapped segment in one quick, no-bounce
 // pass and stops dead — a swipe that lands, not a spring that floats/settles.
-const SLIDE_MS = 150;
+const SLIDE_MS = 180;
 
 const ORDER: readonly ActivityResponseKind[] = ['going', 'maybe', 'cant'];
 const INDEX: Record<ActivityResponseKind, number> = { going: 0, maybe: 1, cant: 2 };

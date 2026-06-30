@@ -29,13 +29,13 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 import Animated, {
+  Easing,
   cancelAnimation,
   interpolate,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
   withSequence,
-  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 
@@ -51,7 +51,6 @@ import { Radius, Spacing } from '@/theme/layout';
 import { fireSuccessHaptic } from '@/utils/haptics';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 
-const POP_SPRING = { damping: 15, stiffness: 150 } as const;
 const BREATHE_MS = 1200;
 const BURST_MS = 1200;
 /** Tappable target padding: chip is 32 tall, hitSlop lifts it to 44pt. */
@@ -108,8 +107,8 @@ function StreakBadgeImpl({ streak }: StreakBadgeProps) {
     if (reduceMotion) return; // number just updates — no burst, no haptic
 
     popScale.value = withSequence(
-      withTiming(1.18, { duration: 160 }),
-      withSpring(1, POP_SPRING),
+      withTiming(1.18, { duration: 140, easing: Easing.out(Easing.quad) }),
+      withTiming(1, { duration: 160, easing: Easing.out(Easing.cubic) }),
     );
 
     // Defer the burst mount one frame so the setState lands in a timer callback,
