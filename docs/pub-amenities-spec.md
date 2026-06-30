@@ -24,11 +24,11 @@ The taxonomy is **client-bundled and authoritative for rendering** (labels, chip
 
 > **`value` semantics.** Each amenity is a per-user **tri-state**: `'yes'` (je tu to), `'no'` (není tu to), or **unknown = no vote** (the key is simply absent — never a stored third enum). Unknown is the absence of an answer, so the wire stays tiny, "nezmapováno" is the natural default, and a released app forward-compatibly omits keys it doesn't know. This mirrors `PubRating` (verdict absent = no opinion). Booleans were rejected: a boolean conflates "no" with "not answered", which would manufacture phantom "no" votes, poison the public aggregate, and make the completeness meter (which counts *answered* amenities) meaningless. To **retract** a vote across devices, the wire sends `value: null` (an explicit tombstone) — distinct from an absent key (which always means "no change / unknown"). Absent never means "clear" (§4.1).
 
-Section headers are uppercase, matching the existing `statsHeader = 'TVOJE ČÍSLA'` convention. v1 ships **12 active amenities** (≤20, scannable at a pub table) across five groups. Six rows are `is_active=false`: two **reserved keys, not rendered in v1** (`practical_outdoor_tap`, `practical_tank_beer`) plus four **deactivated by migration `0040`** (`seating_kids_corner`, `payment_cash_only`, `atmosphere_dogs_welcome`, `practical_food`). All inactive rows are present in the seed/catalogue but excluded from `GET /kinds`, the sheet, and both numerator and denominator of completeness — reserving keys (rather than deleting) means a future activation is a taxonomy bump, never a collision, and existing votes/aggregates survive deactivation. `nekuřácká` + `kuřárna` collapse into the single tri-state `atmosphere_smoking` (§ note below).
+Section headers are uppercase, matching the existing `statsHeader = 'TVOJE ČÍSLA'` convention. v1 ships **11 active amenities** (≤20, scannable at a pub table) across five groups. Seven rows are `is_active=false`: two **reserved keys, not rendered in v1** (`practical_outdoor_tap`, `practical_tank_beer`) plus five **deactivated by migrations `0040`/`0041`** (`seating_kids_corner`, `payment_cash_only`, `atmosphere_dogs_welcome`, `practical_food`, `atmosphere_smoking`). All inactive rows are present in the seed/catalogue but excluded from `GET /kinds`, the sheet, and both numerator and denominator of completeness — reserving/deactivating keys (rather than deleting) means a future activation is a taxonomy bump, never a collision, and existing votes/aggregates survive deactivation.
 
 The canonical taxonomy table below is the locked single source. `order` is the integer render rank (lower first). Only `is_active=true` rows are returned by `GET /kinds`, rendered in the sheet, and counted in `total_kinds`.
 
-The single consolidated table below lists every seeded row, grouped by section. Columns: `amenity_key | section | label (cs) | chip (cs) | IconGlyph / NEW glyph | map-filter candidate | is_active | order | status`. The 12 active rows render in the sheet and `GET /kinds`; the 6 inactive rows are struck through and marked with the deactivation reason — they stay in the seed/catalogue but are excluded from `GET /kinds`, the sheet, and both ends of completeness.
+The single consolidated table below lists every seeded row, grouped by section. Columns: `amenity_key | section | label (cs) | chip (cs) | IconGlyph / NEW glyph | map-filter candidate | is_active | order | status`. The 11 active rows render in the sheet and `GET /kinds`; the 7 inactive rows are struck through and marked with the deactivation reason — they stay in the seed/catalogue but are excluded from `GET /kinds`, the sheet, and both ends of completeness.
 
 | amenity_key | section | label (cs) | chip (cs) | IconGlyph / NEW glyph | map-filter | is_active | order | status |
 |---|---|---|---|---|---|---|---|---|
@@ -44,18 +44,18 @@ The single consolidated table below lists every seeded row, grouped by section. 
 | `atmosphere_live_music` | atmosphere | Živá hudba | Živá hudba | **NEW** `MicIcon` (lucide `Mic`) | no | true | 100 | active |
 | `atmosphere_sports_tv` | atmosphere | Sport v televizi | Sport v TV | **NEW** `TvIcon` (lucide `Tv`) | yes | true | 110 | active |
 | ~~`atmosphere_dogs_welcome`~~ | ~~atmosphere~~ | ~~Psi vítáni~~ | ~~Psi~~ | ~~`DogIcon`~~ | ~~yes~~ | **false** | ~~120~~ | inactive — deactivated by `0040` (dropped by product) |
-| `atmosphere_smoking` | atmosphere | Kuřárna / kouření povoleno | Kouření | **NEW** `CigaretteIcon` (lucide `Cigarette`) | yes | true | 130 | active |
+| ~~`atmosphere_smoking`~~ | ~~atmosphere~~ | ~~Kuřárna / kouření povoleno~~ | ~~Kouření~~ | ~~`CigaretteIcon`~~ | ~~yes~~ | **false** | ~~130~~ | inactive — deactivated by `0041` (low-signal / sensitive venue attribute) |
 | `practical_wifi` | practical | Wi-Fi | Wi-Fi | `WifiIcon` (exists) | yes | true | 140 | active |
 | `practical_parking` | practical | Parkování | Parkování | **NEW** `SquareParkingIcon` (lucide `SquareParking`) | yes | true | 150 | active |
 | ~~`practical_food`~~ | ~~practical~~ | ~~Kuchyně / dá se najíst~~ | ~~Kuchyně~~ | ~~`UtensilsIcon`~~ | ~~yes~~ | **false** | ~~160~~ | inactive — deactivated by `0040` (assumed for a pub, low signal) |
 | `practical_outdoor_tap` | practical | Venkovní výčep | Výčep | **NEW glyph required before activation** (NOT `BeerIcon` reuse) | no | **false** | 170 | inactive — reserved (seeded `active=False`) |
 | `practical_tank_beer` | practical | Tankové pivo | Tank | `BeerIcon` (exists) | yes | **false** | 180 | inactive — reserved (seeded `active=False`) |
 
-**Active set = exactly the 12 rows with `is_active=true`.** Six rows are `is_active=false`: two RESERVED (`practical_outdoor_tap`, `practical_tank_beer`, seeded `active=False`) plus four DEACTIVATED by migration `0040_deactivate_unused_amenity_kinds` (`seating_kids_corner`, `payment_cash_only`, `atmosphere_dogs_welcome`, `practical_food`). => `total_kinds` (active) = **12**, so per-pub completeness can reach 100%.
+**Active set = exactly the 11 rows with `is_active=true`.** Seven rows are `is_active=false`: two RESERVED (`practical_outdoor_tap`, `practical_tank_beer`, seeded `active=False`) plus five DEACTIVATED by migrations `0040_deactivate_unused_amenity_kinds` and `0041_amenity_identity_tombstones` (`seating_kids_corner`, `payment_cash_only`, `atmosphere_dogs_welcome`, `practical_food`, `atmosphere_smoking`). => `total_kinds` (active) = **11**, so per-pub completeness can reach 100%.
 
 > **`game_foosball` icon — the one custom glyph.** Lucide ships NO soccer/football icon and the project has no other icon pack, so `SoccerBallIcon` is a deliberate hand-rolled `react-native-svg` glyph in `src/components/shared/IconGlyph.tsx` (outer circle + central pentagon + radial seams). This is the single intentional exception to the otherwise-locked "lucide owns all icon paths" rule — every other glyph is a one-line lucide wrap.
 
-> **Smoking is ONE tri-state amenity (`atmosphere_smoking`).** `yes` = lze kouřit / je kuřárna; `no` = nekuřácká; unknown = nezmapováno. Modeling `kuřárna` and `nekuřácká` as two keys recreates the boolean trap (both could read "yes" → contradictory public truth). Czech indoor-smoking law makes granularity low-value. If "dedicated smoking room" granularity is ever needed, it is an additive `atmosphere_smoking_room` in a later version, never a v1 second key.
+> **Smoking is currently inactive.** The reserved/deactivated key remains `atmosphere_smoking` and would be a single tri-state amenity if reactivated (`yes` = lze kouřit / je kuřárna; `no` = nekuřácká; unknown = nezmapováno). Modeling `kuřárna` and `nekuřácká` as two keys recreates the boolean trap (both could read "yes" → contradictory public truth). Czech indoor-smoking law makes granularity low-value; keep it inactive unless a product decision brings it back.
 
 > **Payment is ONE tri-state amenity (`payment_card`).** `yes` = platí kartou; `no` = jen hotovost; unknown = nezmapováno. The earlier two-key model (`payment_card` + `payment_cash_only`) was dropped: cash-only is the exact inverse of card (card=yes ⇒ cash-only=no; card=no ⇒ cash-only=yes), so asking both was redundant and invited contradictory "bere obojí" double-yes votes. Collapsing to the single `payment_card` tri-state makes the contradiction structurally impossible and there is no soft-exclusion rule to maintain. If "dedicated cash-only / card-from-X-Kč" granularity is ever needed it is an additive later-version key, never a v1 second payment key.
 
@@ -253,11 +253,12 @@ export type AmenityKey =
   | 'payment_card'
   | 'seating_garden' | 'seating_barrier_free'
   | 'game_darts' | 'game_billiards' | 'game_foosball' | 'game_jukebox'
-  | 'atmosphere_live_music' | 'atmosphere_sports_tv' | 'atmosphere_smoking'
+  | 'atmosphere_live_music' | 'atmosphere_sports_tv'
   | 'practical_wifi' | 'practical_parking';
 // Inactive keys NOT in the active union: 'practical_outdoor_tap' + 'practical_tank_beer'
 // (reserved, is_active=false); 'seating_kids_corner', 'payment_cash_only',
-// 'atmosphere_dogs_welcome', 'practical_food' (deactivated by migration 0040).
+// 'atmosphere_dogs_welcome', 'practical_food', 'atmosphere_smoking'
+// (deactivated by migrations 0040/0041).
 
 export interface AmenityDef {
   key: AmenityKey;
@@ -374,7 +375,7 @@ export interface WirePubAmenities {
   mapper_count: number;                  // distinct accounts who voted any amenity at this pub
   completeness: {                        // nested object (canonical shape)
     mapped_count: number;                // distinct ACTIVE amenities with status != 'unknown'
-    total_kinds: number;                 // active amenity count = 12 (server-authoritative denominator)
+    total_kinds: number;                 // active amenity count = 11 (server-authoritative denominator)
     pct: number;                         // mapped_count / total_kinds, 0..1, clamped
   };
   amenities: WireAmenityAggregate[];
@@ -487,7 +488,7 @@ Level titles {Nováček, Všímálek, Štamgast, Znalec, Hospodský mudrc} and b
 
 ### 5.2 Completeness
 
-The sheet ring shows **community** completeness from the nested `completeness: { mapped_count, total_kinds, pct }` object on the aggregate read — `total_kinds` is server-authoritative (= **12** active kinds) so the meter survives amenity additions and per-pub completeness can reach 100%; a personal sub-line shows "ty jsi zmapoval/a {n} z {total}". Do not hard-code the denominator client-side.
+The sheet ring shows **community** completeness from the nested `completeness: { mapped_count, total_kinds, pct }` object on the aggregate read — `total_kinds` is server-authoritative (= **11** active kinds) so the meter survives amenity additions and per-pub completeness can reach 100%; a personal sub-line shows "ty jsi zmapoval/a {n} z {total}". Do not hard-code the denominator client-side.
 
 ### 5.3 New badges (extending the `Badge` pattern)
 
@@ -627,7 +628,7 @@ All are one-line lucide wraps **except `SoccerBallIcon`**, which is a custom han
 | `Radio` | `RadioIcon` | game_jukebox |
 | `Mic` | `MicIcon` | atmosphere_live_music |
 | `Tv` | `TvIcon` | atmosphere_sports_tv |
-| `Cigarette` | `CigaretteIcon` | atmosphere_smoking |
+| ~~`Cigarette`~~ | ~~`CigaretteIcon`~~ | ~~atmosphere_smoking~~ (inactive) |
 | `SquareParking` | `SquareParkingIcon` | practical_parking |
 | `MapPinned` | `MapPinnedIcon` | trigger button + Objevitel/Kartograf badges + Profile stat |
 | `Sprout` | `SproutIcon` | Mapér level card + Prvomapér badge + toast |
