@@ -117,6 +117,7 @@ from .serializers import (
     FriendPubActivitySerializer,
     FriendRequestCreateSerializer,
     FriendSearchQuerySerializer,
+    FriendSettingsPatchSerializer,
     FriendshipSerializer,
     PubAmenityKindSerializer,
     PubAmenityReadQuerySerializer,
@@ -191,6 +192,9 @@ PRAGUE_TZ = ZoneInfo("Europe/Prague")
 
 # Party leaderboard window: pub visits in the trailing 30 days.
 LEADERBOARD_WINDOW = timedelta(days=30)
+# Friend dashboard shared-evening stats stay recent enough to be useful while
+# keeping the hot /v1/friends read path bounded as accounts build history.
+FRIEND_SHARED_STATS_WINDOW = timedelta(days=365)
 
 
 def _friend_display_name(account: Account | None) -> str:
@@ -237,7 +241,12 @@ def _shared_pub_stats(
         friend_id: {"shared_count": 0, "last_shared_at": None, "last_pub_name": ""}
         for friend_id in friend_ids
     }
-    my_visits = list(PubVisit.objects.filter(account=account).only("cache_key", "started_at", "name"))
+    cutoff = dj_timezone.now() - FRIEND_SHARED_STATS_WINDOW
+    my_visits = list(
+        PubVisit.objects.filter(account=account, started_at__gte=cutoff).only(
+            "cache_key", "started_at", "name"
+        )
+    )
     if not my_visits:
         return stats, set()
 
@@ -250,7 +259,7 @@ def _shared_pub_stats(
     }
     shared_dates: set = set()
     friend_visits = (
-        PubVisit.objects.filter(account_id__in=friend_ids)
+        PubVisit.objects.filter(account_id__in=friend_ids, started_at__gte=cutoff)
         .only("account_id", "cache_key", "started_at", "name")
         .order_by("-started_at")
     )
@@ -1993,6 +2002,13 @@ class FriendRequestView(APIView):
         now = dj_timezone.now()
         try:
             with transaction.atomic():
+                # Serialize both A→B and B→A attempts through the same account
+                # locks so two simultaneous requests cannot create mirrored rows.
+                list(
+                    Account.objects.select_for_update()
+                    .filter(pk__in=sorted([request.user.pk, target.pk]))
+                    .values_list("pk", flat=True)
+                )
                 reverse = (
                     Friendship.objects.select_for_update()
                     .filter(requester=target, recipient=request.user)
@@ -2186,23 +2202,71 @@ class FriendActivityView(APIView):
                     .filter(account=request.user, client_id=data["client_id"])
                     .first()
                 )
-                should_notify = existing is None or not existing.active or existing.expires_at <= now
-                activity, _created = FriendPubActivity.objects.update_or_create(
-                    account=request.user,
-                    client_id=data["client_id"],
-                    defaults={
-                        "cache_key": cache_key,
-                        "name": data["name"],
-                        "lat": data["lat"],
-                        "lng": data["lng"],
-                        "city": data.get("city") or "",
-                        "external_id": data.get("external_id") or "",
-                        "message": data.get("message") or "",
-                        "started_at": started_at,
-                        "expires_at": expires_at,
-                        "active": True,
-                    },
+                current_active = (
+                    FriendPubActivity.objects.select_for_update()
+                    .filter(account=request.user, active=True, expires_at__gt=now)
+                    .order_by("-started_at")
+                    .first()
                 )
+                existing_is_live = (
+                    existing is not None and existing.active and existing.expires_at > now
+                )
+                activity = existing if existing_is_live else current_active or existing
+                should_notify = (
+                    activity is None
+                    or not activity.active
+                    or activity.expires_at <= now
+                    or activity.cache_key != cache_key
+                )
+                if activity is None:
+                    activity = FriendPubActivity.objects.create(
+                        account=request.user,
+                        client_id=data["client_id"],
+                        cache_key=cache_key,
+                        name=data["name"],
+                        lat=data["lat"],
+                        lng=data["lng"],
+                        city=data.get("city") or "",
+                        external_id=data.get("external_id") or "",
+                        message=data.get("message") or "",
+                        started_at=started_at,
+                        expires_at=expires_at,
+                        active=True,
+                    )
+                else:
+                    activity.client_id = data["client_id"]
+                    activity.cache_key = cache_key
+                    activity.name = data["name"]
+                    activity.lat = data["lat"]
+                    activity.lng = data["lng"]
+                    activity.city = data.get("city") or ""
+                    activity.external_id = data.get("external_id") or ""
+                    activity.message = data.get("message") or ""
+                    activity.started_at = started_at
+                    activity.expires_at = expires_at
+                    activity.active = True
+                    activity.save(
+                        update_fields=[
+                            "client_id",
+                            "cache_key",
+                            "name",
+                            "lat",
+                            "lng",
+                            "city",
+                            "external_id",
+                            "message",
+                            "started_at",
+                            "expires_at",
+                            "active",
+                            "updated_at",
+                        ]
+                    )
+
+                FriendPubActivity.objects.filter(
+                    account=request.user,
+                    active=True,
+                    expires_at__gt=now,
+                ).exclude(pk=activity.pk).update(active=False, updated_at=now)
         except Exception as exc:  # noqa: BLE001
             logger.error("friends: pub activity failed: %s", exc, exc_info=True)
             return Response(
@@ -2395,38 +2459,36 @@ class FriendSettingsView(APIView):
         return Response(_friend_settings_payload(request.user), status=status.HTTP_200_OK)
 
     def patch(self, request: Request) -> Response:
+        serializer = FriendSettingsPatchSerializer(data=request.data)
+        if not serializer.is_valid():
+            code = (
+                "invalid_hour"
+                if "quiet_hours_start" in serializer.errors or "quiet_hours_end" in serializer.errors
+                else "invalid_settings"
+            )
+            return Response(
+                {"detail": "Nastavení se nepodařilo uložit.", "code": code},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         account = request.user
         update_fields: list[str] = []
-        data = request.data if isinstance(request.data, dict) else {}
+        data = serializer.validated_data
 
         if "ghost_mode" in data:
-            account.ghost_mode = bool(data["ghost_mode"])
+            account.ghost_mode = data["ghost_mode"]
             update_fields.append("ghost_mode")
         if "quiet_hours_enabled" in data:
-            account.quiet_hours_enabled = bool(data["quiet_hours_enabled"])
+            account.quiet_hours_enabled = data["quiet_hours_enabled"]
             update_fields.append("quiet_hours_enabled")
         for key in ("quiet_hours_start", "quiet_hours_end"):
             if key in data:
-                hour = self._validate_hour(data[key])
-                if hour is None:
-                    return Response(
-                        {"detail": "Hodina musí být mezi 0 a 23.", "code": "invalid_hour"},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-                setattr(account, key, hour)
+                setattr(account, key, data[key])
                 update_fields.append(key)
 
         if update_fields:
             account.save(update_fields=update_fields)
         return Response(_friend_settings_payload(account), status=status.HTTP_200_OK)
-
-    @staticmethod
-    def _validate_hour(value) -> int | None:
-        try:
-            hour = int(value)
-        except (TypeError, ValueError):
-            return None
-        return hour if 0 <= hour <= 23 else None
 
 
 class FriendNotificationReadView(APIView):

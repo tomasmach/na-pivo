@@ -579,6 +579,15 @@ class FriendActivityResponseSerializer(serializers.Serializer):
     response = serializers.ChoiceField(choices=FriendActivityResponse.Response.choices)
 
 
+class FriendSettingsPatchSerializer(serializers.Serializer):
+    """PATCH body for friend social settings."""
+
+    ghost_mode = serializers.BooleanField(required=False)
+    quiet_hours_enabled = serializers.BooleanField(required=False)
+    quiet_hours_start = serializers.IntegerField(required=False, min_value=0, max_value=23)
+    quiet_hours_end = serializers.IntegerField(required=False, min_value=0, max_value=23)
+
+
 class FriendPubActivitySerializer(serializers.ModelSerializer):
     """Active friend pub status exposed to accepted friends.
 

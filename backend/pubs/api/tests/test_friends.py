@@ -232,6 +232,41 @@ def test_friend_pub_activity_notifies_friends_and_returns_active_status(client, 
 
 
 @pytest.mark.django_db
+def test_repeated_pub_activity_reuses_live_card_without_spamming_friends(client, monkeypatch):
+    token_a, account_a = _register(client, "janek")
+    _token_b, account_b = _register(client, "petr")
+    account_b.quiet_hours_enabled = False
+    account_b.save(update_fields=["quiet_hours_enabled"])
+    Friendship.objects.create(
+        requester=account_a,
+        recipient=account_b,
+        status=Friendship.Status.ACCEPTED,
+        responded_at=timezone.now(),
+    )
+    _grant_push(account_b, "ExponentPushToken[petr_repeat]")
+    sent_payloads: list[list[dict]] = []
+    monkeypatch.setattr("pubs.api.views.requests.post", _push_recorder(sent_payloads))
+
+    first = _broadcast(client, token_a, message="První cinknutí.")
+    second = _broadcast(client, token_a, message="Druhé cinknutí.")
+
+    assert second["id"] == first["id"]
+    assert second["message"] == "Druhé cinknutí."
+    assert FriendPubActivity.objects.filter(account=account_a, active=True).count() == 1
+    assert FriendNotification.objects.filter(
+        recipient=account_b,
+        kind=FriendNotification.Kind.FRIEND_AT_PUB,
+    ).count() == 1
+    assert len(
+        [
+            message
+            for message in _flatten_push(sent_payloads)
+            if message["data"].get("kind") == "friend_at_pub"
+        ]
+    ) == 1
+
+
+@pytest.mark.django_db
 def test_dashboard_returns_shared_pub_count_and_rituals(client):
     token_a, account_a = _register(client, "janek")
     _token_b, account_b = _register(client, "petr")
@@ -251,6 +286,28 @@ def test_dashboard_returns_shared_pub_count_and_rituals(client):
     assert stats["shared_pub_count"] == 3
     assert stats["last_pub_name"] == _PUB_NAME
     assert [ritual["key"] for ritual in stats["rituals"]] == ["first_round", "regular_table"]
+
+
+@pytest.mark.django_db
+def test_dashboard_shared_stats_ignore_old_history(client):
+    token_a, account_a = _register(client, "janek")
+    _token_b, account_b = _register(client, "petr")
+    Friendship.objects.create(
+        requester=account_a,
+        recipient=account_b,
+        status=Friendship.Status.ACCEPTED,
+        responded_at=timezone.now(),
+    )
+    old_day = (timezone.localtime(timezone.now(), _PRAGUE).date() - timedelta(days=400)).isoformat()
+    _visit(account_a, day=old_day)
+    _visit(account_b, day=old_day)
+
+    resp = client.get("/v1/friends", **_auth(token_a))
+
+    assert resp.status_code == status.HTTP_200_OK
+    stats = resp.json()["friend_stats"][str(account_b.public_id)]
+    assert stats["shared_pub_count"] == 0
+    assert stats["rituals"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -570,6 +627,22 @@ def test_friend_settings_get_and_patch(client):
     )
     assert invalid.status_code == status.HTTP_400_BAD_REQUEST
     assert invalid.json()["code"] == "invalid_hour"
+
+
+@pytest.mark.django_db
+def test_friend_settings_patch_parses_string_booleans(client):
+    token, _account = _register(client, "janek")
+
+    patched = client.patch(
+        "/v1/friends/settings",
+        data={"ghost_mode": "false", "quiet_hours_enabled": "false"},
+        format="json",
+        **_auth(token),
+    )
+
+    assert patched.status_code == status.HTTP_200_OK
+    assert patched.json()["ghost_mode"] is False
+    assert patched.json()["quiet_hours_enabled"] is False
 
 
 @pytest.mark.django_db
