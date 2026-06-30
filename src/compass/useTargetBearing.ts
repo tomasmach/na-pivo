@@ -16,23 +16,28 @@ export function useTargetBearing(
   userPos: { lat: number; lng: number } | null,
   targetPub: Pub | null,
 ): TargetBearingResult {
+  const userLat = userPos?.lat;
+  const userLng = userPos?.lng;
+  const targetLat = targetPub?.lat;
+  const targetLng = targetPub?.lng;
+
   return useMemo(() => {
-    if (!userPos || !targetPub) {
+    if (userLat == null || userLng == null || targetLat == null || targetLng == null) {
       return { bearing: null, distanceMeters: null };
     }
 
     const bearing = initialBearing({
-      lat1: userPos.lat,
-      lng1: userPos.lng,
-      lat2: targetPub.lat,
-      lng2: targetPub.lng,
+      lat1: userLat,
+      lng1: userLng,
+      lat2: targetLat,
+      lng2: targetLng,
     });
 
     const distanceMeters = haversineMeters(
-      { lat: userPos.lat, lng: userPos.lng },
-      { lat: targetPub.lat, lng: targetPub.lng },
+      { lat: userLat, lng: userLng },
+      { lat: targetLat, lng: targetLng },
     );
 
     return { bearing, distanceMeters };
-  }, [userPos?.lat, userPos?.lng, targetPub?.id]);
+  }, [targetLat, targetLng, userLat, userLng]);
 }
