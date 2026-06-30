@@ -21,7 +21,7 @@ import { useDevicePosition } from '@/compass/useDevicePosition';
 import { checkLocationPermission, ensureLocationPermission, openSystemSettings } from '@/compass/permissions';
 import type { PermissionState } from '@/compass/permissions';
 import { fetchPubsNear, findNearbyPubs, type Pub } from '@/data/pubs';
-import { geohash8 } from '@/data/geohash';
+import { decodeGeohash8, geohash8 } from '@/data/geohash';
 import { recordWalkingSample } from '@/data/walkingTelemetry';
 import { useTallyStore } from '@/stores/tallyStore';
 
@@ -37,6 +37,20 @@ export interface NearbyCandidate {
   pubKey: string;
   pub: Pub;
   distanceMeters: number;
+}
+
+/**
+ * Build a lightweight stand-in Pub for an active session whose real pub is NOT
+ * among the current nearby candidates (GPS drifted, or the tab was opened away
+ * from the pub). The geohash-8 cell centre re-encodes to the same `pubKey`
+ * (round-trip identity of geohash8/decodeGeohash8), so anything that re-derives
+ * the cell from lat/lng downstream — including the tally counter — keeps
+ * counting at the right physical place. We only have the session's key + name,
+ * so the stand-in is intentionally sparse (no address / hours / rating).
+ */
+function sessionStandInPub(pubKey: string, name: string): Pub {
+  const { lat, lng } = decodeGeohash8(pubKey);
+  return { id: `tally:${pubKey}`, name, lat, lng };
 }
 
 export interface UseNearbyPubResult {
@@ -126,8 +140,22 @@ export function useNearbyPub(): UseNearbyPubResult {
           if (activeSessionPubKey) {
             const sessionCandidate = ranked.find((candidate) => candidate.pubKey === activeSessionPubKey);
             if (sessionCandidate) {
+              // Session pub is nearby — pin the real, fully-detailed Pub.
               pinnedRef.current = true;
               setSelected(sessionCandidate.pub);
+            } else {
+              // The evening is under way but its pub isn't among the current
+              // candidates. Reflect the session anyway instead of leaving a
+              // stale neighbour selected: keep the selection when it already IS
+              // the session pub, otherwise surface a stand-in derived from the
+              // session key + name. Left unpinned so we upgrade to the real Pub
+              // the moment it reappears in candidates.
+              const sessionName = useTallyStore.getState().current?.pubName ?? '';
+              setSelected((prev) =>
+                prev && geohash8(prev.lat, prev.lng) === activeSessionPubKey
+                  ? prev
+                  : sessionStandInPub(activeSessionPubKey, sessionName),
+              );
             }
           } else if (nearest && nearest.distanceMeters <= AUTO_PICK_METERS) {
             setSelected(nearest.pub);

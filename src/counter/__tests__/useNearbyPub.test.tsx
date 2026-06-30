@@ -149,6 +149,39 @@ describe('useNearbyPub', () => {
     hook.unmount();
   });
 
+  it('reflects the active session pub even when it is absent from nearby candidates', async () => {
+    // An evening is already under way at PUB_C (e.g. resumed / hydrated on
+    // launch), but the user's GPS now only sees PUB_A nearby — the session pub
+    // is NOT among the candidates. The counter must still show the session pub,
+    // not the stale nearby neighbour.
+    act(() => {
+      useTallyStore.setState({
+        current: {
+          clientId: 'session-c',
+          pubKey: geohash8(PUB_C.lat, PUB_C.lng),
+          pubName: PUB_C.name,
+          startedAt: '2026-06-30T19:00:00.000Z',
+          drinks: [{ id: 'drink-1', beerName: 'Plzeň', priceCzk: 62, at: '2026-06-30T19:05:00.000Z' }],
+        },
+        history: [],
+      });
+    });
+
+    setNearby(PUB_A);
+    const hook = renderNearbyHook();
+
+    await waitForExpectation(() => {
+      const selected = hook.result.selected;
+      expect(selected).not.toBeNull();
+      // Same geohash cell as the session pub → counting stays on the right pub.
+      expect(geohash8(selected!.lat, selected!.lng)).toBe(geohash8(PUB_C.lat, PUB_C.lng));
+      expect(selected?.name).toBe(PUB_C.name);
+    });
+    // Crucially, it is NOT the stale nearby pub.
+    expect(hook.result.selected?.id).not.toBe(PUB_A.id);
+    hook.unmount();
+  });
+
   it('keeps a manual selection sticky while moving without an active session', async () => {
     setNearby(PUB_A);
     const hook = renderNearbyHook();
