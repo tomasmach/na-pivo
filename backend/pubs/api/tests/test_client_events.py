@@ -193,6 +193,30 @@ def test_counter_product_events_are_accepted_and_sanitized(client):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("event_name", ["counter_session_closed", "counter_session_resumed"])
+def test_counter_session_lifecycle_events_are_accepted(client, event_name):
+    resp = client.post(
+        "/v1/client-events",
+        data={
+            "event": event_name,
+            "severity": "info",
+            "context": {
+                "reason": "manual",
+                "pub_name": "U Zlatého tygra",
+                "lat": 50.0876,
+                "lng": 14.4214,
+            },
+        },
+        format="json",
+    )
+
+    assert resp.status_code == status.HTTP_202_ACCEPTED
+    event = ClientEvent.objects.get()
+    assert event.event == event_name
+    assert event.context == {"reason": "manual"}
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     "event_name",
     ["rating_synced", "rating_sync_failed", "visit_synced", "visit_sync_failed"],

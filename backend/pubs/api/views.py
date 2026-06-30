@@ -321,6 +321,14 @@ def _friend_activity_context(request: Request) -> dict:
     return {"request": request, "account": request.user}
 
 
+def _friend_activity_responses_prefetch() -> Prefetch:
+    """Prefetch RSVP rows in the shape FriendPubActivitySerializer expects."""
+    return Prefetch(
+        "responses",
+        queryset=FriendActivityResponse.objects.select_related("account"),
+    )
+
+
 def _account_in_quiet_hours(account: Account, now=None) -> bool:
     """Whether ``account`` is inside its local (Europe/Prague) quiet-hours window.
 
@@ -1882,10 +1890,7 @@ class FriendsView(APIView):
         context = _friend_profile_context(request)
         activity_context = _friend_activity_context(request)
         # Render the RSVP roster (counts + GOING profiles + my_response) without N+1.
-        responses_prefetch = Prefetch(
-            "responses",
-            queryset=FriendActivityResponse.objects.select_related("account"),
-        )
+        responses_prefetch = _friend_activity_responses_prefetch()
 
         friendships = (
             Friendship.objects.filter(Q(requester=request.user) | Q(recipient=request.user))
@@ -2407,8 +2412,13 @@ class FriendActivityView(APIView):
                 },
             )
 
+        fresh = (
+            FriendPubActivity.objects.select_related("account")
+            .prefetch_related(_friend_activity_responses_prefetch())
+            .get(pk=activity.pk)
+        )
         return Response(
-            FriendPubActivitySerializer(activity, context=_friend_activity_context(request)).data,
+            FriendPubActivitySerializer(fresh, context=_friend_activity_context(request)).data,
             status=status.HTTP_201_CREATED if should_notify else status.HTTP_200_OK,
         )
 
@@ -2526,7 +2536,7 @@ class FriendActivityRespondView(APIView):
 
         fresh = (
             FriendPubActivity.objects.select_related("account")
-            .prefetch_related(Prefetch("responses", queryset=FriendActivityResponse.objects.select_related("account")))
+            .prefetch_related(_friend_activity_responses_prefetch())
             .get(pk=activity.pk)
         )
         return Response(
@@ -4049,8 +4059,12 @@ def _recompute_amenity_aggregate(
         pub_identity_key=pub_identity_key,
         amenity_key=amenity_key,
     )
-    yes_count = votes.filter(value=PubAmenityVote.Value.YES).count()
-    no_count = votes.filter(value=PubAmenityVote.Value.NO).count()
+    counts = votes.aggregate(
+        yes_count=Count("id", filter=Q(value=PubAmenityVote.Value.YES)),
+        no_count=Count("id", filter=Q(value=PubAmenityVote.Value.NO)),
+    )
+    yes_count = int(counts["yes_count"] or 0)
+    no_count = int(counts["no_count"] or 0)
 
     agg.yes_count = yes_count
     agg.no_count = no_count

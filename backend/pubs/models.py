@@ -1470,6 +1470,8 @@ class ClientEvent(models.Model):
         WALKING_DISTANCE = "walking_distance", "Walking distance"
         COUNTER_TAB_OPENED = "counter_tab_opened", "Counter tab opened"
         COUNTER_SESSION_STARTED = "counter_session_started", "Counter session started"
+        COUNTER_SESSION_CLOSED = "counter_session_closed", "Counter session closed"
+        COUNTER_SESSION_RESUMED = "counter_session_resumed", "Counter session resumed"
         DRINK_ADDED = "drink_added", "Drink added"
         DRINK_REMOVED = "drink_removed", "Drink removed"
         DRINK_SYNCED = "drink_synced", "Drink synced"
