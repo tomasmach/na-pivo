@@ -157,6 +157,7 @@ from .serializers import (
     _amenity_aggregate_item,
     _amenity_vote_item,
 )
+from .stats import compute_my_stats
 
 logger = logging.getLogger(__name__)
 
@@ -1728,6 +1729,31 @@ class PubVisitView(APIView):
             key_label="visit",
             key_value=client_id,
         )
+
+
+class MyStatsView(APIView):
+    """
+    GET /v1/me/stats
+
+    Personal beer stats for the signed-in account: lifetime totals, per-pub
+    tallies, and personal records aggregated from the account's DrinkLog history.
+    Read-only and the durable, server-side mirror of the app's local "Výkon"
+    model — an account holder keeps stats beyond the device's 50-evening cap, and
+    the same numbers later feed the Pivní Wrapped. An account that has logged
+    nothing gets a 200 with zeroes / nulls (never a 404). Auth required (401
+    without a valid token); no throttle scope of its own (cheap indexed scan).
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        try:
+            payload = compute_my_stats(request.user)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("me-stats: unexpected error computing stats: %s", exc, exc_info=True)
+            return _internal_error()
+        return Response(payload, status=status.HTTP_200_OK)
 
 
 def _account_from_request(request: Request) -> Account | None:
