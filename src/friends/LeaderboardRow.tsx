@@ -40,6 +40,7 @@ function resolveName(entry: LeaderboardEntry): string {
 export const LeaderboardRow = memo(function LeaderboardRow({
   entry,
   rank,
+  maxVisits,
 }: LeaderboardRowProps) {
   const { account, visits30d, sharedCount, isMe } = entry;
 
@@ -47,6 +48,11 @@ export const LeaderboardRow = memo(function LeaderboardRow({
     sharedCount > 0
       ? `${cs.friends.leaderboardVisits(visits30d)} · ${sharedCount} spolu`
       : cs.friends.leaderboardVisits(visits30d);
+
+  // Quiet magnitude bar under the row: how this person's 30-day count stacks up
+  // against the leader. Floors at a visible sliver so even the bottom rank reads.
+  const magnitude =
+    maxVisits > 0 ? Math.max(8, Math.round((visits30d / maxVisits) * 84)) : 0;
 
   return (
     <Pressable
@@ -103,6 +109,15 @@ export const LeaderboardRow = memo(function LeaderboardRow({
           {caption}
         </Text>
       </View>
+
+      {magnitude > 0 ? (
+        <View
+          style={[styles.magFill, { width: `${magnitude}%` }, isMe && styles.magFillMe]}
+          pointerEvents="none"
+          importantForAccessibility="no"
+          accessibilityElementsHidden
+        />
+      ) : null}
     </Pressable>
   );
 });
@@ -174,5 +189,16 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.medium,
     fontSize: 11,
     color: Colors.mutedText,
+  },
+  magFill: {
+    position: 'absolute',
+    left: 10,
+    bottom: 5,
+    height: 2.5,
+    borderRadius: Radius.pill,
+    backgroundColor: withAlpha(Colors.amber, 0.2),
+  },
+  magFillMe: {
+    backgroundColor: withAlpha(Colors.amber, 0.55),
   },
 });

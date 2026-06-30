@@ -261,13 +261,15 @@ const styles = StyleSheet.create({
   glowLayer: {
     borderRadius: Radius.cardLarge,
     backgroundColor: Colors.stout2,
-    ...amberGlow(10),
+    // The lone halo on the whole screen — spread it wide enough to actually read
+    // as warmth bleeding off my live table, not a tight 8pt shadow nobody sees.
+    ...amberGlow(22),
   },
   card: {
     backgroundColor: Colors.stout2,
     borderRadius: Radius.cardLarge,
     borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.45),
+    borderColor: withAlpha(Colors.amber, 0.6),
     padding: Spacing.lg,
     ...softDrop(),
   },

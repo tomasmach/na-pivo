@@ -11,7 +11,7 @@
 import React, { memo } from 'react';
 import { StyleSheet, View, Text } from 'react-native';
 
-import { Colors } from '@/theme/colors';
+import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
 
@@ -36,6 +36,14 @@ function SectionHeaderComponent({ label, live = false }: SectionHeaderProps) {
       >
         {label}
       </Text>
+      {/* Trailing hairline that runs the caption out to the screen edge — the
+          quiet "this is a section" cue that makes each group feel composed. */}
+      <View
+        style={[styles.rule, live && styles.ruleLive]}
+        pointerEvents="none"
+        importantForAccessibility="no"
+        accessibilityElementsHidden
+      />
     </View>
   );
 }
@@ -44,7 +52,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.xs,
+    gap: Spacing.sm,
     marginBottom: Spacing.sm,
   },
   label: {
@@ -53,6 +61,14 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     color: Colors.mutedText,
     textTransform: 'uppercase',
+  },
+  rule: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: withAlpha(Colors.border, 0.5),
+  },
+  ruleLive: {
+    backgroundColor: withAlpha(Colors.amber, 0.35),
   },
 });
 

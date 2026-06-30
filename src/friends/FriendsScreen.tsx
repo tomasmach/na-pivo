@@ -400,7 +400,6 @@ export default function FriendsScreen() {
           <View style={[styles.hero, { paddingTop: insets.top + 8 }]}>
             <View style={styles.heroRow1}>
               <View style={styles.heroTitleWrap}>
-                {liveNow ? <LiveDot /> : null}
                 <Text
                   style={styles.heroTitle}
                   numberOfLines={1}
@@ -408,28 +407,27 @@ export default function FriendsScreen() {
                 >
                   {cs.friends.title}
                 </Text>
+                {/* The live pulse trails the wordmark — "Parta •" reads as alive,
+                    instead of a stray dot stranded at the screen edge. */}
+                {liveNow ? <LiveDot size={9} /> : null}
               </View>
 
               <View style={styles.heroRight}>
+                {d ? <StreakBadge streak={d.streak} /> : null}
+                {/* Ghost is a passive status, not a CTA — a compact amber-tinted
+                    eye, not a wide pill that hijacks the masthead. Full label
+                    still lives in the settings sheet it opens. */}
                 {d?.settings.ghostMode ? (
                   <Pressable
                     onPress={() => setSettingsVisible(true)}
                     hitSlop={ROUND_HIT_SLOP}
                     accessibilityRole="button"
                     accessibilityLabel={cs.friends.ghostActive}
-                    style={({ pressed }) => [styles.ghostChip, pressed && styles.dim]}
+                    style={({ pressed }) => [styles.ghostIconBtn, pressed && styles.dim]}
                   >
-                    <EyeOffIcon size={14} color={Colors.mutedText} />
-                    <Text
-                      style={styles.ghostChipText}
-                      numberOfLines={1}
-                      maxFontSizeMultiplier={FontScaleCap.body}
-                    >
-                      {cs.friends.ghostActive}
-                    </Text>
+                    <EyeOffIcon size={18} color={Colors.amberLight} />
                   </Pressable>
                 ) : null}
-                {d ? <StreakBadge streak={d.streak} /> : null}
                 <Pressable
                   onPress={() => setSettingsVisible(true)}
                   accessibilityRole="button"
@@ -838,7 +836,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.md,
   },
   heroRow1: {
-    height: 44,
+    minHeight: 46,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -854,8 +852,9 @@ const styles = StyleSheet.create({
   heroTitle: {
     flexShrink: 1,
     fontFamily: Fonts.display.extrabold,
-    fontSize: 26,
-    lineHeight: 30,
+    fontSize: 30,
+    lineHeight: 34,
+    letterSpacing: -0.5,
     color: Colors.foam,
   },
   heroRight: {
@@ -870,30 +869,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  ghostChip: {
-    flexShrink: 1,
-    minWidth: 0,
-    minHeight: HitArea.min,
-    flexDirection: 'row',
+  ghostIconBtn: {
+    width: HitArea.min,
+    height: HitArea.min,
     alignItems: 'center',
-    gap: Spacing.xs,
-    paddingHorizontal: Spacing.sm,
+    justifyContent: 'center',
     borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.foam, 0.06),
+    backgroundColor: withAlpha(Colors.amber, 0.1),
     borderWidth: 1,
-    borderColor: withAlpha(Colors.border, 0.6),
-  },
-  ghostChipText: {
-    flexShrink: 1,
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 12,
-    color: Colors.mutedText,
+    borderColor: withAlpha(Colors.amber, 0.28),
   },
   heroSubline: {
-    marginTop: Spacing.xs,
+    marginTop: Spacing.sm,
     fontFamily: Fonts.ui.medium,
-    fontSize: 14,
-    lineHeight: 19,
+    fontSize: 15,
+    lineHeight: 21,
   },
   heroRule: {
     height: StyleSheet.hairlineWidth,

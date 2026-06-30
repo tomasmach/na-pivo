@@ -147,8 +147,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout2,
     borderRadius: Radius.card,
     borderWidth: 1,
-    // Warm, but deliberately cooler than MyActivityCard's 0.45 — and no glow.
-    borderColor: withAlpha(Colors.amber, 0.32),
+    // A crisp amber edge so the live card lifts off the bare stout — but still
+    // deliberately cooler than MyActivityCard's 0.6, and with NO glow (the lone
+    // halo belongs to my own broadcast).
+    borderColor: withAlpha(Colors.amber, 0.42),
     padding: Spacing.lg,
     ...softDrop(),
   },
@@ -185,8 +187,8 @@ const styles = StyleSheet.create({
   pubName: {
     marginTop: Spacing.md,
     fontFamily: Fonts.display.extrabold,
-    fontSize: 18,
-    lineHeight: 22,
+    fontSize: 21,
+    lineHeight: 25,
     color: Colors.foam,
   },
   cityRow: {
