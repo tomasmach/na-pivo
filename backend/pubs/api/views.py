@@ -3421,7 +3421,7 @@ def _export_account_data(account: Account) -> dict:
                 "status": report.status,
                 "created_at": _iso(report.created_at),
             }
-            for report in account.content_reports_made.all()
+            for report in account.content_reports_made.select_related("target_account")
         ],
         # PubAmenityVote is a per-account, location-adjacent dataset (§8.5): the
         # owner's own export includes it (name/city/coords are what they supplied).
