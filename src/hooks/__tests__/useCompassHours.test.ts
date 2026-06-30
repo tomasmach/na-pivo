@@ -79,6 +79,7 @@ jest.mock('@/compass/useArrivalDetector', () => ({
 }));
 
 jest.mock('@/compass/permissions', () => ({
+  checkLocationPermission: jest.fn(async () => 'granted'),
   ensureLocationPermission: jest.fn(async () => 'granted'),
   openSystemSettings: jest.fn(async () => undefined),
 }));

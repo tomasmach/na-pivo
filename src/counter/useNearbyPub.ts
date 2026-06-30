@@ -18,7 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 
 import { useDevicePosition } from '@/compass/useDevicePosition';
-import { ensureLocationPermission, openSystemSettings } from '@/compass/permissions';
+import { checkLocationPermission, ensureLocationPermission, openSystemSettings } from '@/compass/permissions';
 import type { PermissionState } from '@/compass/permissions';
 import { fetchPubsNear, findNearbyPubs, type Pub } from '@/data/pubs';
 import { geohash8 } from '@/data/geohash';
@@ -65,7 +65,7 @@ export function useNearbyPub(): UseNearbyPubResult {
 
   // — Permission on mount —
   useEffect(() => {
-    ensureLocationPermission()
+    checkLocationPermission()
       .then(setPermissionState)
       .catch(() => setPermissionState('denied'));
   }, []);
