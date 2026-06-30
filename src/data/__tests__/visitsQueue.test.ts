@@ -144,6 +144,9 @@ describe('flushVisitsQueue', () => {
 
   it('persists a newer enqueue while an older delivery is still in flight', async () => {
     let resolveSubmit!: (value: SubmitVisitResult) => void;
+    // Every send retries so the trailing flush keeps both ops queued (the point
+    // here is that the mid-flight enqueue is not clobbered).
+    submitVisit.mockResolvedValue('retry');
     submitVisit.mockReturnValueOnce(
       new Promise<SubmitVisitResult>((resolve) => {
         resolveSubmit = resolve;
@@ -167,6 +170,9 @@ describe('flushVisitsQueue', () => {
 
   it('keeps a newer operation for the same client_id when an older in-flight op settles', async () => {
     let resolveSubmit!: (value: SubmitVisitResult) => void;
+    // The trailing flush re-attempts but retries, so the newer op stays queued
+    // (the point here is that the stale in-flight result does not clobber it).
+    submitVisit.mockResolvedValue('retry');
     submitVisit.mockReturnValueOnce(
       new Promise<SubmitVisitResult>((resolve) => {
         resolveSubmit = resolve;
@@ -210,22 +216,29 @@ describe('flushVisitsQueue', () => {
     expect(await readQueue()).toEqual([]);
   });
 
-  it('shares one delivery pass across concurrent flush calls', async () => {
+  it('runs exactly one trailing pass for a flush requested mid-flight', async () => {
     let resolveSubmit!: (value: SubmitVisitResult) => void;
-    submitVisit.mockReturnValueOnce(
-      new Promise<SubmitVisitResult>((resolve) => {
-        resolveSubmit = resolve;
-      }),
-    );
+    submitVisit
+      .mockReturnValueOnce(
+        new Promise<SubmitVisitResult>((resolve) => {
+          resolveSubmit = resolve;
+        }),
+      )
+      .mockResolvedValue('retry');
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([upsert('v1')]));
 
     const first = flushVisitsQueue();
     const second = flushVisitsQueue();
     await waitForExpectation(() => expect(submitVisit).toHaveBeenCalledTimes(1));
+    // While the first pass is in flight, no second concurrent pass starts.
+    expect(submitVisit).toHaveBeenCalledTimes(1);
 
     resolveSubmit('retry');
     await first;
     await second;
-    expect(submitVisit).toHaveBeenCalledTimes(1);
+    // The mid-flight caller scheduled exactly one trailing pass — not zero (so a
+    // mid-flush enqueue is retried) and not more than one (no busy loop).
+    expect(submitVisit).toHaveBeenCalledTimes(2);
+    expect((await readQueue()).map((item) => item.clientId)).toEqual(['v1']);
   });
 });

@@ -127,6 +127,9 @@ describe('flushUpdateDrinksQueue', () => {
 
   it('persists a newer update while an older delivery is still in flight', async () => {
     let resolveUpdate!: (value: SubmitDrinkResult) => void;
+    // Every send retries so the trailing flush keeps both updates queued (the
+    // point here is that the mid-flight enqueue is not clobbered).
+    (updateDrinkName as jest.Mock).mockResolvedValue('retry');
     (updateDrinkName as jest.Mock).mockReturnValueOnce(
       new Promise<SubmitDrinkResult>((resolve) => {
         resolveUpdate = resolve;
@@ -149,6 +152,9 @@ describe('flushUpdateDrinksQueue', () => {
 
   it('keeps a newer update for the same client_id when an older in-flight op settles', async () => {
     let resolveUpdate!: (value: SubmitDrinkResult) => void;
+    // The trailing flush re-attempts but retries, so the newer name stays queued
+    // (the point here is that the stale in-flight result does not clobber it).
+    (updateDrinkName as jest.Mock).mockResolvedValue('retry');
     (updateDrinkName as jest.Mock).mockReturnValueOnce(
       new Promise<SubmitDrinkResult>((resolve) => {
         resolveUpdate = resolve;
@@ -188,22 +194,29 @@ describe('flushUpdateDrinksQueue', () => {
     expect(await readQueue()).toEqual([]);
   });
 
-  it('shares one delivery pass across concurrent flush calls', async () => {
+  it('runs exactly one trailing pass for a flush requested mid-flight', async () => {
     let resolveUpdate!: (value: SubmitDrinkResult) => void;
-    (updateDrinkName as jest.Mock).mockReturnValueOnce(
-      new Promise<SubmitDrinkResult>((resolve) => {
-        resolveUpdate = resolve;
-      }),
-    );
+    (updateDrinkName as jest.Mock)
+      .mockReturnValueOnce(
+        new Promise<SubmitDrinkResult>((resolve) => {
+          resolveUpdate = resolve;
+        }),
+      )
+      .mockResolvedValue('retry');
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([{ client_id: 'a', beer_name: 'Kozel' }]));
 
     const first = flushUpdateDrinksQueue();
     const second = flushUpdateDrinksQueue();
     await waitForExpectation(() => expect(updateDrinkName).toHaveBeenCalledTimes(1));
+    // While the first pass is in flight, no second concurrent pass starts.
+    expect(updateDrinkName).toHaveBeenCalledTimes(1);
 
     resolveUpdate('retry');
     await first;
     await second;
-    expect(updateDrinkName).toHaveBeenCalledTimes(1);
+    // The mid-flight caller scheduled exactly one trailing pass — not zero (so a
+    // mid-flush enqueue is retried) and not more than one (no busy loop).
+    expect(updateDrinkName).toHaveBeenCalledTimes(2);
+    expect(await readQueue()).toEqual([{ client_id: 'a', beer_name: 'Kozel' }]);
   });
 });

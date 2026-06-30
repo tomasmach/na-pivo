@@ -93,6 +93,9 @@ describe('flushDeleteDrinksQueue', () => {
 
   it('persists a newer delete while an older delivery is still in flight', async () => {
     let resolveDelete!: (value: SubmitDrinkResult) => void;
+    // Every send retries so the trailing flush keeps both ids queued (the point
+    // here is that the mid-flight enqueue is not clobbered).
+    (deleteDrink as jest.Mock).mockResolvedValue('retry');
     (deleteDrink as jest.Mock).mockReturnValueOnce(
       new Promise<SubmitDrinkResult>((resolve) => {
         resolveDelete = resolve;
@@ -132,22 +135,29 @@ describe('flushDeleteDrinksQueue', () => {
     expect(await readQueue()).toEqual([]);
   });
 
-  it('shares one delivery pass across concurrent flush calls', async () => {
+  it('runs exactly one trailing pass for a flush requested mid-flight', async () => {
     let resolveDelete!: (value: SubmitDrinkResult) => void;
-    (deleteDrink as jest.Mock).mockReturnValueOnce(
-      new Promise<SubmitDrinkResult>((resolve) => {
-        resolveDelete = resolve;
-      }),
-    );
+    (deleteDrink as jest.Mock)
+      .mockReturnValueOnce(
+        new Promise<SubmitDrinkResult>((resolve) => {
+          resolveDelete = resolve;
+        }),
+      )
+      .mockResolvedValue('retry');
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(['a']));
 
     const first = flushDeleteDrinksQueue();
     const second = flushDeleteDrinksQueue();
     await waitForExpectation(() => expect(deleteDrink).toHaveBeenCalledTimes(1));
+    // While the first pass is in flight, no second concurrent pass starts.
+    expect(deleteDrink).toHaveBeenCalledTimes(1);
 
     resolveDelete('retry');
     await first;
     await second;
-    expect(deleteDrink).toHaveBeenCalledTimes(1);
+    // The mid-flight caller scheduled exactly one trailing pass — not zero (so a
+    // mid-flush enqueue is retried) and not more than one (no busy loop).
+    expect(deleteDrink).toHaveBeenCalledTimes(2);
+    expect(await readQueue()).toEqual(['a']);
   });
 });

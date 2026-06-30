@@ -176,6 +176,34 @@ describe('flushDrinksQueue', () => {
     expect(await readQueue()).toEqual([]);
   });
 
+  it('delivers a drink enqueued during an in-flight flush via a trailing flush', async () => {
+    // The in-flight snapshot's send stalls; every later send succeeds.
+    let resolveFirst!: (value: 'ok') => void;
+    const slowSubmit = new Promise<'ok'>((resolve) => {
+      resolveFirst = resolve;
+    });
+    (submitDrink as jest.Mock).mockReturnValueOnce(slowSubmit);
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([entry({ client_id: 'a' })]));
+
+    const flushing = flushDrinksQueue();
+    await flushMicrotasks();
+    expect(submitDrink).toHaveBeenCalledTimes(1); // 'a' is in flight
+
+    // Enqueue a NEW drink mid-flight — it is NOT in the in-flight snapshot.
+    const enqueueing = enqueueDrink(entry({ client_id: 'b' }));
+    await flushMicrotasks();
+    expect(submitDrink).toHaveBeenCalledTimes(1); // no second concurrent pass
+
+    resolveFirst('ok');
+    // The trailing flush re-snapshots the queue and delivers 'b', so enqueueDrink
+    // reports it left the queue (true) without waiting for a new app launch.
+    await expect(enqueueing).resolves.toBe(true);
+    await flushing;
+
+    expect(submitDrink).toHaveBeenCalledWith(expect.objectContaining({ client_id: 'b' }));
+    expect(await readQueue()).toEqual([]);
+  });
+
   it('does nothing on an empty queue', async () => {
     await flushDrinksQueue();
     expect(submitDrink).not.toHaveBeenCalled();

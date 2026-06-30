@@ -73,6 +73,11 @@ async function saveQueue(queue: DrinkEntry[]): Promise<void> {
  *  from being persisted immediately. */
 let _mutationChain: Promise<unknown> = Promise.resolve();
 let _flushPromise: Promise<void> | null = null;
+/** A single coalesced trailing flush: when flushDrinksQueue() is called while a
+ *  flush is already in flight, exactly one more flush is queued to run after it,
+ *  so a drink enqueued mid-flight is attempted without waiting for the next
+ *  launch. Multiple mid-flush callers collapse onto this same trailing promise. */
+let _flushAgain: Promise<void> | null = null;
 
 function runMutation<T>(task: () => Promise<T>): Promise<T> {
   const next = _mutationChain.then(task, task);
@@ -199,9 +204,24 @@ export function clearDrinksQueue(): Promise<void> {
 /**
  * Retries all pending drinks. Call on app launch and on returning to the
  * foreground — both fire-and-forget. Never throws.
+ *
+ * Trailing-edge coalescing: only one flush runs at a time (never two
+ * concurrently, preserving the no-duplicate-send guarantee), but a call made
+ * while a flush is in flight schedules exactly one more flush to run after it.
+ * That trailing flush re-snapshots the queue, so a drink enqueued mid-flight is
+ * delivered without waiting for the next launch. The returned promise resolves
+ * only after that trailing flush completes.
  */
 export function flushDrinksQueue(): Promise<void> {
-  if (_flushPromise) return _flushPromise;
+  if (_flushPromise) {
+    if (!_flushAgain) {
+      _flushAgain = _flushPromise.then(() => {
+        _flushAgain = null;
+        return flushDrinksQueue();
+      });
+    }
+    return _flushAgain;
+  }
   _flushPromise = flushUnlocked().finally(() => {
     _flushPromise = null;
   });
