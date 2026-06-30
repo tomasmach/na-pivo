@@ -957,6 +957,26 @@ def test_merge_conflict_drops_duplicate_and_recomputes(client):
     assert row.distinct_voter_count == 1
 
 
+@pytest.mark.django_db
+def test_merge_recount_uses_single_vote_aggregate(client, django_assert_num_queries):
+    from pubs.accounts import _recount_amenity_aggregate
+
+    token_a = _register(client)
+    _put(client, token_a, _vote(value="yes"))
+    token_b = _register(client, device_id=_DEVICE_2)
+    _put(client, token_b, _vote(value="no"))
+
+    PubAmenity.objects.update(yes_count=99, no_count=99, distinct_voter_count=99)
+
+    with django_assert_num_queries(3):
+        _recount_amenity_aggregate(_KEY, f"{_KEY}::u černého vola", "seating_garden")
+
+    row = PubAmenity.objects.get()
+    assert row.yes_count == 1
+    assert row.no_count == 1
+    assert row.distinct_voter_count == 2
+
+
 # ---------------------------------------------------------------------------
 # Concurrent first-insert: IntegrityError on get_or_create must not 500 (§8.5)
 # ---------------------------------------------------------------------------

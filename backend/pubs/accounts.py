@@ -46,6 +46,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.files.base import ContentFile
 from django.db import IntegrityError, transaction
+from django.db.models import Count, Q
 from django.utils import timezone
 from PIL import Image, ImageOps, UnidentifiedImageError
 from PIL.Image import DecompressionBombError
@@ -610,8 +611,12 @@ def _recount_amenity_aggregate(
         pub_identity_key=pub_identity_key,
         amenity_key=amenity_key,
     )
-    yes_count = votes.filter(value=PubAmenityVote.Value.YES).count()
-    no_count = votes.filter(value=PubAmenityVote.Value.NO).count()
+    counts = votes.aggregate(
+        yes_count=Count("id", filter=Q(value=PubAmenityVote.Value.YES)),
+        no_count=Count("id", filter=Q(value=PubAmenityVote.Value.NO)),
+    )
+    yes_count = int(counts["yes_count"] or 0)
+    no_count = int(counts["no_count"] or 0)
     agg.yes_count = yes_count
     agg.no_count = no_count
     agg.distinct_voter_count = yes_count + no_count
