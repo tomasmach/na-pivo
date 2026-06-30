@@ -119,6 +119,92 @@ describe('useDevicePosition', () => {
     hook.unmount();
   });
 
+  it('does not install a watcher that resolves after the app has backgrounded', async () => {
+    let resolveSubscription: ((subscription: { remove: jest.Mock }) => void) | undefined;
+    const remove = jest.fn();
+
+    (Location.watchPositionAsync as jest.Mock).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSubscription = resolve;
+        }),
+    );
+
+    const hook = renderDevicePositionHook({ enabled: true });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(Location.watchPositionAsync).toHaveBeenCalledTimes(1);
+
+    // App backgrounds while the watcher promise is still pending.
+    act(() => {
+      (AppState as { currentState: string }).currentState = 'background';
+      appStateHandler?.('background');
+    });
+
+    // The watcher resolves only now — the post-await guard must reject it so no
+    // GPS watcher runs in the background.
+    await act(async () => {
+      resolveSubscription?.({ remove });
+      await Promise.resolve();
+    });
+
+    expect(remove).toHaveBeenCalledTimes(1);
+
+    hook.unmount();
+    expect(remove).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps delivering positions after a StrictMode remount on the same fiber', async () => {
+    let emitLocation:
+      | ((location: { coords: { latitude: number; longitude: number; accuracy: number } }) => void)
+      | undefined;
+
+    (Location.watchPositionAsync as jest.Mock).mockImplementation(async (_options, callback) => {
+      emitLocation = callback;
+      return { remove: jest.fn() };
+    });
+
+    let latestResult: ReturnType<typeof useDevicePosition> | undefined;
+
+    function Harness() {
+      latestResult = useDevicePosition(true);
+      return null;
+    }
+
+    let renderer: { unmount: () => void };
+    act(() => {
+      renderer = TestRenderer.create(
+        React.createElement(React.StrictMode, null, React.createElement(Harness)),
+      );
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      emitLocation?.({
+        coords: {
+          latitude: 50.087,
+          longitude: 14.421,
+          accuracy: 12,
+        },
+      });
+    });
+
+    expect(latestResult?.position).toEqual({
+      lat: 50.087,
+      lng: 14.421,
+      accuracyMeters: 12,
+    });
+
+    act(() => {
+      renderer.unmount();
+    });
+  });
+
   it('does not start duplicate GPS watchers while the first subscription is still resolving', async () => {
     let resolveSubscription: ((subscription: { remove: jest.Mock }) => void) | undefined;
     const remove = jest.fn();

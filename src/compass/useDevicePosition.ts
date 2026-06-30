@@ -45,7 +45,12 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
           });
         },
       );
-      if (!isMountedRef.current || !enabledRef.current || subscriptionRef.current) {
+      if (
+        !isMountedRef.current ||
+        !enabledRef.current ||
+        subscriptionRef.current ||
+        AppState.currentState !== 'active'
+      ) {
         sub.remove();
         return;
       }
@@ -73,6 +78,8 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
   }, [enabled]);
 
   useEffect(() => {
+    isMountedRef.current = true;
+
     const handleAppState = (nextState: AppStateStatus): void => {
       if (!enabledRef.current) {
         stopWatching();

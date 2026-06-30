@@ -67,6 +67,43 @@ describe('useDeviceHeading', () => {
     });
   });
 
+  it('does not install a heading watcher that resolves after the app has backgrounded', async () => {
+    let resolveSubscription: ((subscription: { remove: jest.Mock }) => void) | undefined;
+    const remove = jest.fn();
+
+    (Location.watchHeadingAsync as jest.Mock).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSubscription = resolve;
+        }),
+    );
+
+    const hook = renderDeviceHeadingHook({ enabled: true });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(Location.watchHeadingAsync).toHaveBeenCalledTimes(1);
+
+    // App backgrounds while the watcher promise is still pending.
+    act(() => {
+      (AppState as { currentState: string }).currentState = 'background';
+      appStateHandler?.('background');
+    });
+
+    // The watcher resolves only now — the post-await guard must reject it so the
+    // magnetometer never runs in the background.
+    await act(async () => {
+      resolveSubscription?.({ remove });
+      await Promise.resolve();
+    });
+
+    expect(remove).toHaveBeenCalledTimes(1);
+
+    hook.unmount();
+    expect(remove).toHaveBeenCalledTimes(1);
+  });
+
   it('does not start duplicate heading watchers while the first subscription is still resolving', async () => {
     let resolveSubscription: ((subscription: { remove: jest.Mock }) => void) | undefined;
     const remove = jest.fn();

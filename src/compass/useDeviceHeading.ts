@@ -82,7 +82,12 @@ export function useDeviceHeading(enabled = true): UseDeviceHeadingResult {
         }
       });
 
-      if (!isMountedRef.current || !enabledRef.current || subscriptionRef.current) {
+      if (
+        !isMountedRef.current ||
+        !enabledRef.current ||
+        subscriptionRef.current ||
+        AppState.currentState !== 'active'
+      ) {
         sub.remove();
         return;
       }
