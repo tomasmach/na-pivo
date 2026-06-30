@@ -564,6 +564,34 @@ def test_ghost_mode_hides_activity_and_suppresses_fanout(client, monkeypatch):
 
 
 @pytest.mark.django_db
+def test_ghost_mode_blocks_direct_rsvp_to_existing_activity(client, monkeypatch):
+    token_owner, owner = _register(client, "janek")
+    token_friend, friend = _register(client, "petr")
+    _make_friends(owner, friend)
+    monkeypatch.setattr("pubs.api.views.requests.post", _push_recorder([]))
+
+    activity_id = _broadcast(client, token_owner)["id"]
+    owner.ghost_mode = True
+    owner.save(update_fields=["ghost_mode"])
+
+    respond = client.post(
+        f"/v1/friends/pub-activity/{activity_id}/respond",
+        data={"response": "going"},
+        format="json",
+        **_auth(token_friend),
+    )
+
+    assert respond.status_code == status.HTTP_404_NOT_FOUND
+    assert respond.json()["code"] == "activity_not_found"
+    assert FriendActivityResponse.objects.count() == 0
+    assert not FriendNotification.objects.filter(
+        recipient=owner,
+        actor=friend,
+        kind=FriendNotification.Kind.FRIEND_RSVP,
+    ).exists()
+
+
+@pytest.mark.django_db
 def test_quiet_hours_drops_push_keeps_notification(client, monkeypatch):
     token_owner, owner = _register(client, "janek")
     _token_friend, friend = _register(client, "petr")
@@ -702,3 +730,35 @@ def test_leaderboard_excludes_pending_deletion_member(client):
     nicknames = [row["account"]["nickname"] for row in resp.json()["leaderboard"]]
     assert nicknames == ["janek"]
     assert resp.json()["leaderboard"][0]["is_me"] is True
+
+
+@pytest.mark.django_db
+def test_pending_deletion_friend_hidden_from_dashboard_and_rsvp(client, monkeypatch):
+    token_owner, owner = _register(client, "janek")
+    token_friend, friend = _register(client, "petr")
+    _make_friends(owner, friend)
+    monkeypatch.setattr("pubs.api.views.requests.post", _push_recorder([]))
+
+    activity_id = _broadcast(client, token_owner)["id"]
+    owner.status = Account.Status.PENDING_DELETION
+    owner.save(update_fields=["status"])
+
+    dashboard = client.get("/v1/friends", **_auth(token_friend))
+    assert dashboard.status_code == status.HTTP_200_OK
+    body = dashboard.json()
+    assert body["friends"] == []
+    assert body["friend_stats"] == {}
+    assert body["active_friends"] == []
+    assert body["notifications"] == []
+    assert body["unread_count"] == 0
+    assert [row["account"]["nickname"] for row in body["leaderboard"]] == ["petr"]
+
+    respond = client.post(
+        f"/v1/friends/pub-activity/{activity_id}/respond",
+        data={"response": "going"},
+        format="json",
+        **_auth(token_friend),
+    )
+    assert respond.status_code == status.HTTP_404_NOT_FOUND
+    assert respond.json()["code"] == "activity_not_found"
+    assert FriendActivityResponse.objects.count() == 0

@@ -221,13 +221,24 @@ def _friend_display_name(account: Account | None) -> str:
     return "Kamarád"
 
 
+def _is_active_account(account: Account) -> bool:
+    return account.status == Account.Status.ACTIVE
+
+
 def _accepted_friend_ids(account: Account) -> list[int]:
     rows = Friendship.objects.filter(status=Friendship.Status.ACCEPTED).filter(
         Q(requester=account) | Q(recipient=account)
     )
     friend_ids: list[int] = []
-    for row in rows.only("requester_id", "recipient_id"):
-        friend_ids.append(row.recipient_id if row.requester_id == account.id else row.requester_id)
+    for row in rows.select_related("requester", "recipient").only(
+        "requester_id",
+        "recipient_id",
+        "requester__status",
+        "recipient__status",
+    ):
+        friend = row.recipient if row.requester_id == account.id else row.requester
+        if _is_active_account(friend):
+            friend_ids.append(friend.id)
     return friend_ids
 
 
@@ -1945,16 +1956,25 @@ class FriendsView(APIView):
             .select_related("requester", "recipient")
             .order_by("-updated_at")
         )
-        accepted = [row for row in friendships if row.status == Friendship.Status.ACCEPTED]
+        accepted = [
+            row
+            for row in friendships
+            if row.status == Friendship.Status.ACCEPTED
+            and _is_active_account(
+                row.recipient if row.requester_id == request.user.id else row.requester
+            )
+        ]
         incoming = [
             row
             for row in friendships
             if row.status == Friendship.Status.PENDING and row.recipient_id == request.user.id
+            and _is_active_account(row.requester)
         ]
         outgoing = [
             row
             for row in friendships
             if row.status == Friendship.Status.PENDING and row.requester_id == request.user.id
+            and _is_active_account(row.recipient)
         ]
 
         friend_accounts = [
@@ -1968,6 +1988,7 @@ class FriendsView(APIView):
                 account_id__in=friend_ids,
                 active=True,
                 expires_at__gt=now,
+                account__status=Account.Status.ACTIVE,
             )
             # A friend who toggles ghost mode vanishes from everyone else's feed
             # immediately (their own broadcast row is kept for their own view).
@@ -1987,15 +2008,24 @@ class FriendsView(APIView):
             .order_by("-started_at")
             .first()
         )
-        notifications = (
+        notification_base = (
             FriendNotification.objects.filter(recipient=request.user)
-            .select_related("actor", "friendship", "activity")
+            .filter(Q(actor__isnull=True) | Q(actor__status=Account.Status.ACTIVE))
+            .filter(
+                Q(activity__isnull=True)
+                | Q(activity__account=request.user)
+                | Q(
+                    activity__account__status=Account.Status.ACTIVE,
+                    activity__account__ghost_mode=False,
+                )
+            )
+        )
+        notifications = (
+            notification_base
+            .select_related("actor", "friendship", "activity", "activity__account")
             .order_by("-created_at")[:30]
         )
-        unread_count = FriendNotification.objects.filter(
-            recipient=request.user,
-            read_at__isnull=True,
-        ).count()
+        unread_count = notification_base.filter(read_at__isnull=True).count()
 
         streak = _party_streak(shared_dates)
         leaderboard = self._build_leaderboard(
@@ -2497,7 +2527,13 @@ class FriendActivityRespondView(APIView):
         now = dj_timezone.now()
         return (
             FriendPubActivity.objects.select_related("account")
-            .filter(public_id=activity_id, active=True, expires_at__gt=now)
+            .filter(
+                public_id=activity_id,
+                active=True,
+                expires_at__gt=now,
+                account__status=Account.Status.ACTIVE,
+                account__ghost_mode=False,
+            )
             .first()
         )
 
@@ -2530,7 +2566,13 @@ class FriendActivityRespondView(APIView):
                 # owner-notification decision.
                 locked = (
                     FriendPubActivity.objects.select_for_update()
-                    .filter(pk=activity.pk)
+                    .filter(
+                        pk=activity.pk,
+                        active=True,
+                        expires_at__gt=dj_timezone.now(),
+                        account__status=Account.Status.ACTIVE,
+                        account__ghost_mode=False,
+                    )
                     .first()
                 )
                 if locked is None:

@@ -65,6 +65,7 @@ from pubs.models import (
     DrinkLog,
     EmailCredential,
     FeedbackReport,
+    FriendPubActivity,
     OneTimeToken,
     PubAmenity,
     PubAmenityVote,
@@ -1155,6 +1156,10 @@ def schedule_deletion(account: Account) -> None:
     PushDevice.objects.filter(account=account, enabled=True).update(
         enabled=False,
         permission_status=PushDevice.PermissionStatus.DENIED,
+        updated_at=timezone.now(),
+    )
+    FriendPubActivity.objects.filter(account=account, active=True).update(
+        active=False,
         updated_at=timezone.now(),
     )
 
