@@ -23,6 +23,7 @@ import type { PermissionState } from '@/compass/permissions';
 import { fetchPubsNear, findNearbyPubs, type Pub } from '@/data/pubs';
 import { geohash8 } from '@/data/geohash';
 import { recordWalkingSample } from '@/data/walkingTelemetry';
+import { useTallyStore } from '@/stores/tallyStore';
 
 /** Auto-detect the pub when the nearest is within this many metres. GPS indoors
  *  is often coarse, so the threshold is generous (a small pub block). */
@@ -58,6 +59,9 @@ export function useNearbyPub(): UseNearbyPubResult {
   const [selected, setSelected] = useState<Pub | null>(null);
   const [hasFix, setHasFix] = useState(false);
   const [retryNonce, setRetryNonce] = useState(0);
+  const activeSessionPubKey = useTallyStore((state) =>
+    state.current && state.current.drinks.length > 0 ? state.current.pubKey : null,
+  );
 
   // Once the user has a pinned pub (auto or manual) we stop letting GPS reselect
   // it — the active pub is sticky for the whole sitting.
@@ -84,22 +88,25 @@ export function useNearbyPub(): UseNearbyPubResult {
     if (position) recordWalkingSample(position);
   }, [position]);
 
+  const positionLat = position?.lat;
+  const positionLng = position?.lng;
+
   // — Fetch + rank nearby pubs on each position update —
   // All state writes happen inside the async callback (not synchronously in the
   // effect body), including the one-shot auto-pick: when the nearest pub is close
   // enough and nothing is pinned yet, select it here. This keeps the "sticky pub"
   // behaviour without a second setState-in-effect.
   useEffect(() => {
-    if (!position) return;
+    if (positionLat == null || positionLng == null) return;
     let cancelled = false;
 
-    fetchPubsNear(position.lat, position.lng, undefined, { radiusKm: SEARCH_RADIUS_KM })
+    fetchPubsNear(positionLat, positionLng, undefined, { radiusKm: SEARCH_RADIUS_KM })
       .catch(() => undefined)
       .then(() => {
         if (cancelled) return;
         const found = findNearbyPubs({
-          lat: position.lat,
-          lng: position.lng,
+          lat: positionLat,
+          lng: positionLng,
           limit: CANDIDATE_LIMIT,
           maxKm: SEARCH_RADIUS_KM,
         });
@@ -111,19 +118,29 @@ export function useNearbyPub(): UseNearbyPubResult {
         setHasFix(true);
         setCandidates(ranked);
 
-        // One-shot auto-detect: pin the nearest pub if within range and the user
-        // hasn't already pinned/picked one this sitting.
+        // Auto-detect before the first beer, but only pin once an active evening
+        // exists. Otherwise walking from pub A to pub B before counting would
+        // keep the stale first pick.
         const nearest = ranked[0];
-        if (!pinnedRef.current && nearest && nearest.distanceMeters <= AUTO_PICK_METERS) {
-          pinnedRef.current = true;
-          setSelected(nearest.pub);
+        if (!pinnedRef.current) {
+          if (activeSessionPubKey) {
+            const sessionCandidate = ranked.find((candidate) => candidate.pubKey === activeSessionPubKey);
+            if (sessionCandidate) {
+              pinnedRef.current = true;
+              setSelected(sessionCandidate.pub);
+            }
+          } else if (nearest && nearest.distanceMeters <= AUTO_PICK_METERS) {
+            setSelected(nearest.pub);
+          } else {
+            setSelected(null);
+          }
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [position?.lat, position?.lng, retryNonce]);
+  }, [activeSessionPubKey, positionLat, positionLng, retryNonce]);
 
   const selectPub = useCallback((pub: Pub) => {
     pinnedRef.current = true;
