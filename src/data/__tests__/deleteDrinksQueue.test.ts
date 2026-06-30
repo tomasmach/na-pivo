@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { enqueueDelete, flushDeleteDrinksQueue } from '../deleteDrinksQueue';
+import { clearDeleteDrinksQueue, enqueueDelete, flushDeleteDrinksQueue } from '../deleteDrinksQueue';
 import { deleteDrink } from '../drinksClient';
+import type { SubmitDrinkResult } from '../drinksClient';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
@@ -23,6 +24,20 @@ const STORAGE_KEY = 'na-pivo-delete-drinks-queue';
 async function readQueue(): Promise<string[]> {
   const raw = await AsyncStorage.getItem(STORAGE_KEY);
   return raw ? JSON.parse(raw) : [];
+}
+
+async function waitForExpectation(assertion: () => void | Promise<void>): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    try {
+      await assertion();
+      return;
+    } catch (error) {
+      lastError = error;
+      await Promise.resolve();
+    }
+  }
+  throw lastError;
 }
 
 beforeEach(async () => {
@@ -74,5 +89,65 @@ describe('flushDeleteDrinksQueue', () => {
   it('is a no-op on an empty queue and never throws', async () => {
     await expect(flushDeleteDrinksQueue()).resolves.toBeUndefined();
     expect(deleteDrink).not.toHaveBeenCalled();
+  });
+
+  it('persists a newer delete while an older delivery is still in flight', async () => {
+    let resolveDelete!: (value: SubmitDrinkResult) => void;
+    (deleteDrink as jest.Mock).mockReturnValueOnce(
+      new Promise<SubmitDrinkResult>((resolve) => {
+        resolveDelete = resolve;
+      }),
+    );
+
+    const first = enqueueDelete('a');
+    await waitForExpectation(() => expect(deleteDrink).toHaveBeenCalledTimes(1));
+
+    const second = enqueueDelete('b');
+    await waitForExpectation(async () => {
+      expect(await readQueue()).toContain('b');
+    });
+
+    resolveDelete('retry');
+    await first;
+    await second;
+    expect(await readQueue()).toEqual(['a', 'b']);
+  });
+
+  it('keeps the queue cleared when clear runs during an in-flight flush', async () => {
+    let resolveDelete!: (value: SubmitDrinkResult) => void;
+    (deleteDrink as jest.Mock).mockReturnValueOnce(
+      new Promise<SubmitDrinkResult>((resolve) => {
+        resolveDelete = resolve;
+      }),
+    );
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(['a']));
+
+    const flushing = flushDeleteDrinksQueue();
+    await waitForExpectation(() => expect(deleteDrink).toHaveBeenCalledTimes(1));
+    await clearDeleteDrinksQueue();
+    expect(await readQueue()).toEqual([]);
+
+    resolveDelete('retry');
+    await flushing;
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('shares one delivery pass across concurrent flush calls', async () => {
+    let resolveDelete!: (value: SubmitDrinkResult) => void;
+    (deleteDrink as jest.Mock).mockReturnValueOnce(
+      new Promise<SubmitDrinkResult>((resolve) => {
+        resolveDelete = resolve;
+      }),
+    );
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(['a']));
+
+    const first = flushDeleteDrinksQueue();
+    const second = flushDeleteDrinksQueue();
+    await waitForExpectation(() => expect(deleteDrink).toHaveBeenCalledTimes(1));
+
+    resolveDelete('retry');
+    await first;
+    await second;
+    expect(deleteDrink).toHaveBeenCalledTimes(1);
   });
 });

@@ -57,26 +57,37 @@ async function saveQueue(queue: string[]): Promise<void> {
   }
 }
 
-/** Serializes queue mutations — concurrent enqueue/flush calls would otherwise
- *  read-modify-write the same AsyncStorage snapshot and lose items. */
-let _chain: Promise<unknown> = Promise.resolve();
+/** Serializes only AsyncStorage mutations. Network delivery deliberately runs
+ *  outside this lock so a slow/offline flush cannot block a fresh delete from
+ *  being persisted immediately. */
+let _mutationChain: Promise<unknown> = Promise.resolve();
+let _flushPromise: Promise<void> | null = null;
 
-function runLocked<T>(task: () => Promise<T>): Promise<T> {
-  const next = _chain.then(task, task);
-  _chain = next.catch(() => undefined);
+function runMutation<T>(task: () => Promise<T>): Promise<T> {
+  const next = _mutationChain.then(task, task);
+  _mutationChain = next.catch(() => undefined);
   return next;
 }
 
-async function flushLocked(): Promise<void> {
-  const queue = await loadQueue();
+async function flushUnlocked(): Promise<void> {
+  const queue = await runMutation(loadQueue);
   if (queue.length === 0) return;
 
-  const remaining: string[] = [];
+  const attempted = new Set(queue);
+  const settled = new Set<string>();
   for (const clientId of queue) {
     const result = await deleteDrink(clientId);
-    if (result === 'retry') remaining.push(clientId);
+    if (result !== 'retry') settled.add(clientId);
   }
-  await saveQueue(remaining);
+
+  await runMutation(async () => {
+    const current = await loadQueue();
+    const remaining = current.filter((clientId) => {
+      if (!attempted.has(clientId)) return true;
+      return !settled.has(clientId);
+    });
+    await saveQueue(remaining);
+  });
 }
 
 /**
@@ -84,20 +95,20 @@ async function flushLocked(): Promise<void> {
  * deletion queue. Never throws. Deduped: enqueuing the same client_id twice is
  * a no-op (the DELETE is idempotent, but there is no point queueing it twice).
  */
-export function enqueueDelete(clientId: string): Promise<void> {
-  return runLocked(async () => {
+export async function enqueueDelete(clientId: string): Promise<void> {
+  await runMutation(async () => {
     const queue = await loadQueue();
     if (!queue.includes(clientId)) {
       queue.push(clientId);
       await saveQueue(queue.slice(-MAX_QUEUE_LENGTH));
     }
-    await flushLocked();
   });
+  await flushDeleteDrinksQueue();
 }
 
 /** Drop all pending private drink deletions without attempting delivery. */
 export function clearDeleteDrinksQueue(): Promise<void> {
-  return runLocked(async () => {
+  return runMutation(async () => {
     await saveQueue([]);
   });
 }
@@ -107,5 +118,9 @@ export function clearDeleteDrinksQueue(): Promise<void> {
  * foreground — both fire-and-forget. Never throws.
  */
 export function flushDeleteDrinksQueue(): Promise<void> {
-  return runLocked(flushLocked);
+  if (_flushPromise) return _flushPromise;
+  _flushPromise = flushUnlocked().finally(() => {
+    _flushPromise = null;
+  });
+  return _flushPromise;
 }

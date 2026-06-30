@@ -48,38 +48,57 @@ async function saveQueue(queue: DrinkUpdateEntry[]): Promise<void> {
   }
 }
 
-let _chain: Promise<unknown> = Promise.resolve();
+/** Serializes only AsyncStorage mutations. Network delivery deliberately runs
+ *  outside this lock so a slow/offline flush cannot block a fresh edit from
+ *  being persisted immediately. */
+let _mutationChain: Promise<unknown> = Promise.resolve();
+let _flushPromise: Promise<void> | null = null;
 
-function runLocked<T>(task: () => Promise<T>): Promise<T> {
-  const next = _chain.then(task, task);
-  _chain = next.catch(() => undefined);
+function runMutation<T>(task: () => Promise<T>): Promise<T> {
+  const next = _mutationChain.then(task, task);
+  _mutationChain = next.catch(() => undefined);
   return next;
 }
 
-async function flushLocked(): Promise<void> {
-  const queue = await loadQueue();
-  if (queue.length === 0) return;
-
-  const remaining: DrinkUpdateEntry[] = [];
-  for (const entry of queue) {
-    const result = await updateDrinkName(entry.client_id, entry.beer_name);
-    if (result === 'retry') remaining.push(entry);
-  }
-  await saveQueue(remaining);
+function signature(entry: DrinkUpdateEntry): string {
+  return JSON.stringify(entry);
 }
 
-export function enqueueDrinkUpdate(entry: DrinkUpdateEntry): Promise<void> {
-  return runLocked(async () => {
+async function flushUnlocked(): Promise<void> {
+  const queue = await runMutation(loadQueue);
+  if (queue.length === 0) return;
+
+  const attempted = new Map<string, string>();
+  const settled = new Set<string>();
+  for (const entry of queue) {
+    attempted.set(entry.client_id, signature(entry));
+    const result = await updateDrinkName(entry.client_id, entry.beer_name);
+    if (result !== 'retry') settled.add(entry.client_id);
+  }
+
+  await runMutation(async () => {
+    const current = await loadQueue();
+    const remaining = current.filter((entry) => {
+      const sig = attempted.get(entry.client_id);
+      if (sig === undefined || sig !== signature(entry)) return true;
+      return !settled.has(entry.client_id);
+    });
+    await saveQueue(remaining);
+  });
+}
+
+export async function enqueueDrinkUpdate(entry: DrinkUpdateEntry): Promise<void> {
+  await runMutation(async () => {
     const queue = await loadQueue();
     const deduped = queue.filter((queued) => queued.client_id !== entry.client_id);
     deduped.push(entry);
     await saveQueue(deduped.slice(-MAX_QUEUE_LENGTH));
-    await flushLocked();
   });
+  await flushUpdateDrinksQueue();
 }
 
 export function removeQueuedDrinkUpdate(clientId: string): Promise<boolean> {
-  return runLocked(async () => {
+  return runMutation(async () => {
     const queue = await loadQueue();
     const filtered = queue.filter((entry) => entry.client_id !== clientId);
     if (filtered.length === queue.length) return false;
@@ -89,11 +108,15 @@ export function removeQueuedDrinkUpdate(clientId: string): Promise<boolean> {
 }
 
 export function clearUpdateDrinksQueue(): Promise<void> {
-  return runLocked(async () => {
+  return runMutation(async () => {
     await saveQueue([]);
   });
 }
 
 export function flushUpdateDrinksQueue(): Promise<void> {
-  return runLocked(flushLocked);
+  if (_flushPromise) return _flushPromise;
+  _flushPromise = flushUnlocked().finally(() => {
+    _flushPromise = null;
+  });
+  return _flushPromise;
 }
