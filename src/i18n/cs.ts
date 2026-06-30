@@ -577,7 +577,130 @@ export const cs = {
     myBeers: 'Moje piva',
     // Počítadlo + Moje piva live behind one tab now, switched by a segment.
     beer: 'Štamgast',
+    friends: 'Parta',
     profile: 'Profil',
+  },
+
+  friends: {
+    title: 'Parta',
+    heroTitle: 'Kdo jde dneska na jedno?',
+    heroBody: 'Přidej kámoše, uvidíš jejich hospodské signály a pozveš je ke stolu.',
+    refresh: 'Obnovit',
+    searchPlaceholder: 'Přezdívka kámoše',
+    searchCta: 'Najít',
+    addByNickname: 'Pozvat',
+    emptyFriends: 'Zatím piješ solo. Najdi přezdívku a pošli první pozvánku.',
+    emptyActive: 'Nikdo z party teď nesvítí v hospodě.',
+    activeHeader: 'TEĎ NA PIVU',
+    requestsHeader: 'ČEKAJÍ NA TEBE',
+    addHeader: 'PŘIDAT DO PARTY',
+    friendsHeader: 'KÁMOŠI',
+    feedHeader: 'CINKLO V PARTĚ',
+    outgoingHeader: 'ODESLANÉ POZVÁNKY',
+    accept: 'Přijmout',
+    decline: 'Nechat být',
+    remove: 'Odebrat',
+    removeTitle: 'Odebrat kámoše?',
+    removeBody: (name: string) => `${name} už neuvidí tvoje hospodské signály a zmizí z party.`,
+    removeConfirm: 'Odebrat',
+    requestSent: 'Pozvánka letí ke stolu.',
+    requestAccepted: 'Je v partě.',
+    requestDeclined: 'Žádost je pryč.',
+    friendRemoved: 'Kamarád odebrán.',
+    shareHere: 'Dát partě vědět',
+    shareHereShort: 'Cinknout partě',
+    shareSuccess: 'Parta dostala signál.',
+    shareError: 'Nepodařilo se dát vědět partě.',
+    sharedCount: (n: number) =>
+      n === 0
+        ? 'Ještě žádné společné pivo'
+        : n === 1
+          ? '1 společné pivo'
+          : n >= 2 && n <= 4
+            ? `${n} společná piva`
+            : `${n} společných piv`,
+    lastTogether: (pub: string) => `Naposledy spolu: ${pub}`,
+    inviteLine: (name: string, pub: string) => `${name} sedí v ${pub}. Nechceš se přidat?`,
+    atPubMessage: 'Máme tu volno u stolu.',
+    noResults: 'Nikoho takového jsme nenašli.',
+    offline: 'Parta se teď nenačetla. Zkus to za chvíli.',
+    retry: 'Zkusit znovu',
+
+    // — RSVP loop (Jdu / Možná / Dneska ne) —
+    rsvpGoing: 'Jdu',
+    rsvpMaybe: 'Možná',
+    rsvpCant: 'Dneska ne',
+    rsvpError: 'Nepovedlo se to odeslat. Zkus to znovu.',
+    rsvpClearedToast: 'Odpověď zrušená.',
+    // Roster count word only — the numeral renders separately in amber.
+    goingLabel: (n: number) => (n === 1 ? 'jde' : 'jdou'),
+    // Secondary "2 možná · 1 dneska ne" line; skips zero buckets, '' when both 0.
+    maybeCantLine: (maybe: number, cant: number) => {
+      const parts: string[] = [];
+      if (maybe > 0) parts.push(`${maybe} možná`);
+      if (cant > 0) parts.push(`${cant} dneska ne`);
+      return parts.join(' · ');
+    },
+    rosterEmpty: 'Zatím nikdo nekývl.',
+
+    // — My active activity card ("Cinkl jsi partě") —
+    myActiveTitle: 'SVÍTÍŠ PARTĚ',
+    nobodyYet: 'Čekáš na první kývnutí.',
+    whoComing: 'Kdo dorazí?',
+    endActivity: 'Ukončit',
+    endActivityA11y: 'Ukončit cinknutí',
+    endActivityConfirmTitle: 'Ukončit cinknutí?',
+    endActivityConfirmBody: 'Parta přestane vidět, že seš na pivu.',
+    endActivityConfirmConfirm: 'Ukončit',
+    endedToast: 'Cinknutí ukončené.',
+
+    // — Party streak —
+    streakWeeks: (n: number) =>
+      n === 1
+        ? '1 týden v sérii'
+        : n >= 2 && n <= 4
+          ? `${n} týdny v sérii`
+          : `${n} týdnů v sérii`,
+    streakThisWeek: 'Tenhle týden už hoří. Drž to.',
+    streakDead: 'Série spadla. Zapal ji novým pivem s partou.',
+    streakEmpty: 'Bez série',
+
+    // — Party leaderboard —
+    leaderboardHeader: 'ŽEBŘÍČEK PARTY',
+    // Visits noun only — the numeral renders separately.
+    leaderboardVisits: (n: number) =>
+      n === 1 ? 'návštěva' : n >= 2 && n <= 4 ? 'návštěvy' : 'návštěv',
+    leaderboardMe: 'Ty',
+    leaderboardEmpty: 'Zatím nemáš s kým soupeřit. Přiber parťáky.',
+    leaderboardMore: (n: number) =>
+      n === 1 ? '+1 další' : n >= 2 && n <= 4 ? `+${n} další` : `+${n} dalších`,
+
+    // — Social settings sheet (ghost + klid v noci) —
+    settingsOpen: 'Otevřít nastavení party',
+    settingsTitle: 'Nastavení party',
+    settingsClose: 'Zavřít nastavení',
+    ghostTitle: 'Neviditelný režim',
+    ghostSubtitle: 'Nikdo nevidí, kde sedíš. Tvoje cinknutí zůstanou jen u tebe.',
+    ghostActive: 'Neviditelný režim',
+    quietTitle: 'Klid v noci',
+    quietSubtitle: 'V noci ti nepřijdou žádné cinky.',
+    quietRange: (a: number, b: number) =>
+      `Od ${String(a).padStart(2, '0')}:00 do ${String(b).padStart(2, '0')}:00`,
+    hourStepperDecrement: 'o hodinu zpět',
+    hourStepperIncrement: 'o hodinu vpřed',
+    settingsSaved: 'Uloženo.',
+    settingsError: 'Nastavení se nepovedlo uložit.',
+
+    // — Hero sub-line variants (priority order in the screen) —
+    heroLiveMine: (n: number) => `U tvého stolu už ${n}. Drž to.`,
+    heroStreakRisk: 'Série visí na vlásku, tenhle týden ji ještě nikdo nezapálil.',
+    heroFriendLive: (name: string) => `${name} svítí v hospodě. Kývneš?`,
+    heroManyLive: (n: number) => `${n} z party teď sedí. Kdo se přidá?`,
+    heroQuiet: 'Klid v partě. Někdo musí cinknout první.',
+
+    // — Loop empty / broadcasting extras —
+    emptyActiveBroadcasting: 'Zatím nikdo nedorazil. Dej tomu chvíli.',
+    loopEmptyCta: 'Cinknout partě',
   },
 
   // The merged "Pivo" tab — a segmented control flips between counting and the
@@ -958,6 +1081,7 @@ export const cs = {
     tabCounter: 'Záložka Počítadlo',
     tabMyBeers: 'Záložka Moje piva',
     tabBeer: 'Záložka Štamgast',
+    tabFriends: 'Záložka Parta',
     beerSegmentCount: 'Přepnout na počítání piv',
     beerSegmentHistory: 'Přepnout na historii večerů',
     counterDone: 'Dopito, zavřít tenhle večer',

@@ -105,10 +105,11 @@ export default function RootLayout() {
     // Tapping a "nejsi v hospodě?" reminder jumps straight to the beer counter.
     // Handle both a running app (listener) and a cold start from the tap.
     const navigateToCounter = () => router.push('/beer' as Href);
+    const navigateToFriends = () => router.push('/friends' as Href);
     if (fontsLoaded || fontError) {
-      void consumeInitialPubReminderTap(navigateToCounter);
+      void consumeInitialPubReminderTap(navigateToCounter, navigateToFriends);
     }
-    const subscription = subscribePubReminderTap(navigateToCounter);
+    const subscription = subscribePubReminderTap(navigateToCounter, navigateToFriends);
     return () => subscription.remove();
   }, [fontsLoaded, fontError, router]);
 

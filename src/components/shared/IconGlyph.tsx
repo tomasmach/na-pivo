@@ -44,6 +44,8 @@ import {
   History,
   Clock,
   User,
+  Users,
+  UserPlus,
   Mail,
   LogOut,
   Link,
@@ -75,6 +77,8 @@ import {
   MapPinPlus,
   Sprout,
   ClipboardList,
+  Flame,
+  Trophy,
   LucideProps,
 } from 'lucide-react-native';
 
@@ -128,6 +132,8 @@ export const ThumbsDownIcon = wrap(ThumbsDown, 'ThumbsDownIcon');
 export const HistoryIcon = wrap(History, 'HistoryIcon');
 export const ClockIcon = wrap(Clock, 'ClockIcon');
 export const UserIcon = wrap(User, 'UserIcon');
+export const UsersIcon = wrap(Users, 'UsersIcon');
+export const UserPlusIcon = wrap(UserPlus, 'UserPlusIcon');
 export const MailIcon = wrap(Mail, 'MailIcon');
 export const LogOutIcon = wrap(LogOut, 'LogOutIcon');
 export const LinkIcon = wrap(Link, 'LinkIcon');
@@ -181,3 +187,6 @@ export const MapPinnedIcon = wrap(MapPinned, 'MapPinnedIcon');
 export const MapPinPlusIcon = wrap(MapPinPlus, 'MapPinPlusIcon');
 export const SproutIcon = wrap(Sprout, 'SproutIcon');
 export const ClipboardListIcon = wrap(ClipboardList, 'ClipboardListIcon');
+// Parta 2.0 — streak flame + leaderboard trophy.
+export const FlameIcon = wrap(Flame, 'FlameIcon');
+export const TrophyIcon = wrap(Trophy, 'TrophyIcon');

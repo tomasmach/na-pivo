@@ -15,7 +15,7 @@ import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea } from '@/theme/layout';
 import { amberGlow } from '@/theme/shadows';
-import { CompassIcon, BeerIcon, UserIcon } from '@/components/shared/IconGlyph';
+import { CompassIcon, BeerIcon, UserIcon, UsersIcon } from '@/components/shared/IconGlyph';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { cs } from '@/i18n/cs';
@@ -50,6 +50,7 @@ const TAB_META: Record<
 > = {
   index: { Icon: CompassIcon, label: cs.tabs.compass, a11yLabel: cs.a11y.tabCompass },
   beer: { Icon: BeerIcon, label: cs.tabs.beer, a11yLabel: cs.a11y.tabBeer },
+  friends: { Icon: UsersIcon, label: cs.tabs.friends, a11yLabel: cs.a11y.tabFriends },
   profile: { Icon: UserIcon, label: cs.tabs.profile, a11yLabel: cs.a11y.tabProfile },
 };
 

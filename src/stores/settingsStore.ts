@@ -19,6 +19,7 @@ interface SettingsState {
   marketingEmailsEnabled: boolean;
   pubReminderEnabled: boolean;
   surpriseSeed: number;
+  lastSeenPartyStreak: number;
   setMode: (m: Mode) => void;
   setMaxDistanceKm: (km: number | null) => void;
   setPriceCurrency: (currency: PriceCurrency) => void;
@@ -31,6 +32,7 @@ interface SettingsState {
   setMarketingEmailsEnabled: (v: boolean) => void;
   setPubReminderEnabled: (v: boolean) => void;
   bumpSurpriseSeed: () => void;
+  setLastSeenPartyStreak: (v: number) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -48,6 +50,7 @@ export const useSettingsStore = create<SettingsState>()(
       marketingEmailsEnabled: false,
       pubReminderEnabled: false,
       surpriseSeed: 1,
+      lastSeenPartyStreak: 0,
 
       setMode: (m) => set({ mode: m }),
       setMaxDistanceKm: (km) => set({ maxDistanceKm: km }),
@@ -62,6 +65,7 @@ export const useSettingsStore = create<SettingsState>()(
       setPubReminderEnabled: (v) => set({ pubReminderEnabled: v }),
       bumpSurpriseSeed: () =>
         set((state) => ({ surpriseSeed: state.surpriseSeed + 1 })),
+      setLastSeenPartyStreak: (v) => set({ lastSeenPartyStreak: v }),
     }),
     {
       name: 'na-pivo-settings',
@@ -79,6 +83,7 @@ export const useSettingsStore = create<SettingsState>()(
         marketingEmailsEnabled: state.marketingEmailsEnabled,
         pubReminderEnabled: state.pubReminderEnabled,
         surpriseSeed: state.surpriseSeed,
+        lastSeenPartyStreak: state.lastSeenPartyStreak,
       }),
     }
   )

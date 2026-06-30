@@ -43,6 +43,7 @@ import {
   RefreshCwIcon,
   CheckIcon,
   Undo2Icon,
+  BellRingIcon,
 } from '@/components/shared/IconGlyph';
 
 import { geohash8 } from '@/data/geohash';
@@ -53,11 +54,13 @@ import { buildDrinkEntry } from '@/data/drinksClient';
 import { enqueueDrink, flushDrinksQueue, isDrinkQueued, removeQueuedDrink } from '@/data/drinksQueue';
 import { enqueueDelete } from '@/data/deleteDrinksQueue';
 import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
+import { shareFriendPubActivity } from '@/data/friendsClient';
 import { trackCounterTabOpened } from '@/data/counterTelemetry';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { fireSuccessHaptic, fireLightImpactHaptic } from '@/utils/haptics';
 import { useCommunityStore } from '@/stores/communityStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useToastStore } from '@/stores/toastStore';
 import { formatPrice, pricePlaceholder, type PriceCurrency } from '@/utils/currency';
 import {
   useTallyStore,
@@ -318,6 +321,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   const reducedMotion = useReducedMotion();
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
+  const showToast = useToastStore((s) => s.show);
   // The top edge the parent has NOT already padded: 0 when embedded (the "Pivo"
   // tab owns the inset + segment), the safe-area inset when standalone.
   const topInset = embedded ? 0 : insets.top;
@@ -343,6 +347,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   const [pulses, setPulses] = useState<Record<string, number>>({});
   const [backendMenu, setBackendMenu] = useState<{ pubId: string; beers: CommunityBeer[] } | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [sharingWithFriends, setSharingWithFriends] = useState(false);
   // Deferred-send timers per drink id; a count schedules delivery for the end of
   // the undo window, and undo cancels its drink's timer before it fires.
   const sendTimers = React.useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -624,6 +629,20 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
     }
   }, [cell, hapticEnabled, resumeLast]);
 
+  const handleShareWithFriends = useCallback(async () => {
+    if (sharingWithFriends) return;
+    setSharingWithFriends(true);
+    const shareClientId = isThisPubSession ? current?.clientId : undefined;
+    const result = await shareFriendPubActivity(pub, cs.friends.atPubMessage, shareClientId);
+    setSharingWithFriends(false);
+    if (result.ok) {
+      showToast(cs.friends.shareSuccess, { icon: <BellRingIcon size={20} color={Colors.amber} /> });
+      if (hapticEnabled) fireLightImpactHaptic();
+    } else {
+      showToast(result.detail || cs.friends.shareError, { icon: <BellRingIcon size={20} color={Colors.amber} /> });
+    }
+  }, [current?.clientId, hapticEnabled, isThisPubSession, pub, sharingWithFriends, showToast]);
+
   const hasMenu = menu.length > 0;
   const bubbleFieldWidth = Math.min(screenWidth - Spacing.lg * 2, 340);
 
@@ -680,6 +699,21 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
           scrolling; opens the same MapPubSheet keyed on this pub's geohash-8. */}
       <View style={styles.mapPubWrap}>
         <MapPubEntry pubKey={cell} pubName={pub.name} info={pubInfoFromPub(pub)} />
+        <Pressable
+          onPress={() => void handleShareWithFriends()}
+          disabled={sharingWithFriends}
+          style={({ pressed }) => [
+            styles.friendShareButton,
+            (pressed || sharingWithFriends) && styles.friendShareButtonPressed,
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel={cs.friends.shareHere}
+        >
+          <BellRingIcon size={18} color={Colors.amber} />
+          <Text style={styles.friendShareText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+            {sharingWithFriends ? cs.friends.shareHere : cs.friends.shareHereShort}
+          </Text>
+        </Pressable>
       </View>
 
       <ScrollView
@@ -977,6 +1011,28 @@ const styles = StyleSheet.create({
   mapPubWrap: {
     paddingHorizontal: Spacing.lg,
     paddingBottom: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  friendShareButton: {
+    minHeight: 46,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.stout2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+  },
+  friendShareButtonPressed: {
+    opacity: 0.78,
+    transform: [{ scale: 0.99 }],
+  },
+  friendShareText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 14,
+    color: Colors.foam,
   },
 
   scrollContent: {
