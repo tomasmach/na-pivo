@@ -2809,14 +2809,19 @@ def _with_pub_name_corrections(items: list[dict]) -> list[dict]:
         .filter(Q(cache_key__in=cache_keys) | Q(external_id__in=external_ids))
         .order_by("updated_at", "id")
     )
-    ordered_corrections: list[PubNameCorrection] = []
-    for correction in corrections:
+    external_corrections: dict[str, list[tuple[int, PubNameCorrection, str]]] = {}
+    cache_key_corrections: dict[str, list[tuple[int, PubNameCorrection, str]]] = {}
+    for order, correction in enumerate(corrections):
         name = correction.suggested_name.strip()
         if not name:
             continue
-        ordered_corrections.append(correction)
+        entry = (order, correction, name)
+        if correction.cache_key:
+            cache_key_corrections.setdefault(correction.cache_key, []).append(entry)
+        if correction.external_id and not _is_coordinate_external_id(correction.external_id):
+            external_corrections.setdefault(correction.external_id, []).append(entry)
 
-    if not ordered_corrections:
+    if not cache_key_corrections and not external_corrections:
         return items
 
     corrected_items: list[dict] = []
@@ -2824,8 +2829,14 @@ def _with_pub_name_corrections(items: list[dict]) -> list[dict]:
         external_id = _item_external_id(item)
         cache_key = _item_cache_key(item)
         current_name = str(item.get("name") or "")
-        for correction in ordered_corrections:
-            suggested_name = correction.suggested_name.strip()
+        candidate_entries: dict[int, tuple[int, PubNameCorrection, str]] = {}
+        if external_id:
+            for entry in external_corrections.get(external_id, []):
+                candidate_entries[entry[0]] = entry
+        if cache_key:
+            for entry in cache_key_corrections.get(cache_key, []):
+                candidate_entries.setdefault(entry[0], entry)
+        for _, correction, suggested_name in sorted(candidate_entries.values(), key=lambda entry: entry[0]):
             has_strong_external_match = (
                 bool(correction.external_id)
                 and not _is_coordinate_external_id(correction.external_id)
