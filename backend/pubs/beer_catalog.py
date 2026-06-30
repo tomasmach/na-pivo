@@ -92,23 +92,12 @@ def normalize_beer_text(value: str) -> str:
     return " ".join(_TOKEN_RE.findall(ascii_text.casefold()))
 
 
-def _alias_candidates(brand: BeerBrand) -> list[str]:
-    values = [brand.name, *(brand.aliases or [])]
-    normalized: list[str] = []
-    seen: set[str] = set()
-    for value in values:
-        if not isinstance(value, str):
-            continue
-        candidate = normalize_beer_text(value)
-        if not candidate or candidate in seen:
-            continue
-        seen.add(candidate)
-        normalized.append(candidate)
-    return normalized
+def _alias_candidates(entity: BeerBrand | BeerProduct) -> list[str]:
+    """Normalized, de-duped match candidates from an entity's name + aliases.
 
-
-def _product_alias_candidates(product: BeerProduct) -> list[str]:
-    values = [product.name, *(product.aliases or [])]
+    Works for both BeerBrand and BeerProduct (both expose ``name`` + ``aliases``).
+    """
+    values = [entity.name, *(entity.aliases or [])]
     normalized: list[str] = []
     seen: set[str] = set()
     for value in values:
@@ -151,7 +140,7 @@ def match_beer(
         .order_by("rank", "name")
     )
     for product in products:
-        for alias in _product_alias_candidates(product):
+        for alias in _alias_candidates(product):
             exact = normalized == alias
             prefix = normalized.startswith(f"{alias} ")
             contained = f" {alias} " in f" {normalized} "
@@ -353,7 +342,7 @@ def suggest_beers(query: str, *, limit: int = 12) -> list[BeerSuggestion]:
 
     scored: list[tuple[int, int, str, BeerSuggestion]] = []
     for product in products.order_by("rank", "name"):
-        aliases = _product_alias_candidates(product)
+        aliases = _alias_candidates(product)
         if not aliases:
             continue
         score = 3

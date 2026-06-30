@@ -79,13 +79,13 @@ from pubs.models import (
 EXPO_PUSH_TOKEN_RE = re.compile(r"^(?:Expo|Exponent)PushToken\[[A-Za-z0-9_-]+\]$")
 
 
-class PubInputSerializer(serializers.Serializer):
-    """A single pub entry in the request body."""
+class _LatLngBoundsValidationMixin:
+    """Shared lat/lng range validators for the geo request/query serializers.
 
-    name = serializers.CharField(max_length=255)
-    lat = serializers.FloatField()
-    lng = serializers.FloatField()
-    city = serializers.CharField(max_length=128, required=False, allow_null=True, allow_blank=True)
+    Mixed in (not subclassed from Serializer) so it carries no fields of its own;
+    DRF still discovers ``validate_lat`` / ``validate_lng`` via the MRO. Keeps the
+    bounds + error messages identical across every endpoint that accepts a point.
+    """
 
     def validate_lat(self, value: float) -> float:
         if not (-90.0 <= value <= 90.0):
@@ -96,6 +96,31 @@ class PubInputSerializer(serializers.Serializer):
         if not (-180.0 <= value <= 180.0):
             raise serializers.ValidationError("Longitude must be between -180 and 180.")
         return value
+
+
+class _Pub200NameValidationMixin:
+    """Shared 'name' validator: strip, reject empty, cap at 200 chars.
+
+    Tightens PubInputSerializer's 255-char field to the 1..200 wire contract used
+    by the user-added pub / drink / friend-activity write endpoints.
+    """
+
+    def validate_name(self, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Pub name must not be empty.")
+        if len(value) > 200:
+            raise serializers.ValidationError("Pub name must be at most 200 characters.")
+        return value
+
+
+class PubInputSerializer(_LatLngBoundsValidationMixin, serializers.Serializer):
+    """A single pub entry in the request body."""
+
+    name = serializers.CharField(max_length=255)
+    lat = serializers.FloatField()
+    lng = serializers.FloatField()
+    city = serializers.CharField(max_length=128, required=False, allow_null=True, allow_blank=True)
 
 
 class PubHoursRequestSerializer(serializers.Serializer):
@@ -166,7 +191,7 @@ class PubNameCorrectionRequestSerializer(PubInputSerializer):
         return value
 
 
-class UserAddedPubRequestSerializer(PubInputSerializer):
+class UserAddedPubRequestSerializer(_Pub200NameValidationMixin, PubInputSerializer):
     """Request body for POST /v1/pubs.
 
     Lets a user add a pub missing from the nearby search results. Coordinates
@@ -182,14 +207,6 @@ class UserAddedPubRequestSerializer(PubInputSerializer):
         allow_blank=True,
         trim_whitespace=True,
     )
-
-    def validate_name(self, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise serializers.ValidationError("Pub name must not be empty.")
-        if len(value) > 200:
-            raise serializers.ValidationError("Pub name must be at most 200 characters.")
-        return value
 
 
 class FeedbackRequestSerializer(serializers.Serializer):
@@ -558,7 +575,7 @@ class FriendRequestCreateSerializer(serializers.Serializer):
         return attrs
 
 
-class FriendActivityRequestSerializer(PubInputSerializer):
+class FriendActivityRequestSerializer(_Pub200NameValidationMixin, PubInputSerializer):
     """Request body for POST /v1/friends/pub-activity."""
 
     client_id = serializers.UUIDField()
@@ -578,14 +595,6 @@ class FriendActivityRequestSerializer(PubInputSerializer):
     )
     started_at = serializers.DateTimeField(required=False, allow_null=True)
     expires_at = serializers.DateTimeField(required=False, allow_null=True)
-
-    def validate_name(self, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise serializers.ValidationError("Pub name must not be empty.")
-        if len(value) > 200:
-            raise serializers.ValidationError("Pub name must be at most 200 characters.")
-        return value
 
 
 class FriendshipSerializer(serializers.ModelSerializer):
@@ -921,12 +930,13 @@ class DrinkBeerSerializer(CommunityBeerSerializer):
     price_czk = serializers.IntegerField(required=True, min_value=1, max_value=1000)
 
 
-class DrinkRequestSerializer(PubInputSerializer):
+class DrinkRequestSerializer(_Pub200NameValidationMixin, PubInputSerializer):
     """Request body for POST /v1/drinks.
 
     Inherits name/lat/lng/city (+ lat/lng bounds) from PubInputSerializer and
     adds the idempotency key, optional external id, the required ``beer`` (with a
     mandatory price), and an optional ``drank_at`` (server defaults to now()).
+    The pub name is tightened to 1..200 by _Pub200NameValidationMixin.
     """
 
     client_id = serializers.UUIDField()
@@ -939,16 +949,6 @@ class DrinkRequestSerializer(PubInputSerializer):
     )
     beer = DrinkBeerSerializer()
     drank_at = serializers.DateTimeField(required=False, allow_null=True)
-
-    def validate_name(self, value: str) -> str:
-        # Pub name bound for drinks is 1..200 (PubInputSerializer caps the field
-        # at 255 via CharField; tighten to the wire contract here).
-        value = value.strip()
-        if not value:
-            raise serializers.ValidationError("Pub name must not be empty.")
-        if len(value) > 200:
-            raise serializers.ValidationError("Pub name must be at most 200 characters.")
-        return value
 
     def validate_beer(self, value: dict) -> dict:
         # Canonicalise to all three keys so the merge + stored JSON have a stable
@@ -1040,22 +1040,12 @@ class PubVisitRequestSerializer(PubInputSerializer):
         return attrs
 
 
-class PubReportBlockedQuerySerializer(serializers.Serializer):
+class PubReportBlockedQuerySerializer(_LatLngBoundsValidationMixin, serializers.Serializer):
     """Query params for GET /v1/pub-reports/blocked."""
 
     lat = serializers.FloatField()
     lng = serializers.FloatField()
     radius_km = serializers.FloatField(required=False, min_value=0.1, max_value=100.0)
-
-    def validate_lat(self, value: float) -> float:
-        if not (-90.0 <= value <= 90.0):
-            raise serializers.ValidationError("Latitude must be between -90 and 90.")
-        return value
-
-    def validate_lng(self, value: float) -> float:
-        if not (-180.0 <= value <= 180.0):
-            raise serializers.ValidationError("Longitude must be between -180 and 180.")
-        return value
 
 
 # Default radius for GET /v1/pubs/near when the client omits radius_km.
@@ -1064,7 +1054,7 @@ PUBS_NEAR_DEFAULT_RADIUS_KM = 25.0
 PUBS_NEAR_MAX_RADIUS_KM = 100.0
 
 
-class PubsNearQuerySerializer(serializers.Serializer):
+class PubsNearQuerySerializer(_LatLngBoundsValidationMixin, serializers.Serializer):
     """Query params for GET /v1/pubs/near.
 
     radius_km is optional and clamped to (0, 100]; when omitted it defaults to
@@ -1081,16 +1071,6 @@ class PubsNearQuerySerializer(serializers.Serializer):
         max_length=80,
         trim_whitespace=True,
     )
-
-    def validate_lat(self, value: float) -> float:
-        if not (-90.0 <= value <= 90.0):
-            raise serializers.ValidationError("Latitude must be between -90 and 90.")
-        return value
-
-    def validate_lng(self, value: float) -> float:
-        if not (-180.0 <= value <= 180.0):
-            raise serializers.ValidationError("Longitude must be between -180 and 180.")
-        return value
 
     def validate_radius_km(self, value: float | None) -> float:
         # Default when omitted/null; otherwise clamp into (0, 100]. A value <= 0
@@ -1111,7 +1091,7 @@ class PubsNearQuerySerializer(serializers.Serializer):
         return attrs
 
 
-class PubLocationLookupQuerySerializer(serializers.Serializer):
+class PubLocationLookupQuerySerializer(_LatLngBoundsValidationMixin, serializers.Serializer):
     """Query params for Mapy-backed pub name/address lookup endpoints."""
 
     query = serializers.CharField(max_length=150, trim_whitespace=True)
@@ -1121,16 +1101,6 @@ class PubLocationLookupQuerySerializer(serializers.Serializer):
     def validate_query(self, value: str) -> str:
         if len(value) < 2:
             raise serializers.ValidationError("query must be at least 2 characters.")
-        return value
-
-    def validate_lat(self, value: float) -> float:
-        if not (-90.0 <= value <= 90.0):
-            raise serializers.ValidationError("Latitude must be between -90 and 90.")
-        return value
-
-    def validate_lng(self, value: float) -> float:
-        if not (-180.0 <= value <= 180.0):
-            raise serializers.ValidationError("Longitude must be between -180 and 180.")
         return value
 
     def validate(self, attrs: dict) -> dict:
@@ -1727,12 +1697,6 @@ class AccountUpdateSerializer(serializers.ModelSerializer):
             return super().save(**kwargs)
         except IntegrityError:
             raise
-
-
-# Backwards-compatible alias: the old name pointed at the preferences-only
-# serializer; PATCH now uses AccountUpdateSerializer. Kept so any import of the
-# old symbol keeps resolving.
-AccountPreferencesSerializer = AccountUpdateSerializer
 
 
 # ---------------------------------------------------------------------------

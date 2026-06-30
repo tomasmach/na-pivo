@@ -1004,10 +1004,6 @@ class OneTimeToken(models.Model):
         state = "used" if self.used_at else "pending"
         return f"OneTimeToken({self.purpose} — {state})"
 
-    @property
-    def is_usable(self) -> bool:
-        return self.used_at is None and self.expires_at > timezone.now()
-
 
 class PubReport(models.Model):
     """

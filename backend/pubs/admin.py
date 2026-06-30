@@ -30,6 +30,22 @@ from .models import (
 )
 
 
+def _truncate(value: str | None, limit: int) -> str:
+    """Clip an admin list-cell string to ``limit`` chars with an ellipsis."""
+    text = value or ""
+    return text if len(text) <= limit else f"{text[:limit - 3]}..."
+
+
+class _ReadOnlyAdmin:
+    """Mixin for append-only / audit tables: forbid add and change in admin."""
+
+    def has_add_permission(self, request) -> bool:  # noqa: ARG002
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:  # noqa: ARG002
+        return False
+
+
 @admin.register(PubHours)
 class PubHoursAdmin(admin.ModelAdmin):
     list_display = ("name", "cache_key", "status", "venue_kind", "confidence", "source", "fetched_at", "updated_at")
@@ -146,8 +162,7 @@ class ContentReportAdmin(admin.ModelAdmin):
 
     @admin.display(description="comment")
     def short_comment(self, obj: ContentReport) -> str:
-        comment = obj.comment or ""
-        return comment if len(comment) <= 60 else f"{comment[:57]}..."
+        return _truncate(obj.comment, 60)
 
     @admin.action(description="Hide target profiles")
     def hide_target_profiles(self, request, queryset) -> None:  # noqa: ARG002
@@ -255,12 +270,11 @@ class FeedbackReportAdmin(admin.ModelAdmin):
 
     @admin.display(description="message")
     def short_message(self, obj: FeedbackReport) -> str:
-        msg = obj.message or ""
-        return msg if len(msg) <= 60 else f"{msg[:57]}..."
+        return _truncate(obj.message, 60)
 
 
 @admin.register(ClientEvent)
-class ClientEventAdmin(admin.ModelAdmin):
+class ClientEventAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
     # Diagnostic telemetry is append-only. It is intentionally small and
     # sanitized by the API serializer, but still read-only in admin.
     list_display = (
@@ -290,18 +304,11 @@ class ClientEventAdmin(admin.ModelAdmin):
 
     @admin.display(description="message")
     def short_message(self, obj: ClientEvent) -> str:
-        msg = obj.message or ""
-        return msg if len(msg) <= 80 else f"{msg[:77]}..."
-
-    def has_add_permission(self, request) -> bool:  # noqa: ARG002
-        return False
-
-    def has_change_permission(self, request, obj=None) -> bool:  # noqa: ARG002
-        return False
+        return _truncate(obj.message, 80)
 
 
 @admin.register(AccountUsageStats)
-class AccountUsageStatsAdmin(admin.ModelAdmin):
+class AccountUsageStatsAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
     list_display = (
         "account_public_id",
         "app_open_count",
@@ -337,12 +344,6 @@ class AccountUsageStatsAdmin(admin.ModelAdmin):
     @admin.display(description="account")
     def account_public_id(self, obj: AccountUsageStats) -> str:
         return str(obj.account.public_id)
-
-    def has_add_permission(self, request) -> bool:  # noqa: ARG002
-        return False
-
-    def has_change_permission(self, request, obj=None) -> bool:  # noqa: ARG002
-        return False
 
 
 @admin.register(PubCommunityData)
@@ -402,7 +403,7 @@ class PubBeerProductAdmin(admin.ModelAdmin):
 
 
 @admin.register(PubContributionLog)
-class PubContributionLogAdmin(admin.ModelAdmin):
+class PubContributionLogAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
     # Append-only audit history — fully read-only.
     list_display = ("created_at", "kind", "name", "cache_key", "account")
     list_select_related = ("account",)
@@ -421,15 +422,9 @@ class PubContributionLogAdmin(admin.ModelAdmin):
     )
     ordering = ("-created_at",)
 
-    def has_add_permission(self, request) -> bool:  # noqa: ARG002
-        return False
-
-    def has_change_permission(self, request, obj=None) -> bool:  # noqa: ARG002
-        return False
-
 
 @admin.register(DrinkLog)
-class DrinkLogAdmin(admin.ModelAdmin):
+class DrinkLogAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
     # Append-only per-user drink history — fully read-only, like the
     # contribution log.
     list_display = ("drank_at", "beer_name", "beer_brand_name", "beer_product_name", "price_czk", "volume_ml", "name", "cache_key", "account")
@@ -459,15 +454,9 @@ class DrinkLogAdmin(admin.ModelAdmin):
     )
     ordering = ("-drank_at",)
 
-    def has_add_permission(self, request) -> bool:  # noqa: ARG002
-        return False
-
-    def has_change_permission(self, request, obj=None) -> bool:  # noqa: ARG002
-        return False
-
 
 @admin.register(PubRating)
-class PubRatingAdmin(admin.ModelAdmin):
+class PubRatingAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
     # Per-user private ratings — read-only audit view (the user owns the data via
     # the API; admin is for inspection / moderation only).
     list_display = ("client_updated_at", "name", "cache_key", "verdict", "tag", "account", "updated_at")
@@ -490,15 +479,9 @@ class PubRatingAdmin(admin.ModelAdmin):
     )
     ordering = ("-client_updated_at",)
 
-    def has_add_permission(self, request) -> bool:  # noqa: ARG002
-        return False
-
-    def has_change_permission(self, request, obj=None) -> bool:  # noqa: ARG002
-        return False
-
 
 @admin.register(PubVisit)
-class PubVisitAdmin(admin.ModelAdmin):
+class PubVisitAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
     # Per-user explicit visits — read-only audit view.
     list_display = ("started_at", "ended_at", "name", "cache_key", "city", "account", "updated_at")
     list_select_related = ("account",)
@@ -519,12 +502,6 @@ class PubVisitAdmin(admin.ModelAdmin):
         "updated_at",
     )
     ordering = ("-started_at",)
-
-    def has_add_permission(self, request) -> bool:  # noqa: ARG002
-        return False
-
-    def has_change_permission(self, request, obj=None) -> bool:  # noqa: ARG002
-        return False
 
 
 class ReleaseNoteItemInline(admin.TabularInline):

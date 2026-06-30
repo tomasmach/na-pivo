@@ -102,14 +102,19 @@ def _result_from_row(row: PubHours) -> dict[str, Any]:
     }
 
 
-def _pending_result(cache_key: str, name: str) -> dict[str, Any]:
+def _empty_result(cache_key: str, name: str, status: str) -> dict[str, Any]:
+    """A no-data result dict carrying only key/name and the given *status*.
+
+    Shared by the pending and 'unknown' (geohash-collision) branches so the two
+    no-data shapes can never drift apart.
+    """
     return {
         "key": cache_key,
         "name": name,
         "opening_hours": None,
         "isOpenNow": None,
         "nextChange": None,
-        "status": PubHours.Status.PENDING,
+        "status": status,
         "source": None,
         "confidence": None,
         "rating": None,
@@ -120,28 +125,16 @@ def _pending_result(cache_key: str, name: str) -> dict[str, Any]:
         "beers": [],
         "hours_json": None,
     }
+
+
+def _pending_result(cache_key: str, name: str) -> dict[str, Any]:
+    return _empty_result(cache_key, name, PubHours.Status.PENDING)
 
 
 def _unknown_result(cache_key: str, name: str) -> dict[str, Any]:
     """A no-data 'unknown' result that is NOT persisted (used for a geohash
     collision where the cached row belongs to a different business)."""
-    return {
-        "key": cache_key,
-        "name": name,
-        "opening_hours": None,
-        "isOpenNow": None,
-        "nextChange": None,
-        "status": PubHours.Status.UNKNOWN,
-        "source": None,
-        "confidence": None,
-        "rating": None,
-        "ratingCount": None,
-        "ratingLabel": None,
-        "hasGarden": None,
-        "venueKind": PubHours.VenueKind.UNKNOWN,
-        "beers": [],
-        "hours_json": None,
-    }
+    return _empty_result(cache_key, name, PubHours.Status.UNKNOWN)
 
 
 def _serve_cached_or_unknown(
@@ -242,6 +235,24 @@ def _close_enrich_task(cache_key: str) -> None:
     )
 
 
+def _save_error_row(
+    cache_key: str, name: str, lat: float, lng: float, exc: Exception, now
+) -> PubHours:
+    """Upsert a transient-ERROR PubHours row for a failed Firmy.cz fetch."""
+    row, _ = PubHours.objects.update_or_create(
+        cache_key=cache_key,
+        defaults={
+            "name": name,
+            "lat": lat,
+            "lng": lng,
+            "status": PubHours.Status.ERROR,
+            "error": str(exc),
+            "fetched_at": now,
+        },
+    )
+    return row
+
+
 def _enrich_sync(
     source: FirmyHoursSource,
     cache_key: str,
@@ -262,32 +273,10 @@ def _enrich_sync(
     except RuntimeError as exc:
         # Daily cap exceeded — treat as transient error
         logger.warning("firmy: daily cap exceeded for %r: %s", name, exc)
-        row, _ = PubHours.objects.update_or_create(
-            cache_key=cache_key,
-            defaults={
-                "name": name,
-                "lat": lat,
-                "lng": lng,
-                "status": PubHours.Status.ERROR,
-                "error": str(exc),
-                "fetched_at": now,
-            },
-        )
-        return row
+        return _save_error_row(cache_key, name, lat, lng, exc, now)
     except Exception as exc:  # noqa: BLE001
         logger.error("firmy: unexpected error for %r: %s", name, exc, exc_info=True)
-        row, _ = PubHours.objects.update_or_create(
-            cache_key=cache_key,
-            defaults={
-                "name": name,
-                "lat": lat,
-                "lng": lng,
-                "status": PubHours.Status.ERROR,
-                "error": str(exc),
-                "fetched_at": now,
-            },
-        )
-        return row
+        return _save_error_row(cache_key, name, lat, lng, exc, now)
 
     if raw is None:
         # No confident match found

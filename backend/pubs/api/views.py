@@ -170,6 +170,42 @@ _IDENTITY_SPACE_RE = re.compile(r"\s+")
 PUBS_NEAR_RADIUS_BUCKETS = (5, 15, 50, 100)
 
 
+def _internal_error() -> Response:
+    """Opaque 500 — the body is identical across every endpoint."""
+    return Response(
+        {"detail": "Internal server error."},
+        status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+    )
+
+
+def _coded_error(exc) -> Response:
+    """Map a domain error (AccountError / MenuScanError …) to its Response."""
+    return Response(
+        {"detail": exc.message, "code": exc.code}, status=exc.http_status
+    )
+
+
+def _idempotent_delete(queryset, *, scope: str, key_label: str, key_value) -> Response:
+    """Delete account-scoped rows → {"deleted": <bool>}.
+
+    A foreign / missing / already-deleted key matches nothing → deleted: false,
+    never a hard 404, so the client's offline delete queue can retry safely.
+    """
+    try:
+        deleted_count, _ = queryset.delete()
+    except Exception as exc:  # noqa: BLE001
+        logger.error(
+            "%s: unexpected error deleting %s %r: %s",
+            scope,
+            key_label,
+            key_value,
+            exc,
+            exc_info=True,
+        )
+        return _internal_error()
+    return Response({"deleted": deleted_count > 0}, status=status.HTTP_200_OK)
+
+
 def _radius_bucket(radius_km: float) -> int:
     """Smallest bucket >= radius_km (capped at the largest bucket)."""
     for bucket in PUBS_NEAR_RADIUS_BUCKETS:
@@ -317,6 +353,18 @@ def _friend_rituals(shared_count: int) -> list[dict[str, str]]:
     if shared_count >= 10:
         rituals.append({"key": "house_crew", "title": "Hospodská dvojka"})
     return rituals
+
+
+def _friend_stats_item(stats: dict) -> dict:
+    """One friend_stats entry from a per-account shared-stats dict (or {})."""
+    shared_count = int(stats.get("shared_count") or 0)
+    last_shared_at = stats.get("last_shared_at")
+    return {
+        "shared_pub_count": shared_count,
+        "last_shared_at": last_shared_at.isoformat() if last_shared_at else None,
+        "last_pub_name": stats.get("last_pub_name") or "",
+        "rituals": _friend_rituals(shared_count),
+    }
 
 
 def _friend_profile_context(request: Request) -> dict:
@@ -533,10 +581,7 @@ class PubHoursView(APIView):
             results = get_or_enrich(pubs, sync_budget=sync_budget)
         except Exception as exc:  # noqa: BLE001
             logger.error("pub-hours: unexpected error: %s", exc, exc_info=True)
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return _internal_error()
 
         resp_serializer = PubHoursResponseSerializer({"results": results})
         return Response(resp_serializer.data, status=status.HTTP_200_OK)
@@ -587,10 +632,7 @@ class PubReportView(APIView):
                 exc,
                 exc_info=True,
             )
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return _internal_error()
 
         return Response(
             PubReportSerializer(report).data,
@@ -654,10 +696,7 @@ class PubNameCorrectionView(APIView):
                 exc,
                 exc_info=True,
             )
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return _internal_error()
 
         return Response(
             PubNameCorrectionSerializer(correction).data,
@@ -740,10 +779,7 @@ class UserAddedPubView(APIView):
                 exc,
                 exc_info=True,
             )
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return _internal_error()
 
         return Response(
             UserAddedPubSerializer(pub).data,
@@ -851,10 +887,7 @@ class PubCommunityView(APIView):
                 exc,
                 exc_info=True,
             )
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return _internal_error()
 
         # ── Mapér XP (additive; an XP failure must never break a saved edit) ──
         xp_awarded = 0
@@ -870,15 +903,7 @@ class PubCommunityView(APIView):
                 request.user, cache_key, pub_identity_key, kinds
             )
             stats, _ = AccountUsageStats.objects.get_or_create(account=request.user)
-            mapper = maper_snapshot(
-                stats.mapper_xp,
-                {
-                    "mapped_pubs_count": stats.mapped_pubs_count,
-                    "amenity_votes_count": stats.amenity_votes_count,
-                    "first_mapper_count": stats.first_mapper_count,
-                    "completed_pubs_count": stats.completed_pubs_count,
-                },
-            )
+            mapper = maper_snapshot(stats.mapper_xp, _mapper_counters(stats))
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "pub-community: XP award failed for cache key %s: %s", cache_key, exc
@@ -1073,10 +1098,7 @@ class DrinksView(APIView):
                 exc,
                 exc_info=True,
             )
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return _internal_error()
 
         return Response(
             {
@@ -1147,10 +1169,7 @@ class DrinksView(APIView):
                 exc,
                 exc_info=True,
             )
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return _internal_error()
 
         return Response({"updated": True}, status=status.HTTP_200_OK)
 
@@ -1161,23 +1180,12 @@ class DrinksView(APIView):
         # so the client's offline delete queue can retry safely. The community
         # menu (PubCommunityData) is deliberately left untouched — the price was
         # real community data and stays.
-        try:
-            deleted_count, _ = DrinkLog.objects.filter(
-                account=request.user, client_id=client_id
-            ).delete()
-        except Exception as exc:  # noqa: BLE001
-            logger.error(
-                "drinks: unexpected error deleting drink %r: %s",
-                client_id,
-                exc,
-                exc_info=True,
-            )
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
-        return Response({"deleted": deleted_count > 0}, status=status.HTTP_200_OK)
+        return _idempotent_delete(
+            DrinkLog.objects.filter(account=request.user, client_id=client_id),
+            scope="drinks",
+            key_label="drink",
+            key_value=client_id,
+        )
 
     @staticmethod
     def _merge_into_community(
@@ -1277,34 +1285,29 @@ class DrinksView(APIView):
         return changed
 
     @staticmethod
-    def _community_has_brand_signal(
+    def _community_has_signal(
         cache_key: str,
-        brand_key: str,
         *,
+        brand_key: str | None = None,
+        product_key: str | None = None,
         match_cache: BeerCatalogMatchCache | None = None,
     ) -> bool:
+        """True if the pub's community menu names a beer matching the supplied
+        brand_key or product_key (exactly one is passed by callers)."""
         row = PubCommunityData.objects.filter(cache_key=cache_key).first()
         if row is None:
             return False
         for beer in row.beers or []:
             match = match_beer_brand(str(beer.get("name") or ""), match_cache=match_cache)
-            if match is not None and match.brand.key == brand_key:
+            if match is None:
+                continue
+            if brand_key is not None and match.brand.key == brand_key:
                 return True
-        return False
-
-    @staticmethod
-    def _community_has_product_signal(
-        cache_key: str,
-        product_key: str,
-        *,
-        match_cache: BeerCatalogMatchCache | None = None,
-    ) -> bool:
-        row = PubCommunityData.objects.filter(cache_key=cache_key).first()
-        if row is None:
-            return False
-        for beer in row.beers or []:
-            match = match_beer_brand(str(beer.get("name") or ""), match_cache=match_cache)
-            if match is not None and match.product is not None and match.product.key == product_key:
+            if (
+                product_key is not None
+                and match.product is not None
+                and match.product.key == product_key
+            ):
                 return True
         return False
 
@@ -1343,9 +1346,9 @@ class DrinksView(APIView):
                 cache_key=drink.cache_key,
                 beer_brand_key=old_brand_key,
             ).exists()
-            if not has_other_drink and not DrinksView._community_has_brand_signal(
+            if not has_other_drink and not DrinksView._community_has_signal(
                 drink.cache_key,
-                old_brand_key,
+                brand_key=old_brand_key,
                 match_cache=match_cache,
             ):
                 PubBeerBrand.objects.filter(
@@ -1359,9 +1362,9 @@ class DrinksView(APIView):
                 cache_key=drink.cache_key,
                 beer_product_key=old_product_key,
             ).exists()
-            if not has_other_product and not DrinksView._community_has_product_signal(
+            if not has_other_product and not DrinksView._community_has_signal(
                 drink.cache_key,
-                old_product_key,
+                product_key=old_product_key,
                 match_cache=match_cache,
             ):
                 PubBeerProduct.objects.filter(
@@ -1415,10 +1418,7 @@ class FeedbackView(APIView):
                 exc,
                 exc_info=True,
             )
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return _internal_error()
 
         return Response(
             FeedbackReportSerializer(report).data,
@@ -1528,10 +1528,7 @@ class PubRatingView(APIView):
             items = [_rating_item(rating) for rating in ratings]
         except Exception as exc:  # noqa: BLE001
             logger.error("pub-ratings: unexpected error listing ratings: %s", exc, exc_info=True)
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return _internal_error()
         return Response({"ratings": items}, status=status.HTTP_200_OK)
 
     def put(self, request: Request) -> Response:
@@ -1592,10 +1589,7 @@ class PubRatingView(APIView):
                 exc,
                 exc_info=True,
             )
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return _internal_error()
 
         body = _rating_item(rating)
         body["applied"] = True
@@ -1605,22 +1599,12 @@ class PubRatingView(APIView):
         # Idempotent delete: the account filter means a cache_key belonging to
         # another account (or never rated, or already deleted) matches nothing →
         # deleted: false, never a hard 404, so the client can retry safely.
-        try:
-            deleted_count, _ = PubRating.objects.filter(
-                account=request.user, cache_key=cache_key
-            ).delete()
-        except Exception as exc:  # noqa: BLE001
-            logger.error(
-                "pub-ratings: unexpected error deleting rating %r: %s",
-                cache_key,
-                exc,
-                exc_info=True,
-            )
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-        return Response({"deleted": deleted_count > 0}, status=status.HTTP_200_OK)
+        return _idempotent_delete(
+            PubRating.objects.filter(account=request.user, cache_key=cache_key),
+            scope="pub-ratings",
+            key_label="rating",
+            key_value=cache_key,
+        )
 
 
 def _visit_item(visit: PubVisit) -> dict:
@@ -1663,10 +1647,7 @@ class PubVisitView(APIView):
             items = [_visit_item(visit) for visit in visits]
         except Exception as exc:  # noqa: BLE001
             logger.error("pub-visits: unexpected error listing visits: %s", exc, exc_info=True)
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return _internal_error()
         return Response({"visits": items}, status=status.HTTP_200_OK)
 
     def post(self, request: Request) -> Response:
@@ -1717,10 +1698,7 @@ class PubVisitView(APIView):
                 exc,
                 exc_info=True,
             )
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return _internal_error()
 
         return Response(
             {
@@ -1735,22 +1713,12 @@ class PubVisitView(APIView):
     def delete(self, request: Request, client_id) -> Response:
         # Idempotent delete scoped to the account (a foreign / missing / already
         # deleted client_id matches nothing → deleted: false, never a 404).
-        try:
-            deleted_count, _ = PubVisit.objects.filter(
-                account=request.user, client_id=client_id
-            ).delete()
-        except Exception as exc:  # noqa: BLE001
-            logger.error(
-                "pub-visits: unexpected error deleting visit %r: %s",
-                client_id,
-                exc,
-                exc_info=True,
-            )
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-        return Response({"deleted": deleted_count > 0}, status=status.HTTP_200_OK)
+        return _idempotent_delete(
+            PubVisit.objects.filter(account=request.user, client_id=client_id),
+            scope="pub-visits",
+            key_label="visit",
+            key_value=client_id,
+        )
 
 
 def _account_from_request(request: Request) -> Account | None:
@@ -1840,10 +1808,7 @@ class ClientEventsView(APIView):
                 exc,
                 exc_info=True,
             )
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return _internal_error()
 
         logger.info(
             "client event accepted",
@@ -1897,10 +1862,7 @@ class PushDeviceView(APIView):
                 "push-device: unexpected error registering token",
                 extra={"observability": {"error": exc.__class__.__name__}},
             )
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return _internal_error()
 
         return Response(PushDeviceResponseSerializer(device).data, status=status.HTTP_200_OK)
 
@@ -1927,10 +1889,7 @@ class PushDeviceView(APIView):
                 "push-device: unexpected error disabling token",
                 extra={"observability": {"error": exc.__class__.__name__}},
             )
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return _internal_error()
 
         return Response({"disabled": disabled}, status=status.HTTP_200_OK)
 
@@ -2043,18 +2002,7 @@ class FriendsView(APIView):
             {
                 "friends": FriendProfileSerializer(friend_accounts, many=True, context=context).data,
                 "friend_stats": {
-                    str(account.public_id): {
-                        "shared_pub_count": int(shared_stats.get(account.id, {}).get("shared_count") or 0),
-                        "last_shared_at": (
-                            shared_stats.get(account.id, {}).get("last_shared_at").isoformat()
-                            if shared_stats.get(account.id, {}).get("last_shared_at")
-                            else None
-                        ),
-                        "last_pub_name": shared_stats.get(account.id, {}).get("last_pub_name") or "",
-                        "rituals": _friend_rituals(
-                            int(shared_stats.get(account.id, {}).get("shared_count") or 0)
-                        ),
-                    }
+                    str(account.public_id): _friend_stats_item(shared_stats.get(account.id, {}))
                     for account in friend_accounts
                 },
                 "incoming_requests": FriendshipSerializer(incoming, many=True, context=context).data,
@@ -2247,10 +2195,7 @@ class FriendRequestView(APIView):
                     )
         except Exception as exc:  # noqa: BLE001
             logger.error("friends: request create failed: %s", exc, exc_info=True)
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return _internal_error()
 
         if created:
             title = "Nový kámoš na pivo?"
@@ -2459,10 +2404,7 @@ class FriendActivityView(APIView):
                 ).exclude(pk=activity.pk).update(active=False, updated_at=now)
         except Exception as exc:  # noqa: BLE001
             logger.error("friends: pub activity failed: %s", exc, exc_info=True)
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return _internal_error()
 
         friend_ids = _accepted_friend_ids(request.user)
         # Ghost mode keeps the owner's own activity row (so they can still track
@@ -2602,10 +2544,7 @@ class FriendActivityRespondView(APIView):
                 )
         except Exception as exc:  # noqa: BLE001
             logger.error("friends: rsvp failed: %s", exc, exc_info=True)
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return _internal_error()
 
         is_going = response_value == FriendActivityResponse.Response.GOING
         newly_going = is_going and previous != FriendActivityResponse.Response.GOING
@@ -2811,14 +2750,24 @@ _BEER_BRAND_SCAN_LIMIT = 200
 _BEER_BRAND_MAX_RESULTS = 50
 
 
-def _nearby_user_added_pub_items(lat: float, lng: float, radius_km: float) -> list[dict]:
-    """Active user-added pubs within the requested circle, as suggest items.
+def _nearest_rows(
+    queryset,
+    lat: float,
+    lng: float,
+    radius_km: float,
+    *,
+    tiebreak: str,
+    scan_limit: int,
+    max_results: int,
+):
+    """Bounding-box prefilter + haversine refine for a lat/lng-bearing model.
 
-    Bounded: at most _USER_ADDED_SCAN_LIMIT rows are scanned and at most
-    _USER_ADDED_MAX_RESULTS (nearest first) are returned, so a flood of added
-    pubs cannot inflate the response.
+    The queryset must already carry its own filters (e.g. ``active=True``) and
+    expose float ``lat``/``lng`` fields. We annotate a cheap planar distance for a
+    DB-side order, scan at most ``scan_limit`` rows, refine to the true circle by
+    haversine, and return the nearest ``max_results`` rows (nearest first). The
+    scan/result caps keep a flood of rows from inflating the response.
     """
-
     lat_delta = radius_km / 111.0
     lng_scale = max(math.cos(math.radians(lat)), 0.01)
     lng_delta = radius_km / (111.0 * lng_scale)
@@ -2830,25 +2779,43 @@ def _nearby_user_added_pub_items(lat: float, lng: float, radius_km: float) -> li
     )
 
     rows = (
-        UserAddedPub.objects.filter(
-            active=True,
+        queryset.filter(
             lat__gte=lat - lat_delta,
             lat__lte=lat + lat_delta,
             lng__gte=lng - lng_delta,
             lng__lte=lng + lng_delta,
         )
         .annotate(distance_score=distance_score)
-        .order_by("distance_score", "-updated_at")[:_USER_ADDED_SCAN_LIMIT]
+        .order_by("distance_score", tiebreak)[:scan_limit]
     )
 
     within = []
-    for pub in rows:
-        distance = _haversine_km(lat, lng, pub.lat, pub.lng)
+    for row in rows:
+        distance = _haversine_km(lat, lng, row.lat, row.lng)
         if distance <= radius_km:
-            within.append((distance, pub))
+            within.append((distance, row))
 
     within.sort(key=lambda pair: pair[0])
-    return [_user_added_pub_item(pub) for _, pub in within[:_USER_ADDED_MAX_RESULTS]]
+    return [row for _, row in within[:max_results]]
+
+
+def _nearby_user_added_pub_items(lat: float, lng: float, radius_km: float) -> list[dict]:
+    """Active user-added pubs within the requested circle, as suggest items.
+
+    Bounded: at most _USER_ADDED_SCAN_LIMIT rows are scanned and at most
+    _USER_ADDED_MAX_RESULTS (nearest first) are returned, so a flood of added
+    pubs cannot inflate the response.
+    """
+    pubs = _nearest_rows(
+        UserAddedPub.objects.filter(active=True),
+        lat,
+        lng,
+        radius_km,
+        tiebreak="-updated_at",
+        scan_limit=_USER_ADDED_SCAN_LIMIT,
+        max_results=_USER_ADDED_MAX_RESULTS,
+    )
+    return [_user_added_pub_item(pub) for pub in pubs]
 
 
 def _pub_beer_brand_item(link: PubBeerBrand) -> dict:
@@ -2974,38 +2941,15 @@ def _nearby_pub_beer_brand_items(
     radius_km: float,
 ) -> tuple[list[dict], set[str]]:
     """Known pubs serving a brand, based on community menus and drink logs."""
-
-    lat_delta = radius_km / 111.0
-    lng_scale = max(math.cos(math.radians(lat)), 0.01)
-    lng_delta = radius_km / (111.0 * lng_scale)
-    lat_distance = F("lat") - Value(lat)
-    lng_distance = (F("lng") - Value(lng)) * Value(lng_scale)
-    distance_score = ExpressionWrapper(
-        lat_distance * lat_distance + lng_distance * lng_distance,
-        output_field=FloatField(),
+    links = _nearest_rows(
+        PubBeerBrand.objects.filter(active=True, brand_key=brand_key),
+        lat,
+        lng,
+        radius_km,
+        tiebreak="-last_seen_at",
+        scan_limit=_BEER_BRAND_SCAN_LIMIT,
+        max_results=_BEER_BRAND_MAX_RESULTS,
     )
-
-    rows = (
-        PubBeerBrand.objects.filter(
-            active=True,
-            brand_key=brand_key,
-            lat__gte=lat - lat_delta,
-            lat__lte=lat + lat_delta,
-            lng__gte=lng - lng_delta,
-            lng__lte=lng + lng_delta,
-        )
-        .annotate(distance_score=distance_score)
-        .order_by("distance_score", "-last_seen_at")[:_BEER_BRAND_SCAN_LIMIT]
-    )
-
-    within = []
-    for link in rows:
-        distance = _haversine_km(lat, lng, link.lat, link.lng)
-        if distance <= radius_km:
-            within.append((distance, link))
-
-    within.sort(key=lambda pair: pair[0])
-    links = [link for _, link in within[:_BEER_BRAND_MAX_RESULTS]]
     return [_pub_beer_brand_item(link) for link in links], {link.cache_key for link in links}
 
 
@@ -3134,6 +3078,31 @@ class PubsNearView(APIView):
             cache_key=cache_key, radius_bucket=radius_bucket
         ).first()
 
+        def serve_stale_or_fallback() -> Response | None:
+            # Best-effort 200 when a live Mapy fetch isn't possible: serve the
+            # stale cache row if we have one, else any local user-added /
+            # beer-brand fallback items. None → caller emits its own error.
+            if row is not None:
+                return Response(
+                    {
+                        "items": final_items(row.items),
+                        "cached": True,
+                        "fetched_at": row.fetched_at.isoformat(),
+                    },
+                    status=status.HTTP_200_OK,
+                )
+            fallback_items = final_items([])
+            if fallback_items:
+                return Response(
+                    {
+                        "items": fallback_items,
+                        "cached": True,
+                        "fetched_at": dj_timezone.now().isoformat(),
+                    },
+                    status=status.HTTP_200_OK,
+                )
+            return None
+
         # Fresh cache hit — serve as-is.
         if row is not None and row.fetched_at >= cutoff:
             return Response(
@@ -3154,24 +3123,9 @@ class PubsNearView(APIView):
                     "pubs-near: MAPY_API_KEY unset — serving stale cache for %s/%dkm",
                     cache_key, radius_bucket,
                 )
-                return Response(
-                    {
-                    "items": final_items(row.items),
-                        "cached": True,
-                        "fetched_at": row.fetched_at.isoformat(),
-                    },
-                    status=status.HTTP_200_OK,
-                )
-            fallback_items = final_items([])
-            if fallback_items:
-                return Response(
-                    {
-                        "items": fallback_items,
-                        "cached": True,
-                        "fetched_at": dj_timezone.now().isoformat(),
-                    },
-                    status=status.HTTP_200_OK,
-                )
+            served = serve_stale_or_fallback()
+            if served is not None:
+                return served
             return Response(
                 {"detail": "Mapy.cz proxy is not configured."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -3191,24 +3145,9 @@ class PubsNearView(APIView):
                     "pubs-near: Mapy fetch failed (%s) — serving stale cache for %s/%dkm",
                     exc, cache_key, radius_bucket,
                 )
-                return Response(
-                    {
-                    "items": final_items(row.items),
-                        "cached": True,
-                        "fetched_at": row.fetched_at.isoformat(),
-                    },
-                    status=status.HTTP_200_OK,
-                )
-            fallback_items = final_items([])
-            if fallback_items:
-                return Response(
-                    {
-                        "items": fallback_items,
-                        "cached": True,
-                        "fetched_at": dj_timezone.now().isoformat(),
-                    },
-                    status=status.HTTP_200_OK,
-                )
+            served = serve_stale_or_fallback()
+            if served is not None:
+                return served
             logger.warning(
                 "pubs-near: Mapy fetch failed (%s) and no cache for %s/%dkm — 503",
                 exc, cache_key, radius_bucket,
@@ -3222,29 +3161,10 @@ class PubsNearView(APIView):
                 "pubs-near: unexpected error fetching %s/%dkm: %s",
                 cache_key, radius_bucket, exc, exc_info=True,
             )
-            if row is not None:
-                return Response(
-                    {
-                    "items": final_items(row.items),
-                        "cached": True,
-                        "fetched_at": row.fetched_at.isoformat(),
-                    },
-                    status=status.HTTP_200_OK,
-                )
-            fallback_items = final_items([])
-            if fallback_items:
-                return Response(
-                    {
-                        "items": fallback_items,
-                        "cached": True,
-                        "fetched_at": dj_timezone.now().isoformat(),
-                    },
-                    status=status.HTTP_200_OK,
-                )
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            served = serve_stale_or_fallback()
+            if served is not None:
+                return served
+            return _internal_error()
 
         # Success — upsert the cache row. We accept the small write race between
         # concurrent requests for the same cell (both fetch, last write wins via
@@ -3325,10 +3245,7 @@ class _PubLocationLookupBaseView(APIView):
                 exc,
                 exc_info=True,
             )
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return _internal_error()
 
         return Response({"items": result.items}, status=status.HTTP_200_OK)
 
@@ -3719,10 +3636,7 @@ class AccountView(APIView):
                 exc,
                 exc_info=True,
             )
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return _internal_error()
 
         # The raw token is injected here — it is never a model field, never stored.
         body = dict(AccountSerializer(account).data)
@@ -3807,9 +3721,7 @@ class AccountMeView(APIView):
                 status=status.HTTP_409_CONFLICT,
             )
         except AccountError as exc:
-            return Response(
-                {"detail": exc.message, "code": exc.code}, status=exc.http_status
-            )
+            return _coded_error(exc)
         return Response(
             AccountMeSerializer(account, context={"request": request}).data,
             status=status.HTTP_200_OK,
@@ -3827,10 +3739,7 @@ class AccountMeView(APIView):
             accounts.schedule_deletion(request.user)
         except Exception as exc:  # noqa: BLE001
             logger.error("account delete failed: %s", exc, exc_info=True)
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return _internal_error()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -3912,9 +3821,7 @@ class AccountAvatarView(APIView):
         try:
             accounts.set_avatar(request.user, upload)
         except AccountError as exc:
-            return Response(
-                {"detail": exc.message, "code": exc.code}, status=exc.http_status
-            )
+            return _coded_error(exc)
         return Response(
             AccountMeSerializer(request.user, context={"request": request}).data,
             status=status.HTTP_200_OK,
@@ -3979,6 +3886,26 @@ def _menu_scan_too_large_response() -> Response:
     return Response(
         {"detail": "Fotka je příliš velká.", "code": "image_too_large"},
         status=status.HTTP_400_BAD_REQUEST,
+    )
+
+
+def _menu_scan_vision_unavailable() -> Response:
+    return Response(
+        {
+            "detail": "Skenování menu teď nejede, zkus to za chvíli.",
+            "code": "vision_unavailable",
+        },
+        status=status.HTTP_503_SERVICE_UNAVAILABLE,
+    )
+
+
+def _menu_scan_daily_cap_response() -> Response:
+    return Response(
+        {
+            "detail": "Skenování menu má pro dnešek vyčerpaný limit. Zkus to zítra.",
+            "code": "daily_cap",
+        },
+        status=status.HTTP_503_SERVICE_UNAVAILABLE,
     )
 
 
@@ -4056,19 +3983,11 @@ class MenuScanView(APIView):
         try:
             jpeg_bytes = validate_and_prepare_image(upload)
         except MenuScanError as exc:
-            return Response(
-                {"detail": exc.message, "code": exc.code}, status=exc.http_status
-            )
+            return _coded_error(exc)
 
         # Feature degrades gracefully when the vision key is unconfigured.
         if not settings.OPENROUTER_API_KEY:
-            return Response(
-                {
-                    "detail": "Skenování menu teď nejede, zkus to za chvíli.",
-                    "code": "vision_unavailable",
-                },
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+            return _menu_scan_vision_unavailable()
 
         # Per-account daily cap: bounds how much of the shared OpenRouter pool one
         # actor can drain before the (cheaply mintable) per-account throttle. Reuses
@@ -4080,34 +3999,14 @@ class MenuScanView(APIView):
             and account_id is not None
             and _menu_scan_count_today(account_id, datetime.now(tz=UTC)) > cap
         ):
-            return Response(
-                {
-                    "detail": "Skenování menu má pro dnešek vyčerpaný limit. "
-                    "Zkus to zítra.",
-                    "code": "daily_cap",
-                },
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+            return _menu_scan_daily_cap_response()
 
         try:
             beers = extract_beers_from_image(jpeg_bytes)
         except OpenRouterDailyCapExceededError:
-            return Response(
-                {
-                    "detail": "Skenování menu má pro dnešek vyčerpaný limit. "
-                    "Zkus to zítra.",
-                    "code": "daily_cap",
-                },
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+            return _menu_scan_daily_cap_response()
         except (OpenRouterUnavailableError, requests.RequestException):
-            return Response(
-                {
-                    "detail": "Skenování menu teď nejede, zkus to za chvíli.",
-                    "code": "vision_unavailable",
-                },
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+            return _menu_scan_vision_unavailable()
 
         payload = MenuScanResultSerializer(
             {"beers": beers, "model": settings.OPENROUTER_MODEL}
@@ -4178,6 +4077,16 @@ def _amenity_status(yes: int, no: int) -> tuple[str, float]:
 def _active_amenity_keys() -> set[str]:
     """The set of currently-active AmenityKind keys (the read/write allow-list)."""
     return set(AmenityKind.objects.filter(active=True).values_list("key", flat=True))
+
+
+def _mapper_counters(stats: AccountUsageStats) -> dict:
+    """The Mapér counter payload fed to ``maper_snapshot``."""
+    return {
+        "mapped_pubs_count": stats.mapped_pubs_count,
+        "amenity_votes_count": stats.amenity_votes_count,
+        "first_mapper_count": stats.first_mapper_count,
+        "completed_pubs_count": stats.completed_pubs_count,
+    }
 
 
 def _recompute_amenity_aggregate(
@@ -4493,10 +4402,7 @@ class PubAmenityKindsView(APIView):
             items = PubAmenityKindSerializer(kinds, many=True).data
         except Exception as exc:  # noqa: BLE001
             logger.error("pub-amenities/kinds: unexpected error: %s", exc, exc_info=True)
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return _internal_error()
         return Response({"kinds": items, "version": version}, status=status.HTTP_200_OK)
 
 
@@ -4539,10 +4445,7 @@ class PubAmenityVoteView(APIView):
             )
         except Exception as exc:  # noqa: BLE001
             logger.error("pub-amenities/votes: unexpected error listing votes: %s", exc, exc_info=True)
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return _internal_error()
         return Response({"votes": items}, status=status.HTTP_200_OK)
 
     def put(self, request: Request) -> Response:
@@ -4558,23 +4461,13 @@ class PubAmenityVoteView(APIView):
             ]
         except Exception as exc:  # noqa: BLE001
             logger.error("pub-amenities/votes: unexpected error saving votes: %s", exc, exc_info=True)
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return _internal_error()
 
         # mapper: fresh Mapér snapshot is returned ONCE at the envelope level so
         # Profile updates without a second GET. Re-read the durable XP from
         # AccountUsageStats AFTER all rows applied (F()-increments are committed).
         stats = AccountUsageStats.objects.filter(account=request.user).first()
-        counters = None
-        if stats is not None:
-            counters = {
-                "mapped_pubs_count": stats.mapped_pubs_count,
-                "amenity_votes_count": stats.amenity_votes_count,
-                "first_mapper_count": stats.first_mapper_count,
-                "completed_pubs_count": stats.completed_pubs_count,
-            }
+        counters = _mapper_counters(stats) if stats is not None else None
         mapper = maper_snapshot(stats.mapper_xp if stats is not None else 0, counters=counters)
         return Response({"results": results, "mapper": mapper}, status=status.HTTP_200_OK)
 
@@ -4683,7 +4576,7 @@ class PubAmenityVoteView(APIView):
                     pub_identity_key=pub_identity_key,
                     amenity_key=amenity_key,
                     defaults={
-                        "name": data.get("name") or "",
+                        "name": new_name,
                         "client_updated_at": client_updated_at,
                     },
                 )
@@ -4725,7 +4618,7 @@ class PubAmenityVoteView(APIView):
                 amenity_key=amenity_key,
                 defaults={
                     "cache_key": cache_key,
-                    "name": data.get("name") or "",
+                    "name": new_name,
                     "lat": data["lat"],
                     "lng": data["lng"],
                     "city": data.get("city") or "",
@@ -4819,10 +4712,7 @@ class PubAmenityVoteView(APIView):
                 exc,
                 exc_info=True,
             )
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return _internal_error()
         return Response({"deleted": deleted}, status=status.HTTP_200_OK)
 
 
@@ -4964,9 +4854,6 @@ class PubAmenityReadView(APIView):
                 )
         except Exception as exc:  # noqa: BLE001
             logger.error("pub-amenities: unexpected error reading aggregates: %s", exc, exc_info=True)
-            return Response(
-                {"detail": "Internal server error."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return _internal_error()
 
         return Response({"pubs": pubs}, status=status.HTTP_200_OK)

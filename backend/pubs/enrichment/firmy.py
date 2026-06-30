@@ -62,12 +62,12 @@ import re
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime
 from html import unescape
 from urllib.parse import quote_plus, urlparse
 
 import requests
 
+from ._daily_counter import DailyCounter
 from .matcher import _haversine_m, verify_match
 from .normalizer import normalize_to_osm
 
@@ -242,39 +242,10 @@ class RawHours:
 
 
 # ---------------------------------------------------------------------------
-# Daily-cap counter (process-wide, resets at midnight)
+# Daily-cap counter (process-wide, resets at midnight) — shared DailyCounter
 # ---------------------------------------------------------------------------
 
-
-class _DailyCounter:
-    """Thread-safe counter that resets at calendar-day boundary (UTC)."""
-
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._day: date | None = None
-        self._count: int = 0
-
-    def increment_and_check(self, cap: int) -> bool:
-        """
-        Increment the counter and return True if the cap is NOT exceeded
-        (i.e. the request is allowed).  Returns False if cap is exceeded.
-        """
-        with self._lock:
-            today = datetime.now(tz=UTC).date()
-            if self._day != today:
-                self._day = today
-                self._count = 0
-            if self._count >= cap:
-                return False
-            self._count += 1
-            return True
-
-    def current(self) -> int:
-        with self._lock:
-            return self._count
-
-
-_global_counter = _DailyCounter()
+_global_counter = DailyCounter()
 
 # ---------------------------------------------------------------------------
 # FirmyHoursSource

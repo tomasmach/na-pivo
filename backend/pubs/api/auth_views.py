@@ -72,12 +72,6 @@ def _account_state(
     return data
 
 
-def _current_account(request: Request) -> Account | None:
-    """The Account behind an optional Bearer token, or None when unauthenticated."""
-    user = getattr(request, "user", None)
-    return user if isinstance(user, Account) else None
-
-
 def _optional_bearer_account(request: Request) -> Account | None:
     """Best-effort bearer lookup for endpoints where auth is only a merge hint."""
     try:

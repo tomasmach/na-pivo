@@ -38,12 +38,12 @@ from __future__ import annotations
 
 import logging
 import math
-import threading
 import unicodedata
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime
 
 import requests
+
+from ._daily_counter import DailyCounter
 
 logger = logging.getLogger(__name__)
 
@@ -257,36 +257,10 @@ def _pub_signal_priority(item: dict) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Daily-cap counter (process-wide, resets at midnight UTC) — mirror of firmy.py
+# Daily-cap counter (process-wide, resets at midnight UTC) — shared DailyCounter
 # ---------------------------------------------------------------------------
 
-
-class _DailyCounter:
-    """Thread-safe counter that resets at the calendar-day boundary (UTC)."""
-
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._day: date | None = None
-        self._count: int = 0
-
-    def increment_and_check(self, cap: int) -> bool:
-        """Increment and return True if the cap is NOT exceeded (request allowed)."""
-        with self._lock:
-            today = datetime.now(tz=UTC).date()
-            if self._day != today:
-                self._day = today
-                self._count = 0
-            if self._count >= cap:
-                return False
-            self._count += 1
-            return True
-
-    def current(self) -> int:
-        with self._lock:
-            return self._count
-
-
-_global_counter = _DailyCounter()
+_global_counter = DailyCounter()
 
 
 # ---------------------------------------------------------------------------
@@ -342,13 +316,29 @@ class MapySuggestSource:
                 "not making further requests today."
             )
 
-    def _suggest_query(self, query: str, prefer_bbox: str) -> list[dict]:
-        """Run one suggest query; return its raw items. Raises on HTTP/network error.
+    def _get_items(self, url: str, params, log_label: str) -> list[dict]:
+        """GET *url* and return its raw ``items``. Raises on HTTP/network error.
 
-        Retries ONCE on a 429/5xx (the only retryable statuses), exactly like the
-        intent of the spec — a single retry, then give up for this query.
+        Cap-checked, and retries ONCE on a 429/5xx (the only retryable statuses)
+        before giving up. ``log_label`` identifies the request in the retry warning.
         """
         self._check_cap()
+        resp = self._session.get(url, params=params, timeout=self._timeout)
+        if resp.status_code == 429 or resp.status_code >= 500:
+            logger.warning(
+                "mapy: %s returned retryable HTTP %d — retrying once",
+                log_label,
+                resp.status_code,
+            )
+            # The retried request also counts against the daily cap.
+            self._check_cap()
+            resp = self._session.get(url, params=params, timeout=self._timeout)
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("items") or []
+
+    def _suggest_query(self, query: str, prefer_bbox: str) -> list[dict]:
+        """Run one suggest query; return its raw items. Raises on HTTP/network error."""
         params = {
             "query": query,
             "lang": "cs",
@@ -356,36 +346,10 @@ class MapySuggestSource:
             "preferBBox": prefer_bbox,
             "apikey": self._api_key,
         }
-
-        resp = self._session.get(_SUGGEST_URL, params=params, timeout=self._timeout)
-        if resp.status_code == 429 or resp.status_code >= 500:
-            logger.warning(
-                "mapy: query %r returned retryable HTTP %d — retrying once",
-                query,
-                resp.status_code,
-            )
-            # The retried request also counts against the daily cap.
-            self._check_cap()
-            resp = self._session.get(
-                _SUGGEST_URL, params=params, timeout=self._timeout
-            )
-        resp.raise_for_status()
-        data = resp.json()
-        return data.get("items") or []
+        return self._get_items(_SUGGEST_URL, params, f"query {query!r}")
 
     def _items_query(self, url: str, params: list[tuple[str, str]]) -> list[dict]:
-        self._check_cap()
-        resp = self._session.get(url, params=params, timeout=self._timeout)
-        if resp.status_code == 429 or resp.status_code >= 500:
-            logger.warning(
-                "mapy: lookup returned retryable HTTP %d — retrying once",
-                resp.status_code,
-            )
-            self._check_cap()
-            resp = self._session.get(url, params=params, timeout=self._timeout)
-        resp.raise_for_status()
-        data = resp.json()
-        return data.get("items") or []
+        return self._get_items(url, params, "lookup")
 
     # ------------------------------------------------------------------
     # Public API (mirror of mapyClient.ts searchPubsNear)

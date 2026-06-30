@@ -57,19 +57,24 @@ def build_address_location_query(*, address: str, city: str = "") -> str:
     )[:150]
 
 
+def _named_entry(regional_structure: list, entry_type: str) -> str | None:
+    """Return the ``name`` of the first regionalStructure entry of *entry_type*."""
+    return next(
+        (
+            entry.get("name")
+            for entry in regional_structure
+            if isinstance(entry, dict) and entry.get("type") == entry_type
+        ),
+        None,
+    )
+
+
 def pick_city(item: dict) -> str:
     regional_structure = item.get("regionalStructure")
     if not isinstance(regional_structure, list):
         return ""
     for desired_type in ("regional.municipality", "regional.municipality_part"):
-        match = next(
-            (
-                entry.get("name")
-                for entry in regional_structure
-                if isinstance(entry, dict) and entry.get("type") == desired_type
-            ),
-            None,
-        )
+        match = _named_entry(regional_structure, desired_type)
         if isinstance(match, str) and match:
             return match
     return ""
@@ -79,22 +84,8 @@ def pick_address(item: dict) -> str:
     regional_structure = item.get("regionalStructure")
     if not isinstance(regional_structure, list):
         return ""
-    street = next(
-        (
-            entry.get("name")
-            for entry in regional_structure
-            if isinstance(entry, dict) and entry.get("type") == "regional.street"
-        ),
-        None,
-    )
-    number = next(
-        (
-            entry.get("name")
-            for entry in regional_structure
-            if isinstance(entry, dict) and entry.get("type") == "regional.address"
-        ),
-        None,
-    )
+    street = _named_entry(regional_structure, "regional.street")
+    number = _named_entry(regional_structure, "regional.address")
     if isinstance(street, str) and street and isinstance(number, str) and number:
         return f"{street} {number}"
     if isinstance(street, str) and street:

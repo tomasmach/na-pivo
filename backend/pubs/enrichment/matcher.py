@@ -157,7 +157,7 @@ def verify_match(
         confidence = 0.7 * name_score + 0.3 * geo_score
     """
     # Name similarity
-    name_sim = fuzz.token_sort_ratio(q_name.lower(), c_name.lower()) / 100.0
+    name_sim = name_similarity(q_name, c_name)
 
     # Hard name gate — independent of geo. A different name is a different
     # business even at the exact same coordinates.
