@@ -570,13 +570,18 @@ def _delete_or_move_account_rows(
     target: Account,
     unique_fields: tuple[str, ...],
 ) -> None:
+    target_keys = {
+        tuple(values)
+        for values in model.objects.filter(account=target).values_list(*unique_fields)
+    }
     for row in model.objects.filter(account=source).order_by("pk"):
-        conflict_filter = {field: getattr(row, field) for field in unique_fields}
-        if model.objects.filter(account=target, **conflict_filter).exists():
+        row_key = tuple(getattr(row, field) for field in unique_fields)
+        if row_key in target_keys:
             row.delete()
             continue
         row.account = target
         row.save(update_fields=["account"])
+        target_keys.add(row_key)
 
 
 def _recount_amenity_aggregate(

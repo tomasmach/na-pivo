@@ -31,6 +31,7 @@ from rest_framework.test import APIClient
 
 import pubs.emailer as emailer
 import pubs.oauth as oauth
+from pubs.accounts import _delete_or_move_account_rows
 from pubs.models import (
     Account,
     AuthIdentity,
@@ -354,6 +355,45 @@ def test_login_with_anonymous_bearer_merges_progress_into_existing_account(
     assert drink.account_id == target.id
     push_device.refresh_from_db()
     assert push_device.account_id == target.id
+
+
+@pytest.mark.django_db
+def test_merge_row_helper_preloads_target_conflicts(django_assert_num_queries):
+    source = Account.objects.create(device_id="merge-source")
+    target = Account.objects.create(device_id="merge-target")
+    conflict_id = uuid.uuid4()
+    moved_id_a = uuid.uuid4()
+    moved_id_b = uuid.uuid4()
+
+    def drink(account: Account, client_id: uuid.UUID, name: str) -> None:
+        DrinkLog.objects.create(
+            account=account,
+            client_id=client_id,
+            cache_key="u2fkbnhz",
+            name=name,
+            lat=50.08,
+            lng=14.45,
+            beer_name="Plzeň",
+            price_czk=55,
+            drank_at="2026-06-01T18:00:00Z",
+        )
+
+    drink(target, conflict_id, "Target")
+    drink(source, conflict_id, "Source conflict")
+    for client_id in (moved_id_a, moved_id_b):
+        drink(source, client_id, "Source moved")
+
+    with django_assert_num_queries(5):
+        _delete_or_move_account_rows(
+            DrinkLog,
+            source=source,
+            target=target,
+            unique_fields=("client_id",),
+        )
+
+    assert DrinkLog.objects.filter(account=source).count() == 0
+    assert DrinkLog.objects.filter(account=target, client_id=conflict_id).count() == 1
+    assert DrinkLog.objects.filter(account=target, client_id__in=[moved_id_a, moved_id_b]).count() == 2
 
 
 @pytest.mark.django_db
