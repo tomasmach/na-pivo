@@ -632,7 +632,8 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   const handleShareWithFriends = useCallback(async () => {
     if (sharingWithFriends) return;
     setSharingWithFriends(true);
-    const result = await shareFriendPubActivity(pub, cs.friends.atPubMessage);
+    const shareClientId = isThisPubSession ? current?.clientId : undefined;
+    const result = await shareFriendPubActivity(pub, cs.friends.atPubMessage, shareClientId);
     setSharingWithFriends(false);
     if (result.ok) {
       showToast(cs.friends.shareSuccess, { icon: <BellRingIcon size={20} color={Colors.amber} /> });
@@ -640,7 +641,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
     } else {
       showToast(result.detail || cs.friends.shareError, { icon: <BellRingIcon size={20} color={Colors.amber} /> });
     }
-  }, [hapticEnabled, pub, sharingWithFriends, showToast]);
+  }, [current?.clientId, hapticEnabled, isThisPubSession, pub, sharingWithFriends, showToast]);
 
   const hasMenu = menu.length > 0;
   const bubbleFieldWidth = Math.min(screenWidth - Spacing.lg * 2, 340);

@@ -1,4 +1,5 @@
 import React from 'react';
+import { cs as copy } from '@/i18n/cs';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -81,6 +82,9 @@ jest.mock('@/data/telemetryClient', () => ({ trackClientEvent: mockTrackClientEv
 
 const mockTrackCounterTabOpened = jest.fn(async () => undefined);
 jest.mock('@/data/counterTelemetry', () => ({ trackCounterTabOpened: mockTrackCounterTabOpened }));
+
+const mockShareFriendPubActivity = jest.fn(async () => ({ ok: true }));
+jest.mock('@/data/friendsClient', () => ({ shareFriendPubActivity: mockShareFriendPubActivity }));
 
 const fetchPubHours = jest.fn(async () => new Map());
 jest.mock('@/data/hoursClient', () => ({ fetchPubHours }));
@@ -418,5 +422,50 @@ describe('CounterScreen counting', () => {
     expect(useTallyStore.getState().current?.drinks).toHaveLength(0);
     expect(enqueueDelete).toHaveBeenCalledWith('uuid-fixed');
     expect(deleteVisitByClientId).toHaveBeenCalledWith(expect.any(String));
+  });
+
+  it('shares the active evening client id with friends', async () => {
+    const startedAt = new Date().toISOString();
+    useTallyStore.setState({
+      current: {
+        clientId: 'session-client-id',
+        pubKey: CELL,
+        pubName: PUB.name,
+        startedAt,
+        drinks: [
+          {
+            id: 'drink-id',
+            beerName: 'Plzeň',
+            priceCzk: 62,
+            at: startedAt,
+          },
+        ],
+      },
+      history: [],
+    });
+    useNearbyPub.mockReturnValue(nearbyState());
+
+    let renderer: any;
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(CounterScreen));
+    });
+
+    const share = renderer.root.findAll(
+      (n: any) =>
+        n.props?.accessibilityLabel === copy.friends.shareHere &&
+        typeof n.props?.onPress === 'function',
+    )[0];
+    expect(share).toBeTruthy();
+
+    await act(async () => {
+      share.props.onPress();
+      await Promise.resolve();
+    });
+
+    expect(mockShareFriendPubActivity).toHaveBeenCalledWith(
+      PUB,
+      copy.friends.atPubMessage,
+      'session-client-id',
+    );
   });
 });

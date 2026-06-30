@@ -473,13 +473,17 @@ export async function removeFriend(accountId: string): Promise<FriendActionResul
   return res.ok ? { ok: true } : res.result;
 }
 
-export async function shareFriendPubActivity(pub: Pub, message?: string): Promise<FriendActionResult> {
+export async function shareFriendPubActivity(
+  pub: Pub,
+  message?: string,
+  clientId?: string,
+): Promise<FriendActionResult> {
   const now = new Date();
   const expires = new Date(now.getTime() + 4 * 60 * 60 * 1000);
   const res = await requestJson('/v1/friends/pub-activity', {
     method: 'POST',
     body: {
-      client_id: generateUuidV4(),
+      client_id: clientId || generateUuidV4(),
       name: pub.name,
       lat: pub.lat,
       lng: pub.lng,
