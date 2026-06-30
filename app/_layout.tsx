@@ -18,9 +18,7 @@ import { flushDrinksQueue } from '@/data/drinksQueue';
 import { flushDeleteDrinksQueue } from '@/data/deleteDrinksQueue';
 import { flushUpdateDrinksQueue } from '@/data/updateDrinksQueue';
 import { installPubRatingsSync, restorePubRatings } from '@/data/pubRatingsSync';
-import { flushPubRatingsQueue } from '@/data/pubRatingsQueue';
 import { installPubAmenitiesSync, restorePubAmenities } from '@/data/pubAmenitiesSync';
-import { flushPubAmenitiesQueue } from '@/data/pubAmenitiesQueue';
 import { flushVisitsQueue } from '@/data/visitsQueue';
 import { seedVisitsFromHistory } from '@/data/visitsSync';
 import {
@@ -165,10 +163,8 @@ export default function RootLayout() {
     // Personal ratings: pull + merge the server set (LWW), pushing local-newer
     // ratings, then flush. Visits: one-time seed of existing history, then flush.
     void restorePubRatings();
-    void flushPubRatingsQueue();
     // Amenity votes: same pull + merge + push + flush as ratings (spec §4.7).
     void restorePubAmenities();
-    void flushPubAmenitiesQueue();
     void seedVisitsFromHistory();
     void flushVisitsQueue();
     // Close an evening left idle past the timeout while the app was away, so the
@@ -187,9 +183,7 @@ export default function RootLayout() {
         void flushDeleteDrinksQueue();
         void flushUpdateDrinksQueue();
         void restorePubRatings();
-        void flushPubRatingsQueue();
         void restorePubAmenities();
-        void flushPubAmenitiesQueue();
         void flushVisitsQueue();
         // Re-seed pub geofences for wherever the user is now (no-op when the
         // feature is off; cheap unless they moved a few km since last fetch).
