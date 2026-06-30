@@ -113,3 +113,10 @@ export function enqueueFeedback(input: FeedbackInput): Promise<boolean> {
 export function flushFeedbackQueue(): Promise<void> {
   return enqueueTask(flushLocked);
 }
+
+/** Drops queued feedback containing free text/contact details at account boundary changes. */
+export function clearFeedbackQueue(): Promise<void> {
+  return enqueueTask(async () => {
+    await saveQueue([]);
+  });
+}

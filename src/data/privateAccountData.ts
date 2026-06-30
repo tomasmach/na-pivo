@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { clearDeleteDrinksQueue } from './deleteDrinksQueue';
 import { clearDrinksQueue } from './drinksQueue';
 import { clearUpdateDrinksQueue } from './updateDrinksQueue';
+import { clearFeedbackQueue } from './feedbackQueue';
 import { clearPubAmenitiesQueue } from './pubAmenitiesQueue';
 import { runWithoutPubAmenitiesSync } from './pubAmenitiesSync';
 import { clearPubRatingsQueue } from './pubRatingsQueue';
@@ -42,6 +43,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
     clearDrinksQueue(),
     clearDeleteDrinksQueue(),
     clearUpdateDrinksQueue(),
+    clearFeedbackQueue(),
     clearVisitsQueue(),
     clearPubRatingsQueue(),
     clearPubAmenitiesQueue(),
