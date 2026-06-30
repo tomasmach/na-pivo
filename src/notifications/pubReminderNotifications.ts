@@ -29,6 +29,10 @@ const MAX_GEOFENCES = 20;
 const GEOFENCE_RADIUS_M = 75;
 /** How far around the user we look for pubs to geofence (km). */
 const GEOFENCE_FETCH_RADIUS_KM = 5;
+/** Cached fixes older than this can point to a previous city after travel. */
+const LAST_KNOWN_POSITION_MAX_AGE_MS = 15 * 60 * 1000;
+/** Geofences only need city-block accuracy; worse cached fixes are ignored. */
+const LAST_KNOWN_POSITION_REQUIRED_ACCURACY_M = 500;
 
 export type PubReminderEnableResult =
   | { ok: true }
@@ -163,17 +167,35 @@ async function getAndRegisterPushToken(status: 'granted' | 'denied' | 'undetermi
   }
 }
 
-/** Best-effort current position: prefer a cached fix, fall back to a fresh one. */
+function locationCoords(position: Location.LocationObject | null): { lat: number; lng: number } | null {
+  const latitude = position?.coords.latitude;
+  const longitude = position?.coords.longitude;
+  if (
+    typeof latitude !== 'number' ||
+    typeof longitude !== 'number' ||
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude)
+  ) {
+    return null;
+  }
+  return { lat: latitude, lng: longitude };
+}
+
+/** Best-effort current position: prefer a recent cached fix, fall back to a fresh one. */
 async function resolveCoords(): Promise<{ lat: number; lng: number } | null> {
   try {
-    const last = await Location.getLastKnownPositionAsync();
-    if (last) return { lat: last.coords.latitude, lng: last.coords.longitude };
+    const last = await Location.getLastKnownPositionAsync({
+      maxAge: LAST_KNOWN_POSITION_MAX_AGE_MS,
+      requiredAccuracy: LAST_KNOWN_POSITION_REQUIRED_ACCURACY_M,
+    });
+    const coords = locationCoords(last);
+    if (coords) return coords;
   } catch {
     // ignore — try a fresh fix below
   }
   try {
     const current = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-    return { lat: current.coords.latitude, lng: current.coords.longitude };
+    return locationCoords(current);
   } catch {
     return null;
   }
