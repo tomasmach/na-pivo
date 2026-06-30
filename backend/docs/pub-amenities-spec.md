@@ -552,21 +552,21 @@ XP is computed **server-side** (the one deliberate break from the local-first `d
 - **New `mapper` block on `GET /v1/account/me`** (additive sibling of `stats`, built in the serializer):
   ```json
   "mapper": {
-    "xp": 285,
+    "xp": 1320,
     "level": 3,
     "title": "Štamgast",
-    "xp_into_level": 135,
-    "xp_for_next_level": 250,
+    "xp_into_level": 420,
+    "xp_for_next_level": 1600,
     "amenity_votes_count": 41,
     "distinct_mapped_pubs": 9,
     "first_mapper_count": 3,
     "completed_pubs_count": 1,
     "levels": [
       {"level": 1, "title": "Nováček", "xp": 0},
-      {"level": 2, "title": "Všímálek", "xp": 50},
-      {"level": 3, "title": "Štamgast", "xp": 150},
-      {"level": 4, "title": "Znalec", "xp": 400},
-      {"level": 5, "title": "Hospodský mudrc", "xp": 900}
+      {"level": 2, "title": "Všímálek", "xp": 300},
+      {"level": 3, "title": "Štamgast", "xp": 900},
+      {"level": 4, "title": "Znalec", "xp": 2500},
+      {"level": 5, "title": "Hospodský mudrc", "xp": 6000}
     ],
     "xp_rules": {
       "first_fact": 15,

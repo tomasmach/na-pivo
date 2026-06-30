@@ -143,7 +143,7 @@ def test_first_mapper_earns_first_fact_plus_bonus(client):
     assert mapper["level"] == 1
     assert mapper["title"] == "Nováček"
     assert mapper["xp_into_level"] == 40
-    assert mapper["xp_for_next_level"] == 50
+    assert mapper["xp_for_next_level"] == 300
     assert mapper["distinct_mapped_pubs"] == 1
     assert mapper["amenity_votes_count"] == 1
     assert mapper["first_mapper_count"] == 1
@@ -153,32 +153,36 @@ def test_first_mapper_earns_first_fact_plus_bonus(client):
 @pytest.mark.django_db
 def test_put_envelope_crosses_level_boundary(client):
     """The PUT-response ``mapper`` snapshot derives level/title from the durable
-    total exactly like GET /account/me (both call maper_progress). Two first-maps
-    (40 + 40 = 80 XP) cross level 1 → 2, so the envelope must report level 2 /
+    total exactly like GET /account/me (both call maper_progress). Eight first-maps
+    (8 × 40 = 320 XP) cross level 1 → 2, so the envelope must report level 2 /
     Všímálek with progress matching the durable total — pinning the PUT envelope
     to the same derivation as GET (it must NOT hardcode level 1 or compute off
     the single xp_awarded)."""
     token = _register(client)
 
-    first = _put(
-        client, token, _vote(amenity_key="seating_garden", value="yes", client_updated_at="2026-06-23T18:00:00+02:00")
-    )
+    keys = list(AmenityKind.objects.filter(active=True).values_list("key", flat=True))[:8]
+    first = _put(client, token, _vote(amenity_key=keys[0], value="yes", client_updated_at="2026-06-23T18:00:00+02:00"))
     # 40 XP → still level 1.
     assert first.json()["mapper"]["level"] == 1
 
-    second = _put(
-        client, token, _vote(amenity_key="practical_wifi", value="yes", client_updated_at="2026-06-23T18:01:00+02:00")
-    )
-    mapper = second.json()["mapper"]
-    # 80 XP total → level 2 (threshold 50). The PUT snapshot uses the same ``xp``
+    mapper = first.json()["mapper"]
+    for i, key in enumerate(keys[1:], start=1):
+        resp = _put(
+            client,
+            token,
+            _vote(amenity_key=key, value="yes", client_updated_at=f"2026-06-23T18:{i:02d}:00+02:00"),
+        )
+        mapper = resp.json()["mapper"]
+
+    # 320 XP total → level 2 (threshold 300). The PUT snapshot uses the same ``xp``
     # key as the GET /me block — the two endpoints never disagree.
-    assert mapper["xp"] == 80
+    assert mapper["xp"] == 320
     assert mapper["level"] == 2
     assert mapper["title"] == "Všímálek"
-    assert mapper["xp_into_level"] == 30  # 80 - 50
-    assert mapper["xp_for_next_level"] == 100  # 150 - 50
+    assert mapper["xp_into_level"] == 20  # 320 - 300
+    assert mapper["xp_for_next_level"] == 600  # 900 - 300
     assert mapper["distinct_mapped_pubs"] == 1
-    assert mapper["amenity_votes_count"] == 2
+    assert mapper["amenity_votes_count"] == 8
 
 
 @pytest.mark.django_db
@@ -634,7 +638,7 @@ def test_account_me_mapper_block_shape(client):
     assert mapper["level"] == 1
     assert mapper["title"] == "Nováček"
     assert mapper["xp_into_level"] == 40
-    assert mapper["xp_for_next_level"] == 50
+    assert mapper["xp_for_next_level"] == 300
     # Raw counters (locked canonical wire names, §7.2).
     assert mapper["distinct_mapped_pubs"] == 1
     assert mapper["amenity_votes_count"] == 1
@@ -643,10 +647,10 @@ def test_account_me_mapper_block_shape(client):
     # The level ladder is exactly the 5-rung table.
     assert mapper["levels"] == [
         {"level": 1, "title": "Nováček", "xp": 0},
-        {"level": 2, "title": "Všímálek", "xp": 50},
-        {"level": 3, "title": "Štamgast", "xp": 150},
-        {"level": 4, "title": "Znalec", "xp": 400},
-        {"level": 5, "title": "Hospodský mudrc", "xp": 900},
+        {"level": 2, "title": "Všímálek", "xp": 300},
+        {"level": 3, "title": "Štamgast", "xp": 900},
+        {"level": 4, "title": "Znalec", "xp": 2500},
+        {"level": 5, "title": "Hospodský mudrc", "xp": 6000},
     ]
     # xp_rules exposes the four env-default constants.
     assert mapper["xp_rules"] == {
@@ -666,7 +670,7 @@ def test_account_me_mapper_block_empty_for_never_voted(client):
     assert mapper["level"] == 1
     assert mapper["title"] == "Nováček"
     assert mapper["xp_into_level"] == 0
-    assert mapper["xp_for_next_level"] == 50
+    assert mapper["xp_for_next_level"] == 300
     assert mapper["distinct_mapped_pubs"] == 0
     assert mapper["first_mapper_count"] == 0
 
@@ -797,15 +801,15 @@ def test_merge_moves_source_stats_when_target_has_none(client):
 @pytest.mark.parametrize(
     "xp,level,title,into,nxt",
     [
-        (0, 1, "Nováček", 0, 50),
-        (49, 1, "Nováček", 49, 50),
-        (50, 2, "Všímálek", 0, 100),
-        (149, 2, "Všímálek", 99, 100),
-        (150, 3, "Štamgast", 0, 250),
-        (399, 3, "Štamgast", 249, 250),
-        (400, 4, "Znalec", 0, 500),
-        (899, 4, "Znalec", 499, 500),
-        (900, 5, "Hospodský mudrc", 0, None),
+        (0, 1, "Nováček", 0, 300),
+        (299, 1, "Nováček", 299, 300),
+        (300, 2, "Všímálek", 0, 600),
+        (899, 2, "Všímálek", 599, 600),
+        (900, 3, "Štamgast", 0, 1600),
+        (2499, 3, "Štamgast", 1599, 1600),
+        (2500, 4, "Znalec", 0, 3500),
+        (5999, 4, "Znalec", 3499, 3500),
+        (6000, 5, "Hospodský mudrc", 0, None),
     ],
 )
 def test_mapper_level_title_boundaries(client, xp, level, title, into, nxt):

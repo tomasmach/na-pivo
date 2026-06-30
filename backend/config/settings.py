@@ -243,6 +243,11 @@ CLIENT_EVENTS_THROTTLE_RATE: str = os.environ.get("CLIENT_EVENTS_THROTTLE_RATE",
 # permission changes.
 PUSH_DEVICES_THROTTLE_RATE: str = os.environ.get("PUSH_DEVICES_THROTTLE_RATE", "60/min")
 
+# Per-IP rate limit for authenticated friend/social endpoints. Friend activity
+# can fan out notifications, so writes stay bounded while dashboard reads still
+# feel instant.
+FRIENDS_THROTTLE_RATE: str = os.environ.get("FRIENDS_THROTTLE_RATE", "120/min")
+
 # Per-IP rate limit for credential auth endpoints (register / login / social /
 # link / unlink / verify-email / set-password). Kept tight to blunt credential
 # stuffing and enumeration while leaving a real human's few attempts untouched.
@@ -308,7 +313,7 @@ MAPER_XP_PUB_COMPLETE_BONUS: int = int(os.environ.get("MAPER_XP_PUB_COMPLETE_BON
 # 1-indexed; titles are fixed (the client maps level→title for the level-up toast).
 MAPER_LEVEL_THRESHOLDS: list[int] = [
     int(x.strip())
-    for x in os.environ.get("MAPER_LEVEL_THRESHOLDS", "0,50,150,400,900").split(",")
+    for x in os.environ.get("MAPER_LEVEL_THRESHOLDS", "0,300,900,2500,6000").split(",")
     if x.strip() != ""
 ]
 
@@ -343,6 +348,7 @@ REST_FRAMEWORK = {
         "pub_reports": PUB_REPORTS_THROTTLE_RATE,
         "client_events": CLIENT_EVENTS_THROTTLE_RATE,
         "push_devices": PUSH_DEVICES_THROTTLE_RATE,
+        "friends": FRIENDS_THROTTLE_RATE,
         "auth": AUTH_THROTTLE_RATE,
         "auth_email": AUTH_EMAIL_THROTTLE_RATE,
         "nickname_check": NICKNAME_CHECK_THROTTLE_RATE,

@@ -58,6 +58,10 @@ from pubs.models import (
     ClientEvent,
     ContentReport,
     FeedbackReport,
+    FriendActivityResponse,
+    FriendNotification,
+    FriendPubActivity,
+    Friendship,
     PubAmenityVote,
     PubNameCorrection,
     PubRating,
@@ -485,6 +489,229 @@ class PushDeviceResponseSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "last_registered_at",
+        ]
+        read_only_fields = fields
+
+
+class FriendProfileSerializer(serializers.ModelSerializer):
+    """Compact public profile shape used by the friend endpoints."""
+
+    id = serializers.UUIDField(source="public_id", read_only=True)
+    avatar_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Account
+        fields = [
+            "id",
+            "nickname",
+            "display_name",
+            "avatar_url",
+            "is_public",
+        ]
+        read_only_fields = fields
+
+    def get_avatar_url(self, obj: Account) -> str | None:
+        if not obj.avatar:
+            return None
+        try:
+            url = obj.avatar.url
+        except (ValueError, AttributeError):
+            return None
+        request = self.context.get("request")
+        if request is not None:
+            url = request.build_absolute_uri(url)
+        last_seen = getattr(obj, "last_seen_at", None)
+        if last_seen is not None:
+            sep = "&" if "?" in url else "?"
+            url = f"{url}{sep}v={int(last_seen.timestamp())}"
+        return url
+
+
+class FriendSearchQuerySerializer(serializers.Serializer):
+    """Query params for GET /v1/friends/search."""
+
+    q = serializers.CharField(max_length=40, trim_whitespace=True)
+
+    def validate_q(self, value: str) -> str:
+        if len(value.strip()) < 2:
+            raise serializers.ValidationError("q must contain at least 2 characters.")
+        return value.strip()
+
+
+class FriendRequestCreateSerializer(serializers.Serializer):
+    """Request body for POST /v1/friends/requests."""
+
+    target_account_id = serializers.UUIDField(required=False)
+    nickname = serializers.CharField(
+        max_length=20,
+        required=False,
+        allow_blank=False,
+        trim_whitespace=True,
+    )
+
+    def validate(self, attrs: dict) -> dict:
+        if bool(attrs.get("target_account_id")) == bool(attrs.get("nickname")):
+            raise serializers.ValidationError(
+                "Send exactly one of target_account_id or nickname."
+            )
+        return attrs
+
+
+class FriendActivityRequestSerializer(PubInputSerializer):
+    """Request body for POST /v1/friends/pub-activity."""
+
+    client_id = serializers.UUIDField()
+    external_id = serializers.CharField(
+        max_length=128,
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        trim_whitespace=True,
+    )
+    message = serializers.CharField(
+        max_length=160,
+        required=False,
+        allow_blank=True,
+        default="",
+        trim_whitespace=True,
+    )
+    started_at = serializers.DateTimeField(required=False, allow_null=True)
+    expires_at = serializers.DateTimeField(required=False, allow_null=True)
+
+    def validate_name(self, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Pub name must not be empty.")
+        if len(value) > 200:
+            raise serializers.ValidationError("Pub name must be at most 200 characters.")
+        return value
+
+
+class FriendshipSerializer(serializers.ModelSerializer):
+    """Friend request row with both endpoints embedded."""
+
+    id = serializers.UUIDField(source="public_id", read_only=True)
+    requester = FriendProfileSerializer(read_only=True)
+    recipient = FriendProfileSerializer(read_only=True)
+
+    class Meta:
+        model = Friendship
+        fields = [
+            "id",
+            "status",
+            "requester",
+            "recipient",
+            "requested_at",
+            "responded_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+
+class FriendActivityResponseSerializer(serializers.Serializer):
+    """Request body for POST /v1/friends/pub-activity/<id>/respond (input only)."""
+
+    response = serializers.ChoiceField(choices=FriendActivityResponse.Response.choices)
+
+
+class FriendSettingsPatchSerializer(serializers.Serializer):
+    """PATCH body for friend social settings."""
+
+    ghost_mode = serializers.BooleanField(required=False)
+    quiet_hours_enabled = serializers.BooleanField(required=False)
+    quiet_hours_start = serializers.IntegerField(required=False, min_value=0, max_value=23)
+    quiet_hours_end = serializers.IntegerField(required=False, min_value=0, max_value=23)
+
+
+class FriendPubActivitySerializer(serializers.ModelSerializer):
+    """Active friend pub status exposed to accepted friends.
+
+    ``responses`` summarises the svolávací-smyčka roster: per-bucket counts plus
+    up to 8 GOING responders' compact profiles. ``my_response`` is the requesting
+    account's own RSVP (needs ``context['account']``). Both rely on the view
+    prefetching ``responses__account`` to keep the roster N+1-free.
+    """
+
+    id = serializers.UUIDField(source="public_id", read_only=True)
+    account = FriendProfileSerializer(read_only=True)
+    responses = serializers.SerializerMethodField()
+    my_response = serializers.SerializerMethodField()
+
+    class Meta:
+        model = FriendPubActivity
+        fields = [
+            "id",
+            "account",
+            "cache_key",
+            "name",
+            "city",
+            "external_id",
+            "message",
+            "started_at",
+            "expires_at",
+            "active",
+            "responses",
+            "my_response",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+    def get_responses(self, obj: FriendPubActivity) -> dict:
+        # Counts + GOING profiles computed in-Python over the prefetched rows so
+        # one query feeds the whole dashboard roster.
+        rows = list(obj.responses.all())
+        counts = {"going": 0, "maybe": 0, "cant": 0}
+        going_accounts = []
+        for row in rows:
+            if row.response in counts:
+                counts[row.response] += 1
+            if row.response == FriendActivityResponse.Response.GOING:
+                going_accounts.append(row.account)
+        going_accounts = going_accounts[:8]
+        going_profiles = FriendProfileSerializer(
+            going_accounts, many=True, context=self.context
+        ).data
+        return {
+            "going": counts["going"],
+            "maybe": counts["maybe"],
+            "cant": counts["cant"],
+            "going_profiles": going_profiles,
+        }
+
+    def get_my_response(self, obj: FriendPubActivity) -> str | None:
+        account = self.context.get("account")
+        if account is None:
+            return None
+        account_id = getattr(account, "pk", None)
+        for row in obj.responses.all():
+            if row.account_id == account_id:
+                return row.response
+        return None
+
+
+class FriendNotificationSerializer(serializers.ModelSerializer):
+    """In-app friend notification feed item."""
+
+    id = serializers.UUIDField(source="public_id", read_only=True)
+    actor = FriendProfileSerializer(read_only=True)
+    friendship_id = serializers.UUIDField(source="friendship.public_id", read_only=True)
+    activity_id = serializers.UUIDField(source="activity.public_id", read_only=True)
+
+    class Meta:
+        model = FriendNotification
+        fields = [
+            "id",
+            "kind",
+            "title",
+            "body",
+            "actor",
+            "friendship_id",
+            "activity_id",
+            "pub_cache_key",
+            "pub_name",
+            "read_at",
+            "created_at",
         ]
         read_only_fields = fields
 
