@@ -473,6 +473,41 @@ def test_content_report_allows_reporting_non_public_accepted_friend(client):
 
 
 @pytest.mark.django_db
+def test_content_report_allows_reporting_non_public_pending_requester(client):
+    # A non-public account that sent the reporter a friend request is shown to
+    # them in the friends dashboard's incoming-requests list, so an abusive
+    # requester must stay reportable even though the request is only pending.
+    reporter_token, reporter_id = _bootstrap(client)
+    _, target_id = _bootstrap(client)
+    reporter = Account.objects.get(public_id=reporter_id)
+    target = Account.objects.get(public_id=target_id)
+    target.is_public = False
+    target.nickname = "PushyStranger"
+    target.save(update_fields=["is_public", "nickname"])
+    Friendship.objects.create(
+        requester=target,
+        recipient=reporter,
+        status=Friendship.Status.PENDING,
+    )
+
+    resp = client.post(
+        "/v1/content-reports",
+        data={
+            "target_account_id": target_id,
+            "reason": ContentReport.Reason.OTHER,
+            "comment": "Otravná žádost s nevhodným jménem.",
+        },
+        format="json",
+        **_auth(reporter_token),
+    )
+
+    assert resp.status_code == status.HTTP_201_CREATED, resp.content
+    report = ContentReport.objects.get()
+    assert report.target_account_id == target.pk
+    assert report.target_snapshot["nickname"] == "PushyStranger"
+
+
+@pytest.mark.django_db
 def test_content_report_rejects_non_public_stranger(client):
     # Without an accepted friendship, a non-public profile stays invisible and
     # therefore unreportable (404), so reports cannot probe private accounts.

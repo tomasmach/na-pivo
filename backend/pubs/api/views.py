@@ -1450,12 +1450,21 @@ class ContentReportView(APIView):
             public_id=data["target_account_id"],
             status=Account.Status.ACTIVE,
         ).first()
-        # A public profile, or a non-public profile that is an accepted friend of
-        # the reporter (visible via friends dashboard / RSVP roster), can be
-        # reported. Mirror the friend-visibility pattern used in FriendRequestView.
-        if target is None or (
-            not target.is_public and target.pk not in _accepted_friend_ids(request.user)
-        ):
+        # A profile the reporter can actually see can be reported: a public
+        # profile, or a non-public one they share a friendship with. "Share a
+        # friendship" includes a still-pending request in either direction, not
+        # just accepted ones: the friends dashboard shows the requester's profile
+        # in its incoming/outgoing request lists, so an abusive private account
+        # that has only sent a request must stay reportable.
+        can_report = target is not None and (
+            target.is_public
+            or Friendship.objects.filter(
+                Q(requester=request.user, recipient=target)
+                | Q(requester=target, recipient=request.user),
+                status__in=(Friendship.Status.ACCEPTED, Friendship.Status.PENDING),
+            ).exists()
+        )
+        if not can_report:
             return Response(
                 {"detail": "Profile not found.", "code": "profile_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
