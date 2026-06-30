@@ -17,8 +17,13 @@ jest.mock('../visitsClient', () => ({
   deleteVisit: (...args: unknown[]) => deleteVisit(...(args as [])),
 }));
 
-import { enqueueVisitOp, flushVisitsQueue, type VisitQueueItem } from '../visitsQueue';
-import type { VisitEntry } from '../visitsClient';
+import {
+  clearVisitsQueue,
+  enqueueVisitOp,
+  flushVisitsQueue,
+  type VisitQueueItem,
+} from '../visitsQueue';
+import type { SubmitVisitResult, VisitEntry } from '../visitsClient';
 
 const STORAGE_KEY = 'na-pivo-visits-queue';
 
@@ -42,6 +47,20 @@ function upsert(clientId: string, over: Partial<VisitEntry> = {}): VisitQueueIte
 async function readQueue(): Promise<VisitQueueItem[]> {
   const raw = await AsyncStorage.getItem(STORAGE_KEY);
   return raw ? JSON.parse(raw) : [];
+}
+
+async function waitForExpectation(assertion: () => void | Promise<void>): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    try {
+      await assertion();
+      return;
+    } catch (error) {
+      lastError = error;
+      await Promise.resolve();
+    }
+  }
+  throw lastError;
 }
 
 beforeEach(async () => {
@@ -121,5 +140,92 @@ describe('flushVisitsQueue', () => {
   it('survives corrupted storage contents', async () => {
     await AsyncStorage.setItem(STORAGE_KEY, '{not json');
     await expect(flushVisitsQueue()).resolves.toBeUndefined();
+  });
+
+  it('persists a newer enqueue while an older delivery is still in flight', async () => {
+    let resolveSubmit!: (value: SubmitVisitResult) => void;
+    submitVisit.mockReturnValueOnce(
+      new Promise<SubmitVisitResult>((resolve) => {
+        resolveSubmit = resolve;
+      }),
+    );
+
+    const first = enqueueVisitOp(upsert('v1'));
+    await waitForExpectation(() => expect(submitVisit).toHaveBeenCalledTimes(1));
+
+    const second = enqueueVisitOp(upsert('v2'));
+    await waitForExpectation(async () => {
+      const queuedIds = (await readQueue()).map((item) => item.clientId);
+      expect(queuedIds).toContain('v2');
+    });
+
+    resolveSubmit('retry');
+    await first;
+    await second;
+    expect((await readQueue()).map((item) => item.clientId).sort()).toEqual(['v1', 'v2']);
+  });
+
+  it('keeps a newer operation for the same client_id when an older in-flight op settles', async () => {
+    let resolveSubmit!: (value: SubmitVisitResult) => void;
+    submitVisit.mockReturnValueOnce(
+      new Promise<SubmitVisitResult>((resolve) => {
+        resolveSubmit = resolve;
+      }),
+    );
+
+    const first = enqueueVisitOp(upsert('v1', { ended_at: '2026-06-14T19:10:00.000Z' }));
+    await waitForExpectation(() => expect(submitVisit).toHaveBeenCalledTimes(1));
+
+    const second = enqueueVisitOp(upsert('v1', { ended_at: '2026-06-14T20:30:00.000Z' }));
+    await waitForExpectation(async () => {
+      const queue = await readQueue();
+      expect((queue[0] as { entry: VisitEntry }).entry.ended_at).toBe('2026-06-14T20:30:00.000Z');
+    });
+
+    resolveSubmit('ok');
+    await first;
+    await second;
+
+    const queue = await readQueue();
+    expect(queue).toHaveLength(1);
+    expect((queue[0] as { entry: VisitEntry }).entry.ended_at).toBe('2026-06-14T20:30:00.000Z');
+  });
+
+  it('keeps the queue cleared when clear runs during an in-flight flush', async () => {
+    let resolveSubmit!: (value: SubmitVisitResult) => void;
+    submitVisit.mockReturnValueOnce(
+      new Promise<SubmitVisitResult>((resolve) => {
+        resolveSubmit = resolve;
+      }),
+    );
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([upsert('v1')]));
+
+    const flushing = flushVisitsQueue();
+    await waitForExpectation(() => expect(submitVisit).toHaveBeenCalledTimes(1));
+    await clearVisitsQueue();
+    expect(await readQueue()).toEqual([]);
+
+    resolveSubmit('ok');
+    await flushing;
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('shares one delivery pass across concurrent flush calls', async () => {
+    let resolveSubmit!: (value: SubmitVisitResult) => void;
+    submitVisit.mockReturnValueOnce(
+      new Promise<SubmitVisitResult>((resolve) => {
+        resolveSubmit = resolve;
+      }),
+    );
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([upsert('v1')]));
+
+    const first = flushVisitsQueue();
+    const second = flushVisitsQueue();
+    await waitForExpectation(() => expect(submitVisit).toHaveBeenCalledTimes(1));
+
+    resolveSubmit('retry');
+    await first;
+    await second;
+    expect(submitVisit).toHaveBeenCalledTimes(1);
   });
 });

@@ -8,12 +8,12 @@
  * retries on each app launch / foreground, so a visit eventually reaches the
  * backend.
  *
- * Like pubRatingsQueue (and unlike drinksQueue), a visit is *state*, not an
- * event: only the LATEST state for a client_id matters. So enqueuing a new
- * operation for a client_id REPLACES any pending operation for the same
- * client_id (last write wins). This collapses the repeated upserts a growing
- * evening produces (each new beer bumps ended_at) into a single delivery, and
- * lets a later delete supersede a queued upsert.
+ * Like pubRatingsQueue, a visit is *state*, not an event: only the LATEST state
+ * for a client_id matters. So enqueuing a new operation for a client_id
+ * REPLACES any pending operation for the same client_id (last write wins). This
+ * collapses the repeated upserts a growing evening produces (each new beer
+ * bumps ended_at) into a single delivery, and lets a later delete supersede a
+ * queued upsert.
  *
  * Each queue item is one operation on one client_id:
  *   - { op: 'upsert', clientId, entry } → POST the entry (idempotent on client_id).
@@ -88,13 +88,15 @@ async function saveQueue(queue: VisitQueueItem[]): Promise<void> {
   }
 }
 
-/** Serializes queue mutations — concurrent enqueue/flush calls would otherwise
- *  read-modify-write the same AsyncStorage snapshot and lose items. */
-let _chain: Promise<unknown> = Promise.resolve();
+/** Serializes only AsyncStorage mutations. Network delivery deliberately runs
+ *  outside this lock so a slow/offline flush cannot block a fresh visit update
+ *  from being persisted immediately. */
+let _mutationChain: Promise<unknown> = Promise.resolve();
+let _flushPromise: Promise<void> | null = null;
 
-function runLocked<T>(task: () => Promise<T>): Promise<T> {
-  const next = _chain.then(task, task);
-  _chain = next.catch(() => undefined);
+function runMutation<T>(task: () => Promise<T>): Promise<T> {
+  const next = _mutationChain.then(task, task);
+  _mutationChain = next.catch(() => undefined);
   return next;
 }
 
@@ -109,8 +111,8 @@ function signature(item: VisitQueueItem): string {
   return JSON.stringify(item);
 }
 
-async function flushLocked(): Promise<void> {
-  const queue = await loadQueue();
+async function flushUnlocked(): Promise<void> {
+  const queue = await runMutation(loadQueue);
   if (queue.length === 0) return;
 
   // Snapshot the exact op (by content) we attempt per client_id; re-load after
@@ -124,13 +126,15 @@ async function flushLocked(): Promise<void> {
     if (result !== 'retry') settled.add(item.clientId);
   }
 
-  const current = await loadQueue();
-  const remaining = current.filter((item) => {
-    const sig = attempted.get(item.clientId);
-    if (sig === undefined || sig !== signature(item)) return true;
-    return !settled.has(item.clientId);
+  await runMutation(async () => {
+    const current = await loadQueue();
+    const remaining = current.filter((item) => {
+      const sig = attempted.get(item.clientId);
+      if (sig === undefined || sig !== signature(item)) return true;
+      return !settled.has(item.clientId);
+    });
+    await saveQueue(remaining);
   });
-  await saveQueue(remaining);
 }
 
 /**
@@ -138,19 +142,19 @@ async function flushLocked(): Promise<void> {
  * whole queue. A new operation for a client_id REPLACES any pending operation
  * for the same client_id (last write wins). Never throws.
  */
-export function enqueueVisitOp(item: VisitQueueItem): Promise<void> {
-  return runLocked(async () => {
+export async function enqueueVisitOp(item: VisitQueueItem): Promise<void> {
+  await runMutation(async () => {
     const queue = await loadQueue();
     const deduped = queue.filter((existing) => existing.clientId !== item.clientId);
     deduped.push(item);
     await saveQueue(deduped.slice(-MAX_QUEUE_LENGTH));
-    await flushLocked();
   });
+  await flushVisitsQueue();
 }
 
 /** Drop all pending private visit sync operations without attempting delivery. */
 export function clearVisitsQueue(): Promise<void> {
-  return runLocked(async () => {
+  return runMutation(async () => {
     await saveQueue([]);
   });
 }
@@ -160,5 +164,9 @@ export function clearVisitsQueue(): Promise<void> {
  * the foreground — both fire-and-forget. Never throws.
  */
 export function flushVisitsQueue(): Promise<void> {
-  return runLocked(flushLocked);
+  if (_flushPromise) return _flushPromise;
+  _flushPromise = flushUnlocked().finally(() => {
+    _flushPromise = null;
+  });
+  return _flushPromise;
 }
