@@ -158,6 +158,17 @@ interface PubsSnapshot {
   savedAt: number;
 }
 
+function isSnapshotPub(value: unknown): value is Pub {
+  if (!value || typeof value !== "object") return false;
+  const pub = value as Partial<Pub>;
+  return (
+    typeof pub.id === "string" &&
+    typeof pub.name === "string" &&
+    Number.isFinite(pub.lat) &&
+    Number.isFinite(pub.lng)
+  );
+}
+
 /** Persist the post-block-filtering result set. Degrades silently on any
  *  storage failure (quota, serialization) — caching must never throw. */
 async function saveSnapshot(snapshot: PubsSnapshot): Promise<void> {
@@ -195,6 +206,7 @@ async function loadSnapshot(): Promise<PubsSnapshot | null> {
     const parsed = JSON.parse(raw) as PubsSnapshot;
     if (
       !Array.isArray(parsed.pubs) ||
+      !parsed.pubs.every(isSnapshotPub) ||
       !Number.isFinite(parsed.centerLat) ||
       !Number.isFinite(parsed.centerLng) ||
       !Number.isFinite(parsed.radiusKm) ||

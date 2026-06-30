@@ -164,7 +164,7 @@ describe("fetchPubsNear — persistent snapshot cache", () => {
   });
 
   async function writeSnapshot(snapshot: {
-    pubs: Pub[];
+    pubs: unknown[];
     centerLat: number;
     centerLng: number;
     radiusKm: number;
@@ -313,6 +313,28 @@ describe("fetchPubsNear — persistent snapshot cache", () => {
     ).resolves.toBeUndefined();
 
     expect(searchPubsNear).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores a snapshot with invalid pub entries and fetches from the network", async () => {
+    await writeSnapshot({
+      pubs: [
+        ...SNAPSHOT_PUBS,
+        { id: "mapy:broken", name: "Rozbitá cache", lat: "50.082", lng: 14.422 },
+      ],
+      centerLat: PRAGUE.lat,
+      centerLng: PRAGUE.lng,
+      radiusKm: 25,
+      savedAt: Date.now(),
+    });
+    (searchPubsNear as jest.Mock).mockResolvedValue([
+      { id: "mapy:fresh", name: "Čerstvá hospoda", lat: 50.083, lng: 14.423 },
+    ]);
+
+    await fetchPubsNear(PRAGUE.lat, PRAGUE.lng, undefined, { radiusKm: 25 });
+
+    expect(searchPubsNear).toHaveBeenCalledTimes(1);
+    expect(getPubById("mapy:cached-1")).toBeNull();
+    expect(getPubById("mapy:fresh")?.name).toBe("Čerstvá hospoda");
   });
 
   it("consults the snapshot only on the first call of a session", async () => {
