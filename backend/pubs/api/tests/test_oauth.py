@@ -47,6 +47,50 @@ def test_apple_auth_code_failure_log_omits_response_body(
     assert "error_description" not in text
 
 
+def test_google_verify_failure_log_omits_exception_message(settings, monkeypatch):
+    settings.GOOGLE_OAUTH_ALLOWED_AUDIENCES = ["cz.test.na-pivo"]
+    logged: list[str] = []
+
+    def record_warning(message: str, *args) -> None:
+        logged.append(message % args)
+
+    def raise_value_error(*args, **kwargs):
+        raise ValueError("secret-token user@example.com")
+
+    monkeypatch.setattr(oauth.google_id_token, "verify_oauth2_token", raise_value_error)
+    monkeypatch.setattr(oauth.logger, "warning", record_warning)
+
+    with pytest.raises(oauth.OAuthError):
+        oauth.verify_google_id_token("bad-token")
+
+    text = "\n".join(logged)
+    assert "ValueError" in text
+    assert "secret-token" not in text
+    assert "user@example.com" not in text
+
+
+def test_apple_verify_failure_log_omits_exception_message(settings, monkeypatch):
+    settings.APPLE_ALLOWED_AUDIENCES = ["cz.test.na-pivo"]
+    logged: list[str] = []
+
+    def record_warning(message: str, *args) -> None:
+        logged.append(message % args)
+
+    def raise_jwt_error(*args, **kwargs):
+        raise oauth.jwt.InvalidTokenError("secret-token user@example.com")
+
+    monkeypatch.setattr(oauth._apple_jwk_client, "get_signing_key_from_jwt", raise_jwt_error)
+    monkeypatch.setattr(oauth.logger, "warning", record_warning)
+
+    with pytest.raises(oauth.OAuthError):
+        oauth.verify_apple_identity_token("bad-token")
+
+    text = "\n".join(logged)
+    assert "InvalidTokenError" in text
+    assert "secret-token" not in text
+    assert "user@example.com" not in text
+
+
 def test_apple_revoke_failure_log_omits_response_body(
     apple_settings,
     monkeypatch,

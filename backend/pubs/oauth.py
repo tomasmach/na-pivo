@@ -117,7 +117,9 @@ def verify_google_id_token(token: str) -> dict:
             google_requests.Request(),
         )
     except ValueError as exc:
-        logger.warning("Google ID token verification failed: %s", exc)
+        # Log only the exception type, never the raw message: library
+        # exceptions can in principle embed claim values or token fragments.
+        logger.warning("Google ID token verification failed: %s", type(exc).__name__)
         raise OAuthError("Invalid Google ID token.") from exc
 
     issuer = claims.get("iss")
@@ -157,7 +159,9 @@ def verify_apple_identity_token(token: str) -> dict:
             issuer=APPLE_ISSUER,
         )
     except jwt.PyJWTError as exc:
-        logger.warning("Apple identity token verification failed: %s", exc)
+        # Log only the exception type, never the raw message: library
+        # exceptions can in principle embed claim values or token fragments.
+        logger.warning("Apple identity token verification failed: %s", type(exc).__name__)
         raise OAuthError("Invalid Apple identity token.") from exc
 
     return claims
@@ -303,5 +307,7 @@ def _apple_client_secret() -> str:
             headers={"alg": "ES256", "kid": str(key_id)},
         )
     except (ValueError, jwt.PyJWTError) as exc:
-        logger.warning("Failed to build Apple client secret: %s", exc)
+        # Log only the exception type: a key-parsing/signing failure could in
+        # principle embed fragments of the Apple private key in its message.
+        logger.warning("Failed to build Apple client secret: %s", type(exc).__name__)
         raise OAuthError("Failed to build Apple client secret.") from exc
