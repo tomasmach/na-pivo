@@ -288,6 +288,23 @@ describe("fetchPubsNear — persistent snapshot cache", () => {
     expect(saved.radiusKm).toBe(25);
   });
 
+  it("coarsens the persisted fetch center without changing the network request", async () => {
+    const precise = { lat: 50.081234, lng: 14.418765 };
+    (searchPubsNear as jest.Mock).mockResolvedValue([
+      { id: "mapy:ok", name: "U Piva", lat: precise.lat, lng: precise.lng },
+    ]);
+
+    await fetchPubsNear(precise.lat, precise.lng, undefined, { radiusKm: 25 });
+
+    expect(searchPubsNear).toHaveBeenCalledWith(precise.lat, precise.lng, 25, undefined, {
+      beerBrandKey: "",
+    });
+    const raw = await AsyncStorage.getItem(SNAPSHOT_KEY);
+    const saved = JSON.parse(raw as string);
+    expect(saved.centerLat).toBe(50.081);
+    expect(saved.centerLng).toBe(14.419);
+  });
+
   it("degrades silently to a network fetch when the stored snapshot is corrupt", async () => {
     await AsyncStorage.setItem(SNAPSHOT_KEY, "{not valid json");
 

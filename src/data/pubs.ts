@@ -145,6 +145,8 @@ const DEFAULT_FETCH_RADIUS_KM = 25;
 const SNAPSHOT_KEY = "na-pivo-pubs-snapshot";
 /** A snapshot older than this is treated as stale and ignored (ms). */
 const SNAPSHOT_TTL_MS = 24 * 60 * 60 * 1000;
+/** Persisted fetch centers are only a cache gate, so keep them coarse. */
+const SNAPSHOT_CENTER_DECIMALS = 3;
 
 /** Persisted shape of the last successful fetch — the block-filtered pubs plus
  *  the fetch center/radius gate values, so a cold start can skip the network. */
@@ -160,7 +162,14 @@ interface PubsSnapshot {
  *  storage failure (quota, serialization) — caching must never throw. */
 async function saveSnapshot(snapshot: PubsSnapshot): Promise<void> {
   try {
-    await AsyncStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshot));
+    await AsyncStorage.setItem(
+      SNAPSHOT_KEY,
+      JSON.stringify({
+        ...snapshot,
+        centerLat: Number(snapshot.centerLat.toFixed(SNAPSHOT_CENTER_DECIMALS)),
+        centerLng: Number(snapshot.centerLng.toFixed(SNAPSHOT_CENTER_DECIMALS)),
+      }),
+    );
   } catch {
     // Best-effort cache: a failed write just means the next cold start fetches.
   }
