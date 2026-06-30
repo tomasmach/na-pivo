@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import pytest
 from django.core.cache import cache
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone as dj_timezone
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -16,6 +18,8 @@ from rest_framework.throttling import ScopedRateThrottle
 from pubs.api.views import DrinksView, _merge_drink_into_menu
 from pubs.enrichment import geohash8
 from pubs.models import Account, BeerBrand, DrinkLog, PubBeerBrand, PubBeerProduct, PubCommunityData
+
+from .query_helpers import count_beer_catalog_selects
 
 _DEVICE_ID = "3f8b1c2e-4d5a-6789-0abc-def012345678"
 _CLIENT_ID = "9a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d"
@@ -309,6 +313,24 @@ def test_log_normalizes_product_and_indexes_brand_and_product(client):
 
     assert PubBeerBrand.objects.get(cache_key=_KEY).brand_key == "velkopopovicky-kozel"
     assert PubBeerProduct.objects.get(cache_key=_KEY).product_key == "velkopopovicky-kozel-11"
+
+
+@pytest.mark.django_db
+def test_log_reuses_catalog_cache_for_drink_and_menu_index(client):
+    token = _register(client)
+
+    with CaptureQueriesContext(connection) as queries:
+        resp = client.post(
+            "/v1/drinks",
+            data=_payload(beer={"name": "Plzeň", "price_czk": 62, "volume_ml": 500}),
+            format="json",
+            **_auth(token),
+        )
+
+    assert resp.status_code == status.HTTP_201_CREATED
+    assert count_beer_catalog_selects(queries.captured_queries) == (1, 0)
+    assert DrinkLog.objects.get().beer_product_key == "pilsner-urquell"
+    assert PubBeerProduct.objects.get(cache_key=_KEY).product_key == "pilsner-urquell"
 
 
 @pytest.mark.django_db
@@ -713,6 +735,30 @@ def test_patch_updates_logged_drink_beer_name(client):
         PubBeerProduct.objects.get(cache_key=_KEY, product_key="velkopopovicky-kozel-11").active
         is True
     )
+
+
+@pytest.mark.django_db
+def test_patch_reuses_catalog_cache_for_private_and_community_signals(client):
+    token = _register(client)
+    created = client.post(
+        "/v1/drinks",
+        data=_payload(beer={"name": "Plzeň", "price_czk": 62, "volume_ml": 500}),
+        format="json",
+        **_auth(token),
+    )
+    assert created.status_code == status.HTTP_201_CREATED
+
+    with CaptureQueriesContext(connection) as queries:
+        resp = client.patch(
+            f"/v1/drinks/{_CLIENT_ID}",
+            data={"beer_name": "Kozel 11"},
+            format="json",
+            **_auth(token),
+        )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert count_beer_catalog_selects(queries.captured_queries) == (1, 0)
+    assert DrinkLog.objects.get().beer_product_key == "velkopopovicky-kozel-11"
 
 
 @pytest.mark.django_db

@@ -6,6 +6,8 @@ precedence in the pub-hours read path (POST /v1/pub-hours).
 from __future__ import annotations
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -18,6 +20,8 @@ from pubs.models import (
     PubCommunityData,
     PubContributionLog,
 )
+
+from .query_helpers import count_beer_catalog_selects
 
 _DEVICE_ID = "3f8b1c2e-4d5a-6789-0abc-def012345678"
 _OTHER_DEVICE_ID = "11111111-2222-3333-4444-555555555555"
@@ -369,6 +373,30 @@ def test_submit_beers_normalizes_product_and_indexes_brand_and_product(client):
     assert product_link.product_name == "Velkopopovický Kozel 11°"
     assert product_link.brand_key == "velkopopovicky-kozel"
     assert product_link.last_price_czk == 49
+
+
+@pytest.mark.django_db
+def test_submit_beers_reuses_catalog_cache_for_normalize_and_index_sync(client):
+    token = _register(client)
+
+    with CaptureQueriesContext(connection) as queries:
+        resp = client.post(
+            "/v1/pub-community",
+            data=_payload(
+                hours=None,
+                beers=[
+                    {"name": "Plzeň", "price_czk": 62, "volume_ml": 500},
+                    {"name": "Kozel 11", "price_czk": 49, "volume_ml": 500},
+                ],
+            ),
+            format="json",
+            **_auth(token),
+        )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert count_beer_catalog_selects(queries.captured_queries) == (1, 0)
+    assert PubBeerBrand.objects.filter(cache_key=_KEY, active=True).count() == 2
+    assert PubBeerProduct.objects.filter(cache_key=_KEY, active=True).count() == 2
 
 
 @pytest.mark.django_db

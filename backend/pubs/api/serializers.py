@@ -876,8 +876,9 @@ class PubCommunityRequestSerializer(PubInputSerializer):
         # Canonicalise every entry to all three keys so the stored JSON (and the
         # /v1/pub-hours read path) has a stable shape regardless of which
         # optional fields the client sent.
+        match_cache = self.context.get("beer_match_cache")
         return [
-            normalize_beer_payload(beer)
+            normalize_beer_payload(beer, match_cache=match_cache)
             for beer in value
         ]
 
@@ -942,7 +943,7 @@ class DrinkRequestSerializer(PubInputSerializer):
     def validate_beer(self, value: dict) -> dict:
         # Canonicalise to all three keys so the merge + stored JSON have a stable
         # shape, matching CommunityBeerSerializer.to_representation output.
-        return normalize_beer_payload(value)
+        return normalize_beer_payload(value, match_cache=self.context.get("beer_match_cache"))
 
 
 class DrinkUpdateSerializer(serializers.Serializer):

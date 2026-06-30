@@ -43,6 +43,48 @@ class BeerSuggestion:
     brand_name: str
 
 
+_CACHE_MISS = object()
+
+
+class BeerCatalogMatchCache:
+    """Request-local snapshot for repeated beer catalogue matching."""
+
+    def __init__(self) -> None:
+        self._products: list[BeerProduct] | None = None
+        self._brands: list[BeerBrand] | None = None
+        self._matches: dict[tuple[bool, str], tuple[BeerBrand, BeerProduct | None] | None] = {}
+
+    def products(self) -> list[BeerProduct]:
+        if self._products is None:
+            self._products = list(
+                BeerProduct.objects.select_related("brand")
+                .filter(active=True, brand__active=True)
+                .order_by("rank", "name")
+            )
+        return self._products
+
+    def brands(self) -> list[BeerBrand]:
+        if self._brands is None:
+            self._brands = list(BeerBrand.objects.filter(active=True).order_by("rank", "name"))
+        return self._brands
+
+    def get_match(
+        self, *, fuzzy: bool, normalized: str
+    ) -> tuple[BeerBrand, BeerProduct | None] | None | object:
+        return self._matches.get((fuzzy, normalized), _CACHE_MISS)
+
+    def set_match(
+        self,
+        *,
+        fuzzy: bool,
+        normalized: str,
+        match: BeerMatch | None,
+    ) -> None:
+        self._matches[(fuzzy, normalized)] = (
+            (match.brand, match.product) if match is not None else None
+        )
+
+
 def normalize_beer_text(value: str) -> str:
     """Return an accent-insensitive token string for beer-brand matching."""
     decomposed = unicodedata.normalize("NFKD", value)
@@ -80,16 +122,35 @@ def _product_alias_candidates(product: BeerProduct) -> list[str]:
     return normalized
 
 
-def match_beer(name: str, *, fuzzy: bool = True) -> BeerMatch | None:
+def match_beer(
+    name: str,
+    *,
+    fuzzy: bool = True,
+    match_cache: BeerCatalogMatchCache | None = None,
+) -> BeerMatch | None:
     """Find a canonical product/brand for a submitted beer name, if recognized."""
     submitted = name.strip()
     normalized = normalize_beer_text(submitted)
     if not normalized:
         return None
 
+    if match_cache is not None:
+        cached = match_cache.get_match(fuzzy=fuzzy, normalized=normalized)
+        if cached is not _CACHE_MISS:
+            if cached is None:
+                return None
+            brand, product = cached
+            return BeerMatch(brand=brand, product=product, submitted_name=submitted)
+
     best_product: tuple[int, int, BeerProduct] | None = None
-    products = BeerProduct.objects.select_related("brand").filter(active=True, brand__active=True)
-    for product in products.order_by("rank", "name"):
+    products = (
+        match_cache.products()
+        if match_cache is not None
+        else BeerProduct.objects.select_related("brand")
+        .filter(active=True, brand__active=True)
+        .order_by("rank", "name")
+    )
+    for product in products:
         for alias in _product_alias_candidates(product):
             exact = normalized == alias
             prefix = normalized.startswith(f"{alias} ")
@@ -103,10 +164,18 @@ def match_beer(name: str, *, fuzzy: bool = True) -> BeerMatch | None:
 
     if best_product is not None:
         product = best_product[2]
-        return BeerMatch(brand=product.brand, product=product, submitted_name=submitted)
+        match = BeerMatch(brand=product.brand, product=product, submitted_name=submitted)
+        if match_cache is not None:
+            match_cache.set_match(fuzzy=fuzzy, normalized=normalized, match=match)
+        return match
 
     best_brand: tuple[int, int, BeerBrand] | None = None
-    for brand in BeerBrand.objects.filter(active=True).order_by("rank", "name"):
+    brands = (
+        match_cache.brands()
+        if match_cache is not None
+        else BeerBrand.objects.filter(active=True).order_by("rank", "name")
+    )
+    for brand in brands:
         for alias in _alias_candidates(brand):
             exact = normalized == alias
             prefix = normalized.startswith(f"{alias} ")
@@ -121,16 +190,30 @@ def match_beer(name: str, *, fuzzy: bool = True) -> BeerMatch | None:
                 best_brand = candidate
 
     if best_brand is None:
+        if match_cache is not None:
+            match_cache.set_match(fuzzy=fuzzy, normalized=normalized, match=None)
         return None
-    return BeerMatch(brand=best_brand[2], product=None, submitted_name=submitted)
+    match = BeerMatch(brand=best_brand[2], product=None, submitted_name=submitted)
+    if match_cache is not None:
+        match_cache.set_match(fuzzy=fuzzy, normalized=normalized, match=match)
+    return match
 
 
-def match_beer_brand(name: str, *, fuzzy: bool = True) -> BeerMatch | None:
+def match_beer_brand(
+    name: str,
+    *,
+    fuzzy: bool = True,
+    match_cache: BeerCatalogMatchCache | None = None,
+) -> BeerMatch | None:
     """Compatibility wrapper for callers that only need the parent brand."""
-    return match_beer(name, fuzzy=fuzzy)
+    return match_beer(name, fuzzy=fuzzy, match_cache=match_cache)
 
 
-def normalize_beer_payload(beer: dict) -> dict:
+def normalize_beer_payload(
+    beer: dict,
+    *,
+    match_cache: BeerCatalogMatchCache | None = None,
+) -> dict:
     """Return a canonical beer dict, preserving optional price/volume fields."""
     raw_name = str(beer["name"]).strip()
     out = {
@@ -138,7 +221,7 @@ def normalize_beer_payload(beer: dict) -> dict:
         "price_czk": beer.get("price_czk"),
         "volume_ml": beer.get("volume_ml"),
     }
-    match = match_beer(raw_name, fuzzy=False)
+    match = match_beer(raw_name, fuzzy=False, match_cache=match_cache)
     if match is None:
         return out
 
@@ -153,9 +236,10 @@ def upsert_pub_beer_brand(
     beer: dict,
     source: str,
     account,
+    match_cache: BeerCatalogMatchCache | None = None,
 ) -> BeerMatch | None:
     """Update the queryable per-pub brand index for a normalized beer payload."""
-    match = match_beer(str(beer.get("name") or ""))
+    match = match_beer(str(beer.get("name") or ""), match_cache=match_cache)
     if match is None:
         return None
 
@@ -218,6 +302,7 @@ def sync_pub_beer_indexes_for_menu(
     beers: list[dict],
     source: str,
     account,
+    match_cache: BeerCatalogMatchCache | None = None,
 ) -> None:
     """Make the active per-pub beer indexes match a full community menu write."""
     active_brand_keys: set[str] = set()
@@ -230,6 +315,7 @@ def sync_pub_beer_indexes_for_menu(
             beer=beer,
             source=source,
             account=account,
+            match_cache=match_cache,
         )
         if match is None:
             continue

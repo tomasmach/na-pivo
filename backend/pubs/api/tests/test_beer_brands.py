@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import pytest
 from django.conf import settings
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from pubs.beer_catalog import match_beer, normalize_beer_payload
+from pubs.beer_catalog import BeerCatalogMatchCache, match_beer, normalize_beer_payload
 from pubs.models import BeerBrand, BeerProduct
+
+from .query_helpers import count_beer_catalog_selects
 
 
 @pytest.fixture
@@ -115,6 +119,24 @@ def test_matching_is_accent_insensitive_and_product_aware():
         "price_czk": 49,
         "volume_ml": None,
     }
+
+
+@pytest.mark.django_db
+def test_match_cache_reuses_product_snapshot():
+    match_cache = BeerCatalogMatchCache()
+
+    with CaptureQueriesContext(connection) as queries:
+        assert normalize_beer_payload(
+            {"name": "Plzeň", "price_czk": 62},
+            match_cache=match_cache,
+        )["name"] == "Pilsner Urquell"
+        assert normalize_beer_payload(
+            {"name": "Kozel 11", "price_czk": 49},
+            match_cache=match_cache,
+        )["name"] == "Velkopopovický Kozel 11°"
+        assert match_beer("plzen", match_cache=match_cache).brand.key == "pilsner-urquell"
+
+    assert count_beer_catalog_selects(queries.captured_queries) == (1, 0)
 
 
 def test_beer_brand_throttle_scope_is_configured():

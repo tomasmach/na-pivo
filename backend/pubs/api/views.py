@@ -45,6 +45,7 @@ from rest_framework.views import APIView
 from pubs import accounts, emailer
 from pubs.accounts import AccountError
 from pubs.beer_catalog import (
+    BeerCatalogMatchCache,
     match_beer_brand,
     suggest_beer_brands,
     sync_pub_beer_indexes_for_menu,
@@ -761,7 +762,11 @@ class PubCommunityView(APIView):
     throttle_scope = "community"
 
     def post(self, request: Request) -> Response:
-        serializer = PubCommunityRequestSerializer(data=request.data)
+        match_cache = BeerCatalogMatchCache()
+        serializer = PubCommunityRequestSerializer(
+            data=request.data,
+            context={"beer_match_cache": match_cache},
+        )
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -827,6 +832,7 @@ class PubCommunityView(APIView):
                     beers=data["beers"],
                     source=PubBeerBrand.Source.COMMUNITY,
                     account=request.user,
+                    match_cache=match_cache,
                 )
         except Exception as exc:  # noqa: BLE001
             logger.error(
@@ -986,14 +992,18 @@ class DrinksView(APIView):
     throttle_scope = "drinks"
 
     def post(self, request: Request) -> Response:
-        serializer = DrinkRequestSerializer(data=request.data)
+        match_cache = BeerCatalogMatchCache()
+        serializer = DrinkRequestSerializer(
+            data=request.data,
+            context={"beer_match_cache": match_cache},
+        )
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         data = serializer.validated_data
         cache_key = geohash8(data["lat"], data["lng"])
         beer = data["beer"]
-        brand_match = match_beer_brand(beer["name"])
+        brand_match = match_beer_brand(beer["name"], match_cache=match_cache)
         drank_at = data.get("drank_at") or dj_timezone.now()
 
         try:
@@ -1040,7 +1050,11 @@ class DrinksView(APIView):
                     )
 
                 menu_updated = self._merge_into_community(
-                    cache_key, data, beer, account=request.user
+                    cache_key,
+                    data,
+                    beer,
+                    account=request.user,
+                    match_cache=match_cache,
                 )
         except Exception as exc:  # noqa: BLE001
             logger.error(
@@ -1065,12 +1079,13 @@ class DrinksView(APIView):
         )
 
     def patch(self, request: Request, client_id) -> Response:
+        match_cache = BeerCatalogMatchCache()
         serializer = DrinkUpdateSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         beer_name = serializer.validated_data["beer_name"]
-        brand_match = match_beer_brand(beer_name)
+        brand_match = match_beer_brand(beer_name, match_cache=match_cache)
 
         try:
             with transaction.atomic():
@@ -1113,6 +1128,7 @@ class DrinksView(APIView):
                     old_brand_key=old_brand_key,
                     old_product_key=old_product_key,
                     account=request.user,
+                    match_cache=match_cache,
                 )
         except Exception as exc:  # noqa: BLE001
             logger.error(
@@ -1155,7 +1171,12 @@ class DrinksView(APIView):
 
     @staticmethod
     def _merge_into_community(
-        cache_key: str, data: dict, beer: dict, account: Account
+        cache_key: str,
+        data: dict,
+        beer: dict,
+        account: Account,
+        *,
+        match_cache: BeerCatalogMatchCache | None = None,
     ) -> bool:
         """Merge the drunk beer into PubCommunityData.beers for ``cache_key``.
 
@@ -1201,6 +1222,7 @@ class DrinksView(APIView):
                     beer=beer,
                     source=PubBeerBrand.Source.DRINK,
                     account=account,
+                    match_cache=match_cache,
                 )
                 return True
             except IntegrityError:
@@ -1240,27 +1262,38 @@ class DrinksView(APIView):
             beer=beer,
             source=PubBeerBrand.Source.DRINK,
             account=account,
+            match_cache=match_cache,
         )
         return changed
 
     @staticmethod
-    def _community_has_brand_signal(cache_key: str, brand_key: str) -> bool:
+    def _community_has_brand_signal(
+        cache_key: str,
+        brand_key: str,
+        *,
+        match_cache: BeerCatalogMatchCache | None = None,
+    ) -> bool:
         row = PubCommunityData.objects.filter(cache_key=cache_key).first()
         if row is None:
             return False
         for beer in row.beers or []:
-            match = match_beer_brand(str(beer.get("name") or ""))
+            match = match_beer_brand(str(beer.get("name") or ""), match_cache=match_cache)
             if match is not None and match.brand.key == brand_key:
                 return True
         return False
 
     @staticmethod
-    def _community_has_product_signal(cache_key: str, product_key: str) -> bool:
+    def _community_has_product_signal(
+        cache_key: str,
+        product_key: str,
+        *,
+        match_cache: BeerCatalogMatchCache | None = None,
+    ) -> bool:
         row = PubCommunityData.objects.filter(cache_key=cache_key).first()
         if row is None:
             return False
         for beer in row.beers or []:
-            match = match_beer_brand(str(beer.get("name") or ""))
+            match = match_beer_brand(str(beer.get("name") or ""), match_cache=match_cache)
             if match is not None and match.product is not None and match.product.key == product_key:
                 return True
         return False
@@ -1272,6 +1305,7 @@ class DrinksView(APIView):
         old_brand_key: str,
         old_product_key: str,
         account: Account,
+        match_cache: BeerCatalogMatchCache | None = None,
     ) -> None:
         data = {
             "name": drink.name,
@@ -1291,6 +1325,7 @@ class DrinksView(APIView):
             beer=beer,
             source=PubBeerBrand.Source.DRINK,
             account=account,
+            match_cache=match_cache,
         )
 
         if old_brand_key and old_brand_key != drink.beer_brand_key:
@@ -1299,7 +1334,9 @@ class DrinksView(APIView):
                 beer_brand_key=old_brand_key,
             ).exists()
             if not has_other_drink and not DrinksView._community_has_brand_signal(
-                drink.cache_key, old_brand_key
+                drink.cache_key,
+                old_brand_key,
+                match_cache=match_cache,
             ):
                 PubBeerBrand.objects.filter(
                     cache_key=drink.cache_key,
@@ -1313,7 +1350,9 @@ class DrinksView(APIView):
                 beer_product_key=old_product_key,
             ).exists()
             if not has_other_product and not DrinksView._community_has_product_signal(
-                drink.cache_key, old_product_key
+                drink.cache_key,
+                old_product_key,
+                match_cache=match_cache,
             ):
                 PubBeerProduct.objects.filter(
                     cache_key=drink.cache_key,
