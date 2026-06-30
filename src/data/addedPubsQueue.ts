@@ -10,7 +10,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { submitAddedPub, type AddedPubEntry, type AddedPubResponse } from './addedPubsClient';
+import { submitAddedPub, type AddedPubEntry, type AddedPubResponse, type SubmitAddedPubResult } from './addedPubsClient';
 import { clearPubsSnapshot, pubIdForCoords, removeLocalPub, upsertLocalPub } from './pubs';
 
 const STORAGE_KEY = 'na-pivo-added-pubs-queue';
@@ -68,14 +68,20 @@ async function flushLocked(): Promise<void> {
   const remaining: AddedPubEntry[] = [];
   for (const entry of queue) {
     const result = await submitAddedPub(entry);
-    if (result) {
+    if (isSubmittedPubResponse(result)) {
       applySubmittedPubResult(entry, result);
       await clearPubsSnapshot();
-    } else {
+    } else if (result === 'retry') {
       remaining.push(entry);
+    } else {
+      removeLocalPub(pubIdForCoords(entry.lat, entry.lng));
     }
   }
   await saveQueue(remaining);
+}
+
+function isSubmittedPubResponse(result: SubmitAddedPubResult): result is AddedPubResponse {
+  return typeof result === 'object' && result !== null;
 }
 
 function pubFromAddedEntry(entry: AddedPubEntry) {

@@ -48,6 +48,8 @@ interface WireResponse {
 
 const REQUEST_TIMEOUT_MS = 8000;
 
+export type SubmitAddedPubResult = AddedPubResponse | 'permanent-error' | 'retry';
+
 function chainAbortSignal(signal?: AbortSignal): {
   signal: AbortSignal;
   cleanup: () => void;
@@ -90,14 +92,14 @@ export function buildAddedPubEntry(input: AddedPubInput, clientId: string): Adde
 export async function submitAddedPub(
   entry: AddedPubEntry,
   signal?: AbortSignal,
-): Promise<AddedPubResponse | null> {
-  if (signal?.aborted) return null;
+): Promise<SubmitAddedPubResult> {
+  if (signal?.aborted) return 'retry';
 
   const endpoint = getBackendEndpoint('/v1/pubs');
-  if (!endpoint) return null;
+  if (!endpoint) return 'retry';
 
   const session = await ensureAccount(signal);
-  if (!session || signal?.aborted) return null;
+  if (!session || signal?.aborted) return 'retry';
 
   const abort = chainAbortSignal(signal);
   try {
@@ -113,19 +115,23 @@ export async function submitAddedPub(
 
     if (resp.status === 401) {
       await clearCachedAnonymousAccount(session);
-      return null;
+      return 'retry';
     }
     if (!resp.ok) {
+      const result: SubmitAddedPubResult =
+        resp.status === 400 || resp.status === 422 ? 'permanent-error' : 'retry';
       trackApiFailure('added_pub_submit', {
         endpoint: '/v1/pubs',
         status: resp.status,
+        sync_result: result,
+        retryable: result === 'retry',
       });
-      return null;
+      return result;
     }
 
     const data = (await resp.json()) as WireResponse;
     if (!data?.cache_key || !data.name || typeof data.lat !== 'number' || typeof data.lng !== 'number') {
-      return null;
+      return 'retry';
     }
     return {
       cacheKey: data.cache_key,
@@ -142,9 +148,11 @@ export async function submitAddedPub(
         endpoint: '/v1/pubs',
         reason: 'exception',
         error: err,
+        sync_result: 'retry',
+        retryable: true,
       });
     }
-    return null;
+    return 'retry';
   } finally {
     abort.cleanup();
   }

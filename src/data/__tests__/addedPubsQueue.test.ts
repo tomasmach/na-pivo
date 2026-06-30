@@ -8,7 +8,7 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 );
 
 jest.mock('../addedPubsClient', () => ({
-  submitAddedPub: jest.fn(async () => null),
+  submitAddedPub: jest.fn(async () => 'retry'),
   buildAddedPubEntry: jest.requireActual('../addedPubsClient').buildAddedPubEntry,
 }));
 
@@ -73,15 +73,25 @@ describe('enqueueAddedPub', () => {
   });
 
   it('keeps a failed submit queued instead of dropping it', async () => {
-    (submitAddedPub as jest.Mock).mockResolvedValue(null);
+    (submitAddedPub as jest.Mock).mockResolvedValue('retry');
 
     await expect(enqueueAddedPub(PUB_A)).resolves.toBe(false);
 
     await expect(readQueue()).resolves.toEqual([PUB_A]);
   });
 
+  it('drops a permanently rejected submit and removes the optimistic local pub', async () => {
+    (submitAddedPub as jest.Mock).mockResolvedValue('permanent-error');
+
+    await expect(enqueueAddedPub(PUB_A)).resolves.toBe(true);
+
+    expect(removeLocalPub).toHaveBeenCalledWith('mapy:50.08120,14.41820');
+    expect(clearPubsSnapshot).not.toHaveBeenCalled();
+    await expect(readQueue()).resolves.toEqual([]);
+  });
+
   it('keeps two different pubs in the same geohash cell (regression: dedup by client_id, not cell)', async () => {
-    (submitAddedPub as jest.Mock).mockResolvedValue(null);
+    (submitAddedPub as jest.Mock).mockResolvedValue('retry');
 
     await enqueueAddedPub(PUB_A);
     await enqueueAddedPub(PUB_B);
@@ -92,7 +102,7 @@ describe('enqueueAddedPub', () => {
   });
 
   it('dedupes a retry of the same client_id (idempotent re-enqueue)', async () => {
-    (submitAddedPub as jest.Mock).mockResolvedValue(null);
+    (submitAddedPub as jest.Mock).mockResolvedValue('retry');
 
     await enqueueAddedPub(PUB_A);
     await enqueueAddedPub({ ...PUB_A, name: 'Hospoda U Testu (edit)' });
@@ -104,7 +114,7 @@ describe('enqueueAddedPub', () => {
   });
 
   it('trims the queue to the maximum length, keeping the newest entries', async () => {
-    (submitAddedPub as jest.Mock).mockResolvedValue(null);
+    (submitAddedPub as jest.Mock).mockResolvedValue('retry');
 
     for (let i = 0; i < 35; i += 1) {
       await enqueueAddedPub({ ...PUB_A, client_id: `client-${i}`, lat: 50.0812 + i * 0.01 });
@@ -119,7 +129,7 @@ describe('enqueueAddedPub', () => {
 
 describe('flushAddedPubsQueue', () => {
   it('re-sends queued pubs once the backend recovers and clears the queue', async () => {
-    (submitAddedPub as jest.Mock).mockResolvedValue(null);
+    (submitAddedPub as jest.Mock).mockResolvedValue('retry');
     await enqueueAddedPub(PUB_A);
     await enqueueAddedPub(PUB_B);
     expect(await readQueue()).toHaveLength(2);
@@ -133,13 +143,13 @@ describe('flushAddedPubsQueue', () => {
   });
 
   it('keeps only the pubs that failed again', async () => {
-    (submitAddedPub as jest.Mock).mockResolvedValue(null);
+    (submitAddedPub as jest.Mock).mockResolvedValue('retry');
     await enqueueAddedPub(PUB_A);
     await enqueueAddedPub(PUB_B);
 
     (submitAddedPub as jest.Mock).mockImplementation(
       async (entry: AddedPubEntry) =>
-        entry.client_id === PUB_A.client_id ? { cacheKey: 'k', name: 'x', lat: 1, lng: 1 } : null,
+        entry.client_id === PUB_A.client_id ? { cacheKey: 'k', name: 'x', lat: 1, lng: 1 } : 'retry',
     );
     await flushAddedPubsQueue();
 
@@ -147,7 +157,7 @@ describe('flushAddedPubsQueue', () => {
   });
 
   it('replaces the optimistic local position when the backend geocodes a better address', async () => {
-    (submitAddedPub as jest.Mock).mockResolvedValue(null);
+    (submitAddedPub as jest.Mock).mockResolvedValue('retry');
     await enqueueAddedPub(PUB_A);
     (submitAddedPub as jest.Mock).mockResolvedValue({
       cacheKey: 'server-key',
