@@ -28,9 +28,7 @@ import {
   Flag,
   MessageSquare,
   Radius,
-  Signal,
   Wifi,
-  BatteryFull,
   Pencil,
   Plus,
   Minus,
@@ -47,13 +45,10 @@ import {
   Users,
   UserPlus,
   Mail,
-  LogOut,
   Link,
-  Unlink,
   Check,
   BadgeCheck,
   KeyRound,
-  Download,
   Crown,
   Camera,
   Images,
@@ -61,18 +56,13 @@ import {
   TreePine,
   Search,
   CreditCard,
-  Banknote,
   Accessibility,
-  Baby,
   Target,
   CircleDot,
   Radio,
   Mic,
   Tv,
-  Dog,
-  Cigarette,
   SquareParking,
-  Utensils,
   MapPinned,
   MapPinPlus,
   Sprout,
@@ -116,9 +106,7 @@ export const HeartIcon = wrap(Heart, 'HeartIcon');
 export const FlagIcon = wrap(Flag, 'FlagIcon');
 export const MessageSquareIcon = wrap(MessageSquare, 'MessageSquareIcon');
 export const RadiusIcon = wrap(Radius, 'RadiusIcon');
-export const SignalIcon = wrap(Signal, 'SignalIcon');
 export const WifiIcon = wrap(Wifi, 'WifiIcon');
-export const BatteryFullIcon = wrap(BatteryFull, 'BatteryFullIcon');
 export const PencilIcon = wrap(Pencil, 'PencilIcon');
 export const PlusIcon = wrap(Plus, 'PlusIcon');
 export const MinusIcon = wrap(Minus, 'MinusIcon');
@@ -135,13 +123,10 @@ export const UserIcon = wrap(User, 'UserIcon');
 export const UsersIcon = wrap(Users, 'UsersIcon');
 export const UserPlusIcon = wrap(UserPlus, 'UserPlusIcon');
 export const MailIcon = wrap(Mail, 'MailIcon');
-export const LogOutIcon = wrap(LogOut, 'LogOutIcon');
 export const LinkIcon = wrap(Link, 'LinkIcon');
-export const UnlinkIcon = wrap(Unlink, 'UnlinkIcon');
 export const CheckIcon = wrap(Check, 'CheckIcon');
 export const BadgeCheckIcon = wrap(BadgeCheck, 'BadgeCheckIcon');
 export const KeyRoundIcon = wrap(KeyRound, 'KeyRoundIcon');
-export const DownloadIcon = wrap(Download, 'DownloadIcon');
 export const CrownIcon = wrap(Crown, 'CrownIcon');
 export const CameraIcon = wrap(Camera, 'CameraIcon');
 export const ImagesIcon = wrap(Images, 'ImagesIcon');
@@ -150,9 +135,7 @@ export const TreePineIcon = wrap(TreePine, 'TreePineIcon');
 export const SearchIcon = wrap(Search, 'SearchIcon');
 // "Zmapuj hospodu" amenity + Mapér glyphs.
 export const CreditCardIcon = wrap(CreditCard, 'CreditCardIcon');
-export const BanknoteIcon = wrap(Banknote, 'BanknoteIcon');
 export const AccessibilityIcon = wrap(Accessibility, 'AccessibilityIcon');
-export const BabyIcon = wrap(Baby, 'BabyIcon');
 export const TargetIcon = wrap(Target, 'TargetIcon');
 export const CircleDotIcon = wrap(CircleDot, 'CircleDotIcon');
 // Soccer ball — lucide ships no soccer/football glyph, so this is a deliberate
@@ -179,10 +162,7 @@ SoccerBallIcon.displayName = 'SoccerBallIcon';
 export const RadioIcon = wrap(Radio, 'RadioIcon');
 export const MicIcon = wrap(Mic, 'MicIcon');
 export const TvIcon = wrap(Tv, 'TvIcon');
-export const DogIcon = wrap(Dog, 'DogIcon');
-export const CigaretteIcon = wrap(Cigarette, 'CigaretteIcon');
 export const SquareParkingIcon = wrap(SquareParking, 'SquareParkingIcon');
-export const UtensilsIcon = wrap(Utensils, 'UtensilsIcon');
 export const MapPinnedIcon = wrap(MapPinned, 'MapPinnedIcon');
 export const MapPinPlusIcon = wrap(MapPinPlus, 'MapPinPlusIcon');
 export const SproutIcon = wrap(Sprout, 'SproutIcon');

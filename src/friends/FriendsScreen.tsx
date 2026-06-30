@@ -35,6 +35,8 @@ import {
   Text,
   TextInput,
   View,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -123,6 +125,36 @@ function FriendMini({ profile }: { profile: FriendProfile }) {
         {displayName(profile)}
       </Text>
     </View>
+  );
+}
+
+/**
+ * Icon-only tap target shared by the accept / decline / add / remove / ghost
+ * actions: ROUND_HIT_SLOP, button role, and the opacity dip on press all live
+ * here so the press feedback stays consistent in one place. The per-action
+ * shell colour comes in via `style`.
+ */
+function IconButton({
+  onPress,
+  accessibilityLabel,
+  style,
+  children,
+}: {
+  onPress: () => void;
+  accessibilityLabel: string;
+  style: StyleProp<ViewStyle>;
+  children: ReactNode;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={ROUND_HIT_SLOP}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      style={({ pressed }) => [style, pressed && styles.dim]}
+    >
+      {children}
+    </Pressable>
   );
 }
 
@@ -418,15 +450,13 @@ export default function FriendsScreen() {
                     eye, not a wide pill that hijacks the masthead. Full label
                     still lives in the settings sheet it opens. */}
                 {d?.settings.ghostMode ? (
-                  <Pressable
+                  <IconButton
                     onPress={() => setSettingsVisible(true)}
-                    hitSlop={ROUND_HIT_SLOP}
-                    accessibilityRole="button"
                     accessibilityLabel={cs.friends.ghostActive}
-                    style={({ pressed }) => [styles.ghostIconBtn, pressed && styles.dim]}
+                    style={styles.ghostIconBtn}
                   >
                     <EyeOffIcon size={18} color={Colors.amberLight} />
-                  </Pressable>
+                  </IconButton>
                 ) : null}
                 <Pressable
                   onPress={() => setSettingsVisible(true)}
@@ -511,24 +541,20 @@ export default function FriendsScreen() {
                     <View style={styles.requestRow}>
                       <FriendMini profile={request.requester} />
                       <View style={styles.requestActions}>
-                        <Pressable
+                        <IconButton
                           onPress={() => void respond(request.id, 'decline')}
-                          hitSlop={ROUND_HIT_SLOP}
-                          accessibilityRole="button"
                           accessibilityLabel={cs.friends.decline}
-                          style={({ pressed }) => [styles.declineBtn, pressed && styles.dim]}
+                          style={styles.declineBtn}
                         >
                           <XIcon size={18} color={Colors.foam} />
-                        </Pressable>
-                        <Pressable
+                        </IconButton>
+                        <IconButton
                           onPress={() => void respond(request.id, 'accept')}
-                          hitSlop={ROUND_HIT_SLOP}
-                          accessibilityRole="button"
                           accessibilityLabel={cs.friends.accept}
-                          style={({ pressed }) => [styles.acceptBtn, pressed && styles.dim]}
+                          style={styles.acceptBtn}
                         >
                           <CheckIcon size={18} color={Colors.stout} />
-                        </Pressable>
+                        </IconButton>
                       </View>
                     </View>
                   </HairlineRow>
@@ -634,15 +660,13 @@ export default function FriendsScreen() {
                     <HairlineRow key={profile.id} first={i === 0}>
                       <View style={styles.searchResultRow}>
                         <FriendMini profile={profile} />
-                        <Pressable
+                        <IconButton
                           onPress={() => void requestFriend(profile)}
-                          hitSlop={ROUND_HIT_SLOP}
-                          accessibilityRole="button"
                           accessibilityLabel={cs.friends.addByNickname}
-                          style={({ pressed }) => [styles.addBtn, pressed && styles.dim]}
+                          style={styles.addBtn}
                         >
                           <PlusIcon size={18} color={Colors.stout} />
-                        </Pressable>
+                        </IconButton>
                       </View>
                     </HairlineRow>
                   ))}
@@ -680,15 +704,13 @@ export default function FriendsScreen() {
                         <View style={styles.friendRow}>
                           <View style={styles.friendRowTop}>
                             <FriendMini profile={friend} />
-                            <Pressable
+                            <IconButton
                               onPress={() => confirmRemove(friend)}
-                              hitSlop={ROUND_HIT_SLOP}
-                              accessibilityRole="button"
                               accessibilityLabel={cs.friends.remove}
-                              style={({ pressed }) => [styles.removeBtn, pressed && styles.dim]}
+                              style={styles.removeBtn}
                             >
                               <Trash2Icon size={18} color={Colors.mutedText} />
-                            </Pressable>
+                            </IconButton>
                           </View>
                           <Text
                             style={styles.sharedCount}

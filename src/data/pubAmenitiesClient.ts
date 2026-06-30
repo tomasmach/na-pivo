@@ -26,8 +26,9 @@
  * return the parsed value or null on ANY failure (never throw).
  */
 
-import { clearCachedAnonymousAccount, ensureAccount, type AccountSession } from './account';
+import { clearCachedAnonymousAccount, ensureAccount } from './account';
 import { getBackendEndpoint } from './backendConfig';
+import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
 import { trackClientEvent } from './telemetryClient';
 
 /** Taxonomy item from GET /v1/pub-amenities/kinds (canonical wire names). */
@@ -187,23 +188,6 @@ const REQUEST_TIMEOUT_MS = 8000;
 
 type AmenityOperation = 'submit_votes' | 'fetch_votes' | 'fetch_aggregates' | 'fetch_kinds';
 
-async function classifyAmenityHttpFailure(
-  status: number,
-  session: AccountSession,
-): Promise<SubmitAmenityResult> {
-  if (status === 401) {
-    await clearCachedAnonymousAccount(session);
-    return 'retry';
-  }
-  // Validation errors are permanent for this byte-stable payload; other 4xx can
-  // be transient (auth recovery, throttling, a frontend briefly ahead of the
-  // backend during rollout), so keep them queued.
-  if (status === 400 || status === 422) {
-    return 'permanent-error';
-  }
-  return 'retry';
-}
-
 function trackAmenitySynced(operation: 'submit_votes'): void {
   void trackClientEvent({
     event: 'amenity_vote_synced',
@@ -226,24 +210,6 @@ function trackAmenitySyncFailed(
       retryable: details.retryable,
     },
   });
-}
-
-/** Layer an external AbortSignal with an internal 8s timeout. */
-function chainTimeout(signal?: AbortSignal): { signal: AbortSignal; cleanup: () => void } {
-  const timeoutController = new AbortController();
-  const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
-  const onExternalAbort = () => timeoutController.abort();
-  if (signal) {
-    if (signal.aborted) timeoutController.abort();
-    else signal.addEventListener('abort', onExternalAbort);
-  }
-  return {
-    signal: timeoutController.signal,
-    cleanup: () => {
-      clearTimeout(timeoutId);
-      if (signal) signal.removeEventListener('abort', onExternalAbort);
-    },
-  };
 }
 
 /**
@@ -280,7 +246,7 @@ export async function submitAmenityVotes(
     return 'retry';
   }
 
-  const abort = chainTimeout(signal);
+  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
   try {
     const resp = await fetch(endpoint, {
       method: 'PUT',
@@ -296,7 +262,7 @@ export async function submitAmenityVotes(
       trackAmenitySynced('submit_votes');
       return 'ok';
     }
-    const result = await classifyAmenityHttpFailure(resp.status, session);
+    const result = await classifyQueueHttpFailure(resp.status, session);
     trackAmenitySyncFailed('submit_votes', {
       status: resp.status,
       reason: 'http_error',
@@ -393,7 +359,7 @@ export async function submitAmenityVotesDetailed(
     return { status: 'retry', body: null };
   }
 
-  const abort = chainTimeout(signal);
+  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
   try {
     const resp = await fetch(endpoint, {
       method: 'PUT',
@@ -415,7 +381,7 @@ export async function submitAmenityVotesDetailed(
       }
       return { status: 'ok', body };
     }
-    const result = await classifyAmenityHttpFailure(resp.status, session);
+    const result = await classifyQueueHttpFailure(resp.status, session);
     trackAmenitySyncFailed('submit_votes', {
       status: resp.status,
       reason: 'http_error',
@@ -460,7 +426,7 @@ export async function fetchMyAmenityVotes(signal?: AbortSignal): Promise<WireMyA
   const session = await ensureAccount(signal);
   if (!session || signal?.aborted) return null;
 
-  const abort = chainTimeout(signal);
+  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
   try {
     const resp = await fetch(endpoint, {
       method: 'GET',
@@ -535,7 +501,7 @@ export async function fetchPubAmenities(
   const session = await ensureAccount(signal);
   if (signal?.aborted) return null;
 
-  const abort = chainTimeout(signal);
+  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
   try {
     const headers: Record<string, string> = {};
     if (session) headers.Authorization = `Bearer ${session.token}`;
@@ -591,7 +557,7 @@ export async function getAmenityKinds(signal?: AbortSignal): Promise<WireAmenity
   const endpoint = getBackendEndpoint('/v1/pub-amenities/kinds');
   if (!endpoint) return null;
 
-  const abort = chainTimeout(signal);
+  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
   try {
     const resp = await fetch(endpoint, {
       method: 'GET',

@@ -12,9 +12,9 @@
  * account+cache_key+reason), so re-sending an already-delivered report is safe.
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { reportPubIssue, type PubReportReason } from './pubReportsClient';
 import type { Pub } from './pubs';
+import { createQueueStorage, createQueueLock } from './createQueue';
 
 const STORAGE_KEY = 'na-pivo-pub-report-queue';
 /** Hard cap — a queue this long means the backend has been unreachable for a
@@ -30,47 +30,24 @@ function entryKey(entry: QueuedPubReport): string {
   return `${entry.pub.id}|${entry.reason}`;
 }
 
-async function loadQueue(): Promise<QueuedPubReport[]> {
-  try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (entry): entry is QueuedPubReport =>
-        !!entry &&
-        typeof (entry as QueuedPubReport).pub?.id === 'string' &&
-        typeof (entry as QueuedPubReport).pub?.lat === 'number' &&
-        typeof (entry as QueuedPubReport).pub?.lng === 'number' &&
-        typeof (entry as QueuedPubReport).reason === 'string',
-    );
-  } catch {
-    return [];
-  }
+function isQueuedPubReport(entry: unknown): entry is QueuedPubReport {
+  return (
+    !!entry &&
+    typeof (entry as QueuedPubReport).pub?.id === 'string' &&
+    typeof (entry as QueuedPubReport).pub?.lat === 'number' &&
+    typeof (entry as QueuedPubReport).pub?.lng === 'number' &&
+    typeof (entry as QueuedPubReport).reason === 'string'
+  );
 }
 
-async function saveQueue(queue: QueuedPubReport[]): Promise<void> {
-  try {
-    if (queue.length === 0) {
-      await AsyncStorage.removeItem(STORAGE_KEY);
-    } else {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(queue));
-    }
-  } catch {
-    // Storage failure leaves the previous snapshot in place; the report was
-    // already attempted once, so the worst case matches the old behavior.
-  }
-}
+const { load: loadQueue, save: saveQueue } = createQueueStorage<QueuedPubReport>(
+  STORAGE_KEY,
+  isQueuedPubReport,
+);
 
 /** Serializes queue mutations — concurrent enqueue/flush calls would otherwise
  *  read-modify-write the same AsyncStorage snapshot and lose entries. */
-let _chain: Promise<unknown> = Promise.resolve();
-
-function enqueueTask<T>(task: () => Promise<T>): Promise<T> {
-  const next = _chain.then(task, task);
-  _chain = next.catch(() => undefined);
-  return next;
-}
+const enqueueTask = createQueueLock();
 
 /** Attempts to send every queued report, keeping only the ones that failed. */
 async function flushLocked(): Promise<void> {

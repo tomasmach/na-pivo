@@ -1,4 +1,5 @@
 import { getBackendEndpoint } from './backendConfig';
+import { chainAbortSignal } from './apiFetch';
 
 export interface BeerBrandSuggestion {
   slug: string;
@@ -27,7 +28,7 @@ interface LocalBeerBrandSuggestion extends BeerBrandSuggestion {
 const REQUEST_TIMEOUT_MS = 5000;
 const DEFAULT_LIMIT = 8;
 
-export const LOCAL_BEER_BRAND_SUGGESTIONS: LocalBeerBrandSuggestion[] = [
+const LOCAL_BEER_BRAND_SUGGESTIONS: LocalBeerBrandSuggestion[] = [
   {
     slug: 'pilsner-urquell',
     name: 'Pilsner Urquell',
@@ -254,31 +255,6 @@ function normalizeSuggestions(raw: unknown, limit: number): BeerBrandSuggestion[
   return out;
 }
 
-function chainAbortSignal(signal?: AbortSignal): {
-  signal: AbortSignal;
-  cleanup: () => void;
-} {
-  const timeoutController = new AbortController();
-  const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
-  const onExternalAbort = () => timeoutController.abort();
-
-  if (signal) {
-    if (signal.aborted) {
-      timeoutController.abort();
-    } else {
-      signal.addEventListener('abort', onExternalAbort);
-    }
-  }
-
-  return {
-    signal: timeoutController.signal,
-    cleanup: () => {
-      clearTimeout(timeoutId);
-      if (signal) signal.removeEventListener('abort', onExternalAbort);
-    },
-  };
-}
-
 export async function suggestBeerBrands(
   query: string,
   signal?: AbortSignal,
@@ -292,7 +268,7 @@ export async function suggestBeerBrands(
   const endpoint = getBackendEndpoint('/v1/beer-brands/suggest');
   if (!endpoint) return fallback;
 
-  const abort = chainAbortSignal(signal);
+  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
   try {
     const url = new URL(endpoint);
     url.searchParams.set('q', trimmed);

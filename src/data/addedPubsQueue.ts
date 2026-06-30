@@ -8,10 +8,9 @@
  * spot) both stay queued.
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
 import { submitAddedPub, type AddedPubEntry, type AddedPubResponse, type SubmitAddedPubResult } from './addedPubsClient';
 import { clearPubsSnapshot, pubIdForCoords, removeLocalPub, upsertLocalPub } from './pubs';
+import { createQueueStorage, createQueueLock } from './createQueue';
 
 const STORAGE_KEY = 'na-pivo-added-pubs-queue';
 const MAX_QUEUE_LENGTH = 30;
@@ -29,37 +28,12 @@ function isAddedPubEntry(entry: unknown): entry is AddedPubEntry {
   );
 }
 
-async function loadQueue(): Promise<AddedPubEntry[]> {
-  try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isAddedPubEntry);
-  } catch {
-    return [];
-  }
-}
+const { load: loadQueue, save: saveQueue } = createQueueStorage<AddedPubEntry>(
+  STORAGE_KEY,
+  isAddedPubEntry,
+);
 
-async function saveQueue(queue: AddedPubEntry[]): Promise<void> {
-  try {
-    if (queue.length === 0) {
-      await AsyncStorage.removeItem(STORAGE_KEY);
-    } else {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(queue));
-    }
-  } catch {
-    // Storage failure leaves the previous snapshot in place.
-  }
-}
-
-let _chain: Promise<unknown> = Promise.resolve();
-
-function enqueueTask<T>(task: () => Promise<T>): Promise<T> {
-  const next = _chain.then(task, task);
-  _chain = next.catch(() => undefined);
-  return next;
-}
+const enqueueTask = createQueueLock();
 
 async function flushLocked(): Promise<void> {
   const queue = await loadQueue();

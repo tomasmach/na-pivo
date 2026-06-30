@@ -21,6 +21,7 @@ import { File, UploadType } from 'expo-file-system';
 
 import { ensureAccount } from './account';
 import { getBackendEndpoint } from './backendConfig';
+import { chainAbortSignal } from './apiFetch';
 import {
   MAX_MENU_BEERS,
   beerFromWire,
@@ -56,8 +57,7 @@ export async function scanMenuPhoto(localUri: string): Promise<MenuScanResult> {
   const session = await ensureAccount();
   if (!session) return { status: 'error' };
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+  const abort = chainAbortSignal(undefined, UPLOAD_TIMEOUT_MS);
 
   try {
     const resp = await new File(localUri).upload(endpoint, {
@@ -66,7 +66,7 @@ export async function scanMenuPhoto(localUri: string): Promise<MenuScanResult> {
       fieldName: 'image',
       mimeType: 'image/jpeg',
       headers: { Authorization: `Bearer ${session.token}` },
-      signal: controller.signal,
+      signal: abort.signal,
     });
 
     let data: Record<string, unknown> = {};
@@ -103,6 +103,6 @@ export async function scanMenuPhoto(localUri: string): Promise<MenuScanResult> {
   } catch {
     return { status: 'error' };
   } finally {
-    clearTimeout(timeoutId);
+    abort.cleanup();
   }
 }

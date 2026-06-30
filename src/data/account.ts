@@ -317,24 +317,14 @@ async function ensureAccountOnce(signal?: AbortSignal): Promise<AccountSession |
     return null;
   }
 
-  const timeoutController = new AbortController();
-  const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
-  const onExternalAbort = () => timeoutController.abort();
-  if (signal) {
-    if (signal.aborted) {
-      timeoutController.abort();
-    } else {
-      signal.addEventListener('abort', onExternalAbort);
-    }
-  }
-
+  const abort = chainAbortSignal(signal);
   try {
     for (let attempt = 0; attempt < 2; attempt++) {
       const resp = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ device_id: deviceId }),
-        signal: timeoutController.signal,
+        signal: abort.signal,
       });
 
       if (resp.status === 401 && attempt === 0) {
@@ -390,10 +380,7 @@ async function ensureAccountOnce(signal?: AbortSignal): Promise<AccountSession |
     }
     return null;
   } finally {
-    clearTimeout(timeoutId);
-    if (signal) {
-      signal.removeEventListener('abort', onExternalAbort);
-    }
+    abort.cleanup();
   }
 }
 

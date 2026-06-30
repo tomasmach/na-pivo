@@ -77,7 +77,18 @@ import { BeerFormModal, type BeerFormMode, type BeerFormResult } from '@/counter
 import { MapPubEntry } from '@/components/amenities/MapPubEntry';
 import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
 
-// ─── Permission gate ──────────────────────────────────────────────────────────
+// ─── Gate states (permission / detecting / no pub) ─────────────────────────────
+
+/** Full-screen centered wrapper shared by the gate states. Owns the safe-area
+ *  inset the parent hasn't already padded (none when embedded in the "Pivo" tab). */
+function CenteredScreen({ embedded, children }: { embedded: boolean; children: React.ReactNode }) {
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={[styles.root, styles.centered, { paddingTop: embedded ? 0 : insets.top, paddingBottom: insets.bottom }]}>
+      {children}
+    </View>
+  );
+}
 
 function PermissionScreen({
   permissionState,
@@ -88,9 +99,8 @@ function PermissionScreen({
   requestPermission: () => Promise<void>;
   embedded: boolean;
 }) {
-  const insets = useSafeAreaInsets();
   return (
-    <View style={[styles.root, styles.centered, { paddingTop: embedded ? 0 : insets.top, paddingBottom: insets.bottom }]}>
+    <CenteredScreen embedded={embedded}>
       <View style={styles.permIconWrap}>
         <BeerIcon size={56} color={Colors.amber} />
       </View>
@@ -119,30 +129,28 @@ function PermissionScreen({
           />
         </View>
       )}
-    </View>
+    </CenteredScreen>
   );
 }
 
 // ─── Detecting + empty ────────────────────────────────────────────────────────
 
 function DetectingScreen({ embedded }: { embedded: boolean }) {
-  const insets = useSafeAreaInsets();
   return (
-    <View style={[styles.root, styles.centered, { paddingTop: embedded ? 0 : insets.top, paddingBottom: insets.bottom }]}>
+    <CenteredScreen embedded={embedded}>
       <View style={[styles.permIconWrap, amberGlow(16)]}>
         <MapPinIcon size={48} color={Colors.amber} />
       </View>
       <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
         {cs.counter.detecting}
       </Text>
-    </View>
+    </CenteredScreen>
   );
 }
 
 function NoPubScreen({ onRetry, embedded }: { onRetry: () => void; embedded: boolean }) {
-  const insets = useSafeAreaInsets();
   return (
-    <View style={[styles.root, styles.centered, { paddingTop: embedded ? 0 : insets.top, paddingBottom: insets.bottom }]}>
+    <CenteredScreen embedded={embedded}>
       <View style={styles.permIconWrap}>
         <BeerIcon size={56} color={Colors.amber} />
       </View>
@@ -161,7 +169,7 @@ function NoPubScreen({ onRetry, embedded }: { onRetry: () => void; embedded: boo
           accessibilityLabel={cs.a11y.counterRetry}
         />
       </View>
-    </View>
+    </CenteredScreen>
   );
 }
 

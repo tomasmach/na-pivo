@@ -25,13 +25,12 @@
  *   - 'retry' (network/5xx/429/dormant) → keep for the next flush.
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
 import {
   submitRatingUpsert,
   type SubmitRatingResult,
   type WireRatingUpsert,
 } from './pubRatingsClient';
+import { createQueueStorage, createQueueLock } from './createQueue';
 
 const STORAGE_KEY = 'na-pivo-pub-ratings-queue';
 /** Hard cap — one item per pub, so this only bites with thousands of distinct
@@ -64,40 +63,14 @@ function isQueueItem(value: unknown): value is RatingQueueItem {
   return false;
 }
 
-async function loadQueue(): Promise<RatingQueueItem[]> {
-  try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isQueueItem);
-  } catch {
-    return [];
-  }
-}
-
-async function saveQueue(queue: RatingQueueItem[]): Promise<void> {
-  try {
-    if (queue.length === 0) {
-      await AsyncStorage.removeItem(STORAGE_KEY);
-    } else {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(queue));
-    }
-  } catch {
-    // Storage failure leaves the previous snapshot in place; the change was
-    // already attempted once, so the worst case matches the old behavior.
-  }
-}
+const { load: loadQueue, save: saveQueue } = createQueueStorage<RatingQueueItem>(
+  STORAGE_KEY,
+  isQueueItem,
+);
 
 /** Serializes queue mutations — concurrent enqueue/flush calls would otherwise
  *  read-modify-write the same AsyncStorage snapshot and lose items. */
-let _chain: Promise<unknown> = Promise.resolve();
-
-function runLocked<T>(task: () => Promise<T>): Promise<T> {
-  const next = _chain.then(task, task);
-  _chain = next.catch(() => undefined);
-  return next;
-}
+const runLocked = createQueueLock();
 
 async function deliver(item: RatingQueueItem): Promise<SubmitRatingResult> {
   // Deletes are timestamped tombstone PUTs (empty verdict/tag/note) so the

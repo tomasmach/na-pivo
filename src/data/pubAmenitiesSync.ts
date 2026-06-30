@@ -261,12 +261,9 @@ export async function restorePubAmenities(signal?: AbortSignal): Promise<void> {
   }
 
   // Merge server → local (LWW), suppressing the push echo for the write.
-  suppressSync = true;
-  try {
+  runWithoutPubAmenitiesSync(() => {
     usePubAmenitiesStore.getState().hydrateVotes(merged);
-  } finally {
-    suppressSync = false;
-  }
+  });
 
   // Push local votes the server is missing, or where the local copy is newer.
   const localVotes = usePubAmenitiesStore.getState().votes;

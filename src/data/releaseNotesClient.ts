@@ -16,6 +16,7 @@
 import Constants from 'expo-constants';
 
 import { getBackendEndpoint } from './backendConfig';
+import { chainAbortSignal } from './apiFetch';
 
 export interface ReleaseNoteItem {
   /** Optional leading emoji (may be ''). */
@@ -96,16 +97,7 @@ export async function fetchReleaseNote(
     return { kind: 'error' };
   }
 
-  const timeoutController = new AbortController();
-  const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
-  const onExternalAbort = () => timeoutController.abort();
-  if (signal) {
-    if (signal.aborted) {
-      timeoutController.abort();
-    } else {
-      signal.addEventListener('abort', onExternalAbort);
-    }
-  }
+  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
 
   try {
     const url = new URL(endpoint);
@@ -113,7 +105,7 @@ export async function fetchReleaseNote(
 
     const resp = await fetch(url.toString(), {
       method: 'GET',
-      signal: timeoutController.signal,
+      signal: abort.signal,
     });
 
     // 404 is an expected, definitive "no note for this version".
@@ -145,10 +137,7 @@ export async function fetchReleaseNote(
     // network / timeout / abort / malformed JSON — never throw.
     return { kind: 'error' };
   } finally {
-    clearTimeout(timeoutId);
-    if (signal) {
-      signal.removeEventListener('abort', onExternalAbort);
-    }
+    abort.cleanup();
   }
 }
 
@@ -172,21 +161,12 @@ export async function fetchAllReleaseNotes(
     return { kind: 'error' };
   }
 
-  const timeoutController = new AbortController();
-  const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
-  const onExternalAbort = () => timeoutController.abort();
-  if (signal) {
-    if (signal.aborted) {
-      timeoutController.abort();
-    } else {
-      signal.addEventListener('abort', onExternalAbort);
-    }
-  }
+  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
 
   try {
     const resp = await fetch(endpoint, {
       method: 'GET',
-      signal: timeoutController.signal,
+      signal: abort.signal,
     });
 
     if (!resp.ok) {
@@ -204,9 +184,6 @@ export async function fetchAllReleaseNotes(
     // network / timeout / abort / malformed JSON — never throw.
     return { kind: 'error' };
   } finally {
-    clearTimeout(timeoutId);
-    if (signal) {
-      signal.removeEventListener('abort', onExternalAbort);
-    }
+    abort.cleanup();
   }
 }

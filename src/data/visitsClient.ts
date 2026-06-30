@@ -20,8 +20,9 @@
  *   - 'retry'           → network/timeout/5xx/429/401/dormant: keep + retry.
  */
 
-import { clearCachedAnonymousAccount, ensureAccount, type AccountSession } from './account';
+import { clearCachedAnonymousAccount, ensureAccount } from './account';
 import { getBackendEndpoint } from './backendConfig';
+import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
 import { trackClientEvent } from './telemetryClient';
 
 /** The byte-stable visit payload persisted in the queue and POSTed on retry. */
@@ -60,20 +61,6 @@ export type SubmitVisitResult = 'ok' | 'permanent-error' | 'retry';
 
 const REQUEST_TIMEOUT_MS = 8000;
 
-async function classifyVisitHttpFailure(
-  status: number,
-  session: AccountSession,
-): Promise<SubmitVisitResult> {
-  if (status === 401) {
-    await clearCachedAnonymousAccount(session);
-    return 'retry';
-  }
-  if (status === 400 || status === 422) {
-    return 'permanent-error';
-  }
-  return 'retry';
-}
-
 function trackVisitSynced(operation: 'submit_visit' | 'delete_visit'): void {
   void trackClientEvent({
     event: 'visit_synced',
@@ -96,24 +83,6 @@ function trackVisitSyncFailed(
       retryable: details.retryable,
     },
   });
-}
-
-/** Layer an external AbortSignal with an internal 8s timeout. */
-function chainTimeout(signal?: AbortSignal): { signal: AbortSignal; cleanup: () => void } {
-  const timeoutController = new AbortController();
-  const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
-  const onExternalAbort = () => timeoutController.abort();
-  if (signal) {
-    if (signal.aborted) timeoutController.abort();
-    else signal.addEventListener('abort', onExternalAbort);
-  }
-  return {
-    signal: timeoutController.signal,
-    cleanup: () => {
-      clearTimeout(timeoutId);
-      if (signal) signal.removeEventListener('abort', onExternalAbort);
-    },
-  };
 }
 
 /**
@@ -147,7 +116,7 @@ export async function submitVisit(
     return 'retry';
   }
 
-  const abort = chainTimeout(signal);
+  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
   try {
     const resp = await fetch(endpoint, {
       method: 'POST',
@@ -163,7 +132,7 @@ export async function submitVisit(
       trackVisitSynced('submit_visit');
       return 'ok';
     }
-    const result = await classifyVisitHttpFailure(resp.status, session);
+    const result = await classifyQueueHttpFailure(resp.status, session);
     trackVisitSyncFailed('submit_visit', {
       status: resp.status,
       reason: 'http_error',
@@ -214,7 +183,7 @@ export async function deleteVisit(
     return 'retry';
   }
 
-  const abort = chainTimeout(signal);
+  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
   try {
     const resp = await fetch(endpoint, {
       method: 'DELETE',
@@ -226,7 +195,7 @@ export async function deleteVisit(
       trackVisitSynced('delete_visit');
       return 'ok';
     }
-    const result = await classifyVisitHttpFailure(resp.status, session);
+    const result = await classifyQueueHttpFailure(resp.status, session);
     trackVisitSyncFailed('delete_visit', {
       status: resp.status,
       reason: 'http_error',
@@ -271,7 +240,7 @@ export async function fetchVisits(signal?: AbortSignal): Promise<WireVisit[] | n
   const session = await ensureAccount(signal);
   if (!session || signal?.aborted) return null;
 
-  const abort = chainTimeout(signal);
+  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
   try {
     const resp = await fetch(endpoint, {
       method: 'GET',

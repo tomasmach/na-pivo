@@ -175,12 +175,9 @@ export async function restorePubRatings(signal?: AbortSignal): Promise<void> {
   }
 
   // Merge server → local (LWW), suppressing the push echo for the write.
-  suppressSync = true;
-  try {
+  runWithoutPubRatingsSync(() => {
     usePubRatingsStore.getState().hydrateRatings(merged);
-  } finally {
-    suppressSync = false;
-  }
+  });
 
   // Push local ratings the server is missing, or where the local copy is newer.
   const localRatings = usePubRatingsStore.getState().ratings;

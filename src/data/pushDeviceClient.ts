@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 
 import { clearCachedAnonymousAccount, ensureAccount, type AccountSession } from './account';
 import { getBackendEndpoint } from './backendConfig';
+import { chainAbortSignal } from './apiFetch';
 import { trackApiFailure } from './telemetryClient';
 import { getAppVersionLabel } from '@/utils/appVersion';
 
@@ -10,25 +11,6 @@ export type PushPermissionStatus = 'granted' | 'denied' | 'undetermined';
 
 const REQUEST_TIMEOUT_MS = 8000;
 export const PUSH_TOKEN_KEY = 'na-pivo-expo-push-token';
-
-function abortWithTimeout(signal?: AbortSignal): { signal: AbortSignal; cleanup: () => void } {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  const onExternalAbort = () => controller.abort();
-
-  if (signal) {
-    if (signal.aborted) controller.abort();
-    else signal.addEventListener('abort', onExternalAbort);
-  }
-
-  return {
-    signal: controller.signal,
-    cleanup: () => {
-      clearTimeout(timeoutId);
-      if (signal) signal.removeEventListener('abort', onExternalAbort);
-    },
-  };
-}
 
 async function handleUnauthorized(session: AccountSession): Promise<void> {
   await clearCachedAnonymousAccount(session);
@@ -45,7 +27,7 @@ export async function registerPushDevice(
   const session = await ensureAccount(signal);
   if (!session || signal?.aborted) return false;
 
-  const abort = abortWithTimeout(signal);
+  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
   try {
     const resp = await fetch(endpoint, {
       method: 'PUT',
@@ -100,7 +82,7 @@ export async function disablePushDevice(
   const session = await ensureAccount(signal);
   if (!session || signal?.aborted) return false;
 
-  const abort = abortWithTimeout(signal);
+  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
   try {
     const resp = await fetch(endpoint, {
       method: 'DELETE',
@@ -154,7 +136,7 @@ export async function disableCachedPushDeviceWithBearer(
   }
   if (!pushToken || signal?.aborted) return false;
 
-  const abort = abortWithTimeout(signal);
+  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
   try {
     const resp = await fetch(endpoint, {
       method: 'DELETE',

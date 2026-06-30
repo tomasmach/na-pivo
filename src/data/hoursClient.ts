@@ -14,6 +14,7 @@
 
 import type { HoursStatus, Pub, VenueKind } from './pubs';
 import { getBackendEndpoint } from './backendConfig';
+import { chainAbortSignal } from './apiFetch';
 import type { CommunityBeer, WeeklyHours } from './communityHours';
 import { beerFromWire, isWeeklyHours } from './communityHours';
 import { trackApiFailure } from './telemetryClient';
@@ -225,24 +226,14 @@ export async function fetchPubHours(
 
   // Layer an internal timeout with the caller's signal. If either aborts, the
   // fetch aborts.
-  const timeoutController = new AbortController();
-  const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
-
-  const onExternalAbort = () => timeoutController.abort();
-  if (signal) {
-    if (signal.aborted) {
-      timeoutController.abort();
-    } else {
-      signal.addEventListener('abort', onExternalAbort);
-    }
-  }
+  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
 
   try {
     const resp = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body,
-      signal: timeoutController.signal,
+      signal: abort.signal,
     });
 
     if (!resp.ok) {
@@ -273,9 +264,6 @@ export async function fetchPubHours(
     }
     return out;
   } finally {
-    clearTimeout(timeoutId);
-    if (signal) {
-      signal.removeEventListener('abort', onExternalAbort);
-    }
+    abort.cleanup();
   }
 }

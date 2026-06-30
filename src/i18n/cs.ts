@@ -45,8 +45,6 @@ export const cs = {
     // Makes the public-vs-private distinction explicit: this is shared community
     // data, unlike the private rating on the evening card.
     publicNote: 'Veřejné. Uvidí to ostatní pivaři.',
-    // Entry button on the evening card (an alternate, friendlier label).
-    entryQuestion: 'Co tady mají?',
     entryA11yPublic: 'Otevře veřejné mapování hospody, viditelné pro ostatní',
 
     // Info fact rows (otevíračka + piva) — the two non-amenity groups the hub
@@ -128,9 +126,6 @@ export const cs = {
     badgeCompletionistLocked: 'Zmapuj jednu hospodu naplno',
     badgeFactMachineTitle: 'Pivní detektiv',
     badgeFactMachineLocked: 'Zaznamenej 100 faktů',
-
-    // Level titles (5 locked); also bundled in the threshold fallback table.
-    levelTitles: ['Nováček', 'Všímálek', 'Štamgast', 'Znalec', 'Hospodský mudrc'],
   },
 
   compass: {
@@ -142,10 +137,7 @@ export const cs = {
     },
     modeNearest: 'Nejbližší',
     modeSurprise: 'Překvap mě',
-    rerollLabel: 'Vyber jinou hospodu',
-    settingsLabel: 'Nastavení',
     openInMaps: 'Otevřít v mapách',
-    reportProblem: 'Nahlásit problém',
     reportTitle: 'Nahlásit hospodu',
     reportBody: (pubName: string) =>
       `Co je špatně s „${pubName}“?`,
@@ -168,10 +160,7 @@ export const cs = {
     hoursUnknown: 'Otevírací doba neznámá',
     detailsLoading: 'Načítám info',
     contribute: 'Doplnit info',
-    addMissingPub: 'Chybí hospoda',
     addMissingPubLink: 'Není to ta hospoda? Přidej ji',
-    contributeOrAdd: 'Doplnit / přidat',
-    contributeMenuTitle: 'Co chceš doplnit?',
     // The leading beer glyph is a line-art icon rendered next to this text in
     // the pub card (see RevealedPubPill), not an emoji baked into the string.
     beerWithPrice: (name: string, price: string) => `${name} · ${price}`,
@@ -241,7 +230,6 @@ export const cs = {
       helper: 'Hledám hospody jen v této vzdálenosti od tebe.',
       unlimited: 'Bez limitu',
       kmShort: 'km',
-      mShort: 'm',
       rangeMin: '500 m',
       rangeMax: '∞',
     },
@@ -400,7 +388,6 @@ export const cs = {
     beersHeader: 'Piva na čepu',
     beerNamePlaceholder: 'Název piva, např. Pilsner Urquell 12°',
     beerSuggestionsLoading: 'Hledám piva…',
-    pricePlaceholder: 'Cena (Kč)',
     priceLabel: 'Cena za',
     volumeSmall: '0,3 l',
     volumeLarge: '0,5 l',
@@ -887,7 +874,6 @@ export const cs = {
     addModalTitle: 'Jaké pivo si dáváš?',
     editModalTitle: 'Uprav cenu',
     beerNamePlaceholder: 'Název piva, např. Pilsner Urquell 12°',
-    pricePlaceholder: 'Cena (Kč)',
     priceLabel: 'Cena za',
     volumeSmall: '0,3 l',
     volumeMedium: '0,4 l',
@@ -901,8 +887,6 @@ export const cs = {
 
     // — Formatting helpers —
     price: (czk: number) => `${czk} Kč`,
-    // Standalone currency unit shown next to the price input.
-    currencySuffix: 'Kč',
     // "62 Kč · 0,5 l" or just "62 Kč" when no volume.
     beerMeta: (price: string, ml?: number) =>
       ml ? `${price} · ${formatVolume(ml)}` : price,
@@ -1011,10 +995,6 @@ export const cs = {
   },
 
   a11y: {
-    compassArrow: (pubName: string, distance: string) =>
-      `Kompas mířící k hospodě ${pubName}, ${distance}.`,
-    compassArrowHidden: (distance: string) =>
-      `Šipka kompasu míří k hospodě, vzdálenost ${distance}.`,
     pubPillHidden: 'Skrytá hospoda, ťukni pro odhalení',
     pubPillRevealed: (pubName: string) => `${pubName}, ťukni pro otevření v mapách`,
     openStatus: (status: string) => `Stav otevírací doby: ${status}`,
@@ -1030,8 +1010,6 @@ export const cs = {
     reportPubButton: 'Nahlásit problém s hospodou',
     renamePubInput: 'Nový název hospody',
     renamePubSaveButton: 'Uložit opravený název hospody',
-    contributePubButton: 'Doplnit otevírací dobu a piva',
-    contributeOrAddButton: 'Doplnit informace nebo přidat chybějící hospodu',
     contributeBeersLine: (text: string) => `Piva na čepu: ${text}. Ťukni pro doplnění.`,
     contributeDayClosedToggle: (day: string) => `${day}: přepnout zavřeno`,
     contributeAddInterval: (day: string) => `${day}: přidat čas`,
@@ -1048,7 +1026,6 @@ export const cs = {
     addPubUseCurrentLocationButton: 'Použít moji aktuální polohu pro novou hospodu',
     addPubCurrentLocationSelected: 'Pro novou hospodu se použije tvoje aktuální poloha',
     addPubSaveButton: 'Přidat hospodu',
-    feedbackButton: 'Napiš nám nebo nahlas chybu',
     feedbackCategory: (label: string) => `Kategorie: ${label}`,
     feedbackContactChannel: (label: string) => `Kontakt přes: ${label}`,
     feedbackContactInput: 'Kontakt pro odpověď',
@@ -1078,8 +1055,6 @@ export const cs = {
 
     // — Tabs —
     tabCompass: 'Záložka Kompas',
-    tabCounter: 'Záložka Počítadlo',
-    tabMyBeers: 'Záložka Moje piva',
     tabBeer: 'Záložka Štamgast',
     tabFriends: 'Záložka Parta',
     beerSegmentCount: 'Přepnout na počítání piv',
@@ -1100,7 +1075,6 @@ export const cs = {
     counterEditBeer: (name: string) => `Upravit cenu u ${name}`,
     counterRemoveBeer: (name: string) => `Odebrat poslední ${name}`,
     counterAddBeer: 'Přidat nové pivo',
-    counterUndo: 'Vrátit poslední připsané pivo',
     counterTotal: (count: string, price: string) =>
       `Napočítáno ${count}, utraceno ${price}`,
     counterRequestLocation: 'Povolit polohu',

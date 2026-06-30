@@ -179,6 +179,17 @@ export const useAccountStore = create<AccountState>((set, get) => {
     return result;
   };
 
+  /** After a profile-changing auth call that leaves the session token intact
+   *  (link / unlink / profile / avatar / purchases): persist the updated profile
+   *  + settings. Mirrors applyAuthResult without the session re-sync. */
+  const applyProfileResult = (result: AuthResult): AuthResult => {
+    if (result.ok) {
+      set({ profile: result.profile });
+      applyAccountSettings(result.profile.settings);
+    }
+    return result;
+  };
+
   return {
     session: null,
     status: 'idle',
@@ -236,65 +247,16 @@ export const useAccountStore = create<AccountState>((set, get) => {
     signInApple: () => auth.signInWithApple().then(applyAuthResult),
     resetPassword: (params) => auth.resetPassword(params).then(applyAuthResult),
 
-    linkGoogle: async () => {
-      const result = await auth.linkGoogle();
-      if (result.ok) {
-        set({ profile: result.profile });
-        applyAccountSettings(result.profile.settings);
-      }
-      return result;
-    },
-    linkApple: async () => {
-      const result = await auth.linkApple();
-      if (result.ok) {
-        set({ profile: result.profile });
-        applyAccountSettings(result.profile.settings);
-      }
-      return result;
-    },
-    unlink: async (provider) => {
-      const result = await auth.unlinkProvider(provider);
-      if (result.ok) {
-        set({ profile: result.profile });
-        applyAccountSettings(result.profile.settings);
-      }
-      return result;
-    },
-    setPassword: async (params) => {
-      const result = await auth.setPassword(params);
-      if (result.ok) {
-        set({ profile: result.profile });
-        applyAccountSettings(result.profile.settings);
-      }
-      return result;
-    },
+    linkGoogle: () => auth.linkGoogle().then(applyProfileResult),
+    linkApple: () => auth.linkApple().then(applyProfileResult),
+    unlink: (provider) => auth.unlinkProvider(provider).then(applyProfileResult),
+    setPassword: (params) => auth.setPassword(params).then(applyProfileResult),
 
-    updateProfile: async (params) => {
-      const result = await auth.updateProfile(params);
-      if (result.ok) {
-        set({ profile: result.profile });
-        applyAccountSettings(result.profile.settings);
-      }
-      return result;
-    },
+    updateProfile: (params) => auth.updateProfile(params).then(applyProfileResult),
     // Thin pass-through: advisory check, never writes store state.
     checkNicknameAvailable: (nickname) => auth.checkNicknameAvailable(nickname),
-    uploadAvatar: async (localUri) => {
-      const result = await auth.uploadAvatar(localUri);
-      if (result.ok) {
-        set({ profile: result.profile });
-        applyAccountSettings(result.profile.settings);
-      }
-      return result;
-    },
-    removeAvatar: async () => {
-      const result = await auth.removeAvatar();
-      if (result.ok) {
-        set({ profile: result.profile });
-        applyAccountSettings(result.profile.settings);
-      }
-      return result;
-    },
+    uploadAvatar: (localUri) => auth.uploadAvatar(localUri).then(applyProfileResult),
+    removeAvatar: () => auth.removeAvatar().then(applyProfileResult),
 
     logout: async (options) => {
       await auth.logout(options);
@@ -312,14 +274,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
       return result;
     },
     exportAccountData: () => auth.exportAccountData(),
-    restorePurchases: async (params) => {
-      const result = await auth.restorePurchases(params);
-      if (result.ok) {
-        set({ profile: result.profile });
-        applyAccountSettings(result.profile.settings);
-      }
-      return result;
-    },
+    restorePurchases: (params) => auth.restorePurchases(params).then(applyProfileResult),
     reportProfileContent: (params) => auth.reportProfileContent(params),
     requestPasswordReset: (email) => auth.requestPasswordReset(email),
     requestEmailVerification: () => auth.requestEmailVerification(),

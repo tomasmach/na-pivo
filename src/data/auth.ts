@@ -494,6 +494,20 @@ async function applyAuthSuccess(
   return { ok: true, profile };
 }
 
+/** Collapse a profile-returning call's outcome into an AuthResult. */
+function resolveProfileResult(res: FetchOutcome | { networkError: true }): AuthResult {
+  if ('networkError' in res) return NETWORK_ERROR;
+  if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
+  return { ok: true, profile: parseProfile(res.data) };
+}
+
+/** Collapse a no-payload call's outcome into an AuthActionResult. */
+function resolveActionResult(res: FetchOutcome | { networkError: true }): AuthActionResult {
+  if ('networkError' in res) return NETWORK_ERROR;
+  if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
+  return { ok: true };
+}
+
 // ---------------------------------------------------------------------------
 // Email + password
 // ---------------------------------------------------------------------------
@@ -590,9 +604,7 @@ export async function linkGoogle(): Promise<AuthResult> {
     bearer: 'current',
     body: { provider: 'google', id_token: idToken },
   });
-  if ('networkError' in res) return NETWORK_ERROR;
-  if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
-  return { ok: true, profile: parseProfile(res.data) };
+  return resolveProfileResult(res);
 }
 
 export async function linkApple(): Promise<AuthResult> {
@@ -611,16 +623,12 @@ export async function linkApple(): Promise<AuthResult> {
       full_name: credential.fullName,
     },
   });
-  if ('networkError' in res) return NETWORK_ERROR;
-  if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
-  return { ok: true, profile: parseProfile(res.data) };
+  return resolveProfileResult(res);
 }
 
 export async function unlinkProvider(provider: AuthProvider): Promise<AuthResult> {
   const res = await authFetch('/v1/auth/unlink', { bearer: 'current', body: { provider } });
-  if ('networkError' in res) return NETWORK_ERROR;
-  if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
-  return { ok: true, profile: parseProfile(res.data) };
+  return resolveProfileResult(res);
 }
 
 export async function setPassword(params: { password: string; email?: string }): Promise<AuthResult> {
@@ -628,9 +636,7 @@ export async function setPassword(params: { password: string; email?: string }):
     bearer: 'current',
     body: { password: params.password, email: params.email ?? '' },
   });
-  if ('networkError' in res) return NETWORK_ERROR;
-  if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
-  return { ok: true, profile: parseProfile(res.data) };
+  return resolveProfileResult(res);
 }
 
 // ---------------------------------------------------------------------------
@@ -665,10 +671,8 @@ export async function requestPasswordReset(email: string): Promise<AuthActionRes
     bearer: 'none',
     body: { email },
   });
-  if ('networkError' in res) return NETWORK_ERROR;
-  if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
   // The backend 202s without account enumeration; any real 2xx is success.
-  return { ok: true };
+  return resolveActionResult(res);
 }
 
 export async function resetPassword(params: { token: string; password: string }): Promise<AuthResult> {
@@ -683,16 +687,12 @@ export async function resetPassword(params: { token: string; password: string })
 
 export async function requestEmailVerification(): Promise<AuthActionResult> {
   const res = await authFetch('/v1/auth/request-email-verify', { bearer: 'current', body: {} });
-  if ('networkError' in res) return NETWORK_ERROR;
-  if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
-  return { ok: true };
+  return resolveActionResult(res);
 }
 
 export async function verifyEmail(token: string): Promise<AuthActionResult> {
   const res = await authFetch('/v1/auth/verify-email', { bearer: 'none', body: { token } });
-  if ('networkError' in res) return NETWORK_ERROR;
-  if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
-  return { ok: true };
+  return resolveActionResult(res);
 }
 
 /** Fetch the current account state (GET /v1/account/me). Null when unavailable. */
@@ -719,9 +719,7 @@ export type AccountExportActionResult = AuthActionResult;
 
 export async function exportAccountData(): Promise<AccountExportActionResult> {
   const res = await authFetch('/v1/account/export', { method: 'POST', bearer: 'current', body: {} });
-  if ('networkError' in res) return NETWORK_ERROR;
-  if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
-  return { ok: true };
+  return resolveActionResult(res);
 }
 
 export async function restorePurchases(params: {
@@ -742,9 +740,7 @@ export async function restorePurchases(params: {
       expires_at: params.expiresAt ?? null,
     },
   });
-  if ('networkError' in res) return NETWORK_ERROR;
-  if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
-  return { ok: true, profile: parseProfile(res.data) };
+  return resolveProfileResult(res);
 }
 
 export type ContentReportReason =
@@ -768,9 +764,7 @@ export async function reportProfileContent(params: {
       comment: params.comment ?? '',
     },
   });
-  if ('networkError' in res) return NETWORK_ERROR;
-  if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
-  return { ok: true };
+  return resolveActionResult(res);
 }
 
 // ---------------------------------------------------------------------------
@@ -802,9 +796,7 @@ export async function updateProfile(params: {
   if (params.isPublic !== undefined) body.is_public = params.isPublic;
 
   const res = await authFetch('/v1/account/me', { method: 'PATCH', bearer: 'current', body });
-  if ('networkError' in res) return NETWORK_ERROR;
-  if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
-  return { ok: true, profile: parseProfile(res.data) };
+  return resolveProfileResult(res);
 }
 
 interface RawNicknameAvailability {
@@ -885,7 +877,5 @@ export async function uploadAvatar(localUri: string): Promise<AuthResult> {
 /** Remove the current avatar (DELETE /v1/account/me/avatar). */
 export async function removeAvatar(): Promise<AuthResult> {
   const res = await authFetch('/v1/account/me/avatar', { method: 'DELETE', bearer: 'current' });
-  if ('networkError' in res) return NETWORK_ERROR;
-  if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
-  return { ok: true, profile: parseProfile(res.data) };
+  return resolveProfileResult(res);
 }

@@ -22,8 +22,9 @@
  *                          queue and retry on the next flush.
  */
 
-import { clearCachedAnonymousAccount, ensureAccount, type AccountSession } from './account';
+import { ensureAccount } from './account';
 import { getBackendEndpoint } from './backendConfig';
+import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
 import type { CommunityBeer } from './communityHours';
 import { trackClientEvent } from './telemetryClient';
 
@@ -66,25 +67,6 @@ export interface DrinkEntry {
 export type SubmitDrinkResult = 'ok' | 'permanent-error' | 'retry';
 
 const REQUEST_TIMEOUT_MS = 8000;
-
-async function classifyDrinkHttpFailure(
-  status: number,
-  session: AccountSession,
-): Promise<SubmitDrinkResult> {
-  if (status === 401) {
-    await clearCachedAnonymousAccount(session);
-    return 'retry';
-  }
-
-  // Validation errors are permanent for this byte-stable payload. Other 4xx
-  // responses can be caused by auth recovery, throttling, or a frontend build
-  // briefly running against an older backend during rollout, so keep them queued.
-  if (status === 400 || status === 422) {
-    return 'permanent-error';
-  }
-
-  return 'retry';
-}
 
 type DrinkSyncOperation = 'submit_drink' | 'delete_drink' | 'update_drink';
 
@@ -172,16 +154,7 @@ export async function submitDrink(
     return 'retry';
   }
 
-  const timeoutController = new AbortController();
-  const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
-  const onExternalAbort = () => timeoutController.abort();
-  if (signal) {
-    if (signal.aborted) {
-      timeoutController.abort();
-    } else {
-      signal.addEventListener('abort', onExternalAbort);
-    }
-  }
+  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
 
   try {
     const resp = await fetch(endpoint, {
@@ -191,14 +164,14 @@ export async function submitDrink(
         Authorization: `Bearer ${session.token}`,
       },
       body: JSON.stringify(entry),
-      signal: timeoutController.signal,
+      signal: abort.signal,
     });
 
     if (resp.ok) {
       trackDrinkSynced('submit_drink');
       return 'ok';
     }
-    const result = await classifyDrinkHttpFailure(resp.status, session);
+    const result = await classifyQueueHttpFailure(resp.status, session);
     trackDrinkSyncFailed('submit_drink', {
       status: resp.status,
       reason: 'http_error',
@@ -215,8 +188,7 @@ export async function submitDrink(
     });
     return 'retry';
   } finally {
-    clearTimeout(timeoutId);
-    if (signal) signal.removeEventListener('abort', onExternalAbort);
+    abort.cleanup();
   }
 }
 
@@ -256,26 +228,17 @@ export async function deleteDrink(
     return 'retry';
   }
 
-  const timeoutController = new AbortController();
-  const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
-  const onExternalAbort = () => timeoutController.abort();
-  if (signal) {
-    if (signal.aborted) {
-      timeoutController.abort();
-    } else {
-      signal.addEventListener('abort', onExternalAbort);
-    }
-  }
+  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
 
   try {
     const resp = await fetch(endpoint, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${session.token}` },
-      signal: timeoutController.signal,
+      signal: abort.signal,
     });
 
     if (resp.ok) return 'ok';
-    const result = await classifyDrinkHttpFailure(resp.status, session);
+    const result = await classifyQueueHttpFailure(resp.status, session);
     trackDrinkSyncFailed('delete_drink', {
       status: resp.status,
       reason: 'http_error',
@@ -291,8 +254,7 @@ export async function deleteDrink(
     });
     return 'retry';
   } finally {
-    clearTimeout(timeoutId);
-    if (signal) signal.removeEventListener('abort', onExternalAbort);
+    abort.cleanup();
   }
 }
 
@@ -328,16 +290,7 @@ export async function updateDrinkName(
     return 'retry';
   }
 
-  const timeoutController = new AbortController();
-  const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
-  const onExternalAbort = () => timeoutController.abort();
-  if (signal) {
-    if (signal.aborted) {
-      timeoutController.abort();
-    } else {
-      signal.addEventListener('abort', onExternalAbort);
-    }
-  }
+  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
 
   try {
     const resp = await fetch(endpoint, {
@@ -347,14 +300,14 @@ export async function updateDrinkName(
         Authorization: `Bearer ${session.token}`,
       },
       body: JSON.stringify({ beer_name: beerName }),
-      signal: timeoutController.signal,
+      signal: abort.signal,
     });
 
     if (resp.ok) {
       trackDrinkSynced('update_drink');
       return 'ok';
     }
-    const result = await classifyDrinkHttpFailure(resp.status, session);
+    const result = await classifyQueueHttpFailure(resp.status, session);
     trackDrinkSyncFailed('update_drink', {
       status: resp.status,
       reason: 'http_error',
@@ -370,7 +323,6 @@ export async function updateDrinkName(
     });
     return 'retry';
   } finally {
-    clearTimeout(timeoutId);
-    if (signal) signal.removeEventListener('abort', onExternalAbort);
+    abort.cleanup();
   }
 }

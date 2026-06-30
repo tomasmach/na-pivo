@@ -25,14 +25,13 @@
  *   - 'retry' (network/5xx/429/dormant) → keep for the next flush.
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
 import {
   deleteVisit,
   submitVisit,
   type SubmitVisitResult,
   type VisitEntry,
 } from './visitsClient';
+import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
 
 const STORAGE_KEY = 'na-pivo-visits-queue';
 /** Hard cap — one item per evening; only bites with a very long offline backlog,
@@ -63,47 +62,15 @@ function isQueueItem(value: unknown): value is VisitQueueItem {
   return false;
 }
 
-async function loadQueue(): Promise<VisitQueueItem[]> {
-  try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isQueueItem);
-  } catch {
-    return [];
-  }
-}
-
-async function saveQueue(queue: VisitQueueItem[]): Promise<void> {
-  try {
-    if (queue.length === 0) {
-      await AsyncStorage.removeItem(STORAGE_KEY);
-    } else {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(queue));
-    }
-  } catch {
-    // Storage failure leaves the previous snapshot in place; the change was
-    // already attempted once, so the worst case matches the old behavior.
-  }
-}
+const { load: loadQueue, save: saveQueue } = createQueueStorage<VisitQueueItem>(
+  STORAGE_KEY,
+  isQueueItem,
+);
 
 /** Serializes only AsyncStorage mutations. Network delivery deliberately runs
  *  outside this lock so a slow/offline flush cannot block a fresh visit update
  *  from being persisted immediately. */
-let _mutationChain: Promise<unknown> = Promise.resolve();
-let _flushPromise: Promise<void> | null = null;
-/** A single coalesced trailing flush: when flushVisitsQueue() is called while a
- *  flush is already in flight, exactly one more flush is queued to run after it,
- *  so a visit op enqueued mid-flight is attempted without waiting for the next
- *  launch. Multiple mid-flush callers collapse onto this same trailing promise. */
-let _flushAgain: Promise<void> | null = null;
-
-function runMutation<T>(task: () => Promise<T>): Promise<T> {
-  const next = _mutationChain.then(task, task);
-  _mutationChain = next.catch(() => undefined);
-  return next;
-}
+const runMutation = createQueueLock();
 
 async function deliver(item: VisitQueueItem): Promise<SubmitVisitResult> {
   return item.op === 'upsert' ? submitVisit(item.entry) : deleteVisit(item.clientId);
@@ -164,29 +131,14 @@ export function clearVisitsQueue(): Promise<void> {
   });
 }
 
+const _flush = createCoalescingFlush(flushUnlocked);
+
 /**
  * Retries all pending visit operations. Call on app launch and on returning to
- * the foreground — both fire-and-forget. Never throws.
- *
- * Trailing-edge coalescing: only one flush runs at a time (never two
- * concurrently, preserving the no-duplicate-send guarantee), but a call made
- * while a flush is in flight schedules exactly one more flush to run after it.
- * That trailing flush re-snapshots the queue, so a visit op enqueued mid-flight
- * is delivered without waiting for the next launch. The returned promise
- * resolves only after that trailing flush completes.
+ * the foreground — both fire-and-forget. Never throws. Trailing-edge coalesced
+ * (see createCoalescingFlush): a visit op enqueued mid-flight is still delivered
+ * without waiting for the next launch.
  */
 export function flushVisitsQueue(): Promise<void> {
-  if (_flushPromise) {
-    if (!_flushAgain) {
-      _flushAgain = _flushPromise.then(() => {
-        _flushAgain = null;
-        return flushVisitsQueue();
-      });
-    }
-    return _flushAgain;
-  }
-  _flushPromise = flushUnlocked().finally(() => {
-    _flushPromise = null;
-  });
-  return _flushPromise;
+  return _flush();
 }

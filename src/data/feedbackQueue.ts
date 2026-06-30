@@ -12,8 +12,6 @@
  * so retries are byte-identical to the first attempt.
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
 import {
   submitFeedback,
   buildFeedbackEntry,
@@ -21,6 +19,7 @@ import {
   type FeedbackInput,
 } from './feedbackClient';
 import { generateUuidV4 } from './account';
+import { createQueueStorage, createQueueLock } from './createQueue';
 
 const STORAGE_KEY = 'na-pivo-feedback-queue';
 /** Hard cap — a queue this long means the backend has been unreachable for a
@@ -40,40 +39,14 @@ function isFeedbackEntry(entry: unknown): entry is FeedbackEntry {
   );
 }
 
-async function loadQueue(): Promise<FeedbackEntry[]> {
-  try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isFeedbackEntry);
-  } catch {
-    return [];
-  }
-}
-
-async function saveQueue(queue: FeedbackEntry[]): Promise<void> {
-  try {
-    if (queue.length === 0) {
-      await AsyncStorage.removeItem(STORAGE_KEY);
-    } else {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(queue));
-    }
-  } catch {
-    // Storage failure leaves the previous snapshot in place; the entry was
-    // already attempted once, so the worst case matches the old behavior.
-  }
-}
+const { load: loadQueue, save: saveQueue } = createQueueStorage<FeedbackEntry>(
+  STORAGE_KEY,
+  isFeedbackEntry,
+);
 
 /** Serializes queue mutations — concurrent enqueue/flush calls would otherwise
  *  read-modify-write the same AsyncStorage snapshot and lose entries. */
-let _chain: Promise<unknown> = Promise.resolve();
-
-function enqueueTask<T>(task: () => Promise<T>): Promise<T> {
-  const next = _chain.then(task, task);
-  _chain = next.catch(() => undefined);
-  return next;
-}
+const enqueueTask = createQueueLock();
 
 /** Attempts to send every queued entry, keeping only the ones that failed. */
 async function flushLocked(): Promise<void> {

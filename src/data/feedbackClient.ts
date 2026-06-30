@@ -10,6 +10,7 @@ import { Platform } from 'react-native';
 
 import { ensureAccount } from './account';
 import { getBackendEndpoint } from './backendConfig';
+import { chainAbortSignal } from './apiFetch';
 import { getAppVersionLabel } from '@/utils/appVersion';
 
 export type FeedbackCategory = 'bug' | 'idea' | 'other';
@@ -36,31 +37,6 @@ export interface FeedbackEntry {
 }
 
 const REQUEST_TIMEOUT_MS = 8000;
-
-function chainAbortSignal(signal?: AbortSignal): {
-  signal: AbortSignal;
-  cleanup: () => void;
-} {
-  const timeoutController = new AbortController();
-  const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
-  const onExternalAbort = () => timeoutController.abort();
-
-  if (signal) {
-    if (signal.aborted) {
-      timeoutController.abort();
-    } else {
-      signal.addEventListener('abort', onExternalAbort);
-    }
-  }
-
-  return {
-    signal: timeoutController.signal,
-    cleanup: () => {
-      clearTimeout(timeoutId);
-      if (signal) signal.removeEventListener('abort', onExternalAbort);
-    },
-  };
-}
 
 /**
  * Builds the full, retry-stable payload from the user's input. The metadata
@@ -98,7 +74,7 @@ export async function submitFeedback(
   const session = await ensureAccount(signal);
   if (!session || signal?.aborted) return false;
 
-  const abort = chainAbortSignal(signal);
+  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
   try {
     const resp = await fetch(endpoint, {
       method: 'POST',

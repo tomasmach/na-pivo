@@ -33,8 +33,6 @@ export const Colors = {
   white: '#FFFFFF',
 } as const;
 
-export type ColorToken = keyof typeof Colors;
-
 /**
  * Add an alpha channel to a 6-digit hex color. `alpha` is 0–1.
  */

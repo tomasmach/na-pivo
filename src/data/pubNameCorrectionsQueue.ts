@@ -6,13 +6,12 @@
  * backend correction.
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
 import {
   submitPubNameCorrection,
   type PubNameCorrectionEntry,
 } from './pubNameCorrectionsClient';
 import { clearPubsSnapshot } from './pubs';
+import { createQueueStorage, createQueueLock } from './createQueue';
 
 const STORAGE_KEY = 'na-pivo-pub-name-corrections-queue';
 const MAX_QUEUE_LENGTH = 30;
@@ -32,37 +31,12 @@ function isPubNameCorrectionEntry(entry: unknown): entry is PubNameCorrectionEnt
   );
 }
 
-async function loadQueue(): Promise<PubNameCorrectionEntry[]> {
-  try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isPubNameCorrectionEntry);
-  } catch {
-    return [];
-  }
-}
+const { load: loadQueue, save: saveQueue } = createQueueStorage<PubNameCorrectionEntry>(
+  STORAGE_KEY,
+  isPubNameCorrectionEntry,
+);
 
-async function saveQueue(queue: PubNameCorrectionEntry[]): Promise<void> {
-  try {
-    if (queue.length === 0) {
-      await AsyncStorage.removeItem(STORAGE_KEY);
-    } else {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(queue));
-    }
-  } catch {
-    // Storage failure leaves the previous snapshot in place.
-  }
-}
-
-let _chain: Promise<unknown> = Promise.resolve();
-
-function enqueueTask<T>(task: () => Promise<T>): Promise<T> {
-  const next = _chain.then(task, task);
-  _chain = next.catch(() => undefined);
-  return next;
-}
+const enqueueTask = createQueueLock();
 
 async function flushLocked(): Promise<void> {
   const queue = await loadQueue();

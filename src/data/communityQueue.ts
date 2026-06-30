@@ -17,10 +17,9 @@
  * since its content differs and we want it stored as a distinct contribution.
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
 import { submitPubCommunity, type CommunityEntry, type CommunityResponse } from './communityClient';
 import { geohash8 } from './geohash';
+import { createQueueStorage, createQueueLock } from './createQueue';
 
 const STORAGE_KEY = 'na-pivo-community-queue';
 /** Hard cap — a queue this long means the backend has been unreachable for a
@@ -28,7 +27,7 @@ const STORAGE_KEY = 'na-pivo-community-queue';
 const MAX_QUEUE_LENGTH = 30;
 
 /** The stable dedup key for an entry: the geohash-8 cell of its coordinates. */
-export function entryCell(entry: CommunityEntry): string {
+function entryCell(entry: CommunityEntry): string {
   return geohash8(entry.lat, entry.lng);
 }
 
@@ -46,40 +45,14 @@ function isCommunityEntry(entry: unknown): entry is CommunityEntry {
   );
 }
 
-async function loadQueue(): Promise<CommunityEntry[]> {
-  try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isCommunityEntry);
-  } catch {
-    return [];
-  }
-}
-
-async function saveQueue(queue: CommunityEntry[]): Promise<void> {
-  try {
-    if (queue.length === 0) {
-      await AsyncStorage.removeItem(STORAGE_KEY);
-    } else {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(queue));
-    }
-  } catch {
-    // Storage failure leaves the previous snapshot in place; the entry was
-    // already attempted once, so the worst case matches the old behavior.
-  }
-}
+const { load: loadQueue, save: saveQueue } = createQueueStorage<CommunityEntry>(
+  STORAGE_KEY,
+  isCommunityEntry,
+);
 
 /** Serializes queue mutations — concurrent enqueue/flush calls would otherwise
  *  read-modify-write the same AsyncStorage snapshot and lose entries. */
-let _chain: Promise<unknown> = Promise.resolve();
-
-function enqueueTask<T>(task: () => Promise<T>): Promise<T> {
-  const next = _chain.then(task, task);
-  _chain = next.catch(() => undefined);
-  return next;
-}
+const enqueueTask = createQueueLock();
 
 /** Attempts to send every queued entry, keeping only the ones that failed.
  *  Returns the delivered responses keyed by client_id so a caller can read the

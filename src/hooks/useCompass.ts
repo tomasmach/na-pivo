@@ -2,7 +2,7 @@
  * Public facade hook — the only surface the screens consume for compass behavior.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { useFocusEffect } from 'expo-router';
 import {
   useDerivedValue,
@@ -18,7 +18,7 @@ import {
   renameLocalPub,
 } from '@/data/pubs';
 import type { HoursStatus, Pub, VenueKind } from '@/data/pubs';
-import { fetchPubHours } from '@/data/hoursClient';
+import { fetchPubHours, type PubHoursResult } from '@/data/hoursClient';
 import { enqueuePubReport } from '@/data/pubReportQueue';
 import type { PubReportReason } from '@/data/pubReportsClient';
 import { buildPubNameCorrectionEntry } from '@/data/pubNameCorrectionsClient';
@@ -75,6 +75,27 @@ type PubHoursState = {
   /** Backend pub-vs-not verdict; 'not_pub' triggers auto-exclusion. */
   venueKind?: VenueKind;
 };
+
+/** Build a cached hours entry from a resolved fetch result. `status` is passed
+ *  in because callers decide the visible status differently (the initial fetch
+ *  keeps a prior 'unknown' visible across a pending re-resolve; the retry uses
+ *  the result's own status). All other fields copy straight through. */
+function hoursStateFromResult(result: PubHoursResult, status: HoursStatus): PubHoursState {
+  return {
+    status,
+    openingHours: result.openingHours,
+    isOpenNow: result.isOpenNow,
+    nextChange: result.nextChange,
+    source: result.source,
+    communityHours: result.communityHours,
+    beers: result.beers,
+    rating: result.rating,
+    ratingCount: result.ratingCount,
+    ratingLabel: result.ratingLabel,
+    hasGarden: result.hasGarden,
+    venueKind: result.venueKind,
+  };
+}
 
 function hasMovedEnoughForRetarget(current: TargetPosition, previous: TargetPosition): boolean {
   const movedMeters = haversineMeters(previous, current);
@@ -300,23 +321,26 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
   // selection effect recomputes when (and only when) the exclusion set changes.
   const lastExcludeRevisionRef = useRef<number>(0);
 
-  /** Clear both exclusion sets and bump the revision so selection re-runs from a
-   *  clean slate. Called whenever the selection context changes (moved enough /
-   *  mode / maxKm changed) and on retrySearch — the sets must only accumulate
-   *  while the user is standing in one place. Returns true if anything was cleared. */
-  const resetExclusions = useCallback((): boolean => {
-    const hadAny =
-      skippedIdsRef.current.size > 0 ||
-      autoClosedIdsRef.current.size > 0 ||
-      notPubIdsRef.current.size > 0 ||
-      lowRatedIdsRef.current.size > 0 ||
-      noGardenIdsRef.current.size > 0;
+  /** Clear all exclusion sets so selection re-runs from a clean slate. Called
+   *  whenever the selection context changes (moved enough / mode / maxKm changed)
+   *  and on retrySearch — the sets must only accumulate while the user is standing
+   *  in one place. */
+  const resetExclusions = useCallback(() => {
     if (skippedIdsRef.current.size > 0) skippedIdsRef.current = new Set();
     if (autoClosedIdsRef.current.size > 0) autoClosedIdsRef.current = new Set();
     if (notPubIdsRef.current.size > 0) notPubIdsRef.current = new Set();
     if (lowRatedIdsRef.current.size > 0) lowRatedIdsRef.current = new Set();
     if (noGardenIdsRef.current.size > 0) noGardenIdsRef.current = new Set();
-    return hadAny;
+  }, []);
+
+  /** Add `id` to an exclusion ref set (copy-on-write so effects keyed on the set
+   *  identity notice) and bump excludeRevision to drive a re-selection. A no-op
+   *  when already excluded, so each pub triggers exactly one bump. Shared by the
+   *  auto-skip effects (closed / not-pub / low-rated / no-garden) and skip(). */
+  const addExcluded = useCallback((ref: MutableRefObject<Set<string>>, id: string) => {
+    if (ref.current.has(id)) return;
+    ref.current = new Set(ref.current).add(id);
+    setExcludeRevision((revision) => revision + 1);
   }, []);
 
   useEffect(() => {
@@ -493,20 +517,7 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
               result.status === 'pending' && previous?.status === 'unknown'
                 ? 'unknown'
                 : result.status;
-            next.set(currentPubId, {
-              status: visibleStatus,
-              openingHours: result.openingHours,
-              isOpenNow: result.isOpenNow,
-              nextChange: result.nextChange,
-              source: result.source,
-              communityHours: result.communityHours,
-              beers: result.beers,
-              rating: result.rating,
-              ratingCount: result.ratingCount,
-              ratingLabel: result.ratingLabel,
-              hasGarden: result.hasGarden,
-              venueKind: result.venueKind,
-            });
+            next.set(currentPubId, hoursStateFromResult(result, visibleStatus));
           } else {
             next.delete(currentPubId);
           }
@@ -714,20 +725,7 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
 
           setHoursById((prev) => {
             const next = new Map(prev);
-            next.set(retryId, {
-              status: result.status,
-              openingHours: result.openingHours,
-              isOpenNow: result.isOpenNow,
-              nextChange: result.nextChange,
-              source: result.source,
-              communityHours: result.communityHours,
-              beers: result.beers,
-              rating: result.rating,
-              ratingCount: result.ratingCount,
-              ratingLabel: result.ratingLabel,
-              hasGarden: result.hasGarden,
-              venueKind: result.venueKind,
-            });
+            next.set(retryId, hoursStateFromResult(result, result.status));
             return next;
           });
         })
@@ -750,11 +748,9 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
     if (revealed) return;
     if (hoursStatusForCurrent !== 'ok') return;
     if (isOpenNowForCurrent !== false) return;
-    if (autoClosedIdsRef.current.has(currentPubId)) return;
 
-    autoClosedIdsRef.current = new Set(autoClosedIdsRef.current).add(currentPubId);
-    setExcludeRevision((revision) => revision + 1);
-  }, [currentPubId, hideClosedPubs, revealed, hoursStatusForCurrent, isOpenNowForCurrent]);
+    addExcluded(autoClosedIdsRef, currentPubId);
+  }, [currentPubId, hideClosedPubs, revealed, hoursStatusForCurrent, isOpenNowForCurrent, addExcluded]);
 
   // — Auto-hide non-pubs (venueKind === 'not_pub') (NON-BLOCKING) —
   // The backend classifies each place from Firmy.cz categories. A definite
@@ -773,11 +769,9 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
     if (!currentPubId) return;
     if (revealed) return;
     if (venueKindForCurrent !== 'not_pub') return;
-    if (notPubIdsRef.current.has(currentPubId)) return;
 
-    notPubIdsRef.current = new Set(notPubIdsRef.current).add(currentPubId);
-    setExcludeRevision((revision) => revision + 1);
-  }, [currentPubId, revealed, venueKindForCurrent]);
+    addExcluded(notPubIdsRef, currentPubId);
+  }, [currentPubId, revealed, venueKindForCurrent, addExcluded]);
 
   // — Lightweight discovery preferences (NON-BLOCKING) —
   // Skip only definite misses. Unknown rating/garden metadata remains eligible,
@@ -788,22 +782,18 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
     if (revealed) return;
     if (typeof ratingForCurrent !== 'number' || !Number.isFinite(ratingForCurrent)) return;
     if (ratingForCurrent >= 4) return;
-    if (lowRatedIdsRef.current.has(currentPubId)) return;
 
-    lowRatedIdsRef.current = new Set(lowRatedIdsRef.current).add(currentPubId);
-    setExcludeRevision((revision) => revision + 1);
-  }, [currentPubId, preferRatedPubs, revealed, ratingForCurrent]);
+    addExcluded(lowRatedIdsRef, currentPubId);
+  }, [currentPubId, preferRatedPubs, revealed, ratingForCurrent, addExcluded]);
 
   const hasGardenForCurrent = hoursForCurrent?.hasGarden;
   useEffect(() => {
     if (!preferGardenPubs || !currentPubId) return;
     if (revealed) return;
     if (hasGardenForCurrent !== false) return;
-    if (noGardenIdsRef.current.has(currentPubId)) return;
 
-    noGardenIdsRef.current = new Set(noGardenIdsRef.current).add(currentPubId);
-    setExcludeRevision((revision) => revision + 1);
-  }, [currentPubId, preferGardenPubs, revealed, hasGardenForCurrent]);
+    addExcluded(noGardenIdsRef, currentPubId);
+  }, [currentPubId, preferGardenPubs, revealed, hasGardenForCurrent, addExcluded]);
 
   // — Expire resolved hours at their nextChange boundary (NON-BLOCKING) —
   // isOpenNow / openUntil are a snapshot from when the lookup resolved. A user
@@ -930,10 +920,8 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
   const skip = useCallback(() => {
     const id = currentPub?.id;
     if (!id) return;
-    if (skippedIdsRef.current.has(id)) return;
-    skippedIdsRef.current = new Set(skippedIdsRef.current).add(id);
-    setExcludeRevision((revision) => revision + 1);
-  }, [currentPub]);
+    addExcluded(skippedIdsRef, id);
+  }, [addExcluded, currentPub]);
 
   const reportCurrentPub = useCallback(async (reason: PubReportReason): Promise<boolean> => {
     const pub = currentPub;

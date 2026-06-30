@@ -14,6 +14,7 @@
 
 import { ensureAccount } from './account';
 import { getBackendEndpoint } from './backendConfig';
+import { chainAbortSignal } from './apiFetch';
 import type { CommunityBeer, WeeklyHours, WireBeer } from './communityHours';
 import { DAY_KEYS, beerFromWire, beerToWire } from './communityHours';
 import type { WireMapperSnapshot } from './pubAmenitiesClient';
@@ -69,31 +70,6 @@ interface WireResponse {
 
 const REQUEST_TIMEOUT_MS = 8000;
 
-function chainAbortSignal(signal?: AbortSignal): {
-  signal: AbortSignal;
-  cleanup: () => void;
-} {
-  const timeoutController = new AbortController();
-  const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
-  const onExternalAbort = () => timeoutController.abort();
-
-  if (signal) {
-    if (signal.aborted) {
-      timeoutController.abort();
-    } else {
-      signal.addEventListener('abort', onExternalAbort);
-    }
-  }
-
-  return {
-    signal: timeoutController.signal,
-    cleanup: () => {
-      clearTimeout(timeoutId);
-      if (signal) signal.removeEventListener('abort', onExternalAbort);
-    },
-  };
-}
-
 /**
  * Build the retry-stable wire payload from the user's input + a fresh client_id.
  * Only the sections the user touched (`hours` / `beers`) are included — both are
@@ -131,7 +107,7 @@ export async function submitPubCommunity(
   const session = await ensureAccount(signal);
   if (!session || signal?.aborted) return null;
 
-  const abort = chainAbortSignal(signal);
+  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
   try {
     const resp = await fetch(endpoint, {
       method: 'POST',

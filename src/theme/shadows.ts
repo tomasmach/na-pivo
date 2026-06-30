@@ -1,5 +1,5 @@
 import { ViewStyle } from 'react-native';
-import { Colors, withAlpha } from './colors';
+import { Colors } from './colors';
 
 /**
  * Outer amber glow used on pill buttons, the celebration headline,
@@ -40,14 +40,3 @@ export function softDrop(): ViewStyle {
     shadowRadius: 4,
   };
 }
-
-/**
- * Helper for SVG `filter` element — returns Gaussian-blur stdDeviation.
- */
-export const SVG_GLOW_STD_DEVIATION = 10;
-
-export const GlowColors = {
-  amber: withAlpha(Colors.glow, 0.55),
-  amberSoft: withAlpha(Colors.glow, 0.38),
-  amberStrong: withAlpha(Colors.glow, 0.77),
-} as const;

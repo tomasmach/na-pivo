@@ -9,6 +9,7 @@
 
 import { ensureAccount, clearCachedAnonymousAccount } from './account';
 import { getBackendEndpoint } from './backendConfig';
+import { chainAbortSignal } from './apiFetch';
 import { trackApiFailure } from './telemetryClient';
 
 export interface AddedPubInput {
@@ -50,31 +51,6 @@ const REQUEST_TIMEOUT_MS = 8000;
 
 export type SubmitAddedPubResult = AddedPubResponse | 'permanent-error' | 'retry';
 
-function chainAbortSignal(signal?: AbortSignal): {
-  signal: AbortSignal;
-  cleanup: () => void;
-} {
-  const timeoutController = new AbortController();
-  const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
-  const onExternalAbort = () => timeoutController.abort();
-
-  if (signal) {
-    if (signal.aborted) {
-      timeoutController.abort();
-    } else {
-      signal.addEventListener('abort', onExternalAbort);
-    }
-  }
-
-  return {
-    signal: timeoutController.signal,
-    cleanup: () => {
-      clearTimeout(timeoutId);
-      if (signal) signal.removeEventListener('abort', onExternalAbort);
-    },
-  };
-}
-
 export function buildAddedPubEntry(input: AddedPubInput, clientId: string): AddedPubEntry {
   const entry: AddedPubEntry = {
     client_id: clientId,
@@ -101,7 +77,7 @@ export async function submitAddedPub(
   const session = await ensureAccount(signal);
   if (!session || signal?.aborted) return 'retry';
 
-  const abort = chainAbortSignal(signal);
+  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
   try {
     const resp = await fetch(endpoint, {
       method: 'POST',

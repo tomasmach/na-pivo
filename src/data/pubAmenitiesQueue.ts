@@ -32,13 +32,12 @@
  * attempts and block the mutex.
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
 import {
   submitAmenityVotes,
   type SubmitAmenityResult,
   type WireAmenityVote,
 } from './pubAmenitiesClient';
+import { createQueueStorage, createQueueLock } from './createQueue';
 
 const STORAGE_KEY = 'na-pivo-pub-amenities-queue';
 /** Hard cap — one item per (pub, amenity). A realistic offline crawl (~10 pubs ×
@@ -77,40 +76,14 @@ function isQueueItem(value: unknown): value is AmenityQueueItem {
   return false;
 }
 
-async function loadQueue(): Promise<AmenityQueueItem[]> {
-  try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isQueueItem);
-  } catch {
-    return [];
-  }
-}
-
-async function saveQueue(queue: AmenityQueueItem[]): Promise<void> {
-  try {
-    if (queue.length === 0) {
-      await AsyncStorage.removeItem(STORAGE_KEY);
-    } else {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(queue));
-    }
-  } catch {
-    // Storage failure leaves the previous snapshot in place; the change was
-    // already attempted once, so the worst case matches the old behavior.
-  }
-}
+const { load: loadQueue, save: saveQueue } = createQueueStorage<AmenityQueueItem>(
+  STORAGE_KEY,
+  isQueueItem,
+);
 
 /** Serializes queue mutations — concurrent enqueue/flush calls would otherwise
  *  read-modify-write the same AsyncStorage snapshot and lose items. */
-let _chain: Promise<unknown> = Promise.resolve();
-
-function runLocked<T>(task: () => Promise<T>): Promise<T> {
-  const next = _chain.then(task, task);
-  _chain = next.catch(() => undefined);
-  return next;
-}
+const runLocked = createQueueLock();
 
 async function deliver(item: AmenityQueueItem): Promise<SubmitAmenityResult> {
   // Both ops are PUTs of the snapshot payload (a delete carries a value:null

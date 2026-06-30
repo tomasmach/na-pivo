@@ -23,8 +23,9 @@
  * throws), mirroring submitPubCommunity's null-on-failure shape.
  */
 
-import { clearCachedAnonymousAccount, ensureAccount, type AccountSession } from './account';
+import { clearCachedAnonymousAccount, ensureAccount } from './account';
 import { getBackendEndpoint } from './backendConfig';
+import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
 import { trackClientEvent } from './telemetryClient';
 
 /** A single rating in backend (snake_case) wire form for an upsert PUT. */
@@ -59,23 +60,6 @@ export type SubmitRatingResult = 'ok' | 'permanent-error' | 'retry';
 
 const REQUEST_TIMEOUT_MS = 8000;
 
-async function classifyRatingHttpFailure(
-  status: number,
-  session: AccountSession,
-): Promise<SubmitRatingResult> {
-  if (status === 401) {
-    await clearCachedAnonymousAccount(session);
-    return 'retry';
-  }
-  // Validation errors are permanent for this byte-stable payload; other 4xx can
-  // be transient (auth recovery, throttling, a frontend briefly ahead of the
-  // backend during rollout), so keep them queued.
-  if (status === 400 || status === 422) {
-    return 'permanent-error';
-  }
-  return 'retry';
-}
-
 function trackRatingSynced(operation: 'submit_rating' | 'delete_rating'): void {
   void trackClientEvent({
     event: 'rating_synced',
@@ -98,24 +82,6 @@ function trackRatingSyncFailed(
       retryable: details.retryable,
     },
   });
-}
-
-/** Layer an external AbortSignal with an internal 8s timeout. */
-function chainTimeout(signal?: AbortSignal): { signal: AbortSignal; cleanup: () => void } {
-  const timeoutController = new AbortController();
-  const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
-  const onExternalAbort = () => timeoutController.abort();
-  if (signal) {
-    if (signal.aborted) timeoutController.abort();
-    else signal.addEventListener('abort', onExternalAbort);
-  }
-  return {
-    signal: timeoutController.signal,
-    cleanup: () => {
-      clearTimeout(timeoutId);
-      if (signal) signal.removeEventListener('abort', onExternalAbort);
-    },
-  };
 }
 
 /**
@@ -149,7 +115,7 @@ export async function submitRatingUpsert(
     return 'retry';
   }
 
-  const abort = chainTimeout(signal);
+  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
   try {
     const resp = await fetch(endpoint, {
       method: 'PUT',
@@ -165,7 +131,7 @@ export async function submitRatingUpsert(
       trackRatingSynced('submit_rating');
       return 'ok';
     }
-    const result = await classifyRatingHttpFailure(resp.status, session);
+    const result = await classifyQueueHttpFailure(resp.status, session);
     trackRatingSyncFailed('submit_rating', {
       status: resp.status,
       reason: 'http_error',
@@ -217,7 +183,7 @@ export async function submitRatingDelete(
     return 'retry';
   }
 
-  const abort = chainTimeout(signal);
+  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
   try {
     const resp = await fetch(endpoint, {
       method: 'DELETE',
@@ -229,7 +195,7 @@ export async function submitRatingDelete(
       trackRatingSynced('delete_rating');
       return 'ok';
     }
-    const result = await classifyRatingHttpFailure(resp.status, session);
+    const result = await classifyQueueHttpFailure(resp.status, session);
     trackRatingSyncFailed('delete_rating', {
       status: resp.status,
       reason: 'http_error',
@@ -273,7 +239,7 @@ export async function fetchRatings(signal?: AbortSignal): Promise<WireRating[] |
   const session = await ensureAccount(signal);
   if (!session || signal?.aborted) return null;
 
-  const abort = chainTimeout(signal);
+  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
   try {
     const resp = await fetch(endpoint, {
       method: 'GET',

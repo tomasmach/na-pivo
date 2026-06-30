@@ -1,5 +1,6 @@
 import { clearCachedAnonymousAccount, ensureAccount, generateUuidV4, type AccountSession } from './account';
 import { getBackendEndpoint } from './backendConfig';
+import { chainAbortSignal } from './apiFetch';
 import { trackApiFailure } from './telemetryClient';
 import type { Pub } from './pubs';
 
@@ -203,23 +204,6 @@ interface RawFriendStats {
   rituals?: { key?: string; title?: string }[];
 }
 
-function chainTimeout(signal?: AbortSignal): { signal: AbortSignal; cleanup: () => void } {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  const onAbort = () => controller.abort();
-  if (signal) {
-    if (signal.aborted) controller.abort();
-    else signal.addEventListener('abort', onAbort);
-  }
-  return {
-    signal: controller.signal,
-    cleanup: () => {
-      clearTimeout(timeoutId);
-      if (signal) signal.removeEventListener('abort', onAbort);
-    },
-  };
-}
-
 async function handleUnauthorized(session: AccountSession): Promise<void> {
   await clearCachedAnonymousAccount(session);
 }
@@ -365,7 +349,7 @@ async function requestJson(
     return { ok: false, result: { ok: false, code: 'account', detail: 'Účet teď není připravený.' } };
   }
 
-  const abort = chainTimeout(options.signal);
+  const abort = chainAbortSignal(options.signal, REQUEST_TIMEOUT_MS);
   try {
     const resp = await fetch(endpoint, {
       method: options.method ?? 'GET',
