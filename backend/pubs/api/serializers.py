@@ -57,6 +57,7 @@ from pubs.models import (
     Account,
     ClientEvent,
     ContentReport,
+    EmailCredential,
     FeedbackReport,
     FriendActivityResponse,
     FriendNotification,
@@ -1451,8 +1452,8 @@ class AccountMeSerializer(serializers.ModelSerializer):
     """
 
     id = serializers.UUIDField(source="public_id", read_only=True)
-    email = serializers.CharField(source="primary_email", read_only=True)
-    email_verified = serializers.BooleanField(source="email_is_verified", read_only=True)
+    email = serializers.SerializerMethodField()
+    email_verified = serializers.SerializerMethodField()
     is_anonymous = serializers.SerializerMethodField()
     providers = serializers.SerializerMethodField()
     avatar_url = serializers.SerializerMethodField()
@@ -1490,11 +1491,51 @@ class AccountMeSerializer(serializers.ModelSerializer):
             "last_seen_at",
         ]
 
+    def _auth_snapshot(self, obj: Account) -> dict:
+        """Load account credential/provider state once per serializer instance."""
+
+        cache = getattr(self, "_auth_snapshot_cache", None)
+        if cache is None:
+            cache = {}
+            self._auth_snapshot_cache = cache
+        if obj.pk in cache:
+            return cache[obj.pk]
+
+        try:
+            credential = obj.email_credential
+        except EmailCredential.DoesNotExist:
+            credential = None
+        identities = list(obj.identities.order_by("pk").only("account_id", "provider", "email"))
+        snapshot = {
+            "credential": credential,
+            "identities": identities,
+        }
+        cache[obj.pk] = snapshot
+        return snapshot
+
+    def get_email(self, obj: Account) -> str:
+        snapshot = self._auth_snapshot(obj)
+        credential = snapshot["credential"]
+        if credential is not None:
+            return credential.email
+        for identity in snapshot["identities"]:
+            if identity.email:
+                return identity.email
+        return ""
+
+    def get_email_verified(self, obj: Account) -> bool:
+        credential = self._auth_snapshot(obj)["credential"]
+        return bool(credential and credential.email_verified)
+
     def get_is_anonymous(self, obj: Account) -> bool:
-        return not obj.is_claimed
+        snapshot = self._auth_snapshot(obj)
+        return not (snapshot["credential"] or snapshot["identities"])
 
     def get_providers(self, obj: Account) -> list[str]:
-        return obj.auth_methods()
+        snapshot = self._auth_snapshot(obj)
+        providers = ["email"] if snapshot["credential"] else []
+        providers.extend(identity.provider for identity in snapshot["identities"])
+        return providers
 
     def get_has_avatar(self, obj: Account) -> bool:
         return bool(obj.avatar)

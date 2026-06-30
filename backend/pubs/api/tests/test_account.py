@@ -15,7 +15,8 @@ from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework.throttling import ScopedRateThrottle
 
-from pubs.models import Account, AuthToken
+from pubs.api.serializers import AccountMeSerializer
+from pubs.models import Account, AuthIdentity, AuthToken, EmailCredential
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -238,6 +239,38 @@ def test_me_returns_account_for_valid_token(client):
     assert body["device_id"] == _DEVICE_ID
     assert body["hide_pub_names"] is False
     assert "token" not in body
+
+
+@pytest.mark.django_db
+def test_account_me_serializer_reuses_auth_snapshot(django_assert_num_queries):
+    account = Account.objects.create(device_id="auth-snapshot-device")
+    EmailCredential.objects.create(
+        account=account,
+        email="snapshot@example.com",
+        password="x",
+        email_verified=True,
+    )
+    AuthIdentity.objects.create(
+        account=account,
+        provider=AuthIdentity.Provider.GOOGLE,
+        subject="google-sub",
+        email="google@example.com",
+    )
+    AuthIdentity.objects.create(
+        account=account,
+        provider=AuthIdentity.Provider.APPLE,
+        subject="apple-sub",
+        email="apple@example.com",
+    )
+
+    serializer = AccountMeSerializer()
+    fresh_account = Account.objects.get(pk=account.pk)
+
+    with django_assert_num_queries(2):
+        assert serializer.get_email(fresh_account) == "snapshot@example.com"
+        assert serializer.get_email_verified(fresh_account) is True
+        assert serializer.get_is_anonymous(fresh_account) is False
+        assert serializer.get_providers(fresh_account) == ["email", "google", "apple"]
 
 
 @pytest.mark.django_db
