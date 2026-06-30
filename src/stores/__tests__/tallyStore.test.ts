@@ -21,7 +21,6 @@ import {
   sessionTotalCzk,
   sessionBeerCounts,
   sessionLastActivityMs,
-  isSessionIdle,
   resumableSession,
   IDLE_TIMEOUT_MS,
   migrateTally,
@@ -329,21 +328,6 @@ describe('idle detection', () => {
     useTallyStore.getState().addDrink(PUB_A, beer({ at: '2026-06-12T20:30:00' }));
     const ms = sessionLastActivityMs(useTallyStore.getState().current!);
     expect(ms).toBe(Date.parse('2026-06-12T20:30:00'));
-  });
-
-  it('isSessionIdle flips once the idle window passes since the last drink', () => {
-    useTallyStore.getState().addDrink(PUB_A, beer({ at: '2026-06-12T19:00:00' }));
-    const last = Date.parse('2026-06-12T19:00:00');
-    const session = useTallyStore.getState().current;
-    expect(isSessionIdle(session, last + IDLE_TIMEOUT_MS - 1)).toBe(false);
-    expect(isSessionIdle(session, last + IDLE_TIMEOUT_MS)).toBe(true);
-  });
-
-  it('an empty or absent session is never idle', () => {
-    expect(isSessionIdle(null, Date.now())).toBe(false);
-    useTallyStore.getState().addDrink(PUB_A, beer());
-    useTallyStore.getState().undoLast();
-    expect(isSessionIdle(useTallyStore.getState().current, Date.now() + IDLE_TIMEOUT_MS * 10)).toBe(false);
   });
 });
 

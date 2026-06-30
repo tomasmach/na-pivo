@@ -6,10 +6,12 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 
 import {
   usePubRatingsStore,
-  getPubRating,
   selectPubRating,
   migratePubRatings,
 } from '../pubRatingsStore';
+
+/** Local non-reactive read for assertions (mirrors the store snapshot). */
+const getPubRating = (pubKey: string) => usePubRatingsStore.getState().ratings[pubKey];
 
 const PUB = 'aaaaaaaa';
 const OTHER = 'bbbbbbbb';

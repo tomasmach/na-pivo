@@ -214,8 +214,3 @@ export const usePubAmenitiesStore = create<PubAmenitiesState>()(
 export function selectPubVotes(pubKey: string) {
   return (state: PubAmenitiesState): PubAmenityVotes | undefined => state.votes[pubKey];
 }
-
-/** Read all of a pub's votes off the current snapshot (non-reactive). */
-export function getPubVotes(pubKey: string): PubAmenityVotes | undefined {
-  return usePubAmenitiesStore.getState().votes[pubKey];
-}

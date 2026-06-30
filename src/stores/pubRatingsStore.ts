@@ -192,8 +192,3 @@ export const usePubRatingsStore = create<PubRatingsState>()(
 export function selectPubRating(pubKey: string) {
   return (state: PubRatingsState): PubRating | undefined => state.ratings[pubKey];
 }
-
-/** Read a pub's rating off the current snapshot (non-reactive). */
-export function getPubRating(pubKey: string): PubRating | undefined {
-  return usePubRatingsStore.getState().ratings[pubKey];
-}

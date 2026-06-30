@@ -6,11 +6,13 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 
 import {
   usePubAmenitiesStore,
-  getPubVotes,
   selectPubVotes,
   migratePubAmenities,
 } from '../pubAmenitiesStore';
 import type { AmenityKey } from '@/data/amenities';
+
+/** Local non-reactive read for assertions (mirrors the store snapshot). */
+const getPubVotes = (pubKey: string) => usePubAmenitiesStore.getState().votes[pubKey];
 
 const PUB = 'aaaaaaaa';
 const OTHER = 'bbbbbbbb';

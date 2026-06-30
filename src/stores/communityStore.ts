@@ -37,13 +37,11 @@ interface CommunityState {
     cell: string,
     patch: { hours?: WeeklyHours; beers?: CommunityBeer[] },
   ) => void;
-  /** Read the override for a cell, or undefined when none. */
-  getOverride: (cell: string) => CommunityOverride | undefined;
 }
 
 export const useCommunityStore = create<CommunityState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       overrides: {},
 
       setOverride: (cell, patch) =>
@@ -56,8 +54,6 @@ export const useCommunityStore = create<CommunityState>()(
           };
           return { overrides: { ...state.overrides, [cell]: next } };
         }),
-
-      getOverride: (cell) => get().overrides[cell],
     }),
     {
       name: 'na-pivo-community',

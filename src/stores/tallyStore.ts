@@ -494,13 +494,6 @@ export function sessionLastActivityMs(session: TallySession): number {
   return Number.isFinite(maxMs) ? maxMs : 0;
 }
 
-/** True when a session has sat untouched past the idle window — the signal to
- *  auto-complete it. An empty session is never "idle" (nothing to close). */
-export function isSessionIdle(session: TallySession | null, nowMs: number = Date.now()): boolean {
-  if (!session || session.drinks.length === 0) return false;
-  return nowMs - sessionLastActivityMs(session) >= IDLE_TIMEOUT_MS;
-}
-
 /**
  * The evening the counter can offer to resume at `pubKey`, or null. It is the
  * newest history session, but only when it was auto-completed by timeout, sits
