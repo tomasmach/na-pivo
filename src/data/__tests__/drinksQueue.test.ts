@@ -155,6 +155,27 @@ describe('flushDrinksQueue', () => {
     expect((await readQueue()).map((e) => e.client_id)).toEqual(['a', 'b']);
   });
 
+  it('coalesces concurrent flush calls so the same snapshot is not sent twice', async () => {
+    let resolveSubmit!: (value: 'ok') => void;
+    const slowSubmit = new Promise<'ok'>((resolve) => {
+      resolveSubmit = resolve;
+    });
+
+    (submitDrink as jest.Mock).mockReturnValueOnce(slowSubmit);
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([entry({ client_id: 'a' })]));
+
+    const firstFlush = flushDrinksQueue();
+    const secondFlush = flushDrinksQueue();
+    await flushMicrotasks();
+
+    expect(submitDrink).toHaveBeenCalledTimes(1);
+    expect(submitDrink).toHaveBeenCalledWith(expect.objectContaining({ client_id: 'a' }));
+
+    resolveSubmit('ok');
+    await Promise.all([firstFlush, secondFlush]);
+    expect(await readQueue()).toEqual([]);
+  });
+
   it('does nothing on an empty queue', async () => {
     await flushDrinksQueue();
     expect(submitDrink).not.toHaveBeenCalled();

@@ -25,6 +25,7 @@ export function useDeviceHeading(enabled = true): UseDeviceHeadingResult {
   const [hasMagnetometer, setHasMagnetometer] = useState(true);
 
   const subscriptionRef = useRef<Location.LocationSubscription | null>(null);
+  const startingRef = useRef(false);
   const emaRef = useRef(createAngleEMA(headingAlphaForPlatform(Platform.OS)));
   const isMountedRef = useRef(true);
   const noHeadingCountRef = useRef(0);
@@ -37,12 +38,14 @@ export function useDeviceHeading(enabled = true): UseDeviceHeadingResult {
   const startWatching = async (): Promise<void> => {
     if (!enabledRef.current) return;
     if (subscriptionRef.current) return;
+    if (startingRef.current) return;
 
     emaRef.current.reset();
     noHeadingCountRef.current = 0;
     smoothedHeading.value = null;
 
     try {
+      startingRef.current = true;
       const sub = await Location.watchHeadingAsync((heading) => {
         if (!isMountedRef.current) return;
 
@@ -79,13 +82,15 @@ export function useDeviceHeading(enabled = true): UseDeviceHeadingResult {
         }
       });
 
-      if (!isMountedRef.current || !enabledRef.current) {
+      if (!isMountedRef.current || !enabledRef.current || subscriptionRef.current) {
         sub.remove();
         return;
       }
       subscriptionRef.current = sub;
     } catch {
       // ignore — device may not support heading
+    } finally {
+      startingRef.current = false;
     }
   };
 

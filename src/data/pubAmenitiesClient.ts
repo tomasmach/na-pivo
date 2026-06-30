@@ -92,7 +92,7 @@ export interface WireAmenityVoteResponse {
   /** null on retract/ignore; lat/lng never echoed. */
   vote: { amenity_key: string; value: 'yes' | 'no'; client_updated_at: string } | null;
   /** recomputed aggregate, lets the meter/XP update in one round-trip. */
-  aggregate: WireAmenityAggregate;
+  aggregate: WireAmenityAggregate | null;
 }
 
 /** Per-pub mapper completeness, nested in WirePubAmenities. */
@@ -342,7 +342,12 @@ function isWireMapperSnapshot(value: unknown): value is WireMapperSnapshot {
 
 function isWireAmenityVoteResponse(value: unknown): value is WireAmenityVoteResponse {
   const r = value as WireAmenityVoteResponse;
-  return !!r && typeof r.xp_awarded === 'number' && typeof r.was_first_map === 'boolean';
+  return (
+    !!r &&
+    typeof r.xp_awarded === 'number' &&
+    typeof r.was_first_map === 'boolean' &&
+    (r.aggregate === null || isWireAmenityAggregate(r.aggregate))
+  );
 }
 
 function parseVotesResponse(data: unknown): WireAmenityVotesResponse | null {

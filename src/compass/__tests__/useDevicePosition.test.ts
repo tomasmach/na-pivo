@@ -54,10 +54,16 @@ function renderDevicePositionHook(initialProps: DevicePositionHookProps) {
 }
 
 describe('useDevicePosition', () => {
+  let appStateHandler: ((state: string) => void) | undefined;
+
   beforeEach(() => {
+    appStateHandler = undefined;
     jest.clearAllMocks();
     (AppState as { currentState: string }).currentState = 'active';
-    (AppState.addEventListener as jest.Mock).mockReturnValue({ remove: jest.fn() });
+    (AppState.addEventListener as jest.Mock).mockImplementation((_event, handler) => {
+      appStateHandler = handler;
+      return { remove: jest.fn() };
+    });
   });
 
   it('starts GPS only after watching is enabled', async () => {
@@ -111,5 +117,42 @@ describe('useDevicePosition', () => {
     });
 
     hook.unmount();
+  });
+
+  it('does not start duplicate GPS watchers while the first subscription is still resolving', async () => {
+    let resolveSubscription: ((subscription: { remove: jest.Mock }) => void) | undefined;
+    const remove = jest.fn();
+
+    (Location.watchPositionAsync as jest.Mock).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSubscription = resolve;
+        }),
+    );
+
+    const hook = renderDevicePositionHook({ enabled: true });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(Location.watchPositionAsync).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      appStateHandler?.('active');
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(Location.watchPositionAsync).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveSubscription?.({ remove });
+      await Promise.resolve();
+    });
+
+    expect(remove).not.toHaveBeenCalled();
+    hook.unmount();
+    expect(remove).toHaveBeenCalledTimes(1);
   });
 });

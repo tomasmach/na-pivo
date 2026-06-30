@@ -327,6 +327,30 @@ describe('submitAmenityVotesDetailed — live XP envelope', () => {
     expect(res.body?.results).toHaveLength(1);
     expect(res.body?.mapper).toBeNull();
   });
+
+  it('keeps valid result rows when the backend returns aggregate null', async () => {
+    installFetch(
+      fetchResolving(200, {
+        results: [
+          {
+            applied: false,
+            ignored_unknown_amenity: true,
+            deleted: false,
+            was_first_map: false,
+            xp_awarded: 0,
+            vote: null,
+            aggregate: null,
+          },
+        ],
+        mapper: null,
+      }),
+    );
+
+    const res = await submitAmenityVotesDetailed([vote()]);
+    expect(res.status).toBe('ok');
+    expect(res.body?.results).toHaveLength(1);
+    expect(res.body?.results[0].aggregate).toBeNull();
+  });
 });
 
 afterAll(() => {

@@ -72,6 +72,7 @@ async function saveQueue(queue: DrinkEntry[]): Promise<void> {
  *  outside this lock so a slow/offline flush cannot block a freshly-counted beer
  *  from being persisted immediately. */
 let _mutationChain: Promise<unknown> = Promise.resolve();
+let _flushPromise: Promise<void> | null = null;
 
 function runMutation<T>(task: () => Promise<T>): Promise<T> {
   const next = _mutationChain.then(task, task);
@@ -199,5 +200,9 @@ export function clearDrinksQueue(): Promise<void> {
  * foreground — both fire-and-forget. Never throws.
  */
 export function flushDrinksQueue(): Promise<void> {
-  return flushUnlocked();
+  if (_flushPromise) return _flushPromise;
+  _flushPromise = flushUnlocked().finally(() => {
+    _flushPromise = null;
+  });
+  return _flushPromise;
 }

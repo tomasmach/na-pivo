@@ -371,7 +371,10 @@ export function MapPubSheet({
         const result = res.body.results[0];
         if (result) {
           // Refresh the row's aggregate from the recomputed server truth.
-          setAggregates((prev) => mergeAggregate(prev, result.aggregate));
+          const aggregate = result.aggregate;
+          if (aggregate) {
+            setAggregates((prev) => mergeAggregate(prev, aggregate));
+          }
           consumeVoteEnvelope(result.xp_awarded, result.was_first_map);
         }
         // Feed the fresh Mapér snapshot to Profile + name an optimistic level-up.

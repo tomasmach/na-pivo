@@ -19,14 +19,17 @@ export interface UseDevicePositionResult {
 export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
   const [position, setPosition] = useState<DevicePosition | null>(null);
   const subscriptionRef = useRef<Location.LocationSubscription | null>(null);
+  const startingRef = useRef(false);
   const isMountedRef = useRef(true);
   const enabledRef = useRef(enabled);
 
   const startWatching = async (): Promise<void> => {
     if (!enabledRef.current) return;
     if (subscriptionRef.current) return; // already watching
+    if (startingRef.current) return;
 
     try {
+      startingRef.current = true;
       const sub = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.BestForNavigation,
@@ -42,13 +45,15 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
           });
         },
       );
-      if (!isMountedRef.current || !enabledRef.current) {
+      if (!isMountedRef.current || !enabledRef.current || subscriptionRef.current) {
         sub.remove();
         return;
       }
       subscriptionRef.current = sub;
     } catch {
       // ignore — no permission or GPS unavailable
+    } finally {
+      startingRef.current = false;
     }
   };
 
@@ -65,7 +70,6 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
     } else {
       stopWatching();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled]);
 
   useEffect(() => {
@@ -90,7 +94,6 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
       stopWatching();
       subscription.remove();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return { position };
