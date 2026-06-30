@@ -2760,15 +2760,26 @@ def _nearby_user_added_pub_items(lat: float, lng: float, radius_km: float) -> li
     """
 
     lat_delta = radius_km / 111.0
-    lng_delta = radius_km / (111.0 * max(math.cos(math.radians(lat)), 0.01))
+    lng_scale = max(math.cos(math.radians(lat)), 0.01)
+    lng_delta = radius_km / (111.0 * lng_scale)
+    lat_distance = F("lat") - Value(lat)
+    lng_distance = (F("lng") - Value(lng)) * Value(lng_scale)
+    distance_score = ExpressionWrapper(
+        lat_distance * lat_distance + lng_distance * lng_distance,
+        output_field=FloatField(),
+    )
 
-    rows = UserAddedPub.objects.filter(
-        active=True,
-        lat__gte=lat - lat_delta,
-        lat__lte=lat + lat_delta,
-        lng__gte=lng - lng_delta,
-        lng__lte=lng + lng_delta,
-    ).order_by("-updated_at")[:_USER_ADDED_SCAN_LIMIT]
+    rows = (
+        UserAddedPub.objects.filter(
+            active=True,
+            lat__gte=lat - lat_delta,
+            lat__lte=lat + lat_delta,
+            lng__gte=lng - lng_delta,
+            lng__lte=lng + lng_delta,
+        )
+        .annotate(distance_score=distance_score)
+        .order_by("distance_score", "-updated_at")[:_USER_ADDED_SCAN_LIMIT]
+    )
 
     within = []
     for pub in rows:

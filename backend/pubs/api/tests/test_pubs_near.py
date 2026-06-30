@@ -807,6 +807,41 @@ def test_user_added_pubs_capped_and_nearest_first(client):
 
 
 @pytest.mark.django_db
+def test_user_added_scan_limit_keeps_old_nearby_pub(client):
+    import uuid as _uuid
+
+    from pubs.api.views import _USER_ADDED_SCAN_LIMIT
+
+    old_near = UserAddedPub.objects.create(
+        client_id=str(_uuid.uuid4()),
+        cache_key="u2fk-old-near",
+        name="Stará blízká",
+        lat=_LAT + 0.00001,
+        lng=_LNG,
+    )
+    UserAddedPub.objects.filter(pk=old_near.pk).update(
+        updated_at=dj_tz.now() - timedelta(days=30)
+    )
+
+    for i in range(_USER_ADDED_SCAN_LIMIT):
+        UserAddedPub.objects.create(
+            client_id=str(_uuid.uuid4()),
+            cache_key=f"u2fk-far-{i:04d}",
+            name=f"Novější dál {i:03d}",
+            lat=_LAT + 0.01 + i * 0.000001,
+            lng=_LNG,
+        )
+    factory, _ = _mock_source(MapySuggestResult(items=[]))
+
+    with patch("pubs.api.views.MapySuggestSource", factory):
+        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
+
+    assert resp.status_code == status.HTTP_200_OK
+    names = [item["name"] for item in resp.json()["items"]]
+    assert names[0] == "Stará blízká"
+
+
+@pytest.mark.django_db
 def test_community_pub_dedupes_matching_mapy_item(client):
     """A pub present both as a community row and in Mapy results is returned once
     (the Mapy duplicate is dropped)."""
