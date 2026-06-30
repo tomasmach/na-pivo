@@ -27,7 +27,7 @@ import { Radius, Spacing } from '@/theme/layout';
 import { cs, formatVolume } from '@/i18n/cs';
 import { beerCountLabel } from '@/i18n/plural';
 import { formatPrice } from '@/utils/currency';
-import { updateQueuedDrinkBeerName, removeQueuedDrink } from '@/data/drinksQueue';
+import { updateQueuedDrinkBeerName, removeQueuedDrink, flushDrinksQueue } from '@/data/drinksQueue';
 import { enqueueDelete } from '@/data/deleteDrinksQueue';
 import { enqueueDrinkUpdate, removeQueuedDrinkUpdate } from '@/data/updateDrinksQueue';
 import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
@@ -112,7 +112,14 @@ export default function EveningDetailScreen() {
           }
           void removeQueuedDrinkUpdate(removed.drinkId);
           void removeQueuedDrink(removed.drinkId).then((pulledFromQueue) => {
-            if (!pulledFromQueue) void enqueueDelete(removed.drinkId);
+            // Already delivered (or its POST is in flight): wait for the active
+            // flush to settle before the DELETE so it can't race ahead of an
+            // in-flight POST and recreate the drink after we deleted it.
+            if (!pulledFromQueue) {
+              void flushDrinksQueue()
+                .then(() => enqueueDelete(removed.drinkId))
+                .catch(() => undefined);
+            }
           });
         },
       },

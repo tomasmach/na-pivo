@@ -594,7 +594,9 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
           context: { delivery_state: pulledFromQueue ? 'queued' : 'delivered' },
         });
         if (!pulledFromQueue) {
-          void flushDrinksQueue().then(() => enqueueDelete(removedId));
+          void flushDrinksQueue()
+            .then(() => enqueueDelete(removedId))
+            .catch(() => undefined);
         }
       });
 
