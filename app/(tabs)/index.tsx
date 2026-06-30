@@ -783,7 +783,7 @@ function RevealedPubPill({
           accessibilityLabel={cs.a11y.reportPubButton}
           accessibilityRole="button"
         >
-          <FlagIcon size={17} color={Colors.mutedText} />
+          <BeerOffIcon size={17} color={Colors.mutedText} />
         </Pressable>
       </View>
 
