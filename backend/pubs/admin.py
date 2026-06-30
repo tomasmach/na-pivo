@@ -51,6 +51,7 @@ class PubSearchCacheAdmin(admin.ModelAdmin):
 @admin.register(UserAddedPub)
 class UserAddedPubAdmin(admin.ModelAdmin):
     list_display = ("name", "active", "cache_key", "city", "address", "account", "updated_at")
+    list_select_related = ("account",)
     list_filter = ("active",)
     search_fields = ("name", "cache_key", "city", "address")
     readonly_fields = ("cache_key", "client_id", "created_at", "updated_at")
@@ -103,6 +104,7 @@ class PushDeviceAdmin(admin.ModelAdmin):
         "app_version",
         "last_registered_at",
     )
+    list_select_related = ("account",)
     list_filter = ("platform", "permission_status", "enabled")
     search_fields = ("account__public_id", "account__nickname")
     exclude = ("push_token",)
@@ -127,6 +129,7 @@ class ContentReportAdmin(admin.ModelAdmin):
         "reporter",
         "short_comment",
     )
+    list_select_related = ("target_account", "reporter")
     list_filter = ("reason", "status", "created_at")
     list_editable = ("status",)
     search_fields = (
@@ -190,6 +193,7 @@ class ContentReportAdmin(admin.ModelAdmin):
 @admin.register(PubReport)
 class PubReportAdmin(admin.ModelAdmin):
     list_display = ("name", "reason", "active", "cache_key", "external_id", "account", "created_at")
+    list_select_related = ("account",)
     list_filter = ("reason", "active")
     search_fields = ("name", "cache_key", "external_id", "city", "address")
     readonly_fields = ("cache_key", "created_at", "updated_at")
@@ -207,6 +211,7 @@ class PubNameCorrectionAdmin(admin.ModelAdmin):
         "account",
         "updated_at",
     )
+    list_select_related = ("account",)
     list_filter = ("active",)
     search_fields = ("suggested_name", "original_name", "cache_key", "external_id", "city", "address")
     readonly_fields = ("cache_key", "client_id", "created_at", "updated_at")
@@ -226,6 +231,7 @@ class FeedbackReportAdmin(admin.ModelAdmin):
         "account",
         "linear_issue_id",
     )
+    list_select_related = ("account",)
     list_filter = ("category", "status", "contact_type", "platform")
     list_editable = ("status",)
     search_fields = ("message", "contact")
@@ -266,6 +272,7 @@ class ClientEventAdmin(admin.ModelAdmin):
         "account",
         "short_message",
     )
+    list_select_related = ("account",)
     list_filter = ("event", "severity", "platform", "app_version", "created_at")
     search_fields = ("message", "account__public_id")
     readonly_fields = (
@@ -306,6 +313,7 @@ class AccountUsageStatsAdmin(admin.ModelAdmin):
         "last_app_version",
         "last_platform",
     )
+    list_select_related = ("account",)
     list_filter = ("last_platform", "last_app_version", "last_app_open_at")
     search_fields = ("account__public_id", "account__device_id")
     readonly_fields = (
@@ -351,6 +359,7 @@ class PubCommunityDataAdmin(admin.ModelAdmin):
         "account",
         "updated_at",
     )
+    list_select_related = ("account",)
     search_fields = ("name", "cache_key", "external_id", "city")
     readonly_fields = ("cache_key", "created_at", "updated_at")
     ordering = ("-updated_at",)
@@ -396,6 +405,7 @@ class PubBeerProductAdmin(admin.ModelAdmin):
 class PubContributionLogAdmin(admin.ModelAdmin):
     # Append-only audit history — fully read-only.
     list_display = ("created_at", "kind", "name", "cache_key", "account")
+    list_select_related = ("account",)
     list_filter = ("kind", "created_at")
     search_fields = ("name", "cache_key")
     readonly_fields = (
@@ -423,6 +433,7 @@ class DrinkLogAdmin(admin.ModelAdmin):
     # Append-only per-user drink history — fully read-only, like the
     # contribution log.
     list_display = ("drank_at", "beer_name", "beer_brand_name", "beer_product_name", "price_czk", "volume_ml", "name", "cache_key", "account")
+    list_select_related = ("account", "beer_brand", "beer_product")
     list_filter = ("beer_brand_key", "beer_product_key", "volume_ml", "drank_at")
     search_fields = ("beer_name", "beer_brand_name", "beer_product_name", "name", "cache_key", "city")
     readonly_fields = (
@@ -460,6 +471,7 @@ class PubRatingAdmin(admin.ModelAdmin):
     # Per-user private ratings — read-only audit view (the user owns the data via
     # the API; admin is for inspection / moderation only).
     list_display = ("client_updated_at", "name", "cache_key", "verdict", "tag", "account", "updated_at")
+    list_select_related = ("account",)
     list_filter = ("verdict",)
     search_fields = ("name", "cache_key", "tag", "note")
     readonly_fields = (
@@ -489,6 +501,7 @@ class PubRatingAdmin(admin.ModelAdmin):
 class PubVisitAdmin(admin.ModelAdmin):
     # Per-user explicit visits — read-only audit view.
     list_display = ("started_at", "ended_at", "name", "cache_key", "city", "account", "updated_at")
+    list_select_related = ("account",)
     list_filter = ("started_at",)
     search_fields = ("name", "cache_key", "city")
     readonly_fields = (
