@@ -1449,9 +1449,13 @@ class ContentReportView(APIView):
         target = Account.objects.filter(
             public_id=data["target_account_id"],
             status=Account.Status.ACTIVE,
-            is_public=True,
         ).first()
-        if target is None:
+        # A public profile, or a non-public profile that is an accepted friend of
+        # the reporter (visible via friends dashboard / RSVP roster), can be
+        # reported. Mirror the friend-visibility pattern used in FriendRequestView.
+        if target is None or (
+            not target.is_public and target.pk not in _accepted_friend_ids(request.user)
+        ):
             return Response(
                 {"detail": "Profile not found.", "code": "profile_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
@@ -2010,7 +2014,10 @@ class FriendsView(APIView):
         )
         notification_base = (
             FriendNotification.objects.filter(recipient=request.user)
-            .filter(Q(actor__isnull=True) | Q(actor__status=Account.Status.ACTIVE))
+            .filter(
+                Q(actor__isnull=True)
+                | Q(actor__status=Account.Status.ACTIVE, actor__ghost_mode=False)
+            )
             .filter(
                 Q(activity__isnull=True)
                 | Q(activity__account=request.user)
@@ -2563,9 +2570,11 @@ class FriendActivityRespondView(APIView):
         try:
             with transaction.atomic():
                 # Lock the activity row so concurrent RSVPs serialise around the
-                # owner-notification decision.
+                # owner-notification decision. Scope the lock to the activity row
+                # only (of="self") so the joined owner Account row is not locked
+                # too on Postgres.
                 locked = (
-                    FriendPubActivity.objects.select_for_update()
+                    FriendPubActivity.objects.select_for_update(of=("self",))
                     .filter(
                         pk=activity.pk,
                         active=True,

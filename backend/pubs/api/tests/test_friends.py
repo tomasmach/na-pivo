@@ -536,6 +536,43 @@ def test_my_active_activity_carries_roster(client, monkeypatch):
 
 
 @pytest.mark.django_db
+def test_going_roster_hides_ghost_and_pending_deletion_responders(client, monkeypatch):
+    """Privacy: ghost-mode / pending-deletion GOING responders stay out of
+    going_profiles, while counts remain aggregate (the going total still counts
+    every RSVP)."""
+    token_owner, owner = _register(client, "janek")
+    token_active, active = _register(client, "petr")
+    token_ghost, ghost = _register(client, "karel")
+    token_pending, pending = _register(client, "honza")
+    owner.quiet_hours_enabled = False
+    owner.save(update_fields=["quiet_hours_enabled"])
+    for friend in (active, ghost, pending):
+        _make_friends(owner, friend)
+    monkeypatch.setattr("pubs.api.views.requests.post", _push_recorder([]))
+
+    activity_id = _broadcast(client, token_owner)["id"]
+    path = f"/v1/friends/pub-activity/{activity_id}/respond"
+    for token in (token_active, token_ghost, token_pending):
+        resp = client.post(path, data={"response": "going"}, format="json", **_auth(token))
+        assert resp.status_code == status.HTTP_200_OK
+
+    # Two responders go private after the fact: one ghosts, one schedules deletion.
+    ghost.ghost_mode = True
+    ghost.save(update_fields=["ghost_mode"])
+    pending.status = Account.Status.PENDING_DELETION
+    pending.save(update_fields=["status"])
+
+    dashboard = client.get("/v1/friends", **_auth(token_owner))
+    assert dashboard.status_code == status.HTTP_200_OK
+    responses = dashboard.json()["my_active_activity"]["responses"]
+    # Count stays accurate (aggregate, not PII): all three GOING RSVPs counted.
+    assert responses["going"] == 3
+    # Only the active public responder is exposed.
+    nicknames = [profile["nickname"] for profile in responses["going_profiles"]]
+    assert nicknames == ["petr"]
+
+
+@pytest.mark.django_db
 def test_ghost_mode_hides_activity_and_suppresses_fanout(client, monkeypatch):
     token_owner, owner = _register(client, "janek")
     token_friend, friend = _register(client, "petr")
@@ -762,3 +799,37 @@ def test_pending_deletion_friend_hidden_from_dashboard_and_rsvp(client, monkeypa
     assert respond.status_code == status.HTTP_404_NOT_FOUND
     assert respond.json()["code"] == "activity_not_found"
     assert FriendActivityResponse.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_ghost_mode_actor_hidden_from_notification_feed(client):
+    # FriendNotificationSerializer exposes the actor's public profile, so an
+    # actor who later enables ghost mode must drop out of old notifications too.
+    _token_actor, actor = _register(client, "duch")
+    token_recipient, recipient = _register(client, "petr")
+    _make_friends(actor, recipient)
+
+    FriendNotification.objects.create(
+        recipient=recipient,
+        actor=actor,
+        kind=FriendNotification.Kind.FRIEND_ACCEPTED,
+        title="Žádost přijata",
+        body="duch si tě přidal mezi kamarády.",
+    )
+
+    visible = client.get("/v1/friends", **_auth(token_recipient))
+    assert visible.status_code == status.HTTP_200_OK
+    visible_body = visible.json()
+    assert [n["kind"] for n in visible_body["notifications"]] == [
+        FriendNotification.Kind.FRIEND_ACCEPTED
+    ]
+    assert visible_body["unread_count"] == 1
+
+    actor.ghost_mode = True
+    actor.save(update_fields=["ghost_mode"])
+
+    hidden = client.get("/v1/friends", **_auth(token_recipient))
+    assert hidden.status_code == status.HTTP_200_OK
+    hidden_body = hidden.json()
+    assert hidden_body["notifications"] == []
+    assert hidden_body["unread_count"] == 0

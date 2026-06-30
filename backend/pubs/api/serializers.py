@@ -668,7 +668,17 @@ class FriendPubActivitySerializer(serializers.ModelSerializer):
             if row.response in counts:
                 counts[row.response] += 1
             if row.response == FriendActivityResponse.Response.GOING:
-                going_accounts.append(row.account)
+                # Privacy: counts stay aggregate, but never expose the profile of
+                # a GOING responder who scheduled deletion (status != ACTIVE) or
+                # turned on ghost mode — mirroring how the rest of the social
+                # surface hides inactive/ghost accounts. account is preloaded via
+                # the prefetch's select_related("account"), so this stays N+1-free.
+                responder = row.account
+                if (
+                    responder.status == Account.Status.ACTIVE
+                    and not responder.ghost_mode
+                ):
+                    going_accounts.append(responder)
         going_accounts = going_accounts[:8]
         going_profiles = FriendProfileSerializer(
             going_accounts, many=True, context=self.context
