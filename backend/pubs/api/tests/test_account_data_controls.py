@@ -5,12 +5,14 @@ import uuid
 
 import pytest
 from django.core.cache import cache
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
 from pubs import emailer
-from pubs.models import Account, ContentReport, DrinkLog, EmailCredential, PushDevice
+from pubs.models import Account, AuthIdentity, ContentReport, DrinkLog, EmailCredential, PushDevice
 
 
 @pytest.fixture
@@ -212,6 +214,41 @@ def test_account_export_includes_diary_data_and_excludes_secrets(client):
     assert "password" not in serialized
     assert token not in serialized
     assert "ExponentPushToken[exportDevice]" not in serialized
+
+
+@pytest.mark.django_db
+def test_account_export_reuses_loaded_auth_relations(client):
+    token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    EmailCredential.objects.create(
+        account=account,
+        email="export@example.com",
+        password="!",
+        email_verified=True,
+    )
+    AuthIdentity.objects.create(
+        account=account,
+        provider=AuthIdentity.Provider.GOOGLE,
+        subject="google-export",
+        email="social@example.com",
+    )
+
+    with CaptureQueriesContext(connection) as queries:
+        resp = client.get("/v1/account/export", **_auth(token))
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    body = resp.json()
+    assert body["account"]["email"] == "export@example.com"
+    assert body["account"]["email_verified"] is True
+    assert set(body["account"]["providers"]) == {"email", "google"}
+
+    select_queries = [
+        query["sql"].lower()
+        for query in queries.captured_queries
+        if query["sql"].lstrip().lower().startswith("select")
+    ]
+    assert sum('"pubs_emailcredential"' in sql for sql in select_queries) == 1
+    assert sum('"pubs_authidentity"' in sql for sql in select_queries) == 1
 
 
 @pytest.mark.django_db

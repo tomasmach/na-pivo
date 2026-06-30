@@ -80,7 +80,6 @@ from pubs.models import (
     ClientEvent,
     ContentReport,
     DrinkLog,
-    EmailCredential,
     FeedbackReport,
     FriendActivityResponse,
     FriendNotification,
@@ -3338,10 +3337,49 @@ def _iso(value) -> str | None:
     return value.isoformat() if value is not None else None
 
 
+def _load_export_account(account: Account) -> Account:
+    """Load the account plus every relation serialized by the export endpoint."""
+
+    return (
+        Account.objects.select_related("email_credential", "usage_stats")
+        .prefetch_related(
+            "identities",
+            "push_devices",
+            "drinks",
+            "pub_visits",
+            "pub_ratings",
+            "contribution_logs",
+            "pub_reports",
+            "feedback_reports",
+            "amenity_votes",
+            Prefetch(
+                "content_reports_made",
+                queryset=ContentReport.objects.select_related("target_account"),
+            ),
+        )
+        .get(pk=account.pk)
+    )
+
+
+def _export_account_identity(account: Account) -> dict:
+    credential = getattr(account, "email_credential", None)
+    identities = list(account.identities.all())
+    social_email = next((identity.email for identity in identities if identity.email), "")
+    return {
+        "email": credential.email if credential is not None else social_email,
+        "email_verified": bool(credential and credential.email_verified),
+        "providers": [
+            *(["email"] if credential is not None else []),
+            *(identity.provider for identity in identities),
+        ],
+    }
+
+
 def _export_account_data(account: Account) -> dict:
     """Return a GDPR-style JSON export for one account, excluding secrets."""
 
     usage = getattr(account, "usage_stats", None)
+    identity = _export_account_identity(account)
     return {
         "exported_at": dj_timezone.now().isoformat(),
         "account": {
@@ -3351,9 +3389,9 @@ def _export_account_data(account: Account) -> dict:
             "display_name": account.display_name,
             "has_avatar": bool(account.avatar),
             "is_public": account.is_public,
-            "email": account.primary_email,
-            "email_verified": account.email_is_verified,
-            "providers": account.auth_methods(),
+            "email": identity["email"],
+            "email_verified": identity["email_verified"],
+            "providers": identity["providers"],
             "status": account.status,
             "created_at": _iso(account.created_at),
             "last_seen_at": _iso(account.last_seen_at),
@@ -3471,7 +3509,7 @@ def _export_account_data(account: Account) -> dict:
                 "status": report.status,
                 "created_at": _iso(report.created_at),
             }
-            for report in account.content_reports_made.select_related("target_account")
+            for report in account.content_reports_made.all()
         ],
         # PubAmenityVote is a per-account, location-adjacent dataset (§8.5): the
         # owner's own export includes it (name/city/coords are what they supplied).
@@ -3501,14 +3539,14 @@ class AccountExportView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request: Request) -> Response:
-        body = _export_account_data(request.user)
+        body = _export_account_data(_load_export_account(request.user))
         response = Response(body, status=status.HTTP_200_OK)
         response["Content-Disposition"] = 'attachment; filename="na-pivo-export.json"'
         return response
 
     def post(self, request: Request) -> Response:
-        account = request.user
-        credential = EmailCredential.objects.filter(account=account).first()
+        account = _load_export_account(request.user)
+        credential = getattr(account, "email_credential", None)
         if credential is None:
             return Response(
                 {
