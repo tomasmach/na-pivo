@@ -216,6 +216,31 @@ describe('flushVisitsQueue', () => {
     expect(await readQueue()).toEqual([]);
   });
 
+  it('does not deliver remaining items after clear runs during an in-flight flush', async () => {
+    // Account boundary (logout / delete account) clears the queue while a launch
+    // flush is mid-delivery. v1 is already in flight under the previous account;
+    // v2 must NOT be POSTed afterwards — otherwise it goes out under whatever
+    // session replaces this one, attributing the old account's visit to the new.
+    let resolveFirst!: (value: SubmitVisitResult) => void;
+    submitVisit.mockReturnValueOnce(
+      new Promise<SubmitVisitResult>((resolve) => {
+        resolveFirst = resolve;
+      }),
+    );
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([upsert('v1'), upsert('v2')]));
+
+    const flushing = flushVisitsQueue();
+    await waitForExpectation(() => expect(submitVisit).toHaveBeenCalledTimes(1));
+
+    await clearVisitsQueue();
+    resolveFirst('ok');
+    await flushing;
+
+    expect(submitVisit).toHaveBeenCalledTimes(1);
+    expect((submitVisit as jest.Mock).mock.calls[0][0]).toMatchObject({ client_id: 'v1' });
+    expect(await readQueue()).toEqual([]);
+  });
+
   it('runs exactly one trailing pass for a flush requested mid-flight', async () => {
     let resolveSubmit!: (value: SubmitVisitResult) => void;
     submitVisit

@@ -75,6 +75,22 @@ export function createQueueLock(): <T>(task: () => Promise<T>) => Promise<T> {
   };
 }
 
+/** A trailing-edge coalescing flush plus a hook to cancel its in-flight network. */
+export interface CoalescingFlush {
+  /** Run the flush (trailing-edge coalesced). */
+  flush: () => Promise<void>;
+  /**
+   * Abort the in-flight flush's network delivery, if any. `clear()` calls this at
+   * an account boundary: delivery runs OUTSIDE the storage lock, so wiping the
+   * queue alone does not stop an already-running flush from POSTing its remaining
+   * snapshot — which, after the session has rotated, would attribute the previous
+   * account's private data to the next one. The flush routine receives the signal
+   * and must stop delivering once it is aborted. The next `flush()` starts with a
+   * fresh signal.
+   */
+  abortInFlight: () => void;
+}
+
 /**
  * Wraps a flush routine with trailing-edge coalescing: only one flush runs at a
  * time (never two concurrently, preserving the no-duplicate-send guarantee), but
@@ -82,10 +98,16 @@ export function createQueueLock(): <T>(task: () => Promise<T>) => Promise<T> {
  * after it. That trailing flush re-snapshots the queue, so an item enqueued
  * mid-flight is delivered without waiting for the next launch. The returned
  * promise resolves only after that trailing flush completes.
+ *
+ * `run` receives an AbortSignal for the current flush; `abortInFlight()` aborts
+ * it so an account-boundary clear can cancel delivery that is already underway.
  */
-export function createCoalescingFlush(run: () => Promise<void>): () => Promise<void> {
+export function createCoalescingFlush(
+  run: (signal: AbortSignal) => Promise<void>,
+): CoalescingFlush {
   let flushPromise: Promise<void> | null = null;
   let flushAgain: Promise<void> | null = null;
+  let controller: AbortController | null = null;
   const flush = (): Promise<void> => {
     if (flushPromise) {
       if (!flushAgain) {
@@ -96,10 +118,15 @@ export function createCoalescingFlush(run: () => Promise<void>): () => Promise<v
       }
       return flushAgain;
     }
-    flushPromise = run().finally(() => {
+    controller = new AbortController();
+    flushPromise = run(controller.signal).finally(() => {
       flushPromise = null;
+      controller = null;
     });
     return flushPromise;
   };
-  return flush;
+  const abortInFlight = (): void => {
+    controller?.abort();
+  };
+  return { flush, abortInFlight };
 }

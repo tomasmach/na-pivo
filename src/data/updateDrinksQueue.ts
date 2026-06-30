@@ -36,13 +36,19 @@ function signature(entry: DrinkUpdateEntry): string {
   return JSON.stringify(entry);
 }
 
-async function flushUnlocked(): Promise<void> {
+async function flushUnlocked(signal: AbortSignal): Promise<void> {
   const queue = await runMutation(loadQueue);
   if (queue.length === 0) return;
 
   const attempted = new Map<string, string>();
   const settled = new Set<string>();
   for (const entry of queue) {
+    // Stop before delivering the next update once an account-boundary clear has
+    // aborted us, so a previous account's queued drink updates are never sent
+    // under the session that replaces this one. (An update already in flight
+    // keeps the token it captured before the boundary, so it still lands on the
+    // right account.)
+    if (signal.aborted) break;
     attempted.set(entry.client_id, signature(entry));
     const result = await updateDrinkName(entry.client_id, entry.beer_name);
     if (result !== 'retry') settled.add(entry.client_id);
@@ -79,13 +85,17 @@ export function removeQueuedDrinkUpdate(clientId: string): Promise<boolean> {
   });
 }
 
+const { flush: _flush, abortInFlight } = createCoalescingFlush(flushUnlocked);
+
 export function clearUpdateDrinksQueue(): Promise<void> {
+  // Cancel any in-flight flush first: its network loop runs outside runMutation,
+  // so without this it could keep sending the previous account's drink updates
+  // under the session that replaces this one.
+  abortInFlight();
   return runMutation(async () => {
     await saveQueue([]);
   });
 }
-
-const _flush = createCoalescingFlush(flushUnlocked);
 
 /**
  * Retries all pending updates. Never throws. Trailing-edge coalesced (see

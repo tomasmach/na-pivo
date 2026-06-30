@@ -54,13 +54,19 @@ const runMutation = createQueueLock();
 
 /** Attempts to send every queued drink, keeping only the ones that should
  *  retry ('ok' and 'permanent-error' are both removed). */
-async function flushUnlocked(): Promise<void> {
+async function flushUnlocked(signal: AbortSignal): Promise<void> {
   const queue = await runMutation(loadQueue);
   if (queue.length === 0) return;
 
   const deliveredOrDropped = new Set<string>();
   const snapshotIds = new Set(queue.map((entry) => entry.client_id));
   for (const entry of queue) {
+    // Stop before delivering the next drink once an account-boundary clear has
+    // aborted us, so a previous account's queued drinks are never POSTed under
+    // the session that replaces this one. (A drink already in flight keeps the
+    // token it captured before the boundary, so it still lands on the right
+    // account.)
+    if (signal.aborted) break;
     deliveringIds.add(entry.client_id);
     try {
       const result = await submitDrink(entry);
@@ -161,14 +167,18 @@ export function updateQueuedDrinkBeerName(
   });
 }
 
+const { flush: _flush, abortInFlight } = createCoalescingFlush(flushUnlocked);
+
 /** Drop all pending private drink uploads without attempting delivery. */
 export function clearDrinksQueue(): Promise<void> {
+  // Cancel any in-flight flush first: its network loop runs outside runMutation,
+  // so without this it could keep POSTing the previous account's drinks under the
+  // session that replaces this one.
+  abortInFlight();
   return runMutation(async () => {
     await saveQueue([]);
   });
 }
-
-const _flush = createCoalescingFlush(flushUnlocked);
 
 /**
  * Retries all pending drinks. Call on app launch and on returning to the

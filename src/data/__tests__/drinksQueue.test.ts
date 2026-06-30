@@ -1,5 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { enqueueDrink, flushDrinksQueue, removeQueuedDrink, updateQueuedDrinkBeerName } from '../drinksQueue';
+import {
+  clearDrinksQueue,
+  enqueueDrink,
+  flushDrinksQueue,
+  removeQueuedDrink,
+  updateQueuedDrinkBeerName,
+} from '../drinksQueue';
 import { submitDrink, type DrinkEntry } from '../drinksClient';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
@@ -201,6 +207,34 @@ describe('flushDrinksQueue', () => {
     await flushing;
 
     expect(submitDrink).toHaveBeenCalledWith(expect.objectContaining({ client_id: 'b' }));
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('does not deliver remaining drinks after clear runs during an in-flight flush', async () => {
+    // Account boundary (logout / delete account) clears the queue mid-flush. 'a'
+    // is already in flight under the previous account; 'b' must NOT be POSTed
+    // afterwards, or it uploads under whatever session replaces this one.
+    let resolveFirst!: (value: 'ok') => void;
+    (submitDrink as jest.Mock).mockReturnValueOnce(
+      new Promise<'ok'>((resolve) => {
+        resolveFirst = resolve;
+      }),
+    );
+    await AsyncStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify([entry({ client_id: 'a' }), entry({ client_id: 'b' })]),
+    );
+
+    const flushing = flushDrinksQueue();
+    await flushMicrotasks();
+    expect(submitDrink).toHaveBeenCalledTimes(1); // 'a' is in flight
+
+    await clearDrinksQueue();
+    resolveFirst('ok');
+    await flushing;
+
+    expect(submitDrink).toHaveBeenCalledTimes(1);
+    expect((submitDrink as jest.Mock).mock.calls[0][0]).toMatchObject({ client_id: 'a' });
     expect(await readQueue()).toEqual([]);
   });
 

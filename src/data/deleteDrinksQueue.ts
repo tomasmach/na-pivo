@@ -41,13 +41,19 @@ const { load: loadQueue, save: saveQueue } = createQueueStorage<string>(
  *  being persisted immediately. */
 const runMutation = createQueueLock();
 
-async function flushUnlocked(): Promise<void> {
+async function flushUnlocked(signal: AbortSignal): Promise<void> {
   const queue = await runMutation(loadQueue);
   if (queue.length === 0) return;
 
   const attempted = new Set(queue);
   const settled = new Set<string>();
   for (const clientId of queue) {
+    // Stop before delivering the next deletion once an account-boundary clear has
+    // aborted us, so a previous account's queued drink deletions are never sent
+    // under the session that replaces this one. (A deletion already in flight
+    // keeps the token it captured before the boundary, so it still lands on the
+    // right account.)
+    if (signal.aborted) break;
     const result = await deleteDrink(clientId);
     if (result !== 'retry') settled.add(clientId);
   }
@@ -78,14 +84,18 @@ export async function enqueueDelete(clientId: string): Promise<void> {
   await flushDeleteDrinksQueue();
 }
 
+const { flush: _flush, abortInFlight } = createCoalescingFlush(flushUnlocked);
+
 /** Drop all pending private drink deletions without attempting delivery. */
 export function clearDeleteDrinksQueue(): Promise<void> {
+  // Cancel any in-flight flush first: its network loop runs outside runMutation,
+  // so without this it could keep sending the previous account's drink deletions
+  // under the session that replaces this one.
+  abortInFlight();
   return runMutation(async () => {
     await saveQueue([]);
   });
 }
-
-const _flush = createCoalescingFlush(flushUnlocked);
 
 /**
  * Retries all pending deletions. Call on app launch and on returning to the

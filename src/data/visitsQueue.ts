@@ -83,7 +83,7 @@ function signature(item: VisitQueueItem): string {
   return JSON.stringify(item);
 }
 
-async function flushUnlocked(): Promise<void> {
+async function flushUnlocked(signal: AbortSignal): Promise<void> {
   const queue = await runMutation(loadQueue);
   if (queue.length === 0) return;
 
@@ -93,6 +93,12 @@ async function flushUnlocked(): Promise<void> {
   const attempted = new Map<string, string>();
   const settled = new Set<string>();
   for (const item of queue) {
+    // Stop before delivering the next op once an account-boundary clear has
+    // aborted us, so a previous account's queued visits are never POSTed under
+    // the session that replaces this one. (An op already in flight keeps the
+    // token it captured before the boundary, so it still lands on the right
+    // account.)
+    if (signal.aborted) break;
     attempted.set(item.clientId, signature(item));
     const result = await deliver(item);
     if (result !== 'retry') settled.add(item.clientId);
@@ -124,14 +130,18 @@ export async function enqueueVisitOp(item: VisitQueueItem): Promise<void> {
   await flushVisitsQueue();
 }
 
+const { flush: _flush, abortInFlight } = createCoalescingFlush(flushUnlocked);
+
 /** Drop all pending private visit sync operations without attempting delivery. */
 export function clearVisitsQueue(): Promise<void> {
+  // Cancel any in-flight flush first: its network loop runs outside runMutation,
+  // so without this it could keep POSTing the previous account's visits under the
+  // session that replaces this one.
+  abortInFlight();
   return runMutation(async () => {
     await saveQueue([]);
   });
 }
-
-const _flush = createCoalescingFlush(flushUnlocked);
 
 /**
  * Retries all pending visit operations. Call on app launch and on returning to
