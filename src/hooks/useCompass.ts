@@ -154,6 +154,8 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
   // — Position / heading —
   const { position } = useDevicePosition(focused && permissionState === 'granted');
   const { smoothedHeading, accuracyDeg, hasMagnetometer } = useDeviceHeading(focused);
+  const positionLat = position?.lat;
+  const positionLng = position?.lng;
 
   useEffect(() => {
     if (position) recordWalkingSample(position);
@@ -185,7 +187,7 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
   // network request on cleanup — GPS jitter would otherwise cancel in-flight
   // fetches every few seconds and prevent any data from ever loading.
   useEffect(() => {
-    if (!position) return;
+    if (positionLat == null || positionLng == null) return;
     let cancelled = false;
 
     const runFetch = () => {
@@ -197,7 +199,7 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
       lastFetchedMaxKmRef.current = maxDistanceKm;
       lastFetchedBeerBrandKeyRef.current = activeBeerBrandKey;
 
-      fetchPubsNear(position.lat, position.lng, undefined, {
+      fetchPubsNear(positionLat, positionLng, undefined, {
         force,
         radiusKm,
         beerBrandKey: activeBeerBrandKey || null,
@@ -242,7 +244,7 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
         radiusDebounceRef.current = undefined;
       }
     };
-  }, [position?.lat, position?.lng, maxDistanceKm, activeBeerBrandKey, searchRetryNonce]);
+  }, [positionLat, positionLng, maxDistanceKm, activeBeerBrandKey, searchRetryNonce]);
 
   // — Permission check on mount —
   useEffect(() => {
@@ -253,6 +255,7 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
 
   // — Target pub state —
   const [currentPub, setCurrentPub] = useState<Pub | null>(null);
+  const currentPubId = currentPub?.id ?? null;
   const [revealed, setRevealed] = useState(false);
   const [, bumpTargetSelectionRevision] = useState(0);
   // State mirror of `lastTargetPosRef !== null` so render code (isLoading)
@@ -400,7 +403,7 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
       setCurrentPub(pub);
       // Only reset revealed when actually changing to a different pub
       setRevealed((prev) => {
-        if (pub?.id !== currentPub?.id) return false;
+        if (pub?.id !== currentPubId) return false;
         return prev;
       });
       bumpTargetSelectionRevision((revision) => revision + 1);
@@ -418,6 +421,7 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
     reportedCacheKeys,
     excludeRevision,
     activeBeerBrandKey,
+    currentPubId,
     resetExclusions,
   ]);
 
@@ -427,7 +431,6 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
   // it never feeds back into target selection, distance, arrival, or isLoading,
   // so a slow / failed / dormant backend cannot disturb the compass. Results are
   // stored in a separate map keyed by pub id; failures leave the entry undefined.
-  const currentPubId = currentPub?.id ?? null;
   const [hoursById, setHoursById] = useState<Map<string, PubHoursState>>(() => new Map());
   // Bumped by the nextChange expiry timer below to force the fetch effect to
   // re-run and refresh a now-stale isOpenNow snapshot.
