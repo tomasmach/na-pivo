@@ -1,8 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { clearLocalPrivateAccountData } from '../privateAccountData';
+import { useCommunityStore } from '@/stores/communityStore';
 import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
+import { usePubStore } from '@/stores/pubStore';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
@@ -30,9 +32,15 @@ const PRIVATE_KEYS = [
   'na-pivo-delete-drinks-queue',
   'na-pivo-update-drinks-queue',
   'na-pivo-feedback-queue',
+  'na-pivo-added-pubs-queue',
+  'na-pivo-community-queue',
+  'na-pivo-pub-name-corrections-queue',
+  'na-pivo-pub-report-queue',
   'na-pivo-visits-queue',
   'na-pivo-pub-ratings-queue',
   'na-pivo-pub-amenities-queue',
+  'na-pivo-community',
+  'na-pivo-pub',
 ];
 
 function session(overrides: Partial<TallySession> = {}): TallySession {
@@ -57,8 +65,14 @@ beforeEach(async () => {
   jest.clearAllMocks();
   await AsyncStorage.clear();
   useTallyStore.setState({ current: null, history: [] });
+  useCommunityStore.setState({ overrides: {} });
   usePubRatingsStore.setState({ ratings: {} });
   usePubAmenitiesStore.setState({ votes: {} });
+  usePubStore.setState({
+    revealedPub: null,
+    reportedPubIds: [],
+    reportedCacheKeys: [],
+  });
 });
 
 it('clears local private stores and private sync queue storage', async () => {
@@ -82,6 +96,24 @@ it('clears local private stores and private sync queue storage', async () => {
       },
     },
   });
+  useCommunityStore.setState({
+    overrides: {
+      u2fkbn1x: {
+        beers: [{ name: 'Plzeň', priceCzk: 62, volumeMl: 500 }],
+        updatedAt: Date.now(),
+      },
+    },
+  });
+  usePubStore.setState({
+    revealedPub: {
+      id: 'mapy:test',
+      name: 'U Testu',
+      lat: 50.0812,
+      lng: 14.4182,
+    },
+    reportedPubIds: ['mapy:test'],
+    reportedCacheKeys: ['u2fkbn1x'],
+  });
 
   for (const key of PRIVATE_KEYS) {
     await AsyncStorage.setItem(key, JSON.stringify({ private: true }));
@@ -91,8 +123,12 @@ it('clears local private stores and private sync queue storage', async () => {
 
   expect(useTallyStore.getState().current).toBeNull();
   expect(useTallyStore.getState().history).toEqual([]);
+  expect(useCommunityStore.getState().overrides).toEqual({});
   expect(usePubRatingsStore.getState().ratings).toEqual({});
   expect(usePubAmenitiesStore.getState().votes).toEqual({});
+  expect(usePubStore.getState().revealedPub).toBeNull();
+  expect(usePubStore.getState().reportedPubIds).toEqual([]);
+  expect(usePubStore.getState().reportedCacheKeys).toEqual([]);
 
   for (const key of PRIVATE_KEYS) {
     expect(await AsyncStorage.getItem(key)).toBeNull();

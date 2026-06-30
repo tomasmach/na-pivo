@@ -1,16 +1,22 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { clearAddedPubsQueue } from './addedPubsQueue';
+import { clearCommunityQueue } from './communityQueue';
 import { clearDeleteDrinksQueue } from './deleteDrinksQueue';
 import { clearDrinksQueue } from './drinksQueue';
 import { clearUpdateDrinksQueue } from './updateDrinksQueue';
 import { clearFeedbackQueue } from './feedbackQueue';
+import { clearPubNameCorrectionsQueue } from './pubNameCorrectionsQueue';
+import { clearPubReportQueue } from './pubReportQueue';
 import { clearPubAmenitiesQueue } from './pubAmenitiesQueue';
 import { runWithoutPubAmenitiesSync } from './pubAmenitiesSync';
 import { clearPubRatingsQueue } from './pubRatingsQueue';
 import { runWithoutPubRatingsSync } from './pubRatingsSync';
 import { clearVisitsQueue } from './visitsQueue';
+import { useCommunityStore } from '@/stores/communityStore';
 import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
+import { usePubStore } from '@/stores/pubStore';
 import { useTallyStore } from '@/stores/tallyStore';
 
 const PRIVATE_STORAGE_KEYS = [
@@ -18,6 +24,8 @@ const PRIVATE_STORAGE_KEYS = [
   'na-pivo-pub-ratings',
   'na-pivo-pub-amenities',
   'na-pivo-visits-seeded',
+  'na-pivo-community',
+  'na-pivo-pub',
 ];
 
 /**
@@ -38,15 +46,25 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   runWithoutPubAmenitiesSync(() => {
     usePubAmenitiesStore.setState({ votes: {} });
   });
+  useCommunityStore.setState({ overrides: {} });
+  usePubStore.setState({
+    revealedPub: null,
+    reportedPubIds: [],
+    reportedCacheKeys: [],
+  });
 
   await Promise.all([
+    clearAddedPubsQueue(),
+    clearCommunityQueue(),
     clearDrinksQueue(),
     clearDeleteDrinksQueue(),
     clearUpdateDrinksQueue(),
     clearFeedbackQueue(),
+    clearPubNameCorrectionsQueue(),
+    clearPubReportQueue(),
     clearVisitsQueue(),
     clearPubRatingsQueue(),
     clearPubAmenitiesQueue(),
-    ...PRIVATE_STORAGE_KEYS.map((key) => AsyncStorage.removeItem(key)),
   ]);
+  await Promise.all(PRIVATE_STORAGE_KEYS.map((key) => AsyncStorage.removeItem(key)));
 }

@@ -130,3 +130,9 @@ export function flushCommunityQueue(): Promise<void> {
     await flushLocked();
   });
 }
+
+export function clearCommunityQueue(): Promise<void> {
+  return enqueueTask(async () => {
+    await saveQueue([]);
+  });
+}

@@ -112,3 +112,9 @@ export function enqueuePubReport(pub: Pub, reason: PubReportReason): Promise<boo
 export function flushPubReportQueue(): Promise<void> {
   return enqueueTask(flushLocked);
 }
+
+export function clearPubReportQueue(): Promise<void> {
+  return enqueueTask(async () => {
+    await saveQueue([]);
+  });
+}

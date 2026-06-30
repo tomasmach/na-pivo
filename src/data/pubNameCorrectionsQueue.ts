@@ -96,3 +96,9 @@ export function enqueuePubNameCorrection(entry: PubNameCorrectionEntry): Promise
 export function flushPubNameCorrectionsQueue(): Promise<void> {
   return enqueueTask(flushLocked);
 }
+
+export function clearPubNameCorrectionsQueue(): Promise<void> {
+  return enqueueTask(async () => {
+    await saveQueue([]);
+  });
+}

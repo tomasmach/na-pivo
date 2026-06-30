@@ -131,6 +131,12 @@ export function flushAddedPubsQueue(): Promise<void> {
   return enqueueTask(flushLocked);
 }
 
+export function clearAddedPubsQueue(): Promise<void> {
+  return enqueueTask(async () => {
+    await saveQueue([]);
+  });
+}
+
 export function restoreQueuedAddedPubs(): Promise<number> {
   return enqueueTask(async () => {
     const queue = await loadQueue();
