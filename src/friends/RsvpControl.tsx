@@ -17,12 +17,12 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import Animated, {
   cancelAnimation,
+  Easing,
   Extrapolation,
   interpolate,
   interpolateColor,
   useAnimatedStyle,
   useSharedValue,
-  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 
@@ -42,7 +42,9 @@ import { amberGlow } from '@/theme/shadows';
 import { fireLightImpactHaptic, fireSuccessHaptic } from '@/utils/haptics';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 
-const POP = { damping: 15, stiffness: 150 } as const;
+// Snappy slide: the thumb glides to the tapped segment in one quick, no-bounce
+// pass and stops dead — a swipe that lands, not a spring that floats/settles.
+const SLIDE_MS = 150;
 
 const ORDER: readonly ActivityResponseKind[] = ['going', 'maybe', 'cant'];
 const INDEX: Record<ActivityResponseKind, number> = { going: 0, maybe: 1, cant: 2 };
@@ -123,9 +125,12 @@ function RsvpControl({ activityId, myResponse, onResponded }: RsvpControlProps) 
       pos.value = withTiming(target, { duration: 0 });
       thumbOpacity.value = withTiming(1, { duration: 0 });
     } else if (visibleRef.current) {
-      // Slide + drain between two already-visible segments.
-      pos.value = withSpring(target, POP);
-      thumbOpacity.value = withTiming(1, { duration: 120 });
+      // Quick slide + colour drain between two already-visible segments.
+      pos.value = withTiming(target, {
+        duration: SLIDE_MS,
+        easing: Easing.out(Easing.cubic),
+      });
+      thumbOpacity.value = withTiming(1, { duration: 100 });
     } else {
       // Appear from hidden: jump to position while invisible, then fade in.
       pos.value = target;
