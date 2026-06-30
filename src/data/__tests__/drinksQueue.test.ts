@@ -203,6 +203,25 @@ describe('removeQueuedDrink', () => {
     await expect(removeQueuedDrink('missing')).resolves.toBe(false);
     expect(await readQueue()).toEqual([]);
   });
+
+  it('reports not safely pulled when the drink POST is already in flight', async () => {
+    let resolveSubmit!: (value: 'ok') => void;
+    const slowSubmit = new Promise<'ok'>((resolve) => {
+      resolveSubmit = resolve;
+    });
+
+    (submitDrink as jest.Mock).mockReturnValueOnce(slowSubmit);
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([entry({ client_id: 'a' })]));
+
+    const flushing = flushDrinksQueue();
+    await flushMicrotasks();
+
+    await expect(removeQueuedDrink('a')).resolves.toBe(false);
+    expect(await readQueue()).toEqual([]);
+
+    resolveSubmit('ok');
+    await flushing;
+  });
 });
 
 describe('updateQueuedDrinkBeerName', () => {

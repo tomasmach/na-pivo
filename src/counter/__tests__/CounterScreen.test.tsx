@@ -362,8 +362,7 @@ describe('CounterScreen counting', () => {
       renderer = TestRenderer.create(React.createElement(CounterScreen));
     });
 
-    const cs = require('@/i18n/cs').cs;
-    const { minus } = countOnce(renderer, cs);
+    const { minus } = countOnce(renderer, copy);
     expect(useTallyStore.getState().current?.drinks).toHaveLength(1);
     expect(minus).toBeTruthy();
 
@@ -422,6 +421,44 @@ describe('CounterScreen counting', () => {
     expect(useTallyStore.getState().current?.drinks).toHaveLength(0);
     expect(enqueueDelete).toHaveBeenCalledWith('uuid-fixed');
     expect(deleteVisitByClientId).toHaveBeenCalledWith(expect.any(String));
+  });
+
+  it('waits for an in-flight drink POST before enqueueing the backend delete', async () => {
+    useCommunityStore.setState({
+      overrides: { [CELL]: { beers: [{ name: 'Plzeň', priceCzk: 62, volumeMl: 500 }], updatedAt: 1 } },
+    });
+    useNearbyPub.mockReturnValue(nearbyState());
+    let resolveFlush!: () => void;
+    flushDrinksQueue.mockReturnValueOnce(
+      new Promise<undefined>((resolve) => {
+        resolveFlush = () => resolve(undefined);
+      }),
+    );
+    removeQueuedDrink.mockResolvedValueOnce(false);
+
+    let renderer: any;
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(CounterScreen));
+    });
+
+    const cs = require('@/i18n/cs').cs;
+    const { minus } = countOnce(renderer, cs);
+    await act(async () => {
+      minus.props.onPress();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(flushDrinksQueue).toHaveBeenCalledTimes(1);
+    expect(enqueueDelete).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveFlush();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(enqueueDelete).toHaveBeenCalledWith('uuid-fixed');
   });
 
   it('shares the active evening client id with friends', async () => {

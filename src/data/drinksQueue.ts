@@ -150,9 +150,10 @@ export function isDrinkQueued(clientId: string): Promise<boolean> {
 /**
  * Remove a queued drink by its client_id — used when the user undoes a count
  * before the queued payload has been delivered, so an undone beer is never sent.
- * Resolves true only when the payload was still queued and got removed. False
- * means it was already delivered/dropped or was never queued, so callers must not
- * roll back their local tally.
+ * Resolves true only when the payload was still queued and not already in
+ * delivery. False means it was already delivered/dropped, never queued, or its
+ * POST is currently in flight; callers should enqueue a backend DELETE after the
+ * active flush settles.
  */
 export function removeQueuedDrink(clientId: string): Promise<boolean> {
   return runMutation(async () => {
@@ -160,7 +161,7 @@ export function removeQueuedDrink(clientId: string): Promise<boolean> {
     const filtered = queue.filter((entry) => entry.client_id !== clientId);
     if (filtered.length !== queue.length) {
       await saveQueue(filtered);
-      return true;
+      return !deliveringIds.has(clientId);
     }
     return false;
   });
