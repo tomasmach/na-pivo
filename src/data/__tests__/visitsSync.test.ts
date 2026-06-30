@@ -35,6 +35,20 @@ function session(over: Partial<TallySession> = {}): TallySession {
   };
 }
 
+async function waitForExpectation(assertion: () => void | Promise<void>): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    try {
+      await assertion();
+      return;
+    } catch (error) {
+      lastError = error;
+      await Promise.resolve();
+    }
+  }
+  throw lastError;
+}
+
 beforeEach(async () => {
   jest.clearAllMocks();
   await AsyncStorage.clear();
@@ -112,5 +126,33 @@ describe('seedVisitsFromHistory', () => {
     await seedVisitsFromHistory();
     const ids = enqueueVisitOp.mock.calls.map((c) => (c[0] as unknown as { clientId: string }).clientId);
     expect(ids).toContain('cur');
+  });
+
+  it('sets the guard only after visit ops have been queued', async () => {
+    let resolveEnqueue!: () => void;
+    enqueueVisitOp.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveEnqueue = resolve;
+      }),
+    );
+    useTallyStore.setState({ current: null, history: [session({ clientId: 'h1' })] });
+
+    const seeding = seedVisitsFromHistory();
+
+    await waitForExpectation(() => expect(enqueueVisitOp).toHaveBeenCalledTimes(1));
+    expect(await AsyncStorage.getItem('na-pivo-visits-seeded')).toBeNull();
+
+    resolveEnqueue();
+    await seeding;
+    expect(await AsyncStorage.getItem('na-pivo-visits-seeded')).toBe('1');
+  });
+
+  it('does not set the guard when queueing a visit op fails', async () => {
+    enqueueVisitOp.mockRejectedValueOnce(new Error('storage unavailable'));
+    useTallyStore.setState({ current: null, history: [session({ clientId: 'h1' })] });
+
+    await expect(seedVisitsFromHistory()).resolves.toBeUndefined();
+
+    expect(await AsyncStorage.getItem('na-pivo-visits-seeded')).toBeNull();
   });
 });

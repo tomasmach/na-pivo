@@ -98,9 +98,17 @@ export async function seedVisitsFromHistory(): Promise<void> {
   if (current && current.drinks.length > 0) sessions.push(current);
   sessions.push(...history);
 
+  const enqueueOps: Promise<void>[] = [];
   for (const session of sessions) {
     const entry = buildVisitEntry(session);
-    if (entry) void enqueueVisitOp({ op: 'upsert', clientId: entry.client_id, entry });
+    if (entry) enqueueOps.push(enqueueVisitOp({ op: 'upsert', clientId: entry.client_id, entry }));
+  }
+
+  try {
+    await Promise.all(enqueueOps);
+  } catch {
+    // Do not mark the seed as complete unless the visit ops were durably queued.
+    return;
   }
 
   try {
