@@ -78,6 +78,32 @@ def test_push_device_registers_token_without_echoing_it(client):
 
 
 @pytest.mark.django_db
+def test_push_device_register_error_does_not_log_push_token(client, monkeypatch, caplog):
+    token = _register(client)
+
+    def boom(*args, **kwargs):  # noqa: ARG001
+        raise RuntimeError(f"database rejected {_PUSH_TOKEN}")
+
+    monkeypatch.setattr(PushDevice.objects, "update_or_create", boom)
+
+    with caplog.at_level("ERROR", logger="pubs.api.views"):
+        resp = client.put(
+            "/v1/push-device",
+            data={
+                "push_token": _PUSH_TOKEN,
+                "platform": "ios",
+                "permission_status": "granted",
+                "enabled": True,
+            },
+            format="json",
+            **_auth(token),
+        )
+
+    assert resp.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+    assert _PUSH_TOKEN not in caplog.text
+
+
+@pytest.mark.django_db
 def test_push_device_upsert_moves_existing_token_to_current_account(client):
     first_token = _register(client)
     second_token = _register(client, _OTHER_DEVICE_ID)
@@ -127,6 +153,28 @@ def test_push_device_delete_disables_matching_token(client):
     device = PushDevice.objects.get()
     assert device.enabled is False
     assert device.permission_status == PushDevice.PermissionStatus.DENIED
+
+
+@pytest.mark.django_db
+def test_push_device_delete_error_does_not_log_push_token(client, monkeypatch, caplog):
+    token = _register(client)
+
+    class FailingQuerySet:
+        def update(self, **kwargs):  # noqa: ARG002
+            raise RuntimeError(f"database rejected {_PUSH_TOKEN}")
+
+    monkeypatch.setattr(PushDevice.objects, "filter", lambda *args, **kwargs: FailingQuerySet())
+
+    with caplog.at_level("ERROR", logger="pubs.api.views"):
+        resp = client.delete(
+            "/v1/push-device",
+            data={"push_token": _PUSH_TOKEN},
+            format="json",
+            **_auth(token),
+        )
+
+    assert resp.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+    assert _PUSH_TOKEN not in caplog.text
 
 
 @pytest.mark.django_db

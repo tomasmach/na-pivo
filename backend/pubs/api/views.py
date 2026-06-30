@@ -1435,7 +1435,11 @@ class ContentReportView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         data = serializer.validated_data
-        target = Account.objects.filter(public_id=data["target_account_id"]).first()
+        target = Account.objects.filter(
+            public_id=data["target_account_id"],
+            status=Account.Status.ACTIVE,
+            is_public=True,
+        ).first()
         if target is None:
             return Response(
                 {"detail": "Profile not found.", "code": "profile_not_found"},
@@ -1874,7 +1878,10 @@ class PushDeviceView(APIView):
                 },
             )
         except Exception as exc:  # noqa: BLE001
-            logger.error("push-device: unexpected error registering token: %s", exc, exc_info=True)
+            logger.error(
+                "push-device: unexpected error registering token",
+                extra={"observability": {"error": exc.__class__.__name__}},
+            )
             return Response(
                 {"detail": "Internal server error."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1901,7 +1908,10 @@ class PushDeviceView(APIView):
                 updated_at=dj_timezone.now(),
             )
         except Exception as exc:  # noqa: BLE001
-            logger.error("push-device: unexpected error disabling token: %s", exc, exc_info=True)
+            logger.error(
+                "push-device: unexpected error disabling token",
+                extra={"observability": {"error": exc.__class__.__name__}},
+            )
             return Response(
                 {"detail": "Internal server error."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,

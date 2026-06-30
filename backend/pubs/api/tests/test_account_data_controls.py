@@ -361,9 +361,10 @@ def test_content_report_creates_moderation_record(client):
     reporter_token, _ = _bootstrap(client)
     target_token, target_id = _bootstrap(client)
     target = Account.objects.get(public_id=target_id)
+    target.is_public = True
     target.nickname = "BadName"
     target.display_name = "Bad Display"
-    target.save(update_fields=["nickname", "display_name"])
+    target.save(update_fields=["is_public", "nickname", "display_name"])
 
     resp = client.post(
         "/v1/content-reports",
@@ -395,3 +396,35 @@ def test_content_report_creates_moderation_record(client):
     )
     assert self_report.status_code == status.HTTP_400_BAD_REQUEST
     assert self_report.json()["code"] == "self_report"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("is_public", "status_value"),
+    [
+        (False, Account.Status.ACTIVE),
+        (True, Account.Status.PENDING_DELETION),
+    ],
+)
+def test_content_report_requires_public_active_target(client, is_public, status_value):
+    reporter_token, _ = _bootstrap(client)
+    _, target_id = _bootstrap(client)
+    target = Account.objects.get(public_id=target_id)
+    target.is_public = is_public
+    target.status = status_value
+    target.save(update_fields=["is_public", "status"])
+
+    resp = client.post(
+        "/v1/content-reports",
+        data={
+            "target_account_id": target_id,
+            "reason": ContentReport.Reason.OTHER,
+            "comment": "Nemá být reportovatelný.",
+        },
+        format="json",
+        **_auth(reporter_token),
+    )
+
+    assert resp.status_code == status.HTTP_404_NOT_FOUND
+    assert resp.json()["code"] == "profile_not_found"
+    assert ContentReport.objects.count() == 0
