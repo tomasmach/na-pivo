@@ -59,17 +59,17 @@ describe('buildPubNameCorrectionEntry', () => {
 describe('submitPubNameCorrection', () => {
   const entry = buildPubNameCorrectionEntry(PUB, 'U Testu po novém', 'client-1');
 
-  it('returns false without a backend URL and does not ensure an account', async () => {
+  it('returns retry without a backend URL and does not ensure an account', async () => {
     setBackend(undefined);
     global.fetch = jest.fn() as unknown as typeof fetch;
 
-    await expect(submitPubNameCorrection(entry)).resolves.toBe(false);
+    await expect(submitPubNameCorrection(entry)).resolves.toBe('retry');
 
     expect(ensureAccount).not.toHaveBeenCalled();
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it('POSTs the correction with bearer auth and returns true for OK responses', async () => {
+  it('POSTs the correction with bearer auth and returns ok for OK responses', async () => {
     setBackend('https://api.example.com/');
     (ensureAccount as jest.Mock).mockResolvedValue({
       deviceId: 'dev-1',
@@ -79,7 +79,7 @@ describe('submitPubNameCorrection', () => {
     const fetchSpy = jest.fn(async () => ({ ok: true, status: 201, json: async () => ({}) }));
     global.fetch = fetchSpy as unknown as typeof fetch;
 
-    await expect(submitPubNameCorrection(entry)).resolves.toBe(true);
+    await expect(submitPubNameCorrection(entry)).resolves.toBe('ok');
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const [url, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
@@ -92,14 +92,52 @@ describe('submitPubNameCorrection', () => {
     expect(JSON.parse(init.body as string)).toEqual(entry);
   });
 
-  it('clears cached anonymous account on 401 and returns false', async () => {
+  it('clears cached anonymous account on 401 and returns retry', async () => {
     setBackend('https://api.example.com');
     const session = { deviceId: 'd', accountId: 'a', token: 't' };
     (ensureAccount as jest.Mock).mockResolvedValue(session);
     global.fetch = jest.fn(async () => ({ ok: false, status: 401 })) as unknown as typeof fetch;
 
-    await expect(submitPubNameCorrection(entry)).resolves.toBe(false);
+    await expect(submitPubNameCorrection(entry)).resolves.toBe('retry');
 
     expect(clearCachedAnonymousAccount).toHaveBeenCalledWith(session);
+  });
+
+  it('returns permanent-error for validation failures', async () => {
+    setBackend('https://api.example.com');
+    (ensureAccount as jest.Mock).mockResolvedValue({
+      deviceId: 'd',
+      accountId: 'a',
+      token: 't',
+    });
+    global.fetch = jest.fn(async () => ({ ok: false, status: 400 })) as unknown as typeof fetch;
+
+    await expect(submitPubNameCorrection(entry)).resolves.toBe('permanent-error');
+
+    global.fetch = jest.fn(async () => ({ ok: false, status: 422 })) as unknown as typeof fetch;
+
+    await expect(submitPubNameCorrection(entry)).resolves.toBe('permanent-error');
+  });
+
+  it('returns retry for throttling, server errors, and network failures', async () => {
+    setBackend('https://api.example.com');
+    (ensureAccount as jest.Mock).mockResolvedValue({
+      deviceId: 'd',
+      accountId: 'a',
+      token: 't',
+    });
+    global.fetch = jest.fn(async () => ({ ok: false, status: 429 })) as unknown as typeof fetch;
+
+    await expect(submitPubNameCorrection(entry)).resolves.toBe('retry');
+
+    global.fetch = jest.fn(async () => ({ ok: false, status: 500 })) as unknown as typeof fetch;
+
+    await expect(submitPubNameCorrection(entry)).resolves.toBe('retry');
+
+    global.fetch = jest.fn(async () => {
+      throw new Error('offline');
+    }) as unknown as typeof fetch;
+
+    await expect(submitPubNameCorrection(entry)).resolves.toBe('retry');
   });
 });

@@ -24,6 +24,8 @@ export interface PubNameCorrectionEntry {
 
 const REQUEST_TIMEOUT_MS = 8000;
 
+export type SubmitPubNameCorrectionResult = 'ok' | 'permanent-error' | 'retry';
+
 function chainAbortSignal(signal?: AbortSignal): {
   signal: AbortSignal;
   cleanup: () => void;
@@ -72,14 +74,14 @@ export function buildPubNameCorrectionEntry(
 export async function submitPubNameCorrection(
   entry: PubNameCorrectionEntry,
   signal?: AbortSignal,
-): Promise<boolean> {
-  if (signal?.aborted) return false;
+): Promise<SubmitPubNameCorrectionResult> {
+  if (signal?.aborted) return 'retry';
 
   const endpoint = getBackendEndpoint('/v1/pub-name-corrections');
-  if (!endpoint) return false;
+  if (!endpoint) return 'retry';
 
   const session = await ensureAccount(signal);
-  if (!session || signal?.aborted) return false;
+  if (!session || signal?.aborted) return 'retry';
 
   const abort = chainAbortSignal(signal);
   try {
@@ -95,16 +97,20 @@ export async function submitPubNameCorrection(
 
     if (resp.status === 401) {
       await clearCachedAnonymousAccount(session);
-      return false;
+      return 'retry';
     }
     if (!resp.ok) {
+      const result: SubmitPubNameCorrectionResult =
+        resp.status === 400 || resp.status === 422 ? 'permanent-error' : 'retry';
       trackApiFailure('pub_name_correction_submit', {
         endpoint: '/v1/pub-name-corrections',
         status: resp.status,
+        sync_result: result,
+        retryable: result === 'retry',
       });
-      return false;
+      return result;
     }
-    return true;
+    return 'ok';
   } catch (err) {
     const isAbortError = err instanceof Error && err.name === 'AbortError';
     if (!signal?.aborted && !isAbortError) {
@@ -112,9 +118,11 @@ export async function submitPubNameCorrection(
         endpoint: '/v1/pub-name-corrections',
         reason: 'exception',
         error: err,
+        sync_result: 'retry',
+        retryable: true,
       });
     }
-    return false;
+    return 'retry';
   } finally {
     abort.cleanup();
   }

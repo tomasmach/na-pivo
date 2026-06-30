@@ -262,7 +262,14 @@ export async function trackClientEvent(input: ClientTelemetryInput): Promise<voi
 
 export function trackApiFailure(
   operation: string,
-  details: { status?: number; reason?: string; endpoint?: string; error?: unknown } = {},
+  details: {
+    status?: number;
+    reason?: string;
+    endpoint?: string;
+    error?: unknown;
+    sync_result?: string;
+    retryable?: boolean;
+  } = {},
 ): void {
   const cleanError = details.error ? sanitizeError(details.error) : null;
   void trackClientEvent({
@@ -277,6 +284,8 @@ export function trackApiFailure(
       error_name: cleanError?.errorName,
       error_message: cleanError?.errorMessage,
       stack: cleanError?.stack,
+      sync_result: details.sync_result,
+      retryable: details.retryable,
     },
   });
 }

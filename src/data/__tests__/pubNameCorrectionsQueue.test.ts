@@ -14,7 +14,7 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 );
 
 jest.mock('../pubNameCorrectionsClient', () => ({
-  submitPubNameCorrection: jest.fn(async () => true),
+  submitPubNameCorrection: jest.fn(async () => 'ok'),
 }));
 
 jest.mock('../pubs', () => ({
@@ -62,15 +62,24 @@ describe('enqueuePubNameCorrection', () => {
   });
 
   it('keeps a failed correction queued instead of dropping it', async () => {
-    (submitPubNameCorrection as jest.Mock).mockResolvedValue(false);
+    (submitPubNameCorrection as jest.Mock).mockResolvedValue('retry');
 
     await expect(enqueuePubNameCorrection(ENTRY_A)).resolves.toBe(false);
 
     await expect(readQueue()).resolves.toEqual([ENTRY_A]);
   });
 
+  it('drops a permanently rejected correction', async () => {
+    (submitPubNameCorrection as jest.Mock).mockResolvedValue('permanent-error');
+
+    await expect(enqueuePubNameCorrection(ENTRY_A)).resolves.toBe(true);
+
+    expect(clearPubsSnapshot).not.toHaveBeenCalled();
+    await expect(readQueue()).resolves.toEqual([]);
+  });
+
   it('dedupes a retry of the same client_id', async () => {
-    (submitPubNameCorrection as jest.Mock).mockResolvedValue(false);
+    (submitPubNameCorrection as jest.Mock).mockResolvedValue('retry');
 
     await enqueuePubNameCorrection(ENTRY_A);
     await enqueuePubNameCorrection({ ...ENTRY_A, suggested_name: 'Ještě novější' });
@@ -85,12 +94,12 @@ describe('enqueuePubNameCorrection', () => {
 
 describe('flushPubNameCorrectionsQueue', () => {
   it('re-sends queued corrections once the backend recovers and clears the queue', async () => {
-    (submitPubNameCorrection as jest.Mock).mockResolvedValue(false);
+    (submitPubNameCorrection as jest.Mock).mockResolvedValue('retry');
     await enqueuePubNameCorrection(ENTRY_A);
     await enqueuePubNameCorrection(ENTRY_B);
     expect(await readQueue()).toHaveLength(2);
 
-    (submitPubNameCorrection as jest.Mock).mockResolvedValue(true);
+    (submitPubNameCorrection as jest.Mock).mockResolvedValue('ok');
     await flushPubNameCorrectionsQueue();
 
     expect(submitPubNameCorrection).toHaveBeenCalledWith(ENTRY_A);

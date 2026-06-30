@@ -70,10 +70,10 @@ async function flushLocked(): Promise<void> {
 
   const remaining: PubNameCorrectionEntry[] = [];
   for (const entry of queue) {
-    const sent = await submitPubNameCorrection(entry);
-    if (sent) {
+    const result = await submitPubNameCorrection(entry);
+    if (result === 'ok') {
       await clearPubsSnapshot();
-    } else {
+    } else if (result === 'retry') {
       remaining.push(entry);
     }
   }
