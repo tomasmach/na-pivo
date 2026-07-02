@@ -55,13 +55,15 @@ services:
       - napivo_media:/data/media
     networks:
       - internal
-    # Override the web entrypoint: loop refresh_hours every 5 minutes.
+    # Override the web entrypoint: loop the cron commands every 5 minutes.
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
         while true; do
           python manage.py refresh_hours --limit 50 || true
           python manage.py sync_feedback_linear --limit 20 || true
+          python manage.py advance_friend_plans || true
+          python manage.py prune_friend_data || true
           sleep 300
         done
 

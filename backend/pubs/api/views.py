@@ -23,6 +23,7 @@ import json
 import logging
 import math
 import re
+import secrets
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -81,7 +82,10 @@ from pubs.models import (
     ContentReport,
     DrinkLog,
     FeedbackReport,
+    FriendActivityReaction,
     FriendActivityResponse,
+    FriendBlock,
+    FriendInviteCode,
     FriendNotification,
     FriendPubActivity,
     Friendship,
@@ -121,8 +125,11 @@ from .serializers import (
     DrinkUpdateSerializer,
     FeedbackReportSerializer,
     FeedbackRequestSerializer,
+    FriendActivityReactionSerializer,
     FriendActivityRequestSerializer,
     FriendActivityResponseSerializer,
+    FriendBlockRequestSerializer,
+    FriendInviteSerializer,
     FriendNotificationSerializer,
     FriendProfileSerializer,
     FriendPubActivitySerializer,
@@ -371,13 +378,18 @@ def _friend_profile_context(request: Request) -> dict:
     return {"request": request}
 
 
-def _friend_activity_context(request: Request) -> dict:
+def _friend_activity_context(request: Request, blocked_ids: set[int] | None = None) -> dict:
     """Serializer context for FriendPubActivitySerializer.
 
-    Carries ``request`` (avatar URLs) plus ``account`` so the serializer can
-    resolve ``my_response`` for the caller.
+    Carries ``request`` (avatar URLs), ``account`` so the serializer can resolve
+    ``my_response`` for the caller, and ``blocked_ids`` so a blocked account never
+    surfaces in the GOING roster the caller sees (bidirectional, mirroring the
+    other block-gated read paths). Callers that already built the block set pass
+    it in to avoid a duplicate query.
     """
-    return {"request": request, "account": request.user}
+    if blocked_ids is None:
+        blocked_ids = _blocked_account_ids(request.user)
+    return {"request": request, "account": request.user, "blocked_ids": blocked_ids}
 
 
 def _friend_activity_responses_prefetch() -> Prefetch:
@@ -386,6 +398,46 @@ def _friend_activity_responses_prefetch() -> Prefetch:
         "responses",
         queryset=FriendActivityResponse.objects.select_related("account"),
     )
+
+
+def _friend_activity_reactions_prefetch() -> Prefetch:
+    """Prefetch reaction rows so ``reactions`` / ``my_reaction`` stay N+1-free."""
+    return Prefetch(
+        "reactions",
+        queryset=FriendActivityReaction.objects.all(),
+    )
+
+
+def _friend_activity_prefetches() -> tuple[Prefetch, Prefetch]:
+    """The RSVP + reaction prefetches every FriendPubActivity read path needs."""
+    return _friend_activity_responses_prefetch(), _friend_activity_reactions_prefetch()
+
+
+def _blocked_account_ids(account: Account) -> set[int]:
+    """Account ids I have blocked OR that have blocked me (bidirectional).
+
+    Used to gate search / requests / respond / react / dashboard / fanout /
+    invite-resolve so a block hides both parties from each other everywhere.
+    """
+    rows = FriendBlock.objects.filter(
+        Q(blocker=account) | Q(blocked=account)
+    ).values_list("blocker_id", "blocked_id")
+    blocked: set[int] = set()
+    for blocker_id, blocked_id in rows:
+        blocked.add(blocked_id if blocker_id == account.id else blocker_id)
+    return blocked
+
+
+def _prague_today_bounds(now=None) -> tuple[datetime, datetime]:
+    """[start, end) of the current Europe/Prague local day, as aware datetimes.
+
+    Plans are bucketed on the local (Prague) date so "dnešní plán" means the same
+    calendar day a CZ/SK user sees, never the UTC rollover.
+    """
+    now = now or dj_timezone.now()
+    local_now = dj_timezone.localtime(now, PRAGUE_TZ)
+    start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    return start, start + timedelta(days=1)
 
 
 def _account_in_quiet_hours(account: Account, now=None) -> bool:
@@ -457,6 +509,65 @@ def _previous_iso_week(year: int, week: int) -> tuple[int, int]:
     return iso.year, iso.week
 
 
+def _single_friend_shared(account: Account, friend: Account) -> tuple[list[dict], set]:
+    """Shared evenings with ONE friend (cheap — used by the friend profile GET).
+
+    Returns ``(shared_evenings, shared_dates)`` where ``shared_evenings`` is a
+    list of ``{"pub_name", "cache_key", "at"}`` dicts (most recent first, deduped
+    per (pub, local date)) and ``shared_dates`` feeds the pair streak. Same
+    same-day-same-geohash definition as ``_shared_pub_stats`` but scoped to a
+    single friend, so it stays bounded regardless of how many friends I have.
+    Privacy-safe: only geohash + local date, never raw coordinates.
+    """
+
+    cutoff = dj_timezone.now() - FRIEND_SHARED_STATS_WINDOW
+
+    def _local_date(value):
+        return dj_timezone.localtime(value, PRAGUE_TZ).date()
+
+    my_visits = list(
+        PubVisit.objects.filter(account=account, started_at__gte=cutoff).only(
+            "cache_key", "started_at", "name"
+        )
+    )
+    if not my_visits:
+        return [], set()
+    my_by_key: dict[tuple[str, object], tuple[str, object]] = {}
+    for visit in my_visits:
+        my_by_key[(visit.cache_key, _local_date(visit.started_at))] = (
+            visit.name,
+            visit.started_at,
+        )
+
+    friend_visits = (
+        PubVisit.objects.filter(account=friend, started_at__gte=cutoff)
+        .only("cache_key", "started_at", "name")
+        .order_by("-started_at")
+    )
+    shared_dates: set = set()
+    shared_evenings: list[dict] = []
+    seen: set[tuple[str, object]] = set()
+    for visit in friend_visits:
+        local_date = _local_date(visit.started_at)
+        key = (visit.cache_key, local_date)
+        if key not in my_by_key:
+            continue
+        shared_dates.add(local_date)
+        if key in seen:
+            continue
+        seen.add(key)
+        my_name, my_started_at = my_by_key[key]
+        shared_evenings.append(
+            {
+                "pub_name": my_name or visit.name,
+                "cache_key": visit.cache_key,
+                "at": my_started_at,
+            }
+        )
+    shared_evenings.sort(key=lambda item: item["at"], reverse=True)
+    return shared_evenings, shared_dates
+
+
 def _send_friend_push(account_ids: list[int], title: str, body: str, data: dict) -> None:
     """Best-effort Expo push fanout.
 
@@ -493,34 +604,63 @@ def _send_friend_push(account_ids: list[int], title: str, body: str, data: dict)
     if not tokens:
         return
 
-    messages = [
-        {
-            "to": token,
-            "title": title,
-            "body": body,
-            "sound": "default",
-            "data": data,
-        }
-        for token in tokens
-    ]
-    try:
-        response = requests.post(
-            "https://exp.host/--/api/v2/push/send",
-            json=messages,
-            timeout=3,
-        )
-        response.raise_for_status()
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "friend push delivery failed",
-            extra={
-                "event": "friend_push_failed",
-                "observability": {
-                    "recipient_count": len(account_ids),
-                    "token_count": len(tokens),
-                    "error": exc.__class__.__name__,
+    # Expo caps a single /push/send POST at 100 messages; chunk the (now opt-in
+    # driven, so potentially large) token base into batches. Tickets come back in
+    # the same order as the messages sent, so we can map a per-token delivery
+    # result back to its device and retire tokens Expo reports as unreachable.
+    chunk_size = max(1, int(getattr(settings, "EXPO_PUSH_CHUNK_SIZE", 100)))
+    dead_tokens: list[str] = []
+    for start in range(0, len(tokens), chunk_size):
+        batch_tokens = tokens[start : start + chunk_size]
+        messages = [
+            {
+                "to": token,
+                "title": title,
+                "body": body,
+                "sound": "default",
+                "data": data,
+            }
+            for token in batch_tokens
+        ]
+        try:
+            response = requests.post(
+                "https://exp.host/--/api/v2/push/send",
+                json=messages,
+                timeout=3,
+            )
+            response.raise_for_status()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "friend push delivery failed",
+                extra={
+                    "event": "friend_push_failed",
+                    "observability": {
+                        "recipient_count": len(deliver_ids),
+                        "token_count": len(batch_tokens),
+                        "error": exc.__class__.__name__,
+                    },
                 },
-            },
+            )
+            continue
+        # Best-effort ticket parse: a device that uninstalled reports
+        # DeviceNotRegistered, so we disable that token to shrink future fanout.
+        # Never log token values or bodies.
+        try:
+            tickets = response.json().get("data", [])
+        except Exception:  # noqa: BLE001
+            tickets = []
+        for token, ticket in zip(batch_tokens, tickets):
+            if (
+                isinstance(ticket, dict)
+                and ticket.get("status") == "error"
+                and (ticket.get("details") or {}).get("error") == "DeviceNotRegistered"
+            ):
+                dead_tokens.append(token)
+
+    if dead_tokens:
+        PushDevice.objects.filter(push_token__in=dead_tokens).update(
+            enabled=False,
+            permission_status=PushDevice.PermissionStatus.DENIED,
         )
 
 
@@ -546,6 +686,41 @@ def _create_friend_notification(
         activity=activity,
         pub_cache_key=pub_cache_key,
         pub_name=pub_name,
+    )
+
+
+def _bulk_create_friend_notifications(
+    *,
+    recipient_ids: list[int],
+    actor: Account,
+    kind: str,
+    title: str,
+    body: str,
+    activity: FriendPubActivity | None = None,
+    pub_cache_key: str = "",
+    pub_name: str = "",
+) -> None:
+    """Fan a single in-app notification out to many recipients in one INSERT.
+
+    Replaces the per-recipient create loop so a broadcast to a large parta is one
+    ``bulk_create`` instead of N queries. The push fan-out is separate.
+    """
+    if not recipient_ids:
+        return
+    FriendNotification.objects.bulk_create(
+        [
+            FriendNotification(
+                recipient_id=recipient_id,
+                actor=actor,
+                kind=kind,
+                title=title,
+                body=body,
+                activity=activity,
+                pub_cache_key=pub_cache_key,
+                pub_name=pub_name,
+            )
+            for recipient_id in recipient_ids
+        ]
     )
 
 
@@ -1903,83 +2078,148 @@ class PushDeviceView(APIView):
         return Response({"disabled": disabled}, status=status.HTTP_200_OK)
 
 
+def _friend_activity_slices(request, friend_ids, now, activity_context) -> dict:
+    """Serialized live + plan activity slices shared by the dashboard and the poll.
+
+    Returns ``active_friends`` / ``my_active_activity`` (kind=live) and ``plans`` /
+    ``my_plan`` (kind=plan scheduled for the current Prague day). Callers pass
+    ``friend_ids`` already stripped of blocked accounts. Live rows keep the exact
+    meaning old clients expect (narrowed to kind=live is byte-identical for anyone
+    without plans); plans live only in the new keys old clients ignore.
+    """
+    prefetches = _friend_activity_prefetches()
+    day_start, day_end = _prague_today_bounds(now)
+
+    active = (
+        FriendPubActivity.objects.filter(
+            account_id__in=friend_ids,
+            active=True,
+            expires_at__gt=now,
+            kind=FriendPubActivity.Kind.LIVE,
+            account__status=Account.Status.ACTIVE,
+        )
+        # A friend who toggles ghost mode vanishes from everyone else's feed
+        # immediately (their own broadcast row is kept for their own view).
+        .exclude(account__ghost_mode=True)
+        .select_related("account")
+        .prefetch_related(*prefetches)
+        .order_by("-started_at")[:20]
+    )
+    my_active_activity = (
+        FriendPubActivity.objects.filter(
+            account=request.user,
+            active=True,
+            expires_at__gt=now,
+            kind=FriendPubActivity.Kind.LIVE,
+        )
+        .select_related("account")
+        .prefetch_related(*prefetches)
+        .order_by("-started_at")
+        .first()
+    )
+    plans = (
+        FriendPubActivity.objects.filter(
+            account_id__in=friend_ids,
+            active=True,
+            kind=FriendPubActivity.Kind.PLAN,
+            scheduled_for__gte=day_start,
+            scheduled_for__lt=day_end,
+            account__status=Account.Status.ACTIVE,
+        )
+        .exclude(account__ghost_mode=True)
+        .select_related("account")
+        .prefetch_related(*prefetches)
+        .order_by("scheduled_for")[:20]
+    )
+    my_plan = (
+        FriendPubActivity.objects.filter(
+            account=request.user,
+            active=True,
+            kind=FriendPubActivity.Kind.PLAN,
+            scheduled_for__gte=day_start,
+            scheduled_for__lt=day_end,
+        )
+        .select_related("account")
+        .prefetch_related(*prefetches)
+        .order_by("scheduled_for")
+        .first()
+    )
+    return {
+        "active_friends": FriendPubActivitySerializer(
+            active, many=True, context=activity_context
+        ).data,
+        "my_active_activity": (
+            FriendPubActivitySerializer(my_active_activity, context=activity_context).data
+            if my_active_activity is not None
+            else None
+        ),
+        "plans": FriendPubActivitySerializer(plans, many=True, context=activity_context).data,
+        "my_plan": (
+            FriendPubActivitySerializer(my_plan, context=activity_context).data
+            if my_plan is not None
+            else None
+        ),
+    }
+
+
 class FriendsView(APIView):
     """
     GET /v1/friends
 
     Social dashboard payload: accepted friends, incoming/outgoing requests,
-    active friend pub statuses and recent in-app notifications.
+    active friend pub statuses (kind=live), today's plans (kind=plan) and recent
+    in-app notifications. Blocked accounts (either direction) are excluded from
+    every list. Reads use the separate ``friends_dashboard`` throttle budget so
+    the bounded live poll never starves the friend write budget.
     """
 
     authentication_classes = [AccountTokenAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "friends"
+    throttle_scope = "friends_dashboard"
 
     def get(self, request: Request) -> Response:
         now = dj_timezone.now()
         context = _friend_profile_context(request)
-        activity_context = _friend_activity_context(request)
-        # Render the RSVP roster (counts + GOING profiles + my_response) without N+1.
-        responses_prefetch = _friend_activity_responses_prefetch()
+        blocked_ids = _blocked_account_ids(request.user)
+        activity_context = _friend_activity_context(request, blocked_ids)
 
         friendships = (
             Friendship.objects.filter(Q(requester=request.user) | Q(recipient=request.user))
             .select_related("requester", "recipient")
             .order_by("-updated_at")
         )
+
+        def _other(row):
+            return row.recipient if row.requester_id == request.user.id else row.requester
+
         accepted = [
             row
             for row in friendships
             if row.status == Friendship.Status.ACCEPTED
-            and _is_active_account(
-                row.recipient if row.requester_id == request.user.id else row.requester
-            )
+            and _is_active_account(_other(row))
+            and _other(row).id not in blocked_ids
         ]
         incoming = [
             row
             for row in friendships
             if row.status == Friendship.Status.PENDING and row.recipient_id == request.user.id
             and _is_active_account(row.requester)
+            and row.requester_id not in blocked_ids
         ]
         outgoing = [
             row
             for row in friendships
             if row.status == Friendship.Status.PENDING and row.requester_id == request.user.id
             and _is_active_account(row.recipient)
+            and row.recipient_id not in blocked_ids
         ]
 
-        friend_accounts = [
-            row.recipient if row.requester_id == request.user.id else row.requester
-            for row in accepted
-        ]
+        friend_accounts = [_other(row) for row in accepted]
         friend_ids = [account.id for account in friend_accounts]
         shared_stats, shared_dates = _shared_pub_stats(request.user, friend_ids)
-        active = (
-            FriendPubActivity.objects.filter(
-                account_id__in=friend_ids,
-                active=True,
-                expires_at__gt=now,
-                account__status=Account.Status.ACTIVE,
-            )
-            # A friend who toggles ghost mode vanishes from everyone else's feed
-            # immediately (their own broadcast row is kept for their own view).
-            .exclude(account__ghost_mode=True)
-            .select_related("account")
-            .prefetch_related(responses_prefetch)
-            .order_by("-started_at")[:20]
-        )
-        my_active_activity = (
-            FriendPubActivity.objects.filter(
-                account=request.user,
-                active=True,
-                expires_at__gt=now,
-            )
-            .select_related("account")
-            .prefetch_related(responses_prefetch)
-            .order_by("-started_at")
-            .first()
-        )
+        slices = _friend_activity_slices(request, friend_ids, now, activity_context)
+
         notification_base = (
             FriendNotification.objects.filter(recipient=request.user)
             .filter(
@@ -1994,6 +2234,7 @@ class FriendsView(APIView):
                     activity__account__ghost_mode=False,
                 )
             )
+            .exclude(actor_id__in=blocked_ids)
         )
         notifications = (
             notification_base
@@ -2016,19 +2257,20 @@ class FriendsView(APIView):
                 },
                 "incoming_requests": FriendshipSerializer(incoming, many=True, context=context).data,
                 "outgoing_requests": FriendshipSerializer(outgoing, many=True, context=context).data,
-                "active_friends": FriendPubActivitySerializer(
-                    active, many=True, context=activity_context
-                ).data,
-                "my_active_activity": (
-                    FriendPubActivitySerializer(my_active_activity, context=activity_context).data
-                    if my_active_activity is not None
-                    else None
-                ),
+                "active_friends": slices["active_friends"],
+                "my_active_activity": slices["my_active_activity"],
+                "plans": slices["plans"],
+                "my_plan": slices["my_plan"],
                 "notifications": FriendNotificationSerializer(notifications, many=True, context=context).data,
                 "unread_count": unread_count,
                 "settings": _friend_settings_payload(request.user),
                 "streak": streak,
                 "leaderboard": leaderboard,
+                "blocked_ids": [
+                    str(public_id)
+                    for public_id in FriendBlock.objects.filter(blocker=request.user)
+                    .values_list("blocked__public_id", flat=True)
+                ],
             },
             status=status.HTTP_200_OK,
         )
@@ -2080,6 +2322,73 @@ class FriendsView(APIView):
         return entries
 
 
+class FriendsLiveView(APIView):
+    """
+    GET /v1/friends/live
+
+    Cheap poll slice backing the bounded 30–45s live poll: just the live/plan
+    activity slices plus lightweight counts, with none of the dashboard's
+    365-day shared-stats scan or leaderboard query. Uses the ``friends_dashboard``
+    throttle budget. Old backends 404 this, so the client falls back to the full
+    dashboard.
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends_dashboard"
+
+    def get(self, request: Request) -> Response:
+        now = dj_timezone.now()
+        blocked_ids = _blocked_account_ids(request.user)
+        activity_context = _friend_activity_context(request, blocked_ids)
+
+        friend_ids = [
+            fid for fid in _accepted_friend_ids(request.user) if fid not in blocked_ids
+        ]
+        slices = _friend_activity_slices(request, friend_ids, now, activity_context)
+
+        incoming_count = (
+            Friendship.objects.filter(
+                recipient=request.user,
+                status=Friendship.Status.PENDING,
+                requester__status=Account.Status.ACTIVE,
+            )
+            .exclude(requester_id__in=blocked_ids)
+            .count()
+        )
+        unread_count = (
+            FriendNotification.objects.filter(recipient=request.user, read_at__isnull=True)
+            .filter(
+                Q(actor__isnull=True)
+                | Q(actor__status=Account.Status.ACTIVE, actor__ghost_mode=False)
+            )
+            .filter(
+                Q(activity__isnull=True)
+                | Q(activity__account=request.user)
+                | Q(
+                    activity__account__status=Account.Status.ACTIVE,
+                    activity__account__ghost_mode=False,
+                )
+            )
+            .exclude(actor_id__in=blocked_ids)
+            .count()
+        )
+
+        return Response(
+            {
+                "active_friends": slices["active_friends"],
+                "my_active_activity": slices["my_active_activity"],
+                "plans": slices["plans"],
+                "my_plan": slices["my_plan"],
+                "incoming_count": incoming_count,
+                "unread_count": unread_count,
+                "server_time": now.isoformat(),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class FriendSearchView(APIView):
     """GET /v1/friends/search?q=nick — public profile lookup for adding friends."""
 
@@ -2100,6 +2409,8 @@ class FriendSearchView(APIView):
                 is_public=True,
             )
             .exclude(pk=request.user.pk)
+            # A block (either direction) hides both parties from search.
+            .exclude(pk__in=_blocked_account_ids(request.user))
             .filter(Q(nickname__icontains=q) | Q(display_name__icontains=q))
             .order_by("nickname", "display_name")[:20]
         )
@@ -2116,7 +2427,7 @@ class FriendSearchView(APIView):
 
 
 class FriendRequestView(APIView):
-    """POST /v1/friends/requests — send a friend request by id or nickname."""
+    """POST /v1/friends/requests — send a friend request by id, nickname or invite code."""
 
     authentication_classes = [AccountTokenAuthentication]
     permission_classes = [IsAuthenticated]
@@ -2129,13 +2440,53 @@ class FriendRequestView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         data = serializer.validated_data
+        now = dj_timezone.now()
         target_query = Account.objects.filter(status=Account.Status.ACTIVE)
-        if data.get("target_account_id"):
+
+        # An invite code is the QR / deep-link growth path: it carries no PII, so
+        # the inviter is resolved server-side and the is_public gate is bypassed
+        # (minting a code IS explicit consent to be added).
+        via_invite = bool(data.get("invite_code"))
+        if via_invite:
+            code_row = (
+                FriendInviteCode.objects.select_related("account")
+                .filter(code=data["invite_code"])
+                .first()
+            )
+            if code_row is None:
+                return Response(
+                    {"detail": "Pozvánku neznám.", "code": "invite_invalid"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            if code_row.revoked or code_row.expires_at <= now:
+                return Response(
+                    {"detail": "Pozvánka už vypršela.", "code": "invite_expired"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            target = code_row.account if _is_active_account(code_row.account) else None
+            if target is None:
+                return Response(
+                    {"detail": "Pozvánku neznám.", "code": "invite_invalid"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+        elif data.get("target_account_id"):
             target = target_query.filter(public_id=data["target_account_id"]).first()
         else:
             target = target_query.filter(nickname__iexact=data["nickname"]).first()
 
-        if target is None or (not target.is_public and target.pk not in _accepted_friend_ids(request.user)):
+        # A block in either direction hides the target completely.
+        if target is not None and target.pk in _blocked_account_ids(request.user):
+            target = None
+
+        if not via_invite and (
+            target is None
+            or (not target.is_public and target.pk not in _accepted_friend_ids(request.user))
+        ):
+            return Response(
+                {"detail": "Profil se nepodařilo najít.", "code": "profile_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if via_invite and target is None:
             return Response(
                 {"detail": "Profil se nepodařilo najít.", "code": "profile_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
@@ -2146,7 +2497,6 @@ class FriendRequestView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        now = dj_timezone.now()
         try:
             with transaction.atomic():
                 # Serialize both A→B and B→A attempts through the same account
@@ -2193,6 +2543,19 @@ class FriendRequestView(APIView):
                     defaults={"status": Friendship.Status.PENDING},
                 )
                 if not created and friendship.status == Friendship.Status.DECLINED:
+                    # Anti-harassment: a declined request may NOT silently re-open
+                    # (and re-notify the decliner) during the cooldown window. We
+                    # return 2xx (so old apps show "sent") but leave the row
+                    # DECLINED and add cooldown_until for new clients; only after
+                    # the window does it flip back to PENDING and notify afresh.
+                    cooldown = timedelta(days=settings.FRIEND_DECLINE_COOLDOWN_DAYS)
+                    responded_at = friendship.responded_at
+                    if responded_at is not None and now - responded_at < cooldown:
+                        payload = FriendshipSerializer(
+                            friendship, context=_friend_profile_context(request)
+                        ).data
+                        payload["cooldown_until"] = (responded_at + cooldown).isoformat()
+                        return Response(payload, status=status.HTTP_200_OK)
                     friendship.status = Friendship.Status.PENDING
                     friendship.responded_at = None
                     friendship.save(update_fields=["status", "responded_at", "updated_at"])
@@ -2290,22 +2653,131 @@ class FriendRequestActionView(APIView):
 
 
 class FriendDetailView(APIView):
-    """DELETE /v1/friends/<account_id> — remove an accepted friend."""
+    """GET/DELETE /v1/friends/<account_id> — friend profile / remove friend or cancel invite."""
 
     authentication_classes = [AccountTokenAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "friends"
 
+    def get(self, request: Request, account_id) -> Response:
+        now = dj_timezone.now()
+        friend = Account.objects.filter(
+            public_id=account_id, status=Account.Status.ACTIVE
+        ).first()
+        blocked_ids = _blocked_account_ids(request.user)
+        friendship = None
+        if friend is not None and friend.id not in blocked_ids:
+            friendship = (
+                Friendship.objects.filter(status=Friendship.Status.ACCEPTED)
+                .filter(
+                    Q(requester=request.user, recipient=friend)
+                    | Q(requester=friend, recipient=request.user)
+                )
+                .first()
+            )
+        if friend is None or friendship is None:
+            return Response(
+                {"detail": "Tenhle kámoš tu není.", "code": "friend_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        context = _friend_profile_context(request)
+        activity_context = _friend_activity_context(request)
+        prefetches = _friend_activity_prefetches()
+
+        shared_evenings, shared_dates = _single_friend_shared(request.user, friend)
+        shared_count = len(shared_evenings)
+        last = shared_evenings[0] if shared_evenings else None
+        streak = _party_streak(shared_dates)
+
+        live_activity = (
+            FriendPubActivity.objects.filter(
+                account=friend,
+                active=True,
+                expires_at__gt=now,
+                kind=FriendPubActivity.Kind.LIVE,
+                account__ghost_mode=False,
+            )
+            .select_related("account")
+            .prefetch_related(*prefetches)
+            .order_by("-started_at")
+            .first()
+        )
+        day_start, day_end = _prague_today_bounds(now)
+        plan = (
+            FriendPubActivity.objects.filter(
+                account=friend,
+                active=True,
+                kind=FriendPubActivity.Kind.PLAN,
+                scheduled_for__gte=day_start,
+                scheduled_for__lt=day_end,
+                account__ghost_mode=False,
+            )
+            .select_related("account")
+            .prefetch_related(*prefetches)
+            .order_by("scheduled_for")
+            .first()
+        )
+
+        return Response(
+            {
+                "profile": FriendProfileSerializer(friend, context=context).data,
+                "is_friend": True,
+                "friendship_id": str(friendship.public_id),
+                "stats": {
+                    "shared_pub_count": shared_count,
+                    "nights_together": shared_count,
+                    "last_shared_at": last["at"].isoformat() if last else None,
+                    "last_pub_name": last["pub_name"] if last else "",
+                    "streak_weeks": int(streak.get("current_weeks", 0)),
+                    "rituals": _friend_rituals(shared_count),
+                },
+                "live_activity": (
+                    FriendPubActivitySerializer(live_activity, context=activity_context).data
+                    if live_activity is not None
+                    else None
+                ),
+                "plan": (
+                    FriendPubActivitySerializer(plan, context=activity_context).data
+                    if plan is not None
+                    else None
+                ),
+                "recent_together": [
+                    {
+                        "pub_name": evening["pub_name"],
+                        "cache_key": evening["cache_key"],
+                        "at": evening["at"].isoformat(),
+                    }
+                    for evening in shared_evenings[:3]
+                ],
+                "blocked": FriendBlock.objects.filter(
+                    blocker=request.user, blocked=friend
+                ).exists(),
+            },
+            status=status.HTTP_200_OK,
+        )
+
     def delete(self, request: Request, account_id) -> Response:
         friend = Account.objects.filter(public_id=account_id).first()
         if friend is None:
             return Response({"removed": False}, status=status.HTTP_200_OK)
+        # Remove an accepted friendship (either direction) OR cancel an outgoing
+        # pending request (requester=me). An incoming pending request is left
+        # untouched — that is a decline, handled by the request-action endpoint.
         deleted, _ = Friendship.objects.filter(
-            status=Friendship.Status.ACCEPTED,
-        ).filter(
-            Q(requester=request.user, recipient=friend)
-            | Q(requester=friend, recipient=request.user)
+            Q(
+                status=Friendship.Status.ACCEPTED,
+            )
+            & (
+                Q(requester=request.user, recipient=friend)
+                | Q(requester=friend, recipient=request.user)
+            )
+            | Q(
+                status=Friendship.Status.PENDING,
+                requester=request.user,
+                recipient=friend,
+            )
         ).delete()
         return Response({"removed": deleted > 0}, status=status.HTTP_200_OK)
 
@@ -2325,17 +2797,39 @@ class FriendActivityView(APIView):
 
         data = serializer.validated_data
         now = dj_timezone.now()
-        started_at = data.get("started_at") or now
-        requested_expiry = data.get("expires_at")
-        max_expiry = started_at + FRIEND_ACTIVITY_MAX_TTL
-        expires_at = requested_expiry or started_at + FRIEND_ACTIVITY_DEFAULT_TTL
-        if expires_at <= now:
-            return Response(
-                {"detail": "expires_at must be in the future.", "code": "expired_activity"},
-                status=status.HTTP_400_BAD_REQUEST,
+
+        # A future scheduled_for makes this a `plan` (converted to live at that
+        # time by the worker); absent or in the past keeps the exact live-now
+        # behavior old clients rely on.
+        scheduled_for = data.get("scheduled_for")
+        is_plan = scheduled_for is not None and scheduled_for > now
+        if is_plan:
+            max_ahead = timedelta(hours=settings.FRIEND_PLAN_MAX_AHEAD_HOURS)
+            if scheduled_for > now + max_ahead:
+                return Response(
+                    {"detail": "Plán je moc daleko. Zkus dřívější čas.", "code": "invalid_schedule"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            kind = FriendPubActivity.Kind.PLAN
+            started_at = scheduled_for
+            expires_at = min(
+                scheduled_for + FRIEND_ACTIVITY_DEFAULT_TTL,
+                scheduled_for + FRIEND_ACTIVITY_MAX_TTL,
             )
-        if expires_at > max_expiry:
-            expires_at = max_expiry
+        else:
+            kind = FriendPubActivity.Kind.LIVE
+            scheduled_for = None
+            started_at = data.get("started_at") or now
+            requested_expiry = data.get("expires_at")
+            max_expiry = started_at + FRIEND_ACTIVITY_MAX_TTL
+            expires_at = requested_expiry or started_at + FRIEND_ACTIVITY_DEFAULT_TTL
+            if expires_at <= now:
+                return Response(
+                    {"detail": "expires_at must be in the future.", "code": "expired_activity"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if expires_at > max_expiry:
+                expires_at = max_expiry
 
         cache_key = geohash8(data["lat"], data["lng"])
         should_notify = False
@@ -2346,9 +2840,16 @@ class FriendActivityView(APIView):
                     .filter(account=request.user, client_id=data["client_id"])
                     .first()
                 )
+                # The single-active-row invariant is per-kind, so creating a plan
+                # never kills my live broadcast (and vice-versa).
                 current_active = (
                     FriendPubActivity.objects.select_for_update()
-                    .filter(account=request.user, active=True, expires_at__gt=now)
+                    .filter(
+                        account=request.user,
+                        active=True,
+                        expires_at__gt=now,
+                        kind=kind,
+                    )
                     .order_by("-started_at")
                     .first()
                 )
@@ -2373,6 +2874,8 @@ class FriendActivityView(APIView):
                         city=data.get("city") or "",
                         external_id=data.get("external_id") or "",
                         message=data.get("message") or "",
+                        kind=kind,
+                        scheduled_for=scheduled_for,
                         started_at=started_at,
                         expires_at=expires_at,
                         active=True,
@@ -2386,6 +2889,8 @@ class FriendActivityView(APIView):
                     activity.city = data.get("city") or ""
                     activity.external_id = data.get("external_id") or ""
                     activity.message = data.get("message") or ""
+                    activity.kind = kind
+                    activity.scheduled_for = scheduled_for
                     activity.started_at = started_at
                     activity.expires_at = expires_at
                     activity.active = True
@@ -2399,6 +2904,8 @@ class FriendActivityView(APIView):
                             "city",
                             "external_id",
                             "message",
+                            "kind",
+                            "scheduled_for",
                             "started_at",
                             "expires_at",
                             "active",
@@ -2410,39 +2917,50 @@ class FriendActivityView(APIView):
                     account=request.user,
                     active=True,
                     expires_at__gt=now,
+                    kind=kind,
                 ).exclude(pk=activity.pk).update(active=False, updated_at=now)
         except Exception as exc:  # noqa: BLE001
             logger.error("friends: pub activity failed: %s", exc, exc_info=True)
             return _internal_error()
 
-        friend_ids = _accepted_friend_ids(request.user)
+        blocked_ids = _blocked_account_ids(request.user)
+        friend_ids = [
+            fid for fid in _accepted_friend_ids(request.user) if fid not in blocked_ids
+        ]
         # Ghost mode keeps the owner's own activity row (so they can still track
         # their own RSVP roster) but broadcasts NOTHING: no notification rows, no
         # push fanout. The activity also vanishes from friends' active feed via
         # the ghost_mode exclusion in FriendsView.
         is_ghost = bool(getattr(request.user, "ghost_mode", False))
         if should_notify and friend_ids and not is_ghost:
-            title = "Kamarád je na pivu"
             actor = _friend_display_name(request.user)
-            body = f"{actor} sedí v {activity.name}. Nechceš se přidat?"
-            recipients = list(Account.objects.filter(id__in=friend_ids))
-            for recipient in recipients:
-                _create_friend_notification(
-                    recipient=recipient,
-                    actor=request.user,
-                    kind=FriendNotification.Kind.FRIEND_AT_PUB,
-                    title=title,
-                    body=body,
-                    activity=activity,
-                    pub_cache_key=activity.cache_key,
-                    pub_name=activity.name[:200],
-                )
+            if is_plan:
+                local_time = dj_timezone.localtime(scheduled_for, PRAGUE_TZ).strftime("%H:%M")
+                title = "Kamarád plánuje pivo"
+                body = f"{actor} plánuje {activity.name} v {local_time}. Přidáš se?"
+                notif_kind = FriendNotification.Kind.FRIEND_PLAN
+                push_kind = "friend_plan"
+            else:
+                title = "Kamarád je na pivu"
+                body = f"{actor} sedí v {activity.name}. Nechceš se přidat?"
+                notif_kind = FriendNotification.Kind.FRIEND_AT_PUB
+                push_kind = "friend_at_pub"
+            _bulk_create_friend_notifications(
+                recipient_ids=friend_ids,
+                actor=request.user,
+                kind=notif_kind,
+                title=title,
+                body=body,
+                activity=activity,
+                pub_cache_key=activity.cache_key,
+                pub_name=activity.name[:200],
+            )
             _send_friend_push(
                 friend_ids,
                 title,
                 body,
                 {
-                    "kind": "friend_at_pub",
+                    "kind": push_kind,
                     "activity_id": str(activity.public_id),
                     "pub_cache_key": activity.cache_key,
                 },
@@ -2450,7 +2968,7 @@ class FriendActivityView(APIView):
 
         fresh = (
             FriendPubActivity.objects.select_related("account")
-            .prefetch_related(_friend_activity_responses_prefetch())
+            .prefetch_related(*_friend_activity_prefetches())
             .get(pk=activity.pk)
         )
         return Response(
@@ -2511,6 +3029,11 @@ class FriendActivityRespondView(APIView):
             return Response(
                 {"detail": "Na vlastní cinknutí reagovat nemusíš.", "code": "self_rsvp"},
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+        if activity.account_id in _blocked_account_ids(request.user):
+            return Response(
+                {"detail": "Tady se reagovat nedá.", "code": "blocked"},
+                status=status.HTTP_403_FORBIDDEN,
             )
         if activity.account_id not in _accepted_friend_ids(request.user):
             return Response(
@@ -2583,7 +3106,7 @@ class FriendActivityRespondView(APIView):
 
         fresh = (
             FriendPubActivity.objects.select_related("account")
-            .prefetch_related(_friend_activity_responses_prefetch())
+            .prefetch_related(*_friend_activity_prefetches())
             .get(pk=activity.pk)
         )
         return Response(
@@ -2602,6 +3125,294 @@ class FriendActivityRespondView(APIView):
             activity=activity, account=request.user
         ).delete()
         return Response({"removed": deleted > 0}, status=status.HTTP_200_OK)
+
+
+class FriendActivityReactView(APIView):
+    """POST/DELETE /v1/friends/pub-activity/<activity_id>/react — the "Na zdraví" loop.
+
+    A lightweight acknowledgement from the quiet majority. Unlike an RSVP, a
+    reaction is allowed against a PAST / expired activity (cheering the memory from
+    the feed). POST upserts my reaction; DELETE retracts it. A newly-created
+    reaction notifies the owner (``friend_cheers`` in-app + push), deduped within
+    ``FRIEND_REACTION_NOTIFY_COOLDOWN_MIN`` so undo/redo does not spam.
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends"
+
+    def _load_activity(self, activity_id) -> FriendPubActivity | None:
+        return (
+            FriendPubActivity.objects.select_related("account")
+            .filter(public_id=activity_id)
+            .first()
+        )
+
+    def _serialize_fresh(self, request, activity) -> dict:
+        fresh = (
+            FriendPubActivity.objects.select_related("account")
+            .prefetch_related(*_friend_activity_prefetches())
+            .get(pk=activity.pk)
+        )
+        return FriendPubActivitySerializer(
+            fresh, context=_friend_activity_context(request)
+        ).data
+
+    def post(self, request: Request, activity_id) -> Response:
+        serializer = FriendActivityReactionSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {"detail": "Tuhle reakci neznám.", "code": "invalid_reaction"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        reaction_value = serializer.validated_data["reaction"]
+
+        activity = self._load_activity(activity_id)
+        if activity is None:
+            return Response(
+                {"detail": "Tahle hláška už vyšuměla.", "code": "activity_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if activity.account_id == request.user.pk:
+            return Response(
+                {"detail": "Na vlastní cinknutí si připít nemusíš.", "code": "self_reaction"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if activity.account_id in _blocked_account_ids(request.user):
+            return Response(
+                {"detail": "Tady se reagovat nedá.", "code": "blocked"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if activity.account_id not in _accepted_friend_ids(request.user):
+            return Response(
+                {"detail": "S tímhle člověkem ještě nejste parta.", "code": "not_friends"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        now = dj_timezone.now()
+        try:
+            with transaction.atomic():
+                _, created = FriendActivityReaction.objects.update_or_create(
+                    activity=activity,
+                    account=request.user,
+                    defaults={"kind": reaction_value},
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.error("friends: reaction failed: %s", exc, exc_info=True)
+            return _internal_error()
+
+        if created:
+            # Dedup: only notify if no friend_cheers for (me, activity) landed in
+            # the owner's inbox within the cooldown window.
+            cooldown = now - timedelta(minutes=settings.FRIEND_REACTION_NOTIFY_COOLDOWN_MIN)
+            already_notified = FriendNotification.objects.filter(
+                recipient=activity.account,
+                actor=request.user,
+                activity=activity,
+                kind=FriendNotification.Kind.FRIEND_CHEERS,
+                created_at__gte=cooldown,
+            ).exists()
+            if not already_notified:
+                title = "Na zdraví!"
+                body = f"{_friend_display_name(request.user)} ti připil. Na zdraví!"
+                _create_friend_notification(
+                    recipient=activity.account,
+                    actor=request.user,
+                    kind=FriendNotification.Kind.FRIEND_CHEERS,
+                    title=title,
+                    body=body[:240],
+                    activity=activity,
+                    pub_cache_key=activity.cache_key,
+                    pub_name=activity.name[:200],
+                )
+                _send_friend_push(
+                    [activity.account_id],
+                    title,
+                    body[:240],
+                    {
+                        "kind": "friend_cheers",
+                        "activity_id": str(activity.public_id),
+                    },
+                )
+
+        return Response(self._serialize_fresh(request, activity), status=status.HTTP_200_OK)
+
+    def delete(self, request: Request, activity_id) -> Response:
+        # Idempotent retract: a missing reaction is still a success so an offline
+        # replay is safe. A gone activity returns {"removed": bool}.
+        activity = self._load_activity(activity_id)
+        if activity is None:
+            return Response({"removed": False}, status=status.HTTP_200_OK)
+        FriendActivityReaction.objects.filter(
+            activity=activity, account=request.user
+        ).delete()
+        return Response(self._serialize_fresh(request, activity), status=status.HTTP_200_OK)
+
+
+class FriendBlockView(APIView):
+    """POST/GET /v1/friends/blocks and DELETE /v1/friends/blocks/<account_id> — safety."""
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends"
+
+    def post(self, request: Request) -> Response:
+        serializer = FriendBlockRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        target = Account.objects.filter(
+            public_id=serializer.validated_data["account_id"]
+        ).first()
+        if target is None:
+            return Response(
+                {"detail": "Profil se nepodařilo najít.", "code": "profile_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if target.pk == request.user.pk:
+            return Response(
+                {"detail": "Sám sebe zablokovat nejde.", "code": "self_block"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            with transaction.atomic():
+                FriendBlock.objects.get_or_create(blocker=request.user, blocked=target)
+                # A block severs the friendship both ways, so the target drops out
+                # of every list immediately — but DECLINED rows are preserved so a
+                # block→unblock cycle can't wipe the anti-harassment decline
+                # cooldown (a DECLINED row appears in no user-visible list, so
+                # keeping it doesn't weaken the block).
+                Friendship.objects.filter(
+                    Q(requester=request.user, recipient=target)
+                    | Q(requester=target, recipient=request.user)
+                ).exclude(status=Friendship.Status.DECLINED).delete()
+        except Exception as exc:  # noqa: BLE001
+            logger.error("friends: block failed: %s", exc, exc_info=True)
+            return _internal_error()
+
+        return Response({"blocked": True}, status=status.HTTP_200_OK)
+
+    def get(self, request: Request) -> Response:
+        blocked_accounts = [
+            row.blocked
+            for row in FriendBlock.objects.filter(blocker=request.user).select_related(
+                "blocked"
+            )
+        ]
+        return Response(
+            {
+                "blocked": FriendProfileSerializer(
+                    blocked_accounts,
+                    many=True,
+                    context=_friend_profile_context(request),
+                ).data
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    def delete(self, request: Request, account_id) -> Response:
+        # Idempotent unblock; never auto-refriends.
+        target = Account.objects.filter(public_id=account_id).first()
+        if target is not None:
+            FriendBlock.objects.filter(blocker=request.user, blocked=target).delete()
+        return Response({"unblocked": True}, status=status.HTTP_200_OK)
+
+
+class FriendInviteView(APIView):
+    """GET /v1/friends/invite — my reusable, opaque invite code + deep link.
+
+    Reuses the account's current non-revoked, non-expired code (one active code
+    per account) and mints a fresh one only when none is live. The code carries no
+    PII; identity resolves server-side only after the scanner authenticates.
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends"
+
+    def get(self, request: Request) -> Response:
+        now = dj_timezone.now()
+        code_row = (
+            FriendInviteCode.objects.filter(
+                account=request.user, revoked=False, expires_at__gt=now
+            )
+            .order_by("-created_at")
+            .first()
+        )
+        if code_row is None:
+            code_row = self._mint(request.user, now)
+            if code_row is None:
+                return _internal_error()
+        return Response(FriendInviteSerializer(code_row).data, status=status.HTTP_200_OK)
+
+    @staticmethod
+    def _mint(account: Account, now) -> FriendInviteCode | None:
+        ttl = timedelta(days=settings.FRIEND_INVITE_TTL_DAYS)
+        # ~72 bits of entropy — collisions are astronomically unlikely, but retry
+        # a few times defensively before giving up.
+        for _ in range(5):
+            code = secrets.token_urlsafe(9)
+            try:
+                with transaction.atomic():
+                    return FriendInviteCode.objects.create(
+                        account=account, code=code, expires_at=now + ttl
+                    )
+            except IntegrityError:
+                continue
+        return None
+
+
+class FriendInviteResolveView(APIView):
+    """GET /v1/friends/invite/<code> — resolve a code to the inviter (no request sent).
+
+    Powers the claim screen ("@Pepa tě zve do party"). A block in either direction
+    resolves as invalid (no leak). A user's own code still resolves as valid so the
+    client can show "to je tvůj kód".
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends"
+
+    def get(self, request: Request, code) -> Response:
+        now = dj_timezone.now()
+        code_row = (
+            FriendInviteCode.objects.select_related("account").filter(code=code).first()
+        )
+        if code_row is None:
+            return Response(
+                {"detail": "Pozvánku neznám.", "code": "invite_invalid"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        inviter = code_row.account
+        if (
+            not _is_active_account(inviter)
+            or inviter.id in _blocked_account_ids(request.user)
+        ):
+            return Response(
+                {"detail": "Pozvánku neznám.", "code": "invite_invalid"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if code_row.revoked or code_row.expires_at <= now:
+            return Response(
+                {"detail": "Pozvánka už vypršela.", "code": "invite_expired"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(
+            {
+                "valid": True,
+                "expired": False,
+                "inviter": FriendProfileSerializer(
+                    inviter, context=_friend_profile_context(request)
+                ).data,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class FriendSettingsView(APIView):

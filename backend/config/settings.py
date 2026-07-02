@@ -57,6 +57,9 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    # Enables pg_trgm-backed account search (GIN indexes in migration
+    # 0054). No models/migrations of its own; inert on the SQLite dev/test DB.
+    "django.contrib.postgres",
     # Third-party
     "rest_framework",
     "corsheaders",
@@ -243,10 +246,43 @@ CLIENT_EVENTS_THROTTLE_RATE: str = os.environ.get("CLIENT_EVENTS_THROTTLE_RATE",
 # permission changes.
 PUSH_DEVICES_THROTTLE_RATE: str = os.environ.get("PUSH_DEVICES_THROTTLE_RATE", "60/min")
 
-# Per-IP rate limit for authenticated friend/social endpoints. Friend activity
-# can fan out notifications, so writes stay bounded while dashboard reads still
-# feel instant.
+# Per-IP rate limit for authenticated friend/social WRITE endpoints. Friend
+# activity can fan out notifications, so writes stay bounded while dashboard
+# reads (the friends_dashboard scope below) get their own, larger budget.
 FRIENDS_THROTTLE_RATE: str = os.environ.get("FRIENDS_THROTTLE_RATE", "120/min")
+
+# --- Parta 3.0 (dashboard reads, invites, plans, reactions, push, retention) ---
+# Separate, larger budget for the two friend READ paths (GET /v1/friends and
+# GET /v1/friends/live). The bounded live poll (30–45s while something is live)
+# makes these hot, so they must not share the write budget above.
+FRIENDS_DASHBOARD_THROTTLE_RATE: str = os.environ.get(
+    "FRIENDS_DASHBOARD_THROTTLE_RATE", "240/min"
+)
+# How long a minted invite code stays valid (reused until it expires).
+FRIEND_INVITE_TTL_DAYS: int = int(os.environ.get("FRIEND_INVITE_TTL_DAYS", "14"))
+# After a declined request, block a silent re-open (anti-harassment) for this long.
+FRIEND_DECLINE_COOLDOWN_DAYS: int = int(os.environ.get("FRIEND_DECLINE_COOLDOWN_DAYS", "14"))
+# A plan's scheduled_for must be within this many hours from now.
+FRIEND_PLAN_MAX_AHEAD_HOURS: int = int(os.environ.get("FRIEND_PLAN_MAX_AHEAD_HOURS", "24"))
+# Remind the plan creator when scheduled_for is <= this many hours away.
+FRIEND_PLAN_REMINDER_LEAD_HOURS: int = int(
+    os.environ.get("FRIEND_PLAN_REMINDER_LEAD_HOURS", "4")
+)
+# Dedup reaction ("na zdraví") owner notifications within this many minutes.
+FRIEND_REACTION_NOTIFY_COOLDOWN_MIN: int = int(
+    os.environ.get("FRIEND_REACTION_NOTIFY_COOLDOWN_MIN", "360")
+)
+# Delete FriendNotification rows older than this many days (privacy + bloat).
+FRIEND_NOTIFICATION_RETENTION_DAYS: int = int(
+    os.environ.get("FRIEND_NOTIFICATION_RETENTION_DAYS", "45")
+)
+# Hard-delete FriendPubActivity rows expired more than this many days ago
+# (removes name/lat/lng/geohash — privacy).
+FRIEND_ACTIVITY_RETENTION_DAYS: int = int(
+    os.environ.get("FRIEND_ACTIVITY_RETENTION_DAYS", "7")
+)
+# Batch size for Expo push fan-out (chunk the token list into POSTs of this size).
+EXPO_PUSH_CHUNK_SIZE: int = int(os.environ.get("EXPO_PUSH_CHUNK_SIZE", "100"))
 
 # Per-IP rate limit for credential auth endpoints (register / login / social /
 # link / unlink / verify-email / set-password). Kept tight to blunt credential
@@ -349,6 +385,7 @@ REST_FRAMEWORK = {
         "client_events": CLIENT_EVENTS_THROTTLE_RATE,
         "push_devices": PUSH_DEVICES_THROTTLE_RATE,
         "friends": FRIENDS_THROTTLE_RATE,
+        "friends_dashboard": FRIENDS_DASHBOARD_THROTTLE_RATE,
         "auth": AUTH_THROTTLE_RATE,
         "auth_email": AUTH_EMAIL_THROTTLE_RATE,
         "nickname_check": NICKNAME_CHECK_THROTTLE_RATE,

@@ -726,7 +726,18 @@ class FriendPubActivity(models.Model):
     This is not a GPS trail. The row is created only from a user-confirmed pub
     session, stores the pub identity needed for friends to join, and expires so
     old evenings stop being visible.
+
+    Since Parta 3.0 a row carries a ``kind``: a ``live`` row is the classic
+    "I'm here now" broadcast, a ``plan`` row is a future "Dnes v 20:00" intent
+    that a worker cron converts to ``live`` at ``scheduled_for``. The
+    single-active-row invariant the view enforces is per-kind, so one live
+    broadcast and one plan may coexist for the same account. The row is also the
+    host for reactions (see ``FriendActivityReaction``).
     """
+
+    class Kind(models.TextChoices):
+        LIVE = "live", "Live"  # classic "I'm at this pub now" broadcast
+        PLAN = "plan", "Plan"  # future intent, converted to live at scheduled_for
 
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
     account = models.ForeignKey(
@@ -742,6 +753,24 @@ class FriendPubActivity(models.Model):
     city = models.TextField(blank=True, default="")
     external_id = models.TextField(blank=True, default="")
     message = models.CharField(max_length=160, blank=True, default="")
+    kind = models.CharField(
+        max_length=8,
+        choices=Kind.choices,
+        default=Kind.LIVE,
+        db_index=True,
+        help_text="live = broadcasting now; plan = a future intent to convert to live.",
+    )
+    scheduled_for = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Target time for a plan (the 'Dnes v 20:00'); NULL for live rows.",
+    )
+    reminder_sent_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the afternoon plan reminder was pushed, so it fires once.",
+    )
     started_at = models.DateTimeField()
     expires_at = models.DateTimeField(db_index=True)
     active = models.BooleanField(default=True, db_index=True)
@@ -761,6 +790,10 @@ class FriendPubActivity(models.Model):
         indexes = [
             models.Index(fields=["account", "active", "expires_at"]),
             models.Index(fields=["cache_key", "active", "expires_at"]),
+            # Cron scan for plans to remind / convert.
+            models.Index(fields=["kind", "active", "scheduled_for"]),
+            # my_plan / friends' plans dashboard slice.
+            models.Index(fields=["account", "kind", "active", "scheduled_for"]),
         ]
 
     def __str__(self) -> str:
@@ -776,6 +809,10 @@ class FriendNotification(models.Model):
         FRIEND_AT_PUB = "friend_at_pub", "Friend at pub"
         # A friend RSVP'd "Jdu" to my active broadcast (the svolávací smyčka).
         FRIEND_RSVP = "friend_rsvp", "Friend RSVP"
+        # Someone cheered ("na zdraví") my activity.
+        FRIEND_CHEERS = "friend_cheers", "Friend cheers"
+        # A friend planned a pub tonight (RSVP-forward plan).
+        FRIEND_PLAN = "friend_plan", "Friend plan"
 
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
     recipient = models.ForeignKey(
@@ -881,6 +918,143 @@ class FriendActivityResponse(models.Model):
 
     def __str__(self) -> str:
         return f"FriendActivityResponse({self.account_id} -> {self.activity_id}: {self.response})"
+
+
+class FriendActivityReaction(models.Model):
+    """One friend's lightweight reaction to a FriendPubActivity (the "Na zdraví" loop).
+
+    This is the quiet-majority counterpart to ``FriendActivityResponse``: a RSVP
+    says "I'm coming", a reaction is a low-cost acknowledgement ("cheers"). Unlike
+    a RSVP, a reaction is allowed against a past / expired activity (cheering the
+    memory from the feed) — that gate lives in the view, not the DB. Identity is
+    (activity, account) so a re-tap upserts the same row. Both FKs CASCADE, so the
+    row wipes naturally when the activity is pruned or the account is deleted —
+    same rationale as ``FriendActivityResponse``. The single ``kind`` today plus
+    the ``(activity, kind)`` index leave room for more glyphs later without another
+    migration.
+    """
+
+    class Kind(models.TextChoices):
+        CHEERS = "cheers", "Cheers"  # pivní "na zdraví"; extensible later
+
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
+    activity = models.ForeignKey(
+        "pubs.FriendPubActivity",
+        on_delete=models.CASCADE,
+        related_name="reactions",
+    )
+    account = models.ForeignKey(
+        "pubs.Account",
+        on_delete=models.CASCADE,
+        related_name="activity_reactions",
+    )
+    kind = models.CharField(
+        max_length=16,
+        choices=Kind.choices,
+        default=Kind.CHEERS,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Friend activity reaction"
+        verbose_name_plural = "Friend activity reactions"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["activity", "account"],
+                name="unique_reaction_per_account",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["activity", "kind"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"FriendActivityReaction({self.account_id} -> {self.activity_id}: {self.kind})"
+
+
+class FriendInviteCode(models.Model):
+    """A reusable, opaque invite code for the "add me to your parta" growth loop.
+
+    The link / QR carries only this random ``code`` — never the account id,
+    nickname or any stable identifier — so there is NO PII in the link; the
+    inviter's identity is resolved server-side only after the scanner authenticates.
+    The code is short (QR-friendly), revocable, expiry-bounded, and reusable at the
+    table (one code, many scanners) until it expires. Enumeration is blunted by the
+    ~72-bit entropy of ``secrets.token_urlsafe(9)`` plus endpoint throttling. One
+    active code per account is reused until expiry; a fresh one is minted on demand.
+    """
+
+    account = models.ForeignKey(
+        "pubs.Account",
+        on_delete=models.CASCADE,
+        related_name="invite_codes",
+    )
+    code = models.CharField(
+        max_length=32,
+        unique=True,
+        # No db_index: unique=True already creates the exact-match lookup index
+        # (all reads are `code=`). Adding db_index=True would create a redundant
+        # Postgres varchar_pattern_ops "_like" index — the footgun that broke
+        # migration 0004 (see AuthToken.token_hash).
+        help_text="Opaque random invite code, ~72 bits (secrets.token_urlsafe(9)).",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(db_index=True)
+    revoked = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name = "Friend invite code"
+        verbose_name_plural = "Friend invite codes"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["account", "revoked", "expires_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"FriendInviteCode({self.account_id} until {self.expires_at:%Y-%m-%d %H:%M})"
+
+
+class FriendBlock(models.Model):
+    """One account blocking another (safety).
+
+    Blocking is directed (blocker -> blocked) but enforced bidirectionally in the
+    view layer: a block hides both parties from each other's search, requests,
+    activities, reactions and pushes. Both FKs CASCADE so a block wipes when either
+    account is deleted. Self-block is rejected at the DB via a check constraint.
+    """
+
+    blocker = models.ForeignKey(
+        "pubs.Account",
+        on_delete=models.CASCADE,
+        related_name="blocks_made",
+    )
+    blocked = models.ForeignKey(
+        "pubs.Account",
+        on_delete=models.CASCADE,
+        related_name="blocks_received",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Friend block"
+        verbose_name_plural = "Friend blocks"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["blocker", "blocked"], name="unique_block_pair"),
+            models.CheckConstraint(
+                condition=~Q(blocker=models.F("blocked")),
+                name="block_no_self",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["blocker"]),
+            models.Index(fields=["blocked"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"FriendBlock({self.blocker_id} -> {self.blocked_id})"
 
 
 class EmailCredential(models.Model):

@@ -59,7 +59,9 @@ from pubs.models import (
     ContentReport,
     EmailCredential,
     FeedbackReport,
+    FriendActivityReaction,
     FriendActivityResponse,
+    FriendInviteCode,
     FriendNotification,
     FriendPubActivity,
     Friendship,
@@ -557,7 +559,12 @@ class FriendSearchQuerySerializer(serializers.Serializer):
 
 
 class FriendRequestCreateSerializer(serializers.Serializer):
-    """Request body for POST /v1/friends/requests."""
+    """Request body for POST /v1/friends/requests.
+
+    Since Parta 3.0 a request may also be initiated from an opaque
+    ``invite_code`` (the QR / deep-link growth loop). Exactly one of the three
+    alternatives must be supplied; the existing id / nickname paths are unchanged.
+    """
 
     target_account_id = serializers.UUIDField(required=False)
     nickname = serializers.CharField(
@@ -566,11 +573,22 @@ class FriendRequestCreateSerializer(serializers.Serializer):
         allow_blank=False,
         trim_whitespace=True,
     )
+    invite_code = serializers.CharField(
+        max_length=32,
+        required=False,
+        allow_blank=False,
+        trim_whitespace=True,
+    )
 
     def validate(self, attrs: dict) -> dict:
-        if bool(attrs.get("target_account_id")) == bool(attrs.get("nickname")):
+        provided = sum(
+            1
+            for key in ("target_account_id", "nickname", "invite_code")
+            if attrs.get(key)
+        )
+        if provided != 1:
             raise serializers.ValidationError(
-                "Send exactly one of target_account_id or nickname."
+                "Send exactly one of target_account_id, nickname or invite_code."
             )
         return attrs
 
@@ -595,6 +613,9 @@ class FriendActivityRequestSerializer(_Pub200NameValidationMixin, PubInputSerial
     )
     started_at = serializers.DateTimeField(required=False, allow_null=True)
     expires_at = serializers.DateTimeField(required=False, allow_null=True)
+    # NEW (Parta 3.0): a future time turns this into a `plan` row that a worker
+    # converts to a live broadcast at that time. Absent / in the past → live now.
+    scheduled_for = serializers.DateTimeField(required=False, allow_null=True)
 
 
 class FriendshipSerializer(serializers.ModelSerializer):
@@ -624,6 +645,21 @@ class FriendActivityResponseSerializer(serializers.Serializer):
     response = serializers.ChoiceField(choices=FriendActivityResponse.Response.choices)
 
 
+class FriendActivityReactionSerializer(serializers.Serializer):
+    """Request body for POST /v1/friends/pub-activity/<id>/react (input only).
+
+    A single ``cheers`` glyph today ("na zdraví"); the enum leaves room for more.
+    """
+
+    reaction = serializers.ChoiceField(choices=FriendActivityReaction.Kind.choices)
+
+
+class FriendBlockRequestSerializer(serializers.Serializer):
+    """Request body for POST /v1/friends/blocks (input only)."""
+
+    account_id = serializers.UUIDField()
+
+
 class FriendSettingsPatchSerializer(serializers.Serializer):
     """PATCH body for friend social settings."""
 
@@ -646,6 +682,8 @@ class FriendPubActivitySerializer(serializers.ModelSerializer):
     account = FriendProfileSerializer(read_only=True)
     responses = serializers.SerializerMethodField()
     my_response = serializers.SerializerMethodField()
+    reactions = serializers.SerializerMethodField()
+    my_reaction = serializers.SerializerMethodField()
 
     class Meta:
         model = FriendPubActivity
@@ -657,11 +695,15 @@ class FriendPubActivitySerializer(serializers.ModelSerializer):
             "city",
             "external_id",
             "message",
+            "kind",
+            "scheduled_for",
             "started_at",
             "expires_at",
             "active",
             "responses",
             "my_response",
+            "reactions",
+            "my_reaction",
             "created_at",
             "updated_at",
         ]
@@ -670,6 +712,7 @@ class FriendPubActivitySerializer(serializers.ModelSerializer):
     def get_responses(self, obj: FriendPubActivity) -> dict:
         # Counts + GOING profiles computed in-Python over the prefetched rows so
         # one query feeds the whole dashboard roster.
+        blocked_ids = self.context.get("blocked_ids") or set()
         rows = list(obj.responses.all())
         counts = {"going": 0, "maybe": 0, "cant": 0}
         going_accounts = []
@@ -677,15 +720,17 @@ class FriendPubActivitySerializer(serializers.ModelSerializer):
             if row.response in counts:
                 counts[row.response] += 1
             if row.response == FriendActivityResponse.Response.GOING:
-                # Privacy: counts stay aggregate, but never expose the profile of
-                # a GOING responder who scheduled deletion (status != ACTIVE) or
-                # turned on ghost mode — mirroring how the rest of the social
-                # surface hides inactive/ghost accounts. account is preloaded via
-                # the prefetch's select_related("account"), so this stays N+1-free.
+                # Privacy: counts stay aggregate, but never expose the profile of a
+                # GOING responder who scheduled deletion (status != ACTIVE), turned
+                # on ghost mode, or is blocked by / blocking the caller — mirroring
+                # how the rest of the social surface hides those accounts. account
+                # is preloaded via the prefetch's select_related("account"), so
+                # this stays N+1-free.
                 responder = row.account
                 if (
                     responder.status == Account.Status.ACTIVE
                     and not responder.ghost_mode
+                    and responder.id not in blocked_ids
                 ):
                     going_accounts.append(responder)
         going_accounts = going_accounts[:8]
@@ -707,6 +752,25 @@ class FriendPubActivitySerializer(serializers.ModelSerializer):
         for row in obj.responses.all():
             if row.account_id == account_id:
                 return row.response
+        return None
+
+    def get_reactions(self, obj: FriendPubActivity) -> dict:
+        # Per-kind reaction counts, computed in-Python over the prefetched rows so
+        # the whole dashboard stays N+1-free (the view prefetches ``reactions``).
+        counts = {kind.value: 0 for kind in FriendActivityReaction.Kind}
+        for row in obj.reactions.all():
+            if row.kind in counts:
+                counts[row.kind] += 1
+        return counts
+
+    def get_my_reaction(self, obj: FriendPubActivity) -> str | None:
+        account = self.context.get("account")
+        if account is None:
+            return None
+        account_id = getattr(account, "pk", None)
+        for row in obj.reactions.all():
+            if row.account_id == account_id:
+                return row.kind
         return None
 
 
@@ -734,6 +798,29 @@ class FriendNotificationSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = fields
+
+
+class FriendInviteSerializer(serializers.ModelSerializer):
+    """Output for GET /v1/friends/invite — my reusable invite code + links.
+
+    The link/QR carries only the opaque ``code`` (no PII); ``url`` is the custom
+    scheme deep link that works today and ``web_url`` is the future universal link
+    (safe to ship now — the web landing is a later step).
+    """
+
+    url = serializers.SerializerMethodField()
+    web_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = FriendInviteCode
+        fields = ["code", "url", "web_url", "expires_at"]
+        read_only_fields = fields
+
+    def get_url(self, obj: FriendInviteCode) -> str:
+        return f"napivo://parta/pozvanka?code={obj.code}"
+
+    def get_web_url(self, obj: FriendInviteCode) -> str:
+        return f"https://napivo.app/p/{obj.code}"
 
 
 # ---------------------------------------------------------------------------

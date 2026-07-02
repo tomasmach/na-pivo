@@ -44,14 +44,19 @@ from .views import (
     ContentReportView,
     DrinksView,
     FeedbackView,
+    FriendActivityReactView,
     FriendActivityRespondView,
     FriendActivityView,
+    FriendBlockView,
     FriendDetailView,
+    FriendInviteResolveView,
+    FriendInviteView,
     FriendNotificationReadView,
     FriendRequestActionView,
     FriendRequestView,
     FriendSearchView,
     FriendSettingsView,
+    FriendsLiveView,
     FriendsView,
     HealthView,
     MenuScanView,
@@ -109,6 +114,7 @@ urlpatterns = [
     path("client-events", ClientEventsView.as_view(), name="client-events"),
     path("push-device", PushDeviceView.as_view(), name="push-device"),
     path("friends", FriendsView.as_view(), name="friends"),
+    path("friends/live", FriendsLiveView.as_view(), name="friends-live"),
     path("friends/search", FriendSearchView.as_view(), name="friends-search"),
     path("friends/requests", FriendRequestView.as_view(), name="friends-requests"),
     path(
@@ -116,12 +122,31 @@ urlpatterns = [
         FriendRequestActionView.as_view(),
         name="friends-request-action",
     ),
-    # RSVP loop + social settings — placed ABOVE friends/<uuid:account_id> so the
-    # static segments are never shadowed by the account-id catch-all.
+    # Growth: my reusable invite code + resolve-a-code-to-inviter (claim screen).
+    path("friends/invite", FriendInviteView.as_view(), name="friends-invite"),
+    path(
+        "friends/invite/<str:code>",
+        FriendInviteResolveView.as_view(),
+        name="friends-invite-resolve",
+    ),
+    # Safety: block (POST + GET list) / unblock (DELETE with account id).
+    path("friends/blocks", FriendBlockView.as_view(), name="friends-blocks"),
+    path(
+        "friends/blocks/<uuid:account_id>",
+        FriendBlockView.as_view(),
+        name="friends-block-delete",
+    ),
+    # RSVP loop + reactions + social settings — placed ABOVE friends/<uuid:account_id>
+    # so the static segments are never shadowed by the account-id catch-all.
     path(
         "friends/pub-activity/<uuid:activity_id>/respond",
         FriendActivityRespondView.as_view(),
         name="friends-activity-respond",
+    ),
+    path(
+        "friends/pub-activity/<uuid:activity_id>/react",
+        FriendActivityReactView.as_view(),
+        name="friends-activity-react",
     ),
     path("friends/settings", FriendSettingsView.as_view(), name="friends-settings"),
     path("friends/<uuid:account_id>", FriendDetailView.as_view(), name="friend-detail"),
