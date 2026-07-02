@@ -6,6 +6,8 @@ import { clearDeleteDrinksQueue } from './deleteDrinksQueue';
 import { clearDrinksQueue } from './drinksQueue';
 import { clearUpdateDrinksQueue } from './updateDrinksQueue';
 import { clearFeedbackQueue } from './feedbackQueue';
+import { clearFriendsQueue } from './friendsQueue';
+import { clearFriendsDashboardSnapshot } from './friendsSnapshot';
 import { clearPubNameCorrectionsQueue } from './pubNameCorrectionsQueue';
 import { clearPubReportQueue } from './pubReportQueue';
 import { clearPubAmenitiesQueue } from './pubAmenitiesQueue';
@@ -26,6 +28,9 @@ const PRIVATE_STORAGE_KEYS = [
   'na-pivo-visits-seeded',
   'na-pivo-community',
   'na-pivo-pub',
+  // Note: the Parta social-graph snapshot ('na-pivo-friends-dashboard') is cleared
+  // via clearFriendsDashboardSnapshot() below — that path also bumps the snapshot
+  // generation so an in-flight dashboard fetch can't re-persist it after the clear.
 ];
 
 /**
@@ -63,6 +68,8 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
     clearPubNameCorrectionsQueue(),
     clearPubReportQueue(),
     clearVisitsQueue(),
+    clearFriendsQueue(),
+    clearFriendsDashboardSnapshot(),
     clearPubRatingsQueue(),
     clearPubAmenitiesQueue(),
   ]);

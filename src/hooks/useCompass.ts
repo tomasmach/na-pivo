@@ -30,6 +30,7 @@ import { recordWalkingSample } from '@/data/walkingTelemetry';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { usePubStore } from '@/stores/pubStore';
 import { useCommunityStore } from '@/stores/communityStore';
+import { useFocusedPubStore, type FocusedPub } from '@/stores/focusedPubStore';
 import { useDevicePosition } from '@/compass/useDevicePosition';
 import { useDeviceHeading } from '@/compass/useDeviceHeading';
 import { useTargetBearing } from '@/compass/useTargetBearing';
@@ -131,6 +132,10 @@ export interface UseCompassResult {
   isLoading: boolean;
   searchFailed: boolean;
   currentPosition: { lat: number; lng: number; accuracyMeters: number } | null;
+  /** A friend's coarse pub the needle is pointing at ("Ukaž na kompasu", §F2). */
+  focusedPub: FocusedPub | null;
+  /** Drop the friend focus and return to the normal nearest/surprise target. */
+  clearFocusedPub: () => void;
 }
 
 export function useCompass(beerBrandKey: string | null = null): UseCompassResult {
@@ -848,10 +853,17 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
     };
   }, [currentPubId, hoursStatusForCurrent, nextChangeForCurrent]);
 
+  // — Friend "Ukaž na kompasu" focus (§F2) —
+  // When a friend hands off their coarse pub, the needle points THERE instead of
+  // the nearest/surprise selection. The normal selection keeps running
+  // underneath, so clearing the focus snaps straight back to it.
+  const focusedPub = useFocusedPubStore((s) => s.pub);
+  const clearFocusedPub = useFocusedPubStore((s) => s.clear);
+
   // — Bearing / distance —
   const { bearing, distanceMeters } = useTargetBearing(
     position ? { lat: position.lat, lng: position.lng } : null,
-    currentPub,
+    focusedPub ? { lat: focusedPub.lat, lng: focusedPub.lng } : currentPub,
   );
   const bearingValue = useSharedValue<number | null>(null);
 
@@ -863,7 +875,9 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
   const { arrived, dismiss: dismissArrival } = useArrivalDetector({
     distanceMeters,
     gpsAccuracyMeters: position?.accuracyMeters ?? null,
-    targetPubId: currentPub?.id ?? null,
+    // Suppress arrival while pointing at a friend's coarse pub: a geohash cell is
+    // not a real catalogue target, so it must never fire the arrival celebration.
+    targetPubId: focusedPub ? null : currentPub?.id ?? null,
     hapticEnabled,
     soundEnabled,
   });
@@ -899,7 +913,11 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
   // target synchronously and locally inside the selection effect, so gating on
   // ref-vs-prop staleness would unmount the whole compass for a single frame and
   // make the screen visibly jump and re-load on every toggle.
-  const isLoading = !pubsLoaded || position === null || !hasSelectedTarget;
+  // While focused on a friend's pub we only need a position fix to point the
+  // needle — the local nearest/surprise selection may still be warming up.
+  const isLoading = focusedPub
+    ? position === null
+    : !pubsLoaded || position === null || !hasSelectedTarget;
 
   // — Actions —
   const reveal = useCallback(() => {
@@ -1007,5 +1025,7 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
     isLoading,
     searchFailed,
     currentPosition: position,
+    focusedPub,
+    clearFocusedPub,
   };
 }

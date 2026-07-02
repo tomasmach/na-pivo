@@ -356,6 +356,10 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   const [backendMenu, setBackendMenu] = useState<{ pubId: string; beers: CommunityBeer[] } | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [sharingWithFriends, setSharingWithFriends] = useState(false);
+  // The pub cell I've broadcast to; once it matches the active pub the button
+  // flips to a calm "already live" state so the verb never doubles up (rich
+  // compose lives on Parta). Derived, so switching pubs resets it for free.
+  const [broadcastCell, setBroadcastCell] = useState<string | null>(null);
   // Deferred-send timers per drink id; a count schedules delivery for the end of
   // the undo window, and undo cancels its drink's timer before it fires.
   const sendTimers = React.useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -381,6 +385,8 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
 
     return () => controller.abort();
   }, [pub]);
+
+  const broadcasted = broadcastCell === cell;
 
   // Session totals — only count drinks for THIS pub's session.
   const isThisPubSession = current?.pubKey === cell;
@@ -642,18 +648,21 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   }, [cell, hapticEnabled, resumeLast]);
 
   const handleShareWithFriends = useCallback(async () => {
-    if (sharingWithFriends) return;
+    if (sharingWithFriends || broadcasted) return;
     setSharingWithFriends(true);
     const shareClientId = isThisPubSession ? current?.clientId : undefined;
-    const result = await shareFriendPubActivity(pub, cs.friends.atPubMessage, shareClientId);
+    // One-tap quick broadcast: empty message (the rich compose with a message
+    // lives on Parta). The "already live" flip keeps the verb from doubling up.
+    const result = await shareFriendPubActivity(pub, '', shareClientId);
     setSharingWithFriends(false);
     if (result.ok) {
+      setBroadcastCell(cell);
       showToast(cs.friends.shareSuccess, { icon: <BellRingIcon size={20} color={Colors.amber} /> });
       if (hapticEnabled) fireLightImpactHaptic();
     } else {
       showToast(result.detail || cs.friends.shareError, { icon: <BellRingIcon size={20} color={Colors.amber} /> });
     }
-  }, [current?.clientId, hapticEnabled, isThisPubSession, pub, sharingWithFriends, showToast]);
+  }, [broadcasted, cell, current?.clientId, hapticEnabled, isThisPubSession, pub, sharingWithFriends, showToast]);
 
   const hasMenu = menu.length > 0;
   const bubbleFieldWidth = Math.min(screenWidth - Spacing.lg * 2, 340);
@@ -713,17 +722,21 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
         <MapPubEntry pubKey={cell} pubName={pub.name} info={pubInfoFromPub(pub)} />
         <Pressable
           onPress={() => void handleShareWithFriends()}
-          disabled={sharingWithFriends}
+          disabled={sharingWithFriends || broadcasted}
           style={({ pressed }) => [
             styles.friendShareButton,
-            (pressed || sharingWithFriends) && styles.friendShareButtonPressed,
+            (pressed || sharingWithFriends || broadcasted) && styles.friendShareButtonPressed,
           ]}
           accessibilityRole="button"
-          accessibilityLabel={cs.friends.shareHere}
+          accessibilityLabel={broadcasted ? cs.friends.counterAlreadyLive : cs.friends.shareHereShort}
         >
-          <BellRingIcon size={18} color={Colors.amber} />
+          {broadcasted ? (
+            <CheckIcon size={18} color={Colors.amber} />
+          ) : (
+            <BellRingIcon size={18} color={Colors.amber} />
+          )}
           <Text style={styles.friendShareText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-            {sharingWithFriends ? cs.friends.shareHere : cs.friends.shareHereShort}
+            {broadcasted ? cs.friends.counterAlreadyLive : cs.friends.shareHereShort}
           </Text>
         </Pressable>
       </View>

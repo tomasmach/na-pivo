@@ -1,7 +1,7 @@
 /**
  * Onboarding wizard (route `/profile/setup`) — shown once, right after a user
  * signs in/up without a nickname (the ProfileGate in app/_layout.tsx redirects
- * here). A 2-step flow inside a single fullScreenModal with `gestureEnabled:
+ * here). A 3-step flow inside a single fullScreenModal with `gestureEnabled:
  * false` so STEP 1 (nickname) cannot be swiped away — it is the hard gate.
  *
  *   STEP 1  Nickname + photo (one screen) — "@" input + live availability, plus a
@@ -11,7 +11,9 @@
  *           available; submit calls updateProfile({nickname}); a 409 re-shows
  *           "taken".
  *   STEP 2  Visibility — toggle DEFAULT ON + the locked GDPR consent copy.
- *           "Hotovo" persists is_public then router.replace → the profile tab.
+ *           "Pokračovat" persists is_public then advances to the friends step.
+ *   STEP 3  First friends (optional, Parta 3.0 §A2) — show my invite code or skip;
+ *           finishing router.replace → the profile tab.
  *
  * Every store action is an AuthResult (never throws); failures surface inline.
  */
@@ -36,8 +38,9 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
 import { GlowButton } from '@/components/shared/GlowButton';
-import { CameraIcon } from '@/components/shared/IconGlyph';
+import { CameraIcon, QrCodeIcon } from '@/components/shared/IconGlyph';
 import { Avatar } from '@/profile/Avatar';
+import CodeSheet from '@/friends/CodeSheet';
 import { NicknameField } from '@/profile/NicknameField';
 import { VisibilityToggle } from '@/profile/VisibilityToggle';
 import { pickAndPrepareAvatar } from '@/profile/avatarPicker';
@@ -49,7 +52,7 @@ import {
 } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
 
-type Step = 1 | 2;
+type Step = 1 | 2 | 3;
 
 export default function ProfileSetupScreen() {
   const router = useRouter();
@@ -75,9 +78,12 @@ export default function ProfileSetupScreen() {
   // Permission permanently denied (canAskAgain=false) → offer Settings, not re-prompt.
   const [permissionBlocked, setPermissionBlocked] = useState(false);
 
-  // STEP 3
+  // STEP 2 (visibility)
   const [isPublic, setIsPublic] = useState(true);
   const [visibilityError, setVisibilityError] = useState('');
+
+  // STEP 3 (first friends)
+  const [codeVisible, setCodeVisible] = useState(false);
 
   const [busy, setBusy] = useState(false);
 
@@ -137,8 +143,8 @@ export default function ProfileSetupScreen() {
     }
   }, [avatarBusy, uploadAvatar]);
 
-  // ── STEP 3 finish ──
-  const handleFinish = useCallback(async () => {
+  // ── STEP 2 → 3 (persist visibility, then offer first friends) ──
+  const handleVisibilityContinue = useCallback(async () => {
     if (busy) return;
     setVisibilityError('');
     setBusy(true);
@@ -148,12 +154,17 @@ export default function ProfileSetupScreen() {
         setVisibilityError(result.detail || cs.profile.setup.visibilitySaveError);
         return;
       }
-      router.replace('/(tabs)/profile' as Href);
-      showToast(cs.profile.edit.savedToast);
+      setStep(3);
     } finally {
       setBusy(false);
     }
-  }, [busy, isPublic, updateProfile, router, showToast]);
+  }, [busy, isPublic, updateProfile]);
+
+  // ── STEP 3 finish (visibility already saved; friends are optional) ──
+  const handleFinish = useCallback(() => {
+    router.replace('/(tabs)/profile' as Href);
+    showToast(cs.profile.edit.savedToast);
+  }, [router, showToast]);
 
   return (
     <View style={styles.root}>
@@ -173,7 +184,7 @@ export default function ProfileSetupScreen() {
         >
           {/* Step dots */}
           <View style={styles.dots}>
-            {[1, 2].map((n) => (
+            {[1, 2, 3].map((n) => (
               <View key={n} style={[styles.dot, n === step && styles.dotActive, n < step && styles.dotDone]} />
             ))}
           </View>
@@ -282,10 +293,10 @@ export default function ProfileSetupScreen() {
 
               <View style={styles.cta}>
                 <GlowButton
-                  label={busy ? cs.account.loading : cs.profile.setup.finish}
-                  onPress={handleFinish}
+                  label={busy ? cs.account.loading : cs.profile.setup.continue}
+                  onPress={handleVisibilityContinue}
                   glow={busy ? 'none' : 'soft'}
-                  accessibilityLabel={cs.profile.setup.finish}
+                  accessibilityLabel={cs.profile.setup.continue}
                 />
                 {!!visibilityError && (
                   <Text style={styles.errorText} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -293,6 +304,38 @@ export default function ProfileSetupScreen() {
                   </Text>
                 )}
               </View>
+            </>
+          )}
+
+          {step === 3 && (
+            <>
+              <Text style={styles.eyebrow}>{cs.profile.setup.step3Eyebrow}</Text>
+              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {cs.profile.setup.step3Title}
+              </Text>
+              <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.profile.setup.step3Body}
+              </Text>
+
+              <View style={styles.cta}>
+                <GlowButton
+                  label={cs.profile.setup.step3ShowCode}
+                  onPress={() => setCodeVisible(true)}
+                  glow="soft"
+                  icon={<QrCodeIcon size={20} color={Colors.stout} />}
+                  accessibilityLabel={cs.profile.setup.step3ShowCode}
+                />
+              </View>
+              <Pressable
+                onPress={handleFinish}
+                style={({ pressed }) => [styles.skipButton, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel={cs.profile.setup.step3Skip}
+              >
+                <Text style={styles.skipText} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {cs.profile.setup.step3Skip}
+                </Text>
+              </Pressable>
             </>
           )}
         </ScrollView>
@@ -303,6 +346,8 @@ export default function ProfileSetupScreen() {
           <ActivityIndicator color={Colors.amber} />
         </View>
       )}
+
+      {codeVisible ? <CodeSheet onClose={() => setCodeVisible(false)} /> : null}
     </View>
   );
 }
@@ -382,6 +427,19 @@ const styles = StyleSheet.create({
     bottom: 0,
     borderRadius: Radius.pill,
     backgroundColor: withAlpha(Colors.stout, 0.55),
+  },
+  skipButton: {
+    alignSelf: 'center',
+    minHeight: 44,
+    paddingHorizontal: Spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: Spacing.sm,
+  },
+  skipText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 14,
+    color: Colors.mutedText,
   },
 
   // ── Avatar (tappable, on the nickname step) ──

@@ -25,6 +25,11 @@ interface LeaderboardRowProps {
   rank: number;
   /** Highest visits30d in the list (kept for the optional visits-meter; unused). */
   maxVisits: number;
+  /**
+   * Opens the friend's profile (§F1/§F4). Omitted for my own row, which stays a
+   * plain no-op node without the misleading press feedback (a11y §15).
+   */
+  onPress?: () => void;
 }
 
 const AVATAR_SIZE = 34;
@@ -41,6 +46,7 @@ export const LeaderboardRow = memo(function LeaderboardRow({
   entry,
   rank,
   maxVisits,
+  onPress,
 }: LeaderboardRowProps) {
   const { account, visits30d, sharedCount, isMe } = entry;
 
@@ -54,14 +60,13 @@ export const LeaderboardRow = memo(function LeaderboardRow({
   const magnitude =
     maxVisits > 0 ? Math.max(8, Math.round((visits30d / maxVisits) * 84)) : 0;
 
-  return (
-    <Pressable
-      style={({ pressed }) => [
-        styles.row,
-        isMe && styles.rowMe,
-        pressed && styles.rowPressed,
-      ]}
-    >
+  // The whole row is a single a11y node summarising rank + name + count.
+  const a11yLabel = `${rank}. ${resolveName(entry)}, ${visits30d} ${cs.friends.leaderboardVisits(
+    visits30d,
+  )}`;
+
+  const rowContent = (
+    <>
       {isMe ? <View style={styles.meBar} pointerEvents="none" /> : null}
 
       <View style={styles.rankCol}>
@@ -118,7 +123,27 @@ export const LeaderboardRow = memo(function LeaderboardRow({
           accessibilityElementsHidden
         />
       ) : null}
-    </Pressable>
+    </>
+  );
+
+  // Tappable (a friend) → button role + press feedback; my own row stays a plain
+  // node with no misleading press affordance (a11y §15).
+  if (onPress) {
+    return (
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={a11yLabel}
+        style={({ pressed }) => [styles.row, isMe && styles.rowMe, pressed && styles.rowPressed]}
+      >
+        {rowContent}
+      </Pressable>
+    );
+  }
+  return (
+    <View accessible accessibilityLabel={a11yLabel} style={[styles.row, isMe && styles.rowMe]}>
+      {rowContent}
+    </View>
   );
 });
 

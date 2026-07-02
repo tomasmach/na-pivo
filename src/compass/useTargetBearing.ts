@@ -3,7 +3,6 @@
  */
 
 import { useMemo } from 'react';
-import type { Pub } from '@/data/pubs';
 import { initialBearing } from './bearing';
 import { haversineMeters } from './distance';
 
@@ -14,7 +13,9 @@ export interface TargetBearingResult {
 
 export function useTargetBearing(
   userPos: { lat: number; lng: number } | null,
-  targetPub: Pub | null,
+  // Only the coordinates are read, so a Pub OR a bare geo point (the Parta
+  // "Ukaž na kompasu" focus target) both satisfy this.
+  targetPub: { lat: number; lng: number } | null,
 ): TargetBearingResult {
   const userLat = userPos?.lat;
   const userLng = userPos?.lng;

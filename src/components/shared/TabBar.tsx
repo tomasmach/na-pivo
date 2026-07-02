@@ -1,14 +1,26 @@
 /**
  * Hand-rolled bottom tab bar — matches the stout/amber pub theme instead of the
- * default react-navigation look. Three items (Kompas / Pivo / Profil), each an
- * IconGlyph + Baloo2 label. Active = amber with a subtle glow; inactive =
+ * default react-navigation look. Four items (Kompas / Štamgast / Parta / Profil),
+ * each an IconGlyph + Baloo2 label. Active = amber with a subtle glow; inactive =
  * muted. A light haptic fires on press when the user has haptics enabled.
+ *
+ * The Parta item carries an amber signal badge fed by `usePartaSignalStore`
+ * (Parta 3.0 §D1): a numeric pill when friend requests wait, else an ambient dot
+ * when the feed has unread items or a friend is live now (the dot breathes only
+ * while someone is actually live, honouring "amber = alive").
  *
  * Driven by expo-router's <Tabs> via `tabBar={(props) => <TabBar {...props} />}`.
  */
 
-import React, { memo } from 'react';
+import React, { memo, useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
+import Animated, {
+  cancelAnimation,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+  Easing,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors } from '@/theme/colors';
@@ -16,8 +28,11 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea } from '@/theme/layout';
 import { amberGlow } from '@/theme/shadows';
 import { CompassIcon, BeerIcon, UserIcon, UsersIcon } from '@/components/shared/IconGlyph';
+import LiveDot from '@/friends/LiveDot';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { usePartaSignalStore } from '@/stores/partaSignalStore';
+import { useReduceMotion } from '@/utils/useReduceMotion';
 import { cs } from '@/i18n/cs';
 
 /**
@@ -54,18 +69,76 @@ const TAB_META: Record<
   profile: { Icon: UserIcon, label: cs.tabs.profile, a11yLabel: cs.a11y.tabProfile },
 };
 
+/** What the Parta item's badge should render, if anything. */
+interface TabBadgeState {
+  /** Numeric pill (pending requests, capped "9+") — highest intent. */
+  count: number;
+  /** Ambient dot (unread feed or a friend live now) when no numeric pill. */
+  dot: boolean;
+  /** A friend is live now → the dot breathes. */
+  live: boolean;
+}
+
+/**
+ * The amber signal badge on the Parta item. A numeric pill wins over the ambient
+ * dot; the dot only breathes while a friend is live (reduce-motion → static).
+ * Both fade+scale in on appear.
+ */
+const TabBadge = memo(function TabBadge({ count, dot, live }: TabBadgeState) {
+  const reduceMotion = useReduceMotion();
+  const appear = useSharedValue(0);
+
+  useEffect(() => {
+    appear.value = reduceMotion
+      ? withTiming(1, { duration: 0 })
+      : withTiming(1, { duration: 140, easing: Easing.out(Easing.quad) });
+    return () => cancelAnimation(appear);
+  }, [appear, reduceMotion]);
+
+  const appearStyle = useAnimatedStyle(() => ({
+    opacity: appear.value,
+    transform: [{ scale: 0.6 + 0.4 * appear.value }],
+  }));
+
+  if (count > 0) {
+    return (
+      <Animated.View style={[styles.badgePill, appearStyle]} pointerEvents="none">
+        <Text style={styles.badgeCount} allowFontScaling={false}>
+          {count > 9 ? '9+' : String(count)}
+        </Text>
+      </Animated.View>
+    );
+  }
+  if (!dot) return null;
+  return (
+    <Animated.View style={[styles.badgeDotWrap, appearStyle]} pointerEvents="none">
+      {live ? (
+        <LiveDot size={9} />
+      ) : (
+        <View style={styles.badgeDotStatic} />
+      )}
+    </Animated.View>
+  );
+});
+
 interface TabItemProps {
   routeKey: string;
   routeName: string;
   focused: boolean;
   onPress: () => void;
+  badge: TabBadgeState | null;
 }
 
-const TabItem = memo(function TabItem({ routeName, focused, onPress }: TabItemProps) {
+const TabItem = memo(function TabItem({ routeName, focused, onPress, badge }: TabItemProps) {
   const meta = TAB_META[routeName];
   if (!meta) return null;
   const color = focused ? Colors.amber : Colors.mutedText;
   const { Icon } = meta;
+
+  // Fold the badge count into the tab's own a11y label so VoiceOver announces
+  // "Parta, N nových" instead of leaving the badge silent.
+  const accessibilityLabel =
+    badge && badge.count > 0 ? cs.a11y.tabFriendsBadge(badge.count) : meta.a11yLabel;
 
   return (
     <Pressable
@@ -74,10 +147,11 @@ const TabItem = memo(function TabItem({ routeName, focused, onPress }: TabItemPr
       hitSlop={6}
       accessibilityRole="tab"
       accessibilityState={{ selected: focused }}
-      accessibilityLabel={meta.a11yLabel}
+      accessibilityLabel={accessibilityLabel}
     >
       <View style={[styles.iconWrap, focused && amberGlow(10)]}>
         <Icon size={24} color={color} />
+        {badge ? <TabBadge count={badge.count} dot={badge.dot} live={badge.live} /> : null}
       </View>
       <Text
         style={[styles.label, { color }]}
@@ -93,6 +167,16 @@ const TabItem = memo(function TabItem({ routeName, focused, onPress }: TabItemPr
 export function TabBar({ state, navigation }: TabBarProps) {
   const insets = useSafeAreaInsets();
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
+  const pendingRequests = usePartaSignalStore((s) => s.pendingRequests);
+  const unread = usePartaSignalStore((s) => s.unread);
+  const liveNow = usePartaSignalStore((s) => s.liveNow);
+
+  const partaBadge: TabBadgeState | null =
+    pendingRequests > 0
+      ? { count: pendingRequests, dot: false, live: liveNow }
+      : unread > 0 || liveNow
+        ? { count: 0, dot: true, live: liveNow }
+        : null;
 
   return (
     <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
@@ -120,6 +204,7 @@ export function TabBar({ state, navigation }: TabBarProps) {
             routeName={route.name}
             focused={focused}
             onPress={onPress}
+            badge={route.name === 'friends' ? partaBadge : null}
           />
         );
       })}
@@ -150,5 +235,41 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.display.bold,
     fontSize: 12,
     letterSpacing: 0.2,
+  },
+  // — Parta signal badge —
+  badgePill: {
+    position: 'absolute',
+    top: -6,
+    right: -12,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    backgroundColor: Colors.amber,
+    borderWidth: 2,
+    borderColor: Colors.stout2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeCount: {
+    fontFamily: Fonts.display.bold,
+    fontSize: 11,
+    lineHeight: 13,
+    color: Colors.stout,
+    includeFontPadding: false,
+  },
+  badgeDotWrap: {
+    position: 'absolute',
+    top: -3,
+    right: -5,
+    borderRadius: 999,
+    borderWidth: 2,
+    borderColor: Colors.stout2,
+  },
+  badgeDotStatic: {
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    backgroundColor: Colors.amber,
   },
 });

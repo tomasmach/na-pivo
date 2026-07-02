@@ -220,7 +220,12 @@ function RsvpControl({ activityId, myResponse, onResponded }: RsvpControlProps) 
   };
 
   return (
-    <View style={styles.track} onLayout={onTrackLayout} accessibilityRole="radiogroup">
+    <View
+      style={styles.track}
+      onLayout={onTrackLayout}
+      accessibilityRole="radiogroup"
+      accessibilityLabel={cs.a11y.rsvpGroup}
+    >
       <Animated.View
         pointerEvents="none"
         style={[styles.thumb, { width: segW }, thumbStyle]}

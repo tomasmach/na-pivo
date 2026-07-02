@@ -33,7 +33,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { XIcon } from '@/components/shared/IconGlyph';
 import { Toast } from '@/components/shared/Toast';
 import { updateFriendSettings, type FriendSocialSettings } from '@/data/friendsClient';
+import { disableFriendPush, registerFriendPush } from '@/notifications/friendPush';
 import { cs } from '@/i18n/cs';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -77,6 +79,10 @@ function FriendSettingsSheet({
   const insets = useSafeAreaInsets();
   const reduceMotion = useReduceMotion();
   const showToast = useToastStore((s) => s.show);
+  const friendPushEnabled = useSettingsStore((s) => s.friendPushEnabled);
+  const setFriendPushEnabled = useSettingsStore((s) => s.setFriendPushEnabled);
+  const setFriendPushOptedOut = useSettingsStore((s) => s.setFriendPushOptedOut);
+  const [pushBusy, setPushBusy] = useState(false);
 
   // Optimistic display state. `draftRef` mirrors it so the (stable) handlers can
   // read the freshest value without listing `draft` in their deps. The ref is
@@ -99,6 +105,43 @@ function FriendSettingsSheet({
     },
     [],
   );
+
+  // Push opt-in toggle (§E3): turning on requests the notification permission and
+  // registers the device token; turning off persists an explicit opt-out (so the
+  // launch/focus re-register can't flip it back on) AND disables the device
+  // server-side so delivery actually stops. Optimistic with revert-on-fail, like
+  // the ghost/quiet toggles.
+  const handlePushToggle = useCallback(() => {
+    if (pushBusy) return;
+    if (friendPushEnabled) {
+      setFriendPushEnabled(false);
+      setFriendPushOptedOut(true);
+      setPushBusy(true);
+      void disableFriendPush().then((ok) => {
+        if (!mountedRef.current) return;
+        setPushBusy(false);
+        if (!ok) {
+          // Server disable failed → revert so the toggle reflects reality.
+          setFriendPushEnabled(true);
+          setFriendPushOptedOut(false);
+          showToast(cs.friends.pushDisableError, {
+            icon: <XIcon size={18} color={Colors.closed} />,
+          });
+        }
+      });
+      return;
+    }
+    setPushBusy(true);
+    void registerFriendPush().then((result) => {
+      if (!mountedRef.current) return;
+      setPushBusy(false);
+      if (!result.ok) {
+        showToast(cs.friends.pushDeniedHint, {
+          icon: <XIcon size={18} color={Colors.amber} />,
+        });
+      }
+    });
+  }, [friendPushEnabled, pushBusy, setFriendPushEnabled, setFriendPushOptedOut, showToast]);
 
   // Debounced hour PATCH bookkeeping.
   const hourTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -373,6 +416,31 @@ function FriendSettingsSheet({
                   </View>
                 </View>
               )}
+            </HairlineRow>
+
+            {/* Upozornění na partu (§E3) */}
+            <HairlineRow>
+              <View style={styles.settingRow}>
+                <View style={styles.settingText}>
+                  <Text
+                    style={styles.settingTitle}
+                    maxFontSizeMultiplier={FontScaleCap.heading}
+                  >
+                    {cs.friends.pushToggleTitle}
+                  </Text>
+                  <Text
+                    style={styles.settingSubtitle}
+                    maxFontSizeMultiplier={FontScaleCap.body}
+                  >
+                    {cs.friends.pushToggleSub}
+                  </Text>
+                </View>
+                <Toggle
+                  value={friendPushEnabled}
+                  onToggle={handlePushToggle}
+                  accessibilityLabel={cs.friends.pushToggleTitle}
+                />
+              </View>
             </HairlineRow>
           </ScrollView>
         </Animated.View>

@@ -15,6 +15,7 @@
  */
 
 import React, { useEffect } from 'react';
+import type { LayoutChangeEvent } from 'react-native';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -33,9 +34,12 @@ const TRAVEL = 10;
 interface RevealProps {
   index: number;
   children: React.ReactNode;
+  /** Optional layout callback (the transform never shifts the reported layout),
+   *  used to record a section's scroll offset for push-tap scroll-to (§D2/§F3). */
+  onLayout?: (event: LayoutChangeEvent) => void;
 }
 
-function RevealBase({ index, children }: RevealProps): React.ReactElement {
+function RevealBase({ index, children, onLayout }: RevealProps): React.ReactElement {
   const reduceMotion = useReduceMotion();
   const progress = useSharedValue(reduceMotion ? 1 : 0);
 
@@ -58,7 +62,11 @@ function RevealBase({ index, children }: RevealProps): React.ReactElement {
     transform: [{ translateY: (1 - progress.value) * TRAVEL }],
   }));
 
-  return <Animated.View style={animatedStyle}>{children}</Animated.View>;
+  return (
+    <Animated.View style={animatedStyle} onLayout={onLayout}>
+      {children}
+    </Animated.View>
+  );
 }
 
 export const Reveal = React.memo(RevealBase);

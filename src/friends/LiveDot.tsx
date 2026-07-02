@@ -26,15 +26,27 @@ import { useReduceMotion } from '@/utils/useReduceMotion';
 interface LiveDotProps {
   /** Diameter of the dot in points. Defaults to 8. */
   size?: number;
+  /**
+   * Stale-data cue (§2C): while the dashboard failed to refresh, "live" must not
+   * lie — the dot stops breathing and rests dim at a static 0.4.
+   */
+  stale?: boolean;
 }
 
 const PULSE_DURATION = 1000;
+const STALE_OPACITY = 0.4;
 
-export const LiveDot = memo(function LiveDot({ size = 8 }: LiveDotProps) {
+export const LiveDot = memo(function LiveDot({ size = 8, stale = false }: LiveDotProps) {
   const reduceMotion = useReduceMotion();
   const opacity = useSharedValue(1);
 
   useEffect(() => {
+    if (stale) {
+      // Stale dashboard: freeze dim so a pulsing dot never implies fresh "live".
+      cancelAnimation(opacity);
+      opacity.value = STALE_OPACITY;
+      return;
+    }
     if (reduceMotion) {
       // Reduce motion: rest at full opacity, no loop.
       opacity.value = 1;
@@ -55,7 +67,7 @@ export const LiveDot = memo(function LiveDot({ size = 8 }: LiveDotProps) {
       cancelAnimation(opacity);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reduceMotion]);
+  }, [reduceMotion, stale]);
 
   const animatedStyle = useAnimatedStyle(() => {
     'worklet';

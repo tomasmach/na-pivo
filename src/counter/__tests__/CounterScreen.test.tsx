@@ -489,7 +489,7 @@ describe('CounterScreen counting', () => {
 
     const share = renderer.root.findAll(
       (n: any) =>
-        n.props?.accessibilityLabel === copy.friends.shareHere &&
+        n.props?.accessibilityLabel === copy.friends.shareHereShort &&
         typeof n.props?.onPress === 'function',
     )[0];
     expect(share).toBeTruthy();
@@ -499,9 +499,11 @@ describe('CounterScreen counting', () => {
       await Promise.resolve();
     });
 
+    // Parta 3.0 §B4: one-tap quick broadcast sends an empty message (the rich
+    // compose with a message lives on the Parta tab).
     expect(mockShareFriendPubActivity).toHaveBeenCalledWith(
       PUB,
-      copy.friends.atPubMessage,
+      '',
       'session-client-id',
     );
   });

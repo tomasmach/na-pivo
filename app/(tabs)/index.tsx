@@ -64,6 +64,8 @@ import {
   StarIcon,
   MapPinIcon,
   TreePineIcon,
+  UsersIcon,
+  ChevronLeftIcon,
   XIcon,
 } from '@/components/shared/IconGlyph';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
@@ -73,7 +75,7 @@ import { useToastStore } from '@/stores/toastStore';
 
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
-import { Radius, Spacing, CompassSize } from '@/theme/layout';
+import { HitArea, Radius, Spacing, CompassSize } from '@/theme/layout';
 import { amberGlowStrong } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
 
@@ -979,6 +981,81 @@ function DistanceDisplay({ distanceFormatted, mode, layout }: DistanceDisplayPro
   );
 }
 
+// ─── Focused compass (friend handoff, §F2) ───────────────────────────────────
+
+interface FocusedCompassViewProps {
+  rotation: ReturnType<typeof useSharedValue<number>>;
+  pubName: string;
+  distanceFormatted: string | null;
+  compassSize: number;
+  onBack: () => void;
+}
+
+/**
+ * The compass in "Ukaž na kompasu" mode: the needle already points at the
+ * friend's coarse pub (the bearing target was swapped inside useCompass). A slim
+ * banner names who/where and a single escape hatch drops back to the nearest pub.
+ */
+function FocusedCompassView({
+  rotation,
+  pubName,
+  distanceFormatted,
+  compassSize,
+  onBack,
+}: FocusedCompassViewProps) {
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={[styles.root, { paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, 16) }]}>
+      <View style={styles.focusHeader}>
+        <Pressable
+          onPress={onBack}
+          hitSlop={10}
+          style={({ pressed }) => [styles.focusBackButton, pressed && { opacity: 0.7 }]}
+          accessibilityRole="button"
+          accessibilityLabel={cs.friends.friendCompassBack}
+        >
+          <ChevronLeftIcon size={24} color={Colors.foam} />
+        </Pressable>
+        <View style={styles.focusKickerWrap}>
+          <UsersIcon size={14} color={Colors.amber} />
+          <Text style={styles.focusKicker} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.friends.friendCompassKicker}
+          </Text>
+        </View>
+        <View style={styles.focusBackButton} />
+      </View>
+
+      <View style={styles.focusCompassArea}>
+        <CompassContainer rotation={rotation} size={compassSize} />
+      </View>
+
+      <View style={styles.focusInfo}>
+        <Text style={styles.focusPubName} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.heading}>
+          {pubName}
+        </Text>
+        {distanceFormatted ? (
+          <Text style={styles.focusDistance} maxFontSizeMultiplier={FontScaleCap.display}>
+            {distanceFormatted}
+          </Text>
+        ) : null}
+      </View>
+
+      <View style={styles.flexSpacer} />
+
+      <View style={styles.focusBackWrap}>
+        <GlowButton
+          label={cs.friends.friendCompassBack}
+          onPress={onBack}
+          variant="secondary"
+          glow="none"
+          height={52}
+          icon={<RefreshCwIcon size={18} color={Colors.foam} />}
+        />
+      </View>
+    </View>
+  );
+}
+
 // ─── Main CompassScreen ───────────────────────────────────────────────────────
 
 export default function CompassScreen() {
@@ -1016,6 +1093,8 @@ export default function CompassScreen() {
     isLoading,
     searchFailed,
     currentPosition,
+    focusedPub,
+    clearFocusedPub,
   } = useCompass(beerBrandFilter?.key ?? null);
   const hidePubNames = useSettingsStore((s) => s.hidePubNames);
   const showPubDetails = !hidePubNames || revealed;
@@ -1186,6 +1265,21 @@ export default function CompassScreen() {
   // ── State B: loading ──────────────────────────────────────────────────────
   if (isLoading) {
     return <LoadingScreen rotation={rotation} />;
+  }
+
+  // ── State F: pointing at a friend's pub (§F2) ─────────────────────────────
+  // Takes precedence over the nearby/empty states — a handoff should always
+  // show the needle to the friend even where the local search found nothing.
+  if (focusedPub) {
+    return (
+      <FocusedCompassView
+        rotation={rotation}
+        pubName={focusedPub.name}
+        distanceFormatted={distanceFormatted}
+        compassSize={activeLayout.compassSize}
+        onBack={clearFocusedPub}
+      />
+    );
   }
 
   // ── State D: nothing nearby / pub lookup failed ───────────────────────────
@@ -1655,6 +1749,62 @@ const styles = StyleSheet.create({
   flexSpacer: {
     flex: 1,
     minHeight: Spacing.xs,
+  },
+
+  // ── Focused compass (friend handoff) ──
+  focusHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  focusBackButton: {
+    width: HitArea.min,
+    height: HitArea.min,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  focusKickerWrap: {
+    flexShrink: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  focusKicker: {
+    flexShrink: 1,
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 12,
+    letterSpacing: 1.5,
+    color: Colors.amber,
+  },
+  focusCompassArea: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: Spacing.lg,
+  },
+  focusInfo: {
+    alignItems: 'center',
+    paddingHorizontal: Spacing.xl,
+    marginTop: Spacing.xl,
+    gap: Spacing.sm,
+  },
+  focusPubName: {
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 26,
+    lineHeight: 32,
+    color: Colors.foam,
+    textAlign: 'center',
+  },
+  focusDistance: {
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 40,
+    lineHeight: 46,
+    color: Colors.amber,
+  },
+  focusBackWrap: {
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.md,
   },
 
   // ── Distance ──

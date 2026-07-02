@@ -3,10 +3,11 @@
  * `myActiveActivity == null` AND there are no active friends (spec §11).
  *
  * Not a sad empty box: a muted bell, one organic line, and a single
- * secondary CTA that gives the fold a purposeful next action — routing to
- * the counter (`/beer`) where the broadcast actually starts. The CTA's
- * amber-tinted secondary border is the one intentional accent here; the
- * rest of the strip stays on bare stout in `mutedText` (zero loud amber).
+ * secondary CTA that gives the fold a purposeful next action. Parta 3.0 (§B1)
+ * points that CTA at the on-screen ComposeSheet (via `onPress`) instead of
+ * routing away to the counter, so the verb never leaves the tab. The CTA's
+ * amber-tinted secondary border is the one intentional accent here; the rest of
+ * the strip stays on bare stout in `mutedText` (zero loud amber).
  */
 
 import React, { memo } from 'react';
@@ -20,7 +21,12 @@ import { cs } from '@/i18n/cs';
 import { BellRingIcon } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
 
-function LoopEmptyStateBase() {
+interface LoopEmptyStateProps {
+  /** Opens the ComposeSheet. Falls back to routing to the counter when omitted. */
+  onPress?: () => void;
+}
+
+function LoopEmptyStateBase({ onPress }: LoopEmptyStateProps) {
   const router = useRouter();
 
   return (
@@ -45,7 +51,7 @@ function LoopEmptyStateBase() {
       <View style={styles.ctaWrap}>
         <GlowButton
           label={cs.friends.loopEmptyCta}
-          onPress={() => router.push('/beer' as Href)}
+          onPress={onPress ?? (() => router.push('/beer' as Href))}
           variant="secondary"
           glow="none"
           height={52}

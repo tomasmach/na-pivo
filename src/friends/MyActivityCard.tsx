@@ -41,6 +41,7 @@ import {
   XIcon,
 } from '@/components/shared/IconGlyph';
 import { endFriendPubActivity, type FriendPubActivity } from '@/data/friendsClient';
+import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
 import { cs } from '@/i18n/cs';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -63,9 +64,11 @@ interface MyActivityCardProps {
   activity: FriendPubActivity;
   /** Fired once the activity is successfully ended so the parent can drop it. */
   onEnded: () => void;
+  /** Dim the live dot to a static 0.4 while the dashboard is stale (§2C). */
+  stale?: boolean;
 }
 
-function MyActivityCardImpl({ activity, onEnded }: MyActivityCardProps) {
+function MyActivityCardImpl({ activity, onEnded, stale = false }: MyActivityCardProps) {
   const now = useNowTick();
   const reduceMotion = useReduceMotion();
   const showToast = useToastStore((s) => s.show);
@@ -114,20 +117,31 @@ function MyActivityCardImpl({ activity, onEnded }: MyActivityCardProps) {
   }, []);
 
   const confirmEnd = useCallback(() => {
+    // Optimistically hide the card, but hold the "ukončené" toast until the DELETE
+    // actually resolves (§H4 — kills the "hotovo… vlastně ne" sequence).
     setEnding(true);
-    // Optimistic confirmation (matches the app's retract idiom); replaced by the
-    // error toast below if the DELETE fails.
-    showToast(cs.friends.endedToast, {
-      icon: <Undo2Icon size={20} color={Colors.amber} />,
-    });
     void endFriendPubActivity(activity.id).then((res) => {
       if (!mountedRef.current) return;
       if (res.ok) {
+        showToast(cs.friends.endedToast, {
+          icon: <Undo2Icon size={20} color={Colors.amber} />,
+        });
         onEnded();
-      } else {
-        setEnding(false);
-        showToast(res.detail);
+        return;
       }
+      if (isRetriableFriendError(res)) {
+        // Offline / transient: queue the end so it lands on the next flush and
+        // keep the card hidden (honest — it WILL end).
+        void enqueueFriendOp({ op: 'end', clientId: activity.id, activityId: activity.id });
+        showToast(cs.friends.endQueued, {
+          icon: <Undo2Icon size={20} color={Colors.amber} />,
+        });
+        onEnded();
+        return;
+      }
+      // Hard reject: bring the card back and explain.
+      setEnding(false);
+      showToast(res.detail);
     });
   }, [activity.id, onEnded, showToast]);
 
@@ -165,7 +179,7 @@ function MyActivityCardImpl({ activity, onEnded }: MyActivityCardProps) {
       <View style={styles.card}>
         <View style={styles.kicker}>
           <View style={styles.kickerLeft}>
-            <LiveDot />
+            <LiveDot stale={stale} />
             <View style={styles.bellDisk}>
               <BellRingIcon size={16} color={Colors.amber} />
             </View>
@@ -233,6 +247,17 @@ function MyActivityCardImpl({ activity, onEnded }: MyActivityCardProps) {
             isMyCard
           />
         </View>
+
+        {/* Incoming "Na zdraví" — a quiet, action-less line on my own card (§C2). */}
+        {activity.reactions.cheers > 0 ? (
+          <Text
+            style={styles.cheersLine}
+            numberOfLines={1}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
+            {cs.friends.cheersCount(activity.reactions.cheers)}
+          </Text>
+        ) : null}
 
         <View style={styles.footer}>
           <Pressable
@@ -332,6 +357,12 @@ const styles = StyleSheet.create({
   roster: {
     marginTop: Spacing.md,
     overflow: 'visible',
+  },
+  cheersLine: {
+    marginTop: Spacing.sm,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 12,
+    color: Colors.mutedText,
   },
   footer: {
     marginTop: Spacing.md,

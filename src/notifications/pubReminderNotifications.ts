@@ -1,12 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Constants from 'expo-constants';
 import * as Location from 'expo-location';
 import { Platform } from 'react-native';
 import type * as ExpoNotifications from 'expo-notifications';
 import type * as ExpoTaskManager from 'expo-task-manager';
 
-import { disablePushDevice, PUSH_TOKEN_KEY, registerPushDevice } from '@/data/pushDeviceClient';
+import { disablePushDevice, PUSH_TOKEN_KEY } from '@/data/pushDeviceClient';
 import { fetchPubsNear, findNearbyPubs } from '@/data/pubs';
+import { ensurePushTokenRegistered } from '@/notifications/pushToken';
 import {
   decidePubReminderOnEnter,
   isPubReminderEveningWindow,
@@ -148,23 +148,6 @@ async function schedulePubReminder(pubName: string): Promise<void> {
     },
     trigger: null,
   });
-}
-
-async function getAndRegisterPushToken(status: 'granted' | 'denied' | 'undetermined'): Promise<string | null> {
-  if (status !== 'granted' || !Notifications) return null;
-  try {
-    const projectId =
-      Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
-    const response = projectId
-      ? await Notifications.getExpoPushTokenAsync({ projectId })
-      : await Notifications.getExpoPushTokenAsync();
-    const token = response.data;
-    await AsyncStorage.setItem(PUSH_TOKEN_KEY, token);
-    void registerPushDevice(token, status);
-    return token;
-  } catch {
-    return null;
-  }
 }
 
 function locationCoords(position: Location.LocationObject | null): { lat: number; lng: number } | null {
@@ -320,7 +303,7 @@ export async function initializePubReminderNotifications(): Promise<void> {
     return;
   }
 
-  void getAndRegisterPushToken(permissionStatus(notificationPermission.status));
+  void ensurePushTokenRegistered(permissionStatus(notificationPermission.status));
   await refreshGeofences();
 }
 
@@ -356,7 +339,7 @@ export async function enablePubReminderNotifications(): Promise<PubReminderEnabl
   }
 
   await setReminderEnabled(true);
-  void getAndRegisterPushToken(permissionStatus(notificationPermission.status));
+  void ensurePushTokenRegistered(permissionStatus(notificationPermission.status));
   await refreshGeofences();
   return { ok: true };
 }
@@ -394,34 +377,68 @@ function isPubReminderResponse(response: ExpoNotifications.NotificationResponse 
   return kind === PUB_REMINDER_NOTIFICATION_KIND;
 }
 
+/** Deep-link payload a friend push carries so Parta can scroll to the row (§F3). */
+export interface FriendTapPayload {
+  activityId: string | null;
+  friendshipId: string | null;
+}
+
 function isFriendResponse(response: ExpoNotifications.NotificationResponse | null): boolean {
   const kind = response?.notification.request.content.data?.kind;
   return (
     kind === 'friend_request' ||
     kind === 'friend_accepted' ||
     kind === 'friend_at_pub' ||
-    kind === 'friend_rsvp'
+    kind === 'friend_rsvp' ||
+    kind === 'friend_cheers' ||
+    kind === 'friend_plan'
   );
 }
 
-/** Subscribe to taps on a pub-reminder notification while the app is running. */
+/** Extract the activity/friendship ids a friend push carries, when present. */
+function friendTapPayload(response: ExpoNotifications.NotificationResponse | null): FriendTapPayload {
+  const data = response?.notification.request.content.data;
+  return {
+    activityId: typeof data?.activity_id === 'string' ? data.activity_id : null,
+    friendshipId: typeof data?.friendship_id === 'string' ? data.friendship_id : null,
+  };
+}
+
+/**
+ * Subscribe to friend pushes RECEIVED (not tapped) while the app is foregrounded,
+ * so the Parta tab badge lights up even on another tab that hasn't mounted
+ * FriendsScreen yet (§D1). Fires the notification's `kind` back to the caller.
+ */
+export function subscribeFriendPushReceived(
+  onReceived: (kind: string) => void,
+): ExpoNotifications.Subscription {
+  if (!Notifications) {
+    return { remove: () => undefined };
+  }
+  return Notifications.addNotificationReceivedListener((notification) => {
+    const kind = notification.request.content.data?.kind;
+    if (typeof kind === 'string' && kind.startsWith('friend_')) onReceived(kind);
+  });
+}
+
+/** Subscribe to taps on a pub-reminder / friend notification while the app runs. */
 export function subscribePubReminderTap(
   onTap: () => void,
-  onFriendTap?: () => void,
+  onFriendTap?: (payload: FriendTapPayload) => void,
 ): ExpoNotifications.Subscription {
   if (!Notifications) {
     return { remove: () => undefined };
   }
   return Notifications.addNotificationResponseReceivedListener((response) => {
     if (isPubReminderResponse(response)) onTap();
-    else if (onFriendTap && isFriendResponse(response)) onFriendTap();
+    else if (onFriendTap && isFriendResponse(response)) onFriendTap(friendTapPayload(response));
   });
 }
 
-/** Handle a cold-start launch triggered by tapping a pub-reminder notification. */
+/** Handle a cold-start launch triggered by tapping a pub-reminder / friend notification. */
 export async function consumeInitialPubReminderTap(
   onTap: () => void,
-  onFriendTap?: () => void,
+  onFriendTap?: (payload: FriendTapPayload) => void,
 ): Promise<void> {
   if (!Notifications) return;
   try {
@@ -430,7 +447,7 @@ export async function consumeInitialPubReminderTap(
       onTap();
       await Notifications.clearLastNotificationResponseAsync();
     } else if (onFriendTap && isFriendResponse(response)) {
-      onFriendTap();
+      onFriendTap(friendTapPayload(response));
       await Notifications.clearLastNotificationResponseAsync();
     }
   } catch {

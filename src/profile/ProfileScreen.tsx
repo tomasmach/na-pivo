@@ -48,10 +48,14 @@ import {
   StarIcon,
   BadgeCheckIcon,
   ClipboardListIcon,
+  QrCodeIcon,
+  UsersIcon,
 } from '@/components/shared/IconGlyph';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 import type { AccountMapper, AccountAchievements } from '@/data/auth';
 import { GlowButton } from '@/components/shared/GlowButton';
+import CodeSheet from '@/friends/CodeSheet';
+import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
 import { Avatar } from '@/profile/Avatar';
 import {
   useAccountStore,
@@ -447,6 +451,20 @@ export default function ProfileScreen() {
   // commits only on a successful PATCH, so the pill reflects the server truth; a
   // failure surfaces a toast and leaves the previous state untouched.
   const [visibilityBusy, setVisibilityBusy] = useState(false);
+  // Parta cross-link (§A2 entry point): "Můj kód" sheet + a friend-count row that
+  // routes to the Parta tab. The count is read from the last dashboard snapshot so
+  // this stays a zero-network, offline-safe surface.
+  const [codeVisible, setCodeVisible] = useState(false);
+  const [partaCount, setPartaCount] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    void loadFriendsDashboardSnapshot().then((snap) => {
+      if (alive && snap) setPartaCount(snap.dashboard.friends.length);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
   const handleToggleVisibility = useCallback(async () => {
     if (visibilityBusy) return;
     setVisibilityBusy(true);
@@ -586,6 +604,35 @@ export default function ProfileScreen() {
                 </Pressable>
               </View>
             </View>
+
+            {/* ── Parta cross-link: friend count → Parta tab · "Můj kód" sheet ── */}
+            <View style={styles.partaRow}>
+              <Pressable
+                onPress={() => router.push('/friends' as Href)}
+                style={({ pressed }) => [styles.partaCountArea, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel={cs.profile.partaCount(partaCount)}
+                hitSlop={4}
+              >
+                <UsersIcon size={17} color={Colors.amber} />
+                <Text style={styles.partaCountText} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {cs.profile.partaCount(partaCount)}
+                </Text>
+                <ChevronRightIcon size={16} color={Colors.mutedText} />
+              </Pressable>
+              <Pressable
+                onPress={() => setCodeVisible(true)}
+                style={({ pressed }) => [styles.myCodePill, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel={cs.profile.myCode}
+                hitSlop={4}
+              >
+                <QrCodeIcon size={15} color={Colors.amber} />
+                <Text style={styles.myCodePillText} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {cs.profile.myCode}
+                </Text>
+              </Pressable>
+            </View>
           </>
         ) : (
           /* ── Signed-out hero ── */
@@ -687,6 +734,8 @@ export default function ProfileScreen() {
           </>
         )}
       </ScrollView>
+
+      {codeVisible ? <CodeSheet onClose={() => setCodeVisible(false)} /> : null}
     </View>
   );
 }
@@ -761,6 +810,50 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     marginTop: Spacing.sm,
   },
+
+  // ── Parta cross-link row ──
+  partaRow: {
+    marginTop: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  partaCountArea: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    minHeight: 44,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.medium,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.stout2,
+  },
+  partaCountText: {
+    flex: 1,
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 14,
+    color: Colors.foam,
+  },
+  myCodePill: {
+    flexShrink: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 44,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.medium,
+    backgroundColor: withAlpha(Colors.amber, 0.14),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.4),
+  },
+  myCodePillText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 13,
+    color: Colors.amber,
+  },
+
   editPill: {
     flexDirection: 'row',
     alignItems: 'center',

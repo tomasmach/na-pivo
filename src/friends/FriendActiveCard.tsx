@@ -14,15 +14,20 @@
  */
 
 import { memo, useCallback } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useRouter, type Href } from 'expo-router';
 
-import { MapPinIcon } from '@/components/shared/IconGlyph';
+import { CompassIcon, MapPinIcon } from '@/components/shared/IconGlyph';
 import type { FriendProfile, FriendPubActivity } from '@/data/friendsClient';
 import { Avatar } from '@/profile/Avatar';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
+import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
+import { cs } from '@/i18n/cs';
+import CheersPill from './CheersPill';
+import { focusPubFromActivity } from './focusPubHandoff';
+import { useFriendSafety } from './friendSafety';
 import GoingRoster from './GoingRoster';
 import LiveDot from './LiveDot';
 import RsvpControl from './RsvpControl';
@@ -32,6 +37,8 @@ interface FriendActiveCardProps {
   activity: FriendPubActivity;
   /** Fired after a successful RSVP/clear — the parent should reload the dashboard. */
   onResponded: (activity: FriendPubActivity) => void;
+  /** Dim the live dot to a static 0.4 while the dashboard is stale (§2C). */
+  stale?: boolean;
 }
 
 /** FriendMini stays in FriendsScreen; mirror its name resolution locally. */
@@ -41,8 +48,9 @@ function nameOf(profile: FriendProfile | null | undefined): string {
   return profile.displayName || 'Kamarád';
 }
 
-function FriendActiveCard({ activity, onResponded }: FriendActiveCardProps) {
+function FriendActiveCard({ activity, onResponded, stale = false }: FriendActiveCardProps) {
   const now = useNowTick();
+  const router = useRouter();
   const { account, responses } = activity;
 
   // RsvpControl resolves to a "reload now" signal (no fresh activity); bubble the
@@ -52,13 +60,31 @@ function FriendActiveCard({ activity, onResponded }: FriendActiveCardProps) {
     onResponded(activity);
   }, [onResponded, activity]);
 
+  const openSafetyMenu = useFriendSafety(handleResponded);
+  const openProfile = useCallback(() => {
+    if (account.id) router.push(`/parta/${account.id}` as Href);
+  }, [account.id, router]);
+  const handleLongPress = useCallback(() => {
+    openSafetyMenu(account);
+  }, [openSafetyMenu, account]);
+  const showOnCompass = useCallback(() => {
+    if (focusPubFromActivity(activity)) router.push('/' as Href);
+  }, [activity, router]);
+
   const relative = formatRelative(activity.startedAt, now);
 
   return (
     <View style={styles.card}>
       <View style={styles.header}>
-        {/* FriendMini-equivalent (built inline; FriendMini stays in FriendsScreen). */}
-        <View style={styles.identity}>
+        {/* FriendMini-equivalent — the whole identity opens the friend profile;
+            a long-press pops the safety menu (block / report, §G1). */}
+        <Pressable
+          onPress={openProfile}
+          onLongPress={handleLongPress}
+          accessibilityRole="button"
+          accessibilityLabel={nameOf(account)}
+          style={({ pressed }) => [styles.identity, pressed && styles.dim]}
+        >
           <Avatar
             uri={account.avatarUrl}
             nickname={account.nickname}
@@ -72,10 +98,10 @@ function FriendActiveCard({ activity, onResponded }: FriendActiveCardProps) {
           >
             {nameOf(account)}
           </Text>
-        </View>
+        </Pressable>
 
         <View style={styles.headerMeta}>
-          <LiveDot />
+          <LiveDot stale={stale} />
           {relative ? (
             <Text
               style={styles.relativeTime}
@@ -138,6 +164,34 @@ function FriendActiveCard({ activity, onResponded }: FriendActiveCardProps) {
           iAmGoing={activity.myResponse === 'going'}
         />
       </View>
+
+      {/* Footer: "Ukaž na kompasu" handoff on the leading edge (§F2), one-tap
+          "Na zdraví" reaction on the trailing edge (§C1). */}
+      <View style={styles.reactionRow}>
+        <Pressable
+          onPress={showOnCompass}
+          accessibilityRole="button"
+          accessibilityLabel={cs.friends.showOnCompass}
+          hitSlop={{ top: 6, bottom: 6, left: 4, right: 8 }}
+          style={({ pressed }) => [styles.compassAction, pressed && styles.dim]}
+        >
+          <CompassIcon size={16} color={Colors.mutedText} />
+          <Text
+            style={styles.compassLabel}
+            numberOfLines={1}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
+            {cs.friends.showOnCompass}
+          </Text>
+        </Pressable>
+        <CheersPill
+          activityId={activity.id}
+          count={activity.reactions.cheers}
+          mine={activity.myReaction === 'cheers'}
+          ownerName={nameOf(account)}
+          onChanged={handleResponded}
+        />
+      </View>
     </View>
   );
 }
@@ -166,6 +220,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
+  },
+  dim: {
+    opacity: 0.6,
   },
   identityName: {
     flexShrink: 1,
@@ -214,6 +271,26 @@ const styles = StyleSheet.create({
   },
   roster: {
     marginTop: Spacing.md,
+  },
+  reactionRow: {
+    marginTop: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
+  compassAction: {
+    flexShrink: 1,
+    minHeight: HitArea.min - 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  compassLabel: {
+    flexShrink: 1,
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 13,
+    color: Colors.mutedText,
   },
 });
 

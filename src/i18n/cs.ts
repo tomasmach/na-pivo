@@ -571,7 +571,9 @@ export const cs = {
   friends: {
     title: 'Parta',
     heroTitle: 'Kdo jde dneska na jedno?',
-    heroBody: 'Přidej kámoše, uvidíš jejich hospodské signály a pozveš je ke stolu.',
+    heroBody:
+      'Přidej si parťáky a uvidíš, kdo je zrovna na pivu. Ukaž jim svůj kód, nebo pošli pozvánku.',
+    firstRunOffline: 'Zatím ticho — mrkni na signál.',
     refresh: 'Obnovit',
     searchPlaceholder: 'Přezdívka kámoše',
     searchCta: 'Najít',
@@ -594,10 +596,12 @@ export const cs = {
     requestAccepted: 'Je v partě.',
     requestDeclined: 'Žádost je pryč.',
     friendRemoved: 'Kamarád odebrán.',
-    shareHere: 'Dát partě vědět',
+    // One-tap quick broadcast from the counter (rich compose lives on Parta).
     shareHereShort: 'Cinknout partě',
     shareSuccess: 'Parta dostala signál.',
     shareError: 'Nepodařilo se dát vědět partě.',
+    // Counter "already broadcasting" state once I'm live (drops the re-broadcast).
+    counterAlreadyLive: 'Už svítíš partě',
     sharedCount: (n: number) =>
       n === 0
         ? 'Ještě žádné společné pivo'
@@ -607,10 +611,10 @@ export const cs = {
             ? `${n} společná piva`
             : `${n} společných piv`,
     lastTogether: (pub: string) => `Naposledy spolu: ${pub}`,
-    inviteLine: (name: string, pub: string) => `${name} sedí v ${pub}. Nechceš se přidat?`,
-    atPubMessage: 'Máme tu volno u stolu.',
-    noResults: 'Nikoho takového jsme nenašli.',
-    offline: 'Parta se teď nenačetla. Zkus to za chvíli.',
+    // Solo, genderless rewrite (retired the corporate "jsme").
+    noResults: 'Nikdo takový tu není. Zkus jinou přezdívku, nebo mu pošli pozvánku.',
+    // Snapshot-aware: the screen now renders the last-known graph behind this.
+    offline: 'Parta se teď nenačetla. Ukazuju poslední, co vím.',
     retry: 'Zkusit znovu',
 
     // — RSVP loop (Jdu / Možná / Dneska ne) —
@@ -631,7 +635,7 @@ export const cs = {
     rosterEmpty: 'Zatím nikdo nekývl.',
 
     // — My active activity card ("Cinkl jsi partě") —
-    myActiveTitle: 'SVÍTÍŠ PARTĚ',
+    myActiveTitle: 'CINKL JSI PARTĚ',
     nobodyYet: 'Čekáš na první kývnutí.',
     whoComing: 'Kdo dorazí?',
     endActivity: 'Ukončit',
@@ -640,6 +644,8 @@ export const cs = {
     endActivityConfirmBody: 'Parta přestane vidět, že seš na pivu.',
     endActivityConfirmConfirm: 'Ukončit',
     endedToast: 'Cinknutí ukončené.',
+    // Offline end: the DELETE is queued and lands on the next flush (§H4).
+    endQueued: 'Ukončím, až bude signál.',
 
     // — Party streak —
     streakWeeks: (n: number) =>
@@ -688,6 +694,135 @@ export const cs = {
     // — Loop empty / broadcasting extras —
     emptyActiveBroadcasting: 'Zatím nikdo nedorazil. Dej tomu chvíli.',
     loopEmptyCta: 'Cinknout partě',
+
+    // ── Parta 3.0 ──────────────────────────────────────────────────────────
+
+    // — "CO TĚ ČEKÁ" cold-start teaser (§J) —
+    whatIsPartaHeader: 'CO TĚ ČEKÁ',
+    whatIsParta1: 'Cinkni, když jdeš na pivo — parta to uvidí.',
+    whatIsParta2: 'Kámoši kývnou, kdo dorazí ke stolu.',
+    whatIsParta3: 'Za společné večery roste série a žebříček.',
+
+    // — Growth block "SEŽEŇ PARTU" (§A1) —
+    growthHeader: 'SEŽEŇ PARTU',
+    myCodeCta: 'Ukázat můj kód',
+    scanCta: 'Naskenovat kód',
+    inviteShareCta: 'Poslat pozvánku',
+
+    // — Identity gate (§A2) —
+    coldStartAnonTitle: 'Nejdřív přezdívka',
+    coldStartAnonBody: 'Aby si tě parta našla, dej si přezdívku a ukaž se.',
+    coldStartAnonCta: 'Založit přezdívku',
+
+    // — CodeSheet "Můj kód" / QR / invite (§A3) —
+    codeSheetTitle: 'Můj kód',
+    codeSheetHint: 'Ať tě kámoš naskenuje u stolu, nebo mu pošli pozvánku.',
+    codeShare: 'Sdílet pozvánku',
+    codeCopy: 'Zkopírovat odkaz',
+    codeCopied: 'Odkaz zkopírovaný.',
+    codeScan: 'Naskenovat kámoše',
+    codeNoNick: 'Přidej si přezdívku, ať tě poznají.',
+    codeNoNickCta: 'Doplnit',
+    codeOffline: 'Kód dostaneš, až chytneš signál.',
+    shareMessage: (link: string) =>
+      `Přidej si mě na Na pivo, ať víš, kdy jdu na jedno: ${link}`,
+
+    // — Deep-link claim (§A5) —
+    claimTitle: (name: string) => `${name} tě zve do party`,
+    claimBody: 'Přidáš se? Uvidíte navzájem, kdo je zrovna na pivu.',
+    claimCta: 'Přidat do party',
+    claimDone: 'Hotovo, čeká na potvrzení.',
+    claimExpired: 'Pozvánka už vypršela. Ať ti kámoš pošle novou.',
+    claimInvalid: 'Tuhle pozvánku neznám.',
+    claimLoading: 'Načítám pozvánku…',
+    claimSelf: 'To je tvůj vlastní kód.',
+    claimBack: 'Zpět',
+
+    // — Compose "Cinkni partě" (§B) —
+    composeOpen: 'Cinkni partě',
+    composeTitle: 'Cinkni partě',
+    composePubLabel: 'KDE',
+    composeNearby: 'Poblíž',
+    composeRecent: 'Nedávné',
+    composeNoNearby: 'Nic poblíž. Zkus nedávné nebo hledej.',
+    composeNoRecent: 'Zatím žádné nedávné hospody.',
+    composeLocPermCta: 'Zapnout polohu',
+    composeTimeLabel: 'KDY',
+    composeNow: 'Teď',
+    composeLater: 'Na čas',
+    composeMsgLabel: 'VZKAZ (nepovinný)',
+    composeMsgPlaceholder: 'Držím stůl. Přidáš se?',
+    composeSubmitNow: 'Cinknout',
+    composeSubmitPlan: 'Naplánovat',
+    composeNoPub: 'Vyber hospodu',
+    composeQueued: 'Uloženo. Cinknu partě, až chytneš signál.',
+    composeMeters: (m: number) => `${m} m`,
+
+    // — Plans (§B3) —
+    plansHeader: 'PLÁN NA DNES',
+    planMineTitle: 'TVŮJ PLÁN',
+    planAt: (t: string) => `Dnes v ${t}`,
+    planCreated: 'Plán letí partě. Odpoledne ti to připomenu.',
+    planCancel: 'Zrušit plán',
+    planCancelConfirmTitle: 'Zrušit plán?',
+    planCancelConfirmBody: 'Parta uvidí, že dneska nakonec nikam nejdeš.',
+    planCanceled: 'Plán zrušený.',
+
+    // — Reactions "Na zdraví" (§C) —
+    cheers: 'Na zdraví',
+    cheersA11y: (name: string) => `Připít na zdraví ${name}`,
+    cheersCount: (n: number) => `${n}× na zdraví`,
+    cheersDone: 'Cinkl jsi sklenicí.',
+    cheersUndone: 'Připití zpět.',
+    reactQueued: 'Nejsi online. Připiju, až bude signál.',
+    reactError: 'Připití se nepovedlo. Zkus to znovu.',
+
+    // — Offline / stale cues (§H) —
+    staleNote: 'stará data',
+
+    // — Cancel outgoing invite (§F5) —
+    cancelInviteTitle: 'Zrušit pozvánku?',
+    cancelInviteConfirm: 'Zrušit pozvánku',
+    inviteCanceled: 'Pozvánka zrušená.',
+
+    // — Push opt-in strip + toggle (§E) —
+    pushPromptTitle: 'Ať ti nic neuteče',
+    pushPromptBody: 'Dám ti vědět, když parta vyrazí nebo tě někdo pozve.',
+    pushPromptCta: 'Zapnout upozornění',
+    pushPromptDismiss: 'Teď ne',
+    pushEnabledToast: 'Platí, dám vědět.',
+    pushDeniedHint: 'Upozornění máš vypnutá v systému.',
+    pushDeniedCta: 'Zapnout',
+    pushToggleTitle: 'Upozornění na partu',
+    pushToggleSub: 'Cinky, pozvánky a kdo je na pivu.',
+    pushDisableError: 'Vypnutí se nepovedlo. Zkus to prosím znovu.',
+
+    // — Compass handoff (§F2) —
+    showOnCompass: 'Ukaž na kompasu',
+    // The compass "pointing at a friend" banner + escape hatch.
+    friendCompassKicker: 'MÍŘÍŠ ZA PARTOU',
+    friendCompassBack: 'Zpět na nejbližší',
+
+    // — Friend profile (§F1) —
+    statSharedBeers: 'společná piva',
+    statNightsTogether: 'večerů spolu',
+    statStreakTogether: 'týdnů v sérii',
+    profileNoHistory: 'Ještě jste spolu nikde nebyli. Cinkni mu.',
+    profileRecentHeader: 'NAPOSLEDY SPOLU',
+    profileRemove: 'Odebrat z party',
+    profileActionsA11y: 'Další možnosti',
+    profileError: 'Profil se teď nenačetl. Zkus to za chvíli.',
+
+    // — Safety: block / report (§G) —
+    blockTitle: (name: string) => `Zablokovat ${name}?`,
+    blockBody: 'Zmizíš mu z party, neuvidí tě a nemůže tě pozvat.',
+    blockConfirm: 'Zablokovat',
+    blockAction: 'Zablokovat',
+    blocked: 'Zablokováno.',
+    reportAction: 'Nahlásit',
+    reportDone: 'Díky, mrknu na to.',
+    // Row long-press action sheet title.
+    rowActionsTitle: 'Co s tím?',
   },
 
   // The merged "Pivo" tab — a segmented control flips between counting and the
@@ -737,6 +872,17 @@ export const cs = {
     manageAccount: 'Spravovat účet',
     settingsRow: 'Nastavení',
 
+    // — Parta cross-link (Parta 3.0 §A2 entry point) —
+    myCode: 'Můj kód',
+    partaCount: (n: number) =>
+      n === 0
+        ? 'Sežeň si partu'
+        : n === 1
+          ? '1 kámoš v partě'
+          : n >= 2 && n <= 4
+            ? `${n} kámoši v partě`
+            : `${n} kámošů v partě`,
+
     report: {
       button: 'Nahlásit',
       profileFallback: 'tenhle profil',
@@ -756,7 +902,7 @@ export const cs = {
     // — Onboarding wizard —
     setup: {
       // STEP 1 — nickname + photo (one screen)
-      step1Eyebrow: 'KROK 1 ZE 2',
+      step1Eyebrow: 'KROK 1 ZE 3',
       step1Title: 'Vytvoř si profil',
       step1Body: 'Vyber si přezdívku a klidně přidej fotku. Obojí změníš kdykoli později.',
       nicknamePlaceholder: 'prezdivka',
@@ -780,7 +926,7 @@ export const cs = {
       continue: 'Pokračovat',
 
       // STEP 2 — visibility
-      step2Eyebrow: 'KROK 2 ZE 2',
+      step2Eyebrow: 'KROK 2 ZE 3',
       step2Title: 'Viditelnost profilu',
       visibilityToggleLabel: 'Veřejný profil',
       // The GDPR consent copy the user MUST see on the visibility step (locked).
@@ -789,6 +935,13 @@ export const cs = {
       consentPrivate: 'Když vypneš, uvidí tě jen tví kamarádi.',
       visibilitySaveError: 'Viditelnost profilu se nepodařilo uložit. Zkus to prosím znovu.',
       finish: 'Hotovo',
+
+      // STEP 3 — first friends (optional, Parta 3.0 §A2)
+      step3Eyebrow: 'KROK 3 ZE 3',
+      step3Title: 'Přidej první parťáky',
+      step3Body: 'Ukaž kámošovi svůj kód u stolu, nebo mu pošli pozvánku. Můžeš i přeskočit.',
+      step3ShowCode: 'Ukázat můj kód',
+      step3Skip: 'Přeskočit',
     },
 
     // — Edit screen —
@@ -1004,6 +1157,9 @@ export const cs = {
     toggleOn: 'zapnuto',
     toggleOff: 'vypnuto',
     settingsButton: 'Otevřít nastavení',
+    // — Parta 3.0 —
+    tabFriendsBadge: (n: number) => `Parta, ${n} nových`,
+    rsvpGroup: 'Jdeš?',
     rerollButton: 'Vyber jinou hospodu',
     skipButton: 'Přeskočit na další hospodu',
     skipButtonHint: 'Vynechá tuhle hospodu a najde další nejbližší',

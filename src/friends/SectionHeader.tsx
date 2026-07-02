@@ -22,12 +22,14 @@ export interface SectionHeaderProps {
   label: string;
   /** When true, prefix the caption with an amber pulsing LiveDot. */
   live?: boolean;
+  /** Freeze the live dot dim while the dashboard is stale (§2C). */
+  stale?: boolean;
 }
 
-function SectionHeaderComponent({ label, live = false }: SectionHeaderProps) {
+function SectionHeaderComponent({ label, live = false, stale = false }: SectionHeaderProps) {
   return (
     <View style={styles.row}>
-      {live ? <LiveDot size={7} /> : null}
+      {live ? <LiveDot size={7} stale={stale} /> : null}
       <Text
         style={styles.label}
         numberOfLines={1}

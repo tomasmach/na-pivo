@@ -18,6 +18,16 @@ interface SettingsState {
   hidePubNames: boolean;
   marketingEmailsEnabled: boolean;
   pubReminderEnabled: boolean;
+  /** Parta push opt-in (notification permission only, decoupled from reminders). */
+  friendPushEnabled: boolean;
+  /** Whether the in-context Parta push prompt strip was already shown/dismissed. */
+  friendPushPrompted: boolean;
+  /**
+   * The user explicitly turned Parta notifications OFF from the settings toggle.
+   * Persisted so the launch/focus re-register (ensureFriendPushRegisteredIfGranted)
+   * never forces the toggle back on over an opt-out. Cleared on an explicit enable.
+   */
+  friendPushOptedOut: boolean;
   surpriseSeed: number;
   lastSeenPartyStreak: number;
   setMode: (m: Mode) => void;
@@ -31,6 +41,9 @@ interface SettingsState {
   setHidePubNames: (v: boolean) => void;
   setMarketingEmailsEnabled: (v: boolean) => void;
   setPubReminderEnabled: (v: boolean) => void;
+  setFriendPushEnabled: (v: boolean) => void;
+  setFriendPushPrompted: (v: boolean) => void;
+  setFriendPushOptedOut: (v: boolean) => void;
   bumpSurpriseSeed: () => void;
   setLastSeenPartyStreak: (v: number) => void;
 }
@@ -49,6 +62,9 @@ export const useSettingsStore = create<SettingsState>()(
       hidePubNames: false,
       marketingEmailsEnabled: false,
       pubReminderEnabled: false,
+      friendPushEnabled: false,
+      friendPushPrompted: false,
+      friendPushOptedOut: false,
       surpriseSeed: 1,
       lastSeenPartyStreak: 0,
 
@@ -63,6 +79,9 @@ export const useSettingsStore = create<SettingsState>()(
       setHidePubNames: (v) => set({ hidePubNames: v }),
       setMarketingEmailsEnabled: (v) => set({ marketingEmailsEnabled: v }),
       setPubReminderEnabled: (v) => set({ pubReminderEnabled: v }),
+      setFriendPushEnabled: (v) => set({ friendPushEnabled: v }),
+      setFriendPushPrompted: (v) => set({ friendPushPrompted: v }),
+      setFriendPushOptedOut: (v) => set({ friendPushOptedOut: v }),
       bumpSurpriseSeed: () =>
         set((state) => ({ surpriseSeed: state.surpriseSeed + 1 })),
       setLastSeenPartyStreak: (v) => set({ lastSeenPartyStreak: v }),
@@ -82,6 +101,9 @@ export const useSettingsStore = create<SettingsState>()(
         hidePubNames: state.hidePubNames,
         marketingEmailsEnabled: state.marketingEmailsEnabled,
         pubReminderEnabled: state.pubReminderEnabled,
+        friendPushEnabled: state.friendPushEnabled,
+        friendPushPrompted: state.friendPushPrompted,
+        friendPushOptedOut: state.friendPushOptedOut,
         surpriseSeed: state.surpriseSeed,
         lastSeenPartyStreak: state.lastSeenPartyStreak,
       }),

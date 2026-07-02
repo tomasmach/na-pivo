@@ -1,6 +1,7 @@
 import { clearCachedAnonymousAccount, ensureAccount, generateUuidV4, type AccountSession } from './account';
 import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal } from './apiFetch';
+import { saveFriendsDashboardSnapshot, snapshotGeneration } from './friendsSnapshot';
 import { trackApiFailure } from './telemetryClient';
 import type { Pub } from './pubs';
 
@@ -38,6 +39,12 @@ export interface FriendStats {
 
 export type ActivityResponseKind = 'going' | 'maybe' | 'cant';
 
+/** Live broadcast vs a scheduled "Dnes v 20:00" plan (Parta 3.0 §B). */
+export type ActivityKind = 'live' | 'plan';
+
+/** Reaction glyph on an activity/feed row. Single glyph today (Parta 3.0 §C). */
+export type ReactionKind = 'cheers';
+
 export interface FriendPubActivity {
   id: string;
   account: FriendProfile;
@@ -53,13 +60,23 @@ export interface FriendPubActivity {
   updatedAt: string;
   responses: { going: number; maybe: number; cant: number; goingProfiles: FriendProfile[] };
   myResponse: ActivityResponseKind | null;
+  /** 'live' (default) or 'plan'. Older payloads omit it → parsed as 'live'. */
+  kind: ActivityKind;
+  /** Target time for a plan ("Dnes v 20:00"); null for live rows. */
+  scheduledFor: string | null;
+  /** Reaction tallies by glyph; additive, defaults to zero. */
+  reactions: { cheers: number };
+  /** My own reaction on this activity, or null. */
+  myReaction: ReactionKind | null;
 }
 
 export type FriendNotificationKind =
   | 'friend_request'
   | 'friend_accepted'
   | 'friend_at_pub'
-  | 'friend_rsvp';
+  | 'friend_rsvp'
+  | 'friend_cheers'
+  | 'friend_plan';
 
 export interface FriendNotification {
   id: string;
@@ -111,6 +128,12 @@ export interface FriendsDashboard {
   outgoingRequests: Friendship[];
   activeFriends: FriendPubActivity[];
   myActiveActivity: FriendPubActivity | null;
+  /** Friends' plans for today (kind=plan). Empty on older backends. */
+  plans: FriendPubActivity[];
+  /** My own plan for today, or null. */
+  myPlan: FriendPubActivity | null;
+  /** Account ids I've blocked, for client-side filtering. */
+  blockedIds: string[];
   settings: FriendSocialSettings;
   streak: FriendStreak;
   leaderboard: LeaderboardEntry[];
@@ -118,9 +141,70 @@ export interface FriendsDashboard {
   unreadCount: number;
 }
 
-export type FriendActionResult =
-  | { ok: true }
-  | { ok: false; code: string; detail: string };
+/**
+ * Cheap poll slice for the bounded refresh loop (Parta 3.0 §D2). Falls back to
+ * the full dashboard on an older backend that lacks `GET /v1/friends/live`.
+ */
+export interface FriendsLiveSlice {
+  activeFriends: FriendPubActivity[];
+  myActiveActivity: FriendPubActivity | null;
+  plans: FriendPubActivity[];
+  myPlan: FriendPubActivity | null;
+  incomingCount: number;
+  unreadCount: number;
+  serverTime: string | null;
+}
+
+/** My reusable invite code + deep link (Parta 3.0 §A1). */
+export interface FriendInvite {
+  code: string;
+  url: string;
+  webUrl: string;
+  expiresAt: string;
+}
+
+/** Result of resolving an invite code to its inviter (Parta 3.0 §A2). */
+export interface InviteResolveResult {
+  valid: boolean;
+  expired: boolean;
+  inviter: FriendProfile | null;
+}
+
+export interface FriendProfileStats {
+  sharedPubCount: number;
+  nightsTogether: number;
+  lastSharedAt: string | null;
+  lastPubName: string;
+  streakWeeks: number;
+  rituals: FriendRitual[];
+}
+
+export interface RecentTogether {
+  pubName: string;
+  cacheKey: string;
+  at: string;
+}
+
+/** Full friend profile payload for `GET /v1/friends/<id>` (Parta 3.0 §F1). */
+export interface FriendProfileDetail {
+  profile: FriendProfile;
+  isFriend: boolean;
+  friendshipId: string | null;
+  stats: FriendProfileStats;
+  liveActivity: FriendPubActivity | null;
+  plan: FriendPubActivity | null;
+  recentTogether: RecentTogether[];
+  blocked: boolean;
+}
+
+/** The failure half of {@link FriendActionResult}. */
+export interface FriendActionError {
+  ok: false;
+  code: string;
+  detail: string;
+}
+
+export type FriendActionResult = { ok: true } | FriendActionError;
 
 interface RawFriendProfile {
   id?: string;
@@ -147,6 +231,10 @@ interface RawActivityResponses {
   going_profiles?: RawFriendProfile[];
 }
 
+interface RawActivityReactions {
+  cheers?: number;
+}
+
 interface RawFriendActivity {
   id?: string;
   account?: RawFriendProfile;
@@ -162,6 +250,10 @@ interface RawFriendActivity {
   updated_at?: string;
   responses?: RawActivityResponses;
   my_response?: string | null;
+  kind?: string;
+  scheduled_for?: string | null;
+  reactions?: RawActivityReactions;
+  my_reaction?: string | null;
 }
 
 interface RawFriendStreak {
@@ -202,6 +294,45 @@ interface RawFriendStats {
   last_shared_at?: string | null;
   last_pub_name?: string;
   rituals?: { key?: string; title?: string }[];
+}
+
+interface RawFriendProfileStats {
+  shared_pub_count?: number;
+  nights_together?: number;
+  last_shared_at?: string | null;
+  last_pub_name?: string;
+  streak_weeks?: number;
+  rituals?: { key?: string; title?: string }[];
+}
+
+interface RawRecentTogether {
+  pub_name?: string;
+  cache_key?: string;
+  at?: string;
+}
+
+interface RawFriendProfileDetail {
+  profile?: RawFriendProfile;
+  is_friend?: boolean;
+  friendship_id?: string | null;
+  stats?: RawFriendProfileStats;
+  live_activity?: RawFriendActivity | null;
+  plan?: RawFriendActivity | null;
+  recent_together?: RawRecentTogether[];
+  blocked?: boolean;
+}
+
+interface RawFriendInvite {
+  code?: string;
+  url?: string;
+  web_url?: string;
+  expires_at?: string;
+}
+
+interface RawInviteResolve {
+  valid?: boolean;
+  expired?: boolean;
+  inviter?: RawFriendProfile | null;
 }
 
 async function handleUnauthorized(session: AccountSession): Promise<void> {
@@ -258,6 +389,20 @@ function parseActivityResponses(raw: RawActivityResponses | undefined): FriendPu
   };
 }
 
+function parseActivityKind(value: unknown): ActivityKind {
+  // Older payloads omit `kind`; treat anything but an explicit 'plan' as 'live'
+  // so old rows and unknown values keep the pre-plan "live now" semantic.
+  return value === 'plan' ? 'plan' : 'live';
+}
+
+function parseReactionKind(value: unknown): ReactionKind | null {
+  return value === 'cheers' ? 'cheers' : null;
+}
+
+function parseReactions(raw: RawActivityReactions | undefined): FriendPubActivity['reactions'] {
+  return { cheers: typeof raw?.cheers === 'number' ? raw.cheers : 0 };
+}
+
 function parseActivity(raw: RawFriendActivity): FriendPubActivity {
   return {
     id: raw.id ?? '',
@@ -274,6 +419,10 @@ function parseActivity(raw: RawFriendActivity): FriendPubActivity {
     updatedAt: raw.updated_at ?? '',
     responses: parseActivityResponses(raw.responses),
     myResponse: parseResponseKind(raw.my_response),
+    kind: parseActivityKind(raw.kind),
+    scheduledFor: raw.scheduled_for ?? null,
+    reactions: parseReactions(raw.reactions),
+    myReaction: parseReactionKind(raw.my_reaction),
   };
 }
 
@@ -321,7 +470,48 @@ function parseNotification(raw: RawFriendNotification): FriendNotification {
   };
 }
 
-function extractError(data: unknown, status: number): FriendActionResult {
+function parseRituals(raw: { key?: string; title?: string }[] | undefined): FriendRitual[] {
+  return Array.isArray(raw)
+    ? raw.map((r) => ({ key: r.key ?? '', title: r.title ?? '' })).filter((r) => r.key && r.title)
+    : [];
+}
+
+function parseProfileStats(raw: RawFriendProfileStats | undefined): FriendProfileStats {
+  const shared = typeof raw?.shared_pub_count === 'number' ? raw.shared_pub_count : 0;
+  return {
+    sharedPubCount: shared,
+    nightsTogether: typeof raw?.nights_together === 'number' ? raw.nights_together : shared,
+    lastSharedAt: raw?.last_shared_at ?? null,
+    lastPubName: raw?.last_pub_name ?? '',
+    streakWeeks: typeof raw?.streak_weeks === 'number' ? raw.streak_weeks : 0,
+    rituals: parseRituals(raw?.rituals),
+  };
+}
+
+function parseRecentTogether(raw: RawRecentTogether): RecentTogether {
+  return {
+    pubName: raw.pub_name ?? '',
+    cacheKey: raw.cache_key ?? '',
+    at: raw.at ?? '',
+  };
+}
+
+function parseProfileDetail(raw: RawFriendProfileDetail): FriendProfileDetail {
+  return {
+    profile: parseProfile(raw.profile),
+    isFriend: raw.is_friend === true,
+    friendshipId: raw.friendship_id ?? null,
+    stats: parseProfileStats(raw.stats),
+    liveActivity: raw.live_activity ? parseActivity(raw.live_activity) : null,
+    plan: raw.plan ? parseActivity(raw.plan) : null,
+    recentTogether: Array.isArray(raw.recent_together)
+      ? raw.recent_together.map(parseRecentTogether)
+      : [],
+    blocked: raw.blocked === true,
+  };
+}
+
+function extractError(data: unknown, status: number): FriendActionError {
   if (data && typeof data === 'object') {
     const obj = data as Record<string, unknown>;
     if (typeof obj.detail === 'string') {
@@ -338,7 +528,7 @@ function extractError(data: unknown, status: number): FriendActionResult {
 async function requestJson(
   path: string,
   options: { method?: string; body?: unknown; signal?: AbortSignal } = {},
-): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; result: FriendActionResult }> {
+): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; result: FriendActionError }> {
   const endpoint = getBackendEndpoint(path);
   if (!endpoint || options.signal?.aborted) {
     return { ok: false, result: { ok: false, code: 'offline', detail: 'Server teď není dostupný.' } };
@@ -385,6 +575,11 @@ async function requestJson(
 }
 
 export async function fetchFriendsDashboard(signal?: AbortSignal): Promise<FriendsDashboard | null> {
+  // Capture the account-boundary generation BEFORE the request begins (and thus
+  // before requestJson captures this account's bearer). If a logout/delete clears
+  // the snapshot while this fetch is in flight, the write below is dropped instead
+  // of re-persisting the previous account's graph under the next account.
+  const generation = snapshotGeneration();
   const res = await requestJson('/v1/friends', { signal });
   if (!res.ok) return null;
   const rawStats = (res.data.friend_stats ?? {}) as Record<string, RawFriendStats>;
@@ -392,7 +587,7 @@ export async function fetchFriendsDashboard(signal?: AbortSignal): Promise<Frien
   for (const [id, stats] of Object.entries(rawStats)) {
     friendStats[id] = parseStats(stats);
   }
-  return {
+  const dashboard: FriendsDashboard = {
     friends: Array.isArray(res.data.friends)
       ? (res.data.friends as RawFriendProfile[]).map(parseProfile)
       : [],
@@ -409,6 +604,13 @@ export async function fetchFriendsDashboard(signal?: AbortSignal): Promise<Frien
     myActiveActivity: res.data.my_active_activity
       ? parseActivity(res.data.my_active_activity as RawFriendActivity)
       : null,
+    plans: Array.isArray(res.data.plans)
+      ? (res.data.plans as RawFriendActivity[]).map(parseActivity)
+      : [],
+    myPlan: res.data.my_plan ? parseActivity(res.data.my_plan as RawFriendActivity) : null,
+    blockedIds: Array.isArray(res.data.blocked_ids)
+      ? (res.data.blocked_ids as unknown[]).filter((id): id is string => typeof id === 'string')
+      : [],
     settings: parseSocialSettings(res.data.settings as RawFriendSocialSettings | undefined),
     streak: parseStreak(res.data.streak as RawFriendStreak | undefined),
     leaderboard: Array.isArray(res.data.leaderboard)
@@ -418,6 +620,51 @@ export async function fetchFriendsDashboard(signal?: AbortSignal): Promise<Frien
       ? (res.data.notifications as RawFriendNotification[]).map(parseNotification)
       : [],
     unreadCount: typeof res.data.unread_count === 'number' ? res.data.unread_count : 0,
+  };
+  // Persist the freshly-loaded graph so an offline cold start can hydrate it
+  // behind the OfflineBanner (§H2). Fire-and-forget; never blocks the return. The
+  // generation guard drops the write if an account boundary was crossed mid-fetch.
+  void saveFriendsDashboardSnapshot(dashboard, generation);
+  return dashboard;
+}
+
+/**
+ * Cheap poll slice for the bounded refresh loop (§D2). Returns just the live
+ * surfaces without the 365-day shared-stats / leaderboard work. Falls back to the
+ * full dashboard when the endpoint 404s (older backend that predates §D2).
+ */
+export async function fetchFriendsLive(signal?: AbortSignal): Promise<FriendsLiveSlice | null> {
+  const res = await requestJson('/v1/friends/live', { signal });
+  if (!res.ok) {
+    if (res.result.code === 'http_404') {
+      const dashboard = await fetchFriendsDashboard(signal);
+      if (!dashboard) return null;
+      return {
+        activeFriends: dashboard.activeFriends,
+        myActiveActivity: dashboard.myActiveActivity,
+        plans: dashboard.plans,
+        myPlan: dashboard.myPlan,
+        incomingCount: dashboard.incomingRequests.length,
+        unreadCount: dashboard.unreadCount,
+        serverTime: null,
+      };
+    }
+    return null;
+  }
+  return {
+    activeFriends: Array.isArray(res.data.active_friends)
+      ? (res.data.active_friends as RawFriendActivity[]).map(parseActivity)
+      : [],
+    myActiveActivity: res.data.my_active_activity
+      ? parseActivity(res.data.my_active_activity as RawFriendActivity)
+      : null,
+    plans: Array.isArray(res.data.plans)
+      ? (res.data.plans as RawFriendActivity[]).map(parseActivity)
+      : [],
+    myPlan: res.data.my_plan ? parseActivity(res.data.my_plan as RawFriendActivity) : null,
+    incomingCount: typeof res.data.incoming_count === 'number' ? res.data.incoming_count : 0,
+    unreadCount: typeof res.data.unread_count === 'number' ? res.data.unread_count : 0,
+    serverTime: typeof res.data.server_time === 'string' ? res.data.server_time : null,
   };
 }
 
@@ -434,11 +681,134 @@ export async function searchFriends(query: string, signal?: AbortSignal): Promis
 export async function sendFriendRequest(params: {
   accountId?: string;
   nickname?: string;
+  inviteCode?: string;
 }): Promise<FriendActionResult> {
-  const body = params.accountId
-    ? { target_account_id: params.accountId }
-    : { nickname: params.nickname ?? '' };
+  // Exactly one path is sent; invite code wins, then account id, then nickname —
+  // matching the backend's mutually-exclusive `validate` (contract §A3).
+  const body = params.inviteCode
+    ? { invite_code: params.inviteCode }
+    : params.accountId
+      ? { target_account_id: params.accountId }
+      : { nickname: params.nickname ?? '' };
   const res = await requestJson('/v1/friends/requests', { method: 'POST', body });
+  return res.ok ? { ok: true } : res.result;
+}
+
+/** My reusable invite code + deep link, minting one if none is active (§A1). */
+export async function fetchFriendInviteCode(signal?: AbortSignal): Promise<FriendInvite | null> {
+  const res = await requestJson('/v1/friends/invite', { signal });
+  if (!res.ok) return null;
+  const raw = res.data as RawFriendInvite;
+  if (typeof raw.code !== 'string' || raw.code.length === 0) return null;
+  return {
+    code: raw.code,
+    url: raw.url ?? '',
+    webUrl: raw.web_url ?? '',
+    expiresAt: raw.expires_at ?? '',
+  };
+}
+
+/** Resolve an invite code to its inviter for the claim screen, without sending (§A2). */
+export async function resolveInviteCode(
+  code: string,
+  signal?: AbortSignal,
+): Promise<InviteResolveResult> {
+  const res = await requestJson(`/v1/friends/invite/${encodeURIComponent(code)}`, { signal });
+  if (!res.ok) {
+    // A 404 carries whether the code is unknown vs expired via its machine code.
+    const expired = res.result.code === 'invite_expired';
+    return { valid: false, expired, inviter: null };
+  }
+  const raw = res.data as RawInviteResolve;
+  return {
+    valid: raw.valid !== false,
+    expired: raw.expired === true,
+    inviter: raw.inviter ? parseProfile(raw.inviter) : null,
+  };
+}
+
+/**
+ * Create a scheduled plan ("Na čas") — a future pub-activity the party can RSVP
+ * to (§B1). Live "Teď" broadcasts keep using {@link shareFriendPubActivity}.
+ */
+export async function createFriendPlan(
+  pub: Pub,
+  scheduledForISO: string,
+  message?: string,
+  clientId?: string,
+): Promise<FriendActionResult> {
+  const res = await requestJson('/v1/friends/pub-activity', {
+    method: 'POST',
+    body: {
+      client_id: clientId || generateUuidV4(),
+      name: pub.name,
+      lat: pub.lat,
+      lng: pub.lng,
+      city: pub.city ?? '',
+      external_id: pub.id || '',
+      message: message ?? '',
+      scheduled_for: scheduledForISO,
+    },
+  });
+  return res.ok ? { ok: true } : res.result;
+}
+
+/** One-tap "Na zdraví" reaction on an activity/feed row (§C1). Idempotent upsert. */
+export async function reactToActivity(
+  activityId: string,
+  reaction: ReactionKind = 'cheers',
+): Promise<FriendActionResult> {
+  const res = await requestJson(
+    `/v1/friends/pub-activity/${encodeURIComponent(activityId)}/react`,
+    { method: 'POST', body: { reaction } },
+  );
+  return res.ok ? { ok: true } : res.result;
+}
+
+/** Retract my reaction on an activity (§C2). Idempotent — a missing row still 2xx. */
+export async function clearActivityReaction(activityId: string): Promise<FriendActionResult> {
+  const res = await requestJson(
+    `/v1/friends/pub-activity/${encodeURIComponent(activityId)}/react`,
+    { method: 'DELETE' },
+  );
+  return res.ok ? { ok: true } : res.result;
+}
+
+/** Full friend profile (stats, live/plan, recent-together) for the pushed route (§F1). */
+export async function fetchFriendProfile(
+  accountId: string,
+  signal?: AbortSignal,
+): Promise<FriendProfileDetail | null> {
+  const res = await requestJson(`/v1/friends/${encodeURIComponent(accountId)}`, { signal });
+  if (!res.ok) return null;
+  return parseProfileDetail(res.data as RawFriendProfileDetail);
+}
+
+/** Block an account: removes the friendship and filters them both ways (§G1). */
+export async function blockFriend(accountId: string): Promise<FriendActionResult> {
+  const res = await requestJson('/v1/friends/blocks', {
+    method: 'POST',
+    body: { account_id: accountId },
+  });
+  return res.ok ? { ok: true } : res.result;
+}
+
+/** Lift a block (§G2). Does not auto-refriend. Idempotent. */
+export async function unblockFriend(accountId: string): Promise<FriendActionResult> {
+  const res = await requestJson(`/v1/friends/blocks/${encodeURIComponent(accountId)}`, {
+    method: 'DELETE',
+  });
+  return res.ok ? { ok: true } : res.result;
+}
+
+/**
+ * Cancel an outgoing pending invite (§F5). Reuses the broadened
+ * `DELETE /v1/friends/<id>` — the outgoing chip carries the recipient's id.
+ */
+export async function cancelFriendRequest(recipientAccountId: string): Promise<FriendActionResult> {
+  const res = await requestJson(`/v1/friends/${encodeURIComponent(recipientAccountId)}`, {
+    method: 'DELETE',
+  });
   return res.ok ? { ok: true } : res.result;
 }
 

@@ -20,6 +20,9 @@ import { flushUpdateDrinksQueue } from '@/data/updateDrinksQueue';
 import { installPubRatingsSync, restorePubRatings } from '@/data/pubRatingsSync';
 import { installPubAmenitiesSync, restorePubAmenities } from '@/data/pubAmenitiesSync';
 import { flushVisitsQueue } from '@/data/visitsQueue';
+import { flushFriendsQueue } from '@/data/friendsQueue';
+import { fetchFriendsLive } from '@/data/friendsClient';
+import { consumeAndClaimPendingInviteCode } from '@/data/friendInviteLink';
 import { seedVisitsFromHistory } from '@/data/visitsSync';
 import {
   installClientTelemetry,
@@ -27,10 +30,12 @@ import {
   trackClientEvent,
 } from '@/data/telemetryClient';
 import { flushWalkingDistance } from '@/data/walkingTelemetry';
-import { useAccountStore, selectNeedsProfileSetup } from '@/stores/accountStore';
+import { useAccountStore, selectIsSignedIn, selectNeedsProfileSetup } from '@/stores/accountStore';
 import { usePubStore } from '@/stores/pubStore';
 import { useReleaseStore } from '@/stores/releaseStore';
 import { useTallyStore } from '@/stores/tallyStore';
+import { usePartaSignalStore } from '@/stores/partaSignalStore';
+import { ensureFriendPushRegisteredIfGranted } from '@/notifications/friendPush';
 import { WhatsNewModal } from '@/components/shared/WhatsNewModal';
 import { PubReminderOnboardingModal } from '@/components/shared/PubReminderOnboardingModal';
 import { PubReminderEnableFailureModal } from '@/components/shared/PubReminderEnableFailureModal';
@@ -39,7 +44,9 @@ import {
   consumeInitialPubReminderTap,
   initializePubReminderNotifications,
   refreshPubReminderGeofences,
+  subscribeFriendPushReceived,
   subscribePubReminderTap,
+  type FriendTapPayload,
 } from '@/notifications/pubReminderNotifications';
 
 /**
@@ -63,6 +70,24 @@ function ProfileGate() {
   }, [status, needsSetup, pathname, router]);
 
   return null;
+}
+
+/**
+ * Seed the Parta tab badge once on launch with a single cheap live fetch, so
+ * pending requests / live friends surface before the user first opens Parta (§D1).
+ * Only for signed-in accounts (anonymous devices have no social graph); silent on
+ * failure. No polling — the bounded poll stays inside FriendsScreen.
+ */
+function seedPartaBadge(): void {
+  if (!selectIsSignedIn(useAccountStore.getState())) return;
+  void fetchFriendsLive().then((slice) => {
+    if (!slice) return;
+    usePartaSignalStore.getState().setSignal({
+      pendingRequests: slice.incomingCount,
+      unread: slice.unreadCount,
+      liveNow: slice.activeFriends.length > 0 || slice.myActiveActivity != null,
+    });
+  });
 }
 
 function restoreAndFlushAddedPubsQueue(): void {
@@ -103,13 +128,27 @@ export default function RootLayout() {
     // Tapping a "nejsi v hospodě?" reminder jumps straight to the beer counter.
     // Handle both a running app (listener) and a cold start from the tap.
     const navigateToCounter = () => router.push('/beer' as Href);
-    const navigateToFriends = () => router.push('/friends' as Href);
+    // A friend push tap forces a Parta refresh (and scroll to its payload row).
+    const navigateToFriends = (payload?: FriendTapPayload) => {
+      usePartaSignalStore.getState().requestRefresh(payload ?? undefined);
+      router.push('/friends' as Href);
+    };
     if (fontsLoaded || fontError) {
       void consumeInitialPubReminderTap(navigateToCounter, navigateToFriends);
     }
     const subscription = subscribePubReminderTap(navigateToCounter, navigateToFriends);
     return () => subscription.remove();
   }, [fontsLoaded, fontError, router]);
+
+  useEffect(() => {
+    // A friend push received while the app is foregrounded (on any tab) nudges the
+    // Parta badge, so it reacts without waiting for a background→foreground cycle
+    // or a Parta focus (§D1). The next dashboard/live fetch reconciles the counts.
+    const subscription = subscribeFriendPushReceived((kind) => {
+      usePartaSignalStore.getState().bumpFromPush(kind);
+    });
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     // Fire-and-forget: ensure an anonymous device account exists. Non-blocking.
@@ -122,6 +161,11 @@ export default function RootLayout() {
         const session = useAccountStore.getState().session;
         setTelemetrySession(session);
         void trackClientEvent({ event: 'app_open', severity: 'info' });
+        // A Parta invite deep link tapped before the account existed was stashed;
+        // now that an account is ready, claim it (fires a Parta refresh on success).
+        void consumeAndClaimPendingInviteCode();
+        // Light up the Parta tab badge without waiting for the first Parta visit.
+        seedPartaBadge();
       });
   }, []);
 
@@ -167,6 +211,10 @@ export default function RootLayout() {
     void restorePubAmenities();
     void seedVisitsFromHistory();
     void flushVisitsQueue();
+    // Parta: retry queued RSVP/cinknutí/reactions, and light up push for
+    // existing notification-permission grantees without a prompt (Parta 3.0).
+    void flushFriendsQueue();
+    void ensureFriendPushRegisteredIfGranted();
     // Close an evening left idle past the timeout while the app was away, so the
     // counter reopens clean (the evening stays resumable for the same day/pub).
     useTallyStore.getState().maybeAutoArchive();
@@ -185,6 +233,7 @@ export default function RootLayout() {
         void restorePubRatings();
         void restorePubAmenities();
         void flushVisitsQueue();
+        void flushFriendsQueue();
         // Re-seed pub geofences for wherever the user is now (no-op when the
         // feature is off; cheap unless they moved a few km since last fetch).
         void refreshPubReminderGeofences();
@@ -325,6 +374,23 @@ export default function RootLayout() {
               presentation: 'fullScreenModal',
               animation: 'slide_from_bottom',
               gestureEnabled: false,
+            }}
+          />
+          <Stack.Screen
+            name="parta/pozvanka"
+            options={{
+              presentation: 'fullScreenModal',
+              animation: 'slide_from_bottom',
+              gestureEnabled: false,
+            }}
+          />
+          <Stack.Screen
+            name="parta/[id]"
+            options={{
+              // A back-navigable "place" (friend profile), pushed like a detail
+              // screen with the native right-edge back-swipe.
+              animation: 'slide_from_right',
+              gestureEnabled: true,
             }}
           />
         </Stack>
