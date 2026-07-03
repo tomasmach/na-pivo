@@ -700,7 +700,6 @@ export const cs = {
     heroQuiet: 'Klid v partě. Někdo musí cinknout první.',
 
     // — Loop empty / broadcasting extras —
-    emptyActiveBroadcasting: 'Zatím nikdo nedorazil. Dej tomu chvíli.',
     loopEmptyCta: 'Cinknout partě',
 
     // ── Parta 3.0 ──────────────────────────────────────────────────────────

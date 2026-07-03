@@ -504,6 +504,10 @@ export default function FriendsScreen() {
 
   const d = dashboard;
   const friendsLive = d ? d.activeFriends.length : 0;
+  // The live section earns its caption only when it has live friend cards. In
+  // quiet states the empty composer carries the moment without stacking another
+  // heading under the hero.
+  const showActiveSection = !!d && (friendsLive > 0 || !d.myActiveActivity);
   // Cold start: no friends AND no incoming requests (a null dashboard — offline
   // first run with no snapshot — also reads as cold start).
   const isColdStart = !d || (d.friends.length === 0 && d.incomingRequests.length === 0);
@@ -759,7 +763,7 @@ export default function FriendsScreen() {
             ) : null}
 
             {/* §4 — Compose CTA: keep one primary verb per fold. When nobody is
-                live, the "TEĎ NA PIVU" empty state owns this action instead. */}
+                live, the captionless empty composer owns this action instead. */}
             {d && !d.myActiveActivity && friendsLive > 0 ? (
               <Reveal index={nextReveal()}>
                 <View style={styles.section}>
@@ -812,15 +816,19 @@ export default function FriendsScreen() {
               </Reveal>
             ) : null}
 
-            {/* §4 — TEĎ NA PIVU: the decision surface (friends' live cards) */}
-            {d ? (
+            {/* §4 — TEĎ NA PIVU: the decision surface (friends' live cards).
+                Quiet/no-friend states stay captionless so the hero does not
+                read as "Parta" → subline → another heading before the action. */}
+            {showActiveSection && d ? (
               <Reveal index={nextReveal()} onLayout={onActiveLayout}>
                 <View style={styles.section}>
-                  <SectionHeader
-                    label={cs.friends.activeHeader}
-                    live={friendsLive > 0}
-                    stale={loadError}
-                  />
+                  {friendsLive > 0 ? (
+                    <SectionHeader
+                      label={cs.friends.activeHeader}
+                      live
+                      stale={loadError}
+                    />
+                  ) : null}
                   {loadError && friendsLive > 0 ? (
                     <Text style={styles.staleNote} maxFontSizeMultiplier={FontScaleCap.body}>
                       {cs.friends.staleNote}
@@ -837,10 +845,6 @@ export default function FriendsScreen() {
                         />
                       ))}
                     </View>
-                  ) : d.myActiveActivity ? (
-                    <Text style={styles.subtleNote} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {cs.friends.emptyActiveBroadcasting}
-                    </Text>
                   ) : (
                     <LoopEmptyState onPress={() => setComposeVisible(true)} />
                   )}
@@ -1112,13 +1116,6 @@ const styles = StyleSheet.create({
   dim: {
     opacity: 0.6,
   },
-  subtleNote: {
-    fontFamily: Fonts.ui.medium,
-    fontSize: 13,
-    lineHeight: 18,
-    color: Colors.mutedText,
-  },
-
   // — Footer cross-link into Správa party —
   manageLink: {
     minHeight: HitArea.min,
