@@ -800,6 +800,44 @@ class FriendPubActivity(models.Model):
         return f"FriendPubActivity({self.account_id} @ {self.name} until {self.expires_at:%Y-%m-%d %H:%M})"
 
 
+class FriendPubActivityRecipient(models.Model):
+    """Optional visibility target for a friend pub activity.
+
+    No rows for an activity means the legacy behavior: visible to every accepted
+    friend. Rows present means only those accounts can see/respond to the
+    activity, after the usual friendship/block gates.
+    """
+
+    activity = models.ForeignKey(
+        "pubs.FriendPubActivity",
+        on_delete=models.CASCADE,
+        related_name="target_recipients",
+    )
+    account = models.ForeignKey(
+        "pubs.Account",
+        on_delete=models.CASCADE,
+        related_name="targeted_friend_pub_activities",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Friend pub activity recipient"
+        verbose_name_plural = "Friend pub activity recipients"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["activity", "account"],
+                name="unique_friend_activity_recipient",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["activity", "account"]),
+            models.Index(fields=["account", "activity"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"FriendPubActivityRecipient({self.activity_id} -> {self.account_id})"
+
+
 class FriendNotification(models.Model):
     """In-app social notification, optionally mirrored as an Expo push."""
 

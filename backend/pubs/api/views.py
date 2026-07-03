@@ -24,6 +24,7 @@ import logging
 import math
 import re
 import secrets
+import uuid
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -32,7 +33,17 @@ from django.conf import settings
 from django.core.cache import cache as default_cache
 from django.core.files.uploadhandler import FileUploadHandler, StopUpload
 from django.db import IntegrityError, transaction
-from django.db.models import Count, ExpressionWrapper, F, FloatField, Prefetch, Q, Value
+from django.db.models import (
+    Count,
+    Exists,
+    ExpressionWrapper,
+    F,
+    FloatField,
+    OuterRef,
+    Prefetch,
+    Q,
+    Value,
+)
 from django.utils import timezone as dj_timezone
 from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed
@@ -88,6 +99,7 @@ from pubs.models import (
     FriendInviteCode,
     FriendNotification,
     FriendPubActivity,
+    FriendPubActivityRecipient,
     Friendship,
     PubAmenity,
     PubAmenityVote,
@@ -426,6 +438,59 @@ def _blocked_account_ids(account: Account) -> set[int]:
     for blocker_id, blocked_id in rows:
         blocked.add(blocked_id if blocker_id == account.id else blocker_id)
     return blocked
+
+
+def _requested_activity_recipient_ids(
+    requested_public_ids: list[uuid.UUID] | None,
+    *,
+    friend_ids: list[int],
+    blocked_ids: set[int],
+) -> list[int]:
+    """Return DB ids an activity should target, or all eligible friends.
+
+    ``None`` means the client omitted the field, preserving legacy fanout to all
+    accepted non-blocked friends. A provided list is intersected with that safe
+    friend set so stale local partičky or malicious ids never widen visibility.
+    """
+    eligible = [fid for fid in friend_ids if fid not in blocked_ids]
+    if requested_public_ids is None:
+        return eligible
+    if not requested_public_ids or not eligible:
+        return []
+    eligible_set = set(eligible)
+    return list(
+        Account.objects.filter(
+            id__in=eligible_set,
+            public_id__in=requested_public_ids,
+            status=Account.Status.ACTIVE,
+        ).values_list("id", flat=True)
+    )
+
+
+def _apply_friend_activity_visibility(queryset, viewer: Account):
+    """Limit friend activities to rows visible to ``viewer``.
+
+    Activities without explicit target rows are legacy public-to-friends rows.
+    Activities with targets are visible only when ``viewer`` is one of them.
+    The caller still applies friendship/block/ghost gates before this helper.
+    """
+    target_rows = FriendPubActivityRecipient.objects.filter(activity_id=OuterRef("pk"))
+    target_to_viewer = target_rows.filter(account=viewer)
+    return queryset.annotate(
+        has_explicit_targets=Exists(target_rows),
+        targets_viewer=Exists(target_to_viewer),
+    ).filter(Q(has_explicit_targets=False) | Q(targets_viewer=True))
+
+
+def _friend_activity_visible_to(activity: FriendPubActivity, viewer: Account) -> bool:
+    """Whether ``viewer`` passes the explicit activity-target gate."""
+    has_targets = FriendPubActivityRecipient.objects.filter(activity=activity).exists()
+    if not has_targets:
+        return True
+    return FriendPubActivityRecipient.objects.filter(
+        activity=activity,
+        account=viewer,
+    ).exists()
 
 
 def _prague_today_bounds(now=None) -> tuple[datetime, datetime]:
@@ -2091,12 +2156,15 @@ def _friend_activity_slices(request, friend_ids, now, activity_context) -> dict:
     day_start, day_end = _prague_today_bounds(now)
 
     active = (
-        FriendPubActivity.objects.filter(
-            account_id__in=friend_ids,
-            active=True,
-            expires_at__gt=now,
-            kind=FriendPubActivity.Kind.LIVE,
-            account__status=Account.Status.ACTIVE,
+        _apply_friend_activity_visibility(
+            FriendPubActivity.objects.filter(
+                account_id__in=friend_ids,
+                active=True,
+                expires_at__gt=now,
+                kind=FriendPubActivity.Kind.LIVE,
+                account__status=Account.Status.ACTIVE,
+            ),
+            request.user,
         )
         # A friend who toggles ghost mode vanishes from everyone else's feed
         # immediately (their own broadcast row is kept for their own view).
@@ -2118,13 +2186,16 @@ def _friend_activity_slices(request, friend_ids, now, activity_context) -> dict:
         .first()
     )
     plans = (
-        FriendPubActivity.objects.filter(
-            account_id__in=friend_ids,
-            active=True,
-            kind=FriendPubActivity.Kind.PLAN,
-            scheduled_for__gte=day_start,
-            scheduled_for__lt=day_end,
-            account__status=Account.Status.ACTIVE,
+        _apply_friend_activity_visibility(
+            FriendPubActivity.objects.filter(
+                account_id__in=friend_ids,
+                active=True,
+                kind=FriendPubActivity.Kind.PLAN,
+                scheduled_for__gte=day_start,
+                scheduled_for__lt=day_end,
+                account__status=Account.Status.ACTIVE,
+            ),
+            request.user,
         )
         .exclude(account__ghost_mode=True)
         .select_related("account")
@@ -2692,12 +2763,15 @@ class FriendDetailView(APIView):
         streak = _party_streak(shared_dates)
 
         live_activity = (
-            FriendPubActivity.objects.filter(
-                account=friend,
-                active=True,
-                expires_at__gt=now,
-                kind=FriendPubActivity.Kind.LIVE,
-                account__ghost_mode=False,
+            _apply_friend_activity_visibility(
+                FriendPubActivity.objects.filter(
+                    account=friend,
+                    active=True,
+                    expires_at__gt=now,
+                    kind=FriendPubActivity.Kind.LIVE,
+                    account__ghost_mode=False,
+                ),
+                request.user,
             )
             .select_related("account")
             .prefetch_related(*prefetches)
@@ -2706,13 +2780,16 @@ class FriendDetailView(APIView):
         )
         day_start, day_end = _prague_today_bounds(now)
         plan = (
-            FriendPubActivity.objects.filter(
-                account=friend,
-                active=True,
-                kind=FriendPubActivity.Kind.PLAN,
-                scheduled_for__gte=day_start,
-                scheduled_for__lt=day_end,
-                account__ghost_mode=False,
+            _apply_friend_activity_visibility(
+                FriendPubActivity.objects.filter(
+                    account=friend,
+                    active=True,
+                    kind=FriendPubActivity.Kind.PLAN,
+                    scheduled_for__gte=day_start,
+                    scheduled_for__lt=day_end,
+                    account__ghost_mode=False,
+                ),
+                request.user,
             )
             .select_related("account")
             .prefetch_related(*prefetches)
@@ -2832,6 +2909,20 @@ class FriendActivityView(APIView):
                 expires_at = max_expiry
 
         cache_key = geohash8(data["lat"], data["lng"])
+        requested_recipient_ids = data.get("recipient_ids")
+        blocked_ids = _blocked_account_ids(request.user)
+        friend_ids = _accepted_friend_ids(request.user)
+        target_friend_ids = _requested_activity_recipient_ids(
+            requested_recipient_ids,
+            friend_ids=friend_ids,
+            blocked_ids=blocked_ids,
+        )
+        if requested_recipient_ids is not None and not target_friend_ids:
+            return Response(
+                {"detail": "Vyber aspoň jednoho kámoše z party.", "code": "no_recipients"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         should_notify = False
         try:
             with transaction.atomic():
@@ -2857,11 +2948,29 @@ class FriendActivityView(APIView):
                     existing is not None and existing.active and existing.expires_at > now
                 )
                 activity = existing if existing_is_live else current_active or existing
+                previous_target_ids = (
+                    list(
+                        FriendPubActivityRecipient.objects.filter(
+                            activity=activity
+                        ).values_list("account_id", flat=True)
+                    )
+                    if activity is not None
+                    else []
+                )
+                previous_target_signature = (
+                    tuple(sorted(previous_target_ids)) if previous_target_ids else None
+                )
+                target_signature = (
+                    tuple(sorted(target_friend_ids))
+                    if requested_recipient_ids is not None
+                    else None
+                )
                 should_notify = (
                     activity is None
                     or not activity.active
                     or activity.expires_at <= now
                     or activity.cache_key != cache_key
+                    or previous_target_signature != target_signature
                 )
                 if activity is None:
                     activity = FriendPubActivity.objects.create(
@@ -2919,20 +3028,25 @@ class FriendActivityView(APIView):
                     expires_at__gt=now,
                     kind=kind,
                 ).exclude(pk=activity.pk).update(active=False, updated_at=now)
+                FriendPubActivityRecipient.objects.filter(activity=activity).delete()
+                if requested_recipient_ids is not None:
+                    FriendPubActivityRecipient.objects.bulk_create(
+                        [
+                            FriendPubActivityRecipient(activity=activity, account_id=friend_id)
+                            for friend_id in target_friend_ids
+                        ],
+                        ignore_conflicts=True,
+                    )
         except Exception as exc:  # noqa: BLE001
             logger.error("friends: pub activity failed: %s", exc, exc_info=True)
             return _internal_error()
 
-        blocked_ids = _blocked_account_ids(request.user)
-        friend_ids = [
-            fid for fid in _accepted_friend_ids(request.user) if fid not in blocked_ids
-        ]
         # Ghost mode keeps the owner's own activity row (so they can still track
         # their own RSVP roster) but broadcasts NOTHING: no notification rows, no
         # push fanout. The activity also vanishes from friends' active feed via
         # the ghost_mode exclusion in FriendsView.
         is_ghost = bool(getattr(request.user, "ghost_mode", False))
-        if should_notify and friend_ids and not is_ghost:
+        if should_notify and target_friend_ids and not is_ghost:
             actor = _friend_display_name(request.user)
             if is_plan:
                 local_time = dj_timezone.localtime(scheduled_for, PRAGUE_TZ).strftime("%H:%M")
@@ -2946,7 +3060,7 @@ class FriendActivityView(APIView):
                 notif_kind = FriendNotification.Kind.FRIEND_AT_PUB
                 push_kind = "friend_at_pub"
             _bulk_create_friend_notifications(
-                recipient_ids=friend_ids,
+                recipient_ids=target_friend_ids,
                 actor=request.user,
                 kind=notif_kind,
                 title=title,
@@ -2956,7 +3070,7 @@ class FriendActivityView(APIView):
                 pub_name=activity.name[:200],
             )
             _send_friend_push(
-                friend_ids,
+                target_friend_ids,
                 title,
                 body,
                 {
@@ -3039,6 +3153,11 @@ class FriendActivityRespondView(APIView):
             return Response(
                 {"detail": "S tímhle člověkem ještě nejste parta.", "code": "not_friends"},
                 status=status.HTTP_403_FORBIDDEN,
+            )
+        if not _friend_activity_visible_to(activity, request.user):
+            return Response(
+                {"detail": "Tahle hláška už vyšuměla.", "code": "activity_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
             )
 
         try:
@@ -3188,6 +3307,11 @@ class FriendActivityReactView(APIView):
             return Response(
                 {"detail": "S tímhle člověkem ještě nejste parta.", "code": "not_friends"},
                 status=status.HTTP_403_FORBIDDEN,
+            )
+        if not _friend_activity_visible_to(activity, request.user):
+            return Response(
+                {"detail": "Tahle hláška už vyšuměla.", "code": "activity_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
             )
 
         now = dj_timezone.now()

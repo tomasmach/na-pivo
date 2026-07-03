@@ -236,6 +236,62 @@ def test_friend_pub_activity_notifies_friends_and_returns_active_status(client, 
 
 
 @pytest.mark.django_db
+def test_friend_pub_activity_targets_selected_recipients_only(client, monkeypatch):
+    token_owner, owner = _register(client, "janek")
+    token_petr, petr = _register(client, "petr")
+    token_karel, karel = _register(client, "karel")
+    _make_friends(owner, petr)
+    _make_friends(owner, karel)
+    _no_quiet(petr)
+    _no_quiet(karel)
+    _grant_push(petr, "ExponentPushToken[petr_targeted]")
+    _grant_push(karel, "ExponentPushToken[karel_targeted]")
+    sent_payloads: list[list[dict]] = []
+    monkeypatch.setattr("pubs.api.views.requests.post", _push_recorder(sent_payloads))
+
+    started_at = timezone.now()
+    expires_at = started_at + timezone.timedelta(hours=3)
+    resp = client.post(
+        "/v1/friends/pub-activity",
+        data={
+            "client_id": str(uuid.uuid4()),
+            "name": _PUB_NAME,
+            "lat": _LAT,
+            "lng": _LNG,
+            "city": "Praha",
+            "message": "Jen pracovní stůl.",
+            "started_at": started_at.isoformat(),
+            "expires_at": expires_at.isoformat(),
+            "recipient_ids": [str(petr.public_id)],
+        },
+        format="json",
+        **_auth(token_owner),
+    )
+
+    assert resp.status_code == status.HTTP_201_CREATED
+    activity_id = resp.json()["id"]
+    assert FriendNotification.objects.filter(recipient=petr).count() == 1
+    assert not FriendNotification.objects.filter(recipient=karel).exists()
+    assert [item["to"] for item in _flatten_push(sent_payloads)] == [
+        "ExponentPushToken[petr_targeted]"
+    ]
+
+    petr_dash = client.get("/v1/friends", **_auth(token_petr)).json()
+    assert [row["id"] for row in petr_dash["active_friends"]] == [activity_id]
+
+    karel_dash = client.get("/v1/friends", **_auth(token_karel)).json()
+    assert karel_dash["active_friends"] == []
+
+    blocked_rsvp = client.post(
+        f"/v1/friends/pub-activity/{activity_id}/respond",
+        data={"response": "going"},
+        format="json",
+        **_auth(token_karel),
+    )
+    assert blocked_rsvp.status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest.mark.django_db
 def test_repeated_pub_activity_reuses_live_card_without_spamming_friends(client, monkeypatch):
     token_a, account_a = _register(client, "janek")
     _token_b, account_b = _register(client, "petr")

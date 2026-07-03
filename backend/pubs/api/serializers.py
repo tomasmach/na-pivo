@@ -616,6 +616,13 @@ class FriendActivityRequestSerializer(_Pub200NameValidationMixin, PubInputSerial
     # NEW (Parta 3.0): a future time turns this into a `plan` row that a worker
     # converts to a live broadcast at that time. Absent / in the past → live now.
     scheduled_for = serializers.DateTimeField(required=False, allow_null=True)
+    # Optional explicit audience. Absent/null preserves legacy "all accepted
+    # friends"; present list is intersected with accepted, non-blocked friends.
+    recipient_ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        required=False,
+        allow_empty=False,
+    )
 
 
 class FriendshipSerializer(serializers.ModelSerializer):

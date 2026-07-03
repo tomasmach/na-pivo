@@ -16,12 +16,13 @@ by 20:05), does two time-sensitive things:
    not fully elapsed*, flip it to ``kind=live`` (fresh ``started_at`` /
    ``expires_at``), deactivate the account's other live rows (the per-kind
    single-active-row invariant), and fan a normal ``friend_at_pub`` broadcast out
-   to non-ghost / non-blocked friends. Reusing the live kind means released mobile
-   clients experience the conversion as an ordinary "friend is at the pub now"
-   card. A ghost creator keeps their own live row but broadcasts nothing (mirrors
-   the POST /pub-activity path). A plan whose whole window already elapsed (e.g. a
-   worker outage longer than the plan spanned its evening) is deactivated quietly
-   instead of being resurrected as a stale broadcast.
+   to the plan's explicit targets (or all non-ghost / non-blocked friends for
+   legacy untargeted plans). Reusing the live kind means released mobile clients
+   experience the conversion as an ordinary "friend is at the pub now" card. A
+   ghost creator keeps their own live row but broadcasts nothing (mirrors the POST
+   /pub-activity path). A plan whose whole window already elapsed (e.g. a worker
+   outage longer than the plan spanned its evening) is deactivated quietly instead
+   of being resurrected as a stale broadcast.
 
 Usage:
     python manage.py advance_friend_plans            # remind + convert due plans
@@ -50,7 +51,7 @@ from pubs.api.views import (
     _prague_today_bounds,
     _send_friend_push,
 )
-from pubs.models import FriendNotification, FriendPubActivity
+from pubs.models import FriendNotification, FriendPubActivity, FriendPubActivityRecipient
 
 logger = logging.getLogger("pubs.friends")
 
@@ -230,6 +231,15 @@ class Command(BaseCommand):
             return
         blocked_ids = _blocked_account_ids(owner)
         friend_ids = [fid for fid in _accepted_friend_ids(owner) if fid not in blocked_ids]
+        explicit_targets = list(
+            FriendPubActivityRecipient.objects.filter(activity=plan).values_list(
+                "account_id",
+                flat=True,
+            )
+        )
+        if explicit_targets:
+            allowed = set(friend_ids)
+            friend_ids = [fid for fid in explicit_targets if fid in allowed]
         if not friend_ids:
             return
 
