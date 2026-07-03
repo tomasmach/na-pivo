@@ -55,6 +55,7 @@ import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
 import { GlowButton } from '@/components/shared/GlowButton';
 import {
   BellRingIcon,
+  BeerIcon,
   CheckIcon,
   ChevronRightIcon,
   EyeOffIcon,
@@ -76,6 +77,7 @@ import { registerFriendPush, ensureFriendPushRegisteredIfGranted } from '@/notif
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
+import { softDrop } from '@/theme/shadows';
 import { useToastStore } from '@/stores/toastStore';
 
 import { AddFriendTools } from './AddFriendTools';
@@ -89,7 +91,6 @@ import FriendsSkeleton from './FriendsSkeleton';
 import HairlineRow from './HairlineRow';
 import { LeaderboardRow } from './LeaderboardRow';
 import LiveDot from './LiveDot';
-import LoopEmptyState from './LoopEmptyState';
 import MyActivityCard from './MyActivityCard';
 import OfflineBanner from './OfflineBanner';
 import PlanCard from './PlanCard';
@@ -182,6 +183,118 @@ function TeaserLine({ icon, text }: { icon: ReactNode; text: string }) {
       <Text style={styles.teaserText} maxFontSizeMultiplier={FontScaleCap.body}>
         {text}
       </Text>
+    </View>
+  );
+}
+
+type PartyPulseTone = 'quiet' | 'live' | 'mine';
+
+function PartyPulsePanel({
+  tone,
+  label,
+  title,
+  body,
+  friendCount,
+  streakLabel,
+  onCompose,
+}: {
+  tone: PartyPulseTone;
+  label: string;
+  title: string;
+  body: string;
+  friendCount: number;
+  streakLabel: string;
+  onCompose?: () => void;
+}) {
+  const isLive = tone === 'live';
+  const isMine = tone === 'mine';
+  const canCompose = onCompose != null;
+
+  return (
+    <View
+      style={[
+        styles.pulseCard,
+        isLive && styles.pulseCardLive,
+        isMine && styles.pulseCardMine,
+      ]}
+    >
+      <View style={styles.pulseGlow} pointerEvents="none" />
+      <View style={styles.pulseTopRow}>
+        <View
+          style={[
+            styles.pulseIconDisk,
+            (isLive || isMine) && styles.pulseIconDiskHot,
+          ]}
+          importantForAccessibility="no"
+          accessibilityElementsHidden
+          pointerEvents="none"
+        >
+          {isLive || isMine ? (
+            <BeerIcon size={20} color={Colors.stout} />
+          ) : (
+            <BellRingIcon size={20} color={Colors.amberLight} />
+          )}
+        </View>
+        <Text
+          style={[
+            styles.pulseLabel,
+            (isLive || isMine) && styles.pulseLabelHot,
+          ]}
+          numberOfLines={1}
+          maxFontSizeMultiplier={FontScaleCap.body}
+        >
+          {label}
+        </Text>
+        {isLive || isMine ? <LiveDot size={7} /> : null}
+      </View>
+
+      <Text
+        style={styles.pulseTitle}
+        numberOfLines={2}
+        maxFontSizeMultiplier={FontScaleCap.heading}
+      >
+        {title}
+      </Text>
+      <Text
+        style={styles.pulseBody}
+        numberOfLines={2}
+        maxFontSizeMultiplier={FontScaleCap.body}
+      >
+        {body}
+      </Text>
+
+      <View style={styles.pulseFooter}>
+        <View style={styles.pulseMetrics}>
+          <View style={styles.pulseMetric}>
+            <UsersIcon size={14} color={Colors.mutedText} />
+            <Text style={styles.pulseMetricText} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.friends.pulseFriendCount(friendCount)}
+            </Text>
+          </View>
+          <View style={styles.pulseMetric}>
+            <FlameIcon
+              size={14}
+              color={streakLabel === cs.friends.streakEmpty ? Colors.mutedText : Colors.amber}
+            />
+            <Text style={styles.pulseMetricText} maxFontSizeMultiplier={FontScaleCap.body}>
+              {streakLabel}
+            </Text>
+          </View>
+        </View>
+
+        {canCompose ? (
+          <View style={styles.pulseCta}>
+            <GlowButton
+              label={isLive ? cs.friends.pulseJoinCta : cs.friends.composeOpen}
+              onPress={onCompose}
+              variant={isLive ? 'secondary' : 'primary'}
+              glow={isLive ? 'none' : 'soft'}
+              height={52}
+              icon={<BellRingIcon size={18} color={isLive ? Colors.amber : Colors.stout} />}
+            />
+          </View>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -504,14 +617,39 @@ export default function FriendsScreen() {
 
   const d = dashboard;
   const friendsLive = d ? d.activeFriends.length : 0;
-  // The live section earns its caption only when it has live friend cards. In
-  // quiet states the empty composer carries the moment without stacking another
-  // heading under the hero.
-  const showActiveSection = !!d && (friendsLive > 0 || !d.myActiveActivity);
+  // The live section earns its caption only when it has live friend cards. Quiet
+  // and mine-only states are carried by the hero pulse instead of another block.
+  const showActiveSection = !!d && friendsLive > 0;
   // Cold start: no friends AND no incoming requests (a null dashboard — offline
   // first run with no snapshot — also reads as cold start).
   const isColdStart = !d || (d.friends.length === 0 && d.incomingRequests.length === 0);
   const hasPlans = !!(d && (d.myPlan || d.plans.length > 0));
+  const pulseTone: PartyPulseTone | null =
+    !d || isColdStart
+      ? null
+      : d.myActiveActivity
+        ? 'mine'
+        : friendsLive > 0
+          ? 'live'
+          : 'quiet';
+  const pulseLabel =
+    pulseTone === 'mine'
+      ? cs.friends.pulseMineLabel
+      : pulseTone === 'live'
+        ? cs.friends.pulseLiveLabel
+        : cs.friends.pulseQuietLabel;
+  const pulseTitle = pulseTone === 'quiet' ? cs.friends.pulseQuietTitle : heroSub.text;
+  const pulseBody =
+    pulseTone === 'mine'
+      ? cs.friends.pulseMineBody
+      : pulseTone === 'live'
+        ? cs.friends.pulseLiveBody
+        : cs.friends.pulseQuietBody;
+  const pulseStreakLabel = d
+    ? d.streak.currentWeeks > 0
+      ? cs.friends.streakWeeks(d.streak.currentWeeks)
+      : cs.friends.streakEmpty
+    : '';
 
   // Leaderboard slicing: top rows + a tappable "+N dalších" expand, but ALWAYS
   // pin my row while collapsed (expanding shows everyone, me included).
@@ -685,17 +823,19 @@ export default function FriendsScreen() {
                   </Text>
                 ) : null}
               </>
-            ) : d ? (
-              <Text
-                style={[styles.heroSubline, { color: heroSub.color }]}
-                numberOfLines={2}
-                maxFontSizeMultiplier={FontScaleCap.body}
-              >
-                {heroSub.text}
-              </Text>
+            ) : d && pulseTone ? (
+              <PartyPulsePanel
+                tone={pulseTone}
+                label={pulseLabel}
+                title={pulseTitle}
+                body={pulseBody}
+                friendCount={d.friends.length}
+                streakLabel={pulseStreakLabel}
+                onCompose={!d.myActiveActivity ? () => setComposeVisible(true) : undefined}
+              />
             ) : null}
 
-            <View style={styles.heroRule} />
+            {isColdStart ? <View style={styles.heroRule} /> : null}
           </View>
         </Reveal>
 
@@ -762,22 +902,6 @@ export default function FriendsScreen() {
               </Reveal>
             ) : null}
 
-            {/* §4 — Compose CTA: keep one primary verb per fold. When nobody is
-                live, the captionless empty composer owns this action instead. */}
-            {d && !d.myActiveActivity && friendsLive > 0 ? (
-              <Reveal index={nextReveal()}>
-                <View style={styles.section}>
-                  <GlowButton
-                    label={cs.friends.composeOpen}
-                    onPress={() => setComposeVisible(true)}
-                    variant="secondary"
-                    glow="none"
-                    icon={<BellRingIcon size={20} color={Colors.amber} />}
-                  />
-                </View>
-              </Reveal>
-            ) : null}
-
             {/* §3 — MyActivityCard: my own live broadcast, the one card with a glow */}
             {d?.myActiveActivity ? (
               <Reveal index={nextReveal()}>
@@ -816,38 +940,30 @@ export default function FriendsScreen() {
               </Reveal>
             ) : null}
 
-            {/* §4 — TEĎ NA PIVU: the decision surface (friends' live cards).
-                Quiet/no-friend states stay captionless so the hero does not
-                read as "Parta" → subline → another heading before the action. */}
+            {/* §4 — TEĎ NA PIVU: the decision surface (friends' live cards). */}
             {showActiveSection && d ? (
               <Reveal index={nextReveal()} onLayout={onActiveLayout}>
                 <View style={styles.section}>
-                  {friendsLive > 0 ? (
-                    <SectionHeader
-                      label={cs.friends.activeHeader}
-                      live
-                      stale={loadError}
-                    />
-                  ) : null}
+                  <SectionHeader
+                    label={cs.friends.activeHeader}
+                    live
+                    stale={loadError}
+                  />
                   {loadError && friendsLive > 0 ? (
                     <Text style={styles.staleNote} maxFontSizeMultiplier={FontScaleCap.body}>
                       {cs.friends.staleNote}
                     </Text>
                   ) : null}
-                  {friendsLive > 0 ? (
-                    <View style={styles.stack}>
-                      {d.activeFriends.map((activity) => (
-                        <FriendActiveCard
-                          key={activity.id}
-                          activity={activity}
-                          onResponded={reload}
-                          stale={loadError}
-                        />
-                      ))}
-                    </View>
-                  ) : (
-                    <LoopEmptyState onPress={() => setComposeVisible(true)} />
-                  )}
+                  <View style={styles.stack}>
+                    {d.activeFriends.map((activity) => (
+                      <FriendActiveCard
+                        key={activity.id}
+                        activity={activity}
+                        onResponded={reload}
+                        stale={loadError}
+                      />
+                    ))}
+                  </View>
                 </View>
               </Reveal>
             ) : null}
@@ -1073,12 +1189,6 @@ const styles = StyleSheet.create({
   liveDotNudge: {
     transform: [{ translateY: -5 }],
   },
-  heroSubline: {
-    marginTop: Spacing.sm,
-    fontFamily: Fonts.ui.medium,
-    fontSize: 15,
-    lineHeight: 21,
-  },
   heroColdTitle: {
     marginTop: Spacing.md,
     fontFamily: Fonts.display.extrabold,
@@ -1092,6 +1202,106 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 21,
     color: Colors.foamMuted,
+  },
+  pulseCard: {
+    position: 'relative',
+    overflow: 'hidden',
+    marginTop: Spacing.md,
+    padding: Spacing.lg,
+    borderRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.border, 0.72),
+    backgroundColor: Colors.stout2,
+    ...softDrop(),
+  },
+  pulseCardLive: {
+    borderColor: withAlpha(Colors.amber, 0.38),
+    backgroundColor: Colors.stout3,
+  },
+  pulseCardMine: {
+    borderColor: withAlpha(Colors.amber, 0.5),
+  },
+  pulseGlow: {
+    position: 'absolute',
+    top: -78,
+    right: -64,
+    width: 172,
+    height: 172,
+    borderRadius: 86,
+    backgroundColor: withAlpha(Colors.amber, 0.14),
+  },
+  pulseTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  pulseIconDisk: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.25),
+    backgroundColor: withAlpha(Colors.amber, 0.1),
+  },
+  pulseIconDiskHot: {
+    borderColor: withAlpha(Colors.amber, 0.8),
+    backgroundColor: Colors.amber,
+  },
+  pulseLabel: {
+    flexShrink: 1,
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 12,
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+    color: Colors.mutedText,
+  },
+  pulseLabelHot: {
+    color: Colors.amberLight,
+  },
+  pulseTitle: {
+    marginTop: Spacing.md,
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 25,
+    lineHeight: 29,
+    letterSpacing: -0.3,
+    color: Colors.foam,
+  },
+  pulseBody: {
+    marginTop: Spacing.xs,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 14,
+    lineHeight: 20,
+    color: Colors.foamMuted,
+  },
+  pulseFooter: {
+    marginTop: Spacing.lg,
+    gap: Spacing.md,
+  },
+  pulseMetrics: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  pulseMetric: {
+    minHeight: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: Radius.small,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.07),
+    backgroundColor: withAlpha(Colors.foam, 0.045),
+  },
+  pulseMetricText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 12,
+    color: Colors.foamMuted,
+  },
+  pulseCta: {
+    alignSelf: 'stretch',
   },
   firstRunOffline: {
     marginTop: Spacing.sm,

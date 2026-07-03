@@ -699,8 +699,21 @@ export const cs = {
     heroManyLive: (n: number) => `${n} z party teď sedí. Kdo se přidá?`,
     heroQuiet: 'Klid v partě. Někdo musí cinknout první.',
 
-    // — Loop empty / broadcasting extras —
-    loopEmptyCta: 'Cinknout partě',
+    // — Hero pulse panel —
+    pulseQuietLabel: 'Klid v lokále',
+    pulseLiveLabel: 'Teď se sedí',
+    pulseMineLabel: 'Svítíš partě',
+    pulseQuietTitle: 'Hoď první cinknutí',
+    pulseQuietBody: 'Sedíš u stolu? Cinkni partě a nech kámoše kývnout.',
+    pulseLiveBody: 'Někdo už drží stůl. Dej partě vědět, jestli dorazíš taky.',
+    pulseMineBody: 'Cinknutí je venku. Teď čekáš, kdo kývne.',
+    pulseJoinCta: 'Cinknout taky',
+    pulseFriendCount: (n: number) =>
+      n === 1
+        ? '1 kámoš'
+        : n >= 2 && n <= 4
+          ? `${n} kámoši`
+          : `${n} kámošů`,
 
     // ── Parta 3.0 ──────────────────────────────────────────────────────────
 
