@@ -580,12 +580,12 @@ export const cs = {
     addByNickname: 'Pozvat',
     emptyFriends: 'Zatím piješ solo. Najdi přezdívku a pošli první pozvánku.',
     emptyActive: 'Nikdo z party teď nesvítí v hospodě.',
-    activeHeader: 'TEĎ NA PIVU',
-    requestsHeader: 'ČEKAJÍ NA TEBE',
-    addHeader: 'PŘIDAT DO PARTY',
-    friendsHeader: 'KÁMOŠI',
-    feedHeader: 'CINKLO V PARTĚ',
-    outgoingHeader: 'ODESLANÉ POZVÁNKY',
+    activeHeader: 'Teď na pivu',
+    requestsHeader: 'Čekají na tebe',
+    addHeader: 'Přidat do party',
+    friendsHeader: 'Kámoši',
+    feedHeader: 'Cinklo v partě',
+    outgoingHeader: 'Odeslané pozvánky',
     accept: 'Přijmout',
     decline: 'Nechat být',
     remove: 'Odebrat',
@@ -663,7 +663,7 @@ export const cs = {
     streakEmpty: 'Bez série',
 
     // — Party leaderboard —
-    leaderboardHeader: 'ŽEBŘÍČEK PARTY',
+    leaderboardHeader: 'Žebříček party',
     // Visits noun only — the numeral renders separately.
     leaderboardVisits: (n: number) =>
       n === 1 ? 'návštěva' : n >= 2 && n <= 4 ? 'návštěvy' : 'návštěv',
@@ -718,13 +718,13 @@ export const cs = {
     // ── Parta 3.0 ──────────────────────────────────────────────────────────
 
     // — "CO TĚ ČEKÁ" cold-start teaser (§J) —
-    whatIsPartaHeader: 'CO TĚ ČEKÁ',
+    whatIsPartaHeader: 'Co tě čeká',
     whatIsParta1: 'Cinkni, když jdeš na pivo — parta to uvidí.',
     whatIsParta2: 'Kámoši kývnou, kdo dorazí ke stolu.',
     whatIsParta3: 'Za společné večery roste série a šplháš v žebříčku.',
 
     // — Growth block "SEŽEŇ PARTU" (§A1) —
-    growthHeader: 'SEŽEŇ PARTU',
+    growthHeader: 'Sežeň partu',
     myCodeCta: 'Ukázat můj kód',
     scanCta: 'Naskenovat kód',
     inviteShareCta: 'Poslat pozvánku',
@@ -780,7 +780,7 @@ export const cs = {
     composeMeters: (m: number) => `${m} m`,
 
     // — Plans (§B3) —
-    plansHeader: 'PLÁN NA DNES',
+    plansHeader: 'Plán na dnes',
     planMineTitle: 'TVŮJ PLÁN',
     planAt: (t: string) => `Dnes v ${t}`,
     planCreated: 'Plán letí partě. Odpoledne ti to připomenu.',

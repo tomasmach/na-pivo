@@ -332,6 +332,16 @@ function PartyPulsePanel({
   );
 }
 
+function SectionPanel({
+  children,
+  hot = false,
+}: {
+  children: ReactNode;
+  hot?: boolean;
+}) {
+  return <View style={[styles.sectionPanel, hot && styles.sectionPanelHot]}>{children}</View>;
+}
+
 export default function FriendsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -727,10 +737,20 @@ export default function FriendsScreen() {
         onPress={canRoute ? () => handleFeedPress(notification) : undefined}
       >
         <View style={styles.feedRow}>
-          <BellRingIcon
-            size={18}
-            color={notification.readAt ? Colors.mutedText : Colors.amber}
-          />
+          <View
+            style={[
+              styles.feedIconDisk,
+              !notification.readAt && styles.feedIconDiskUnread,
+            ]}
+            importantForAccessibility="no"
+            accessibilityElementsHidden
+            pointerEvents="none"
+          >
+            <BellRingIcon
+              size={16}
+              color={notification.readAt ? Colors.mutedText : Colors.amber}
+            />
+          </View>
           <View style={styles.feedText}>
             <View style={styles.feedTitleRow}>
               <Text
@@ -887,35 +907,39 @@ export default function FriendsScreen() {
                 here so a 0-friend user at the table isn't kicked to another screen) */}
             <Reveal index={nextReveal()}>
               <View style={styles.section}>
-                <SectionHeader label={cs.friends.growthHeader} />
-                <AddFriendTools
-                  hasIdentity={hasIdentity}
-                  needsProfileSetup={needsProfileSetup}
-                  onOpenCode={() => setCodeVisible(true)}
-                  onChanged={reload}
-                  showSearch
-                />
+                <SectionPanel>
+                  <SectionHeader label={cs.friends.growthHeader} />
+                  <AddFriendTools
+                    hasIdentity={hasIdentity}
+                    needsProfileSetup={needsProfileSetup}
+                    onOpenCode={() => setCodeVisible(true)}
+                    onChanged={reload}
+                    showSearch
+                  />
+                </SectionPanel>
               </View>
             </Reveal>
 
             {/* §J — CO TĚ ČEKÁ: a calm 3-line preview of the loop */}
             <Reveal index={nextReveal()}>
               <View style={styles.section}>
-                <SectionHeader label={cs.friends.whatIsPartaHeader} />
-                <View style={styles.teaser}>
-                  <TeaserLine
-                    icon={<BellRingIcon size={18} color={Colors.mutedText} />}
-                    text={cs.friends.whatIsParta1}
-                  />
-                  <TeaserLine
-                    icon={<UsersIcon size={18} color={Colors.mutedText} />}
-                    text={cs.friends.whatIsParta2}
-                  />
-                  <TeaserLine
-                    icon={<FlameIcon size={18} color={Colors.mutedText} />}
-                    text={cs.friends.whatIsParta3}
-                  />
-                </View>
+                <SectionPanel>
+                  <SectionHeader label={cs.friends.whatIsPartaHeader} />
+                  <View style={styles.teaser}>
+                    <TeaserLine
+                      icon={<BellRingIcon size={18} color={Colors.mutedText} />}
+                      text={cs.friends.whatIsParta1}
+                    />
+                    <TeaserLine
+                      icon={<UsersIcon size={18} color={Colors.mutedText} />}
+                      text={cs.friends.whatIsParta2}
+                    />
+                    <TeaserLine
+                      icon={<FlameIcon size={18} color={Colors.mutedText} />}
+                      text={cs.friends.whatIsParta3}
+                    />
+                  </View>
+                </SectionPanel>
               </View>
             </Reveal>
           </>
@@ -1005,32 +1029,34 @@ export default function FriendsScreen() {
             {d && d.incomingRequests.length > 0 ? (
               <Reveal index={nextReveal()} onLayout={onRequestsLayout}>
                 <View style={styles.section}>
-                  <SectionHeader label={cs.friends.requestsHeader} />
-                  <View>
-                    {d.incomingRequests.map((request, i) => (
-                      <HairlineRow key={request.id} first={i === 0}>
-                        <View style={styles.requestRow}>
-                          <FriendMini profile={request.requester} />
-                          <View style={styles.requestActions}>
-                            <IconButton
-                              onPress={() => void respond(request.id, 'decline')}
-                              accessibilityLabel={cs.friends.decline}
-                              style={styles.declineBtn}
-                            >
-                              <XIcon size={18} color={Colors.foam} />
-                            </IconButton>
-                            <IconButton
-                              onPress={() => void respond(request.id, 'accept')}
-                              accessibilityLabel={cs.friends.accept}
-                              style={styles.acceptBtn}
-                            >
-                              <CheckIcon size={18} color={Colors.stout} />
-                            </IconButton>
+                  <SectionPanel hot>
+                    <SectionHeader label={cs.friends.requestsHeader} />
+                    <View>
+                      {d.incomingRequests.map((request, i) => (
+                        <HairlineRow key={request.id} first={i === 0}>
+                          <View style={styles.requestRow}>
+                            <FriendMini profile={request.requester} />
+                            <View style={styles.requestActions}>
+                              <IconButton
+                                onPress={() => void respond(request.id, 'decline')}
+                                accessibilityLabel={cs.friends.decline}
+                                style={styles.declineBtn}
+                              >
+                                <XIcon size={18} color={Colors.foam} />
+                              </IconButton>
+                              <IconButton
+                                onPress={() => void respond(request.id, 'accept')}
+                                accessibilityLabel={cs.friends.accept}
+                                style={styles.acceptBtn}
+                              >
+                                <CheckIcon size={18} color={Colors.stout} />
+                              </IconButton>
+                            </View>
                           </View>
-                        </View>
-                      </HairlineRow>
-                    ))}
-                  </View>
+                        </HairlineRow>
+                      ))}
+                    </View>
+                  </SectionPanel>
                 </View>
               </Reveal>
             ) : null}
@@ -1039,59 +1065,61 @@ export default function FriendsScreen() {
             {d ? (
               <Reveal index={nextReveal()}>
                 <View style={styles.section}>
-                  <SectionHeader label={cs.friends.leaderboardHeader} />
-                  {leaderboard.length <= 1 ? (
-                    <EmptyStrip
-                      icon={<TrophyIcon size={28} color={Colors.mutedText} />}
-                      text={cs.friends.leaderboardEmpty}
-                    />
-                  ) : (
-                    <View>
-                      {boardToShow.map((entry, i) => (
-                        <LeaderboardRow
-                          key={entry.account.id || `rank-${i}`}
-                          entry={entry}
-                          rank={i + 1}
-                          maxVisits={maxVisits}
-                          onPress={
-                            entry.isMe || !entry.account.id
-                              ? undefined
-                              : () => openFriendProfile(entry.account.id)
-                          }
-                        />
-                      ))}
-                      {!showAllBoard && hiddenCount > 0 ? (
-                        <Pressable
-                          onPress={() => setShowAllBoard(true)}
-                          accessibilityRole="button"
-                          accessibilityLabel={cs.friends.leaderboardMore(hiddenCount)}
-                          style={({ pressed }) => [styles.moreRow, pressed && styles.dim]}
-                        >
-                          <Text style={styles.moreLine} maxFontSizeMultiplier={FontScaleCap.body}>
-                            {cs.friends.leaderboardMore(hiddenCount)}
-                          </Text>
-                        </Pressable>
-                      ) : null}
-                      {myPinned && myIndex >= 0 ? (
-                        <>
-                          <Text
-                            style={styles.dividerDots}
-                            allowFontScaling={false}
-                            accessibilityElementsHidden
-                            importantForAccessibility="no"
-                          >
-                            …
-                          </Text>
+                  <SectionPanel>
+                    <SectionHeader label={cs.friends.leaderboardHeader} />
+                    {leaderboard.length <= 1 ? (
+                      <EmptyStrip
+                        icon={<TrophyIcon size={28} color={Colors.mutedText} />}
+                        text={cs.friends.leaderboardEmpty}
+                      />
+                    ) : (
+                      <View style={styles.panelList}>
+                        {boardToShow.map((entry, i) => (
                           <LeaderboardRow
-                            key="me-pinned"
-                            entry={leaderboard[myIndex]}
-                            rank={myIndex + 1}
+                            key={entry.account.id || `rank-${i}`}
+                            entry={entry}
+                            rank={i + 1}
                             maxVisits={maxVisits}
+                            onPress={
+                              entry.isMe || !entry.account.id
+                                ? undefined
+                                : () => openFriendProfile(entry.account.id)
+                            }
                           />
-                        </>
-                      ) : null}
-                    </View>
-                  )}
+                        ))}
+                        {!showAllBoard && hiddenCount > 0 ? (
+                          <Pressable
+                            onPress={() => setShowAllBoard(true)}
+                            accessibilityRole="button"
+                            accessibilityLabel={cs.friends.leaderboardMore(hiddenCount)}
+                            style={({ pressed }) => [styles.moreRow, pressed && styles.dim]}
+                          >
+                            <Text style={styles.moreLine} maxFontSizeMultiplier={FontScaleCap.body}>
+                              {cs.friends.leaderboardMore(hiddenCount)}
+                            </Text>
+                          </Pressable>
+                        ) : null}
+                        {myPinned && myIndex >= 0 ? (
+                          <>
+                            <Text
+                              style={styles.dividerDots}
+                              allowFontScaling={false}
+                              accessibilityElementsHidden
+                              importantForAccessibility="no"
+                            >
+                              …
+                            </Text>
+                            <LeaderboardRow
+                              key="me-pinned"
+                              entry={leaderboard[myIndex]}
+                              rank={myIndex + 1}
+                              maxVisits={maxVisits}
+                            />
+                          </>
+                        ) : null}
+                      </View>
+                    )}
+                  </SectionPanel>
                 </View>
               </Reveal>
             ) : null}
@@ -1100,12 +1128,14 @@ export default function FriendsScreen() {
             {d && d.notifications.length > 0 ? (
               <Reveal index={nextReveal()}>
                 <View style={styles.section}>
-                  <SectionHeader label={cs.friends.feedHeader} />
-                  <View>
-                    {d.notifications
-                      .slice(0, 6)
-                      .map((notification, i) => renderFeedRow(notification, i === 0))}
-                  </View>
+                  <SectionPanel>
+                    <SectionHeader label={cs.friends.feedHeader} />
+                    <View>
+                      {d.notifications
+                        .slice(0, 6)
+                        .map((notification, i) => renderFeedRow(notification, i === 0))}
+                    </View>
+                  </SectionPanel>
                 </View>
               </Reveal>
             ) : null}
@@ -1122,7 +1152,14 @@ export default function FriendsScreen() {
                     accessibilityLabel={cs.friends.manageLink}
                     style={({ pressed }) => [styles.manageLink, pressed && styles.dim]}
                   >
-                    <UsersIcon size={18} color={Colors.amber} />
+                    <View
+                      style={styles.manageIconDisk}
+                      importantForAccessibility="no"
+                      accessibilityElementsHidden
+                      pointerEvents="none"
+                    >
+                      <UsersIcon size={18} color={Colors.amber} />
+                    </View>
                     <Text style={styles.manageLinkText} maxFontSizeMultiplier={FontScaleCap.body}>
                       {cs.friends.manageLink}
                     </Text>
@@ -1379,6 +1416,21 @@ const styles = StyleSheet.create({
   section: {
     marginTop: Spacing.xl,
   },
+  sectionPanel: {
+    padding: Spacing.lg,
+    borderRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.border, 0.55),
+    backgroundColor: withAlpha(Colors.stout2, 0.88),
+    ...softDrop(),
+  },
+  sectionPanelHot: {
+    borderColor: withAlpha(Colors.amber, 0.32),
+    backgroundColor: withAlpha(Colors.stout3, 0.9),
+  },
+  panelList: {
+    marginHorizontal: -10,
+  },
   stack: {
     gap: Spacing.sm,
   },
@@ -1387,16 +1439,31 @@ const styles = StyleSheet.create({
   },
   // — Footer cross-link into Správa party —
   manageLink: {
-    minHeight: HitArea.min,
+    minHeight: 62,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: Radius.card,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.border, 0.55),
+    backgroundColor: withAlpha(Colors.stout2, 0.76),
   },
   manageLinkText: {
     flex: 1,
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 14,
+    fontFamily: Fonts.display.semibold,
+    fontSize: 15,
     color: Colors.foam,
+  },
+  manageIconDisk: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.28),
+    backgroundColor: withAlpha(Colors.amber, 0.1),
   },
 
   // — CO TĚ ČEKÁ teaser —
@@ -1492,6 +1559,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: Spacing.sm,
+  },
+  feedIconDisk: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.07),
+    backgroundColor: withAlpha(Colors.foam, 0.045),
+  },
+  feedIconDiskUnread: {
+    borderColor: withAlpha(Colors.amber, 0.3),
+    backgroundColor: withAlpha(Colors.amber, 0.1),
   },
   feedText: {
     flex: 1,

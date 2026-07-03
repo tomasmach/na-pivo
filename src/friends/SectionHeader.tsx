@@ -1,11 +1,9 @@
 /**
- * SectionHeader — calm caption header for FriendsScreen groups.
+ * SectionHeader — composed section title for FriendsScreen groups.
  *
- * Spec §12: section headers are deliberately quiet captions on the bare
- * stout ground, NOT loud amber titles — this is what enforces the
- * "amber = alive" discipline across the whole screen. The single
- * exception is a live section (`TEĎ NA PIVU` when friends are live),
- * which earns a small amber `LiveDot` prefix.
+ * Parta used to read as a stack of technical all-caps captions. These headers
+ * now behave like quiet app titles: sentence case, stronger type, and only a
+ * short trailing rule so the page keeps rhythm without feeling like a table.
  */
 
 import React, { memo } from 'react';
@@ -18,7 +16,7 @@ import { Spacing } from '@/theme/layout';
 import LiveDot from './LiveDot';
 
 export interface SectionHeaderProps {
-  /** Caption copy (already ALL-CAPS in cs.ts). */
+  /** Section title copy. */
   label: string;
   /** When true, prefix the caption with an amber pulsing LiveDot. */
   live?: boolean;
@@ -27,11 +25,13 @@ export interface SectionHeaderProps {
 }
 
 function SectionHeaderComponent({ label, live = false, stale = false }: SectionHeaderProps) {
+  const compactCaption = label.length <= 4 && label === label.toLocaleUpperCase('cs-CZ');
+
   return (
     <View style={styles.row}>
       {live ? <LiveDot size={7} stale={stale} /> : null}
       <Text
-        style={styles.label}
+        style={[styles.label, compactCaption && styles.labelCompact, live && styles.labelLive]}
         numberOfLines={1}
         accessibilityRole="header"
         maxFontSizeMultiplier={FontScaleCap.heading}
@@ -55,19 +55,29 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    marginBottom: Spacing.sm,
+    marginBottom: Spacing.md,
   },
   label: {
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 18,
+    lineHeight: 22,
+    letterSpacing: -0.15,
+    color: Colors.foam,
+  },
+  labelLive: {
+    color: Colors.amberLight,
+  },
+  labelCompact: {
     fontFamily: Fonts.ui.semibold,
     fontSize: 12,
-    letterSpacing: 1.5,
+    lineHeight: 16,
+    letterSpacing: 1.4,
     color: Colors.mutedText,
-    textTransform: 'uppercase',
   },
   rule: {
     flex: 1,
     height: StyleSheet.hairlineWidth,
-    backgroundColor: withAlpha(Colors.border, 0.5),
+    backgroundColor: withAlpha(Colors.border, 0.42),
   },
   ruleLive: {
     backgroundColor: withAlpha(Colors.amber, 0.35),
