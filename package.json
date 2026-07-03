@@ -14,6 +14,7 @@
   },
   "scripts": {
     "start": "expo start",
+    "dev": "bash scripts/dev-local.sh",
     "start:local": "EXPO_PUBLIC_BACKEND_MODE=local EXPO_PUBLIC_BACKEND_HOST=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo localhost) expo start --lan",
     "postinstall": "node scripts/patch-expo-location-heading.js",
     "ios": "expo run:ios",

@@ -42,6 +42,14 @@ npm run lint
 
 ## Run against the local backend
 
+One command does everything — applies backend migrations, starts the Django backend, and launches the iOS simulator build. Ctrl+C stops the backend it started and shuts down the simulator:
+
+```bash
+npm run dev
+```
+
+If the backend is already running on the port, `npm run dev` reuses it and leaves it running on exit. The manual way still works too:
+
 Start the Django backend on the LAN interface:
 
 ```bash
