@@ -2,7 +2,7 @@ import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 
 import { useDevicePosition } from '@/compass/useDevicePosition';
-import { geohash8 } from '@/data/geohash';
+import { decodeGeohash8, geohash8 } from '@/data/geohash';
 import { fetchPubsNear, findNearbyPubs, type Pub } from '@/data/pubs';
 import { useTallyStore } from '@/stores/tallyStore';
 import { useNearbyPub } from '../useNearbyPub';
@@ -199,6 +199,31 @@ describe('useNearbyPub', () => {
     });
 
     expect(hook.result.selected?.id).toBe(PUB_A.id);
+    hook.unmount();
+  });
+
+  it('dedupes candidates that share a geohash cell, keeping the nearest', async () => {
+    // Two distinct venues inside the same geohash-8 cell (~38×19 m — common in
+    // a city block). The cell IS the durable pub identity, so surfacing both
+    // yields duplicate pubKeys (and duplicate React keys downstream).
+    const cellCentre = decodeGeohash8(geohash8(PUB_A.lat, PUB_A.lng));
+    const twin: Pub = { id: 'osm:a-twin', name: 'Hospoda A Twin', lat: cellCentre.lat, lng: cellCentre.lng };
+    expect(geohash8(twin.lat, twin.lng)).toBe(geohash8(PUB_A.lat, PUB_A.lng));
+
+    currentPosition = { lat: PUB_A.lat, lng: PUB_A.lng, accuracyMeters: 8 };
+    currentNearby = [
+      { pub: PUB_A, distanceMeters: 20 },
+      { pub: twin, distanceMeters: 25 },
+      { pub: PUB_B, distanceMeters: 140 },
+    ];
+    const hook = renderNearbyHook();
+
+    await waitForExpectation(() => expect(hook.result.candidates.length).toBe(2));
+    const keys = hook.result.candidates.map((c) => c.pubKey);
+    expect(new Set(keys).size).toBe(keys.length);
+    // The nearest venue in the shared cell wins.
+    expect(hook.result.candidates[0].pub.id).toBe(PUB_A.id);
+    expect(hook.result.candidates[1].pub.id).toBe(PUB_B.id);
     hook.unmount();
   });
 

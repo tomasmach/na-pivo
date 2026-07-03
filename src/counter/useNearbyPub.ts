@@ -124,11 +124,16 @@ export function useNearbyPub(): UseNearbyPubResult {
           limit: CANDIDATE_LIMIT,
           maxKm: SEARCH_RADIUS_KM,
         });
-        const ranked: NearbyCandidate[] = found.map((f) => ({
-          pubKey: geohash8(f.pub.lat, f.pub.lng),
-          pub: f.pub,
-          distanceMeters: f.distanceMeters,
-        }));
+        // Two venues can share a geohash-8 cell; the cell is the durable pub
+        // identity (tally + backend + React keys), so keep only the nearest.
+        const seenCells = new Set<string>();
+        const ranked: NearbyCandidate[] = [];
+        for (const f of found) {
+          const pubKey = geohash8(f.pub.lat, f.pub.lng);
+          if (seenCells.has(pubKey)) continue;
+          seenCells.add(pubKey);
+          ranked.push({ pubKey, pub: f.pub, distanceMeters: f.distanceMeters });
+        }
         setHasFix(true);
         setCandidates(ranked);
 
