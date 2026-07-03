@@ -218,7 +218,13 @@ function PartyPulsePanel({
         isMine && styles.pulseCardMine,
       ]}
     >
-      <View style={styles.pulseGlow} pointerEvents="none" />
+      <View
+        style={[
+          styles.pulseRail,
+          (isLive || isMine) && styles.pulseRailHot,
+        ]}
+        pointerEvents="none"
+      />
       <View style={styles.pulseTopRow}>
         <View
           style={[
@@ -246,6 +252,33 @@ function PartyPulsePanel({
           {label}
         </Text>
         {isLive || isMine ? <LiveDot size={7} /> : null}
+        <View
+          style={styles.pulseSignal}
+          importantForAccessibility="no"
+          accessibilityElementsHidden
+          pointerEvents="none"
+        >
+          <View
+            style={[
+              styles.pulseSignalBar,
+              (isLive || isMine) && styles.pulseSignalBarHot,
+            ]}
+          />
+          <View
+            style={[
+              styles.pulseSignalBar,
+              styles.pulseSignalBarMid,
+              (isLive || isMine) && styles.pulseSignalBarHot,
+            ]}
+          />
+          <View
+            style={[
+              styles.pulseSignalBar,
+              styles.pulseSignalBarTall,
+              (isLive || isMine) && styles.pulseSignalBarHot,
+            ]}
+          />
+        </View>
       </View>
 
       <Text
@@ -1221,14 +1254,18 @@ const styles = StyleSheet.create({
   pulseCardMine: {
     borderColor: withAlpha(Colors.amber, 0.5),
   },
-  pulseGlow: {
+  pulseRail: {
     position: 'absolute',
-    top: -78,
-    right: -64,
-    width: 172,
-    height: 172,
-    borderRadius: 86,
-    backgroundColor: withAlpha(Colors.amber, 0.14),
+    top: Spacing.lg,
+    bottom: Spacing.lg,
+    left: 0,
+    width: 3,
+    borderTopRightRadius: 3,
+    borderBottomRightRadius: 3,
+    backgroundColor: withAlpha(Colors.amber, 0.28),
+  },
+  pulseRailHot: {
+    backgroundColor: Colors.amber,
   },
   pulseTopRow: {
     flexDirection: 'row',
@@ -1259,6 +1296,28 @@ const styles = StyleSheet.create({
   },
   pulseLabelHot: {
     color: Colors.amberLight,
+  },
+  pulseSignal: {
+    marginLeft: 'auto',
+    height: 18,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 3,
+  },
+  pulseSignalBar: {
+    width: 3,
+    height: 7,
+    borderRadius: 2,
+    backgroundColor: withAlpha(Colors.mutedText, 0.38),
+  },
+  pulseSignalBarMid: {
+    height: 11,
+  },
+  pulseSignalBarTall: {
+    height: 15,
+  },
+  pulseSignalBarHot: {
+    backgroundColor: withAlpha(Colors.amber, 0.86),
   },
   pulseTitle: {
     marginTop: Spacing.md,
