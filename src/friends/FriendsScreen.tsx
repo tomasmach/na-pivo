@@ -1040,6 +1040,11 @@ const styles = StyleSheet.create({
     height: HitArea.min,
     alignItems: 'center',
     justifyContent: 'center',
+    // Collapse the invisible hit-area padding (44 box − 22 glyph = 11/side) so
+    // the glyph keeps an optical gap to the ghost chip and sits flush with the
+    // content's right edge.
+    marginLeft: -11,
+    marginRight: -11,
   },
   ghostHit: {
     width: HitArea.min,

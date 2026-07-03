@@ -573,7 +573,7 @@ export const cs = {
     heroTitle: 'Kdo jde dneska na jedno?',
     heroBody:
       'Přidej si parťáky a uvidíš, kdo je zrovna na pivu. Ukaž jim svůj kód nebo pošli pozvánku.',
-    firstRunOffline: 'Zatím ticho — mrkni na signál.',
+    firstRunOffline: 'Zatím ticho. Načtu to, až chytneš signál.',
     refresh: 'Obnovit',
     searchPlaceholder: 'Přezdívka kámoše',
     searchCta: 'Najít',
@@ -598,7 +598,8 @@ export const cs = {
     friendRemoved: 'Už není v partě.',
     // One-tap quick broadcast from the counter (rich compose lives on Parta).
     shareHereShort: 'Cinknout partě',
-    shareSuccess: 'Parta dostala signál.',
+    // "signál" is reserved for connectivity; the broadcast is a "cinknutí".
+    shareSuccess: 'Cinknuto!',
     shareError: 'Nepodařilo se dát vědět partě.',
     // Counter "already broadcasting" state once I'm live (drops the re-broadcast).
     counterAlreadyLive: 'Už svítíš partě',
@@ -639,14 +640,16 @@ export const cs = {
     myActiveTitle: 'SVÍTÍŠ PARTĚ',
     nobodyYet: 'Čekáš na první kývnutí.',
     whoComing: 'Kdo dorazí?',
-    endActivity: 'Ukončit',
+    // "Zabalit" = pub slang for calling it a night; one verb family across
+    // button → confirm → toast (a11y label stays descriptive).
+    endActivity: 'Zabalit',
     endActivityA11y: 'Ukončit cinknutí',
-    endActivityConfirmTitle: 'Ukončit cinknutí?',
+    endActivityConfirmTitle: 'Zabalit to?',
     endActivityConfirmBody: 'Parta přestane vidět, že jsi na pivu.',
-    endActivityConfirmConfirm: 'Ukončit',
-    endedToast: 'Cinknutí ukončené.',
+    endActivityConfirmConfirm: 'Zabalit',
+    endedToast: 'Dopito.',
     // Offline end: the DELETE is queued and lands on the next flush (§H4).
-    endQueued: 'Ukončím, až bude signál.',
+    endQueued: 'Zabalím to, až bude signál.',
 
     // — Party streak —
     streakWeeks: (n: number) =>
@@ -686,7 +689,7 @@ export const cs = {
     settingsError: 'Nastavení se nepovedlo uložit.',
 
     // — Hero sub-line variants (priority order in the screen) —
-    heroLiveMine: (n: number) => `U tvého stolu už ${n}. Drž to.`,
+    heroLiveMine: (n: number) => `U tvého stolu už ${n}. Objednávej.`,
     // I'm broadcasting but nobody RSVP'd yet — heroQuiet would contradict it.
     // Wording must not echo the "SVÍTÍŠ PARTĚ" card kicker right below it.
     heroLiveSolo: 'Parta o tobě ví. Teď ať někdo kývne.',
@@ -705,7 +708,7 @@ export const cs = {
     whatIsPartaHeader: 'CO TĚ ČEKÁ',
     whatIsParta1: 'Cinkni, když jdeš na pivo — parta to uvidí.',
     whatIsParta2: 'Kámoši kývnou, kdo dorazí ke stolu.',
-    whatIsParta3: 'Za společné večery roste série a žebříček.',
+    whatIsParta3: 'Za společné večery roste série a šplháš v žebříčku.',
 
     // — Growth block "SEŽEŇ PARTU" (§A1) —
     growthHeader: 'SEŽEŇ PARTU',
@@ -733,7 +736,7 @@ export const cs = {
 
     // — Deep-link claim (§A5) —
     claimTitle: (name: string) => `${name} tě zve do party`,
-    claimBody: 'Přidáš se? Uvidíte navzájem, kdo je zrovna na pivu.',
+    claimBody: 'Přidáš se? Uvidíte, kdo z vás je zrovna na pivu.',
     claimCta: 'Přidat do party',
     claimDone: 'Hotovo, čeká na potvrzení.',
     claimExpired: 'Pozvánka už vypršela. Ať ti kámoš pošle novou.',
@@ -743,8 +746,9 @@ export const cs = {
     claimBack: 'Zpět',
 
     // — Compose "Cinkni partě" (§B) —
-    composeOpen: 'Cinkni partě',
-    composeTitle: 'Cinkni partě',
+    // Infinitive like every other button in the app ("Přijmout", "Zapnout…").
+    composeOpen: 'Cinknout partě',
+    composeTitle: 'Cinknout partě',
     composePubLabel: 'KDE',
     composeNearby: 'Poblíž',
     composeRecent: 'Nedávné',
@@ -790,7 +794,7 @@ export const cs = {
     inviteCanceled: 'Pozvánka zrušená.',
 
     // — Push opt-in strip + toggle (§E) —
-    pushPromptTitle: 'Ať ti nic neuteče',
+    pushPromptTitle: 'Ať nezmeškáš večer',
     pushPromptBody: 'Dám ti vědět, když parta vyrazí nebo tě někdo pozve.',
     pushPromptCta: 'Zapnout upozornění',
     pushPromptDismiss: 'Teď ne',
