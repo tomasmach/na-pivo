@@ -27,17 +27,13 @@ import {
   type ReactNode,
 } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
   AppState,
   Linking,
   Pressable,
   RefreshControl,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
-  TextInput,
   View,
   type LayoutChangeEvent,
   type StyleProp,
@@ -47,34 +43,24 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter, type Href } from 'expo-router';
 
 import {
-  cancelFriendRequest,
   DEFAULT_FRIEND_SOCIAL_SETTINGS,
-  fetchFriendInviteCode,
   fetchFriendsDashboard,
   fetchFriendsLive,
   markFriendNotificationsRead,
   respondFriendRequest,
-  searchFriends,
-  sendFriendRequest,
   type FriendNotification,
-  type FriendProfile,
   type FriendsDashboard,
 } from '@/data/friendsClient';
 import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
-import { Avatar } from '@/profile/Avatar';
 import { GlowButton } from '@/components/shared/GlowButton';
 import {
   BellRingIcon,
   CheckIcon,
+  ChevronRightIcon,
   EyeOffIcon,
   FlameIcon,
-  LinkIcon,
-  PlusIcon,
-  QrCodeIcon,
-  SearchIcon,
   SettingsIcon,
   TrophyIcon,
-  UserPlusIcon,
   UsersIcon,
   XIcon,
 } from '@/components/shared/IconGlyph';
@@ -92,13 +78,14 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { useToastStore } from '@/stores/toastStore';
 
+import { AddFriendTools } from './AddFriendTools';
 import CheersPill from './CheersPill';
 import CodeSheet from './CodeSheet';
 import ComposeSheet from './ComposeSheet';
 import FriendActiveCard from './FriendActiveCard';
+import { FriendMini, friendDisplayName } from './FriendMini';
 import FriendSettingsSheet from './FriendSettingsSheet';
 import FriendsSkeleton from './FriendsSkeleton';
-import { useFriendSafety } from './friendSafety';
 import HairlineRow from './HairlineRow';
 import { LeaderboardRow } from './LeaderboardRow';
 import LiveDot from './LiveDot';
@@ -122,13 +109,6 @@ const ROUND_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
 /** Notification kinds that point at an activity worth a one-tap cheer (§C3). */
 const REACTABLE_FEED_KINDS = new Set(['friend_at_pub', 'friend_rsvp']);
 
-/** `@nickname` (preferred) → display name → a friendly fallback. */
-function displayName(profile: FriendProfile | null | undefined): string {
-  if (!profile) return 'Kamarád';
-  if (profile.nickname) return `@${profile.nickname}`;
-  return profile.displayName || 'Kamarád';
-}
-
 /** Short cs-CZ "29. 6. 23:45" stamp for the notification feed. */
 function timeLabel(iso: string): string {
   const ms = Date.parse(iso);
@@ -139,27 +119,6 @@ function timeLabel(iso: string): string {
     hour: '2-digit',
     minute: '2-digit',
   });
-}
-
-/** Avatar + resolved name — reused in requests, search results and the friend list. */
-function FriendMini({ profile }: { profile: FriendProfile }) {
-  return (
-    <View style={styles.friendMini}>
-      <Avatar
-        uri={profile.avatarUrl}
-        nickname={profile.nickname}
-        displayName={profile.displayName}
-        size={34}
-      />
-      <Text
-        style={styles.friendMiniText}
-        numberOfLines={1}
-        maxFontSizeMultiplier={FontScaleCap.body}
-      >
-        {displayName(profile)}
-      </Text>
-    </View>
-  );
 }
 
 /**
@@ -237,9 +196,6 @@ export default function FriendsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   // Distinct from `dashboard`: a failed fetch must never read as "no friends".
   const [loadError, setLoadError] = useState(false);
-  const [query, setQuery] = useState('');
-  const [searching, setSearching] = useState(false);
-  const [results, setResults] = useState<FriendProfile[]>([]);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [codeVisible, setCodeVisible] = useState(false);
   const [composeVisible, setComposeVisible] = useState(false);
@@ -424,31 +380,7 @@ export default function FriendsScreen() {
     return () => clearInterval(id);
   }, [focused, liveOrPlanned, pollLive]);
 
-  // Search seq guard + AbortSignal (parity with the RSVP seqRef): a double-tap or
-  // fast retype can't let a stale response clobber a newer one (§A1).
-  const searchSeqRef = useRef(0);
-  const searchAbortRef = useRef<AbortController | null>(null);
-  const doSearch = useCallback(async () => {
-    const q = query.trim();
-    if (q.length < 2) return;
-    const seq = ++searchSeqRef.current;
-    searchAbortRef.current?.abort();
-    const controller = new AbortController();
-    searchAbortRef.current = controller;
-    setSearching(true);
-    const found = await searchFriends(q, controller.signal);
-    if (!mountedRef.current || seq !== searchSeqRef.current) return;
-    setSearching(false);
-    setResults(found ?? []);
-    if (found === null) {
-      showToast(cs.friends.offline, {
-        icon: <UsersIcon size={20} color={Colors.amber} />,
-      });
-    }
-  }, [query, showToast]);
-
-  // — Safety + profile navigation (§F/§G) —
-  const openSafetyMenu = useFriendSafety(reload);
+  // — Profile navigation (§F) —
   const openFriendProfile = useCallback(
     (accountId: string) => {
       if (accountId) router.push(`/parta/${accountId}` as Href);
@@ -490,26 +422,6 @@ export default function FriendsScreen() {
     [openFriendProfile, scrollToOffset],
   );
 
-  const requestFriend = useCallback(
-    async (profile?: FriendProfile) => {
-      const result = profile
-        ? await sendFriendRequest({ accountId: profile.id })
-        : await sendFriendRequest({ nickname: query.trim().replace(/^@/, '') });
-      if (!mountedRef.current) return;
-      if (result.ok) {
-        showToast(cs.friends.requestSent, {
-          icon: <UserPlusIcon size={20} color={Colors.amber} />,
-        });
-        setQuery('');
-        setResults([]);
-        await load();
-      } else {
-        showToast(result.detail, { icon: <XIcon size={20} color={Colors.amber} /> });
-      }
-    },
-    [load, query, showToast],
-  );
-
   const respond = useCallback(
     async (id: string, action: 'accept' | 'decline') => {
       const result = await respondFriendRequest(id, action);
@@ -533,32 +445,6 @@ export default function FriendsScreen() {
     [load, showToast],
   );
 
-  const confirmCancelInvite = useCallback(
-    (request: FriendsDashboard['outgoingRequests'][number]) => {
-      Alert.alert(cs.friends.cancelInviteTitle, undefined, [
-        { text: cs.common.cancel, style: 'cancel' },
-        {
-          text: cs.friends.cancelInviteConfirm,
-          style: 'destructive',
-          onPress: () => {
-            void cancelFriendRequest(request.recipient.id).then(async (result) => {
-              if (!mountedRef.current) return;
-              if (result.ok) {
-                showToast(cs.friends.inviteCanceled, {
-                  icon: <XIcon size={20} color={Colors.amber} />,
-                });
-                await load();
-              } else {
-                showToast(result.detail, { icon: <XIcon size={20} color={Colors.amber} /> });
-              }
-            });
-          },
-        },
-      ]);
-    },
-    [load, showToast],
-  );
-
   const handleSettingsSaved = useCallback((next: FriendsDashboard['settings']) => {
     settingsOverrideRef.current = next;
     setDashboard((prev) => (prev ? { ...prev, settings: next } : prev));
@@ -568,22 +454,6 @@ export default function FriendsScreen() {
     setSettingsVisible(false);
     void load();
   }, [load]);
-
-  // — Growth actions —
-  const openIdentity = useCallback(() => {
-    router.push((needsProfileSetup ? '/profile/setup' : '/auth') as Href);
-  }, [needsProfileSetup, router]);
-
-  const shareInvite = useCallback(async () => {
-    const invite = await fetchFriendInviteCode();
-    if (!mountedRef.current) return;
-    const link = invite?.url || invite?.webUrl || '';
-    if (!link) {
-      showToast(cs.friends.codeOffline, { icon: <LinkIcon size={20} color={Colors.amber} /> });
-      return;
-    }
-    await Share.share({ message: cs.friends.shareMessage(link) });
-  }, [showToast]);
 
   // Dynamic hero sub-line (compact hero folds live proof + streak urgency).
   const heroSub = useMemo<{ text: string; color: string }>(() => {
@@ -608,7 +478,7 @@ export default function FriendsScreen() {
     if (friendsLive >= 1) {
       return friendsLive === 1
         ? {
-            text: cs.friends.heroFriendLive(displayName(dashboard.activeFriends[0].account)),
+            text: cs.friends.heroFriendLive(friendDisplayName(dashboard.activeFriends[0].account)),
             color: Colors.foamMuted,
           }
         : { text: cs.friends.heroManyLive(friendsLive), color: Colors.foamMuted };
@@ -662,120 +532,6 @@ export default function FriendsScreen() {
     activeYRef.current = e.nativeEvent.layout.y;
   };
 
-  // — Growth actions block (identity gate when no nickname, else code + invite) —
-  const renderGrowthActions = () => {
-    if (!hasIdentity) {
-      return (
-        <View style={styles.identityGate}>
-          <Text style={styles.gateTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.friends.coldStartAnonTitle}
-          </Text>
-          <Text style={styles.gateBody} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.friends.coldStartAnonBody}
-          </Text>
-          <GlowButton
-            label={cs.friends.coldStartAnonCta}
-            onPress={openIdentity}
-            variant="primary"
-            glow="soft"
-          />
-        </View>
-      );
-    }
-    return (
-      <View style={styles.growthActions}>
-        <GlowButton
-          label={cs.friends.myCodeCta}
-          onPress={() => setCodeVisible(true)}
-          variant="primary"
-          glow="soft"
-          icon={<QrCodeIcon size={20} color={Colors.stout} />}
-        />
-        <GlowButton
-          label={cs.friends.inviteShareCta}
-          onPress={() => void shareInvite()}
-          variant="secondary"
-          glow="none"
-          height={52}
-          icon={<LinkIcon size={18} color={Colors.foam} />}
-        />
-      </View>
-    );
-  };
-
-  // — Search + add row (shared by cold-start growth and the PŘIDAT section) —
-  const renderSearch = () => (
-    <>
-      <View style={styles.searchRow}>
-        <SearchIcon size={19} color={Colors.mutedText} />
-        <TextInput
-          value={query}
-          onChangeText={setQuery}
-          placeholder={cs.friends.searchPlaceholder}
-          placeholderTextColor={Colors.mutedText}
-          autoCapitalize="none"
-          autoCorrect={false}
-          style={styles.searchInput}
-          returnKeyType="search"
-          onSubmitEditing={() => void doSearch()}
-          maxFontSizeMultiplier={FontScaleCap.body}
-        />
-        <Pressable
-          onPress={() => void doSearch()}
-          accessibilityRole="button"
-          accessibilityLabel={cs.friends.searchCta}
-          style={({ pressed }) => [styles.searchButton, pressed && styles.dim]}
-        >
-          {searching ? (
-            <ActivityIndicator color={Colors.stout} size="small" />
-          ) : (
-            <Text
-              style={styles.searchButtonText}
-              maxFontSizeMultiplier={FontScaleCap.heading}
-            >
-              {cs.friends.searchCta}
-            </Text>
-          )}
-        </Pressable>
-      </View>
-
-      {results.length > 0 ? (
-        <View style={styles.searchResults}>
-          {results.map((profile, i) => (
-            <HairlineRow key={profile.id} first={i === 0}>
-              <View style={styles.searchResultRow}>
-                <FriendMini profile={profile} />
-                <IconButton
-                  onPress={() => void requestFriend(profile)}
-                  accessibilityLabel={cs.friends.addByNickname}
-                  style={styles.addBtn}
-                >
-                  <PlusIcon size={18} color={Colors.stout} />
-                </IconButton>
-              </View>
-            </HairlineRow>
-          ))}
-        </View>
-      ) : null}
-
-      {query.trim().length >= 2 && results.length === 0 && !searching ? (
-        <>
-          <Text style={styles.noResults} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.friends.noResults}
-          </Text>
-          <HairlineRow first onPress={() => void requestFriend()}>
-            <View style={styles.nicknameInvite}>
-              <UserPlusIcon size={18} color={Colors.amber} />
-              <Text style={styles.nicknameInviteText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.friends.addByNickname}
-              </Text>
-            </View>
-          </HairlineRow>
-        </>
-      ) : null}
-    </>
-  );
-
   const renderFeedRow = (notification: FriendNotification, first: boolean) => {
     const when = timeLabel(notification.createdAt);
     const canReact =
@@ -825,7 +581,7 @@ export default function FriendsScreen() {
               count={0}
               mine={false}
               compact
-              ownerName={displayName(notification.actor)}
+              ownerName={friendDisplayName(notification.actor)}
               onChanged={reload}
             />
           ) : null}
@@ -933,12 +689,18 @@ export default function FriendsScreen() {
 
         {isColdStart ? (
           <>
-            {/* §3 — SEŽEŇ PARTU: the cold-start growth hook */}
+            {/* §3 — SEŽEŇ PARTU: the cold-start growth hook (add stays inline
+                here so a 0-friend user at the table isn't kicked to another screen) */}
             <Reveal index={nextReveal()}>
               <View style={styles.section}>
                 <SectionHeader label={cs.friends.growthHeader} />
-                {renderGrowthActions()}
-                {hasIdentity ? <View style={styles.searchGap}>{renderSearch()}</View> : null}
+                <AddFriendTools
+                  hasIdentity={hasIdentity}
+                  needsProfileSetup={needsProfileSetup}
+                  onOpenCode={() => setCodeVisible(true)}
+                  onChanged={reload}
+                  showSearch
+                />
               </View>
             </Reveal>
 
@@ -1163,109 +925,6 @@ export default function FriendsScreen() {
               </Reveal>
             ) : null}
 
-            {/* §8 — KÁMOŠI: hairline row per friend; outgoing invites in the footer */}
-            {d ? (
-              <Reveal index={nextReveal()}>
-                <View style={styles.section}>
-                  <SectionHeader label={cs.friends.friendsHeader} />
-                  {d.friends.length > 0 ? (
-                    <View>
-                      {d.friends.map((friend, i) => {
-                        const stats = d.friendStats[friend.id];
-                        return (
-                          <HairlineRow key={friend.id} first={i === 0}>
-                            {/* Whole row opens the friend profile (where remove +
-                                block/report now live); long-press pops the safety
-                                menu (§F1/§G1). */}
-                            <Pressable
-                              onPress={() => openFriendProfile(friend.id)}
-                              onLongPress={() => openSafetyMenu(friend)}
-                              accessibilityRole="button"
-                              accessibilityLabel={displayName(friend)}
-                              style={({ pressed }) => [styles.friendRow, pressed && styles.dim]}
-                            >
-                              <FriendMini profile={friend} />
-                              <Text
-                                style={styles.sharedCount}
-                                numberOfLines={1}
-                                maxFontSizeMultiplier={FontScaleCap.heading}
-                              >
-                                {cs.friends.sharedCount(stats?.sharedPubCount ?? 0)}
-                              </Text>
-                              {stats?.lastPubName ? (
-                                <Text
-                                  style={styles.lastTogether}
-                                  numberOfLines={1}
-                                  maxFontSizeMultiplier={FontScaleCap.body}
-                                >
-                                  {cs.friends.lastTogether(stats.lastPubName)}
-                                </Text>
-                              ) : null}
-                              {stats?.rituals.length ? (
-                                <View style={styles.ritualRow}>
-                                  {stats.rituals.map((ritual) => (
-                                    <View key={ritual.key} style={styles.ritualChip}>
-                                      <Text
-                                        style={styles.ritualText}
-                                        maxFontSizeMultiplier={FontScaleCap.body}
-                                      >
-                                        {ritual.title}
-                                      </Text>
-                                    </View>
-                                  ))}
-                                </View>
-                              ) : null}
-                            </Pressable>
-                          </HairlineRow>
-                        );
-                      })}
-                    </View>
-                  ) : (
-                    // Composed empty (entry point #2): line + code/invite CTAs.
-                    <View style={styles.emptyFriends}>
-                      <UserPlusIcon size={28} color={Colors.mutedText} />
-                      <Text style={styles.emptyStripText} maxFontSizeMultiplier={FontScaleCap.body}>
-                        {cs.friends.emptyFriends}
-                      </Text>
-                      {renderGrowthActions()}
-                    </View>
-                  )}
-
-                  {d.outgoingRequests.length > 0 ? (
-                    <View style={styles.outgoingWrap}>
-                      <Text
-                        style={styles.outgoingLabel}
-                        numberOfLines={1}
-                        maxFontSizeMultiplier={FontScaleCap.heading}
-                      >
-                        {cs.friends.outgoingHeader}
-                      </Text>
-                      <View style={styles.outgoingRow}>
-                        {d.outgoingRequests.map((request) => (
-                          <Pressable
-                            key={request.id}
-                            onPress={() => confirmCancelInvite(request)}
-                            accessibilityRole="button"
-                            accessibilityLabel={cs.friends.cancelInviteTitle}
-                            style={({ pressed }) => [styles.outgoingChip, pressed && styles.dim]}
-                          >
-                            <Text
-                              style={styles.outgoingText}
-                              numberOfLines={1}
-                              maxFontSizeMultiplier={FontScaleCap.body}
-                            >
-                              {displayName(request.recipient)}
-                            </Text>
-                            <XIcon size={13} color={Colors.mutedText} />
-                          </Pressable>
-                        ))}
-                      </View>
-                    </View>
-                  ) : null}
-                </View>
-              </Reveal>
-            ) : null}
-
             {/* §9 — CINKLO V PARTĚ: ambient notification feed + one-tap reactions */}
             {d && d.notifications.length > 0 ? (
               <Reveal index={nextReveal()}>
@@ -1280,13 +939,24 @@ export default function FriendsScreen() {
               </Reveal>
             ) : null}
 
-            {/* §7 — PŘIDAT DO PARTY: search + "Můj kód" mirror (drops to the bottom) */}
+            {/* Footer cross-link into Správa party — the full friends list, add
+                tools and outgoing invites now live there. Navigation, not an
+                action (amber icon, foam text, chevron), so no GlowButton. */}
             {d ? (
               <Reveal index={nextReveal()}>
                 <View style={styles.section}>
-                  <SectionHeader label={cs.friends.addHeader} />
-                  {renderSearch()}
-                  <View style={styles.searchGap}>{renderGrowthActions()}</View>
+                  <Pressable
+                    onPress={() => router.push('/profile/parta' as Href)}
+                    accessibilityRole="button"
+                    accessibilityLabel={cs.friends.manageLink}
+                    style={({ pressed }) => [styles.manageLink, pressed && styles.dim]}
+                  >
+                    <UsersIcon size={18} color={Colors.amber} />
+                    <Text style={styles.manageLinkText} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {cs.friends.manageLink}
+                    </Text>
+                    <ChevronRightIcon size={16} color={Colors.mutedText} />
+                  </Pressable>
                 </View>
               </Reveal>
             ) : null}
@@ -1416,27 +1086,18 @@ const styles = StyleSheet.create({
     color: Colors.mutedText,
   },
 
-  // — Growth block —
-  growthActions: {
+  // — Footer cross-link into Správa party —
+  manageLink: {
+    minHeight: HitArea.min,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: Spacing.sm,
   },
-  searchGap: {
-    marginTop: Spacing.md,
-  },
-  identityGate: {
-    gap: Spacing.sm,
-  },
-  gateTitle: {
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 18,
-    color: Colors.foam,
-  },
-  gateBody: {
-    fontFamily: Fonts.ui.medium,
+  manageLinkText: {
+    flex: 1,
+    fontFamily: Fonts.ui.semibold,
     fontSize: 14,
-    lineHeight: 20,
-    color: Colors.foamMuted,
-    marginBottom: Spacing.xs,
+    color: Colors.foam,
   },
 
   // — CO TĚ ČEKÁ teaser —
@@ -1499,11 +1160,6 @@ const styles = StyleSheet.create({
     color: Colors.mutedText,
     textAlign: 'center',
   },
-  emptyFriends: {
-    alignItems: 'center',
-    paddingVertical: Spacing.md,
-    gap: Spacing.md,
-  },
 
   // — Leaderboard —
   moreRow: {
@@ -1530,141 +1186,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.display.semibold,
     fontSize: 16,
     color: Colors.mutedText,
-  },
-
-  // — Search / add —
-  searchRow: {
-    minHeight: 54,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    backgroundColor: Colors.stout2,
-    borderRadius: Radius.pill,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    paddingLeft: Spacing.md,
-    paddingRight: 6,
-  },
-  searchInput: {
-    flex: 1,
-    fontFamily: Fonts.ui.semibold,
-    color: Colors.foam,
-    fontSize: 16,
-    paddingVertical: 12,
-  },
-  searchButton: {
-    minWidth: 76,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.amber,
-  },
-  searchButtonText: {
-    fontFamily: Fonts.display.extrabold,
-    color: Colors.stout,
-    fontSize: 15,
-  },
-  searchResults: {
-    marginTop: Spacing.sm,
-  },
-  searchResultRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.md,
-  },
-  addBtn: {
-    width: HitArea.min,
-    height: HitArea.min,
-    borderRadius: HitArea.min / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.amber,
-  },
-  noResults: {
-    marginTop: Spacing.md,
-    fontFamily: Fonts.ui.medium,
-    fontSize: 13,
-    lineHeight: 18,
-    color: Colors.mutedText,
-  },
-  nicknameInvite: {
-    minHeight: HitArea.min,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  nicknameInviteText: {
-    flex: 1,
-    fontFamily: Fonts.ui.semibold,
-    color: Colors.amber,
-    fontSize: 14,
-  },
-
-  // — Friends list —
-  friendRow: {
-    gap: Spacing.sm,
-  },
-  sharedCount: {
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 22,
-    color: Colors.foam,
-  },
-  lastTogether: {
-    fontFamily: Fonts.ui.medium,
-    fontSize: 14,
-    color: Colors.foamMuted,
-  },
-  ritualRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
-  },
-  ritualChip: {
-    borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.amber, 0.12),
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.25),
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-  },
-  ritualText: {
-    fontFamily: Fonts.ui.semibold,
-    color: Colors.amber,
-    fontSize: 12,
-  },
-
-  // — Outgoing invites (KÁMOŠI footer) —
-  outgoingWrap: {
-    marginTop: Spacing.md,
-  },
-  outgoingLabel: {
-    marginBottom: Spacing.sm,
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 12,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-    color: Colors.mutedText,
-  },
-  outgoingRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
-  },
-  outgoingChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.foam, 0.08),
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-  },
-  outgoingText: {
-    fontFamily: Fonts.ui.semibold,
-    color: Colors.foamMuted,
-    fontSize: 13,
   },
 
   // — Notification feed —
@@ -1701,20 +1222,5 @@ const styles = StyleSheet.create({
     color: Colors.foamMuted,
     fontSize: 13,
     lineHeight: 18,
-  },
-
-  // — Local FriendMini —
-  friendMini: {
-    minWidth: 0,
-    flexShrink: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  friendMiniText: {
-    flexShrink: 1,
-    fontFamily: Fonts.ui.bold,
-    color: Colors.foam,
-    fontSize: 15,
   },
 });

@@ -377,6 +377,15 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen
+            name="profile/parta"
+            options={{
+              // A back-navigable "place" (party management), pushed like a detail
+              // screen with the native right-edge back-swipe.
+              animation: 'slide_from_right',
+              gestureEnabled: true,
+            }}
+          />
+          <Stack.Screen
             name="parta/pozvanka"
             options={{
               presentation: 'fullScreenModal',

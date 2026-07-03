@@ -452,8 +452,8 @@ export default function ProfileScreen() {
   // failure surfaces a toast and leaves the previous state untouched.
   const [visibilityBusy, setVisibilityBusy] = useState(false);
   // Parta cross-link (§A2 entry point): "Můj kód" sheet + a friend-count row that
-  // routes to the Parta tab. The count is read from the last dashboard snapshot so
-  // this stays a zero-network, offline-safe surface.
+  // routes to the Správa party screen (see everyone / manage). The count is read
+  // from the last dashboard snapshot so this stays a zero-network, offline-safe surface.
   const [codeVisible, setCodeVisible] = useState(false);
   const [partaCount, setPartaCount] = useState(0);
   useEffect(() => {
@@ -605,10 +605,10 @@ export default function ProfileScreen() {
               </View>
             </View>
 
-            {/* ── Parta cross-link: friend count → Parta tab · "Můj kód" sheet ── */}
+            {/* ── Parta cross-link: friend count → Správa party · "Můj kód" sheet ── */}
             <View style={styles.partaRow}>
               <Pressable
-                onPress={() => router.push('/friends' as Href)}
+                onPress={() => router.push('/profile/parta' as Href)}
                 style={({ pressed }) => [styles.partaCountArea, pressed && styles.pressed]}
                 accessibilityRole="button"
                 accessibilityLabel={cs.profile.partaCount(partaCount)}

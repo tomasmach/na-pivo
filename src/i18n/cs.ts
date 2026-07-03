@@ -823,6 +823,18 @@ export const cs = {
     reportDone: 'Díky, mrknu na to.',
     // Row long-press action sheet title.
     rowActionsTitle: 'Co s tím?',
+
+    // — Správa party (Profil → /profile/parta) —
+    manageTitle: 'Správa party',
+    // Footer cross-link on Parta → the management screen.
+    manageLink: 'Celá parta a pozvánky',
+    // Management → Parta cross-link when incoming requests are waiting.
+    manageIncomingLink: (n: number) =>
+      n === 1
+        ? '1 kámoš čeká na tebe v Partě'
+        : n >= 2 && n <= 4
+          ? `${n} kámoši čekají na tebe v Partě`
+          : `${n} kámošů čeká na tebe v Partě`,
   },
 
   // The merged "Pivo" tab — a segmented control flips between counting and the
@@ -1159,6 +1171,8 @@ export const cs = {
     settingsButton: 'Otevřít nastavení',
     // — Parta 3.0 —
     tabFriendsBadge: (n: number) => `Parta, ${n} nových`,
+    // Back chevron on the Profile → Správa party screen.
+    manageBack: 'Zpět na profil',
     rsvpGroup: 'Jdeš?',
     rerollButton: 'Vyber jinou hospodu',
     skipButton: 'Přeskočit na další hospodu',
