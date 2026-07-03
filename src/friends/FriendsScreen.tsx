@@ -636,17 +636,19 @@ export default function FriendsScreen() {
               <View style={styles.heroRight}>
                 {d && !isColdStart ? <StreakBadge streak={d.streak} /> : null}
                 {d?.settings.ghostMode ? (
-                  <IconButton
-                    onPress={() => setSettingsVisible(true)}
+                  // Pure status chip, not a control: the gear is the single entry
+                  // to settings, so ghost mode reads as a labelled state here
+                  // (icon alone was mistaken for a second, redundant button).
+                  <View
+                    style={styles.ghostChip}
+                    accessibilityRole="text"
                     accessibilityLabel={cs.friends.ghostActive}
-                    style={styles.ghostHit}
                   >
-                    {/* 44pt target, but the visible shell matches the 32pt
-                        StreakBadge chip so the header reads as one row. */}
-                    <View style={styles.ghostShell}>
-                      <EyeOffIcon size={16} color={Colors.amberLight} />
-                    </View>
-                  </IconButton>
+                    <EyeOffIcon size={15} color={Colors.amberLight} />
+                    <Text style={styles.ghostChipLabel} allowFontScaling={false}>
+                      {cs.friends.ghostChip}
+                    </Text>
+                  </View>
                 ) : null}
                 <Pressable
                   onPress={() => setSettingsVisible(true)}
@@ -1046,21 +1048,22 @@ const styles = StyleSheet.create({
     marginLeft: -11,
     marginRight: -11,
   },
-  ghostHit: {
-    width: HitArea.min,
-    height: HitArea.min,
+  // Matches the StreakBadge amber chip so the header reads as one row.
+  ghostChip: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ghostShell: {
-    width: 32,
+    gap: 5,
     height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: Spacing.md,
     borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.amber, 0.1),
     borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.28),
+    backgroundColor: withAlpha(Colors.amber, 0.12),
+    borderColor: withAlpha(Colors.amber, 0.32),
+  },
+  ghostChipLabel: {
+    fontFamily: Fonts.display.semibold,
+    fontSize: 13,
+    color: Colors.amberLight,
   },
   liveDotNudge: {
     transform: [{ translateY: -5 }],

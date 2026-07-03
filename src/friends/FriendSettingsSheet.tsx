@@ -298,7 +298,9 @@ function FriendSettingsSheet({
           style={[
             styles.card,
             softDrop(),
-            { paddingBottom: Math.max(insets.bottom, Spacing.md) },
+            // Float the card above the home indicator so its border reads as a
+            // fully closed panel, never a line running off the screen bottom.
+            { marginBottom: Math.max(insets.bottom, Spacing.md) },
             cardAnim,
           ]}
         >
@@ -461,12 +463,13 @@ const styles = StyleSheet.create({
   },
   card: {
     maxHeight: '90%',
+    marginHorizontal: Spacing.sm,
     backgroundColor: Colors.stout2,
-    borderTopLeftRadius: Radius.cardLarge,
-    borderTopRightRadius: Radius.cardLarge,
+    borderRadius: Radius.cardLarge,
     borderWidth: 1,
     borderColor: Colors.border,
     paddingTop: Spacing.sm,
+    paddingBottom: Spacing.lg,
     paddingHorizontal: Spacing.lg,
   },
   handle: {

@@ -678,7 +678,8 @@ export const cs = {
     settingsClose: 'Zavřít nastavení',
     ghostTitle: 'Neviditelný režim',
     ghostSubtitle: 'Nikdo nevidí, kde sedíš. Tvoje cinknutí zůstanou jen u tebe.',
-    ghostActive: 'Neviditelný režim',
+    ghostActive: 'Neviditelný režim je zapnutý',
+    ghostChip: 'Skrytě',
     quietTitle: 'Klid v noci',
     quietSubtitle: 'V noci ti nepřijdou žádné cinky.',
     quietRange: (a: number, b: number) =>
