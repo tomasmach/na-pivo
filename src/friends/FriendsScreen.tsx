@@ -467,6 +467,10 @@ export default function FriendsScreen() {
     if (iAmLive && myGoing > 0) {
       return { text: cs.friends.heroLiveMine(myGoing), color: Colors.foam };
     }
+    if (iAmLive) {
+      // I already broadcast tonight — "someone must cink first" would lie.
+      return { text: cs.friends.heroLiveSolo, color: Colors.foam };
+    }
     if (
       dashboard.streak.currentWeeks > 0 &&
       !dashboard.streak.thisWeekLit &&
@@ -619,7 +623,14 @@ export default function FriendsScreen() {
                 >
                   {cs.friends.title}
                 </Text>
-                {liveNow ? <LiveDot size={9} /> : null}
+                {liveNow ? (
+                  // Lift the dot to the title's cap-height optical center — the
+                  // 34px line box carries descender space, so a box-centered dot
+                  // reads as a stray full stop.
+                  <View style={styles.liveDotNudge}>
+                    <LiveDot size={9} />
+                  </View>
+                ) : null}
               </View>
 
               <View style={styles.heroRight}>
@@ -628,9 +639,13 @@ export default function FriendsScreen() {
                   <IconButton
                     onPress={() => setSettingsVisible(true)}
                     accessibilityLabel={cs.friends.ghostActive}
-                    style={styles.ghostIconBtn}
+                    style={styles.ghostHit}
                   >
-                    <EyeOffIcon size={18} color={Colors.amberLight} />
+                    {/* 44pt target, but the visible shell matches the 32pt
+                        StreakBadge chip so the header reads as one row. */}
+                    <View style={styles.ghostShell}>
+                      <EyeOffIcon size={16} color={Colors.amberLight} />
+                    </View>
                   </IconButton>
                 ) : null}
                 <Pressable
@@ -1026,15 +1041,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  ghostIconBtn: {
+  ghostHit: {
     width: HitArea.min,
     height: HitArea.min,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ghostShell: {
+    width: 32,
+    height: 32,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: Radius.pill,
     backgroundColor: withAlpha(Colors.amber, 0.1),
     borderWidth: 1,
     borderColor: withAlpha(Colors.amber, 0.28),
+  },
+  liveDotNudge: {
+    transform: [{ translateY: -5 }],
   },
   heroSubline: {
     marginTop: Spacing.sm,

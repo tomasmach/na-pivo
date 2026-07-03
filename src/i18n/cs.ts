@@ -686,6 +686,8 @@ export const cs = {
 
     // — Hero sub-line variants (priority order in the screen) —
     heroLiveMine: (n: number) => `U tvého stolu už ${n}. Drž to.`,
+    // I'm broadcasting but nobody RSVP'd yet — heroQuiet would contradict it.
+    heroLiveSolo: 'Svítíš partě. Teď ať někdo kývne.',
     heroStreakRisk: 'Série visí na vlásku, tenhle týden ji ještě nikdo nezapálil.',
     heroFriendLive: (name: string) => `${name} svítí v hospodě. Kývneš?`,
     heroManyLive: (n: number) => `${n} z party teď sedí. Kdo se přidá?`,
