@@ -758,8 +758,9 @@ export default function FriendsScreen() {
               </Reveal>
             ) : null}
 
-            {/* §4 — Compose CTA (hidden while I'm live — MyActivityCard is the verb) */}
-            {d && !d.myActiveActivity ? (
+            {/* §4 — Compose CTA: keep one primary verb per fold. When nobody is
+                live, the "TEĎ NA PIVU" empty state owns this action instead. */}
+            {d && !d.myActiveActivity && friendsLive > 0 ? (
               <Reveal index={nextReveal()}>
                 <View style={styles.section}>
                   <GlowButton
