@@ -15,9 +15,9 @@ import { Spacing } from '@/theme/layout';
 
 /** `@nickname` (preferred) → display name → a friendly fallback. */
 export function friendDisplayName(profile: FriendProfile | null | undefined): string {
-  if (!profile) return 'Kamarád';
+  if (!profile) return 'Kámoš';
   if (profile.nickname) return `@${profile.nickname}`;
-  return profile.displayName || 'Kamarád';
+  return profile.displayName || 'Kámoš';
 }
 
 export function FriendMini({ profile }: { profile: FriendProfile }) {

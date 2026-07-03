@@ -43,9 +43,9 @@ interface FriendActiveCardProps {
 
 /** FriendMini stays in FriendsScreen; mirror its name resolution locally. */
 function nameOf(profile: FriendProfile | null | undefined): string {
-  if (!profile) return 'Kamarád';
+  if (!profile) return 'Kámoš';
   if (profile.nickname) return `@${profile.nickname}`;
-  return profile.displayName || 'Kamarád';
+  return profile.displayName || 'Kámoš';
 }
 
 function FriendActiveCard({ activity, onResponded, stale = false }: FriendActiveCardProps) {

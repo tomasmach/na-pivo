@@ -18,9 +18,9 @@ import { useToastStore } from '@/stores/toastStore';
 
 /** `@nickname` (preferred) → display name → a friendly fallback. */
 function nameOf(profile: FriendProfile | null | undefined): string {
-  if (!profile) return 'Kamarád';
+  if (!profile) return 'Kámoš';
   if (profile.nickname) return `@${profile.nickname}`;
-  return profile.displayName || 'Kamarád';
+  return profile.displayName || 'Kámoš';
 }
 
 /**

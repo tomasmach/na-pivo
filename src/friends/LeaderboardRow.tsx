@@ -39,7 +39,7 @@ function resolveName(entry: LeaderboardEntry): string {
   if (entry.isMe) return cs.friends.leaderboardMe;
   const { nickname, displayName } = entry.account;
   if (nickname) return `@${nickname}`;
-  return displayName || 'Kamarád';
+  return displayName || 'Kámoš';
 }
 
 export const LeaderboardRow = memo(function LeaderboardRow({

@@ -51,9 +51,9 @@ interface PlanCardProps {
 const PILL_HIT_SLOP = { top: 6, bottom: 6, left: 6, right: 6 } as const;
 
 function nameOf(profile: FriendProfile | null | undefined): string {
-  if (!profile) return 'Kamarád';
+  if (!profile) return 'Kámoš';
   if (profile.nickname) return `@${profile.nickname}`;
-  return profile.displayName || 'Kamarád';
+  return profile.displayName || 'Kámoš';
 }
 
 /** "20:00" from the plan's scheduled ISO time; '' when unparseable. */

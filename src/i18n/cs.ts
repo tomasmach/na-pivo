@@ -572,7 +572,7 @@ export const cs = {
     title: 'Parta',
     heroTitle: 'Kdo jde dneska na jedno?',
     heroBody:
-      'Přidej si parťáky a uvidíš, kdo je zrovna na pivu. Ukaž jim svůj kód, nebo pošli pozvánku.',
+      'Přidej si parťáky a uvidíš, kdo je zrovna na pivu. Ukaž jim svůj kód nebo pošli pozvánku.',
     firstRunOffline: 'Zatím ticho — mrkni na signál.',
     refresh: 'Obnovit',
     searchPlaceholder: 'Přezdívka kámoše',
@@ -594,8 +594,8 @@ export const cs = {
     removeConfirm: 'Odebrat',
     requestSent: 'Pozvánka letí ke stolu.',
     requestAccepted: 'Je v partě.',
-    requestDeclined: 'Žádost je pryč.',
-    friendRemoved: 'Kamarád odebrán.',
+    requestDeclined: 'Pozvánka je pryč.',
+    friendRemoved: 'Už není v partě.',
     // One-tap quick broadcast from the counter (rich compose lives on Parta).
     shareHereShort: 'Cinknout partě',
     shareSuccess: 'Parta dostala signál.',
@@ -612,7 +612,7 @@ export const cs = {
             : `${n} společných piv`,
     lastTogether: (pub: string) => `Naposledy spolu: ${pub}`,
     // Solo, genderless rewrite (retired the corporate "jsme").
-    noResults: 'Nikdo takový tu není. Zkus jinou přezdívku, nebo mu pošli pozvánku.',
+    noResults: 'Nikdo takový tu není. Zkus jinou přezdívku nebo pošli pozvánku odkazem.',
     // Snapshot-aware: the screen now renders the last-known graph behind this.
     offline: 'Parta se teď nenačetla. Ukazuju poslední, co vím.',
     retry: 'Zkusit znovu',
@@ -635,13 +635,14 @@ export const cs = {
     rosterEmpty: 'Zatím nikdo nekývl.',
 
     // — My active activity card ("Cinkl jsi partě") —
-    myActiveTitle: 'CINKL JSI PARTĚ',
+    // Present tense keeps it genderless (retired the masculine "Cinkl jsi").
+    myActiveTitle: 'SVÍTÍŠ PARTĚ',
     nobodyYet: 'Čekáš na první kývnutí.',
     whoComing: 'Kdo dorazí?',
     endActivity: 'Ukončit',
     endActivityA11y: 'Ukončit cinknutí',
     endActivityConfirmTitle: 'Ukončit cinknutí?',
-    endActivityConfirmBody: 'Parta přestane vidět, že seš na pivu.',
+    endActivityConfirmBody: 'Parta přestane vidět, že jsi na pivu.',
     endActivityConfirmConfirm: 'Ukončit',
     endedToast: 'Cinknutí ukončené.',
     // Offline end: the DELETE is queued and lands on the next flush (§H4).
@@ -774,7 +775,7 @@ export const cs = {
     cheers: 'Na zdraví',
     cheersA11y: (name: string) => `Připít na zdraví ${name}`,
     cheersCount: (n: number) => `${n}× na zdraví`,
-    cheersDone: 'Cinkl jsi sklenicí.',
+    cheersDone: 'Ťuk! Na zdraví.',
     cheersUndone: 'Připití zpět.',
     reactQueued: 'Nejsi online. Připiju, až bude signál.',
     reactError: 'Připití se nepovedlo. Zkus to znovu.',
@@ -809,7 +810,7 @@ export const cs = {
     statSharedBeers: 'společná piva',
     statNightsTogether: 'večerů spolu',
     statStreakTogether: 'týdnů v sérii',
-    profileNoHistory: 'Ještě jste spolu nikde nebyli. Cinkni mu.',
+    profileNoHistory: 'Ještě jste spolu nikde nebyli. Tak cinkni.',
     profileRecentHeader: 'NAPOSLEDY SPOLU',
     profileRemove: 'Odebrat z party',
     profileActionsA11y: 'Další možnosti',
