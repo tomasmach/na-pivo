@@ -48,7 +48,7 @@ One command does everything — applies backend migrations, starts the Django ba
 npm run dev
 ```
 
-If the backend is already running on the port, `npm run dev` reuses it and leaves it running on exit. The manual way still works too:
+`npm run dev` runs the backend on its own dedicated port `1842` (the year the first Pilsner was brewed) so it never fights with other dev servers; override it with `EXPO_PUBLIC_BACKEND_PORT`. If the backend is already running on that port, `npm run dev` reuses it and leaves it running on exit. The manual way still works too:
 
 Start the Django backend on the LAN interface:
 

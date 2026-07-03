@@ -6,7 +6,9 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BACKEND_DIR="$(cd "$REPO_ROOT/../na-pivo-backend" 2>/dev/null && pwd || true)"
-BACKEND_PORT="${EXPO_PUBLIC_BACKEND_PORT:-8000}"
+# 1842 = the year the first Pilsner was brewed; nothing else runs there
+BACKEND_PORT="${EXPO_PUBLIC_BACKEND_PORT:-1842}"
+export EXPO_PUBLIC_BACKEND_PORT="$BACKEND_PORT"
 
 if [ -z "$BACKEND_DIR" ]; then
   echo "Backend repo not found next to this repo (expected ../na-pivo-backend)" >&2
