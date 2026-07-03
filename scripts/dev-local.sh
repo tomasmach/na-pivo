@@ -6,8 +6,8 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BACKEND_DIR="$(cd "$REPO_ROOT/../na-pivo-backend" 2>/dev/null && pwd || true)"
-# 1842 = the year the first Pilsner was brewed; nothing else runs there
-BACKEND_PORT="${EXPO_PUBLIC_BACKEND_PORT:-1842}"
+# 8012 = the dvanactka of ports; 80xx range, but clear of 8000/8080/8081
+BACKEND_PORT="${EXPO_PUBLIC_BACKEND_PORT:-8012}"
 export EXPO_PUBLIC_BACKEND_PORT="$BACKEND_PORT"
 
 if [ -z "$BACKEND_DIR" ]; then
