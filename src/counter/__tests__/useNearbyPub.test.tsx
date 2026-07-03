@@ -232,7 +232,7 @@ describe('useNearbyPub', () => {
     const hook = renderNearbyHook();
 
     await waitForExpectation(() => expect(fetchPubsNear).toHaveBeenCalled());
-    expect(fetchPubsNear).toHaveBeenCalledWith(PUB_A.lat, PUB_A.lng, undefined, { radiusKm: 3 });
+    expect(fetchPubsNear).toHaveBeenCalledWith(PUB_A.lat, PUB_A.lng, undefined, { force: true, radiusKm: 3 });
     hook.unmount();
   });
 });

@@ -76,6 +76,7 @@ export function useNearbyPub(): UseNearbyPubResult {
   const activeSessionPubKey = useTallyStore((state) =>
     state.current && state.current.drinks.length > 0 ? state.current.pubKey : null,
   );
+  const forceNextFetchRef = useRef(true);
 
   // Once the user has a pinned pub (auto or manual) we stop letting GPS reselect
   // it — the active pub is sticky for the whole sitting.
@@ -91,6 +92,7 @@ export function useNearbyPub(): UseNearbyPubResult {
   // — Focus gate: only watch GPS while this tab is on screen —
   useFocusEffect(
     useCallback(() => {
+      forceNextFetchRef.current = true;
       setFocused(true);
       return () => setFocused(false);
     }, []),
@@ -113,8 +115,10 @@ export function useNearbyPub(): UseNearbyPubResult {
   useEffect(() => {
     if (positionLat == null || positionLng == null) return;
     let cancelled = false;
+    const forceFetch = forceNextFetchRef.current;
+    forceNextFetchRef.current = false;
 
-    fetchPubsNear(positionLat, positionLng, undefined, { radiusKm: SEARCH_RADIUS_KM })
+    fetchPubsNear(positionLat, positionLng, undefined, { force: forceFetch, radiusKm: SEARCH_RADIUS_KM })
       .catch(() => undefined)
       .then(() => {
         if (cancelled) return;
@@ -191,6 +195,7 @@ export function useNearbyPub(): UseNearbyPubResult {
   const retry = useCallback(() => {
     // Un-pin and re-run the search; lets the user re-detect after moving pubs.
     pinnedRef.current = false;
+    forceNextFetchRef.current = true;
     setSelected(null);
     setHasFix(false);
     setCandidates([]);
