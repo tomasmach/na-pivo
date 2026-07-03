@@ -736,7 +736,9 @@ export async function createFriendPlan(
   scheduledForISO: string,
   message?: string,
   clientId?: string,
+  recipientIds?: string[],
 ): Promise<FriendActionResult> {
+  const targetIds = recipientIds && recipientIds.length > 0 ? recipientIds : undefined;
   const res = await requestJson('/v1/friends/pub-activity', {
     method: 'POST',
     body: {
@@ -748,6 +750,7 @@ export async function createFriendPlan(
       external_id: pub.id || '',
       message: message ?? '',
       scheduled_for: scheduledForISO,
+      ...(targetIds ? { recipient_ids: targetIds } : {}),
     },
   });
   return res.ok ? { ok: true } : res.result;
@@ -831,9 +834,11 @@ export async function shareFriendPubActivity(
   pub: Pub,
   message?: string,
   clientId?: string,
+  recipientIds?: string[],
 ): Promise<FriendActionResult> {
   const now = new Date();
   const expires = new Date(now.getTime() + 4 * 60 * 60 * 1000);
+  const targetIds = recipientIds && recipientIds.length > 0 ? recipientIds : undefined;
   const res = await requestJson('/v1/friends/pub-activity', {
     method: 'POST',
     body: {
@@ -846,6 +851,7 @@ export async function shareFriendPubActivity(
       message: message ?? '',
       started_at: now.toISOString(),
       expires_at: expires.toISOString(),
+      ...(targetIds ? { recipient_ids: targetIds } : {}),
     },
   });
   return res.ok ? { ok: true } : res.result;

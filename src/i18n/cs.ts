@@ -762,6 +762,31 @@ export const cs = {
     // Infinitive like every other button in the app ("Přijmout", "Zapnout…").
     composeOpen: 'Cinknout partě',
     composeTitle: 'Cinknout partě',
+    composeAudienceLabel: 'KOMU',
+    recipientAll: 'Celá parta',
+    recipientCustom: 'Vybrat',
+    recipientAllSummary: (n: number) =>
+      n === 0
+        ? 'Cinknutí poletí celé partě.'
+        : n === 1
+          ? 'Cinknutí poletí 1 kámošovi.'
+          : n >= 2 && n <= 4
+            ? `Cinknutí poletí ${n} kámošům.`
+            : `Cinknutí poletí ${n} kámošům.`,
+    recipientCustomSummary: (n: number) =>
+      n === 0
+        ? 'Vyber, koho chceš vytáhnout na jedno.'
+        : n === 1
+          ? 'Vybraný 1 kámoš.'
+          : n >= 2 && n <= 4
+            ? `Vybraní ${n} kámoši.`
+            : `Vybráno ${n} kámošů.`,
+    recipientNoFriends: 'Nejdřív si přidej kámoše do party.',
+    recipientNoSelection: 'Vyber, komu to cinkne.',
+    recipientGroupPlaceholder: 'Název partičky',
+    recipientGroupSave: 'Uložit',
+    recipientGroupSaved: 'Partička uložená.',
+    recipientGroupSaveHint: 'Vyber kámoše a pojmenuj partičku.',
     composePubLabel: 'KDE',
     composeNearby: 'Poblíž',
     composeRecent: 'Nedávné',

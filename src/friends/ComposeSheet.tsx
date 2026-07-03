@@ -15,7 +15,7 @@
  * parent mounts this component only when open (privacy + battery).
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -34,7 +34,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { CheckIcon, MapPinIcon, XIcon } from '@/components/shared/IconGlyph';
+import { CheckIcon, MapPinIcon, PlusIcon, UsersIcon, XIcon } from '@/components/shared/IconGlyph';
 import { Toast } from '@/components/shared/Toast';
 import { generateUuidV4 } from '@/data/account';
 import { decodeGeohash8 } from '@/data/geohash';
@@ -42,11 +42,13 @@ import {
   createFriendPlan,
   shareFriendPubActivity,
   type FriendActionResult,
+  type FriendProfile,
 } from '@/data/friendsClient';
 import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
 import type { Pub } from '@/data/pubs';
 import { useNearbyPub } from '@/counter/useNearbyPub';
 import { cs } from '@/i18n/cs';
+import { usePartyGroupsStore } from '@/stores/partyGroupsStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -56,6 +58,7 @@ import { softDrop } from '@/theme/shadows';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 
 import HourStepper from './HourStepper';
+import { friendDisplayName } from './FriendMini';
 import SectionHeader from './SectionHeader';
 import SegmentedControl from './SegmentedControl';
 import SkeletonBlock from './SkeletonBlock';
@@ -66,6 +69,8 @@ const HOUR_PRESETS = [18, 19, 20, 21, 22] as const;
 const RECENT_LIMIT = 6;
 
 interface ComposeSheetProps {
+  /** Accepted friends available as recipients. */
+  friends: FriendProfile[];
   /** Fired after a successful (or queued) send so the parent reloads. */
   onSubmitted: () => void;
   /** Fired once the sheet has finished sliding out (parent then unmounts it). */
@@ -117,15 +122,96 @@ function PubRow({
   );
 }
 
-function ComposeSheet({ onSubmitted, onClose }: ComposeSheetProps): React.ReactElement {
+function RecipientChip({
+  label,
+  selected,
+  onPress,
+  icon,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+  icon?: ReactNode;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.recipientChip,
+        selected && styles.recipientChipActive,
+        pressed && styles.dim,
+      ]}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      accessibilityLabel={label}
+    >
+      {icon}
+      <Text
+        style={[styles.recipientChipText, selected && styles.recipientChipTextActive]}
+        numberOfLines={1}
+        maxFontSizeMultiplier={FontScaleCap.body}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function FriendRecipientRow({
+  friend,
+  selected,
+  onToggle,
+}: {
+  friend: FriendProfile;
+  selected: boolean;
+  onToggle: () => void;
+}) {
+  const name = friendDisplayName(friend);
+  return (
+    <Pressable
+      onPress={onToggle}
+      style={({ pressed }) => [
+        styles.recipientRow,
+        selected && styles.recipientRowSelected,
+        pressed && styles.dim,
+      ]}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: selected }}
+      accessibilityLabel={name}
+    >
+      <View style={[styles.recipientCheck, selected && styles.recipientCheckActive]}>
+        {selected ? <CheckIcon size={14} color={Colors.stout} /> : null}
+      </View>
+      <View style={styles.recipientNameWrap}>
+        <Text style={styles.recipientName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+          {name}
+        </Text>
+        {friend.displayName && friend.nickname ? (
+          <Text style={styles.recipientSub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+            {friend.displayName}
+          </Text>
+        ) : null}
+      </View>
+    </Pressable>
+  );
+}
+
+function ComposeSheet({ friends, onSubmitted, onClose }: ComposeSheetProps): React.ReactElement {
   const insets = useSafeAreaInsets();
   const reduceMotion = useReduceMotion();
   const showToast = useToastStore((s) => s.show);
 
   const { candidates, permissionState, requestPermission, loading } = useNearbyPub();
+  const groups = usePartyGroupsStore((s) => s.groups);
+  const upsertGroup = usePartyGroupsStore((s) => s.upsertGroup);
+  const pruneMemberIds = usePartyGroupsStore((s) => s.pruneMemberIds);
 
   const [placeTab, setPlaceTab] = useState<0 | 1>(0);
   const [timeTab, setTimeTab] = useState<0 | 1>(0);
+  const [audienceMode, setAudienceMode] = useState<'all' | 'custom'>('all');
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const [selectedRecipientIds, setSelectedRecipientIds] = useState<string[]>([]);
+  const [groupName, setGroupName] = useState('');
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [selectedPub, setSelectedPub] = useState<Pub | null>(null);
   const [message, setMessage] = useState('');
@@ -183,6 +269,17 @@ function ComposeSheet({ onSubmitted, onClose }: ComposeSheetProps): React.ReactE
   }, [tallyCurrent, tallyHistory]);
 
   const options = placeTab === 0 ? nearbyOptions : recentOptions;
+  const friendIds = useMemo(() => new Set(friends.map((friend) => friend.id)), [friends]);
+  const selectedRecipientIdsValid = useMemo(
+    () => selectedRecipientIds.filter((id) => friendIds.has(id)),
+    [friendIds, selectedRecipientIds],
+  );
+  const selectedCount = audienceMode === 'all' ? friends.length : selectedRecipientIdsValid.length;
+  const targetRecipientIds = audienceMode === 'custom' ? selectedRecipientIdsValid : undefined;
+
+  useEffect(() => {
+    pruneMemberIds(friends.map((friend) => friend.id));
+  }, [friends, pruneMemberIds]);
 
   // Effective selection: an explicit pick, else the first option in the current
   // tab (so the CTA lights up without a tap, and the default follows the tab).
@@ -193,6 +290,47 @@ function ComposeSheet({ onSubmitted, onClose }: ComposeSheetProps): React.ReactE
     setSelectedKey(option.key);
     setSelectedPub(option.pub);
   }, []);
+
+  const selectAllRecipients = useCallback(() => {
+    setAudienceMode('all');
+    setActiveGroupId(null);
+    setSelectedRecipientIds([]);
+  }, []);
+
+  const selectGroup = useCallback((groupId: string) => {
+    const group = usePartyGroupsStore.getState().groups.find((item) => item.id === groupId);
+    if (!group) return;
+    setAudienceMode('custom');
+    setActiveGroupId(group.id);
+    setSelectedRecipientIds(group.memberIds.filter((id) => friendIds.has(id)));
+    setGroupName(group.name);
+  }, [friendIds]);
+
+  const startCustomSelection = useCallback(() => {
+    setAudienceMode('custom');
+    setActiveGroupId(null);
+    if (selectedRecipientIds.length === 0) {
+      setSelectedRecipientIds(friends.slice(0, 3).map((friend) => friend.id));
+    }
+  }, [friends, selectedRecipientIds.length]);
+
+  const toggleRecipient = useCallback((id: string) => {
+    setAudienceMode('custom');
+    setActiveGroupId(null);
+    setSelectedRecipientIds((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
+    );
+  }, []);
+
+  const saveCurrentGroup = useCallback(() => {
+    const savedId = upsertGroup(groupName, selectedRecipientIdsValid, activeGroupId ?? undefined);
+    if (!savedId) {
+      showToast(cs.friends.recipientGroupSaveHint);
+      return;
+    }
+    setActiveGroupId(savedId);
+    showToast(cs.friends.recipientGroupSaved);
+  }, [activeGroupId, groupName, selectedRecipientIdsValid, showToast, upsertGroup]);
 
   const setHourClamped = useCallback(
     (h: number) => {
@@ -229,7 +367,8 @@ function ComposeSheet({ onSubmitted, onClose }: ComposeSheetProps): React.ReactE
   // A plan needs a strictly-future hour today (minutes clamped to :00). Kept pure
   // (no render-time clock call) — the actual ISO is built in the submit handler.
   const isValidPlanTime = hour > nowHour;
-  const canSubmit = !!selectionPub && (!isPlan || isValidPlanTime) && !submitting;
+  const hasRecipients = audienceMode === 'all' || selectedRecipientIdsValid.length > 0;
+  const canSubmit = !!selectionPub && (!isPlan || isValidPlanTime) && hasRecipients && !submitting;
 
   const handleSubmit = useCallback(() => {
     if (!selectionPub || submitting) return;
@@ -245,8 +384,8 @@ function ComposeSheet({ onSubmitted, onClose }: ComposeSheetProps): React.ReactE
       scheduledForISO = d.toISOString();
     }
     const call: Promise<FriendActionResult> = isPlan
-      ? createFriendPlan(selectionPub, scheduledForISO as string, trimmed, clientId)
-      : shareFriendPubActivity(selectionPub, trimmed, clientId);
+      ? createFriendPlan(selectionPub, scheduledForISO as string, trimmed, clientId, targetRecipientIds)
+      : shareFriendPubActivity(selectionPub, trimmed, clientId, targetRecipientIds);
 
     void call.then((res) => {
       if (!mountedRef.current) return;
@@ -261,7 +400,7 @@ function ComposeSheet({ onSubmitted, onClose }: ComposeSheetProps): React.ReactE
         void enqueueFriendOp({
           op: 'activity',
           clientId,
-          payload: { pub: selectionPub, message: trimmed, scheduledFor: scheduledForISO },
+          payload: { pub: selectionPub, message: trimmed, scheduledFor: scheduledForISO, recipientIds: targetRecipientIds },
         });
         showToast(isPlan ? cs.friends.planCreated : cs.friends.composeQueued);
         onSubmitted();
@@ -282,6 +421,7 @@ function ComposeSheet({ onSubmitted, onClose }: ComposeSheetProps): React.ReactE
     showToast,
     onSubmitted,
     requestClose,
+    targetRecipientIds,
   ]);
 
   const showNearbyPermPrompt = placeTab === 0 && permissionState !== 'granted';
@@ -319,8 +459,89 @@ function ComposeSheet({ onSubmitted, onClose }: ComposeSheetProps): React.ReactE
           </Pressable>
 
           <ScrollView style={styles.body} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            {/* KOMU */}
+            <SectionHeader label={cs.friends.composeAudienceLabel} />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.recipientChips}
+            >
+              <RecipientChip
+                label={cs.friends.recipientAll}
+                selected={audienceMode === 'all'}
+                onPress={selectAllRecipients}
+                icon={<UsersIcon size={16} color={audienceMode === 'all' ? Colors.stout : Colors.amber} />}
+              />
+              {groups.map((group) => (
+                <RecipientChip
+                  key={group.id}
+                  label={group.name}
+                  selected={audienceMode === 'custom' && activeGroupId === group.id}
+                  onPress={() => selectGroup(group.id)}
+                />
+              ))}
+              <RecipientChip
+                label={cs.friends.recipientCustom}
+                selected={audienceMode === 'custom' && activeGroupId == null}
+                onPress={startCustomSelection}
+                icon={<PlusIcon size={16} color={audienceMode === 'custom' && activeGroupId == null ? Colors.stout : Colors.amber} />}
+              />
+            </ScrollView>
+            <Text style={styles.recipientSummary} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
+              {audienceMode === 'all'
+                ? cs.friends.recipientAllSummary(selectedCount)
+                : cs.friends.recipientCustomSummary(selectedCount)}
+            </Text>
+            {audienceMode === 'custom' ? (
+              <View style={styles.recipientPanel}>
+                {friends.length === 0 ? (
+                  <Text style={styles.emptyText} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {cs.friends.recipientNoFriends}
+                  </Text>
+                ) : (
+                  friends.map((friend) => (
+                    <FriendRecipientRow
+                      key={friend.id}
+                      friend={friend}
+                      selected={selectedRecipientIdsValid.includes(friend.id)}
+                      onToggle={() => toggleRecipient(friend.id)}
+                    />
+                  ))
+                )}
+                <View style={styles.groupSaveRow}>
+                  <TextInput
+                    value={groupName}
+                    onChangeText={setGroupName}
+                    placeholder={cs.friends.recipientGroupPlaceholder}
+                    placeholderTextColor={Colors.mutedText}
+                    style={styles.groupNameInput}
+                    maxLength={28}
+                    maxFontSizeMultiplier={FontScaleCap.body}
+                  />
+                  <Pressable
+                    onPress={saveCurrentGroup}
+                    disabled={selectedRecipientIdsValid.length === 0}
+                    style={({ pressed }) => [
+                      styles.groupSaveButton,
+                      selectedRecipientIdsValid.length === 0 && styles.groupSaveButtonDisabled,
+                      pressed && selectedRecipientIdsValid.length > 0 && styles.dim,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: selectedRecipientIdsValid.length === 0 }}
+                    accessibilityLabel={cs.friends.recipientGroupSave}
+                  >
+                    <Text style={styles.groupSaveText} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {cs.friends.recipientGroupSave}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : null}
+
             {/* KDE */}
-            <SectionHeader label={cs.friends.composePubLabel} />
+            <View style={styles.sectionGap}>
+              <SectionHeader label={cs.friends.composePubLabel} />
+            </View>
             <SegmentedControl
               options={[cs.friends.composeNearby, cs.friends.composeRecent]}
               value={placeTab}
@@ -426,7 +647,7 @@ function ComposeSheet({ onSubmitted, onClose }: ComposeSheetProps): React.ReactE
           <View style={styles.footer}>
             {!canSubmit && !submitting ? (
               <Text style={styles.hint} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.friends.composeNoPub}
+                {!hasRecipients ? cs.friends.recipientNoSelection : cs.friends.composeNoPub}
               </Text>
             ) : null}
             <Pressable
@@ -511,6 +732,124 @@ const styles = StyleSheet.create({
   },
   sectionGap: {
     marginTop: Spacing.xl,
+  },
+  recipientChips: {
+    gap: Spacing.sm,
+    paddingTop: Spacing.sm,
+    paddingRight: Spacing.lg,
+  },
+  recipientChip: {
+    minHeight: 40,
+    maxWidth: 180,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.border, 0.7),
+    backgroundColor: withAlpha(Colors.foam, 0.05),
+  },
+  recipientChipActive: {
+    borderColor: withAlpha(Colors.amber, 0.42),
+    backgroundColor: Colors.amber,
+  },
+  recipientChipText: {
+    flexShrink: 1,
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 14,
+    color: Colors.foamMuted,
+  },
+  recipientChipTextActive: {
+    color: Colors.stout,
+  },
+  recipientSummary: {
+    marginTop: Spacing.sm,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
+    color: Colors.mutedText,
+  },
+  recipientPanel: {
+    marginTop: Spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.border, 0.45),
+  },
+  recipientRow: {
+    minHeight: 46,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: withAlpha(Colors.border, 0.36),
+  },
+  recipientRowSelected: {
+    backgroundColor: withAlpha(Colors.amber, 0.06),
+  },
+  recipientCheck: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.border, 0.8),
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.foam, 0.04),
+  },
+  recipientCheckActive: {
+    borderColor: Colors.amber,
+    backgroundColor: Colors.amber,
+  },
+  recipientNameWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  recipientName: {
+    fontFamily: Fonts.ui.bold,
+    fontSize: 15,
+    color: Colors.foam,
+  },
+  recipientSub: {
+    marginTop: 1,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 12,
+    color: Colors.mutedText,
+  },
+  groupSaveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingTop: Spacing.md,
+  },
+  groupNameInput: {
+    flex: 1,
+    minHeight: 44,
+    fontFamily: Fonts.ui.semibold,
+    color: Colors.foam,
+    fontSize: 15,
+    backgroundColor: Colors.stout2,
+    borderRadius: Radius.medium,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: Spacing.md,
+  },
+  groupSaveButton: {
+    minHeight: 44,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.pill,
+    backgroundColor: withAlpha(Colors.amber, 0.14),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.34),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  groupSaveButtonDisabled: {
+    opacity: 0.5,
+  },
+  groupSaveText: {
+    fontFamily: Fonts.ui.bold,
+    fontSize: 14,
+    color: Colors.amber,
   },
   list: {
     marginTop: Spacing.sm,

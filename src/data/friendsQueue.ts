@@ -50,6 +50,8 @@ interface ActivityPayload {
   message?: string;
   /** ISO time for a plan ("Na čas"); absent/null → a live "Teď" broadcast. */
   scheduledFor?: string | null;
+  /** Optional explicit audience; absent keeps legacy "all friends" fanout. */
+  recipientIds?: string[];
 }
 
 /** One pending Parta write, keyed (and deduped) by {@link dedupKey}. */
@@ -104,7 +106,12 @@ function isQueueItem(value: unknown): value is FriendQueueItem {
     case 'cheer-clear':
       return typeof (i as { activityId?: unknown }).activityId === 'string';
     case 'activity':
-      return typeof i.clientId === 'string' && isPub((i as { payload?: ActivityPayload }).payload?.pub);
+      return (
+        typeof i.clientId === 'string' &&
+        isPub((i as { payload?: ActivityPayload }).payload?.pub) &&
+        ((i as { payload?: ActivityPayload }).payload?.recipientIds === undefined ||
+          Array.isArray((i as { payload?: ActivityPayload }).payload?.recipientIds))
+      );
     case 'end':
       return typeof i.clientId === 'string';
     case 'request':
@@ -176,8 +183,8 @@ async function deliver(item: FriendQueueItem): Promise<QueueSyncResult> {
     case 'activity': {
       const { pub, message, scheduledFor } = item.payload;
       const result = scheduledFor
-        ? await createFriendPlan(pub, scheduledFor, message, item.clientId)
-        : await shareFriendPubActivity(pub, message, item.clientId);
+        ? await createFriendPlan(pub, scheduledFor, message, item.clientId, item.payload.recipientIds)
+        : await shareFriendPubActivity(pub, message, item.clientId, item.payload.recipientIds);
       return classify(result);
     }
     case 'end':

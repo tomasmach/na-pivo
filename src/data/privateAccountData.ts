@@ -16,6 +16,7 @@ import { clearPubRatingsQueue } from './pubRatingsQueue';
 import { runWithoutPubRatingsSync } from './pubRatingsSync';
 import { clearVisitsQueue } from './visitsQueue';
 import { useCommunityStore } from '@/stores/communityStore';
+import { usePartyGroupsStore } from '@/stores/partyGroupsStore';
 import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { usePubStore } from '@/stores/pubStore';
@@ -28,6 +29,7 @@ const PRIVATE_STORAGE_KEYS = [
   'na-pivo-visits-seeded',
   'na-pivo-community',
   'na-pivo-pub',
+  'na-pivo-party-groups',
   // Note: the Parta social-graph snapshot ('na-pivo-friends-dashboard') is cleared
   // via clearFriendsDashboardSnapshot() below — that path also bumps the snapshot
   // generation so an in-flight dashboard fetch can't re-persist it after the clear.
@@ -52,6 +54,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
     usePubAmenitiesStore.setState({ votes: {} });
   });
   useCommunityStore.setState({ overrides: {} });
+  usePartyGroupsStore.setState({ groups: [] });
   usePubStore.setState({
     revealedPub: null,
     reportedPubIds: [],

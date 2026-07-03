@@ -1181,7 +1181,11 @@ export default function FriendsScreen() {
 
       {codeVisible ? <CodeSheet onClose={() => setCodeVisible(false)} /> : null}
       {composeVisible ? (
-        <ComposeSheet onSubmitted={reload} onClose={() => setComposeVisible(false)} />
+        <ComposeSheet
+          friends={dashboard?.friends ?? []}
+          onSubmitted={reload}
+          onClose={() => setComposeVisible(false)}
+        />
       ) : null}
     </View>
   );

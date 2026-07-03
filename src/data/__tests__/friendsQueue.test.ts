@@ -111,12 +111,12 @@ describe('flushFriendsQueue — delivery + keep/drop', () => {
       clientId: 'plan1',
       payload: { pub: PUB, message: 'Držím stůl', scheduledFor: '2026-07-02T18:00:00.000Z' },
     });
-    expect(createFriendPlan).toHaveBeenCalledWith(PUB, '2026-07-02T18:00:00.000Z', 'Držím stůl', 'plan1');
+    expect(createFriendPlan).toHaveBeenCalledWith(PUB, '2026-07-02T18:00:00.000Z', 'Držím stůl', 'plan1', undefined);
     expect(shareFriendPubActivity).not.toHaveBeenCalled();
 
     shareFriendPubActivity.mockResolvedValue(retry());
-    await enqueueFriendOp({ op: 'activity', clientId: 'live1', payload: { pub: PUB } });
-    expect(shareFriendPubActivity).toHaveBeenCalledWith(PUB, undefined, 'live1');
+    await enqueueFriendOp({ op: 'activity', clientId: 'live1', payload: { pub: PUB, recipientIds: ['friend-a'] } });
+    expect(shareFriendPubActivity).toHaveBeenCalledWith(PUB, undefined, 'live1', ['friend-a']);
   });
 
   it('routes a request op through sendFriendRequest', async () => {
