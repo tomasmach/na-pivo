@@ -729,6 +729,12 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
         contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom + 16, 28) }]}
         showsVerticalScrollIndicator={false}
       >
+        {/* Keep the public mapping prompt in the motivation zone, but as one
+            compact strip so it doesn't push the beer stepper below the fold. */}
+        <View style={styles.mapPubTop}>
+          <MapPubEntry pubKey={cell} pubName={pub.name} info={pubInfoFromPub(pub)} />
+        </View>
+
         {/* Hero */}
         <Hero
           count={count}
@@ -817,10 +823,9 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
           </View>
         )}
 
-        {/* Secondary pub actions. Counting stays first; these stay available
-            without competing with the beer controls in the opening viewport. */}
+        {/* Secondary social action. Mapping already lives near the top; this
+            remains lower so the first screen is not a stack of chores. */}
         <View style={styles.pubActions}>
-          <MapPubEntry pubKey={cell} pubName={pub.name} info={pubInfoFromPub(pub)} />
           <Pressable
             onPress={() => void handleShareWithFriends()}
             disabled={sharingWithFriends || broadcasted}
@@ -1074,6 +1079,9 @@ const styles = StyleSheet.create({
     marginTop: Spacing.lg,
     gap: Spacing.sm,
   },
+  mapPubTop: {
+    marginBottom: 6,
+  },
   friendShareButton: {
     minHeight: 46,
     borderRadius: Radius.pill,
@@ -1119,9 +1127,9 @@ const styles = StyleSheet.create({
   hero: {
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 300,
-    paddingTop: Spacing.lg,
-    paddingBottom: 12,
+    minHeight: 238,
+    paddingTop: 8,
+    paddingBottom: 8,
   },
   heroEmptyIcon: {
     marginBottom: Spacing.md,
@@ -1150,35 +1158,35 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   heroCountGlow: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
+    paddingHorizontal: 14,
+    paddingTop: 6,
     paddingBottom: 2,
     overflow: 'visible',
   },
   heroCount: {
     fontFamily: Fonts.display.extrabold,
-    fontSize: 108,
+    fontSize: 96,
     // Keep the line box tall enough that the extrabold digit never clips at the
     // top; the gap to "piv" is closed by the noun's negative margin instead, so
     // we don't trade a bottom gap for a top crop.
-    lineHeight: 126,
+    lineHeight: 112,
     color: Colors.amber,
     includeFontPadding: false,
   },
   heroNoun: {
     fontFamily: Fonts.display.extrabold,
-    fontSize: 26,
+    fontSize: 24,
     color: Colors.foam,
     // Pull up into the digit's empty descender/leading space (which has no
     // glyph for a number) to tighten the number↔word gap without clipping.
-    marginTop: -26,
+    marginTop: -22,
   },
   // The spent total lives in a contained pill so it reads as a deliberate
   // stat chip rather than text floating under the hero.
   spentPill: {
-    marginTop: 10,
+    marginTop: 8,
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 7,
     borderRadius: Radius.pill,
     backgroundColor: Colors.stout2,
     borderWidth: 1,
@@ -1193,7 +1201,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.mutedText,
-    marginTop: 8,
+    marginTop: 6,
   },
   // "Dopito" — a compact session chip in the header. Same outline treatment as
   // "Změnit" (stout2 fill + border + amber label) so the two read as a matched
@@ -1273,8 +1281,8 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.display.extrabold,
     fontSize: 18,
     color: Colors.foam,
-    marginTop: 2,
-    marginBottom: 10,
+    marginTop: 0,
+    marginBottom: 8,
   },
   menuList: {
     gap: 10,
