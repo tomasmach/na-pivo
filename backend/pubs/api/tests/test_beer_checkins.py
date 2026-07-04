@@ -185,6 +185,61 @@ def test_client_id_upsert_is_idempotent(client):
 
 
 @pytest.mark.django_db
+def test_multiple_checkins_can_share_visit_client_id(client):
+    token, _account = _register(client, "janek")
+    visit_client_id = uuid.uuid4()
+    historical = (timezone.now() - timedelta(days=14)).replace(microsecond=0)
+    ended = historical + timedelta(hours=3)
+
+    first_payload = _payload(uuid.uuid4(), visibility="friends")
+    first_payload.update(
+        {
+            "beer_name": "Pilsner Urquell",
+            "quantity": 2,
+            "price_czk": 64,
+            "pub_name": "U Tří růží",
+            "visit_client_id": str(visit_client_id),
+            "checked_in_at": historical.isoformat(),
+            "ended_at": ended.isoformat(),
+        }
+    )
+    second_payload = _payload(uuid.uuid4(), visibility="friends")
+    second_payload.update(
+        {
+            "beer_name": "Kozel 11",
+            "quantity": 1,
+            "price_czk": 52,
+            "pub_name": "U Tří růží",
+            "visit_client_id": str(visit_client_id),
+            "checked_in_at": historical.isoformat(),
+            "ended_at": ended.isoformat(),
+        }
+    )
+
+    first = client.post("/v1/beer-checkins", data=first_payload, format="json", **_auth(token))
+    second = client.post("/v1/beer-checkins", data=second_payload, format="json", **_auth(token))
+    second_payload["quantity"] = 3
+    replay = client.post("/v1/beer-checkins", data=second_payload, format="json", **_auth(token))
+
+    assert first.status_code == status.HTTP_201_CREATED, first.content
+    assert second.status_code == status.HTTP_201_CREATED, second.content
+    assert replay.status_code == status.HTTP_200_OK, replay.content
+    rows = BeerCheckIn.objects.order_by("beer_name")
+    assert rows.count() == 2
+    assert {row.beer_name for row in rows} == {"Kozel 11", "Pilsner Urquell"}
+    assert {row.visit_client_id for row in rows} == {visit_client_id}
+    assert BeerCheckIn.objects.get(beer_name="Kozel 11").quantity == 3
+    assert BeerCheckIn.objects.get(beer_name="Pilsner Urquell").quantity == 2
+
+    listing = client.get("/v1/beer-checkins", **_auth(token))
+    assert listing.status_code == status.HTTP_200_OK, listing.content
+    assert [row["beer_name"] for row in listing.json()["checkins"]] == [
+        "Pilsner Urquell",
+        "Kozel 11",
+    ]
+
+
+@pytest.mark.django_db
 def test_checkin_accepts_historical_checked_in_at(client):
     token, _account = _register(client, "janek")
     historical = (timezone.now() - timedelta(days=420)).replace(microsecond=0)

@@ -2854,7 +2854,7 @@ class FriendDetailView(APIView):
                 visibility=BeerCheckIn.Visibility.FRIENDS,
                 account__ghost_mode=False,
             )
-            .order_by("-checked_in_at")[:5]
+            .order_by("-checked_in_at", "created_at", "id")[:5]
         )
 
         return Response(
@@ -3452,7 +3452,11 @@ class BeerCheckInView(APIView):
     throttle_scope = "friends"
 
     def get(self, request: Request) -> Response:
-        rows = _beer_checkin_queryset().filter(account=request.user).order_by("-checked_in_at")[:100]
+        rows = (
+            _beer_checkin_queryset()
+            .filter(account=request.user)
+            .order_by("-checked_in_at", "created_at", "id")[:100]
+        )
         return Response(
             {"checkins": BeerCheckInSerializer(rows, many=True, context=_beer_checkin_context(request)).data},
             status=status.HTTP_200_OK,
@@ -3530,7 +3534,7 @@ class BeerCheckInFeedView(APIView):
                 account__ghost_mode=False,
                 visibility=BeerCheckIn.Visibility.FRIENDS,
             )
-            .order_by("-checked_in_at")[:50]
+            .order_by("-checked_in_at", "created_at", "id")[:200]
         )
         return Response(
             {"checkins": BeerCheckInSerializer(rows, many=True, context=_beer_checkin_context(request)).data},
@@ -3710,12 +3714,12 @@ class BeerDetailView(APIView):
                 | Q(account__status=Account.Status.ACTIVE, account__ghost_mode=False)
             )
             .exclude(account_id__in=blocked_ids)
-            .order_by("-checked_in_at")[:20]
+            .order_by("-checked_in_at", "created_at", "id")[:20]
         )
         my_history = (
             _beer_checkin_queryset()
             .filter(account=request.user, beer_key=beer_key, brewery_key=brewery_key)
-            .order_by("-checked_in_at")[:50]
+            .order_by("-checked_in_at", "created_at", "id")[:50]
         )
         my_summary = mine.aggregate(
             count=Count("id"),
@@ -4648,7 +4652,10 @@ def _load_export_account(account: Account) -> Account:
             "identities",
             "push_devices",
             "drinks",
-            "beer_checkins",
+            Prefetch(
+                "beer_checkins",
+                queryset=BeerCheckIn.objects.order_by("-checked_in_at", "created_at", "id"),
+            ),
             Prefetch(
                 "beer_checkin_reactions",
                 queryset=BeerCheckInReaction.objects.select_related("checkin"),
