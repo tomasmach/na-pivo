@@ -753,9 +753,16 @@ class BeerCheckInRequestSerializer(serializers.Serializer):
         default=BeerCheckIn.Visibility.PRIVATE,
     )
     checked_in_at = serializers.DateTimeField(required=False, allow_null=True)
+    occurred_at = serializers.DateTimeField(required=False, allow_null=True, write_only=True)
 
     def validate_tags(self, value: object) -> list[str]:
         return normalize_beer_checkin_tags(value)
+
+    def validate(self, attrs: dict) -> dict:
+        occurred_at = attrs.pop("occurred_at", None)
+        if attrs.get("checked_in_at") is None and occurred_at is not None:
+            attrs["checked_in_at"] = occurred_at
+        return attrs
 
 
 class BeerCheckInReactionSerializer(serializers.Serializer):

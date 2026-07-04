@@ -185,6 +185,93 @@ def test_client_id_upsert_is_idempotent(client):
 
 
 @pytest.mark.django_db
+def test_checkin_accepts_historical_checked_in_at(client):
+    token, _account = _register(client, "janek")
+    historical = (timezone.now() - timedelta(days=420)).replace(microsecond=0)
+    payload = _payload(visibility="private")
+    payload["checked_in_at"] = historical.isoformat()
+
+    response = client.post(
+        "/v1/beer-checkins",
+        data=payload,
+        format="json",
+        **_auth(token),
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    assert parse_datetime(response.json()["checked_in_at"]) == historical
+    assert BeerCheckIn.objects.get().checked_in_at == historical
+
+
+@pytest.mark.django_db
+def test_checkin_accepts_occurred_at_alias_for_historical_entries(client):
+    token, _account = _register(client, "janek")
+    historical = (timezone.now() - timedelta(days=365)).replace(microsecond=0)
+    payload = _payload(visibility="private")
+    payload.pop("checked_in_at")
+    payload["occurred_at"] = historical.isoformat()
+
+    response = client.post(
+        "/v1/beer-checkins",
+        data=payload,
+        format="json",
+        **_auth(token),
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    body = response.json()
+    assert "occurred_at" not in body
+    assert parse_datetime(body["checked_in_at"]) == historical
+    assert BeerCheckIn.objects.get().checked_in_at == historical
+
+
+@pytest.mark.django_db
+def test_checkin_historical_replay_preserves_diary_fields(client):
+    token, _account = _register(client, "janek")
+    client_id = uuid.uuid4()
+    historical = (timezone.now() - timedelta(days=90)).replace(microsecond=0)
+    payload = _payload(client_id, visibility="friends")
+    payload.pop("checked_in_at")
+    payload.update(
+        {
+            "occurred_at": historical.isoformat(),
+            "rating": "4.0",
+            "tags": ["crisp", "one_more", "unknown_new_tag"],
+            "note": "Zapsáno zpětně po výletu.",
+            "pub_cache_key": "u2fkbn1z",
+            "pub_name": "U Zlatého tygra",
+            "pub_city": "Praha",
+        }
+    )
+
+    first = client.post("/v1/beer-checkins", data=payload, format="json", **_auth(token))
+    replay = client.post("/v1/beer-checkins", data=payload, format="json", **_auth(token))
+
+    assert first.status_code == status.HTTP_201_CREATED, first.content
+    assert replay.status_code == status.HTTP_200_OK, replay.content
+    assert BeerCheckIn.objects.count() == 1
+    assert replay.json()["id"] == first.json()["id"]
+    assert parse_datetime(replay.json()["checked_in_at"]) == historical
+    assert replay.json()["rating"] == "4.0"
+    assert replay.json()["tags"] == ["crisp", "one_more"]
+    assert replay.json()["note"] == "Zapsáno zpětně po výletu."
+    assert replay.json()["pub_cache_key"] == "u2fkbn1z"
+    assert replay.json()["pub_name"] == "U Zlatého tygra"
+    assert replay.json()["pub_city"] == "Praha"
+    assert replay.json()["visibility"] == "friends"
+
+    row = BeerCheckIn.objects.get(client_id=client_id)
+    assert row.checked_in_at == historical
+    assert str(row.rating) == "4.0"
+    assert row.tags == ["crisp", "one_more"]
+    assert row.note == "Zapsáno zpětně po výletu."
+    assert row.pub_cache_key == "u2fkbn1z"
+    assert row.pub_name == "U Zlatého tygra"
+    assert row.pub_city == "Praha"
+    assert row.visibility == BeerCheckIn.Visibility.FRIENDS
+
+
+@pytest.mark.django_db
 def test_checkin_tags_are_lenient_truncated_and_upserted(client):
     token_owner, owner = _register(client, "janek")
     token_friend, friend = _register(client, "petr")
