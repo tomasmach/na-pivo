@@ -55,6 +55,8 @@ from pubs.beer_catalog import (
 from pubs.mapper import maper_levels, maper_progress, maper_xp_rules
 from pubs.models import (
     Account,
+    BeerCheckIn,
+    BeerCheckInReaction,
     ClientEvent,
     ContentReport,
     EmailCredential,
@@ -659,6 +661,134 @@ class FriendActivityReactionSerializer(serializers.Serializer):
     """
 
     reaction = serializers.ChoiceField(choices=FriendActivityReaction.Kind.choices)
+
+
+class BeerCheckInRequestSerializer(serializers.Serializer):
+    """Request body for POST /v1/beer-checkins."""
+
+    client_id = serializers.UUIDField()
+    beer_name = serializers.CharField(max_length=120, trim_whitespace=True)
+    brewery_name = serializers.CharField(
+        max_length=120,
+        required=False,
+        allow_blank=True,
+        default="",
+        trim_whitespace=True,
+    )
+    beer_style = serializers.CharField(
+        max_length=80,
+        required=False,
+        allow_blank=True,
+        default="",
+        trim_whitespace=True,
+    )
+    abv = serializers.DecimalField(
+        max_digits=4,
+        decimal_places=2,
+        required=False,
+        allow_null=True,
+        min_value=0,
+        max_value=25,
+    )
+    rating = serializers.DecimalField(
+        max_digits=3,
+        decimal_places=1,
+        required=False,
+        allow_null=True,
+        min_value=0,
+        max_value=5,
+    )
+    note = serializers.CharField(
+        max_length=1000,
+        required=False,
+        allow_blank=True,
+        default="",
+        trim_whitespace=True,
+    )
+    pub_cache_key = serializers.CharField(
+        max_length=12,
+        required=False,
+        allow_blank=True,
+        default="",
+        trim_whitespace=True,
+    )
+    pub_name = serializers.CharField(
+        max_length=200,
+        required=False,
+        allow_blank=True,
+        default="",
+        trim_whitespace=True,
+    )
+    pub_city = serializers.CharField(
+        max_length=120,
+        required=False,
+        allow_blank=True,
+        default="",
+        trim_whitespace=True,
+    )
+    visit_client_id = serializers.UUIDField(required=False, allow_null=True)
+    visibility = serializers.ChoiceField(
+        choices=BeerCheckIn.Visibility.choices,
+        default=BeerCheckIn.Visibility.PRIVATE,
+    )
+    checked_in_at = serializers.DateTimeField(required=False, allow_null=True)
+
+
+class BeerCheckInReactionSerializer(serializers.Serializer):
+    """Request body for POST /v1/beer-checkins/<id>/react."""
+
+    reaction = serializers.ChoiceField(choices=BeerCheckInReaction.Kind.choices)
+
+
+class BeerCheckInSerializer(serializers.ModelSerializer):
+    """Beer diary check-in with compact owner and reaction state."""
+
+    id = serializers.UUIDField(source="public_id", read_only=True)
+    account = FriendProfileSerializer(read_only=True)
+    reactions = serializers.SerializerMethodField()
+    my_reaction = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BeerCheckIn
+        fields = [
+            "id",
+            "account",
+            "client_id",
+            "beer_name",
+            "brewery_name",
+            "beer_style",
+            "abv",
+            "rating",
+            "note",
+            "pub_cache_key",
+            "pub_name",
+            "pub_city",
+            "visit_client_id",
+            "visibility",
+            "checked_in_at",
+            "reactions",
+            "my_reaction",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+    def get_reactions(self, obj: BeerCheckIn) -> dict:
+        counts = {kind.value: 0 for kind in BeerCheckInReaction.Kind}
+        for row in obj.reactions.all():
+            if row.kind in counts:
+                counts[row.kind] += 1
+        return counts
+
+    def get_my_reaction(self, obj: BeerCheckIn) -> str | None:
+        account = self.context.get("account")
+        if account is None:
+            return None
+        account_id = getattr(account, "pk", None)
+        for row in obj.reactions.all():
+            if row.account_id == account_id:
+                return row.kind
+        return None
 
 
 class FriendBlockRequestSerializer(serializers.Serializer):

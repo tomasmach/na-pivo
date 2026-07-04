@@ -19,6 +19,7 @@ GET    /v1/health      → HealthView
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import math
@@ -34,6 +35,7 @@ from django.core.cache import cache as default_cache
 from django.core.files.uploadhandler import FileUploadHandler, StopUpload
 from django.db import IntegrityError, transaction
 from django.db.models import (
+    Avg,
     Count,
     Exists,
     ExpressionWrapper,
@@ -89,6 +91,8 @@ from pubs.models import (
     AmenityXpLedger,
     AuthToken,
     BeerBrand,
+    BeerCheckIn,
+    BeerCheckInReaction,
     ClientEvent,
     ContentReport,
     DrinkLog,
@@ -129,6 +133,9 @@ from .serializers import (
     AccountUpdateSerializer,
     BeerBrandSuggestionSerializer,
     BeerBrandSuggestQuerySerializer,
+    BeerCheckInReactionSerializer,
+    BeerCheckInRequestSerializer,
+    BeerCheckInSerializer,
     BlockedPubsResponseSerializer,
     ClientEventRequestSerializer,
     ContentReportRequestSerializer,
@@ -181,6 +188,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_BLOCKED_REPORT_RADIUS_KM = 25.0
 _IDENTITY_SPACE_RE = re.compile(r"\s+")
+_BEER_KEY_RE = re.compile(r"\s+")
 
 # Radius buckets (km) for the Mapy "pubs near" cache — the same widening steps
 # the search itself uses. radius_bucket = the smallest bucket >= the requested
@@ -250,6 +258,13 @@ def _pub_identity_key(cache_key: str, name: str) -> str:
     """Stable per-business key inside a geohash-8 cell."""
     normalized_name = _IDENTITY_SPACE_RE.sub(" ", (name or "").strip().casefold())
     return f"{cache_key}::{normalized_name}" if normalized_name else cache_key
+
+
+def _beer_identity_key(value: str) -> str:
+    normalized = _BEER_KEY_RE.sub(" ", (value or "").strip().casefold())
+    if not normalized:
+        return ""
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
 FRIEND_ACTIVITY_DEFAULT_TTL = timedelta(hours=4)
@@ -423,6 +438,20 @@ def _friend_activity_reactions_prefetch() -> Prefetch:
 def _friend_activity_prefetches() -> tuple[Prefetch, Prefetch]:
     """The RSVP + reaction prefetches every FriendPubActivity read path needs."""
     return _friend_activity_responses_prefetch(), _friend_activity_reactions_prefetch()
+
+
+def _beer_checkin_context(request: Request) -> dict:
+    return {"request": request, "account": request.user}
+
+
+def _beer_checkin_reactions_prefetch() -> Prefetch:
+    return Prefetch("reactions", queryset=BeerCheckInReaction.objects.all())
+
+
+def _beer_checkin_queryset():
+    return BeerCheckIn.objects.select_related("account").prefetch_related(
+        _beer_checkin_reactions_prefetch()
+    )
 
 
 def _blocked_account_ids(account: Account) -> set[int]:
@@ -2796,6 +2825,15 @@ class FriendDetailView(APIView):
             .order_by("scheduled_for")
             .first()
         )
+        latest_beers = (
+            _beer_checkin_queryset()
+            .filter(
+                account=friend,
+                visibility=BeerCheckIn.Visibility.FRIENDS,
+                account__ghost_mode=False,
+            )
+            .order_by("-checked_in_at")[:5]
+        )
 
         return Response(
             {
@@ -2828,6 +2866,11 @@ class FriendDetailView(APIView):
                     }
                     for evening in shared_evenings[:3]
                 ],
+                "latest_beers": BeerCheckInSerializer(
+                    latest_beers,
+                    many=True,
+                    context=_beer_checkin_context(request),
+                ).data,
                 "blocked": FriendBlock.objects.filter(
                     blocker=request.user, blocked=friend
                 ).exists(),
@@ -3372,6 +3415,265 @@ class FriendActivityReactView(APIView):
             activity=activity, account=request.user
         ).delete()
         return Response(self._serialize_fresh(request, activity), status=status.HTTP_200_OK)
+
+
+class BeerCheckInView(APIView):
+    """GET/POST/DELETE beer diary check-ins.
+
+    POST is idempotent on (account, client_id) so mobile offline retries can
+    safely replay. The payload never accepts raw GPS, only a chosen pub identity.
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends"
+
+    def get(self, request: Request) -> Response:
+        rows = _beer_checkin_queryset().filter(account=request.user).order_by("-checked_in_at")[:100]
+        return Response(
+            {"checkins": BeerCheckInSerializer(rows, many=True, context=_beer_checkin_context(request)).data},
+            status=status.HTTP_200_OK,
+        )
+
+    def post(self, request: Request) -> Response:
+        serializer = BeerCheckInRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        defaults = {
+            "beer_name": data["beer_name"],
+            "brewery_name": data.get("brewery_name") or "",
+            "beer_style": data.get("beer_style") or "",
+            "abv": data.get("abv"),
+            "rating": data.get("rating"),
+            "note": data.get("note") or "",
+            "pub_cache_key": data.get("pub_cache_key") or "",
+            "pub_name": data.get("pub_name") or "",
+            "pub_city": data.get("pub_city") or "",
+            "visit_client_id": data.get("visit_client_id"),
+            "visibility": data.get("visibility") or BeerCheckIn.Visibility.PRIVATE,
+            "beer_key": _beer_identity_key(data["beer_name"]),
+            "brewery_key": _beer_identity_key(data.get("brewery_name") or ""),
+            "checked_in_at": data.get("checked_in_at") or dj_timezone.now(),
+        }
+
+        try:
+            with transaction.atomic():
+                checkin, created = BeerCheckIn.objects.update_or_create(
+                    account=request.user,
+                    client_id=data["client_id"],
+                    defaults=defaults,
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.error("beer_checkins: upsert failed: %s", exc, exc_info=True)
+            return _internal_error()
+
+        fresh = _beer_checkin_queryset().get(pk=checkin.pk)
+        return Response(
+            BeerCheckInSerializer(fresh, context=_beer_checkin_context(request)).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+    def delete(self, request: Request, client_id) -> Response:
+        return _idempotent_delete(
+            BeerCheckIn.objects.filter(account=request.user, client_id=client_id),
+            scope="beer_checkins",
+            key_label="client_id",
+            key_value=client_id,
+        )
+
+
+class BeerCheckInFeedView(APIView):
+    """GET /v1/beer-checkins/feed — friends-only beer check-in feed."""
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends_dashboard"
+
+    def get(self, request: Request) -> Response:
+        blocked_ids = _blocked_account_ids(request.user)
+        friend_ids = [fid for fid in _accepted_friend_ids(request.user) if fid not in blocked_ids]
+        rows = (
+            _beer_checkin_queryset()
+            .filter(
+                account_id__in=friend_ids,
+                account__status=Account.Status.ACTIVE,
+                account__ghost_mode=False,
+                visibility=BeerCheckIn.Visibility.FRIENDS,
+            )
+            .order_by("-checked_in_at")[:50]
+        )
+        return Response(
+            {"checkins": BeerCheckInSerializer(rows, many=True, context=_beer_checkin_context(request)).data},
+            status=status.HTTP_200_OK,
+        )
+
+
+class BeerCheckInReactView(APIView):
+    """POST/DELETE /v1/beer-checkins/<id>/react — "Na zdraví" on a beer check-in."""
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends"
+
+    def _load_visible_checkin(self, request: Request, checkin_id) -> BeerCheckIn | None:
+        return (
+            BeerCheckIn.objects.select_related("account")
+            .filter(
+                public_id=checkin_id,
+                visibility=BeerCheckIn.Visibility.FRIENDS,
+                account__status=Account.Status.ACTIVE,
+                account__ghost_mode=False,
+            )
+            .first()
+        )
+
+    def _can_react(self, request: Request, checkin: BeerCheckIn) -> Response | None:
+        if checkin.account_id == request.user.pk:
+            return Response(
+                {"detail": "Na vlastní pivo si připít nemusíš.", "code": "self_reaction"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if checkin.account_id in _blocked_account_ids(request.user):
+            return Response(
+                {"detail": "Tady se reagovat nedá.", "code": "blocked"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if checkin.account_id not in _accepted_friend_ids(request.user):
+            return Response(
+                {"detail": "S tímhle člověkem ještě nejste parta.", "code": "not_friends"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return None
+
+    def _serialize_fresh(self, request: Request, checkin: BeerCheckIn) -> dict:
+        fresh = _beer_checkin_queryset().get(pk=checkin.pk)
+        return BeerCheckInSerializer(fresh, context=_beer_checkin_context(request)).data
+
+    def post(self, request: Request, checkin_id) -> Response:
+        serializer = BeerCheckInReactionSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {"detail": "Tuhle reakci neznám.", "code": "invalid_reaction"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        checkin = self._load_visible_checkin(request, checkin_id)
+        if checkin is None:
+            return Response(
+                {"detail": "Tenhle zápis nevidím.", "code": "checkin_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        error = self._can_react(request, checkin)
+        if error is not None:
+            return error
+        try:
+            BeerCheckInReaction.objects.update_or_create(
+                checkin=checkin,
+                account=request.user,
+                defaults={"kind": serializer.validated_data["reaction"]},
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error("beer_checkins: reaction failed: %s", exc, exc_info=True)
+            return _internal_error()
+        return Response(self._serialize_fresh(request, checkin), status=status.HTTP_200_OK)
+
+    def delete(self, request: Request, checkin_id) -> Response:
+        checkin = BeerCheckIn.objects.filter(public_id=checkin_id).first()
+        if checkin is None:
+            return Response({"removed": False}, status=status.HTTP_200_OK)
+        deleted, _ = BeerCheckInReaction.objects.filter(
+            checkin=checkin, account=request.user
+        ).delete()
+        return Response({"removed": deleted > 0}, status=status.HTTP_200_OK)
+
+
+class BeerDetailView(APIView):
+    """GET /v1/beers/detail?beer_name=&brewery_name= — personal + party aggregate."""
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends_dashboard"
+
+    def get(self, request: Request) -> Response:
+        beer_name = (request.query_params.get("beer_name") or "").strip()
+        brewery_name = (request.query_params.get("brewery_name") or "").strip()
+        if not beer_name:
+            return Response(
+                {"detail": "beer_name is required.", "code": "missing_beer_name"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        beer_key = _beer_identity_key(beer_name)
+        brewery_key = _beer_identity_key(brewery_name)
+        blocked_ids = _blocked_account_ids(request.user)
+        friend_ids = [fid for fid in _accepted_friend_ids(request.user) if fid not in blocked_ids]
+        mine = BeerCheckIn.objects.filter(
+            account=request.user,
+            beer_key=beer_key,
+            brewery_key=brewery_key,
+        )
+        party = BeerCheckIn.objects.filter(
+            account_id__in=friend_ids,
+            account__status=Account.Status.ACTIVE,
+            account__ghost_mode=False,
+            visibility=BeerCheckIn.Visibility.FRIENDS,
+            beer_key=beer_key,
+            brewery_key=brewery_key,
+        )
+        party_accounts = Account.objects.filter(id__in=party.values("account_id")).order_by(
+            "nickname",
+            "display_name",
+        )
+        recent = (
+            _beer_checkin_queryset()
+            .filter(
+                Q(account=request.user) | Q(account_id__in=friend_ids),
+                beer_key=beer_key,
+                brewery_key=brewery_key,
+            )
+            .filter(Q(account=request.user) | Q(visibility=BeerCheckIn.Visibility.FRIENDS))
+            .filter(
+                Q(account=request.user)
+                | Q(account__status=Account.Status.ACTIVE, account__ghost_mode=False)
+            )
+            .exclude(account_id__in=blocked_ids)
+            .order_by("-checked_in_at")[:20]
+        )
+        my_history = (
+            _beer_checkin_queryset()
+            .filter(account=request.user, beer_key=beer_key, brewery_key=brewery_key)
+            .order_by("-checked_in_at")[:50]
+        )
+        return Response(
+            {
+                "beer_name": beer_name,
+                "brewery_name": brewery_name,
+                "my_count": mine.count(),
+                "party_count": party.count(),
+                "my_average_rating": mine.aggregate(value=Avg("rating"))["value"],
+                "party_average_rating": party.aggregate(value=Avg("rating"))["value"],
+                "party_drinkers": FriendProfileSerializer(
+                    party_accounts,
+                    many=True,
+                    context=_friend_profile_context(request),
+                ).data,
+                "recent_checkins": BeerCheckInSerializer(
+                    recent,
+                    many=True,
+                    context=_beer_checkin_context(request),
+                ).data,
+                "my_history": BeerCheckInSerializer(
+                    my_history,
+                    many=True,
+                    context=_beer_checkin_context(request),
+                ).data,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class FriendBlockView(APIView):
@@ -4268,12 +4570,47 @@ def _load_export_account(account: Account) -> Account:
             "identities",
             "push_devices",
             "drinks",
+            "beer_checkins",
+            Prefetch(
+                "beer_checkin_reactions",
+                queryset=BeerCheckInReaction.objects.select_related("checkin"),
+            ),
             "pub_visits",
             "pub_ratings",
             "contribution_logs",
             "pub_reports",
             "feedback_reports",
             "amenity_votes",
+            Prefetch(
+                "sent_friendships",
+                queryset=Friendship.objects.select_related("requester", "recipient"),
+            ),
+            Prefetch(
+                "received_friendships",
+                queryset=Friendship.objects.select_related("requester", "recipient"),
+            ),
+            "friend_pub_activities",
+            Prefetch(
+                "activity_responses",
+                queryset=FriendActivityResponse.objects.select_related("activity"),
+            ),
+            Prefetch(
+                "activity_reactions",
+                queryset=FriendActivityReaction.objects.select_related("activity"),
+            ),
+            Prefetch(
+                "friend_notifications",
+                queryset=FriendNotification.objects.select_related("actor", "friendship", "activity"),
+            ),
+            Prefetch(
+                "blocks_made",
+                queryset=FriendBlock.objects.select_related("blocked"),
+            ),
+            Prefetch(
+                "blocks_received",
+                queryset=FriendBlock.objects.select_related("blocker"),
+            ),
+            "invite_codes",
             Prefetch(
                 "content_reports_made",
                 queryset=ContentReport.objects.select_related("target_account"),
@@ -4374,6 +4711,134 @@ def _export_account_data(account: Account) -> dict:
             }
             for drink in account.drinks.all()
         ],
+        "beer_checkins": [
+            {
+                "id": str(checkin.public_id),
+                "client_id": str(checkin.client_id),
+                "beer_name": checkin.beer_name,
+                "brewery_name": checkin.brewery_name,
+                "beer_style": checkin.beer_style,
+                "abv": str(checkin.abv) if checkin.abv is not None else None,
+                "rating": str(checkin.rating) if checkin.rating is not None else None,
+                "note": checkin.note,
+                "pub_cache_key": checkin.pub_cache_key,
+                "pub_name": checkin.pub_name,
+                "pub_city": checkin.pub_city,
+                "visit_client_id": (
+                    str(checkin.visit_client_id) if checkin.visit_client_id else None
+                ),
+                "visibility": checkin.visibility,
+                "checked_in_at": _iso(checkin.checked_in_at),
+                "created_at": _iso(checkin.created_at),
+                "updated_at": _iso(checkin.updated_at),
+            }
+            for checkin in account.beer_checkins.all()
+        ],
+        "social": {
+            "friendships": [
+                {
+                    "id": str(row.public_id),
+                    "status": row.status,
+                    "requester_id": str(row.requester.public_id),
+                    "recipient_id": str(row.recipient.public_id),
+                    "requested_at": _iso(row.requested_at),
+                    "responded_at": _iso(row.responded_at),
+                    "updated_at": _iso(row.updated_at),
+                }
+                for row in [*account.sent_friendships.all(), *account.received_friendships.all()]
+            ],
+            "friend_activities": [
+                {
+                    "id": str(activity.public_id),
+                    "client_id": str(activity.client_id),
+                    "cache_key": activity.cache_key,
+                    "name": activity.name,
+                    "city": activity.city,
+                    "external_id": activity.external_id,
+                    "message": activity.message,
+                    "kind": activity.kind,
+                    "scheduled_for": _iso(activity.scheduled_for),
+                    "started_at": _iso(activity.started_at),
+                    "expires_at": _iso(activity.expires_at),
+                    "active": activity.active,
+                    "created_at": _iso(activity.created_at),
+                    "updated_at": _iso(activity.updated_at),
+                }
+                for activity in account.friend_pub_activities.all()
+            ],
+            "rsvp": [
+                {
+                    "activity_id": str(row.activity.public_id),
+                    "response": row.response,
+                    "created_at": _iso(row.created_at),
+                    "updated_at": _iso(row.updated_at),
+                }
+                for row in account.activity_responses.all()
+            ],
+            "reactions": [
+                {
+                    "target": "friend_activity",
+                    "activity_id": str(row.activity.public_id),
+                    "kind": row.kind,
+                    "created_at": _iso(row.created_at),
+                    "updated_at": _iso(row.updated_at),
+                }
+                for row in account.activity_reactions.all()
+            ]
+            + [
+                {
+                    "target": "beer_checkin",
+                    "checkin_id": str(row.checkin.public_id),
+                    "kind": row.kind,
+                    "created_at": _iso(row.created_at),
+                    "updated_at": _iso(row.updated_at),
+                }
+                for row in account.beer_checkin_reactions.all()
+            ],
+            "notifications": [
+                {
+                    "id": str(row.public_id),
+                    "kind": row.kind,
+                    "title": row.title,
+                    "body": row.body,
+                    "actor_id": str(row.actor.public_id) if row.actor_id else None,
+                    "friendship_id": (
+                        str(row.friendship.public_id) if row.friendship_id else None
+                    ),
+                    "activity_id": str(row.activity.public_id) if row.activity_id else None,
+                    "pub_cache_key": row.pub_cache_key,
+                    "pub_name": row.pub_name,
+                    "read_at": _iso(row.read_at),
+                    "created_at": _iso(row.created_at),
+                }
+                for row in account.friend_notifications.all()
+            ],
+            "blocks": [
+                {
+                    "direction": "made",
+                    "account_id": str(row.blocked.public_id),
+                    "created_at": _iso(row.created_at),
+                }
+                for row in account.blocks_made.all()
+            ]
+            + [
+                {
+                    "direction": "received",
+                    "account_id": str(row.blocker.public_id),
+                    "created_at": _iso(row.created_at),
+                }
+                for row in account.blocks_received.all()
+            ],
+            "invite_codes": [
+                {
+                    "code": row.code,
+                    "created_at": _iso(row.created_at),
+                    "expires_at": _iso(row.expires_at),
+                    "revoked": row.revoked,
+                }
+                for row in account.invite_codes.all()
+            ],
+        },
         "visits": [_visit_item(visit) for visit in account.pub_visits.all()],
         "ratings": [_rating_item(rating) for rating in account.pub_ratings.all()],
         "community_contributions": [

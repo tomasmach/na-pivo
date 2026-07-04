@@ -1095,6 +1095,107 @@ class FriendBlock(models.Model):
         return f"FriendBlock({self.blocker_id} -> {self.blocked_id})"
 
 
+class BeerCheckIn(models.Model):
+    """One beer diary check-in, optionally visible to accepted friends.
+
+    A check-in is explicitly user-entered. It stores the selected pub identity
+    only when the user supplies one and never stores raw GPS. Identity is
+    (account, client_id) so offline retries upsert the same row instead of
+    duplicating the user's evening.
+    """
+
+    class Visibility(models.TextChoices):
+        PRIVATE = "private", "Private"
+        FRIENDS = "friends", "Friends"
+
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name="beer_checkins",
+    )
+    client_id = models.UUIDField(help_text="Client-generated idempotency key.")
+    beer_name = models.TextField(help_text="Beer name (1..120 chars, enforced by serializer).")
+    brewery_name = models.TextField(blank=True, default="")
+    beer_style = models.TextField(blank=True, default="")
+    abv = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)
+    rating = models.DecimalField(max_digits=3, decimal_places=1, null=True, blank=True)
+    note = models.TextField(blank=True, default="")
+    pub_cache_key = models.CharField(max_length=12, blank=True, default="", db_index=True)
+    pub_name = models.TextField(blank=True, default="")
+    pub_city = models.TextField(blank=True, default="")
+    visit_client_id = models.UUIDField(null=True, blank=True, db_index=True)
+    visibility = models.CharField(
+        max_length=16,
+        choices=Visibility.choices,
+        default=Visibility.PRIVATE,
+        db_index=True,
+    )
+    beer_key = models.CharField(max_length=64, db_index=True)
+    brewery_key = models.CharField(max_length=64, blank=True, default="", db_index=True)
+    checked_in_at = models.DateTimeField(default=timezone.now, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Beer check-in"
+        verbose_name_plural = "Beer check-ins"
+        ordering = ["-checked_in_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "client_id"],
+                name="unique_beer_checkin_per_account_client_id",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["account", "checked_in_at"]),
+            models.Index(fields=["visibility", "checked_in_at"]),
+            models.Index(fields=["beer_key", "brewery_key", "checked_in_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"BeerCheckIn({self.account_id}: {self.beer_name})"
+
+
+class BeerCheckInReaction(models.Model):
+    """One lightweight reaction to a beer check-in."""
+
+    class Kind(models.TextChoices):
+        CHEERS = "cheers", "Cheers"
+
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
+    checkin = models.ForeignKey(
+        "pubs.BeerCheckIn",
+        on_delete=models.CASCADE,
+        related_name="reactions",
+    )
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name="beer_checkin_reactions",
+    )
+    kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.CHEERS)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Beer check-in reaction"
+        verbose_name_plural = "Beer check-in reactions"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["checkin", "account"],
+                name="unique_beer_checkin_reaction_per_account",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["checkin", "kind"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"BeerCheckInReaction({self.account_id} -> {self.checkin_id}: {self.kind})"
+
+
 class EmailCredential(models.Model):
     """Email + password credential for an Account (0 or 1 per account).
 
