@@ -9,8 +9,9 @@
  * network call in the background. `respondToActivity` / `clearActivityResponse`
  * resolve to `{ ok }` only (no fresh activity), so on success we keep the
  * optimistic state and signal the parent via `onResponded` to reload the
- * dashboard and reconcile the roster from server truth; on failure we revert
- * and toast. Tapping the already-selected segment clears the response.
+ * dashboard and reconcile the roster from server truth; on transient failure we
+ * queue the op and keep the optimistic state, while hard rejects revert + toast.
+ * Tapping the already-selected segment clears the response.
  */
 
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
@@ -32,6 +33,7 @@ import {
   type ActivityResponseKind,
   type FriendPubActivity,
 } from '@/data/friendsClient';
+import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
 import { cs } from '@/i18n/cs';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
@@ -177,6 +179,11 @@ function RsvpControl({ activityId, myResponse, onResponded }: RsvpControlProps) 
           if (res.ok) {
             onResponded();
           } else {
+            if (isRetriableFriendError(res)) {
+              void enqueueFriendOp({ op: 'rsvp-clear', activityId });
+              showToast(cs.friends.rsvpQueued);
+              return;
+            }
             setSelected(prev);
             showToast(cs.friends.rsvpError);
           }
@@ -197,6 +204,11 @@ function RsvpControl({ activityId, myResponse, onResponded }: RsvpControlProps) 
         if (res.ok) {
           onResponded();
         } else {
+          if (isRetriableFriendError(res)) {
+            void enqueueFriendOp({ op: 'rsvp', activityId, response: kind });
+            showToast(cs.friends.rsvpQueued);
+            return;
+          }
           setSelected(prev);
           showToast(cs.friends.rsvpError);
         }

@@ -17,9 +17,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { sendFriendRequest, type FriendActionResult } from './friendsClient';
+import { enqueueFriendOp, isRetriableFriendError } from './friendsQueue';
 import { usePartaSignalStore } from '@/stores/partaSignalStore';
 
 const PENDING_INVITE_CODE_KEY = 'na-pivo-pending-invite-code';
+
+function inviteRequestKey(code: string): string {
+  return `invite:${code}`;
+}
 
 /**
  * Extract the invite code from a deep link. Handles both the custom-scheme
@@ -82,14 +87,20 @@ export async function clearPendingInviteCode(): Promise<void> {
 }
 
 /**
- * Claim an invite code: send the friend request, and on success raise the
- * pending-request UX signal so FriendsScreen refreshes and shows the new
- * outgoing/accepted state. Returns the raw action result for the caller's toast.
+ * Claim an invite code: send the friend request, and on success (or a queued
+ * transient failure) raise the pending-request UX signal so FriendsScreen
+ * refreshes and shows the new outgoing/accepted state. Returns `{ ok: true }`
+ * once the request is either delivered or durably queued.
  */
 export async function claimInviteCode(code: string): Promise<FriendActionResult> {
   const result = await sendFriendRequest({ inviteCode: code });
   if (result.ok) {
     usePartaSignalStore.getState().requestRefresh();
+  }
+  if (!result.ok && isRetriableFriendError(result)) {
+    await enqueueFriendOp({ op: 'request', key: inviteRequestKey(code), inviteCode: code });
+    usePartaSignalStore.getState().requestRefresh();
+    return { ok: true };
   }
   return result;
 }
@@ -100,7 +111,11 @@ export async function claimInviteCode(code: string): Promise<FriendActionResult>
  * pending.
  */
 export async function consumeAndClaimPendingInviteCode(): Promise<FriendActionResult | null> {
-  const code = await consumePendingInviteCode();
+  const code = await peekPendingInviteCode();
   if (!code) return null;
-  return claimInviteCode(code);
+  const result = await claimInviteCode(code);
+  if (result.ok || !isRetriableFriendError(result)) {
+    await clearPendingInviteCode();
+  }
+  return result;
 }

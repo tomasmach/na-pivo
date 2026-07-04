@@ -624,6 +624,7 @@ export const cs = {
     rsvpCant: 'Dneska ne',
     rsvpError: 'Nepovedlo se to odeslat. Zkus to znovu.',
     rsvpClearedToast: 'Odpověď zrušená.',
+    rsvpQueued: 'Zapíšu to partě, až bude signál.',
     // Roster count word only — the numeral renders separately in amber.
     goingLabel: (n: number) => (n === 1 ? 'jde' : 'jdou'),
     // Secondary "2 možná · 1 dneska ne" line; skips zero buckets, '' when both 0.
@@ -813,6 +814,7 @@ export const cs = {
     planCancelConfirmTitle: 'Zrušit plán?',
     planCancelConfirmBody: 'Parta uvidí, že dneska nakonec nikam nejdeš.',
     planCanceled: 'Plán zrušený.',
+    planCancelQueued: 'Zruším plán, až bude signál.',
 
     // — Reactions "Na zdraví" (§C) —
     cheers: 'Na zdraví',

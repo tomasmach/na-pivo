@@ -24,6 +24,7 @@ import {
   type FriendProfile,
   type FriendPubActivity,
 } from '@/data/friendsClient';
+import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
 import { Avatar } from '@/profile/Avatar';
 import { cs } from '@/i18n/cs';
 import { useToastStore } from '@/stores/toastStore';
@@ -98,6 +99,14 @@ function PlanCardBase({ activity, mine, onResponded, onCanceled }: PlanCardProps
         showToast(cs.friends.planCanceled, { icon: <XIcon size={20} color={Colors.amber} /> });
         onCanceled();
       } else {
+        if (isRetriableFriendError(res)) {
+          void enqueueFriendOp({ op: 'end', clientId: activity.id, activityId: activity.id });
+          showToast(cs.friends.planCancelQueued, {
+            icon: <XIcon size={20} color={Colors.amber} />,
+          });
+          onCanceled();
+          return;
+        }
         setCancelling(false);
         showToast(res.detail);
       }

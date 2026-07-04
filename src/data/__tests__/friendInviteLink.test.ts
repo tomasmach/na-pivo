@@ -12,6 +12,15 @@ jest.mock('../friendsClient', () => ({
   sendFriendRequest: (...a: unknown[]) => sendFriendRequest(...(a as [])),
 }));
 
+const enqueueFriendOp = jest.fn(async (): Promise<void> => undefined);
+jest.mock('../friendsQueue', () => ({
+  enqueueFriendOp: (...a: unknown[]) => enqueueFriendOp(...(a as [])),
+  isRetriableFriendError: (result: { code?: string }) =>
+    ['offline', 'account', 'network', 'auth', 'http_401', 'http_429', 'http_500', 'http_503'].includes(
+      result.code ?? '',
+    ),
+}));
+
 const requestRefresh = jest.fn();
 jest.mock('@/stores/partaSignalStore', () => ({
   usePartaSignalStore: { getState: () => ({ requestRefresh }) },
@@ -67,14 +76,29 @@ describe('claimInviteCode', () => {
   it('sends the request and raises the refresh signal on success', async () => {
     const result = await claimInviteCode('code-x');
     expect(sendFriendRequest).toHaveBeenCalledWith({ inviteCode: 'code-x' });
+    expect(enqueueFriendOp).not.toHaveBeenCalled();
     expect(requestRefresh).toHaveBeenCalledTimes(1);
     expect(result).toEqual({ ok: true });
   });
 
-  it('does not raise the refresh signal on failure', async () => {
+  it('queues a retriable failure and raises the refresh signal', async () => {
     sendFriendRequest.mockResolvedValue({ ok: false, code: 'network', detail: 'x' });
-    await claimInviteCode('code-x');
+    const result = await claimInviteCode('code-x');
+    expect(enqueueFriendOp).toHaveBeenCalledWith({
+      op: 'request',
+      key: 'invite:code-x',
+      inviteCode: 'code-x',
+    });
+    expect(requestRefresh).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ ok: true });
+  });
+
+  it('does not queue or refresh on a permanent failure', async () => {
+    sendFriendRequest.mockResolvedValue({ ok: false, code: 'invite_expired', detail: 'x' });
+    const result = await claimInviteCode('code-x');
+    expect(enqueueFriendOp).not.toHaveBeenCalled();
     expect(requestRefresh).not.toHaveBeenCalled();
+    expect(result).toEqual({ ok: false, code: 'invite_expired', detail: 'x' });
   });
 });
 
@@ -89,6 +113,28 @@ describe('consumeAndClaimPendingInviteCode', () => {
     const result = await consumeAndClaimPendingInviteCode();
     expect(result).toEqual({ ok: true });
     expect(sendFriendRequest).toHaveBeenCalledWith({ inviteCode: 'code-2' });
+    expect(await peekPendingInviteCode()).toBeNull();
+  });
+
+  it('queues and clears a stashed code on a retriable failure', async () => {
+    sendFriendRequest.mockResolvedValue({ ok: false, code: 'network', detail: 'x' });
+    await stashPendingInviteCode('code-3');
+    const result = await consumeAndClaimPendingInviteCode();
+    expect(result).toEqual({ ok: true });
+    expect(enqueueFriendOp).toHaveBeenCalledWith({
+      op: 'request',
+      key: 'invite:code-3',
+      inviteCode: 'code-3',
+    });
+    expect(await peekPendingInviteCode()).toBeNull();
+  });
+
+  it('clears a stashed code after a permanent claim failure', async () => {
+    sendFriendRequest.mockResolvedValue({ ok: false, code: 'invite_expired', detail: 'x' });
+    await stashPendingInviteCode('code-4');
+    const result = await consumeAndClaimPendingInviteCode();
+    expect(result).toEqual({ ok: false, code: 'invite_expired', detail: 'x' });
+    expect(enqueueFriendOp).not.toHaveBeenCalled();
     expect(await peekPendingInviteCode()).toBeNull();
   });
 });

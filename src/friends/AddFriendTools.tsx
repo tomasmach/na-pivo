@@ -29,6 +29,11 @@ import {
   sendFriendRequest,
   type FriendProfile,
 } from '@/data/friendsClient';
+import {
+  enqueueFriendOp,
+  isRetriableFriendError,
+  type FriendQueueItem,
+} from '@/data/friendsQueue';
 import { GlowButton } from '@/components/shared/GlowButton';
 import {
   LinkIcon,
@@ -108,11 +113,21 @@ export function AddFriendTools({
 
   const requestFriend = useCallback(
     async (profile?: FriendProfile) => {
+      const nickname = query.trim().replace(/^@/, '');
+      if (!profile && nickname.length < 2) return;
+      const queuedRequest: FriendQueueItem =
+        profile
+          ? { op: 'request', key: `account:${profile.id}`, accountId: profile.id }
+          : { op: 'request', key: `nickname:${nickname.toLocaleLowerCase('cs-CZ')}`, nickname };
       const result = profile
         ? await sendFriendRequest({ accountId: profile.id })
-        : await sendFriendRequest({ nickname: query.trim().replace(/^@/, '') });
+        : await sendFriendRequest({ nickname });
       if (!mountedRef.current) return;
-      if (result.ok) {
+      if (result.ok || isRetriableFriendError(result)) {
+        if (!result.ok) {
+          await enqueueFriendOp(queuedRequest);
+          if (!mountedRef.current) return;
+        }
         showToast(cs.friends.requestSent, {
           icon: <UserPlusIcon size={20} color={Colors.amber} />,
         });
