@@ -204,6 +204,88 @@ def test_checkin_accepts_historical_checked_in_at(client):
 
 
 @pytest.mark.django_db
+def test_checkin_accepts_historical_ended_at(client):
+    token, _account = _register(client, "janek")
+    historical = (timezone.now() - timedelta(days=30)).replace(microsecond=0)
+    ended = historical + timedelta(hours=3, minutes=15)
+    payload = _payload(visibility="friends")
+    payload["checked_in_at"] = historical.isoformat()
+    payload["ended_at"] = ended.isoformat()
+
+    response = client.post(
+        "/v1/beer-checkins",
+        data=payload,
+        format="json",
+        **_auth(token),
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    body = response.json()
+    assert parse_datetime(body["checked_in_at"]) == historical
+    assert parse_datetime(body["ended_at"]) == ended
+    row = BeerCheckIn.objects.get()
+    assert row.checked_in_at == historical
+    assert row.ended_at == ended
+
+
+@pytest.mark.django_db
+def test_checkin_accepts_quantity_and_price(client):
+    token, _account = _register(client, "janek")
+    payload = _payload(visibility="friends")
+    payload["quantity"] = 3
+    payload["price_czk"] = 62
+
+    response = client.post(
+        "/v1/beer-checkins",
+        data=payload,
+        format="json",
+        **_auth(token),
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.content
+    body = response.json()
+    assert body["quantity"] == 3
+    assert body["price_czk"] == 62
+    row = BeerCheckIn.objects.get()
+    assert row.quantity == 3
+    assert row.price_czk == 62
+
+
+@pytest.mark.django_db
+def test_checkin_rejects_invalid_quantity_and_price(client):
+    token, _account = _register(client, "janek")
+
+    invalid = client.post(
+        "/v1/beer-checkins",
+        data={**_payload(), "quantity": 0, "price_czk": 0},
+        format="json",
+        **_auth(token),
+    )
+
+    assert invalid.status_code == status.HTTP_400_BAD_REQUEST, invalid.content
+    assert BeerCheckIn.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_checkin_rejects_ended_at_before_checked_in_at(client):
+    token, _account = _register(client, "janek")
+    historical = (timezone.now() - timedelta(days=30)).replace(microsecond=0)
+    payload = _payload(visibility="friends")
+    payload["checked_in_at"] = historical.isoformat()
+    payload["ended_at"] = (historical - timedelta(minutes=1)).isoformat()
+
+    response = client.post(
+        "/v1/beer-checkins",
+        data=payload,
+        format="json",
+        **_auth(token),
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
+    assert BeerCheckIn.objects.count() == 0
+
+
+@pytest.mark.django_db
 def test_checkin_accepts_occurred_at_alias_for_historical_entries(client):
     token, _account = _register(client, "janek")
     historical = (timezone.now() - timedelta(days=365)).replace(microsecond=0)

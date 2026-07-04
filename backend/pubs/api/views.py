@@ -3469,6 +3469,8 @@ class BeerCheckInView(APIView):
             "brewery_name": data.get("brewery_name") or "",
             "beer_style": data.get("beer_style") or "",
             "abv": data.get("abv"),
+            "quantity": data.get("quantity") or 1,
+            "price_czk": data.get("price_czk"),
             "rating": data.get("rating"),
             "tags": data.get("tags") or [],
             "note": data.get("note") or "",
@@ -3480,6 +3482,7 @@ class BeerCheckInView(APIView):
             "beer_key": _beer_identity_key(data["beer_name"]),
             "brewery_key": _beer_identity_key(data.get("brewery_name") or ""),
             "checked_in_at": data.get("checked_in_at") or dj_timezone.now(),
+            "ended_at": data.get("ended_at"),
         }
 
         try:
@@ -4794,6 +4797,8 @@ def _export_account_data(account: Account) -> dict:
                 "brewery_name": checkin.brewery_name,
                 "beer_style": checkin.beer_style,
                 "abv": str(checkin.abv) if checkin.abv is not None else None,
+                "quantity": checkin.quantity,
+                "price_czk": checkin.price_czk,
                 "rating": str(checkin.rating) if checkin.rating is not None else None,
                 "tags": normalize_beer_checkin_tags(checkin.tags),
                 "note": checkin.note,
@@ -4805,6 +4810,7 @@ def _export_account_data(account: Account) -> dict:
                 ),
                 "visibility": checkin.visibility,
                 "checked_in_at": _iso(checkin.checked_in_at),
+                "ended_at": _iso(checkin.ended_at),
                 "created_at": _iso(checkin.created_at),
                 "updated_at": _iso(checkin.updated_at),
             }

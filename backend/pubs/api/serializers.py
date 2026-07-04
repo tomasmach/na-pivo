@@ -42,6 +42,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import EmailValidator
 from django.db import IntegrityError
 from django.db.models import Count, Sum
+from django.utils import timezone as dj_timezone
 from rest_framework import serializers
 
 from pubs import accounts
@@ -710,6 +711,8 @@ class BeerCheckInRequestSerializer(serializers.Serializer):
         min_value=0,
         max_value=25,
     )
+    quantity = serializers.IntegerField(required=False, default=1, min_value=1, max_value=99)
+    price_czk = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=1000)
     rating = serializers.DecimalField(
         max_digits=3,
         decimal_places=1,
@@ -754,6 +757,7 @@ class BeerCheckInRequestSerializer(serializers.Serializer):
     )
     checked_in_at = serializers.DateTimeField(required=False, allow_null=True)
     occurred_at = serializers.DateTimeField(required=False, allow_null=True, write_only=True)
+    ended_at = serializers.DateTimeField(required=False, allow_null=True)
 
     def validate_tags(self, value: object) -> list[str]:
         return normalize_beer_checkin_tags(value)
@@ -762,6 +766,10 @@ class BeerCheckInRequestSerializer(serializers.Serializer):
         occurred_at = attrs.pop("occurred_at", None)
         if attrs.get("checked_in_at") is None and occurred_at is not None:
             attrs["checked_in_at"] = occurred_at
+        checked_in_at = attrs.get("checked_in_at") or dj_timezone.now()
+        ended_at = attrs.get("ended_at")
+        if ended_at is not None and ended_at < checked_in_at:
+            raise serializers.ValidationError({"ended_at": "ended_at must be greater than or equal to checked_in_at."})
         return attrs
 
 
@@ -790,6 +798,8 @@ class BeerCheckInSerializer(serializers.ModelSerializer):
             "brewery_name",
             "beer_style",
             "abv",
+            "quantity",
+            "price_czk",
             "rating",
             "tags",
             "note",
@@ -799,6 +809,7 @@ class BeerCheckInSerializer(serializers.ModelSerializer):
             "visit_client_id",
             "visibility",
             "checked_in_at",
+            "ended_at",
             "reactions",
             "my_reaction",
             "created_at",
