@@ -188,6 +188,7 @@ interface ReportPubModalProps {
   visible: boolean;
   pubName: string;
   onClose: () => void;
+  onAddPub: () => void;
   onRename: () => void;
   onReportReason: (reason: PubReportReason) => void;
 }
@@ -196,9 +197,15 @@ function ReportPubModal({
   visible,
   pubName,
   onClose,
+  onAddPub,
   onRename,
   onReportReason,
 }: ReportPubModalProps) {
+  const handleAddPub = useCallback(() => {
+    onClose();
+    onAddPub();
+  }, [onAddPub, onClose]);
+
   const handleRename = useCallback(() => {
     onClose();
     onRename();
@@ -245,6 +252,11 @@ function ReportPubModal({
           </View>
 
           <View style={styles.reportActions}>
+            <ReportActionButton
+              label={cs.compass.reportAddMissing}
+              icon={<MapPinPlusIcon size={18} color={Colors.foam} />}
+              onPress={handleAddPub}
+            />
             <ReportActionButton
               label={cs.compass.reportRename}
               icon={<PencilIcon size={18} color={Colors.foam} />}
@@ -585,7 +597,6 @@ interface RevealedPubPillProps {
   onOpenMaps: () => void;
   onReport: () => void;
   onContribute: () => void;
-  onAddPub: () => void;
   isOpenNow: boolean | null;
   hoursStatus?: HoursStatus;
   nextChange?: string | null;
@@ -624,7 +635,6 @@ function RevealedPubPill({
   onOpenMaps,
   onReport,
   onContribute,
-  onAddPub,
   isOpenNow,
   hoursStatus,
   nextChange,
@@ -744,29 +754,9 @@ function RevealedPubPill({
         )}
       </Pressable>
 
-      {/* Footer actions stay in one compact row, but the two support actions are
-          now named. Users were missing the icon-only affordances, while the
-          compass screen still cannot afford a tall secondary menu here. */}
+      {/* Two clear choices keep the card calm: map public facts, or handle a
+          missing/wrong pub from a focused sheet. */}
       <View style={styles.pubPillFooter}>
-        <Pressable
-          onPress={onAddPub}
-          hitSlop={8}
-          style={({ pressed }) => [styles.footerAction, pressed && styles.footerActionPressed]}
-          accessibilityLabel={cs.compass.addMissingPubLink}
-          accessibilityRole="button"
-        >
-          <MapPinPlusIcon size={15} color={Colors.foamMuted} />
-          <Text
-            style={styles.footerActionText}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.78}
-            maxFontSizeMultiplier={FontScaleCap.body}
-          >
-            {cs.compass.addMissingPubShort}
-          </Text>
-        </Pressable>
-
         <Pressable
           onPress={() => setMapOpen(true)}
           hitSlop={8}
@@ -793,11 +783,15 @@ function RevealedPubPill({
         <Pressable
           onPress={onReport}
           hitSlop={8}
-          style={({ pressed }) => [styles.footerAction, pressed && styles.footerActionPressed]}
-          accessibilityLabel={cs.a11y.reportPubButton}
+          style={({ pressed }) => [
+            styles.footerAction,
+            styles.footerActionSecondary,
+            pressed && styles.footerActionPressed,
+          ]}
+          accessibilityLabel={cs.a11y.pubFixButton}
           accessibilityRole="button"
         >
-          <BeerOffIcon size={15} color={Colors.foamMuted} />
+          <MapPinPlusIcon size={15} color={Colors.foamMuted} />
           <Text
             style={styles.footerActionText}
             numberOfLines={1}
@@ -805,7 +799,7 @@ function RevealedPubPill({
             minimumFontScale={0.78}
             maxFontSizeMultiplier={FontScaleCap.body}
           >
-            {cs.compass.reportPubShort}
+            {cs.compass.pubFixShort}
           </Text>
         </Pressable>
       </View>
@@ -1401,7 +1395,6 @@ export default function CompassScreen() {
             onOpenMaps={handleOpenMaps}
             onReport={handleReport}
             onContribute={handleContribute}
-            onAddPub={handleAddPub}
             isOpenNow={pub.isOpenNow ?? null}
             hoursStatus={pub.hoursStatus}
             nextChange={pub.nextChange}
@@ -1454,6 +1447,7 @@ export default function CompassScreen() {
         visible={reportOpen}
         pubName={pub.name}
         onClose={handleReportClose}
+        onAddPub={handleAddPub}
         onRename={handleRenamePress}
         onReportReason={handleReportReason}
       />
@@ -2026,13 +2020,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   footerActionPrimary: {
-    flex: 1.28,
+    flex: 1.38,
     borderRadius: 12,
     backgroundColor: Colors.amber,
     shadowColor: Colors.glow,
     shadowOpacity: 0.18,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
+  },
+  footerActionSecondary: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.22),
+    backgroundColor: withAlpha(Colors.amber, 0.08),
   },
   footerActionPressed: {
     opacity: 0.78,

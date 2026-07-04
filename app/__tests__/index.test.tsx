@@ -371,7 +371,7 @@ describe('CompassScreen', () => {
     });
 
     const reportButton = renderer!.root.findByProps({
-      accessibilityLabel: cs.a11y.reportPubButton,
+      accessibilityLabel: cs.a11y.pubFixButton,
     });
 
     act(() => {
@@ -419,7 +419,7 @@ describe('CompassScreen', () => {
     expect(sheet.props.pubName).toBe('U Testu');
   });
 
-  it('opens add-pub from the always-visible "není to ta hospoda?" link', () => {
+  it('opens add-pub from the "chybí / nesedí" pub sheet', () => {
     const push = jest.fn();
     mockedUseRouter.mockReturnValue({ push });
     useCompass.mockReturnValue({
@@ -434,10 +434,15 @@ describe('CompassScreen', () => {
       renderer = TestRenderer.create(React.createElement(CompassScreen));
     });
 
-    // The add-missing-pub link lives on the pub pill (not buried in the hub) and
-    // routes straight to /add-pub with the current coordinates.
+    const editPubButton = renderer!.root.findByProps({
+      accessibilityLabel: cs.a11y.pubFixButton,
+    });
+    act(() => {
+      editPubButton.props.onPress();
+    });
+
     const addPubLink = renderer!.root.findByProps({
-      accessibilityLabel: cs.compass.addMissingPubLink,
+      accessibilityLabel: cs.compass.reportAddMissing,
     });
     act(() => {
       addPubLink.props.onPress();

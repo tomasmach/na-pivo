@@ -138,12 +138,13 @@ export const cs = {
     modeNearest: 'Nejbližší',
     modeSurprise: 'Překvap mě',
     openInMaps: 'Otevřít v mapách',
-    reportTitle: 'Nahlásit hospodu',
+    reportTitle: 'Chybí nebo nesedí?',
     reportBody: (pubName: string) =>
-      `Co je špatně s „${pubName}“?`,
+      `Přidej jinou hospodu, nebo oprav „${pubName}“.`,
     reportRename: 'Opravit název',
     reportClosed: 'Už nefunguje',
     reportNotPub: 'Nečepují pivo',
+    reportAddMissing: 'Přidat jinou hospodu',
     renameTitle: 'Jak se jmenuje?',
     renameBody: (pubName: string) =>
       `Přejmenuju „${pubName}“ i pro ostatní pivaře, když se oprava odešle.`,
@@ -161,8 +162,7 @@ export const cs = {
     detailsLoading: 'Načítám info',
     contribute: 'Doplnit info',
     addMissingPubLink: 'Není to ta hospoda? Přidej ji',
-    addMissingPubShort: 'Přidat hospodu',
-    reportPubShort: 'Nahlásit chybu',
+    pubFixShort: 'Chybí / nesedí',
     // The leading beer glyph is a line-art icon rendered next to this text in
     // the pub card (see RevealedPubPill), not an emoji baked into the string.
     beerWithPrice: (name: string, price: string) => `${name} · ${price}`,
@@ -1292,7 +1292,7 @@ export const cs = {
     rerollButton: 'Vyber jinou hospodu',
     skipButton: 'Přeskočit na další hospodu',
     skipButtonHint: 'Vynechá tuhle hospodu a najde další nejbližší',
-    reportPubButton: 'Nahlásit problém s hospodou',
+    pubFixButton: 'Chybí nebo nesedí hospoda',
     renamePubInput: 'Nový název hospody',
     renamePubSaveButton: 'Uložit opravený název hospody',
     contributeBeersLine: (text: string) => `Piva na čepu: ${text}. Ťukni pro doplnění.`,
