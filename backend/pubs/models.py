@@ -1095,6 +1095,19 @@ class FriendBlock(models.Model):
         return f"FriendBlock({self.blocker_id} -> {self.blocked_id})"
 
 
+BEER_CHECKIN_TAGS = (
+    "crisp",
+    "great_foam",
+    "smooth",
+    "watery",
+    "stale",
+    "overpriced",
+    "one_more",
+    "never_again",
+)
+BEER_CHECKIN_MAX_TAGS = 3
+
+
 class BeerCheckIn(models.Model):
     """One beer diary check-in, optionally visible to accepted friends.
 
@@ -1120,6 +1133,7 @@ class BeerCheckIn(models.Model):
     beer_style = models.TextField(blank=True, default="")
     abv = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)
     rating = models.DecimalField(max_digits=3, decimal_places=1, null=True, blank=True)
+    tags = models.JSONField(default=list, blank=True)
     note = models.TextField(blank=True, default="")
     pub_cache_key = models.CharField(max_length=12, blank=True, default="", db_index=True)
     pub_name = models.TextField(blank=True, default="")
@@ -1149,6 +1163,10 @@ class BeerCheckIn(models.Model):
         ]
         indexes = [
             models.Index(fields=["account", "checked_in_at"]),
+            models.Index(
+                fields=["account", "beer_key", "brewery_key", "checked_in_at"],
+                name="pubs_beer_memory_idx",
+            ),
             models.Index(fields=["visibility", "checked_in_at"]),
             models.Index(fields=["beer_key", "brewery_key", "checked_in_at"]),
         ]

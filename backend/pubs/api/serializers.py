@@ -54,6 +54,8 @@ from pubs.beer_catalog import (
 )
 from pubs.mapper import maper_levels, maper_progress, maper_xp_rules
 from pubs.models import (
+    BEER_CHECKIN_MAX_TAGS,
+    BEER_CHECKIN_TAGS,
     Account,
     BeerCheckIn,
     BeerCheckInReaction,
@@ -78,6 +80,24 @@ from pubs.models import (
 
 # ---------------------------------------------------------------------------
 # Request serializers
+
+
+def normalize_beer_checkin_tags(value: object) -> list[str]:
+    if value is None or not isinstance(value, list):
+        return []
+    allowed = set(BEER_CHECKIN_TAGS)
+    tags = []
+    seen = set()
+    for tag in value:
+        if not isinstance(tag, str) or tag not in allowed or tag in seen:
+            continue
+        tags.append(tag)
+        seen.add(tag)
+        if len(tags) >= BEER_CHECKIN_MAX_TAGS:
+            break
+    return tags
+
+
 # ---------------------------------------------------------------------------
 
 EXPO_PUSH_TOKEN_RE = re.compile(r"^(?:Expo|Exponent)PushToken\[[A-Za-z0-9_-]+\]$")
@@ -698,6 +718,7 @@ class BeerCheckInRequestSerializer(serializers.Serializer):
         min_value=0,
         max_value=5,
     )
+    tags = serializers.JSONField(required=False, allow_null=True, default=list)
     note = serializers.CharField(
         max_length=1000,
         required=False,
@@ -733,6 +754,9 @@ class BeerCheckInRequestSerializer(serializers.Serializer):
     )
     checked_in_at = serializers.DateTimeField(required=False, allow_null=True)
 
+    def validate_tags(self, value: object) -> list[str]:
+        return normalize_beer_checkin_tags(value)
+
 
 class BeerCheckInReactionSerializer(serializers.Serializer):
     """Request body for POST /v1/beer-checkins/<id>/react."""
@@ -745,6 +769,7 @@ class BeerCheckInSerializer(serializers.ModelSerializer):
 
     id = serializers.UUIDField(source="public_id", read_only=True)
     account = FriendProfileSerializer(read_only=True)
+    tags = serializers.SerializerMethodField()
     reactions = serializers.SerializerMethodField()
     my_reaction = serializers.SerializerMethodField()
 
@@ -759,6 +784,7 @@ class BeerCheckInSerializer(serializers.ModelSerializer):
             "beer_style",
             "abv",
             "rating",
+            "tags",
             "note",
             "pub_cache_key",
             "pub_name",
@@ -772,6 +798,9 @@ class BeerCheckInSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = fields
+
+    def get_tags(self, obj: BeerCheckIn) -> list[str]:
+        return normalize_beer_checkin_tags(obj.tags)
 
     def get_reactions(self, obj: BeerCheckIn) -> dict:
         counts = {kind.value: 0 for kind in BeerCheckInReaction.Kind}

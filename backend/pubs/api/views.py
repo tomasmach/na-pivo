@@ -41,6 +41,7 @@ from django.db.models import (
     ExpressionWrapper,
     F,
     FloatField,
+    Min,
     OuterRef,
     Prefetch,
     Q,
@@ -83,6 +84,7 @@ from pubs.menu_scan import (
     validate_and_prepare_image,
 )
 from pubs.models import (
+    BEER_CHECKIN_TAGS,
     Account,
     AccountMappedPub,
     AccountPubCompletion,
@@ -182,6 +184,7 @@ from .serializers import (
     UserAddedPubSerializer,
     _amenity_aggregate_item,
     _amenity_vote_item,
+    normalize_beer_checkin_tags,
 )
 
 logger = logging.getLogger(__name__)
@@ -265,6 +268,25 @@ def _beer_identity_key(value: str) -> str:
     if not normalized:
         return ""
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def _beer_identity_filters(beer_key: str, brewery_key: str) -> dict[str, str]:
+    filters = {"beer_key": beer_key}
+    if brewery_key:
+        filters["brewery_key"] = brewery_key
+    return filters
+
+
+def _beer_tag_counts(tag_values) -> dict[str, int]:
+    counts = {tag: 0 for tag in BEER_CHECKIN_TAGS}
+    for tags in tag_values:
+        for tag in normalize_beer_checkin_tags(tags):
+            counts[tag] += 1
+    return {tag: count for tag, count in counts.items() if count}
+
+
+def _beer_top_tags(tag_counts: dict[str, int]) -> list[str]:
+    return sorted(tag_counts, key=lambda tag: (-tag_counts[tag], BEER_CHECKIN_TAGS.index(tag)))[:3]
 
 
 FRIEND_ACTIVITY_DEFAULT_TTL = timedelta(hours=4)
@@ -3448,6 +3470,7 @@ class BeerCheckInView(APIView):
             "beer_style": data.get("beer_style") or "",
             "abv": data.get("abv"),
             "rating": data.get("rating"),
+            "tags": data.get("tags") or [],
             "note": data.get("note") or "",
             "pub_cache_key": data.get("pub_cache_key") or "",
             "pub_name": data.get("pub_name") or "",
@@ -3591,6 +3614,49 @@ class BeerCheckInReactView(APIView):
         return Response({"removed": deleted > 0}, status=status.HTTP_200_OK)
 
 
+class BeerMemoryView(APIView):
+    """GET /v1/beers/memory — caller-only lightweight beer memory."""
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends_dashboard"
+
+    def get(self, request: Request) -> Response:
+        beer_name = (request.query_params.get("beer_name") or "").strip()
+        brewery_name = (request.query_params.get("brewery_name") or "").strip()
+        beer_key = _beer_identity_key(beer_name)
+        brewery_key = _beer_identity_key(brewery_name)
+        rows = []
+        if beer_key:
+            rows = list(
+                BeerCheckIn.objects.filter(
+                    account=request.user,
+                    **_beer_identity_filters(beer_key, brewery_key),
+                )
+                .only("checked_in_at", "pub_name", "rating", "tags")
+                .order_by("checked_in_at", "id")
+            )
+        tag_counts = _beer_tag_counts(row.tags for row in rows)
+        ratings = [row.rating for row in rows if row.rating is not None]
+        first = rows[0] if rows else None
+        last = rows[-1] if rows else None
+        return Response(
+            {
+                "beer_name": beer_name,
+                "brewery_name": brewery_name,
+                "my_count": len(rows),
+                "first_checked_in_at": first.checked_in_at if first else None,
+                "last_checked_in_at": last.checked_in_at if last else None,
+                "last_pub_name": last.pub_name if last else "",
+                "last_rating": float(last.rating) if last and last.rating is not None else None,
+                "my_average_rating": float(sum(ratings) / len(ratings)) if ratings else None,
+                "top_tags": _beer_top_tags(tag_counts),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class BeerDetailView(APIView):
     """GET /v1/beers/detail?beer_name=&brewery_name= — personal + party aggregate."""
 
@@ -3648,14 +3714,23 @@ class BeerDetailView(APIView):
             .filter(account=request.user, beer_key=beer_key, brewery_key=brewery_key)
             .order_by("-checked_in_at")[:50]
         )
+        my_summary = mine.aggregate(
+            count=Count("id"),
+            first_checked_in_at=Min("checked_in_at"),
+            average_rating=Avg("rating"),
+        )
         return Response(
             {
                 "beer_name": beer_name,
                 "brewery_name": brewery_name,
-                "my_count": mine.count(),
+                "my_count": my_summary["count"],
+                "first_checked_in_at": (
+                    my_summary["first_checked_in_at"] if my_summary["count"] else None
+                ),
                 "party_count": party.count(),
-                "my_average_rating": mine.aggregate(value=Avg("rating"))["value"],
+                "my_average_rating": my_summary["average_rating"],
                 "party_average_rating": party.aggregate(value=Avg("rating"))["value"],
+                "my_tags": _beer_tag_counts(mine.values_list("tags", flat=True)),
                 "party_drinkers": FriendProfileSerializer(
                     party_accounts,
                     many=True,
@@ -4720,6 +4795,7 @@ def _export_account_data(account: Account) -> dict:
                 "beer_style": checkin.beer_style,
                 "abv": str(checkin.abv) if checkin.abv is not None else None,
                 "rating": str(checkin.rating) if checkin.rating is not None else None,
+                "tags": normalize_beer_checkin_tags(checkin.tags),
                 "note": checkin.note,
                 "pub_cache_key": checkin.pub_cache_key,
                 "pub_name": checkin.pub_name,
