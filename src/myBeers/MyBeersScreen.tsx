@@ -10,7 +10,7 @@
  * never break the counter. Works fully offline and without an account.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -26,7 +26,11 @@ import {
   ChevronRightIcon,
   BeerIcon,
   HistoryIcon,
+  PlusIcon,
+  StarIcon,
 } from '@/components/shared/IconGlyph';
+import { BeerTagChips } from '@/components/shared/BeerTagChips';
+import { fetchMyBeerCheckIns, type BeerCheckIn } from '@/data/beerCheckinsClient';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
   useTallyStore,
@@ -40,6 +44,7 @@ import { EveningBreakdown } from '@/myBeers/EveningBreakdown';
 import { PubRatingControl } from '@/myBeers/PubRatingControl';
 import { MapPubEntry } from '@/components/amenities/MapPubEntry';
 import { VerdictBadge } from '@/myBeers/VerdictBadge';
+import { HistoricalBeerEntrySheet } from '@/myBeers/HistoricalBeerEntrySheet';
 import type { PriceCurrency } from '@/utils/currency';
 
 function lastDrinkText(session: TallySession, now: Date): string | null {
@@ -152,6 +157,82 @@ function PastEveningRow({
   );
 }
 
+function shortDateTime(iso: string): string {
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return '';
+  return new Date(ms).toLocaleDateString('cs-CZ', {
+    day: 'numeric',
+    month: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function HistoricalCheckInRow({
+  checkIn,
+  onPress,
+}: {
+  checkIn: BeerCheckIn;
+  onPress: () => void;
+}) {
+  const meta = [
+    checkIn.rating != null ? `${checkIn.rating.toFixed(1)} / 5` : '',
+    checkIn.pubName || cs.myBeers.historicalNoPub,
+    shortDateTime(checkIn.checkedInAt),
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.diaryRow, pressed && styles.rowPressed]}
+      accessibilityRole="button"
+      accessibilityLabel={cs.a11y.myBeersDiaryEntry(checkIn.beerName, meta)}
+    >
+      <View style={styles.diaryIcon}>
+        <StarIcon size={16} color={Colors.amber} />
+      </View>
+      <View style={styles.diaryText}>
+        <Text style={styles.diaryTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+          {checkIn.beerName}
+        </Text>
+        <Text style={styles.diaryMeta} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+          {meta}
+        </Text>
+        {checkIn.tags.length > 0 ? (
+          <View style={styles.diaryTags}>
+            <BeerTagChips tags={checkIn.tags} />
+          </View>
+        ) : null}
+      </View>
+      <ChevronRightIcon size={18} color={Colors.mutedText} />
+    </Pressable>
+  );
+}
+
+function HistoricalEntryButton({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.addHistoryButton, pressed && styles.rowPressed]}
+      accessibilityRole="button"
+      accessibilityLabel={cs.a11y.myBeersAddHistorical}
+    >
+      <View style={styles.addHistoryIcon}>
+        <PlusIcon size={18} color={Colors.stout} />
+      </View>
+      <View style={styles.addHistoryText}>
+        <Text style={styles.addHistoryTitle} maxFontSizeMultiplier={FontScaleCap.body}>
+          {cs.myBeers.historicalCta}
+        </Text>
+        <Text style={styles.addHistorySubtitle} maxFontSizeMultiplier={FontScaleCap.body}>
+          {cs.myBeers.historicalCtaBody}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
 // ─── Screen ────────────────────────────────────────────────────────────────────
 
 export default function MyBeersScreen({ embedded = false }: { embedded?: boolean } = {}) {
@@ -173,10 +254,28 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
   const current = useTallyStore((s) => s.current);
   const history = useTallyStore((s) => s.history);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
+  const [historicalOpen, setHistoricalOpen] = useState(false);
+  const [diaryRefreshToken, setDiaryRefreshToken] = useState(0);
+  const [diaryEntries, setDiaryEntries] = useState<BeerCheckIn[]>([]);
+
+  const refreshDiary = useCallback(() => {
+    setDiaryRefreshToken((value) => value + 1);
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetchMyBeerCheckIns(controller.signal).then((items) => {
+      if (controller.signal.aborted || !items) return;
+      setDiaryEntries(items);
+    });
+    return () => controller.abort();
+  }, [diaryRefreshToken]);
 
   const currentEvening = current && current.drinks.length > 0 ? current : null;
   const pastEvenings = history;
-  const isEmpty = !currentEvening && pastEvenings.length === 0;
+  const isEmpty = !currentEvening && pastEvenings.length === 0 && diaryEntries.length === 0;
+
+  const openHistorical = useCallback(() => setHistoricalOpen(true), []);
 
   return (
     <View style={styles.root}>
@@ -201,6 +300,7 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
           <Text style={styles.emptyBody} maxFontSizeMultiplier={FontScaleCap.body}>
             {cs.myBeers.emptyBody}
           </Text>
+          <HistoricalEntryButton onPress={openHistorical} />
         </View>
       ) : (
         <ScrollView
@@ -211,6 +311,8 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
           keyboardDismissMode="interactive"
           automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
         >
+          <HistoricalEntryButton onPress={openHistorical} />
+
           {currentEvening && (
             <CurrentEveningCard
               session={currentEvening}
@@ -247,9 +349,40 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
             </>
           )}
 
+          {diaryEntries.length > 0 && (
+            <>
+              <Text style={styles.listHeader} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.myBeers.diaryHeader}
+              </Text>
+              <View style={[styles.card, styles.listCard]}>
+                {diaryEntries.map((checkIn, i) => (
+                  <View
+                    key={checkIn.clientId || checkIn.id}
+                    style={i > 0 && styles.rowBorder}
+                  >
+                    <HistoricalCheckInRow
+                      checkIn={checkIn}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/beer-detail',
+                          params: { beer: checkIn.beerName, brewery: checkIn.breweryName },
+                        })
+                      }
+                    />
+                  </View>
+                ))}
+              </View>
+            </>
+          )}
+
           <View style={{ height: Spacing.lg }} />
         </ScrollView>
       )}
+      <HistoricalBeerEntrySheet
+        visible={historicalOpen}
+        onClose={() => setHistoricalOpen(false)}
+        onSaved={refreshDiary}
+      />
     </View>
   );
 }
@@ -375,6 +508,75 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.amber,
+  },
+
+  // — Historical diary —
+  addHistoryButton: {
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    minHeight: 68,
+    padding: 14,
+    borderRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.stout2,
+  },
+  addHistoryIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.amber,
+  },
+  addHistoryText: {
+    flex: 1,
+    gap: 2,
+  },
+  addHistoryTitle: {
+    fontFamily: Fonts.display.bold,
+    fontSize: 16,
+    color: Colors.foam,
+  },
+  addHistorySubtitle: {
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
+    color: Colors.foamMuted,
+  },
+  diaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    minHeight: 72,
+  },
+  diaryIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.stout3,
+  },
+  diaryText: {
+    flex: 1,
+    gap: 2,
+  },
+  diaryTitle: {
+    fontFamily: Fonts.display.bold,
+    fontSize: 16,
+    color: Colors.foam,
+  },
+  diaryMeta: {
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
+    color: Colors.mutedText,
+  },
+  diaryTags: {
+    marginTop: 6,
   },
 
   // — Empty —
