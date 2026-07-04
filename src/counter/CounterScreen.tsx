@@ -16,7 +16,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, Linking, Alert, useWindowDimensions } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet, Linking, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   useAnimatedStyle,
@@ -75,6 +75,7 @@ import type { Pub } from '@/data/pubs';
 import { useNearbyPub } from '@/counter/useNearbyPub';
 import { PubPickerModal } from '@/counter/PubPickerModal';
 import { BeerFormModal, type BeerFormMode, type BeerFormResult } from '@/counter/BeerFormModal';
+import { showAppDialog } from '@/components/shared/AppDialog';
 import { BeerCheckInSheet } from '@/counter/BeerCheckInSheet';
 import { MapPubEntry } from '@/components/amenities/MapPubEntry';
 import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
@@ -508,10 +509,14 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
       }
 
       const body = cs.counter.rapidDrinkBody(latestDrinkText ?? cs.counter.lastDrinkJustNow);
-      Alert.alert(cs.counter.rapidDrinkTitle, body, [
-        { text: cs.counter.cancel, style: 'cancel' },
-        { text: cs.counter.rapidDrinkConfirm, onPress: () => countBeer(beer) },
-      ]);
+      showAppDialog({
+        title: cs.counter.rapidDrinkTitle,
+        message: body,
+        buttons: [
+          { text: cs.counter.cancel, style: 'cancel' },
+          { text: cs.counter.rapidDrinkConfirm, onPress: () => countBeer(beer) },
+        ],
+      });
     },
     [countBeer, latestDrinkAt, latestDrinkText],
   );
@@ -629,17 +634,21 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   // "Dopito" — confirm, then archive the evening into history. The deferred
   // sends already in flight still deliver; we only close the local session.
   const handleDone = useCallback(() => {
-    Alert.alert(cs.counter.doneTitle, cs.counter.doneBody, [
-      { text: cs.counter.cancel, style: 'cancel' },
-      {
-        text: cs.counter.doneConfirm,
-        onPress: () => {
-          archiveCurrent('manual');
-          void trackClientEvent({ event: 'counter_session_closed', context: { reason: 'manual' } });
-          if (hapticEnabled) fireLightImpactHaptic();
+    showAppDialog({
+      title: cs.counter.doneTitle,
+      message: cs.counter.doneBody,
+      buttons: [
+        { text: cs.counter.cancel, style: 'cancel' },
+        {
+          text: cs.counter.doneConfirm,
+          onPress: () => {
+            archiveCurrent('manual');
+            void trackClientEvent({ event: 'counter_session_closed', context: { reason: 'manual' } });
+            if (hapticEnabled) fireLightImpactHaptic();
+          },
         },
-      },
-    ]);
+      ],
+    });
   }, [archiveCurrent, hapticEnabled]);
 
   // "Pokračovat ve večeru" — pop the auto-completed evening back to live so the

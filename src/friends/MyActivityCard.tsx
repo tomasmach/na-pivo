@@ -17,14 +17,13 @@
  * one shared 1-minute ticker (no per-card timer).
  *
  * "Ukončit" is deliberately the low-emphasis move (ending should never be the
- * bright action): a ghost pill, never red. It confirms via a native Alert, then
- * optimistically hides the card and fires the real DELETE; on failure the card
- * comes back and a toast explains why.
+ * bright action): a ghost pill, never red. It confirms via an app-styled dialog,
+ * then optimistically hides the card and fires the real DELETE; on failure the
+ * card comes back and a toast explains why.
  */
 
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -33,6 +32,7 @@ import {
 } from 'react-native';
 
 import { BeerBubbles } from '@/components/celebration/BeerBubbles';
+import { showAppDialog } from '@/components/shared/AppDialog';
 import {
   BellRingIcon,
   ClockIcon,
@@ -146,10 +146,10 @@ function MyActivityCardImpl({ activity, onEnded, stale = false }: MyActivityCard
   }, [activity.id, onEnded, showToast]);
 
   const handleEndPress = useCallback(() => {
-    Alert.alert(
-      cs.friends.endActivityConfirmTitle,
-      cs.friends.endActivityConfirmBody,
-      [
+    showAppDialog({
+      title: cs.friends.endActivityConfirmTitle,
+      message: cs.friends.endActivityConfirmBody,
+      buttons: [
         { text: cs.common.cancel, style: 'cancel' },
         {
           text: cs.friends.endActivityConfirmConfirm,
@@ -157,7 +157,7 @@ function MyActivityCardImpl({ activity, onEnded, stale = false }: MyActivityCard
           onPress: confirmEnd,
         },
       ],
-    );
+    });
   }, [confirmEnd]);
 
   // Expiry: hide a genuinely-passed activity outright; an unparseable timestamp

@@ -44,6 +44,7 @@ import { ensureFriendPushRegisteredIfGranted } from '@/notifications/friendPush'
 import { WhatsNewModal } from '@/components/shared/WhatsNewModal';
 import { PubReminderOnboardingModal } from '@/components/shared/PubReminderOnboardingModal';
 import { PubReminderEnableFailureModal } from '@/components/shared/PubReminderEnableFailureModal';
+import { AppDialogHost } from '@/components/shared/AppDialog';
 import { Toast } from '@/components/shared/Toast';
 import {
   consumeInitialPubReminderTap,
@@ -436,6 +437,7 @@ export default function RootLayout() {
         <WhatsNewModal />
         <PubReminderOnboardingModal />
         <PubReminderEnableFailureModal />
+        <AppDialogHost />
         <Toast />
       </SafeAreaProvider>
     </GestureHandlerRootView>

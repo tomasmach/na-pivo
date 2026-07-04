@@ -7,7 +7,6 @@
 
 import React, { useMemo, useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -44,6 +43,7 @@ import { sessionBreakdown, eveningDateLabel } from '@/myBeers/eveningModel';
 import { EveningBreakdown } from '@/myBeers/EveningBreakdown';
 import { PubRatingControl } from '@/myBeers/PubRatingControl';
 import { MapPubEntry } from '@/components/amenities/MapPubEntry';
+import { showAppDialog } from '@/components/shared/AppDialog';
 
 export default function EveningDetailScreen() {
   const router = useRouter();
@@ -71,7 +71,10 @@ export default function EveningDetailScreen() {
     if (!session) return;
     const trimmed = beerName.trim();
     if (!trimmed) {
-      Alert.alert(cs.myBeers.editDrinkTitle, cs.myBeers.editDrinkEmpty);
+      showAppDialog({
+        title: cs.myBeers.editDrinkTitle,
+        message: cs.myBeers.editDrinkEmpty,
+      });
       return;
     }
     const changed = updateDrinkNameInSession(session.startedAt, drink.id, trimmed);
@@ -92,38 +95,42 @@ export default function EveningDetailScreen() {
 
   const handleDeleteDrink = (drink: TallyDrink) => {
     if (!session) return;
-    Alert.alert(cs.myBeers.deleteDrinkTitle, cs.myBeers.deleteDrinkBody, [
-      { text: cs.myBeers.deleteDrinkCancel, style: 'cancel' },
-      {
-        text: cs.myBeers.deleteDrinkConfirm,
-        style: 'destructive',
-        onPress: () => {
-          const removed = removeDrinkFromSession(session.startedAt, drink.id);
-          if (!removed) return;
-          if (removed.remainingDrinks > 0) {
-            const nextSession = findSessionByStart(
-              useTallyStore.getState().current,
-              useTallyStore.getState().history,
-              session.startedAt,
-            );
-            syncVisit(nextSession, new Date().toISOString());
-          } else {
-            deleteVisitByClientId(removed.sessionClientId);
-          }
-          void removeQueuedDrinkUpdate(removed.drinkId);
-          void removeQueuedDrink(removed.drinkId).then((pulledFromQueue) => {
-            // Already delivered (or its POST is in flight): wait for the active
-            // flush to settle before the DELETE so it can't race ahead of an
-            // in-flight POST and recreate the drink after we deleted it.
-            if (!pulledFromQueue) {
-              void flushDrinksQueue()
-                .then(() => enqueueDelete(removed.drinkId))
-                .catch(() => undefined);
+    showAppDialog({
+      title: cs.myBeers.deleteDrinkTitle,
+      message: cs.myBeers.deleteDrinkBody,
+      buttons: [
+        { text: cs.myBeers.deleteDrinkCancel, style: 'cancel' },
+        {
+          text: cs.myBeers.deleteDrinkConfirm,
+          style: 'destructive',
+          onPress: () => {
+            const removed = removeDrinkFromSession(session.startedAt, drink.id);
+            if (!removed) return;
+            if (removed.remainingDrinks > 0) {
+              const nextSession = findSessionByStart(
+                useTallyStore.getState().current,
+                useTallyStore.getState().history,
+                session.startedAt,
+              );
+              syncVisit(nextSession, new Date().toISOString());
+            } else {
+              deleteVisitByClientId(removed.sessionClientId);
             }
-          });
+            void removeQueuedDrinkUpdate(removed.drinkId);
+            void removeQueuedDrink(removed.drinkId).then((pulledFromQueue) => {
+              // Already delivered (or its POST is in flight): wait for the active
+              // flush to settle before the DELETE so it can't race ahead of an
+              // in-flight POST and recreate the drink after we deleted it.
+              if (!pulledFromQueue) {
+                void flushDrinksQueue()
+                  .then(() => enqueueDelete(removed.drinkId))
+                  .catch(() => undefined);
+              }
+            });
+          },
         },
-      },
-    ]);
+      ],
+    });
   };
 
   return (

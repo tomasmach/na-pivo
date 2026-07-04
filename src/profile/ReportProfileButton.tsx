@@ -1,7 +1,8 @@
 import React, { memo, useCallback, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text } from 'react-native';
+import { Pressable, StyleSheet, Text } from 'react-native';
 
 import { FlagIcon } from '@/components/shared/IconGlyph';
+import { showAppDialog } from '@/components/shared/AppDialog';
 import { cs } from '@/i18n/cs';
 import { useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
@@ -41,15 +42,15 @@ export const ReportProfileButton = memo(function ReportProfileButton({
   }, [busy, reason, reportProfileContent, showToast, targetAccountId, targetLabel]);
 
   const handlePress = useCallback(() => {
-    Alert.alert(
-      cs.profile.report.confirmTitle,
-      cs.profile.report.confirmBody(targetLabel ?? cs.profile.report.profileFallback),
-      [
+    showAppDialog({
+      title: cs.profile.report.confirmTitle,
+      message: cs.profile.report.confirmBody(targetLabel ?? cs.profile.report.profileFallback),
+      buttons: [
         { text: cs.common.cancel, style: 'cancel' },
         { text: cs.profile.report.confirmSubmit, style: 'destructive', onPress: submit },
       ],
-      { cancelable: true },
-    );
+      cancelable: true,
+    });
   }, [submit, targetLabel]);
 
   return (

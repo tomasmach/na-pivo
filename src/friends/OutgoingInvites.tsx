@@ -20,7 +20,7 @@ import { friendDisplayName } from './FriendMini';
 
 interface OutgoingInvitesProps {
   requests: Friendship[];
-  /** Confirm Alert → cancelFriendRequest, owned by the parent. */
+  /** Confirm dialog → cancelFriendRequest, owned by the parent. */
   onCancel: (request: Friendship) => void;
 }
 

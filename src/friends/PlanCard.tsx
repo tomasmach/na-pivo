@@ -15,9 +15,10 @@
  */
 
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 
+import { showAppDialog } from '@/components/shared/AppDialog';
 import { ClockIcon, CompassIcon, MapPinIcon, XIcon } from '@/components/shared/IconGlyph';
 import {
   endFriendPubActivity,
@@ -114,10 +115,14 @@ function PlanCardBase({ activity, mine, onResponded, onCanceled }: PlanCardProps
   }, [activity.id, onCanceled, showToast]);
 
   const handleCancelPress = useCallback(() => {
-    Alert.alert(cs.friends.planCancelConfirmTitle, cs.friends.planCancelConfirmBody, [
-      { text: cs.common.cancel, style: 'cancel' },
-      { text: cs.friends.planCancel, style: 'destructive', onPress: confirmCancel },
-    ]);
+    showAppDialog({
+      title: cs.friends.planCancelConfirmTitle,
+      message: cs.friends.planCancelConfirmBody,
+      buttons: [
+        { text: cs.common.cancel, style: 'cancel' },
+        { text: cs.friends.planCancel, style: 'destructive', onPress: confirmCancel },
+      ],
+    });
   }, [confirmCancel]);
 
   if (cancelling) return null;
