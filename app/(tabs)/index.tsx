@@ -755,12 +755,12 @@ function RevealedPubPill({
           accessibilityLabel={cs.compass.addMissingPubLink}
           accessibilityRole="button"
         >
-          <MapPinPlusIcon size={16} color={Colors.foamMuted} />
+          <MapPinPlusIcon size={15} color={Colors.foamMuted} />
           <Text
             style={styles.footerActionText}
-            numberOfLines={2}
+            numberOfLines={1}
             adjustsFontSizeToFit
-            minimumFontScale={0.84}
+            minimumFontScale={0.78}
             maxFontSizeMultiplier={FontScaleCap.body}
           >
             {cs.compass.addMissingPubShort}
@@ -778,12 +778,12 @@ function RevealedPubPill({
           accessibilityLabel={cs.mapPub.triggerDefault}
           accessibilityRole="button"
         >
-          <MapPinnedIcon size={16} color={Colors.stout} />
+          <MapPinnedIcon size={15} color={Colors.stout} />
           <Text
             style={styles.footerActionTextPrimary}
             numberOfLines={1}
             adjustsFontSizeToFit
-            minimumFontScale={0.84}
+            minimumFontScale={0.8}
             maxFontSizeMultiplier={FontScaleCap.body}
           >
             {cs.mapPub.triggerDefault}
@@ -797,12 +797,12 @@ function RevealedPubPill({
           accessibilityLabel={cs.a11y.reportPubButton}
           accessibilityRole="button"
         >
-          <BeerOffIcon size={16} color={Colors.foamMuted} />
+          <BeerOffIcon size={15} color={Colors.foamMuted} />
           <Text
             style={styles.footerActionText}
-            numberOfLines={2}
+            numberOfLines={1}
             adjustsFontSizeToFit
-            minimumFontScale={0.84}
+            minimumFontScale={0.78}
             maxFontSizeMultiplier={FontScaleCap.body}
           >
             {cs.compass.reportPubShort}
@@ -2004,46 +2004,55 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'stretch',
-    gap: 8,
+    gap: 4,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
+    marginTop: 2,
     paddingTop: 8,
+    paddingHorizontal: 4,
+    paddingBottom: 4,
+    borderRadius: Radius.medium,
+    backgroundColor: withAlpha(Colors.stout, 0.34),
   },
   footerAction: {
     flex: 1,
+    flexDirection: 'row',
     minWidth: 0,
-    minHeight: 48,
-    borderRadius: Radius.medium,
+    minHeight: 34,
+    borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 3,
-    paddingHorizontal: 5,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.border, 0.72),
-    backgroundColor: withAlpha(Colors.stout, 0.36),
+    gap: 4,
+    paddingHorizontal: 6,
   },
   footerActionPrimary: {
-    flex: 1.22,
-    borderColor: withAlpha(Colors.amber, 0.82),
+    flex: 1.28,
+    borderRadius: 12,
     backgroundColor: Colors.amber,
+    shadowColor: Colors.glow,
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
   },
   footerActionPressed: {
-    opacity: 0.72,
+    opacity: 0.78,
     transform: [{ scale: 0.98 }],
   },
   footerActionText: {
     fontFamily: Fonts.ui.semibold,
-    fontSize: 10.5,
-    lineHeight: 12,
+    fontSize: 10.8,
+    lineHeight: 13,
     color: Colors.foamMuted,
     textAlign: 'center',
+    flexShrink: 1,
   },
   footerActionTextPrimary: {
     fontFamily: Fonts.display.extrabold,
-    fontSize: 12,
+    fontSize: 11.5,
+    lineHeight: 14,
     color: Colors.stout,
     textAlign: 'center',
+    flexShrink: 1,
   },
 
   // ── Mode toggle ──
