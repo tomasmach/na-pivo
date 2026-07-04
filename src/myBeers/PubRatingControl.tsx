@@ -278,13 +278,11 @@ const styles = StyleSheet.create({
 
   tagGrid: {
     flexDirection: 'row',
-    gap: 6,
+    justifyContent: 'space-between',
     marginTop: 8,
   },
   tagChip: {
-    flex: 1,
-    flexBasis: 0,
-    minWidth: 0,
+    width: '31.5%',
     minHeight: 54,
     alignItems: 'center',
     justifyContent: 'center',
