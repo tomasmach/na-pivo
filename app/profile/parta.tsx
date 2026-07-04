@@ -15,7 +15,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 
@@ -30,6 +30,7 @@ import {
   ChevronRightIcon,
   UserPlusIcon,
 } from '@/components/shared/IconGlyph';
+import { showAppDialog } from '@/components/shared/AppDialog';
 import { cs } from '@/i18n/cs';
 import {
   selectNeedsProfileSetup,
@@ -135,24 +136,27 @@ export default function ManagePartaScreen() {
 
   const confirmCancelInvite = useCallback(
     (request: FriendsDashboard['outgoingRequests'][number]) => {
-      Alert.alert(cs.friends.cancelInviteTitle, undefined, [
-        { text: cs.common.cancel, style: 'cancel' },
-        {
-          text: cs.friends.cancelInviteConfirm,
-          style: 'destructive',
-          onPress: () => {
-            void cancelFriendRequest(request.recipient.id).then((result) => {
-              if (!mountedRef.current) return;
-              if (result.ok) {
-                showToast(cs.friends.inviteCanceled);
-                reload();
-              } else {
-                showToast(result.detail);
-              }
-            });
+      showAppDialog({
+        title: cs.friends.cancelInviteTitle,
+        buttons: [
+          { text: cs.common.cancel, style: 'cancel' },
+          {
+            text: cs.friends.cancelInviteConfirm,
+            style: 'destructive',
+            onPress: () => {
+              void cancelFriendRequest(request.recipient.id).then((result) => {
+                if (!mountedRef.current) return;
+                if (result.ok) {
+                  showToast(cs.friends.inviteCanceled);
+                  reload();
+                } else {
+                  showToast(result.detail);
+                }
+              });
+            },
           },
-        },
-      ]);
+        ],
+      });
     },
     [reload, showToast],
   );

@@ -11,11 +11,12 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 
 import { GlowButton } from '@/components/shared/GlowButton';
+import { showAppDialog } from '@/components/shared/AppDialog';
 import {
   ChevronLeftIcon,
   CompassIcon,
@@ -178,33 +179,48 @@ export default function FriendProfileScreen() {
   }, [accountId, goBack, showToast]);
 
   const confirmReport = useCallback(() => {
-    Alert.alert(cs.profile.report.confirmTitle, cs.profile.report.confirmBody(name), [
-      { text: cs.common.cancel, style: 'cancel' },
-      { text: cs.profile.report.confirmSubmit, style: 'destructive', onPress: doReport },
-    ]);
+    showAppDialog({
+      title: cs.profile.report.confirmTitle,
+      message: cs.profile.report.confirmBody(name),
+      buttons: [
+        { text: cs.common.cancel, style: 'cancel' },
+        { text: cs.profile.report.confirmSubmit, style: 'destructive', onPress: doReport },
+      ],
+    });
   }, [doReport, name]);
 
   const confirmBlock = useCallback(() => {
-    Alert.alert(cs.friends.blockTitle(name), cs.friends.blockBody, [
-      { text: cs.common.cancel, style: 'cancel' },
-      { text: cs.friends.blockConfirm, style: 'destructive', onPress: doBlock },
-    ]);
+    showAppDialog({
+      title: cs.friends.blockTitle(name),
+      message: cs.friends.blockBody,
+      buttons: [
+        { text: cs.common.cancel, style: 'cancel' },
+        { text: cs.friends.blockConfirm, style: 'destructive', onPress: doBlock },
+      ],
+    });
   }, [doBlock, name]);
 
   const confirmRemove = useCallback(() => {
-    Alert.alert(cs.friends.removeTitle, cs.friends.removeBody(name), [
-      { text: cs.common.cancel, style: 'cancel' },
-      { text: cs.friends.removeConfirm, style: 'destructive', onPress: doRemove },
-    ]);
+    showAppDialog({
+      title: cs.friends.removeTitle,
+      message: cs.friends.removeBody(name),
+      buttons: [
+        { text: cs.common.cancel, style: 'cancel' },
+        { text: cs.friends.removeConfirm, style: 'destructive', onPress: doRemove },
+      ],
+    });
   }, [doRemove, name]);
 
   const openOverflow = useCallback(() => {
-    Alert.alert(cs.friends.rowActionsTitle, undefined, [
-      { text: cs.friends.reportAction, onPress: confirmReport },
-      { text: cs.friends.blockAction, style: 'destructive', onPress: confirmBlock },
-      { text: cs.friends.profileRemove, style: 'destructive', onPress: confirmRemove },
-      { text: cs.common.cancel, style: 'cancel' },
-    ]);
+    showAppDialog({
+      title: cs.friends.rowActionsTitle,
+      buttons: [
+        { text: cs.friends.reportAction, onPress: confirmReport },
+        { text: cs.friends.blockAction, style: 'destructive', onPress: confirmBlock },
+        { text: cs.friends.profileRemove, style: 'destructive', onPress: confirmRemove },
+        { text: cs.common.cancel, style: 'cancel' },
+      ],
+    });
   }, [confirmBlock, confirmRemove, confirmReport]);
 
   const stats = detail?.stats;

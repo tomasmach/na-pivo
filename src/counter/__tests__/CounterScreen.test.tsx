@@ -49,6 +49,10 @@ jest.mock('@/theme/fonts', () => ({
 
 jest.mock('@/components/celebration/BeerBubbles', () => ({ BeerBubbles: jest.fn(() => null) }));
 jest.mock('@/components/shared/GlowButton', () => ({ GlowButton: jest.fn(() => null) }));
+jest.mock('@/components/shared/AppDialog', () => ({
+  AppDialogHost: jest.fn(() => null),
+  showAppDialog: jest.fn(),
+}));
 // The modals wrap RN Modal/TextInput (not in the lean react-native test mock);
 // they aren't under test here, so stub them out.
 jest.mock('@/counter/BeerFormModal', () => ({ BeerFormModal: jest.fn(() => null) }));
@@ -104,7 +108,7 @@ import { useTallyStore } from '@/stores/tallyStore';
 import { useCommunityStore } from '@/stores/communityStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { geohash8 } from '@/data/geohash';
-import { Alert } from 'react-native';
+import { showAppDialog } from '@/components/shared/AppDialog';
 
 const CounterScreen = require('../CounterScreen').default;
 const TestRenderer = require('react-test-renderer');
@@ -315,18 +319,18 @@ describe('CounterScreen counting', () => {
     const texts = renderer.root.findAllByType('Text').map((t: any) => t.props.children);
     expect(texts.flat().join(' ')).toContain(cs.counter.lastDrinkJustNow);
     expect(enqueueDrink).toHaveBeenCalledTimes(1);
-    expect(Alert.alert).not.toHaveBeenCalled();
+    expect(showAppDialog).not.toHaveBeenCalled();
 
     await act(async () => {
       card.props.onPress();
       await Promise.resolve();
     });
 
-    expect(Alert.alert).toHaveBeenCalledTimes(1);
+    expect(showAppDialog).toHaveBeenCalledTimes(1);
     expect(enqueueDrink).toHaveBeenCalledTimes(1);
     expect(useTallyStore.getState().current?.drinks).toHaveLength(1);
 
-    const buttons = (Alert.alert as jest.Mock).mock.calls[0][2];
+    const buttons = (showAppDialog as jest.Mock).mock.calls[0][0].buttons;
     await act(async () => {
       buttons[1].onPress();
       await Promise.resolve();

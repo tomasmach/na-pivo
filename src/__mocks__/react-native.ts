@@ -32,6 +32,10 @@ export const StyleSheet = {
     left: 0,
   },
   create: <T extends Record<string, unknown>>(styles: T): T => styles,
+  flatten: (style: unknown): Record<string, unknown> =>
+    Array.isArray(style)
+      ? Object.assign({}, ...style.flat(Infinity).filter(Boolean))
+      : ((style as Record<string, unknown>) ?? {}),
 };
 
 export const Dimensions = {
@@ -81,6 +85,8 @@ export const AccessibilityInfo = {
 
 export const KeyboardAvoidingView = createComponent('KeyboardAvoidingView');
 export const TextInput = createComponent('TextInput');
+// Modal renders its children inline in tests (visibility is a prop, not gated).
+export const Modal = createComponent('Modal');
 
 export const NativeModules = {};
 export const NativeEventEmitter = jest.fn(() => ({

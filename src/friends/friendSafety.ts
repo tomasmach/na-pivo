@@ -9,8 +9,8 @@
  */
 
 import { useCallback } from 'react';
-import { Alert } from 'react-native';
 
+import { showAppDialog } from '@/components/shared/AppDialog';
 import { blockFriend, type FriendProfile } from '@/data/friendsClient';
 import { cs } from '@/i18n/cs';
 import { useAccountStore } from '@/stores/accountStore';
@@ -38,49 +38,60 @@ export function useFriendSafety(onChanged?: () => void) {
       const name = nameOf(profile);
 
       const confirmReport = () => {
-        Alert.alert(cs.profile.report.confirmTitle, cs.profile.report.confirmBody(name), [
-          { text: cs.common.cancel, style: 'cancel' },
-          {
-            text: cs.profile.report.confirmSubmit,
-            style: 'destructive',
-            onPress: () => {
-              void reportProfileContent({
-                targetAccountId: profile.id,
-                reason: 'other',
-                comment: name,
-              }).then((res) => {
-                showToast(res.ok ? cs.friends.reportDone : res.detail || cs.profile.edit.errorGeneric);
-              });
+        showAppDialog({
+          title: cs.profile.report.confirmTitle,
+          message: cs.profile.report.confirmBody(name),
+          buttons: [
+            { text: cs.common.cancel, style: 'cancel' },
+            {
+              text: cs.profile.report.confirmSubmit,
+              style: 'destructive',
+              onPress: () => {
+                void reportProfileContent({
+                  targetAccountId: profile.id,
+                  reason: 'other',
+                  comment: name,
+                }).then((res) => {
+                  showToast(res.ok ? cs.friends.reportDone : res.detail || cs.profile.edit.errorGeneric);
+                });
+              },
             },
-          },
-        ]);
+          ],
+        });
       };
 
       const confirmBlock = () => {
-        Alert.alert(cs.friends.blockTitle(name), cs.friends.blockBody, [
-          { text: cs.common.cancel, style: 'cancel' },
-          {
-            text: cs.friends.blockConfirm,
-            style: 'destructive',
-            onPress: () => {
-              void blockFriend(profile.id).then((res) => {
-                if (res.ok) {
-                  showToast(cs.friends.blocked);
-                  onChanged?.();
-                } else {
-                  showToast(res.detail);
-                }
-              });
+        showAppDialog({
+          title: cs.friends.blockTitle(name),
+          message: cs.friends.blockBody,
+          buttons: [
+            { text: cs.common.cancel, style: 'cancel' },
+            {
+              text: cs.friends.blockConfirm,
+              style: 'destructive',
+              onPress: () => {
+                void blockFriend(profile.id).then((res) => {
+                  if (res.ok) {
+                    showToast(cs.friends.blocked);
+                    onChanged?.();
+                  } else {
+                    showToast(res.detail);
+                  }
+                });
+              },
             },
-          },
-        ]);
+          ],
+        });
       };
 
-      Alert.alert(cs.friends.rowActionsTitle, undefined, [
-        { text: cs.friends.reportAction, onPress: confirmReport },
-        { text: cs.friends.blockAction, style: 'destructive', onPress: confirmBlock },
-        { text: cs.common.cancel, style: 'cancel' },
-      ]);
+      showAppDialog({
+        title: cs.friends.rowActionsTitle,
+        buttons: [
+          { text: cs.friends.reportAction, onPress: confirmReport },
+          { text: cs.friends.blockAction, style: 'destructive', onPress: confirmBlock },
+          { text: cs.common.cancel, style: 'cancel' },
+        ],
+      });
     },
     [onChanged, reportProfileContent, showToast],
   );

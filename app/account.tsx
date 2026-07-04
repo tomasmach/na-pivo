@@ -7,7 +7,7 @@
  *  2. "Způsoby přihlášení" card — link/unlink rows for E-mail, Google, Apple,
  *     plus a "Nastavit heslo" form when the account has no password yet.
  *  3. "Odhlásit se" — secondary GlowButton.
- *  4. Danger zone — "Smazat účet" behind a native confirm alert.
+ *  4. Danger zone — "Smazat účet" behind an app-styled confirm dialog.
  *
  * The store actions never throw (AuthResult / AuthActionResult), so each handler
  * just branches on `ok` and surfaces `detail` via a toast. Provider sheets that
@@ -21,7 +21,6 @@ import {
   ScrollView,
   Pressable,
   TextInput,
-  Alert,
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
@@ -41,6 +40,7 @@ import {
 } from '@/components/shared/IconGlyph';
 import { AppleIcon, GoogleIcon } from '@/components/shared/BrandIcon';
 import { GlowButton } from '@/components/shared/GlowButton';
+import { showAppDialog } from '@/components/shared/AppDialog';
 import { Avatar } from '@/profile/Avatar';
 import {
   useAccountStore,
@@ -173,10 +173,10 @@ export default function AccountScreen() {
   }, [busy, logout, router]);
 
   const handleDelete = useCallback(() => {
-    Alert.alert(
-      cs.account.deleteConfirmTitle,
-      cs.account.deleteConfirmBody,
-      [
+    showAppDialog({
+      title: cs.account.deleteConfirmTitle,
+      message: cs.account.deleteConfirmBody,
+      buttons: [
         { text: cs.account.deleteConfirmCancel, style: 'cancel' },
         {
           text: cs.account.deleteConfirmConfirm,
@@ -188,8 +188,8 @@ export default function AccountScreen() {
           },
         },
       ],
-      { cancelable: true },
-    );
+      cancelable: true,
+    });
   }, [deleteAccount, showToast, router]);
 
   const handleExportData = useCallback(async () => {
@@ -199,7 +199,10 @@ export default function AccountScreen() {
       const result = await exportAccountData();
       if (result.ok) {
         showToast(cs.account.exportDataToast);
-        Alert.alert(cs.account.exportDataSentTitle, cs.account.exportDataSentBody);
+        showAppDialog({
+          title: cs.account.exportDataSentTitle,
+          message: cs.account.exportDataSentBody,
+        });
       } else {
         showToast(result.detail || cs.account.errorGeneric);
       }

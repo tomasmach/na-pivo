@@ -1,16 +1,36 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 
+import { BeerTagChips } from '@/components/shared/BeerTagChips';
 import { BeerIcon, LockKeyholeIcon, StarIcon, UsersIcon, XIcon } from '@/components/shared/IconGlyph';
 import { generateUuidV4 } from '@/data/account';
+import {
+  BEER_TAGS,
+  fetchBeerMemory,
+  MAX_BEER_TAGS,
+  type BeerMemory,
+  type BeerTag,
+} from '@/data/beerCheckinsClient';
 import { enqueueBeerCheckInOp } from '@/data/beerCheckinsQueue';
 import type { Pub } from '@/data/pubs';
+import SkeletonBlock from '@/friends/SkeletonBlock';
 import { cs } from '@/i18n/cs';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
+import { useReduceMotion } from '@/utils/useReduceMotion';
+
+/** ~400 ms debounce for the memory lookup while the beer name is being typed. */
+const MEMORY_DEBOUNCE_MS = 400;
+
+function shortDate(iso: string): string {
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return '';
+  return new Date(ms).toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric' });
+}
 
 interface BeerCheckInSheetProps {
   visible: boolean;
@@ -39,6 +59,26 @@ function RatingChip({ value, active, onPress }: { value: number; active: boolean
   );
 }
 
+function TagChip({ tag, active, onPress }: { tag: BeerTag; active: boolean; onPress: () => void }) {
+  const label = cs.beerCheckins.tags[tag];
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.tagChip, active && styles.ratingChipActive, pressed && styles.dim]}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={active ? cs.beerCheckins.tagRemoveA11y(label) : cs.beerCheckins.tagAddA11y(label)}
+    >
+      <Text
+        style={[styles.tagChipText, active && styles.ratingTextActive]}
+        maxFontSizeMultiplier={FontScaleCap.body}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
 export function BeerCheckInSheet({
   visible,
   beerName,
@@ -49,17 +89,82 @@ export function BeerCheckInSheet({
   onSubmitted,
 }: BeerCheckInSheetProps) {
   const insets = useSafeAreaInsets();
+  const reduceMotion = useReduceMotion();
   const showToast = useToastStore((s) => s.show);
   const [name, setName] = useState(beerName);
   const [brewery, setBrewery] = useState('');
   const [style, setStyle] = useState('');
   const [rating, setRating] = useState<number | null>(4);
   const [note, setNote] = useState('');
+  const [tags, setTags] = useState<BeerTag[]>([]);
   const [visibility, setVisibility] = useState<'private' | 'friends'>('friends');
+  const [memory, setMemory] = useState<BeerMemory | null>(null);
+  const [memoryLoading, setMemoryLoading] = useState(false);
 
   const cleanName = name.trim();
   const canSubmit = cleanName.length > 0;
   const ratingValues = useMemo(() => [1, 2, 3, 4, 5], []);
+
+  const toggleTag = useCallback((tag: BeerTag) => {
+    setTags((current) => {
+      if (current.includes(tag)) return current.filter((t) => t !== tag);
+      if (current.length >= MAX_BEER_TAGS) {
+        // Silent no-op at the cap — just a light haptic tick, no error text.
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        return current;
+      }
+      return [...current, tag];
+    });
+  }, []);
+
+  // Clear per-beer state when the sheet closes so the next open starts fresh.
+  // State updates run off a microtask timer (never synchronously in the effect
+  // body) to avoid cascading re-renders.
+  useEffect(() => {
+    if (visible) return;
+    const t = setTimeout(() => {
+      setTags([]);
+      setMemory(null);
+      setMemoryLoading(false);
+    }, 0);
+    return () => clearTimeout(t);
+  }, [visible]);
+
+  // Memory strip: fetch on open (near-immediate), debounce subsequent
+  // name/brewery edits. Stale requests are aborted; any failure collapses the
+  // strip silently. All setState happens inside the timer/async callbacks.
+  const wasVisibleRef = useRef(false);
+  useEffect(() => {
+    if (!visible) {
+      wasVisibleRef.current = false;
+      return;
+    }
+    const justOpened = !wasVisibleRef.current;
+    wasVisibleRef.current = true;
+
+    const beer = name.trim();
+    const brew = brewery.trim();
+    const controller = new AbortController();
+
+    const clear = () => {
+      setMemory(null);
+      setMemoryLoading(false);
+    };
+    const run = () => {
+      setMemoryLoading(true);
+      void fetchBeerMemory(beer, brew, controller.signal).then((result) => {
+        if (controller.signal.aborted) return;
+        setMemory(result);
+        setMemoryLoading(false);
+      });
+    };
+
+    const timer = setTimeout(beer ? run : clear, justOpened ? 0 : MEMORY_DEBOUNCE_MS);
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [visible, name, brewery]);
 
   const submit = useCallback(() => {
     if (!canSubmit) return;
@@ -72,6 +177,7 @@ export function BeerCheckInSheet({
         beerStyle: style.trim(),
         rating,
         note: note.trim(),
+        tags,
         pubCacheKey: pubKey,
         pubName: pub.name,
         pubCity: pub.city ?? '',
@@ -84,7 +190,7 @@ export function BeerCheckInSheet({
       onSubmitted();
       onClose();
     });
-  }, [brewery, canSubmit, cleanName, note, onClose, onSubmitted, pub, pubKey, rating, showToast, style, visibility, visitClientId]);
+  }, [brewery, canSubmit, cleanName, note, onClose, onSubmitted, pub, pubKey, rating, showToast, style, tags, visibility, visitClientId]);
 
   return (
     <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
@@ -106,6 +212,34 @@ export function BeerCheckInSheet({
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            {memoryLoading ? (
+              <View style={styles.memoryStrip}>
+                <SkeletonBlock width="55%" height={13} reduceMotion={reduceMotion} />
+                <SkeletonBlock width="80%" height={12} reduceMotion={reduceMotion} />
+              </View>
+            ) : memory && memory.myCount > 0 ? (
+              <View style={styles.memoryStrip}>
+                <Text style={styles.memoryLead} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {cs.beerCheckins.memoryKnownLead}
+                </Text>
+                <Text style={styles.memoryMeta} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {cs.beerCheckins.memoryKnown({
+                    count: memory.myCount,
+                    lastDate: shortDate(memory.lastCheckedInAt ?? ''),
+                    lastPub: memory.lastPubName,
+                    lastRating: memory.lastRating,
+                  })}
+                </Text>
+                <BeerTagChips tags={memory.topTags} />
+              </View>
+            ) : memory ? (
+              <View style={styles.memoryStrip}>
+                <Text style={styles.memoryFirst} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {cs.beerCheckins.memoryFirstTime}
+                </Text>
+              </View>
+            ) : null}
+
             <Text style={styles.label}>{cs.beerCheckins.beerLabel}</Text>
             <TextInput
               value={name}
@@ -150,6 +284,13 @@ export function BeerCheckInSheet({
                   active={rating === value}
                   onPress={() => setRating((current) => (current === value ? null : value))}
                 />
+              ))}
+            </View>
+
+            <Text style={styles.label}>{cs.beerCheckins.tagsLabel}</Text>
+            <View style={styles.ratingRow}>
+              {BEER_TAGS.map((tag) => (
+                <TagChip key={tag} tag={tag} active={tags.includes(tag)} onPress={() => toggleTag(tag)} />
               ))}
             </View>
 
@@ -292,6 +433,44 @@ const styles = StyleSheet.create({
   ratingChipActive: {
     backgroundColor: Colors.amber,
     borderColor: Colors.amber,
+  },
+  tagChip: {
+    minHeight: 40,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.stout2,
+  },
+  tagChipText: {
+    fontFamily: Fonts.display.bold,
+    fontSize: 13,
+    color: Colors.foam,
+  },
+  memoryStrip: {
+    marginTop: Spacing.sm,
+    padding: Spacing.md,
+    borderRadius: Radius.medium,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.stout2,
+    gap: Spacing.xs,
+  },
+  memoryLead: {
+    fontFamily: Fonts.display.bold,
+    fontSize: 13,
+    color: Colors.amber,
+  },
+  memoryMeta: {
+    fontFamily: Fonts.ui.medium,
+    fontSize: 12,
+    color: Colors.foamMuted,
+  },
+  memoryFirst: {
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
+    color: Colors.mutedText,
   },
   ratingText: {
     fontFamily: Fonts.display.bold,
