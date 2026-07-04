@@ -161,6 +161,8 @@ export const cs = {
     detailsLoading: 'Načítám info',
     contribute: 'Doplnit info',
     addMissingPubLink: 'Není to ta hospoda? Přidej ji',
+    addMissingPubShort: 'Přidat hospodu',
+    reportPubShort: 'Nahlásit chybu',
     // The leading beer glyph is a line-art icon rendered next to this text in
     // the pub card (see RevealedPubPill), not an emoji baked into the string.
     beerWithPrice: (name: string, price: string) => `${name} · ${price}`,

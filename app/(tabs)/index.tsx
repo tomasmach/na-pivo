@@ -744,34 +744,46 @@ function RevealedPubPill({
         )}
       </Pressable>
 
-      {/* Footer actions on ONE row (no extra height — the compass needs the space).
-          Symmetric bookend: a grey icon escape on each edge (add a missing pub
-          left, report a wrong one right) flanking the centred primary "Zmapuj
-          hospodu" hub entry. space-between pins the label to the true centre. */}
+      {/* Footer actions stay in one compact row, but the two support actions are
+          now named. Users were missing the icon-only affordances, while the
+          compass screen still cannot afford a tall secondary menu here. */}
       <View style={styles.pubPillFooter}>
         <Pressable
           onPress={onAddPub}
-          hitSlop={12}
-          style={({ pressed }) => [styles.footerIconButton, pressed && { opacity: 0.6 }]}
+          hitSlop={8}
+          style={({ pressed }) => [styles.footerAction, pressed && styles.footerActionPressed]}
           accessibilityLabel={cs.compass.addMissingPubLink}
           accessibilityRole="button"
         >
-          <MapPinPlusIcon size={17} color={Colors.mutedText} />
+          <MapPinPlusIcon size={16} color={Colors.foamMuted} />
+          <Text
+            style={styles.footerActionText}
+            numberOfLines={2}
+            adjustsFontSizeToFit
+            minimumFontScale={0.84}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
+            {cs.compass.addMissingPubShort}
+          </Text>
         </Pressable>
 
         <Pressable
           onPress={() => setMapOpen(true)}
-          hitSlop={10}
-          style={({ pressed }) => [styles.footerButton, pressed && { opacity: 0.75 }]}
+          hitSlop={8}
+          style={({ pressed }) => [
+            styles.footerAction,
+            styles.footerActionPrimary,
+            pressed && styles.footerActionPressed,
+          ]}
           accessibilityLabel={cs.mapPub.triggerDefault}
           accessibilityRole="button"
         >
-          <MapPinnedIcon size={14} color={Colors.amber} />
+          <MapPinnedIcon size={16} color={Colors.stout} />
           <Text
-            style={styles.contributeButtonText}
+            style={styles.footerActionTextPrimary}
             numberOfLines={1}
             adjustsFontSizeToFit
-            minimumFontScale={0.86}
+            minimumFontScale={0.84}
             maxFontSizeMultiplier={FontScaleCap.body}
           >
             {cs.mapPub.triggerDefault}
@@ -780,12 +792,21 @@ function RevealedPubPill({
 
         <Pressable
           onPress={onReport}
-          hitSlop={12}
-          style={({ pressed }) => [styles.footerIconButton, pressed && { opacity: 0.6 }]}
+          hitSlop={8}
+          style={({ pressed }) => [styles.footerAction, pressed && styles.footerActionPressed]}
           accessibilityLabel={cs.a11y.reportPubButton}
           accessibilityRole="button"
         >
-          <BeerOffIcon size={17} color={Colors.mutedText} />
+          <BeerOffIcon size={16} color={Colors.foamMuted} />
+          <Text
+            style={styles.footerActionText}
+            numberOfLines={2}
+            adjustsFontSizeToFit
+            minimumFontScale={0.84}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
+            {cs.compass.reportPubShort}
+          </Text>
         </Pressable>
       </View>
 
@@ -1982,32 +2003,47 @@ const styles = StyleSheet.create({
   pubPillFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     alignSelf: 'stretch',
+    gap: 8,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
     paddingTop: 8,
   },
-  footerButton: {
-    flexShrink: 1,
-    flexDirection: 'row',
+  footerAction: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 48,
+    borderRadius: Radius.medium,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    minHeight: 32,
-    paddingHorizontal: 2,
+    gap: 3,
+    paddingHorizontal: 5,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.border, 0.72),
+    backgroundColor: withAlpha(Colors.stout, 0.36),
   },
-  contributeButtonText: {
-    flexShrink: 1,
+  footerActionPrimary: {
+    flex: 1.22,
+    borderColor: withAlpha(Colors.amber, 0.82),
+    backgroundColor: Colors.amber,
+  },
+  footerActionPressed: {
+    opacity: 0.72,
+    transform: [{ scale: 0.98 }],
+  },
+  footerActionText: {
     fontFamily: Fonts.ui.semibold,
-    fontSize: 12,
-    color: Colors.amber,
+    fontSize: 10.5,
+    lineHeight: 12,
+    color: Colors.foamMuted,
+    textAlign: 'center',
   },
-  footerIconButton: {
-    width: 40,
-    minHeight: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
+  footerActionTextPrimary: {
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 12,
+    color: Colors.stout,
+    textAlign: 'center',
   },
 
   // ── Mode toggle ──
