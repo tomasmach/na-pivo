@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BeerTagChips, sortTagsByCount } from '@/components/shared/BeerTagChips';
 import { BeerIcon, ChevronLeftIcon, StarIcon, UsersIcon } from '@/components/shared/IconGlyph';
 import { fetchBeerDetail, type BeerDetail } from '@/data/beerCheckinsClient';
 import { FriendMini } from '@/friends/FriendMini';
@@ -23,6 +24,40 @@ function shortDate(iso: string): string {
 
 function formatAverage(value: number | null): string {
   return value == null ? '—' : value.toFixed(1);
+}
+
+/** Genitive Czech month names for the "Piješ ho od června" relationship line. */
+const CZ_MONTHS_GENITIVE = [
+  'ledna',
+  'února',
+  'března',
+  'dubna',
+  'května',
+  'června',
+  'července',
+  'srpna',
+  'září',
+  'října',
+  'listopadu',
+  'prosince',
+];
+
+/**
+ * Earliest check-in month, or '' when unknown. Prefers the server's
+ * `first_checked_in_at` (exact even beyond the 50-item history cap); falls back
+ * to deriving from the capped history on an older backend.
+ */
+function sinceMonthLabel(firstCheckedInAt: string | null, isoDates: string[]): string {
+  let earliest = firstCheckedInAt ? Date.parse(firstCheckedInAt) : Number.NaN;
+  if (!Number.isFinite(earliest)) {
+    earliest = Number.POSITIVE_INFINITY;
+    for (const iso of isoDates) {
+      const ms = Date.parse(iso);
+      if (Number.isFinite(ms) && ms < earliest) earliest = ms;
+    }
+  }
+  if (!Number.isFinite(earliest)) return '';
+  return CZ_MONTHS_GENITIVE[new Date(earliest).getMonth()] ?? '';
 }
 
 export default function BeerDetailScreen() {
@@ -72,6 +107,17 @@ export default function BeerDetailScreen() {
     else router.replace('/friends');
   }, [router]);
 
+  const sinceMonth = useMemo(
+    () =>
+      detail && detail.myCount > 0
+        ? sinceMonthLabel(
+            detail.firstCheckedInAt,
+            detail.myHistory.map((c) => c.checkedInAt),
+          )
+        : '',
+    [detail],
+  );
+
   return (
     <View style={[styles.root, { paddingTop: insets.top + Spacing.sm }]}>
       <View style={styles.header}>
@@ -106,6 +152,11 @@ export default function BeerDetailScreen() {
                 {detail.breweryName}
               </Text>
             ) : null}
+            {sinceMonth ? (
+              <Text style={styles.relationship} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.beerCheckins.detailSinceMonth(sinceMonth)}
+              </Text>
+            ) : null}
           </View>
 
           <View style={styles.statsRow}>
@@ -122,6 +173,13 @@ export default function BeerDetailScreen() {
               <Text style={styles.statLabel}>parta</Text>
             </View>
           </View>
+
+          {sortTagsByCount(detail.myTags).length > 0 ? (
+            <View style={styles.section}>
+              <SectionHeader label={cs.beerCheckins.detailMyTagsLabel.toUpperCase()} />
+              <BeerTagChips tags={sortTagsByCount(detail.myTags)} counts={detail.myTags} max={8} />
+            </View>
+          ) : null}
 
           {detail.partyDrinkers.length > 0 ? (
             <View style={styles.section}>
@@ -150,6 +208,11 @@ export default function BeerDetailScreen() {
                           .filter(Boolean)
                           .join(' · ')}
                       </Text>
+                      {checkIn.tags.length > 0 ? (
+                        <View style={styles.rowTags}>
+                          <BeerTagChips tags={checkIn.tags} />
+                        </View>
+                      ) : null}
                     </View>
                   </View>
                 </HairlineRow>
@@ -175,6 +238,11 @@ export default function BeerDetailScreen() {
                           .filter(Boolean)
                           .join(' · ')}
                       </Text>
+                      {checkIn.tags.length > 0 ? (
+                        <View style={styles.rowTags}>
+                          <BeerTagChips tags={checkIn.tags} />
+                        </View>
+                      ) : null}
                     </View>
                   </View>
                 </HairlineRow>
@@ -243,6 +311,15 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.medium,
     fontSize: 14,
     color: Colors.foamMuted,
+  },
+  relationship: {
+    marginTop: 2,
+    fontFamily: Fonts.display.bold,
+    fontSize: 13,
+    color: Colors.amber,
+  },
+  rowTags: {
+    marginTop: 4,
   },
   statsRow: {
     flexDirection: 'row',

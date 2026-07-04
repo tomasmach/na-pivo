@@ -56,6 +56,7 @@ import {
   type BeerCheckIn,
 } from '@/data/beerCheckinsClient';
 import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
+import { BeerTagChips } from '@/components/shared/BeerTagChips';
 import { GlowButton } from '@/components/shared/GlowButton';
 import {
   BellRingIcon,
@@ -834,6 +835,11 @@ export default function FriendsScreen() {
               <Text style={styles.feedNote} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
                 {checkIn.note}
               </Text>
+            ) : null}
+            {checkIn.tags.length > 0 ? (
+              <View style={styles.feedTags}>
+                <BeerTagChips tags={checkIn.tags} />
+              </View>
             ) : null}
           </View>
           <CheersPill
@@ -1687,5 +1693,8 @@ const styles = StyleSheet.create({
     color: Colors.foam,
     fontSize: 13,
     lineHeight: 18,
+  },
+  feedTags: {
+    marginTop: 6,
   },
 });

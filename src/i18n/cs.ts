@@ -581,6 +581,21 @@ export const cs = {
     ratingA11y: (value: number) => `Hodnocení ${value} z 5`,
     noteLabel: 'Poznámka',
     notePlaceholder: 'Hořkost, pěna, nálada u stolu…',
+    // Fast one-tap verdict chips — max 3, replaces the need to type a note.
+    tagsLabel: 'Rychlý verdikt',
+    // Czech labels for the fixed wire tag set (keys are the BEER_TAGS values).
+    tags: {
+      crisp: 'Má říz',
+      great_foam: 'Pěna jak smetana',
+      smooth: 'Jde samo',
+      watery: 'Vodový',
+      stale: 'Zvětralý',
+      overpriced: 'Předražený',
+      one_more: 'Ještě jedno',
+      never_again: 'Už nikdy',
+    } as Record<string, string>,
+    tagAddA11y: (label: string) => `Přidat verdikt ${label}`,
+    tagRemoveA11y: (label: string) => `Odebrat verdikt ${label}`,
     visibilityLabel: 'Viditelnost',
     visibilityPrivate: 'Jen pro mě',
     visibilityFriends: 'Parta',
@@ -590,6 +605,32 @@ export const cs = {
     feedEmpty: 'Parta zatím žádné pivo nesdílela.',
     detailHeader: 'Detail piva',
     lastBeersHeader: 'Poslední piva',
+    // Memory strip on the check-in sheet. Known variant is a single low-key line
+    // assembled from structured data; missing pieces just drop out.
+    memoryKnownLead: 'Znáš ho.',
+    memoryKnown: ({
+      count,
+      lastDate,
+      lastPub,
+      lastRating,
+    }: {
+      count: number;
+      lastDate: string;
+      lastPub: string;
+      lastRating: number | null;
+    }) => {
+      const parts: string[] = [`${count}×`];
+      const last = [lastDate ? `naposledy ${lastDate}` : '', lastPub ? `v ${lastPub}` : '']
+        .filter(Boolean)
+        .join(' ');
+      if (last) parts.push(last);
+      if (lastRating != null) parts.push(`${lastRating.toFixed(1).replace(/\.0$/, '')}★`);
+      return parts.join(' · ');
+    },
+    memoryFirstTime: 'Prvně spolu. Ať to stojí za to.',
+    // Beer-detail relationship hero — "Piješ ho od června".
+    detailSinceMonth: (month: string) => `Piješ ho od ${month}`,
+    detailMyTagsLabel: 'Můj verdikt',
   },
 
   friends: {
