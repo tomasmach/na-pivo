@@ -27,10 +27,9 @@ import {
   BeerIcon,
   HistoryIcon,
   PlusIcon,
-  StarIcon,
 } from '@/components/shared/IconGlyph';
-import { BeerTagChips } from '@/components/shared/BeerTagChips';
-import { fetchMyBeerCheckIns, type BeerCheckIn } from '@/data/beerCheckinsClient';
+import { fetchMyBeerCheckIns, type BeerCheckIn, type BeerCheckInInput } from '@/data/beerCheckinsClient';
+import { getPendingBeerCheckIns } from '@/data/beerCheckinsQueue';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
   useTallyStore,
@@ -167,17 +166,55 @@ function shortDateTime(iso: string): string {
   });
 }
 
+function shortDiaryTimeRange(startIso: string, endIso?: string | null): string {
+  const startMs = Date.parse(startIso);
+  if (!Number.isFinite(startMs)) return '';
+  const start = new Date(startMs);
+  const date = start.toLocaleDateString('cs-CZ', {
+    day: 'numeric',
+    month: 'numeric',
+    year: 'numeric',
+  });
+  const startTime = start.toLocaleTimeString('cs-CZ', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const endMs = endIso ? Date.parse(endIso) : NaN;
+  if (!Number.isFinite(endMs)) return `${date} ${startTime}`;
+  const end = new Date(endMs);
+  const endTime = end.toLocaleTimeString('cs-CZ', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const crossesDay = end.toDateString() !== start.toDateString();
+  return `${date} ${startTime}-${endTime}${crossesDay ? ' +1' : ''}`;
+}
+
+function checkInAmountLabel(checkIn: BeerCheckIn, priceCurrency: PriceCurrency): string {
+  const quantity = Math.max(1, Math.floor(checkIn.quantity || 1));
+  const parts = quantity > 1 ? [`${quantity}×`] : [];
+  if (checkIn.priceCzk != null) {
+    const total = checkIn.priceCzk * quantity;
+    parts.push(formatPrice(total, priceCurrency));
+  }
+  return parts.join(' · ');
+}
+
 function HistoricalCheckInRow({
   checkIn,
+  priceCurrency,
   onPress,
 }: {
   checkIn: BeerCheckIn;
+  priceCurrency: PriceCurrency;
   onPress: () => void;
 }) {
   const meta = [
-    checkIn.rating != null ? `${checkIn.rating.toFixed(1)} / 5` : '',
+    checkInAmountLabel(checkIn, priceCurrency),
     checkIn.pubName || cs.myBeers.historicalNoPub,
-    shortDateTime(checkIn.checkedInAt),
+    checkIn.endedAt ? shortDiaryTimeRange(checkIn.checkedInAt, checkIn.endedAt) : shortDateTime(checkIn.checkedInAt),
   ]
     .filter(Boolean)
     .join(' · ');
@@ -190,7 +227,7 @@ function HistoricalCheckInRow({
       accessibilityLabel={cs.a11y.myBeersDiaryEntry(checkIn.beerName, meta)}
     >
       <View style={styles.diaryIcon}>
-        <StarIcon size={16} color={Colors.amber} />
+        <BeerIcon size={16} color={Colors.amber} />
       </View>
       <View style={styles.diaryText}>
         <Text style={styles.diaryTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -199,11 +236,6 @@ function HistoricalCheckInRow({
         <Text style={styles.diaryMeta} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
           {meta}
         </Text>
-        {checkIn.tags.length > 0 ? (
-          <View style={styles.diaryTags}>
-            <BeerTagChips tags={checkIn.tags} />
-          </View>
-        ) : null}
       </View>
       <ChevronRightIcon size={18} color={Colors.mutedText} />
     </Pressable>
@@ -233,6 +265,41 @@ function HistoricalEntryButton({ onPress }: { onPress: () => void }) {
   );
 }
 
+function optimisticCheckIn(input: BeerCheckInInput): BeerCheckIn {
+  const now = new Date().toISOString();
+  return {
+    id: input.clientId,
+    account: {
+      id: '',
+      nickname: null,
+      displayName: '',
+      avatarUrl: null,
+      isPublic: false,
+    },
+    clientId: input.clientId,
+    beerName: input.beerName,
+    breweryName: input.breweryName ?? '',
+    beerStyle: input.beerStyle ?? '',
+    abv: input.abv ?? null,
+    quantity: input.quantity ?? 1,
+    priceCzk: input.priceCzk ?? null,
+    rating: input.rating ?? null,
+    note: input.note ?? '',
+    tags: input.tags ?? [],
+    pubCacheKey: input.pubCacheKey ?? '',
+    pubName: input.pubName ?? '',
+    pubCity: input.pubCity ?? '',
+    visitClientId: input.visitClientId ?? null,
+    visibility: input.visibility,
+    checkedInAt: input.checkedInAt ?? now,
+    endedAt: input.endedAt ?? null,
+    reactions: { cheers: 0 },
+    myReaction: null,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 // ─── Screen ────────────────────────────────────────────────────────────────────
 
 export default function MyBeersScreen({ embedded = false }: { embedded?: boolean } = {}) {
@@ -257,6 +324,7 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
   const [historicalOpen, setHistoricalOpen] = useState(false);
   const [diaryRefreshToken, setDiaryRefreshToken] = useState(0);
   const [diaryEntries, setDiaryEntries] = useState<BeerCheckIn[]>([]);
+  const [optimisticDiaryEntries, setOptimisticDiaryEntries] = useState<BeerCheckIn[]>([]);
 
   const refreshDiary = useCallback(() => {
     setDiaryRefreshToken((value) => value + 1);
@@ -264,18 +332,49 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
 
   useEffect(() => {
     const controller = new AbortController();
+    void getPendingBeerCheckIns().then((pending) => {
+      if (controller.signal.aborted) return;
+      setOptimisticDiaryEntries((current) => {
+        const merged = new Map<string, BeerCheckIn>();
+        for (const entry of pending.map(optimisticCheckIn)) {
+          merged.set(entry.clientId, entry);
+        }
+        for (const entry of current) {
+          merged.set(entry.clientId, entry);
+        }
+        return Array.from(merged.values());
+      });
+    });
     void fetchMyBeerCheckIns(controller.signal).then((items) => {
       if (controller.signal.aborted || !items) return;
       setDiaryEntries(items);
+      setOptimisticDiaryEntries((current) =>
+        current.filter((entry) => !items.some((item) => item.clientId === entry.clientId)),
+      );
     });
     return () => controller.abort();
   }, [diaryRefreshToken]);
 
   const currentEvening = current && current.drinks.length > 0 ? current : null;
   const pastEvenings = history;
-  const isEmpty = !currentEvening && pastEvenings.length === 0 && diaryEntries.length === 0;
+  const visibleDiaryEntries = useMemo(
+    () => [...optimisticDiaryEntries, ...diaryEntries],
+    [diaryEntries, optimisticDiaryEntries],
+  );
+  const isEmpty = !currentEvening && pastEvenings.length === 0 && visibleDiaryEntries.length === 0;
 
   const openHistorical = useCallback(() => setHistoricalOpen(true), []);
+  const handleHistoricalSaved = useCallback(
+    (entry: BeerCheckInInput) => {
+      const optimistic = optimisticCheckIn(entry);
+      setOptimisticDiaryEntries((current) => [
+        optimistic,
+        ...current.filter((item) => item.clientId !== optimistic.clientId),
+      ]);
+      refreshDiary();
+    },
+    [refreshDiary],
+  );
 
   return (
     <View style={styles.root}>
@@ -349,19 +448,20 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
             </>
           )}
 
-          {diaryEntries.length > 0 && (
+          {visibleDiaryEntries.length > 0 && (
             <>
               <Text style={styles.listHeader} maxFontSizeMultiplier={FontScaleCap.body}>
                 {cs.myBeers.diaryHeader}
               </Text>
               <View style={[styles.card, styles.listCard]}>
-                {diaryEntries.map((checkIn, i) => (
+                {visibleDiaryEntries.map((checkIn, i) => (
                   <View
                     key={checkIn.clientId || checkIn.id}
                     style={i > 0 && styles.rowBorder}
                   >
                     <HistoricalCheckInRow
                       checkIn={checkIn}
+                      priceCurrency={priceCurrency}
                       onPress={() =>
                         router.push({
                           pathname: '/beer-detail',
@@ -381,7 +481,7 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
       <HistoricalBeerEntrySheet
         visible={historicalOpen}
         onClose={() => setHistoricalOpen(false)}
-        onSaved={refreshDiary}
+        onSaved={handleHistoricalSaved}
       />
     </View>
   );
@@ -574,9 +674,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
-  },
-  diaryTags: {
-    marginTop: 6,
   },
 
   // — Empty —

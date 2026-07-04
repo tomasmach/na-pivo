@@ -1,24 +1,33 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
-
-import { BeerIcon, LockKeyholeIcon, StarIcon, UsersIcon, XIcon } from '@/components/shared/IconGlyph';
-import { generateUuidV4 } from '@/data/account';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  BEER_TAGS,
-  MAX_BEER_TAGS,
-  type BeerCheckInVisibility,
-  type BeerTag,
-} from '@/data/beerCheckinsClient';
+  Keyboard,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
+  type KeyboardEvent,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { BeerIcon, LockKeyholeIcon, UsersIcon, XIcon } from '@/components/shared/IconGlyph';
+import { generateUuidV4 } from '@/data/account';
+import { type BeerCheckInInput, type BeerCheckInVisibility } from '@/data/beerCheckinsClient';
 import { enqueueBeerCheckInOp } from '@/data/beerCheckinsQueue';
+import { suggestBeerBrands, type BeerBrandSuggestion } from '@/data/beerSuggestionsClient';
 import { cs } from '@/i18n/cs';
 import { useToastStore } from '@/stores/toastStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
+import { currencySuffix, parsePriceInputToCzk, sanitizePriceInput } from '@/utils/currency';
 import {
-  buildHistoricalCheckedInAt,
+  buildHistoricalInterval,
   formatHistoricalDate,
   formatHistoricalTime,
 } from '@/myBeers/historicalBeerEntry';
@@ -26,59 +35,45 @@ import {
 interface HistoricalBeerEntrySheetProps {
   visible: boolean;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (entry: BeerCheckInInput) => void;
 }
 
-function RatingChip({ value, active, onPress }: { value: number; active: boolean; onPress: () => void }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [styles.ratingChip, active && styles.chipActive, pressed && styles.dim]}
-      accessibilityRole="button"
-      accessibilityState={{ selected: active }}
-      accessibilityLabel={cs.beerCheckins.ratingA11y(value)}
-    >
-      <StarIcon size={15} color={active ? Colors.stout : Colors.amber} />
-      <Text style={[styles.ratingText, active && styles.chipTextActive]} allowFontScaling={false}>
-        {value.toFixed(1)}
-      </Text>
-    </Pressable>
-  );
-}
-
-function TagChip({ tag, active, onPress }: { tag: BeerTag; active: boolean; onPress: () => void }) {
-  const label = cs.beerCheckins.tags[tag];
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [styles.tagChip, active && styles.chipActive, pressed && styles.dim]}
-      accessibilityRole="button"
-      accessibilityState={{ selected: active }}
-      accessibilityLabel={active ? cs.beerCheckins.tagRemoveA11y(label) : cs.beerCheckins.tagAddA11y(label)}
-    >
-      <Text style={[styles.tagText, active && styles.chipTextActive]} maxFontSizeMultiplier={FontScaleCap.body}>
-        {label}
-      </Text>
-    </Pressable>
-  );
+function useKeyboardHeight(): number {
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const onShow = (event: KeyboardEvent) => setHeight(event.endCoordinates?.height ?? 0);
+    const onHide = () => setHeight(0);
+    const showSub = Keyboard.addListener(showEvt, onShow);
+    const hideSub = Keyboard.addListener(hideEvt, onHide);
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+  return height;
 }
 
 export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: HistoricalBeerEntrySheetProps) {
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const keyboardHeight = useKeyboardHeight();
   const showToast = useToastStore((s) => s.show);
+  const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const initialDate = new Date();
+  const pickedBeerRef = useRef<string | null>(null);
 
   const [dateText, setDateText] = useState(() => formatHistoricalDate(initialDate));
-  const [timeText, setTimeText] = useState(() => formatHistoricalTime(initialDate));
+  const [startTimeText, setStartTimeText] = useState(() => formatHistoricalTime(initialDate));
+  const [endTimeText, setEndTimeText] = useState('');
+  const [quantityText, setQuantityText] = useState('1');
+  const [priceText, setPriceText] = useState('');
   const [pubName, setPubName] = useState('');
-  const [pubCity, setPubCity] = useState('');
   const [beerName, setBeerName] = useState('');
-  const [brewery, setBrewery] = useState('');
-  const [style, setStyle] = useState('');
-  const [rating, setRating] = useState<number | null>(4);
-  const [tags, setTags] = useState<BeerTag[]>([]);
+  const [suggestions, setSuggestions] = useState<BeerBrandSuggestion[]>([]);
   const [note, setNote] = useState('');
-  const [visibility, setVisibility] = useState<BeerCheckInVisibility>('private');
+  const [visibility, setVisibility] = useState<BeerCheckInVisibility>('friends');
   const [dateError, setDateError] = useState(false);
 
   useEffect(() => {
@@ -86,16 +81,16 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
     const timer = setTimeout(() => {
       const date = new Date();
       setDateText(formatHistoricalDate(date));
-      setTimeText(formatHistoricalTime(date));
+      setStartTimeText(formatHistoricalTime(date));
+      setEndTimeText('');
+      setQuantityText('1');
+      setPriceText('');
       setPubName('');
-      setPubCity('');
       setBeerName('');
-      setBrewery('');
-      setStyle('');
-      setRating(4);
-      setTags([]);
+      setSuggestions([]);
+      pickedBeerRef.current = null;
       setNote('');
-      setVisibility('private');
+      setVisibility('friends');
       setDateError(false);
     }, 0);
     return () => clearTimeout(timer);
@@ -103,93 +98,128 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
 
   const cleanBeer = beerName.trim();
   const cleanPub = pubName.trim();
-  const canSubmit = cleanBeer.length > 0 && cleanPub.length > 0;
+  const quantity = Number(quantityText || '0');
+  const cleanPrice = priceText.trim();
+  const priceCzk = cleanPrice ? parsePriceInputToCzk(cleanPrice, priceCurrency) : null;
+  const quantityValid = Number.isInteger(quantity) && quantity >= 1 && quantity <= 99;
+  const priceValid = cleanPrice.length === 0 || priceCzk !== null;
+  const canSubmit = cleanBeer.length > 0 && cleanPub.length > 0 && quantityValid && priceValid;
 
-  const toggleTag = useCallback((tag: BeerTag) => {
-    setTags((current) => {
-      if (current.includes(tag)) return current.filter((t) => t !== tag);
-      if (current.length >= MAX_BEER_TAGS) {
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        return current;
-      }
-      return [...current, tag];
-    });
+  const onChangeBeerName = useCallback((value: string) => {
+    pickedBeerRef.current = null;
+    setBeerName(value);
   }, []);
+
+  const selectSuggestion = useCallback((suggestion: BeerBrandSuggestion) => {
+    pickedBeerRef.current = suggestion.name;
+    setBeerName(suggestion.name);
+    setSuggestions([]);
+    Keyboard.dismiss();
+  }, []);
+
+  useEffect(() => {
+    const query = cleanBeer;
+    if (!visible || query.length < 2 || pickedBeerRef.current === beerName) {
+      setSuggestions([]);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      suggestBeerBrands(query, controller.signal, 6).then((items) => {
+        if (!controller.signal.aborted) setSuggestions(items);
+      });
+    }, 220);
+
+    return () => {
+      controller.abort();
+      clearTimeout(timeout);
+    };
+  }, [beerName, cleanBeer, visible]);
 
   const reset = useCallback(() => {
     setPubName('');
-    setPubCity('');
     setBeerName('');
-    setBrewery('');
-    setStyle('');
-    setRating(4);
-    setTags([]);
+    setEndTimeText('');
+    setQuantityText('1');
+    setPriceText('');
+    setSuggestions([]);
+    pickedBeerRef.current = null;
     setNote('');
-    setVisibility('private');
+    setVisibility('friends');
     setDateError(false);
   }, []);
 
   const submit = useCallback(() => {
     if (!canSubmit) return;
-    const checked = buildHistoricalCheckedInAt(dateText, timeText);
+    const checked = buildHistoricalInterval(dateText, startTimeText, endTimeText);
     if (!checked) {
       setDateError(true);
       return;
     }
     setDateError(false);
+    const payload: BeerCheckInInput = {
+      clientId: generateUuidV4(),
+      beerName: cleanBeer,
+      breweryName: '',
+      beerStyle: '',
+      quantity,
+      priceCzk,
+      rating: null,
+      note: note.trim(),
+      tags: [],
+      pubName: cleanPub,
+      pubCity: '',
+      visitClientId: null,
+      visibility,
+      checkedInAt: checked.iso,
+      endedAt: checked.endedIso ?? null,
+    };
     void enqueueBeerCheckInOp({
       op: 'checkin',
-      payload: {
-        clientId: generateUuidV4(),
-        beerName: cleanBeer,
-        breweryName: brewery.trim(),
-        beerStyle: style.trim(),
-        rating,
-        note: note.trim(),
-        tags,
-        pubName: cleanPub,
-        pubCity: pubCity.trim(),
-        visitClientId: null,
-        visibility,
-        checkedInAt: checked.iso,
-      },
+      payload,
     }).then(() => {
       showToast(cs.myBeers.historicalSaved, { icon: <BeerIcon size={20} color={Colors.amber} /> });
       reset();
-      onSaved();
+      onSaved(payload);
       onClose();
     });
   }, [
-    brewery,
     canSubmit,
     cleanBeer,
     cleanPub,
     dateText,
+    endTimeText,
     note,
     onClose,
     onSaved,
-    pubCity,
-    rating,
     reset,
     showToast,
-    style,
-    tags,
-    timeText,
+    startTimeText,
+    priceCzk,
+    quantity,
     visibility,
   ]);
+
+  const sheetBottomOffset = keyboardHeight > 0 ? keyboardHeight : 0;
+  const bottomPad = keyboardHeight > 0 ? Spacing.sm : Math.max(insets.bottom, Spacing.md);
+  const maxHeight = windowHeight - insets.top - sheetBottomOffset - Spacing.md;
 
   return (
     <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" />
-        <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, Spacing.md) }]}>
+        <View style={[styles.sheet, { marginBottom: sheetBottomOffset, paddingBottom: bottomPad, maxHeight }]}>
           <View style={styles.header}>
             <View style={styles.headerText}>
               <Text style={styles.title} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
                 {cs.myBeers.historicalTitle}
               </Text>
-              <Text style={styles.subtitle} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
+              <Text style={styles.subtitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
                 {cs.myBeers.historicalSubtitle}
+              </Text>
+              <Text style={styles.hint} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.myBeers.historicalRequiredHint}
               </Text>
             </View>
             <Pressable onPress={onClose} hitSlop={10} style={styles.closeBtn} accessibilityRole="button">
@@ -197,9 +227,85 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
             </Pressable>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            <View style={styles.twoCols}>
-              <View style={styles.col}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.scrollContent}
+            bounces={false}
+          >
+            <Text style={styles.label}>{cs.beerCheckins.beerLabel}</Text>
+            <TextInput
+              value={beerName}
+              onChangeText={onChangeBeerName}
+              placeholder={cs.beerCheckins.beerPlaceholder}
+              placeholderTextColor={Colors.mutedText}
+              style={styles.input}
+              maxLength={80}
+              maxFontSizeMultiplier={FontScaleCap.body}
+            />
+            {suggestions.length > 0 ? (
+              <View style={styles.suggestionsBox}>
+                {suggestions.map((suggestion, index) => (
+                  <Pressable
+                    key={suggestion.slug}
+                    onPress={() => selectSuggestion(suggestion)}
+                    style={[styles.suggestionRow, index > 0 && styles.suggestionRowDivider]}
+                    accessibilityRole="button"
+                    accessibilityLabel={suggestion.name}
+                  >
+                    <Text style={styles.suggestionText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {suggestion.name}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+
+            <Text style={styles.label}>{cs.myBeers.historicalPubLabel}</Text>
+            <TextInput
+              value={pubName}
+              onChangeText={setPubName}
+              placeholder={cs.myBeers.historicalPubPlaceholder}
+              placeholderTextColor={Colors.mutedText}
+              style={styles.input}
+              maxLength={120}
+              maxFontSizeMultiplier={FontScaleCap.body}
+            />
+
+            <View style={styles.countPriceRow}>
+              <View style={styles.countCol}>
+                <Text style={styles.label}>{cs.myBeers.historicalQuantityLabel}</Text>
+                <TextInput
+                  value={quantityText}
+                  onChangeText={(value) => setQuantityText(value.replace(/\D/g, '').slice(0, 2))}
+                  placeholder="1"
+                  placeholderTextColor={Colors.mutedText}
+                  style={[styles.input, !quantityValid && styles.inputError]}
+                  keyboardType="number-pad"
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                />
+              </View>
+              <View style={styles.priceCol}>
+                <Text style={styles.label}>{cs.myBeers.historicalPriceLabel}</Text>
+                <View style={[styles.priceInputWrap, !priceValid && styles.inputError]}>
+                  <TextInput
+                    value={priceText}
+                    onChangeText={(value) => setPriceText(sanitizePriceInput(value, priceCurrency))}
+                    placeholder={cs.myBeers.historicalPricePlaceholder}
+                    placeholderTextColor={Colors.mutedText}
+                    style={styles.priceInput}
+                    keyboardType={priceCurrency === 'EUR' ? 'decimal-pad' : 'number-pad'}
+                    maxFontSizeMultiplier={FontScaleCap.body}
+                  />
+                  <Text style={styles.priceSuffix} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {currencySuffix(priceCurrency)}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.dateTimeRow}>
+              <View style={styles.dateCol}>
                 <Text style={styles.label}>{cs.myBeers.historicalDateLabel}</Text>
                 <TextInput
                   value={dateText}
@@ -214,17 +320,32 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
                   maxFontSizeMultiplier={FontScaleCap.body}
                 />
               </View>
-              <View style={styles.col}>
-                <Text style={styles.label}>{cs.myBeers.historicalTimeLabel}</Text>
+              <View style={styles.timeCol}>
+                <Text style={styles.label}>{cs.myBeers.historicalTimeFromLabel}</Text>
                 <TextInput
-                  value={timeText}
+                  value={startTimeText}
                   onChangeText={(value) => {
                     setDateError(false);
-                    setTimeText(value);
+                    setStartTimeText(value);
                   }}
                   placeholder={cs.myBeers.historicalTimePlaceholder}
                   placeholderTextColor={Colors.mutedText}
                   style={[styles.input, dateError && styles.inputError]}
+                  keyboardType="numbers-and-punctuation"
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                />
+              </View>
+              <View style={styles.timeCol}>
+                <Text style={styles.label}>{cs.myBeers.historicalTimeToLabel}</Text>
+                <TextInput
+                  value={endTimeText}
+                  onChangeText={(value) => {
+                    setDateError(false);
+                    setEndTimeText(value);
+                  }}
+                  placeholder={cs.myBeers.historicalTimeToPlaceholder}
+                  placeholderTextColor={Colors.mutedText}
+                  style={[styles.input, styles.timeInput, dateError && styles.inputError]}
                   keyboardType="numbers-and-punctuation"
                   maxFontSizeMultiplier={FontScaleCap.body}
                 />
@@ -235,85 +356,6 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
                 {cs.myBeers.historicalDateError}
               </Text>
             ) : null}
-
-            <Text style={styles.label}>{cs.myBeers.historicalPubLabel}</Text>
-            <TextInput
-              value={pubName}
-              onChangeText={setPubName}
-              placeholder={cs.myBeers.historicalPubPlaceholder}
-              placeholderTextColor={Colors.mutedText}
-              style={styles.input}
-              maxLength={120}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            />
-
-            <Text style={styles.label}>{cs.myBeers.historicalCityLabel}</Text>
-            <TextInput
-              value={pubCity}
-              onChangeText={setPubCity}
-              placeholder={cs.beerCheckins.optionalPlaceholder}
-              placeholderTextColor={Colors.mutedText}
-              style={styles.input}
-              maxLength={80}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            />
-
-            <Text style={styles.label}>{cs.beerCheckins.beerLabel}</Text>
-            <TextInput
-              value={beerName}
-              onChangeText={setBeerName}
-              placeholder={cs.beerCheckins.beerPlaceholder}
-              placeholderTextColor={Colors.mutedText}
-              style={styles.input}
-              maxLength={80}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            />
-
-            <View style={styles.twoCols}>
-              <View style={styles.col}>
-                <Text style={styles.label}>{cs.beerCheckins.breweryLabel}</Text>
-                <TextInput
-                  value={brewery}
-                  onChangeText={setBrewery}
-                  placeholder={cs.beerCheckins.optionalPlaceholder}
-                  placeholderTextColor={Colors.mutedText}
-                  style={styles.input}
-                  maxLength={80}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                />
-              </View>
-              <View style={styles.col}>
-                <Text style={styles.label}>{cs.beerCheckins.styleLabel}</Text>
-                <TextInput
-                  value={style}
-                  onChangeText={setStyle}
-                  placeholder={cs.beerCheckins.optionalPlaceholder}
-                  placeholderTextColor={Colors.mutedText}
-                  style={styles.input}
-                  maxLength={80}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                />
-              </View>
-            </View>
-
-            <Text style={styles.label}>{cs.beerCheckins.ratingLabel}</Text>
-            <View style={styles.wrapRow}>
-              {[1, 2, 3, 4, 5].map((value) => (
-                <RatingChip
-                  key={value}
-                  value={value}
-                  active={rating === value}
-                  onPress={() => setRating((current) => (current === value ? null : value))}
-                />
-              ))}
-            </View>
-
-            <Text style={styles.label}>{cs.beerCheckins.tagsLabel}</Text>
-            <View style={styles.wrapRow}>
-              {BEER_TAGS.map((tag) => (
-                <TagChip key={tag} tag={tag} active={tags.includes(tag)} onPress={() => toggleTag(tag)} />
-              ))}
-            </View>
 
             <Text style={styles.label}>{cs.beerCheckins.noteLabel}</Text>
             <TextInput
@@ -329,12 +371,16 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
 
             <Text style={styles.label}>{cs.beerCheckins.visibilityLabel}</Text>
             <Text style={styles.visibilityHint} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.myBeers.historicalVisibilityHint}
+              {visibility === 'friends'
+                ? cs.myBeers.historicalVisibilityFriendsHint
+                : cs.myBeers.historicalVisibilityPrivateHint}
             </Text>
             <View style={styles.visibilityRow}>
               <Pressable
                 onPress={() => setVisibility('private')}
-                style={[styles.visibilityButton, visibility === 'private' && styles.visibilityActive]}
+                style={[styles.visibilityButton, visibility === 'private' && styles.visibilityButtonActive]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: visibility === 'private' }}
               >
                 <LockKeyholeIcon size={16} color={visibility === 'private' ? Colors.stout : Colors.mutedText} />
                 <Text style={[styles.visibilityText, visibility === 'private' && styles.visibilityTextActive]}>
@@ -343,7 +389,9 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
               </Pressable>
               <Pressable
                 onPress={() => setVisibility('friends')}
-                style={[styles.visibilityButton, visibility === 'friends' && styles.visibilityActive]}
+                style={[styles.visibilityButton, visibility === 'friends' && styles.visibilityButtonActive]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: visibility === 'friends' }}
               >
                 <UsersIcon size={16} color={visibility === 'friends' ? Colors.stout : Colors.mutedText} />
                 <Text style={[styles.visibilityText, visibility === 'friends' && styles.visibilityTextActive]}>
@@ -374,33 +422,40 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.stout, 0.76),
   },
   sheet: {
-    maxHeight: '90%',
+    maxHeight: '92%',
     backgroundColor: Colors.stout,
     borderTopLeftRadius: Radius.cardLarge,
     borderTopRightRadius: Radius.cardLarge,
     borderWidth: 1,
     borderColor: Colors.border,
-    padding: Spacing.lg,
+    padding: Spacing.md,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: Spacing.md,
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.xs,
   },
   headerText: { flex: 1 },
   title: {
     fontFamily: Fonts.display.extrabold,
-    fontSize: 22,
+    fontSize: 21,
     color: Colors.foam,
   },
   subtitle: {
+    marginTop: 2,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 12,
+    lineHeight: 16,
+    color: Colors.foamMuted,
+  },
+  hint: {
     marginTop: 3,
     fontFamily: Fonts.ui.medium,
-    fontSize: 13,
-    lineHeight: 18,
-    color: Colors.foamMuted,
+    fontSize: 11,
+    lineHeight: 15,
+    color: Colors.mutedText,
   },
   closeBtn: {
     width: HitArea.min,
@@ -408,9 +463,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  scrollContent: {
+    paddingBottom: Spacing.sm,
+  },
   label: {
-    marginTop: Spacing.md,
-    marginBottom: Spacing.xs,
+    marginTop: Spacing.sm,
+    marginBottom: 5,
     fontFamily: Fonts.display.bold,
     fontSize: 12,
     color: Colors.mutedText,
@@ -418,7 +476,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   input: {
-    minHeight: 50,
+    minHeight: 46,
     borderRadius: Radius.medium,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -426,7 +484,7 @@ const styles = StyleSheet.create({
     color: Colors.foam,
     paddingHorizontal: Spacing.md,
     fontFamily: Fonts.ui.medium,
-    fontSize: 15,
+    fontSize: 14,
   },
   inputError: {
     borderColor: Colors.glow,
@@ -438,73 +496,92 @@ const styles = StyleSheet.create({
     color: Colors.glow,
   },
   noteInput: {
-    minHeight: 92,
+    minHeight: 56,
     paddingTop: Spacing.sm,
     textAlignVertical: 'top',
   },
-  twoCols: {
+  dateTimeRow: {
     flexDirection: 'row',
     gap: Spacing.sm,
   },
-  col: {
+  countPriceRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  dateCol: {
+    flex: 1.25,
+  },
+  timeCol: {
     flex: 1,
   },
-  wrapRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.xs,
+  countCol: {
+    flex: 0.8,
   },
-  ratingChip: {
-    minHeight: 40,
+  priceCol: {
+    flex: 1.2,
+  },
+  timeInput: {
+    paddingHorizontal: Spacing.sm,
+  },
+  priceInputWrap: {
+    minHeight: 46,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: Spacing.sm,
-    borderRadius: Radius.pill,
+    gap: Spacing.xs,
+    borderRadius: Radius.medium,
     borderWidth: 1,
     borderColor: Colors.border,
     backgroundColor: Colors.stout2,
-  },
-  tagChip: {
-    minHeight: 40,
-    justifyContent: 'center',
     paddingHorizontal: Spacing.md,
-    borderRadius: Radius.pill,
+  },
+  priceInput: {
+    flex: 1,
+    color: Colors.foam,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 14,
+    padding: 0,
+  },
+  priceSuffix: {
+    fontFamily: Fonts.display.bold,
+    fontSize: 12,
+    color: Colors.mutedText,
+  },
+  suggestionsBox: {
+    marginTop: Spacing.xs,
+    borderRadius: Radius.medium,
     borderWidth: 1,
     borderColor: Colors.border,
     backgroundColor: Colors.stout2,
+    overflow: 'hidden',
   },
-  chipActive: {
-    backgroundColor: Colors.amber,
-    borderColor: Colors.amber,
+  suggestionRow: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
   },
-  ratingText: {
-    fontFamily: Fonts.display.bold,
-    fontSize: 13,
+  suggestionRowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.border,
+  },
+  suggestionText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 15,
     color: Colors.foam,
   },
-  tagText: {
-    fontFamily: Fonts.display.bold,
-    fontSize: 13,
-    color: Colors.foam,
-  },
-  chipTextActive: {
-    color: Colors.stout,
+  visibilityHint: {
+    marginTop: -2,
+    marginBottom: Spacing.xs,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 11,
+    lineHeight: 15,
+    color: Colors.mutedText,
   },
   visibilityRow: {
     flexDirection: 'row',
     gap: Spacing.sm,
   },
-  visibilityHint: {
-    marginTop: -2,
-    marginBottom: Spacing.sm,
-    fontFamily: Fonts.ui.medium,
-    fontSize: 12,
-    color: Colors.mutedText,
-  },
   visibilityButton: {
     flex: 1,
-    minHeight: 48,
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -514,23 +591,23 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     backgroundColor: Colors.stout2,
   },
-  visibilityActive: {
+  visibilityButtonActive: {
     backgroundColor: Colors.amber,
     borderColor: Colors.amber,
   },
   visibilityText: {
     fontFamily: Fonts.display.bold,
-    fontSize: 13,
+    fontSize: 12,
     color: Colors.foamMuted,
   },
   visibilityTextActive: {
     color: Colors.stout,
   },
   submit: {
-    minHeight: 54,
+    minHeight: 50,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: Spacing.lg,
+    marginTop: Spacing.md,
     borderRadius: Radius.pill,
     backgroundColor: Colors.amber,
   },

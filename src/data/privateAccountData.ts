@@ -5,6 +5,7 @@ import { clearCommunityQueue } from './communityQueue';
 import { clearDeleteDrinksQueue } from './deleteDrinksQueue';
 import { clearDrinksQueue } from './drinksQueue';
 import { clearUpdateDrinksQueue } from './updateDrinksQueue';
+import { clearBeerCheckinsQueue } from './beerCheckinsQueue';
 import { clearFeedbackQueue } from './feedbackQueue';
 import { clearFriendsQueue } from './friendsQueue';
 import { clearFriendsDashboardSnapshot } from './friendsSnapshot';
@@ -67,6 +68,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
     clearDrinksQueue(),
     clearDeleteDrinksQueue(),
     clearUpdateDrinksQueue(),
+    clearBeerCheckinsQueue(),
     clearFeedbackQueue(),
     clearPubNameCorrectionsQueue(),
     clearPubReportQueue(),

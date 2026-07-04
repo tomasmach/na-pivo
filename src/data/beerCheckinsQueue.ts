@@ -126,3 +126,8 @@ export function clearBeerCheckinsQueue(): Promise<void> {
     await saveQueue([]);
   });
 }
+
+export async function getPendingBeerCheckIns(): Promise<BeerCheckInInput[]> {
+  const queue = await runMutation(loadQueue);
+  return queue.filter((item) => item.op === 'checkin').map((item) => item.payload);
+}

@@ -70,6 +70,8 @@ export interface BeerCheckInInput {
   breweryName?: string;
   beerStyle?: string;
   abv?: number | null;
+  quantity?: number;
+  priceCzk?: number | null;
   rating?: number | null;
   note?: string;
   tags?: BeerTag[];
@@ -79,6 +81,7 @@ export interface BeerCheckInInput {
   visitClientId?: string | null;
   visibility: BeerCheckInVisibility;
   checkedInAt?: string;
+  endedAt?: string | null;
 }
 
 export interface BeerCheckIn {
@@ -89,6 +92,8 @@ export interface BeerCheckIn {
   breweryName: string;
   beerStyle: string;
   abv: number | null;
+  quantity: number;
+  priceCzk: number | null;
   rating: number | null;
   note: string;
   tags: BeerTag[];
@@ -98,6 +103,7 @@ export interface BeerCheckIn {
   visitClientId: string | null;
   visibility: BeerCheckInVisibility;
   checkedInAt: string;
+  endedAt: string | null;
   reactions: { cheers: number };
   myReaction: BeerCheckInReactionKind | null;
   createdAt: string;
@@ -159,6 +165,8 @@ interface RawCheckIn {
   brewery_name?: string;
   beer_style?: string;
   abv?: string | number | null;
+  quantity?: number | string | null;
+  price_czk?: number | string | null;
   rating?: string | number | null;
   note?: string;
   tags?: unknown;
@@ -168,6 +176,7 @@ interface RawCheckIn {
   visit_client_id?: string | null;
   visibility?: string;
   checked_in_at?: string;
+  ended_at?: string | null;
   reactions?: { cheers?: number };
   my_reaction?: string | null;
   created_at?: string;
@@ -206,6 +215,8 @@ export function parseBeerCheckIn(raw: RawCheckIn): BeerCheckIn {
     breweryName: raw.brewery_name ?? '',
     beerStyle: raw.beer_style ?? '',
     abv: parseNumber(raw.abv),
+    quantity: Math.max(1, Math.floor(parseNumber(raw.quantity) ?? 1)),
+    priceCzk: parseNumber(raw.price_czk),
     rating: parseNumber(raw.rating),
     note: raw.note ?? '',
     tags: parseBeerTags(raw.tags),
@@ -215,6 +226,7 @@ export function parseBeerCheckIn(raw: RawCheckIn): BeerCheckIn {
     visitClientId: raw.visit_client_id ?? null,
     visibility: parseVisibility(raw.visibility),
     checkedInAt: raw.checked_in_at ?? '',
+    endedAt: raw.ended_at ?? null,
     reactions: { cheers: raw.reactions?.cheers ?? 0 },
     myReaction: raw.my_reaction === 'cheers' ? 'cheers' : null,
     createdAt: raw.created_at ?? '',
@@ -288,6 +300,8 @@ export function beerCheckInWire(input: BeerCheckInInput): Record<string, unknown
     brewery_name: input.breweryName ?? '',
     beer_style: input.beerStyle ?? '',
     abv: input.abv ?? null,
+    quantity: input.quantity ?? 1,
+    price_czk: input.priceCzk ?? null,
     rating: input.rating ?? null,
     note: input.note ?? '',
     // Whitelist + cap here too so a queued payload never ships junk or >3 tags.
@@ -298,6 +312,7 @@ export function beerCheckInWire(input: BeerCheckInInput): Record<string, unknown
     visit_client_id: input.visitClientId ?? null,
     visibility: input.visibility,
     checked_in_at: input.checkedInAt ?? new Date().toISOString(),
+    ended_at: input.endedAt ?? null,
   };
 }
 

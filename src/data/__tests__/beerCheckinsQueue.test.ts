@@ -25,6 +25,7 @@ import {
   clearBeerCheckinsQueue,
   enqueueBeerCheckInOp,
   flushBeerCheckinsQueue,
+  getPendingBeerCheckIns,
 } from '../beerCheckinsQueue';
 import type { BeerCheckInInput } from '../beerCheckinsClient';
 
@@ -73,6 +74,26 @@ describe('beer-checkins queue — tag round-trip', () => {
     const queue = (await readQueue()) as { op: string; payload: BeerCheckInInput }[];
     expect(queue).toHaveLength(1);
     expect(queue[0].payload.tags).toEqual(['crisp', 'one_more']);
+  });
+
+  it('preserves historical start and end times while pending', async () => {
+    submitBeerCheckIn.mockResolvedValue('retry');
+    await enqueueBeerCheckInOp({
+      op: 'checkin',
+      payload: checkin({
+        checkedInAt: '2026-07-01T18:00:00.000Z',
+        endedAt: '2026-07-01T21:30:00.000Z',
+        quantity: 3,
+        priceCzk: 62,
+      }),
+    });
+
+    const pending = await getPendingBeerCheckIns();
+    expect(pending).toHaveLength(1);
+    expect(pending[0].checkedInAt).toBe('2026-07-01T18:00:00.000Z');
+    expect(pending[0].endedAt).toBe('2026-07-01T21:30:00.000Z');
+    expect(pending[0].quantity).toBe(3);
+    expect(pending[0].priceCzk).toBe(62);
   });
 
   it('delivers the tags verbatim to submitBeerCheckIn on flush', async () => {

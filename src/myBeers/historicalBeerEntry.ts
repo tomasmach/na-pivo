@@ -1,5 +1,6 @@
 export interface HistoricalDateTimeResult {
   iso: string;
+  endedIso?: string | null;
 }
 
 function parseCzechDate(value: string): { year: number; month: number; day: number } | null {
@@ -44,26 +45,56 @@ export function buildHistoricalCheckedInAt(
   timeText: string,
   now: Date = new Date(),
 ): HistoricalDateTimeResult | null {
-  const parsedDate = parseCzechDate(dateText);
-  const parsedTime = parseTime(timeText);
-  if (!parsedDate || !parsedTime) return null;
+  return buildHistoricalInterval(dateText, timeText, '', now);
+}
 
-  const date = new Date(
+export function buildHistoricalInterval(
+  dateText: string,
+  startTimeText: string,
+  endTimeText: string,
+  now: Date = new Date(),
+): HistoricalDateTimeResult | null {
+  const parsedDate = parseCzechDate(dateText);
+  const parsedStartTime = parseTime(startTimeText);
+  const cleanEndTime = endTimeText.trim();
+  const parsedEndTime = cleanEndTime ? parseTime(cleanEndTime) : null;
+  if (!parsedDate || !parsedStartTime || (cleanEndTime && !parsedEndTime)) return null;
+
+  const start = new Date(
     parsedDate.year,
     parsedDate.month - 1,
     parsedDate.day,
-    parsedTime.hours,
-    parsedTime.minutes,
+    parsedStartTime.hours,
+    parsedStartTime.minutes,
     0,
     0,
   );
   if (
-    date.getFullYear() !== parsedDate.year ||
-    date.getMonth() !== parsedDate.month - 1 ||
-    date.getDate() !== parsedDate.day
+    start.getFullYear() !== parsedDate.year ||
+    start.getMonth() !== parsedDate.month - 1 ||
+    start.getDate() !== parsedDate.day
   ) {
     return null;
   }
-  if (date.getTime() > now.getTime() + 60 * 1000) return null;
-  return { iso: date.toISOString() };
+  if (start.getTime() > now.getTime() + 60 * 1000) return null;
+
+  let endedIso: string | null = null;
+  if (parsedEndTime) {
+    const end = new Date(
+      parsedDate.year,
+      parsedDate.month - 1,
+      parsedDate.day,
+      parsedEndTime.hours,
+      parsedEndTime.minutes,
+      0,
+      0,
+    );
+    if (end.getTime() < start.getTime()) {
+      end.setDate(end.getDate() + 1);
+    }
+    if (end.getTime() > now.getTime() + 60 * 1000) return null;
+    endedIso = end.toISOString();
+  }
+
+  return { iso: start.toISOString(), endedIso };
 }

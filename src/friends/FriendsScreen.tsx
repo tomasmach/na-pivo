@@ -84,6 +84,7 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { useToastStore } from '@/stores/toastStore';
+import { formatPrice } from '@/utils/currency';
 
 import { AddFriendTools } from './AddFriendTools';
 import CheersPill from './CheersPill';
@@ -375,6 +376,7 @@ export default function FriendsScreen() {
   const friendPushEnabled = useSettingsStore((s) => s.friendPushEnabled);
   const friendPushPrompted = useSettingsStore((s) => s.friendPushPrompted);
   const setFriendPushPrompted = useSettingsStore((s) => s.setFriendPushPrompted);
+  const priceCurrency = useSettingsStore((s) => s.priceCurrency);
 
   const mountedRef = useRef(true);
   useEffect(
@@ -800,7 +802,13 @@ export default function FriendsScreen() {
   const renderBeerFeedRow = (checkIn: BeerCheckIn, first: boolean) => {
     const when = timeLabel(checkIn.checkedInAt);
     const ownerName = friendDisplayName(checkIn.account);
+    const quantity = Math.max(1, Math.floor(checkIn.quantity || 1));
+    const amount = [
+      quantity > 1 ? `${quantity}×` : '',
+      checkIn.priceCzk != null ? formatPrice(checkIn.priceCzk * quantity, priceCurrency) : '',
+    ].filter(Boolean).join(' · ');
     const meta = [
+      amount,
       checkIn.rating != null ? `${checkIn.rating.toFixed(1)} / 5` : '',
       checkIn.pubName,
       when,

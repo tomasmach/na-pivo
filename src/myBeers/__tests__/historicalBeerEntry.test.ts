@@ -1,5 +1,6 @@
 import {
   buildHistoricalCheckedInAt,
+  buildHistoricalInterval,
   formatHistoricalDate,
   formatHistoricalTime,
 } from '@/myBeers/historicalBeerEntry';
@@ -21,6 +22,32 @@ describe('historical beer entry date helpers', () => {
     expect(buildHistoricalCheckedInAt('31. 02. 2026', '19:45', now)).toBeNull();
     expect(buildHistoricalCheckedInAt('12. 06. 2026', '25:00', now)).toBeNull();
     expect(buildHistoricalCheckedInAt('05. 07. 2026', '19:45', now)).toBeNull();
+  });
+
+  it('builds optional end time and carries it over midnight', () => {
+    const sameDay = buildHistoricalInterval(
+      '12. 06. 2026',
+      '19:45',
+      '22:30',
+      new Date('2026-07-04T12:00:00.000Z'),
+    );
+    expect(sameDay?.iso).toBe(new Date(2026, 5, 12, 19, 45, 0, 0).toISOString());
+    expect(sameDay?.endedIso).toBe(new Date(2026, 5, 12, 22, 30, 0, 0).toISOString());
+
+    const afterMidnight = buildHistoricalInterval(
+      '12. 06. 2026',
+      '22:15',
+      '01:20',
+      new Date('2026-07-04T12:00:00.000Z'),
+    );
+    expect(afterMidnight?.endedIso).toBe(new Date(2026, 5, 13, 1, 20, 0, 0).toISOString());
+  });
+
+  it('rejects invalid or future end time', () => {
+    const now = new Date(2026, 6, 4, 20, 0, 0, 0);
+
+    expect(buildHistoricalInterval('04. 07. 2026', '19:00', '25:00', now)).toBeNull();
+    expect(buildHistoricalInterval('04. 07. 2026', '19:00', '20:30', now)).toBeNull();
   });
 
   it('formats default values for the sheet', () => {
