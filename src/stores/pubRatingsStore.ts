@@ -2,8 +2,8 @@
  * Personal, private pub ratings — the "Stálo to za návrat?" memory.
  *
  * This is local-first: the user marks a pub they have been to with a thumbs up /
- * down, an optional quick tag ("Sem se vrátit" / "Nic moc" / "Dobrý tankový")
- * and an optional free-text note in their own words. It is NOT a public review,
+ * down, an optional quick memory tag and an optional free-text note in their own
+ * words. It is NOT a public review,
  * not aggregated, and not shared — it is just the user's own memory of whether a
  * place was worth coming back to.
  *
@@ -35,7 +35,7 @@ export type PubVerdict = 'like' | 'dislike';
 export interface PubRating {
   /** Thumbs up / down. Optional so a user can leave only a tag or a note. */
   verdict?: PubVerdict;
-  /** A quick preset tag — one of `cs.myBeers.notePresets`, mutually exclusive. */
+  /** A quick preset tag value — one of `cs.myBeers.notePresets`, mutually exclusive. */
   tag?: string;
   /** A free-text note in the user's own words. */
   note?: string;

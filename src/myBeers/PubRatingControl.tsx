@@ -4,7 +4,7 @@
  * Three layers, all private and local (pubRatingsStore) — nothing is sent
  * anywhere:
  *   1. a thumb verdict (good / weak),
- *   2. optional quick tags ("Sem se vrátit" …), one at a time,
+ *   2. optional memory tags ("Vrátím se sem" …), one at a time,
  *   3. a free-text note in the user's own words.
  *
  * Tapping an active verdict / tag clears it, so a rating is always editable.
@@ -139,28 +139,28 @@ export function PubRatingControl({ pubKey, pubName }: PubRatingControlProps) {
         </Pressable>
       </View>
 
-      {/* Quick tags */}
+      {/* Memory tags */}
       <Text style={[styles.subLabel, styles.tagLabel]} maxFontSizeMultiplier={FontScaleCap.body}>
         {cs.myBeers.tagLabel}
       </Text>
       <View style={styles.tagRow}>
         {cs.myBeers.notePresets.map((preset) => {
-          const active = tag === preset;
+          const active = tag === preset.value;
           return (
             <Pressable
-              key={preset}
-              onPress={() => chooseTag(preset)}
+              key={preset.value}
+              onPress={() => chooseTag(preset.value)}
               style={[styles.tagChip, active && styles.tagChipActive]}
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
-              accessibilityLabel={cs.a11y.ratingNote(preset)}
+              accessibilityLabel={cs.a11y.ratingNote(preset.label)}
               hitSlop={4}
             >
               <Text
                 style={[styles.tagChipText, active && styles.tagChipTextActive]}
                 maxFontSizeMultiplier={FontScaleCap.body}
               >
-                {preset}
+                {preset.label}
               </Text>
             </Pressable>
           );

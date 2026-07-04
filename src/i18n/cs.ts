@@ -1224,12 +1224,17 @@ export const cs = {
     ratingHint: 'Jen pro tebe. Soukromě se synchronizuje mezi tvými zařízeními.',
     verdictLike: 'Dobrý',
     verdictDislike: 'Slabý',
-    // Quick preset tags — the user's own one-tap memory labels.
-    tagLabel: 'Rychlá známka',
-    notePresets: ['Sem se vrátit', 'Nic moc', 'Dobrý tankový'] as const,
+    // One-tap memory labels. Values stay stable for older local/server ratings;
+    // labels are the copy shown in the UI.
+    tagLabel: 'Pocit po odchodu',
+    notePresets: [
+      { value: 'Sem se vrátit', label: 'Vrátím se sem' },
+      { value: 'Dobrý tankový', label: 'Dobrej výčep' },
+      { value: 'Nic moc', label: 'Příště jinam' },
+    ] as const,
     // Free-text note in the user's own words.
     noteLabel: 'Vlastní poznámka',
-    notePlaceholder: 'Co si chceš zapamatovat? Třeba „skvělý výčep, ale draho".',
+    notePlaceholder: 'Co si chceš zapamatovat? Třeba „výčep super, účet už míň".',
   },
 
   whatsNew: {
