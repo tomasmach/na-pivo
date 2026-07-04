@@ -100,7 +100,11 @@ export function PubRatingControl({ pubKey, pubName }: PubRatingControlProps) {
       <View style={styles.verdictRow}>
         <Pressable
           onPress={() => chooseVerdict('like')}
-          style={[styles.verdictButton, verdict === 'like' && styles.verdictLikeActive]}
+          style={({ pressed }) => [
+            styles.verdictButton,
+            verdict === 'like' && styles.verdictLikeActive,
+            pressed && styles.buttonPressed,
+          ]}
           accessibilityRole="button"
           accessibilityState={{ selected: verdict === 'like' }}
           accessibilityLabel={cs.a11y.ratingLike(pubName)}
@@ -120,7 +124,11 @@ export function PubRatingControl({ pubKey, pubName }: PubRatingControlProps) {
 
         <Pressable
           onPress={() => chooseVerdict('dislike')}
-          style={[styles.verdictButton, verdict === 'dislike' && styles.verdictDislikeActive]}
+          style={({ pressed }) => [
+            styles.verdictButton,
+            verdict === 'dislike' && styles.verdictDislikeActive,
+            pressed && styles.buttonPressed,
+          ]}
           accessibilityRole="button"
           accessibilityState={{ selected: verdict === 'dislike' }}
           accessibilityLabel={cs.a11y.ratingDislike(pubName)}
@@ -143,14 +151,18 @@ export function PubRatingControl({ pubKey, pubName }: PubRatingControlProps) {
       <Text style={[styles.subLabel, styles.tagLabel]} maxFontSizeMultiplier={FontScaleCap.body}>
         {cs.myBeers.tagLabel}
       </Text>
-      <View style={styles.tagRow}>
+      <View style={styles.tagGrid}>
         {cs.myBeers.notePresets.map((preset) => {
           const active = tag === preset.value;
           return (
             <Pressable
               key={preset.value}
               onPress={() => chooseTag(preset.value)}
-              style={[styles.tagChip, active && styles.tagChipActive]}
+              style={({ pressed }) => [
+                styles.tagChip,
+                active && styles.tagChipActive,
+                pressed && styles.buttonPressed,
+              ]}
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
               accessibilityLabel={cs.a11y.ratingNote(preset.label)}
@@ -159,6 +171,9 @@ export function PubRatingControl({ pubKey, pubName }: PubRatingControlProps) {
               <Text
                 style={[styles.tagChipText, active && styles.tagChipTextActive]}
                 maxFontSizeMultiplier={FontScaleCap.body}
+                numberOfLines={2}
+                adjustsFontSizeToFit
+                minimumFontScale={0.86}
               >
                 {preset.label}
               </Text>
@@ -224,6 +239,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
+  buttonPressed: {
+    opacity: 0.82,
+    transform: [{ scale: 0.98 }],
+  },
   verdictLikeActive: {
     backgroundColor: Colors.success,
     borderColor: Colors.success,
@@ -254,19 +273,24 @@ const styles = StyleSheet.create({
   },
   // Extra breathing room between the verdict buttons and the quick-tag label.
   tagLabel: {
-    marginTop: 18,
+    marginTop: 20,
   },
 
-  tagRow: {
+  tagGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    gap: 6,
     marginTop: 8,
   },
   tagChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: Radius.pill,
+    flex: 1,
+    flexBasis: 0,
+    minWidth: 0,
+    minHeight: 54,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 8,
+    borderRadius: Radius.medium,
     backgroundColor: Colors.stout3,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -277,7 +301,9 @@ const styles = StyleSheet.create({
   },
   tagChipText: {
     fontFamily: Fonts.ui.semibold,
-    fontSize: 13,
+    fontSize: 12,
+    lineHeight: 16,
+    textAlign: 'center',
     color: Colors.foamMuted,
   },
   tagChipTextActive: {
