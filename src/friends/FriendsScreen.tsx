@@ -51,6 +51,10 @@ import {
   type FriendNotification,
   type FriendsDashboard,
 } from '@/data/friendsClient';
+import {
+  fetchBeerCheckInFeed,
+  type BeerCheckIn,
+} from '@/data/beerCheckinsClient';
 import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
 import { GlowButton } from '@/components/shared/GlowButton';
 import {
@@ -348,6 +352,7 @@ export default function FriendsScreen() {
   const showToast = useToastStore((s) => s.show);
 
   const [dashboard, setDashboard] = useState<FriendsDashboard | null>(null);
+  const [beerFeed, setBeerFeed] = useState<BeerCheckIn[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   // Distinct from `dashboard`: a failed fetch must never read as "no friends".
@@ -400,6 +405,7 @@ export default function FriendsScreen() {
       loadAbortRef.current = controller;
       if (mode === 'refresh') setRefreshing(true);
       const next = await fetchFriendsDashboard(controller.signal);
+      const nextBeerFeed = next ? await fetchBeerCheckInFeed(controller.signal) : null;
       if (!mountedRef.current) return;
       // A newer load superseded this one → skip the (now stale) dashboard/badge
       // writes, but ALWAYS clear the spinner/skeleton this load owns below —
@@ -408,6 +414,7 @@ export default function FriendsScreen() {
         if (next) {
           const override = settingsOverrideRef.current;
           setDashboard(override ? { ...next, settings: override } : next);
+          if (nextBeerFeed) setBeerFeed(nextBeerFeed);
           setLoadError(false);
           const willMarkRead =
             next.notifications.length > 0 && (mode === 'initial' || mode === 'refresh');
@@ -789,6 +796,60 @@ export default function FriendsScreen() {
     );
   };
 
+  const renderBeerFeedRow = (checkIn: BeerCheckIn, first: boolean) => {
+    const when = timeLabel(checkIn.checkedInAt);
+    const ownerName = friendDisplayName(checkIn.account);
+    const meta = [
+      checkIn.rating != null ? `${checkIn.rating.toFixed(1)} / 5` : '',
+      checkIn.pubName,
+      when,
+    ].filter(Boolean).join(' · ');
+    return (
+      <HairlineRow
+        key={checkIn.id}
+        first={first}
+        onPress={() =>
+          router.push({
+            pathname: '/beer-detail',
+            params: { beer: checkIn.beerName, brewery: checkIn.breweryName },
+          } as Href)
+        }
+      >
+        <View style={styles.feedRow}>
+          <View style={styles.feedIconDisk}>
+            <BeerIcon size={16} color={Colors.amber} />
+          </View>
+          <View style={styles.feedText}>
+            <View style={styles.feedTitleRow}>
+              <Text style={styles.feedTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                {ownerName} pije {checkIn.beerName}
+              </Text>
+            </View>
+            {meta ? (
+              <Text style={styles.feedBody} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                {meta}
+              </Text>
+            ) : null}
+            {checkIn.note ? (
+              <Text style={styles.feedNote} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
+                {checkIn.note}
+              </Text>
+            ) : null}
+          </View>
+          <CheersPill
+            activityId={checkIn.id}
+            target="beerCheckIn"
+            count={checkIn.reactions.cheers}
+            mine={checkIn.myReaction === 'cheers'}
+            compact
+            ownerName={ownerName}
+            onChanged={reload}
+          />
+        </View>
+      </HairlineRow>
+    );
+  };
+
   return (
     <View style={styles.root}>
       <ScrollView
@@ -1119,6 +1180,19 @@ export default function FriendsScreen() {
                         ) : null}
                       </View>
                     )}
+                  </SectionPanel>
+                </View>
+              </Reveal>
+            ) : null}
+
+            {d && beerFeed.length > 0 ? (
+              <Reveal index={nextReveal()}>
+                <View style={styles.section}>
+                  <SectionPanel>
+                    <SectionHeader label={cs.beerCheckins.feedHeader} />
+                    <View>
+                      {beerFeed.slice(0, 6).map((checkIn, i) => renderBeerFeedRow(checkIn, i === 0))}
+                    </View>
                   </SectionPanel>
                 </View>
               </Reveal>
@@ -1604,6 +1678,13 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontFamily: Fonts.ui.medium,
     color: Colors.foamMuted,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  feedNote: {
+    marginTop: 4,
+    fontFamily: Fonts.ui.medium,
+    color: Colors.foam,
     fontSize: 13,
     lineHeight: 18,
   },

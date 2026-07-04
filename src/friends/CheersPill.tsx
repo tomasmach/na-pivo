@@ -30,6 +30,11 @@ import Animated, {
 
 import { BeerIcon } from '@/components/shared/IconGlyph';
 import {
+  clearBeerCheckInReaction,
+  reactToBeerCheckIn,
+} from '@/data/beerCheckinsClient';
+import { enqueueBeerCheckInOp } from '@/data/beerCheckinsQueue';
+import {
   clearActivityReaction,
   reactToActivity,
 } from '@/data/friendsClient';
@@ -49,6 +54,7 @@ const HIT_SLOP = { top: 6, bottom: 6, left: 6, right: 6 } as const;
 
 interface CheersPillProps {
   activityId: string;
+  target?: 'activity' | 'beerCheckIn';
   /** Server reaction tally for the glyph. */
   count: number;
   /** Whether I have already cheered this activity. */
@@ -63,6 +69,7 @@ interface CheersPillProps {
 
 function CheersPillBase({
   activityId,
+  target = 'activity',
   count,
   mine,
   onChanged,
@@ -140,9 +147,14 @@ function CheersPillBase({
 
     pendingRef.current = true;
     const seq = ++seqRef.current;
-    const call = turningOn
-      ? reactToActivity(activityId, 'cheers')
-      : clearActivityReaction(activityId);
+    const call =
+      target === 'beerCheckIn'
+        ? turningOn
+          ? reactToBeerCheckIn(activityId, 'cheers')
+          : clearBeerCheckInReaction(activityId)
+        : turningOn
+          ? reactToActivity(activityId, 'cheers')
+          : clearActivityReaction(activityId);
     void call.then((res) => {
       if (seq !== seqRef.current) return;
       pendingRef.current = false;
@@ -156,9 +168,15 @@ function CheersPillBase({
       if (isRetriableFriendError(res)) {
         // Offline / transient: keep the optimistic flip and queue the op so it
         // lands on the next flush (honest — it WILL send).
-        void enqueueFriendOp(
-          turningOn ? { op: 'cheer', activityId } : { op: 'cheer-clear', activityId },
-        );
+        if (target === 'beerCheckIn') {
+          void enqueueBeerCheckInOp(
+            turningOn ? { op: 'cheer', checkInId: activityId } : { op: 'cheer-clear', checkInId: activityId },
+          );
+        } else {
+          void enqueueFriendOp(
+            turningOn ? { op: 'cheer', activityId } : { op: 'cheer-clear', activityId },
+          );
+        }
         showToast(cs.friends.reactQueued, {
           icon: <BeerIcon size={20} color={Colors.amber} />,
         });
@@ -169,7 +187,7 @@ function CheersPillBase({
       setDisplayCount(prevCount);
       showToast(cs.friends.reactError, { icon: <BeerIcon size={20} color={Colors.amber} /> });
     });
-  }, [active, busy, displayCount, activityId, showToast, onChanged]);
+  }, [active, busy, displayCount, activityId, target, showToast, onChanged]);
 
   const glyphColor = active ? Colors.amber : Colors.mutedText;
   const label =

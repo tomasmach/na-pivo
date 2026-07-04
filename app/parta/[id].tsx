@@ -19,6 +19,7 @@ import { GlowButton } from '@/components/shared/GlowButton';
 import {
   ChevronLeftIcon,
   CompassIcon,
+  BeerIcon,
   EllipsisIcon,
   FlameIcon,
   MapPinIcon,
@@ -208,6 +209,7 @@ export default function FriendProfileScreen() {
 
   const stats = detail?.stats;
   const recent = detail?.recentTogether ?? [];
+  const latestBeers = detail?.latestBeers ?? [];
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + Spacing.sm }]}>
@@ -345,6 +347,38 @@ export default function FriendProfileScreen() {
               </Text>
             ) : null}
           </View>
+
+          {latestBeers.length > 0 ? (
+            <View style={styles.recentSection}>
+              <SectionHeader label={cs.beerCheckins.lastBeersHeader} />
+              {latestBeers.map((beer, i) => (
+                <HairlineRow
+                  key={beer.id}
+                  first={i === 0}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/beer-detail',
+                      params: { beer: beer.beerName, brewery: beer.breweryName },
+                    } as Href)
+                  }
+                >
+                  <View style={styles.recentRow}>
+                    <BeerIcon size={16} color={Colors.amber} />
+                    <View style={styles.latestBeerText}>
+                      <Text style={styles.recentPub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                        {beer.beerName}
+                      </Text>
+                      <Text style={styles.latestBeerMeta} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                        {[beer.rating != null ? `${beer.rating.toFixed(1)} / 5` : '', beer.pubName, shortDate(beer.checkedInAt)]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </Text>
+                    </View>
+                  </View>
+                </HairlineRow>
+              ))}
+            </View>
+          ) : null}
         </ScrollView>
       )}
     </View>
@@ -483,6 +517,16 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.medium,
     fontSize: 14,
     color: Colors.foamMuted,
+  },
+  latestBeerText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  latestBeerMeta: {
+    marginTop: 2,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 12,
+    color: Colors.mutedText,
   },
   recentDate: {
     flexShrink: 0,

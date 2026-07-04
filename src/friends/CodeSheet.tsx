@@ -23,7 +23,6 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
 import { useRouter, type Href } from 'expo-router';
 
@@ -122,11 +121,11 @@ function CodeSheet({ onClose }: CodeSheetProps): React.ReactElement {
     void Share.share({ message: cs.friends.shareMessage(link) });
   }, [link]);
 
-  const handleCopy = useCallback(() => {
+  const handleQuickSend = useCallback(() => {
     if (!link) return;
-    void Clipboard.setStringAsync(link).then(() => {
+    void Share.share({ message: cs.friends.shareMessage(link) }).catch(() => {
       if (!mountedRef.current) return;
-      showToast(cs.friends.codeCopied, { icon: <CopyIcon size={20} color={Colors.amber} /> });
+      showToast(cs.friends.shareError, { icon: <CopyIcon size={20} color={Colors.amber} /> });
     });
   }, [link, showToast]);
 
@@ -247,7 +246,7 @@ function CodeSheet({ onClose }: CodeSheetProps): React.ReactElement {
                 </Text>
               </Pressable>
               <Pressable
-                onPress={handleCopy}
+                onPress={handleQuickSend}
                 disabled={!link}
                 style={({ pressed }) => [styles.actionBtn, (pressed || !link) && styles.pressedDim]}
                 accessibilityRole="button"

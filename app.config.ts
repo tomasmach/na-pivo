@@ -58,6 +58,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       icon: './assets/images/icon.png',
       supportsTablet: false,
       usesAppleSignIn: true,
+      associatedDomains: ['applinks:napivo.app'],
       infoPlist: {
         NSLocationWhenInUseUsageDescription: LOCATION_REASON,
         NSLocationAlwaysAndWhenInUseUsageDescription: BACKGROUND_LOCATION_REASON,
@@ -81,6 +82,20 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     android: {
       package: 'com.tomasmach.na_pivo',
       versionCode: 1,
+      intentFilters: [
+        {
+          action: 'VIEW',
+          autoVerify: true,
+          data: [
+            {
+              scheme: 'https',
+              host: 'napivo.app',
+              pathPrefix: '/p',
+            },
+          ],
+          category: ['BROWSABLE', 'DEFAULT'],
+        },
+      ],
       permissions: [
         // Geofencing (Android Geofencing API) wakes the app via a broadcast
         // receiver — no foreground service, so no permanent "tracking" notice.

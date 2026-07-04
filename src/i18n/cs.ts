@@ -568,6 +568,30 @@ export const cs = {
     profile: 'Profil',
   },
 
+  beerCheckins: {
+    quickCta: 'Ohodnotit a sdílet partě',
+    quickDismiss: 'Nechat být',
+    sheetTitle: 'Zapsat pivo',
+    beerLabel: 'Pivo',
+    beerPlaceholder: 'Co máš ve skle?',
+    breweryLabel: 'Pivovar',
+    styleLabel: 'Styl',
+    optionalPlaceholder: 'Nepovinné',
+    ratingLabel: 'Hodnocení',
+    ratingA11y: (value: number) => `Hodnocení ${value} z 5`,
+    noteLabel: 'Poznámka',
+    notePlaceholder: 'Hořkost, pěna, nálada u stolu…',
+    visibilityLabel: 'Viditelnost',
+    visibilityPrivate: 'Jen pro mě',
+    visibilityFriends: 'Parta',
+    submit: 'Uložit pivo',
+    saved: 'Pivo zapsané. Na zdraví.',
+    feedHeader: 'Piva party',
+    feedEmpty: 'Parta zatím žádné pivo nesdílela.',
+    detailHeader: 'Detail piva',
+    lastBeersHeader: 'Poslední piva',
+  },
+
   friends: {
     title: 'Parta',
     heroTitle: 'Kdo jde dneska na jedno?',
@@ -737,11 +761,11 @@ export const cs = {
 
     // — CodeSheet "Můj kód" / QR / invite (§A3) —
     codeSheetTitle: 'Můj kód',
-    codeSheetHint: 'Ať tě kámoš naskenuje u stolu, nebo mu pošli pozvánku.',
+    codeSheetHint: 'Ukaž kámošovi QR kód nebo mu pošli pozvánku odkazem.',
     codeShare: 'Sdílet pozvánku',
-    codeCopy: 'Zkopírovat odkaz',
-    codeCopied: 'Odkaz zkopírovaný.',
-    codeScan: 'Naskenovat kámoše',
+    codeCopy: 'Poslat odkaz',
+    codeCopied: 'Odkaz připravený.',
+    codeScan: 'Přidat kámoše',
     codeNoNick: 'Přidej si přezdívku, ať tě poznají.',
     codeNoNickCta: 'Doplnit',
     codeOffline: 'Kód dostaneš, až chytneš signál.',
@@ -809,7 +833,7 @@ export const cs = {
     plansHeader: 'Plán na dnes',
     planMineTitle: 'TVŮJ PLÁN',
     planAt: (t: string) => `Dnes v ${t}`,
-    planCreated: 'Plán letí partě. Odpoledne ti to připomenu.',
+    planCreated: 'Plán letí partě. Když poběží připomínky, ještě tě odpoledne cinknu.',
     planCancel: 'Zrušit plán',
     planCancelConfirmTitle: 'Zrušit plán?',
     planCancelConfirmBody: 'Parta uvidí, že dneska nakonec nikam nejdeš.',
@@ -956,7 +980,7 @@ export const cs = {
     // — Signed-out hero —
     signedOutTitle: 'Založ si profil',
     signedOutBody:
-      'Vytvoř si účet a měj svá piva, hodnocení a odznaky synchronizované na všech zařízeních. Brzy přibydou i kamarádi a žebříčky.',
+      'Vytvoř si účet a měj svá piva, hodnocení, partu a žebříčky synchronizované na všech zařízeních.',
     signedOutCta: 'Vytvořit účet',
 
     // — Onboarding wizard —

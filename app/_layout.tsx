@@ -2,7 +2,7 @@ import { Stack, useRouter, usePathname, type Href } from 'expo-router';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { AppState } from 'react-native';
+import { AppState, Linking } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useEffect } from 'react';
@@ -22,7 +22,12 @@ import { installPubAmenitiesSync, restorePubAmenities } from '@/data/pubAmenitie
 import { flushVisitsQueue } from '@/data/visitsQueue';
 import { flushFriendsQueue } from '@/data/friendsQueue';
 import { fetchFriendsLive } from '@/data/friendsClient';
-import { consumeAndClaimPendingInviteCode } from '@/data/friendInviteLink';
+import {
+  consumeAndClaimPendingInviteCode,
+  parseInviteCodeFromUrl,
+  stashPendingInviteCode,
+} from '@/data/friendInviteLink';
+import { flushBeerCheckinsQueue } from '@/data/beerCheckinsQueue';
 import { seedVisitsFromHistory } from '@/data/visitsSync';
 import {
   installClientTelemetry,
@@ -141,6 +146,21 @@ export default function RootLayout() {
   }, [fontsLoaded, fontError, router]);
 
   useEffect(() => {
+    const handleInviteUrl = (url: string | null) => {
+      const code = parseInviteCodeFromUrl(url);
+      if (!code) return;
+      void stashPendingInviteCode(code);
+      router.push({ pathname: '/parta/pozvanka', params: { code } } as Href);
+    };
+
+    Linking.getInitialURL()
+      .then(handleInviteUrl)
+      .catch(() => undefined);
+    const subscription = Linking.addEventListener('url', ({ url }) => handleInviteUrl(url));
+    return () => subscription.remove();
+  }, [router]);
+
+  useEffect(() => {
     // A friend push received while the app is foregrounded (on any tab) nudges the
     // Parta badge, so it reacts without waiting for a background→foreground cycle
     // or a Parta focus (§D1). The next dashboard/live fetch reconciles the counts.
@@ -214,6 +234,7 @@ export default function RootLayout() {
     // Parta: retry queued RSVP/cinknutí/reactions, and light up push for
     // existing notification-permission grantees without a prompt (Parta 3.0).
     void flushFriendsQueue();
+    void flushBeerCheckinsQueue();
     void ensureFriendPushRegisteredIfGranted();
     // Close an evening left idle past the timeout while the app was away, so the
     // counter reopens clean (the evening stays resumable for the same day/pub).
@@ -234,6 +255,7 @@ export default function RootLayout() {
         void restorePubAmenities();
         void flushVisitsQueue();
         void flushFriendsQueue();
+        void flushBeerCheckinsQueue();
         // Re-seed pub geofences for wherever the user is now (no-op when the
         // feature is off; cheap unless they moved a few km since last fetch).
         void refreshPubReminderGeofences();
@@ -325,6 +347,13 @@ export default function RootLayout() {
               presentation: 'fullScreenModal',
               animation: 'slide_from_bottom',
               gestureEnabled: false,
+            }}
+          />
+          <Stack.Screen
+            name="beer-detail"
+            options={{
+              animation: 'slide_from_right',
+              gestureEnabled: true,
             }}
           />
           <Stack.Screen

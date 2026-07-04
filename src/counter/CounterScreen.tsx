@@ -55,6 +55,7 @@ import { enqueueDrink, flushDrinksQueue, isDrinkQueued, removeQueuedDrink } from
 import { enqueueDelete } from '@/data/deleteDrinksQueue';
 import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
 import { shareFriendPubActivity } from '@/data/friendsClient';
+import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
 import { trackCounterTabOpened } from '@/data/counterTelemetry';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { fireSuccessHaptic, fireLightImpactHaptic } from '@/utils/haptics';
@@ -74,6 +75,7 @@ import type { Pub } from '@/data/pubs';
 import { useNearbyPub } from '@/counter/useNearbyPub';
 import { PubPickerModal } from '@/counter/PubPickerModal';
 import { BeerFormModal, type BeerFormMode, type BeerFormResult } from '@/counter/BeerFormModal';
+import { BeerCheckInSheet } from '@/counter/BeerCheckInSheet';
 import { MapPubEntry } from '@/components/amenities/MapPubEntry';
 import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
 
@@ -360,6 +362,8 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   // flips to a calm "already live" state so the verb never doubles up (rich
   // compose lives on Parta). Derived, so switching pubs resets it for free.
   const [broadcastCell, setBroadcastCell] = useState<string | null>(null);
+  const [checkInBeerName, setCheckInBeerName] = useState<string | null>(null);
+  const [checkInSheetOpen, setCheckInSheetOpen] = useState(false);
   // Deferred-send timers per drink id; a count schedules delivery for the end of
   // the undo window, and undo cancels its drink's timer before it fires.
   const sendTimers = React.useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -461,6 +465,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
       // Bounce the matching menu card.
       const key = beerKey(beer);
       setPulses((prev) => ({ ...prev, [key]: (prev[key] ?? 0) + 1 }));
+      setCheckInBeerName(beer.name);
 
       // Persist + best-effort deliver the drink.
       const entry = buildDrinkEntry(
@@ -650,7 +655,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   const handleShareWithFriends = useCallback(async () => {
     if (sharingWithFriends || broadcasted) return;
     setSharingWithFriends(true);
-    const shareClientId = isThisPubSession ? current?.clientId : undefined;
+    const shareClientId = isThisPubSession && current?.clientId ? current.clientId : generateUuidV4();
     // One-tap quick broadcast: empty message (the rich compose with a message
     // lives on Parta). The "already live" flip keeps the verb from doubling up.
     const result = await shareFriendPubActivity(pub, '', shareClientId);
@@ -659,10 +664,14 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
       setBroadcastCell(cell);
       showToast(cs.friends.shareSuccess, { icon: <BellRingIcon size={20} color={Colors.amber} /> });
       if (hapticEnabled) fireLightImpactHaptic();
+    } else if (isRetriableFriendError(result)) {
+      await enqueueFriendOp({ op: 'activity', clientId: shareClientId, payload: { pub, message: '' } });
+      setBroadcastCell(cell);
+      showToast(cs.friends.composeQueued, { icon: <BellRingIcon size={20} color={Colors.amber} /> });
     } else {
       showToast(result.detail || cs.friends.shareError, { icon: <BellRingIcon size={20} color={Colors.amber} /> });
     }
-  }, [broadcasted, cell, current?.clientId, hapticEnabled, isThisPubSession, pub, sharingWithFriends, showToast]);
+  }, [broadcasted, cell, current, hapticEnabled, isThisPubSession, pub, sharingWithFriends, showToast]);
 
   const hasMenu = menu.length > 0;
   const bubbleFieldWidth = Math.min(screenWidth - Spacing.lg * 2, 340);
@@ -757,6 +766,30 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
           resumeSummary={resumeSummary}
         />
 
+        {checkInBeerName ? (
+          <View style={styles.checkInPrompt}>
+            <Pressable
+              onPress={() => setCheckInSheetOpen(true)}
+              style={({ pressed }) => [styles.checkInCta, pressed && styles.friendShareButtonPressed]}
+              accessibilityRole="button"
+            >
+              <BeerIcon size={17} color={Colors.stout} />
+              <Text style={styles.checkInCtaText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.beerCheckins.quickCta}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setCheckInBeerName(null)}
+              style={({ pressed }) => [styles.checkInDismiss, pressed && styles.friendShareButtonPressed]}
+              accessibilityRole="button"
+            >
+              <Text style={styles.checkInDismissText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.beerCheckins.quickDismiss}
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+
         {/* Flexible gap — pushes the menu down so a short session doesn't
             leave a dead void at the bottom; collapses when the menu is long. */}
         <View style={styles.flexSpacer} />
@@ -826,6 +859,18 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
         }}
         onSubmit={handleFormSubmit}
       />
+      {checkInBeerName && checkInSheetOpen ? (
+        <BeerCheckInSheet
+          visible={checkInSheetOpen}
+          key={checkInBeerName}
+          beerName={checkInBeerName}
+          pub={pub}
+          pubKey={cell}
+          visitClientId={isThisPubSession ? current?.clientId : null}
+          onClose={() => setCheckInSheetOpen(false)}
+          onSubmitted={() => setCheckInBeerName(null)}
+        />
+      ) : null}
     </View>
   );
 }
@@ -1202,6 +1247,42 @@ const styles = StyleSheet.create({
     color: Colors.mutedText,
     textAlign: 'center',
     lineHeight: 19,
+  },
+  checkInPrompt: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.md,
+  },
+  checkInCta: {
+    flex: 1,
+    minHeight: 46,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.amber,
+  },
+  checkInCtaText: {
+    fontFamily: Fonts.display.bold,
+    fontSize: 14,
+    color: Colors.stout,
+  },
+  checkInDismiss: {
+    minHeight: 46,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.stout2,
+  },
+  checkInDismissText: {
+    fontFamily: Fonts.display.bold,
+    fontSize: 13,
+    color: Colors.foamMuted,
   },
 
   // — Menu —

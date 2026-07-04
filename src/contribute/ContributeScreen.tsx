@@ -56,7 +56,7 @@ import {
   type WeeklyHours,
   type HoursInterval,
 } from '@/data/communityHours';
-import { pickAndPrepareMenuPhoto, type MenuPhotoSource } from '@/data/menuPhotoPicker';
+import type { MenuPhotoSource } from '@/data/menuPhotoPicker';
 import { scanMenuPhoto } from '@/data/menuScanClient';
 import { generateUuidV4 } from '@/data/account';
 import { buildCommunityEntry, type CommunityBeer } from '@/data/communityClient';
@@ -318,6 +318,7 @@ export default function ContributeScreen() {
       const toast = useToastStore.getState().show;
 
       try {
+        const { pickAndPrepareMenuPhoto } = await import('@/data/menuPhotoPicker');
         const picked = await pickAndPrepareMenuPhoto(source);
         if (picked.status === 'cancelled') return;
         if (picked.status === 'denied' || picked.status === 'denied-permanent') {

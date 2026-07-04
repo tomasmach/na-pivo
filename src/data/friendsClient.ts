@@ -1,4 +1,5 @@
 import { clearCachedAnonymousAccount, ensureAccount, generateUuidV4, type AccountSession } from './account';
+import { parseBeerCheckIn, type BeerCheckIn } from './beerCheckinsClient';
 import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal } from './apiFetch';
 import { saveFriendsDashboardSnapshot, snapshotGeneration } from './friendsSnapshot';
@@ -194,6 +195,7 @@ export interface FriendProfileDetail {
   liveActivity: FriendPubActivity | null;
   plan: FriendPubActivity | null;
   recentTogether: RecentTogether[];
+  latestBeers: BeerCheckIn[];
   blocked: boolean;
 }
 
@@ -319,6 +321,7 @@ interface RawFriendProfileDetail {
   live_activity?: RawFriendActivity | null;
   plan?: RawFriendActivity | null;
   recent_together?: RawRecentTogether[];
+  latest_beers?: unknown[];
   blocked?: boolean;
 }
 
@@ -506,6 +509,9 @@ function parseProfileDetail(raw: RawFriendProfileDetail): FriendProfileDetail {
     plan: raw.plan ? parseActivity(raw.plan) : null,
     recentTogether: Array.isArray(raw.recent_together)
       ? raw.recent_together.map(parseRecentTogether)
+      : [],
+    latestBeers: Array.isArray(raw.latest_beers)
+      ? raw.latest_beers.map((item) => parseBeerCheckIn(item as Parameters<typeof parseBeerCheckIn>[0]))
       : [],
     blocked: raw.blocked === true,
   };
