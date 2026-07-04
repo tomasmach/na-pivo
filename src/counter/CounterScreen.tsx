@@ -724,32 +724,6 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
         )}
       </View>
 
-      {/* "Zmapuj hospodu" — the community pub-amenities entry for the CURRENT pub.
-          Sits directly under the header so it's the first thing visible without
-          scrolling; opens the same MapPubSheet keyed on this pub's geohash-8. */}
-      <View style={styles.mapPubWrap}>
-        <MapPubEntry pubKey={cell} pubName={pub.name} info={pubInfoFromPub(pub)} />
-        <Pressable
-          onPress={() => void handleShareWithFriends()}
-          disabled={sharingWithFriends || broadcasted}
-          style={({ pressed }) => [
-            styles.friendShareButton,
-            (pressed || sharingWithFriends || broadcasted) && styles.friendShareButtonPressed,
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel={broadcasted ? cs.friends.counterAlreadyLive : cs.friends.shareHereShort}
-        >
-          {broadcasted ? (
-            <CheckIcon size={18} color={Colors.amber} />
-          ) : (
-            <BellRingIcon size={18} color={Colors.amber} />
-          )}
-          <Text style={styles.friendShareText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-            {broadcasted ? cs.friends.counterAlreadyLive : cs.friends.shareHereShort}
-          </Text>
-        </Pressable>
-      </View>
-
       <ScrollView
         style={styles.flex}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom + 16, 28) }]}
@@ -789,10 +763,6 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
             </Pressable>
           </View>
         ) : null}
-
-        {/* Flexible gap — pushes the menu down so a short session doesn't
-            leave a dead void at the bottom; collapses when the menu is long. */}
-        <View style={styles.flexSpacer} />
 
         {/* Menu */}
         {hasMenu ? (
@@ -846,6 +816,31 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
             </View>
           </View>
         )}
+
+        {/* Secondary pub actions. Counting stays first; these stay available
+            without competing with the beer controls in the opening viewport. */}
+        <View style={styles.pubActions}>
+          <MapPubEntry pubKey={cell} pubName={pub.name} info={pubInfoFromPub(pub)} />
+          <Pressable
+            onPress={() => void handleShareWithFriends()}
+            disabled={sharingWithFriends || broadcasted}
+            style={({ pressed }) => [
+              styles.friendShareButton,
+              (pressed || sharingWithFriends || broadcasted) && styles.friendShareButtonPressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={broadcasted ? cs.friends.counterAlreadyLive : cs.friends.shareHereShort}
+          >
+            {broadcasted ? (
+              <CheckIcon size={18} color={Colors.amber} />
+            ) : (
+              <BellRingIcon size={18} color={Colors.amber} />
+            )}
+            <Text style={styles.friendShareText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+              {broadcasted ? cs.friends.counterAlreadyLive : cs.friends.shareHereShort}
+            </Text>
+          </Pressable>
+        </View>
       </ScrollView>
 
       <BeerFormModal
@@ -1053,7 +1048,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.sm,
+    paddingBottom: 6,
   },
   headerPub: {
     flex: 1,
@@ -1075,12 +1070,8 @@ const styles = StyleSheet.create({
     color: Colors.amber,
   },
 
-  // "Zmapuj hospodu" entry — full-width pill under the header, on the same
-  // gutter as the header + scroll content so it reads as a primary, always-
-  // visible action for the current pub (never buried below the fold).
-  mapPubWrap: {
-    paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.sm,
+  pubActions: {
+    marginTop: Spacing.lg,
     gap: Spacing.sm,
   },
   friendShareButton: {
@@ -1108,14 +1099,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.sm,
-  },
-  // Eats leftover height on a short session (1–2 beers) so the menu docks
-  // toward the thumb instead of stranding a void at the bottom; the minHeight
-  // keeps a breath of separation, and flex collapses it once the menu is long.
-  flexSpacer: {
-    flex: 1,
-    minHeight: Spacing.xl,
+    paddingTop: 2,
   },
   counterBubbleOverlay: {
     position: 'absolute',
@@ -1132,13 +1116,12 @@ const styles = StyleSheet.create({
   },
 
   // — Hero —
-  // The top padding gives the centered glow room to bloom above the digit
-  // without the ScrollView clipping its halo (the cause of the "uříznutý" glow).
   hero: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 88,
-    paddingBottom: Spacing.lg,
+    minHeight: 300,
+    paddingTop: Spacing.lg,
+    paddingBottom: 12,
   },
   heroEmptyIcon: {
     marginBottom: Spacing.md,
@@ -1167,33 +1150,33 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   heroCountGlow: {
-    paddingHorizontal: 18,
-    paddingTop: 10,
+    paddingHorizontal: 16,
+    paddingTop: 8,
     paddingBottom: 2,
     overflow: 'visible',
   },
   heroCount: {
     fontFamily: Fonts.display.extrabold,
-    fontSize: 120,
+    fontSize: 108,
     // Keep the line box tall enough that the extrabold digit never clips at the
     // top; the gap to "piv" is closed by the noun's negative margin instead, so
     // we don't trade a bottom gap for a top crop.
-    lineHeight: 142,
+    lineHeight: 126,
     color: Colors.amber,
     includeFontPadding: false,
   },
   heroNoun: {
     fontFamily: Fonts.display.extrabold,
-    fontSize: 28,
+    fontSize: 26,
     color: Colors.foam,
     // Pull up into the digit's empty descender/leading space (which has no
     // glyph for a number) to tighten the number↔word gap without clipping.
-    marginTop: -30,
+    marginTop: -26,
   },
   // The spent total lives in a contained pill so it reads as a deliberate
   // stat chip rather than text floating under the hero.
   spentPill: {
-    marginTop: Spacing.md,
+    marginTop: 10,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: Radius.pill,
@@ -1210,7 +1193,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.mutedText,
-    marginTop: 10,
+    marginTop: 8,
   },
   // "Dopito" — a compact session chip in the header. Same outline treatment as
   // "Změnit" (stout2 fill + border + amber label) so the two read as a matched
@@ -1290,8 +1273,8 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.display.extrabold,
     fontSize: 18,
     color: Colors.foam,
-    marginTop: Spacing.sm,
-    marginBottom: Spacing.md,
+    marginTop: 2,
+    marginBottom: 10,
   },
   menuList: {
     gap: 10,
