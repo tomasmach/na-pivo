@@ -96,6 +96,43 @@ describe('beer-checkins queue — tag round-trip', () => {
     expect(pending[0].priceCzk).toBe(62);
   });
 
+  it('keeps multiple beer kinds from one historical evening pending', async () => {
+    submitBeerCheckIn.mockResolvedValue('retry');
+    const visitClientId = '4f05b1bf-0933-4f97-a7ce-37fc168ecae2';
+
+    await enqueueBeerCheckInOp({
+      op: 'checkin',
+      payload: checkin({ clientId: 'c1', beerName: 'Pilsner Urquell', visitClientId }),
+    });
+    await enqueueBeerCheckInOp({
+      op: 'checkin',
+      payload: checkin({ clientId: 'c2', beerName: 'Kozel 11', visitClientId }),
+    });
+
+    const pending = await getPendingBeerCheckIns();
+    expect(pending).toHaveLength(2);
+    expect(pending.map((item) => item.beerName)).toEqual(['Pilsner Urquell', 'Kozel 11']);
+    expect(pending.every((item) => item.visitClientId === visitClientId)).toBe(true);
+  });
+
+  it('still replaces a retried pending check-in with the same client id', async () => {
+    submitBeerCheckIn.mockResolvedValue('retry');
+    const visitClientId = '4f05b1bf-0933-4f97-a7ce-37fc168ecae2';
+
+    await enqueueBeerCheckInOp({
+      op: 'checkin',
+      payload: checkin({ clientId: 'c1', beerName: 'Pilsner Urquell', visitClientId, quantity: 1 }),
+    });
+    await enqueueBeerCheckInOp({
+      op: 'checkin',
+      payload: checkin({ clientId: 'c1', beerName: 'Pilsner Urquell', visitClientId, quantity: 2 }),
+    });
+
+    const pending = await getPendingBeerCheckIns();
+    expect(pending).toHaveLength(1);
+    expect(pending[0].quantity).toBe(2);
+  });
+
   it('delivers the tags verbatim to submitBeerCheckIn on flush', async () => {
     await enqueueBeerCheckInOp({ op: 'checkin', payload: checkin({ tags: ['smooth'] }) });
 

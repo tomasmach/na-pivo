@@ -128,6 +128,27 @@ function timeLabel(iso: string): string {
   });
 }
 
+interface BeerFeedItem {
+  key: string;
+  checkIns: BeerCheckIn[];
+}
+
+function groupBeerFeed(checkIns: BeerCheckIn[]): BeerFeedItem[] {
+  const groups = new Map<string, BeerCheckIn[]>();
+  const order: string[] = [];
+  for (const checkIn of checkIns) {
+    const key = checkIn.visitClientId
+      ? `visit:${checkIn.account.id}:${checkIn.visitClientId}`
+      : `checkin:${checkIn.id}`;
+    if (!groups.has(key)) {
+      groups.set(key, []);
+      order.push(key);
+    }
+    groups.get(key)?.push(checkIn);
+  }
+  return order.map((key) => ({ key, checkIns: groups.get(key) ?? [] }));
+}
+
 /**
  * Icon-only tap target shared by the accept / decline / add / remove / ghost
  * actions: ROUND_HIT_SLOP, button role, and the opacity dip on press all live
@@ -659,6 +680,7 @@ export default function FriendsScreen() {
   const liveNow =
     dashboard != null &&
     (dashboard.activeFriends.length > 0 || dashboard.myActiveActivity != null);
+  const beerFeedItems = useMemo(() => groupBeerFeed(beerFeed), [beerFeed]);
 
   if (loading) {
     return (
@@ -799,23 +821,39 @@ export default function FriendsScreen() {
     );
   };
 
-  const renderBeerFeedRow = (checkIn: BeerCheckIn, first: boolean) => {
+  const renderBeerFeedRow = (item: BeerFeedItem, first: boolean) => {
+    const checkIn = item.checkIns[0];
+    if (!checkIn) return null;
     const when = timeLabel(checkIn.checkedInAt);
     const ownerName = friendDisplayName(checkIn.account);
-    const quantity = Math.max(1, Math.floor(checkIn.quantity || 1));
+    const totalQuantity = item.checkIns.reduce(
+      (sum, row) => sum + Math.max(1, Math.floor(row.quantity || 1)),
+      0,
+    );
+    const totalPrice = item.checkIns.reduce(
+      (sum, row) => sum + (row.priceCzk != null ? row.priceCzk * Math.max(1, Math.floor(row.quantity || 1)) : 0),
+      0,
+    );
+    const hasAnyPrice = item.checkIns.some((row) => row.priceCzk != null);
+    const beerNames = item.checkIns
+      .map((row) => {
+        const quantity = Math.max(1, Math.floor(row.quantity || 1));
+        return quantity > 1 ? `${quantity}× ${row.beerName}` : row.beerName;
+      })
+      .join(', ');
     const amount = [
-      quantity > 1 ? `${quantity}×` : '',
-      checkIn.priceCzk != null ? formatPrice(checkIn.priceCzk * quantity, priceCurrency) : '',
+      totalQuantity > 1 ? `${totalQuantity}×` : '',
+      hasAnyPrice ? formatPrice(totalPrice, priceCurrency) : '',
     ].filter(Boolean).join(' · ');
     const meta = [
       amount,
-      checkIn.rating != null ? `${checkIn.rating.toFixed(1)} / 5` : '',
+      item.checkIns.length === 1 && checkIn.rating != null ? `${checkIn.rating.toFixed(1)} / 5` : '',
       checkIn.pubName,
       when,
     ].filter(Boolean).join(' · ');
     return (
       <HairlineRow
-        key={checkIn.id}
+        key={item.key}
         first={first}
         onPress={() =>
           router.push({
@@ -831,9 +869,14 @@ export default function FriendsScreen() {
           <View style={styles.feedText}>
             <View style={styles.feedTitleRow}>
               <Text style={styles.feedTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                {ownerName} pije {checkIn.beerName}
+                {item.checkIns.length > 1 ? `${ownerName} zapsal ${totalQuantity} piv` : `${ownerName} pije ${checkIn.beerName}`}
               </Text>
             </View>
+            {item.checkIns.length > 1 ? (
+              <Text style={styles.feedBody} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                {beerNames}
+              </Text>
+            ) : null}
             {meta ? (
               <Text style={styles.feedBody} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
                 {meta}
@@ -844,7 +887,7 @@ export default function FriendsScreen() {
                 {checkIn.note}
               </Text>
             ) : null}
-            {checkIn.tags.length > 0 ? (
+            {item.checkIns.length === 1 && checkIn.tags.length > 0 ? (
               <View style={styles.feedTags}>
                 <BeerTagChips tags={checkIn.tags} />
               </View>
@@ -1199,13 +1242,13 @@ export default function FriendsScreen() {
               </Reveal>
             ) : null}
 
-            {d && beerFeed.length > 0 ? (
+            {d && beerFeedItems.length > 0 ? (
               <Reveal index={nextReveal()}>
                 <View style={styles.section}>
                   <SectionPanel>
                     <SectionHeader label={cs.beerCheckins.feedHeader} />
                     <View>
-                      {beerFeed.slice(0, 6).map((checkIn, i) => renderBeerFeedRow(checkIn, i === 0))}
+                      {beerFeedItems.slice(0, 6).map((item, i) => renderBeerFeedRow(item, i === 0))}
                     </View>
                   </SectionPanel>
                 </View>

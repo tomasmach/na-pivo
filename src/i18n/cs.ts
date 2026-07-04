@@ -1187,9 +1187,12 @@ export const cs = {
     diaryHeader: 'PIVNÍ DENÍČEK',
     historicalCta: 'Zapsat zpětně',
     historicalCtaBody: 'Dopiš piva, hospodu, čas a cenu.',
-    historicalTitle: 'Dopsat pivo',
+    historicalTitle: 'Dopsat piva',
     historicalSubtitle: 'Stejný zápis, jen dopitý zpětně.',
-    historicalRequiredHint: 'Stačí pivo a hospoda.',
+    historicalRequiredHint: 'Piva po řádcích, hospoda a čas společně.',
+    historicalBeersLabel: 'Piva',
+    historicalAddBeer: 'Přidat pivo',
+    historicalNextBeerPlaceholder: 'Další pivo',
     historicalDateLabel: 'Datum',
     historicalDatePlaceholder: '12. 6. 2026',
     historicalTimeLabel: 'Čas',
@@ -1205,10 +1208,11 @@ export const cs = {
     historicalPricePlaceholder: 'vol.',
     historicalCityLabel: 'Město',
     historicalVisibilityHint: 'Starší zápisy jsou nejdřív jen pro tebe.',
-    historicalVisibilityFriendsHint: 'Parta uvidí pivo, hospodu, čas a poznámku.',
+    historicalVisibilityFriendsHint: 'Parta uvidí piva, hospodu, čas a poznámku.',
     historicalVisibilityPrivateHint: 'Uloží se jen do tvého deníčku.',
     historicalSubmit: 'Uložit vzpomínku',
-    historicalSaved: 'Vzpomínka zapsaná.',
+    historicalSaved: (count: number) =>
+      count === 1 ? 'Vzpomínka zapsaná.' : count < 5 ? `${count} piva zapsaná.` : `${count} piv zapsáno.`,
     historicalNoPub: 'Bez hospody',
 
     // — Date labels —
@@ -1399,7 +1403,8 @@ export const cs = {
     // — Moje piva —
     myBeersEvening: (pub: string, summary: string) =>
       `Večer v hospodě ${pub}, ${summary}. Ťukni pro detail.`,
-    myBeersAddHistorical: 'Zapsat pivo zpětně',
+    myBeersAddHistorical: 'Zapsat piva zpětně',
+    myBeersRemoveHistoricalBeer: (beer: string) => `Odebrat pivo ${beer}`,
     myBeersDiaryEntry: (beer: string, meta: string) =>
       `Zápis piva ${beer}${meta ? `, ${meta}` : ''}. Ťukni pro detail.`,
     ratingLike: (pub: string) => `Hodnotit ${pub} jako dobrou`,

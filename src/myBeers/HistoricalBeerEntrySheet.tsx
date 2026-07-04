@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Keyboard,
   Modal,
@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { BeerIcon, LockKeyholeIcon, UsersIcon, XIcon } from '@/components/shared/IconGlyph';
+import { BeerIcon, LockKeyholeIcon, PlusIcon, UsersIcon, XIcon } from '@/components/shared/IconGlyph';
 import { generateUuidV4 } from '@/data/account';
 import { type BeerCheckInInput, type BeerCheckInVisibility } from '@/data/beerCheckinsClient';
 import { enqueueBeerCheckInOp } from '@/data/beerCheckinsQueue';
@@ -35,7 +35,37 @@ import {
 interface HistoricalBeerEntrySheetProps {
   visible: boolean;
   onClose: () => void;
-  onSaved: (entry: BeerCheckInInput) => void;
+  onSaved: (entries: BeerCheckInInput[]) => void;
+}
+
+interface BeerLine {
+  id: string;
+  beerName: string;
+  quantityText: string;
+  priceText: string;
+  suggestions: BeerBrandSuggestion[];
+  pickedBeerName: string | null;
+}
+
+interface ParsedBeerLine {
+  beerName: string;
+  quantity: number;
+  priceCzk: number | null;
+  quantityValid: boolean;
+  priceValid: boolean;
+}
+
+const MAX_BEER_LINES = 10;
+
+function createBeerLine(): BeerLine {
+  return {
+    id: generateUuidV4(),
+    beerName: '',
+    quantityText: '1',
+    priceText: '',
+    suggestions: [],
+    pickedBeerName: null,
+  };
 }
 
 function useKeyboardHeight(): number {
@@ -62,16 +92,13 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
   const showToast = useToastStore((s) => s.show);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const initialDate = new Date();
-  const pickedBeerRef = useRef<string | null>(null);
 
   const [dateText, setDateText] = useState(() => formatHistoricalDate(initialDate));
   const [startTimeText, setStartTimeText] = useState(() => formatHistoricalTime(initialDate));
   const [endTimeText, setEndTimeText] = useState('');
-  const [quantityText, setQuantityText] = useState('1');
-  const [priceText, setPriceText] = useState('');
   const [pubName, setPubName] = useState('');
-  const [beerName, setBeerName] = useState('');
-  const [suggestions, setSuggestions] = useState<BeerBrandSuggestion[]>([]);
+  const [beerLines, setBeerLines] = useState<BeerLine[]>(() => [createBeerLine()]);
+  const [activeBeerLineId, setActiveBeerLineId] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [visibility, setVisibility] = useState<BeerCheckInVisibility>('friends');
   const [dateError, setDateError] = useState(false);
@@ -83,12 +110,9 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
       setDateText(formatHistoricalDate(date));
       setStartTimeText(formatHistoricalTime(date));
       setEndTimeText('');
-      setQuantityText('1');
-      setPriceText('');
       setPubName('');
-      setBeerName('');
-      setSuggestions([]);
-      pickedBeerRef.current = null;
+      setBeerLines([createBeerLine()]);
+      setActiveBeerLineId(null);
       setNote('');
       setVisibility('friends');
       setDateError(false);
@@ -96,38 +120,78 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
     return () => clearTimeout(timer);
   }, [visible]);
 
-  const cleanBeer = beerName.trim();
   const cleanPub = pubName.trim();
-  const quantity = Number(quantityText || '0');
-  const cleanPrice = priceText.trim();
-  const priceCzk = cleanPrice ? parsePriceInputToCzk(cleanPrice, priceCurrency) : null;
-  const quantityValid = Number.isInteger(quantity) && quantity >= 1 && quantity <= 99;
-  const priceValid = cleanPrice.length === 0 || priceCzk !== null;
-  const canSubmit = cleanBeer.length > 0 && cleanPub.length > 0 && quantityValid && priceValid;
+  const parsedBeerLines: ParsedBeerLine[] = useMemo(
+    () =>
+      beerLines.map((line) => {
+        const quantity = Number(line.quantityText || '0');
+        const cleanPrice = line.priceText.trim();
+        const priceCzk = cleanPrice ? parsePriceInputToCzk(cleanPrice, priceCurrency) : null;
+        return {
+          beerName: line.beerName.trim(),
+          quantity,
+          priceCzk,
+          quantityValid: Number.isInteger(quantity) && quantity >= 1 && quantity <= 99,
+          priceValid: cleanPrice.length === 0 || priceCzk !== null,
+        };
+      }),
+    [beerLines, priceCurrency],
+  );
+  const beerLinesValid =
+    parsedBeerLines.length > 0 &&
+    parsedBeerLines.every((line) => line.beerName.length > 0 && line.quantityValid && line.priceValid);
+  const canSubmit = cleanPub.length > 0 && beerLinesValid;
 
-  const onChangeBeerName = useCallback((value: string) => {
-    pickedBeerRef.current = null;
-    setBeerName(value);
+  const updateBeerLine = useCallback((id: string, patch: Partial<BeerLine>) => {
+    setBeerLines((current) => current.map((line) => (line.id === id ? { ...line, ...patch } : line)));
   }, []);
 
-  const selectSuggestion = useCallback((suggestion: BeerBrandSuggestion) => {
-    pickedBeerRef.current = suggestion.name;
-    setBeerName(suggestion.name);
-    setSuggestions([]);
-    Keyboard.dismiss();
+  const onChangeBeerName = useCallback(
+    (id: string, value: string) => {
+      updateBeerLine(id, { beerName: value, pickedBeerName: null, suggestions: [] });
+      setActiveBeerLineId(id);
+    },
+    [updateBeerLine],
+  );
+
+  const selectSuggestion = useCallback(
+    (id: string, suggestion: BeerBrandSuggestion) => {
+      updateBeerLine(id, {
+        beerName: suggestion.name,
+        pickedBeerName: suggestion.name,
+        suggestions: [],
+      });
+      Keyboard.dismiss();
+    },
+    [updateBeerLine],
+  );
+
+  const addBeerLine = useCallback(() => {
+    if (beerLines.length >= MAX_BEER_LINES) return;
+    const next = createBeerLine();
+    setBeerLines((current) => (current.length >= MAX_BEER_LINES ? current : [...current, next]));
+    setActiveBeerLineId(next.id);
+  }, [beerLines.length]);
+
+  const removeBeerLine = useCallback((id: string) => {
+    setBeerLines((current) => (current.length > 1 ? current.filter((line) => line.id !== id) : current));
+    setActiveBeerLineId((current) => (current === id ? null : current));
   }, []);
+
+  const activeBeerLine = beerLines.find((line) => line.id === activeBeerLineId);
+  const activeBeerName = activeBeerLine?.beerName ?? '';
+  const activePickedBeerName = activeBeerLine?.pickedBeerName ?? null;
 
   useEffect(() => {
-    const query = cleanBeer;
-    if (!visible || query.length < 2 || pickedBeerRef.current === beerName) {
-      setSuggestions([]);
+    const query = activeBeerName.trim();
+    if (!visible || !activeBeerLineId || query.length < 2 || activePickedBeerName === activeBeerName) {
       return;
     }
 
     const controller = new AbortController();
     const timeout = setTimeout(() => {
       suggestBeerBrands(query, controller.signal, 6).then((items) => {
-        if (!controller.signal.aborted) setSuggestions(items);
+        if (!controller.signal.aborted) updateBeerLine(activeBeerLineId, { suggestions: items });
       });
     }, 220);
 
@@ -135,16 +199,13 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
       controller.abort();
       clearTimeout(timeout);
     };
-  }, [beerName, cleanBeer, visible]);
+  }, [activeBeerLineId, activeBeerName, activePickedBeerName, updateBeerLine, visible]);
 
   const reset = useCallback(() => {
     setPubName('');
-    setBeerName('');
     setEndTimeText('');
-    setQuantityText('1');
-    setPriceText('');
-    setSuggestions([]);
-    pickedBeerRef.current = null;
+    setBeerLines([createBeerLine()]);
+    setActiveBeerLineId(null);
     setNote('');
     setVisibility('friends');
     setDateError(false);
@@ -158,46 +219,44 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
       return;
     }
     setDateError(false);
-    const payload: BeerCheckInInput = {
+    const visitClientId = generateUuidV4();
+    const payloads: BeerCheckInInput[] = parsedBeerLines.map((line) => ({
       clientId: generateUuidV4(),
-      beerName: cleanBeer,
+      beerName: line.beerName,
       breweryName: '',
       beerStyle: '',
-      quantity,
-      priceCzk,
+      quantity: line.quantity,
+      priceCzk: line.priceCzk,
       rating: null,
       note: note.trim(),
       tags: [],
       pubName: cleanPub,
       pubCity: '',
-      visitClientId: null,
+      visitClientId,
       visibility,
       checkedInAt: checked.iso,
       endedAt: checked.endedIso ?? null,
-    };
-    void enqueueBeerCheckInOp({
-      op: 'checkin',
-      payload,
-    }).then(() => {
-      showToast(cs.myBeers.historicalSaved, { icon: <BeerIcon size={20} color={Colors.amber} /> });
+    }));
+    void Promise.all(payloads.map((payload) => enqueueBeerCheckInOp({ op: 'checkin', payload }))).then(() => {
+      showToast(cs.myBeers.historicalSaved(payloads.length), {
+        icon: <BeerIcon size={20} color={Colors.amber} />,
+      });
       reset();
-      onSaved(payload);
+      onSaved(payloads);
       onClose();
     });
   }, [
     canSubmit,
-    cleanBeer,
     cleanPub,
     dateText,
     endTimeText,
     note,
     onClose,
     onSaved,
+    parsedBeerLines,
     reset,
     showToast,
     startTimeText,
-    priceCzk,
-    quantity,
     visibility,
   ]);
 
@@ -233,33 +292,102 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
             contentContainerStyle={styles.scrollContent}
             bounces={false}
           >
-            <Text style={styles.label}>{cs.beerCheckins.beerLabel}</Text>
-            <TextInput
-              value={beerName}
-              onChangeText={onChangeBeerName}
-              placeholder={cs.beerCheckins.beerPlaceholder}
-              placeholderTextColor={Colors.mutedText}
-              style={styles.input}
-              maxLength={80}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            />
-            {suggestions.length > 0 ? (
-              <View style={styles.suggestionsBox}>
-                {suggestions.map((suggestion, index) => (
-                  <Pressable
-                    key={suggestion.slug}
-                    onPress={() => selectSuggestion(suggestion)}
-                    style={[styles.suggestionRow, index > 0 && styles.suggestionRowDivider]}
-                    accessibilityRole="button"
-                    accessibilityLabel={suggestion.name}
-                  >
-                    <Text style={styles.suggestionText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {suggestion.name}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            ) : null}
+            <View style={styles.sectionLabelRow}>
+              <Text style={styles.label}>{cs.myBeers.historicalBeersLabel}</Text>
+              <Pressable
+                onPress={addBeerLine}
+                disabled={beerLines.length >= MAX_BEER_LINES}
+                style={[styles.addBeerButton, beerLines.length >= MAX_BEER_LINES && styles.dim]}
+                accessibilityRole="button"
+              >
+                <PlusIcon size={15} color={Colors.stout} />
+                <Text style={styles.addBeerText}>{cs.myBeers.historicalAddBeer}</Text>
+              </Pressable>
+            </View>
+            <View style={styles.beerLines}>
+              {beerLines.map((line, index) => {
+                const parsed = parsedBeerLines[index];
+                return (
+                  <View key={line.id} style={styles.beerLine}>
+                    <View style={styles.beerLineTop}>
+                      <TextInput
+                        value={line.beerName}
+                        onFocus={() => setActiveBeerLineId(line.id)}
+                        onChangeText={(value) => onChangeBeerName(line.id, value)}
+                        placeholder={index === 0 ? cs.beerCheckins.beerPlaceholder : cs.myBeers.historicalNextBeerPlaceholder}
+                        placeholderTextColor={Colors.mutedText}
+                        style={[styles.input, styles.beerNameInput]}
+                        maxLength={80}
+                        maxFontSizeMultiplier={FontScaleCap.body}
+                      />
+                      {beerLines.length > 1 ? (
+                        <Pressable
+                          onPress={() => removeBeerLine(line.id)}
+                          style={styles.removeBeerButton}
+                          hitSlop={8}
+                          accessibilityRole="button"
+                          accessibilityLabel={cs.a11y.myBeersRemoveHistoricalBeer(line.beerName || `${index + 1}`)}
+                        >
+                          <XIcon size={16} color={Colors.mutedText} />
+                        </Pressable>
+                      ) : null}
+                    </View>
+                    {line.suggestions.length > 0 ? (
+                      <View style={styles.suggestionsBox}>
+                        {line.suggestions.map((suggestion, suggestionIndex) => (
+                          <Pressable
+                            key={suggestion.slug}
+                            onPress={() => selectSuggestion(line.id, suggestion)}
+                            style={[styles.suggestionRow, suggestionIndex > 0 && styles.suggestionRowDivider]}
+                            accessibilityRole="button"
+                            accessibilityLabel={suggestion.name}
+                          >
+                            <Text style={styles.suggestionText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                              {suggestion.name}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    ) : null}
+                    <View style={styles.lineMetaRow}>
+                      <View style={styles.countCol}>
+                        <Text style={styles.miniLabel}>{cs.myBeers.historicalQuantityLabel}</Text>
+                        <TextInput
+                          value={line.quantityText}
+                          onChangeText={(value) =>
+                            updateBeerLine(line.id, { quantityText: value.replace(/\D/g, '').slice(0, 2) })
+                          }
+                          placeholder="1"
+                          placeholderTextColor={Colors.mutedText}
+                          style={[styles.input, styles.compactInput, !parsed.quantityValid && styles.inputError]}
+                          keyboardType="number-pad"
+                          maxFontSizeMultiplier={FontScaleCap.body}
+                        />
+                      </View>
+                      <View style={styles.priceCol}>
+                        <Text style={styles.miniLabel}>{cs.myBeers.historicalPriceLabel}</Text>
+                        <View style={[styles.priceInputWrap, styles.compactPriceInputWrap, !parsed.priceValid && styles.inputError]}>
+                          <TextInput
+                            value={line.priceText}
+                            onChangeText={(value) =>
+                              updateBeerLine(line.id, { priceText: sanitizePriceInput(value, priceCurrency) })
+                            }
+                            placeholder={cs.myBeers.historicalPricePlaceholder}
+                            placeholderTextColor={Colors.mutedText}
+                            style={styles.priceInput}
+                            keyboardType={priceCurrency === 'EUR' ? 'decimal-pad' : 'number-pad'}
+                            maxFontSizeMultiplier={FontScaleCap.body}
+                          />
+                          <Text style={styles.priceSuffix} maxFontSizeMultiplier={FontScaleCap.body}>
+                            {currencySuffix(priceCurrency)}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
 
             <Text style={styles.label}>{cs.myBeers.historicalPubLabel}</Text>
             <TextInput
@@ -271,38 +399,6 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
               maxLength={120}
               maxFontSizeMultiplier={FontScaleCap.body}
             />
-
-            <View style={styles.countPriceRow}>
-              <View style={styles.countCol}>
-                <Text style={styles.label}>{cs.myBeers.historicalQuantityLabel}</Text>
-                <TextInput
-                  value={quantityText}
-                  onChangeText={(value) => setQuantityText(value.replace(/\D/g, '').slice(0, 2))}
-                  placeholder="1"
-                  placeholderTextColor={Colors.mutedText}
-                  style={[styles.input, !quantityValid && styles.inputError]}
-                  keyboardType="number-pad"
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                />
-              </View>
-              <View style={styles.priceCol}>
-                <Text style={styles.label}>{cs.myBeers.historicalPriceLabel}</Text>
-                <View style={[styles.priceInputWrap, !priceValid && styles.inputError]}>
-                  <TextInput
-                    value={priceText}
-                    onChangeText={(value) => setPriceText(sanitizePriceInput(value, priceCurrency))}
-                    placeholder={cs.myBeers.historicalPricePlaceholder}
-                    placeholderTextColor={Colors.mutedText}
-                    style={styles.priceInput}
-                    keyboardType={priceCurrency === 'EUR' ? 'decimal-pad' : 'number-pad'}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  />
-                  <Text style={styles.priceSuffix} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {currencySuffix(priceCurrency)}
-                  </Text>
-                </View>
-              </View>
-            </View>
 
             <View style={styles.dateTimeRow}>
               <View style={styles.dateCol}>
@@ -466,6 +562,14 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: Spacing.sm,
   },
+  sectionLabelRow: {
+    marginTop: Spacing.sm,
+    marginBottom: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
   label: {
     marginTop: Spacing.sm,
     marginBottom: 5,
@@ -474,6 +578,60 @@ const styles = StyleSheet.create({
     color: Colors.mutedText,
     letterSpacing: 0.4,
     textTransform: 'uppercase',
+  },
+  miniLabel: {
+    marginBottom: 4,
+    fontFamily: Fonts.display.bold,
+    fontSize: 10,
+    color: Colors.mutedText,
+    letterSpacing: 0.35,
+    textTransform: 'uppercase',
+  },
+  addBeerButton: {
+    minHeight: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.amber,
+    paddingHorizontal: 10,
+  },
+  addBeerText: {
+    fontFamily: Fonts.display.bold,
+    fontSize: 11,
+    color: Colors.stout,
+  },
+  beerLines: {
+    gap: Spacing.xs,
+  },
+  beerLine: {
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    paddingTop: Spacing.xs,
+    gap: Spacing.xs,
+  },
+  beerLineTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  beerNameInput: {
+    flex: 1,
+    minHeight: 42,
+    backgroundColor: Colors.stout,
+  },
+  removeBeerButton: {
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  lineMetaRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
   },
   input: {
     minHeight: 46,
@@ -504,10 +662,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: Spacing.sm,
   },
-  countPriceRow: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-  },
   dateCol: {
     flex: 1.25,
   },
@@ -523,6 +677,10 @@ const styles = StyleSheet.create({
   timeInput: {
     paddingHorizontal: Spacing.sm,
   },
+  compactInput: {
+    minHeight: 40,
+    backgroundColor: Colors.stout,
+  },
   priceInputWrap: {
     minHeight: 46,
     flexDirection: 'row',
@@ -533,6 +691,10 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     backgroundColor: Colors.stout2,
     paddingHorizontal: Spacing.md,
+  },
+  compactPriceInputWrap: {
+    minHeight: 40,
+    backgroundColor: Colors.stout,
   },
   priceInput: {
     flex: 1,

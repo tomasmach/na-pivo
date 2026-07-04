@@ -365,11 +365,12 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
 
   const openHistorical = useCallback(() => setHistoricalOpen(true), []);
   const handleHistoricalSaved = useCallback(
-    (entry: BeerCheckInInput) => {
-      const optimistic = optimisticCheckIn(entry);
+    (entries: BeerCheckInInput[]) => {
+      const optimistic = entries.map(optimisticCheckIn);
+      const ids = new Set(optimistic.map((entry) => entry.clientId));
       setOptimisticDiaryEntries((current) => [
-        optimistic,
-        ...current.filter((item) => item.clientId !== optimistic.clientId),
+        ...optimistic,
+        ...current.filter((item) => !ids.has(item.clientId)),
       ]);
       refreshDiary();
     },
