@@ -181,6 +181,19 @@ export function shouldStartNewSession(
   return drinkingDayKey(new Date(session.startedAt)) !== drinkingDayKey(at);
 }
 
+/**
+ * Routing predicate for a backdated drink: true when its timestamp belongs to an
+ * EARLIER drinking day than `now` — a genuinely past evening that must be filed
+ * into history (via addBackdatedDrink) rather than started or appended as the
+ * live session. Same-drinking-day backdates ("před hodinou") route through the
+ * normal addDrink path. Independent of whether a `current` session exists — a
+ * backdate to yesterday with no live session must still NOT become `current`.
+ * Pure + exported for unit tests.
+ */
+export function isPastEveningBackdate(at: string, now: Date = new Date()): boolean {
+  return drinkingDayKey(new Date(at)) !== drinkingDayKey(now);
+}
+
 /** Order evenings newest-first by start time. Backdated drinks can insert an
  *  older evening into history, so the newest-first invariant must be re-sorted
  *  rather than assumed from front-insertion. */
