@@ -86,6 +86,36 @@ describe('addDrink', () => {
   });
 });
 
+describe('addBackdatedDrink', () => {
+  it('files a backdate to another day into a new past evening, leaving the live session untouched', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer({ at: '2026-06-13T20:00:00' }));
+    const before = useTallyStore.getState().current;
+    const landed = useTallyStore.getState().addBackdatedDrink(PUB_A, beer({ at: '2026-06-12T20:00:00' }));
+    const { current, history } = useTallyStore.getState();
+    // The live evening is exactly as it was — not clobbered by the rollover.
+    expect(current).toBe(before);
+    expect(current?.drinks).toHaveLength(1);
+    // The backdated drink lives in a fresh archived evening.
+    expect(history).toHaveLength(1);
+    expect(history[0].drinks).toHaveLength(1);
+    expect(history[0].archivedReason).toBe('manual');
+    expect(landed).toBe(history[0]);
+  });
+
+  it('appends a backdate into the matching archived evening (same pub + drinking day)', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer({ at: '2026-06-12T20:00:00' }));
+    // Rolls the day over: yesterday archived, today live.
+    useTallyStore.getState().addDrink(PUB_A, beer({ at: '2026-06-13T20:00:00' }));
+    expect(useTallyStore.getState().history).toHaveLength(1);
+
+    const landed = useTallyStore.getState().addBackdatedDrink(PUB_A, beer({ at: '2026-06-12T22:00:00' }));
+    const { history } = useTallyStore.getState();
+    expect(history).toHaveLength(1);
+    expect(history[0].drinks).toHaveLength(2);
+    expect(landed.drinks).toHaveLength(2);
+  });
+});
+
 describe('session rollover by drinking day (04:00 cutoff)', () => {
   it('keeps a 01:30 beer in the previous evening session (before the cutoff)', () => {
     // Use local-time ISO strings (no Z) so the device-local cutoff math is exercised.

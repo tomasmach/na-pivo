@@ -103,6 +103,15 @@ interface TallyState {
    */
   addDrink: (pub: TallyPub, beer: TallyBeerInput) => void;
   /**
+   * File a BACKDATED drink into a past evening without ever touching the live
+   * `current` session. The drink lands in the archived history session that
+   * matches the pub + drinking-day of its timestamp; if none exists a fresh
+   * archived session is created. Returns the session the drink landed in (so the
+   * caller can sync the right visit). Used when a backdated timestamp would
+   * otherwise roll over and clobber the active evening.
+   */
+  addBackdatedDrink: (pub: TallyPub, beer: TallyBeerInput) => TallySession;
+  /**
    * Remove the most recently counted drink from the current session and return
    * its id (so the caller can also remove the queued payload). Returns null when
    * there is nothing to undo. Empties the session object if it was the last
@@ -170,6 +179,13 @@ export function shouldStartNewSession(
   if (!session) return true;
   if (session.pubKey !== pubKey) return true;
   return drinkingDayKey(new Date(session.startedAt)) !== drinkingDayKey(at);
+}
+
+/** Order evenings newest-first by start time. Backdated drinks can insert an
+ *  older evening into history, so the newest-first invariant must be re-sorted
+ *  rather than assumed from front-insertion. */
+function sortSessionsNewestFirst(sessions: TallySession[]): TallySession[] {
+  return sessions.slice().sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
 }
 
 /** Ensure a persisted session carries a stable `clientId`, minting one when an
@@ -252,6 +268,56 @@ export const useTallyStore = create<TallyState>()(
             },
           };
         }),
+
+      addBackdatedDrink: (pub, beer) => {
+        const box: { session: TallySession | null } = { session: null };
+        set((state) => {
+          const at = beer.at ?? new Date().toISOString();
+          const atDate = new Date(at);
+          const drink: TallyDrink = {
+            id: beer.id,
+            beerName: beer.beerName,
+            priceCzk: beer.priceCzk,
+            at,
+            syncStatus: 'pending',
+          };
+          if (typeof beer.volumeMl === 'number') drink.volumeMl = beer.volumeMl;
+
+          const dayKey = drinkingDayKey(atDate);
+          // Append to the archived evening at the same pub + drinking day, if any.
+          let matched = false;
+          const history = state.history.map((session) => {
+            if (matched || session.pubKey !== pub.pubKey) return session;
+            if (drinkingDayKey(new Date(session.startedAt)) !== dayKey) return session;
+            matched = true;
+            // Keep startedAt as the evening's earliest drink.
+            const startedAt =
+              Date.parse(at) < Date.parse(session.startedAt) ? at : session.startedAt;
+            const updated: TallySession = { ...session, startedAt, drinks: [...session.drinks, drink] };
+            box.session = updated;
+            return updated;
+          });
+
+          if (matched) {
+            return { history: sortSessionsNewestFirst(history) };
+          }
+
+          // No matching evening → open a fresh archived one for that night.
+          const created: TallySession = {
+            clientId: generateUuidV4(),
+            pubKey: pub.pubKey,
+            pubName: pub.pubName,
+            startedAt: at,
+            drinks: [drink],
+            archivedReason: 'manual',
+          };
+          box.session = created;
+          return {
+            history: sortSessionsNewestFirst([created, ...state.history]).slice(0, MAX_HISTORY),
+          };
+        });
+        return box.session as TallySession;
+      },
 
       undoLast: (expectedId) => {
         let removedId: string | null = null;

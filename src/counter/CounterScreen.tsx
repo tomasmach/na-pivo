@@ -72,6 +72,8 @@ import {
   sessionTotalCzk,
   sessionBeerCounts,
   resumableSession,
+  shouldStartNewSession,
+  type TallySession,
 } from '@/stores/tallyStore';
 import type { Pub } from '@/data/pubs';
 
@@ -363,6 +365,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   const current = useTallyStore((s) => s.current);
   const history = useTallyStore((s) => s.history);
   const addDrink = useTallyStore((s) => s.addDrink);
+  const addBackdatedDrink = useTallyStore((s) => s.addBackdatedDrink);
   const removeDrink = useTallyStore((s) => s.removeDrink);
   const markDrinkSynced = useTallyStore((s) => s.markDrinkSynced);
   const archiveCurrent = useTallyStore((s) => s.archiveCurrent);
@@ -389,6 +392,9 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   // Deferred-send timers per drink id; a count schedules delivery for the end of
   // the undo window, and undo cancels its drink's timer before it fires.
   const sendTimers = React.useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  // The last session count we fired the water nudge at, so rapid taps that share
+  // a threshold never double-fire it.
+  const waterNudgeAtRef = React.useRef(0);
 
   useEffect(() => {
     const timers = sendTimers.current;
@@ -456,10 +462,12 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   }, [backendMenu, override, pub.beers, pub.id]);
 
   // — Count one beer (writes tally + queue + menu override) —
-  // `atOverride` backdates the drink (PIV-25): its ISO timestamp flows straight
-  // into addDrink so the session-rollover logic (pub + 04:00 drinking-day cutoff)
-  // files it into the right evening. Backdated drinks skip the "now"-relative
-  // touches (nowMs sync, rapid-drink warning, water nudge).
+  // `atOverride` backdates the drink (PIV-25). When the backdated timestamp
+  // would roll over and archive the LIVE evening (different drinking day / pub),
+  // we file it into a past evening via addBackdatedDrink so `current` is never
+  // clobbered; otherwise it appends to the active session like a normal count.
+  // Backdated drinks skip the "now"-relative touches (nowMs sync, rapid-drink
+  // warning, check-in prompt, water nudge).
   const countBeer = useCallback(
     (beer: CommunityBeer & { priceCzk: number }, atOverride?: string) => {
       const id = generateUuidV4();
@@ -467,20 +475,38 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
       const startsSession = count === 0;
       setNowMs(atOverride ? Date.now() : Date.parse(at));
 
-      addDrink(
-        { pubKey: cell, pubName: pub.name },
-        { id, beerName: beer.name, priceCzk: beer.priceCzk, volumeMl: beer.volumeMl, at },
-      );
-      // Push/refresh the visit ("evening") record. addDrink writes synchronously,
-      // so the freshest session — with this beer and its bumped ended_at — is on
-      // the store now; the visit POST is idempotent on the session clientId.
-      syncVisit(useTallyStore.getState().current);
-      if (startsSession) {
+      const liveCurrent = useTallyStore.getState().current;
+      const backdateToPast =
+        !!atOverride &&
+        !!liveCurrent &&
+        liveCurrent.drinks.length > 0 &&
+        shouldStartNewSession(liveCurrent, cell, new Date(at));
+
+      let landedSession: TallySession | null;
+      if (backdateToPast) {
+        // Files into a past evening, leaving the live session untouched.
+        landedSession = addBackdatedDrink(
+          { pubKey: cell, pubName: pub.name },
+          { id, beerName: beer.name, priceCzk: beer.priceCzk, volumeMl: beer.volumeMl, at },
+        );
+      } else {
+        addDrink(
+          { pubKey: cell, pubName: pub.name },
+          { id, beerName: beer.name, priceCzk: beer.priceCzk, volumeMl: beer.volumeMl, at },
+        );
+        landedSession = useTallyStore.getState().current;
+      }
+      // Push/refresh the visit ("evening") record for the session the drink
+      // actually landed in. addDrink/addBackdatedDrink write synchronously, so
+      // the freshest session is on the store now; the POST is idempotent on the
+      // session clientId.
+      syncVisit(landedSession);
+      if (!atOverride && startsSession) {
         void trackClientEvent({ event: 'counter_session_started' });
       }
       void trackClientEvent({
         event: 'drink_added',
-        context: { had_active_session: !startsSession },
+        context: { had_active_session: !startsSession, backdated: !!atOverride },
       });
 
       // Merge into the local community menu so the price shows instantly across
@@ -491,7 +517,9 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
       // Bounce the matching menu card.
       const key = beerKey(beer);
       setPulses((prev) => ({ ...prev, [key]: (prev[key] ?? 0) + 1 }));
-      setCheckInBeerName(beer.name);
+      // The check-in prompt ("I'm drinking this now") is now-semantic — skip it
+      // for a backdated log.
+      if (!atOverride) setCheckInBeerName(beer.name);
 
       // Persist + best-effort deliver the drink.
       const entry = buildDrinkEntry(
@@ -526,14 +554,23 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
       // Gentle water nudge every 4th beer in a row (4, 8, 12…). Local-only, no
       // notifications — just a mate at the table reminding you to hydrate.
       // Backdated drinks aren't part of the "now" streak, so they never nudge.
-      const newCount = startsSession ? 1 : count + 1;
-      if (!atOverride && waterNudgeEnabled && newCount > 0 && newCount % 4 === 0) {
-        showToast(cs.counter.waterNudge(newCount), {
+      // Read the count from the store (not the rendered closure) and guard with a
+      // ref so rapid taps sharing a threshold can't double-fire the toast.
+      const liveCount = sessionCount(useTallyStore.getState().current);
+      if (
+        !atOverride &&
+        waterNudgeEnabled &&
+        liveCount > 0 &&
+        liveCount % 4 === 0 &&
+        waterNudgeAtRef.current !== liveCount
+      ) {
+        waterNudgeAtRef.current = liveCount;
+        showToast(cs.counter.waterNudge(liveCount), {
           icon: <GlassWaterIcon size={20} color={Colors.amber} />,
         });
       }
     },
-    [addDrink, cell, count, hapticEnabled, markDrinkSynced, menu, pub, setOverride, showToast, waterNudgeEnabled],
+    [addDrink, addBackdatedDrink, cell, count, hapticEnabled, markDrinkSynced, menu, pub, setOverride, showToast, waterNudgeEnabled],
   );
 
   const requestCountBeer = useCallback(
