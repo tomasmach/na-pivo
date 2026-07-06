@@ -46,6 +46,7 @@ import {
   Undo2Icon,
   BellRingIcon,
   GlassWaterIcon,
+  HistoryIcon,
 } from '@/components/shared/IconGlyph';
 
 import { geohash8 } from '@/data/geohash';
@@ -369,6 +370,9 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
 
   const [formMode, setFormMode] = useState<BeerFormMode | null>(null);
   const [formBeer, setFormBeer] = useState<CommunityBeer | null>(null);
+  // Set when the add form was opened via "zapsat zpětně": the ISO timestamp the
+  // next added beer is counted at. Cleared on submit/cancel.
+  const [backdateAt, setBackdateAt] = useState<string | null>(null);
   // Bumped on each open so the form body remounts with fresh, prop-seeded state.
   const [formNonce, setFormNonce] = useState(0);
   // Per-beer pulse counter (key → token); bumped on each count to bounce a card.
@@ -452,12 +456,16 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   }, [backendMenu, override, pub.beers, pub.id]);
 
   // — Count one beer (writes tally + queue + menu override) —
+  // `atOverride` backdates the drink (PIV-25): its ISO timestamp flows straight
+  // into addDrink so the session-rollover logic (pub + 04:00 drinking-day cutoff)
+  // files it into the right evening. Backdated drinks skip the "now"-relative
+  // touches (nowMs sync, rapid-drink warning, water nudge).
   const countBeer = useCallback(
-    (beer: CommunityBeer & { priceCzk: number }) => {
+    (beer: CommunityBeer & { priceCzk: number }, atOverride?: string) => {
       const id = generateUuidV4();
-      const at = new Date().toISOString();
+      const at = atOverride ?? new Date().toISOString();
       const startsSession = count === 0;
-      setNowMs(Date.parse(at));
+      setNowMs(atOverride ? Date.now() : Date.parse(at));
 
       addDrink(
         { pubKey: cell, pubName: pub.name },
@@ -517,8 +525,9 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
 
       // Gentle water nudge every 4th beer in a row (4, 8, 12…). Local-only, no
       // notifications — just a mate at the table reminding you to hydrate.
+      // Backdated drinks aren't part of the "now" streak, so they never nudge.
       const newCount = startsSession ? 1 : count + 1;
-      if (waterNudgeEnabled && newCount > 0 && newCount % 4 === 0) {
+      if (!atOverride && waterNudgeEnabled && newCount > 0 && newCount % 4 === 0) {
         showToast(cs.counter.waterNudge(newCount), {
           icon: <GlassWaterIcon size={20} color={Colors.amber} />,
         });
@@ -528,9 +537,10 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   );
 
   const requestCountBeer = useCallback(
-    (beer: CommunityBeer & { priceCzk: number }) => {
-      if (!shouldWarnRapidDrink(latestDrinkAt)) {
-        countBeer(beer);
+    (beer: CommunityBeer & { priceCzk: number }, atOverride?: string) => {
+      // A backdated beer can't be "too fast right now" — count it straight away.
+      if (atOverride || !shouldWarnRapidDrink(latestDrinkAt)) {
+        countBeer(beer, atOverride);
         return;
       }
 
@@ -577,8 +587,45 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   );
 
   const handleAddBeer = useCallback(() => {
+    setBackdateAt(null);
     openForm('add', null);
   }, [openForm]);
+
+  // "Zapsat zpětně" — pick a past time from quick chips, then the normal add
+  // form. The chosen ISO timestamp rides `backdateAt` into the count so the
+  // session-rollover logic files it into the right evening (PIV-25).
+  const openBackdateForm = useCallback(
+    (at: string) => {
+      setBackdateAt(at);
+      openForm('add', null);
+    },
+    [openForm],
+  );
+
+  const handleBackdatePress = useCallback(() => {
+    const now = Date.now();
+    const CAP_MS = 48 * 60 * 60 * 1000;
+    // Clamp every option to the 48h cap so a chip can never file a drink older
+    // than we allow.
+    const clamp = (ms: number) => new Date(Math.max(ms, now - CAP_MS)).toISOString();
+    // Yesterday at 20:00 local — a sensible "the evening I forgot to log" anchor.
+    const yesterdayEvening = new Date(now);
+    yesterdayEvening.setDate(yesterdayEvening.getDate() - 1);
+    yesterdayEvening.setHours(20, 0, 0, 0);
+
+    showAppDialog({
+      title: cs.counter.backdateTitle,
+      buttons: [
+        { text: cs.counter.backdateHourAgo, onPress: () => openBackdateForm(clamp(now - 60 * 60 * 1000)) },
+        { text: cs.counter.backdateTwoHoursAgo, onPress: () => openBackdateForm(clamp(now - 2 * 60 * 60 * 1000)) },
+        {
+          text: cs.counter.backdateYesterdayEvening,
+          onPress: () => openBackdateForm(clamp(yesterdayEvening.getTime())),
+        },
+        { text: cs.counter.cancel, style: 'cancel' },
+      ],
+    });
+  }, [openBackdateForm]);
 
   const handleFormSubmit = useCallback(
     (result: BeerFormResult) => {
@@ -586,8 +633,11 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
       // Capture the row being edited BEFORE clearing form state — identity is
       // name+volume, so a volume edit must replace this exact row in place.
       const editedBeer = formBeer;
+      // Consume any pending backdate (set by the "zapsat zpětně" flow).
+      const at = backdateAt ?? undefined;
       setFormMode(null);
       setFormBeer(null);
+      setBackdateAt(null);
       const beer = { name: result.name, priceCzk: result.priceCzk, volumeMl: result.volumeMl };
       void trackClientEvent({
         event: 'beer_price_added',
@@ -607,11 +657,12 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
           : mergeBeerIntoMenu(menu, beer);
         setOverride(cell, { beers: nextMenu });
       } else {
-        // 'add' and 'price' both count the beer immediately.
-        requestCountBeer(beer);
+        // 'add' and 'price' both count the beer immediately (or at `at` when the
+        // add form was opened via the backdate flow).
+        requestCountBeer(beer, at);
       }
     },
-    [cell, formBeer, formMode, menu, requestCountBeer, setOverride],
+    [backdateAt, cell, formBeer, formMode, menu, requestCountBeer, setOverride],
   );
 
   // Remove the most recently counted drink OF THIS BEER. Optimistically drops it
@@ -849,6 +900,18 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
                 {cs.counter.addBeer}
               </Text>
             </Pressable>
+            <Pressable
+              onPress={handleBackdatePress}
+              style={({ pressed }) => [styles.backdateLink, pressed && styles.friendShareButtonPressed]}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel={cs.counter.backdateTitle}
+            >
+              <HistoryIcon size={15} color={Colors.mutedText} />
+              <Text style={styles.backdateLinkText} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.counter.backdateLink}
+              </Text>
+            </Pressable>
           </>
         ) : (
           <View style={styles.emptyMenu}>
@@ -903,6 +966,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
         onCancel={() => {
           setFormMode(null);
           setFormBeer(null);
+          setBackdateAt(null);
         }}
         onSubmit={handleFormSubmit}
       />
@@ -1437,6 +1501,19 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.bold,
     fontSize: 15,
     color: Colors.amber,
+  },
+  backdateLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingVertical: 8,
+  },
+  backdateLinkText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 13,
+    color: Colors.mutedText,
   },
 
   // — Empty menu —
