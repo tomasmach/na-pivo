@@ -113,6 +113,7 @@ jest.mock('@/counter/useNearbyPub', () => ({ useNearbyPub: () => useNearbyPub() 
 import { useTallyStore } from '@/stores/tallyStore';
 import { useCommunityStore } from '@/stores/communityStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useToastStore } from '@/stores/toastStore';
 import { geohash8 } from '@/data/geohash';
 import { showAppDialog } from '@/components/shared/AppDialog';
 
@@ -515,6 +516,79 @@ describe('CounterScreen counting', () => {
       PUB,
       '',
       'session-client-id',
+    );
+  });
+});
+
+describe('CounterScreen water nudge', () => {
+  // Seed a live evening with `drinkCount` beers logged well in the past (so the
+  // rapid-drink warning never intercepts the next tap), under a chosen clientId
+  // so we can prove the nudge guard is keyed by session identity.
+  function seedSession(clientId: string, drinkCount: number) {
+    const past = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    const drinks = Array.from({ length: drinkCount }, (_, i) => ({
+      id: `seed-${clientId}-${i}`,
+      beerName: 'Plzeň',
+      priceCzk: 62,
+      volumeMl: 500,
+      at: past,
+    }));
+    useTallyStore.setState({
+      current: { clientId, pubKey: CELL, pubName: PUB.name, startedAt: past, drinks },
+      history: [],
+    });
+  }
+
+  function findBeerCard(renderer: any) {
+    const wanted = copy.a11y.counterCountBeer('Plzeň', copy.counter.price(62));
+    return renderer.root.findAll(
+      (n: any) => n.props?.accessibilityLabel === wanted && typeof n.props?.onPress === 'function',
+    )[0];
+  }
+
+  it('fires once when a session hits its 4th beer, and again for a fresh session', async () => {
+    const showToast = jest.fn();
+    useToastStore.setState({ show: showToast });
+    useCommunityStore.setState({
+      overrides: { [CELL]: { beers: [{ name: 'Plzeň', priceCzk: 62, volumeMl: 500 }], updatedAt: 1 } },
+    });
+    useNearbyPub.mockReturnValue(nearbyState());
+
+    // Session A already sits at 3 beers → the next tap is the 4th.
+    seedSession('session-a', 3);
+
+    let renderer: any;
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(CounterScreen));
+    });
+
+    await act(async () => {
+      findBeerCard(renderer).props.onPress();
+      await Promise.resolve();
+    });
+
+    // The 4th beer nudges exactly once (a shared-threshold double-fire is guarded).
+    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith(
+      copy.counter.waterNudge(4),
+      expect.objectContaining({ icon: expect.anything() }),
+    );
+
+    // A fresh evening (different clientId) in the SAME mounted counter must nudge
+    // again at its own 4th beer — the guard is keyed by session identity, not a
+    // bare count that would stay "used up" at 4.
+    act(() => {
+      seedSession('session-b', 3);
+    });
+    await act(async () => {
+      findBeerCard(renderer).props.onPress();
+      await Promise.resolve();
+    });
+
+    expect(showToast).toHaveBeenCalledTimes(2);
+    expect(showToast).toHaveBeenLastCalledWith(
+      copy.counter.waterNudge(4),
+      expect.objectContaining({ icon: expect.anything() }),
     );
   });
 });
