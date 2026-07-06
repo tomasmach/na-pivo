@@ -1151,6 +1151,12 @@ export const cs = {
     // — Menu —
     menuHeader: 'Co tu mají',
     addBeer: 'Přidat pivo',
+    // — Backdate (zapsat pivo zpětně) —
+    backdateLink: 'Zapsat pivo zpětně',
+    backdateTitle: 'Kdy jsi ho měl?',
+    backdateHourAgo: 'Před hodinou',
+    backdateTwoHoursAgo: 'Před dvěma hodinami',
+    backdateYesterdayEvening: 'Včera večer',
     perBeerCount: (n: number) => `${n}×`,
     // Empty-menu hero — the community-sourcing nudge.
     emptyMenuTitle: 'Tady ještě nikdo nepřidal pivo',
