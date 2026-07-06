@@ -44,6 +44,7 @@ import {
   CheckIcon,
   Undo2Icon,
   BellRingIcon,
+  GlassWaterIcon,
 } from '@/components/shared/IconGlyph';
 
 import { geohash8 } from '@/data/geohash';
@@ -331,6 +332,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   const { width: screenWidth } = useWindowDimensions();
   const reducedMotion = useReducedMotion();
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
+  const waterNudgeEnabled = useSettingsStore((s) => s.waterNudgeEnabled);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const showToast = useToastStore((s) => s.show);
   // The top edge the parent has NOT already padded: 0 when embedded (the "Pivo"
@@ -497,8 +499,17 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
       if (hapticEnabled) {
         fireSuccessHaptic();
       }
+
+      // Gentle water nudge every 4th beer in a row (4, 8, 12…). Local-only, no
+      // notifications — just a mate at the table reminding you to hydrate.
+      const newCount = startsSession ? 1 : count + 1;
+      if (waterNudgeEnabled && newCount > 0 && newCount % 4 === 0) {
+        showToast(cs.counter.waterNudge(newCount), {
+          icon: <GlassWaterIcon size={20} color={Colors.amber} />,
+        });
+      }
     },
-    [addDrink, cell, count, hapticEnabled, markDrinkSynced, menu, pub, setOverride],
+    [addDrink, cell, count, hapticEnabled, markDrinkSynced, menu, pub, setOverride, showToast, waterNudgeEnabled],
   );
 
   const requestCountBeer = useCallback(

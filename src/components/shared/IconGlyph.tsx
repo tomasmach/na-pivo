@@ -71,6 +71,7 @@ import {
   Trophy,
   QrCode,
   Ellipsis,
+  GlassWater,
   LucideProps,
 } from 'lucide-react-native';
 
@@ -109,6 +110,7 @@ export const FlagIcon = wrap(Flag, 'FlagIcon');
 export const MessageSquareIcon = wrap(MessageSquare, 'MessageSquareIcon');
 export const RadiusIcon = wrap(Radius, 'RadiusIcon');
 export const WifiIcon = wrap(Wifi, 'WifiIcon');
+export const GlassWaterIcon = wrap(GlassWater, 'GlassWaterIcon');
 export const PencilIcon = wrap(Pencil, 'PencilIcon');
 export const PlusIcon = wrap(Plus, 'PlusIcon');
 export const MinusIcon = wrap(Minus, 'MinusIcon');
