@@ -18,6 +18,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, Linking, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -153,6 +154,7 @@ function DetectingScreen({ embedded }: { embedded: boolean }) {
 }
 
 function NoPubScreen({ onRetry, embedded }: { onRetry: () => void; embedded: boolean }) {
+  const router = useRouter();
   return (
     <CenteredScreen embedded={embedded}>
       <View style={styles.permIconWrap}>
@@ -173,6 +175,19 @@ function NoPubScreen({ onRetry, embedded }: { onRetry: () => void; embedded: boo
           accessibilityLabel={cs.a11y.counterRetry}
         />
       </View>
+      {/* Parity with the compass empty state: if it's not on the map yet, add it. */}
+      <Pressable
+        onPress={() => router.push('/add-pub')}
+        style={styles.noPubAddLink}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel={cs.counter.noPubAddPub}
+      >
+        <MapPinIcon size={16} color={Colors.mutedText} />
+        <Text style={styles.noPubAddLinkText} maxFontSizeMultiplier={FontScaleCap.body}>
+          {cs.counter.noPubAddPub}
+        </Text>
+      </Pressable>
     </CenteredScreen>
   );
 }
@@ -1078,6 +1093,17 @@ const styles = StyleSheet.create({
   },
   permButtonWrap: { alignSelf: 'stretch', marginTop: Spacing.sm },
   permSecondaryWrap: { alignSelf: 'stretch', marginTop: -Spacing.xs },
+  noPubAddLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: Spacing.xs,
+  },
+  noPubAddLinkText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 14,
+    color: Colors.mutedText,
+  },
 
   // — Header —
   header: {

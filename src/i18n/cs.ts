@@ -60,6 +60,10 @@ export const cs = {
     factEditA11y: (label: string, filled: boolean) =>
       filled ? `Upravit: ${label}` : `Doplnit: ${label}`,
 
+    // Rename row — the counter's entry point for fixing a pub's name.
+    renameRowLabel: 'Název hospody',
+    renameRowHint: 'Přejmenuj nebo oprav překlep',
+
     // Sections (uppercase, matching the statsHeader convention). Merged to 3 so
     // no section is a single row: games+atmosphere → ZÁBAVA, payment+wifi/parking
     // → PRAKTICKÉ.
@@ -1111,6 +1115,7 @@ export const cs = {
     noPubTitle: 'Žádná hospoda nablízku',
     noPubBody: 'Nenašel jsem hospodu ve tvém okolí. Zkus to znovu.',
     retry: 'Zkusit znovu',
+    noPubAddPub: 'Přidat hospodu',
 
     // — Active header —
     changePub: 'Změnit',
