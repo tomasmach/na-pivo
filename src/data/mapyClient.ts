@@ -266,7 +266,7 @@ function buildDirectMapyLocationUrl(
   url.searchParams.set('limit', kind === 'suggest' ? '8' : '3');
   url.searchParams.append('type', 'poi');
   if (kind === 'geocode') url.searchParams.append('type', 'regional.address');
-  url.searchParams.set('locality', 'cz');
+  url.searchParams.set('locality', 'cz,sk');
   url.searchParams.set('apikey', apiKey);
   if (near) {
     url.searchParams.set('preferNear', `${near.lng},${near.lat}`);
@@ -331,7 +331,9 @@ function pickAddress(item: MapyGeocodeItem): string | undefined {
 }
 
 function buildPubLocationQuery(input: PubLocationGeocodeInput): string {
-  return [input.name, input.address, input.city, 'Česko']
+  // No hardcoded country — the app serves CZ + SK, and locality=cz,sk already
+  // scopes the search. Appending "Česko" mislocated Slovak pubs (PIV-21).
+  return [input.name, input.address, input.city]
     .map((part) => part?.trim())
     .filter(Boolean)
     .join(', ')
@@ -339,7 +341,7 @@ function buildPubLocationQuery(input: PubLocationGeocodeInput): string {
 }
 
 function buildAddressLocationQuery(input: PubLocationGeocodeInput): string {
-  return [input.address, input.city, 'Česko']
+  return [input.address, input.city]
     .map((part) => part?.trim())
     .filter(Boolean)
     .join(', ')

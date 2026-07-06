@@ -326,7 +326,7 @@ describe('geocodePubLocation', () => {
     expect(result).toEqual({ lat: 50.081, lng: 14.421, city: 'Praha', address: undefined, type: 'poi' });
     const calledUrl = new URL(String((fetchMock.mock.calls[0] as unknown[])[0]));
     expect(calledUrl.origin + calledUrl.pathname).toBe('https://api.example.com/v1/pubs/geocode');
-    expect(calledUrl.searchParams.get('query')).toBe('Hospoda U Testu, Praha, Česko');
+    expect(calledUrl.searchParams.get('query')).toBe('Hospoda U Testu, Praha');
     expect(calledUrl.searchParams.get('lat')).toBe('50.08');
     expect(calledUrl.searchParams.get('lng')).toBe('14.42');
   });
@@ -341,7 +341,7 @@ describe('geocodePubLocation', () => {
         status: 200,
         json: async () => ({
           items:
-            query === 'Testovací 12, Praha, Česko'
+            query === 'Testovací 12, Praha'
               ? [
                   {
                     name: 'Testovací 12',
@@ -384,8 +384,8 @@ describe('geocodePubLocation', () => {
       new URL(String((call as unknown[])[0])).searchParams.get('query'),
     );
     expect(queries).toEqual([
-      'Hospoda mimo Mapy, Testovací 12, Praha, Česko',
-      'Testovací 12, Praha, Česko',
+      'Hospoda mimo Mapy, Testovací 12, Praha',
+      'Testovací 12, Praha',
     ]);
   });
 
@@ -467,7 +467,7 @@ describe('geocodePubLocation', () => {
     if (!backendUrl || !mapyUrl) throw new Error('Expected backend and Mapy calls');
     expect(backendUrl.origin + backendUrl.pathname).toBe('https://api.example.com/v1/pubs/geocode');
     expect(mapyUrl.origin + mapyUrl.pathname).toBe('https://api.mapy.cz/v1/geocode');
-    expect(mapyUrl.searchParams.get('query')).toBe('Hospoda U Testu, Praha, Česko');
+    expect(mapyUrl.searchParams.get('query')).toBe('Hospoda U Testu, Praha');
     expect(mapyUrl.searchParams.getAll('type')).toEqual(['poi', 'regional.address']);
     expect(mapyUrl.searchParams.get('preferNear')).toBe('14.42,50.08');
     expect(mapyUrl.searchParams.get('apikey')).toBe('public-test-key');
