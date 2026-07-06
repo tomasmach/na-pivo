@@ -12,10 +12,12 @@ from pubs.enrichment import (
     geohash8,
     names_match,
 )
+from pubs.enrichment.matcher import _haversine_m
 
 logger = logging.getLogger(__name__)
 
 SPECIFIC_GEOCODE_TYPES = {"poi", "regional.address"}
+MAX_CLIENT_GEOCODE_DISTANCE_M = 400.0
 
 
 @dataclass(frozen=True)
@@ -93,7 +95,13 @@ def pick_address(item: dict) -> str:
     return ""
 
 
-def resolved_pub_location_from_item(item: dict, requested_name: str) -> ResolvedPubLocation | None:
+def resolved_pub_location_from_item(
+    item: dict,
+    requested_name: str,
+    *,
+    requested_lat: float | None = None,
+    requested_lng: float | None = None,
+) -> ResolvedPubLocation | None:
     item_type = item.get("type")
     position = item.get("position") or {}
     lat = position.get("lat")
@@ -104,6 +112,12 @@ def resolved_pub_location_from_item(item: dict, requested_name: str) -> Resolved
         return None
     if not (-90.0 <= float(lat) <= 90.0 and -180.0 <= float(lng) <= 180.0):
         return None
+    resolved_lat = float(lat)
+    resolved_lng = float(lng)
+    if requested_lat is not None and requested_lng is not None:
+        distance_m = _haversine_m(requested_lat, requested_lng, resolved_lat, resolved_lng)
+        if distance_m > MAX_CLIENT_GEOCODE_DISTANCE_M:
+            return None
 
     item_name = item.get("name")
     if (
@@ -116,8 +130,8 @@ def resolved_pub_location_from_item(item: dict, requested_name: str) -> Resolved
 
     return ResolvedPubLocation(
         name=item_name if item_type == "poi" and isinstance(item_name, str) and item_name else requested_name,
-        lat=float(lat),
-        lng=float(lng),
+        lat=resolved_lat,
+        lng=resolved_lng,
         city=pick_city(item),
         address=pick_address(item),
         result_type=item_type,
@@ -155,7 +169,12 @@ def resolve_user_added_pub_location(
             for query in queries:
                 result = source.geocode_location(query, lat=lat, lng=lng, limit=3)
                 for item in result.items:
-                    resolved = resolved_pub_location_from_item(item, requested_name=name)
+                    resolved = resolved_pub_location_from_item(
+                        item,
+                        requested_name=name,
+                        requested_lat=lat,
+                        requested_lng=lng,
+                    )
                     if resolved is not None:
                         return resolved
     except MapyDailyCapExceededError as exc:
