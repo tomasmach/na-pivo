@@ -273,11 +273,17 @@ export const useTallyStore = create<TallyState>()(
           }
 
           // Same session → append. Refresh the pub name in case it was edited.
+          // A same-day backdate can predate the session start — keep startedAt
+          // as the evening's earliest drink (mirrors addBackdatedDrink).
+          const session = state.current as TallySession;
+          const startedAt =
+            Date.parse(at) < Date.parse(session.startedAt) ? at : session.startedAt;
           return {
             current: {
-              ...(state.current as TallySession),
+              ...session,
               pubName: pub.pubName,
-              drinks: [...(state.current as TallySession).drinks, drink],
+              startedAt,
+              drinks: [...session.drinks, drink],
             },
           };
         }),

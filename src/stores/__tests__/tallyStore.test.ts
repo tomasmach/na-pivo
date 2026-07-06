@@ -80,6 +80,15 @@ describe('addDrink', () => {
     expect(history[0].pubKey).toBe(PUB_A.pubKey);
   });
 
+  it('moves startedAt back when a same-day backdate predates the session start', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer({ at: '2026-06-12T21:00:00' }));
+    // "Před dvěma hodinami" — same drinking day, but earlier than the first count.
+    useTallyStore.getState().addDrink(PUB_A, beer({ at: '2026-06-12T19:00:00' }));
+    const { current } = useTallyStore.getState();
+    expect(current?.drinks).toHaveLength(2);
+    expect(current?.startedAt).toBe('2026-06-12T19:00:00');
+  });
+
   it('refreshes the pub name within an ongoing session', () => {
     useTallyStore.getState().addDrink(PUB_A, beer());
     useTallyStore.getState().addDrink({ ...PUB_A, pubName: 'U Zlatého Tygra (přejmenováno)' }, beer());
