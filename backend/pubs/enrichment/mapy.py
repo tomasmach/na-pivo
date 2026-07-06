@@ -317,10 +317,12 @@ class MapySuggestSource:
             )
 
     def _get_items(self, url: str, params, log_label: str) -> list[dict]:
-        """GET *url* and return its raw ``items``. Raises on HTTP/network error.
+        """GET *url* and return its raw ``items``.
 
         Cap-checked, and retries ONCE on a 429/5xx (the only retryable statuses)
-        before giving up. ``log_label`` identifies the request in the retry warning.
+        before giving up. Non-429 4xx responses are user-recoverable lookup misses
+        and return an empty list. ``log_label`` identifies the request in the retry
+        warning.
         """
         self._check_cap()
         resp = self._session.get(url, params=params, timeout=self._timeout)
@@ -333,7 +335,17 @@ class MapySuggestSource:
             # The retried request also counts against the daily cap.
             self._check_cap()
             resp = self._session.get(url, params=params, timeout=self._timeout)
-        resp.raise_for_status()
+        try:
+            resp.raise_for_status()
+        except requests.HTTPError:
+            if 400 <= resp.status_code < 500 and resp.status_code != 429:
+                logger.info(
+                    "mapy: %s returned non-retryable HTTP %d — treating as no results",
+                    log_label,
+                    resp.status_code,
+                )
+                return []
+            raise
         data = resp.json()
         return data.get("items") or []
 
@@ -427,7 +439,7 @@ class MapySuggestSource:
             ("lang", "cs"),
             ("limit", str(max(1, min(limit, MAX_RESULTS_PER_QUERY)))),
             ("type", "poi"),
-            ("locality", "cz"),
+            ("locality", "cz,sk"),
             ("apikey", self._api_key),
         ]
         if lat is not None and lng is not None:
@@ -457,7 +469,7 @@ class MapySuggestSource:
             ("limit", str(max(1, min(limit, MAX_RESULTS_PER_QUERY)))),
             ("type", "poi"),
             ("type", "regional.address"),
-            ("locality", "cz"),
+            ("locality", "cz,sk"),
             ("apikey", self._api_key),
         ]
         if lat is not None and lng is not None:
