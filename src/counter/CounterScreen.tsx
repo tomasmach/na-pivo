@@ -48,7 +48,7 @@ import {
 
 import { geohash8 } from '@/data/geohash';
 import { generateUuidV4 } from '@/data/account';
-import { mergeBeerIntoMenu, type CommunityBeer } from '@/data/communityHours';
+import { mergeBeerIntoMenu, isSameBeerIdentity, type CommunityBeer } from '@/data/communityHours';
 import { fetchPubHours } from '@/data/hoursClient';
 import { buildDrinkEntry } from '@/data/drinksClient';
 import { enqueueDrink, flushDrinksQueue, isDrinkQueued, removeQueuedDrink } from '@/data/drinksQueue';
@@ -557,6 +557,9 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   const handleFormSubmit = useCallback(
     (result: BeerFormResult) => {
       const mode = formMode;
+      // Capture the row being edited BEFORE clearing form state — identity is
+      // name+volume, so a volume edit must replace this exact row in place.
+      const editedBeer = formBeer;
       setFormMode(null);
       setFormBeer(null);
       const beer = { name: result.name, priceCzk: result.priceCzk, volumeMl: result.volumeMl };
@@ -565,15 +568,24 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
         context: { mode: mode ?? 'unknown' },
       });
       if (mode === 'edit') {
-        // Edit just updates the menu price; the NEXT tap counts it.
-        const mergedMenu = mergeBeerIntoMenu(menu, beer);
-        setOverride(cell, { beers: mergedMenu });
+        // Replace the edited row in place. mergeBeerIntoMenu matches on
+        // name+volume, so a volume change would otherwise append a NEW row and
+        // orphan the original — the PIV-33 bug. Editing the pre-change identity
+        // keeps exactly one row per beer.
+        const nextMenu = editedBeer
+          ? menu
+              .map((b) => (isSameBeerIdentity(b, editedBeer) ? beer : b))
+              // A volume/name edit can collide with another existing row; drop
+              // the duplicate so the menu keeps one row per identity.
+              .filter((b) => b === beer || !isSameBeerIdentity(b, beer))
+          : mergeBeerIntoMenu(menu, beer);
+        setOverride(cell, { beers: nextMenu });
       } else {
         // 'add' and 'price' both count the beer immediately.
         requestCountBeer(beer);
       }
     },
-    [cell, formMode, menu, requestCountBeer, setOverride],
+    [cell, formBeer, formMode, menu, requestCountBeer, setOverride],
   );
 
   // Remove the most recently counted drink OF THIS BEER. Optimistically drops it
