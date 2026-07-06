@@ -16,7 +16,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, Linking, useWindowDimensions } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import Animated, {
@@ -34,7 +34,6 @@ import { amberGlow, amberGlowStrong } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
 import { beerCountLabel } from '@/i18n/plural';
 import { GlowButton } from '@/components/shared/GlowButton';
-import { BeerBubbles } from '@/components/celebration/BeerBubbles';
 import { SoftGlow } from '@/components/celebration/SoftGlow';
 import {
   BeerIcon,
@@ -347,7 +346,6 @@ export function shouldWarnRapidDrink(lastDrinkAt: string | undefined, nowMs: num
 
 function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCounterProps) {
   const insets = useSafeAreaInsets();
-  const { width: screenWidth } = useWindowDimensions();
   const reducedMotion = useReducedMotion();
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
   const waterNudgeEnabled = useSettingsStore((s) => s.waterNudgeEnabled);
@@ -812,18 +810,9 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   }, [broadcasted, cell, current, hapticEnabled, isThisPubSession, pub, sharingWithFriends, showToast]);
 
   const hasMenu = menu.length > 0;
-  const bubbleFieldWidth = Math.min(screenWidth - Spacing.lg * 2, 340);
 
   return (
     <View style={[styles.root, { paddingTop: topInset + 8 }]}>
-      {count > 0 && !reducedMotion && (
-        <View style={[styles.counterBubbleOverlay, { top: topInset + 58 }]} pointerEvents="none">
-          <View style={[styles.counterBubbleField, { width: bubbleFieldWidth }]}>
-            <BeerBubbles width={bubbleFieldWidth} height={310} bubbleCount={20} overflowVisible />
-          </View>
-        </View>
-      )}
-
       {/* Header: pub name + session actions. "Změnit" (when several candidates)
           and "Dopito" live here as compact chips — both act on the SESSION, sit
           above the scroll so they're always discoverable, and stay subordinate
@@ -1271,20 +1260,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingTop: 2,
   },
-  counterBubbleOverlay: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    height: 310,
-    alignItems: 'center',
-    overflow: 'visible',
-    zIndex: 0,
-  },
-  counterBubbleField: {
-    height: 310,
-    overflow: 'visible',
-  },
-
   // — Hero —
   hero: {
     alignItems: 'center',
