@@ -66,6 +66,29 @@ def _payload(**overrides):
     return data
 
 
+def _mapy_geocode_item(lat: float, lng: float, *, item_type: str = "regional.address") -> dict:
+    return {
+        "name": _NAME,
+        "type": item_type,
+        "label": "Adresa",
+        "position": {"lat": lat, "lon": lng},
+        "regionalStructure": [
+            {"name": "12", "type": "regional.address"},
+            {"name": "Testovací", "type": "regional.street"},
+            {"name": "Praha", "type": "regional.municipality"},
+        ],
+    }
+
+
+def _mapy_geocode_factory(items: list[dict]):
+    source = MagicMock()
+    source.geocode_location.return_value = MapySuggestResult(items=items)
+    cm = MagicMock()
+    cm.__enter__.return_value = source
+    cm.__exit__.return_value = False
+    return MagicMock(return_value=cm), source
+
+
 def test_user_added_pub_geocode_falls_back_to_address_only_query(settings):
     settings.MAPY_API_KEY = "test-key"
     source = MagicMock()
@@ -196,6 +219,44 @@ def test_add_pub_uses_precise_geocoded_address_over_client_coords(client):
 
 
 @pytest.mark.django_db
+def test_add_pub_keeps_client_coords_when_geocode_result_is_too_far(client, settings):
+    settings.MAPY_API_KEY = "test-key"
+    token = _register(client)
+    far_lat = _LAT + 0.009
+    factory, source = _mapy_geocode_factory([_mapy_geocode_item(far_lat, _LNG)])
+
+    with patch("pubs.user_added_pub_geocoding.MapySuggestSource", factory):
+        resp = client.post("/v1/pubs", data=_payload(), format="json", **_auth(token))
+
+    assert resp.status_code == status.HTTP_201_CREATED
+    assert source.geocode_location.call_count == 2
+    pub = UserAddedPub.objects.get()
+    assert pub.lat == _LAT
+    assert pub.lng == _LNG
+    assert pub.cache_key == _KEY
+    assert resp.json()["cache_key"] == _KEY
+
+
+@pytest.mark.django_db
+def test_add_pub_uses_nearby_geocode_result(client, settings):
+    settings.MAPY_API_KEY = "test-key"
+    token = _register(client)
+    near_lat = _LAT + 0.0008
+    factory, source = _mapy_geocode_factory([_mapy_geocode_item(near_lat, _LNG)])
+
+    with patch("pubs.user_added_pub_geocoding.MapySuggestSource", factory):
+        resp = client.post("/v1/pubs", data=_payload(), format="json", **_auth(token))
+
+    assert resp.status_code == status.HTTP_201_CREATED
+    assert source.geocode_location.call_count == 1
+    pub = UserAddedPub.objects.get()
+    assert pub.lat == pytest.approx(near_lat)
+    assert pub.lng == pytest.approx(_LNG)
+    assert pub.cache_key == geohash8(near_lat, _LNG)
+    assert resp.json()["cache_key"] == geohash8(near_lat, _LNG)
+
+
+@pytest.mark.django_db
 def test_add_pub_is_idempotent_on_account_client_id(client):
     token = _register(client)
     first = client.post("/v1/pubs", data=_payload(), format="json", **_auth(token))
@@ -298,6 +359,68 @@ def test_add_pub_preserves_existing_reports_for_same_cell(client):
 
     assert resp.status_code == status.HTTP_201_CREATED
     assert PubReport.objects.get().active is True
+
+
+@pytest.mark.django_db
+def test_rename_user_added_pub_updates_own_pub_without_geocoding(client):
+    token = _register(client)
+    create = client.post("/v1/pubs", data=_payload(), format="json", **_auth(token))
+    assert create.status_code == status.HTTP_201_CREATED
+
+    with patch("pubs.api.views.resolve_user_added_pub_location") as geocode:
+        resp = client.patch(
+            f"/v1/pubs/{_CLIENT_ID}",
+            data={"name": "Nový název hospody"},
+            format="json",
+            **_auth(token),
+        )
+
+    assert resp.status_code == status.HTTP_200_OK
+    geocode.assert_not_called()
+    body = resp.json()
+    assert body["client_id"] == _CLIENT_ID
+    assert body["name"] == "Nový název hospody"
+    assert body["lat"] == _LAT
+    assert body["lng"] == _LNG
+    pub = UserAddedPub.objects.get()
+    assert pub.name == "Nový název hospody"
+    assert pub.cache_key == _KEY
+
+
+@pytest.mark.django_db
+def test_rename_user_added_pub_returns_404_for_missing_or_foreign_pub(client):
+    first_token = _register(client)
+    second_token = _register(client, "11111111-2222-3333-4444-555555555555")
+    create = client.post("/v1/pubs", data=_payload(), format="json", **_auth(first_token))
+    assert create.status_code == status.HTTP_201_CREATED
+
+    missing = client.patch(
+        "/v1/pubs/aaaaaaaa-0000-0000-0000-000000000001",
+        data={"name": "Neexistující hospoda"},
+        format="json",
+        **_auth(first_token),
+    )
+    foreign = client.patch(
+        f"/v1/pubs/{_CLIENT_ID}",
+        data={"name": "Cizí hospoda"},
+        format="json",
+        **_auth(second_token),
+    )
+
+    assert missing.status_code == status.HTTP_404_NOT_FOUND
+    assert foreign.status_code == status.HTTP_404_NOT_FOUND
+    assert UserAddedPub.objects.get().name == _NAME
+
+
+@pytest.mark.django_db
+def test_rename_user_added_pub_requires_account_token(client):
+    resp = client.patch(
+        f"/v1/pubs/{_CLIENT_ID}",
+        data={"name": "Nový název hospody"},
+        format="json",
+    )
+
+    assert resp.status_code == status.HTTP_401_UNAUTHORIZED
 
 
 @pytest.mark.django_db

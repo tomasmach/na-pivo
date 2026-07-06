@@ -233,6 +233,12 @@ class UserAddedPubRequestSerializer(_Pub200NameValidationMixin, PubInputSerializ
     )
 
 
+class UserAddedPubRenameRequestSerializer(_Pub200NameValidationMixin, serializers.Serializer):
+    """Request body for PATCH /v1/pubs/<client_id>."""
+
+    name = serializers.CharField(max_length=255)
+
+
 class FeedbackRequestSerializer(serializers.Serializer):
     """Request body for POST /v1/feedback."""
 

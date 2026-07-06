@@ -180,6 +180,7 @@ from .serializers import (
     PushDeviceResponseSerializer,
     ReleaseNoteSerializer,
     RestorePurchasesRequestSerializer,
+    UserAddedPubRenameRequestSerializer,
     UserAddedPubRequestSerializer,
     UserAddedPubSerializer,
     _amenity_aggregate_item,
@@ -998,6 +999,7 @@ class PubNameCorrectionView(APIView):
 class UserAddedPubView(APIView):
     """
     POST /v1/pubs
+    PATCH /v1/pubs/<client_id>
 
     Add a pub that the normal Mapy.cz nearby search does not show. The submitted
     pub is immediately visible to all users through GET /v1/pubs/near, where it
@@ -1076,6 +1078,37 @@ class UserAddedPubView(APIView):
             UserAddedPubSerializer(pub).data,
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
+
+    def patch(self, request: Request, client_id: uuid.UUID) -> Response:
+        serializer = UserAddedPubRenameRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            with transaction.atomic():
+                pub = (
+                    UserAddedPub.objects.select_for_update()
+                    .filter(account=request.user, client_id=client_id)
+                    .first()
+                )
+                if pub is None:
+                    return Response(
+                        {"detail": "User-added pub not found."},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+
+                pub.name = serializer.validated_data["name"]
+                pub.save(update_fields=["name", "updated_at"])
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "user-added-pub: unexpected error renaming pub %s: %s",
+                client_id,
+                exc,
+                exc_info=True,
+            )
+            return _internal_error()
+
+        return Response(UserAddedPubSerializer(pub).data, status=status.HTTP_200_OK)
 
 
 class PubCommunityView(APIView):

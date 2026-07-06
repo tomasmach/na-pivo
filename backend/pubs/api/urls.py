@@ -117,6 +117,7 @@ urlpatterns = [
         name="pub-amenity-votes-delete",
     ),
     path("pub-amenities", PubAmenityReadView.as_view(), name="pub-amenities-read"),
+    path("pubs/<uuid:client_id>", UserAddedPubView.as_view(), name="user-added-pub-detail"),
     path("pubs", UserAddedPubView.as_view(), name="user-added-pubs"),
     path("pubs/near", PubsNearView.as_view(), name="pubs-near"),
     path("pubs/suggest", PubLocationSuggestView.as_view(), name="pubs-suggest"),
