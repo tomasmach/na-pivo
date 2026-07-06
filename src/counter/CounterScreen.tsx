@@ -72,7 +72,7 @@ import {
   sessionTotalCzk,
   sessionBeerCounts,
   resumableSession,
-  shouldStartNewSession,
+  isPastEveningBackdate,
   type TallySession,
 } from '@/stores/tallyStore';
 import type { Pub } from '@/data/pubs';
@@ -392,9 +392,11 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   // Deferred-send timers per drink id; a count schedules delivery for the end of
   // the undo window, and undo cancels its drink's timer before it fires.
   const sendTimers = React.useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-  // The last session count we fired the water nudge at, so rapid taps that share
-  // a threshold never double-fire it.
-  const waterNudgeAtRef = React.useRef(0);
+  // The `${clientId}:${count}` key we last fired the water nudge at. Keyed by
+  // session identity (not just count) so rapid taps sharing a threshold don't
+  // double-fire, yet a fresh evening reaching the same count in the same mounted
+  // counter still nudges.
+  const waterNudgeKeyRef = React.useRef('');
 
   useEffect(() => {
     const timers = sendTimers.current;
@@ -475,12 +477,10 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
       const startsSession = count === 0;
       setNowMs(atOverride ? Date.now() : Date.parse(at));
 
-      const liveCurrent = useTallyStore.getState().current;
-      const backdateToPast =
-        !!atOverride &&
-        !!liveCurrent &&
-        liveCurrent.drinks.length > 0 &&
-        shouldStartNewSession(liveCurrent, cell, new Date(at));
+      // A backdate to an earlier drinking day is a past evening: file it into
+      // history so it never becomes/clobbers the live session — regardless of
+      // whether a `current` session exists. Same-day backdates count normally.
+      const backdateToPast = !!atOverride && isPastEveningBackdate(at);
 
       let landedSession: TallySession | null;
       if (backdateToPast) {
@@ -554,17 +554,20 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
       // Gentle water nudge every 4th beer in a row (4, 8, 12…). Local-only, no
       // notifications — just a mate at the table reminding you to hydrate.
       // Backdated drinks aren't part of the "now" streak, so they never nudge.
-      // Read the count from the store (not the rendered closure) and guard with a
-      // ref so rapid taps sharing a threshold can't double-fire the toast.
-      const liveCount = sessionCount(useTallyStore.getState().current);
+      // Read the count from the store (not the rendered closure) and guard by
+      // session identity + count so rapid taps sharing a threshold can't
+      // double-fire, while a fresh evening reaching 4 still nudges.
+      const liveSession = useTallyStore.getState().current;
+      const liveCount = sessionCount(liveSession);
+      const nudgeKey = liveSession ? `${liveSession.clientId}:${liveCount}` : '';
       if (
         !atOverride &&
         waterNudgeEnabled &&
         liveCount > 0 &&
         liveCount % 4 === 0 &&
-        waterNudgeAtRef.current !== liveCount
+        waterNudgeKeyRef.current !== nudgeKey
       ) {
-        waterNudgeAtRef.current = liveCount;
+        waterNudgeKeyRef.current = nudgeKey;
         showToast(cs.counter.waterNudge(liveCount), {
           icon: <GlassWaterIcon size={20} color={Colors.amber} />,
         });

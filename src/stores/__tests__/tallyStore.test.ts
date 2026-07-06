@@ -17,6 +17,7 @@ import {
   useTallyStore,
   drinkingDayKey,
   shouldStartNewSession,
+  isPastEveningBackdate,
   sessionCount,
   sessionTotalCzk,
   sessionBeerCounts,
@@ -86,7 +87,36 @@ describe('addDrink', () => {
   });
 });
 
+describe('isPastEveningBackdate (backdate routing)', () => {
+  it('is false for a same-drinking-day backdate ("před hodinou")', () => {
+    const now = new Date('2026-06-13T21:00:00');
+    expect(isPastEveningBackdate('2026-06-13T20:00:00', now)).toBe(false);
+  });
+
+  it('keeps a post-midnight backdate on the same drinking day (before 04:00 cutoff)', () => {
+    const now = new Date('2026-06-13T02:30:00');
+    // 01:00 and 02:30 both belong to the 06-12 drinking day (04:00 cutoff).
+    expect(isPastEveningBackdate('2026-06-13T01:00:00', now)).toBe(false);
+  });
+
+  it('is true for a backdate that lands on an earlier drinking day (yesterday)', () => {
+    const now = new Date('2026-06-13T21:00:00');
+    expect(isPastEveningBackdate('2026-06-12T20:00:00', now)).toBe(true);
+  });
+});
+
 describe('addBackdatedDrink', () => {
+  it('files a past-day backdate into history with no live session, leaving current null', () => {
+    // No current session at all (the routing bug: addDrink would make yesterday current).
+    const landed = useTallyStore.getState().addBackdatedDrink(PUB_A, beer({ at: '2026-06-12T20:00:00' }));
+    const { current, history } = useTallyStore.getState();
+    expect(current).toBeNull();
+    expect(history).toHaveLength(1);
+    expect(history[0].drinks).toHaveLength(1);
+    expect(history[0].archivedReason).toBe('manual');
+    expect(landed).toBe(history[0]);
+  });
+
   it('files a backdate to another day into a new past evening, leaving the live session untouched', () => {
     useTallyStore.getState().addDrink(PUB_A, beer({ at: '2026-06-13T20:00:00' }));
     const before = useTallyStore.getState().current;
