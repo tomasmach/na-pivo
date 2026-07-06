@@ -58,6 +58,10 @@ jest.mock('@/components/shared/AppDialog', () => ({
 jest.mock('@/counter/BeerFormModal', () => ({ BeerFormModal: jest.fn(() => null) }));
 jest.mock('@/counter/PubPickerModal', () => ({ PubPickerModal: jest.fn(() => null) }));
 
+jest.mock('expo-router', () => ({
+  useRouter: jest.fn(() => ({ push: jest.fn(), back: jest.fn() })),
+}));
+
 jest.mock('@/components/shared/IconGlyph', () => ({
   BeerIcon: jest.fn(() => null),
   MapPinIcon: jest.fn(() => null),
@@ -68,6 +72,8 @@ jest.mock('@/components/shared/IconGlyph', () => ({
   CheckIcon: jest.fn(() => null),
   XIcon: jest.fn(() => null),
   BellRingIcon: jest.fn(() => null),
+  GlassWaterIcon: jest.fn(() => null),
+  HistoryIcon: jest.fn(() => null),
 }));
 
 // Drinks delivery layer — assert calls without touching the network.
@@ -266,7 +272,7 @@ describe('CounterScreen counting', () => {
     expect(mockTrackClientEvent).toHaveBeenCalledWith({ event: 'counter_session_started' });
     expect(mockTrackClientEvent).toHaveBeenCalledWith({
       event: 'drink_added',
-      context: { had_active_session: false },
+      context: { had_active_session: false, backdated: false },
     });
 
     // Menu override still present (price unchanged → same single beer).
