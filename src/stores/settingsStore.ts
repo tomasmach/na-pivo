@@ -18,6 +18,8 @@ interface SettingsState {
   hidePubNames: boolean;
   marketingEmailsEnabled: boolean;
   pubReminderEnabled: boolean;
+  /** Gentle "grab a water" nudge in the counter every few beers in a row. */
+  waterNudgeEnabled: boolean;
   /** Parta push opt-in (notification permission only, decoupled from reminders). */
   friendPushEnabled: boolean;
   /** Whether the in-context Parta push prompt strip was already shown/dismissed. */
@@ -41,6 +43,7 @@ interface SettingsState {
   setHidePubNames: (v: boolean) => void;
   setMarketingEmailsEnabled: (v: boolean) => void;
   setPubReminderEnabled: (v: boolean) => void;
+  setWaterNudgeEnabled: (v: boolean) => void;
   setFriendPushEnabled: (v: boolean) => void;
   setFriendPushPrompted: (v: boolean) => void;
   setFriendPushOptedOut: (v: boolean) => void;
@@ -62,6 +65,7 @@ export const useSettingsStore = create<SettingsState>()(
       hidePubNames: false,
       marketingEmailsEnabled: false,
       pubReminderEnabled: false,
+      waterNudgeEnabled: true,
       friendPushEnabled: false,
       friendPushPrompted: false,
       friendPushOptedOut: false,
@@ -79,6 +83,7 @@ export const useSettingsStore = create<SettingsState>()(
       setHidePubNames: (v) => set({ hidePubNames: v }),
       setMarketingEmailsEnabled: (v) => set({ marketingEmailsEnabled: v }),
       setPubReminderEnabled: (v) => set({ pubReminderEnabled: v }),
+      setWaterNudgeEnabled: (v) => set({ waterNudgeEnabled: v }),
       setFriendPushEnabled: (v) => set({ friendPushEnabled: v }),
       setFriendPushPrompted: (v) => set({ friendPushPrompted: v }),
       setFriendPushOptedOut: (v) => set({ friendPushOptedOut: v }),
@@ -101,6 +106,7 @@ export const useSettingsStore = create<SettingsState>()(
         hidePubNames: state.hidePubNames,
         marketingEmailsEnabled: state.marketingEmailsEnabled,
         pubReminderEnabled: state.pubReminderEnabled,
+        waterNudgeEnabled: state.waterNudgeEnabled,
         friendPushEnabled: state.friendPushEnabled,
         friendPushPrompted: state.friendPushPrompted,
         friendPushOptedOut: state.friendPushOptedOut,

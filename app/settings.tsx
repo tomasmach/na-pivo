@@ -47,6 +47,7 @@ import {
   RadiusIcon,
   BellRingIcon,
   Volume2Icon,
+  GlassWaterIcon,
   BeerOffIcon,
   EyeOffIcon,
   CoinsIcon,
@@ -478,6 +479,7 @@ export default function SettingsScreen() {
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
   const soundEnabled = useSettingsStore((s) => s.soundEnabled);
+  const waterNudgeEnabled = useSettingsStore((s) => s.waterNudgeEnabled);
   const hideClosedPubs = useSettingsStore((s) => s.hideClosedPubs);
   const preferRatedPubs = useSettingsStore((s) => s.preferRatedPubs);
   const hidePubNames = useSettingsStore((s) => s.hidePubNames);
@@ -487,6 +489,7 @@ export default function SettingsScreen() {
   const setPriceCurrency = useSettingsStore((s) => s.setPriceCurrency);
   const setHapticEnabled = useSettingsStore((s) => s.setHapticEnabled);
   const setSoundEnabled = useSettingsStore((s) => s.setSoundEnabled);
+  const setWaterNudgeEnabled = useSettingsStore((s) => s.setWaterNudgeEnabled);
   const setHideClosedPubs = useSettingsStore((s) => s.setHideClosedPubs);
   const setPreferRatedPubs = useSettingsStore((s) => s.setPreferRatedPubs);
   const setHidePubNames = useSettingsStore((s) => s.setHidePubNames);
@@ -517,6 +520,11 @@ export default function SettingsScreen() {
     setSoundEnabled(next);
     void updateAccountPreferences({ soundEnabled: next });
   }, [soundEnabled, setSoundEnabled]);
+
+  const toggleWaterNudge = useCallback(() => {
+    // Local-only preference (no server round-trip): the nudge is client-side.
+    setWaterNudgeEnabled(!waterNudgeEnabled);
+  }, [waterNudgeEnabled, setWaterNudgeEnabled]);
 
   const toggleHideClosed = useCallback(() => {
     const next = !hideClosedPubs;
@@ -699,6 +707,15 @@ export default function SettingsScreen() {
             value={soundEnabled}
             onToggle={toggleSound}
             toggleLabel={`${cs.settings.sound.title}: ${soundEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+            borderTop
+          />
+          <PrefRow
+            icon={<GlassWaterIcon size={18} color={Colors.foamMuted} />}
+            title={cs.settings.waterNudge.title}
+            subtitle={cs.settings.waterNudge.subtitle}
+            value={waterNudgeEnabled}
+            onToggle={toggleWaterNudge}
+            toggleLabel={`${cs.settings.waterNudge.title}: ${waterNudgeEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
             borderTop
           />
           <CurrencyRow
