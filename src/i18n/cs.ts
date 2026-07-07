@@ -1181,6 +1181,8 @@ export const cs = {
     addModalTitle: 'Jaké pivo si dáváš?',
     editModalTitle: 'Uprav cenu',
     beerNamePlaceholder: 'Název piva, např. Pilsner Urquell 12°',
+    // Add-form shortcut into the AI menu scan (hands over to the contribute editor).
+    scanMenuShortcut: 'Piv je víc? Vyfoť celý lístek',
     priceLabel: 'Cena za',
     volumeSmall: '0,3 l',
     volumeMedium: '0,4 l',

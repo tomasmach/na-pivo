@@ -345,6 +345,7 @@ export function shouldWarnRapidDrink(lastDrinkAt: string | undefined, nowMs: num
 }
 
 function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCounterProps) {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
@@ -628,6 +629,29 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
     setBackdateAt(null);
     openForm('add', null);
   }, [openForm]);
+
+  // "Vyfoť celý lístek" inside the add form: hand over to the contribute
+  // editor's AI scan with the current menu prefilled. The scanned beers land
+  // back here through the community override the editor writes on save.
+  const handleScanMenu = useCallback(() => {
+    setFormMode(null);
+    setFormBeer(null);
+    setBackdateAt(null);
+    void trackClientEvent({ event: 'beer_form_scan_opened' });
+    router.push({
+      pathname: '/contribute',
+      params: {
+        focus: 'beers',
+        autoScan: '1',
+        ...(pub.id ? { id: pub.id } : {}),
+        name: pub.name,
+        lat: String(pub.lat),
+        lng: String(pub.lng),
+        ...(pub.city ? { city: pub.city } : {}),
+        ...(menu.length > 0 ? { beers: JSON.stringify(menu) } : {}),
+      },
+    });
+  }, [menu, pub, router]);
 
   // "Zapsat zpětně" — pick a past time from quick chips, then the normal add
   // form. The chosen ISO timestamp rides `backdateAt` into the count so the
@@ -998,6 +1022,9 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
           setBackdateAt(null);
         }}
         onSubmit={handleFormSubmit}
+        // Hidden in the backdate flow: the scan hands over to the contribute
+        // editor, which would silently drop the picked past timestamp.
+        onScanMenu={backdateAt ? undefined : handleScanMenu}
       />
       {checkInBeerName && checkInSheetOpen ? (
         <BeerCheckInSheet
