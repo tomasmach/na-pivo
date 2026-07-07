@@ -7,17 +7,18 @@ import {
 } from '@/data/account';
 import * as auth from '@/data/auth';
 import { setTelemetrySession } from '@/data/telemetryClient';
-import type {
-  AccountAchievements,
-  AccountMapper,
-  AccountProfile,
-  AccountSettings,
-  AuthActionResult,
-  AccountExportActionResult,
-  AuthProvider,
-  AuthResult,
-  ContentReportReason,
-  NicknameAvailability,
+import {
+  EMPTY_ACHIEVEMENTS,
+  type AccountAchievements,
+  type AccountMapper,
+  type AccountProfile,
+  type AccountSettings,
+  type AuthActionResult,
+  type AccountExportActionResult,
+  type AuthProvider,
+  type AuthResult,
+  type ContentReportReason,
+  type NicknameAvailability,
 } from '@/data/auth';
 import { FALLBACK_LEVELS, FALLBACK_XP_RULES } from '@/data/mapperXp';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -70,9 +71,8 @@ function achievementsFromMapper(
   mapper: AccountMapper,
 ): AccountAchievements {
   return {
-    firstTen: current?.firstTen ?? false,
-    regular: current?.regular ?? false,
-    reviewer: current?.reviewer ?? false,
+    ...EMPTY_ACHIEVEMENTS,
+    ...current,
     firstMap: (current?.firstMap ?? false) || mapper.firstMapperCount >= 1,
     explorer: (current?.explorer ?? false) || mapper.distinctMappedPubs >= 10,
     cartographer: (current?.cartographer ?? false) || mapper.distinctMappedPubs >= 25,

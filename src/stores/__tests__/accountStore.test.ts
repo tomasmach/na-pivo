@@ -10,7 +10,7 @@
 
 import { useAccountStore, selectIsSignedIn } from '@/stores/accountStore';
 import * as auth from '@/data/auth';
-import type { AccountMapper, AccountProfile, AuthResult } from '@/data/auth';
+import { EMPTY_ACHIEVEMENTS, type AccountMapper, type AccountProfile, type AuthResult } from '@/data/auth';
 import { ensureAccount } from '@/data/account';
 import { setTelemetrySession } from '@/data/telemetryClient';
 
@@ -399,6 +399,8 @@ describe('applyMapperSnapshot', () => {
         { level: 3, title: 'Štamgast', xp: 900 },
         { level: 4, title: 'Znalec', xp: 2500 },
         { level: 5, title: 'Hospodský mudrc', xp: 6000 },
+        { level: 6, title: 'Pivní kartograf', xp: 12000 },
+        { level: 7, title: 'Legenda lokálu', xp: 24000 },
       ],
       xpRules: { firstFact: 15, firstMapperBonus: 25, confirm: 5, pubCompleteBonus: 30 },
     });
@@ -441,14 +443,10 @@ describe('applyMapperSnapshot', () => {
     useAccountStore.setState({
       profile: signedInProfile({
         achievements: {
+          ...EMPTY_ACHIEVEMENTS,
           firstTen: true,
           regular: false,
           reviewer: true,
-          firstMap: false,
-          explorer: false,
-          cartographer: false,
-          completionist: false,
-          factMachine: false,
         },
         mapper: fullMapper({ distinctMappedPubs: 9, amenityVotesCount: 99, completedPubsCount: 0 }),
       }),
@@ -467,6 +465,7 @@ describe('applyMapperSnapshot', () => {
     });
 
     expect(useAccountStore.getState().profile?.achievements).toEqual({
+      ...EMPTY_ACHIEVEMENTS,
       firstTen: true,
       regular: false,
       reviewer: true,

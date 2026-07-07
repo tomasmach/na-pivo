@@ -1186,6 +1186,23 @@ export default function FriendsScreen() {
                         ) : null}
                       </View>
                     )}
+
+                    {/* Cross-link: from the party race to the countrywide one. */}
+                    <Pressable
+                      onPress={() => router.push('/leaderboards' as Href)}
+                      accessibilityRole="button"
+                      accessibilityLabel={cs.a11y.leaderboardsOpen}
+                      style={({ pressed }) => [styles.globalBoardsLink, pressed && styles.dim]}
+                    >
+                      <TrophyIcon size={16} color={Colors.amber} />
+                      <Text
+                        style={styles.globalBoardsLinkText}
+                        maxFontSizeMultiplier={FontScaleCap.body}
+                      >
+                        {cs.leaderboards.entryFriends}
+                      </Text>
+                      <ChevronRightIcon size={16} color={Colors.mutedText} />
+                    </Pressable>
                   </SectionPanel>
                 </View>
               </Reveal>
@@ -1622,6 +1639,20 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.amber,
+  },
+  globalBoardsLink: {
+    marginTop: Spacing.sm,
+    minHeight: HitArea.min,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: 10,
+  },
+  globalBoardsLinkText: {
+    flex: 1,
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 13,
+    color: Colors.foam,
   },
   staleNote: {
     marginBottom: Spacing.sm,

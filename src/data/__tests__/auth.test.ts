@@ -251,6 +251,13 @@ describe('registerEmail', () => {
         cartographer: false,
         completionist: false,
         factMachine: false,
+        firstBeer: false,
+        century: false,
+        pilgrim: false,
+        stamgast: false,
+        nightOwl: false,
+        taster: false,
+        partyAnimal: false,
       },
       usage: { walkedDistanceM: 1234 },
     });
@@ -759,6 +766,13 @@ describe('fetchAccountProfile — Mapér block + new badges', () => {
           cartographer: false,
           completionist: true,
           fact_machine: false,
+          first_beer: true,
+          century: false,
+          pilgrim: false,
+          stamgast: true,
+          night_owl: true,
+          taster: false,
+          party_animal: false,
         },
         mapper: {
           xp: 285,
@@ -793,6 +807,13 @@ describe('fetchAccountProfile — Mapér block + new badges', () => {
       cartographer: false,
       completionist: true,
       factMachine: false,
+      firstBeer: true,
+      century: false,
+      pilgrim: false,
+      stamgast: true,
+      nightOwl: true,
+      taster: false,
+      partyAnimal: false,
     });
     expect(profile?.mapper).toEqual({
       xp: 285,
@@ -835,6 +856,13 @@ describe('fetchAccountProfile — Mapér block + new badges', () => {
       cartographer: false,
       completionist: false,
       factMachine: false,
+      firstBeer: false,
+      century: false,
+      pilgrim: false,
+      stamgast: false,
+      nightOwl: false,
+      taster: false,
+      partyAnimal: false,
     });
     expect(profile?.mapper).toBeUndefined();
   });

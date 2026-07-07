@@ -69,6 +69,7 @@ import {
   ClipboardList,
   Flame,
   Trophy,
+  Moon,
   QrCode,
   Ellipsis,
   GlassWater,
@@ -174,6 +175,7 @@ export const ClipboardListIcon = wrap(ClipboardList, 'ClipboardListIcon');
 // Parta 2.0 — streak flame + leaderboard trophy.
 export const FlameIcon = wrap(Flame, 'FlameIcon');
 export const TrophyIcon = wrap(Trophy, 'TrophyIcon');
+export const MoonIcon = wrap(Moon, 'MoonIcon');
 // Parta 3.0 — "Můj kód" QR growth glyph.
 export const QrCodeIcon = wrap(QrCode, 'QrCodeIcon');
 // Parta 3.0 — friend-profile overflow "…" menu glyph.
