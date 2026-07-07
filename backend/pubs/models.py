@@ -1808,6 +1808,7 @@ class ClientEvent(models.Model):
         VISIT_SYNCED = "visit_synced", "Visit synced"
         VISIT_SYNC_FAILED = "visit_sync_failed", "Visit sync failed"
         BEER_FORM_OPENED = "beer_form_opened", "Beer form opened"
+        BEER_FORM_SCAN_OPENED = "beer_form_scan_opened", "Beer form scan opened"
         BEER_PRICE_ADDED = "beer_price_added", "Beer price added"
         COUNTER_RETURNED_SAME_DAY = "counter_returned_same_day", "Counter returned same day"
         COUNTER_RETURNED_LATER = "counter_returned_later", "Counter returned later"

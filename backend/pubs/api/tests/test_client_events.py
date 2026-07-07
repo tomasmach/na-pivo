@@ -217,6 +217,24 @@ def test_counter_session_lifecycle_events_are_accepted(client, event_name):
 
 
 @pytest.mark.django_db
+def test_beer_form_scan_opened_event_is_accepted(client):
+    resp = client.post(
+        "/v1/client-events",
+        data={
+            "event": "beer_form_scan_opened",
+            "severity": "info",
+            "context": {"source": "counter_add_beer_form"},
+        },
+        format="json",
+    )
+
+    assert resp.status_code == status.HTTP_202_ACCEPTED
+    event = ClientEvent.objects.get()
+    assert event.event == ClientEvent.Event.BEER_FORM_SCAN_OPENED
+    assert event.context == {"source": "counter_add_beer_form"}
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     "event_name",
     ["rating_synced", "rating_sync_failed", "visit_synced", "visit_sync_failed"],
