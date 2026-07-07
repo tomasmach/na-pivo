@@ -13,6 +13,8 @@ from rest_framework.test import APIClient
 
 from pubs.models import (
     Account,
+    AccountUsageStats,
+    DrinkLog,
     FriendActivityReaction,
     FriendActivityResponse,
     FriendBlock,
@@ -114,6 +116,22 @@ def _visit(account: Account, *, day: str = "2026-06-12", pub_name: str = _PUB_NA
         external_id="mapy:test",
         started_at=datetime.fromisoformat(f"{day}T19:00:00+00:00"),
         client_updated_at=datetime.fromisoformat(f"{day}T19:00:00+00:00"),
+    )
+
+
+def _drink(account: Account, *, drank_at=None, cache_key: str = "u2fkbn1z") -> DrinkLog:
+    return DrinkLog.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        cache_key=cache_key,
+        name=_PUB_NAME,
+        lat=_LAT,
+        lng=_LNG,
+        city="Praha",
+        external_id="mapy:test",
+        beer_name="Plzeň",
+        price_czk=65,
+        drank_at=drank_at or timezone.now(),
     )
 
 
@@ -1233,12 +1251,19 @@ def test_friend_profile_detail(client):
     _make_friends(account_a, account_b)
     _visit(account_a, day="2026-06-12")
     _visit(account_b, day="2026-06-12")
+    AccountUsageStats.objects.create(account=account_b, mapper_xp=1450)
+    _drink(account_b)
 
     resp = client.get(f"/v1/friends/{account_b.public_id}", **_auth(token_a))
     assert resp.status_code == status.HTTP_200_OK
     body = resp.json()
     assert body["is_friend"] is True
+    assert body["friendship_status"] == "accepted"
+    assert body["incoming_request_id"] is None
     assert body["profile"]["nickname"] == "petr"
+    assert body["public_stats"]["total_beers"] == 1
+    assert body["public_stats"]["mapper_level"] == 3
+    assert body["achievements"]["first_beer"] is True
     assert body["stats"]["shared_pub_count"] == 1
     assert body["stats"]["nights_together"] == 1
     assert len(body["recent_together"]) == 1
@@ -1248,13 +1273,95 @@ def test_friend_profile_detail(client):
 
 
 @pytest.mark.django_db
-def test_friend_profile_requires_accepted_friend(client):
+def test_public_non_friend_profile_is_visible_without_private_activity_leaks(client):
     token_a, _account_a = _register(client, "janek")
     _token_b, account_b = _register(client, "petr")
+    now = timezone.now()
+    FriendPubActivity.objects.create(
+        account=account_b,
+        client_id=uuid.uuid4(),
+        cache_key="u2fkbn1z",
+        name=_PUB_NAME,
+        lat=_LAT,
+        lng=_LNG,
+        city="Praha",
+        message="Jsme tu.",
+        started_at=now,
+        expires_at=now + timedelta(hours=2),
+    )
+    _drink(account_b)
 
     resp = client.get(f"/v1/friends/{account_b.public_id}", **_auth(token_a))
+    assert resp.status_code == status.HTTP_200_OK
+    body = resp.json()
+    assert body["profile"]["nickname"] == "petr"
+    assert body["is_friend"] is False
+    assert body["friendship_id"] is None
+    assert body["friendship_status"] == "none"
+    assert body["incoming_request_id"] is None
+    assert body["stats"] == {
+        "shared_pub_count": 0,
+        "nights_together": 0,
+        "last_shared_at": None,
+        "last_pub_name": "",
+        "streak_weeks": 0,
+        "rituals": [],
+    }
+    assert body["live_activity"] is None
+    assert body["plan"] is None
+    assert body["recent_together"] == []
+    assert body["latest_beers"] == []
+    assert body["public_stats"]["total_beers"] == 1
+    assert body["achievements"]["first_beer"] is True
+
+
+@pytest.mark.django_db
+def test_private_non_friend_profile_returns_404(client):
+    token_a, _account_a = _register(client, "janek")
+    _token_b, account_b = _register(client, "petr", is_public=False)
+
+    resp = client.get(f"/v1/friends/{account_b.public_id}", **_auth(token_a))
+
     assert resp.status_code == status.HTTP_404_NOT_FOUND
     assert resp.json()["code"] == "friend_not_found"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "direction,expected_status",
+    [
+        ("outgoing", "outgoing_pending"),
+        ("incoming", "incoming_pending"),
+    ],
+)
+def test_public_friend_profile_reports_pending_friendship_status(
+    client,
+    direction,
+    expected_status,
+):
+    token_a, account_a = _register(client, "janek")
+    _token_b, account_b = _register(client, "petr")
+    if direction == "outgoing":
+        friendship = Friendship.objects.create(
+            requester=account_a,
+            recipient=account_b,
+            status=Friendship.Status.PENDING,
+        )
+    else:
+        friendship = Friendship.objects.create(
+            requester=account_b,
+            recipient=account_a,
+            status=Friendship.Status.PENDING,
+        )
+
+    resp = client.get(f"/v1/friends/{account_b.public_id}", **_auth(token_a))
+
+    assert resp.status_code == status.HTTP_200_OK
+    body = resp.json()
+    assert body["friendship_status"] == expected_status
+    assert body["incoming_request_id"] == (
+        str(friendship.public_id) if direction == "incoming" else None
+    )
 
 
 @pytest.mark.django_db

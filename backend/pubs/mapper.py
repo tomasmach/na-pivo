@@ -7,7 +7,7 @@ Pure, server-authoritative XP → level/title math shared by the vote write path
 incremented in the vote transaction); everything here is DERIVED from the stored
 ``mapper_xp`` so the two endpoints can never disagree.
 
-The level ladder is the env-tunable ``MAPER_LEVEL_THRESHOLDS`` (five min-XP
+The level ladder is the env-tunable ``MAPER_LEVEL_THRESHOLDS`` (seven min-XP
 thresholds, lowest first); the titles are fixed because the client maps a level
 to a Czech title for the optimistic level-up toast and must agree with the
 server on reconcile (§7.2). No level title reuses a badge name (disjointness is
@@ -26,6 +26,8 @@ MAPER_LEVEL_TITLES: tuple[str, ...] = (
     "Štamgast",
     "Znalec",
     "Hospodský mudrc",
+    "Pivní kartograf",
+    "Legenda lokálu",
 )
 
 
@@ -36,7 +38,9 @@ def _level_thresholds() -> list[int]:
     or out-of-order list so a bad env value can never crash the read path: the
     ladder is clamped to the number of fixed titles and forced non-decreasing.
     """
-    raw = list(getattr(settings, "MAPER_LEVEL_THRESHOLDS", [0, 300, 900, 2500, 6000]))
+    raw = list(
+        getattr(settings, "MAPER_LEVEL_THRESHOLDS", [0, 300, 900, 2500, 6000, 12000, 24000])
+    )
     if not raw:
         raw = [0]
     # Clamp to the fixed title count (extra thresholds have no title to show).
@@ -55,7 +59,7 @@ def _level_thresholds() -> list[int]:
 
 
 def maper_levels() -> list[dict]:
-    """The full ladder for the wire ``levels`` array: {level, title, xp} x5.
+    """The full ladder for the wire ``levels`` array: {level, title, xp} x7.
 
     ``xp`` is the min-XP entry threshold for that level. Returned so the client
     can map an optimistic XP estimate to a level+title locally for the level-up

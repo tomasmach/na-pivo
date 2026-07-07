@@ -918,6 +918,13 @@ def test_get_me_returns_backend_profile_stats_and_achievements(client):
         "cartographer": False,
         "completionist": False,
         "fact_machine": False,
+        "first_beer": True,
+        "century": False,
+        "pilgrim": False,
+        "stamgast": False,
+        "night_owl": False,
+        "taster": False,
+        "party_animal": False,
     }
     # The additive Mapér block is present even for an account that never voted.
     assert body["mapper"]["xp"] == 0

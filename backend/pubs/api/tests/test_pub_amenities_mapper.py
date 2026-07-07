@@ -644,13 +644,15 @@ def test_account_me_mapper_block_shape(client):
     assert mapper["amenity_votes_count"] == 1
     assert mapper["first_mapper_count"] == 1
     assert mapper["completed_pubs_count"] == 0
-    # The level ladder is exactly the 5-rung table.
+    # The level ladder is exactly the 7-rung table.
     assert mapper["levels"] == [
         {"level": 1, "title": "Nováček", "xp": 0},
         {"level": 2, "title": "Všímálek", "xp": 300},
         {"level": 3, "title": "Štamgast", "xp": 900},
         {"level": 4, "title": "Znalec", "xp": 2500},
         {"level": 5, "title": "Hospodský mudrc", "xp": 6000},
+        {"level": 6, "title": "Pivní kartograf", "xp": 12000},
+        {"level": 7, "title": "Legenda lokálu", "xp": 24000},
     ]
     # xp_rules exposes the four env-default constants.
     assert mapper["xp_rules"] == {
@@ -809,7 +811,11 @@ def test_merge_moves_source_stats_when_target_has_none(client):
         (2499, 3, "Štamgast", 1599, 1600),
         (2500, 4, "Znalec", 0, 3500),
         (5999, 4, "Znalec", 3499, 3500),
-        (6000, 5, "Hospodský mudrc", 0, None),
+        (6000, 5, "Hospodský mudrc", 0, 6000),
+        (11999, 5, "Hospodský mudrc", 5999, 6000),
+        (12000, 6, "Pivní kartograf", 0, 12000),
+        (23999, 6, "Pivní kartograf", 11999, 12000),
+        (24000, 7, "Legenda lokálu", 0, None),
     ],
 )
 def test_mapper_level_title_boundaries(client, xp, level, title, into, nxt):

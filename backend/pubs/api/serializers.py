@@ -41,7 +41,6 @@ import uuid
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import EmailValidator
 from django.db import IntegrityError
-from django.db.models import Count, Sum
 from rest_framework import serializers
 
 from pubs import accounts
@@ -76,6 +75,11 @@ from pubs.models import (
     PushDevice,
     ReleaseNote,
     UserAddedPub,
+)
+
+from .profile_helpers import (
+    derive_account_achievements,
+    derive_account_profile_stats,
 )
 
 # ---------------------------------------------------------------------------
@@ -584,6 +588,33 @@ class FriendSearchQuerySerializer(serializers.Serializer):
         if len(value.strip()) < 2:
             raise serializers.ValidationError("q must contain at least 2 characters.")
         return value.strip()
+
+
+class LeaderboardQuerySerializer(serializers.Serializer):
+    """Query params for GET /v1/leaderboards."""
+
+    VALID_CATEGORIES = {"beers", "pubs", "mapper"}
+    VALID_PERIODS = {"week", "year", "all"}
+
+    category = serializers.CharField(required=False, default="beers")
+    period = serializers.CharField(required=False, default="week")
+
+    def validate_category(self, value: str) -> str:
+        value = value.strip().lower()
+        if value not in self.VALID_CATEGORIES:
+            raise serializers.ValidationError("category must be beers, pubs or mapper.")
+        return value
+
+    def validate_period(self, value: str) -> str:
+        value = value.strip().lower()
+        if value not in self.VALID_PERIODS:
+            raise serializers.ValidationError("period must be week, year or all.")
+        return value
+
+    def validate(self, attrs: dict) -> dict:
+        if attrs["category"] == "mapper":
+            attrs["period"] = "all"
+        return attrs
 
 
 class FriendRequestCreateSerializer(serializers.Serializer):
@@ -1637,43 +1668,13 @@ class AccountAchievementsSerializer(serializers.Serializer):
     cartographer = serializers.BooleanField(read_only=True)
     completionist = serializers.BooleanField(read_only=True)
     fact_machine = serializers.BooleanField(read_only=True)
-
-
-def _account_stats(obj: Account) -> dict:
-    """Aggregate the account's durable backend history into profile counters."""
-
-    drink_totals = obj.drinks.aggregate(
-        total_beers=Count("id"),
-        total_spent_czk=Sum("price_czk"),
-    )
-    pub_keys = set(obj.pub_visits.values_list("cache_key", flat=True))
-    pub_keys.update(obj.drinks.values_list("cache_key", flat=True))
-    max_visit_row = (
-        obj.pub_visits.values("cache_key")
-        .annotate(n=Count("id"))
-        .order_by("-n")
-        .first()
-    )
-
-    # Mapér counters live on the stored AccountUsageStats row (NOT derived per
-    # request, §7.2) — read them off the prefetched relation, defaulting to 0 for
-    # an account that has never voted (no usage_stats row yet).
-    usage = getattr(obj, "usage_stats", None)
-
-    return {
-        "total_beers": int(drink_totals["total_beers"] or 0),
-        "distinct_pubs": len(pub_keys),
-        "ratings_count": obj.pub_ratings.count(),
-        "total_spent_czk": int(drink_totals["total_spent_czk"] or 0),
-        "max_visits_to_one_pub": int(max_visit_row["n"]) if max_visit_row else 0,
-        # Mapér stored counters (§7.2). Wire names map distinct_mapped_pubs ←
-        # mapped_pubs_count in the mapper block below.
-        "mapper_xp": int(getattr(usage, "mapper_xp", 0) or 0),
-        "mapped_pubs_count": int(getattr(usage, "mapped_pubs_count", 0) or 0),
-        "first_mapper_count": int(getattr(usage, "first_mapper_count", 0) or 0),
-        "amenity_votes_count": int(getattr(usage, "amenity_votes_count", 0) or 0),
-        "completed_pubs_count": int(getattr(usage, "completed_pubs_count", 0) or 0),
-    }
+    first_beer = serializers.BooleanField(read_only=True)
+    century = serializers.BooleanField(read_only=True)
+    pilgrim = serializers.BooleanField(read_only=True)
+    stamgast = serializers.BooleanField(read_only=True)
+    night_owl = serializers.BooleanField(read_only=True)
+    taster = serializers.BooleanField(read_only=True)
+    party_animal = serializers.BooleanField(read_only=True)
 
 
 class AccountMeSerializer(serializers.ModelSerializer):
@@ -1842,7 +1843,7 @@ class AccountMeSerializer(serializers.ModelSerializer):
             cache = {}
             self._account_stats_cache = cache
         if obj.pk not in cache:
-            cache[obj.pk] = _account_stats(obj)
+            cache[obj.pk] = derive_account_profile_stats(obj)
         return cache[obj.pk]
 
     def get_stats(self, obj: Account) -> dict:
@@ -1851,17 +1852,7 @@ class AccountMeSerializer(serializers.ModelSerializer):
     def get_achievements(self, obj: Account) -> dict:
         stats = self._stats_for(obj)
         return AccountAchievementsSerializer(
-            {
-                "first_ten": stats["total_beers"] >= 10,
-                "regular": stats["max_visits_to_one_pub"] >= 5,
-                "reviewer": stats["ratings_count"] >= 10,
-                # Mapér badges, derived server-side from the stored counters (§7.2).
-                "first_map": stats["first_mapper_count"] >= 1,
-                "explorer": stats["mapped_pubs_count"] >= 10,
-                "cartographer": stats["mapped_pubs_count"] >= 25,
-                "completionist": stats["completed_pubs_count"] >= 1,
-                "fact_machine": stats["amenity_votes_count"] >= 100,
-            }
+            derive_account_achievements(obj, stats)
         ).data
 
     def get_mapper(self, obj: Account) -> dict:

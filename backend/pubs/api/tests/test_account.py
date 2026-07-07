@@ -7,16 +7,27 @@ All tests use pytest-django with APIClient.
 from __future__ import annotations
 
 import hashlib
-from datetime import timedelta
+import uuid
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 from django.core.cache import cache
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework.throttling import ScopedRateThrottle
 
 from pubs.api.serializers import AccountMeSerializer
-from pubs.models import Account, AuthIdentity, AuthToken, EmailCredential
+from pubs.models import (
+    Account,
+    AuthIdentity,
+    AuthToken,
+    DrinkLog,
+    EmailCredential,
+    Friendship,
+    PubVisit,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -24,6 +35,7 @@ from pubs.models import Account, AuthIdentity, AuthToken, EmailCredential
 
 _DEVICE_ID = "3f8b1c2e-4d5a-6789-0abc-def012345678"
 _OTHER_DEVICE_ID = "11111111-2222-3333-4444-555555555555"
+_PRAGUE = ZoneInfo("Europe/Prague")
 
 
 @pytest.fixture
@@ -60,6 +72,42 @@ def test_register_creates_account(client):
     assert body["created_at"]
 
     assert Account.objects.count() == 1
+
+
+def _auth(token: str) -> dict[str, str]:
+    return {"HTTP_AUTHORIZATION": f"Bearer {token}"}
+
+
+def _drink(account: Account, *, index: int, drank_at=None) -> DrinkLog:
+    return DrinkLog.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        cache_key=f"drink-{index % 30}",
+        name="U Zlatého tygra",
+        lat=50.0876,
+        lng=14.4214,
+        city="Praha",
+        external_id="mapy:test",
+        beer_name=f"Pivo {index}",
+        beer_product_key=f"product-{index % 10}",
+        price_czk=65,
+        drank_at=drank_at or timezone.now(),
+    )
+
+
+def _visit(account: Account, *, cache_key: str, started_at=None) -> PubVisit:
+    return PubVisit.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        cache_key=cache_key,
+        name="U Zlatého tygra",
+        lat=50.0876,
+        lng=14.4214,
+        city="Praha",
+        external_id="mapy:test",
+        started_at=started_at or timezone.now(),
+        client_updated_at=started_at or timezone.now(),
+    )
 
 
 @pytest.mark.django_db
@@ -239,6 +287,65 @@ def test_me_returns_account_for_valid_token(client):
     assert body["device_id"] == _DEVICE_ID
     assert body["hide_pub_names"] is False
     assert "token" not in body
+
+
+@pytest.mark.django_db
+def test_new_account_achievement_badges_default_false(client):
+    register = client.post("/v1/account", data={"device_id": _DEVICE_ID}, format="json")
+    token = register.json()["token"]
+
+    resp = client.get("/v1/account/me", **_auth(token))
+
+    assert resp.status_code == status.HTTP_200_OK
+    achievements = resp.json()["achievements"]
+    for key in (
+        "first_beer",
+        "century",
+        "pilgrim",
+        "stamgast",
+        "night_owl",
+        "taster",
+        "party_animal",
+    ):
+        assert achievements[key] is False
+
+
+@pytest.mark.django_db
+def test_new_account_achievement_badges_unlock_from_existing_data(client):
+    register = client.post("/v1/account", data={"device_id": _DEVICE_ID}, format="json")
+    token = register.json()["token"]
+    account = Account.objects.get(device_id=_DEVICE_ID)
+    night_beer_at = datetime(2026, 7, 7, 1, 30, tzinfo=_PRAGUE)
+    _drink(account, index=0, drank_at=night_beer_at)
+    for index in range(1, 100):
+        _drink(account, index=index)
+    for _ in range(10):
+        _visit(account, cache_key="home")
+    for index in range(24):
+        _visit(account, cache_key=f"pub-{index}")
+    for index in range(5):
+        friend = Account.objects.create(device_id=f"friend-{index}", nickname=f"f{index}")
+        Friendship.objects.create(
+            requester=account,
+            recipient=friend,
+            status=Friendship.Status.ACCEPTED,
+            responded_at=timezone.now(),
+        )
+
+    resp = client.get("/v1/account/me", **_auth(token))
+
+    assert resp.status_code == status.HTTP_200_OK
+    achievements = resp.json()["achievements"]
+    for key in (
+        "first_beer",
+        "century",
+        "pilgrim",
+        "stamgast",
+        "night_owl",
+        "taster",
+        "party_animal",
+    ):
+        assert achievements[key] is True
 
 
 @pytest.mark.django_db
