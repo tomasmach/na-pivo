@@ -54,6 +54,11 @@ export const useWindowDimensions = jest.fn(() => ({
   fontScale: 1,
 }));
 
+export const Keyboard = {
+  addListener: jest.fn(() => ({ remove: jest.fn() })),
+  dismiss: jest.fn(),
+};
+
 export const Platform = {
   OS: 'ios',
   Version: '18.1',

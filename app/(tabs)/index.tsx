@@ -122,7 +122,7 @@ function RenamePubModal({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
         style={styles.renameOverlay}
       >
         <Pressable style={styles.renameScrim} onPress={onCancel} />

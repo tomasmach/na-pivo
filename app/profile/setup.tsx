@@ -170,7 +170,7 @@ export default function ProfileSetupScreen() {
     <View style={styles.root}>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
         keyboardVerticalOffset={insets.top}
       >
         <ScrollView

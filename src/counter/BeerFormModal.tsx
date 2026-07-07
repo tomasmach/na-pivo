@@ -26,9 +26,10 @@ import {
   Platform,
   Keyboard,
   useWindowDimensions,
-  type KeyboardEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
 
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -61,24 +62,6 @@ function parseCustomMl(text: string): number | undefined {
   const n = parseInt(digits, 10);
   if (!Number.isFinite(n) || n < 50 || n > 3000) return undefined;
   return n;
-}
-
-/** Live keyboard height (0 when hidden). Reliable inside a Modal where KAV is not. */
-function useKeyboardHeight(): number {
-  const [height, setHeight] = useState(0);
-  useEffect(() => {
-    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const onShow = (e: KeyboardEvent) => setHeight(e.endCoordinates?.height ?? 0);
-    const onHide = () => setHeight(0);
-    const showSub = Keyboard.addListener(showEvt, onShow);
-    const hideSub = Keyboard.addListener(hideEvt, onHide);
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
-  return height;
 }
 
 export type BeerFormMode = 'add' | 'price' | 'edit';

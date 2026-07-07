@@ -22,6 +22,8 @@ import {
   Pressable,
   TextInput,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   StyleSheet,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -263,6 +265,9 @@ export default function AccountScreen() {
         <View style={styles.headerSpacer} />
       </View>
 
+      {/* Android is edge-to-edge, so `adjustResize` no longer pushes content
+          above the keyboard — pad it here (iOS pads via keyboard insets). */}
+      <KeyboardAvoidingView style={styles.scroll} behavior="padding" enabled={Platform.OS === 'android'}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[
@@ -270,6 +275,8 @@ export default function AccountScreen() {
           { paddingBottom: insets.bottom + Spacing.xl },
         ]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
       >
         {/* ── Identity card (display only — profile editing lives on the Profile
             tab so there is a single edit entry point). ── */}
@@ -441,6 +448,7 @@ export default function AccountScreen() {
           </Text>
         </Pressable>
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

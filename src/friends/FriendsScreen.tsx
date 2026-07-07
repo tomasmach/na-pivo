@@ -28,7 +28,9 @@ import {
 } from 'react';
 import {
   AppState,
+  KeyboardAvoidingView,
   Linking,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -858,6 +860,9 @@ export default function FriendsScreen() {
 
   return (
     <View style={styles.root}>
+      {/* Android is edge-to-edge, so `adjustResize` no longer pushes content
+          above the keyboard — pad it here (iOS pads via keyboard insets). */}
+      <KeyboardAvoidingView style={styles.root} behavior="padding" enabled={Platform.OS === 'android'}>
       <ScrollView
         ref={scrollRef}
         contentContainerStyle={[
@@ -872,6 +877,8 @@ export default function FriendsScreen() {
           />
         }
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
       >
         {/* §2 — Hero */}
         <Reveal index={nextReveal()}>
@@ -1251,6 +1258,7 @@ export default function FriendsScreen() {
           </>
         )}
       </ScrollView>
+      </KeyboardAvoidingView>
 
       <FriendSettingsSheet
         visible={settingsVisible}

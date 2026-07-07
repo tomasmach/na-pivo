@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
 import * as Haptics from 'expo-haptics';
 
 import { BeerTagChips } from '@/components/shared/BeerTagChips';
@@ -89,6 +100,10 @@ export function BeerCheckInSheet({
   onSubmitted,
 }: BeerCheckInSheetProps) {
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  // Modals host their own window, so KeyboardAvoidingView is unreliable here —
+  // lift the sheet above the keyboard manually (same trick as BeerFormModal).
+  const keyboardHeight = useKeyboardHeight();
   const reduceMotion = useReduceMotion();
   const showToast = useToastStore((s) => s.show);
   const [name, setName] = useState(beerName);
@@ -196,7 +211,16 @@ export function BeerCheckInSheet({
     <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" />
-        <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, Spacing.md) }]}>
+        <View
+          style={[
+            styles.sheet,
+            {
+              paddingBottom: keyboardHeight > 0 ? Spacing.md : Math.max(insets.bottom, Spacing.md),
+              marginBottom: keyboardHeight,
+              maxHeight: windowHeight - keyboardHeight - insets.top - Spacing.lg,
+            },
+          ]}
+        >
           <View style={styles.header}>
             <View>
               <Text style={styles.title} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>

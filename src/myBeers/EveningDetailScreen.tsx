@@ -159,6 +159,9 @@ export default function EveningDetailScreen() {
           </Text>
         </View>
       ) : (
+        // Android is edge-to-edge, so `adjustResize` no longer pushes content
+        // above the keyboard — pad it here (iOS pads via keyboard insets below).
+        <KeyboardAvoidingView style={styles.scroll} behavior="padding" enabled={Platform.OS === 'android'}>
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
@@ -246,6 +249,7 @@ export default function EveningDetailScreen() {
 
           <View style={{ height: Spacing.lg }} />
         </ScrollView>
+        </KeyboardAvoidingView>
       )}
       <EditDrinkNameModal
         drink={editingDrink}
@@ -269,7 +273,7 @@ function EditDrinkNameModal({
     <Modal visible={!!drink} transparent animationType="fade" statusBarTranslucent onRequestClose={onCancel}>
       <KeyboardAvoidingView
         style={styles.modalBackdrop}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
       >
         {drink ? (
           <EditDrinkNameForm

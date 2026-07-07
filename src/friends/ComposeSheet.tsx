@@ -24,6 +24,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import Animated, {
@@ -34,6 +35,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
 import { CheckIcon, MapPinIcon, PlusIcon, UsersIcon, XIcon } from '@/components/shared/IconGlyph';
 import { Toast } from '@/components/shared/Toast';
 import { generateUuidV4 } from '@/data/account';
@@ -198,6 +200,10 @@ function FriendRecipientRow({
 
 function ComposeSheet({ friends, onSubmitted, onClose }: ComposeSheetProps): React.ReactElement {
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  // Modals host their own window, so KeyboardAvoidingView is unreliable here —
+  // lift the sheet above the keyboard manually (same trick as BeerFormModal).
+  const keyboardHeight = useKeyboardHeight();
   const reduceMotion = useReduceMotion();
   const showToast = useToastStore((s) => s.show);
 
@@ -438,7 +444,16 @@ function ComposeSheet({ friends, onSubmitted, onClose }: ComposeSheetProps): Rea
         />
 
         <Animated.View
-          style={[styles.card, softDrop(), { paddingBottom: Math.max(insets.bottom, Spacing.md) }, cardAnim]}
+          style={[
+            styles.card,
+            softDrop(),
+            {
+              paddingBottom: keyboardHeight > 0 ? Spacing.md : Math.max(insets.bottom, Spacing.md),
+              marginBottom: keyboardHeight,
+              maxHeight: windowHeight - keyboardHeight - insets.top - Spacing.lg,
+            },
+            cardAnim,
+          ]}
         >
           <View style={styles.handle} />
 

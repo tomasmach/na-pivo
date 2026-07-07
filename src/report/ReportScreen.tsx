@@ -14,6 +14,7 @@ import {
   ScrollView,
   Pressable,
   TextInput,
+  KeyboardAvoidingView,
   Platform,
   StyleSheet,
 } from 'react-native';
@@ -114,6 +115,9 @@ export default function ReportScreen() {
           </View>
         </View>
       ) : (
+        // Android is edge-to-edge, so `adjustResize` no longer pushes content
+        // above the keyboard — pad it here (iOS pads via keyboard insets below).
+        <KeyboardAvoidingView style={styles.flex} behavior="padding" enabled={Platform.OS === 'android'}>
         <ScrollView
           style={styles.flex}
           contentContainerStyle={[
@@ -225,6 +229,7 @@ export default function ReportScreen() {
             </Text>
           ) : null}
         </ScrollView>
+        </KeyboardAvoidingView>
       )}
     </View>
   );

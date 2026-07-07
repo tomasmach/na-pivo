@@ -18,6 +18,7 @@ import {
   ScrollView,
   Pressable,
   TextInput,
+  KeyboardAvoidingView,
   Platform,
   StyleSheet,
   InteractionManager,
@@ -595,6 +596,9 @@ export default function ContributeScreen() {
         <View style={styles.headerSpacer} />
       </View>
 
+      {/* Android is edge-to-edge, so `adjustResize` no longer pushes content
+          above the keyboard — pad it here (iOS pads via keyboard insets below). */}
+      <KeyboardAvoidingView style={styles.flex} behavior="padding" enabled={Platform.OS === 'android'}>
       <ScrollView
           style={styles.flex}
           contentContainerStyle={[
@@ -732,6 +736,7 @@ export default function ContributeScreen() {
             {!canSubmit && <View style={styles.submitDisabledOverlay} />}
           </View>
         </ScrollView>
+        </KeyboardAvoidingView>
 
         <ScanMenuSheet
           visible={scanSourceVisible}

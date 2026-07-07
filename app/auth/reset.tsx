@@ -122,7 +122,7 @@ export default function ResetPasswordScreen() {
       {header}
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
         keyboardVerticalOffset={insets.top + 56}
       >
         <ScrollView

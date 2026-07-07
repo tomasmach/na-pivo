@@ -15,7 +15,16 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 
@@ -198,6 +207,9 @@ export default function ManagePartaScreen() {
       {loading ? (
         <FriendsSkeleton />
       ) : (
+        // Android is edge-to-edge, so `adjustResize` no longer pushes content
+        // above the keyboard — pad it here (iOS pads via keyboard insets below).
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" enabled={Platform.OS === 'android'}>
         <ScrollView
           contentContainerStyle={[
             styles.content,
@@ -211,6 +223,8 @@ export default function ManagePartaScreen() {
             />
           }
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
         >
           {loadError ? (
             <View style={styles.section}>
@@ -282,6 +296,7 @@ export default function ManagePartaScreen() {
             </View>
           ) : null}
         </ScrollView>
+        </KeyboardAvoidingView>
       )}
 
       {codeVisible ? <CodeSheet onClose={() => setCodeVisible(false)} /> : null}

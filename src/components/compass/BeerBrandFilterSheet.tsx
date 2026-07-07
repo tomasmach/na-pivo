@@ -141,7 +141,7 @@ export function BeerBrandFilterSheet({
     >
       <Pressable style={styles.backdrop} onPress={handleClose} accessibilityRole="button">
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior="padding"
           style={styles.kav}
           pointerEvents="box-none"
         >
