@@ -35,8 +35,13 @@ interface ReleaseState {
   lastSeenVersion: string | null;
   /** The note to show right now, or null when nothing is pending. In-memory. */
   pendingNote: ReleaseNote | null;
-  /** Guards against re-running the launch check within one session. In-memory. */
+  /** Guards against re-running the launch check within one session. In-memory.
+   *  Flips true BEFORE the note fetch resolves — anything that must wait for the
+   *  fetched result (e.g. other launch modals) must gate on `checkSettled`. */
   hasChecked: boolean;
+  /** True once checkForUpdate fully resolved (note fetched or not needed), so
+   *  `pendingNote` is final for this launch. In-memory. */
+  checkSettled: boolean;
 
   checkForUpdate: () => Promise<void>;
   dismissNote: () => void;
@@ -48,6 +53,7 @@ export const useReleaseStore = create<ReleaseState>()(
       lastSeenVersion: null,
       pendingNote: null,
       hasChecked: false,
+      checkSettled: false,
 
       checkForUpdate: async () => {
         if (get().hasChecked) return;
@@ -62,31 +68,35 @@ export const useReleaseStore = create<ReleaseState>()(
         if (get().hasChecked) return;
         set({ hasChecked: true });
 
-        const current = getCurrentAppVersion();
-        if (!current) return;
+        try {
+          const current = getCurrentAppVersion();
+          if (!current) return;
 
-        const lastSeen = get().lastSeenVersion;
+          const lastSeen = get().lastSeenVersion;
 
-        // Fresh install (or pre-feature upgrade): set the baseline, no popup.
-        if (lastSeen === null) {
-          set({ lastSeenVersion: current });
-          return;
+          // Fresh install (or pre-feature upgrade): set the baseline, no popup.
+          if (lastSeen === null) {
+            set({ lastSeenVersion: current });
+            return;
+          }
+
+          // Already on (and already shown) this version.
+          if (lastSeen === current) return;
+
+          // The user updated since last launch — fetch this version's note.
+          const result = await fetchReleaseNote(current);
+          if (result.kind === 'note') {
+            // lastSeenVersion is advanced only on dismissal, so a crash before the
+            // user acknowledges still re-shows the note next launch.
+            set({ pendingNote: result.note });
+          } else if (result.kind === 'none') {
+            // No note for this version — advance the baseline so we stop asking.
+            set({ lastSeenVersion: current });
+          }
+          // 'error' (offline / timeout): leave the baseline so the check retries.
+        } finally {
+          set({ checkSettled: true });
         }
-
-        // Already on (and already shown) this version.
-        if (lastSeen === current) return;
-
-        // The user updated since last launch — fetch this version's note.
-        const result = await fetchReleaseNote(current);
-        if (result.kind === 'note') {
-          // lastSeenVersion is advanced only on dismissal, so a crash before the
-          // user acknowledges still re-shows the note next launch.
-          set({ pendingNote: result.note });
-        } else if (result.kind === 'none') {
-          // No note for this version — advance the baseline so we stop asking.
-          set({ lastSeenVersion: current });
-        }
-        // 'error' (offline / timeout): leave the baseline so the check retries.
       },
 
       dismissNote: () => {
@@ -100,7 +110,7 @@ export const useReleaseStore = create<ReleaseState>()(
     {
       name: 'na-pivo-release',
       storage: createJSONStorage(() => AsyncStorage),
-      // Only the baseline persists; pendingNote / hasChecked are per-session.
+      // Only the baseline persists; pendingNote / hasChecked / checkSettled are per-session.
       partialize: (state) => ({ lastSeenVersion: state.lastSeenVersion }),
     },
   ),

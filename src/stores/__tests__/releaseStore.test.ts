@@ -143,6 +143,51 @@ describe('useReleaseStore.checkForUpdate', () => {
     expect(state.lastSeenVersion).toBe('1.0.0');
   });
 
+  it('flips checkSettled only after the note fetch resolves', async () => {
+    await seedLastSeenVersion('1.0.0');
+    let resolveFetch: (value: unknown) => void = () => undefined;
+    global.fetch = jest.fn(
+      () => new Promise((resolve) => { resolveFetch = resolve; })
+    ) as unknown as typeof fetch;
+
+    const { useReleaseStore } = require('../releaseStore');
+    const pending = useReleaseStore.getState().checkForUpdate();
+    // Give the check time to pass its guards and start the fetch.
+    await new Promise((r) => setTimeout(r, 0));
+
+    // hasChecked is already true while the fetch is in flight — checkSettled
+    // is the signal launch modals must wait for, or they race WhatsNewModal.
+    expect(useReleaseStore.getState().hasChecked).toBe(true);
+    expect(useReleaseStore.getState().checkSettled).toBe(false);
+
+    resolveFetch(noteResponse());
+    await pending;
+
+    expect(useReleaseStore.getState().checkSettled).toBe(true);
+    expect(useReleaseStore.getState().pendingNote).not.toBeNull();
+  });
+
+  it('flips checkSettled even when the note fetch fails', async () => {
+    await seedLastSeenVersion('1.0.0');
+    global.fetch = jest.fn(async () => {
+      throw new Error('network down');
+    }) as unknown as typeof fetch;
+
+    const { useReleaseStore } = require('../releaseStore');
+    await useReleaseStore.getState().checkForUpdate();
+
+    expect(useReleaseStore.getState().checkSettled).toBe(true);
+  });
+
+  it('flips checkSettled on a fresh install without fetching', async () => {
+    global.fetch = jest.fn() as unknown as typeof fetch;
+
+    const { useReleaseStore } = require('../releaseStore');
+    await useReleaseStore.getState().checkForUpdate();
+
+    expect(useReleaseStore.getState().checkSettled).toBe(true);
+  });
+
   it('runs at most once per session (hasChecked guard)', async () => {
     await seedLastSeenVersion('1.0.0');
     const fetchSpy = jest.fn(noteResponse);

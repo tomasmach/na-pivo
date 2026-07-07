@@ -103,7 +103,11 @@ function ReasonRow({ icon, title, body }: ReasonRowProps) {
 
 export function PubReminderOnboardingModal() {
   const insets = useSafeAreaInsets();
-  const releaseHasChecked = useReleaseStore((s) => s.hasChecked);
+  // Gate on checkSettled, NOT hasChecked: hasChecked flips before the release
+  // note fetch resolves, so gating on it raced this modal against WhatsNewModal.
+  // Two sibling RN Modals visible at once wedge the whole UI on iOS (the second
+  // never presents but blocks touches until the app restarts).
+  const releaseSettled = useReleaseStore((s) => s.checkSettled);
   const releaseNote = useReleaseStore((s) => s.pendingNote);
   const pubReminderEnabled = useSettingsStore((s) => s.pubReminderEnabled);
   const setPubReminderEnabled = useSettingsStore((s) => s.setPubReminderEnabled);
@@ -111,15 +115,17 @@ export function PubReminderOnboardingModal() {
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState<'intro' | 'permissions'>('intro');
   const [version, setVersion] = useState<string | null>(null);
-  const visible = eligible && !pubReminderEnabled;
+  // A late-arriving note must also hide an already-eligible onboarding.
+  const visible = eligible && !pubReminderEnabled && releaseNote === null;
 
   const progress = useSharedValue(0);
 
   useEffect(() => {
     let cancelled = false;
+    let showTimer: ReturnType<typeof setTimeout> | null = null;
 
     async function checkVisibility() {
-      if (!releaseHasChecked || releaseNote) return;
+      if (!releaseSettled || releaseNote) return;
 
       await waitForSettingsHydration();
       const currentVersion = getCurrentAppVersion();
@@ -133,15 +139,24 @@ export function PubReminderOnboardingModal() {
         pubReminderEnabled: enabled,
       });
       setVersion(currentVersion);
-      if (shouldShow) setStep('intro');
-      setEligible(shouldShow);
+      if (!shouldShow) {
+        setEligible(false);
+        return;
+      }
+      setStep('intro');
+      // Present a beat later: iOS silently drops a Modal presented while the
+      // what's-new modal is still mid-dismissal, wedging the UI.
+      showTimer = setTimeout(() => {
+        if (!cancelled) setEligible(true);
+      }, 600);
     }
 
     void checkVisibility();
     return () => {
       cancelled = true;
+      if (showTimer) clearTimeout(showTimer);
     };
-  }, [releaseHasChecked, releaseNote]);
+  }, [releaseSettled, releaseNote]);
 
   useEffect(() => {
     if (visible) {
