@@ -32,8 +32,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
+import { Radius, Spacing, HitArea } from '@/theme/layout';
 import { GlowButton } from '@/components/shared/GlowButton';
+import { CameraIcon } from '@/components/shared/IconGlyph';
+import { BetaBadge } from '@/components/shared/BetaBadge';
+import { fireLightImpactHaptic } from '@/utils/haptics';
 import { cs } from '@/i18n/cs';
 import type { CommunityBeer } from '@/data/communityHours';
 import { suggestBeerBrands, type BeerBrandSuggestion } from '@/data/beerSuggestionsClient';
@@ -95,6 +98,8 @@ interface BeerFormModalProps {
   formKey?: string | number;
   onCancel: () => void;
   onSubmit: (result: BeerFormResult) => void;
+  /** 'add' mode only: shows the "vyfoť celý lístek" shortcut into the AI menu scan. */
+  onScanMenu?: () => void;
 }
 
 const VOLUME_OPTIONS: { value: number; labelKey: 'volumeSmall' | 'volumeMedium' | 'volumeLarge' }[] = [
@@ -108,7 +113,7 @@ const VOLUME_OPTIONS: { value: number; labelKey: 'volumeSmall' | 'volumeMedium' 
  * the open instance (`formKey`) so every open mounts a FRESH body whose state is
  * initialized from props — no re-seeding effect, no setState-in-effect.
  */
-export function BeerFormModal({ visible, mode, beer, formKey, onCancel, onSubmit }: BeerFormModalProps) {
+export function BeerFormModal({ visible, mode, beer, formKey, onCancel, onSubmit, onScanMenu }: BeerFormModalProps) {
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onCancel}>
       {visible ? (
@@ -118,6 +123,7 @@ export function BeerFormModal({ visible, mode, beer, formKey, onCancel, onSubmit
           beer={beer}
           onCancel={onCancel}
           onSubmit={onSubmit}
+          onScanMenu={onScanMenu}
         />
       ) : null}
     </Modal>
@@ -129,9 +135,10 @@ interface BeerFormBodyProps {
   beer?: CommunityBeer | null;
   onCancel: () => void;
   onSubmit: (result: BeerFormResult) => void;
+  onScanMenu?: () => void;
 }
 
-function BeerFormBody({ mode, beer, onCancel, onSubmit }: BeerFormBodyProps) {
+function BeerFormBody({ mode, beer, onCancel, onSubmit, onScanMenu }: BeerFormBodyProps) {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const keyboardHeight = useKeyboardHeight();
@@ -285,6 +292,25 @@ function BeerFormBody({ mode, beer, onCancel, onSubmit }: BeerFormBodyProps) {
                 </Pressable>
               ))}
             </View>
+          ) : null}
+
+          {!nameLocked && onScanMenu ? (
+            <Pressable
+              onPress={() => {
+                fireLightImpactHaptic();
+                Keyboard.dismiss();
+                onScanMenu();
+              }}
+              style={({ pressed }) => [styles.scanShortcut, pressed && styles.scanShortcutPressed]}
+              accessibilityRole="button"
+              accessibilityLabel={cs.counter.scanMenuShortcut}
+            >
+              <CameraIcon size={16} color={Colors.amber} />
+              <Text style={styles.scanShortcutText} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.counter.scanMenuShortcut}
+              </Text>
+              <BetaBadge tone="muted" />
+            </Pressable>
           ) : null}
 
           <View style={styles.priceRow}>
@@ -451,6 +477,29 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.foam,
+  },
+  scanShortcut: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    minHeight: HitArea.min,
+    marginTop: -4,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.3),
+    backgroundColor: withAlpha(Colors.amber, 0.06),
+  },
+  scanShortcutPressed: {
+    transform: [{ scale: 0.98 }],
+    backgroundColor: withAlpha(Colors.amber, 0.14),
+  },
+  scanShortcutText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 14,
+    color: Colors.amber,
   },
   priceRow: {
     flexDirection: 'row',

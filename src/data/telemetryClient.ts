@@ -31,6 +31,7 @@ export type ClientTelemetryEvent =
   | 'visit_synced'
   | 'visit_sync_failed'
   | 'beer_form_opened'
+  | 'beer_form_scan_opened'
   | 'beer_price_added'
   | 'counter_returned_same_day'
   | 'counter_returned_later'

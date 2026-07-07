@@ -20,6 +20,7 @@ import {
   TextInput,
   Platform,
   StyleSheet,
+  InteractionManager,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -222,6 +223,18 @@ export default function ContributeScreen() {
   const [beerSuggestionsLoading, setBeerSuggestionsLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanSourceVisible, setScanSourceVisible] = useState(false);
+
+  // Deep-linked from the counter's add-beer form ("vyfoť celý lístek"): open the
+  // scan source sheet so the user lands one tap from the camera. Deferred until
+  // the push transition (and the counter's dismissing form modal) settles — iOS
+  // won't reliably present a Modal mid-transition.
+  useEffect(() => {
+    if (parseStringParam(params.autoScan) !== '1') return;
+    const task = InteractionManager.runAfterInteractions(() => setScanSourceVisible(true));
+    return () => task.cancel();
+    // one-shot on mount — params never change for a mounted editor
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Hours editing ─────────────────────────────────────────────────────────
 
