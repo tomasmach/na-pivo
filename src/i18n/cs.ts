@@ -1058,6 +1058,10 @@ export const cs = {
     ghostBody:
       'Máš soukromý profil, takže tě v žebříčku nikdo nevidí. Čárky sbíráš dál — jen sláva ti utíká.',
     ghostCta: 'Ukázat se',
+    // Anonymous variant — the missing piece is a nickname, not visibility.
+    ghostAnonBody:
+      'Bez přezdívky tě v žebříčku nikdo nevidí. Založ si ji a hraj naplno.',
+    ghostAnonCta: 'Založit přezdívku',
 
     // — Footer + error —
     totalRanked: (n: number) =>

@@ -135,9 +135,12 @@ export default function LeaderboardsScreen() {
     [router],
   );
 
+  // Without a nickname the fix is profile setup; with one it's the visibility
+  // toggle on the edit screen.
+  const hasNickname = Boolean(profile?.nickname);
   const openVisibility = useCallback(() => {
-    router.push('/profile/edit' as Href);
-  }, [router]);
+    router.push((hasNickname ? '/profile/edit' : '/profile/setup') as Href);
+  }, [hasNickname, router]);
 
   const categoryIndex = CATEGORIES.indexOf(category);
   const showPeriods = category !== 'mapper';
@@ -304,10 +307,10 @@ export default function LeaderboardsScreen() {
                 </Text>
               </View>
               <Text style={styles.ghostBody} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.leaderboards.ghostBody}
+                {hasNickname ? cs.leaderboards.ghostBody : cs.leaderboards.ghostAnonBody}
               </Text>
               <GlowButton
-                label={cs.leaderboards.ghostCta}
+                label={hasNickname ? cs.leaderboards.ghostCta : cs.leaderboards.ghostAnonCta}
                 onPress={openVisibility}
                 variant="secondary"
                 glow="none"
