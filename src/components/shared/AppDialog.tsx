@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -89,13 +89,31 @@ export function AppDialogHost() {
   const isActionMenu = !!dialog && !dialog.message && buttons.length > 2;
   const canCancel = dialog?.cancelable ?? true;
 
+  // A button's onPress often presents another Modal (e.g. the backdate flow
+  // opens BeerFormModal). On iOS, presenting one while this dialog's Modal is
+  // still dismissing silently fails — so hold the action and run it from
+  // onDismiss, after the dismissal actually completed. onDismiss is iOS-only;
+  // Android tolerates the immediate call.
+  const pendingAction = useRef<(() => void) | null>(null);
+
   const close = useCallback(
     (button?: AppDialogButton) => {
+      if (Platform.OS === 'ios') {
+        pendingAction.current = button?.onPress ?? null;
+        setDialog(null);
+        return;
+      }
       setDialog(null);
       button?.onPress?.();
     },
     [],
   );
+
+  const runPendingAction = useCallback(() => {
+    const action = pendingAction.current;
+    pendingAction.current = null;
+    action?.();
+  }, []);
 
   const closeFromBackdrop = useCallback(() => {
     if (!canCancel) return;
@@ -211,6 +229,7 @@ export function AppDialogHost() {
       animationType="fade"
       statusBarTranslucent
       onRequestClose={closeFromBackdrop}
+      onDismiss={runPendingAction}
     >
       <Pressable
         style={[styles.backdrop, !isActionMenu && styles.centerBackdrop]}
