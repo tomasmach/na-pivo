@@ -26,7 +26,7 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Colors } from '@/theme/colors';
+import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
@@ -143,12 +143,19 @@ function mergeScannedIntoRows(
   return { rows: next, count };
 }
 
-/** Coerce typed text toward an HH:MM shape without fighting the user: keep only
- *  digits, cap at 4, and insert the colon after the hour pair. */
-function formatTimeInput(raw: string): string {
-  const digits = raw.replace(/\D/g, '').slice(0, 4);
-  if (digits.length <= 2) return digits;
-  return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+function sanitizeTimePart(raw: string): string {
+  return raw.replace(/\D/g, '').slice(0, 2);
+}
+
+function splitTimeInput(value: string): [string, string] {
+  const [hours = '', minutes = ''] = value.split(':');
+  return [sanitizeTimePart(hours), sanitizeTimePart(minutes)];
+}
+
+function withTimePart(value: string, which: 0 | 1, part: string): string {
+  const next = splitTimeInput(value);
+  next[which] = sanitizeTimePart(part);
+  return `${next[0]}:${next[1]}`;
 }
 
 function parseFloatParam(value: string | string[] | undefined): number {
@@ -224,6 +231,11 @@ export default function ContributeScreen() {
   const [beerSuggestionsLoading, setBeerSuggestionsLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanSourceVisible, setScanSourceVisible] = useState(false);
+  const beersRef = useRef(beers);
+
+  useEffect(() => {
+    beersRef.current = beers;
+  }, [beers]);
 
   // Deep-linked from the counter's add-beer form ("vyfoť celý lístek"): open the
   // scan source sheet so the user lands one tap from the camera. Deferred until
@@ -275,7 +287,7 @@ export default function ContributeScreen() {
       const next = hours[day].map((iv, i) => {
         if (i !== index) return iv;
         const copy: HoursInterval = [iv[0], iv[1]];
-        copy[which] = formatTimeInput(value);
+        copy[which] = value;
         return copy;
       });
       updateDay(day, next);
@@ -301,19 +313,60 @@ export default function ContributeScreen() {
     if (beers.length >= MAX_BEERS) return;
     setBeersTouched(true);
     const row = { id: nextBeerRowId(), name: '', priceText: '', volumeMl: VOLUME_DEFAULT };
-    setBeers((prev) => [...prev, row]);
+    setBeers((prev) => {
+      const next = [...prev, row];
+      beersRef.current = next;
+      return next;
+    });
     setActiveBeerId(row.id);
   }, [beers.length]);
 
   const removeBeer = useCallback((index: number) => {
     setBeersTouched(true);
-    setBeers((prev) => prev.filter((_, i) => i !== index));
+    setBeers((prev) => {
+      const next = prev.filter((_, i) => i !== index);
+      beersRef.current = next;
+      return next;
+    });
   }, []);
 
   const updateBeer = useCallback((index: number, patch: Partial<BeerRow>) => {
     setBeersTouched(true);
-    setBeers((prev) => prev.map((b, i) => (i === index ? { ...b, ...patch } : b)));
+    setBeers((prev) => {
+      const next = prev.map((b, i) => (i === index ? { ...b, ...patch } : b));
+      beersRef.current = next;
+      return next;
+    });
   }, []);
+
+  const addSmallBeerVariant = useCallback((index: number) => {
+    const source = beers[index];
+    if (!source || beers.length >= MAX_BEERS) return;
+    const name = source.name.trim();
+    if (!name) return;
+    const exists = beers.some(
+      (beer, i) =>
+        i !== index &&
+        normalizeBeerName(beer.name) === normalizeBeerName(name) &&
+        beer.volumeMl === VOLUME_SMALL,
+    );
+    if (exists) return;
+
+    setBeersTouched(true);
+    const row: BeerRow = {
+      id: nextBeerRowId(),
+      name,
+      priceText: '',
+      volumeMl: VOLUME_SMALL,
+    };
+    setBeers((prev) => {
+      const insertAt = Math.min(index + 1, prev.length);
+      const next = [...prev.slice(0, insertAt), row, ...prev.slice(insertAt)];
+      beersRef.current = next;
+      return next;
+    });
+    setActiveBeerId(row.id);
+  }, [beers]);
 
   // ── Scan menu (AI OCR prefill) ───────────────────────────────────────────--
   // Pick/snap a menu photo, upload it to the OCR helper, then MERGE the extracted
@@ -352,18 +405,15 @@ export default function ContributeScreen() {
         const result = await scanMenuPhoto(picked.uri);
         switch (result.status) {
           case 'ok': {
-            // Merge against the LATEST rows (a functional update) so beers the user
-            // edits during the multi-second scan are not clobbered by a stale snapshot.
-            let merged = 0;
-            setBeers((prev) => {
-              const { rows, count } = mergeScannedIntoRows(prev, result.beers, priceCurrency);
-              merged = count;
-              return count > 0 ? rows : prev;
-            });
-            if (merged > 0) {
+            // Merge against the latest committed rows so edits made during the
+            // multi-second scan are not clobbered by the pre-scan render.
+            const { rows, count } = mergeScannedIntoRows(beersRef.current, result.beers, priceCurrency);
+            if (count > 0) {
+              beersRef.current = rows;
+              setBeers(rows);
               setBeersTouched(true);
               fireSuccessHaptic();
-              toast(cs.contribute.scanMenu.successToast(merged), {
+              toast(cs.contribute.scanMenu.successToast(count), {
                 icon: <SparklesIcon size={18} color={Colors.amber} />,
               });
             } else {
@@ -693,6 +743,18 @@ export default function ContributeScreen() {
                     updateBeer(index, { priceText: sanitizePriceInput(priceText, priceCurrency) })
                   }
                   onChangeVolume={(volumeMl) => updateBeer(index, { volumeMl })}
+                  canAddSmallVariant={
+                    beers.length < MAX_BEERS &&
+                    !!beer.name.trim() &&
+                    beer.volumeMl !== VOLUME_SMALL &&
+                    !beers.some(
+                      (other, otherIndex) =>
+                        otherIndex !== index &&
+                        normalizeBeerName(other.name) === normalizeBeerName(beer.name) &&
+                        other.volumeMl === VOLUME_SMALL,
+                    )
+                  }
+                  onAddSmallVariant={() => addSmallBeerVariant(index)}
                   onRemove={() => removeBeer(index)}
                   priceCurrency={priceCurrency}
                 />
@@ -796,27 +858,21 @@ function DayRow({
         <View style={styles.intervalsWrap}>
           {intervals.map((iv, i) => (
             <View key={i} style={styles.intervalRow}>
-              <TextInput
-                style={styles.timeInput}
+              <SplitTimeInput
                 value={iv[0]}
-                onChangeText={(v) => onChangeTime(i, 0, v)}
-                placeholder="11:00"
-                placeholderTextColor={Colors.mutedText}
-                keyboardType="number-pad"
-                maxLength={5}
+                onChange={(v) => onChangeTime(i, 0, v)}
+                hourPlaceholder="11"
+                minutePlaceholder="00"
                 accessibilityLabel={`${dayName} ${cs.contribute.from}`}
               />
               <Text style={styles.timeDash} maxFontSizeMultiplier={FontScaleCap.body}>
                 –
               </Text>
-              <TextInput
-                style={styles.timeInput}
+              <SplitTimeInput
                 value={iv[1]}
-                onChangeText={(v) => onChangeTime(i, 1, v)}
-                placeholder="23:00"
-                placeholderTextColor={Colors.mutedText}
-                keyboardType="number-pad"
-                maxLength={5}
+                onChange={(v) => onChangeTime(i, 1, v)}
+                hourPlaceholder="23"
+                minutePlaceholder="00"
                 accessibilityLabel={`${dayName} ${cs.contribute.to}`}
               />
               <Pressable
@@ -863,6 +919,8 @@ interface BeerRowViewProps {
   onChangeVolume: (volumeMl: number | undefined) => void;
   onRemove: () => void;
   priceCurrency: PriceCurrency;
+  canAddSmallVariant: boolean;
+  onAddSmallVariant: () => void;
 }
 
 const VOLUME_OPTIONS: { value: number | undefined; labelKey: 'volumeSmall' | 'volumeLarge' | 'volumeOther' }[] = [
@@ -882,6 +940,8 @@ function BeerRowView({
   onChangeVolume,
   onRemove,
   priceCurrency,
+  canAddSmallVariant,
+  onAddSmallVariant,
 }: BeerRowViewProps) {
   const placeholder = pricePlaceholder(priceCurrency);
 
@@ -966,6 +1026,66 @@ function BeerRowView({
           })}
         </View>
       </View>
+      {canAddSmallVariant && (
+        <Pressable
+          onPress={onAddSmallVariant}
+          style={styles.smallVariantButton}
+          hitSlop={4}
+          accessibilityRole="button"
+          accessibilityLabel={cs.contribute.addSmallBeer}
+        >
+          <PlusIcon size={14} color={Colors.amber} />
+          <Text style={styles.smallVariantButtonText} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.contribute.addSmallBeer}
+          </Text>
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
+function SplitTimeInput({
+  value,
+  onChange,
+  hourPlaceholder,
+  minutePlaceholder,
+  accessibilityLabel,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  hourPlaceholder: string;
+  minutePlaceholder: string;
+  accessibilityLabel: string;
+}) {
+  const [hours, minutes] = splitTimeInput(value);
+
+  return (
+    <View style={styles.splitTimeInput}>
+      <TextInput
+        style={styles.timePartInput}
+        value={hours}
+        onChangeText={(part) => onChange(withTimePart(value, 0, part))}
+        placeholder={hourPlaceholder}
+        placeholderTextColor={Colors.mutedText}
+        keyboardType="number-pad"
+        maxLength={2}
+        selectTextOnFocus
+        accessibilityLabel={`${accessibilityLabel} hodiny`}
+      />
+      <Text style={styles.timeColon} maxFontSizeMultiplier={FontScaleCap.body}>
+        :
+      </Text>
+      <TextInput
+        style={styles.timePartInput}
+        value={minutes}
+        onChangeText={(part) => onChange(withTimePart(value, 1, part))}
+        placeholder={minutePlaceholder}
+        placeholderTextColor={Colors.mutedText}
+        keyboardType="number-pad"
+        maxLength={2}
+        selectTextOnFocus
+        accessibilityLabel={`${accessibilityLabel} minuty`}
+      />
     </View>
   );
 }
@@ -1097,18 +1217,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  timeInput: {
+  splitTimeInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: Colors.stout2,
     borderColor: Colors.border,
     borderWidth: 1,
     borderRadius: Radius.small,
+    paddingHorizontal: 8,
+    minWidth: 78,
+    minHeight: 42,
+  },
+  timePartInput: {
+    width: 24,
     color: Colors.foam,
     fontFamily: Fonts.ui.medium,
     fontSize: 15,
-    paddingHorizontal: 10,
     paddingVertical: 8,
-    minWidth: 70,
     textAlign: 'center',
+  },
+  timeColon: {
+    fontFamily: Fonts.ui.bold,
+    fontSize: 15,
+    color: Colors.foamMuted,
+    paddingBottom: 1,
   },
   timeDash: {
     fontFamily: Fonts.ui.regular,
@@ -1228,6 +1360,23 @@ const styles = StyleSheet.create({
   },
   volumePillTextSelected: {
     color: Colors.stout,
+  },
+  smallVariantButton: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: Radius.pill,
+    backgroundColor: withAlpha(Colors.amber, 0.1),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.36),
+  },
+  smallVariantButtonText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 13,
+    color: Colors.amber,
   },
 
   addRow: {

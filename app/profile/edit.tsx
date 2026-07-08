@@ -203,12 +203,14 @@ export default function ProfileEditScreen() {
       <KeyboardAvoidingView
         style={styles.flex}
         behavior="padding"
-        keyboardVerticalOffset={insets.top + 56}
+        enabled={Platform.OS === 'android'}
       >
         <ScrollView
           style={styles.flex}
           contentContainerStyle={[styles.scrollContent, { paddingBottom: Spacing.xl }]}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
           showsVerticalScrollIndicator={false}
         >
           {/* ── Avatar card ── */}

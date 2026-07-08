@@ -402,6 +402,7 @@ export const cs = {
     volumeSmall: '0,3 l',
     volumeLarge: '0,5 l',
     volumeOther: 'Jiné',
+    addSmallBeer: 'Přidat malé',
     addBeer: 'Přidat pivo',
     maxBeersReached: 'Víc piv už přidat nejde',
     save: 'Uložit',
