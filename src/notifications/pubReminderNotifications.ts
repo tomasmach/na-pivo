@@ -8,8 +8,11 @@ import { disablePushDevice, PUSH_TOKEN_KEY } from '@/data/pushDeviceClient';
 import { fetchPubsNear, findNearbyPubs } from '@/data/pubs';
 import { ensurePushTokenRegistered } from '@/notifications/pushToken';
 import {
+  clearPendingPubReminder,
   decidePubReminderOnEnter,
   isPubReminderEveningWindow,
+  normalizePubReminderState,
+  PUB_REMINDER_DWELL_MS,
   type PubReminderState,
 } from '@/notifications/pubReminderDecision';
 import { useSettingsStore, waitForSettingsHydration } from '@/stores/settingsStore';
@@ -33,6 +36,7 @@ const GEOFENCE_FETCH_RADIUS_KM = 5;
 const LAST_KNOWN_POSITION_MAX_AGE_MS = 15 * 60 * 1000;
 /** Geofences only need city-block accuracy; worse cached fixes are ignored. */
 const LAST_KNOWN_POSITION_REQUIRED_ACCURACY_M = 500;
+const PUB_REMINDER_DWELL_SECONDS = PUB_REMINDER_DWELL_MS / 1000;
 
 export type PubReminderEnableResult =
   | { ok: true }
@@ -138,16 +142,62 @@ async function hasActiveCounterSession(): Promise<boolean> {
   return Array.isArray(drinks) && drinks.length > 0;
 }
 
-async function schedulePubReminder(pubName: string): Promise<void> {
-  if (!Notifications) return;
-  await Notifications.scheduleNotificationAsync({
+async function schedulePubReminder(pubName: string, pubId: string, fireAtMs: number): Promise<string | null> {
+  if (!Notifications) return null;
+  return Notifications.scheduleNotificationAsync({
     content: {
       title: `Sedíš v ${pubName}?`,
       body: 'Naťukni počítadlo a sečti dnešní rundy.',
-      data: { kind: PUB_REMINDER_NOTIFICATION_KIND },
+      data: { kind: PUB_REMINDER_NOTIFICATION_KIND, pubId, fireAtMs },
     },
-    trigger: null,
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds: PUB_REMINDER_DWELL_SECONDS,
+      repeats: false,
+    },
   });
+}
+
+async function cancelScheduledPubReminder(notificationId: string | undefined): Promise<void> {
+  if (!Notifications || !notificationId) return;
+  try {
+    await Notifications.cancelScheduledNotificationAsync(notificationId);
+  } catch {
+    // Best effort: state cleanup still prevents us from chaining new spam.
+  }
+}
+
+async function readPubReminderState(nowMs: number): Promise<PubReminderState> {
+  const state = await readJson<PubReminderState>(PUB_REMINDER_STATE_KEY, {});
+  return normalizePubReminderState(state, nowMs);
+}
+
+async function writePubReminderState(state: PubReminderState): Promise<void> {
+  await writeJson(PUB_REMINDER_STATE_KEY, state);
+}
+
+export async function cancelPendingPubReminder(): Promise<void> {
+  const nowMs = Date.now();
+  const state = await readPubReminderState(nowMs);
+  const pending = state.pendingReminder;
+  if (!pending) {
+    await writePubReminderState(state);
+    return;
+  }
+  await cancelScheduledPubReminder(pending.notificationId);
+  await writePubReminderState(clearPendingPubReminder(state, nowMs));
+}
+
+async function cancelPendingPubReminderForPub(pubId: string): Promise<void> {
+  const nowMs = Date.now();
+  const state = await readPubReminderState(nowMs);
+  const pending = state.pendingReminder;
+  if (!pending || pending.pubId !== pubId) {
+    await writePubReminderState(state);
+    return;
+  }
+  await cancelScheduledPubReminder(pending.notificationId);
+  await writePubReminderState(clearPendingPubReminder(state, nowMs));
 }
 
 function locationCoords(position: Location.LocationObject | null): { lat: number; lng: number } | null {
@@ -238,7 +288,7 @@ async function refreshGeofences(coords?: { lat: number; lng: number }): Promise<
       longitude: pub.lng,
       radius: GEOFENCE_RADIUS_M,
       notifyOnEnter: true,
-      notifyOnExit: false,
+      notifyOnExit: true,
     };
   });
 
@@ -260,28 +310,59 @@ async function handleGeofenceEnter(pubId: string): Promise<void> {
   const pubName = nameById[pubId];
   if (!pubName) return;
 
-  const state = await readJson<PubReminderState>(PUB_REMINDER_STATE_KEY, {});
+  const state = await readPubReminderState(now.getTime());
+  const hasCounterSession = await hasActiveCounterSession();
+  if (hasCounterSession) {
+    if (state.pendingReminder) await cancelPendingPubReminder();
+    else await writePubReminderState(state);
+    return;
+  }
+
   const decision = decidePubReminderOnEnter({
     nowMs: now.getTime(),
     isEveningWindow: true,
-    hasActiveCounterSession: await hasActiveCounterSession(),
+    hasActiveCounterSession: false,
     pub: { id: pubId, name: pubName },
     previousState: state,
   });
 
-  await writeJson(PUB_REMINDER_STATE_KEY, decision.nextState);
   if (decision.shouldNotify && decision.notificationPub) {
-    await schedulePubReminder(decision.notificationPub.name);
+    await cancelScheduledPubReminder(decision.cancelPendingNotificationId);
+    const pending = decision.nextState.pendingReminder;
+    if (!pending) {
+      await writePubReminderState(decision.nextState);
+      return;
+    }
+    const notificationId = await schedulePubReminder(
+      decision.notificationPub.name,
+      decision.notificationPub.id,
+      pending.fireAtMs,
+    );
+    await writePubReminderState({
+      ...decision.nextState,
+      pendingReminder: notificationId ? { ...pending, notificationId } : undefined,
+    });
+    return;
   }
+
+  await writePubReminderState(decision.nextState);
+}
+
+async function handleGeofenceExit(pubId: string): Promise<void> {
+  if (!(await isReminderEnabled())) return;
+  await cancelPendingPubReminderForPub(pubId);
 }
 
 TaskManager?.defineTask(PUB_REMINDER_GEOFENCE_TASK, async ({ data, error }) => {
   if (error) return;
   const { eventType, region } = (data as GeofenceTaskData | undefined) ?? {};
-  if (eventType !== Location.GeofencingEventType.Enter) return;
   const pubId = region?.identifier;
   if (!pubId) return;
-  await handleGeofenceEnter(pubId);
+  if (eventType === Location.GeofencingEventType.Enter) {
+    await handleGeofenceEnter(pubId);
+  } else if (eventType === Location.GeofencingEventType.Exit) {
+    await handleGeofenceExit(pubId);
+  }
 });
 
 export async function initializePubReminderNotifications(): Promise<void> {
@@ -291,6 +372,7 @@ export async function initializePubReminderNotifications(): Promise<void> {
   const enabled = useSettingsStore.getState().pubReminderEnabled;
   await setReminderEnabled(enabled);
   if (!enabled) {
+    await cancelPendingPubReminder();
     await stopGeofencing();
     return;
   }
@@ -352,6 +434,9 @@ export async function enablePubReminderNotifications(): Promise<PubReminderEnabl
 export async function refreshPubReminderGeofences(): Promise<void> {
   if (!TaskManager) return;
   if (!useSettingsStore.getState().pubReminderEnabled) return;
+  if (await hasActiveCounterSession()) {
+    await cancelPendingPubReminder();
+  }
   try {
     const background = await Location.getBackgroundPermissionsAsync();
     if (background.status !== 'granted') return;
@@ -363,6 +448,7 @@ export async function refreshPubReminderGeofences(): Promise<void> {
 
 export async function disablePubReminderNotifications(): Promise<void> {
   await setReminderEnabled(false);
+  await cancelPendingPubReminder();
   await stopGeofencing();
   try {
     const token = await AsyncStorage.getItem(PUSH_TOKEN_KEY);

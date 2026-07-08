@@ -32,7 +32,7 @@ jest.mock('expo-task-manager', () => ({
 
 jest.mock('expo-location', () => ({
   Accuracy: { Balanced: 3 },
-  GeofencingEventType: { Enter: 1 },
+  GeofencingEventType: { Enter: 1, Exit: 2 },
   getLastKnownPositionAsync: mockGetLastKnownPositionAsync,
   getCurrentPositionAsync: mockGetCurrentPositionAsync,
   getBackgroundPermissionsAsync: mockGetBackgroundPermissionsAsync,
@@ -109,6 +109,8 @@ describe('refreshPubReminderGeofences', () => {
           latitude: 50.081,
           longitude: 14.419,
           radius: 75,
+          notifyOnEnter: true,
+          notifyOnExit: true,
         }),
       ]),
     );

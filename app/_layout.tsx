@@ -47,6 +47,7 @@ import { PubReminderEnableFailureModal } from '@/components/shared/PubReminderEn
 import { AppDialogHost } from '@/components/shared/AppDialog';
 import { Toast } from '@/components/shared/Toast';
 import {
+  cancelPendingPubReminder,
   consumeInitialPubReminderTap,
   initializePubReminderNotifications,
   refreshPubReminderGeofences,
@@ -162,6 +163,19 @@ export default function RootLayout() {
   }, [router]);
 
   useEffect(() => {
+    let hadActiveCounterSession = (useTallyStore.getState().current?.drinks.length ?? 0) > 0;
+    if (hadActiveCounterSession) void cancelPendingPubReminder();
+
+    return useTallyStore.subscribe((state) => {
+      const hasActiveCounterSession = (state.current?.drinks.length ?? 0) > 0;
+      if (hasActiveCounterSession && !hadActiveCounterSession) {
+        void cancelPendingPubReminder();
+      }
+      hadActiveCounterSession = hasActiveCounterSession;
+    });
+  }, []);
+
+  useEffect(() => {
     // A friend push received while the app is foregrounded (on any tab) nudges the
     // Parta badge, so it reacts without waiting for a background→foreground cycle
     // or a Parta focus (§D1). The next dashboard/live fetch reconciles the counts.
@@ -259,6 +273,9 @@ export default function RootLayout() {
         void flushBeerCheckinsQueue();
         // Re-seed pub geofences for wherever the user is now (no-op when the
         // feature is off; cheap unless they moved a few km since last fetch).
+        if ((useTallyStore.getState().current?.drinks.length ?? 0) > 0) {
+          void cancelPendingPubReminder();
+        }
         void refreshPubReminderGeofences();
       } else {
         flushWalkingDistance();

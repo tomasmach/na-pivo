@@ -1,12 +1,27 @@
-export const PUB_REMINDER_COOLDOWN_MS = 12 * 60 * 60 * 1000;
+export const PUB_REMINDER_GLOBAL_COOLDOWN_MS = 4 * 60 * 60 * 1000;
+export const PUB_REMINDER_DWELL_MS = 45 * 60 * 1000;
+
+export interface PendingPubReminder {
+  pubId: string;
+  pubName: string;
+  enteredAtMs: number;
+  scheduledAtMs: number;
+  fireAtMs: number;
+  notificationId?: string;
+}
 
 /**
- * Persisted, cross-launch reminder bookkeeping. With geofencing the OS already
- * debounces arrivals, so the only state we keep is the per-pub cooldown so a
- * place can't nudge the user twice in one evening.
+ * Persisted, cross-launch reminder bookkeeping. Older builds stored
+ * lastNotification* only; keep those fields optional so migrated state never
+ * crashes and can still seed the new global cooldown.
  */
 export interface PubReminderState {
+  lastReminderFireAtMs?: number;
+  lastReminderDayKey?: string;
+  pendingReminder?: PendingPubReminder;
+  /** Deprecated: pre-dwell state from older builds. */
   lastNotificationAtMs?: number;
+  /** Deprecated: pre-dwell state from older builds. */
   lastNotificationPubId?: string;
 }
 
@@ -21,54 +36,140 @@ export interface PubReminderEnterInput {
 
 export interface PubReminderDecision {
   nextState: PubReminderState;
+  /** True means schedule a delayed local notification, not fire immediately. */
   shouldNotify: boolean;
   notificationPub?: {
     id: string;
     name: string;
   };
+  cancelPendingNotificationId?: string;
 }
 
-function recentlyNotified(
-  state: PubReminderState,
-  pubId: string,
-  nowMs: number,
-): boolean {
-  if (state.lastNotificationPubId !== pubId || !state.lastNotificationAtMs) return false;
-  return nowMs - state.lastNotificationAtMs < PUB_REMINDER_COOLDOWN_MS;
+function localDayKey(ms: number): string | undefined {
+  if (!Number.isFinite(ms)) return undefined;
+  const date = new Date(ms);
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function validNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function lastReminderFireAtMs(state: PubReminderState): number | undefined {
+  if (validNumber(state.lastReminderFireAtMs)) return state.lastReminderFireAtMs;
+  if (validNumber(state.lastNotificationAtMs)) return state.lastNotificationAtMs;
+  return undefined;
+}
+
+function pendingReminder(state: PubReminderState): PendingPubReminder | undefined {
+  const pending = state.pendingReminder;
+  if (!pending || typeof pending.pubId !== 'string' || typeof pending.pubName !== 'string') {
+    return undefined;
+  }
+  if (
+    !validNumber(pending.enteredAtMs) ||
+    !validNumber(pending.scheduledAtMs) ||
+    !validNumber(pending.fireAtMs)
+  ) {
+    return undefined;
+  }
+  return {
+    pubId: pending.pubId,
+    pubName: pending.pubName,
+    enteredAtMs: pending.enteredAtMs,
+    scheduledAtMs: pending.scheduledAtMs,
+    fireAtMs: pending.fireAtMs,
+    notificationId: typeof pending.notificationId === 'string' ? pending.notificationId : undefined,
+  };
+}
+
+export function normalizePubReminderState(state: PubReminderState, nowMs: number): PubReminderState {
+  const lastFireAtMs = lastReminderFireAtMs(state);
+  const pending = pendingReminder(state);
+  const firedPending =
+    pending && validNumber(pending.fireAtMs) && pending.fireAtMs <= nowMs ? pending : undefined;
+  const reminderFireAtMs =
+    firedPending && (!lastFireAtMs || firedPending.fireAtMs > lastFireAtMs)
+      ? firedPending.fireAtMs
+      : lastFireAtMs;
+
+  const normalized: PubReminderState = {};
+  if (reminderFireAtMs) {
+    normalized.lastReminderFireAtMs = reminderFireAtMs;
+    normalized.lastReminderDayKey = state.lastReminderDayKey ?? localDayKey(reminderFireAtMs);
+    if (firedPending) {
+      normalized.lastReminderDayKey = localDayKey(reminderFireAtMs);
+    }
+  }
+  if (pending && !firedPending) {
+    normalized.pendingReminder = pending;
+  }
+  return normalized;
+}
+
+export function clearPendingPubReminder(state: PubReminderState, nowMs: number): PubReminderState {
+  const normalized = normalizePubReminderState(state, nowMs);
+  if (!normalized.pendingReminder) return normalized;
+  const { pendingReminder: _pendingReminder, ...withoutPending } = normalized;
+  return withoutPending;
+}
+
+function recentlyNotifiedGlobally(state: PubReminderState, nowMs: number): boolean {
+  if (!state.lastReminderFireAtMs) return false;
+  return nowMs - state.lastReminderFireAtMs < PUB_REMINDER_GLOBAL_COOLDOWN_MS;
+}
+
+function alreadyNotifiedToday(state: PubReminderState, nowMs: number): boolean {
+  const lastDayKey =
+    state.lastReminderDayKey ??
+    (state.lastReminderFireAtMs ? localDayKey(state.lastReminderFireAtMs) : undefined);
+  return Boolean(lastDayKey && lastDayKey === localDayKey(nowMs));
 }
 
 /**
- * Pure decision for a geofence "Enter" event: should we nudge the user that
- * they're sitting in a pub? A reminder fires only in the evening window, when no
- * counter session is already running, and when this exact pub hasn't already
- * nudged within the cooldown. The arrival itself is trusted — the OS only
- * delivers Enter after the device actually crosses into the region.
+ * Pure decision for a geofence "Enter" event: should we schedule a delayed
+ * nudge that the user is sitting in a pub? The delay is the dwell gate; a later
+ * Exit can cancel the notification before it fires.
  */
 export function decidePubReminderOnEnter(input: PubReminderEnterInput): PubReminderDecision {
   const { nowMs, isEveningWindow, hasActiveCounterSession, pub, previousState } = input;
-  const baseState: PubReminderState = {
-    lastNotificationAtMs: previousState.lastNotificationAtMs,
-    lastNotificationPubId: previousState.lastNotificationPubId,
-  };
+  const baseState = normalizePubReminderState(previousState, nowMs);
 
   if (!isEveningWindow || hasActiveCounterSession || !pub) {
     return { nextState: baseState, shouldNotify: false };
   }
 
-  if (recentlyNotified(previousState, pub.id, nowMs)) {
+  if (baseState.pendingReminder?.pubId === pub.id) {
     return { nextState: baseState, shouldNotify: false };
   }
 
+  if (recentlyNotifiedGlobally(baseState, nowMs) || alreadyNotifiedToday(baseState, nowMs)) {
+    return { nextState: baseState, shouldNotify: false };
+  }
+
+  const pending: PendingPubReminder = {
+    pubId: pub.id,
+    pubName: pub.name,
+    enteredAtMs: nowMs,
+    scheduledAtMs: nowMs,
+    fireAtMs: nowMs + PUB_REMINDER_DWELL_MS,
+  };
+
   return {
     nextState: {
-      lastNotificationAtMs: nowMs,
-      lastNotificationPubId: pub.id,
+      lastReminderFireAtMs: baseState.lastReminderFireAtMs,
+      lastReminderDayKey: baseState.lastReminderDayKey,
+      pendingReminder: pending,
     },
     shouldNotify: true,
     notificationPub: {
       id: pub.id,
       name: pub.name,
     },
+    cancelPendingNotificationId: baseState.pendingReminder?.notificationId,
   };
 }
 
