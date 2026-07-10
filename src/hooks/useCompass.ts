@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { useFocusEffect } from 'expo-router';
+import { AppState } from 'react-native';
 import {
   useDerivedValue,
   useSharedValue,
@@ -272,11 +273,32 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
     };
   }, [positionLat, positionLng, maxDistanceKm, activeBeerBrandKey, searchRetryNonce]);
 
-  // — Permission check on mount —
+  // — Permission check on mount / return from system settings —
   useEffect(() => {
-    checkLocationPermission().then(setPermissionState).catch(() => {
-      setPermissionState('denied');
+    let mounted = true;
+
+    const refreshPermission = () => {
+      checkLocationPermission()
+        .then((state) => {
+          if (mounted) setPermissionState(state);
+        })
+        .catch(() => {
+          if (mounted) setPermissionState('denied');
+        });
+    };
+
+    refreshPermission();
+    const subscription = AppState.addEventListener('change', (state) => {
+      // iOS does not remount the tab after Linking.openSettings(). Re-read the
+      // permission when the user comes back so enabling location takes effect
+      // immediately instead of leaving the permission screen stuck.
+      if (state === 'active') refreshPermission();
     });
+
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
   }, []);
 
   // — Target pub state —

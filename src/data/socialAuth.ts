@@ -19,7 +19,12 @@
 
 import { Platform } from 'react-native';
 
-export type SocialAuthErrorCode = 'cancelled' | 'unsupported' | 'unavailable' | 'failed';
+export type SocialAuthErrorCode =
+  | 'cancelled'
+  | 'unsupported'
+  | 'unavailable'
+  | 'misconfigured'
+  | 'failed';
 
 export class SocialAuthError extends Error {
   code: SocialAuthErrorCode;
@@ -54,6 +59,14 @@ function looksCancelled(err: unknown): boolean {
     code === 'SIGN_IN_CANCELLED' ||
     code === '-5' // google statusCodes.SIGN_IN_CANCELLED on some platforms
   );
+}
+
+function isGoogleConfigurationError(err: unknown): boolean {
+  const code = String((err as { code?: unknown })?.code ?? '');
+  const message = String((err as { message?: unknown })?.message ?? '');
+  // Android returns Google Play services status 10 after account selection when
+  // the package/signing-certificate pair is missing from the OAuth client.
+  return code === '10' || /DEVELOPER_ERROR/i.test(code) || /DEVELOPER_ERROR/i.test(message);
 }
 
 // ---------------------------------------------------------------------------
@@ -119,6 +132,12 @@ export async function getGoogleIdToken(): Promise<string> {
   } catch (err) {
     if (err instanceof SocialAuthError) throw err;
     if (looksCancelled(err)) throw new SocialAuthError('cancelled');
+    if (isGoogleConfigurationError(err)) {
+      throw new SocialAuthError(
+        'misconfigured',
+        'Google Sign-In release certificate is not configured.',
+      );
+    }
     throw new SocialAuthError('failed', (err as Error)?.message);
   }
 }

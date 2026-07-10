@@ -1,7 +1,9 @@
 import React from 'react';
+import { AppState } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
 
 import { useDevicePosition } from '@/compass/useDevicePosition';
+import { checkLocationPermission } from '@/compass/permissions';
 import { decodeGeohash8, geohash8 } from '@/data/geohash';
 import { fetchPubsNear, findNearbyPubs, type Pub } from '@/data/pubs';
 import { useTallyStore } from '@/stores/tallyStore';
@@ -50,6 +52,7 @@ type NearbyResult = { pub: Pub; distanceMeters: number };
 
 let currentPosition: Position | null = null;
 let currentNearby: NearbyResult[] = [];
+let appStateHandler: ((state: string) => void) | null = null;
 
 function renderNearbyHook() {
   let latestResult: ReturnType<typeof useNearbyPub> | undefined;
@@ -105,6 +108,12 @@ function setNearby(pub: Pub, distanceMeters = 20): void {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  appStateHandler = null;
+  (AppState.addEventListener as jest.Mock).mockImplementation((_event, handler) => {
+    appStateHandler = handler;
+    return { remove: jest.fn() };
+  });
+  (checkLocationPermission as jest.Mock).mockResolvedValue('granted');
   currentPosition = null;
   currentNearby = [];
   useTallyStore.setState({ current: null, history: [] });
@@ -115,6 +124,24 @@ beforeEach(() => {
 });
 
 describe('useNearbyPub', () => {
+  it('refreshes location permission after returning from system settings', async () => {
+    (checkLocationPermission as jest.Mock)
+      .mockResolvedValueOnce('denied')
+      .mockResolvedValueOnce('granted');
+    const hook = renderNearbyHook();
+
+    await waitForExpectation(() => expect(hook.result.permissionState).toBe('denied'));
+
+    await act(async () => {
+      appStateHandler?.('active');
+      await Promise.resolve();
+    });
+
+    expect(hook.result.permissionState).toBe('granted');
+    expect(checkLocationPermission).toHaveBeenCalledTimes(2);
+    hook.unmount();
+  });
+
   it('does not make auto-detection sticky before a session, then pins the active evening pub', async () => {
     setNearby(PUB_A);
     const hook = renderNearbyHook();

@@ -548,6 +548,13 @@ function mapSocialError(err: unknown): AuthResult {
     if (err.code === 'unsupported') {
       return { ok: false, code: 'unsupported', detail: 'Tato možnost není na tomto zařízení dostupná.' };
     }
+    if (err.code === 'misconfigured') {
+      return {
+        ok: false,
+        code: 'misconfigured',
+        detail: 'Google přihlášení teď není správně nastavené. Zkus zatím přihlášení e-mailem.',
+      };
+    }
     return {
       ok: false,
       code: err.code,
@@ -562,6 +569,12 @@ export async function signInWithGoogle(): Promise<AuthResult> {
   try {
     idToken = await getGoogleIdToken();
   } catch (err) {
+    if (!(err instanceof SocialAuthError) || err.code !== 'cancelled') {
+      trackApiFailure('social_auth', {
+        reason: `google_${err instanceof SocialAuthError ? err.code : 'failed'}`,
+        error: err,
+      });
+    }
     return mapSocialError(err);
   }
   const res = await authFetch('/v1/auth/google', { bearer: 'ensure', body: { id_token: idToken } });

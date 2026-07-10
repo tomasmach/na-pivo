@@ -420,6 +420,24 @@ describe('signInWithGoogle', () => {
     expect(result.code).toBe('unsupported');
     expect(result.detail).toBe('Tato možnost není na tomto zařízení dostupná.');
   });
+
+  it('surfaces and records a release OAuth configuration error', async () => {
+    mockGetGoogleIdToken.mockRejectedValueOnce(new SocialAuthError('misconfigured'));
+    const spy = installFetch(fetchResolving(200, {}));
+
+    const result = await auth.signInWithGoogle();
+
+    expect(result).toEqual({
+      ok: false,
+      code: 'misconfigured',
+      detail: 'Google přihlášení teď není správně nastavené. Zkus zatím přihlášení e-mailem.',
+    });
+    expect(spy).not.toHaveBeenCalled();
+    expect(mockTrackApiFailure).toHaveBeenCalledWith('social_auth', {
+      reason: 'google_misconfigured',
+      error: expect.any(SocialAuthError),
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

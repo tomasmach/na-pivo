@@ -16,6 +16,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
+import { AppState } from 'react-native';
 
 import { useDevicePosition } from '@/compass/useDevicePosition';
 import { checkLocationPermission, ensureLocationPermission, openSystemSettings } from '@/compass/permissions';
@@ -82,11 +83,29 @@ export function useNearbyPub(): UseNearbyPubResult {
   // it — the active pub is sticky for the whole sitting.
   const pinnedRef = useRef(false);
 
-  // — Permission on mount —
+  // — Permission on mount / return from system settings —
   useEffect(() => {
-    checkLocationPermission()
-      .then(setPermissionState)
-      .catch(() => setPermissionState('denied'));
+    let mounted = true;
+
+    const refreshPermission = () => {
+      checkLocationPermission()
+        .then((state) => {
+          if (mounted) setPermissionState(state);
+        })
+        .catch(() => {
+          if (mounted) setPermissionState('denied');
+        });
+    };
+
+    refreshPermission();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refreshPermission();
+    });
+
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
   }, []);
 
   // — Focus gate: only watch GPS while this tab is on screen —
