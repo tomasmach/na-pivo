@@ -169,6 +169,7 @@ from .serializers import (
     FriendProfileSerializer,
     FriendPubActivitySerializer,
     FriendRequestCreateSerializer,
+    FriendsBeerPhotoFeedSerializer,
     FriendSearchQuerySerializer,
     FriendSettingsPatchSerializer,
     FriendshipSerializer,
@@ -4438,6 +4439,41 @@ class FriendBeerPhotosView(APIView):
         )
         return Response(
             {"photos": BeerPhotoSerializer(rows, many=True, context={"request": request}).data},
+            status=status.HTTP_200_OK,
+        )
+
+
+class FriendsBeerPhotosFeedView(APIView):
+    """GET /v1/friends/beer-photos/feed — fresh photos from accepted friends."""
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends_dashboard"
+
+    def get(self, request: Request) -> Response:
+        friend_ids = set(_accepted_friend_ids(request.user))
+        friend_ids.difference_update(_blocked_account_ids(request.user))
+        cutoff = dj_timezone.now() - timedelta(days=7)
+        contest = current_photo_contest()
+        rows = (
+            _beer_photo_queryset(contest)
+            .filter(
+                account_id__in=friend_ids,
+                account__status=Account.Status.ACTIVE,
+                account__ghost_mode=False,
+                visibility=BeerPhoto.Visibility.FRIENDS,
+                taken_at__gte=cutoff,
+            )
+            .select_related("account")
+            .order_by("-taken_at")[:30]
+        )
+        return Response(
+            {
+                "photos": FriendsBeerPhotoFeedSerializer(
+                    rows, many=True, context={"request": request}
+                ).data
+            },
             status=status.HTTP_200_OK,
         )
 

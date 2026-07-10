@@ -61,6 +61,7 @@ from .views import (
     FriendNotificationReadView,
     FriendRequestActionView,
     FriendRequestView,
+    FriendsBeerPhotosFeedView,
     FriendSearchView,
     FriendSettingsView,
     FriendsLiveView,
@@ -110,6 +111,11 @@ urlpatterns = [
     # --- photo diary + FotoPivař contest ---
     path("beer-photos", BeerPhotoView.as_view(), name="beer-photos"),
     path("beer-photos/<uuid:photo_id>", BeerPhotoView.as_view(), name="beer-photos-delete"),
+    path(
+        "friends/beer-photos/feed",
+        FriendsBeerPhotosFeedView.as_view(),
+        name="friends-beer-photos-feed",
+    ),
     path("photo-contest", PhotoContestView.as_view(), name="photo-contest"),
     path(
         "photo-contest/entries",

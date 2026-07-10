@@ -77,6 +77,23 @@ def _make_friends(a: Account, b: Account) -> None:
     )
 
 
+def _create_photo(
+    account: Account,
+    caption: str,
+    *,
+    visibility: str = BeerPhoto.Visibility.FRIENDS,
+    taken_at=None,
+) -> BeerPhoto:
+    return BeerPhoto.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        image=f"beer-photos/{account.public_id}/{uuid.uuid4()}.webp",
+        caption=caption,
+        visibility=visibility,
+        taken_at=taken_at or timezone.now(),
+    )
+
+
 def _jpeg_bytes(size: tuple[int, int] = (800, 600), color=(210, 160, 40)) -> bytes:
     """A solid-colour JPEG of the given size."""
     img = Image.new("RGB", size, color)
@@ -307,6 +324,72 @@ def test_friend_photos_visibility_gating(client):
     owner.save(update_fields=["ghost_mode"])
     as_friend_ghosted = client.get(url, **_auth(token_friend))
     assert as_friend_ghosted.status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest.mark.django_db
+def test_friends_beer_photos_feed_applies_visibility_and_author_gating(client):
+    token, requester = _register(client, "janek")
+    _friend_token, friend = _register(client, "petr")
+    _blocked_token, blocked = _register(client, "blokovany")
+    _ghost_token, ghost = _register(client, "duch")
+    _inactive_token, inactive = _register(client, "spici")
+    _stranger_token, stranger = _register(client, "cizinec")
+    for account in (friend, blocked, ghost, inactive):
+        _make_friends(requester, account)
+    FriendBlock.objects.create(blocker=blocked, blocked=requester)
+    ghost.ghost_mode = True
+    ghost.save(update_fields=["ghost_mode"])
+    inactive.status = Account.Status.PENDING_DELETION
+    inactive.save(update_fields=["status"])
+
+    visible = _create_photo(friend, "od kamaráda")
+    _create_photo(requester, "moje")
+    _create_photo(friend, "soukromá", visibility=BeerPhoto.Visibility.PRIVATE)
+    _create_photo(blocked, "blokovaná")
+    _create_photo(ghost, "duch")
+    _create_photo(inactive, "neaktivní")
+    _create_photo(stranger, "cizí")
+    _create_photo(friend, "stará", taken_at=timezone.now() - timedelta(days=7, seconds=1))
+
+    response = client.get("/v1/friends/beer-photos/feed", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert [photo["id"] for photo in response.json()["photos"]] == [str(visible.public_id)]
+    assert response.json()["photos"][0]["account"] == {
+        "nickname": "petr",
+        "display_name": "Petr",
+        "avatar_url": None,
+    }
+
+
+@pytest.mark.django_db
+def test_friends_beer_photos_feed_orders_limits_and_joins_accounts(
+    client, django_assert_num_queries
+):
+    token, requester = _register(client, "janek")
+    _friend_token, friend = _register(client, "petr")
+    _make_friends(requester, friend)
+    now = timezone.now()
+    photos = [
+        _create_photo(friend, f"foto {index}", taken_at=now - timedelta(minutes=index))
+        for index in range(31)
+    ]
+    current_photo_contest()
+
+    with django_assert_num_queries(5):
+        response = client.get("/v1/friends/beer-photos/feed", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    payload = response.json()["photos"]
+    assert len(payload) == 30
+    assert [photo["id"] for photo in payload] == [str(photo.public_id) for photo in photos[:30]]
+
+
+@pytest.mark.django_db
+def test_friends_beer_photos_feed_requires_authentication(client):
+    response = client.get("/v1/friends/beer-photos/feed")
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
 @pytest.mark.django_db

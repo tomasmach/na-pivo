@@ -41,7 +41,6 @@ import uuid
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import EmailValidator
 from django.db import IntegrityError
-from django.db.models import Count, Q, Sum
 from django.utils import timezone as dj_timezone
 from rest_framework import serializers
 
@@ -992,6 +991,25 @@ class BeerPhotoSerializer(serializers.ModelSerializer):
 
     def get_in_contest(self, obj: BeerPhoto) -> bool:
         return bool(getattr(obj, "in_contest", False))
+
+
+class BeerPhotoFeedAccountSerializer(FriendProfileSerializer):
+    """Compact author block for the friends beer-photo feed."""
+
+    class Meta:
+        model = Account
+        fields = ["nickname", "display_name", "avatar_url"]
+        read_only_fields = fields
+
+
+class FriendsBeerPhotoFeedSerializer(BeerPhotoSerializer):
+    """Beer photo payload extended additively with its author."""
+
+    account = BeerPhotoFeedAccountSerializer(read_only=True)
+
+    class Meta(BeerPhotoSerializer.Meta):
+        fields = [*BeerPhotoSerializer.Meta.fields, "account"]
+        read_only_fields = fields
 
 
 class PhotoContestAccountSerializer(FriendProfileSerializer):
