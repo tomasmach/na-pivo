@@ -42,6 +42,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import EmailValidator
 from django.db import IntegrityError
 from django.db.models import Count, Q, Sum
+from django.utils import timezone as dj_timezone
 from rest_framework import serializers
 
 from pubs import accounts
@@ -59,6 +60,7 @@ from pubs.models import (
     Account,
     BeerCheckIn,
     BeerCheckInReaction,
+    BeerPhoto,
     ClientEvent,
     ContentReport,
     DrinkLog,
@@ -70,6 +72,8 @@ from pubs.models import (
     FriendNotification,
     FriendPubActivity,
     Friendship,
+    PhotoContest,
+    PhotoContestEntry,
     PubAmenityVote,
     PubNameCorrection,
     PubRating,
@@ -312,6 +316,10 @@ class ContentReportRequestSerializer(serializers.Serializer):
         default="",
         trim_whitespace=True,
     )
+    # Additive (photo diary): report a specific beer photo. When present the
+    # view verifies the reporter can actually SEE that photo and snapshots its
+    # URL + caption for moderation.
+    photo_id = serializers.UUIDField(required=False, allow_null=True)
 
 
 class RestorePurchasesRequestSerializer(serializers.Serializer):
@@ -825,6 +833,226 @@ class BeerCheckInSerializer(serializers.ModelSerializer):
             if row.account_id == account_id:
                 return row.kind
         return None
+
+
+def _photo_image_url(image_field, request) -> str | None:
+    """Absolute media URL for a stored photo, mirroring the avatar URL style.
+
+    Unlike avatars there is NO ``?v=`` cache-bust: the storage path embeds the
+    photo's immutable uuid and the file is written once and never re-encoded,
+    so long immutable caching is exactly right.
+    """
+    if not image_field:
+        return None
+    try:
+        url = image_field.url
+    except (ValueError, AttributeError):
+        return None
+    if request is not None:
+        url = request.build_absolute_uri(url)
+    return url
+
+
+class BeerPhotoUploadSerializer(serializers.Serializer):
+    """Form fields for POST /v1/beer-photos (the ``image`` file part is read
+    from request.FILES by the view, like the avatar upload)."""
+
+    client_id = serializers.UUIDField()
+    caption = serializers.CharField(
+        max_length=280,
+        required=False,
+        allow_blank=True,
+        default="",
+        trim_whitespace=True,
+    )
+    pub_cache_key = serializers.CharField(
+        max_length=12,
+        required=False,
+        allow_blank=True,
+        default="",
+        trim_whitespace=True,
+    )
+    pub_name = serializers.CharField(
+        max_length=200,
+        required=False,
+        allow_blank=True,
+        default="",
+        trim_whitespace=True,
+    )
+    pub_city = serializers.CharField(
+        max_length=120,
+        required=False,
+        allow_blank=True,
+        default="",
+        trim_whitespace=True,
+    )
+    visibility = serializers.ChoiceField(
+        choices=BeerPhoto.Visibility.choices,
+        default=BeerPhoto.Visibility.FRIENDS,
+    )
+    taken_at = serializers.DateTimeField(required=False, allow_null=True)
+
+    def validate_taken_at(self, value):
+        if value is None:
+            return None
+        # taken_at drives the diary ordering; a wrong client clock must not pin
+        # a photo above newer ones forever, so future stamps clamp to now.
+        return min(value, dj_timezone.now())
+
+
+class BeerPhotoSerializer(serializers.ModelSerializer):
+    """One beer diary photo. Empty pub tags serialize as null (not ""), and
+    ``in_contest`` reads the view's Exists annotation against the current OPEN
+    round (defaults False when the view did not annotate)."""
+
+    id = serializers.UUIDField(source="public_id", read_only=True)
+    image_url = serializers.SerializerMethodField()
+    pub_cache_key = serializers.SerializerMethodField()
+    pub_name = serializers.SerializerMethodField()
+    pub_city = serializers.SerializerMethodField()
+    in_contest = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BeerPhoto
+        fields = [
+            "id",
+            "client_id",
+            "image_url",
+            "caption",
+            "pub_cache_key",
+            "pub_name",
+            "pub_city",
+            "visibility",
+            "taken_at",
+            "created_at",
+            "in_contest",
+        ]
+        read_only_fields = fields
+
+    def get_image_url(self, obj: BeerPhoto) -> str | None:
+        return _photo_image_url(obj.image, self.context.get("request"))
+
+    def get_pub_cache_key(self, obj: BeerPhoto) -> str | None:
+        return obj.pub_cache_key or None
+
+    def get_pub_name(self, obj: BeerPhoto) -> str | None:
+        return obj.pub_name or None
+
+    def get_pub_city(self, obj: BeerPhoto) -> str | None:
+        return obj.pub_city or None
+
+    def get_in_contest(self, obj: BeerPhoto) -> bool:
+        return bool(getattr(obj, "in_contest", False))
+
+
+class PhotoContestAccountSerializer(FriendProfileSerializer):
+    """Contest author block: the beer-checkin feed's author shape (nickname /
+    display_name / avatar_url via FriendProfileSerializer) keyed ``public_id``
+    per the contest wire contract."""
+
+    id = None  # remove the inherited "id" alias; the contest wire uses public_id
+
+    class Meta:
+        model = Account
+        fields = ["public_id", "nickname", "display_name", "avatar_url"]
+        read_only_fields = fields
+
+
+class PhotoContestSerializer(serializers.ModelSerializer):
+    """Compact contest-round block for GET /v1/photo-contest."""
+
+    id = serializers.UUIDField(source="public_id", read_only=True)
+
+    class Meta:
+        model = PhotoContest
+        fields = ["id", "period_start", "period_end", "status"]
+        read_only_fields = fields
+
+
+class PhotoContestEntrySerializer(serializers.ModelSerializer):
+    """One contest entry with its author, photo payload and live vote state.
+
+    ``votes`` reads the view's ``vote_count`` annotation (one aggregate, no
+    N+1); ``my_vote`` / ``is_mine`` need ``context['my_vote_entry_pk']`` /
+    ``context['account']``.
+    """
+
+    id = serializers.UUIDField(source="public_id", read_only=True)
+    account = PhotoContestAccountSerializer(read_only=True)
+    photo_id = serializers.UUIDField(source="photo.public_id", read_only=True)
+    image_url = serializers.SerializerMethodField()
+    caption = serializers.CharField(source="photo.caption", read_only=True)
+    pub_name = serializers.SerializerMethodField()
+    pub_city = serializers.SerializerMethodField()
+    votes = serializers.SerializerMethodField()
+    my_vote = serializers.SerializerMethodField()
+    is_mine = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PhotoContestEntry
+        fields = [
+            "id",
+            "account",
+            "photo_id",
+            "image_url",
+            "caption",
+            "pub_name",
+            "pub_city",
+            "votes",
+            "my_vote",
+            "is_mine",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    def get_image_url(self, obj: PhotoContestEntry) -> str | None:
+        return _photo_image_url(obj.photo.image, self.context.get("request"))
+
+    def get_pub_name(self, obj: PhotoContestEntry) -> str | None:
+        return obj.photo.pub_name or None
+
+    def get_pub_city(self, obj: PhotoContestEntry) -> str | None:
+        return obj.photo.pub_city or None
+
+    def get_votes(self, obj: PhotoContestEntry) -> int:
+        return int(getattr(obj, "vote_count", 0) or 0)
+
+    def get_my_vote(self, obj: PhotoContestEntry) -> bool:
+        return self.context.get("my_vote_entry_pk") == obj.pk
+
+    def get_is_mine(self, obj: PhotoContestEntry) -> bool:
+        account = self.context.get("account")
+        return account is not None and obj.account_id == getattr(account, "pk", None)
+
+
+class PhotoContestWinnerSerializer(serializers.ModelSerializer):
+    """One top-3 result of a CLOSED round (``last_results.winners``)."""
+
+    rank = serializers.IntegerField(source="final_rank", read_only=True)
+    account = PhotoContestAccountSerializer(read_only=True)
+    image_url = serializers.SerializerMethodField()
+    caption = serializers.CharField(source="photo.caption", read_only=True)
+    votes = serializers.IntegerField(source="final_votes", read_only=True)
+
+    class Meta:
+        model = PhotoContestEntry
+        fields = ["rank", "account", "image_url", "caption", "votes"]
+        read_only_fields = fields
+
+    def get_image_url(self, obj: PhotoContestEntry) -> str | None:
+        return _photo_image_url(obj.photo.image, self.context.get("request"))
+
+
+class PhotoContestEnterSerializer(serializers.Serializer):
+    """Request body for POST /v1/photo-contest/entries."""
+
+    photo_id = serializers.UUIDField()
+
+
+class PhotoContestVoteSerializer(serializers.Serializer):
+    """Request body for POST /v1/photo-contest/vote."""
+
+    entry_id = serializers.UUIDField()
 
 
 class FriendBlockRequestSerializer(serializers.Serializer):
@@ -1708,6 +1936,8 @@ class AccountAchievementsSerializer(serializers.Serializer):
     cartographer = serializers.BooleanField(read_only=True)
     completionist = serializers.BooleanField(read_only=True)
     fact_machine = serializers.BooleanField(read_only=True)
+    # FotoPivař: won a biweekly photo contest round (additive, like the Mapér set).
+    foto_pivar = serializers.BooleanField(read_only=True)
 
 
 def _account_stats(obj: Account) -> dict:
@@ -1744,6 +1974,9 @@ def _account_stats(obj: Account) -> dict:
         "first_mapper_count": int(getattr(usage, "first_mapper_count", 0) or 0),
         "amenity_votes_count": int(getattr(usage, "amenity_votes_count", 0) or 0),
         "completed_pubs_count": int(getattr(usage, "completed_pubs_count", 0) or 0),
+        # FotoPivař stored counter (feeds the foto_pivar achievement only; not
+        # exposed in the stats block itself).
+        "photo_contest_wins_count": int(getattr(usage, "photo_contest_wins_count", 0) or 0),
     }
 
 
@@ -1932,6 +2165,8 @@ class AccountMeSerializer(serializers.ModelSerializer):
                 "cartographer": stats["mapped_pubs_count"] >= 25,
                 "completionist": stats["completed_pubs_count"] >= 1,
                 "fact_machine": stats["amenity_votes_count"] >= 100,
+                # FotoPivař: derived from the stored, monotonic wins counter.
+                "foto_pivar": stats["photo_contest_wins_count"] >= 1,
             }
         ).data
 

@@ -95,6 +95,7 @@ from pubs.models import (
     BeerBrand,
     BeerCheckIn,
     BeerCheckInReaction,
+    BeerPhoto,
     ClientEvent,
     ContentReport,
     DrinkLog,
@@ -107,6 +108,9 @@ from pubs.models import (
     FriendPubActivity,
     FriendPubActivityRecipient,
     Friendship,
+    PhotoContest,
+    PhotoContestEntry,
+    PhotoContestVote,
     PubAmenity,
     PubAmenityVote,
     PubAmenityVoteTombstone,
@@ -124,6 +128,8 @@ from pubs.models import (
     ReleaseNote,
     UserAddedPub,
 )
+from pubs.photo_contest import current_photo_contest
+from pubs.photos import BeerPhotoError, process_beer_photo
 from pubs.user_added_pub_geocoding import resolve_user_added_pub_location
 
 from .authentication import AccountTokenAuthentication
@@ -138,6 +144,8 @@ from .serializers import (
     BeerCheckInReactionSerializer,
     BeerCheckInRequestSerializer,
     BeerCheckInSerializer,
+    BeerPhotoSerializer,
+    BeerPhotoUploadSerializer,
     BlockedPubsResponseSerializer,
     ClientEventRequestSerializer,
     ContentReportRequestSerializer,
@@ -159,6 +167,11 @@ from .serializers import (
     FriendSettingsPatchSerializer,
     FriendshipSerializer,
     MenuScanResultSerializer,
+    PhotoContestEnterSerializer,
+    PhotoContestEntrySerializer,
+    PhotoContestSerializer,
+    PhotoContestVoteSerializer,
+    PhotoContestWinnerSerializer,
     PubAmenityKindSerializer,
     PubAmenityReadQuerySerializer,
     PubAmenityVotesRequestSerializer,
@@ -1787,19 +1800,56 @@ class ContentReportView(APIView):
             public_id=data["target_account_id"],
             status=Account.Status.ACTIVE,
         ).first()
+
+        # Additive (photo diary): a report may point at a specific beer photo.
+        # The photo must belong to the reported account, and the reporter must
+        # actually be able to SEE it — either through a contest entry (any
+        # round; entering makes a photo visible to every contest viewer) or
+        # through friends visibility + an ACCEPTED friendship. That check IS
+        # the authorization: a contest photo of a non-public profile must stay
+        # reportable, so the profile gate below is skipped for photo reports.
+        photo = None
+        if data.get("photo_id") is not None:
+            photo = (
+                BeerPhoto.objects.select_related("account")
+                .filter(public_id=data["photo_id"])
+                .first()
+            )
+            photo_visible = (
+                photo is not None
+                and target is not None
+                and photo.account_id == target.pk
+                and (
+                    photo.contest_entries.exists()
+                    or (
+                        photo.visibility == BeerPhoto.Visibility.FRIENDS
+                        and Friendship.objects.filter(
+                            Q(requester=request.user, recipient=target)
+                            | Q(requester=target, recipient=request.user),
+                            status=Friendship.Status.ACCEPTED,
+                        ).exists()
+                    )
+                )
+            )
+            if not photo_visible:
+                return _photo_not_found()
+
         # A profile the reporter can actually see can be reported: a public
         # profile, or a non-public one they share a friendship with. "Share a
         # friendship" includes a still-pending request in either direction, not
         # just accepted ones: the friends dashboard shows the requester's profile
         # in its incoming/outgoing request lists, so an abusive private account
         # that has only sent a request must stay reportable.
-        can_report = target is not None and (
-            target.is_public
-            or Friendship.objects.filter(
-                Q(requester=request.user, recipient=target)
-                | Q(requester=target, recipient=request.user),
-                status__in=(Friendship.Status.ACCEPTED, Friendship.Status.PENDING),
-            ).exists()
+        can_report = photo is not None or (
+            target is not None
+            and (
+                target.is_public
+                or Friendship.objects.filter(
+                    Q(requester=request.user, recipient=target)
+                    | Q(requester=target, recipient=request.user),
+                    status__in=(Friendship.Status.ACCEPTED, Friendship.Status.PENDING),
+                ).exists()
+            )
         )
         if not can_report:
             return Response(
@@ -1819,6 +1869,16 @@ class ContentReportView(APIView):
             "has_avatar": bool(target.avatar),
             "is_public": target.is_public,
         }
+        if photo is not None:
+            # Snapshot the reported photo so moderation keeps context even if
+            # the user deletes it before the admin reviews the report.
+            try:
+                photo_url = request.build_absolute_uri(photo.image.url)
+            except (ValueError, AttributeError):
+                photo_url = None
+            snapshot["photo_id"] = str(photo.public_id)
+            snapshot["photo_url"] = photo_url
+            snapshot["photo_caption"] = photo.caption
         report = ContentReport.objects.create(
             reporter=request.user,
             target_account=target,
@@ -3795,6 +3855,431 @@ class BeerDetailView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+def _beer_photo_queryset(contest: PhotoContest):
+    """Photos annotated with ``in_contest`` against the given (current open) round."""
+    return BeerPhoto.objects.annotate(
+        in_contest=Exists(
+            PhotoContestEntry.objects.filter(photo=OuterRef("pk"), contest=contest)
+        )
+    )
+
+
+def _photo_contest_entry_queryset(contest: PhotoContest):
+    """Contest entries with author + photo joined and votes pre-aggregated."""
+    return (
+        PhotoContestEntry.objects.filter(contest=contest)
+        .select_related("account", "photo")
+        .annotate(vote_count=Count("votes"))
+    )
+
+
+def _photo_contest_entry_context(request: Request, contest: PhotoContest) -> dict:
+    """Serializer context for PhotoContestEntrySerializer (one vote lookup)."""
+    my_vote = PhotoContestVote.objects.filter(contest=contest, voter=request.user).first()
+    return {
+        "request": request,
+        "account": request.user,
+        "my_vote_entry_pk": my_vote.entry_id if my_vote else None,
+    }
+
+
+def _photo_not_found() -> Response:
+    return Response(
+        {"detail": "Tuhle fotku nevidím.", "code": "photo_not_found"},
+        status=status.HTTP_404_NOT_FOUND,
+    )
+
+
+class BeerPhotoView(APIView):
+    """GET/POST /v1/beer-photos + DELETE /v1/beer-photos/<id> — beer photo diary.
+
+    POST is ``multipart/form-data`` with an ``image`` file part plus form fields
+    (``client_id`` required). Idempotent on (account, client_id): an offline
+    retry returns the EXISTING photo with 200 and never re-processes the image.
+    Every upload is re-decoded and re-encoded to a downscaled webp (EXIF —
+    including any GPS — stripped). A per-account total cap bounds media-volume
+    cost. DELETE removes the storage file too; an entry in the current open
+    contest (and its votes) cascades away with the photo.
+
+    ``parser_classes`` is overridden LOCALLY to MultiPartParser — the global
+    default stays JSON-only so no other endpoint is affected.
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser]
+    throttle_classes = [ScopedRateThrottle]
+
+    def get_throttles(self):
+        # POST re-encodes an image and writes to the media volume, so it gets
+        # the tight per-account daily budget; GET/DELETE are DB-only and reuse
+        # the friends write scope like the other diary endpoints.
+        self.throttle_scope = (
+            "beer_photo_upload" if self.request.method == "POST" else "friends"
+        )
+        return super().get_throttles()
+
+    def get(self, request: Request) -> Response:
+        contest = current_photo_contest()
+        rows = (
+            _beer_photo_queryset(contest)
+            .filter(account=request.user)
+            .order_by("-taken_at")[: settings.BEER_PHOTO_MAX_PER_ACCOUNT]
+        )
+        return Response(
+            {"photos": BeerPhotoSerializer(rows, many=True, context={"request": request}).data},
+            status=status.HTTP_200_OK,
+        )
+
+    def post(self, request: Request) -> Response:
+        serializer = BeerPhotoUploadSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        data = serializer.validated_data
+        contest = current_photo_contest()
+
+        def _existing_response(photo_pk: int) -> Response:
+            fresh = _beer_photo_queryset(contest).get(pk=photo_pk)
+            return Response(
+                {"photo": BeerPhotoSerializer(fresh, context={"request": request}).data},
+                status=status.HTTP_200_OK,
+            )
+
+        # Idempotent offline retry: same (account, client_id) returns the
+        # existing row WITHOUT re-processing (or even reading) the image.
+        existing = BeerPhoto.objects.filter(
+            account=request.user, client_id=data["client_id"]
+        ).first()
+        if existing is not None:
+            return _existing_response(existing.pk)
+
+        # Check-then-insert without locking: two concurrent uploads can overshoot
+        # the cap by a request or two, which is fine — the beer_photo_upload
+        # throttle bounds the burst and the cap is a soft storage guard, not an
+        # invariant worth serializing every upload for.
+        if (
+            BeerPhoto.objects.filter(account=request.user).count()
+            >= settings.BEER_PHOTO_MAX_PER_ACCOUNT
+        ):
+            return Response(
+                {
+                    "detail": "Fotodeník je plný. Smaž nejdřív nějakou starší fotku.",
+                    "code": "photo_limit_reached",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        upload = request.FILES.get("image")
+        if upload is None:
+            return Response(
+                {"detail": "Chybí soubor s fotkou.", "code": "photo_missing"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            content = process_beer_photo(upload)
+        except BeerPhotoError as exc:
+            return _coded_error(exc)
+
+        photo = BeerPhoto(
+            account=request.user,
+            client_id=data["client_id"],
+            caption=data.get("caption") or "",
+            pub_cache_key=data.get("pub_cache_key") or "",
+            pub_name=data.get("pub_name") or "",
+            pub_city=data.get("pub_city") or "",
+            visibility=data.get("visibility") or BeerPhoto.Visibility.FRIENDS,
+            taken_at=data.get("taken_at") or dj_timezone.now(),
+        )
+        # upload_to ignores the supplied name and builds the stable
+        # beer-photos/<account>/<photo>.webp path from the instance's uuids.
+        photo.image.save("photo.webp", content, save=False)
+        try:
+            with transaction.atomic():
+                photo.save()
+        except IntegrityError:
+            # A concurrent retry of the same client_id won the insert race;
+            # drop this request's freshly written file and return the winner.
+            photo.image.delete(save=False)
+            existing = BeerPhoto.objects.filter(
+                account=request.user, client_id=data["client_id"]
+            ).first()
+            if existing is None:
+                return _internal_error()
+            return _existing_response(existing.pk)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("beer_photos: upsert failed: %s", exc, exc_info=True)
+            photo.image.delete(save=False)
+            return _internal_error()
+
+        fresh = _beer_photo_queryset(contest).get(pk=photo.pk)
+        return Response(
+            {"photo": BeerPhotoSerializer(fresh, context={"request": request}).data},
+            status=status.HTTP_201_CREATED,
+        )
+
+    def delete(self, request: Request, photo_id=None) -> Response:
+        photo = BeerPhoto.objects.filter(account=request.user, public_id=photo_id).first()
+        if photo is None:
+            return _photo_not_found()
+        # Remove the storage file first, then the row; an entry in the current
+        # OPEN contest (and its votes) CASCADE away. Closed-round history stays
+        # durable where it matters: final_rank was already stamped and the
+        # monotonic photo_contest_wins_count is never decremented.
+        photo.image.delete(save=False)
+        photo.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class FriendBeerPhotosView(APIView):
+    """GET /v1/friends/<public_id>/beer-photos — a friend's photo diary.
+
+    Visible ONLY with an accepted friendship, no block in either direction, an
+    ACTIVE target account and ghost mode OFF (mirroring every other friend
+    surface); anything else is a 404 so the endpoint never leaks whether the
+    account exists. Private photos are never included.
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends_dashboard"
+
+    def get(self, request: Request, public_id) -> Response:
+        target = Account.objects.filter(
+            public_id=public_id, status=Account.Status.ACTIVE
+        ).first()
+        not_found = Response(
+            {"detail": "Tenhle profil nevidím.", "code": "profile_not_found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+        if target is None or target.pk == request.user.pk:
+            return not_found
+        # Ghost mode hides the account from every friend surface (feed, live,
+        # detail) — the photo diary is no exception. Same opaque 404.
+        if target.ghost_mode:
+            return not_found
+        if target.pk in _blocked_account_ids(request.user):
+            return not_found
+        if target.pk not in _accepted_friend_ids(request.user):
+            return not_found
+
+        contest = current_photo_contest()
+        rows = (
+            _beer_photo_queryset(contest)
+            .filter(account=target, visibility=BeerPhoto.Visibility.FRIENDS)
+            .order_by("-taken_at")[: settings.BEER_PHOTO_MAX_PER_ACCOUNT]
+        )
+        return Response(
+            {"photos": BeerPhotoSerializer(rows, many=True, context={"request": request}).data},
+            status=status.HTTP_200_OK,
+        )
+
+
+class PhotoContestView(APIView):
+    """GET /v1/photo-contest — the current FotoPivař round + last results.
+
+    The current round row is lazily get_or_create'd (deterministic 14-day
+    window — see pubs.photo_contest), so no scheduler has to open rounds on
+    time. Entries hide blocked (either direction) and non-ACTIVE authors;
+    ``last_results`` is the most recent CLOSED round's stamped top 3.
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "photo_contest"
+
+    def get(self, request: Request) -> Response:
+        contest = current_photo_contest()
+        blocked_ids = _blocked_account_ids(request.user)
+        context = _photo_contest_entry_context(request, contest)
+
+        entries = (
+            _photo_contest_entry_queryset(contest)
+            .filter(account__status=Account.Status.ACTIVE)
+            .exclude(account_id__in=blocked_ids)
+            .order_by("-created_at")[:100]
+        )
+        my_entry = (
+            PhotoContestEntry.objects.filter(contest=contest, account=request.user)
+            .select_related("photo")
+            .first()
+        )
+        my_vote_entry_id = None
+        if context["my_vote_entry_pk"] is not None:
+            my_vote_entry_id = (
+                PhotoContestEntry.objects.filter(pk=context["my_vote_entry_pk"])
+                .values_list("public_id", flat=True)
+                .first()
+            )
+
+        last_results = None
+        last_closed = (
+            PhotoContest.objects.filter(status=PhotoContest.Status.CLOSED)
+            .order_by("-period_start")
+            .first()
+        )
+        if last_closed is not None:
+            # Same author gating as the live entries above: a blocked (either
+            # direction) or no-longer-ACTIVE winner is hidden from the caller's
+            # results view (their stamped rank/XP stay untouched).
+            winners = (
+                last_closed.entries.filter(
+                    final_rank__isnull=False,
+                    account__status=Account.Status.ACTIVE,
+                )
+                .exclude(account_id__in=blocked_ids)
+                .select_related("account", "photo")
+                .order_by("final_rank")
+            )
+            last_results = {
+                "contest": PhotoContestSerializer(last_closed).data,
+                "winners": PhotoContestWinnerSerializer(
+                    winners, many=True, context={"request": request}
+                ).data,
+            }
+
+        return Response(
+            {
+                "contest": PhotoContestSerializer(contest).data,
+                "entries": PhotoContestEntrySerializer(entries, many=True, context=context).data,
+                "my_entry_id": str(my_entry.public_id) if my_entry else None,
+                "my_entry_photo_id": str(my_entry.photo.public_id) if my_entry else None,
+                "my_vote_entry_id": str(my_vote_entry_id) if my_vote_entry_id else None,
+                "last_results": last_results,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class PhotoContestEntryView(APIView):
+    """POST/DELETE /v1/photo-contest/entries — enter / withdraw the current round.
+
+    Entering is an EXPLICIT visibility opt-in: the entered photo is shown to
+    every contest viewer for that round regardless of the photo's own
+    ``visibility`` setting (the entry itself is what grants that visibility).
+    One entry per account per round — re-entering replaces the previous entry
+    and drops its collected votes.
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "photo_contest"
+
+    def post(self, request: Request) -> Response:
+        serializer = PhotoContestEnterSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        if not request.user.nickname:
+            return Response(
+                {
+                    "detail": "Nejdřív si nastav přezdívku, ať soutěžíš pod jménem.",
+                    "code": "nickname_required",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Own photos only; a foreign/unknown id gets one opaque 400 so the
+        # endpoint never confirms someone else's photo exists.
+        photo = BeerPhoto.objects.filter(
+            account=request.user, public_id=serializer.validated_data["photo_id"]
+        ).first()
+        if photo is None:
+            return Response(
+                {"detail": "Tuhle fotku nevidím.", "code": "photo_not_found"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        contest = current_photo_contest()
+        try:
+            with transaction.atomic():
+                # Replace semantics: the old entry (and its votes) go away.
+                PhotoContestEntry.objects.filter(
+                    contest=contest, account=request.user
+                ).delete()
+                entry = PhotoContestEntry.objects.create(
+                    contest=contest, photo=photo, account=request.user
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.error("photo_contest: enter failed: %s", exc, exc_info=True)
+            return _internal_error()
+
+        fresh = _photo_contest_entry_queryset(contest).get(pk=entry.pk)
+        return Response(
+            {
+                "entry": PhotoContestEntrySerializer(
+                    fresh, context=_photo_contest_entry_context(request, contest)
+                ).data
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    def delete(self, request: Request) -> Response:
+        contest = current_photo_contest()
+        PhotoContestEntry.objects.filter(contest=contest, account=request.user).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class PhotoContestVoteView(APIView):
+    """POST/DELETE /v1/photo-contest/vote — one movable vote per round.
+
+    POST upserts the caller's single vote in the current open round (voting
+    again MOVES it to the new entry); DELETE clears it. Idempotent and safe
+    for offline retries.
+    """
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "photo_contest"
+
+    def post(self, request: Request) -> Response:
+        serializer = PhotoContestVoteSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        contest = current_photo_contest()
+        entry = (
+            PhotoContestEntry.objects.select_related("account")
+            .filter(contest=contest, public_id=serializer.validated_data["entry_id"])
+            .first()
+        )
+        # An entry the read path hides from this caller (blocked either way or
+        # a non-ACTIVE author) is unvotable with the same opaque not-found.
+        if (
+            entry is None
+            or entry.account.status != Account.Status.ACTIVE
+            or entry.account_id in _blocked_account_ids(request.user)
+        ):
+            return Response(
+                {"detail": "Tahle soutěžní fotka tu není.", "code": "entry_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if entry.account_id == request.user.pk:
+            return Response(
+                {"detail": "Pro vlastní fotku hlasovat nemůžeš.", "code": "cannot_vote_own"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            PhotoContestVote.objects.update_or_create(
+                contest=contest,
+                voter=request.user,
+                defaults={"entry": entry},
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error("photo_contest: vote failed: %s", exc, exc_info=True)
+            return _internal_error()
+        votes = PhotoContestVote.objects.filter(entry=entry).count()
+        return Response(
+            {"entry_id": str(entry.public_id), "votes": votes},
+            status=status.HTTP_200_OK,
+        )
+
+    def delete(self, request: Request) -> Response:
+        contest = current_photo_contest()
+        PhotoContestVote.objects.filter(contest=contest, voter=request.user).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class FriendBlockView(APIView):

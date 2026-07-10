@@ -938,6 +938,8 @@ def test_get_me_returns_backend_profile_stats_and_achievements(client):
         "cartographer": False,
         "completionist": False,
         "fact_machine": False,
+        # FotoPivař badge is additive too (no contest win yet).
+        "foto_pivar": False,
     }
     # The additive Mapér block is present even for an account that never voted.
     assert body["mapper"]["xp"] == 0

@@ -362,6 +362,33 @@ MAPER_LEVEL_THRESHOLDS: list[int] = [
     if x.strip() != ""
 ]
 
+# --- Beer photo diary + FotoPivař photo contest ---
+# Reject photo uploads larger than this BEFORE decoding (decompression-bomb guard).
+BEER_PHOTO_MAX_UPLOAD_BYTES: int = int(
+    os.environ.get("BEER_PHOTO_MAX_UPLOAD_BYTES", str(10 * 1024 * 1024))
+)
+# Stored photo long-edge ceiling in pixels (aspect ratio kept, never cropped).
+BEER_PHOTO_MAX_EDGE_PX: int = int(os.environ.get("BEER_PHOTO_MAX_EDGE_PX", "1600"))
+# webp encoder quality for the stored photo.
+BEER_PHOTO_WEBP_QUALITY: int = int(os.environ.get("BEER_PHOTO_WEBP_QUALITY", "80"))
+# Per-account total photo cap — bounds disk usage per user (media volume cost).
+BEER_PHOTO_MAX_PER_ACCOUNT: int = int(os.environ.get("BEER_PHOTO_MAX_PER_ACCOUNT", "200"))
+# Per-ACCOUNT rate limit for photo uploads (POST /v1/beer-photos). Each upload
+# re-encodes an image and writes to the media volume, so it is a daily budget
+# rather than a per-minute burst limit. Format: DRF throttle rate string.
+BEER_PHOTO_UPLOAD_THROTTLE_RATE: str = os.environ.get("BEER_PHOTO_UPLOAD_THROTTLE_RATE", "30/day")
+# Per-ACCOUNT rate limit shared by the photo-contest endpoints
+# (GET /v1/photo-contest, entry + vote writes). DB-only, but the contest screen
+# can poll, so it gets its own hourly budget. Format: DRF throttle rate string.
+PHOTO_CONTEST_THROTTLE_RATE: str = os.environ.get("PHOTO_CONTEST_THROTTLE_RATE", "120/hour")
+# Anchor of the deterministic 14-day contest windows: an ISO date interpreted as
+# 00:00 UTC. Changing it re-buckets ALL rounds, so treat it as immutable once live.
+PHOTO_CONTEST_EPOCH: str = os.environ.get("PHOTO_CONTEST_EPOCH", "2026-01-05")
+# XP paid onto AccountUsageStats.mapper_xp when a round closes (top 3 ranks).
+PHOTO_CONTEST_XP_FIRST: int = int(os.environ.get("PHOTO_CONTEST_XP_FIRST", "100"))
+PHOTO_CONTEST_XP_SECOND: int = int(os.environ.get("PHOTO_CONTEST_XP_SECOND", "50"))
+PHOTO_CONTEST_XP_THIRD: int = int(os.environ.get("PHOTO_CONTEST_XP_THIRD", "25"))
+
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
@@ -403,6 +430,8 @@ REST_FRAMEWORK = {
         "amenity_kinds": AMENITY_KINDS_THROTTLE_RATE,
         "amenity_reads": AMENITY_READS_THROTTLE_RATE,
         "menu_scan": MENU_SCAN_THROTTLE_RATE,
+        "beer_photo_upload": BEER_PHOTO_UPLOAD_THROTTLE_RATE,
+        "photo_contest": PHOTO_CONTEST_THROTTLE_RATE,
     },
 }
 

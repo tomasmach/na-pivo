@@ -1214,6 +1214,204 @@ class BeerCheckInReaction(models.Model):
         return f"BeerCheckInReaction({self.account_id} -> {self.checkin_id}: {self.kind})"
 
 
+def beer_photo_path(instance, filename: str) -> str:
+    """Storage path for one beer diary photo.
+
+    Keyed on the account's ``public_id`` and the photo's own ``public_id`` (both
+    stable, never the PK), always ``.webp`` because the photo pipeline re-encodes
+    every upload. Unlike the avatar path this one is IMMUTABLE — the file is
+    written once and never overwritten, so no cache-bust query param is needed on
+    the URL. ``filename`` is ignored on purpose — we never trust the
+    client-supplied name or extension.
+    """
+    return f"beer-photos/{instance.account.public_id}/{instance.public_id}.webp"
+
+
+class BeerPhoto(models.Model):
+    """One beer diary photo, optionally tagged with a pub.
+
+    Explicitly user-uploaded; stores the selected pub identity only when the
+    user supplies one and never raw GPS. Identity is (account, client_id) so
+    offline retries upsert the same row instead of duplicating the photo —
+    mirrors :class:`BeerCheckIn`.
+    """
+
+    class Visibility(models.TextChoices):
+        PRIVATE = "private", "Private"
+        FRIENDS = "friends", "Friends"
+
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name="beer_photos",
+    )
+    client_id = models.UUIDField(help_text="Client-generated idempotency key.")
+    image = models.ImageField(upload_to=beer_photo_path)
+    caption = models.CharField(max_length=280, blank=True, default="")
+    pub_cache_key = models.CharField(max_length=12, blank=True, default="", db_index=True)
+    pub_name = models.TextField(blank=True, default="")
+    pub_city = models.TextField(blank=True, default="")
+    visibility = models.CharField(
+        max_length=16,
+        choices=Visibility.choices,
+        default=Visibility.FRIENDS,
+        db_index=True,
+    )
+    taken_at = models.DateTimeField(
+        default=timezone.now,
+        db_index=True,
+        help_text="Client-provided capture time; defaults to upload time.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Beer photo"
+        verbose_name_plural = "Beer photos"
+        ordering = ["-taken_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "client_id"],
+                name="unique_beer_photo_per_account_client_id",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["account", "-taken_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"BeerPhoto({self.account_id}: {self.public_id})"
+
+
+class PhotoContest(models.Model):
+    """One biweekly FotoPivař photo contest round.
+
+    Rounds are DETERMINISTIC 14-day UTC windows anchored at the
+    ``PHOTO_CONTEST_EPOCH`` setting — ``period_start`` is unique, so a lazy
+    ``get_or_create`` from any request or worker tick converges on one row per
+    window (see :func:`pubs.photo_contest.current_photo_contest`). The
+    ``advance_photo_contests`` worker command closes ended rounds (ranking the
+    top 3 and paying XP) and opens the next one.
+    """
+
+    class Status(models.TextChoices):
+        OPEN = "open", "Open"
+        CLOSED = "closed", "Closed"
+
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
+    period_start = models.DateTimeField(unique=True)
+    period_end = models.DateTimeField()
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.OPEN,
+        db_index=True,
+    )
+    closed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Photo contest"
+        verbose_name_plural = "Photo contests"
+        ordering = ["-period_start"]
+
+    def __str__(self) -> str:
+        return f"PhotoContest({self.period_start:%Y-%m-%d} [{self.status}])"
+
+
+class PhotoContestEntry(models.Model):
+    """One account's entry (a photo of their own) in one contest round.
+
+    ``final_rank`` / ``final_votes`` are stamped 1–3 at close time and are the
+    DURABLE results record; the entry row itself still CASCADEs away if the user
+    later deletes the photo or account (the monotonic
+    ``photo_contest_wins_count`` counter is never decremented).
+    """
+
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
+    contest = models.ForeignKey(
+        PhotoContest,
+        on_delete=models.CASCADE,
+        related_name="entries",
+    )
+    photo = models.ForeignKey(
+        BeerPhoto,
+        on_delete=models.CASCADE,
+        related_name="contest_entries",
+    )
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name="photo_contest_entries",
+    )
+    final_rank = models.PositiveSmallIntegerField(null=True, blank=True)
+    final_votes = models.PositiveIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Photo contest entry"
+        verbose_name_plural = "Photo contest entries"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["contest", "account"],
+                name="unique_photo_contest_entry_per_account",
+            ),
+            models.UniqueConstraint(
+                fields=["contest", "photo"],
+                name="unique_photo_contest_entry_per_photo",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["contest", "created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"PhotoContestEntry({self.account_id} -> {self.contest_id})"
+
+
+class PhotoContestVote(models.Model):
+    """One account's single vote in one contest round.
+
+    Unique on (contest, voter): re-voting MOVES the vote to another entry
+    (update_or_create on the entry FK) rather than adding a second one.
+    """
+
+    contest = models.ForeignKey(
+        PhotoContest,
+        on_delete=models.CASCADE,
+        related_name="votes",
+    )
+    entry = models.ForeignKey(
+        PhotoContestEntry,
+        on_delete=models.CASCADE,
+        related_name="votes",
+    )
+    voter = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name="photo_contest_votes",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Photo contest vote"
+        verbose_name_plural = "Photo contest votes"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["contest", "voter"],
+                name="unique_photo_contest_vote_per_voter",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["entry"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"PhotoContestVote({self.voter_id} -> {self.entry_id})"
+
+
 class EmailCredential(models.Model):
     """Email + password credential for an Account (0 or 1 per account).
 
@@ -1721,6 +1919,8 @@ class ContentReport(models.Model):
     class Reason(models.TextChoices):
         INAPPROPRIATE_NICKNAME = "inappropriate_nickname", "Inappropriate nickname"
         INAPPROPRIATE_AVATAR = "inappropriate_avatar", "Inappropriate avatar"
+        # Additive (photo diary / FotoPivař): a reported beer photo.
+        INAPPROPRIATE_PHOTO = "inappropriate_photo", "Inappropriate photo"
         IMPERSONATION = "impersonation", "Impersonation"
         SPAM = "spam", "Spam"
         OTHER = "other", "Other"
@@ -1899,6 +2099,10 @@ class AccountUsageStats(models.Model):
     amenity_votes_count = models.PositiveIntegerField(default=0)
     # Pubs this account's votes brought to 100% completeness (one-time per pub).
     completed_pubs_count = models.PositiveIntegerField(default=0)
+    # FotoPivař contest rounds this account has WON (rank 1 at close). Monotonic
+    # like every counter above: a later photo/entry/account cleanup never
+    # decrements it (the "FotoPivař" badge is a lifetime achievement).
+    photo_contest_wins_count = models.PositiveIntegerField(default=0)
     last_app_open_at = models.DateTimeField(null=True, blank=True, db_index=True)
     last_event_at = models.DateTimeField(null=True, blank=True, db_index=True)
     last_app_version = models.CharField(max_length=64, blank=True, default="")

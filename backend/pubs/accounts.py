@@ -1191,6 +1191,12 @@ def hard_delete(account: Account) -> None:
         emailer.send_account_deleted_email(email)
     if account.avatar:
         account.avatar.delete(save=False)
+    # Beer photo files live outside the DB, so the CASCADE row delete below
+    # would orphan them on the media volume; drop each file first (same reason
+    # as the avatar above).
+    for photo in account.beer_photos.all():
+        if photo.image:
+            photo.image.delete(save=False)
     affected_amenities = set(
         PubAmenityVote.objects.filter(account=account).values_list(
             "cache_key", "pub_identity_key", "amenity_key"
