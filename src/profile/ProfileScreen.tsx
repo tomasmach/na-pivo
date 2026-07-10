@@ -822,8 +822,8 @@ const styles = StyleSheet.create({
   creatorBody: { fontFamily: Fonts.ui.regular, fontSize: 13, lineHeight: 18, color: Colors.foamMuted },
   creatorLinks: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
   creatorLink: {
+    flexBasis: '47%',
     flexGrow: 1,
-    flexBasis: '30%',
     minHeight: 42,
     flexDirection: 'row',
     justifyContent: 'center',
