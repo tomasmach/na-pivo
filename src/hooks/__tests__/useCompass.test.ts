@@ -84,9 +84,13 @@ function renderCompassHook() {
   let latestResult: ReturnType<typeof useCompass> | undefined;
   let renderer: { update: (element: React.ReactElement) => void; unmount: () => void };
   const loadingLog: boolean[] = [];
+  let filters: { beerBrandKey: string | null; amenityKeys: string[] } = {
+    beerBrandKey: null,
+    amenityKeys: [],
+  };
 
   function Harness() {
-    const result = useCompass();
+    const result = useCompass(filters.beerBrandKey, filters.amenityKeys);
     loadingLog.push(result.isLoading);
     latestResult = result;
     return null;
@@ -105,6 +109,15 @@ function renderCompassHook() {
     },
     loadingLog,
     rerender() {
+      act(() => {
+        renderer.update(React.createElement(Harness));
+      });
+    },
+    setFilters(next: { beerBrandKey?: string | null; amenityKeys?: string[] }) {
+      filters = {
+        beerBrandKey: next.beerBrandKey ?? null,
+        amenityKeys: next.amenityKeys ?? [],
+      };
       act(() => {
         renderer.update(React.createElement(Harness));
       });
@@ -301,6 +314,7 @@ describe('useCompass', () => {
 
     expect(fetchPubsNear).toHaveBeenLastCalledWith(50.08, 14.42, undefined, {
       beerBrandKey: null,
+      amenityKeys: [],
       force: true,
       radiusKm: 100,
     });
@@ -316,6 +330,44 @@ describe('useCompass', () => {
     });
 
     expect(hook.result.searchFailed).toBe(true);
+  });
+
+  it('hides the previous pub while a new hard filter is pending', async () => {
+    const hook = renderCompassHook();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(hook.result.pub).toBe(pub);
+
+    let resolveFiltered!: () => void;
+    (fetchPubsNear as jest.Mock).mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveFiltered = resolve;
+      }),
+    );
+
+    hook.setFilters({ amenityKeys: ['payment_card'] });
+
+    expect(hook.result.isLoading).toBe(true);
+    expect(hook.result.pub).toBeNull();
+    for (const lat of [50.09, 50.1, 50.11]) {
+      (useDevicePosition as jest.Mock).mockReturnValue({
+        position: { lat, lng: 14.42, accuracyMeters: 8 },
+      });
+      hook.rerender();
+    }
+    // Initial unfiltered lookup + exactly one filtered lookup. GPS jitter while
+    // the hard-filter request is pending must not enqueue duplicates.
+    expect(fetchPubsNear).toHaveBeenCalledTimes(2);
+    expect(hook.result.pub).toBeNull();
+
+    await act(async () => {
+      resolveFiltered();
+      await Promise.resolve();
+    });
+
+    expect(hook.result.isLoading).toBe(false);
+    expect(hook.result.pub).toBe(pub);
   });
 
   describe('radius-change debounce', () => {
@@ -368,6 +420,7 @@ describe('useCompass', () => {
       expect(fetchPubsNear).toHaveBeenCalledTimes(2);
       expect(fetchPubsNear).toHaveBeenLastCalledWith(50.08, 14.42, undefined, {
         beerBrandKey: null,
+        amenityKeys: [],
         force: false,
         radiusKm: 20,
       });
@@ -390,6 +443,7 @@ describe('useCompass', () => {
       expect(fetchPubsNear).toHaveBeenCalledTimes(2);
       expect(fetchPubsNear).toHaveBeenLastCalledWith(51.0, 15.0, undefined, {
         beerBrandKey: null,
+        amenityKeys: [],
         force: false,
         radiusKm: 100,
       });

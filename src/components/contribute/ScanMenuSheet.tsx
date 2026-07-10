@@ -4,7 +4,7 @@
  * Replaces a stock OS action sheet with a Brass Taproom bottom sheet: a stout
  * card spring-sliding over a dimmed scrim, two large tactile choices (snap a
  * photo / pick from the gallery). Each row scales on press and fires a light
- * haptic. Matches BeerBrandFilterSheet so the app feels of one piece.
+ * haptic. Matches the shared compass sheet treatment so the app feels of one piece.
  *
  * Pure presentation: it reports the chosen source up; the parent owns the picker
  * + upload flow.

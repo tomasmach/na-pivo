@@ -182,6 +182,15 @@ export const cs = {
     beerFilterPopular: 'Oblíbené',
     beerFilterSearchPlaceholder: 'Hledat jinou značku…',
     beerFilterNoResults: 'Nic takového v záznamech není.',
+    beerFilterSearching: 'Hledám…',
+    pubFilterButton: 'Filtry',
+    pubFilterButtonActive: (count: number) => `Filtry · ${count}`,
+    pubFilterTitle: 'Kam dneska?',
+    pubFilterSubtitle: 'Vyber, co musí hospoda splňovat.',
+    pubFilterMatchAll: 'Hospoda musí splnit všechno vybrané. Počítají se jen potvrzené údaje od komunity.',
+    pubFilterLimit: (count: number) => `Vyber nejvýš ${count} vlastností, ať má kompas kde hledat.`,
+    pubFilterClear: 'Zrušit',
+    pubFilterApply: 'Ukázat hospody',
   },
 
   permissions: {
@@ -212,6 +221,11 @@ export const cs = {
     openSettings: 'Otevřít nastavení',
     retry: 'Zkusit znovu',
     addPub: 'Přidat hospodu',
+    filteredHeadlineLine1: 'Tahle kombinace',
+    filteredHeadlineLine2: 'je vzácná',
+    filteredBody: 'V okolí zatím nemáme zmapovanou hospodu, která splní všechno.',
+    editFilters: 'Upravit filtry',
+    clearFilters: 'Zrušit filtry',
   },
 
   settings: {
@@ -1361,6 +1375,12 @@ export const cs = {
     beerBrandFilterActive: (name: string) => `Filtr piva: ${name}. Klepni pro změnu`,
     selectBeerBrand: (name: string) => `Filtrovat na ${name}`,
     closeBeerBrandFilter: 'Zavřít filtr',
+    openPubFilters: 'Otevřít filtry hospod',
+    pubFiltersActive: (count: number) => `Aktivní filtry hospod: ${count}. Klepni pro změnu`,
+    closePubFilters: 'Zavřít filtry hospod',
+    clearPubFilters: 'Zrušit všechny filtry hospod',
+    applyPubFilters: 'Použít vybrané filtry hospod',
+    togglePubAmenityFilter: (name: string) => `Filtrovat podle vlastnosti ${name}`,
 
     // — "Zmapuj hospodu" / Mapér —
     // `into`/`next` are the into-level XP numbers shown on the visible bar so the

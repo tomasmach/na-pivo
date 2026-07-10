@@ -113,6 +113,10 @@ export function stripAmenitySummary(pub: Pub): Pub {
 
 let _pubs: Pub[] = [];
 let _basePubs: Pub[] = [];
+let _lastUnfilteredPubs: Pub[] = [];
+let _lastUnfilteredCenter: { lat: number; lng: number } | null = null;
+let _lastUnfilteredRadiusKm: number | null = null;
+let _currentIndexIsFiltered = false;
 let _localPubOverrides: Map<string, Pub> = new Map();
 let _index: KDBush | null = null;
 let _idMap: Map<string, Pub> = new Map();
@@ -123,6 +127,7 @@ let _loaded = false;
 let _lastFetchCenter: { lat: number; lng: number } | null = null;
 let _lastFetchRadiusKm: number | null = null;
 let _lastFetchBeerBrandKey = "";
+let _lastFetchAmenityKey = "";
 let _inflight: Promise<void> | null = null;
 let _inflightRequestKey = "";
 /** Whether we have already attempted to hydrate from AsyncStorage this session.
@@ -134,6 +139,7 @@ interface FetchPubsNearOptions {
   force?: boolean;
   radiusKm?: number;
   beerBrandKey?: string | null;
+  amenityKeys?: readonly string[];
 }
 
 /** Re-fetch nearby pubs when the user has moved more than this distance from
@@ -281,9 +287,13 @@ function mergeLocalPubOverrides(pubs: Pub[]): Pub[] {
   ];
 }
 
-function replaceBasePubs(pubs: Pub[]): void {
+function replaceBasePubs(pubs: Pub[], includeLocalOverrides = true): void {
   _basePubs = pubs.slice();
-  rebuildIndex(mergeLocalPubOverrides(_basePubs));
+  rebuildIndex(includeLocalOverrides ? mergeLocalPubOverrides(_basePubs) : _basePubs);
+}
+
+function rebuildCurrentIndex(): void {
+  rebuildIndex(_currentIndexIsFiltered ? _basePubs : mergeLocalPubOverrides(_basePubs));
 }
 
 /**
@@ -292,6 +302,8 @@ function replaceBasePubs(pubs: Pub[]): void {
  */
 export function _init(syntheticPubs: Pub[]): void {
   _localPubOverrides = new Map();
+  _lastUnfilteredPubs = syntheticPubs.slice();
+  _currentIndexIsFiltered = false;
   replaceBasePubs(syntheticPubs);
 }
 
@@ -307,7 +319,7 @@ export function upsertLocalPub(pub: Pub): void {
   }
   nextOverrides.set(pub.id, pub);
   _localPubOverrides = nextOverrides;
-  rebuildIndex(mergeLocalPubOverrides(_basePubs));
+  rebuildCurrentIndex();
 }
 
 export function removeLocalPub(pubId: string): void {
@@ -315,7 +327,7 @@ export function removeLocalPub(pubId: string): void {
   const nextOverrides = new Map(_localPubOverrides);
   nextOverrides.delete(pubId);
   _localPubOverrides = nextOverrides;
-  rebuildIndex(mergeLocalPubOverrides(_basePubs));
+  rebuildCurrentIndex();
 }
 
 /** Rename one already-loaded pub without collapsing neighbouring pubs that may
@@ -327,6 +339,9 @@ export function renameLocalPub(pubId: string, name: string): Pub | null {
     renamed = { ...pub, name };
     return renamed;
   });
+  _lastUnfilteredPubs = _lastUnfilteredPubs.map((pub) =>
+    pub.id === pubId ? { ...pub, name } : pub,
+  );
 
   if (_localPubOverrides.has(pubId)) {
     const pub = _localPubOverrides.get(pubId)!;
@@ -335,7 +350,7 @@ export function renameLocalPub(pubId: string, name: string): Pub | null {
   }
 
   if (!renamed) return null;
-  rebuildIndex(mergeLocalPubOverrides(_basePubs));
+  rebuildCurrentIndex();
   return renamed;
 }
 
@@ -347,6 +362,10 @@ export function renameLocalPub(pubId: string, name: string): Pub | null {
 export function _reset(): void {
   _pubs = [];
   _basePubs = [];
+  _lastUnfilteredPubs = [];
+  _lastUnfilteredCenter = null;
+  _lastUnfilteredRadiusKm = null;
+  _currentIndexIsFiltered = false;
   _localPubOverrides = new Map();
   _index = null;
   _idMap = new Map();
@@ -355,6 +374,7 @@ export function _reset(): void {
   _lastFetchCenter = null;
   _lastFetchRadiusKm = null;
   _lastFetchBeerBrandKey = "";
+  _lastFetchAmenityKey = "";
   _inflight = null;
   _inflightRequestKey = "";
   _hydrationAttempted = false;
@@ -399,12 +419,15 @@ export async function fetchPubsNear(
     ? Math.max(options.radiusKm ?? DEFAULT_FETCH_RADIUS_KM, 0.1)
     : DEFAULT_FETCH_RADIUS_KM;
   const beerBrandKey = (options.beerBrandKey ?? "").trim();
-  const requestKey = `${lat}:${lng}:${radiusKm}:${beerBrandKey}`;
+  const amenityKeys = Array.from(new Set(options.amenityKeys ?? [])).sort();
+  const amenityKey = amenityKeys.join(',');
+  const requestKey = `${lat}:${lng}:${radiusKm}:${beerBrandKey}:${amenityKey}`;
 
   // In-memory short-circuit (also covers the post-hydration session).
   if (!options.force && _loaded && _lastFetchCenter) {
     if (
       beerBrandKey === _lastFetchBeerBrandKey &&
+      amenityKey === _lastFetchAmenityKey &&
       gateCovers(_lastFetchCenter.lat, _lastFetchCenter.lng, _lastFetchRadiusKm ?? 0, lat, lng, radiusKm)
     ) {
       return;
@@ -424,7 +447,7 @@ export async function fetchPubsNear(
       // Cold-start hydration: consult the persisted snapshot exactly once, and
       // only when not force-refetching. A covering, fresh snapshot lets us skip
       // the network entirely.
-      if (!options.force && !beerBrandKey && !_hydrationAttempted) {
+      if (!options.force && !beerBrandKey && !amenityKey && !_hydrationAttempted) {
         _hydrationAttempted = true;
         const snapshot = await loadSnapshot();
         if (signal?.aborted) return;
@@ -432,15 +455,23 @@ export async function fetchPubsNear(
           snapshot &&
           gateCovers(snapshot.centerLat, snapshot.centerLng, snapshot.radiusKm, lat, lng, radiusKm)
         ) {
+          _lastUnfilteredPubs = snapshot.pubs.slice();
+          _lastUnfilteredCenter = {
+            lat: snapshot.centerLat,
+            lng: snapshot.centerLng,
+          };
+          _lastUnfilteredRadiusKm = snapshot.radiusKm;
+          _currentIndexIsFiltered = false;
           replaceBasePubs(snapshot.pubs);
           _lastFetchCenter = { lat: snapshot.centerLat, lng: snapshot.centerLng };
           _lastFetchRadiusKm = snapshot.radiusKm;
           _lastFetchBeerBrandKey = "";
+          _lastFetchAmenityKey = "";
           return;
         }
       }
 
-      const pubs = await searchPubsNear(lat, lng, radiusKm, signal, { beerBrandKey });
+      const pubs = await searchPubsNear(lat, lng, radiusKm, signal, { beerBrandKey, amenityKeys });
       if (signal?.aborted) return;
       const blockedReports = await fetchBlockedPubReports(lat, lng, radiusKm, signal);
       if (signal?.aborted) return;
@@ -457,13 +488,20 @@ export async function fetchPubsNear(
           !blockedExternalIds.has(pub.id) &&
           !blockedCacheKeys.has(geohash8(pub.lat, pub.lng)),
       );
-      replaceBasePubs(filtered);
+      if (!beerBrandKey && !amenityKey) {
+        _lastUnfilteredPubs = filtered.slice();
+        _lastUnfilteredCenter = { lat, lng };
+        _lastUnfilteredRadiusKm = radiusKm;
+      }
+      _currentIndexIsFiltered = Boolean(beerBrandKey || amenityKey);
+      replaceBasePubs(filtered, !beerBrandKey && !amenityKey);
       _lastFetchCenter = { lat, lng };
       _lastFetchRadiusKm = radiusKm;
       _lastFetchBeerBrandKey = beerBrandKey;
+      _lastFetchAmenityKey = amenityKey;
       // Persist the post-block-filtering result so the next cold start can skip
       // the network. Fire-and-forget — saveSnapshot never throws.
-      if (!beerBrandKey) {
+      if (!beerBrandKey && !amenityKey) {
         // Strip server-owned amenity summaries so they aren't double-cached in the
         // 24h snapshot (spec §4.6); they rehydrate from their own short-TTL cache.
         void saveSnapshot({
@@ -474,6 +512,38 @@ export async function fetchPubsNear(
           savedAt: Date.now(),
         });
       }
+    } catch (error) {
+      // A failed filtered lookup must never leave the previous unfiltered index
+      // looking like a valid match. Keep local work intact in its own override
+      // map, but expose no result until the user retries or clears the filters.
+      if (beerBrandKey || amenityKey) {
+        _currentIndexIsFiltered = true;
+        replaceBasePubs([], false);
+      } else if (_currentIndexIsFiltered) {
+        // Clearing filters while offline must not leave the last filtered index
+        // presented as an unfiltered result. Restore the last known unfiltered
+        // catalogue only when it still covers this location; otherwise an old
+        // city's pubs would be worse than an honest empty state.
+        _lastFetchBeerBrandKey = "";
+        _lastFetchAmenityKey = "";
+        _lastFetchCenter = null;
+        _lastFetchRadiusKm = null;
+        const canRestore = Boolean(
+          _lastUnfilteredCenter &&
+          _lastUnfilteredRadiusKm != null &&
+          gateCovers(
+            _lastUnfilteredCenter.lat,
+            _lastUnfilteredCenter.lng,
+            _lastUnfilteredRadiusKm,
+            lat,
+            lng,
+            radiusKm,
+          ),
+        );
+        _currentIndexIsFiltered = false;
+        replaceBasePubs(canRestore ? _lastUnfilteredPubs : [], true);
+      }
+      throw error;
     } finally {
       _inflight = null;
       _inflightRequestKey = "";

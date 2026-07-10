@@ -72,6 +72,7 @@ import {
   QrCode,
   Ellipsis,
   GlassWater,
+  ListFilter,
   LucideProps,
 } from 'lucide-react-native';
 
@@ -137,6 +138,7 @@ export const ImagesIcon = wrap(Images, 'ImagesIcon');
 export const SparklesIcon = wrap(Sparkles, 'SparklesIcon');
 export const TreePineIcon = wrap(TreePine, 'TreePineIcon');
 export const SearchIcon = wrap(Search, 'SearchIcon');
+export const ListFilterIcon = wrap(ListFilter, 'ListFilterIcon');
 // "Zmapuj hospodu" amenity + Mapér glyphs.
 export const CreditCardIcon = wrap(CreditCard, 'CreditCardIcon');
 export const AccessibilityIcon = wrap(Accessibility, 'AccessibilityIcon');
