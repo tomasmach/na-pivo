@@ -1,8 +1,8 @@
 # Zmapuj hospodu (pub amenities) — BACKEND contract (locked)
 
-Community-mapped pub amenities. Each user votes yes/no per amenity for a pub; the backend aggregates votes into a **public, confidence-weighted truth** about the place that everyone sees, and that powers a FUTURE pub map with amenity filters. This file is the authoritative backend wire contract; the mobile repo has the mirror at `na-pivo/docs/pub-amenities-spec.md`. All field names and endpoint shapes here are reproduced EXACTLY so the mobile spec can reference them.
+Community-mapped pub amenities. Each user votes yes/no per amenity for a pub; the backend aggregates votes into a **public, confidence-weighted truth** about the place that everyone sees and that powers nearby pub filters. This file is the authoritative backend wire contract; the mobile repo has the mirror at `na-pivo/docs/pub-amenities-spec.md`.
 
-This is a **design-only** spec. No source files are changed. The map filter is FUTURE and out of scope (see §6).
+The mapping and filter contracts in this document are implemented.
 
 ## 1. Overview
 
@@ -511,24 +511,27 @@ def _amenity_status(yes, no):
 
 `AMENITY_MIN_VOTES` defaults to **3** (not 2): at 2 votes, a single disagreement is `1/2 = 0.5 ≥ 0.34 → disputed`, so 2 disagreeing voters is the pathological modal early state, AND two sock-puppet accounts could unilaterally set a status. Requiring 3 means a fresh first map stays `unknown` (the completeness meter still ticks via the moving `confidence`), and two accounts can't unilaterally flip the public truth. Confidence asymptotically approaches `agreement` as volume grows → **diminishing reward for confirming known facts** (the Nth confirming voter barely moves it, so XP for confirming is small). Vote-weighting by account trust / confirmed visit is a future hardening lever, not v1.
 
-## 6. Map-filter forward-compat (FUTURE — NOT in scope now)
+## 6. Nearby amenity filter
 
-The future amenity map filter is a pure clone of the existing, owner-shipped `beer_brand` filter on `/v1/pubs/near` (`PubsNearView`, `_nearby_pub_beer_brand_items`). It is NOT built now; this section only proves the model doesn't block it and lists the guarantees the in-scope build must provide.
+The amenity filter extends the existing `beer_brand` filter on `/v1/pubs/near`. Both parameters may be combined and are matched with AND semantics.
 
-**Future shape (do NOT build):**
+**Wire shape:**
 ```
-GET /v1/pubs/near?lat=..&lng=..&radius_km=..&amenities=game_darts,seating_garden&amenities_match=all
+GET /v1/pubs/near?lat=..&lng=..&radius_km=..&amenities=game_darts,seating_garden
 ```
-- `amenities` = comma list of registry slugs, capped by env `PUBS_NEAR_MAX_AMENITY_FILTERS`. Unknown key → 400 (a client bug, unlike the write path). `amenities_match` = `all` (AND, default) | `any`.
-- The actual query, like `_nearby_pub_beer_brand_items`, is a **lat/lng bounding-box range scan** over `PubAmenity` (filtered `status=yes`, `confidence__gte=MAP_AMENITY_CONFIDENCE_FLOOR`, `amenity_key__in=keys`) ordered by a squared-distance annotation, bounded by `MAP_AMENITY_SCAN_LIMIT` (mirroring `_BEER_BRAND_SCAN_LIMIT=200`), then a Python set-intersection of per-amenity `cache_key` sets for AND. The `(amenity_key, status)` index serves the equality predicate; the bbox keeps the row count small. (Honest note: the index does not cover the lat/lng range — the bounded scan limit is the guard, exactly as `beer_brand` relies on it today.)
+- `amenities` is a comma list of active, `filter_candidate` registry slugs, capped by `PUBS_NEAR_MAX_AMENITY_FILTERS` (default 5). Unknown, inactive or non-filterable key → 400.
+- Every selected amenity must match. Combined `beer_brand` + `amenities` also uses an intersection.
+- Each key gets its own bounded lat/lng scan over `PubAmenity(status=yes, confidence>=MAP_AMENITY_CONFIDENCE_FLOOR)`, followed by a `pub_identity_key` intersection. Provider items are joined using name-aware matching, never geohash alone.
+- Amenity-filtered 200 responses include `applied_filters: {version: 1, match: "all", amenities: [...], beer_brand: string|null}`. New clients require this acknowledgement and fail closed against an older backend that silently ignores the additive query parameter during a rolling deploy.
+- Cache-key-only legacy identities from migration `0041` are excluded from hard filters. A later named vote creates a collision-safe `cache_key::normalized_name` identity and makes that venue eligible.
 
-**Index usage.** The `Index(amenity_key, status)` + `Index(cache_key)` + denormalised `lat`/`lng` on `PubAmenity` are shipped now (free at table creation; a migration on a populated prod table later). This is the single most important forward-compat guarantee.
+**Index usage.** The existing `Index(amenity_key, status)` plus denormalised `lat`/`lng` on `PubAmenity` serve the query; no schema migration is required.
 
-**Cache strategy.** Like `beer_brand`, the filter is applied AFTER the Mapy cache read by intersecting the unfiltered cached item list against a `cache_key` set (`_filter_items_by_cache_key`). The `amenities` param is NEVER part of the `PubSearchCache` (geohash-6 + radius_bucket) identity, so it triggers ZERO extra Mapy fetches and does NOT fragment the cache into per-filter rows. For mapped pubs absent from a cell's Mapy results, emit synthetic suggest items (sourced from the single-truth `PubCommunityData`/`PubHours` row for that cache_key, NOT from per-amenity denormalised names which drift), matching `_pub_beer_brand_item`.
+**Cache strategy.** The filter is applied after the unfiltered Mapy cache read. `amenities` is never part of the `PubSearchCache` identity, so it does not fragment or persist filtered cache rows. A mapped pub absent from Mapy may be returned as a synthetic `source=amenity_signal` item. No qualifying local signal short-circuits to an empty response without consuming a Mapy request.
 
 **Confidence gating.** The map surfaces a pub only when `status=yes` AND `confidence >= MAP_AMENITY_CONFIDENCE_FLOOR` (env, suggested 0.5) — a single low-confidence vote must not put a pub under a hard filter.
 
-**Paywall note.** Per the monetization direction, the amenity-filtered map can be a Na Pivo+ gate (`Account.subscription_tier`): contributing votes/XP stays free (the data flywheel), the `?amenities=` read branch can degrade to unfiltered for free users. One tier check on one query branch, fully reversible, no data-model change, no `(account, lat/lng)` correlation logged. Do NOT build now.
+**Paywall note.** No paywall is applied in this release. Contribution and consumption remain available under the existing account rules.
 
 **Data guarantees the current design must provide:** (G1) votes ≠ aggregate, separate tables; (G2) aggregate carries `(cache_key, amenity_key, status, confidence, lat, lng, name)`; (G3) `Index(amenity_key, status)` + `Index(cache_key)` from day one; (G4) `cache_key` computed by the same `geohash8(lat, lng)` everywhere; (G5) amenity keys additive-only, namespaced, never reused; (G6) aggregate upserted on every vote so the map never recomputes from votes. If G1–G6 hold, the filter is a purely additive future change with no vote-data migration.
 

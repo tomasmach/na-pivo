@@ -184,6 +184,9 @@ All settings are read from environment variables or a `.env` file. See `.env.exa
 | `MAPY_API_KEY` | _(unset)_ | Mapy.cz key for the server-side `/v1/pubs/near` suggest proxy. Unset -> endpoint returns 503 and the app calls Mapy.cz directly |
 | `MAPY_DAILY_CAP` | `5000` | Hard daily cap on Mapy.cz suggest HTTP requests |
 | `PUBS_NEAR_TTL_DAYS` | `7` | Days before a cached `/v1/pubs/near` result is refreshed |
+| `PUBS_NEAR_MAX_AMENITY_FILTERS` | `5` | Maximum AND-matched amenity keys accepted by one nearby search |
+| `MAP_AMENITY_CONFIDENCE_FLOOR` | `0.5` | Minimum community confidence for an amenity to qualify as a hard filter match |
+| `MAP_AMENITY_SCAN_LIMIT` | `200` | Maximum nearby aggregate rows scanned per selected amenity |
 | `CORS_ALLOWED_ORIGINS` | Expo localhost | Comma-separated CORS origins |
 | `ACCOUNT_REGISTER_THROTTLE_RATE` | `120/min` | Per-IP rate limit for `POST /v1/account` |
 | `PUBS_NEAR_THROTTLE_RATE` | `60/min` | Per-IP rate limit for `GET /v1/pubs/near` |

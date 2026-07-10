@@ -1375,6 +1375,12 @@ class PubsNearQuerySerializer(_LatLngBoundsValidationMixin, serializers.Serializ
         max_length=80,
         trim_whitespace=True,
     )
+    amenities = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=400,
+        trim_whitespace=True,
+    )
 
     def validate_radius_km(self, value: float | None) -> float:
         # Default when omitted/null; otherwise clamp into (0, 100]. A value <= 0
@@ -1392,6 +1398,26 @@ class PubsNearQuerySerializer(_LatLngBoundsValidationMixin, serializers.Serializ
         attrs.setdefault("radius_km", PUBS_NEAR_DEFAULT_RADIUS_KM)
         if not attrs.get("beer_brand"):
             attrs.pop("beer_brand", None)
+        raw_amenities = attrs.get("amenities", "")
+        if raw_amenities:
+            keys = []
+            seen = set()
+            for raw_key in raw_amenities.split(","):
+                key = raw_key.strip()
+                if not key or key in seen:
+                    continue
+                if not re.fullmatch(r"[a-z0-9_]+", key):
+                    raise serializers.ValidationError(
+                        {"amenities": ["Amenity keys must be lowercase slugs."]}
+                    )
+                seen.add(key)
+                keys.append(key)
+            if keys:
+                attrs["amenities"] = keys
+            else:
+                attrs.pop("amenities", None)
+        else:
+            attrs.pop("amenities", None)
         return attrs
 
 

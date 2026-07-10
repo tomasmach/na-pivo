@@ -23,7 +23,15 @@ from pubs.enrichment import (
     geohash6,
     geohash8,
 )
-from pubs.models import BeerBrand, PubBeerBrand, PubNameCorrection, PubSearchCache, UserAddedPub
+from pubs.models import (
+    AmenityKind,
+    BeerBrand,
+    PubAmenity,
+    PubBeerBrand,
+    PubNameCorrection,
+    PubSearchCache,
+    UserAddedPub,
+)
 
 # Prague centre-ish coordinates.
 _LAT = 50.0812
@@ -70,6 +78,32 @@ def _mock_source(result_or_exc):
     cm.__exit__.return_value = False
     factory = MagicMock(return_value=cm)
     return factory, instance
+
+
+def _amenity(
+    key: str,
+    *,
+    name: str = "Hospoda U Testu",
+    lat: float = 50.08,
+    lng: float = 14.42,
+    status_value: str = PubAmenity.Status.YES,
+    external_id: str = "",
+) -> PubAmenity:
+    return PubAmenity.objects.create(
+        cache_key=geohash8(lat, lng),
+        pub_identity_key=f"{geohash8(lat, lng)}::{name.casefold()}",
+        amenity_key=key,
+        name=name,
+        lat=lat,
+        lng=lng,
+        city="Praha",
+        external_id=external_id,
+        status=status_value,
+        confidence=0.75 if status_value == PubAmenity.Status.YES else 0.25,
+        yes_count=2 if status_value == PubAmenity.Status.YES else 0,
+        no_count=2 if status_value == PubAmenity.Status.NO else 0,
+        distinct_voter_count=2,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -450,6 +484,204 @@ def test_beer_brand_filter_rejects_unknown_brand(client):
     )
 
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
+def test_amenity_filter_requires_every_selected_amenity(client):
+    _amenity("payment_card")
+    _amenity("game_foosball")
+    _amenity("payment_card", name="Jen kartou", lat=50.081, lng=14.421)
+    PubSearchCache.objects.create(
+        cache_key=_KEY,
+        radius_bucket=50,
+        items=[
+            _ITEM,
+            {
+                "name": "Jen kartou",
+                "label": "Hospoda",
+                "position": {"lat": 50.081, "lon": 14.421},
+            },
+        ],
+        fetched_at=dj_tz.now(),
+    )
+
+    resp = client.get(
+        "/v1/pubs/near",
+        data={
+            "lat": _LAT,
+            "lng": _LNG,
+            "radius_km": 25,
+            "amenities": "payment_card,game_foosball",
+        },
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert [item["name"] for item in resp.json()["items"]] == ["Hospoda U Testu"]
+    assert resp.json()["items"][0]["source"] == "amenity_signal"
+    assert resp.json()["applied_filters"] == {
+        "version": 1,
+        "match": "all",
+        "amenities": ["payment_card", "game_foosball"],
+        "beer_brand": None,
+    }
+
+
+@pytest.mark.django_db
+def test_amenity_filter_only_accepts_confident_yes(client):
+    _amenity("payment_card", status_value=PubAmenity.Status.DISPUTED)
+    factory, _ = _mock_source(MapySuggestResult(items=[_ITEM]))
+
+    with patch("pubs.api.views.MapySuggestSource", factory):
+        resp = client.get(
+            "/v1/pubs/near",
+            data={"lat": _LAT, "lng": _LNG, "amenities": "payment_card"},
+        )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["items"] == []
+    factory.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_amenity_filter_keeps_same_cell_neighbour_out(client):
+    _amenity("payment_card")
+    neighbour = {
+        **_ITEM,
+        "name": "Kavárna Odvedle",
+    }
+    PubSearchCache.objects.create(
+        cache_key=_KEY,
+        radius_bucket=50,
+        items=[neighbour],
+        fetched_at=dj_tz.now(),
+    )
+
+    resp = client.get(
+        "/v1/pubs/near",
+        data={"lat": _LAT, "lng": _LNG, "amenities": "payment_card"},
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    # The aggregate-backed fallback is returned, never the neighbouring provider item.
+    assert [item["name"] for item in resp.json()["items"]] == ["Hospoda U Testu"]
+
+
+@pytest.mark.django_db
+def test_amenity_signal_dedupes_provider_copy_with_slight_coordinate_drift(client):
+    _amenity("payment_card")
+    provider_copy = {
+        **_ITEM,
+        "position": {"lat": 50.08001, "lon": 14.42001},
+    }
+    assert geohash8(50.08001, 14.42001) == geohash8(50.08, 14.42)
+    PubSearchCache.objects.create(
+        cache_key=_KEY,
+        radius_bucket=50,
+        items=[provider_copy],
+        fetched_at=dj_tz.now(),
+    )
+
+    resp = client.get(
+        "/v1/pubs/near",
+        data={"lat": _LAT, "lng": _LNG, "amenities": "payment_card"},
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert [item["name"] for item in resp.json()["items"]] == ["Hospoda U Testu"]
+    assert resp.json()["items"][0]["source"] == "amenity_signal"
+
+
+@pytest.mark.django_db
+def test_distinct_stable_ids_are_a_hard_identity_mismatch(client):
+    from pubs.api.views import _filter_items_by_amenity_signals
+
+    signal = {
+        "id": "stable-pub-a",
+        "name": "Hospoda U Testu",
+        "position": {"lat": 50.08, "lon": 14.42},
+    }
+    neighbour = {
+        "id": "stable-pub-b",
+        "name": "Hospoda U Testu 2",
+        "position": {"lat": 50.08, "lon": 14.42},
+    }
+
+    assert _filter_items_by_amenity_signals([neighbour], [signal]) == []
+
+
+@pytest.mark.django_db
+def test_legacy_cache_only_identity_is_excluded_from_hard_filter(client):
+    cache_key = geohash8(50.08, 14.42)
+    for amenity_key in ["payment_card", "game_foosball"]:
+        row = _amenity(amenity_key)
+        row.pub_identity_key = cache_key
+        row.save(update_fields=["pub_identity_key"])
+
+    resp = client.get(
+        "/v1/pubs/near",
+        data={
+            "lat": _LAT,
+            "lng": _LNG,
+            "amenities": "payment_card,game_foosball",
+        },
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["items"] == []
+    assert resp.json()["applied_filters"]["amenities"] == [
+        "payment_card",
+        "game_foosball",
+    ]
+
+
+@pytest.mark.django_db
+def test_amenity_filter_rejects_inactive_or_non_filterable_keys(client):
+    AmenityKind.objects.filter(key="game_jukebox").update(filter_candidate=False)
+
+    resp = client.get(
+        "/v1/pubs/near",
+        data={"lat": _LAT, "lng": _LNG, "amenities": "game_jukebox"},
+    )
+
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST
+    assert "game_jukebox" in str(resp.json()["amenities"])
+
+
+@pytest.mark.django_db
+def test_beer_brand_and_amenity_filters_are_intersected(client, settings):
+    settings.MAPY_API_KEY = ""
+    brand, _ = BeerBrand.objects.get_or_create(
+        key="pilsner-urquell",
+        defaults={"name": "Pilsner Urquell"},
+    )
+    for name, lat, lng in [
+        ("Hospoda U Testu", 50.08, 14.42),
+        ("Plzeň bez karty", 50.081, 14.421),
+    ]:
+        PubBeerBrand.objects.create(
+            cache_key=geohash8(lat, lng),
+            name=name,
+            lat=lat,
+            lng=lng,
+            brand=brand,
+            brand_key=brand.key,
+            brand_name=brand.name,
+            source=PubBeerBrand.Source.COMMUNITY,
+        )
+    _amenity("payment_card")
+
+    resp = client.get(
+        "/v1/pubs/near",
+        data={
+            "lat": _LAT,
+            "lng": _LNG,
+            "beer_brand": brand.key,
+            "amenities": "payment_card",
+        },
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert [item["name"] for item in resp.json()["items"]] == ["Hospoda U Testu"]
 
 
 @pytest.mark.django_db

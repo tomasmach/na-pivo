@@ -333,6 +333,15 @@ AMENITY_KINDS_THROTTLE_RATE: str = os.environ.get("AMENITY_KINDS_THROTTLE_RATE",
 AMENITY_READS_THROTTLE_RATE: str = os.environ.get("AMENITY_READS_THROTTLE_RATE", "60/min")
 # Hard cap on cache_keys per GET /v1/pub-amenities batch read.
 AMENITY_READ_MAX_KEYS: int = int(os.environ.get("AMENITY_READ_MAX_KEYS", "60"))
+# Public nearby-search amenity filters stay bounded so each request performs a
+# small, predictable number of indexed aggregate scans.
+PUBS_NEAR_MAX_AMENITY_FILTERS: int = int(
+    os.environ.get("PUBS_NEAR_MAX_AMENITY_FILTERS", "5")
+)
+MAP_AMENITY_CONFIDENCE_FLOOR: float = float(
+    os.environ.get("MAP_AMENITY_CONFIDENCE_FLOOR", "0.5")
+)
+MAP_AMENITY_SCAN_LIMIT: int = int(os.environ.get("MAP_AMENITY_SCAN_LIMIT", "200"))
 # Aggregation tunables (§5.4): below AMENITY_MIN_VOTES a fact stays "unknown";
 # a minority share >= AMENITY_DISPUTE_RATIO marks the aggregate "disputed".
 AMENITY_MIN_VOTES: int = int(os.environ.get("AMENITY_MIN_VOTES", "3"))

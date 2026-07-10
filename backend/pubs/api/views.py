@@ -4207,6 +4207,24 @@ def _pub_beer_brand_item(link: PubBeerBrand) -> dict:
     return item
 
 
+def _pub_amenity_item(amenity: PubAmenity) -> dict:
+    """Mapy-shaped fallback item backed by a community amenity aggregate."""
+    item = {
+        "name": amenity.name,
+        "label": "Hospoda",
+        "position": {"lat": amenity.lat, "lon": amenity.lng},
+        "source": "amenity_signal",
+    }
+    if amenity.external_id:
+        item["id"] = amenity.external_id
+    if amenity.city:
+        item["regionalStructure"] = [
+            {"name": amenity.city, "type": "regional.municipality"},
+        ]
+        item["location"] = amenity.city
+    return item
+
+
 def _item_cache_key(item: dict) -> str:
     pos = item.get("position") or {}
     lat = pos.get("lat")
@@ -4320,10 +4338,127 @@ def _nearby_pub_beer_brand_items(
     return [_pub_beer_brand_item(link) for link in links], {link.cache_key for link in links}
 
 
+def _nearby_pub_amenity_items(
+    *,
+    amenity_keys: list[str],
+    lat: float,
+    lng: float,
+    radius_km: float,
+) -> tuple[list[dict], set[str]]:
+    """Known nearby pubs whose community truth is YES for every requested key.
+
+    Scan every facet independently, then intersect by pub identity. Per-key scans
+    avoid starving a selective facet behind many rows for another one. Identity
+    rather than geohash prevents two businesses in one ~38 m cell from satisfying
+    different halves of an AND filter.
+    """
+    if not amenity_keys:
+        return [], set()
+
+    rows_by_key: dict[str, list[PubAmenity]] = {}
+    identity_sets: list[set[str]] = []
+    scan_limit = max(1, int(getattr(settings, "MAP_AMENITY_SCAN_LIMIT", 200)))
+    confidence_floor = max(
+        0.0,
+        min(1.0, float(getattr(settings, "MAP_AMENITY_CONFIDENCE_FLOOR", 0.5))),
+    )
+    for key in amenity_keys:
+        rows = _nearest_rows(
+            PubAmenity.objects.filter(
+                amenity_key=key,
+                status=PubAmenity.Status.YES,
+                confidence__gte=confidence_floor,
+                # Migration 0041 conservatively backfilled pre-identity rows
+                # with cache_key only. They cannot safely participate in a hard
+                # multi-business filter; a fresh named vote creates the modern
+                # cache_key::normalized_name identity and makes them eligible.
+                pub_identity_key__contains="::",
+            ),
+            lat,
+            lng,
+            radius_km,
+            tiebreak="-last_updated",
+            scan_limit=scan_limit,
+            max_results=scan_limit,
+        )
+        if not rows:
+            return [], set()
+        rows_by_key[key] = rows
+        identity_sets.append({row.pub_identity_key for row in rows})
+
+    matched_identities = set.intersection(*identity_sets)
+    if not matched_identities:
+        return [], set()
+    # The first requested key supplies one representative row per matched pub;
+    # every aggregate for the same identity carries the same venue metadata.
+    matched = [row for row in rows_by_key[amenity_keys[0]] if row.pub_identity_key in matched_identities]
+    matched = matched[:_BEER_BRAND_MAX_RESULTS]
+    return [_pub_amenity_item(row) for row in matched], {row.cache_key for row in matched}
+
+
 def _filter_items_by_cache_key(items: list[dict], cache_keys: set[str]) -> list[dict]:
     if not cache_keys:
         return []
     return [item for item in items if _item_cache_key(item) in cache_keys]
+
+
+def _filter_items_by_amenity_signals(
+    items: list[dict],
+    amenity_items: list[dict],
+) -> list[dict]:
+    """Filter provider items by both coarse cell and matching venue name.
+
+    A geohash-8 cell can contain neighbouring businesses. The amenity aggregate
+    uses a name-aware pub identity, so a cache-key-only join could incorrectly
+    lend one venue's card terminal or foosball table to the pub next door.
+    """
+    return [
+        item
+        for item in items
+        if any(_items_refer_to_same_pub(item, signal) for signal in amenity_items)
+    ]
+
+
+def _strong_item_external_id(item: dict) -> str | None:
+    external_id = _item_external_id(item)
+    if not external_id or _is_coordinate_external_id(external_id):
+        return None
+    return external_id
+
+
+def _items_refer_to_same_pub(left: dict, right: dict) -> bool:
+    """Identity-safe provider/signal match.
+
+    Two present stable ids are authoritative: equality matches and inequality is
+    a hard mismatch. The coarser geohash+name fallback is only allowed when at
+    least one side lacks a stable id.
+    """
+    left_external_id = _strong_item_external_id(left)
+    right_external_id = _strong_item_external_id(right)
+    if left_external_id and right_external_id:
+        return left_external_id == right_external_id
+    return (
+        _item_cache_key(left) == _item_cache_key(right)
+        and names_match(str(left.get("name") or ""), str(right.get("name") or ""))
+    )
+
+
+def _with_pub_signal_items(signal_items: list[dict], provider_items: list[dict]) -> list[dict]:
+    """Prefer local signal rows and remove matching provider copies.
+
+    Provider coordinates can differ by a few metres, so the generic exact-coordinate
+    dedupe used for user-added pubs is too strict here. Stable external ids win;
+    otherwise require both the same geohash-8 cell and a matching venue name.
+    """
+    if not signal_items:
+        return provider_items
+
+    remaining_provider_items = [
+        item
+        for item in provider_items
+        if not any(_items_refer_to_same_pub(item, signal) for signal in signal_items)
+    ]
+    return [*signal_items, *remaining_provider_items]
 
 
 def _pub_near_dedupe_key(item: dict) -> str:
@@ -4391,6 +4526,16 @@ class PubsNearView(APIView):
         data = serializer.validated_data
         radius_km: float = data["radius_km"]
         beer_brand_key = data.get("beer_brand") or ""
+        amenity_keys: list[str] = data.get("amenities") or []
+        max_amenity_filters = max(
+            1,
+            int(getattr(settings, "PUBS_NEAR_MAX_AMENITY_FILTERS", 5)),
+        )
+        if len(amenity_keys) > max_amenity_filters:
+            return Response(
+                {"amenities": [f"At most {max_amenity_filters} amenities may be filtered at once."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         if beer_brand_key and not BeerBrand.objects.filter(
             key=beer_brand_key,
             active=True,
@@ -4399,6 +4544,35 @@ class PubsNearView(APIView):
                 {"beer_brand": ["Unknown beer brand."]},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if amenity_keys:
+            allowed_amenity_keys = set(
+                AmenityKind.objects.filter(
+                    key__in=amenity_keys,
+                    active=True,
+                    filter_candidate=True,
+                ).values_list("key", flat=True)
+            )
+            unknown_amenity_keys = [key for key in amenity_keys if key not in allowed_amenity_keys]
+            if unknown_amenity_keys:
+                return Response(
+                    {"amenities": [f"Unknown or unavailable amenity: {key}." for key in unknown_amenity_keys]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        def response_body(*, items: list[dict], cached: bool, fetched_at: str) -> dict:
+            body = {
+                "items": items,
+                "cached": cached,
+                "fetched_at": fetched_at,
+            }
+            if amenity_keys:
+                body["applied_filters"] = {
+                    "version": 1,
+                    "match": "all",
+                    "amenities": amenity_keys,
+                    "beer_brand": beer_brand_key or None,
+                }
+            return body
 
         user_added_items = _nearby_user_added_pub_items(data["lat"], data["lng"], radius_km)
         beer_brand_items: list[dict] = []
@@ -4413,24 +4587,51 @@ class PubsNearView(APIView):
             user_added_items = _filter_items_by_cache_key(user_added_items, beer_brand_cache_keys)
             if not beer_brand_cache_keys:
                 return Response(
-                    {
-                        "items": [],
-                        "cached": True,
-                        "fetched_at": dj_timezone.now().isoformat(),
-                    },
+                    response_body(
+                        items=[],
+                        cached=True,
+                        fetched_at=dj_timezone.now().isoformat(),
+                    ),
                     status=status.HTTP_200_OK,
                 )
 
-        def apply_beer_brand_filter(items: list[dict]) -> list[dict]:
-            if not beer_brand_key:
-                return _with_user_added_items(user_added_items, items)
-            return _with_user_added_items(
-                beer_brand_items,
-                _filter_items_by_cache_key(items, beer_brand_cache_keys),
+        amenity_items: list[dict] = []
+        amenity_cache_keys: set[str] = set()
+        if amenity_keys:
+            amenity_items, amenity_cache_keys = _nearby_pub_amenity_items(
+                amenity_keys=amenity_keys,
+                lat=data["lat"],
+                lng=data["lng"],
+                radius_km=radius_km,
             )
+            user_added_items = _filter_items_by_amenity_signals(user_added_items, amenity_items)
+            if beer_brand_key:
+                beer_brand_items = _filter_items_by_amenity_signals(beer_brand_items, amenity_items)
+                beer_brand_cache_keys = {_item_cache_key(item) for item in beer_brand_items}
+                beer_brand_cache_keys.discard("")
+            if not amenity_cache_keys or (beer_brand_key and not beer_brand_cache_keys):
+                return Response(
+                    response_body(
+                        items=[],
+                        cached=True,
+                        fetched_at=dj_timezone.now().isoformat(),
+                    ),
+                    status=status.HTTP_200_OK,
+                )
+
+        def apply_filters(items: list[dict]) -> list[dict]:
+            filtered_items = items
+            if amenity_keys:
+                filtered_items = _filter_items_by_amenity_signals(filtered_items, amenity_items)
+            if beer_brand_key:
+                filtered_items = _filter_items_by_cache_key(filtered_items, beer_brand_cache_keys)
+                return _with_pub_signal_items(beer_brand_items, filtered_items)
+            if amenity_keys:
+                return _with_pub_signal_items(amenity_items, filtered_items)
+            return _with_user_added_items(user_added_items, filtered_items)
 
         def final_items(items: list[dict]) -> list[dict]:
-            return _with_pub_name_corrections(apply_beer_brand_filter(items))
+            return _with_pub_name_corrections(apply_filters(items))
 
         # Quantize to a small shared cache cell but run the search from the user's
         # actual position. The old geohash-5 centre search could be >2 km away at
@@ -4451,21 +4652,21 @@ class PubsNearView(APIView):
             # beer-brand fallback items. None → caller emits its own error.
             if row is not None:
                 return Response(
-                    {
-                        "items": final_items(row.items),
-                        "cached": True,
-                        "fetched_at": row.fetched_at.isoformat(),
-                    },
+                    response_body(
+                        items=final_items(row.items),
+                        cached=True,
+                        fetched_at=row.fetched_at.isoformat(),
+                    ),
                     status=status.HTTP_200_OK,
                 )
             fallback_items = final_items([])
             if fallback_items:
                 return Response(
-                    {
-                        "items": fallback_items,
-                        "cached": True,
-                        "fetched_at": dj_timezone.now().isoformat(),
-                    },
+                    response_body(
+                        items=fallback_items,
+                        cached=True,
+                        fetched_at=dj_timezone.now().isoformat(),
+                    ),
                     status=status.HTTP_200_OK,
                 )
             return None
@@ -4473,11 +4674,11 @@ class PubsNearView(APIView):
         # Fresh cache hit — serve as-is.
         if row is not None and row.fetched_at >= cutoff:
             return Response(
-                {
-                    "items": final_items(row.items),
-                    "cached": True,
-                    "fetched_at": row.fetched_at.isoformat(),
-                },
+                response_body(
+                    items=final_items(row.items),
+                    cached=True,
+                    fetched_at=row.fetched_at.isoformat(),
+                ),
                 status=status.HTTP_200_OK,
             )
 
@@ -4549,11 +4750,11 @@ class PubsNearView(APIView):
         )
 
         return Response(
-            {
-                "items": final_items(result.items),
-                "cached": False,
-                "fetched_at": now.isoformat(),
-            },
+            response_body(
+                items=final_items(result.items),
+                cached=False,
+                fetched_at=now.isoformat(),
+            ),
             status=status.HTTP_200_OK,
         )
 
