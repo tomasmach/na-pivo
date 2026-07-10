@@ -58,6 +58,7 @@ import {
   type BeerCheckIn,
 } from '@/data/beerCheckinsClient';
 import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
+import { PartaPhotoStrip } from '@/photos/PartaPhotoStrip';
 import { BeerTagChips } from '@/components/shared/BeerTagChips';
 import { GlowButton } from '@/components/shared/GlowButton';
 import {
@@ -391,6 +392,8 @@ export default function FriendsScreen() {
   const [pushDenied, setPushDenied] = useState(false);
   // Focus gate for the bounded live poll (Parta is a persistent tab).
   const [focused, setFocused] = useState(false);
+  // Bumped per dashboard load so the photo strip refetches in lockstep.
+  const [photoFeedKey, setPhotoFeedKey] = useState(0);
 
   // Identity: the growth block needs a nickname before a QR/code makes sense.
   const nickname = useAccountStore(selectNickname);
@@ -431,6 +434,7 @@ export default function FriendsScreen() {
       const controller = new AbortController();
       loadAbortRef.current = controller;
       if (mode === 'refresh') setRefreshing(true);
+      setPhotoFeedKey((key) => key + 1);
       const next = await fetchFriendsDashboard(controller.signal);
       const nextBeerFeed = next ? await fetchBeerCheckInFeed(controller.signal) : null;
       if (!mountedRef.current) return;
@@ -1190,6 +1194,13 @@ export default function FriendsScreen() {
                     </View>
                   </SectionPanel>
                 </View>
+              </Reveal>
+            ) : null}
+
+            {/* §6 — ČERSTVĚ CVAKNUTO: fresh parta photos (hides when empty) */}
+            {d ? (
+              <Reveal index={nextReveal()}>
+                <PartaPhotoStrip refreshKey={photoFeedKey} style={styles.section} />
               </Reveal>
             ) : null}
 

@@ -269,6 +269,48 @@ export async function deleteBeerPhoto(photoId: string): Promise<FriendActionResu
   return res.ok ? { ok: true } : res.result;
 }
 
+/** Compact author block riding on parta-feed photos. */
+export interface BeerPhotoAuthor {
+  nickname: string | null;
+  displayName: string;
+  avatarUrl: string | null;
+}
+
+/** One friend's photo in the parta feed: the diary shape plus its author. */
+export interface PartaFeedPhoto extends BeerPhoto {
+  account: BeerPhotoAuthor;
+}
+
+interface RawBeerPhotoAuthor {
+  nickname?: string | null;
+  display_name?: string;
+  avatar_url?: string | null;
+}
+
+/**
+ * GET /v1/friends/beer-photos/feed — fresh friends-visible photos from the
+ * whole parta (last days, newest first). null on any failure.
+ */
+export async function fetchPartaPhotoFeed(signal?: AbortSignal): Promise<PartaFeedPhoto[] | null> {
+  const res = await requestJson('/v1/friends/beer-photos/feed', { signal });
+  if (!res.ok) return null;
+  if (!Array.isArray(res.data.photos)) return [];
+  return (res.data.photos as (RawBeerPhoto & { account?: RawBeerPhotoAuthor })[]).map((raw) => {
+    const account = raw.account ?? {};
+    return {
+      ...beerPhotoFromWire(raw),
+      account: {
+        nickname:
+          typeof account.nickname === 'string' && account.nickname.length > 0
+            ? account.nickname
+            : null,
+        displayName: account.display_name ?? '',
+        avatarUrl: resolveBeerPhotoUrl(account.avatar_url) || null,
+      },
+    };
+  });
+}
+
 /**
  * GET /v1/friends/<public_id>/beer-photos — a friend's friends-visible photos.
  * null on any failure, including 404 when not allowed (not friends / private).

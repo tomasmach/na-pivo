@@ -791,6 +791,15 @@ export const cs = {
 
     // — Friend gallery (section hides entirely when empty) —
     friendHeader: (name: string) => `Pivní fotky — ${name}`,
+
+    // — Counter (Štamgast) capture pill —
+    counterCta: 'Cvakni pivo',
+  },
+
+  partaPhotos: {
+    // — Fresh parta photo strip on the Parta tab (hides entirely when empty) —
+    header: 'ČERSTVĚ CVAKNUTO',
+    you: 'Ty',
   },
 
   photoContest: {
@@ -1983,6 +1992,8 @@ export const cs = {
     contestPickMyPhoto: (label: string) =>
       `Přihlásit fotku${label ? ` ${label}` : ''} do soutěže`,
     friendPhotoTile: (name: string) => `Fotka od ${name}. Ťukni pro zvětšení.`,
+    partaPhotoTile: (name: string) => `Fotka od ${name}. Ťukni pro zvětšení.`,
+    counterPhotoCta: 'Cvaknout fotku piva do deníčku',
     photoViewerClose: 'Zavřít fotku',
   },
 } as const;

@@ -7,16 +7,15 @@
  * Pending/failed uploads carry a small sync chip. The header links to the
  * FotoPivař contest.
  *
- * This section OWNS the whole capture flow (source sheet → picker → compose
- * sheet) and the diary bootstrap (loadBeerPhotos: hydrate + server reconcile),
- * so ProfileScreen only mounts it.
+ * The capture flow itself lives in BeerPhotoCaptureFlow (shared with the
+ * counter); this section owns the trigger and the diary bootstrap
+ * (loadBeerPhotos: hydrate + server reconcile), so ProfileScreen only mounts it.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 
-import { showAppDialog } from '@/components/shared/AppDialog';
 import { GlowButton } from '@/components/shared/GlowButton';
 import {
   CameraIcon,
@@ -25,14 +24,10 @@ import {
   RefreshCwIcon,
   TrophyIcon,
 } from '@/components/shared/IconGlyph';
-import { openSystemSettings } from '@/compass/permissions';
-import { pickAndPrepareBeerPhoto, type BeerPhotoSource } from '@/data/beerPhotoPicker';
 import { cs } from '@/i18n/cs';
-import { BeerPhotoComposeSheet } from '@/photos/BeerPhotoComposeSheet';
-import { BeerPhotoSourceSheet } from '@/photos/BeerPhotoSourceSheet';
+import { BeerPhotoCaptureFlow } from '@/photos/BeerPhotoCaptureFlow';
 import { ScalePressable } from '@/photos/ScalePressable';
 import { loadBeerPhotos, useBeerPhotosStore, type BeerPhotoLocal } from '@/stores/beerPhotosStore';
-import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -123,14 +118,9 @@ type StripItem = { kind: 'add' } | { kind: 'photo'; photo: BeerPhotoLocal };
 
 export function PhotoDiarySection() {
   const router = useRouter();
-  const showToast = useToastStore((s) => s.show);
   const photos = useBeerPhotosStore((s) => s.photos);
 
   const [sourceVisible, setSourceVisible] = useState(false);
-  const [composeUri, setComposeUri] = useState<string | null>(null);
-  // Synchronous double-fire guard — the sheet rows stay tappable through the
-  // fade-out (ScanMenuSheet caller idiom).
-  const pickInFlightRef = useRef(false);
 
   // Diary bootstrap: hydrate the persisted view, then reconcile with the server.
   useEffect(() => {
@@ -138,47 +128,6 @@ export function PhotoDiarySection() {
     void loadBeerPhotos(controller.signal);
     return () => controller.abort();
   }, []);
-
-  const handlePick = useCallback(
-    async (source: BeerPhotoSource) => {
-      if (pickInFlightRef.current) return;
-      pickInFlightRef.current = true;
-      try {
-        const picked = await pickAndPrepareBeerPhoto(source);
-        if (picked.status === 'cancelled') return;
-        if (picked.status === 'denied') {
-          showToast(
-            source === 'camera'
-              ? cs.photoDiary.permissionCameraBody
-              : cs.photoDiary.permissionLibraryBody,
-            { icon: <CameraIcon size={18} color={Colors.amber} /> },
-          );
-          return;
-        }
-        if (picked.status === 'denied-permanent') {
-          showAppDialog({
-            title: cs.photoDiary.title,
-            message: cs.photoDiary.permissionBlockedBody,
-            buttons: [
-              { text: cs.common.cancel, style: 'cancel' },
-              { text: cs.photoDiary.openSettings, onPress: () => void openSystemSettings() },
-            ],
-          });
-          return;
-        }
-        if (picked.status === 'error') {
-          showToast(cs.photoDiary.errorPick, {
-            icon: <InfoIcon size={18} color={Colors.foamMuted} />,
-          });
-          return;
-        }
-        setComposeUri(picked.uri);
-      } finally {
-        pickInFlightRef.current = false;
-      }
-    },
-    [showToast],
-  );
 
   const openCapture = useCallback(() => setSourceVisible(true), []);
 
@@ -266,27 +215,7 @@ export function PhotoDiarySection() {
         />
       )}
 
-      <BeerPhotoSourceSheet
-        visible={sourceVisible}
-        onClose={() => setSourceVisible(false)}
-        onPick={(source) => {
-          setSourceVisible(false);
-          void handlePick(source);
-        }}
-      />
-
-      {composeUri ? (
-        <BeerPhotoComposeSheet
-          pickedUri={composeUri}
-          onClose={() => setComposeUri(null)}
-          onSaved={() => {
-            setComposeUri(null);
-            showToast(cs.photoDiary.saved, {
-              icon: <CameraIcon size={18} color={Colors.amber} />,
-            });
-          }}
-        />
-      ) : null}
+      <BeerPhotoCaptureFlow open={sourceVisible} onClose={() => setSourceVisible(false)} />
     </>
   );
 }

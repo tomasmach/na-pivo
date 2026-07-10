@@ -115,6 +115,10 @@ jest.mock('@/data/visitsSync', () => ({ syncVisit, deleteVisitByClientId }));
 const useNearbyPub = jest.fn();
 jest.mock('@/counter/useNearbyPub', () => ({ useNearbyPub: () => useNearbyPub() }));
 
+// Photo capture flow — pure UI with its own coverage; it drags in
+// expo-location via compass/permissions, which this suite doesn't stub.
+jest.mock('@/photos/BeerPhotoCaptureFlow', () => ({ BeerPhotoCaptureFlow: () => null }));
+
 import { useTallyStore } from '@/stores/tallyStore';
 import { useCommunityStore } from '@/stores/communityStore';
 import { useSettingsStore } from '@/stores/settingsStore';

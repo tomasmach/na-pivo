@@ -63,6 +63,7 @@ import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
 import { shareFriendPubActivity } from '@/data/friendsClient';
 import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
 import { trackCounterTabOpened } from '@/data/counterTelemetry';
+import { BeerPhotoCaptureFlow } from '@/photos/BeerPhotoCaptureFlow';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { fireSuccessHaptic, fireLightImpactHaptic } from '@/utils/haptics';
 import { useCommunityStore } from '@/stores/communityStore';
@@ -404,6 +405,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   const [checkInBeerName, setCheckInBeerName] = useState<string | null>(null);
   const [checkInSheetOpen, setCheckInSheetOpen] = useState(false);
   const [scanSourceVisible, setScanSourceVisible] = useState(false);
+  const [photoCaptureOpen, setPhotoCaptureOpen] = useState(false);
   const [scanningDrinks, setScanningDrinks] = useState(false);
   const [scannedDrinks, setScannedDrinks] = useState<ScannedDrink[]>([]);
   // Deferred-send timers per drink id; a count schedules delivery for the end of
@@ -1127,9 +1129,22 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
           </Pressable>
         </View>
 
-        {/* Secondary social action. Mapping already lives near the top; this
-            remains lower so the first screen is not a stack of chores. */}
+        {/* Secondary social actions. Mapping already lives near the top; these
+            remain lower so the first screen is not a stack of chores. The photo
+            pill drops into the diary capture flow with tonight's pub pre-tagged
+            from this session. */}
         <View style={styles.pubActions}>
+          <Pressable
+            onPress={() => setPhotoCaptureOpen(true)}
+            style={({ pressed }) => [styles.friendShareButton, pressed && styles.friendShareButtonPressed]}
+            accessibilityRole="button"
+            accessibilityLabel={cs.a11y.counterPhotoCta}
+          >
+            <CameraIcon size={18} color={Colors.amber} />
+            <Text style={styles.friendShareText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.photoDiary.counterCta}
+            </Text>
+          </Pressable>
           <Pressable
             onPress={() => void handleShareWithFriends()}
             disabled={sharingWithFriends || broadcasted}
@@ -1173,6 +1188,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
         onClose={() => setScanSourceVisible(false)}
         onPick={(source) => void runDrinkScan(source)}
       />
+      <BeerPhotoCaptureFlow open={photoCaptureOpen} onClose={() => setPhotoCaptureOpen(false)} />
       <ScannedDrinkPicker
         visible={scannedDrinks.length > 0}
         drinks={scannedDrinks}
