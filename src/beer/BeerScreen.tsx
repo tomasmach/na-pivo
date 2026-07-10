@@ -24,8 +24,9 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import CounterScreen from '@/counter/CounterScreen';
 import MyBeersScreen from '@/myBeers/MyBeersScreen';
+import StatsScreen from '@/stats/StatsScreen';
 
-type BeerTab = 'count' | 'history';
+type BeerTab = 'count' | 'stats' | 'history';
 
 interface SegmentedProps {
   tab: BeerTab;
@@ -43,6 +44,7 @@ const Segmented = memo(function Segmented({ tab, onChange }: SegmentedProps) {
 
   const segments: { key: BeerTab; label: string; a11y: string }[] = [
     { key: 'count', label: cs.beer.segmentCount, a11y: cs.a11y.beerSegmentCount },
+    { key: 'stats', label: cs.beer.segmentStats, a11y: cs.a11y.beerSegmentStats },
     { key: 'history', label: cs.beer.segmentHistory, a11y: cs.a11y.beerSegmentHistory },
   ];
 
@@ -90,7 +92,13 @@ export default function BeerScreen() {
         <Segmented tab={tab} onChange={setTab} />
       </View>
       <View style={styles.body}>
-        {tab === 'count' ? <CounterScreen embedded /> : <MyBeersScreen embedded />}
+        {tab === 'count' ? (
+          <CounterScreen embedded />
+        ) : tab === 'stats' ? (
+          <StatsScreen embedded />
+        ) : (
+          <MyBeersScreen embedded />
+        )}
       </View>
     </View>
   );

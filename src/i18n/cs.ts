@@ -3,7 +3,7 @@
  * Structured by screen/component so adding a second locale later is trivial.
  */
 
-import { beerCountLabel, czechPlural } from './plural';
+import { beerCountLabel, beerNoun, czechPlural } from './plural';
 import type { DrinkType } from '@/drinks/drinkTypes';
 
 /** Format a serving volume in ml as a Czech litre string with a decimal comma:
@@ -1158,6 +1158,7 @@ export const cs = {
   // personal history; the two screens below it are unchanged.
   beer: {
     segmentCount: 'Počítat',
+    segmentStats: 'Výkon',
     segmentHistory: 'Historie',
   },
 
@@ -1488,6 +1489,68 @@ export const cs = {
     notePlaceholder: 'Co si chceš zapamatovat? Třeba „výčep super, účet už míň".',
   },
 
+  // "Výkon" — the personal beer-stats segment in the "Štamgast" tab. Restrained
+  // on purpose: last night's performance, personal records, lifetime totals and
+  // per-pub counts. The big yearly/monthly recap is saved for Pivní Wrapped.
+  stats: {
+    // — Empty state —
+    emptyTitle: 'Zatím není co měřit',
+    emptyBody: 'Začni počítat piva a ráno tu najdeš svůj výkon — kolik jich padlo, jak rychle a kde.',
+
+    // — Hero: last performance ("ráno koukni na výkon") —
+    heroToday: 'DNEŠNÍ VÝKON',
+    heroYesterday: 'VČEREJŠÍ VÝKON',
+    // Noun shown small next to the big numeral, e.g. "5  piv".
+    heroBeersNoun: (beers: number) => beerNoun(beers),
+    // One-liner reacting to last night's tally, picked by PerformanceTone.
+    toneStart: 'Jedno na zahřátí. 🍺',
+    toneWarmup: 'Slušnej základ.',
+    toneSolid: 'Pěknej večer. 👌',
+    toneBig: 'Tohle byla jízda! 🍻',
+    toneHuge: 'Legendární nářez. Klobouk dolů. 👑',
+    // Micro-stat captions under the hero (only with 2+ beers).
+    heroDuration: 'DÉLKA VEČERA',
+    heroAvg: 'PRŮMĚR NA PIVO',
+    heroFastest: 'NEJRYCHLEJŠÍ',
+
+    // — Personal records —
+    recordsHeader: 'OSOBNÍ REKORDY',
+    recordMostBeers: 'Nejvíc za večer',
+    recordFastest: 'Nejrychlejší pivo',
+    recordLongest: 'Nejdelší večer',
+    // "9 piv · U Zlatého tygra" (pub optional).
+    recordMostBeersValue: (beersLabel: string, pub: string | null) =>
+      pub ? `${beersLabel} · ${pub}` : beersLabel,
+    recordEmpty: '—',
+
+    // — Lifetime totals —
+    totalsHeader: 'CELKEM',
+    totalBeers: 'PIV CELKEM',
+    totalEvenings: 'VEČERŮ',
+    totalPubs: 'HOSPOD',
+    totalSpent: 'UTRACENO',
+
+    // — Top pubs ("kolik jsem kde vypil") —
+    pubsHeader: 'TVOJE HOSPODY',
+    pubsSubtitle: 'Kde ti to teklo nejvíc',
+
+    // — Time formatting (Czech units) —
+    // Evening length: "4 h 12 min" / "47 min" / "do minuty".
+    span: (ms: number): string => {
+      const totalMin = Math.round(ms / 60000);
+      if (totalMin < 1) return 'do minuty';
+      if (totalMin < 60) return `${totalMin} min`;
+      const h = Math.floor(totalMin / 60);
+      const m = totalMin % 60;
+      return m === 0 ? `${h} h` : `${h} h ${m} min`;
+    },
+    // Drinking pace: "45 s" under 1.5 min, otherwise "12 min".
+    pace: (ms: number): string => {
+      if (ms < 90000) return `${Math.max(1, Math.round(ms / 1000))} s`;
+      return `${Math.round(ms / 60000)} min`;
+    },
+  },
+
   whatsNew: {
     eyebrow: 'AKTUALIZACE',
     defaultTitle: 'Co je nového',
@@ -1617,6 +1680,7 @@ export const cs = {
     tabBeer: 'Záložka Štamgast',
     tabFriends: 'Záložka Parta',
     beerSegmentCount: 'Přepnout na počítání piv',
+    beerSegmentStats: 'Přepnout na statistiky výkonu',
     beerSegmentHistory: 'Přepnout na historii večerů',
     counterDone: 'Dopito, zavřít tenhle večer',
     counterResume: 'Pokračovat v předchozím večeru',
