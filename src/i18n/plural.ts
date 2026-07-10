@@ -35,3 +35,11 @@ export function beerNoun(count: number): string {
 export function beerCountLabel(count: number): string {
   return `${count} ${beerNoun(count)}`;
 }
+
+export function softDrinkCountLabel(count: number): string {
+  return `${count} nealko`;
+}
+
+export function shotCountLabel(count: number): string {
+  return `${count} ${czechPlural(count, { one: 'panák', few: 'panáky', many: 'panáků' })}`;
+}

@@ -27,6 +27,7 @@ import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
 import type { CommunityBeer } from './communityHours';
 import { trackClientEvent } from './telemetryClient';
+import type { DrinkType } from '@/drinks/drinkTypes';
 
 export type { CommunityBeer };
 
@@ -38,6 +39,8 @@ export interface DrinkInput {
   lat: number;
   lng: number;
   city?: string;
+  /** Beer remains the default for compatibility with older queued payloads. */
+  drinkType?: DrinkType;
   /** The beer (price REQUIRED — it is the community-sourcing hook). */
   beer: CommunityBeer & { priceCzk: number };
   /** ISO-8601 timestamp; defaults to now server-side when omitted. */
@@ -59,6 +62,7 @@ export interface DrinkEntry {
   lng: number;
   city?: string;
   external_id?: string | null;
+  drink_type?: DrinkType;
   beer: WireDrinkBeer;
   drank_at?: string;
 }
@@ -114,6 +118,7 @@ export function buildDrinkEntry(input: DrinkInput, clientId: string): DrinkEntry
     lng: input.lng,
     beer,
   };
+  if (input.drinkType && input.drinkType !== 'beer') entry.drink_type = input.drinkType;
   const city = input.city?.trim();
   if (city) entry.city = city;
   if (input.externalId !== undefined) entry.external_id = input.externalId;

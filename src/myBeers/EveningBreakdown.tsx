@@ -32,11 +32,12 @@ export function EveningBreakdown({
     <View>
       {lines.map((line, i) => (
         <View
-          key={`${line.name}|${line.volumeMl ?? ''}`}
+          key={`${line.drinkType}|${line.name}|${line.volumeMl ?? ''}`}
           style={[styles.row, i > 0 && styles.rowBorder]}
         >
           <Text style={styles.name} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
             {line.volumeMl ? `${line.name} · ${formatVolume(line.volumeMl)}` : line.name}
+            {line.drinkType !== 'beer' ? ` · ${cs.counter.drinkTypeLabel(line.drinkType)}` : ''}
           </Text>
           <Text style={styles.meta} maxFontSizeMultiplier={FontScaleCap.body}>
             {cs.myBeers.breakdownLine(line.count, formatPrice(line.totalCzk, priceCurrency))}

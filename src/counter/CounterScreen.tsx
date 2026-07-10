@@ -32,7 +32,7 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { amberGlow, amberGlowStrong } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
-import { beerCountLabel } from '@/i18n/plural';
+import { beerCountLabel, shotCountLabel, softDrinkCountLabel } from '@/i18n/plural';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { SoftGlow } from '@/components/celebration/SoftGlow';
 import {
@@ -46,6 +46,8 @@ import {
   BellRingIcon,
   GlassWaterIcon,
   HistoryIcon,
+  CameraIcon,
+  InfoIcon,
 } from '@/components/shared/IconGlyph';
 
 import { geohash8 } from '@/data/geohash';
@@ -53,6 +55,8 @@ import { generateUuidV4 } from '@/data/account';
 import { mergeBeerIntoMenu, isSameBeerIdentity, type CommunityBeer } from '@/data/communityHours';
 import { fetchPubHours } from '@/data/hoursClient';
 import { buildDrinkEntry } from '@/data/drinksClient';
+import { scanMenuPhoto, type ScannedDrink } from '@/data/menuScanClient';
+import type { MenuPhotoSource } from '@/data/menuPhotoPicker';
 import { enqueueDrink, flushDrinksQueue, isDrinkQueued, removeQueuedDrink } from '@/data/drinksQueue';
 import { enqueueDelete } from '@/data/deleteDrinksQueue';
 import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
@@ -70,10 +74,12 @@ import {
   sessionCount,
   sessionTotalCzk,
   sessionBeerCounts,
+  sessionDrinkTypeCounts,
   resumableSession,
   isPastEveningBackdate,
   type TallySession,
 } from '@/stores/tallyStore';
+import { normalizeDrinkType, type DrinkType } from '@/drinks/drinkTypes';
 import type { Pub } from '@/data/pubs';
 
 import { useNearbyPub } from '@/counter/useNearbyPub';
@@ -83,6 +89,8 @@ import { showAppDialog } from '@/components/shared/AppDialog';
 import { BeerCheckInSheet } from '@/counter/BeerCheckInSheet';
 import { MapPubEntry } from '@/components/amenities/MapPubEntry';
 import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
+import { ScanMenuSheet } from '@/components/contribute/ScanMenuSheet';
+import { ScannedDrinkPicker } from '@/counter/ScannedDrinkPicker';
 
 // ─── Gate states (permission / detecting / no pub) ─────────────────────────────
 
@@ -336,6 +344,12 @@ function lastDrinkAgoText(at: string, nowMs: number): string | null {
   return minutes === 0 ? cs.counter.lastDrinkJustNow : cs.counter.lastDrinkMinutesAgo(minutes);
 }
 
+function lastAlcoholAgoText(at: string, nowMs: number): string | null {
+  const minutes = minutesSinceDrink(at, nowMs);
+  if (minutes === null) return null;
+  return minutes === 0 ? cs.counter.lastAlcoholJustNow : cs.counter.lastAlcoholMinutesAgo(minutes);
+}
+
 export function shouldWarnRapidDrink(lastDrinkAt: string | undefined, nowMs: number = Date.now()): boolean {
   if (!lastDrinkAt) return false;
   const atMs = Date.parse(lastDrinkAt);
@@ -372,6 +386,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
 
   const [formMode, setFormMode] = useState<BeerFormMode | null>(null);
   const [formBeer, setFormBeer] = useState<CommunityBeer | null>(null);
+  const [formDrinkType, setFormDrinkType] = useState<DrinkType>('beer');
   // Set when the add form was opened via "zapsat zpětně": the ISO timestamp the
   // next added beer is counted at. Cleared on submit/cancel.
   const [backdateAt, setBackdateAt] = useState<string | null>(null);
@@ -388,6 +403,9 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   const [broadcastCell, setBroadcastCell] = useState<string | null>(null);
   const [checkInBeerName, setCheckInBeerName] = useState<string | null>(null);
   const [checkInSheetOpen, setCheckInSheetOpen] = useState(false);
+  const [scanSourceVisible, setScanSourceVisible] = useState(false);
+  const [scanningDrinks, setScanningDrinks] = useState(false);
+  const [scannedDrinks, setScannedDrinks] = useState<ScannedDrink[]>([]);
   // Deferred-send timers per drink id; a count schedules delivery for the end of
   // the undo window, and undo cancels its drink's timer before it fires.
   const sendTimers = React.useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -425,9 +443,17 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   const isThisPubSession = current?.pubKey === cell;
   const count = isThisPubSession ? sessionCount(current) : 0;
   const totalCzk = isThisPubSession ? sessionTotalCzk(current) : 0;
-  const latestDrink = isThisPubSession ? current?.drinks[current.drinks.length - 1] : undefined;
-  const latestDrinkAt = latestDrink?.at;
-  const latestDrinkText = latestDrinkAt ? lastDrinkAgoText(latestDrinkAt, nowMs) : null;
+  const sessionDrinks = isThisPubSession ? current?.drinks ?? [] : [];
+  const latestBeer = [...sessionDrinks].reverse().find((drink) => normalizeDrinkType(drink.drinkType) === 'beer');
+  const latestAlcohol = [...sessionDrinks].reverse().find((drink) => normalizeDrinkType(drink.drinkType) !== 'soft_drink');
+  const latestDrinkAt = latestAlcohol?.at;
+  const latestDrinkText = latestBeer ? lastDrinkAgoText(latestBeer.at, nowMs) : null;
+  const latestAlcoholText = latestAlcohol ? lastAlcoholAgoText(latestAlcohol.at, nowMs) : null;
+  const drinkTypeCounts = useMemo(() => sessionDrinkTypeCounts(isThisPubSession ? current : null), [isThisPubSession, current]);
+  const otherDrinkSummary = [
+    drinkTypeCounts.soft_drink > 0 ? softDrinkCountLabel(drinkTypeCounts.soft_drink) : null,
+    drinkTypeCounts.shot > 0 ? shotCountLabel(drinkTypeCounts.shot) : null,
+  ].filter((part): part is string => part !== null).join(' · ');
   const beerCounts = useMemo(
     () => (isThisPubSession ? sessionBeerCounts(current) : new Map<string, number>()),
     [isThisPubSession, current],
@@ -470,10 +496,11 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   // Backdated drinks skip the "now"-relative touches (nowMs sync, rapid-drink
   // warning, check-in prompt, water nudge).
   const countBeer = useCallback(
-    (beer: CommunityBeer & { priceCzk: number }, atOverride?: string) => {
+    (beer: CommunityBeer & { priceCzk: number; drinkType?: DrinkType }, atOverride?: string) => {
       const id = generateUuidV4();
       const at = atOverride ?? new Date().toISOString();
-      const startsSession = count === 0;
+      const drinkType = beer.drinkType ?? 'beer';
+      const startsSession = !isThisPubSession || (current?.drinks.length ?? 0) === 0;
       setNowMs(atOverride ? Date.now() : Date.parse(at));
 
       // A backdate to an earlier drinking day is a past evening: file it into
@@ -486,12 +513,12 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
         // Files into a past evening, leaving the live session untouched.
         landedSession = addBackdatedDrink(
           { pubKey: cell, pubName: pub.name },
-          { id, beerName: beer.name, priceCzk: beer.priceCzk, volumeMl: beer.volumeMl, at },
+          { id, beerName: beer.name, drinkType, priceCzk: beer.priceCzk, volumeMl: beer.volumeMl, at },
         );
       } else {
         addDrink(
           { pubKey: cell, pubName: pub.name },
-          { id, beerName: beer.name, priceCzk: beer.priceCzk, volumeMl: beer.volumeMl, at },
+          { id, beerName: beer.name, drinkType, priceCzk: beer.priceCzk, volumeMl: beer.volumeMl, at },
         );
         landedSession = useTallyStore.getState().current;
       }
@@ -505,20 +532,24 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
       }
       void trackClientEvent({
         event: 'drink_added',
-        context: { had_active_session: !startsSession, backdated: !!atOverride },
+        context: {
+          had_active_session: !startsSession,
+          backdated: !!atOverride,
+          ...(drinkType === 'beer' ? {} : { drink_type: drinkType }),
+        },
       });
 
       // Merge into the local community menu so the price shows instantly across
       // the app (same rule as the backend merge).
-      const mergedMenu = mergeBeerIntoMenu(menu, beer);
-      setOverride(cell, { beers: mergedMenu });
-
-      // Bounce the matching menu card.
-      const key = beerKey(beer);
-      setPulses((prev) => ({ ...prev, [key]: (prev[key] ?? 0) + 1 }));
+      if (drinkType === 'beer') {
+        const mergedMenu = mergeBeerIntoMenu(menu, beer);
+        setOverride(cell, { beers: mergedMenu });
+        const key = beerKey(beer);
+        setPulses((prev) => ({ ...prev, [key]: (prev[key] ?? 0) + 1 }));
+      }
       // The check-in prompt ("I'm drinking this now") is now-semantic — skip it
       // for a backdated log.
-      if (!atOverride) setCheckInBeerName(beer.name);
+      if (!atOverride && drinkType === 'beer') setCheckInBeerName(beer.name);
 
       // Persist + best-effort deliver the drink.
       const entry = buildDrinkEntry(
@@ -528,6 +559,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
           lat: pub.lat,
           lng: pub.lng,
           city: pub.city,
+          drinkType,
           beer: { name: beer.name, priceCzk: beer.priceCzk, volumeMl: beer.volumeMl },
           drankAt: at,
         },
@@ -561,6 +593,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
       const nudgeKey = liveSession ? `${liveSession.clientId}:${liveCount}` : '';
       if (
         !atOverride &&
+        drinkType === 'beer' &&
         waterNudgeEnabled &&
         liveCount > 0 &&
         liveCount % 4 === 0 &&
@@ -572,18 +605,18 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
         });
       }
     },
-    [addDrink, addBackdatedDrink, cell, count, hapticEnabled, markDrinkSynced, menu, pub, setOverride, showToast, waterNudgeEnabled],
+    [addDrink, addBackdatedDrink, cell, current, hapticEnabled, isThisPubSession, markDrinkSynced, menu, pub, setOverride, showToast, waterNudgeEnabled],
   );
 
   const requestCountBeer = useCallback(
-    (beer: CommunityBeer & { priceCzk: number }, atOverride?: string) => {
+    (beer: CommunityBeer & { priceCzk: number; drinkType?: DrinkType }, atOverride?: string) => {
       // A backdated beer can't be "too fast right now" — count it straight away.
-      if (atOverride || !shouldWarnRapidDrink(latestDrinkAt)) {
+      if (atOverride || beer.drinkType === 'soft_drink' || !shouldWarnRapidDrink(latestDrinkAt)) {
         countBeer(beer, atOverride);
         return;
       }
 
-      const body = cs.counter.rapidDrinkBody(latestDrinkText ?? cs.counter.lastDrinkJustNow);
+      const body = cs.counter.rapidDrinkBody(latestAlcoholText ?? cs.counter.lastAlcoholJustNow);
       showAppDialog({
         title: cs.counter.rapidDrinkTitle,
         message: body,
@@ -593,12 +626,13 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
         ],
       });
     },
-    [countBeer, latestDrinkAt, latestDrinkText],
+    [countBeer, latestAlcoholText, latestDrinkAt],
   );
 
   // Tap a menu card: priced → instant +1; unpriced → ask price first.
-  const openForm = useCallback((mode: BeerFormMode, beer: CommunityBeer | null) => {
+  const openForm = useCallback((mode: BeerFormMode, beer: CommunityBeer | null, drinkType: DrinkType = 'beer') => {
     setFormBeer(beer);
+    setFormDrinkType(drinkType);
     setFormMode(mode);
     setFormNonce((n) => n + 1);
     void trackClientEvent({
@@ -610,7 +644,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   const handleTapBeer = useCallback(
     (beer: CommunityBeer) => {
       if (typeof beer.priceCzk === 'number') {
-        requestCountBeer({ ...beer, priceCzk: beer.priceCzk });
+        requestCountBeer({ ...beer, priceCzk: beer.priceCzk, drinkType: 'beer' });
       } else {
         openForm('price', beer);
       }
@@ -627,7 +661,12 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
 
   const handleAddBeer = useCallback(() => {
     setBackdateAt(null);
-    openForm('add', null);
+    openForm('add', null, 'beer');
+  }, [openForm]);
+
+  const handleAddOtherDrink = useCallback(() => {
+    setBackdateAt(null);
+    openForm('add', null, 'soft_drink');
   }, [openForm]);
 
   // "Vyfoť celý lístek" inside the add form: hand over to the contribute
@@ -652,6 +691,59 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
       },
     });
   }, [menu, pub, router]);
+
+  const runDrinkScan = useCallback(
+    async (source: MenuPhotoSource) => {
+      setScanSourceVisible(false);
+      setScanningDrinks(true);
+      const toast = useToastStore.getState().show;
+      try {
+        const { pickAndPrepareMenuPhoto } = await import('@/data/menuPhotoPicker');
+        const picked = await pickAndPrepareMenuPhoto(source);
+        if (picked.status === 'cancelled') return;
+        if (picked.status === 'denied' || picked.status === 'denied-permanent') {
+          toast(cs.contribute.scanMenu.permissionDenied, { icon: <CameraIcon size={18} color={Colors.amber} /> });
+          return;
+        }
+        if (picked.status === 'error') {
+          toast(cs.contribute.scanMenu.errorToast, { icon: <InfoIcon size={18} color={Colors.foamMuted} /> });
+          return;
+        }
+        const result = await scanMenuPhoto(picked.uri);
+        if (result.status === 'ok') {
+          setScannedDrinks(result.drinks);
+          if (result.drinks.length > 0) {
+            fireSuccessHaptic();
+            return;
+          }
+        }
+        const message =
+          result.status === 'daily-cap'
+            ? cs.contribute.scanMenu.dailyCapToast
+            : result.status === 'rate-limited'
+              ? cs.contribute.scanMenu.rateLimitedToast
+              : result.status === 'unavailable'
+                ? cs.contribute.scanMenu.unavailableToast
+                : result.status === 'bad-image'
+                  ? cs.contribute.scanMenu.badImageToast
+                  : result.status === 'empty'
+                    ? cs.counter.scanDrinksEmpty
+                    : cs.contribute.scanMenu.errorToast;
+        toast(message, { icon: <InfoIcon size={18} color={Colors.foamMuted} /> });
+      } finally {
+        setScanningDrinks(false);
+      }
+    },
+    [],
+  );
+
+  const handleSelectScannedDrink = useCallback(
+    (drink: ScannedDrink) => {
+      setScannedDrinks([]);
+      openForm('add', drink, drink.drinkType);
+    },
+    [openForm],
+  );
 
   // "Zapsat zpětně" — pick a past time from quick chips, then the normal add
   // form. The chosen ISO timestamp rides `backdateAt` into the count so the
@@ -700,11 +792,18 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
       setFormMode(null);
       setFormBeer(null);
       setBackdateAt(null);
-      const beer = { name: result.name, priceCzk: result.priceCzk, volumeMl: result.volumeMl };
-      void trackClientEvent({
-        event: 'beer_price_added',
-        context: { mode: mode ?? 'unknown' },
-      });
+      const beer = {
+        name: result.name,
+        priceCzk: result.priceCzk,
+        volumeMl: result.volumeMl,
+        drinkType: result.drinkType,
+      };
+      if (result.drinkType === 'beer') {
+        void trackClientEvent({
+          event: 'beer_price_added',
+          context: { mode: mode ?? 'unknown' },
+        });
+      }
       if (mode === 'edit') {
         // Replace the edited row in place. mergeBeerIntoMenu matches on
         // name+volume, so a volume change would otherwise append a NEW row and
@@ -889,6 +988,8 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
         {/* Hero */}
         <Hero
           count={count}
+          hasSessionDrinks={sessionDrinks.length > 0}
+          otherDrinkSummary={otherDrinkSummary}
           totalCzk={totalCzk}
           latestDrinkText={latestDrinkText}
           reducedMotion={reducedMotion}
@@ -986,6 +1087,32 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
           </View>
         )}
 
+        <View style={styles.secondaryDrinkActions}>
+          <Pressable
+            onPress={handleAddOtherDrink}
+            style={({ pressed }) => [styles.secondaryDrinkButton, pressed && styles.friendShareButtonPressed]}
+            accessibilityRole="button"
+            accessibilityLabel={cs.counter.addOtherDrink}
+          >
+            <GlassWaterIcon size={17} color={Colors.foamMuted} />
+            <Text style={styles.secondaryDrinkText} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.counter.addOtherDrink}
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setScanSourceVisible(true)}
+            disabled={scanningDrinks}
+            style={({ pressed }) => [styles.secondaryDrinkButton, (pressed || scanningDrinks) && styles.friendShareButtonPressed]}
+            accessibilityRole="button"
+            accessibilityLabel={cs.counter.scanDrinks}
+          >
+            <CameraIcon size={17} color={Colors.foamMuted} />
+            <Text style={styles.secondaryDrinkText} maxFontSizeMultiplier={FontScaleCap.body}>
+              {scanningDrinks ? cs.counter.scanDrinksLoading : cs.counter.scanDrinks}
+            </Text>
+          </Pressable>
+        </View>
+
         {/* Secondary social action. Mapping already lives near the top; this
             remains lower so the first screen is not a stack of chores. */}
         <View style={styles.pubActions}>
@@ -1015,6 +1142,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
         visible={formMode !== null}
         mode={formMode ?? 'add'}
         beer={formBeer}
+        initialDrinkType={formDrinkType}
         formKey={formNonce}
         onCancel={() => {
           setFormMode(null);
@@ -1025,6 +1153,18 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
         // Hidden in the backdate flow: the scan hands over to the contribute
         // editor, which would silently drop the picked past timestamp.
         onScanMenu={backdateAt ? undefined : handleScanMenu}
+      />
+      <ScanMenuSheet
+        visible={scanSourceVisible}
+        onClose={() => setScanSourceVisible(false)}
+        onPick={(source) => void runDrinkScan(source)}
+      />
+      <ScannedDrinkPicker
+        visible={scannedDrinks.length > 0}
+        drinks={scannedDrinks}
+        priceCurrency={priceCurrency}
+        onClose={() => setScannedDrinks([])}
+        onSelect={handleSelectScannedDrink}
       />
       {checkInBeerName && checkInSheetOpen ? (
         <BeerCheckInSheet
@@ -1046,6 +1186,8 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
 
 function Hero({
   count,
+  hasSessionDrinks,
+  otherDrinkSummary,
   totalCzk,
   latestDrinkText,
   reducedMotion,
@@ -1054,6 +1196,8 @@ function Hero({
   resumeSummary,
 }: {
   count: number;
+  hasSessionDrinks: boolean;
+  otherDrinkSummary: string;
   totalCzk: number;
   latestDrinkText: string | null;
   reducedMotion: boolean;
@@ -1063,7 +1207,7 @@ function Hero({
   /** Short "3 piva" recap of the resumable evening, for the hint line. */
   resumeSummary?: string | null;
 }) {
-  if (count === 0) {
+  if (count === 0 && !hasSessionDrinks) {
     return (
       <View style={styles.hero}>
         <View style={[styles.heroEmptyIcon, amberGlow(14)]}>
@@ -1117,6 +1261,11 @@ function Hero({
           {cs.counter.totalSpent(formatPrice(totalCzk, priceCurrency))}
         </Text>
       </View>
+      {otherDrinkSummary ? (
+        <Text style={styles.otherDrinkSummary} maxFontSizeMultiplier={FontScaleCap.body}>
+          {otherDrinkSummary}
+        </Text>
+      ) : null}
       {latestDrinkText && (
         <Text style={styles.heroLastDrink} maxFontSizeMultiplier={FontScaleCap.body}>
           {latestDrinkText}
@@ -1367,6 +1516,12 @@ const styles = StyleSheet.create({
     color: Colors.mutedText,
     marginTop: 6,
   },
+  otherDrinkSummary: {
+    marginTop: 7,
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 13,
+    color: Colors.foamMuted,
+  },
   // "Dopito" — a compact session chip in the header. Same outline treatment as
   // "Změnit" (stout2 fill + border + amber label) so the two read as a matched
   // pair of secondary actions, never competing with the body's counting.
@@ -1556,6 +1711,26 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.mutedText,
+  },
+  secondaryDrinkActions: {
+    marginTop: Spacing.lg,
+    gap: 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.border,
+    paddingTop: Spacing.sm,
+  },
+  secondaryDrinkButton: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: Spacing.md,
+  },
+  secondaryDrinkText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 14,
+    color: Colors.foamMuted,
   },
 
   // — Empty menu —

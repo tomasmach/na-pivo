@@ -24,7 +24,6 @@ import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { cs, formatVolume } from '@/i18n/cs';
-import { beerCountLabel } from '@/i18n/plural';
 import { formatPrice } from '@/utils/currency';
 import { updateQueuedDrinkBeerName, removeQueuedDrink, flushDrinksQueue } from '@/data/drinksQueue';
 import { enqueueDelete } from '@/data/deleteDrinksQueue';
@@ -35,11 +34,10 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import {
   useTallyStore,
   findSessionByStart,
-  sessionCount,
   sessionTotalCzk,
   type TallyDrink,
 } from '@/stores/tallyStore';
-import { sessionBreakdown, eveningDateLabel } from '@/myBeers/eveningModel';
+import { sessionBreakdown, sessionDrinkSummary, eveningDateLabel } from '@/myBeers/eveningModel';
 import { EveningBreakdown } from '@/myBeers/EveningBreakdown';
 import { PubRatingControl } from '@/myBeers/PubRatingControl';
 import { MapPubEntry } from '@/components/amenities/MapPubEntry';
@@ -180,7 +178,7 @@ export default function EveningDetailScreen() {
             </View>
             <Text style={styles.summary} maxFontSizeMultiplier={FontScaleCap.body}>
               {cs.myBeers.summary(
-                beerCountLabel(sessionCount(session)),
+                sessionDrinkSummary(session),
                 formatPrice(sessionTotalCzk(session), priceCurrency),
               )}
             </Text>
@@ -207,6 +205,7 @@ export default function EveningDetailScreen() {
                 <View style={styles.drinkInfo}>
                   <Text style={styles.drinkName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
                     {drink.volumeMl ? `${drink.beerName} · ${formatVolume(drink.volumeMl)}` : drink.beerName}
+                    {drink.drinkType && drink.drinkType !== 'beer' ? ` · ${cs.counter.drinkTypeLabel(drink.drinkType)}` : ''}
                   </Text>
                   <Text style={styles.drinkMeta} maxFontSizeMultiplier={FontScaleCap.body}>
                     {formatPrice(drink.priceCzk, priceCurrency)}

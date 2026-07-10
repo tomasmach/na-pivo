@@ -4,6 +4,7 @@
  */
 
 import { beerCountLabel, czechPlural } from './plural';
+import type { DrinkType } from '@/drinks/drinkTypes';
 
 /** Format a serving volume in ml as a Czech litre string with a decimal comma:
  *  500 → "0,5 l", 300 → "0,3 l", 1000 → "1 l", 330 → "0,33 l". */
@@ -414,7 +415,7 @@ export const cs = {
     scanMenu: {
       button: 'Vyfoť menu',
       sheetTitle: 'Naskenuju ti menu',
-      sheetSubtitle: 'Vyfoť nápoják a piva z něj přečtu. Pak na ně mrkneš a uložíš.',
+      sheetSubtitle: 'Vyfoť nápoják a nápoje z něj přečtu. Pak na ně mrkneš.',
       camera: 'Vyfotit',
       cameraHelper: 'Namiř foťák na lístek',
       library: 'Z galerie',
@@ -1132,6 +1133,13 @@ export const cs = {
         few: 'minutami',
         many: 'minutami',
       })}`,
+    lastAlcoholJustNow: 'Poslední alkohol před chvilkou',
+    lastAlcoholMinutesAgo: (minutes: number) =>
+      `Poslední alkohol před ${minutes} ${czechPlural(minutes, {
+        one: 'minutou',
+        few: 'minutami',
+        many: 'minutami',
+      })}`,
     rapidDrinkTitle: 'Pivo už máš přidané',
     rapidDrinkBody: (lastDrinkText: string) =>
       `${lastDrinkText}. Fakt chceš přidat další?`,
@@ -1152,6 +1160,12 @@ export const cs = {
     // — Menu —
     menuHeader: 'Co tu mají',
     addBeer: 'Přidat pivo',
+    addOtherDrink: 'Zapsat nealko nebo panáka',
+    scanDrinks: 'Vyfotit nápojový lístek',
+    scanDrinksLoading: 'Čtu nápoják…',
+    scanDrinksTitle: 'Co si dáváš?',
+    scanDrinksHint: 'Vyber nápoj a před zapsáním ho ještě můžeš upravit.',
+    scanDrinksEmpty: 'Na fotce jsem žádný nápoj nepřečetl.',
     // — Backdate (zapsat pivo zpětně) —
     backdateLink: 'Zapsat pivo zpětně',
     backdateTitle: 'Kdy jsi ho měl?',
@@ -1180,6 +1194,16 @@ export const cs = {
     // — Beer / price modal —
     priceModalTitle: 'Kolik stojí?',
     addModalTitle: 'Jaké pivo si dáváš?',
+    addDrinkModalTitle: (type: DrinkType) =>
+      type === 'beer' ? 'Jaké pivo si dáváš?' : type === 'soft_drink' ? 'Jaké nealko si dáváš?' : 'Jaký panák padl?',
+    drinkTypeLabel: (type: DrinkType) =>
+      type === 'beer' ? 'Pivo' : type === 'soft_drink' ? 'Nealko' : 'Panák',
+    drinkNamePlaceholder: (type: DrinkType) =>
+      type === 'beer'
+        ? 'Název piva, např. Pilsner Urquell 12°'
+        : type === 'soft_drink'
+          ? 'Název, např. Kofola'
+          : 'Název, např. Slivovice',
     editModalTitle: 'Uprav cenu',
     beerNamePlaceholder: 'Název piva, např. Pilsner Urquell 12°',
     // Add-form shortcut into the AI menu scan (hands over to the contribute
@@ -1193,6 +1217,8 @@ export const cs = {
     volumeCustomPlaceholder: 'např. 1000',
     volumeUnitMl: 'ml',
     confirmCount: 'Připsat pivo',
+    confirmDrink: (type: DrinkType) =>
+      type === 'beer' ? 'Připsat pivo' : type === 'soft_drink' ? 'Připsat nealko' : 'Připsat panáka',
     confirmSave: 'Uložit',
     cancel: 'Zrušit',
 
@@ -1236,16 +1262,16 @@ export const cs = {
     // Meta shown to the right of a beer name, e.g. "2× · 124 Kč" (count × subtotal).
     // The volume is appended to the name separately in EveningBreakdown.
     breakdownLine: (count: number, price: string) => `${count}× · ${price}`,
-    drinkActionsHeader: 'JEDNOTLIVÁ PIVA',
+    drinkActionsHeader: 'JEDNOTLIVÉ NÁPOJE',
     editDrink: 'Upravit',
     deleteDrink: 'Smazat',
-    editDrinkTitle: 'Opravit název piva',
-    editDrinkPlaceholder: 'Název piva',
+    editDrinkTitle: 'Opravit název nápoje',
+    editDrinkPlaceholder: 'Název nápoje',
     editDrinkSave: 'Uložit',
     editDrinkCancel: 'Zrušit',
     editDrinkEmpty: 'Bez názvu to nepůjde.',
-    deleteDrinkTitle: 'Smazat pivo?',
-    deleteDrinkBody: 'Když bylo navíc nebo patří jiné hospodě, smažu ho z večera.',
+    deleteDrinkTitle: 'Smazat nápoj?',
+    deleteDrinkBody: 'Když byl navíc nebo patří jiné hospodě, smažu ho z večera.',
     deleteDrinkConfirm: 'Smazat',
     deleteDrinkCancel: 'Zrušit',
     totalLabel: 'Celkem',

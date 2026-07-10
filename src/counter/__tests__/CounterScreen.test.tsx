@@ -57,6 +57,8 @@ jest.mock('@/components/shared/AppDialog', () => ({
 // they aren't under test here, so stub them out.
 jest.mock('@/counter/BeerFormModal', () => ({ BeerFormModal: jest.fn(() => null) }));
 jest.mock('@/counter/PubPickerModal', () => ({ PubPickerModal: jest.fn(() => null) }));
+jest.mock('@/components/contribute/ScanMenuSheet', () => ({ ScanMenuSheet: jest.fn(() => null) }));
+jest.mock('@/counter/ScannedDrinkPicker', () => ({ ScannedDrinkPicker: jest.fn(() => null) }));
 
 jest.mock('expo-router', () => ({
   useRouter: jest.fn(() => ({ push: jest.fn(), back: jest.fn() })),
@@ -74,6 +76,9 @@ jest.mock('@/components/shared/IconGlyph', () => ({
   BellRingIcon: jest.fn(() => null),
   GlassWaterIcon: jest.fn(() => null),
   HistoryIcon: jest.fn(() => null),
+  CameraIcon: jest.fn(() => null),
+  InfoIcon: jest.fn(() => null),
+  SparklesIcon: jest.fn(() => null),
 }));
 
 // Drinks delivery layer — assert calls without touching the network.

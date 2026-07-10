@@ -81,6 +81,8 @@ describe('scanMenuPhoto', () => {
     expect(result.status).toBe('ok');
     if (result.status !== 'ok') throw new Error('expected ok');
     expect(result.beers).toHaveLength(12);
+    expect(result.drinks).toHaveLength(12);
+    expect(result.drinks[0].drinkType).toBe('beer');
     expect(result.model).toBe('gpt-vision-test');
     // First beer: even index → price present, index 0 → volume present.
     expect(result.beers[0]).toEqual({ name: 'Pivo 1', priceCzk: 50, volumeMl: 500 });
@@ -97,6 +99,29 @@ describe('scanMenuPhoto', () => {
     expect(opts.fieldName).toBe('image');
     expect(opts.mimeType).toBe('image/jpeg');
     expect((opts.headers as Record<string, string>).Authorization).toBe('Bearer cur-tok');
+  });
+
+  it('maps categorized soft drinks and shots while retaining legacy beers', async () => {
+    uploadResolving(200, {
+      beers: [{ name: 'Plzeň', price_czk: 62, volume_ml: 500 }],
+      drinks: [
+        { drink_type: 'beer', name: 'Plzeň', price_czk: 62, volume_ml: 500 },
+        { drink_type: 'soft_drink', name: 'Kofola', price_czk: 49, volume_ml: 400 },
+        { drink_type: 'shot', name: 'Slivovice', price_czk: 65, volume_ml: 40 },
+        { drink_type: 'wine', name: 'Ryzlink', price_czk: 70, volume_ml: 200 },
+      ],
+    });
+
+    const result = await scanMenuPhoto('file:///tmp/menu.jpg');
+
+    expect(result.status).toBe('ok');
+    if (result.status !== 'ok') throw new Error('expected ok');
+    expect(result.beers).toEqual([{ name: 'Plzeň', priceCzk: 62, volumeMl: 500 }]);
+    expect(result.drinks).toEqual([
+      { drinkType: 'beer', name: 'Plzeň', priceCzk: 62, volumeMl: 500 },
+      { drinkType: 'soft_drink', name: 'Kofola', priceCzk: 49, volumeMl: 400 },
+      { drinkType: 'shot', name: 'Slivovice', priceCzk: 65, volumeMl: 40 },
+    ]);
   });
 
   it('returns {empty} when the backend detects no beers (200 with beers: [])', async () => {

@@ -79,6 +79,21 @@ describe('buildDrinkEntry', () => {
     expect(typeof drank_at).toBe('string');
     expect(Number.isNaN(Date.parse(drank_at as string))).toBe(false);
   });
+
+  it('adds the category for non-beer drinks without changing the legacy item shape', () => {
+    const entry = buildDrinkEntry(
+      {
+        name: 'X',
+        lat: 1,
+        lng: 2,
+        drinkType: 'shot',
+        beer: { name: 'Slivovice', priceCzk: 65, volumeMl: 40 },
+      },
+      'shot-1',
+    );
+    expect(entry.drink_type).toBe('shot');
+    expect(entry.beer).toEqual({ name: 'Slivovice', price_czk: 65, volume_ml: 40 });
+  });
 });
 
 describe('submitDrink', () => {
