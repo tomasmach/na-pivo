@@ -1,7 +1,7 @@
 /**
  * "Zmapuj hospodu" — the community pub-amenities bottom sheet (spec §3).
  *
- * A near-clone of BeerBrandFilterSheet's scaffold: a transparent fade Modal with
+ * Uses the same scaffold as PubFilterSheet: a transparent fade Modal with
  * a Reanimated spring slide-up over a dimmed scrim, a drag handle, safe-area
  * bottom pad, and reduce-motion gating. On top of that scaffold it renders the
  * amenity taxonomy grouped under the five section labels; each row is an
@@ -426,7 +426,7 @@ export function MapPubSheet({
     ],
   );
 
-  // ── Sheet slide-up animation (clone of BeerBrandFilterSheet). ──
+  // ── Shared sheet slide-up animation. ──
   const progress = useSharedValue(0);
   useEffect(() => {
     if (showSheet) {

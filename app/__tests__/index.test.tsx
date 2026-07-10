@@ -47,8 +47,8 @@ jest.mock('@/components/compass/CompassContainer', () => ({
   CompassContainer: jest.fn(() => null),
 }));
 
-jest.mock('@/components/compass/BeerBrandFilterSheet', () => ({
-  BeerBrandFilterSheet: jest.fn(() => null),
+jest.mock('@/components/compass/PubFilterSheet', () => ({
+  PubFilterSheet: jest.fn(() => null),
 }));
 
 jest.mock('@/components/amenities/MapPubSheet', () => ({
@@ -79,6 +79,7 @@ jest.mock('@/components/shared/IconGlyph', () => ({
   StarIcon: jest.fn(() => null),
   TreePineIcon: jest.fn(() => null),
   XIcon: jest.fn(() => null),
+  ListFilterIcon: jest.fn(() => null),
 }));
 
 jest.mock('@/utils/maps', () => ({

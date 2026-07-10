@@ -65,7 +65,10 @@ describe("fetchPubsNear", () => {
   it("passes the requested fetch radius to the Mapy client", async () => {
     await fetchPubsNear(50.08, 14.42, undefined, { force: true, radiusKm: 100 });
 
-    expect(searchPubsNear).toHaveBeenCalledWith(50.08, 14.42, 100, undefined, { beerBrandKey: "" });
+    expect(searchPubsNear).toHaveBeenCalledWith(50.08, 14.42, 100, undefined, {
+      beerBrandKey: "",
+      amenityKeys: [],
+    });
   });
 
   it("passes the beer brand filter to the Mapy client", async () => {
@@ -77,6 +80,7 @@ describe("fetchPubsNear", () => {
 
     expect(searchPubsNear).toHaveBeenCalledWith(50.08, 14.42, 25, undefined, {
       beerBrandKey: "pilsner-urquell",
+      amenityKeys: [],
     });
   });
 
@@ -106,8 +110,88 @@ describe("fetchPubsNear", () => {
     expect(searchPubsNear).toHaveBeenCalledTimes(2);
     expect(searchPubsNear).toHaveBeenLastCalledWith(50.08, 14.42, 25, undefined, {
       beerBrandKey: "pilsner-urquell",
+      amenityKeys: [],
     });
     expect(getPubById("brand")?.name).toBe("U Značky");
+  });
+
+  it("passes stable amenity filters and refetches when they change", async () => {
+    await fetchPubsNear(50.08, 14.42, undefined, {
+      force: true,
+      radiusKm: 25,
+      amenityKeys: ["game_foosball", "payment_card", "game_foosball"],
+    });
+
+    expect(searchPubsNear).toHaveBeenCalledWith(50.08, 14.42, 25, undefined, {
+      beerBrandKey: "",
+      amenityKeys: ["game_foosball", "payment_card"],
+    });
+  });
+
+  it("restores the last unfiltered catalogue when clearing filters offline", async () => {
+    const filteredPub: Pub = {
+      id: "mapy:filtered",
+      name: "Jen s kartou",
+      lat: 50.08,
+      lng: 14.42,
+    };
+    (searchPubsNear as jest.Mock)
+      .mockResolvedValueOnce(SYNTHETIC_PUBS)
+      .mockResolvedValueOnce([filteredPub]);
+
+    await fetchPubsNear(50.08, 14.42, undefined, {
+      force: true,
+      radiusKm: 25,
+    });
+
+    await fetchPubsNear(50.08, 14.42, undefined, {
+      force: true,
+      radiusKm: 25,
+      amenityKeys: ["payment_card"],
+    });
+    expect(getPubById("mapy:filtered")).not.toBeNull();
+    expect(getPubById("osm:1")).toBeNull();
+
+    (searchPubsNear as jest.Mock).mockRejectedValueOnce(new Error("offline"));
+    await expect(
+      fetchPubsNear(50.08, 14.42, undefined, {
+        force: true,
+        radiusKm: 25,
+      }),
+    ).rejects.toThrow("offline");
+
+    expect(getPubById("mapy:filtered")).toBeNull();
+    expect(getPubById("osm:1")?.name).toBe("U Fleků");
+  });
+
+  it("clears the unfiltered index when an amenity-filtered request fails", async () => {
+    (searchPubsNear as jest.Mock)
+      .mockResolvedValueOnce(SYNTHETIC_PUBS)
+      .mockRejectedValueOnce(new Error("legacy backend"))
+      .mockRejectedValueOnce(new Error("offline"));
+
+    await fetchPubsNear(50.08, 14.42, undefined, {
+      force: true,
+      radiusKm: 25,
+    });
+
+    await expect(
+      fetchPubsNear(50.08, 14.42, undefined, {
+        force: true,
+        radiusKm: 25,
+        amenityKeys: ["payment_card"],
+      }),
+    ).rejects.toThrow("legacy backend");
+
+    expect(findNearbyPubs({ lat: 50.08, lng: 14.42, limit: 25 })).toEqual([]);
+
+    await expect(
+      fetchPubsNear(50.08, 14.42, undefined, {
+        force: true,
+        radiusKm: 25,
+      }),
+    ).rejects.toThrow("offline");
+    expect(getPubById("osm:1")?.name).toBe("U Fleků");
   });
 
   it("filters backend-blocked Mapy results before rebuilding the index", async () => {
@@ -205,6 +289,7 @@ describe("fetchPubsNear — persistent snapshot cache", () => {
     expect(searchPubsNear).toHaveBeenCalledTimes(1);
     expect(searchPubsNear).toHaveBeenCalledWith(PRAGUE.lat, PRAGUE.lng, 25, undefined, {
       beerBrandKey: "pilsner-urquell",
+      amenityKeys: [],
     });
     expect(getPubById("mapy:cached-1")).toBeNull();
   });
@@ -298,6 +383,7 @@ describe("fetchPubsNear — persistent snapshot cache", () => {
 
     expect(searchPubsNear).toHaveBeenCalledWith(precise.lat, precise.lng, 25, undefined, {
       beerBrandKey: "",
+      amenityKeys: [],
     });
     const raw = await AsyncStorage.getItem(SNAPSHOT_KEY);
     const saved = JSON.parse(raw as string);

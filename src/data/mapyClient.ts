@@ -152,6 +152,12 @@ export interface PubLocationSuggestion {
  *  fed through itemToPub below. */
 interface BackendPubsNearResponse {
   items?: MapyGeocodeItem[];
+  applied_filters?: {
+    version?: number;
+    match?: string;
+    amenities?: string[];
+    beer_brand?: string | null;
+  };
 }
 
 interface BackendLocationLookupResponse {
@@ -172,6 +178,7 @@ async function backendSuggest(
   lng: number,
   kmRadius: number,
   beerBrandKey?: string,
+  amenityKeys: readonly string[] = [],
   signal?: AbortSignal,
 ): Promise<MapyGeocodeItem[] | null> {
   const endpoint = getBackendEndpoint('/v1/pubs/near');
@@ -182,6 +189,7 @@ async function backendSuggest(
   url.searchParams.set('lng', String(lng));
   url.searchParams.set('radius_km', String(kmRadius));
   if (beerBrandKey) url.searchParams.set('beer_brand', beerBrandKey);
+  if (amenityKeys.length > 0) url.searchParams.set('amenities', amenityKeys.join(','));
 
   try {
     const resp = await fetch(url.toString(), { signal });
@@ -194,6 +202,30 @@ async function backendSuggest(
       return null;
     }
     const data = (await resp.json()) as BackendPubsNearResponse;
+    if (amenityKeys.length > 0) {
+      const applied = data.applied_filters;
+      const acknowledgedAmenities = Array.isArray(applied?.amenities)
+        ? [...applied.amenities].sort()
+        : [];
+      const requestedAmenities = [...amenityKeys].sort();
+      const acknowledged =
+        applied?.version === 1 &&
+        applied.match === 'all' &&
+        acknowledgedAmenities.length === requestedAmenities.length &&
+        acknowledgedAmenities.every((key, index) => key === requestedAmenities[index]) &&
+        (applied.beer_brand ?? null) === (beerBrandKey || null);
+      if (!acknowledged) {
+        // A rolling deploy can briefly put a new app against an older backend
+        // that ignores unknown query params. Fail closed: unfiltered pubs must
+        // never masquerade as confirmed amenity matches.
+        console.warn('[mapy] backend did not acknowledge amenity filters');
+        trackApiFailure('pubs_near_backend', {
+          endpoint: '/v1/pubs/near',
+          reason: 'filter_contract_mismatch',
+        });
+        return null;
+      }
+    }
     return data.items ?? [];
   } catch (err) {
     // An honoured abort must propagate so callers' cancellation works.
@@ -607,9 +639,16 @@ export async function searchPubsNear(
   lng: number,
   kmRadius = 25,
   signal?: AbortSignal,
-  options: { beerBrandKey?: string } = {},
+  options: { beerBrandKey?: string; amenityKeys?: readonly string[] } = {},
 ): Promise<Pub[]> {
-  const backendItems = await backendSuggest(lat, lng, kmRadius, options.beerBrandKey, signal);
+  const backendItems = await backendSuggest(
+    lat,
+    lng,
+    kmRadius,
+    options.beerBrandKey,
+    options.amenityKeys,
+    signal,
+  );
   if (backendItems !== null) {
     return itemsToPubs(backendItems, lat, lng, kmRadius);
   }

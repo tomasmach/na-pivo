@@ -139,7 +139,10 @@ export interface UseCompassResult {
   clearFocusedPub: () => void;
 }
 
-export function useCompass(beerBrandKey: string | null = null): UseCompassResult {
+export function useCompass(
+  beerBrandKey: string | null = null,
+  amenityKeys: readonly string[] = [],
+): UseCompassResult {
   // — Settings from store —
   const mode = useSettingsStore((s) => s.mode);
   const setMode = useSettingsStore((s) => s.setMode);
@@ -203,9 +206,25 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
   // churn, coalesces a drag into a single fetch.
   const lastFetchedMaxKmRef = useRef<number | null | undefined>(undefined);
   const lastFetchedBeerBrandKeyRef = useRef<string>("");
+  const lastFetchedAmenityKeyRef = useRef<string>("");
+  const filterRequestInFlightKeyRef = useRef<string | null>(null);
+  const latestFilterKeyRef = useRef("|");
+  const mountedRef = useRef(true);
   const radiusDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const RADIUS_DEBOUNCE_MS = 700;
   const activeBeerBrandKey = (beerBrandKey ?? "").trim();
+  const activeAmenityKey = Array.from(new Set(amenityKeys)).sort().join(',');
+  const activeFilterKey = `${activeBeerBrandKey}|${activeAmenityKey}`;
+  const [fetchedFilterKey, setFetchedFilterKey] = useState('|');
+  const [selectedFilterKey, setSelectedFilterKey] = useState('|');
+  const filterLookupPending = activeFilterKey !== selectedFilterKey;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   // Fetch pubs through the backend/Mapy lookup whenever the user's position changes. The data
   // layer short-circuits if the user hasn't moved more than ~2 km from the
@@ -214,32 +233,58 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
   // network request on cleanup — GPS jitter would otherwise cancel in-flight
   // fetches every few seconds and prevent any data from ever loading.
   useEffect(() => {
+    latestFilterKeyRef.current = activeFilterKey;
     if (positionLat == null || positionLng == null) return;
+    if (filterRequestInFlightKeyRef.current === activeFilterKey) return;
     let cancelled = false;
+    let preserveFilterRequest = false;
 
     const runFetch = () => {
       if (cancelled) return;
       const brandFilterChanged = activeBeerBrandKey !== lastFetchedBeerBrandKeyRef.current;
-      const force = forceNextSearchRef.current || brandFilterChanged;
+      const amenityFilterChanged = activeAmenityKey !== lastFetchedAmenityKeyRef.current;
+      const force = forceNextSearchRef.current || brandFilterChanged || amenityFilterChanged;
+      if (brandFilterChanged || amenityFilterChanged) {
+        preserveFilterRequest = true;
+        filterRequestInFlightKeyRef.current = activeFilterKey;
+      }
       const radiusKm = maxDistanceKm ?? UNLIMITED_SEARCH_RADIUS_KM;
       forceNextSearchRef.current = false;
       lastFetchedMaxKmRef.current = maxDistanceKm;
       lastFetchedBeerBrandKeyRef.current = activeBeerBrandKey;
+      lastFetchedAmenityKeyRef.current = activeAmenityKey;
 
       fetchPubsNear(positionLat, positionLng, undefined, {
         force,
         radiusKm,
         beerBrandKey: activeBeerBrandKey || null,
+        amenityKeys: activeAmenityKey ? activeAmenityKey.split(',') : [],
       })
         .then(() => {
-          if (!cancelled) {
+          if (
+            !cancelled &&
+            mountedRef.current &&
+            latestFilterKeyRef.current === activeFilterKey
+          ) {
+            if (filterRequestInFlightKeyRef.current === activeFilterKey) {
+              filterRequestInFlightKeyRef.current = null;
+            }
+            setFetchedFilterKey(activeFilterKey);
             setSearchFailed(false);
             setPubsLoaded(true);
             bumpPubDataRevision((revision) => revision + 1);
           }
         })
         .catch((err) => {
-          if (cancelled) return;
+          if (
+            cancelled ||
+            !mountedRef.current ||
+            latestFilterKeyRef.current !== activeFilterKey
+          ) return;
+          if (filterRequestInFlightKeyRef.current === activeFilterKey) {
+            filterRequestInFlightKeyRef.current = null;
+          }
+          setFetchedFilterKey(activeFilterKey);
           console.warn('[useCompass] fetchPubsNear failed:', err);
           setSearchFailed(true);
           setPubsLoaded(true);
@@ -255,6 +300,7 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
       lastFetchedMaxKmRef.current !== undefined &&
       maxDistanceKm !== lastFetchedMaxKmRef.current &&
       activeBeerBrandKey === lastFetchedBeerBrandKeyRef.current &&
+      activeAmenityKey === lastFetchedAmenityKeyRef.current &&
       !forceNextSearchRef.current;
 
     if (radiusOnlyChange) {
@@ -265,13 +311,24 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
     }
 
     return () => {
-      cancelled = true;
+      // A hard-filter request must survive same-filter GPS rerenders. The next
+      // effect sees its in-flight key and does not enqueue a duplicate; a real
+      // filter change is rejected by latestFilterKeyRef in the callback.
+      if (!preserveFilterRequest) cancelled = true;
       if (radiusDebounceRef.current) {
         clearTimeout(radiusDebounceRef.current);
         radiusDebounceRef.current = undefined;
       }
     };
-  }, [positionLat, positionLng, maxDistanceKm, activeBeerBrandKey, searchRetryNonce]);
+  }, [
+    positionLat,
+    positionLng,
+    maxDistanceKm,
+    activeBeerBrandKey,
+    activeAmenityKey,
+    activeFilterKey,
+    searchRetryNonce,
+  ]);
 
   // — Permission check on mount / return from system settings —
   useEffect(() => {
@@ -343,6 +400,7 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
   const lastReportedCacheKeysRef = useRef<string[]>(reportedCacheKeys);
   const lastCatalogRevisionRef = useRef<number>(catalogRevision);
   const lastBeerBrandKeyRef = useRef<string>(activeBeerBrandKey);
+  const lastAmenityKeyRef = useRef<string>(activeAmenityKey);
   const lastPubDataRevisionRef = useRef<number>(pubDataRevision);
   // Track the excludeRevision the current target was selected against, so the
   // selection effect recomputes when (and only when) the exclusion set changes.
@@ -372,6 +430,7 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
 
   useEffect(() => {
     if (!position || !pubsLoaded) return;
+    if (activeFilterKey !== fetchedFilterKey) return;
 
     const { lat, lng, accuracyMeters } = position;
     const maxKm = maxDistanceKm ?? undefined;
@@ -393,7 +452,10 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
       reportedCacheKeys !== lastReportedCacheKeysRef.current;
     const catalogChanged = catalogRevision !== lastCatalogRevisionRef.current;
     const beerBrandChanged = activeBeerBrandKey !== lastBeerBrandKeyRef.current;
-    const pubDataChanged = beerBrandChanged && pubDataRevision !== lastPubDataRevisionRef.current;
+    const amenityFilterChanged = activeAmenityKey !== lastAmenityKeyRef.current;
+    const pubDataChanged =
+      (beerBrandChanged || amenityFilterChanged) &&
+      pubDataRevision !== lastPubDataRevisionRef.current;
 
     // A genuine context change (the user moved enough, or switched mode/maxKm)
     // means the accumulated skip/auto-closed exclusions are stale: they only
@@ -424,6 +486,7 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
       lastReportedCacheKeysRef.current = reportedCacheKeys;
       lastCatalogRevisionRef.current = catalogRevision;
       lastBeerBrandKeyRef.current = activeBeerBrandKey;
+      lastAmenityKeyRef.current = activeAmenityKey;
       lastPubDataRevisionRef.current = pubDataRevision;
       lastExcludeRevisionRef.current = excludeRevision;
 
@@ -452,6 +515,7 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
             });
 
       setCurrentPub(pub);
+      setSelectedFilterKey(activeFilterKey);
       // Only reset revealed when actually changing to a different pub
       setRevealed((prev) => {
         if (pub?.id !== currentPubId) return false;
@@ -472,6 +536,9 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
     reportedCacheKeys,
     excludeRevision,
     activeBeerBrandKey,
+    activeAmenityKey,
+    activeFilterKey,
+    fetchedFilterKey,
     currentPubId,
     resetExclusions,
   ]);
@@ -885,7 +952,11 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
   // — Bearing / distance —
   const { bearing, distanceMeters } = useTargetBearing(
     position ? { lat: position.lat, lng: position.lng } : null,
-    focusedPub ? { lat: focusedPub.lat, lng: focusedPub.lng } : currentPub,
+    focusedPub
+      ? { lat: focusedPub.lat, lng: focusedPub.lng }
+      : filterLookupPending
+        ? null
+        : currentPub,
   );
   const bearingValue = useSharedValue<number | null>(null);
 
@@ -899,7 +970,7 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
     gpsAccuracyMeters: position?.accuracyMeters ?? null,
     // Suppress arrival while pointing at a friend's coarse pub: a geohash cell is
     // not a real catalogue target, so it must never fire the arrival celebration.
-    targetPubId: focusedPub ? null : currentPub?.id ?? null,
+    targetPubId: focusedPub || filterLookupPending ? null : currentPub?.id ?? null,
     hapticEnabled,
     soundEnabled,
   });
@@ -939,15 +1010,15 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
   // needle — the local nearest/surprise selection may still be warming up.
   const isLoading = focusedPub
     ? position === null
-    : !pubsLoaded || position === null || !hasSelectedTarget;
+    : filterLookupPending || !pubsLoaded || position === null || !hasSelectedTarget;
 
   // — Actions —
   const reveal = useCallback(() => {
-    if (!currentPub) return;
+    if (!currentPub || filterLookupPending) return;
 
     setRevealed(true);
     setRevealedPub(currentPub);
-  }, [currentPub, setRevealedPub]);
+  }, [currentPub, filterLookupPending, setRevealedPub]);
 
   const reroll = useCallback(() => {
     bumpSurpriseSeed();
@@ -1028,7 +1099,7 @@ export function useCompass(beerBrandKey: string | null = null): UseCompassResult
     arrowRotation,
     distanceMeters,
     distanceFormatted,
-    pub: enrichedPub,
+    pub: filterLookupPending ? null : enrichedPub,
     revealed,
     reveal,
     mode,

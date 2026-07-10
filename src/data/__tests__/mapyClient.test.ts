@@ -185,6 +185,49 @@ describe('searchPubsNear — backend proxy only', () => {
     expect(calledUrl.searchParams.get('beer_brand')).toBe('pilsner-urquell');
   });
 
+  it('passes amenity filters alongside a beer brand', async () => {
+    setBackend('https://api.example.com');
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        items: [PUB_ITEM],
+        applied_filters: {
+          version: 1,
+          match: 'all',
+          amenities: ['payment_card', 'game_foosball'],
+          beer_brand: 'pilsner-urquell',
+        },
+      }),
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await searchPubsNear(50.08, 14.42, 25, undefined, {
+      beerBrandKey: 'pilsner-urquell',
+      amenityKeys: ['payment_card', 'game_foosball'],
+    });
+
+    const calledUrl = new URL(String((fetchMock.mock.calls[0] as unknown[])[0]));
+    expect(calledUrl.searchParams.get('beer_brand')).toBe('pilsner-urquell');
+    expect(calledUrl.searchParams.get('amenities')).toBe('payment_card,game_foosball');
+  });
+
+  it('fails closed when an older backend ignores amenity filters', async () => {
+    setBackend('https://api.example.com');
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      // Legacy backend shape: valid 200, but no applied_filters acknowledgement.
+      json: async () => ({ items: [PUB_ITEM] }),
+    })) as unknown as typeof fetch;
+
+    await expect(
+      searchPubsNear(50.08, 14.42, 25, undefined, {
+        amenityKeys: ['payment_card'],
+      }),
+    ).rejects.toThrow('Mapy backend proxy is not configured or unavailable');
+  });
+
   it('feeds backend items through the existing filter pipeline (drops non-pubs)', async () => {
     setBackend('https://api.example.com');
     global.fetch = jest.fn(async () => ({

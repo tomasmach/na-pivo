@@ -1,6 +1,6 @@
 # Zmapuj hospodu — MOBILE contract (design only)
 
-Public, community-voted pub amenities ("Zmapuj hospodu"): each user votes **ano/ne** per amenity, the backend aggregates votes into a confidence-weighted public truth shown to everyone, and the **Mapér** layer turns mapping into the app's first XP game. Backend wire mirror at `na-pivo-backend/docs/pub-amenities-spec.md`. **This is a DESIGN spec — no source files are written.** The data layer is shaped so the FUTURE pub map+filter drops in additively; the filter is NOT built now.
+Public, community-voted pub amenities ("Zmapuj hospodu"): each user votes **ano/ne** per amenity, the backend aggregates votes into a confidence-weighted public truth shown to everyone, and the **Mapér** layer turns mapping into the app's first XP game. The compass can filter nearby pubs by up to five `mapFilterable` amenities; all selected amenities and an optional beer brand must match. Only server-confirmed `yes` aggregates above the confidence floor qualify, so unknown or disputed data is never presented as a hard fact. The mobile client requires the backend's versioned `applied_filters` acknowledgement and fails closed during an incompatible rolling deploy; it never presents an unfiltered 200 as a match. Backend wire details live in `na-pivo-backend/docs/pub-amenities-spec.md`.
 
 The wire contract below is byte-identical to the canonical cross-repo contract that both this doc and the backend mirror conform to: same slugs, wire field sets, level ladder, badges and icon names. Where this doc and the backend doc must agree, the canonical contract is the single source of truth.
 
@@ -65,7 +65,7 @@ The single consolidated table below lists every seeded row, grouped by section. 
 
 ## 3. "Zmapuj hospodu" sheet UX
 
-A near-clone of `src/components/compass/BeerBrandFilterSheet.tsx`: `Modal transparent animationType="fade"`, a `progress` shared value spring `withSpring(1, { damping: 18, stiffness: 180, mass: 0.9 })`, scrim `Pressable` backdrop at `withAlpha(Colors.black, 0.6)`, drag handle (40×4, `Radius.pill`, `Colors.border`), `KeyboardAvoidingView`, safe-area bottom pad `Math.max(insets.bottom, Spacing.md)`. Reuse that file as the scaffold.
+A near-clone of `src/components/compass/PubFilterSheet.tsx`: `Modal transparent animationType="fade"`, a `progress` shared value spring `withSpring(1, { damping: 18, stiffness: 180, mass: 0.9 })`, scrim `Pressable` backdrop at `withAlpha(Colors.black, 0.6)`, drag handle (40×4, `Radius.pill`, `Colors.border`), `KeyboardAvoidingView`, safe-area bottom pad `Math.max(insets.bottom, Spacing.md)`.
 
 ### 3.1 Layout
 
@@ -454,7 +454,7 @@ The per-user vote dataset is also location-adjacent, so it must be covered by **
 | `src/data/pubAmenitiesClient.ts` | `submitAmenityVote` (PUT), `fetchPubAmenities` (aggregates), `fetchMyAmenityVotes`, `fetchAmenityKinds`, wire types | `pubRatingsClient.ts` + `hoursClient.ts` |
 | `src/data/pubAmenitiesView.ts` | pure `buildAmenityRows(aggregates, myVotes)` overlay | new |
 | `src/data/pubAmenitiesSync.ts` | PUSH subscribe-diff + `restorePubAmenities` PULL, `suppressSync`, `runWithoutPubAmenitiesSync` | `pubRatingsSync.ts` |
-| `src/components/compass/ZmapujHospoduSheet.tsx` | the sheet | `BeerBrandFilterSheet.tsx` |
+| `src/components/compass/ZmapujHospoduSheet.tsx` | the sheet | `PubFilterSheet.tsx` |
 | `src/components/compass/MapPubButton.tsx` | trigger pill (label/%-dot/a11y) | `GlowButton secondary` |
 | `src/data/pubs.ts` *(edit)* | add `amenities?`/`amenityCompleteness?`/`amenityMappedCount?`/`amenityTotalKinds?`; strip them before `saveSnapshot` | existing |
 | `src/data/privateAccountData.ts` *(edit)* | add amenities store + queue to the wipe seam | existing |

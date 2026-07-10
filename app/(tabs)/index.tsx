@@ -34,10 +34,12 @@ import type { CommunityBeer } from '@/data/communityClient';
 import { parseOsmOpeningHoursToWeeklyHours } from '@/data/communityHours';
 import type { PubReportReason } from '@/data/pubReportsClient';
 import { updateAccountPreferences } from '@/data/account';
+import { PubFilterSheet } from '@/components/compass/PubFilterSheet';
 import {
-  BeerBrandFilterSheet,
-  type BeerBrandFilterValue,
-} from '@/components/compass/BeerBrandFilterSheet';
+  EMPTY_PUB_SEARCH_FILTERS,
+  activePubSearchFilterCount,
+  type PubSearchFilters,
+} from '@/data/pubSearchFilters';
 import { usePubStore } from '@/stores/pubStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { shortestRotationTarget } from '@/compass/rotation';
@@ -67,6 +69,7 @@ import {
   UsersIcon,
   ChevronLeftIcon,
   XIcon,
+  ListFilterIcon,
 } from '@/components/shared/IconGlyph';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
 import { pubInfoFromPub, type PubInfoContext } from '@/components/amenities/pubInfoContext';
@@ -407,16 +410,35 @@ interface EmptyScreenProps {
   onRetry: () => void;
   onAddPub: () => void;
   searchFailed: boolean;
+  filtersActive: boolean;
+  onEditFilters: () => void;
+  onClearFilters: () => void;
 }
 
-function EmptyScreen({ onSettings, onRetry, onAddPub, searchFailed }: EmptyScreenProps) {
+function EmptyScreen({
+  onSettings,
+  onRetry,
+  onAddPub,
+  searchFailed,
+  filtersActive,
+  onEditFilters,
+  onClearFilters,
+}: EmptyScreenProps) {
   const headlineLine1 = searchFailed
     ? cs.empty.searchFailedHeadlineLine1
+    : filtersActive
+      ? cs.empty.filteredHeadlineLine1
     : cs.empty.headlineLine1;
   const headlineLine2 = searchFailed
     ? cs.empty.searchFailedHeadlineLine2
+    : filtersActive
+      ? cs.empty.filteredHeadlineLine2
     : cs.empty.headlineLine2;
-  const body = searchFailed ? cs.empty.searchFailedBody : cs.empty.body;
+  const body = searchFailed
+    ? cs.empty.searchFailedBody
+    : filtersActive
+      ? cs.empty.filteredBody
+      : cs.empty.body;
 
   return (
     <View style={styles.emptyContainer}>
@@ -444,40 +466,68 @@ function EmptyScreen({ onSettings, onRetry, onAddPub, searchFailed }: EmptyScree
       <View style={styles.emptyBottomGroup}>
         <View style={styles.emptyButtonWrap}>
           <GlowButton
-            label={cs.empty.addPub}
-            onPress={onAddPub}
-            icon={<MapPinIcon size={20} color={Colors.stout} />}
+            label={searchFailed ? cs.empty.retry : filtersActive ? cs.empty.editFilters : cs.empty.addPub}
+            onPress={searchFailed ? onRetry : filtersActive ? onEditFilters : onAddPub}
+            icon={searchFailed
+              ? <RefreshCwIcon size={20} color={Colors.stout} />
+              : filtersActive
+              ? <ListFilterIcon size={20} color={Colors.stout} />
+              : <MapPinIcon size={20} color={Colors.stout} />}
             glow="soft"
-            accessibilityLabel={cs.a11y.addPubButton}
+            accessibilityLabel={
+              searchFailed
+                ? cs.empty.retry
+                : filtersActive
+                  ? cs.empty.editFilters
+                  : cs.a11y.addPubButton
+            }
           />
         </View>
 
         <View style={styles.emptySecondaryActions}>
-          <Pressable
-            onPress={onSettings}
-            style={styles.emptyRetry}
-            hitSlop={12}
-            accessibilityLabel={cs.empty.openSettings}
-            accessibilityRole="button"
-          >
-            <SettingsIcon size={16} color={Colors.mutedText} />
-            <Text style={styles.emptyRetryText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.empty.openSettings}
-            </Text>
-          </Pressable>
+          {filtersActive && !searchFailed ? (
+            <Pressable
+              onPress={onClearFilters}
+              style={styles.emptyRetry}
+              hitSlop={12}
+              accessibilityLabel={cs.empty.clearFilters}
+              accessibilityRole="button"
+            >
+              <XIcon size={16} color={Colors.mutedText} />
+              <Text style={styles.emptyRetryText} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.empty.clearFilters}
+              </Text>
+            </Pressable>
+          ) : null}
+          {searchFailed || !filtersActive ? (
+            <Pressable
+              onPress={onSettings}
+              style={styles.emptyRetry}
+              hitSlop={12}
+              accessibilityLabel={cs.empty.openSettings}
+              accessibilityRole="button"
+            >
+              <SettingsIcon size={16} color={Colors.mutedText} />
+              <Text style={styles.emptyRetryText} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.empty.openSettings}
+              </Text>
+            </Pressable>
+          ) : null}
 
-          <Pressable
-            onPress={onRetry}
-            style={styles.emptyRetry}
-            hitSlop={12}
-            accessibilityLabel={cs.empty.retry}
-            accessibilityRole="button"
-          >
-            <RefreshCwIcon size={16} color={Colors.mutedText} />
-            <Text style={styles.emptyRetryText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.empty.retry}
-            </Text>
-          </Pressable>
+          {!searchFailed && !filtersActive ? (
+            <Pressable
+              onPress={onRetry}
+              style={styles.emptyRetry}
+              hitSlop={12}
+              accessibilityLabel={cs.empty.retry}
+              accessibilityRole="button"
+            >
+              <RefreshCwIcon size={16} color={Colors.mutedText} />
+              <Text style={styles.emptyRetryText} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.empty.retry}
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
       </View>
     </View>
@@ -877,18 +927,17 @@ function ModeToggle({ mode, onNearest, onSurprise }: ModeToggleProps) {
   );
 }
 
-interface BeerFilterButtonProps {
-  value: BeerBrandFilterValue | null;
+interface PubFilterButtonProps {
+  count: number;
   onOpen: () => void;
   onClear: () => void;
 }
 
-// Compact labeled control that lives in the header (the dead space between the
-// logo and the gear). Idle it reads "Filtruj piva" and opens the picker sheet;
-// once a brand is chosen it turns amber and shows the brand with an X to clear.
-// Keeping it in the header means the compass keeps its full row below.
-function BeerFilterButton({ value, onOpen, onClear }: BeerFilterButtonProps) {
-  const active = value !== null;
+// Compact control in the header's otherwise empty right side. The count keeps
+// mixed beer + amenity filters legible without trying to squeeze their labels
+// into the compass chrome; the sheet owns the full editing flow.
+function PubFilterButton({ count, onOpen, onClear }: PubFilterButtonProps) {
+  const active = count > 0;
   return (
     <Pressable
       onPress={onOpen}
@@ -899,23 +948,23 @@ function BeerFilterButton({ value, onOpen, onClear }: BeerFilterButtonProps) {
       ]}
       accessibilityRole="button"
       accessibilityLabel={
-        active ? cs.a11y.beerBrandFilterActive(value!.label) : cs.a11y.openBeerBrandFilter
+        active ? cs.a11y.pubFiltersActive(count) : cs.a11y.openPubFilters
       }
     >
-      <BeerIcon size={15} color={active ? Colors.amber : Colors.foamMuted} />
+      <ListFilterIcon size={15} color={active ? Colors.amber : Colors.foamMuted} />
       <Text
         style={[styles.filterButtonText, active && styles.filterButtonTextActive]}
         numberOfLines={1}
         maxFontSizeMultiplier={FontScaleCap.body}
       >
-        {active ? value!.label : cs.compass.beerFilterButton}
+        {active ? cs.compass.pubFilterButtonActive(count) : cs.compass.pubFilterButton}
       </Text>
       {active && (
         <Pressable
           onPress={onClear}
           hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel={cs.a11y.clearBeerBrandFilter}
+          accessibilityLabel={cs.a11y.clearPubFilters}
           style={({ pressed }) => [styles.filterButtonClear, pressed && { opacity: 0.6 }]}
         >
           <XIcon size={14} color={Colors.amberLight} />
@@ -1078,7 +1127,7 @@ export default function CompassScreen() {
   const insets = useSafeAreaInsets();
   const { width: screenWidth, height: screenHeight, fontScale } = useWindowDimensions();
   const [sceneSize, setSceneSize] = useState<{ width: number; height: number } | null>(null);
-  const [beerBrandFilter, setBeerBrandFilter] = useState<BeerBrandFilterValue | null>(null);
+  const [pubFilters, setPubFilters] = useState<PubSearchFilters>(EMPTY_PUB_SEARCH_FILTERS);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
@@ -1110,7 +1159,8 @@ export default function CompassScreen() {
     currentPosition,
     focusedPub,
     clearFocusedPub,
-  } = useCompass(beerBrandFilter?.key ?? null);
+  } = useCompass(pubFilters.beerBrand?.key ?? null, pubFilters.amenityKeys);
+  const activeFilterCount = activePubSearchFilterCount(pubFilters);
   const hidePubNames = useSettingsStore((s) => s.hidePubNames);
   const showPubDetails = !hidePubNames || revealed;
   const handleModeChange = useCallback(
@@ -1185,7 +1235,10 @@ export default function CompassScreen() {
 
   const handleOpenFilter = useCallback(() => setFilterSheetOpen(true), []);
   const handleCloseFilter = useCallback(() => setFilterSheetOpen(false), []);
-  const handleClearFilter = useCallback(() => setBeerBrandFilter(null), []);
+  const handleClearFilter = useCallback(
+    () => setPubFilters({ beerBrand: null, amenityKeys: [] }),
+    [],
+  );
 
   const handleAddPub = useCallback(() => {
     router.push({
@@ -1305,8 +1358,8 @@ export default function CompassScreen() {
           align="left"
           showGear={false}
           filterSlot={
-            <BeerFilterButton
-              value={beerBrandFilter}
+            <PubFilterButton
+              count={activeFilterCount}
               onOpen={handleOpenFilter}
               onClear={handleClearFilter}
             />
@@ -1317,13 +1370,18 @@ export default function CompassScreen() {
           onRetry={retrySearch}
           onAddPub={handleAddPub}
           searchFailed={searchFailed}
+          filtersActive={activeFilterCount > 0}
+          onEditFilters={handleOpenFilter}
+          onClearFilters={handleClearFilter}
         />
-        <BeerBrandFilterSheet
-          visible={filterSheetOpen}
-          value={beerBrandFilter}
-          onClose={handleCloseFilter}
-          onSelect={setBeerBrandFilter}
-        />
+        {filterSheetOpen ? (
+          <PubFilterSheet
+            visible
+            value={pubFilters}
+            onClose={handleCloseFilter}
+            onApply={setPubFilters}
+          />
+        ) : null}
       </View>
     );
   }
@@ -1342,8 +1400,8 @@ export default function CompassScreen() {
         showGear={false}
         onLogoLongPress={handleDevArrival}
         filterSlot={
-          <BeerFilterButton
-            value={beerBrandFilter}
+          <PubFilterButton
+            count={activeFilterCount}
             onOpen={handleOpenFilter}
             onClear={handleClearFilter}
           />
@@ -1437,12 +1495,14 @@ export default function CompassScreen() {
         </Pressable>
       </View>
 
-      <BeerBrandFilterSheet
-        visible={filterSheetOpen}
-        value={beerBrandFilter}
-        onClose={handleCloseFilter}
-        onSelect={setBeerBrandFilter}
-      />
+      {filterSheetOpen ? (
+        <PubFilterSheet
+          visible
+          value={pubFilters}
+          onClose={handleCloseFilter}
+          onApply={setPubFilters}
+        />
+      ) : null}
       <ReportPubModal
         visible={reportOpen}
         pubName={pub.name}
