@@ -60,7 +60,7 @@ import {
   StarIcon,
   CheckIcon,
 } from '@/components/shared/IconGlyph';
-import { InstagramIcon, LinkedinIcon } from '@/components/shared/BrandIcon';
+import { DiscordIcon, InstagramIcon, LinkedinIcon } from '@/components/shared/BrandIcon';
 import { MapyLogo } from '@/components/shared/MapyLogo';
 import { Avatar } from '@/profile/Avatar';
 import {
@@ -765,6 +765,13 @@ export default function SettingsScreen() {
             borderTop
           />
         </View>
+
+        <ActionCta
+          icon={<DiscordIcon size={21} color={Colors.amber} />}
+          title={cs.settings.discord.title}
+          subtitle={cs.settings.discord.subtitle}
+          onPress={() => void Linking.openURL(cs.settings.discord.url)}
+        />
 
         {/* ── Creator card ── */}
         <View style={styles.card}>

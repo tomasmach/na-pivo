@@ -378,6 +378,11 @@ export const cs = {
     addPub: 'Přidat chybějící hospodu',
     addPubCtaSubtitle: 'Nevidíš svůj podnik? Přidej ho mezi ostatní.',
     privacy: 'Soukromí',
+    discord: {
+      title: 'Přidej se na komunitní Discord',
+      subtitle: 'Pivo, hospody a řeči kolem. Stav se na jedno.',
+      url: 'https://discord.gg/EDw8EW7Az8',
+    },
     creator: {
       header: 'TVŮRCE',
       name: 'Tomáš Mach',
