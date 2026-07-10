@@ -1569,6 +1569,36 @@ export const cs = {
     // — Sections —
     currentHeader: 'AKTUÁLNÍ VEČER',
     pastHeader: 'MINULÉ VEČERY',
+    diaryHeader: 'PIVNÍ DENÍČEK',
+    historicalCta: 'Zapsat zpětně',
+    historicalCtaBody: 'Dopiš piva, hospodu, čas a cenu.',
+    historicalTitle: 'Dopsat piva',
+    historicalSubtitle: 'Stejný zápis, jen dopitý zpětně.',
+    historicalRequiredHint: 'Piva po řádcích, hospoda a čas společně.',
+    historicalBeersLabel: 'Piva',
+    historicalAddBeer: 'Přidat pivo',
+    historicalNextBeerPlaceholder: 'Další pivo',
+    historicalDateLabel: 'Datum',
+    historicalDatePlaceholder: '12. 6. 2026',
+    historicalTimeLabel: 'Čas',
+    historicalTimeFromLabel: 'Od',
+    historicalTimeToLabel: 'Do',
+    historicalTimePlaceholder: '19:45',
+    historicalTimeToPlaceholder: 'vol.',
+    historicalDateError: 'Zkontroluj datum a časy. Budoucnost zatím nečepuju.',
+    historicalPubLabel: 'Hospoda',
+    historicalPubPlaceholder: 'Kde to bylo?',
+    historicalQuantityLabel: 'Počet',
+    historicalPriceLabel: 'Cena / ks',
+    historicalPricePlaceholder: 'vol.',
+    historicalCityLabel: 'Město',
+    historicalVisibilityHint: 'Starší zápisy jsou nejdřív jen pro tebe.',
+    historicalVisibilityFriendsHint: 'Parta uvidí piva, hospodu, čas a poznámku.',
+    historicalVisibilityPrivateHint: 'Uloží se jen do tvého deníčku.',
+    historicalSubmit: 'Uložit vzpomínku',
+    historicalSaved: (count: number) =>
+      count === 1 ? 'Vzpomínka zapsaná.' : count < 5 ? `${count} piva zapsaná.` : `${count} piv zapsáno.`,
+    historicalNoPub: 'Bez hospody',
 
     // — Date labels —
     today: 'Dnes',
@@ -1846,6 +1876,10 @@ export const cs = {
     // — Moje piva —
     myBeersEvening: (pub: string, summary: string) =>
       `Večer v hospodě ${pub}, ${summary}. Ťukni pro detail.`,
+    myBeersAddHistorical: 'Zapsat piva zpětně',
+    myBeersRemoveHistoricalBeer: (beer: string) => `Odebrat pivo ${beer}`,
+    myBeersDiaryEntry: (beer: string, meta: string) =>
+      `Zápis piva ${beer}${meta ? `, ${meta}` : ''}. Ťukni pro detail.`,
     ratingLike: (pub: string) => `Hodnotit ${pub} jako dobrou`,
     ratingDislike: (pub: string) => `Hodnotit ${pub} jako slabou`,
     ratingNote: (note: string) => `Štítek: ${note}`,

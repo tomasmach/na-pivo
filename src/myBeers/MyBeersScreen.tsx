@@ -10,7 +10,7 @@
  * never break the counter. Works fully offline and without an account.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -25,7 +25,10 @@ import {
   ChevronRightIcon,
   BeerIcon,
   HistoryIcon,
+  PlusIcon,
 } from '@/components/shared/IconGlyph';
+import { fetchMyBeerCheckIns, type BeerCheckIn, type BeerCheckInInput } from '@/data/beerCheckinsClient';
+import { getPendingBeerCheckIns } from '@/data/beerCheckinsQueue';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
   useTallyStore,
@@ -38,6 +41,7 @@ import { EveningBreakdown } from '@/myBeers/EveningBreakdown';
 import { PubRatingControl } from '@/myBeers/PubRatingControl';
 import { MapPubEntry } from '@/components/amenities/MapPubEntry';
 import { VerdictBadge } from '@/myBeers/VerdictBadge';
+import { HistoricalBeerEntrySheet } from '@/myBeers/HistoricalBeerEntrySheet';
 import type { PriceCurrency } from '@/utils/currency';
 
 function lastDrinkText(session: TallySession, now: Date): string | null {
@@ -148,6 +152,150 @@ function PastEveningRow({
   );
 }
 
+function shortDateTime(iso: string): string {
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return '';
+  return new Date(ms).toLocaleDateString('cs-CZ', {
+    day: 'numeric',
+    month: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function shortDiaryTimeRange(startIso: string, endIso?: string | null): string {
+  const startMs = Date.parse(startIso);
+  if (!Number.isFinite(startMs)) return '';
+  const start = new Date(startMs);
+  const date = start.toLocaleDateString('cs-CZ', {
+    day: 'numeric',
+    month: 'numeric',
+    year: 'numeric',
+  });
+  const startTime = start.toLocaleTimeString('cs-CZ', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const endMs = endIso ? Date.parse(endIso) : NaN;
+  if (!Number.isFinite(endMs)) return `${date} ${startTime}`;
+  const end = new Date(endMs);
+  const endTime = end.toLocaleTimeString('cs-CZ', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const crossesDay = end.toDateString() !== start.toDateString();
+  return `${date} ${startTime}-${endTime}${crossesDay ? ' +1' : ''}`;
+}
+
+function checkInAmountLabel(checkIn: BeerCheckIn, priceCurrency: PriceCurrency): string {
+  const quantity = Math.max(1, Math.floor(checkIn.quantity || 1));
+  const parts = quantity > 1 ? [`${quantity}×`] : [];
+  if (checkIn.priceCzk != null) {
+    const total = checkIn.priceCzk * quantity;
+    parts.push(formatPrice(total, priceCurrency));
+  }
+  return parts.join(' · ');
+}
+
+function HistoricalCheckInRow({
+  checkIn,
+  priceCurrency,
+  onPress,
+}: {
+  checkIn: BeerCheckIn;
+  priceCurrency: PriceCurrency;
+  onPress: () => void;
+}) {
+  const meta = [
+    checkInAmountLabel(checkIn, priceCurrency),
+    checkIn.pubName || cs.myBeers.historicalNoPub,
+    checkIn.endedAt ? shortDiaryTimeRange(checkIn.checkedInAt, checkIn.endedAt) : shortDateTime(checkIn.checkedInAt),
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.diaryRow, pressed && styles.rowPressed]}
+      accessibilityRole="button"
+      accessibilityLabel={cs.a11y.myBeersDiaryEntry(checkIn.beerName, meta)}
+    >
+      <View style={styles.diaryIcon}>
+        <BeerIcon size={16} color={Colors.amber} />
+      </View>
+      <View style={styles.diaryText}>
+        <Text style={styles.diaryTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+          {checkIn.beerName}
+        </Text>
+        <Text style={styles.diaryMeta} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+          {meta}
+        </Text>
+      </View>
+      <ChevronRightIcon size={18} color={Colors.mutedText} />
+    </Pressable>
+  );
+}
+
+function HistoricalEntryButton({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.addHistoryButton, pressed && styles.rowPressed]}
+      accessibilityRole="button"
+      accessibilityLabel={cs.a11y.myBeersAddHistorical}
+    >
+      <View style={styles.addHistoryIcon}>
+        <PlusIcon size={18} color={Colors.stout} />
+      </View>
+      <View style={styles.addHistoryText}>
+        <Text style={styles.addHistoryTitle} maxFontSizeMultiplier={FontScaleCap.body}>
+          {cs.myBeers.historicalCta}
+        </Text>
+        <Text style={styles.addHistorySubtitle} maxFontSizeMultiplier={FontScaleCap.body}>
+          {cs.myBeers.historicalCtaBody}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function optimisticCheckIn(input: BeerCheckInInput): BeerCheckIn {
+  const now = new Date().toISOString();
+  return {
+    id: input.clientId,
+    account: {
+      id: '',
+      nickname: null,
+      displayName: '',
+      avatarUrl: null,
+      isPublic: false,
+    },
+    clientId: input.clientId,
+    beerName: input.beerName,
+    breweryName: input.breweryName ?? '',
+    beerStyle: input.beerStyle ?? '',
+    abv: input.abv ?? null,
+    quantity: input.quantity ?? 1,
+    priceCzk: input.priceCzk ?? null,
+    rating: input.rating ?? null,
+    note: input.note ?? '',
+    tags: input.tags ?? [],
+    pubCacheKey: input.pubCacheKey ?? '',
+    pubName: input.pubName ?? '',
+    pubCity: input.pubCity ?? '',
+    visitClientId: input.visitClientId ?? null,
+    visibility: input.visibility,
+    checkedInAt: input.checkedInAt ?? now,
+    endedAt: input.endedAt ?? null,
+    reactions: { cheers: 0 },
+    myReaction: null,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 // ─── Screen ────────────────────────────────────────────────────────────────────
 
 export default function MyBeersScreen({ embedded = false }: { embedded?: boolean } = {}) {
@@ -169,10 +317,61 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
   const current = useTallyStore((s) => s.current);
   const history = useTallyStore((s) => s.history);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
+  const [historicalOpen, setHistoricalOpen] = useState(false);
+  const [diaryRefreshToken, setDiaryRefreshToken] = useState(0);
+  const [diaryEntries, setDiaryEntries] = useState<BeerCheckIn[]>([]);
+  const [optimisticDiaryEntries, setOptimisticDiaryEntries] = useState<BeerCheckIn[]>([]);
+
+  const refreshDiary = useCallback(() => {
+    setDiaryRefreshToken((value) => value + 1);
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void getPendingBeerCheckIns().then((pending) => {
+      if (controller.signal.aborted) return;
+      setOptimisticDiaryEntries((current) => {
+        const merged = new Map<string, BeerCheckIn>();
+        for (const entry of pending.map(optimisticCheckIn)) {
+          merged.set(entry.clientId, entry);
+        }
+        for (const entry of current) {
+          merged.set(entry.clientId, entry);
+        }
+        return Array.from(merged.values());
+      });
+    });
+    void fetchMyBeerCheckIns(controller.signal).then((items) => {
+      if (controller.signal.aborted || !items) return;
+      setDiaryEntries(items);
+      setOptimisticDiaryEntries((current) =>
+        current.filter((entry) => !items.some((item) => item.clientId === entry.clientId)),
+      );
+    });
+    return () => controller.abort();
+  }, [diaryRefreshToken]);
 
   const currentEvening = current && current.drinks.length > 0 ? current : null;
   const pastEvenings = history;
-  const isEmpty = !currentEvening && pastEvenings.length === 0;
+  const visibleDiaryEntries = useMemo(
+    () => [...optimisticDiaryEntries, ...diaryEntries],
+    [diaryEntries, optimisticDiaryEntries],
+  );
+  const isEmpty = !currentEvening && pastEvenings.length === 0 && visibleDiaryEntries.length === 0;
+
+  const openHistorical = useCallback(() => setHistoricalOpen(true), []);
+  const handleHistoricalSaved = useCallback(
+    (entries: BeerCheckInInput[]) => {
+      const optimistic = entries.map(optimisticCheckIn);
+      const ids = new Set(optimistic.map((entry) => entry.clientId));
+      setOptimisticDiaryEntries((current) => [
+        ...optimistic,
+        ...current.filter((item) => !ids.has(item.clientId)),
+      ]);
+      refreshDiary();
+    },
+    [refreshDiary],
+  );
 
   return (
     <View style={styles.root}>
@@ -197,6 +396,7 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
           <Text style={styles.emptyBody} maxFontSizeMultiplier={FontScaleCap.body}>
             {cs.myBeers.emptyBody}
           </Text>
+          <HistoricalEntryButton onPress={openHistorical} />
         </View>
       ) : (
         <ScrollView
@@ -207,6 +407,8 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
           keyboardDismissMode="interactive"
           automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
         >
+          <HistoricalEntryButton onPress={openHistorical} />
+
           {currentEvening && (
             <CurrentEveningCard
               session={currentEvening}
@@ -243,9 +445,41 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
             </>
           )}
 
+          {visibleDiaryEntries.length > 0 && (
+            <>
+              <Text style={styles.listHeader} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.myBeers.diaryHeader}
+              </Text>
+              <View style={[styles.card, styles.listCard]}>
+                {visibleDiaryEntries.map((checkIn, i) => (
+                  <View
+                    key={checkIn.clientId || checkIn.id}
+                    style={i > 0 && styles.rowBorder}
+                  >
+                    <HistoricalCheckInRow
+                      checkIn={checkIn}
+                      priceCurrency={priceCurrency}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/beer-detail',
+                          params: { beer: checkIn.beerName, brewery: checkIn.breweryName },
+                        })
+                      }
+                    />
+                  </View>
+                ))}
+              </View>
+            </>
+          )}
+
           <View style={{ height: Spacing.lg }} />
         </ScrollView>
       )}
+      <HistoricalBeerEntrySheet
+        visible={historicalOpen}
+        onClose={() => setHistoricalOpen(false)}
+        onSaved={handleHistoricalSaved}
+      />
     </View>
   );
 }
@@ -371,6 +605,72 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.amber,
+  },
+
+  // — Historical diary —
+  addHistoryButton: {
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    minHeight: 68,
+    padding: 14,
+    borderRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.stout2,
+  },
+  addHistoryIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.amber,
+  },
+  addHistoryText: {
+    flex: 1,
+    gap: 2,
+  },
+  addHistoryTitle: {
+    fontFamily: Fonts.display.bold,
+    fontSize: 16,
+    color: Colors.foam,
+  },
+  addHistorySubtitle: {
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
+    color: Colors.foamMuted,
+  },
+  diaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    minHeight: 72,
+  },
+  diaryIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.stout3,
+  },
+  diaryText: {
+    flex: 1,
+    gap: 2,
+  },
+  diaryTitle: {
+    fontFamily: Fonts.display.bold,
+    fontSize: 16,
+    color: Colors.foam,
+  },
+  diaryMeta: {
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
+    color: Colors.mutedText,
   },
 
   // — Empty —

@@ -127,6 +127,20 @@ describe('beerCheckInWire', () => {
   it('defaults missing tags to an empty array', () => {
     expect(beerCheckInWire(baseInput).tags).toEqual([]);
   });
+
+  it('ships optional end time for historical evenings', () => {
+    const wire = beerCheckInWire({
+      ...baseInput,
+      checkedInAt: '2026-07-01T18:00:00.000Z',
+      endedAt: '2026-07-01T21:30:00.000Z',
+      quantity: 3,
+      priceCzk: 62,
+    });
+    expect(wire.checked_in_at).toBe('2026-07-01T18:00:00.000Z');
+    expect(wire.ended_at).toBe('2026-07-01T21:30:00.000Z');
+    expect(wire.quantity).toBe(3);
+    expect(wire.price_czk).toBe(62);
+  });
 });
 
 describe('parseBeerCheckIn', () => {
@@ -135,8 +149,14 @@ describe('parseBeerCheckIn', () => {
       id: 'x',
       beer_name: 'Radegast 12',
       tags: ['crisp', 'unknown_from_newer_server', 'one_more'],
+      ended_at: '2026-07-01T21:30:00Z',
+      quantity: 3,
+      price_czk: 62,
     });
     expect(parsed.tags).toEqual(['crisp', 'one_more']);
+    expect(parsed.endedAt).toBe('2026-07-01T21:30:00Z');
+    expect(parsed.quantity).toBe(3);
+    expect(parsed.priceCzk).toBe(62);
   });
 
   it('defaults tags to [] when absent', () => {

@@ -31,6 +31,7 @@ const PRIVATE_KEYS = [
   'na-pivo-drinks-queue',
   'na-pivo-delete-drinks-queue',
   'na-pivo-update-drinks-queue',
+  'na-pivo-beer-checkins-queue',
   'na-pivo-feedback-queue',
   'na-pivo-added-pubs-queue',
   'na-pivo-community-queue',
