@@ -223,7 +223,7 @@ export const cs = {
     addPub: 'Přidat hospodu',
     filteredHeadlineLine1: 'Tahle kombinace',
     filteredHeadlineLine2: 'je vzácná',
-    filteredBody: 'V okolí zatím nemáme zmapovanou hospodu, která splní všechno.',
+    filteredBody: 'V okolí zatím nemám zmapovanou hospodu, která splní všechno.',
     editFilters: 'Upravit filtry',
     clearFilters: 'Zrušit filtry',
   },
