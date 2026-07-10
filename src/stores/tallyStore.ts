@@ -24,6 +24,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { generateUuidV4 } from '@/data/account';
+import { normalizeDrinkType, type DrinkType } from '@/drinks/drinkTypes';
 
 /** Hours to subtract from local time before taking the calendar date, so the
  *  "drinking day" rolls at 04:00 local rather than at midnight. */
@@ -46,6 +47,8 @@ export type ArchivedReason = 'timeout' | 'pub-change' | 'day-rollover' | 'manual
 export interface TallyDrink {
   id: string;
   beerName: string;
+  /** Missing on persisted v1 rows means beer. */
+  drinkType?: DrinkType;
   priceCzk: number;
   volumeMl?: number;
   /** ISO-8601 timestamp of when it was counted. */
@@ -81,6 +84,7 @@ export interface TallyPub {
 export interface TallyBeerInput {
   id: string;
   beerName: string;
+  drinkType?: DrinkType;
   priceCzk: number;
   volumeMl?: number;
   /** ISO timestamp; defaults to now. */
@@ -246,6 +250,7 @@ export const useTallyStore = create<TallyState>()(
             at,
             syncStatus: 'pending',
           };
+          if (beer.drinkType && beer.drinkType !== 'beer') drink.drinkType = beer.drinkType;
           if (typeof beer.volumeMl === 'number') drink.volumeMl = beer.volumeMl;
 
           const rollover = shouldStartNewSession(state.current, pub.pubKey, atDate);
@@ -300,6 +305,7 @@ export const useTallyStore = create<TallyState>()(
             at,
             syncStatus: 'pending',
           };
+          if (beer.drinkType && beer.drinkType !== 'beer') drink.drinkType = beer.drinkType;
           if (typeof beer.volumeMl === 'number') drink.volumeMl = beer.volumeMl;
 
           const dayKey = drinkingDayKey(atDate);
@@ -533,9 +539,20 @@ export const useTallyStore = create<TallyState>()(
   ),
 );
 
-/** Number of beers counted in the current session. */
+/** Number of beer-category drinks. Legacy rows without a type are beer. */
 export function sessionCount(session: TallySession | null): number {
+  return session?.drinks.filter((drink) => normalizeDrinkType(drink.drinkType) === 'beer').length ?? 0;
+}
+
+/** All logged items, used for session lifecycle rather than beer stats. */
+export function sessionDrinkCount(session: TallySession | null): number {
   return session?.drinks.length ?? 0;
+}
+
+export function sessionDrinkTypeCounts(session: TallySession | null): Record<DrinkType, number> {
+  const counts: Record<DrinkType, number> = { beer: 0, soft_drink: 0, shot: 0 };
+  for (const drink of session?.drinks ?? []) counts[normalizeDrinkType(drink.drinkType)] += 1;
+  return counts;
 }
 
 /** Total spent (CZK) in the current session. */
@@ -604,6 +621,7 @@ export function sessionBeerCounts(session: TallySession | null): Map<string, num
   const counts = new Map<string, number>();
   if (!session) return counts;
   for (const drink of session.drinks) {
+    if (normalizeDrinkType(drink.drinkType) !== 'beer') continue;
     const key = `${drink.beerName.trim().toLowerCase()}|${drink.volumeMl ?? ''}`;
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }

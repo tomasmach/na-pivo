@@ -38,8 +38,9 @@ import { GlowButton } from '@/components/shared/GlowButton';
 import { CameraIcon } from '@/components/shared/IconGlyph';
 import { BetaBadge } from '@/components/shared/BetaBadge';
 import { fireLightImpactHaptic } from '@/utils/haptics';
-import { cs } from '@/i18n/cs';
+import { cs, formatVolume } from '@/i18n/cs';
 import type { CommunityBeer } from '@/data/communityHours';
+import type { DrinkType } from '@/drinks/drinkTypes';
 import { suggestBeerBrands, type BeerBrandSuggestion } from '@/data/beerSuggestionsClient';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
@@ -53,20 +54,23 @@ import {
 const VOLUME_SMALL = 300;
 const VOLUME_MEDIUM = 400;
 const VOLUME_DEFAULT = 500;
-const VOLUME_PRESETS = [VOLUME_SMALL, VOLUME_MEDIUM, VOLUME_DEFAULT];
+const BEER_VOLUME_PRESETS = [VOLUME_SMALL, VOLUME_MEDIUM, VOLUME_DEFAULT];
+const SHOT_VOLUME_PRESETS = [20, 40, 50];
 
-/** Sanitize a free-typed custom volume to a sane ml value (50..3000), else undefined. */
-function parseCustomMl(text: string): number | undefined {
+/** Sanitize custom volume (10..200 ml for shots, otherwise 10..3000). */
+function parseCustomMl(text: string, drinkType: DrinkType): number | undefined {
   const digits = text.replace(/[^0-9]/g, '');
   if (!digits) return undefined;
   const n = parseInt(digits, 10);
-  if (!Number.isFinite(n) || n < 50 || n > 3000) return undefined;
+  const max = drinkType === 'shot' ? 200 : 3000;
+  if (!Number.isFinite(n) || n < 10 || n > max) return undefined;
   return n;
 }
 
 export type BeerFormMode = 'add' | 'price' | 'edit';
 
 export interface BeerFormResult {
+  drinkType: DrinkType;
   name: string;
   priceCzk: number;
   volumeMl?: number;
@@ -77,6 +81,7 @@ interface BeerFormModalProps {
   mode: BeerFormMode;
   /** Prefilled beer (name locked in 'price'/'edit'; price/volume seed the form). */
   beer?: CommunityBeer | null;
+  initialDrinkType?: DrinkType;
   /** Changes per open so the form body remounts with fresh, prop-seeded state. */
   formKey?: string | number;
   onCancel: () => void;
@@ -85,18 +90,12 @@ interface BeerFormModalProps {
   onScanMenu?: () => void;
 }
 
-const VOLUME_OPTIONS: { value: number; labelKey: 'volumeSmall' | 'volumeMedium' | 'volumeLarge' }[] = [
-  { value: VOLUME_SMALL, labelKey: 'volumeSmall' },
-  { value: VOLUME_MEDIUM, labelKey: 'volumeMedium' },
-  { value: VOLUME_DEFAULT, labelKey: 'volumeLarge' },
-];
-
 /**
  * Outer shell: owns the RN Modal + visibility. The inner form body is keyed by
  * the open instance (`formKey`) so every open mounts a FRESH body whose state is
  * initialized from props — no re-seeding effect, no setState-in-effect.
  */
-export function BeerFormModal({ visible, mode, beer, formKey, onCancel, onSubmit, onScanMenu }: BeerFormModalProps) {
+export function BeerFormModal({ visible, mode, beer, initialDrinkType = 'beer', formKey, onCancel, onSubmit, onScanMenu }: BeerFormModalProps) {
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onCancel}>
       {visible ? (
@@ -104,6 +103,7 @@ export function BeerFormModal({ visible, mode, beer, formKey, onCancel, onSubmit
           key={formKey ?? 0}
           mode={mode}
           beer={beer}
+          initialDrinkType={initialDrinkType}
           onCancel={onCancel}
           onSubmit={onSubmit}
           onScanMenu={onScanMenu}
@@ -116,17 +116,19 @@ export function BeerFormModal({ visible, mode, beer, formKey, onCancel, onSubmit
 interface BeerFormBodyProps {
   mode: BeerFormMode;
   beer?: CommunityBeer | null;
+  initialDrinkType: DrinkType;
   onCancel: () => void;
   onSubmit: (result: BeerFormResult) => void;
   onScanMenu?: () => void;
 }
 
-function BeerFormBody({ mode, beer, onCancel, onSubmit, onScanMenu }: BeerFormBodyProps) {
+function BeerFormBody({ mode, beer, initialDrinkType, onCancel, onSubmit, onScanMenu }: BeerFormBodyProps) {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const keyboardHeight = useKeyboardHeight();
   const nameLocked = mode !== 'add';
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
+  const [drinkType, setDrinkType] = useState<DrinkType>(initialDrinkType);
 
   // Initialized once at mount from props (the body is remounted per open).
   const [name, setName] = useState(beer?.name ?? '');
@@ -154,8 +156,9 @@ function BeerFormBody({ mode, beer, onCancel, onSubmit, onScanMenu }: BeerFormBo
   );
 
   // Volume: either a preset pill (300/400/500) or a free-typed custom ml ("Jiné").
-  const seedVolume = beer?.volumeMl ?? (mode === 'add' ? VOLUME_DEFAULT : undefined);
-  const seedIsPreset = typeof seedVolume === 'number' && VOLUME_PRESETS.includes(seedVolume);
+  const initialPresets = initialDrinkType === 'shot' ? SHOT_VOLUME_PRESETS : BEER_VOLUME_PRESETS;
+  const seedVolume = beer?.volumeMl ?? (mode === 'add' ? (initialDrinkType === 'shot' ? 40 : VOLUME_DEFAULT) : undefined);
+  const seedIsPreset = typeof seedVolume === 'number' && initialPresets.includes(seedVolume);
   const [selectedPreset, setSelectedPreset] = useState<number | undefined>(seedIsPreset ? seedVolume : undefined);
   const [customActive, setCustomActive] = useState<boolean>(typeof seedVolume === 'number' && !seedIsPreset);
   const [customMl, setCustomMl] = useState<string>(
@@ -172,7 +175,7 @@ function BeerFormBody({ mode, beer, onCancel, onSubmit, onScanMenu }: BeerFormBo
   // Debounced beer-name suggestions: fetch once the name is 2+ chars and was
   // typed (not just picked). Falls back to a local brand list when offline.
   useEffect(() => {
-    if (nameLocked) return;
+    if (nameLocked || drinkType !== 'beer') return;
     const query = trimmedName;
     if (query.length < 2 || pickedNameRef.current === name) {
       setSuggestions([]);
@@ -188,16 +191,20 @@ function BeerFormBody({ mode, beer, onCancel, onSubmit, onScanMenu }: BeerFormBo
       controller.abort();
       clearTimeout(timeout);
     };
-  }, [name, trimmedName, nameLocked]);
+  }, [drinkType, name, trimmedName, nameLocked]);
 
   // The effective volume: custom ml when "Jiné" is active, otherwise the pill.
   // Volume stays optional — an empty/invalid custom field simply omits it.
-  const volumeMl = customActive ? parseCustomMl(customMl) : selectedPreset;
+  const volumeMl = customActive ? parseCustomMl(customMl, drinkType) : selectedPreset;
 
   const title =
-    mode === 'add' ? cs.counter.addModalTitle : mode === 'edit' ? cs.counter.editModalTitle : cs.counter.priceModalTitle;
+    mode === 'add'
+      ? cs.counter.addDrinkModalTitle(drinkType)
+      : mode === 'edit'
+        ? cs.counter.editModalTitle
+        : cs.counter.priceModalTitle;
 
-  const submitLabel = mode === 'edit' ? cs.counter.confirmSave : cs.counter.confirmCount;
+  const submitLabel = mode === 'edit' ? cs.counter.confirmSave : cs.counter.confirmDrink(drinkType);
 
   const selectPreset = (value: number) => {
     setSelectedPreset(value);
@@ -209,9 +216,18 @@ function BeerFormBody({ mode, beer, onCancel, onSubmit, onScanMenu }: BeerFormBo
     setSelectedPreset(undefined);
   };
 
+  const selectDrinkType = (next: DrinkType) => {
+    setDrinkType(next);
+    setSuggestions([]);
+    setSelectedPreset(next === 'shot' ? 40 : VOLUME_DEFAULT);
+    setCustomActive(false);
+    setCustomMl('');
+  };
+
   const handleSubmit = () => {
     if (!canSubmit) return;
     const result: BeerFormResult = {
+      drinkType,
       name: nameLocked ? (beer?.name ?? '') : trimmedName.slice(0, 80),
       priceCzk: priceCzk as number,
     };
@@ -242,6 +258,28 @@ function BeerFormBody({ mode, beer, onCancel, onSubmit, onScanMenu }: BeerFormBo
             {title}
           </Text>
 
+          {!nameLocked ? (
+            <View style={styles.typeGroup}>
+              {(['beer', 'soft_drink', 'shot'] as const).map((type) => {
+                const selected = drinkType === type;
+                return (
+                  <Pressable
+                    key={type}
+                    onPress={() => selectDrinkType(type)}
+                    style={[styles.typePill, selected && styles.typePillSelected]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    accessibilityLabel={cs.counter.drinkTypeLabel(type)}
+                  >
+                    <Text style={[styles.typePillText, selected && styles.typePillTextSelected]}>
+                      {cs.counter.drinkTypeLabel(type)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
+
           {nameLocked && beer?.name ? (
             <Text style={styles.lockedName} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.heading}>
               {beer.name}
@@ -251,11 +289,11 @@ function BeerFormBody({ mode, beer, onCancel, onSubmit, onScanMenu }: BeerFormBo
               style={styles.nameInput}
               value={name}
               onChangeText={onChangeName}
-              placeholder={cs.counter.beerNamePlaceholder}
+              placeholder={cs.counter.drinkNamePlaceholder(drinkType)}
               placeholderTextColor={Colors.mutedText}
               maxLength={80}
               autoFocus
-              accessibilityLabel={cs.counter.beerNamePlaceholder}
+              accessibilityLabel={cs.counter.drinkNamePlaceholder(drinkType)}
             />
           )}
 
@@ -277,7 +315,7 @@ function BeerFormBody({ mode, beer, onCancel, onSubmit, onScanMenu }: BeerFormBo
             </View>
           ) : null}
 
-          {!nameLocked && onScanMenu ? (
+          {!nameLocked && drinkType === 'beer' && onScanMenu ? (
             <Pressable
               onPress={() => {
                 fireLightImpactHaptic();
@@ -317,23 +355,23 @@ function BeerFormBody({ mode, beer, onCancel, onSubmit, onScanMenu }: BeerFormBo
             {cs.counter.priceLabel}
           </Text>
           <View style={styles.volumeGroup}>
-            {VOLUME_OPTIONS.map((opt) => {
-              const isSelected = !customActive && selectedPreset === opt.value;
+            {(drinkType === 'shot' ? SHOT_VOLUME_PRESETS : BEER_VOLUME_PRESETS).map((value) => {
+              const isSelected = !customActive && selectedPreset === value;
               return (
                 <Pressable
-                  key={opt.labelKey}
-                  onPress={() => selectPreset(opt.value)}
+                  key={value}
+                  onPress={() => selectPreset(value)}
                   style={[styles.volumePill, isSelected && styles.volumePillSelected]}
                   hitSlop={4}
                   accessibilityRole="button"
                   accessibilityState={{ selected: isSelected }}
-                  accessibilityLabel={cs.counter[opt.labelKey]}
+                  accessibilityLabel={formatVolume(value)}
                 >
                   <Text
                     style={[styles.volumePillText, isSelected && styles.volumePillTextSelected]}
                     maxFontSizeMultiplier={FontScaleCap.body}
                   >
-                    {cs.counter[opt.labelKey]}
+                    {formatVolume(value)}
                   </Text>
                 </Pressable>
               );
@@ -423,6 +461,29 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.display.extrabold,
     fontSize: 24,
     color: Colors.foam,
+  },
+  typeGroup: {
+    flexDirection: 'row',
+    padding: 3,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout3,
+  },
+  typePill: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 9,
+    borderRadius: Radius.pill,
+  },
+  typePillSelected: {
+    backgroundColor: withAlpha(Colors.amber, 0.18),
+  },
+  typePillText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 13,
+    color: Colors.mutedText,
+  },
+  typePillTextSelected: {
+    color: Colors.amber,
   },
   lockedName: {
     fontFamily: Fonts.display.bold,

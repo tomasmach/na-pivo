@@ -28,12 +28,17 @@ import {
   type CommunityBeer,
   type WireBeer,
 } from './communityHours';
+import { isDrinkType, type DrinkType } from '@/drinks/drinkTypes';
 
 /** Upload budget — wider than the shared API timeout (uploads are slower). */
 const UPLOAD_TIMEOUT_MS = 30000;
 
+export interface ScannedDrink extends CommunityBeer {
+  drinkType: DrinkType;
+}
+
 export type MenuScanResult =
-  | { status: 'ok'; beers: CommunityBeer[]; model?: string }
+  | { status: 'ok'; beers: CommunityBeer[]; drinks: ScannedDrink[]; model?: string }
   | { status: 'empty' }
   | { status: 'unavailable' }
   | { status: 'daily-cap' }
@@ -93,11 +98,31 @@ export async function scanMenuPhoto(localUri: string): Promise<MenuScanResult> {
       .filter((b) => b && typeof b.name === 'string' && b.name.trim().length > 0)
       .slice(0, MAX_MENU_BEERS)
       .map(beerFromWire);
-    if (beers.length === 0) return { status: 'empty' };
+    const rawDrinks = Array.isArray(data.drinks)
+      ? (data.drinks as (WireBeer & { drink_type?: unknown })[])
+      : [];
+    const drinks: ScannedDrink[] = rawDrinks
+      .filter(
+        (drink) =>
+          drink &&
+          typeof drink.name === 'string' &&
+          drink.name.trim().length > 0 &&
+          isDrinkType(drink.drink_type),
+      )
+      .slice(0, 24)
+      .map((drink) => ({ ...beerFromWire(drink), drinkType: drink.drink_type as DrinkType }));
+
+    // Older backends only return ``beers``. Promote them to categorized scan
+    // rows so the counter picker works throughout a rolling backend deploy.
+    const categorized = drinks.length > 0
+      ? drinks
+      : beers.map((beer): ScannedDrink => ({ ...beer, drinkType: 'beer' }));
+    if (categorized.length === 0) return { status: 'empty' };
 
     return {
       status: 'ok',
       beers,
+      drinks: categorized,
       model: typeof data.model === 'string' ? data.model : undefined,
     };
   } catch {

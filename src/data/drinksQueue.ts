@@ -20,6 +20,7 @@
 
 import { submitDrink, type DrinkEntry } from './drinksClient';
 import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
+import { isDrinkType } from '@/drinks/drinkTypes';
 
 const STORAGE_KEY = 'na-pivo-drinks-queue';
 /** Hard cap — a queue this long means the backend has been unreachable for a
@@ -36,6 +37,7 @@ function isDrinkEntry(entry: unknown): entry is DrinkEntry {
     typeof e.name === 'string' &&
     typeof e.lat === 'number' &&
     typeof e.lng === 'number' &&
+    (e.drink_type === undefined || isDrinkType(e.drink_type)) &&
     !!e.beer &&
     typeof e.beer.name === 'string' &&
     typeof e.beer.price_czk === 'number'

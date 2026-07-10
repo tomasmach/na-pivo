@@ -8,11 +8,12 @@ import {
   eveningDayRelation,
   formatEveningDate,
   eveningDateLabel,
+  sessionDrinkSummary,
 } from '../eveningModel';
 import type { TallySession } from '@/stores/tallyStore';
 
 let idSeq = 0;
-function drink(over: Partial<{ beerName: string; priceCzk: number; volumeMl: number; at: string }> = {}) {
+function drink(over: Partial<{ beerName: string; priceCzk: number; volumeMl: number; at: string; drinkType: 'beer' | 'soft_drink' | 'shot' }> = {}) {
   idSeq += 1;
   return {
     id: `id-${idSeq}`,
@@ -20,6 +21,7 @@ function drink(over: Partial<{ beerName: string; priceCzk: number; volumeMl: num
     priceCzk: over.priceCzk ?? 62,
     volumeMl: over.volumeMl,
     at: over.at ?? '2026-06-14T19:00:00.000Z',
+    drinkType: over.drinkType,
   };
 }
 
@@ -36,6 +38,7 @@ function session(drinks: ReturnType<typeof drink>[], over: Partial<TallySession>
         priceCzk: d.priceCzk,
         at: d.at,
       };
+      if (d.drinkType && d.drinkType !== 'beer') out.drinkType = d.drinkType;
       if (typeof d.volumeMl === 'number') out.volumeMl = d.volumeMl;
       return out;
     }),
@@ -88,6 +91,22 @@ describe('sessionBreakdown', () => {
       drink({ beerName: 'Pilsner' }),
     ]);
     expect(sessionBreakdown(s).map((l) => l.name)).toEqual(['Kozel', 'Pilsner']);
+  });
+
+  it('separates identical names across categories and builds a mixed summary', () => {
+    const s = session([
+      drink({ beerName: 'Birell', drinkType: 'beer' }),
+      drink({ beerName: 'Birell', drinkType: 'soft_drink' }),
+      drink({ beerName: 'Slivovice', drinkType: 'shot' }),
+      drink({ beerName: 'Slivovice', drinkType: 'shot' }),
+    ]);
+
+    expect(sessionBreakdown(s).map((line) => line.drinkType)).toEqual([
+      'beer',
+      'soft_drink',
+      'shot',
+    ]);
+    expect(sessionDrinkSummary(s)).toBe('1 pivo · 1 nealko · 2 panáky');
   });
 });
 

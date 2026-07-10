@@ -28,7 +28,6 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { amberGlow } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
-import { beerCountLabel } from '@/i18n/plural';
 import { formatPrice } from '@/utils/currency';
 import {
   PencilIcon,
@@ -74,7 +73,7 @@ import {
 } from '@/stores/tallyStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { eveningDateLabel } from '@/myBeers/eveningModel';
+import { eveningDateLabel, sessionDrinkSummary } from '@/myBeers/eveningModel';
 
 // ─── Local stat derivations ─────────────────────────────────────────────────
 
@@ -406,9 +405,8 @@ function RecentRow({
   borderTop: boolean;
 }) {
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
-  const count = sessionCount(session);
   const totalCzk = sessionTotalCzk(session);
-  const summary = cs.myBeers.summary(beerCountLabel(count), formatPrice(totalCzk, priceCurrency));
+  const summary = cs.myBeers.summary(sessionDrinkSummary(session), formatPrice(totalCzk, priceCurrency));
 
   return (
     <Pressable

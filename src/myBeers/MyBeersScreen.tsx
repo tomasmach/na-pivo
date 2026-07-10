@@ -20,7 +20,6 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { amberGlow } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
-import { beerCountLabel } from '@/i18n/plural';
 import { formatPrice } from '@/utils/currency';
 import {
   ChevronRightIcon,
@@ -30,12 +29,11 @@ import {
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
   useTallyStore,
-  sessionCount,
   sessionTotalCzk,
   type TallySession,
 } from '@/stores/tallyStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
-import { sessionBreakdown, eveningDateLabel, eveningDayRelation } from '@/myBeers/eveningModel';
+import { sessionBreakdown, sessionDrinkSummary, eveningDateLabel, eveningDayRelation } from '@/myBeers/eveningModel';
 import { EveningBreakdown } from '@/myBeers/EveningBreakdown';
 import { PubRatingControl } from '@/myBeers/PubRatingControl';
 import { MapPubEntry } from '@/components/amenities/MapPubEntry';
@@ -63,7 +61,6 @@ function CurrentEveningCard({
   priceCurrency: PriceCurrency;
   now: Date;
 }) {
-  const count = sessionCount(session);
   const totalCzk = sessionTotalCzk(session);
   const breakdown = useMemo(() => sessionBreakdown(session), [session]);
   const lastText = lastDrinkText(session, now);
@@ -83,7 +80,7 @@ function CurrentEveningCard({
         {session.pubName}
       </Text>
       <Text style={styles.summary} maxFontSizeMultiplier={FontScaleCap.body}>
-        {cs.myBeers.summary(beerCountLabel(count), formatPrice(totalCzk, priceCurrency))}
+        {cs.myBeers.summary(sessionDrinkSummary(session), formatPrice(totalCzk, priceCurrency))}
       </Text>
       {lastText && (
         <Text style={styles.lastDrink} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -123,10 +120,9 @@ function PastEveningRow({
   now: Date;
   onPress: () => void;
 }) {
-  const count = sessionCount(session);
   const totalCzk = sessionTotalCzk(session);
   const verdict = usePubRatingsStore((s) => s.ratings[session.pubKey]?.verdict);
-  const summary = cs.myBeers.summary(beerCountLabel(count), formatPrice(totalCzk, priceCurrency));
+  const summary = cs.myBeers.summary(sessionDrinkSummary(session), formatPrice(totalCzk, priceCurrency));
 
   return (
     <Pressable

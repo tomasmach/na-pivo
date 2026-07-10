@@ -8,13 +8,16 @@
  * beer is shown under the night it belongs to, not the calendar date.
  */
 
-import { drinkingDayKey, type TallySession } from '@/stores/tallyStore';
+import { drinkingDayKey, sessionDrinkTypeCounts, type TallySession } from '@/stores/tallyStore';
 import { cs } from '@/i18n/cs';
+import { beerCountLabel, shotCountLabel, softDrinkCountLabel } from '@/i18n/plural';
+import { normalizeDrinkType, type DrinkType } from '@/drinks/drinkTypes';
 
 /** A grouped line in an evening's breakdown: one row per beer + volume. */
 export interface BreakdownLine {
   /** Display name as first counted (original case preserved). */
   name: string;
+  drinkType: DrinkType;
   volumeMl?: number;
   count: number;
   totalCzk: number;
@@ -29,7 +32,8 @@ export function sessionBreakdown(session: TallySession | null): BreakdownLine[] 
   const order: string[] = [];
   const lines = new Map<string, BreakdownLine>();
   for (const drink of session.drinks) {
-    const key = `${drink.beerName.trim().toLowerCase()}|${drink.volumeMl ?? ''}`;
+    const drinkType = normalizeDrinkType(drink.drinkType);
+    const key = `${drinkType}|${drink.beerName.trim().toLowerCase()}|${drink.volumeMl ?? ''}`;
     const existing = lines.get(key);
     if (existing) {
       existing.count += 1;
@@ -38,6 +42,7 @@ export function sessionBreakdown(session: TallySession | null): BreakdownLine[] 
       order.push(key);
       const line: BreakdownLine = {
         name: drink.beerName,
+        drinkType,
         count: 1,
         totalCzk: drink.priceCzk,
       };
@@ -46,6 +51,17 @@ export function sessionBreakdown(session: TallySession | null): BreakdownLine[] 
     }
   }
   return order.map((key) => lines.get(key) as BreakdownLine);
+}
+
+/** Compact mixed-evening label with beer kept first and zero categories hidden. */
+export function sessionDrinkSummary(session: TallySession | null): string {
+  const counts = sessionDrinkTypeCounts(session);
+  const parts = [
+    counts.beer > 0 ? beerCountLabel(counts.beer) : null,
+    counts.soft_drink > 0 ? softDrinkCountLabel(counts.soft_drink) : null,
+    counts.shot > 0 ? shotCountLabel(counts.shot) : null,
+  ].filter((part): part is string => part !== null);
+  return parts.join(' · ');
 }
 
 /** How `startedAt` relates to `now` by drinking day. */

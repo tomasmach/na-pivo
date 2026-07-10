@@ -21,6 +21,8 @@ import {
   sessionCount,
   sessionTotalCzk,
   sessionBeerCounts,
+  sessionDrinkCount,
+  sessionDrinkTypeCounts,
   sessionLastActivityMs,
   resumableSession,
   IDLE_TIMEOUT_MS,
@@ -350,6 +352,25 @@ describe('totals + per-beer counts', () => {
     const counts = sessionBeerCounts(useTallyStore.getState().current);
     expect(counts.get('plzeň|500')).toBe(2);
     expect(counts.get('plzeň|300')).toBe(1);
+  });
+
+  it('keeps non-beers in the evening total but out of beer counts', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer({ beerName: 'Plzeň', priceCzk: 62 }));
+    useTallyStore.getState().addDrink(PUB_A, {
+      ...beer({ beerName: 'Kofola', priceCzk: 49, volumeMl: 400 }),
+      drinkType: 'soft_drink',
+    });
+    useTallyStore.getState().addDrink(PUB_A, {
+      ...beer({ beerName: 'Slivovice', priceCzk: 65, volumeMl: 40 }),
+      drinkType: 'shot',
+    });
+    const { current } = useTallyStore.getState();
+
+    expect(sessionCount(current)).toBe(1);
+    expect(sessionDrinkCount(current)).toBe(3);
+    expect(sessionTotalCzk(current)).toBe(176);
+    expect(sessionDrinkTypeCounts(current)).toEqual({ beer: 1, soft_drink: 1, shot: 1 });
+    expect(sessionBeerCounts(current).has('kofola|400')).toBe(false);
   });
 
   it('totals are 0 for a null session', () => {
