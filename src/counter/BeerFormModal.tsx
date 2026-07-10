@@ -39,7 +39,7 @@ import { CameraIcon } from '@/components/shared/IconGlyph';
 import { BetaBadge } from '@/components/shared/BetaBadge';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { cs, formatVolume } from '@/i18n/cs';
-import type { CommunityBeer } from '@/data/communityHours';
+import { isAllowedBeerVolume, type CommunityBeer } from '@/data/communityHours';
 import type { DrinkType } from '@/drinks/drinkTypes';
 import { suggestBeerBrands, type BeerBrandSuggestion } from '@/data/beerSuggestionsClient';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -57,11 +57,16 @@ const VOLUME_DEFAULT = 500;
 const BEER_VOLUME_PRESETS = [VOLUME_SMALL, VOLUME_MEDIUM, VOLUME_DEFAULT];
 const SHOT_VOLUME_PRESETS = [20, 40, 50];
 
-/** Sanitize custom volume (10..200 ml for shots, otherwise 10..3000). */
+/**
+ * Sanitize custom volume (10..200 ml for shots, otherwise 10..3000). Beer is
+ * further restricted to the community-menu set — the drinks endpoint rejects
+ * other beer volumes with a 400, which would silently drop the queued drink.
+ */
 function parseCustomMl(text: string, drinkType: DrinkType): number | undefined {
   const digits = text.replace(/[^0-9]/g, '');
   if (!digits) return undefined;
   const n = parseInt(digits, 10);
+  if (drinkType === 'beer') return isAllowedBeerVolume(n) ? n : undefined;
   const max = drinkType === 'shot' ? 200 : 3000;
   if (!Number.isFinite(n) || n < 10 || n > max) return undefined;
   return n;
