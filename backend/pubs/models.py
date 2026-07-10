@@ -1132,6 +1132,8 @@ class BeerCheckIn(models.Model):
     brewery_name = models.TextField(blank=True, default="")
     beer_style = models.TextField(blank=True, default="")
     abv = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)
+    quantity = models.PositiveSmallIntegerField(default=1)
+    price_czk = models.PositiveIntegerField(null=True, blank=True)
     rating = models.DecimalField(max_digits=3, decimal_places=1, null=True, blank=True)
     tags = models.JSONField(default=list, blank=True)
     note = models.TextField(blank=True, default="")
@@ -1148,6 +1150,7 @@ class BeerCheckIn(models.Model):
     beer_key = models.CharField(max_length=64, db_index=True)
     brewery_key = models.CharField(max_length=64, blank=True, default="", db_index=True)
     checked_in_at = models.DateTimeField(default=timezone.now, db_index=True)
+    ended_at = models.DateTimeField(null=True, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

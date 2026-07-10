@@ -15,6 +15,7 @@ from pubs import emailer
 from pubs.models import (
     Account,
     AuthIdentity,
+    BeerCheckIn,
     ContentReport,
     DrinkLog,
     EmailCredential,
@@ -189,6 +190,20 @@ def test_account_export_includes_diary_data_and_excludes_secrets(client):
         volume_ml=500,
         drank_at=timezone.now(),
     )
+    checked_in_at = timezone.now().replace(microsecond=0)
+    ended_at = checked_in_at + timezone.timedelta(hours=2)
+    BeerCheckIn.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        beer_name="Exportní pivo",
+        beer_key="exportni-pivo",
+        quantity=3,
+        price_czk=62,
+        pub_name="U Exportu",
+        visibility=BeerCheckIn.Visibility.FRIENDS,
+        checked_in_at=checked_in_at,
+        ended_at=ended_at,
+    )
     PushDevice.objects.create(
         account=account,
         push_token="ExponentPushToken[exportDevice]",
@@ -206,6 +221,10 @@ def test_account_export_includes_diary_data_and_excludes_secrets(client):
     assert body["account"]["id"] == account_id
     assert body["drinks"][0]["beer_name"] == "Ležák"
     assert body["drinks"][0]["drink_type"] == "beer"
+    assert body["beer_checkins"][0]["beer_name"] == "Exportní pivo"
+    assert body["beer_checkins"][0]["quantity"] == 3
+    assert body["beer_checkins"][0]["price_czk"] == 62
+    assert body["beer_checkins"][0]["ended_at"] == ended_at.isoformat()
     assert body["push_devices"] == [
         {
             "platform": "ios",

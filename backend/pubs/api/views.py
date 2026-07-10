@@ -3313,7 +3313,7 @@ class FriendDetailView(APIView):
                     visibility=BeerCheckIn.Visibility.FRIENDS,
                     account__ghost_mode=False,
                 )
-                .order_by("-checked_in_at")[:5]
+                .order_by("-checked_in_at", "created_at", "id")[:5]
             )
         public_profile_stats = derive_account_profile_stats(friend)
 
@@ -3916,7 +3916,11 @@ class BeerCheckInView(APIView):
     throttle_scope = "friends"
 
     def get(self, request: Request) -> Response:
-        rows = _beer_checkin_queryset().filter(account=request.user).order_by("-checked_in_at")[:100]
+        rows = (
+            _beer_checkin_queryset()
+            .filter(account=request.user)
+            .order_by("-checked_in_at", "created_at", "id")[:100]
+        )
         return Response(
             {"checkins": BeerCheckInSerializer(rows, many=True, context=_beer_checkin_context(request)).data},
             status=status.HTTP_200_OK,
@@ -3933,6 +3937,8 @@ class BeerCheckInView(APIView):
             "brewery_name": data.get("brewery_name") or "",
             "beer_style": data.get("beer_style") or "",
             "abv": data.get("abv"),
+            "quantity": data.get("quantity") or 1,
+            "price_czk": data.get("price_czk"),
             "rating": data.get("rating"),
             "tags": data.get("tags") or [],
             "note": data.get("note") or "",
@@ -3944,6 +3950,7 @@ class BeerCheckInView(APIView):
             "beer_key": _beer_identity_key(data["beer_name"]),
             "brewery_key": _beer_identity_key(data.get("brewery_name") or ""),
             "checked_in_at": data.get("checked_in_at") or dj_timezone.now(),
+            "ended_at": data.get("ended_at"),
         }
 
         try:
@@ -3991,7 +3998,7 @@ class BeerCheckInFeedView(APIView):
                 account__ghost_mode=False,
                 visibility=BeerCheckIn.Visibility.FRIENDS,
             )
-            .order_by("-checked_in_at")[:50]
+            .order_by("-checked_in_at", "created_at", "id")[:200]
         )
         return Response(
             {"checkins": BeerCheckInSerializer(rows, many=True, context=_beer_checkin_context(request)).data},
@@ -4171,12 +4178,12 @@ class BeerDetailView(APIView):
                 | Q(account__status=Account.Status.ACTIVE, account__ghost_mode=False)
             )
             .exclude(account_id__in=blocked_ids)
-            .order_by("-checked_in_at")[:20]
+            .order_by("-checked_in_at", "created_at", "id")[:20]
         )
         my_history = (
             _beer_checkin_queryset()
             .filter(account=request.user, beer_key=beer_key, brewery_key=brewery_key)
-            .order_by("-checked_in_at")[:50]
+            .order_by("-checked_in_at", "created_at", "id")[:50]
         )
         my_summary = mine.aggregate(
             count=Count("id"),
@@ -5735,7 +5742,10 @@ def _load_export_account(account: Account) -> Account:
             "identities",
             "push_devices",
             "drinks",
-            "beer_checkins",
+            Prefetch(
+                "beer_checkins",
+                queryset=BeerCheckIn.objects.order_by("-checked_in_at", "created_at", "id"),
+            ),
             Prefetch(
                 "beer_checkin_reactions",
                 queryset=BeerCheckInReaction.objects.select_related("checkin"),
@@ -5885,6 +5895,8 @@ def _export_account_data(account: Account) -> dict:
                 "brewery_name": checkin.brewery_name,
                 "beer_style": checkin.beer_style,
                 "abv": str(checkin.abv) if checkin.abv is not None else None,
+                "quantity": checkin.quantity,
+                "price_czk": checkin.price_czk,
                 "rating": str(checkin.rating) if checkin.rating is not None else None,
                 "tags": normalize_beer_checkin_tags(checkin.tags),
                 "note": checkin.note,
@@ -5896,6 +5908,7 @@ def _export_account_data(account: Account) -> dict:
                 ),
                 "visibility": checkin.visibility,
                 "checked_in_at": _iso(checkin.checked_in_at),
+                "ended_at": _iso(checkin.ended_at),
                 "created_at": _iso(checkin.created_at),
                 "updated_at": _iso(checkin.updated_at),
             }
