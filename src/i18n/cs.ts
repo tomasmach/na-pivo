@@ -1280,9 +1280,29 @@ export const cs = {
     error: 'Žebříčky se nepovedlo načíst. Server možná zrovna točí.',
 
     // — Entry points —
-    entryFriends: 'Celostátní žebříčky',
     entryProfileTitle: 'Žebříčky',
     entryProfileSubtitle: 'Kde stojíš mezi pivaři z celé země',
+
+    // — Rank teaser (Parta hero) — the entry point carries data, not a bare
+    // link: "Tenhle týden jsi 47. pivař v zemi". Title renders in three parts
+    // so the rank can sit in amber. Genderless throughout.
+    teaserTitleBefore: 'Tenhle týden jsi ',
+    teaserTitleRank: (rank: number) => `${rank}. pivař`,
+    teaserTitleAfter: ' v zemi',
+    teaserFallbackTitle: 'Žebříčky',
+    teaserFallbackSubtitle: 'Změř se s pivaři z celé země — každý týden nová šance',
+    teaserGhostSubtitle: 'Hraješ jako duch — v žebříčku tě nikdo nevidí',
+    teaserTopSubtitle: 'Držíš se v top 10 · nový závod od pondělí',
+    teaserResetNote: 'Nový závod každé pondělí',
+    teaserChase: (gap: number) => {
+      const unit = gap === 1 ? 'pivo' : gap >= 2 && gap <= 4 ? 'piva' : 'piv';
+      return `Do top 10 ti chybí ${gap} ${unit}`;
+    },
+
+    // — Counter chip + post-log rank moment —
+    // Rendered as `${rank}.` + this suffix (the numeral sits in amber).
+    chipLabelSuffix: ' v zemi tenhle týden',
+    rankUpToast: (rank: number) => `Posun v žebříčku! Teď jsi ${rank}. pivař v zemi.`,
   },
 
   // The merged "Pivo" tab — a segmented control flips between counting and the

@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, type Href } from 'expo-router';
+import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 
 import { GlowButton } from '@/components/shared/GlowButton';
 import {
@@ -62,6 +62,7 @@ export default function LeaderboardsScreen() {
   const router = useRouter();
   const reduceMotion = useReduceMotion();
   const profile = useAccountStore((s) => s.profile);
+  const { source } = useLocalSearchParams<{ source?: string }>();
 
   const [category, setCategory] = useState<LeaderboardCategory>('beers');
   const [period, setPeriod] = useState<LeaderboardPeriod>('week');
@@ -78,7 +79,13 @@ export default function LeaderboardsScreen() {
   );
 
   useEffect(() => {
-    void trackClientEvent({ event: 'leaderboards_opened' });
+    // Which entry point converts (teaser vs counter chip vs profile row).
+    void trackClientEvent({
+      event: 'leaderboards_opened',
+      context: { source: typeof source === 'string' && source ? source : 'unknown' },
+    });
+    // Fire once per screen instance — the param can't change under a push.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Remember the requested pair so a stale response can never win the race

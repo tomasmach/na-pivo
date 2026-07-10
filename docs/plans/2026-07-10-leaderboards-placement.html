@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Žebříčky: lepší umístění v aplikaci</title>
+<style>
+  :root {
+    --bg: #faf9f7;
+    --fg: #26221d;
+    --muted: #6f675c;
+    --border: #e4dfd7;
+    --panel: #ffffff;
+    --accent: #b4762a;
+    --accent-soft: #f4e8d6;
+    --good: #2e7d4f;
+    --bad: #b0483e;
+    --code-bg: #f1ede6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1611;
+      --fg: #ede6da;
+      --muted: #a0968a;
+      --border: #38312a;
+      --panel: #211c16;
+      --accent: #e0a24e;
+      --accent-soft: #33281a;
+      --good: #6fbf8f;
+      --bad: #e08a80;
+      --code-bg: #262019;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  main { max-width: 76ch; margin: 0 auto; padding: 48px 24px 96px; }
+  h1 { font-size: 1.7rem; line-height: 1.25; letter-spacing: -0.01em; margin: 8px 0 4px; }
+  h2 { font-size: 1.15rem; margin: 44px 0 12px; letter-spacing: -0.01em; }
+  h3 { font-size: 1rem; margin: 24px 0 8px; }
+  p, li { color: var(--fg); }
+  .meta { color: var(--muted); font-size: 0.85rem; }
+  .meta .pill {
+    display: inline-block; padding: 1px 10px; border: 1px solid var(--border);
+    border-radius: 999px; margin-left: 8px; font-size: 0.78rem;
+  }
+  .tldr {
+    background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+    border-radius: 8px; padding: 14px 18px; margin: 20px 0 0;
+  }
+  .tldr p { margin: 0; }
+  ul, ol { padding-left: 1.3em; }
+  li { margin: 4px 0; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code {
+    font: 0.86em ui-monospace, "SF Mono", Menlo, monospace;
+    background: var(--code-bg); padding: 1px 5px; border-radius: 4px;
+  }
+  table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+  .tablewrap { overflow-x: auto; margin: 12px 0; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  .verdict-yes { color: var(--good); font-weight: 600; }
+  .verdict-no { color: var(--bad); font-weight: 600; }
+  .verdict-later { color: var(--accent); font-weight: 600; }
+  details {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 16px; margin: 10px 0;
+  }
+  summary { cursor: pointer; font-weight: 600; }
+  details[open] summary { margin-bottom: 8px; }
+  .files { font-size: 0.9rem; }
+  .files li { margin: 6px 0; }
+  .note { color: var(--muted); font-size: 0.9rem; }
+
+  /* — UI mockup: always dark, matches the app's stout theme — */
+  .mock {
+    background: #14100c; border: 1px solid #3a3128; border-radius: 16px;
+    padding: 20px; margin: 16px 0; max-width: 420px;
+    font-family: -apple-system, sans-serif; color: #f2e9dc;
+  }
+  .mock .cap { color: #8d8covered; }
+  .mock-label { color: var(--muted); font-size: 0.8rem; margin: 18px 0 6px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .strip {
+    display: flex; align-items: center; gap: 12px;
+    background: #201a13; border: 1px solid #453927; border-radius: 14px;
+    padding: 12px 14px;
+  }
+  .strip .well {
+    width: 40px; height: 40px; border-radius: 12px; flex-shrink: 0;
+    background: rgba(224,162,78,0.12); display: flex; align-items: center; justify-content: center;
+  }
+  .strip .txt { flex: 1; min-width: 0; }
+  .strip .t1 { font-weight: 700; font-size: 15px; }
+  .strip .t1 b { color: #e0a24e; }
+  .strip .t2 { color: #a89a87; font-size: 12.5px; margin-top: 1px; }
+  .strip .chev { color: #7d7264; font-size: 18px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: #201a13; border: 1px solid #453927; border-radius: 999px;
+    padding: 6px 14px; font-size: 13px; font-weight: 600;
+  }
+  .chip b { color: #e0a24e; }
+</style>
+</head>
+<body>
+<main>
+  <p class="meta">10. 7. 2026 <span class="pill">návrh</span> <span class="pill">na-pivo (mobil)</span></p>
+  <h1>Žebříčky: dostat je z profilu na místo, kde žijí</h1>
+
+  <div class="tldr">
+    <p><strong>TL;DR:</strong> Žebříčky mají týdenní reset — to je retenční smyčka, ale oba dnešní vstupy
+    (řádek v profilu, odkaz na dně Party) jsou hluboko pod foldem a nenesou žádná data.
+    Návrh: místo generického odkazu ukázat <strong>tvoji pozici</strong> — nový komponent
+    <code>RankTeaser</code> („Tenhle týden jsi 47. pivař v zemi") umístěný nahoře v tabu
+    <strong>Parta</strong>, ve fázi 2 kompaktní rank chip na počítadle. Žádný nový tab.</p>
+  </div>
+
+  <h2>Kde jsou žebříčky dnes</h2>
+  <ul>
+    <li><strong>Profil</strong> — řádek „Žebříčky" až pod hero statistikou a 2×2 gridem čísel (<code>ProfileScreen.tsx:615</code>). Uživatel musí do profilu <em>a</em> skrolovat.</li>
+    <li><strong>Parta</strong> — textový odkaz „celostátní žebříčky" na dně sekce §8 Žebříček party (<code>FriendsScreen.tsx:1250</code>), tedy pod sedmi jinými sekcemi.</li>
+  </ul>
+  <p>Obrazovka <code>/leaderboards</code> je přitom hotová a dobrá: tři boardy (Pivaři · Objevitelé · Mapéři),
+  tři okna, pinned „moje pozice", chase line („do top žebříčku ti chybí X") a ghost nudge pro privátní profily.
+  Problém není obsah, ale to, že se k ní nikdo přirozeně nedostane.</p>
+
+  <h2>Princip: ukaž pozici, ne odkaz</h2>
+  <p>Generický řádek „Žebříčky →" nedává důvod kliknout. Vstupní bod má nést data, která se každý týden mění:
+  <em>tvůj rank a co ti chybí</em>. To je to, co dělá týdenní reset viditelným — každé pondělí nová,
+  vyhratelná šance. Vzor Strava/Duolingo: rank teaser na hlavní ploše, detail po tapu.</p>
+
+  <h2>Zvažované varianty</h2>
+  <div class="tablewrap">
+  <table>
+    <tr><th>Varianta</th><th>Hodnocení</th><th>Verdikt</th></tr>
+    <tr>
+      <td>Pátý tab „Žebříčky"</td>
+      <td>Duolingo pattern, maximální viditelnost — ale ředí čistou strukturu Kompas · Pivo · Parta · Profil a žebříčky zatím nemají dost obsahu na celý tab.</td>
+      <td class="verdict-no">ne</td>
+    </tr>
+    <tr>
+      <td><strong>RankTeaser v hero Party</strong></td>
+      <td>Datový strip s mojí pozicí hned pod pulsem party, nad foldem. Parta je sociálně-kompetitivní domov žebříčků; teaser je vidět při každém otevření tabu.</td>
+      <td class="verdict-yes">ano — fáze 1</td>
+    </tr>
+    <tr>
+      <td>Rank chip na počítadle</td>
+      <td>Počítadlo je nejnavštěvovanější obrazovka v hospodě a přímo krmí týdenní board Pivaři. Chip „47. v ČR" + post-log moment „posunul ses o 3 místa" váže akci na odměnu. Zasahuje ale do core zápisové obrazovky — až po ověření fáze 1.</td>
+      <td class="verdict-later">fáze 2</td>
+    </tr>
+    <tr>
+      <td>Trofej ikona v headeru Party</td>
+      <td>Levné, ale hero right už nese streak + ghost chip + gear; s teaserem nad foldem by byla redundantní.</td>
+      <td class="verdict-no">ne (crowded)</td>
+    </tr>
+    <tr>
+      <td>Řádek v profilu (status quo)</td>
+      <td>U statistik dává kontext „kde s těmihle čísly stojíš" smysl — zůstává jako sekundární vstup.</td>
+      <td class="verdict-yes">ponechat</td>
+    </tr>
+  </table>
+  </div>
+
+  <h2>Náhled UI</h2>
+  <p class="note">Tón stout + amber podle existujícího token systému; copy tyká, hospodsky.</p>
+
+  <div class="mock">
+    <div class="mock-label">Fáze 1 — RankTeaser v Parta hero (stav: zapsaná piva, veřejný profil)</div>
+    <div class="strip">
+      <div class="well">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e0a24e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
+      </div>
+      <div class="txt">
+        <div class="t1">Tenhle týden jsi <b>47. pivař</b> v zemi</div>
+        <div class="t2">Do top 10 ti chybí 3 piva · resetuje se v pondělí</div>
+      </div>
+      <div class="chev">›</div>
+    </div>
+
+    <div class="mock-label">Stav: nic nezapsáno / nepřihlášený</div>
+    <div class="strip">
+      <div class="well">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e0a24e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
+      </div>
+      <div class="txt">
+        <div class="t1">Žebříčky</div>
+        <div class="t2">Změř se s pivaři z celé země — každý týden nová šance</div>
+      </div>
+      <div class="chev">›</div>
+    </div>
+
+    <div class="mock-label">Fáze 2 — chip na počítadle</div>
+    <span class="chip">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e0a24e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22h16"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
+      <b>47.</b>&nbsp;v ČR tenhle týden
+    </span>
+  </div>
+
+  <h2>Kroky — fáze 1</h2>
+  <ol>
+    <li>
+      <strong>Nový komponent <code>src/leaderboards/RankTeaser.tsx</code></strong> — samostatný,
+      data si tahá sám z <code>fetchLeaderboard('beers', 'week')</code> (klient už cachuje),
+      takže se dá zasadit kamkoli bez prop-drillingu.
+      <details>
+        <summary>Stavy komponentu</summary>
+        <ul>
+          <li><em>ranked</em> — „Tenhle týden jsi <b>N.</b> pivař v zemi" + chase line z existující logiky (<code>chaseGap</code> vzor z <code>app/leaderboards.tsx:170</code>).</li>
+          <li><em>bez skóre / nepřihlášený</em> — obecné lákadlo „Změř se s pivaři z celé země".</li>
+          <li><em>ghost (privátní profil)</em> — „Závodíš neviditelně" s eye-off ikonou; tap vede na žebříčky, kde už je hotový ghost nudge.</li>
+          <li><em>loading</em> — skeleton řádek; <em>error/offline</em> — komponent se nevykreslí (žádný rozbitý strip).</li>
+        </ul>
+      </details>
+    </li>
+    <li><strong>Umístění do Parta hero</strong> — do §2 pod <code>PartyPulsePanel</code> (<code>FriendsScreen.tsx:~1010</code>), aby byl nad foldem při každém otevření tabu. U cold-startu (bez přátel) se teaser ukazuje taky — žebříčky fungují i bez party a jsou tak důvod si založit profil.</li>
+    <li><strong>Zjednodušit dosavadní vstupy</strong> — textový cross-link na dně §8 (<code>FriendsScreen.tsx:1250</code>) odstranit (nahrazuje ho teaser výš); řádek v profilu ponechat beze změny.</li>
+    <li><strong>Copy do <code>src/i18n/cs.ts</code></strong> — nové stringy pod <code>leaderboards.teaser*</code>, tykání, deklinace přes existující helpery (<code>unitBeers</code> vzor).</li>
+    <li><strong>Telemetrie</strong> — <code>leaderboards_opened</code> už existuje; přidat <code>source: 'teaser' | 'profile'</code> jako aditivní parametr, ať jde změřit, jestli to pomohlo.</li>
+  </ol>
+
+  <h2>Kroky — fáze 2 (po ověření fáze 1)</h2>
+  <ol>
+    <li><strong>Rank chip na počítadle</strong> (<code>src/beer/BeerScreen.tsx</code>) — zobrazí se až po prvním zapsaném pivu, decentně mimo zápisový flow.</li>
+    <li><strong>Post-log moment</strong> — po zápisu piva porovnat cached rank; při posunu jemná řádka „Posunul ses na 44. místo". Žádná ambientní animace (viz zpětná vazba k BeerBubbles).</li>
+  </ol>
+
+  <h2>Dotčené soubory</h2>
+  <ul class="files">
+    <li><a href="vscode://file/Users/tomasmach/Code/na-pivo/src/leaderboards/RankTeaser.tsx">src/leaderboards/RankTeaser.tsx</a> — nový komponent (fáze 1)</li>
+    <li><a href="vscode://file/Users/tomasmach/Code/na-pivo/src/friends/FriendsScreen.tsx:1010">src/friends/FriendsScreen.tsx:1010</a> — zasazení do hero; odstranění odkazu na ř. ~1250</li>
+    <li><a href="vscode://file/Users/tomasmach/Code/na-pivo/src/i18n/cs.ts:1186">src/i18n/cs.ts:1186</a> — nové teaser stringy</li>
+    <li><a href="vscode://file/Users/tomasmach/Code/na-pivo/app/leaderboards.tsx:170">app/leaderboards.tsx:170</a> — reference: chase-gap logika k vytažení/sdílení</li>
+    <li><a href="vscode://file/Users/tomasmach/Code/na-pivo/src/data/leaderboardsClient.ts">src/data/leaderboardsClient.ts</a> — ověřit cache TTL pro použití na hlavním tabu</li>
+    <li><a href="vscode://file/Users/tomasmach/Code/na-pivo/src/beer/BeerScreen.tsx">src/beer/BeerScreen.tsx</a> — fáze 2 (chip + post-log)</li>
+  </ul>
+
+  <h2>Rizika a otevřené otázky</h2>
+  <ul>
+    <li><strong>Extra request při otevření Party.</strong> Teaser přidává volání <code>/v1/leaderboards</code> na frekventovaný tab. Klientská cache to tlumí; pokud by to bylo znát, čistší je aditivně přibalit <code>myRank</code> do payloadu friends dashboardu (API kompatibilita: jen nové pole).</li>
+    <li><strong>Objemový guardrail.</strong> Teaser defaultuje na board Pivaři (týden) — tj. počet piv. Board už existuje a týdenní okno drží soutěž krátkou, ale kdyby to působilo jako pobídka k pití, alternativa je ukazovat rank z boardu, kde je uživatel nejlepší (Pivaři/Objevitelé/Mapéři). <em>Rozhodnutí na tobě — v návrhu nechávám Pivaře jako default.</em></li>
+    <li><strong>Hustota Parta hero.</strong> Hero už nese pulse panel; teaser musí zůstat jednořádkový strip, ne karta. Kdyby hero působilo přeplněně, fallback pozice je hned pod §3 (MyActivityCard).</li>
+  </ul>
+</main>
+</body>
+</html>

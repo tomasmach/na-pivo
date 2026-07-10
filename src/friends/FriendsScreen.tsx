@@ -106,6 +106,7 @@ import PushOptInStrip from './PushOptInStrip';
 import Reveal from './Reveal';
 import SectionHeader from './SectionHeader';
 import StreakBadge from './StreakBadge';
+import { RankTeaser } from '@/leaderboards/RankTeaser';
 
 /** Notification kinds whose feed row opens the actor's friend profile (§F3). */
 const PROFILE_FEED_KINDS = new Set(['friend_accepted', 'friend_cheers']);
@@ -1013,6 +1014,12 @@ export default function FriendsScreen() {
               />
             ) : null}
 
+            {/* Countrywide race teaser — the data-bearing leaderboards entry,
+                above the fold every session (works pre-parta too). */}
+            <View style={styles.rankTeaserWrap}>
+              <RankTeaser />
+            </View>
+
             {isColdStart ? <View style={styles.heroRule} /> : null}
           </View>
         </Reveal>
@@ -1244,23 +1251,6 @@ export default function FriendsScreen() {
                         ) : null}
                       </View>
                     )}
-
-                    {/* Cross-link: from the party race to the countrywide one. */}
-                    <Pressable
-                      onPress={() => router.push('/leaderboards' as Href)}
-                      accessibilityRole="button"
-                      accessibilityLabel={cs.a11y.leaderboardsOpen}
-                      style={({ pressed }) => [styles.globalBoardsLink, pressed && styles.dim]}
-                    >
-                      <TrophyIcon size={16} color={Colors.amber} />
-                      <Text
-                        style={styles.globalBoardsLinkText}
-                        maxFontSizeMultiplier={FontScaleCap.body}
-                      >
-                        {cs.leaderboards.entryFriends}
-                      </Text>
-                      <ChevronRightIcon size={16} color={Colors.mutedText} />
-                    </Pressable>
                   </SectionPanel>
                 </View>
               </Reveal>
@@ -1571,6 +1561,9 @@ const styles = StyleSheet.create({
     marginTop: Spacing.md,
     marginHorizontal: -Spacing.lg,
   },
+  rankTeaserWrap: {
+    marginTop: Spacing.md,
+  },
 
   // — Section rhythm —
   section: {
@@ -1698,20 +1691,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.amber,
-  },
-  globalBoardsLink: {
-    marginTop: Spacing.sm,
-    minHeight: HitArea.min,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    paddingHorizontal: 10,
-  },
-  globalBoardsLinkText: {
-    flex: 1,
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 13,
-    color: Colors.foam,
   },
   staleNote: {
     marginBottom: Spacing.sm,

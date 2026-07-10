@@ -92,6 +92,7 @@ import { MapPubEntry } from '@/components/amenities/MapPubEntry';
 import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
 import { ScanMenuSheet } from '@/components/contribute/ScanMenuSheet';
 import { ScannedDrinkPicker } from '@/counter/ScannedDrinkPicker';
+import { WeeklyRankChip } from '@/leaderboards/WeeklyRankChip';
 
 // ─── Gate states (permission / detecting / no pub) ─────────────────────────────
 
@@ -1006,6 +1007,10 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
           onResume={resumable ? handleResume : undefined}
           resumeSummary={resumeSummary}
         />
+
+        {/* Weekly-race tie-in: projected countrywide rank + the post-log
+            "posun v žebříčku" toast. Renders nothing until a beer is counted. */}
+        <WeeklyRankChip sessionBeerCount={count} />
 
         {checkInBeerName ? (
           <View style={styles.checkInPrompt}>
