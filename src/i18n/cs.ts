@@ -1141,6 +1141,19 @@ export const cs = {
     // Row long-press action sheet title.
     rowActionsTitle: 'Co s tím?',
 
+    // — Public (non-friend) profile via /parta/<id> — reached from Žebříčky —
+    addToParty: 'Přidat do party',
+    requestSentToast: 'Žádost letí. Teď musí kývnout.',
+    requestPendingStrip: 'Žádost o partu čeká na kývnutí.',
+    acceptRequest: 'Přijmout do party',
+    requestAcceptedToast: 'A je v partě.',
+    publicStatBeers: (n: number) =>
+      n === 1 ? 'pivo v deníčku' : n >= 2 && n <= 4 ? 'piva v deníčku' : 'piv v deníčku',
+    publicStatPubs: (n: number) =>
+      n === 1 ? 'hospoda' : n >= 2 && n <= 4 ? 'hospody' : 'hospod',
+    publicStatMapper: 'Mapér level',
+    showcaseHeader: 'Vitrína odznaků',
+
     // — Správa party (Profil → /profile/parta) —
     manageTitle: 'Správa party',
     // Footer cross-link on Parta → the management screen.
@@ -1152,6 +1165,111 @@ export const cs = {
         : n >= 2 && n <= 4
           ? `${n} kámoši čekají na tebe v Partě`
           : `${n} kámošů čeká na tebe v Partě`,
+  },
+
+  // Global leaderboards — /leaderboards (Žebříčky). Countrywide boards over
+  // logged beers, discovered pubs, and Mapér XP. Copy measures diary activity
+  // (zapsaná piva, objevené hospody), never litres — no chug-contest energy.
+  leaderboards: {
+    title: 'Žebříčky',
+
+    // — Category switch —
+    categoryBeers: 'Pivaři',
+    categoryPubs: 'Objevitelé',
+    categoryMapper: 'Mapéři',
+
+    // — Period chips —
+    periodWeek: 'Týden',
+    periodYear: 'Rok',
+    periodAll: 'Celkem',
+    // Shown instead of the chips on the Mapér board (single all-time window).
+    mapperAllTimeNote: 'Odjakživa',
+
+    // One quiet line under the controls naming what the board measures.
+    subtitle: (category: 'beers' | 'pubs' | 'mapper', period: 'week' | 'year' | 'all') => {
+      if (category === 'beers') {
+        return period === 'week'
+          ? 'Kdo tenhle týden zapsal nejvíc piv.'
+          : period === 'year'
+            ? 'Kdo letos zapsal nejvíc piv.'
+            : 'Síň slávy. Všechna zapsaná piva.';
+      }
+      if (category === 'pubs') {
+        return period === 'week'
+          ? 'Kdo tenhle týden vystřídal nejvíc hospod.'
+          : period === 'year'
+            ? 'Kdo letos objevil nejvíc hospod.'
+            : 'Kdo zná nejvíc hospod ze všech.';
+      }
+      return 'Kdo toho pro ostatní nejvíc zmapoval.';
+    },
+
+    // — Score units (noun only; the numeral renders separately) —
+    unitBeers: (n: number) => (n === 1 ? 'pivo' : n >= 2 && n <= 4 ? 'piva' : 'piv'),
+    unitPubs: (n: number) => (n === 1 ? 'hospoda' : n >= 2 && n <= 4 ? 'hospody' : 'hospod'),
+    unitXp: 'XP',
+
+    // — Rows —
+    rowMe: 'Ty',
+    rowFriend: 'v partě',
+    rowFallbackName: 'Pivař',
+
+    // — Empty board —
+    empty: (category: 'beers' | 'pubs' | 'mapper') =>
+      category === 'beers'
+        ? 'Zatím tu je ticho jako před otvíračkou. První zapsané pivo to rozjede.'
+        : category === 'pubs'
+          ? 'Zatím žádní objevitelé. Zapiš pivo v nové hospodě a tabulka je tvoje.'
+          : 'Zatím nikdo nic nezmapoval. Doplň, co o své hospodě víš, a vedeš.',
+
+    // — My standing under the list —
+    meNoScore: (category: 'beers' | 'pubs' | 'mapper') =>
+      category === 'beers'
+        ? 'Ty zatím bez čárky. První zapsané pivo tě dostane do hry.'
+        : category === 'pubs'
+          ? 'Zatím žádná hospoda. Jedno zapsané pivo venku a jsi ve hře.'
+          : 'Zatím 0 XP. Zmapuj svoji hospodu a naskoč do tabulky.',
+    chase: (category: 'beers' | 'pubs' | 'mapper', gap: number) => {
+      const unit =
+        category === 'beers'
+          ? gap === 1
+            ? 'pivo'
+            : gap >= 2 && gap <= 4
+              ? 'piva'
+              : 'piv'
+          : category === 'pubs'
+            ? gap === 1
+              ? 'hospoda'
+              : gap >= 2 && gap <= 4
+                ? 'hospody'
+                : 'hospod'
+            : 'XP';
+      return `Do tabulky ti chybí ${gap} ${unit}.`;
+    },
+
+    // — Ghost nudge (private profile races invisibly) —
+    ghostTitle: 'Hraješ jako duch',
+    ghostBody:
+      'Máš soukromý profil, takže tě v žebříčku nikdo nevidí. Čárky sbíráš dál — jen sláva ti utíká.',
+    ghostCta: 'Ukázat se',
+    // Anonymous variant — the missing piece is a nickname, not visibility.
+    ghostAnonBody:
+      'Bez přezdívky tě v žebříčku nikdo nevidí. Založ si ji a hraj naplno.',
+    ghostAnonCta: 'Založit přezdívku',
+
+    // — Footer + error —
+    totalRanked: (n: number) =>
+      n === 1
+        ? 'V tabulce je zatím 1 pivař.'
+        : n >= 2 && n <= 4
+          ? `V tabulce jsou zatím ${n} pivaři.`
+          : `V tabulce je zatím ${n} pivařů.`,
+    error: 'Žebříčky se nepovedlo načíst. Server možná zrovna točí.',
+
+    // — Entry points —
+    entryFriends: 'Celostátní žebříčky',
+    entryProfileTitle: 'Žebříčky',
+    entryProfileSubtitle: 'Kde stojíš mezi pivaři z celé země',
   },
 
   // The merged "Pivo" tab — a segmented control flips between counting and the
@@ -1196,6 +1314,21 @@ export const cs = {
     badgeReviewerLocked: 'Ohodnoť 10 hospod',
     badgeFotoPivarTitle: 'FotoPivař',
     badgeFotoPivarLocked: 'Vyhraj kolo fotosoutěže',
+    // — Diary/social badges (leaderboards wave) —
+    badgeFirstBeerTitle: 'První pivo',
+    badgeFirstBeerLocked: 'Zapiš svoje první pivo',
+    badgeCenturyTitle: 'Stovka',
+    badgeCenturyLocked: 'Napočítej 100 piv',
+    badgePilgrimTitle: 'Poutník',
+    badgePilgrimLocked: 'Navštiv 25 různých hospod',
+    badgeStamgastTitle: 'Štamgast',
+    badgeStamgastLocked: 'Navštiv jednu hospodu 10×',
+    badgeNightOwlTitle: 'Noční sova',
+    badgeNightOwlLocked: 'Zapiš pivo po půlnoci',
+    badgeTasterTitle: 'Ochutnávač',
+    badgeTasterLocked: 'Ochutnej 10 různých piv',
+    badgePartyAnimalTitle: 'Duše party',
+    badgePartyAnimalLocked: 'Měj v partě 5 parťáků',
 
     // — Recent activity —
     recentHeader: 'POSLEDNÍ AKTIVITA',
@@ -1674,6 +1807,13 @@ export const cs = {
     // "Objevitel, splněno" or "Objevitel, zamčeno, Zmapuj 10 hospod").
     badgeUnlocked: (title: string) => `${title}, splněno`,
     badgeLocked: (title: string, hint: string) => `${title}, zamčeno, ${hint}`,
+
+    // — Žebříčky (global leaderboards) —
+    leaderboardRow: (rank: number, name: string, score: number, unit: string) =>
+      `${rank}. ${name}, ${score} ${unit}`,
+    leaderboardCategory: 'Kategorie žebříčku',
+    leaderboardPeriod: 'Období žebříčku',
+    leaderboardsOpen: 'Otevřít žebříčky',
 
     // — Tabs —
     tabCompass: 'Záložka Kompas',

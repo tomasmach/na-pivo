@@ -436,6 +436,14 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen
+            name="leaderboards"
+            options={{
+              // Global leaderboards — a back-navigable "place" like /profile/parta.
+              animation: 'slide_from_right',
+              gestureEnabled: true,
+            }}
+          />
+          <Stack.Screen
             name="parta/pozvanka"
             options={{
               presentation: 'fullScreenModal',

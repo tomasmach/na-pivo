@@ -1,4 +1,5 @@
 import { clearCachedAnonymousAccount, ensureAccount, generateUuidV4, type AccountSession } from './account';
+import { parseAchievementsBlock, type AccountAchievements, type RawAchievementsBlock } from './auth';
 import { parseBeerCheckIn, type BeerCheckIn } from './beerCheckinsClient';
 import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal } from './apiFetch';
@@ -186,6 +187,21 @@ export interface RecentTogether {
   at: string;
 }
 
+/**
+ * Where the two accounts stand (leaderboards wave). Older backends omit the
+ * field — the parser derives 'accepted'/'none' from `is_friend`.
+ */
+export type FriendshipStatus = 'none' | 'outgoing_pending' | 'incoming_pending' | 'accepted';
+
+/** Public diary numbers shown on any public profile (leaderboards wave). */
+export interface PublicProfileStats {
+  totalBeers: number;
+  distinctPubs: number;
+  mapperLevel: number;
+  mapperTitle: string;
+  mapperXp: number;
+}
+
 /** Full friend profile payload for `GET /v1/friends/<id>` (Parta 3.0 §F1). */
 export interface FriendProfileDetail {
   profile: FriendProfile;
@@ -197,6 +213,14 @@ export interface FriendProfileDetail {
   recentTogether: RecentTogether[];
   latestBeers: BeerCheckIn[];
   blocked: boolean;
+  /** Additive (leaderboards wave); derived from `isFriend` on older backends. */
+  friendshipStatus: FriendshipStatus;
+  /** Friendship id to accept when status is 'incoming_pending', else null. */
+  incomingRequestId: string | null;
+  /** Null on older backends → hide the public-numbers strip. */
+  publicStats: PublicProfileStats | null;
+  /** Null on older backends → hide the badge showcase. */
+  achievements: AccountAchievements | null;
 }
 
 /** The failure half of {@link FriendActionResult}. */
@@ -313,6 +337,14 @@ interface RawRecentTogether {
   at?: string;
 }
 
+interface RawPublicProfileStats {
+  total_beers?: number;
+  distinct_pubs?: number;
+  mapper_level?: number;
+  mapper_title?: string;
+  mapper_xp?: number;
+}
+
 interface RawFriendProfileDetail {
   profile?: RawFriendProfile;
   is_friend?: boolean;
@@ -323,6 +355,10 @@ interface RawFriendProfileDetail {
   recent_together?: RawRecentTogether[];
   latest_beers?: unknown[];
   blocked?: boolean;
+  friendship_status?: string;
+  incoming_request_id?: string | null;
+  public_stats?: RawPublicProfileStats | null;
+  achievements?: RawAchievementsBlock | null;
 }
 
 interface RawFriendInvite {
@@ -499,6 +535,32 @@ function parseRecentTogether(raw: RawRecentTogether): RecentTogether {
   };
 }
 
+function parseFriendshipStatus(raw: RawFriendProfileDetail): FriendshipStatus {
+  const value = raw.friendship_status;
+  if (
+    value === 'none' ||
+    value === 'outgoing_pending' ||
+    value === 'incoming_pending' ||
+    value === 'accepted'
+  ) {
+    return value;
+  }
+  // Older backend without the field: only accepted friends could reach this
+  // payload at all, so is_friend fully determines the status.
+  return raw.is_friend === true ? 'accepted' : 'none';
+}
+
+function parsePublicStats(raw: RawPublicProfileStats | null | undefined): PublicProfileStats | null {
+  if (!raw) return null;
+  return {
+    totalBeers: typeof raw.total_beers === 'number' ? raw.total_beers : 0,
+    distinctPubs: typeof raw.distinct_pubs === 'number' ? raw.distinct_pubs : 0,
+    mapperLevel: typeof raw.mapper_level === 'number' ? raw.mapper_level : 1,
+    mapperTitle: raw.mapper_title ?? '',
+    mapperXp: typeof raw.mapper_xp === 'number' ? raw.mapper_xp : 0,
+  };
+}
+
 function parseProfileDetail(raw: RawFriendProfileDetail): FriendProfileDetail {
   return {
     profile: parseProfile(raw.profile),
@@ -514,6 +576,10 @@ function parseProfileDetail(raw: RawFriendProfileDetail): FriendProfileDetail {
       ? raw.latest_beers.map((item) => parseBeerCheckIn(item as Parameters<typeof parseBeerCheckIn>[0]))
       : [],
     blocked: raw.blocked === true,
+    friendshipStatus: parseFriendshipStatus(raw),
+    incomingRequestId: raw.incoming_request_id ?? null,
+    publicStats: parsePublicStats(raw.public_stats),
+    achievements: raw.achievements ? parseAchievementsBlock(raw.achievements) : null,
   };
 }
 

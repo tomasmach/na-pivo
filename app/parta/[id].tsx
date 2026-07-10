@@ -25,16 +25,20 @@ import {
   FlameIcon,
   MapPinIcon,
   XIcon,
+  UserPlusIcon,
 } from '@/components/shared/IconGlyph';
 import { fetchFriendBeerPhotos, type BeerPhoto } from '@/data/beerPhotosClient';
 import {
   blockFriend,
   fetchFriendProfile,
   removeFriend,
+  respondFriendRequest,
+  sendFriendRequest,
   type FriendProfile,
   type FriendProfileDetail,
 } from '@/data/friendsClient';
 import { ScalePressable } from '@/photos/ScalePressable';
+import { unlockedBadges } from '@/profile/badgeCatalog';
 import { focusPubFromActivity } from '@/friends/focusPubHandoff';
 import HairlineRow from '@/friends/HairlineRow';
 import SectionHeader from '@/friends/SectionHeader';
@@ -43,7 +47,7 @@ import { Avatar } from '@/profile/Avatar';
 import { cs } from '@/i18n/cs';
 import { useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
-import { Colors } from '@/theme/colors';
+import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { useReduceMotion } from '@/utils/useReduceMotion';
@@ -227,21 +231,61 @@ export default function FriendProfileScreen() {
     });
   }, [doRemove, name]);
 
+  const isFriend = detail?.friendshipStatus === 'accepted';
+
   const openOverflow = useCallback(() => {
     showAppDialog({
       title: cs.friends.rowActionsTitle,
       buttons: [
         { text: cs.friends.reportAction, onPress: confirmReport },
         { text: cs.friends.blockAction, style: 'destructive', onPress: confirmBlock },
-        { text: cs.friends.profileRemove, style: 'destructive', onPress: confirmRemove },
+        // "Vyhodit z party" only makes sense for an actual friend.
+        ...(isFriend
+          ? [{ text: cs.friends.profileRemove, style: 'destructive' as const, onPress: confirmRemove }]
+          : []),
         { text: cs.common.cancel, style: 'cancel' },
       ],
     });
-  }, [confirmBlock, confirmRemove, confirmReport]);
+  }, [confirmBlock, confirmRemove, confirmReport, isFriend]);
+
+  // — Party CTA on a public (non-friend) profile — reached from Žebříčky.
+  const [requestBusy, setRequestBusy] = useState(false);
+  const sendRequest = useCallback(() => {
+    if (requestBusy) return;
+    setRequestBusy(true);
+    void sendFriendRequest({ accountId }).then((res) => {
+      if (!mountedRef.current) return;
+      setRequestBusy(false);
+      if (res.ok) {
+        showToast(cs.friends.requestSentToast);
+        setDetail((prev) => (prev ? { ...prev, friendshipStatus: 'outgoing_pending' } : prev));
+      } else {
+        showToast(res.detail);
+      }
+    });
+  }, [accountId, requestBusy, showToast]);
+
+  const acceptRequest = useCallback(() => {
+    const requestId = detail?.incomingRequestId;
+    if (!requestId || requestBusy) return;
+    setRequestBusy(true);
+    void respondFriendRequest(requestId, 'accept').then((res) => {
+      if (!mountedRef.current) return;
+      setRequestBusy(false);
+      if (res.ok) {
+        showToast(cs.friends.requestAcceptedToast);
+        void load();
+      } else {
+        showToast(res.detail);
+      }
+    });
+  }, [detail?.incomingRequestId, load, requestBusy, showToast]);
 
   const stats = detail?.stats;
   const recent = detail?.recentTogether ?? [];
   const latestBeers = detail?.latestBeers ?? [];
+  const publicStats = detail?.publicStats ?? null;
+  const showcase = detail?.achievements ? unlockedBadges(detail.achievements) : [];
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + Spacing.sm }]}>
@@ -332,53 +376,116 @@ export default function FriendProfileScreen() {
             </View>
           ) : null}
 
-          {/* Three amber stat tiles */}
-          <View style={styles.statsRow}>
-            <StatTile value={stats?.sharedPubCount ?? 0} label={cs.friends.statSharedBeers} />
-            <StatTile value={stats?.nightsTogether ?? 0} label={cs.friends.statNightsTogether} />
-            <StatTile
-              value={stats?.streakWeeks ?? 0}
-              label={cs.friends.statStreakTogether}
-              flame={(stats?.streakWeeks ?? 0) > 0}
-            />
-          </View>
+          {/* Party CTA — a public stranger found via Žebříčky can be recruited. */}
+          {detail && !isFriend ? (
+            detail.friendshipStatus === 'outgoing_pending' ? (
+              <Text style={styles.pendingStrip} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.friends.requestPendingStrip}
+              </Text>
+            ) : (
+              <View style={styles.compassWrap}>
+                <GlowButton
+                  label={
+                    detail.friendshipStatus === 'incoming_pending'
+                      ? cs.friends.acceptRequest
+                      : cs.friends.addToParty
+                  }
+                  onPress={
+                    detail.friendshipStatus === 'incoming_pending' ? acceptRequest : sendRequest
+                  }
+                  variant="primary"
+                  glow="soft"
+                  icon={<UserPlusIcon size={20} color={Colors.stout} />}
+                />
+              </View>
+            )
+          ) : null}
 
-          {/* Naposledy spolu + recent štace */}
-          <View style={styles.recentSection}>
-            <SectionHeader label={cs.friends.profileRecentHeader} />
-            {stats?.lastPubName ? (
-              <HairlineRow first>
-                <View style={styles.recentRow}>
-                  <MapPinIcon size={16} color={Colors.amber} />
-                  <Text style={styles.recentLead} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {cs.friends.lastTogether(stats.lastPubName)}
-                  </Text>
-                </View>
-              </HairlineRow>
-            ) : null}
+          {/* Stat tiles — shared history for a friend, public diary numbers for
+              a stranger (never location, never individual beers). */}
+          {isFriend ? (
+            <View style={styles.statsRow}>
+              <StatTile value={stats?.sharedPubCount ?? 0} label={cs.friends.statSharedBeers} />
+              <StatTile value={stats?.nightsTogether ?? 0} label={cs.friends.statNightsTogether} />
+              <StatTile
+                value={stats?.streakWeeks ?? 0}
+                label={cs.friends.statStreakTogether}
+                flame={(stats?.streakWeeks ?? 0) > 0}
+              />
+            </View>
+          ) : publicStats ? (
+            <View style={styles.statsRow}>
+              <StatTile
+                value={publicStats.totalBeers}
+                label={cs.friends.publicStatBeers(publicStats.totalBeers)}
+              />
+              <StatTile
+                value={publicStats.distinctPubs}
+                label={cs.friends.publicStatPubs(publicStats.distinctPubs)}
+              />
+              <StatTile value={publicStats.mapperLevel} label={cs.friends.publicStatMapper} />
+            </View>
+          ) : null}
 
-            {recent.length > 0 ? (
-              recent.map((row, i) => (
-                <HairlineRow key={`${row.cacheKey}-${i}`} first={!stats?.lastPubName && i === 0}>
-                  <View style={styles.recentRow}>
-                    <MapPinIcon size={16} color={Colors.mutedText} />
-                    <Text style={styles.recentPub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {row.pubName || '—'}
+          {/* Vitrína — unlocked badges only; a locked grid is nobody's business. */}
+          {showcase.length > 0 ? (
+            <View style={styles.recentSection}>
+              <SectionHeader label={cs.friends.showcaseHeader} />
+              <View style={styles.showcaseWrap}>
+                {showcase.map(({ key, title, Icon }) => (
+                  <View key={key} style={styles.showcaseChip}>
+                    <Icon size={14} color={Colors.amber} />
+                    <Text
+                      style={styles.showcaseChipText}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {title}
                     </Text>
-                    {shortDate(row.at) ? (
-                      <Text style={styles.recentDate} allowFontScaling={false}>
-                        {shortDate(row.at)}
-                      </Text>
-                    ) : null}
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
+          {/* Naposledy spolu + recent štace — shared history is friends-only. */}
+          {isFriend ? (
+            <View style={styles.recentSection}>
+              <SectionHeader label={cs.friends.profileRecentHeader} />
+              {stats?.lastPubName ? (
+                <HairlineRow first>
+                  <View style={styles.recentRow}>
+                    <MapPinIcon size={16} color={Colors.amber} />
+                    <Text style={styles.recentLead} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {cs.friends.lastTogether(stats.lastPubName)}
+                    </Text>
                   </View>
                 </HairlineRow>
-              ))
-            ) : !stats?.lastPubName ? (
-              <Text style={styles.emptyHistory} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.friends.profileNoHistory}
-              </Text>
-            ) : null}
-          </View>
+              ) : null}
+
+              {recent.length > 0 ? (
+                recent.map((row, i) => (
+                  <HairlineRow key={`${row.cacheKey}-${i}`} first={!stats?.lastPubName && i === 0}>
+                    <View style={styles.recentRow}>
+                      <MapPinIcon size={16} color={Colors.mutedText} />
+                      <Text style={styles.recentPub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                        {row.pubName || '—'}
+                      </Text>
+                      {shortDate(row.at) ? (
+                        <Text style={styles.recentDate} allowFontScaling={false}>
+                          {shortDate(row.at)}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </HairlineRow>
+                ))
+              ) : !stats?.lastPubName ? (
+                <Text style={styles.emptyHistory} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {cs.friends.profileNoHistory}
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
 
           {/* Pivní fotky — friends-visible diary strip (hidden when empty).
               Virtualized + capped: the endpoint may return up to ~200 photos
@@ -574,9 +681,41 @@ const styles = StyleSheet.create({
     color: Colors.foamMuted,
   },
 
-  // — Compass handoff —
+  // — Compass handoff / party CTA —
   compassWrap: {
     marginTop: Spacing.xl,
+  },
+  pendingStrip: {
+    marginTop: Spacing.xl,
+    textAlign: 'center',
+    fontFamily: Fonts.ui.medium,
+    fontStyle: 'italic',
+    fontSize: 13,
+    color: Colors.mutedText,
+  },
+
+  // — Badge showcase —
+  showcaseWrap: {
+    marginTop: Spacing.sm,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  showcaseChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: Spacing.md - 2,
+    borderRadius: 999,
+    backgroundColor: withAlpha(Colors.amber, 0.12),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.35),
+  },
+  showcaseChipText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 12,
+    color: Colors.foam,
   },
 
   // — Stat tiles —

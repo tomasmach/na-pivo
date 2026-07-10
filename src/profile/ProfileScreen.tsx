@@ -45,15 +45,15 @@ import {
   CompassIcon,
   MapPinnedIcon,
   StarIcon,
-  BadgeCheckIcon,
-  ClipboardListIcon,
+  TrophyIcon,
   QrCodeIcon,
   UsersIcon,
   CameraIcon,
 } from '@/components/shared/IconGlyph';
 import { PhotoDiarySection } from '@/photos/PhotoDiarySection';
 import { useReduceMotion } from '@/utils/useReduceMotion';
-import type { AccountMapper, AccountAchievements } from '@/data/auth';
+import { EMPTY_ACHIEVEMENTS, type AccountMapper, type AccountAchievements } from '@/data/auth';
+import { BADGE_CATALOG } from '@/profile/badgeCatalog';
 import { GlowButton } from '@/components/shared/GlowButton';
 import CodeSheet from '@/friends/CodeSheet';
 import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
@@ -336,66 +336,54 @@ function MapperEmptySection({ signedIn }: { signedIn: boolean }) {
   );
 }
 
-/** The five Mapér badges (spec §5.3), rendered in the existing badge row. */
-function MapperBadges({
+/**
+ * The full ODZNAKY grid, catalog-driven (3 per row). The server booleans are
+ * authoritative when present; Mapér badges additionally fall back to deriving
+ * from the durable mapper counters (an older backend that returns counters but
+ * not the badge flags). Absent both → locked.
+ */
+function BadgeGrid({
   mapper,
   achievements,
 }: {
   mapper: AccountMapper | undefined;
   achievements: AccountAchievements;
 }) {
-  // The server achievement booleans are authoritative when present; fall back to
-  // deriving from the durable mapper counters (e.g. an older backend that returns
-  // mapper counters but not the new badge flags). Absent both → locked.
-  const firstMap = achievements.firstMap || (mapper?.firstMapperCount ?? 0) >= 1;
-  const explorer = achievements.explorer || (mapper?.distinctMappedPubs ?? 0) >= 10;
-  const cartographer = achievements.cartographer || (mapper?.distinctMappedPubs ?? 0) >= 25;
-  const completionist = achievements.completionist || (mapper?.completedPubsCount ?? 0) >= 1;
-  const factMachine = achievements.factMachine || (mapper?.amenityVotesCount ?? 0) >= 100;
+  const effective: AccountAchievements = {
+    ...achievements,
+    firstMap: achievements.firstMap || (mapper?.firstMapperCount ?? 0) >= 1,
+    explorer: achievements.explorer || (mapper?.distinctMappedPubs ?? 0) >= 10,
+    cartographer: achievements.cartographer || (mapper?.distinctMappedPubs ?? 0) >= 25,
+    completionist: achievements.completionist || (mapper?.completedPubsCount ?? 0) >= 1,
+    factMachine: achievements.factMachine || (mapper?.amenityVotesCount ?? 0) >= 100,
+  };
+
+  const rows: (typeof BADGE_CATALOG)[number][][] = [];
+  for (let i = 0; i < BADGE_CATALOG.length; i += 3) {
+    rows.push(BADGE_CATALOG.slice(i, i + 3));
+  }
 
   return (
     <>
-      <View style={styles.badgeRow}>
-        <Badge
-          icon={<SproutIcon size={20} color={Colors.amber} />}
-          title={cs.mapPub.badgeFirstMapTitle}
-          subtitle={cs.mapPub.badgeFirstMapLocked}
-          unlocked={firstMap}
-        />
-        <Badge
-          icon={<MapPinnedIcon size={20} color={Colors.amber} />}
-          title={cs.mapPub.badgeExplorerTitle}
-          subtitle={cs.mapPub.badgeExplorerLocked}
-          unlocked={explorer}
-        />
-        <Badge
-          icon={<MapPinnedIcon size={20} color={Colors.amber} />}
-          title={cs.mapPub.badgeCartographerTitle}
-          subtitle={cs.mapPub.badgeCartographerLocked}
-          unlocked={cartographer}
-        />
-      </View>
-      <View style={styles.badgeRow}>
-        <Badge
-          icon={<BadgeCheckIcon size={20} color={Colors.amber} />}
-          title={cs.mapPub.badgeCompletionistTitle}
-          subtitle={cs.mapPub.badgeCompletionistLocked}
-          unlocked={completionist}
-        />
-        <Badge
-          icon={<ClipboardListIcon size={20} color={Colors.amber} />}
-          title={cs.mapPub.badgeFactMachineTitle}
-          subtitle={cs.mapPub.badgeFactMachineLocked}
-          unlocked={factMachine}
-        />
-        {/* FotoPivař (photo-contest win, server-only) fills the last slot. */}
-        <Badge
-          icon={<CameraIcon size={20} color={Colors.amber} />}
-          title={cs.profile.badgeFotoPivarTitle}
-          subtitle={cs.profile.badgeFotoPivarLocked}
-          unlocked={achievements.fotoPivar}
-        />
-      </View>
+      {rows.map((row) => (
+        <View key={row[0].key} style={styles.badgeRow}>
+          {row.map(({ key, title, hint, Icon }) => (
+            <Badge
+              key={key}
+              icon={<Icon size={20} color={Colors.amber} />}
+              title={title}
+              subtitle={hint}
+              unlocked={effective[key]}
+            />
+          ))}
+          {/* Keep the row a stable 3-up grid; empty slots balance the layout. */}
+          {row.length < 3
+            ? Array.from({ length: 3 - row.length }).map((_, i) => (
+                <View key={`spacer-${i}`} style={styles.badgeSpacer} />
+              ))
+            : null}
+        </View>
+      ))}
     </>
   );
 }
@@ -503,17 +491,17 @@ export default function ProfileScreen() {
   }, [isSignedIn, localStats, profile?.stats]);
   const totalRatings = isSignedIn && profile?.stats ? profile.stats.ratingsCount : ratingsCount;
   const achievements: AccountAchievements = profile?.achievements ?? {
+    ...EMPTY_ACHIEVEMENTS,
+    // Locally derivable badges keep working offline / signed out; the rest
+    // (night owl, taster, party + Mapér badges) are server-derived and stay
+    // locked until a backend snapshot arrives.
+    firstBeer: stats.totalBeers >= 1,
     firstTen: stats.totalBeers >= 10,
+    century: stats.totalBeers >= 100,
     regular: stats.maxVisitsToOnePub >= 5,
+    stamgast: stats.maxVisitsToOnePub >= 10,
+    pilgrim: stats.distinctPubs >= 25,
     reviewer: totalRatings >= 10,
-    // Mapér badges are server-derived; with the backend dormant they stay locked.
-    firstMap: false,
-    explorer: false,
-    cartographer: false,
-    completionist: false,
-    factMachine: false,
-    // FotoPivař (photo-contest win) is server-only too.
-    fotoPivar: false,
   };
   const mapper = profile?.mapper;
   const walkedM = isSignedIn ? profile?.usage?.walkedDistanceM ?? null : null;
@@ -689,6 +677,31 @@ export default function ProfileScreen() {
           />
         </View>
 
+        {/* Cross-link: where do these numbers put me countrywide? */}
+        <Pressable
+          onPress={() => router.push('/leaderboards' as Href)}
+          style={({ pressed }) => [styles.boardsLink, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel={cs.a11y.leaderboardsOpen}
+        >
+          <View style={styles.boardsLinkIcon}>
+            <TrophyIcon size={20} color={Colors.amber} />
+          </View>
+          <View style={styles.boardsLinkText}>
+            <Text style={styles.boardsLinkTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+              {cs.leaderboards.entryProfileTitle}
+            </Text>
+            <Text
+              style={styles.boardsLinkSubtitle}
+              numberOfLines={1}
+              maxFontSizeMultiplier={FontScaleCap.body}
+            >
+              {cs.leaderboards.entryProfileSubtitle}
+            </Text>
+          </View>
+          <ChevronRightIcon size={18} color={Colors.mutedText} />
+        </Pressable>
+
         {/* ── Mapér (between TVOJE ČÍSLA and ODZNAKY) ── */}
         {mapper ? (
           <MapperSection mapper={mapper} signedIn={isSignedIn} />
@@ -698,28 +711,7 @@ export default function ProfileScreen() {
 
         {/* ── Achievements ── */}
         <Text style={styles.sectionHeader}>{cs.profile.achievementsHeader}</Text>
-        <View style={styles.badgeRow}>
-          <Badge
-            icon={<BeerIcon size={20} color={Colors.amber} />}
-            title={cs.profile.badgeFirstTenTitle}
-            subtitle={cs.profile.badgeFirstTenLocked}
-            unlocked={achievements.firstTen}
-          />
-          <Badge
-            icon={<MapPinIcon size={20} color={Colors.amber} />}
-            title={cs.profile.badgeRegularTitle}
-            subtitle={cs.profile.badgeRegularLocked}
-            unlocked={achievements.regular}
-          />
-          <Badge
-            icon={<ThumbsUpIcon size={20} color={Colors.amber} />}
-            title={cs.profile.badgeReviewerTitle}
-            subtitle={cs.profile.badgeReviewerLocked}
-            unlocked={achievements.reviewer}
-          />
-        </View>
-        {/* The five Mapér badges share the ODZNAKY section. */}
-        <MapperBadges mapper={mapper} achievements={achievements} />
+        <BadgeGrid mapper={mapper} achievements={achievements} />
 
         {/* ── Pivní fotky (photo diary strip + capture flow) ── */}
         <PhotoDiarySection />
@@ -1033,6 +1025,42 @@ const styles = StyleSheet.create({
     color: Colors.mutedText,
   },
 
+  // ── Leaderboards cross-link ──
+  boardsLink: {
+    marginTop: Spacing.sm + 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    backgroundColor: Colors.stout2,
+    borderRadius: Radius.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.md,
+  },
+  boardsLinkIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 11,
+    backgroundColor: withAlpha(Colors.amber, 0.14),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  boardsLinkText: {
+    flex: 1,
+    gap: 2,
+  },
+  boardsLinkTitle: {
+    fontFamily: Fonts.display.bold,
+    fontSize: 16,
+    color: Colors.foam,
+  },
+  boardsLinkSubtitle: {
+    fontFamily: Fonts.ui.medium,
+    fontSize: 12,
+    color: Colors.mutedText,
+  },
+
   // ── Mapér level card ──
   levelCard: {
     backgroundColor: Colors.stout3,
@@ -1122,6 +1150,9 @@ const styles = StyleSheet.create({
   badgeRow: {
     flexDirection: 'row',
     gap: Spacing.sm + 2,
+  },
+  badgeSpacer: {
+    flex: 1,
   },
   badge: {
     flex: 1,

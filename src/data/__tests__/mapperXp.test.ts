@@ -2,7 +2,7 @@ import { levelForXp, FALLBACK_LEVELS, FALLBACK_XP_RULES } from '../mapperXp';
 
 describe('levelForXp', () => {
   it('maps xp to the highest rung at or below it', () => {
-    // Ladder thresholds: [0, 300, 900, 2500, 6000] (FALLBACK_LEVELS).
+    // Ladder thresholds: [0, 300, 900, 2500, 6000, 12000, 24000] (FALLBACK_LEVELS).
     expect(levelForXp(0).level).toBe(1);
     expect(levelForXp(299).level).toBe(1);
     expect(levelForXp(300).level).toBe(2);
@@ -10,12 +10,18 @@ describe('levelForXp', () => {
     expect(levelForXp(900).level).toBe(3);
     expect(levelForXp(2500).level).toBe(4);
     expect(levelForXp(10_000).level).toBe(5);
+    expect(levelForXp(12_000).level).toBe(6);
+    expect(levelForXp(23_999).level).toBe(6);
+    expect(levelForXp(24_000).level).toBe(7);
+    expect(levelForXp(100_000).level).toBe(7);
   });
 
   it('returns the locked title for each level', () => {
     expect(levelForXp(0).title).toBe('Nováček');
     expect(levelForXp(900).title).toBe('Štamgast');
     expect(levelForXp(6000).title).toBe('Hospodský mudrc');
+    expect(levelForXp(12_000).title).toBe('Pivní kartograf');
+    expect(levelForXp(24_000).title).toBe('Legenda lokálu');
   });
 
   it('respects a custom (server) ladder', () => {
@@ -27,8 +33,8 @@ describe('levelForXp', () => {
     expect(levelForXp(100, ladder).title).toBe('B');
   });
 
-  it('exposes the locked 5-level ladder and the env-default rules', () => {
-    expect(FALLBACK_LEVELS).toHaveLength(5);
+  it('exposes the locked 7-level ladder and the env-default rules', () => {
+    expect(FALLBACK_LEVELS).toHaveLength(7);
     expect(FALLBACK_XP_RULES.firstFact).toBeGreaterThan(FALLBACK_XP_RULES.confirm);
   });
 });

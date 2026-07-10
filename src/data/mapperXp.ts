@@ -14,13 +14,17 @@
 
 import type { MapperLevel, MapperXpRules } from './auth';
 
-/** The locked 5-level ladder (titles locked; thresholds are the env defaults). */
+/** The locked ladder (titles locked; thresholds are the env defaults).
+ *  Levels 6–7 extend the original 5-rung spec (leaderboards wave) so the
+ *  most active Mapéři keep a horizon to climb toward. */
 export const FALLBACK_LEVELS: readonly MapperLevel[] = [
   { level: 1, title: 'Nováček', xp: 0 },
   { level: 2, title: 'Všímálek', xp: 300 },
   { level: 3, title: 'Štamgast', xp: 900 },
   { level: 4, title: 'Znalec', xp: 2500 },
   { level: 5, title: 'Hospodský mudrc', xp: 6000 },
+  { level: 6, title: 'Pivní kartograf', xp: 12000 },
+  { level: 7, title: 'Legenda lokálu', xp: 24000 },
 ];
 
 /** The env-default XP awards (spec §5.4 xp_rules). Used when no live block. */
