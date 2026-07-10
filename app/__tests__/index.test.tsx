@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { cs } from '@/i18n/cs';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
+import BeerMapScreen from '@/map/BeerMapScreen';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -55,6 +56,11 @@ jest.mock('@/components/amenities/MapPubSheet', () => ({
   MapPubSheet: jest.fn(() => null),
 }));
 
+jest.mock('@/map/BeerMapScreen', () => ({
+  __esModule: true,
+  default: jest.fn(() => null),
+}));
+
 jest.mock('@/components/shared/TitleBar', () => ({
   TitleBar: jest.fn(() => null),
 }));
@@ -69,6 +75,7 @@ jest.mock('@/components/shared/IconGlyph', () => ({
   LockKeyholeIcon: jest.fn(() => null),
   EyeIcon: jest.fn(() => null),
   MapPinIcon: jest.fn(() => null),
+  MapIcon: jest.fn(() => null),
   ExternalLinkIcon: jest.fn(() => null),
   RefreshCwIcon: jest.fn(() => null),
   SettingsIcon: jest.fn(() => null),
@@ -296,6 +303,25 @@ describe('CompassScreen', () => {
       expect.objectContaining({ align: 'left', showGear: false }),
       undefined,
     );
+  });
+
+  it('opens the map without location permission and pauses compass sensors', () => {
+    const BeerMapScreenMock = BeerMapScreen as jest.Mock;
+    useCompass.mockReturnValue({ ...baseCompassState(), permissionState: 'denied' });
+    let renderer: any;
+
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(CompassScreen));
+    });
+
+    const mapButton = renderer!.root.findByProps({ accessibilityLabel: cs.map.openWithoutLocation });
+    act(() => mapButton.props.onPress());
+
+    expect(BeerMapScreenMock).toHaveBeenCalledWith(
+      expect.objectContaining({ initialPub: expect.objectContaining({ name: 'U Testu' }) }),
+      undefined,
+    );
+    expect(useCompass).toHaveBeenLastCalledWith(null, false);
   });
 
   it('reserves revealed-card height before the pub is revealed', () => {

@@ -16,11 +16,22 @@ const SPLASH_BACKGROUND = '#1f1007';
 const GOOGLE_IOS_URL_SCHEME =
   (process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME ?? '').trim() ||
   'com.googleusercontent.apps.PLACEHOLDER';
+const GOOGLE_MAPS_ANDROID_API_KEY =
+  (process.env.EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_API_KEY ?? '').trim();
 
 function usesLocalBackend(): boolean {
   const mode = (process.env.EXPO_PUBLIC_BACKEND_MODE ?? '').trim().toLowerCase();
   const backendUrl = (process.env.EXPO_PUBLIC_BACKEND_URL ?? '').trim().toLowerCase();
   return LOCAL_BACKEND_MODES.has(mode) || LOCAL_BACKEND_MODES.has(backendUrl);
+}
+
+function isAndroidNativeBuild(): boolean {
+  const lifecycle = (process.env.npm_lifecycle_event ?? '').trim();
+  return (
+    process.env.EAS_BUILD_PLATFORM === 'android' ||
+    lifecycle === 'android' ||
+    lifecycle === 'android:local'
+  );
 }
 
 const withoutBackgroundAudio: ConfigPlugin = (config) =>
@@ -41,6 +52,12 @@ const withoutBackgroundAudio: ConfigPlugin = (config) =>
   });
 
 export default ({ config }: ConfigContext): ExpoConfig => {
+  if (isAndroidNativeBuild() && !GOOGLE_MAPS_ANDROID_API_KEY) {
+    throw new Error(
+      'Android mapa vyžaduje EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_API_KEY. ' +
+        'Nastav ho lokálně nebo jako EAS environment secret.',
+    );
+  }
   const expoConfig: ExpoConfig = {
     ...config,
     name: 'Na pivo',
@@ -116,6 +133,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       'expo-router',
       'expo-font',
       'expo-asset',
+      [
+        'react-native-maps',
+        {
+          ...(GOOGLE_MAPS_ANDROID_API_KEY
+            ? { androidGoogleMapsApiKey: GOOGLE_MAPS_ANDROID_API_KEY }
+            : {}),
+        },
+      ],
       [
         'expo-location',
         {

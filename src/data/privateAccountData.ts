@@ -15,6 +15,7 @@ import { runWithoutPubAmenitiesSync } from './pubAmenitiesSync';
 import { clearPubRatingsQueue } from './pubRatingsQueue';
 import { runWithoutPubRatingsSync } from './pubRatingsSync';
 import { clearVisitsQueue } from './visitsQueue';
+import { clearVisitsSnapshot } from './visitsSnapshot';
 import { useCommunityStore } from '@/stores/communityStore';
 import { usePartyGroupsStore } from '@/stores/partyGroupsStore';
 import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
@@ -71,6 +72,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
     clearPubNameCorrectionsQueue(),
     clearPubReportQueue(),
     clearVisitsQueue(),
+    clearVisitsSnapshot(),
     clearFriendsQueue(),
     clearFriendsDashboardSnapshot(),
     clearPubRatingsQueue(),
