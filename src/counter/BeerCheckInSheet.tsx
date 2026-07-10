@@ -10,9 +10,9 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 
 import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
-import * as Haptics from 'expo-haptics';
 
 import { BeerTagChips } from '@/components/shared/BeerTagChips';
 import { BeerIcon, LockKeyholeIcon, StarIcon, UsersIcon, XIcon } from '@/components/shared/IconGlyph';
