@@ -50,7 +50,9 @@ import {
   ClipboardListIcon,
   QrCodeIcon,
   UsersIcon,
+  CameraIcon,
 } from '@/components/shared/IconGlyph';
+import { PhotoDiarySection } from '@/photos/PhotoDiarySection';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 import type { AccountMapper, AccountAchievements } from '@/data/auth';
 import { GlowButton } from '@/components/shared/GlowButton';
@@ -387,8 +389,13 @@ function MapperBadges({
           subtitle={cs.mapPub.badgeFactMachineLocked}
           unlocked={factMachine}
         />
-        {/* Keep the row a stable 3-up grid; an empty slot balances the layout. */}
-        <View style={styles.badgeSpacer} />
+        {/* FotoPivař (photo-contest win, server-only) fills the last slot. */}
+        <Badge
+          icon={<CameraIcon size={20} color={Colors.amber} />}
+          title={cs.profile.badgeFotoPivarTitle}
+          subtitle={cs.profile.badgeFotoPivarLocked}
+          unlocked={achievements.fotoPivar}
+        />
       </View>
     </>
   );
@@ -507,6 +514,8 @@ export default function ProfileScreen() {
     cartographer: false,
     completionist: false,
     factMachine: false,
+    // FotoPivař (photo-contest win) is server-only too.
+    fotoPivar: false,
   };
   const mapper = profile?.mapper;
   const walkedM = isSignedIn ? profile?.usage?.walkedDistanceM ?? null : null;
@@ -713,6 +722,9 @@ export default function ProfileScreen() {
         </View>
         {/* The five Mapér badges share the ODZNAKY section. */}
         <MapperBadges mapper={mapper} achievements={achievements} />
+
+        {/* ── Pivní fotky (photo diary strip + capture flow) ── */}
+        <PhotoDiarySection />
 
         {/* ── Recent activity (hidden when empty) ── */}
         {recent.length > 0 && (
@@ -1112,9 +1124,6 @@ const styles = StyleSheet.create({
   badgeRow: {
     flexDirection: 'row',
     gap: Spacing.sm + 2,
-  },
-  badgeSpacer: {
-    flex: 1,
   },
   badge: {
     flex: 1,

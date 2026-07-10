@@ -251,6 +251,7 @@ describe('registerEmail', () => {
         cartographer: false,
         completionist: false,
         factMachine: false,
+        fotoPivar: false,
       },
       usage: { walkedDistanceM: 1234 },
     });
@@ -811,6 +812,7 @@ describe('fetchAccountProfile — Mapér block + new badges', () => {
       cartographer: false,
       completionist: true,
       factMachine: false,
+      fotoPivar: false,
     });
     expect(profile?.mapper).toEqual({
       xp: 285,
@@ -853,6 +855,7 @@ describe('fetchAccountProfile — Mapér block + new badges', () => {
       cartographer: false,
       completionist: false,
       factMachine: false,
+      fotoPivar: false,
     });
     expect(profile?.mapper).toBeUndefined();
   });

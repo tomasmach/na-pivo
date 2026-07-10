@@ -11,7 +11,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 
@@ -24,7 +24,9 @@ import {
   EllipsisIcon,
   FlameIcon,
   MapPinIcon,
+  XIcon,
 } from '@/components/shared/IconGlyph';
+import { fetchFriendBeerPhotos, type BeerPhoto } from '@/data/beerPhotosClient';
 import {
   blockFriend,
   fetchFriendProfile,
@@ -32,6 +34,7 @@ import {
   type FriendProfile,
   type FriendProfileDetail,
 } from '@/data/friendsClient';
+import { ScalePressable } from '@/photos/ScalePressable';
 import { focusPubFromActivity } from '@/friends/focusPubHandoff';
 import HairlineRow from '@/friends/HairlineRow';
 import SectionHeader from '@/friends/SectionHeader';
@@ -42,10 +45,13 @@ import { useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
-import { HitArea, Spacing } from '@/theme/layout';
+import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 
 type LoadState = 'loading' | 'loaded' | 'error';
+
+/** Strip cap — mirrors PhotoDiarySection; the viewer shows one photo anyway. */
+const FRIEND_PHOTO_STRIP_LIMIT = 12;
 
 /** `@nickname` (preferred) → display name → a friendly fallback. */
 function nameOf(profile: FriendProfile | null | undefined): string {
@@ -102,6 +108,9 @@ export default function FriendProfileScreen() {
   // "loading" setState (would trip the cascading-render lint rule).
   const [state, setState] = useState<LoadState>(() => (accountId ? 'loading' : 'error'));
   const [detail, setDetail] = useState<FriendProfileDetail | null>(null);
+  // Friends-visible diary photos; null (not allowed / failed) hides the section.
+  const [friendPhotos, setFriendPhotos] = useState<BeerPhoto[] | null>(null);
+  const [viewerPhoto, setViewerPhoto] = useState<BeerPhoto | null>(null);
 
   const mountedRef = useRef(true);
   useEffect(
@@ -113,9 +122,16 @@ export default function FriendProfileScreen() {
 
   const load = useCallback(async () => {
     if (!accountId) return; // state already 'error' from lazy init
-    const result = await fetchFriendProfile(accountId);
+    // The photo gallery is additive — its failure (404 for non-friends /
+    // private diary) must never take down the profile, so both fetches run in
+    // parallel and only the profile drives the load state.
+    const [result, photos] = await Promise.all([
+      fetchFriendProfile(accountId),
+      fetchFriendBeerPhotos(accountId),
+    ]);
     if (!mountedRef.current) return;
     setDetail(result);
+    setFriendPhotos(photos);
     setState(result ? 'loaded' : 'error');
   }, [accountId]);
 
@@ -364,6 +380,37 @@ export default function FriendProfileScreen() {
             ) : null}
           </View>
 
+          {/* Pivní fotky — friends-visible diary strip (hidden when empty).
+              Virtualized + capped: the endpoint may return up to ~200 photos
+              and a plain map would mount every image at once. */}
+          {friendPhotos && friendPhotos.length > 0 ? (
+            <View style={styles.recentSection}>
+              <SectionHeader label={cs.photoDiary.friendHeader(name)} />
+              <FlatList
+                horizontal
+                data={friendPhotos.slice(0, FRIEND_PHOTO_STRIP_LIMIT)}
+                keyExtractor={(photo) => photo.id}
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.photoStrip}
+                renderItem={({ item: photo }) => (
+                  <ScalePressable
+                    onPress={() => setViewerPhoto(photo)}
+                    style={styles.photoThumb}
+                    accessibilityRole="button"
+                    accessibilityLabel={cs.a11y.friendPhotoTile(name)}
+                  >
+                    <Image
+                      source={{ uri: photo.imageUrl }}
+                      style={StyleSheet.absoluteFill}
+                      resizeMode="cover"
+                      accessibilityIgnoresInvertColors
+                    />
+                  </ScalePressable>
+                )}
+              />
+            </View>
+          ) : null}
+
           {latestBeers.length > 0 ? (
             <View style={styles.recentSection}>
               <SectionHeader label={cs.beerCheckins.lastBeersHeader} />
@@ -397,6 +444,57 @@ export default function FriendProfileScreen() {
           ) : null}
         </ScrollView>
       )}
+
+      {/* Fullscreen photo viewer — read-only (no actions apply to a friend's
+          photo), so a plain modal beats reusing the own-photo detail route. */}
+      <Modal
+        visible={viewerPhoto != null}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setViewerPhoto(null)}
+      >
+        <View style={styles.viewerBackdrop}>
+          <Pressable
+            onPress={() => setViewerPhoto(null)}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={cs.a11y.photoViewerClose}
+            style={({ pressed }) => [
+              styles.viewerClose,
+              { top: insets.top + Spacing.sm },
+              pressed && styles.dim,
+            ]}
+          >
+            <XIcon size={22} color={Colors.foam} />
+          </Pressable>
+          {viewerPhoto ? (
+            <>
+              <Image
+                source={{ uri: viewerPhoto.imageUrl }}
+                style={styles.viewerImage}
+                resizeMode="contain"
+                accessibilityIgnoresInvertColors
+              />
+              <View style={[styles.viewerMeta, { paddingBottom: insets.bottom + Spacing.lg }]}>
+                {viewerPhoto.caption ? (
+                  <Text style={styles.viewerCaption} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {viewerPhoto.caption}
+                  </Text>
+                ) : null}
+                {viewerPhoto.pubName ? (
+                  <View style={styles.viewerPubRow}>
+                    <MapPinIcon size={14} color={Colors.amber} />
+                    <Text style={styles.viewerPub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {[viewerPhoto.pubName, viewerPhoto.pubCity].filter(Boolean).join(' · ')}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            </>
+          ) : null}
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -557,5 +655,65 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: Colors.mutedText,
+  },
+
+  // — Pivní fotky strip —
+  photoStrip: {
+    gap: Spacing.sm + 2,
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.xs,
+  },
+  photoThumb: {
+    width: 104,
+    height: 132,
+    borderRadius: Radius.medium,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.stout3,
+    overflow: 'hidden',
+  },
+
+  // — Fullscreen viewer —
+  viewerBackdrop: {
+    flex: 1,
+    backgroundColor: Colors.stout,
+  },
+  viewerClose: {
+    position: 'absolute',
+    right: Spacing.lg,
+    zIndex: 2,
+    width: HitArea.min,
+    height: HitArea.min,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout2,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  viewerImage: {
+    flex: 1,
+  },
+  viewerMeta: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+    gap: Spacing.sm,
+  },
+  viewerCaption: {
+    fontFamily: Fonts.ui.regular,
+    fontSize: 15,
+    lineHeight: 22,
+    color: Colors.foam,
+  },
+  viewerPubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  viewerPub: {
+    flex: 1,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
+    color: Colors.foamMuted,
   },
 });

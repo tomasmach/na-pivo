@@ -70,6 +70,9 @@ export interface AccountAchievements {
   cartographer: boolean;
   completionist: boolean;
   factMachine: boolean;
+  /** "FotoPivař" — won a biweekly photo-contest round. Server-only; additive,
+   *  absent on older backends → false. */
+  fotoPivar: boolean;
 }
 
 /** One level rung of the Mapér ladder (server copy of the locked table). */
@@ -182,6 +185,7 @@ interface RawAccount {
     cartographer?: boolean;
     completionist?: boolean;
     fact_machine?: boolean;
+    foto_pivar?: boolean;
   };
   usage?: { walked_distance_m?: number };
   mapper?: {
@@ -290,6 +294,7 @@ function parseAchievements(data: RawAccount): AccountAchievements | undefined {
     cartographer: raw.cartographer === true,
     completionist: raw.completionist === true,
     factMachine: raw.fact_machine === true,
+    fotoPivar: raw.foto_pivar === true,
   };
 }
 
@@ -759,6 +764,7 @@ export async function restorePurchases(params: {
 export type ContentReportReason =
   | 'inappropriate_nickname'
   | 'inappropriate_avatar'
+  | 'inappropriate_photo'
   | 'impersonation'
   | 'spam'
   | 'other';
@@ -767,6 +773,11 @@ export async function reportProfileContent(params: {
   targetAccountId: string;
   reason: ContentReportReason;
   comment?: string;
+  /**
+   * Beer-photo diary: pin the report to one specific photo (backend field
+   * `photo_id`, additive). Only meaningful with reason 'inappropriate_photo'.
+   */
+  photoId?: string;
 }): Promise<AuthActionResult> {
   const res = await authFetch('/v1/content-reports', {
     method: 'POST',
@@ -775,6 +786,7 @@ export async function reportProfileContent(params: {
       target_account_id: params.targetAccountId,
       reason: params.reason,
       comment: params.comment ?? '',
+      ...(params.photoId ? { photo_id: params.photoId } : {}),
     },
   });
   return resolveActionResult(res);

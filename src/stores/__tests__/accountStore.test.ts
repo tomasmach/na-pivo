@@ -449,6 +449,7 @@ describe('applyMapperSnapshot', () => {
           cartographer: false,
           completionist: false,
           factMachine: false,
+          fotoPivar: false,
         },
         mapper: fullMapper({ distinctMappedPubs: 9, amenityVotesCount: 99, completedPubsCount: 0 }),
       }),
@@ -475,6 +476,8 @@ describe('applyMapperSnapshot', () => {
       cartographer: true,
       completionist: true,
       factMachine: true,
+      // Server-only badge: a mapper snapshot must carry it through unchanged.
+      fotoPivar: false,
     });
   });
 });
