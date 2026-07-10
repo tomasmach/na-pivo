@@ -59,7 +59,6 @@ import {
   StarIcon,
   CheckIcon,
 } from '@/components/shared/IconGlyph';
-import { DiscordIcon } from '@/components/shared/BrandIcon';
 import { MapyLogo } from '@/components/shared/MapyLogo';
 import { Avatar } from '@/profile/Avatar';
 import {
@@ -735,13 +734,6 @@ export default function SettingsScreen() {
             borderTop
           />
         </View>
-
-        <ActionCta
-          icon={<DiscordIcon size={21} color={Colors.amber} />}
-          title={cs.settings.discord.title}
-          subtitle={cs.settings.discord.subtitle}
-          onPress={() => void Linking.openURL(cs.settings.discord.url)}
-        />
 
         {/* ── Footer ── */}
         <View style={styles.footer}>

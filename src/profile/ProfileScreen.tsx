@@ -51,7 +51,7 @@ import {
 import { PhotoDiarySection } from '@/photos/PhotoDiarySection';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 import { type AccountMapper } from '@/data/auth';
-import { InstagramIcon, LinkedinIcon } from '@/components/shared/BrandIcon';
+import { DiscordIcon, InstagramIcon, LinkedinIcon } from '@/components/shared/BrandIcon';
 import { GlowButton } from '@/components/shared/GlowButton';
 import CodeSheet from '@/friends/CodeSheet';
 import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
@@ -571,6 +571,15 @@ export default function ProfileScreen() {
               <LinkedinIcon size={18} color={Colors.foam} />
               <Text style={styles.creatorLinkText}>{cs.profile.creator.linkedin}</Text>
             </Pressable>
+            <Pressable
+              onPress={() => void Linking.openURL(cs.profile.creator.discordUrl)}
+              style={({ pressed }) => [styles.creatorLink, pressed && styles.pressed]}
+              accessibilityRole="link"
+              accessibilityLabel={cs.profile.creator.discord}
+            >
+              <DiscordIcon size={18} color={Colors.foam} />
+              <Text style={styles.creatorLinkText}>{cs.profile.creator.discord}</Text>
+            </Pressable>
           </View>
         </View>
 
@@ -811,9 +820,10 @@ const styles = StyleSheet.create({
   },
   creatorTitle: { fontFamily: Fonts.display.extrabold, fontSize: 20, color: Colors.foam },
   creatorBody: { fontFamily: Fonts.ui.regular, fontSize: 13, lineHeight: 18, color: Colors.foamMuted },
-  creatorLinks: { flexDirection: 'row', gap: Spacing.sm },
+  creatorLinks: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
   creatorLink: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: '30%',
     minHeight: 42,
     flexDirection: 'row',
     justifyContent: 'center',

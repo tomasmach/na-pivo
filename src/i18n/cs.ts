@@ -1330,6 +1330,8 @@ export const cs = {
       instagramUrl: 'https://www.instagram.com/jsem_mach/',
       linkedin: 'LinkedIn',
       linkedinUrl: 'https://www.linkedin.com/in/mach-tomas/',
+      discord: 'Discord',
+      discordUrl: 'https://discord.gg/EDw8EW7Az8',
     },
     badgeFirstTenTitle: 'Prvních 10 piv',
     badgeFirstTenLocked: 'Napočítej 10 piv',
