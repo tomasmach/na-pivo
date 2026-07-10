@@ -353,12 +353,15 @@ MAPER_XP_FIRST_FACT: int = int(os.environ.get("MAPER_XP_FIRST_FACT", "15"))
 MAPER_XP_FIRST_MAPPER_BONUS: int = int(os.environ.get("MAPER_XP_FIRST_MAPPER_BONUS", "25"))
 MAPER_XP_CONFIRM: int = int(os.environ.get("MAPER_XP_CONFIRM", "5"))
 MAPER_XP_PUB_COMPLETE_BONUS: int = int(os.environ.get("MAPER_XP_PUB_COMPLETE_BONUS", "30"))
-# Mapér level ladder (§7.2): five min-XP thresholds, lowest first, env-tunable as a
+# Mapér level ladder (§7.2): min-XP thresholds, lowest first, env-tunable as a
 # comma list so the titles/levels can be re-tuned without a code change. Levels are
 # 1-indexed; titles are fixed (the client maps level→title for the level-up toast).
 MAPER_LEVEL_THRESHOLDS: list[int] = [
     int(x.strip())
-    for x in os.environ.get("MAPER_LEVEL_THRESHOLDS", "0,300,900,2500,6000").split(",")
+    for x in os.environ.get(
+        "MAPER_LEVEL_THRESHOLDS",
+        "0,300,900,2500,6000,12000,24000",
+    ).split(",")
     if x.strip() != ""
 ]
 

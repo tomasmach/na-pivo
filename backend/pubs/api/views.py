@@ -26,6 +26,7 @@ import math
 import re
 import secrets
 import uuid
+from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -134,6 +135,11 @@ from pubs.user_added_pub_geocoding import resolve_user_added_pub_location
 
 from .authentication import AccountTokenAuthentication
 from .cache import get_or_enrich
+from .profile_helpers import (
+    derive_account_achievements,
+    derive_account_profile_stats,
+    derive_account_public_stats,
+)
 from .serializers import (
     AccountMeSerializer,
     AccountRegisterSerializer,
@@ -166,6 +172,7 @@ from .serializers import (
     FriendSearchQuerySerializer,
     FriendSettingsPatchSerializer,
     FriendshipSerializer,
+    LeaderboardQuerySerializer,
     MenuScanResultSerializer,
     PhotoContestEnterSerializer,
     PhotoContestEntrySerializer,
@@ -313,6 +320,9 @@ PRAGUE_TZ = ZoneInfo("Europe/Prague")
 
 # Party leaderboard window: pub visits in the trailing 30 days.
 LEADERBOARD_WINDOW = timedelta(days=30)
+GLOBAL_LEADERBOARD_CACHE_TTL = 300
+GLOBAL_LEADERBOARD_CACHE_ROWS = 200
+GLOBAL_LEADERBOARD_LIMIT = 50
 # Friend dashboard shared-evening stats stay recent enough to be useful while
 # keeping the hot /v1/friends read path bounded as accounts build history.
 FRIEND_SHARED_STATS_WINDOW = timedelta(days=365)
@@ -2680,6 +2690,298 @@ class FriendSearchView(APIView):
         )
 
 
+def _leaderboard_period_start(period: str, now=None) -> tuple[datetime | None, datetime | None]:
+    """Return (local Prague period_start for the wire, UTC start for DB filters)."""
+
+    if period == "all":
+        return None, None
+    local_now = dj_timezone.localtime(now or dj_timezone.now(), PRAGUE_TZ)
+    if period == "week":
+        start_date = local_now.date() - timedelta(days=local_now.weekday())
+    else:
+        start_date = date(local_now.year, 1, 1)
+    local_start = datetime.combine(start_date, datetime.min.time(), tzinfo=PRAGUE_TZ)
+    return local_start, local_start.astimezone(UTC)
+
+
+def _leaderboard_cache_key(category: str, period: str, period_start: datetime | None) -> str:
+    marker = period_start.isoformat() if period_start is not None else "all"
+    return f"v1:leaderboards:{category}:{period}:{marker}"
+
+
+def _leaderboard_account_queryset():
+    return (
+        Account.objects.filter(
+            status=Account.Status.ACTIVE,
+            is_public=True,
+            nickname__isnull=False,
+        )
+        .exclude(nickname="")
+        .order_by()
+    )
+
+
+def _leaderboard_drink_scores(period_start_utc: datetime | None, blocked_ids: set[int] | None = None) -> dict[int, int]:
+    qs = DrinkLog.objects.filter(
+        account__status=Account.Status.ACTIVE,
+        account__is_public=True,
+        account__nickname__isnull=False,
+    ).exclude(account__nickname="")
+    if period_start_utc is not None:
+        qs = qs.filter(drank_at__gte=period_start_utc)
+    if blocked_ids:
+        qs = qs.exclude(account_id__in=blocked_ids)
+    return {
+        row["account_id"]: int(row["score"])
+        for row in qs.values("account_id").annotate(score=Count("id")).filter(score__gt=0)
+    }
+
+
+def _leaderboard_pub_scores(period_start_utc: datetime | None, blocked_ids: set[int] | None = None) -> dict[int, int]:
+    pubs_by_account: dict[int, set[str]] = defaultdict(set)
+    for model, timestamp_field in (
+        (PubVisit, "started_at"),
+        (DrinkLog, "drank_at"),
+    ):
+        qs = model.objects.filter(
+            account__status=Account.Status.ACTIVE,
+            account__is_public=True,
+            account__nickname__isnull=False,
+        ).exclude(account__nickname="")
+        if period_start_utc is not None:
+            qs = qs.filter(**{f"{timestamp_field}__gte": period_start_utc})
+        if blocked_ids:
+            qs = qs.exclude(account_id__in=blocked_ids)
+        for account_id, cache_key in qs.values_list("account_id", "cache_key"):
+            if cache_key:
+                pubs_by_account[account_id].add(cache_key)
+    return {
+        account_id: len(cache_keys)
+        for account_id, cache_keys in pubs_by_account.items()
+        if cache_keys
+    }
+
+
+def _leaderboard_mapper_scores(blocked_ids: set[int] | None = None) -> dict[int, int]:
+    qs = AccountUsageStats.objects.filter(
+        account__status=Account.Status.ACTIVE,
+        account__is_public=True,
+        account__nickname__isnull=False,
+        mapper_xp__gt=0,
+    ).exclude(account__nickname="")
+    if blocked_ids:
+        qs = qs.exclude(account_id__in=blocked_ids)
+    return {
+        account_id: int(score)
+        for account_id, score in qs.values_list("account_id", "mapper_xp")
+    }
+
+
+def _leaderboard_score_map(
+    category: str,
+    period_start_utc: datetime | None,
+    blocked_ids: set[int] | None = None,
+) -> dict[int, int]:
+    if category == "beers":
+        return _leaderboard_drink_scores(period_start_utc, blocked_ids)
+    if category == "pubs":
+        return _leaderboard_pub_scores(period_start_utc, blocked_ids)
+    return _leaderboard_mapper_scores(blocked_ids)
+
+
+def _leaderboard_account_score(
+    account: Account,
+    category: str,
+    period_start_utc: datetime | None,
+) -> int:
+    if category == "beers":
+        qs = DrinkLog.objects.filter(account=account)
+        if period_start_utc is not None:
+            qs = qs.filter(drank_at__gte=period_start_utc)
+        return qs.count()
+    if category == "pubs":
+        cache_keys = set()
+        visits = PubVisit.objects.filter(account=account)
+        drinks = DrinkLog.objects.filter(account=account)
+        if period_start_utc is not None:
+            visits = visits.filter(started_at__gte=period_start_utc)
+            drinks = drinks.filter(drank_at__gte=period_start_utc)
+        cache_keys.update(visits.values_list("cache_key", flat=True))
+        cache_keys.update(drinks.values_list("cache_key", flat=True))
+        cache_keys.discard("")
+        return len(cache_keys)
+    stats = getattr(account, "usage_stats", None)
+    return int(getattr(stats, "mapper_xp", 0) or 0)
+
+
+def _leaderboard_is_eligible(account: Account) -> bool:
+    return (
+        account.status == Account.Status.ACTIVE
+        and account.is_public
+        and bool((account.nickname or "").strip())
+    )
+
+
+def _build_global_leaderboard_cache(
+    category: str,
+    period: str,
+    period_start: datetime | None,
+    period_start_utc: datetime | None,
+) -> dict:
+    generated_at = dj_timezone.localtime(dj_timezone.now(), PRAGUE_TZ)
+    score_by_account = _leaderboard_score_map(category, period_start_utc)
+    accounts_by_id = {
+        account.id: account
+        for account in _leaderboard_account_queryset()
+        .filter(id__in=score_by_account.keys())
+        .only(
+            "id",
+            "public_id",
+            "nickname",
+            "display_name",
+            "avatar",
+            "is_public",
+            "created_at",
+            "last_seen_at",
+        )
+    }
+    ranked = [
+        {
+            "account": account,
+            "score": score,
+        }
+        for account_id, score in score_by_account.items()
+        if score > 0 and (account := accounts_by_id.get(account_id)) is not None
+    ]
+    ranked.sort(key=lambda row: (-row["score"], row["account"].created_at, row["account"].id))
+
+    rows = []
+    for rank, row in enumerate(ranked[:GLOBAL_LEADERBOARD_CACHE_ROWS], start=1):
+        account = row["account"]
+        rows.append(
+            {
+                "rank": rank,
+                "score": int(row["score"]),
+                "account_pk": account.id,
+                "account": dict(FriendProfileSerializer(account).data),
+            }
+        )
+    return {
+        "total_ranked": len(ranked),
+        "generated_at": generated_at.isoformat(),
+        "period_start": period_start.isoformat() if period_start is not None else None,
+        "rows": rows,
+    }
+
+
+def _leaderboard_me_payload(
+    request: Request,
+    category: str,
+    period_start_utc: datetime | None,
+    rows: list[dict],
+    blocked_ids: set[int],
+) -> dict:
+    me = request.user
+    score = _leaderboard_account_score(me, category, period_start_utc)
+    rank = None
+    if score > 0:
+        score_by_account = _leaderboard_score_map(category, period_start_utc, blocked_ids)
+        accounts = _leaderboard_account_queryset().filter(id__in=score_by_account.keys())
+        ahead = 0
+        for account in accounts.only("id", "created_at"):
+            account_score = score_by_account.get(account.id, 0)
+            if account_score > score or (
+                account_score == score
+                and (
+                    account.created_at < me.created_at
+                    or (account.created_at == me.created_at and account.id < me.id)
+                )
+            ):
+                ahead += 1
+        rank = ahead + 1
+    return {
+        "rank": rank,
+        "score": score,
+        "listed": any(row["account_pk"] == me.id for row in rows),
+        "eligible": _leaderboard_is_eligible(me),
+    }
+
+
+class LeaderboardsView(APIView):
+    """GET /v1/leaderboards — cached global public leaderboards."""
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends_dashboard"
+
+    def get(self, request: Request) -> Response:
+        serializer = LeaderboardQuerySerializer(data=request.query_params)
+        if not serializer.is_valid():
+            return Response(
+                {
+                    "detail": "Neplatné parametry žebříčku.",
+                    "code": "invalid_params",
+                    "errors": serializer.errors,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        category = serializer.validated_data["category"]
+        period = serializer.validated_data["period"]
+        period_start, period_start_utc = _leaderboard_period_start(period)
+        cache_key = _leaderboard_cache_key(category, period, period_start)
+        cached = default_cache.get(cache_key)
+        if cached is None:
+            cached = _build_global_leaderboard_cache(
+                category,
+                period,
+                period_start,
+                period_start_utc,
+            )
+            default_cache.set(cache_key, cached, GLOBAL_LEADERBOARD_CACHE_TTL)
+
+        blocked_ids = _blocked_account_ids(request.user)
+        friend_ids = set(_accepted_friend_ids(request.user))
+        annotated_rows = []
+        for row in cached["rows"]:
+            if row["account_pk"] in blocked_ids:
+                continue
+            annotated_rows.append(
+                {
+                    "rank": row["rank"],
+                    "score": row["score"],
+                    "is_me": row["account_pk"] == request.user.id,
+                    "is_friend": row["account_pk"] in friend_ids,
+                    "account": row["account"],
+                    "account_pk": row["account_pk"],
+                }
+            )
+        entries = annotated_rows[:GLOBAL_LEADERBOARD_LIMIT]
+        me_payload = _leaderboard_me_payload(
+            request,
+            category,
+            period_start_utc,
+            entries,
+            blocked_ids,
+        )
+        for row in entries:
+            row.pop("account_pk", None)
+
+        return Response(
+            {
+                "category": category,
+                "period": period,
+                "period_start": cached["period_start"],
+                "generated_at": cached["generated_at"],
+                "total_ranked": cached["total_ranked"],
+                "entries": entries,
+                "me": me_payload,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class FriendRequestView(APIView):
     """POST /v1/friends/requests — send a friend request by id, nickname or invite code."""
 
@@ -2923,14 +3225,19 @@ class FriendDetailView(APIView):
         friendship = None
         if friend is not None and friend.id not in blocked_ids:
             friendship = (
-                Friendship.objects.filter(status=Friendship.Status.ACCEPTED)
-                .filter(
+                Friendship.objects.filter(
                     Q(requester=request.user, recipient=friend)
                     | Q(requester=friend, recipient=request.user)
                 )
                 .first()
             )
-        if friend is None or friendship is None:
+        is_friend = bool(friendship and friendship.status == Friendship.Status.ACCEPTED)
+        can_view_public_profile = bool(
+            friend is not None
+            and friend.id not in blocked_ids
+            and friend.is_public
+        )
+        if friend is None or (not is_friend and not can_view_public_profile):
             return Response(
                 {"detail": "Tenhle kámoš tu není.", "code": "friend_not_found"},
                 status=status.HTTP_404_NOT_FOUND,
@@ -2940,60 +3247,85 @@ class FriendDetailView(APIView):
         activity_context = _friend_activity_context(request)
         prefetches = _friend_activity_prefetches()
 
-        shared_evenings, shared_dates = _single_friend_shared(request.user, friend)
-        shared_count = len(shared_evenings)
-        last = shared_evenings[0] if shared_evenings else None
-        streak = _party_streak(shared_dates)
+        friendship_status = "none"
+        incoming_request_id = None
+        if friendship is not None:
+            if friendship.status == Friendship.Status.ACCEPTED:
+                friendship_status = "accepted"
+            elif friendship.status == Friendship.Status.PENDING:
+                if friendship.requester_id == request.user.id:
+                    friendship_status = "outgoing_pending"
+                else:
+                    friendship_status = "incoming_pending"
+                    incoming_request_id = str(friendship.public_id)
 
-        live_activity = (
-            _apply_friend_activity_visibility(
-                FriendPubActivity.objects.filter(
+        shared_evenings = []
+        shared_count = 0
+        last = None
+        streak = {}
+        live_activity = None
+        plan = None
+        latest_beers = []
+        if is_friend:
+            shared_evenings, shared_dates = _single_friend_shared(request.user, friend)
+            shared_count = len(shared_evenings)
+            last = shared_evenings[0] if shared_evenings else None
+            streak = _party_streak(shared_dates)
+
+            live_activity = (
+                _apply_friend_activity_visibility(
+                    FriendPubActivity.objects.filter(
+                        account=friend,
+                        active=True,
+                        expires_at__gt=now,
+                        kind=FriendPubActivity.Kind.LIVE,
+                        account__ghost_mode=False,
+                    ),
+                    request.user,
+                )
+                .select_related("account")
+                .prefetch_related(*prefetches)
+                .order_by("-started_at")
+                .first()
+            )
+            day_start, day_end = _prague_today_bounds(now)
+            plan = (
+                _apply_friend_activity_visibility(
+                    FriendPubActivity.objects.filter(
+                        account=friend,
+                        active=True,
+                        kind=FriendPubActivity.Kind.PLAN,
+                        scheduled_for__gte=day_start,
+                        scheduled_for__lt=day_end,
+                        account__ghost_mode=False,
+                    ),
+                    request.user,
+                )
+                .select_related("account")
+                .prefetch_related(*prefetches)
+                .order_by("scheduled_for")
+                .first()
+            )
+            latest_beers = (
+                _beer_checkin_queryset()
+                .filter(
                     account=friend,
-                    active=True,
-                    expires_at__gt=now,
-                    kind=FriendPubActivity.Kind.LIVE,
+                    visibility=BeerCheckIn.Visibility.FRIENDS,
                     account__ghost_mode=False,
-                ),
-                request.user,
+                )
+                .order_by("-checked_in_at")[:5]
             )
-            .select_related("account")
-            .prefetch_related(*prefetches)
-            .order_by("-started_at")
-            .first()
-        )
-        day_start, day_end = _prague_today_bounds(now)
-        plan = (
-            _apply_friend_activity_visibility(
-                FriendPubActivity.objects.filter(
-                    account=friend,
-                    active=True,
-                    kind=FriendPubActivity.Kind.PLAN,
-                    scheduled_for__gte=day_start,
-                    scheduled_for__lt=day_end,
-                    account__ghost_mode=False,
-                ),
-                request.user,
-            )
-            .select_related("account")
-            .prefetch_related(*prefetches)
-            .order_by("scheduled_for")
-            .first()
-        )
-        latest_beers = (
-            _beer_checkin_queryset()
-            .filter(
-                account=friend,
-                visibility=BeerCheckIn.Visibility.FRIENDS,
-                account__ghost_mode=False,
-            )
-            .order_by("-checked_in_at")[:5]
-        )
+        public_profile_stats = derive_account_profile_stats(friend)
 
         return Response(
             {
                 "profile": FriendProfileSerializer(friend, context=context).data,
-                "is_friend": True,
-                "friendship_id": str(friendship.public_id),
+                "is_friend": is_friend,
+                "friendship_id": str(friendship.public_id) if is_friend else None,
+                "friendship_status": friendship_status,
+                "incoming_request_id": incoming_request_id,
+                "public_stats": derive_account_public_stats(friend, public_profile_stats),
+                "achievements": derive_account_achievements(friend, public_profile_stats),
                 "stats": {
                     "shared_pub_count": shared_count,
                     "nights_together": shared_count,

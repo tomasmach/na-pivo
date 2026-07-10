@@ -235,6 +235,24 @@ def test_beer_form_scan_opened_event_is_accepted(client):
 
 
 @pytest.mark.django_db
+def test_leaderboards_opened_event_is_accepted(client):
+    resp = client.post(
+        "/v1/client-events",
+        data={
+            "event": "leaderboards_opened",
+            "severity": "info",
+            "context": {"category": "beers", "period": "week"},
+        },
+        format="json",
+    )
+
+    assert resp.status_code == status.HTTP_202_ACCEPTED
+    event = ClientEvent.objects.get()
+    assert event.event == ClientEvent.Event.LEADERBOARDS_OPENED
+    assert event.context == {}
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     "event_name",
     ["rating_synced", "rating_sync_failed", "visit_synced", "visit_sync_failed"],

@@ -2019,6 +2019,7 @@ class ClientEvent(models.Model):
         AMENITY_VOTED = "amenity_voted", "Amenity voted"
         AMENITY_VOTE_SYNCED = "amenity_vote_synced", "Amenity vote synced"
         AMENITY_VOTE_FAILED = "amenity_vote_failed", "Amenity vote sync failed"
+        LEADERBOARDS_OPENED = "leaderboards_opened", "Leaderboards opened"
 
     account = models.ForeignKey(
         Account,
