@@ -53,14 +53,13 @@ import {
   CoinsIcon,
   InfoIcon,
   ShieldIcon,
-  HeartIcon,
   MailIcon,
   MessageSquareIcon,
   MapPinIcon,
   StarIcon,
   CheckIcon,
 } from '@/components/shared/IconGlyph';
-import { DiscordIcon, InstagramIcon, LinkedinIcon } from '@/components/shared/BrandIcon';
+import { DiscordIcon } from '@/components/shared/BrandIcon';
 import { MapyLogo } from '@/components/shared/MapyLogo';
 import { Avatar } from '@/profile/Avatar';
 import {
@@ -364,35 +363,6 @@ function ActionCta({ icon, title, subtitle, onPress }: ActionCtaProps) {
         <Text style={styles.ctaSubtitle}>{subtitle}</Text>
       </View>
       <ChevronRightIcon size={18} color={Colors.amber} />
-    </Pressable>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Social button (creator links)
-// ---------------------------------------------------------------------------
-
-interface SocialButtonProps {
-  icon: React.ReactNode;
-  label: string;
-  url: string;
-}
-
-function SocialButton({ icon, label, url }: SocialButtonProps) {
-  const handlePress = useCallback(() => {
-    void Linking.openURL(url);
-  }, [url]);
-
-  return (
-    <Pressable
-      onPress={handlePress}
-      style={({ pressed }) => [styles.socialButton, pressed && styles.rowPressed]}
-      accessibilityRole="link"
-      accessibilityLabel={label}
-      hitSlop={4}
-    >
-      {icon}
-      <Text style={styles.socialButtonLabel}>{label}</Text>
     </Pressable>
   );
 }
@@ -772,32 +742,6 @@ export default function SettingsScreen() {
           subtitle={cs.settings.discord.subtitle}
           onPress={() => void Linking.openURL(cs.settings.discord.url)}
         />
-
-        {/* ── Creator card ── */}
-        <View style={styles.card}>
-          <View style={styles.creatorHeaderRow}>
-            <Text style={styles.creatorName}>{cs.settings.creator.name}</Text>
-            <View style={styles.creatorLabel}>
-              <HeartIcon size={14} color={Colors.amber} />
-              <Text style={styles.cardSectionHeaderText}>
-                {cs.settings.creator.header}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.socialRow}>
-            <SocialButton
-              icon={<InstagramIcon size={18} color={Colors.foam} />}
-              label={cs.settings.creator.instagram}
-              url={cs.settings.creator.instagramUrl}
-            />
-            <SocialButton
-              icon={<LinkedinIcon size={18} color={Colors.foam} />}
-              label={cs.settings.creator.linkedin}
-              url={cs.settings.creator.linkedinUrl}
-            />
-          </View>
-        </View>
 
         {/* ── Footer ── */}
         <View style={styles.footer}>
@@ -1179,45 +1123,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.regular,
     fontSize: 12,
     color: Colors.mutedText,
-  },
-
-  // ── Creator card ──
-  creatorHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  creatorName: {
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 24,
-    color: Colors.foam,
-  },
-  creatorLabel: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  socialRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  socialButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout3,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  socialButtonLabel: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 14,
-    color: Colors.foam,
   },
 
   // ── Footer ──

@@ -2,8 +2,8 @@
  * Profile tab — the 4th tab, the user's beer-social identity surface.
  *
  * Signed in: identity header (avatar + @nickname + display name + edit pencil),
- * a public/private visibility badge, a 2×2 stats grid, real local-threshold
- * achievement badges, recent activity, and account/settings rows.
+ * a public/private visibility badge, a 2×2 stats grid, a dedicated achievement
+ * showcase entry, recent activity, and account/settings rows.
  *
  * Signed out: a "Založ si profil" hero with a primary CTA to /auth, but the
  * stats grid STAYS visible (local-first) so an anonymous user still sees their
@@ -14,7 +14,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, Pressable, StyleSheet, Linking } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -40,7 +40,6 @@ import {
   ThumbsUpIcon,
   RadiusIcon,
   CoinsIcon,
-  LockKeyholeIcon,
   SproutIcon,
   CompassIcon,
   MapPinnedIcon,
@@ -48,12 +47,11 @@ import {
   TrophyIcon,
   QrCodeIcon,
   UsersIcon,
-  CameraIcon,
 } from '@/components/shared/IconGlyph';
 import { PhotoDiarySection } from '@/photos/PhotoDiarySection';
 import { useReduceMotion } from '@/utils/useReduceMotion';
-import { EMPTY_ACHIEVEMENTS, type AccountMapper, type AccountAchievements } from '@/data/auth';
-import { BADGE_CATALOG } from '@/profile/badgeCatalog';
+import { type AccountMapper } from '@/data/auth';
+import { InstagramIcon, LinkedinIcon } from '@/components/shared/BrandIcon';
 import { GlowButton } from '@/components/shared/GlowButton';
 import CodeSheet from '@/friends/CodeSheet';
 import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
@@ -177,44 +175,6 @@ function HeroStat({ value }: { value: number }) {
   );
 }
 
-function Badge({
-  icon,
-  title,
-  subtitle,
-  unlocked,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  subtitle: string;
-  unlocked: boolean;
-}) {
-  return (
-    <View
-      style={styles.badge}
-      accessible
-      accessibilityRole="image"
-      accessibilityLabel={unlocked ? cs.a11y.badgeUnlocked(title) : cs.a11y.badgeLocked(title, subtitle)}
-    >
-      <View style={[styles.medallion, unlocked ? styles.medallionOn : styles.medallionOff]}>
-        {unlocked ? (
-          icon
-        ) : (
-          <LockKeyholeIcon size={20} color={Colors.mutedText} />
-        )}
-      </View>
-      <Text
-        style={[styles.badgeTitle, !unlocked && styles.badgeTitleLocked]}
-        numberOfLines={2}
-        maxFontSizeMultiplier={FontScaleCap.body}
-      >
-        {title}
-      </Text>
-      <Text style={styles.badgeSubtitle} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
-        {subtitle}
-      </Text>
-    </View>
-  );
-}
 
 /** The amber XP progress bar inside the Mapér level card. Width animates from 0
  *  to the fill fraction, gated by reduce-motion. */
@@ -336,58 +296,6 @@ function MapperEmptySection({ signedIn }: { signedIn: boolean }) {
   );
 }
 
-/**
- * The full ODZNAKY grid, catalog-driven (3 per row). The server booleans are
- * authoritative when present; Mapér badges additionally fall back to deriving
- * from the durable mapper counters (an older backend that returns counters but
- * not the badge flags). Absent both → locked.
- */
-function BadgeGrid({
-  mapper,
-  achievements,
-}: {
-  mapper: AccountMapper | undefined;
-  achievements: AccountAchievements;
-}) {
-  const effective: AccountAchievements = {
-    ...achievements,
-    firstMap: achievements.firstMap || (mapper?.firstMapperCount ?? 0) >= 1,
-    explorer: achievements.explorer || (mapper?.distinctMappedPubs ?? 0) >= 10,
-    cartographer: achievements.cartographer || (mapper?.distinctMappedPubs ?? 0) >= 25,
-    completionist: achievements.completionist || (mapper?.completedPubsCount ?? 0) >= 1,
-    factMachine: achievements.factMachine || (mapper?.amenityVotesCount ?? 0) >= 100,
-  };
-
-  const rows: (typeof BADGE_CATALOG)[number][][] = [];
-  for (let i = 0; i < BADGE_CATALOG.length; i += 3) {
-    rows.push(BADGE_CATALOG.slice(i, i + 3));
-  }
-
-  return (
-    <>
-      {rows.map((row) => (
-        <View key={row[0].key} style={styles.badgeRow}>
-          {row.map(({ key, title, hint, Icon }) => (
-            <Badge
-              key={key}
-              icon={<Icon size={20} color={Colors.amber} />}
-              title={title}
-              subtitle={hint}
-              unlocked={effective[key]}
-            />
-          ))}
-          {/* Keep the row a stable 3-up grid; empty slots balance the layout. */}
-          {row.length < 3
-            ? Array.from({ length: 3 - row.length }).map((_, i) => (
-                <View key={`spacer-${i}`} style={styles.badgeSpacer} />
-              ))
-            : null}
-        </View>
-      ))}
-    </>
-  );
-}
-
 function RecentRow({
   session,
   now,
@@ -490,19 +398,6 @@ export default function ProfileScreen() {
     };
   }, [isSignedIn, localStats, profile?.stats]);
   const totalRatings = isSignedIn && profile?.stats ? profile.stats.ratingsCount : ratingsCount;
-  const achievements: AccountAchievements = profile?.achievements ?? {
-    ...EMPTY_ACHIEVEMENTS,
-    // Locally derivable badges keep working offline / signed out; the rest
-    // (night owl, taster, party + Mapér badges) are server-derived and stay
-    // locked until a backend snapshot arrives.
-    firstBeer: stats.totalBeers >= 1,
-    firstTen: stats.totalBeers >= 10,
-    century: stats.totalBeers >= 100,
-    regular: stats.maxVisitsToOnePub >= 5,
-    stamgast: stats.maxVisitsToOnePub >= 10,
-    pilgrim: stats.distinctPubs >= 25,
-    reviewer: totalRatings >= 10,
-  };
   const mapper = profile?.mapper;
   const walkedM = isSignedIn ? profile?.usage?.walkedDistanceM ?? null : null;
   const recent = useMemo(() => sessions.slice(0, 3), [sessions]);
@@ -628,6 +523,7 @@ export default function ProfileScreen() {
                 </Text>
               </Pressable>
             </View>
+
           </>
         ) : (
           /* ── Signed-out hero ── */
@@ -649,6 +545,34 @@ export default function ProfileScreen() {
             </View>
           </View>
         )}
+
+        <View style={styles.creatorCard}>
+          <View style={styles.creatorCopy}>
+            <Text style={styles.creatorEyebrow}>{cs.profile.creator.header}</Text>
+            <Text style={styles.creatorTitle}>{cs.profile.creator.title}</Text>
+            <Text style={styles.creatorBody}>{cs.profile.creator.subtitle}</Text>
+          </View>
+          <View style={styles.creatorLinks}>
+            <Pressable
+              onPress={() => void Linking.openURL(cs.profile.creator.instagramUrl)}
+              style={({ pressed }) => [styles.creatorLink, pressed && styles.pressed]}
+              accessibilityRole="link"
+              accessibilityLabel={cs.profile.creator.instagram}
+            >
+              <InstagramIcon size={18} color={Colors.foam} />
+              <Text style={styles.creatorLinkText}>{cs.profile.creator.instagram}</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => void Linking.openURL(cs.profile.creator.linkedinUrl)}
+              style={({ pressed }) => [styles.creatorLink, pressed && styles.pressed]}
+              accessibilityRole="link"
+              accessibilityLabel={cs.profile.creator.linkedin}
+            >
+              <LinkedinIcon size={18} color={Colors.foam} />
+              <Text style={styles.creatorLinkText}>{cs.profile.creator.linkedin}</Text>
+            </Pressable>
+          </View>
+        </View>
 
         {/* ── Stats (always visible — local-first) ── */}
         <Text style={styles.sectionHeader}>{cs.profile.statsHeader}</Text>
@@ -709,9 +633,23 @@ export default function ProfileScreen() {
           <MapperEmptySection signedIn={isSignedIn} />
         )}
 
-        {/* ── Achievements ── */}
-        <Text style={styles.sectionHeader}>{cs.profile.achievementsHeader}</Text>
-        <BadgeGrid mapper={mapper} achievements={achievements} />
+        {/* ── Achievements are a destination, not a wall in the profile feed. */}
+        <Pressable
+          onPress={() => router.push('/profile/badges' as Href)}
+          style={({ pressed }) => [styles.achievementCard, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel={cs.profile.badgeCollectionTitle}
+        >
+          <View style={styles.achievementIconWell}>
+            <TrophyIcon size={22} color={Colors.amber} />
+          </View>
+          <View style={styles.achievementText}>
+            <Text style={styles.achievementEyebrow}>{cs.profile.achievementsHeader}</Text>
+            <Text style={styles.achievementTitle}>{cs.profile.badgeCollectionTitle}</Text>
+            <Text style={styles.achievementSubtitle}>{cs.profile.badgeCollectionCta}</Text>
+          </View>
+          <ChevronRightIcon size={18} color={Colors.mutedText} />
+        </Pressable>
 
         {/* ── Pivní fotky (photo diary strip + capture flow) ── */}
         <PhotoDiarySection />
@@ -855,6 +793,38 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.amber,
   },
+
+  creatorCard: {
+    gap: Spacing.md,
+    backgroundColor: Colors.stout3,
+    borderRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.3),
+    padding: Spacing.lg,
+  },
+  creatorCopy: { gap: 3 },
+  creatorEyebrow: {
+    fontFamily: Fonts.ui.bold,
+    fontSize: 10,
+    letterSpacing: 1.3,
+    color: Colors.amber,
+  },
+  creatorTitle: { fontFamily: Fonts.display.extrabold, fontSize: 20, color: Colors.foam },
+  creatorBody: { fontFamily: Fonts.ui.regular, fontSize: 13, lineHeight: 18, color: Colors.foamMuted },
+  creatorLinks: { flexDirection: 'row', gap: Spacing.sm },
+  creatorLink: {
+    flex: 1,
+    minHeight: 42,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 7,
+    borderRadius: Radius.medium,
+    backgroundColor: Colors.stout2,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  creatorLinkText: { fontFamily: Fonts.ui.semibold, fontSize: 13, color: Colors.foam },
 
   editPill: {
     flexDirection: 'row',
@@ -1146,59 +1116,22 @@ const styles = StyleSheet.create({
     color: Colors.mutedText,
   },
 
-  // ── Achievements ──
-  badgeRow: {
+  achievementCard: {
     flexDirection: 'row',
-    gap: Spacing.sm + 2,
-  },
-  badgeSpacer: {
-    flex: 1,
-  },
-  badge: {
-    flex: 1,
     alignItems: 'center',
-    gap: 6,
+    gap: Spacing.md,
+    marginTop: Spacing.sm,
     backgroundColor: Colors.stout2,
-    borderRadius: Radius.card,
+    borderRadius: Radius.cardLarge,
     borderWidth: 1,
-    borderColor: Colors.border,
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.sm,
+    borderColor: withAlpha(Colors.amber, 0.35),
+    padding: Spacing.md,
   },
-  medallion: {
-    width: 52,
-    height: 52,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 2,
-  },
-  medallionOn: {
-    backgroundColor: withAlpha(Colors.amber, 0.18),
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.5),
-  },
-  medallionOff: {
-    backgroundColor: Colors.stout3,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  badgeTitle: {
-    fontFamily: Fonts.display.bold,
-    fontSize: 13,
-    color: Colors.foam,
-    textAlign: 'center',
-  },
-  badgeTitleLocked: {
-    color: Colors.mutedText,
-  },
-  badgeSubtitle: {
-    fontFamily: Fonts.ui.regular,
-    fontSize: 11,
-    lineHeight: 15,
-    color: Colors.mutedText,
-    textAlign: 'center',
-  },
+  achievementIconWell: { width: 48, height: 48, borderRadius: 15, backgroundColor: withAlpha(Colors.amber, 0.14), alignItems: 'center', justifyContent: 'center' },
+  achievementText: { flex: 1, gap: 2 },
+  achievementEyebrow: { fontFamily: Fonts.ui.bold, fontSize: 10, letterSpacing: 1.2, color: Colors.amber },
+  achievementTitle: { fontFamily: Fonts.display.bold, fontSize: 17, color: Colors.foam },
+  achievementSubtitle: { fontFamily: Fonts.ui.regular, fontSize: 12, color: Colors.mutedText },
 
   // ── List cards (recent + nav) ──
   listCard: {

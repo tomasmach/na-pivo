@@ -1319,6 +1319,18 @@ export const cs = {
 
     // — Achievements —
     achievementsHeader: 'ODZNAKY',
+    badgeCollectionTitle: 'Tvoje vitrína',
+    badgeCollectionCta: 'Mrkni na všechny odznaky a výzvy',
+    badgeCollectionIntro: 'Každý odznak je malá hospodská historka. Ty získané svítí, na další máš nápovědu.',
+    creator: {
+      header: 'ZŮSTAŇ V OBRAZE',
+      title: 'Na pivo i mimo appku',
+      subtitle: 'Novinky, zákulisí a občasný pivní výlet najdeš tady.',
+      instagram: 'Instagram',
+      instagramUrl: 'https://www.instagram.com/jsem_mach/',
+      linkedin: 'LinkedIn',
+      linkedinUrl: 'https://www.linkedin.com/in/mach-tomas/',
+    },
     badgeFirstTenTitle: 'Prvních 10 piv',
     badgeFirstTenLocked: 'Napočítej 10 piv',
     badgeRegularTitle: 'Stálý host',
