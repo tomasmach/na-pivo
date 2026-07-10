@@ -52,6 +52,8 @@ export function buildVisitEntry(session: TallySession, updatedAt?: string): Visi
     name: session.pubName,
     lat,
     lng,
+    ...(session.pubCity ? { city: session.pubCity } : {}),
+    ...(session.pubExternalId ? { external_id: session.pubExternalId } : {}),
     started_at: session.startedAt,
     ended_at: endedAt,
     updated_at: updatedAt ?? endedAt ?? session.startedAt,

@@ -86,6 +86,13 @@ describe('buildVisitEntry', () => {
   it('carries the session clientId as the idempotency key', () => {
     expect(buildVisitEntry(session({ clientId: 'abc' }))?.client_id).toBe('abc');
   });
+
+  it('carries confirmed pub city and external id additively', () => {
+    const entry = buildVisitEntry(
+      session({ pubCity: 'Praha', pubExternalId: 'mapy:pub-1' }),
+    );
+    expect(entry).toEqual(expect.objectContaining({ city: 'Praha', external_id: 'mapy:pub-1' }));
+  });
 });
 
 describe('syncVisit', () => {

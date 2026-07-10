@@ -142,6 +142,7 @@ export interface UseCompassResult {
 export function useCompass(
   beerBrandKey: string | null = null,
   amenityKeys: readonly string[] = [],
+  sensorsEnabled: boolean = true,
 ): UseCompassResult {
   // — Settings from store —
   const mode = useSettingsStore((s) => s.mode);
@@ -182,8 +183,12 @@ export function useCompass(
   );
 
   // — Position / heading —
-  const { position } = useDevicePosition(focused && permissionState === 'granted');
-  const { smoothedHeading, accuracyDeg, hasMagnetometer } = useDeviceHeading(focused);
+  const { position } = useDevicePosition(
+    focused && sensorsEnabled && permissionState === 'granted',
+  );
+  const { smoothedHeading, accuracyDeg, hasMagnetometer } = useDeviceHeading(
+    focused && sensorsEnabled,
+  );
   const positionLat = position?.lat;
   const positionLng = position?.lng;
 

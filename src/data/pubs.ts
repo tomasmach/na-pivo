@@ -556,6 +556,31 @@ export function isLoaded(): boolean {
   return _loaded;
 }
 
+/**
+ * Hydrate the last public nearby-pubs snapshot without requiring a fresh GPS
+ * fix. The map uses this to remain useful when location permission is off or
+ * the device is offline. No fetch center is exposed to callers.
+ */
+export async function hydratePubsSnapshot(): Promise<boolean> {
+  if (_loaded) return true;
+  // A prior GPS fetch may have inspected the snapshot but rejected it because
+  // its saved area did not cover the current fix. The map-without-location path
+  // can still use that last area, so intentionally read it again here.
+  _hydrationAttempted = true;
+  const snapshot = await loadSnapshot();
+  if (!snapshot) return false;
+  replaceBasePubs(snapshot.pubs);
+  _lastFetchCenter = { lat: snapshot.centerLat, lng: snapshot.centerLng };
+  _lastFetchRadiusKm = snapshot.radiusKm;
+  _lastFetchBeerBrandKey = "";
+  return true;
+}
+
+/** A defensive copy of every pub currently held by the spatial index. */
+export function getAllLoadedPubs(): Pub[] {
+  return _pubs.slice();
+}
+
 /** Builds an index predicate excluding pubs by id and/or geohash-8 cell. The
  *  cell match hides a reported place even when a later Mapy.cz fetch returns
  *  it under a fresh provider id (the ids are coordinate-derived and unstable). */

@@ -65,6 +65,10 @@ import {
   SquareParking,
   MapPinned,
   MapPinPlus,
+  Map,
+  List,
+  LocateFixed,
+  SlidersHorizontal,
   Sprout,
   ClipboardList,
   Flame,
@@ -171,6 +175,10 @@ export const TvIcon = wrap(Tv, 'TvIcon');
 export const SquareParkingIcon = wrap(SquareParking, 'SquareParkingIcon');
 export const MapPinnedIcon = wrap(MapPinned, 'MapPinnedIcon');
 export const MapPinPlusIcon = wrap(MapPinPlus, 'MapPinPlusIcon');
+export const MapIcon = wrap(Map, 'MapIcon');
+export const ListIcon = wrap(List, 'ListIcon');
+export const LocateFixedIcon = wrap(LocateFixed, 'LocateFixedIcon');
+export const SlidersHorizontalIcon = wrap(SlidersHorizontal, 'SlidersHorizontalIcon');
 export const SproutIcon = wrap(Sprout, 'SproutIcon');
 export const ClipboardListIcon = wrap(ClipboardList, 'ClipboardListIcon');
 // Parta 2.0 — streak flame + leaderboard trophy.

@@ -24,6 +24,53 @@ export const cs = {
     ok: 'OK',
   },
 
+  map: {
+    compass: 'Kompas',
+    map: 'Mapa',
+    layerAll: 'V okolí',
+    layerVisited: 'Moje stopy',
+    layerFriends: 'Parta teď',
+    onlyOpen: 'Schovat zavřené',
+    beerTrail: 'Tvoje pivní stopa',
+    zoomForPubs: 'Přibliž město a ukážu ti podniky v jeho okolí.',
+    nearbyCount: (all: number, visited: number) =>
+      `Ve výřezu ${czechPlural(all, {
+        one: '1 podnik',
+        few: `${all} podniky`,
+        many: `${all} podniků`,
+      })} · ${visited} už znáš`,
+    liveCount: (count: number) =>
+      czechPlural(
+        count,
+        {
+          one: 'Parta je teď v jedné hospodě',
+          few: `Parta je teď ve ${count} hospodách`,
+          many:
+            count === 0
+              ? 'Z party teď nikdo nesedí v hospodě'
+              : `Parta je teď v ${count} hospodách`,
+        },
+      ),
+    citySummary: (visits: number, pubs: number) =>
+      `${visits} večerů · ${pubs} ${pubs === 1 ? 'hospoda' : pubs < 5 ? 'hospody' : 'hospod'}`,
+    showMyPubs: 'Ukázat moje hospody',
+    liveNow: 'TEĎ NA PIVU',
+    friendFallback: 'Kamarád',
+    friendIsHere: (name: string) => `${name} je tady teď`,
+    friendsAreHere: (name: string, others: number) => `${name} a ${others} další jsou tady`,
+    aimCompass: 'Namířit kompas',
+    pubFallback: 'Podnik v pivní mapě',
+    visitedSummary: (count: number, date: string) => `Byl jsi tu ${count}× · naposledy ${date}`,
+    notVisited: 'Tady ještě nemáš čárku.',
+    visited: 'Navštíveno',
+    pubDetail: 'Detail hospody',
+    offline: 'Mapa drží poslední data. Parta se ozve, až chytíš signál.',
+    permissionHint: 'Rozhlížet se můžeš i bez polohy. Klepni a najdu tě.',
+    openWithoutLocation: 'Otevřít mapu bez polohy',
+    listTitle: 'Podniky na mapě',
+    emptyList: 'V tomhle filtru zatím nic není.',
+  },
+
   // — "Zmapuj hospodu" (community pub amenities + Mapér) —
   mapPub: {
     // Trigger (MapPubButton)
@@ -1540,6 +1587,18 @@ export const cs = {
     clearPubFilters: 'Zrušit všechny filtry hospod',
     applyPubFilters: 'Použít vybrané filtry hospod',
     togglePubAmenityFilter: (name: string) => `Filtrovat podle vlastnosti ${name}`,
+    beerMap: 'Pivní mapa hospod, navštívených míst a kamarádů',
+    mapSwitchCompass: 'Přepnout na kompas',
+    mapSwitchMap: 'Mapa je vybraná',
+    openBeerMap: 'Otevřít pivní mapu',
+    mapLocate: 'Najít mě na mapě',
+    mapList: 'Zobrazit podniky jako seznam',
+    mapRefresh: 'Obnovit podniky a partu',
+    mapPub: (name: string, visits: number) =>
+      visits > 0 ? `${name}, navštíveno ${visits}krát` : `${name}, zatím nenavštíveno`,
+    mapLive: (friend: string, pub: string) => `${friend} je teď v hospodě ${pub}`,
+    mapCity: (city: string, visits: number) => `${city}, ${visits} pivních večerů. Přiblížit`,
+    mapCluster: (count: number) => `${count} podniků. Přiblížit`,
 
     // — "Zmapuj hospodu" / Mapér —
     // `into`/`next` are the into-level XP numbers shown on the visible bar so the

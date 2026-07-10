@@ -512,12 +512,22 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
       if (backdateToPast) {
         // Files into a past evening, leaving the live session untouched.
         landedSession = addBackdatedDrink(
-          { pubKey: cell, pubName: pub.name },
+          {
+            pubKey: cell,
+            pubName: pub.name,
+            pubCity: pub.city,
+            pubExternalId: pub.id,
+          },
           { id, beerName: beer.name, drinkType, priceCzk: beer.priceCzk, volumeMl: beer.volumeMl, at },
         );
       } else {
         addDrink(
-          { pubKey: cell, pubName: pub.name },
+          {
+            pubKey: cell,
+            pubName: pub.name,
+            pubCity: pub.city,
+            pubExternalId: pub.id,
+          },
           { id, beerName: beer.name, drinkType, priceCzk: beer.priceCzk, volumeMl: beer.volumeMl, at },
         );
         landedSession = useTallyStore.getState().current;

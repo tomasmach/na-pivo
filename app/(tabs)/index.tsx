@@ -65,6 +65,7 @@ import {
   PencilIcon,
   StarIcon,
   MapPinIcon,
+  MapIcon,
   TreePineIcon,
   UsersIcon,
   ChevronLeftIcon,
@@ -75,6 +76,7 @@ import { MapPubSheet } from '@/components/amenities/MapPubSheet';
 import { pubInfoFromPub, type PubInfoContext } from '@/components/amenities/pubInfoContext';
 import { geohash8 } from '@/data/geohash';
 import { useToastStore } from '@/stores/toastStore';
+import BeerMapScreen from '@/map/BeerMapScreen';
 
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -340,9 +342,10 @@ function ReportActionButton({
 interface PermissionScreenProps {
   permissionState: 'denied' | 'undetermined';
   requestPermission: () => Promise<void>;
+  onShowMap: () => void;
 }
 
-function PermissionScreen({ permissionState, requestPermission }: PermissionScreenProps) {
+function PermissionScreen({ permissionState, requestPermission, onShowMap }: PermissionScreenProps) {
   const insets = useSafeAreaInsets();
   return (
     <View style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
@@ -378,6 +381,16 @@ function PermissionScreen({ permissionState, requestPermission }: PermissionScre
             />
           </View>
         )}
+
+        <Pressable
+          onPress={onShowMap}
+          style={({ pressed }) => [styles.permissionMapButton, pressed && { opacity: 0.72 }]}
+          accessibilityRole="button"
+          accessibilityLabel={cs.map.openWithoutLocation}
+        >
+          <MapIcon size={18} color={Colors.amber} />
+          <Text style={styles.permissionMapText}>{cs.map.openWithoutLocation}</Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -974,6 +987,32 @@ function PubFilterButton({ count, onOpen, onClear }: PubFilterButtonProps) {
   );
 }
 
+function HeaderMapTools({
+  count,
+  onOpenFilter,
+  onClearFilter,
+  onShowMap,
+}: {
+  count: number;
+  onOpenFilter: () => void;
+  onClearFilter: () => void;
+  onShowMap: () => void;
+}) {
+  return (
+    <View style={styles.headerMapTools}>
+      <Pressable
+        onPress={onShowMap}
+        style={({ pressed }) => [styles.headerMapButton, pressed && { opacity: 0.7 }]}
+        accessibilityRole="button"
+        accessibilityLabel={cs.a11y.openBeerMap}
+      >
+        <MapIcon size={17} color={Colors.amber} />
+      </Pressable>
+      <PubFilterButton count={count} onOpen={onOpenFilter} onClear={onClearFilter} />
+    </View>
+  );
+}
+
 // ─── Distance display ─────────────────────────────────────────────────────────
 
 interface DistanceDisplayProps {
@@ -1053,6 +1092,7 @@ interface FocusedCompassViewProps {
   distanceFormatted: string | null;
   compassSize: number;
   onBack: () => void;
+  onShowMap: () => void;
 }
 
 /**
@@ -1066,6 +1106,7 @@ function FocusedCompassView({
   distanceFormatted,
   compassSize,
   onBack,
+  onShowMap,
 }: FocusedCompassViewProps) {
   const insets = useSafeAreaInsets();
   return (
@@ -1086,7 +1127,15 @@ function FocusedCompassView({
             {cs.friends.friendCompassKicker}
           </Text>
         </View>
-        <View style={styles.focusBackButton} />
+        <Pressable
+          onPress={onShowMap}
+          hitSlop={8}
+          style={({ pressed }) => [styles.focusBackButton, pressed && { opacity: 0.7 }]}
+          accessibilityRole="button"
+          accessibilityLabel={cs.a11y.openBeerMap}
+        >
+          <MapIcon size={20} color={Colors.amber} />
+        </Pressable>
       </View>
 
       <View style={styles.focusCompassArea}>
@@ -1133,6 +1182,7 @@ export default function CompassScreen() {
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
   const [renameSubmitting, setRenameSubmitting] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
   const showToast = useToastStore((s) => s.show);
 
   const {
@@ -1159,7 +1209,7 @@ export default function CompassScreen() {
     currentPosition,
     focusedPub,
     clearFocusedPub,
-  } = useCompass(pubFilters.beerBrand?.key ?? null, pubFilters.amenityKeys);
+  } = useCompass(pubFilters.beerBrand?.key ?? null, pubFilters.amenityKeys, !mapOpen);
   const activeFilterCount = activePubSearchFilterCount(pubFilters);
   const hidePubNames = useSettingsStore((s) => s.hidePubNames);
   const showPubDetails = !hidePubNames || revealed;
@@ -1239,6 +1289,8 @@ export default function CompassScreen() {
     () => setPubFilters({ beerBrand: null, amenityKeys: [] }),
     [],
   );
+  const handleShowMap = useCallback(() => setMapOpen(true), []);
+  const handleShowCompass = useCallback(() => setMapOpen(false), []);
 
   const handleAddPub = useCallback(() => {
     router.push({
@@ -1320,12 +1372,17 @@ export default function CompassScreen() {
     setReportOpen(true);
   }, [pub]);
 
+  if (mapOpen) {
+    return <BeerMapScreen initialPub={pub} onShowCompass={handleShowCompass} />;
+  }
+
   // ── State A: permission not granted ──────────────────────────────────────
   if (permissionState === 'denied' || permissionState === 'undetermined') {
     return (
       <PermissionScreen
         permissionState={permissionState}
         requestPermission={requestPermission}
+        onShowMap={handleShowMap}
       />
     );
   }
@@ -1346,6 +1403,7 @@ export default function CompassScreen() {
         distanceFormatted={distanceFormatted}
         compassSize={activeLayout.compassSize}
         onBack={clearFocusedPub}
+        onShowMap={handleShowMap}
       />
     );
   }
@@ -1358,10 +1416,11 @@ export default function CompassScreen() {
           align="left"
           showGear={false}
           filterSlot={
-            <PubFilterButton
+            <HeaderMapTools
               count={activeFilterCount}
-              onOpen={handleOpenFilter}
-              onClear={handleClearFilter}
+              onOpenFilter={handleOpenFilter}
+              onClearFilter={handleClearFilter}
+              onShowMap={handleShowMap}
             />
           }
         />
@@ -1400,10 +1459,11 @@ export default function CompassScreen() {
         showGear={false}
         onLogoLongPress={handleDevArrival}
         filterSlot={
-          <PubFilterButton
+          <HeaderMapTools
             count={activeFilterCount}
-            onOpen={handleOpenFilter}
-            onClear={handleClearFilter}
+            onOpenFilter={handleOpenFilter}
+            onClearFilter={handleClearFilter}
+            onShowMap={handleShowMap}
           />
         }
       />
@@ -1757,6 +1817,19 @@ const styles = StyleSheet.create({
     width: '100%',
     marginTop: -8,
   },
+  permissionMapButton: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+  },
+  permissionMapText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 14,
+    color: Colors.foamMuted,
+  },
 
   // ── Loading ──
   loadingCompassWrap: {
@@ -1784,6 +1857,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
     backgroundColor: Colors.stout2,
+  },
+  headerMapTools: {
+    maxWidth: 238,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 7,
+  },
+  headerMapButton: {
+    width: HitArea.min,
+    height: HitArea.min,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.34),
+    backgroundColor: withAlpha(Colors.amber, 0.1),
   },
   filterButtonActive: {
     borderColor: Colors.amber,

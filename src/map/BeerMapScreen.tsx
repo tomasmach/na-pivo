@@ -1,0 +1,1103 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  AccessibilityInfo,
+  FlatList,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import MapView, { Marker, type MapPressEvent, type Region } from 'react-native-maps';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { FadeInDown } from 'react-native-reanimated';
+
+import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
+import { MapPubSheet } from '@/components/amenities/MapPubSheet';
+import {
+  BeerIcon,
+  ChevronRightIcon,
+  CompassIcon,
+  ListIcon,
+  LocateFixedIcon,
+  MapIcon,
+  MapPinnedIcon,
+  RefreshCwIcon,
+  SlidersHorizontalIcon,
+  XIcon,
+} from '@/components/shared/IconGlyph';
+import { geohash8 } from '@/data/geohash';
+import type { Pub } from '@/data/pubs';
+import type { FocusedPub } from '@/stores/focusedPubStore';
+import { useFocusedPubStore } from '@/stores/focusedPubStore';
+import { fireLightImpactHaptic } from '@/utils/haptics';
+import { useReduceMotion } from '@/utils/useReduceMotion';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { useAccountStore } from '@/stores/accountStore';
+import { Colors, withAlpha } from '@/theme/colors';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { HitArea, Radius } from '@/theme/layout';
+import { cs } from '@/i18n/cs';
+import {
+  clusterCoordinates,
+  type LivePubSummary,
+  type VisitedCitySummary,
+  type VisitedPubSummary,
+} from './mapModel';
+import { useBeerMap } from './useBeerMap';
+
+const DEFAULT_REGION: Region = {
+  latitude: 49.8175,
+  longitude: 15.473,
+  latitudeDelta: 4.7,
+  longitudeDelta: 4.2,
+};
+
+const DARK_MAP_STYLE = [
+  { elementType: 'geometry', stylers: [{ color: '#25170C' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#C9B38F' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#1F1308' }] },
+  { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#5A3A20' }] },
+  { featureType: 'landscape.natural', elementType: 'geometry', stylers: [{ color: '#2B1A0E' }] },
+  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#49301C' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#24160B' }] },
+  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#101A1B' }] },
+] as const;
+
+type Layer = 'all' | 'visited' | 'friends';
+type MapSelection =
+  | { kind: 'pub'; key: string; accountId: string | null }
+  | { kind: 'live'; key: string; accountId: string | null }
+  | { kind: 'city'; key: string; accountId: string | null };
+
+let rememberedRegion: Region | null = null;
+let rememberedLayer: Layer = 'all';
+let rememberedOpenOnly = false;
+let rememberedSelection: MapSelection | null = null;
+
+interface PubPoint {
+  key: string;
+  pub: Pub;
+  lat: number;
+  lng: number;
+  visit: VisitedPubSummary | null;
+}
+
+export interface BeerMapScreenProps {
+  initialPub?: Pub | null;
+  onShowCompass: () => void;
+}
+
+function formatShortDate(iso: string): string {
+  const date = new Date(iso);
+  if (!Number.isFinite(date.getTime())) return '';
+  return date.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric', year: 'numeric' });
+}
+
+function friendName(live: LivePubSummary): string {
+  const first = live.activities[0]?.account;
+  return first?.displayName?.trim() || first?.nickname?.trim() || cs.map.friendFallback;
+}
+
+function ExploreSwitch({ onShowCompass }: { onShowCompass: () => void }) {
+  return (
+    <View style={styles.exploreSwitch} accessibilityRole="tablist">
+      <Pressable
+        onPress={onShowCompass}
+        style={({ pressed }) => [styles.exploreSegment, pressed && styles.pressed]}
+        accessibilityRole="tab"
+        accessibilityState={{ selected: false }}
+        accessibilityLabel={cs.a11y.mapSwitchCompass}
+      >
+        <CompassIcon size={16} color={Colors.foamMuted} />
+        <Text style={styles.exploreSegmentText}>{cs.map.compass}</Text>
+      </Pressable>
+      <View
+        style={[styles.exploreSegment, styles.exploreSegmentActive]}
+        accessibilityRole="tab"
+        accessibilityState={{ selected: true }}
+        accessibilityLabel={cs.a11y.mapSwitchMap}
+      >
+        <MapIcon size={16} color={Colors.stout} />
+        <Text style={styles.exploreSegmentTextActive}>{cs.map.map}</Text>
+      </View>
+    </View>
+  );
+}
+
+function LayerButton({
+  active,
+  label,
+  onPress,
+}: {
+  active: boolean;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.layerButton,
+        active && styles.layerButtonActive,
+        pressed && styles.pressed,
+      ]}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={label}
+    >
+      <Text style={[styles.layerButtonText, active && styles.layerButtonTextActive]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function PubMarker({ visited, selected }: { visited: boolean; selected: boolean }) {
+  return (
+    <View style={[styles.pinHit, selected && styles.pinHitSelected]}>
+      <View style={[styles.pubPin, visited && styles.pubPinVisited, selected && styles.pubPinSelected]}>
+        <BeerIcon size={selected ? 18 : 15} color={visited ? Colors.stout : Colors.foam} />
+      </View>
+      {visited ? <View style={styles.visitedNotch} /> : null}
+    </View>
+  );
+}
+
+function ClusterMarker({ count, visited }: { count: number; visited: boolean }) {
+  return (
+    <View style={[styles.clusterPin, visited && styles.clusterPinVisited]}>
+      <Text style={[styles.clusterText, visited && styles.clusterTextVisited]}>{count}</Text>
+    </View>
+  );
+}
+
+function LiveMarker({ live, selected }: { live: LivePubSummary; selected: boolean }) {
+  return (
+    <View style={[styles.livePin, selected && styles.livePinSelected]}>
+      <Text style={styles.liveInitial}>{friendName(live).charAt(0).toLocaleUpperCase('cs-CZ')}</Text>
+      <View style={styles.liveCount}>
+        <Text style={styles.liveCountText}>{live.activities.length}</Text>
+      </View>
+    </View>
+  );
+}
+
+export default function BeerMapScreen({ initialPub, onShowCompass }: BeerMapScreenProps) {
+  const insets = useSafeAreaInsets();
+  const mapRef = useRef<MapView>(null);
+  const reduceMotion = useReduceMotion();
+  const hapticEnabled = useSettingsStore((state) => state.hapticEnabled);
+  const accountId = useAccountStore((state) => state.session?.accountId ?? null);
+  const {
+    pubs,
+    visitedPubs,
+    visitedCities,
+    livePubs,
+    position,
+    permissionState,
+    loadingPubs,
+    stale,
+    requestPermission,
+    loadRegion,
+    refresh,
+  } = useBeerMap();
+  const initialRegion = useMemo<Region>(
+    () =>
+      rememberedRegion ?? (initialPub
+        ? {
+            latitude: initialPub.lat,
+            longitude: initialPub.lng,
+            latitudeDelta: 0.035,
+            longitudeDelta: 0.035,
+          }
+        : DEFAULT_REGION),
+    [initialPub],
+  );
+  const [region, setRegion] = useState<Region>(initialRegion);
+  const [layer, setLayer] = useState<Layer>(rememberedLayer);
+  const [openOnly, setOpenOnly] = useState(rememberedOpenOnly);
+  const [selection, setSelection] = useState<MapSelection | null>(rememberedSelection);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [listOpen, setListOpen] = useState(false);
+  const didAutoLocate = useRef(Boolean(initialPub || rememberedRegion));
+
+  useEffect(() => {
+    loadRegion(initialRegion);
+  }, [initialRegion, loadRegion]);
+
+  useEffect(() => {
+    if (!position || didAutoLocate.current) return;
+    didAutoLocate.current = true;
+    const next: Region = {
+      latitude: position.lat,
+      longitude: position.lng,
+      latitudeDelta: 0.055,
+      longitudeDelta: 0.055,
+    };
+    mapRef.current?.animateToRegion(next, reduceMotion ? 0 : 420);
+    setRegion(next);
+    rememberedRegion = next;
+    loadRegion(next);
+  }, [loadRegion, position, reduceMotion]);
+
+  const visitedByKey = useMemo(
+    () => new Map(visitedPubs.map((visit) => [visit.cacheKey, visit])),
+    [visitedPubs],
+  );
+
+  const points = useMemo(() => {
+    const byKey = new Map<string, PubPoint>();
+    for (const pub of pubs) {
+      const key = geohash8(pub.lat, pub.lng);
+      const visit = visitedByKey.get(key) ?? null;
+      if (layer === 'visited' && !visit) continue;
+      if (openOnly && pub.isOpenNow === false) continue;
+      byKey.set(key, { key, pub, lat: pub.lat, lng: pub.lng, visit });
+    }
+    for (const visit of visitedPubs) {
+      if (byKey.has(visit.cacheKey)) continue;
+      byKey.set(visit.cacheKey, {
+        key: visit.cacheKey,
+        pub: {
+          id: `visit:${visit.cacheKey}`,
+          name: visit.name,
+          lat: visit.lat,
+          lng: visit.lng,
+          ...(visit.city ? { city: visit.city } : {}),
+        },
+        lat: visit.lat,
+        lng: visit.lng,
+        visit,
+      });
+    }
+    return [...byKey.values()];
+  }, [layer, openOnly, pubs, visitedByKey, visitedPubs]);
+
+  const activeSelection =
+    selection && selection.accountId && accountId && selection.accountId !== accountId
+      ? null
+      : selection;
+  const selectedPub = useMemo(
+    () =>
+      activeSelection?.kind === 'pub'
+        ? points.find((point) => point.key === activeSelection.key) ?? null
+        : null,
+    [activeSelection, points],
+  );
+  const selectedLive = useMemo(
+    () =>
+      activeSelection?.kind === 'live'
+        ? livePubs.find((live) => live.cacheKey === activeSelection.key) ?? null
+        : null,
+    [activeSelection, livePubs],
+  );
+  const selectedCity = useMemo(
+    () =>
+      activeSelection?.kind === 'city'
+        ? visitedCities.find((city) => city.key === activeSelection.key) ?? null
+        : null,
+    [activeSelection, visitedCities],
+  );
+
+  const visiblePoints = useMemo(() => {
+    const latMargin = region.latitudeDelta * 0.65;
+    const lngMargin = region.longitudeDelta * 0.65;
+    return points.filter(
+      (point) =>
+        Math.abs(point.lat - region.latitude) <= latMargin &&
+        Math.abs(point.lng - region.longitude) <= lngMargin,
+    ).sort((a, b) => {
+      const aDistance =
+        (a.lat - region.latitude) ** 2 + (a.lng - region.longitude) ** 2;
+      const bDistance =
+        (b.lat - region.latitude) ** 2 + (b.lng - region.longitude) ** 2;
+      return aDistance - bDistance;
+    });
+  }, [points, region]);
+
+  const visibleLivePubs = useMemo(() => {
+    const latMargin = region.latitudeDelta * 0.65;
+    const lngMargin = region.longitudeDelta * 0.65;
+    return livePubs
+      .filter(
+        (live) =>
+          Math.abs(live.lat - region.latitude) <= latMargin &&
+          Math.abs(live.lng - region.longitude) <= lngMargin,
+      )
+      .sort((a, b) => {
+        const aDistance =
+          (a.lat - region.latitude) ** 2 + (a.lng - region.longitude) ** 2;
+        const bDistance =
+          (b.lat - region.latitude) ** 2 + (b.lng - region.longitude) ** 2;
+        return aDistance - bDistance;
+      });
+  }, [livePubs, region]);
+
+  const showCities = region.latitudeDelta > 0.85 && visitedCities.length > 0;
+  const clusters = useMemo(
+    () => (showCities || layer === 'friends' ? [] : clusterCoordinates(visiblePoints, region)),
+    [layer, region, showCities, visiblePoints],
+  );
+
+  const handleRegionChange = useCallback(
+    (next: Region) => {
+      setRegion(next);
+      rememberedRegion = next;
+      loadRegion(next);
+    },
+    [loadRegion],
+  );
+
+  const clearSelection = useCallback(() => {
+    rememberedSelection = null;
+    setSelection(null);
+  }, []);
+
+  const handleMapPress = useCallback(
+    (event: MapPressEvent) => {
+      if (event.nativeEvent.action !== 'marker-press') clearSelection();
+    },
+    [clearSelection],
+  );
+
+  const selectPub = useCallback(
+    (point: PubPoint) => {
+      if (hapticEnabled) fireLightImpactHaptic();
+      const next: MapSelection = { kind: 'pub', key: point.key, accountId };
+      rememberedSelection = next;
+      setSelection(next);
+      void AccessibilityInfo.announceForAccessibility(point.pub.name);
+      mapRef.current?.animateCamera(
+        { center: { latitude: point.lat - region.latitudeDelta * 0.16, longitude: point.lng } },
+        { duration: reduceMotion ? 0 : 220 },
+      );
+    },
+    [accountId, hapticEnabled, reduceMotion, region.latitudeDelta],
+  );
+
+  const selectLive = useCallback(
+    (live: LivePubSummary) => {
+      if (hapticEnabled) fireLightImpactHaptic();
+      const next: MapSelection = { kind: 'live', key: live.cacheKey, accountId };
+      rememberedSelection = next;
+      setSelection(next);
+      void AccessibilityInfo.announceForAccessibility(
+        cs.a11y.mapLive(friendName(live), live.name),
+      );
+      mapRef.current?.animateCamera(
+        { center: { latitude: live.lat - region.latitudeDelta * 0.16, longitude: live.lng } },
+        { duration: reduceMotion ? 0 : 220 },
+      );
+    },
+    [accountId, hapticEnabled, reduceMotion, region.latitudeDelta],
+  );
+
+  const selectLayer = useCallback((next: Layer) => {
+    rememberedLayer = next;
+    rememberedSelection = null;
+    setLayer(next);
+    setSelection(null);
+  }, []);
+
+  const toggleOpenOnly = useCallback(() => {
+    setOpenOnly((value) => {
+      rememberedOpenOnly = !value;
+      return !value;
+    });
+  }, []);
+
+  const aimCompass = useCallback(
+    (target: FocusedPub) => {
+      useFocusedPubStore.getState().setFocusedPub(target);
+      onShowCompass();
+    },
+    [onShowCompass],
+  );
+
+  const locate = useCallback(() => {
+    if (!position) {
+      void requestPermission();
+      return;
+    }
+    const next = {
+      latitude: position.lat,
+      longitude: position.lng,
+      latitudeDelta: 0.04,
+      longitudeDelta: 0.04,
+    };
+    mapRef.current?.animateToRegion(next, reduceMotion ? 0 : 360);
+    handleRegionChange(next);
+  }, [handleRegionChange, position, reduceMotion, requestPermission]);
+
+  const openCluster = useCallback(
+    (lat: number, lng: number) => {
+      const next = {
+        latitude: lat,
+        longitude: lng,
+        latitudeDelta: Math.max(region.latitudeDelta * 0.42, 0.018),
+        longitudeDelta: Math.max(region.longitudeDelta * 0.42, 0.018),
+      };
+      mapRef.current?.animateToRegion(next, reduceMotion ? 0 : 340);
+      handleRegionChange(next);
+    },
+    [handleRegionChange, reduceMotion, region.latitudeDelta, region.longitudeDelta],
+  );
+
+  const focusCity = useCallback(
+    (city: VisitedCitySummary) => {
+      const next = {
+        latitude: city.lat,
+        longitude: city.lng,
+        latitudeDelta: 0.22,
+        longitudeDelta: 0.22,
+      };
+      clearSelection();
+      mapRef.current?.animateToRegion(next, reduceMotion ? 0 : 360);
+      handleRegionChange(next);
+    },
+    [clearSelection, handleRegionChange, reduceMotion],
+  );
+
+  const layerDescription =
+    region.latitudeDelta > 1.5 && layer !== 'friends'
+      ? cs.map.zoomForPubs
+      : layer === 'friends'
+      ? cs.map.liveCount(visibleLivePubs.length)
+      : cs.map.nearbyCount(visiblePoints.length, visiblePoints.filter((point) => point.visit).length);
+
+  return (
+    <View style={styles.root}>
+      <MapView
+        ref={mapRef}
+        style={StyleSheet.absoluteFill}
+        initialRegion={initialRegion}
+        onRegionChangeComplete={handleRegionChange}
+        onPress={handleMapPress}
+        mapType={Platform.OS === 'ios' ? 'mutedStandard' : 'standard'}
+        customMapStyle={DARK_MAP_STYLE as unknown as []}
+        userInterfaceStyle="dark"
+        showsUserLocation={permissionState === 'granted'}
+        showsMyLocationButton={false}
+        showsCompass={false}
+        showsPointsOfInterests={false}
+        toolbarEnabled={false}
+        loadingBackgroundColor={Colors.stout}
+        loadingIndicatorColor={Colors.amber}
+        accessibilityLabel={cs.a11y.beerMap}
+      >
+        {showCities && layer !== 'friends'
+          ? visitedCities.map((city) => (
+              <Marker
+                key={`city:${city.key}`}
+                stopPropagation
+                coordinate={{ latitude: city.lat, longitude: city.lng }}
+                onPress={() => {
+                  const next: MapSelection = { kind: 'city', key: city.key, accountId };
+                  rememberedSelection = next;
+                  setSelection(next);
+                  void AccessibilityInfo.announceForAccessibility(
+                    cs.a11y.mapCity(city.name, city.visitCount),
+                  );
+                }}
+                accessibilityLabel={cs.a11y.mapCity(city.name, city.visitCount)}
+              >
+                <View style={styles.cityMarker}>
+                  <MapPinnedIcon size={17} color={Colors.stout} />
+                  <Text style={styles.cityMarkerText} numberOfLines={1}>{city.name}</Text>
+                  <Text style={styles.cityMarkerCount}>{city.visitCount}</Text>
+                </View>
+              </Marker>
+            ))
+          : null}
+
+        {clusters.map((cluster) => {
+          if (cluster.items.length === 1) {
+            const point = cluster.items[0];
+            const selected = selectedPub?.key === point.key;
+            return (
+              <Marker
+                key={`${point.key}:${point.visit?.visitCount ?? 0}:${selected ? 'selected' : 'idle'}`}
+                stopPropagation
+                coordinate={{ latitude: point.lat, longitude: point.lng }}
+                onPress={() => selectPub(point)}
+                tracksViewChanges={false}
+                accessibilityLabel={cs.a11y.mapPub(
+                  point.pub.name,
+                  point.visit?.visitCount ?? 0,
+                )}
+              >
+                <PubMarker visited={Boolean(point.visit)} selected={selected} />
+              </Marker>
+            );
+          }
+          return (
+            <Marker
+              key={`cluster:${cluster.id}:${cluster.items.length}`}
+              stopPropagation
+              coordinate={{ latitude: cluster.lat, longitude: cluster.lng }}
+              onPress={() => openCluster(cluster.lat, cluster.lng)}
+              tracksViewChanges={false}
+              accessibilityLabel={cs.a11y.mapCluster(cluster.items.length)}
+            >
+              <ClusterMarker
+                count={cluster.items.length}
+                visited={cluster.items.some((item) => item.visit != null)}
+              />
+            </Marker>
+          );
+        })}
+
+        {layer !== 'visited' ? livePubs.map((live) => (
+          <Marker
+            key={`live:${live.cacheKey}:${selectedLive?.cacheKey === live.cacheKey ? 'selected' : 'idle'}`}
+            stopPropagation
+            coordinate={{ latitude: live.lat, longitude: live.lng }}
+            onPress={() => selectLive(live)}
+            zIndex={10}
+            accessibilityLabel={cs.a11y.mapLive(friendName(live), live.name)}
+          >
+            <LiveMarker live={live} selected={selectedLive?.cacheKey === live.cacheKey} />
+          </Marker>
+        )) : null}
+      </MapView>
+
+      <View style={[styles.topChrome, { paddingTop: insets.top + 8 }]} pointerEvents="box-none">
+        <ExploreSwitch onShowCompass={onShowCompass} />
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.layerRow}
+        >
+          <LayerButton active={layer === 'all'} label={cs.map.layerAll} onPress={() => selectLayer('all')} />
+          <LayerButton
+            active={layer === 'visited'}
+            label={cs.map.layerVisited}
+            onPress={() => selectLayer('visited')}
+          />
+          <LayerButton
+            active={layer === 'friends'}
+            label={cs.map.layerFriends}
+            onPress={() => selectLayer('friends')}
+          />
+          <Pressable
+            onPress={toggleOpenOnly}
+            disabled={layer === 'friends'}
+            style={({ pressed }) => [
+              styles.filterIconButton,
+              openOnly && styles.filterIconButtonActive,
+              layer === 'friends' && styles.disabled,
+              pressed && styles.pressed,
+            ]}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: openOnly, disabled: layer === 'friends' }}
+            accessibilityLabel={cs.map.onlyOpen}
+          >
+            <SlidersHorizontalIcon size={17} color={openOnly ? Colors.stout : Colors.foamMuted} />
+            <Text style={[styles.layerButtonText, openOnly && styles.layerButtonTextActive]}>
+              {cs.map.onlyOpen}
+            </Text>
+          </Pressable>
+        </ScrollView>
+      </View>
+
+      {!selectedPub && !selectedLive && !selectedCity ? <View style={styles.mapRail}>
+        <Pressable
+          onPress={locate}
+          style={({ pressed }) => [styles.railButton, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel={cs.a11y.mapLocate}
+        >
+          <LocateFixedIcon size={20} color={position ? Colors.amber : Colors.foamMuted} />
+        </Pressable>
+        <Pressable
+          onPress={() => setListOpen(true)}
+          style={({ pressed }) => [styles.railButton, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel={cs.a11y.mapList}
+        >
+          <ListIcon size={20} color={Colors.foamMuted} />
+        </Pressable>
+        <Pressable
+          onPress={refresh}
+          style={({ pressed }) => [styles.railButton, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel={cs.a11y.mapRefresh}
+        >
+          <RefreshCwIcon size={19} color={loadingPubs ? Colors.amber : Colors.foamMuted} />
+        </Pressable>
+      </View> : null}
+
+      <Animated.View
+        key={`dock:${selectedPub?.key ?? selectedLive?.cacheKey ?? selectedCity?.key ?? 'overview'}`}
+        entering={reduceMotion ? undefined : FadeInDown.duration(220).springify().damping(19)}
+        style={[styles.bottomDock, { paddingBottom: Math.max(insets.bottom, 12) }]}
+      >
+        {stale ? <Text style={styles.offlineText} numberOfLines={2}>{cs.map.offline}</Text> : null}
+
+        {selectedCity ? (
+          <ScrollView style={styles.dockScroll} contentContainerStyle={styles.dockContent} showsVerticalScrollIndicator={false}>
+            <Text style={styles.dockTitle} maxFontSizeMultiplier={FontScaleCap.heading}>{selectedCity.name}</Text>
+            <Text style={styles.dockBody} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.map.citySummary(selectedCity.visitCount, selectedCity.pubCount)}
+            </Text>
+            <Pressable
+              onPress={() => focusCity(selectedCity)}
+              style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
+              accessibilityRole="button"
+            >
+              <Text style={styles.primaryButtonText} maxFontSizeMultiplier={FontScaleCap.heading}>{cs.map.showMyPubs}</Text>
+            </Pressable>
+          </ScrollView>
+        ) : selectedLive ? (
+          <ScrollView style={styles.dockScroll} contentContainerStyle={styles.dockContent} showsVerticalScrollIndicator={false}>
+            <View style={styles.liveEyebrow}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveEyebrowText}>{cs.map.liveNow}</Text>
+            </View>
+            <Text style={styles.dockTitle} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.heading}>{selectedLive.name}</Text>
+            <Text style={styles.dockBody} maxFontSizeMultiplier={FontScaleCap.body}>
+              {selectedLive.activities.length === 1
+                ? cs.map.friendIsHere(friendName(selectedLive))
+                : cs.map.friendsAreHere(friendName(selectedLive), selectedLive.activities.length - 1)}
+            </Text>
+            <Pressable
+              onPress={() =>
+                aimCompass({
+                  lat: selectedLive.lat,
+                  lng: selectedLive.lng,
+                  name: selectedLive.name,
+                  cacheKey: selectedLive.cacheKey,
+                })
+              }
+              style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
+              accessibilityRole="button"
+            >
+              <CompassIcon size={18} color={Colors.stout} />
+              <Text style={styles.primaryButtonText} maxFontSizeMultiplier={FontScaleCap.heading}>{cs.map.aimCompass}</Text>
+            </Pressable>
+          </ScrollView>
+        ) : selectedPub ? (
+          <ScrollView style={styles.dockScroll} contentContainerStyle={styles.dockContent} showsVerticalScrollIndicator={false}>
+            <Text style={styles.dockTitle} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.heading}>{selectedPub.pub.name}</Text>
+            <Text style={styles.dockBody} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
+              {[selectedPub.pub.city, selectedPub.pub.address].filter(Boolean).join(' · ') || cs.map.pubFallback}
+            </Text>
+            <Text style={selectedPub.visit ? styles.visitedLine : styles.unvisitedLine} maxFontSizeMultiplier={FontScaleCap.body}>
+              {selectedPub.visit
+                ? cs.map.visitedSummary(
+                    selectedPub.visit.visitCount,
+                    formatShortDate(selectedPub.visit.lastVisitedAt),
+                  )
+                : cs.map.notVisited}
+            </Text>
+            <View style={styles.actionRow}>
+              <Pressable
+                onPress={() =>
+                  aimCompass({
+                    lat: selectedPub.pub.lat,
+                    lng: selectedPub.pub.lng,
+                    name: selectedPub.pub.name,
+                    cacheKey: selectedPub.key,
+                  })
+                }
+                style={({ pressed }) => [styles.primaryButton, styles.actionGrow, pressed && styles.pressed]}
+                accessibilityRole="button"
+              >
+                <CompassIcon size={18} color={Colors.stout} />
+                <Text style={styles.primaryButtonText} maxFontSizeMultiplier={FontScaleCap.heading}>{cs.map.aimCompass}</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setDetailOpen(true)}
+                style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
+                accessibilityLabel={cs.map.pubDetail}
+                accessibilityRole="button"
+              >
+                <ChevronRightIcon size={20} color={Colors.foam} />
+              </Pressable>
+            </View>
+          </ScrollView>
+        ) : (
+          <ScrollView style={styles.dockScroll} contentContainerStyle={styles.dockContent} showsVerticalScrollIndicator={false}>
+            <View style={styles.overviewRow}>
+              <View style={styles.overviewIcon}>
+                <BeerIcon size={22} color={Colors.amber} />
+              </View>
+              <View style={styles.overviewCopy}>
+                <Text style={styles.dockTitle} maxFontSizeMultiplier={FontScaleCap.heading}>{cs.map.beerTrail}</Text>
+                <Text style={styles.dockBody} maxFontSizeMultiplier={FontScaleCap.body}>{layerDescription}</Text>
+              </View>
+            </View>
+            {permissionState !== 'granted' ? (
+              <Pressable
+                onPress={() => void requestPermission()}
+                style={({ pressed }) => [styles.permissionButton, pressed && styles.pressed]}
+                accessibilityRole="button"
+              >
+                <LocateFixedIcon size={16} color={Colors.amber} />
+                <Text style={styles.permissionButtonText} maxFontSizeMultiplier={FontScaleCap.body}>{cs.map.permissionHint}</Text>
+              </Pressable>
+            ) : null}
+          </ScrollView>
+        )}
+      </Animated.View>
+
+      <Modal visible={listOpen} animationType="slide" onRequestClose={() => setListOpen(false)}>
+        <View style={[styles.listScreen, { paddingTop: insets.top + 12 }]}>
+          <View style={styles.listHeader}>
+            <View>
+              <Text style={styles.listTitle}>{cs.map.listTitle}</Text>
+              <Text style={styles.listSubtitle}>{layerDescription}</Text>
+            </View>
+            <Pressable
+              onPress={() => setListOpen(false)}
+              style={styles.closeButton}
+              accessibilityLabel={cs.common.cancel}
+              accessibilityRole="button"
+            >
+              <XIcon size={21} color={Colors.foam} />
+            </Pressable>
+          </View>
+          {layer === 'friends' ? (
+            <FlatList
+              data={visibleLivePubs}
+              keyExtractor={(item) => item.cacheKey}
+              contentContainerStyle={styles.listContent}
+              renderItem={({ item }) => (
+                <Pressable
+                  onPress={() => {
+                    setListOpen(false);
+                    selectLive(item);
+                    const next = {
+                      latitude: item.lat,
+                      longitude: item.lng,
+                      latitudeDelta: 0.025,
+                      longitudeDelta: 0.025,
+                    };
+                    mapRef.current?.animateToRegion(next, reduceMotion ? 0 : 300);
+                    handleRegionChange(next);
+                  }}
+                  style={({ pressed }) => [styles.listRow, pressed && styles.pressed]}
+                  accessibilityLabel={cs.a11y.mapLive(friendName(item), item.name)}
+                  accessibilityRole="button"
+                >
+                  <LiveMarker live={item} selected={false} />
+                  <View style={styles.listRowCopy}>
+                    <Text style={styles.listRowTitle} numberOfLines={1}>{item.name}</Text>
+                    <Text style={styles.listRowMeta} numberOfLines={1}>
+                      {cs.map.friendIsHere(friendName(item))}
+                    </Text>
+                  </View>
+                  <ChevronRightIcon size={18} color={Colors.mutedText} />
+                </Pressable>
+              )}
+              ListEmptyComponent={<Text style={styles.emptyList}>{cs.map.emptyList}</Text>}
+            />
+          ) : (
+            <FlatList
+              data={visiblePoints}
+              keyExtractor={(item) => item.key}
+              contentContainerStyle={styles.listContent}
+              renderItem={({ item }) => (
+                <Pressable
+                  onPress={() => {
+                    setListOpen(false);
+                    selectPub(item);
+                    const next = {
+                      latitude: item.lat,
+                      longitude: item.lng,
+                      latitudeDelta: 0.025,
+                      longitudeDelta: 0.025,
+                    };
+                    mapRef.current?.animateToRegion(next, reduceMotion ? 0 : 300);
+                    handleRegionChange(next);
+                  }}
+                  style={({ pressed }) => [styles.listRow, pressed && styles.pressed]}
+                  accessibilityLabel={cs.a11y.mapPub(item.pub.name, item.visit?.visitCount ?? 0)}
+                  accessibilityRole="button"
+                >
+                  <PubMarker visited={Boolean(item.visit)} selected={false} />
+                  <View style={styles.listRowCopy}>
+                    <Text style={styles.listRowTitle} numberOfLines={1}>{item.pub.name}</Text>
+                    <Text style={styles.listRowMeta} numberOfLines={1}>
+                      {item.pub.city || (item.visit ? cs.map.visited : cs.map.notVisited)}
+                    </Text>
+                  </View>
+                  <ChevronRightIcon size={18} color={Colors.mutedText} />
+                </Pressable>
+              )}
+              ListEmptyComponent={<Text style={styles.emptyList}>{cs.map.emptyList}</Text>}
+            />
+          )}
+        </View>
+      </Modal>
+
+      {selectedPub ? (
+        <MapPubSheet
+          visible={detailOpen}
+          pubKey={selectedPub.key}
+          pubName={selectedPub.pub.name}
+          info={pubInfoFromPub(selectedPub.pub)}
+          onClose={() => setDetailOpen(false)}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: Colors.stout },
+  pressed: { opacity: 0.76, transform: [{ scale: 0.98 }] },
+  disabled: { opacity: 0.35 },
+  topChrome: { position: 'absolute', top: 0, left: 0, right: 0, alignItems: 'center', gap: 9 },
+  exploreSwitch: {
+    height: 52,
+    padding: 4,
+    borderRadius: Radius.pill,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: withAlpha(Colors.stout, 0.94),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.16),
+    shadowColor: Colors.black,
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  exploreSegment: {
+    minWidth: 108,
+    height: 44,
+    borderRadius: Radius.pill,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+  },
+  exploreSegmentActive: { backgroundColor: Colors.amber },
+  exploreSegmentText: { fontFamily: Fonts.ui.bold, color: Colors.foamMuted, fontSize: 14 },
+  exploreSegmentTextActive: { fontFamily: Fonts.ui.bold, color: Colors.stout, fontSize: 14 },
+  layerRow: { paddingHorizontal: 14, gap: 7 },
+  layerButton: {
+    height: 44,
+    paddingHorizontal: 13,
+    justifyContent: 'center',
+    borderRadius: Radius.pill,
+    backgroundColor: withAlpha(Colors.stout2, 0.95),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.14),
+  },
+  layerButtonActive: { backgroundColor: Colors.foam, borderColor: Colors.foam },
+  layerButtonText: { fontFamily: Fonts.ui.semibold, fontSize: 13, color: Colors.foamMuted },
+  layerButtonTextActive: { color: Colors.stout },
+  filterIconButton: {
+    minWidth: 44,
+    height: 44,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    gap: 7,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.stout2, 0.95),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.14),
+  },
+  filterIconButtonActive: { backgroundColor: Colors.amber, borderColor: Colors.amber },
+  pinHit: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  pinHitSelected: { transform: [{ scale: 1.12 }] },
+  pubPin: {
+    width: 31,
+    height: 31,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.stout3,
+    borderWidth: 2,
+    borderColor: Colors.foamMuted,
+  },
+  pubPinVisited: { backgroundColor: Colors.amber, borderColor: Colors.stout, borderWidth: 3 },
+  pubPinSelected: { width: 38, height: 38, borderRadius: 19, borderColor: Colors.foam },
+  visitedNotch: {
+    position: 'absolute',
+    bottom: 2,
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: Colors.foam,
+    borderWidth: 1,
+    borderColor: Colors.stout,
+  },
+  clusterPin: {
+    minWidth: 44,
+    height: 44,
+    paddingHorizontal: 9,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.stout2,
+    borderWidth: 2,
+    borderColor: Colors.foamMuted,
+  },
+  clusterPinVisited: { borderColor: Colors.amber, borderWidth: 4 },
+  clusterText: { fontFamily: Fonts.display.extrabold, fontSize: 15, color: Colors.foam },
+  clusterTextVisited: { color: Colors.amberLight },
+  livePin: {
+    width: 45,
+    height: 45,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.amber,
+    borderWidth: 3,
+    borderColor: Colors.foam,
+  },
+  livePinSelected: { transform: [{ scale: 1.14 }], borderColor: Colors.neon },
+  liveInitial: { fontFamily: Fonts.display.extrabold, fontSize: 19, color: Colors.stout },
+  liveCount: {
+    position: 'absolute',
+    right: -5,
+    top: -5,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 4,
+    borderRadius: 10,
+    backgroundColor: Colors.foam,
+    borderWidth: 2,
+    borderColor: Colors.stout,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  liveCountText: { fontFamily: Fonts.ui.bold, fontSize: 10, color: Colors.stout },
+  cityMarker: {
+    maxWidth: 190,
+    minHeight: 44,
+    paddingHorizontal: 11,
+    borderRadius: Radius.pill,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    backgroundColor: Colors.amber,
+    borderWidth: 2,
+    borderColor: Colors.foam,
+  },
+  cityMarkerText: { flexShrink: 1, fontFamily: Fonts.display.extrabold, fontSize: 15, color: Colors.stout },
+  cityMarkerCount: { fontFamily: Fonts.ui.bold, fontSize: 12, color: withAlpha(Colors.stout, 0.72) },
+  mapRail: { position: 'absolute', right: 14, top: '42%', gap: 9 },
+  railButton: {
+    width: HitArea.min,
+    height: HitArea.min,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.stout2, 0.96),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.16),
+  },
+  bottomDock: {
+    position: 'absolute',
+    left: 10,
+    right: 10,
+    bottom: 8,
+    minHeight: 158,
+    maxHeight: '48%',
+    borderRadius: Radius.cardLarge,
+    backgroundColor: withAlpha(Colors.stout2, 0.97),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.28),
+    shadowColor: Colors.black,
+    shadowOpacity: 0.42,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+  },
+  dockContent: { paddingHorizontal: 18, paddingTop: 15, paddingBottom: 8, gap: 4 },
+  dockScroll: { flexGrow: 0 },
+  dockTitle: { fontFamily: Fonts.display.extrabold, fontSize: 25, lineHeight: 29, color: Colors.foam },
+  dockBody: { fontFamily: Fonts.ui.regular, fontSize: 14, lineHeight: 20, color: Colors.foamMuted },
+  visitedLine: { fontFamily: Fonts.ui.semibold, fontSize: 13, color: Colors.amberLight, marginTop: 3 },
+  unvisitedLine: { fontFamily: Fonts.ui.medium, fontSize: 13, color: Colors.mutedText, marginTop: 3 },
+  offlineText: {
+    position: 'absolute',
+    top: -28,
+    left: 16,
+    right: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: Radius.pill,
+    overflow: 'hidden',
+    backgroundColor: withAlpha(Colors.stout, 0.94),
+    fontFamily: Fonts.ui.medium,
+    fontSize: 12,
+    color: Colors.foamMuted,
+  },
+  liveEyebrow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.success },
+  liveEyebrowText: { fontFamily: Fonts.ui.bold, fontSize: 11, letterSpacing: 0.8, color: Colors.success },
+  actionRow: { flexDirection: 'row', gap: 9, marginTop: 8 },
+  actionGrow: { flex: 1 },
+  primaryButton: {
+    minHeight: 46,
+    borderRadius: Radius.pill,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: Colors.amber,
+    marginTop: 8,
+  },
+  primaryButtonText: { fontFamily: Fonts.display.extrabold, fontSize: 15, color: Colors.stout },
+  secondaryButton: {
+    width: 48,
+    height: 46,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.stout3,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginTop: 8,
+  },
+  overviewRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  overviewIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.amber, 0.12),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.28),
+  },
+  overviewCopy: { flex: 1, minWidth: 0 },
+  permissionButton: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 10, minHeight: 34 },
+  permissionButtonText: { flex: 1, fontFamily: Fonts.ui.medium, fontSize: 13, color: Colors.foamMuted },
+  listScreen: { flex: 1, backgroundColor: Colors.stout },
+  listHeader: {
+    minHeight: 74,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  listTitle: { fontFamily: Fonts.display.extrabold, fontSize: 28, color: Colors.foam },
+  listSubtitle: { fontFamily: Fonts.ui.regular, fontSize: 13, color: Colors.mutedText },
+  closeButton: { width: HitArea.min, height: HitArea.min, alignItems: 'center', justifyContent: 'center' },
+  listContent: { padding: 14, paddingBottom: 40 },
+  listRow: {
+    minHeight: 66,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.border,
+  },
+  listRowCopy: { flex: 1, minWidth: 0 },
+  listRowTitle: { fontFamily: Fonts.display.bold, fontSize: 17, color: Colors.foam },
+  listRowMeta: { fontFamily: Fonts.ui.regular, fontSize: 13, color: Colors.mutedText },
+  emptyList: { padding: 40, textAlign: 'center', fontFamily: Fonts.ui.regular, color: Colors.mutedText },
+});

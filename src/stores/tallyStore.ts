@@ -66,6 +66,9 @@ export interface TallySession {
   /** geohash-8 cell of the pub — the durable physical-place key. */
   pubKey: string;
   pubName: string;
+  /** Confirmed pub metadata used by the private visit history/map. */
+  pubCity?: string;
+  pubExternalId?: string;
   /** ISO-8601 timestamp of when the session started (first drink). */
   startedAt: string;
   drinks: TallyDrink[];
@@ -78,6 +81,8 @@ export interface TallySession {
 export interface TallyPub {
   pubKey: string;
   pubName: string;
+  pubCity?: string;
+  pubExternalId?: string;
 }
 
 /** The beer being counted. */
@@ -270,6 +275,8 @@ export const useTallyStore = create<TallyState>()(
                 clientId: generateUuidV4(),
                 pubKey: pub.pubKey,
                 pubName: pub.pubName,
+                ...(pub.pubCity ? { pubCity: pub.pubCity } : {}),
+                ...(pub.pubExternalId ? { pubExternalId: pub.pubExternalId } : {}),
                 startedAt: at,
                 drinks: [drink],
               },
@@ -287,6 +294,8 @@ export const useTallyStore = create<TallyState>()(
             current: {
               ...session,
               pubName: pub.pubName,
+              ...(pub.pubCity ? { pubCity: pub.pubCity } : {}),
+              ...(pub.pubExternalId ? { pubExternalId: pub.pubExternalId } : {}),
               startedAt,
               drinks: [...session.drinks, drink],
             },
@@ -318,7 +327,14 @@ export const useTallyStore = create<TallyState>()(
             // Keep startedAt as the evening's earliest drink.
             const startedAt =
               Date.parse(at) < Date.parse(session.startedAt) ? at : session.startedAt;
-            const updated: TallySession = { ...session, startedAt, drinks: [...session.drinks, drink] };
+            const updated: TallySession = {
+              ...session,
+              pubName: pub.pubName,
+              ...(pub.pubCity ? { pubCity: pub.pubCity } : {}),
+              ...(pub.pubExternalId ? { pubExternalId: pub.pubExternalId } : {}),
+              startedAt,
+              drinks: [...session.drinks, drink],
+            };
             box.session = updated;
             return updated;
           });
@@ -332,6 +348,8 @@ export const useTallyStore = create<TallyState>()(
             clientId: generateUuidV4(),
             pubKey: pub.pubKey,
             pubName: pub.pubName,
+            ...(pub.pubCity ? { pubCity: pub.pubCity } : {}),
+            ...(pub.pubExternalId ? { pubExternalId: pub.pubExternalId } : {}),
             startedAt: at,
             drinks: [drink],
             archivedReason: 'manual',

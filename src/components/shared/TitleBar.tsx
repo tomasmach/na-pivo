@@ -96,7 +96,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   containerLeft: {
-    height: 40,
+    height: 48,
     paddingTop: 2,
     alignItems: 'flex-start',
   },
