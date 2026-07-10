@@ -80,6 +80,7 @@ import {
   type TallySession,
 } from '@/stores/tallyStore';
 import { normalizeDrinkType, type DrinkType } from '@/drinks/drinkTypes';
+import { MIN_PLAUSIBLE_BEER_GAP_MS } from '@/drinks/drinkTiming';
 import type { Pub } from '@/data/pubs';
 
 import { useNearbyPub } from '@/counter/useNearbyPub';
@@ -322,8 +323,6 @@ function beerKey(beer: CommunityBeer): string {
   return `${beer.name.trim().toLowerCase()}|${beer.volumeMl ?? ''}`;
 }
 
-const RAPID_DRINK_WARNING_MS = 5 * 60 * 1000;
-
 /** How long a freshly-counted drink stays undoable before we deliver it. We
  *  defer the backend send by this window so the queued payload remains
  *  retractable (removeQueuedDrink only works pre-delivery) — otherwise a fast
@@ -355,7 +354,7 @@ export function shouldWarnRapidDrink(lastDrinkAt: string | undefined, nowMs: num
   const atMs = Date.parse(lastDrinkAt);
   if (!Number.isFinite(atMs)) return false;
   const elapsedMs = nowMs - atMs;
-  return elapsedMs >= 0 && elapsedMs < RAPID_DRINK_WARNING_MS;
+  return elapsedMs >= 0 && elapsedMs < MIN_PLAUSIBLE_BEER_GAP_MS;
 }
 
 function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCounterProps) {

@@ -17,12 +17,17 @@ import type { TallySession } from '@/stores/tallyStore';
 /** Local-time ISO so drinking-day bucketing is deterministic across test
  *  runners regardless of the machine timezone (drinkingDayKey reads local
  *  calendar fields). `mo` is 1-based for readability. */
-function at(y: number, mo: number, d: number, h: number, mi = 0): string {
-  return new Date(y, mo - 1, d, h, mi, 0, 0).toISOString();
+function at(y: number, mo: number, d: number, h: number, mi = 0, sec = 0): string {
+  return new Date(y, mo - 1, d, h, mi, sec, 0).toISOString();
 }
 
 let idSeq = 0;
-function drink(over: Partial<{ priceCzk: number; volumeMl: number; at: string }> = {}) {
+function drink(over: Partial<{
+  priceCzk: number;
+  volumeMl: number;
+  at: string;
+  drinkType: 'beer' | 'soft_drink' | 'shot';
+}> = {}) {
   idSeq += 1;
   return {
     id: `id-${idSeq}`,
@@ -30,6 +35,7 @@ function drink(over: Partial<{ priceCzk: number; volumeMl: number; at: string }>
     priceCzk: over.priceCzk ?? 60,
     at: over.at ?? at(2026, 6, 14, 19, 0),
     ...(typeof over.volumeMl === 'number' ? { volumeMl: over.volumeMl } : {}),
+    ...(over.drinkType && over.drinkType !== 'beer' ? { drinkType: over.drinkType } : {}),
   };
 }
 
@@ -76,6 +82,26 @@ describe('sessionDurationMs / gaps / fastest', () => {
     ]);
     expect(sessionDurationMs(s)).toBe(60 * 60 * 1000); // 19:00 → 20:00
     expect(sessionFastestGapMs(s)).toBe(10 * 60 * 1000); // 19:50 → 20:00
+  });
+
+  it('ignores duplicate-like gaps and non-beer drinks when picking the fastest beer', () => {
+    const s = session([
+      drink({ at: at(2026, 6, 14, 19, 0) }),
+      drink({ at: at(2026, 6, 14, 19, 0, 1) }),
+      drink({ at: at(2026, 6, 14, 19, 3), drinkType: 'shot' }),
+      drink({ at: at(2026, 6, 14, 19, 12) }),
+    ]);
+
+    expect(sessionGapsMs(s)).toEqual([1000, 12 * 60_000 - 1000]);
+    expect(sessionFastestGapMs(s)).toBe(12 * 60_000 - 1000);
+  });
+
+  it('leaves fastest beer empty when every interval looks like a duplicate', () => {
+    const s = session([
+      drink({ at: at(2026, 6, 14, 19, 0) }),
+      drink({ at: at(2026, 6, 14, 19, 1) }),
+    ]);
+    expect(sessionFastestGapMs(s)).toBeNull();
   });
 });
 

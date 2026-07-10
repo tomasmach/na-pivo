@@ -25,10 +25,9 @@ import {
   MapIcon,
   MapPinnedIcon,
   RefreshCwIcon,
-  SlidersHorizontalIcon,
+  UsersIcon,
   XIcon,
 } from '@/components/shared/IconGlyph';
-import { geohash8 } from '@/data/geohash';
 import type { Pub } from '@/data/pubs';
 import type { FocusedPub } from '@/stores/focusedPubStore';
 import { useFocusedPubStore } from '@/stores/focusedPubStore';
@@ -41,10 +40,12 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
 import {
+  buildMapPubPoints,
   clusterCoordinates,
+  pubOpeningVerdict,
   type LivePubSummary,
+  type MapPubPoint,
   type VisitedCitySummary,
-  type VisitedPubSummary,
 } from './mapModel';
 import { useBeerMap } from './useBeerMap';
 
@@ -78,14 +79,6 @@ let rememberedRegion: Region | null = null;
 let rememberedLayer: Layer = 'all';
 let rememberedOpenOnly = false;
 let rememberedSelection: MapSelection | null = null;
-
-interface PubPoint {
-  key: string;
-  pub: Pub;
-  lat: number;
-  lng: number;
-  visit: VisitedPubSummary | null;
-}
 
 export interface BeerMapScreenProps {
   initialPub?: Pub | null;
@@ -146,7 +139,7 @@ function LayerButton({
         active && styles.layerButtonActive,
         pressed && styles.pressed,
       ]}
-      accessibilityRole="button"
+      accessibilityRole="tab"
       accessibilityState={{ selected: active }}
       accessibilityLabel={label}
     >
@@ -243,38 +236,16 @@ export default function BeerMapScreen({ initialPub, onShowCompass }: BeerMapScre
     loadRegion(next);
   }, [loadRegion, position, reduceMotion]);
 
-  const visitedByKey = useMemo(
-    () => new Map(visitedPubs.map((visit) => [visit.cacheKey, visit])),
-    [visitedPubs],
+  const unfilteredPoints = useMemo(
+    () => buildMapPubPoints(pubs, visitedPubs, layer === 'visited', false).points,
+    [layer, pubs, visitedPubs],
   );
-
-  const points = useMemo(() => {
-    const byKey = new Map<string, PubPoint>();
-    for (const pub of pubs) {
-      const key = geohash8(pub.lat, pub.lng);
-      const visit = visitedByKey.get(key) ?? null;
-      if (layer === 'visited' && !visit) continue;
-      if (openOnly && pub.isOpenNow === false) continue;
-      byKey.set(key, { key, pub, lat: pub.lat, lng: pub.lng, visit });
-    }
-    for (const visit of visitedPubs) {
-      if (byKey.has(visit.cacheKey)) continue;
-      byKey.set(visit.cacheKey, {
-        key: visit.cacheKey,
-        pub: {
-          id: `visit:${visit.cacheKey}`,
-          name: visit.name,
-          lat: visit.lat,
-          lng: visit.lng,
-          ...(visit.city ? { city: visit.city } : {}),
-        },
-        lat: visit.lat,
-        lng: visit.lng,
-        visit,
-      });
-    }
-    return [...byKey.values()];
-  }, [layer, openOnly, pubs, visitedByKey, visitedPubs]);
+  const points = useMemo(
+    () => openOnly
+      ? unfilteredPoints.filter((point) => pubOpeningVerdict(point.pub) !== false)
+      : unfilteredPoints,
+    [openOnly, unfilteredPoints],
+  );
 
   const activeSelection =
     selection && selection.accountId && accountId && selection.accountId !== accountId
@@ -317,6 +288,22 @@ export default function BeerMapScreen({ initialPub, onShowCompass }: BeerMapScre
       return aDistance - bDistance;
     });
   }, [points, region]);
+
+  const visibleUnfilteredPoints = useMemo(() => {
+    const latMargin = region.latitudeDelta * 0.65;
+    const lngMargin = region.longitudeDelta * 0.65;
+    return unfilteredPoints.filter(
+      (point) =>
+        Math.abs(point.lat - region.latitude) <= latMargin &&
+        Math.abs(point.lng - region.longitude) <= lngMargin,
+    );
+  }, [region, unfilteredPoints]);
+  const visibleKnownClosedCount = visibleUnfilteredPoints.filter(
+    (point) => pubOpeningVerdict(point.pub) === false,
+  ).length;
+  const visibleUnknownHoursCount = visibleUnfilteredPoints.filter(
+    (point) => pubOpeningVerdict(point.pub) == null,
+  ).length;
 
   const visibleLivePubs = useMemo(() => {
     const latMargin = region.latitudeDelta * 0.65;
@@ -364,7 +351,7 @@ export default function BeerMapScreen({ initialPub, onShowCompass }: BeerMapScre
   );
 
   const selectPub = useCallback(
-    (point: PubPoint) => {
+    (point: MapPubPoint) => {
       if (hapticEnabled) fireLightImpactHaptic();
       const next: MapSelection = { kind: 'pub', key: point.key, accountId };
       rememberedSelection = next;
@@ -404,10 +391,19 @@ export default function BeerMapScreen({ initialPub, onShowCompass }: BeerMapScre
 
   const toggleOpenOnly = useCallback(() => {
     setOpenOnly((value) => {
-      rememberedOpenOnly = !value;
-      return !value;
+      const next = !value;
+      rememberedOpenOnly = next;
+      void AccessibilityInfo.announceForAccessibility(
+        next
+          ? cs.map.openFilterAnnouncement(
+              visibleKnownClosedCount,
+              visibleUnknownHoursCount,
+            )
+          : cs.map.openFilterOff,
+      );
+      return next;
     });
-  }, []);
+  }, [visibleKnownClosedCount, visibleUnknownHoursCount]);
 
   const aimCompass = useCallback(
     (target: FocusedPub) => {
@@ -566,41 +562,45 @@ export default function BeerMapScreen({ initialPub, onShowCompass }: BeerMapScre
 
       <View style={[styles.topChrome, { paddingTop: insets.top + 8 }]} pointerEvents="box-none">
         <ExploreSwitch onShowCompass={onShowCompass} />
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.layerRow}
-        >
-          <LayerButton active={layer === 'all'} label={cs.map.layerAll} onPress={() => selectLayer('all')} />
-          <LayerButton
-            active={layer === 'visited'}
-            label={cs.map.layerVisited}
-            onPress={() => selectLayer('visited')}
-          />
-          <LayerButton
-            active={layer === 'friends'}
-            label={cs.map.layerFriends}
-            onPress={() => selectLayer('friends')}
-          />
-          <Pressable
-            onPress={toggleOpenOnly}
-            disabled={layer === 'friends'}
-            style={({ pressed }) => [
-              styles.filterIconButton,
-              openOnly && styles.filterIconButtonActive,
-              layer === 'friends' && styles.disabled,
-              pressed && styles.pressed,
-            ]}
-            accessibilityRole="switch"
-            accessibilityState={{ checked: openOnly, disabled: layer === 'friends' }}
-            accessibilityLabel={cs.map.onlyOpen}
-          >
-            <SlidersHorizontalIcon size={17} color={openOnly ? Colors.stout : Colors.foamMuted} />
-            <Text style={[styles.layerButtonText, openOnly && styles.layerButtonTextActive]}>
-              {cs.map.onlyOpen}
-            </Text>
-          </Pressable>
-        </ScrollView>
+        <View style={styles.layerControls}>
+          <View style={styles.layerRow} accessibilityRole="tablist">
+            <LayerButton active={layer === 'all'} label={cs.map.layerAll} onPress={() => selectLayer('all')} />
+            <LayerButton
+              active={layer === 'visited'}
+              label={cs.map.layerVisited}
+              onPress={() => selectLayer('visited')}
+            />
+            <LayerButton
+              active={layer === 'friends'}
+              label={cs.map.layerFriends}
+              onPress={() => selectLayer('friends')}
+            />
+          </View>
+          {layer !== 'friends' ? (
+            <Pressable
+              onPress={toggleOpenOnly}
+              style={({ pressed }) => [styles.openFilter, pressed && styles.pressed]}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: openOnly }}
+              accessibilityLabel={cs.map.onlyOpen}
+              accessibilityHint={
+                openOnly
+                  ? cs.map.openFilterSummary(
+                      visibleKnownClosedCount,
+                      visibleUnknownHoursCount,
+                    )
+                  : cs.map.openFilterHint
+              }
+            >
+              <Text style={[styles.openFilterLabel, openOnly && styles.openFilterLabelActive]}>
+                {cs.map.onlyOpen}
+              </Text>
+              <View style={[styles.switchTrack, openOnly && styles.switchTrackActive]}>
+                <View style={[styles.switchThumb, openOnly && styles.switchThumbActive]} />
+              </View>
+            </Pressable>
+          ) : null}
+        </View>
       </View>
 
       {!selectedPub && !selectedLive && !selectedCity ? <View style={styles.mapRail}>
@@ -633,7 +633,13 @@ export default function BeerMapScreen({ initialPub, onShowCompass }: BeerMapScre
       <Animated.View
         key={`dock:${selectedPub?.key ?? selectedLive?.cacheKey ?? selectedCity?.key ?? 'overview'}`}
         entering={reduceMotion ? undefined : FadeInDown.duration(220).springify().damping(19)}
-        style={[styles.bottomDock, { paddingBottom: Math.max(insets.bottom, 12) }]}
+        style={[
+          styles.bottomDock,
+          {
+            paddingBottom:
+              selectedPub || selectedLive || selectedCity ? Math.max(insets.bottom, 12) : 12,
+          },
+        ]}
       >
         {stale ? <Text style={styles.offlineText} numberOfLines={2}>{cs.map.offline}</Text> : null}
 
@@ -723,11 +729,25 @@ export default function BeerMapScreen({ initialPub, onShowCompass }: BeerMapScre
           <ScrollView style={styles.dockScroll} contentContainerStyle={styles.dockContent} showsVerticalScrollIndicator={false}>
             <View style={styles.overviewRow}>
               <View style={styles.overviewIcon}>
-                <BeerIcon size={22} color={Colors.amber} />
+                {layer === 'friends' ? (
+                  <UsersIcon size={22} color={Colors.amber} />
+                ) : (
+                  <BeerIcon size={22} color={Colors.amber} />
+                )}
               </View>
               <View style={styles.overviewCopy}>
-                <Text style={styles.dockTitle} maxFontSizeMultiplier={FontScaleCap.heading}>{cs.map.beerTrail}</Text>
+                <Text style={styles.dockTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+                  {layer === 'friends' ? cs.map.friendsOverviewTitle : cs.map.beerTrail}
+                </Text>
                 <Text style={styles.dockBody} maxFontSizeMultiplier={FontScaleCap.body}>{layerDescription}</Text>
+                {openOnly && layer !== 'friends' ? (
+                  <Text style={styles.filterFeedback} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {cs.map.openFilterSummary(
+                      visibleKnownClosedCount,
+                      visibleUnknownHoursCount,
+                    )}
+                  </Text>
+                ) : null}
               </View>
             </View>
             {permissionState !== 'granted' ? (
@@ -744,28 +764,43 @@ export default function BeerMapScreen({ initialPub, onShowCompass }: BeerMapScre
         )}
       </Animated.View>
 
-      <Modal visible={listOpen} animationType="slide" onRequestClose={() => setListOpen(false)}>
-        <View style={[styles.listScreen, { paddingTop: insets.top + 12 }]}>
-          <View style={styles.listHeader}>
-            <View>
-              <Text style={styles.listTitle}>{cs.map.listTitle}</Text>
-              <Text style={styles.listSubtitle}>{layerDescription}</Text>
+      <Modal
+        visible={listOpen}
+        transparent
+        statusBarTranslucent
+        animationType="fade"
+        onRequestClose={() => setListOpen(false)}
+      >
+        <View style={styles.listBackdrop}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setListOpen(false)}
+            accessibilityLabel={cs.map.closeList}
+            accessibilityRole="button"
+          />
+          <View style={[styles.listSheet, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.listHeader}>
+              <View style={styles.listHeaderCopy}>
+                <Text style={styles.listTitle}>{cs.map.listTitle}</Text>
+                <Text style={styles.listSubtitle} numberOfLines={2}>{layerDescription}</Text>
+              </View>
+              <Pressable
+                onPress={() => setListOpen(false)}
+                style={styles.closeButton}
+                accessibilityLabel={cs.common.cancel}
+                accessibilityRole="button"
+              >
+                <XIcon size={21} color={Colors.foam} />
+              </Pressable>
             </View>
-            <Pressable
-              onPress={() => setListOpen(false)}
-              style={styles.closeButton}
-              accessibilityLabel={cs.common.cancel}
-              accessibilityRole="button"
-            >
-              <XIcon size={21} color={Colors.foam} />
-            </Pressable>
-          </View>
-          {layer === 'friends' ? (
-            <FlatList
-              data={visibleLivePubs}
-              keyExtractor={(item) => item.cacheKey}
-              contentContainerStyle={styles.listContent}
-              renderItem={({ item }) => (
+            {layer === 'friends' ? (
+              <FlatList
+                style={styles.list}
+                data={visibleLivePubs}
+                keyExtractor={(item) => item.cacheKey}
+                contentContainerStyle={styles.listContent}
+                renderItem={({ item }) => (
                 <Pressable
                   onPress={() => {
                     setListOpen(false);
@@ -792,15 +827,16 @@ export default function BeerMapScreen({ initialPub, onShowCompass }: BeerMapScre
                   </View>
                   <ChevronRightIcon size={18} color={Colors.mutedText} />
                 </Pressable>
-              )}
-              ListEmptyComponent={<Text style={styles.emptyList}>{cs.map.emptyList}</Text>}
-            />
-          ) : (
-            <FlatList
-              data={visiblePoints}
-              keyExtractor={(item) => item.key}
-              contentContainerStyle={styles.listContent}
-              renderItem={({ item }) => (
+                )}
+                ListEmptyComponent={<Text style={styles.emptyList}>{cs.map.emptyList}</Text>}
+              />
+            ) : (
+              <FlatList
+                style={styles.list}
+                data={visiblePoints}
+                keyExtractor={(item) => item.key}
+                contentContainerStyle={styles.listContent}
+                renderItem={({ item }) => (
                 <Pressable
                   onPress={() => {
                     setListOpen(false);
@@ -827,10 +863,11 @@ export default function BeerMapScreen({ initialPub, onShowCompass }: BeerMapScre
                   </View>
                   <ChevronRightIcon size={18} color={Colors.mutedText} />
                 </Pressable>
-              )}
-              ListEmptyComponent={<Text style={styles.emptyList}>{cs.map.emptyList}</Text>}
-            />
-          )}
+                )}
+                ListEmptyComponent={<Text style={styles.emptyList}>{cs.map.emptyList}</Text>}
+              />
+            )}
+          </View>
         </View>
       </Modal>
 
@@ -850,7 +887,6 @@ export default function BeerMapScreen({ initialPub, onShowCompass }: BeerMapScre
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.stout },
   pressed: { opacity: 0.76, transform: [{ scale: 0.98 }] },
-  disabled: { opacity: 0.35 },
   topChrome: { position: 'absolute', top: 0, left: 0, right: 0, alignItems: 'center', gap: 9 },
   exploreSwitch: {
     height: 52,
@@ -879,10 +915,17 @@ const styles = StyleSheet.create({
   exploreSegmentActive: { backgroundColor: Colors.amber },
   exploreSegmentText: { fontFamily: Fonts.ui.bold, color: Colors.foamMuted, fontSize: 14 },
   exploreSegmentTextActive: { fontFamily: Fonts.ui.bold, color: Colors.stout, fontSize: 14 },
-  layerRow: { paddingHorizontal: 14, gap: 7 },
+  layerControls: {
+    alignSelf: 'stretch',
+    marginHorizontal: 12,
+    gap: 7,
+  },
+  layerRow: { flexDirection: 'row', gap: 6 },
   layerButton: {
+    flex: 1,
     height: 44,
-    paddingHorizontal: 13,
+    paddingHorizontal: 6,
+    alignItems: 'center',
     justifyContent: 'center',
     borderRadius: Radius.pill,
     backgroundColor: withAlpha(Colors.stout2, 0.95),
@@ -892,20 +935,38 @@ const styles = StyleSheet.create({
   layerButtonActive: { backgroundColor: Colors.foam, borderColor: Colors.foam },
   layerButtonText: { fontFamily: Fonts.ui.semibold, fontSize: 13, color: Colors.foamMuted },
   layerButtonTextActive: { color: Colors.stout },
-  filterIconButton: {
-    minWidth: 44,
-    height: 44,
-    paddingHorizontal: 12,
+  openFilter: {
+    alignSelf: 'center',
+    minHeight: 40,
+    paddingLeft: 14,
+    paddingRight: 8,
     flexDirection: 'row',
-    gap: 7,
+    gap: 10,
     borderRadius: Radius.pill,
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.stout2, 0.95),
+    backgroundColor: withAlpha(Colors.stout, 0.94),
     borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.14),
+    borderColor: withAlpha(Colors.foam, 0.2),
   },
-  filterIconButtonActive: { backgroundColor: Colors.amber, borderColor: Colors.amber },
+  openFilterLabel: { fontFamily: Fonts.ui.semibold, fontSize: 13, color: Colors.foam },
+  openFilterLabelActive: { color: Colors.amberLight },
+  switchTrack: {
+    width: 42,
+    height: 24,
+    padding: 2,
+    borderRadius: 12,
+    backgroundColor: Colors.stout3,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.24),
+  },
+  switchTrackActive: { backgroundColor: Colors.amber, borderColor: Colors.amber },
+  switchThumb: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: Colors.foamMuted,
+  },
+  switchThumbActive: { transform: [{ translateX: 18 }], backgroundColor: Colors.stout },
   pinHit: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   pinHitSelected: { transform: [{ scale: 1.12 }] },
   pubPin: {
@@ -1001,7 +1062,6 @@ const styles = StyleSheet.create({
     left: 10,
     right: 10,
     bottom: 8,
-    minHeight: 158,
     maxHeight: '48%',
     borderRadius: Radius.cardLarge,
     backgroundColor: withAlpha(Colors.stout2, 0.97),
@@ -1072,9 +1132,33 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.28),
   },
   overviewCopy: { flex: 1, minWidth: 0 },
+  filterFeedback: { marginTop: 2, fontFamily: Fonts.ui.medium, fontSize: 12, color: Colors.amberLight },
   permissionButton: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 10, minHeight: 34 },
   permissionButtonText: { flex: 1, fontFamily: Fonts.ui.medium, fontSize: 13, color: Colors.foamMuted },
-  listScreen: { flex: 1, backgroundColor: Colors.stout },
+  listBackdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: withAlpha(Colors.black, 0.58),
+  },
+  listSheet: {
+    maxHeight: '88%',
+    flexShrink: 1,
+    overflow: 'hidden',
+    borderTopLeftRadius: Radius.cardLarge,
+    borderTopRightRadius: Radius.cardLarge,
+    backgroundColor: Colors.stout,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    borderColor: withAlpha(Colors.foam, 0.14),
+  },
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 38,
+    height: 4,
+    marginTop: 9,
+    borderRadius: 2,
+    backgroundColor: withAlpha(Colors.foam, 0.28),
+  },
   listHeader: {
     minHeight: 74,
     paddingHorizontal: 20,
@@ -1084,10 +1168,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
+  listHeaderCopy: { flex: 1, minWidth: 0, paddingRight: 12 },
   listTitle: { fontFamily: Fonts.display.extrabold, fontSize: 28, color: Colors.foam },
   listSubtitle: { fontFamily: Fonts.ui.regular, fontSize: 13, color: Colors.mutedText },
   closeButton: { width: HitArea.min, height: HitArea.min, alignItems: 'center', justifyContent: 'center' },
-  listContent: { padding: 14, paddingBottom: 40 },
+  list: { flexGrow: 0, flexShrink: 1 },
+  listContent: { flexGrow: 0, paddingHorizontal: 14, paddingBottom: 10 },
   listRow: {
     minHeight: 66,
     flexDirection: 'row',

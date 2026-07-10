@@ -1,5 +1,8 @@
 import React from 'react';
 import { cs } from '@/i18n/cs';
+import { fetchMyStats } from '@/data/statsClient';
+import { useTallyStore, type TallySession } from '@/stores/tallyStore';
+import StatsScreenDefault from '../StatsScreen';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -36,10 +39,8 @@ jest.mock('@/components/shared/IconGlyph', () => {
   return new Proxy({}, { get: () => stub });
 });
 
-import StatsScreenDefault from '../StatsScreen';
-import { useTallyStore, type TallySession } from '@/stores/tallyStore';
-
 const StatsScreen = StatsScreenDefault as React.ComponentType<{ embedded?: boolean }>;
+const fetchMyStatsMock = fetchMyStats as jest.MockedFunction<typeof fetchMyStats>;
 
 const TestRenderer = require('react-test-renderer');
 const { act } = TestRenderer;
@@ -79,6 +80,7 @@ function flatTexts(renderer: { root: { findAllByType: (t: string) => { props: { 
 
 beforeEach(() => {
   idSeq = 0;
+  fetchMyStatsMock.mockResolvedValue(null);
   act(() => {
     useTallyStore.setState({ current: null, history: [] });
   });
@@ -128,5 +130,34 @@ describe('StatsScreen', () => {
     expect(texts).toContain('U Zlatého tygra');
     // Both pubs appear in the top-pubs list.
     expect(texts).toContain('Pivnice U Tří růží');
+    expect(texts).toContain(cs.stats.totalPubs);
+  });
+
+  it('hides an implausibly fast remote beer record', async () => {
+    fetchMyStatsMock.mockResolvedValue({
+      totalBeers: 2,
+      totalEvenings: 1,
+      distinctPubs: 1,
+      totalSpentCzk: 100,
+      firstDrinkAt: new Date().toISOString(),
+      topPubs: [],
+      records: {
+        mostBeersInEvening: 2,
+        mostBeersPubName: 'U Tygra',
+        mostBeersDate: null,
+        fastestBeerSeconds: 1,
+        longestEveningSeconds: 1800,
+      },
+    });
+
+    let renderer: ReturnType<typeof TestRenderer.create>;
+    await act(async () => {
+      renderer = TestRenderer.create(React.createElement(StatsScreen, { embedded: true }));
+      await Promise.resolve();
+    });
+    const texts = flatTexts(renderer!);
+
+    expect(texts).not.toContain('1 s');
+    expect(texts).toContain(cs.stats.recordEmpty);
   });
 });

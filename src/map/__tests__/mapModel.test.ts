@@ -3,10 +3,12 @@ import type { FriendPubActivity } from '@/data/friendsClient';
 import type { WireVisit } from '@/data/visitsClient';
 import type { TallySession } from '@/stores/tallyStore';
 import {
+  buildMapPubPoints,
   buildLivePubs,
   buildVisitedCities,
   buildVisitedPubs,
   clusterCoordinates,
+  pubOpeningVerdict,
 } from '../mapModel';
 
 const PRAGUE = { lat: 50.0876, lng: 14.4214 };
@@ -71,6 +73,47 @@ function activity(over: Partial<FriendPubActivity> = {}): FriendPubActivity {
 }
 
 describe('pivní mapový model', () => {
+  it('považuje otevíračku za známou jen po úspěšném dohledání', () => {
+    expect(pubOpeningVerdict({ id: 'closed', name: 'Zavřeno', ...PRAGUE, isOpenNow: false })).toBeNull();
+    expect(
+      pubOpeningVerdict({
+        id: 'closed',
+        name: 'Zavřeno',
+        ...PRAGUE,
+        isOpenNow: false,
+        hoursStatus: 'ok',
+      }),
+    ).toBe(false);
+  });
+
+  it('schová jen známé zavřené hospody a použije stejný dataset pro mapu i seznam', () => {
+    const visited = buildVisitedPubs([visit()], [], []);
+    const result = buildMapPubPoints(
+      [
+        { id: 'closed', name: 'Zavřeno', ...PRAGUE, isOpenNow: false, hoursStatus: 'ok' },
+        { id: 'open', name: 'Otevřeno', ...BRNO, isOpenNow: true, hoursStatus: 'ok' },
+        { id: 'unknown', name: 'Bez otevíračky', lat: 49.2, lng: 16.61 },
+      ],
+      visited,
+      false,
+      true,
+    );
+
+    expect(result.points.map((point) => point.pub.name)).toEqual(['Otevřeno', 'Bez otevíračky']);
+  });
+
+  it('nevrátí zavřenou navštívenou hospodu zpět jako bod bez otevíračky', () => {
+    const visited = buildVisitedPubs([visit()], [], []);
+    const result = buildMapPubPoints(
+      [{ id: 'closed', name: 'Zavřeno', ...PRAGUE, isOpenNow: false, hoursStatus: 'ok' }],
+      visited,
+      true,
+      true,
+    );
+
+    expect(result.points).toEqual([]);
+  });
+
   it('sloučí serverové a lokální návštěvy bez zdvojení stejného client id', () => {
     const remote = visit({ client_id: 'same' });
     const local = session({

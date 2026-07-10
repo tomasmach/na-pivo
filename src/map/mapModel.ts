@@ -33,6 +33,18 @@ export interface LivePubSummary {
   activities: FriendPubActivity[];
 }
 
+export interface MapPubPoint {
+  key: string;
+  pub: Pub;
+  lat: number;
+  lng: number;
+  visit: VisitedPubSummary | null;
+}
+
+export interface MapPubPointSet {
+  points: MapPubPoint[];
+}
+
 export interface MapCluster<T> {
   id: string;
   lat: number;
@@ -56,6 +68,56 @@ function pubByKey(pubs: Pub[]): Map<string, Pub> {
   const map = new Map<string, Pub>();
   for (const pub of pubs) map.set(geohash8(pub.lat, pub.lng), pub);
   return map;
+}
+
+export function pubOpeningVerdict(pub: Pub): boolean | null {
+  return pub.hoursStatus === 'ok' && typeof pub.isOpenNow === 'boolean' ? pub.isOpenNow : null;
+}
+
+/**
+ * Build the one pub dataset shared by map pins and the result list. A missing
+ * opening-hours verdict stays visible: "hide closed" only removes pubs that are
+ * explicitly known to be closed.
+ */
+export function buildMapPubPoints(
+  pubs: Pub[],
+  visitedPubs: VisitedPubSummary[],
+  visitedOnly: boolean,
+  hideClosed: boolean,
+): MapPubPointSet {
+  const visitedByKey = new Map(visitedPubs.map((visit) => [visit.cacheKey, visit]));
+  const byKey = new Map<string, MapPubPoint>();
+
+  for (const pub of pubs) {
+    const key = geohash8(pub.lat, pub.lng);
+    const visit = visitedByKey.get(key) ?? null;
+    if (visitedOnly && !visit) continue;
+    byKey.set(key, { key, pub, lat: pub.lat, lng: pub.lng, visit });
+  }
+
+  for (const visit of visitedPubs) {
+    if (byKey.has(visit.cacheKey)) continue;
+    byKey.set(visit.cacheKey, {
+      key: visit.cacheKey,
+      pub: {
+        id: `visit:${visit.cacheKey}`,
+        name: visit.name,
+        lat: visit.lat,
+        lng: visit.lng,
+        ...(visit.city ? { city: visit.city } : {}),
+      },
+      lat: visit.lat,
+      lng: visit.lng,
+      visit,
+    });
+  }
+
+  const candidates = [...byKey.values()];
+  const points = hideClosed
+    ? candidates.filter((point) => pubOpeningVerdict(point.pub) !== false)
+    : candidates;
+
+  return { points };
 }
 
 function latestSessionDrinkAt(session: TallySession): string | null {

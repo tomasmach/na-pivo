@@ -30,6 +30,8 @@ import {
   type TallySession,
 } from '@/stores/tallyStore';
 import { eveningDayRelation } from '@/myBeers/eveningModel';
+import { normalizeDrinkType } from '@/drinks/drinkTypes';
+import { MIN_PLAUSIBLE_BEER_GAP_MS } from '@/drinks/drinkTiming';
 
 /** A drink count threshold bucket, used to pick the hospodský one-liner that
  *  reacts to last night's tally. Ordered from gentle to legendary. */
@@ -84,9 +86,10 @@ export interface PubTally {
 }
 
 /** Drink timestamps (epoch ms) in ascending order, dropping any unparseable. */
-function sortedDrinkTimes(session: TallySession): number[] {
+function sortedDrinkTimes(session: TallySession, beersOnly = false): number[] {
   const times: number[] = [];
   for (const drink of session.drinks) {
+    if (beersOnly && normalizeDrinkType(drink.drinkType) !== 'beer') continue;
     const ms = Date.parse(drink.at);
     if (Number.isFinite(ms)) times.push(ms);
   }
@@ -103,17 +106,25 @@ export function sessionDurationMs(session: TallySession): number {
 
 /** Gaps (ms) between consecutive drinks, ascending by time. Empty when < 2. */
 export function sessionGapsMs(session: TallySession): number[] {
-  const times = sortedDrinkTimes(session);
+  const times = sortedDrinkTimes(session, true);
   const gaps: number[] = [];
   for (let i = 1; i < times.length; i += 1) gaps.push(times[i] - times[i - 1]);
   return gaps;
 }
 
-/** Smallest consecutive gap in an evening, or null when < 2 drinks. */
+/** Reject duplicate-like intervals before they can become a personal record. */
+export function plausibleFastestBeerMs(value: number | null): number | null {
+  return value != null && Number.isFinite(value) && value >= MIN_PLAUSIBLE_BEER_GAP_MS
+    ? value
+    : null;
+}
+
+/** Smallest plausible consecutive beer gap, or null when none qualifies. */
 export function sessionFastestGapMs(session: TallySession): number | null {
   const gaps = sessionGapsMs(session);
   if (gaps.length === 0) return null;
-  return Math.min(...gaps);
+  const plausible = gaps.filter((gap) => plausibleFastestBeerMs(gap) != null);
+  return plausible.length > 0 ? Math.min(...plausible) : null;
 }
 
 /** Bucket a beer count into the tone of its one-liner. */
@@ -146,7 +157,11 @@ export function computeLastPerformance(
   if (beers === 0) return null;
 
   const durationMs = sessionDurationMs(latest);
-  const avgGapMs = beers >= 2 ? durationMs / (beers - 1) : null;
+  const beerGaps = sessionGapsMs(latest);
+  const avgGapMs =
+    beerGaps.length > 0
+      ? beerGaps.reduce((sum, gap) => sum + gap, 0) / beerGaps.length
+      : null;
 
   return {
     relation,

@@ -42,6 +42,7 @@ import {
   computeLifetime,
   computeRecords,
   computeTopPubs,
+  plausibleFastestBeerMs,
   type LastPerformance,
   type LifetimeStats,
   type PersonalRecords,
@@ -378,7 +379,7 @@ export default function StatsScreen({ embedded = false }: { embedded?: boolean }
         mostBeersStartedAt: null,
         fastestBeerMs:
           remote!.records.fastestBeerSeconds != null
-            ? remote!.records.fastestBeerSeconds * 1000
+            ? plausibleFastestBeerMs(remote!.records.fastestBeerSeconds * 1000)
             : null,
         longestEveningMs:
           remote!.records.longestEveningSeconds != null

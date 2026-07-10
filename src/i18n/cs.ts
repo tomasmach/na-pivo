@@ -31,7 +31,14 @@ export const cs = {
     layerVisited: 'Moje stopy',
     layerFriends: 'Parta teď',
     onlyOpen: 'Schovat zavřené',
+    openFilterHint: 'Neznámou otevíračku nechám na mapě',
+    openFilterSummary: (hidden: number, unknown: number) =>
+      `Schováno ${hidden} · bez otevíračky ${unknown}`,
+    openFilterAnnouncement: (hidden: number, unknown: number) =>
+      `Filtr zapnutý. Schováno zavřených podniků: ${hidden}. Otevíračka neznámá u ${unknown} podniků.`,
+    openFilterOff: 'Filtr vypnutý. Znovu ukazuju i známé zavřené podniky.',
     beerTrail: 'Tvoje pivní stopa',
+    friendsOverviewTitle: 'Parta teď',
     zoomForPubs: 'Přibliž město a ukážu ti podniky v jeho okolí.',
     nearbyCount: (all: number, visited: number) =>
       `Ve výřezu ${czechPlural(all, {
@@ -68,6 +75,7 @@ export const cs = {
     permissionHint: 'Rozhlížet se můžeš i bez polohy. Klepni a najdu tě.',
     openWithoutLocation: 'Otevřít mapu bez polohy',
     listTitle: 'Podniky na mapě',
+    closeList: 'Zavřít seznam podniků',
     emptyList: 'V tomhle filtru zatím nic není.',
   },
 
@@ -1690,7 +1698,7 @@ export const cs = {
     totalsHeader: 'CELKEM',
     totalBeers: 'PIV CELKEM',
     totalEvenings: 'VEČERŮ',
-    totalPubs: 'HOSPOD',
+    totalPubs: 'HOSPOD SE ZÁPISEM',
     totalSpent: 'UTRACENO',
 
     // — Top pubs ("kolik jsem kde vypil") —
