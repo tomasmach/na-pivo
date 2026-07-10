@@ -233,6 +233,67 @@ def test_log_defaults_drank_at_to_now(client):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("drink_type", "item"),
+    [
+        ("soft_drink", {"name": "Kofola", "price_czk": 49, "volume_ml": 400}),
+        ("shot", {"name": "Slivovice", "price_czk": 65, "volume_ml": 40}),
+    ],
+)
+def test_log_non_beer_stays_private_and_skips_beer_catalog(
+    client, drink_type, item
+):
+    token = _register(client)
+    resp = client.post(
+        "/v1/drinks",
+        data=_payload(drink_type=drink_type, beer=item),
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_201_CREATED, resp.content
+    assert resp.json()["menu_updated"] is False
+    drink = DrinkLog.objects.get()
+    assert drink.drink_type == drink_type
+    assert drink.beer_name == item["name"]
+    assert drink.volume_ml == item["volume_ml"]
+    assert drink.beer_brand is None
+    assert drink.beer_brand_key == ""
+    assert drink.beer_product is None
+    assert PubCommunityData.objects.count() == 0
+    assert PubBeerBrand.objects.count() == 0
+    assert PubBeerProduct.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_log_rejects_unknown_type_and_invalid_type_specific_volumes(client):
+    token = _register(client)
+    unknown = client.post(
+        "/v1/drinks",
+        data=_payload(drink_type="wine"),
+        format="json",
+        **_auth(token),
+    )
+    beer_shot_volume = client.post(
+        "/v1/drinks",
+        data=_payload(client_id="fdb4ab26-7393-4c33-a0bd-2a897d7c5c31", beer={"name": "Pivo", "price_czk": 50, "volume_ml": 40}),
+        format="json",
+        **_auth(token),
+    )
+    huge_shot = client.post(
+        "/v1/drinks",
+        data=_payload(client_id="eac2078a-4567-4fb4-98a5-83cd6b278999", drink_type="shot", beer={"name": "Rum", "price_czk": 50, "volume_ml": 500}),
+        format="json",
+        **_auth(token),
+    )
+
+    assert unknown.status_code == status.HTTP_400_BAD_REQUEST
+    assert beer_shot_volume.status_code == status.HTTP_400_BAD_REQUEST
+    assert huge_shot.status_code == status.HTTP_400_BAD_REQUEST
+    assert DrinkLog.objects.count() == 0
+
+
+@pytest.mark.django_db
 def test_log_appends_new_beer_to_existing_menu(client):
     token = _register(client)
     PubCommunityData.objects.create(

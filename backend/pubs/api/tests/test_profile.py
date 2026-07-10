@@ -855,6 +855,26 @@ def test_get_me_returns_backend_profile_stats_and_achievements(client):
             drank_at=now,
         )
 
+    for drink_type, name, price, volume in [
+        (DrinkLog.DrinkType.SOFT_DRINK, "Kofola", 49, 400),
+        (DrinkLog.DrinkType.SHOT, "Slivovice", 65, 40),
+    ]:
+        DrinkLog.objects.create(
+            account=account,
+            client_id=uuid.uuid4(),
+            cache_key="u2fkbn12",
+            name="U Zlatého tygra",
+            lat=50.0876,
+            lng=14.4214,
+            city="Praha",
+            external_id="",
+            drink_type=drink_type,
+            beer_name=name,
+            price_czk=price,
+            volume_ml=volume,
+            drank_at=now,
+        )
+
     for i in range(5):
         PubVisit.objects.create(
             account=account,
@@ -905,7 +925,7 @@ def test_get_me_returns_backend_profile_stats_and_achievements(client):
         "total_beers": 10,
         "distinct_pubs": 2,
         "ratings_count": 10,
-        "total_spent_czk": sum(range(50, 60)),
+        "total_spent_czk": sum(range(50, 60)) + 49 + 65,
         "max_visits_to_one_pub": 5,
     }
     assert body["achievements"] == {

@@ -2243,12 +2243,13 @@ class PubBeerProduct(models.Model):
 
 class DrinkLog(models.Model):
     """
-    A single beer the user logged via the in-app beer counter.
+    A single drink the user logged via the in-app counter.
 
-    The mobile beer counter lets a user at a pub tally each beer they drink.
-    Every counted beer carries a name and price, which the server uses to
+    The mobile counter lets a user tally beers plus secondary soft drinks and
+    shots. Every item carries a name and price. Beer rows additionally
     community-source the pub's beer menu + prices (merged into
-    ``PubCommunityData.beers`` — see ``DrinksView``). This row is the per-user,
+    ``PubCommunityData.beers`` — see ``DrinksView``); other categories remain
+    private and never enter the beer catalogue. This row is the per-user,
     append-only record of one drink.
 
     Keyed by (account, client_id): the client generates a UUID per logged drink
@@ -2287,7 +2288,22 @@ class DrinkLog(models.Model):
         help_text="Client-side provider id, e.g. Mapy.cz item id.",
     )
 
-    # ---------- the drunk beer ----------
+    class DrinkType(models.TextChoices):
+        BEER = "beer", "Beer"
+        SOFT_DRINK = "soft_drink", "Soft drink"
+        SHOT = "shot", "Shot"
+
+    drink_type = models.CharField(
+        max_length=16,
+        choices=DrinkType.choices,
+        default=DrinkType.BEER,
+        db_index=True,
+        help_text="Drink category. Defaults to beer for released clients and existing rows.",
+    )
+
+    # ``beer_name`` stays as the physical column and API export key for backward
+    # compatibility. For non-beer rows it stores the generic drink name; callers
+    # must use ``drink_type`` before treating it as a beer/catalog value.
     beer_name = models.TextField(help_text="Beer name (1..80 chars, enforced by the serializer).")
     beer_brand = models.ForeignKey(
         BeerBrand,
@@ -2361,7 +2377,7 @@ class DrinkLog(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"DrinkLog({self.beer_name} @ {self.name} [{self.cache_key}] — {self.price_czk} Kč)"
+        return f"DrinkLog({self.drink_type}: {self.beer_name} @ {self.name} [{self.cache_key}] — {self.price_czk} Kč)"
 
 
 class PubRating(models.Model):

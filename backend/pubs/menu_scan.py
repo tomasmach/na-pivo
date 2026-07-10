@@ -7,9 +7,9 @@ Two pure-ish steps the view (``MenuScanView``) composes:
    downscaled JPEG byte string (decompression-bomb guards, EXIF transpose, RGB,
    longest-edge cap), modelled on ``pubs.accounts.process_avatar``. NEVER trusts
    the client's declared content-type.
-2. :func:`extract_beers_from_image` — send the JPEG to the OpenRouter vision
-   client, then canonicalize each beer name against the catalogue and bound the
-   price/volume so the output matches the existing community-beer wire shape.
+2. :func:`extract_drinks_from_image` — send the JPEG to the OpenRouter vision
+   client, categorize drinks, canonicalize beer names against the catalogue and
+   bound price/volume values.
 
 This module performs NO database writes, awards NO XP, and stores NO image — the
 user reviews the result and the existing ``POST /v1/pub-community`` path does the
@@ -34,7 +34,8 @@ from pubs.beer_catalog import (
     BEER_PRICE_MIN_CZK,
     normalize_beer_payload,
 )
-from pubs.enrichment.openrouter import MAX_BEERS, OpenRouterVisionSource
+from pubs.enrichment.openrouter import MAX_DRINKS, OpenRouterVisionSource
+from pubs.models import DrinkLog
 
 # Decoded-pixel ceiling so a tiny highly-compressed file cannot blow up memory
 # (matches the avatar pipeline's generous phone-photo headroom).
@@ -158,38 +159,55 @@ def _coerce_volume(value) -> int | None:
     return number if number in ALLOWED_BEER_VOLUMES_ML else None
 
 
-def _canonicalize_beers(raw_beers: list[dict]) -> list[dict]:
-    """Canonicalize names against the catalogue, bound price/volume, cap at 12.
+def _coerce_other_volume(value) -> int | None:
+    """Keep realistic soft-drink/shot volumes without beer-menu restrictions."""
+    return _coerce_int(value, low=10, high=3000)
+
+
+def _canonicalize_drinks(raw_drinks: list[dict]) -> list[dict]:
+    """Normalize AI output while keeping non-beers out of the beer catalogue.
 
     Drops empty/garbage names. The output mirrors the community-beer wire shape
     (``name`` / ``price_czk`` / ``volume_ml``) so mobile maps it straight via
     ``beerFromWire``.
     """
     out: list[dict] = []
-    for beer in raw_beers:
-        if not isinstance(beer, dict):
+    allowed_types = set(DrinkLog.DrinkType.values)
+    for drink in raw_drinks:
+        if not isinstance(drink, dict):
             continue
-        name = beer.get("name")
+        drink_type = drink.get("drink_type", DrinkLog.DrinkType.BEER)
+        if drink_type not in allowed_types:
+            continue
+        name = drink.get("name")
         if not isinstance(name, str):
             continue
         name = name.strip()
         if not name:
             continue
-        canonical = normalize_beer_payload(
-            {
-                "name": name,
-                "price_czk": _coerce_int(beer.get("price_czk"), low=_PRICE_MIN, high=_PRICE_MAX),
-                "volume_ml": _coerce_volume(beer.get("volume_ml")),
-            }
+        price_czk = _coerce_int(drink.get("price_czk"), low=_PRICE_MIN, high=_PRICE_MAX)
+        if drink_type == DrinkLog.DrinkType.BEER:
+            volume_ml = _coerce_volume(drink.get("volume_ml"))
+        else:
+            volume_ml = _coerce_other_volume(drink.get("volume_ml"))
+            if drink_type == DrinkLog.DrinkType.SHOT and volume_ml is not None and volume_ml > 200:
+                volume_ml = None
+        canonical = (
+            normalize_beer_payload(
+                {"name": name, "price_czk": price_czk, "volume_ml": volume_ml}
+            )
+            if drink_type == DrinkLog.DrinkType.BEER
+            else {"name": name, "price_czk": price_czk, "volume_ml": volume_ml}
         )
         out.append(
             {
+                "drink_type": drink_type,
                 "name": canonical["name"],
                 "price_czk": canonical.get("price_czk"),
                 "volume_ml": canonical.get("volume_ml"),
             }
         )
-        if len(out) >= MAX_BEERS:
+        if len(out) >= MAX_DRINKS:
             break
     return out
 
@@ -208,12 +226,12 @@ def _build_vision_source() -> OpenRouterVisionSource:
     )
 
 
-def extract_beers_from_image(jpeg_bytes: bytes) -> list[dict]:
-    """Run the vision model over a prepared JPEG and return canonical beers.
+def extract_drinks_from_image(jpeg_bytes: bytes) -> list[dict]:
+    """Run the vision model and return canonical categorized drinks.
 
     Raises ``OpenRouterUnavailableError`` / ``OpenRouterDailyCapExceededError``
     (and ``requests`` errors) up to the view, which maps them to 503.
     """
     with _build_vision_source() as source:
-        raw_beers = source.extract_beers(jpeg_bytes)
-    return _canonicalize_beers(raw_beers)
+        raw_drinks = source.extract_drinks(jpeg_bytes)
+    return _canonicalize_drinks(raw_drinks)

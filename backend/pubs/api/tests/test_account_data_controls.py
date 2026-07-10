@@ -205,6 +205,7 @@ def test_account_export_includes_diary_data_and_excludes_secrets(client):
     body = resp.json()
     assert body["account"]["id"] == account_id
     assert body["drinks"][0]["beer_name"] == "Ležák"
+    assert body["drinks"][0]["drink_type"] == "beer"
     assert body["push_devices"] == [
         {
             "platform": "ios",

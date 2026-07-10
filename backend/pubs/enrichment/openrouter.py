@@ -54,9 +54,11 @@ _DEFAULT_DAILY_CAP = 2000
 # Hard cap on output tokens per call. A <=12-beer JSON list is tiny, and the
 # daily cap counts REQUESTS, not tokens — so this bounds the per-call cost a
 # looping/verbose model (or default Gemini "thinking") would otherwise run up.
-_MAX_OUTPUT_TOKENS = 1024
+_MAX_OUTPUT_TOKENS = 2048
 
-# Hard ceiling on how many beers we keep from a single scan.
+# A scan can include the beer list plus a small secondary selection of soft
+# drinks and shots. The public beer menu still keeps its existing 12-row cap.
+MAX_DRINKS = 24
 MAX_BEERS = 12
 
 # Optional ranking/attribution headers OpenRouter surfaces in its dashboard.
@@ -67,12 +69,14 @@ _APP_TITLE = "Na pivo"
 # menus are Czech/Slovak; the instructions are explicit so we can parse strictly.
 _PROMPT = (
     "Jsi pomocník, který čte fotky nápojových a jídelních lístků z českých a "
-    "slovenských hospod. Z přiložené fotky vytáhni POUZE piva: točená, lahvová, "
-    "plechovková, nealkoholická piva, radlery a pivní mixy. Ignoruj jídlo, víno, "
-    "destiláty, kávu, čaj, limonády, vodu a ostatní nealkoholické nápoje, které "
-    "nejsou pivo ani pivní mix. "
+    "slovenských hospod. Z přiložené fotky vytáhni nápoje ve třech kategoriích: "
+    "beer = točená, lahvová a plechovková piva včetně kategorie nealkoholická piva; "
+    "patří sem i radlery a pivní mixy; soft_drink = nealkoholické nápoje jako voda, limonáda, Kofola, "
+    "džus, káva nebo čaj (NE nealkoholické pivo); shot = samostatné panáky destilátů "
+    "a likérů. Ignoruj jídlo, víno po skleničce i celé lahve tvrdého alkoholu. "
     "Vrať STRIKTNĚ validní JSON přesně ve tvaru "
-    '{"beers":[{"name":<string>,"price_czk":<integer nebo null>,'
+    '{"drinks":[{"drink_type":"beer"|"soft_drink"|"shot",'
+    '"name":<string>,"price_czk":<integer nebo null>,'
     '"volume_ml":<integer nebo null>}]}. '
     "Cena je celé číslo v korunách, nebo null, když není čitelná. "
     "Objem je celé číslo v mililitrech (např. 500, 400, 330, 300), nebo null. "
@@ -80,7 +84,8 @@ _PROMPT = (
     "přednostně půllitr 500 ml a jeho cenu. Pokud půllitr není uveden, vrať "
     "jasně spárovaný objem a cenu, včetně běžných 0,4 l sklenic jako 400 ml. "
     "Nehádej nečitelná jména, ceny ani objemy; nejasné hodnoty dej jako null. "
-    "Maximálně 12 piv. Nevracej nic jiného než tento JSON."
+    "U panáků správně převáděj 0,02/0,04/0,05 l na 20/40/50 ml. "
+    "Maximálně 24 nápojů, piva upřednostni. Nevracej nic jiného než tento JSON."
 )
 
 
@@ -146,8 +151,8 @@ def _content_of(data: dict) -> str:
     return ""
 
 
-def _parse_beers(content: str) -> list[dict]:
-    """Parse the model's text content into a list of beer dicts.
+def _parse_drinks(content: str) -> list[dict]:
+    """Parse model output, accepting both the new and legacy JSON shape.
 
     Tolerates markdown code fences. On any unparseable output returns an empty
     list (the caller must NOT 500 on a bad model response).
@@ -160,14 +165,16 @@ def _parse_beers(content: str) -> list[dict]:
     except (ValueError, TypeError):
         return []
     if isinstance(data, dict):
-        beers = data.get("beers")
+        drinks = data.get("drinks")
+        if not isinstance(drinks, list):
+            drinks = data.get("beers")
     elif isinstance(data, list):
-        beers = data
+        drinks = data
     else:
-        beers = None
-    if not isinstance(beers, list):
+        drinks = None
+    if not isinstance(drinks, list):
         return []
-    return [beer for beer in beers if isinstance(beer, dict)]
+    return [drink for drink in drinks if isinstance(drink, dict)]
 
 
 # ---------------------------------------------------------------------------
@@ -277,11 +284,11 @@ class OpenRouterVisionSource:
     # Public API
     # ------------------------------------------------------------------
 
-    def extract_beers(self, jpeg_bytes: bytes) -> list[dict]:
-        """Send a JPEG menu photo to the model; return a list of beer dicts.
+    def extract_drinks(self, jpeg_bytes: bytes) -> list[dict]:
+        """Send a JPEG menu photo to the model; return categorized drink dicts.
 
-        Each dict is ``{"name", "price_czk", "volume_ml"}`` exactly as the model
-        returned it (raw — the caller canonicalizes and bounds the values).
+        Each dict contains ``drink_type`` / ``name`` / ``price_czk`` /
+        ``volume_ml`` exactly as returned (the caller validates and bounds it).
 
         Raises
         ------
@@ -325,16 +332,16 @@ class OpenRouterVisionSource:
         }
 
         content = self._post_chat(payload)
-        beers = _parse_beers(content)
+        drinks = _parse_drinks(content)
         duration_ms = round((datetime.now(tz=UTC) - started).total_seconds() * 1000)
         # Privacy: log counts/durations only — never the key, image, or raw text.
         logger.info(
-            "openrouter: menu scan extracted %d beers in %d ms (model=%s)",
-            len(beers),
+            "openrouter: menu scan extracted %d drinks in %d ms (model=%s)",
+            len(drinks),
             duration_ms,
             self._model,
         )
-        return beers
+        return drinks
 
     # ------------------------------------------------------------------
     # Context manager

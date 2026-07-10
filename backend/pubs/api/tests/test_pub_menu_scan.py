@@ -180,6 +180,40 @@ def test_happy_path_returns_mapped_beers(client, monkeypatch):
 
 
 @pytest.mark.django_db
+def test_scan_returns_categorized_drinks_and_legacy_beers(client, monkeypatch):
+    content = json.dumps(
+        {
+            "drinks": [
+                {"drink_type": "beer", "name": "Plzeň", "price_czk": 62, "volume_ml": 500},
+                {"drink_type": "soft_drink", "name": "Kofola", "price_czk": 49, "volume_ml": 400},
+                {"drink_type": "shot", "name": "Slivovice", "price_czk": 65, "volume_ml": 40},
+                {"drink_type": "wine", "name": "Ryzlink", "price_czk": 70, "volume_ml": 200},
+            ]
+        }
+    )
+    _patch_source(monkeypatch, _make_source(lambda req: _chat_response(content)))
+
+    token = _register(client)
+    resp = client.post(
+        "/v1/pub-menu-scan",
+        data={"image": _upload()},
+        format="multipart",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    body = resp.json()
+    assert body["beers"] == [
+        {"name": "Pilsner Urquell", "price_czk": 62, "volume_ml": 500}
+    ]
+    assert body["drinks"] == [
+        {"drink_type": "beer", "name": "Pilsner Urquell", "price_czk": 62, "volume_ml": 500},
+        {"drink_type": "soft_drink", "name": "Kofola", "price_czk": 49, "volume_ml": 400},
+        {"drink_type": "shot", "name": "Slivovice", "price_czk": 65, "volume_ml": 40},
+    ]
+
+
+@pytest.mark.django_db
 def test_markdown_fenced_json_is_parsed(client, monkeypatch):
     """The model may wrap JSON in a ```json code fence — we strip it.
 
@@ -427,7 +461,7 @@ def test_request_payload_caps_cost_and_denies_data_collection(client, monkeypatc
     )
     assert resp.status_code == status.HTTP_200_OK, resp.content
     # Bounded output + no reasoning tokens on a deterministic JSON extraction.
-    assert captured["max_tokens"] == 1024
+    assert captured["max_tokens"] == 2048
     assert captured["reasoning"] == {"enabled": False}
     # Only route to providers that do not store/train on the menu photo.
     assert captured["provider"] == {"data_collection": "deny"}
@@ -458,6 +492,9 @@ def test_prompt_includes_non_alcoholic_beer_and_volume_pairing_rules(
     prompt = captured["messages"][0]["content"][0]["text"]
     assert "nealkoholická piva" in prompt
     assert "radlery" in prompt
+    assert "soft_drink" in prompt
+    assert "shot" in prompt
+    assert "20/40/50 ml" in prompt
     assert "0,4 l" in prompt
     assert "400 ml" in prompt
     assert "přednostně půllitr 500 ml" in prompt

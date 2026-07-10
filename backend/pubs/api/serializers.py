@@ -41,7 +41,7 @@ import uuid
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import EmailValidator
 from django.db import IntegrityError
-from django.db.models import Count, Sum
+from django.db.models import Count, Q, Sum
 from rest_framework import serializers
 
 from pubs import accounts
@@ -61,6 +61,7 @@ from pubs.models import (
     BeerCheckInReaction,
     ClientEvent,
     ContentReport,
+    DrinkLog,
     EmailCredential,
     FeedbackReport,
     FriendActivityReaction,
@@ -1052,15 +1053,23 @@ class CommunityBeerSerializer(serializers.Serializer):
         }
 
 
+class ScannedDrinkSerializer(serializers.Serializer):
+    drink_type = serializers.ChoiceField(choices=DrinkLog.DrinkType.choices)
+    name = serializers.CharField()
+    price_czk = serializers.IntegerField(allow_null=True)
+    volume_ml = serializers.IntegerField(allow_null=True)
+
+
 class MenuScanResultSerializer(serializers.Serializer):
     """Response body for POST /v1/pub-menu-scan.
 
-    ``beers`` reuses CommunityBeerSerializer so each entry emits the same
-    ``name`` / ``price_czk`` / ``volume_ml`` wire shape mobile maps via
-    ``beerFromWire``; ``model`` is the vision model id that produced them.
+    ``beers`` preserves the released contract. ``drinks`` adds categorized
+    beer/soft-drink/shot rows for new private logging flows; ``model`` is the
+    vision model id that produced them.
     """
 
     beers = CommunityBeerSerializer(many=True)
+    drinks = ScannedDrinkSerializer(many=True, required=False)
     model = serializers.CharField()
 
 
@@ -1177,24 +1186,31 @@ class PubCommunityRequestSerializer(PubInputSerializer):
 # ---------------------------------------------------------------------------
 
 
-class DrinkBeerSerializer(CommunityBeerSerializer):
-    """A single drunk beer in a drink-log submission.
+class DrinkItemSerializer(serializers.Serializer):
+    """The named item inside a drink-log request.
 
-    Identical bounds to CommunityBeerSerializer (name 1..80, price 1..1000,
-    volume_ml ∈ {300,330,400,500,1000} or null) except ``price_czk`` is
-    REQUIRED — a logged drink always carries a price, which is the
-    community-sourcing hook that feeds the pub's beer menu.
+    The wire key remains ``beer`` so released clients stay compatible. Beer
+    volumes retain the strict community-menu set; soft drinks and shots accept
+    real menu sizes from 10 ml to 3 l and never enter the beer catalogue.
     """
 
+    name = serializers.CharField(max_length=80, trim_whitespace=True)
     price_czk = serializers.IntegerField(required=True, min_value=1, max_value=1000)
+    volume_ml = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=10,
+        max_value=3000,
+    )
 
 
 class DrinkRequestSerializer(_Pub200NameValidationMixin, PubInputSerializer):
     """Request body for POST /v1/drinks.
 
     Inherits name/lat/lng/city (+ lat/lng bounds) from PubInputSerializer and
-    adds the idempotency key, optional external id, the required ``beer`` (with a
-    mandatory price), and an optional ``drank_at`` (server defaults to now()).
+    adds the idempotency key, optional external id, additive ``drink_type``, the
+    required legacy ``beer`` object (with a mandatory price), and an optional
+    ``drank_at`` (server defaults to now()).
     The pub name is tightened to 1..200 by _Pub200NameValidationMixin.
     """
 
@@ -1206,13 +1222,42 @@ class DrinkRequestSerializer(_Pub200NameValidationMixin, PubInputSerializer):
         allow_blank=True,
         trim_whitespace=True,
     )
-    beer = DrinkBeerSerializer()
+    drink_type = serializers.ChoiceField(
+        choices=DrinkLog.DrinkType.choices,
+        default=DrinkLog.DrinkType.BEER,
+    )
+    beer = DrinkItemSerializer()
     drank_at = serializers.DateTimeField(required=False, allow_null=True)
 
-    def validate_beer(self, value: dict) -> dict:
-        # Canonicalise to all three keys so the merge + stored JSON have a stable
-        # shape, matching CommunityBeerSerializer.to_representation output.
-        return normalize_beer_payload(value, match_cache=self.context.get("beer_match_cache"))
+    def validate(self, attrs: dict) -> dict:
+        item = attrs["beer"]
+        if attrs["drink_type"] == DrinkLog.DrinkType.BEER:
+            volume_ml = item.get("volume_ml")
+            if volume_ml is not None and volume_ml not in ALLOWED_BEER_VOLUMES_ML:
+                raise serializers.ValidationError(
+                    {"beer": {"volume_ml": f"volume_ml must be one of {sorted(ALLOWED_BEER_VOLUMES_ML)}."}}
+                )
+            attrs["beer"] = normalize_beer_payload(
+                item,
+                match_cache=self.context.get("beer_match_cache"),
+            )
+        else:
+            volume_ml = item.get("volume_ml")
+            if (
+                attrs["drink_type"] == DrinkLog.DrinkType.SHOT
+                and volume_ml is not None
+                and volume_ml > 200
+            ):
+                raise serializers.ValidationError(
+                    {"beer": {"volume_ml": "A shot volume must not exceed 200 ml."}}
+                )
+            # Keep non-beer names human-entered and avoid beer catalogue aliases.
+            attrs["beer"] = {
+                "name": item["name"],
+                "price_czk": item["price_czk"],
+                "volume_ml": item.get("volume_ml"),
+            }
+        return attrs
 
 
 class DrinkUpdateSerializer(serializers.Serializer):
@@ -1643,7 +1688,7 @@ def _account_stats(obj: Account) -> dict:
     """Aggregate the account's durable backend history into profile counters."""
 
     drink_totals = obj.drinks.aggregate(
-        total_beers=Count("id"),
+        total_beers=Count("id", filter=Q(drink_type=DrinkLog.DrinkType.BEER)),
         total_spent_czk=Sum("price_czk"),
     )
     pub_keys = set(obj.pub_visits.values_list("cache_key", flat=True))

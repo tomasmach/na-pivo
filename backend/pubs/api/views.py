@@ -80,7 +80,7 @@ from pubs.enrichment import (
 from pubs.mapper import maper_snapshot
 from pubs.menu_scan import (
     MenuScanError,
-    extract_beers_from_image,
+    extract_drinks_from_image,
     validate_and_prepare_image,
 )
 from pubs.models import (
@@ -1320,10 +1320,9 @@ class DrinksView(APIView):
     PATCH  /v1/drinks/<client_id>
     DELETE /v1/drinks/<client_id>
 
-    Log one beer the user drank via the in-app beer counter. Every drink carries
-    a beer name + price; the server records the per-user DrinkLog AND merges the
-    beer into the pub's community menu (PubCommunityData.beers) so counting beers
-    community-sources the menu and prices.
+    Log one categorized drink via the in-app counter. Beer remains the default
+    for released clients and is merged into PubCommunityData.beers. Soft drinks
+    and shots are stored privately without touching beer menus or catalogues.
 
     Auth: Bearer token (per-account). Idempotent on (account, client_id): a
     replayed client_id returns 200 ``duplicate: true`` with NO repeated side
@@ -1362,7 +1361,13 @@ class DrinksView(APIView):
         data = serializer.validated_data
         cache_key = geohash8(data["lat"], data["lng"])
         beer = data["beer"]
-        brand_match = match_beer_brand(beer["name"], match_cache=match_cache)
+        drink_type = data["drink_type"]
+        is_beer = drink_type == DrinkLog.DrinkType.BEER
+        brand_match = (
+            match_beer_brand(beer["name"], match_cache=match_cache)
+            if is_beer
+            else None
+        )
         drank_at = data.get("drank_at") or dj_timezone.now()
 
         try:
@@ -1377,6 +1382,7 @@ class DrinksView(APIView):
                         "lng": data["lng"],
                         "city": data.get("city") or "",
                         "external_id": data.get("external_id") or "",
+                        "drink_type": drink_type,
                         "beer_name": beer["name"],
                         "beer_brand": brand_match.brand if brand_match else None,
                         "beer_brand_key": brand_match.brand.key if brand_match else "",
@@ -1408,13 +1414,15 @@ class DrinksView(APIView):
                         status=status.HTTP_200_OK,
                     )
 
-                menu_updated = self._merge_into_community(
-                    cache_key,
-                    data,
-                    beer,
-                    account=request.user,
-                    match_cache=match_cache,
-                )
+                menu_updated = False
+                if is_beer:
+                    menu_updated = self._merge_into_community(
+                        cache_key,
+                        data,
+                        beer,
+                        account=request.user,
+                        match_cache=match_cache,
+                    )
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "drinks: unexpected error logging drink for cache key %s: %s",
@@ -1441,8 +1449,6 @@ class DrinksView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         beer_name = serializer.validated_data["beer_name"]
-        brand_match = match_beer_brand(beer_name, match_cache=match_cache)
-
         try:
             with transaction.atomic():
                 drink = (
@@ -1452,6 +1458,12 @@ class DrinksView(APIView):
                 )
                 if drink is None:
                     return Response({"updated": False}, status=status.HTTP_200_OK)
+
+                brand_match = (
+                    match_beer_brand(beer_name, match_cache=match_cache)
+                    if drink.drink_type == DrinkLog.DrinkType.BEER
+                    else None
+                )
 
                 old_brand_key = drink.beer_brand_key
                 old_product_key = drink.beer_product_key
@@ -1479,13 +1491,14 @@ class DrinksView(APIView):
                     ]
                 )
 
-                self._refresh_drink_brand_indexes_after_patch(
-                    drink=drink,
-                    old_brand_key=old_brand_key,
-                    old_product_key=old_product_key,
-                    account=request.user,
-                    match_cache=match_cache,
-                )
+                if drink.drink_type == DrinkLog.DrinkType.BEER:
+                    self._refresh_drink_brand_indexes_after_patch(
+                        drink=drink,
+                        old_brand_key=old_brand_key,
+                        old_product_key=old_product_key,
+                        account=request.user,
+                        match_cache=match_cache,
+                    )
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "drinks: unexpected error updating drink %r: %s",
@@ -4811,6 +4824,7 @@ def _export_account_data(account: Account) -> dict:
                 "lng": drink.lng,
                 "city": drink.city,
                 "external_id": drink.external_id,
+                "drink_type": drink.drink_type,
                 "beer_name": drink.beer_name,
                 "price_czk": drink.price_czk,
                 "volume_ml": drink.volume_ml,
@@ -5471,8 +5485,9 @@ class MenuScanView(APIView):
 
     Responses
     ---------
-    200 ``{"beers": [{"name", "price_czk", "volume_ml"}, ...], "model": <str>}``
-        Up to 12 draft/bottled beers; detecting nothing returns ``"beers": []``.
+    200 ``{"beers": [...], "drinks": [{"drink_type", "name", ...}], "model": <str>}``
+        ``beers`` stays capped at 12 for released clients; ``drinks`` contains
+        up to 24 categorized items for current clients.
     400 ``{"detail", "code": image_missing | image_invalid | image_too_large}``
     429 default DRF throttle response (scope ``menu_scan``).
     503 ``{"detail", "code": vision_unavailable | daily_cap}``
@@ -5520,14 +5535,21 @@ class MenuScanView(APIView):
             return _menu_scan_daily_cap_response()
 
         try:
-            beers = extract_beers_from_image(jpeg_bytes)
+            drinks = extract_drinks_from_image(jpeg_bytes)
         except OpenRouterDailyCapExceededError:
             return _menu_scan_daily_cap_response()
         except (OpenRouterUnavailableError, requests.RequestException):
             return _menu_scan_vision_unavailable()
 
+        # ``beers`` remains byte-for-byte compatible for released clients. New
+        # clients use the categorized ``drinks`` list for private logging.
+        beers = [
+            {key: drink[key] for key in ("name", "price_czk", "volume_ml")}
+            for drink in drinks
+            if drink["drink_type"] == DrinkLog.DrinkType.BEER
+        ][:12]
         payload = MenuScanResultSerializer(
-            {"beers": beers, "model": settings.OPENROUTER_MODEL}
+            {"beers": beers, "drinks": drinks, "model": settings.OPENROUTER_MODEL}
         ).data
         return Response(payload, status=status.HTTP_200_OK)
 

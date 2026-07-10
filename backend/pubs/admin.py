@@ -427,9 +427,9 @@ class PubContributionLogAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
 class DrinkLogAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
     # Append-only per-user drink history — fully read-only, like the
     # contribution log.
-    list_display = ("drank_at", "beer_name", "beer_brand_name", "beer_product_name", "price_czk", "volume_ml", "name", "cache_key", "account")
+    list_display = ("drank_at", "drink_type", "beer_name", "beer_brand_name", "beer_product_name", "price_czk", "volume_ml", "name", "cache_key", "account")
     list_select_related = ("account", "beer_brand", "beer_product")
-    list_filter = ("beer_brand_key", "beer_product_key", "volume_ml", "drank_at")
+    list_filter = ("drink_type", "beer_brand_key", "beer_product_key", "volume_ml", "drank_at")
     search_fields = ("beer_name", "beer_brand_name", "beer_product_name", "name", "cache_key", "city")
     readonly_fields = (
         "account",
@@ -440,6 +440,7 @@ class DrinkLogAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
         "lng",
         "city",
         "external_id",
+        "drink_type",
         "beer_name",
         "beer_brand",
         "beer_brand_key",
