@@ -436,6 +436,13 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen
+            name="profile/badges"
+            options={{
+              animation: 'slide_from_right',
+              gestureEnabled: true,
+            }}
+          />
+          <Stack.Screen
             name="leaderboards"
             options={{
               // Global leaderboards — a back-navigable "place" like /profile/parta.
