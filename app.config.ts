@@ -67,9 +67,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         NSMicrophoneUsageDescription:
           'Mikrofon se použije jen pro zvukové funkce aplikace a nikdy bez tvého souhlasu.',
         NSPhotoLibraryUsageDescription:
-          'Otevřu ti galerii, ať si vybereš profilovku nebo fotku pivního menu.',
+          'Otevřu ti galerii, ať si vybereš profilovku, fotku pivního menu nebo fotku piva do deníčku.',
         NSCameraUsageDescription:
-          'Foťák potřebuju, abych ti z menu přečetl piva.',
+          'Foťák potřebuju, abych ti z menu přečetl piva a abys mohl vyfotit pivo do deníčku.',
         ITSAppUsesNonExemptEncryption: false,
         ...(usesLocalBackend()
           ? {
@@ -104,7 +104,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         'android.permission.ACCESS_FINE_LOCATION',
         'android.permission.ACCESS_BACKGROUND_LOCATION',
         'android.permission.POST_NOTIFICATIONS',
-        // Snapping a pub's beer menu for the "Vyfoť menu" OCR helper.
+        // Snapping a pub's beer menu ("Vyfoť menu" OCR) and beer photos for the
+        // photo diary ("FotoPivař").
         'android.permission.CAMERA',
       ],
       adaptiveIcon: {

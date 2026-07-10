@@ -78,6 +78,9 @@ function achievementsFromMapper(
     cartographer: (current?.cartographer ?? false) || mapper.distinctMappedPubs >= 25,
     completionist: (current?.completionist ?? false) || mapper.completedPubsCount >= 1,
     factMachine: (current?.factMachine ?? false) || mapper.amenityVotesCount >= 100,
+    // Server-only badge (photo-contest win) — no local unlock rule; carry it
+    // through so a mapper snapshot never clobbers it back to false.
+    fotoPivar: current?.fotoPivar ?? false,
   };
 }
 

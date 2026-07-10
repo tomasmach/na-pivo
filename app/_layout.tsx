@@ -28,6 +28,7 @@ import {
   stashPendingInviteCode,
 } from '@/data/friendInviteLink';
 import { flushBeerCheckinsQueue } from '@/data/beerCheckinsQueue';
+import { flushBeerPhotosQueue } from '@/data/beerPhotosQueue';
 import { seedVisitsFromHistory } from '@/data/visitsSync';
 import {
   installClientTelemetry,
@@ -250,6 +251,7 @@ export default function RootLayout() {
     // existing notification-permission grantees without a prompt (Parta 3.0).
     void flushFriendsQueue();
     void flushBeerCheckinsQueue();
+    void flushBeerPhotosQueue();
     void ensureFriendPushRegisteredIfGranted();
     // Close an evening left idle past the timeout while the app was away, so the
     // counter reopens clean (the evening stays resumable for the same day/pub).
@@ -271,6 +273,7 @@ export default function RootLayout() {
         void flushVisitsQueue();
         void flushFriendsQueue();
         void flushBeerCheckinsQueue();
+        void flushBeerPhotosQueue();
         // Re-seed pub geofences for wherever the user is now (no-op when the
         // feature is off; cheap unless they moved a few km since last fetch).
         if ((useTallyStore.getState().current?.drinks.length ?? 0) > 0) {
@@ -447,6 +450,22 @@ export default function RootLayout() {
               // screen with the native right-edge back-swipe.
               animation: 'slide_from_right',
               gestureEnabled: true,
+            }}
+          />
+          <Stack.Screen
+            name="photo/[key]"
+            options={{
+              presentation: 'fullScreenModal',
+              animation: 'slide_from_bottom',
+              gestureEnabled: false,
+            }}
+          />
+          <Stack.Screen
+            name="photo-contest"
+            options={{
+              presentation: 'fullScreenModal',
+              animation: 'slide_from_bottom',
+              gestureEnabled: false,
             }}
           />
         </Stack>

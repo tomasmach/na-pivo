@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { clearAddedPubsQueue } from './addedPubsQueue';
+import { clearBeerPhotoLocalFiles, clearBeerPhotosQueue } from './beerPhotosQueue';
 import { clearCommunityQueue } from './communityQueue';
 import { clearDeleteDrinksQueue } from './deleteDrinksQueue';
 import { clearDrinksQueue } from './drinksQueue';
@@ -15,6 +16,7 @@ import { runWithoutPubAmenitiesSync } from './pubAmenitiesSync';
 import { clearPubRatingsQueue } from './pubRatingsQueue';
 import { runWithoutPubRatingsSync } from './pubRatingsSync';
 import { clearVisitsQueue } from './visitsQueue';
+import { useBeerPhotosStore } from '@/stores/beerPhotosStore';
 import { useCommunityStore } from '@/stores/communityStore';
 import { usePartyGroupsStore } from '@/stores/partyGroupsStore';
 import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
@@ -30,6 +32,7 @@ const PRIVATE_STORAGE_KEYS = [
   'na-pivo-community',
   'na-pivo-pub',
   'na-pivo-party-groups',
+  'na-pivo-beer-photos',
   // Note: the Parta social-graph snapshot ('na-pivo-friends-dashboard') is cleared
   // via clearFriendsDashboardSnapshot() below — that path also bumps the snapshot
   // generation so an in-flight dashboard fetch can't re-persist it after the clear.
@@ -54,6 +57,10 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
     usePubAmenitiesStore.setState({ votes: {} });
   });
   useCommunityStore.setState({ overrides: {} });
+  // Photo diary is private data: wipe the store, the durable local JPEGs, and
+  // (below) the pending-upload queue before the session boundary moves.
+  useBeerPhotosStore.setState({ photos: [] });
+  clearBeerPhotoLocalFiles();
   usePartyGroupsStore.setState({ groups: [] });
   usePubStore.setState({
     revealedPub: null,
@@ -71,6 +78,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
     clearPubNameCorrectionsQueue(),
     clearPubReportQueue(),
     clearVisitsQueue(),
+    clearBeerPhotosQueue(),
     clearFriendsQueue(),
     clearFriendsDashboardSnapshot(),
     clearPubRatingsQueue(),

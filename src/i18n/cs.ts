@@ -659,6 +659,137 @@ export const cs = {
     detailMyTagsLabel: 'Můj verdikt',
   },
 
+  photoDiary: {
+    // — Diary section on the profile —
+    header: 'PIVNÍ FOTKY',
+    title: 'Pivní fotky',
+    empty: 'Zatím tu nic není. Vyfoť svoje pivo a začni si plnit album.',
+    emptyTitle: 'Zvedni pivo, cvakni fotku',
+    addPhoto: 'Přidat fotku',
+    takePhoto: 'Vyfotit pivo',
+    pickFromLibrary: 'Vybrat z galerie',
+    contestLink: 'FotoPivař',
+    photoCount: (n: number) =>
+      n === 1 ? '1 fotka' : n >= 2 && n <= 4 ? `${n} fotky` : `${n} fotek`,
+
+    // — Source sheet —
+    sheetTitle: 'Cvakni pivo',
+    sheetSubtitle: 'Než spadne pěna. Fotka jde do tvého deníčku.',
+    cameraHelper: 'Vyfoť ho rovnou u stolu',
+    libraryHelper: 'Máš ho už v mobilu',
+
+    // — Compose sheet —
+    composeTitle: 'Do deníčku',
+    captionLabel: 'Popisek',
+    captionPlaceholder: 'Co to bylo za pivo a za večer?',
+    pubLabel: 'Hospoda',
+    pubNone: 'Bez hospody',
+    pubNoneNearby: 'Poblíž jsem žádnou hospodu nenašel.',
+    visibilityLabel: 'Viditelnost',
+    visibilityPrivate: 'Jen pro mě',
+    visibilityFriends: 'Parta',
+    save: 'Uložit do deníčku',
+    saved: 'Fotka je v albu. Na zdraví.',
+    errorPick: 'Fotku se nepodařilo načíst. Zkus to znovu.',
+
+    // — Sync states on a diary tile —
+    pendingBadge: 'Čeká na nahrání',
+    failedBadge: 'Nahrání se nepovedlo',
+    syncPendingShort: 'Nahrává se',
+    syncFailedShort: 'Nenahráno',
+    retryUpload: 'Zkusit znovu',
+    retryQueuedToast: 'Beru. Zkusím to nahrát znovu.',
+
+    // — Photo detail —
+    detailTitle: 'Fotka piva',
+    detailMissing: 'Tahle fotka už tu není.',
+    enterContestCta: 'Přihlásit do soutěže',
+    enterContestHint: 'Nahranou fotku můžeš poslat do soutěže o FotoPivaře.',
+    inContestNote: 'Tahle fotka právě bojuje o FotoPivaře.',
+    openContest: 'Otevřít soutěž',
+    syncBeforeContest: 'Do soutěže může, až se nahraje.',
+
+    // — Delete flow —
+    deleteConfirmTitle: 'Smazat fotku?',
+    deleteConfirmBody: 'Zmizí z alba i ze soutěže. Tohle vrátit neumím.',
+    deleteConfirm: 'Smazat',
+    deleteCancel: 'Nechat',
+    deletedToast: 'Fotka smazaná.',
+    deleteError: 'Fotku se nepodařilo smazat. Zkus to znovu.',
+
+    // — Failed-upload messages (codes off POST /v1/beer-photos, persisted by
+    //   the queue as `failureCode` and surfaced on the photo detail) —
+    errorLimitReached: 'Album je plné. Smaž nějakou starší fotku a zkus to znovu.',
+    errorTooLarge: 'Tahle fotka je moc velká. Zkus jinou.',
+    errorInvalid: 'Tohle mi jako fotka piva nejde načíst. Zkus jinou.',
+
+    // — Permissions (mirrors profile.setup wording) —
+    permissionCameraBody: 'Pro focení piva potřebuju přístup k foťáku. Povol ho v Nastavení.',
+    permissionLibraryBody: 'Pro výběr fotky potřebuju přístup ke knihovně fotek. Povol ho v Nastavení.',
+    permissionBlockedBody: 'Přístup je zakázaný. Povol ho v systémovém Nastavení a zkus to znovu.',
+    openSettings: 'Otevřít Nastavení',
+
+    // — Friend gallery (section hides entirely when empty) —
+    friendHeader: (name: string) => `Pivní fotky — ${name}`,
+  },
+
+  photoContest: {
+    // — Contest screen —
+    title: 'FotoPivař',
+    subtitle: 'Soutěž o nejlepší pivní fotku. Každých 14 dní nové kolo.',
+    noContest: 'Zrovna se nesoutěží. Zajdi zatím na jedno.',
+    emptyEntries: 'Zatím tu není ani jedna fotka. Buď první.',
+
+    // — Countdown —
+    endsInDays: (n: number) =>
+      n === 1 ? 'Končí zítra' : n >= 2 && n <= 4 ? `Končí za ${n} dny` : `Končí za ${n} dní`,
+    endsToday: 'Poslední den! Večer se sčítají hlasy.',
+    ended: 'Kolo skončilo. Sčítá se.',
+
+    // — My entry —
+    myEntryHeader: 'TVOJE FOTKA V KOLE',
+    entriesHeader: 'KDO SOUTĚŽÍ',
+    enterCta: 'Přihlásit fotku',
+    enterCardTitle: 'Přihlas svou fotku',
+    enterCardHint: 'Vyber fotku z deníčku a pošli ji do boje o FotoPivaře.',
+    enterNoPhotos: 'V deníčku zatím nemáš žádnou nahranou fotku. Nejdřív nějakou cvakni.',
+    goToDiary: 'Do deníčku',
+    enterConfirmTitle: 'Přihlásit tuhle fotku?',
+    enterConfirmBody: 'Uvidí ji každý, kdo do soutěže nakoukne. Jedna fotka na kolo.',
+    withdrawCta: 'Stáhnout ze soutěže',
+    withdrawConfirmTitle: 'Stáhnout fotku ze soutěže?',
+    withdrawConfirmBody: 'Přijdeš o nasbírané hlasy. Vrátit je neumím.',
+    enteredToast: 'Fotka je v soutěži. Hodně štěstí.',
+    withdrawnToast: 'Fotka je ze soutěže venku.',
+    myEntryBadge: 'Tvoje fotka',
+
+    // — Reporting an entry —
+    reportAction: 'Nahlásit fotku',
+    reportConfirmTitle: 'Nahlásit tuhle fotku?',
+    reportConfirmBody: 'Poletí na kontrolu. Díky, že hlídáš výčep.',
+    reportedToast: 'Nahlášeno. Mrkneme na to.',
+
+    // — Loading / error —
+    loadError: 'Soutěž se teď nenačetla. Zkus to znovu.',
+    retry: 'Zkusit znovu',
+
+    // — Voting —
+    votesCount: (n: number) =>
+      n === 1 ? '1 hlas' : n >= 2 && n <= 4 ? `${n} hlasy` : `${n} hlasů`,
+
+    // — Winners (last round) —
+    winnersHeader: 'MINULÉ KOLO',
+    winnerRank: (n: number) => `${n}. místo`,
+    winnerBadgeNote: 'Vítěz nosí odznak FotoPivař.',
+
+    // — Errors (codes off the contest endpoints) —
+    errorCannotVoteOwn: 'Vlastní fotce hlas nedáš. Pěkný pokus.',
+    errorNicknameRequired: 'Do soutěže potřebuješ přezdívku. Nastav si ji v profilu.',
+    errorVote: 'Hlas se nepodařilo započítat. Zkus to znovu.',
+    errorEnter: 'Fotku se nepodařilo přihlásit. Zkus to znovu.',
+    errorGeneric: 'Něco se pokazilo. Zkus to znovu.',
+  },
+
   friends: {
     title: 'Parta',
     heroTitle: 'Kdo jde dneska na jedno?',
@@ -1015,6 +1146,8 @@ export const cs = {
     badgeRegularLocked: 'Navštiv jednu hospodu 5×',
     badgeReviewerTitle: 'Recenzent',
     badgeReviewerLocked: 'Ohodnoť 10 hospod',
+    badgeFotoPivarTitle: 'FotoPivař',
+    badgeFotoPivarLocked: 'Vyhraj kolo fotosoutěže',
 
     // — Recent activity —
     recentHeader: 'POSLEDNÍ AKTIVITA',
@@ -1489,6 +1622,24 @@ export const cs = {
     profileDisplayNameInput: 'Jméno',
     profileVisibilityToggle: (state: string) => `Veřejný profil: ${state}`,
     profileClose: 'Zavřít',
+
+    // — Pivní fotky / FotoPivař —
+    photoAddTile: 'Přidat fotku piva',
+    photoTile: (label: string) => `Fotka piva${label ? `, ${label}` : ''}. Ťukni pro detail.`,
+    photoContestLink: 'Otevřít soutěž FotoPivař',
+    photoCaptionInput: 'Popisek fotky',
+    photoPickPub: 'Označit hospodu',
+    photoClearPub: 'Zrušit označenou hospodu',
+    photoVisibility: (label: string) => `Viditelnost fotky: ${label}`,
+    photoDelete: 'Smazat fotku',
+    photoRetry: 'Zkusit nahrát fotku znovu',
+    contestVote: (name: string) => `Dát hlas fotce od ${name}`,
+    contestUnvote: (name: string) => `Vzít hlas fotce od ${name}`,
+    contestEntryActions: (name: string) => `Možnosti fotky od ${name}`,
+    contestPickMyPhoto: (label: string) =>
+      `Přihlásit fotku${label ? ` ${label}` : ''} do soutěže`,
+    friendPhotoTile: (name: string) => `Fotka od ${name}. Ťukni pro zvětšení.`,
+    photoViewerClose: 'Zavřít fotku',
   },
 } as const;
 
