@@ -190,6 +190,13 @@ class Command(BaseCommand):
                             help="Catalogue cache file (built if missing).")
         parser.add_argument("--rebuild-catalogue", action="store_true", default=False,
                             help="Force re-sweep Mapy even if the catalogue file exists.")
+        parser.add_argument(
+            "--catalogue-only", action="store_true", default=False,
+            help=(
+                "Build/refresh the Mapy catalogue and exit before the firmy.cz "
+                "fill phase (e.g. SK, where firmy.cz has no data)."
+            ),
+        )
         parser.add_argument("--remaining-out", type=str, default="scripts/pub_remaining.json",
                             help="Where to dump not-yet-filled pubs on ban/limit (for Apify).")
         parser.add_argument("--throttle", type=float, default=1.5,
@@ -232,7 +239,6 @@ class Command(BaseCommand):
         )
         self.stdout.write(self.style.SUCCESS(f"Catalogue: {len(catalogue)} unique pubs."))
 
-        # --- Phase 2: fill -------------------------------------------------
         if options["cz_only"]:
             original_count = len(catalogue)
             catalogue = [
@@ -242,6 +248,16 @@ class Command(BaseCommand):
             self.stdout.write(
                 f"CZ-only: skipped {original_count - len(catalogue)} pub(s) outside CZ."
             )
+
+        if options["catalogue_only"]:
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"Catalogue-only: {len(catalogue)} unique pubs; fill phase skipped."
+                )
+            )
+            return
+
+        # --- Phase 2: fill -------------------------------------------------
         self._fill(
             catalogue=catalogue,
             ttl_days=ttl_days,

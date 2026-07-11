@@ -133,6 +133,26 @@ def test_full_fill_persists_all_rows(tmp_path):
 
 
 @pytest.mark.django_db
+def test_catalogue_only_keeps_catalogue_and_skips_fill(tmp_path):
+    cat = tmp_path / "cat.json"
+    _write_catalogue(cat)
+    fake = _FakeSource(behaviour="ok")
+
+    with patch.object(cmd, "FirmyHoursSource", return_value=fake) as source_cls:
+        out = _run(
+            cat,
+            remaining_out=str(tmp_path / "rem.json"),
+            catalogue_only=True,
+        )
+
+    assert json.loads(cat.read_text()) == _CATALOGUE
+    source_cls.assert_not_called()
+    assert fake.fetched == []
+    assert PubHours.objects.count() == 0
+    assert "Catalogue-only: 3 unique pubs; fill phase skipped." in out
+
+
+@pytest.mark.django_db
 def test_resume_skips_already_fresh_rows(tmp_path):
     cat = tmp_path / "cat.json"
     _write_catalogue(cat)
