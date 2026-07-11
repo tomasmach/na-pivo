@@ -79,6 +79,16 @@ _FRESH_STATUSES = (PubHours.Status.OK, PubHours.Status.UNKNOWN)
 # (and well under the legacy 999) so a whole-CR catalogue resume doesn't blow up.
 _SQL_IN_CHUNK = 900
 
+# Deliberately coarse Czech-border outline. Border pubs may slip through; firmy.cz
+# will simply no-match them, while the much larger foreign area is skipped.
+_CZ_BORDER_POLYGON = (
+    (12.09, 50.25), (12.55, 50.40), (13.02, 50.50), (14.30, 50.88),
+    (14.99, 51.05), (15.54, 50.78), (16.20, 50.66), (16.68, 50.10),
+    (17.72, 50.32), (18.56, 49.90), (18.85, 49.52), (18.16, 49.27),
+    (17.55, 48.82), (16.94, 48.62), (16.06, 48.75), (15.16, 48.94),
+    (14.70, 48.58), (13.83, 48.77), (12.67, 49.43),
+)
+
 
 # ---------------------------------------------------------------------------
 # Geo helpers
@@ -108,6 +118,23 @@ def _grid_centers(
             lng += d_lng
         lat += d_lat
     return centers
+
+
+def _is_in_czechia(lat: float, lng: float) -> bool:
+    """Return whether a point is inside the deliberately coarse CZ polygon."""
+    inside = False
+    previous_lng, previous_lat = _CZ_BORDER_POLYGON[-1]
+    for current_lng, current_lat in _CZ_BORDER_POLYGON:
+        crosses = (current_lat > lat) != (previous_lat > lat)
+        if crosses:
+            intersection_lng = (
+                (previous_lng - current_lng) * (lat - current_lat)
+                / (previous_lat - current_lat) + current_lng
+            )
+            if lng < intersection_lng:
+                inside = not inside
+        previous_lng, previous_lat = current_lng, current_lat
+    return inside
 
 
 def _municipality(item: dict) -> str | None:
@@ -177,6 +204,8 @@ class Command(BaseCommand):
                             help="Resume freshness window (default settings.HOURS_TTL_DAYS).")
         parser.add_argument("--dry-run", action="store_true", default=False,
                             help="Scrape but write nothing to the DB.")
+        parser.add_argument("--cz-only", action="store_true", default=False,
+                            help="Skip catalogue pubs outside a coarse Czech-border polygon.")
 
     # ------------------------------------------------------------------
 
@@ -204,6 +233,15 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f"Catalogue: {len(catalogue)} unique pubs."))
 
         # --- Phase 2: fill -------------------------------------------------
+        if options["cz_only"]:
+            original_count = len(catalogue)
+            catalogue = [
+                pub for pub in catalogue
+                if _is_in_czechia(pub["lat"], pub["lng"])
+            ]
+            self.stdout.write(
+                f"CZ-only: skipped {original_count - len(catalogue)} pub(s) outside CZ."
+            )
         self._fill(
             catalogue=catalogue,
             ttl_days=ttl_days,

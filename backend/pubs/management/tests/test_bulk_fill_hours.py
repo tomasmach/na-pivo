@@ -58,6 +58,10 @@ class TestGeoHelpers:
     def test_municipality_none_when_empty(self):
         assert cmd._municipality({}) is None
 
+    def test_czech_border_polygon_filters_foreign_points(self):
+        assert cmd._is_in_czechia(50.0755, 14.4378)  # Prague
+        assert not cmd._is_in_czechia(49.9481, 11.5783)  # Bavaria
+
 
 # ---------------------------------------------------------------------------
 # Behavioural tests (DB + mocked FirmyHoursSource, catalogue from file)
@@ -180,6 +184,24 @@ def test_limit_caps_and_dumps_remaining(tmp_path):
     assert PubHours.objects.count() == 2
     assert len(fake.fetched) == 2
     assert json.loads(rem.read_text())  # the 3rd pub was dumped
+
+
+@pytest.mark.django_db
+def test_cz_only_skips_foreign_catalogue_pubs(tmp_path):
+    cat = tmp_path / "cat.json"
+    catalogue = [
+        {"name": "Czech Pub", "lat": 50.0800, "lng": 14.4200, "city": "Praha"},
+        {"name": "Bavarian Pub", "lat": 49.9481, "lng": 11.5783, "city": "Bayreuth"},
+    ]
+    _write_catalogue(cat, catalogue)
+    fake = _FakeSource(behaviour="ok")
+
+    with patch.object(cmd, "FirmyHoursSource", return_value=fake):
+        out = _run(cat, remaining_out=str(tmp_path / "rem.json"), cz_only=True)
+
+    assert fake.fetched == ["Czech Pub"]
+    assert PubHours.objects.count() == 1
+    assert "CZ-only: skipped 1 pub(s) outside CZ." in out
 
 
 @pytest.mark.django_db

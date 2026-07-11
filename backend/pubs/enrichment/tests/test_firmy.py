@@ -75,6 +75,19 @@ def _make_search_html(firm_id: str, slug: str, name: str, lat: float, lng: float
     """
 
 
+def _make_search_card(firm_id: str, slug: str, name: str, lat: float, lng: float) -> str:
+    """Return a representative Firmy.cz SSR search-result card."""
+    return f'''<a class="titleLinkOverlay" id="prem-{firm_id}" data-dot="premise"
+    data-dot-data="{{&quot;premise-id&quot;:{firm_id}}}"
+    href="https://www.firmy.cz/detail/{firm_id}-{slug}.html">
+      <h3 class="h3 title" title="Detail firmy {name}">{name}</h3>
+    </a>
+    <div class="content"><ul class="tags"><li>Hospody a hostince</li></ul>
+    <address class="address noBreak"><a data-dot="address" class="noBreak"
+      href="https://mapy.com/cs/zakladni?planovani-trasy&amp;x={lng}&amp;y={lat}&amp;z=17&amp;ri=&amp;ri={firm_id}">
+      Adresa</a></address></div>'''
+
+
 # ---------------------------------------------------------------------------
 # Mock HTTP adapter
 # ---------------------------------------------------------------------------
@@ -436,6 +449,37 @@ class TestFirmyHoursSourceFetch:
         result = src.fetch(name, lat, lng)
         assert result is not None
         assert result.opening_hours_raw == "Mo,Tu,We,Th,Fr,Sa,Su 10:00-23:00"
+
+    def test_sparse_multiple_detail_links_keep_first_link_fallback(self):
+        """Pages without cards or JSON-LD preserve the legacy first-link path."""
+        name = "Hospoda U Testu"
+        lat, lng = 50.0, 14.0
+        search_html = (
+            '<a href="https://www.firmy.cz/detail/111111-hospoda-u-testu.html">first</a>'
+            '<a href="https://www.firmy.cz/detail/222222-hospoda-u-testu-jina.html">second</a>'
+        )
+        detail_html = self._detail_html_with_hours(name, lat, lng, "Mo-Su 10:00-22:00")
+        src = _make_source(search_html, detail_html)
+
+        result = src.fetch(name, lat, lng)
+        assert result is not None
+        assert result.source_ref == "111111"
+
+    def test_second_matching_search_card_beats_distant_first_card(self):
+        """Card metadata selects the Stará Říše result without a second search."""
+        name = "Hostinec U Bláhů"
+        lat, lng = 49.177567, 15.594928
+        search_html = "<html><body>" + _make_search_card(
+            "12000001", "hostinec-u-blahu-praha-zbraslav", name, 50.0, 14.4
+        ) + _make_search_card(
+            "13010131", "hostinec-u-blahu-stara-rise", name, lat, lng
+        ) + "</body></html>"
+        detail_html = self._detail_html_with_hours(name, lat, lng, "Mo-Su 11:00-22:00")
+        src = _make_source(search_html, detail_html)
+
+        result = src.fetch(name, lat, lng, city="Stará Říše")
+        assert result is not None
+        assert result.source_ref == "13010131"
 
     def test_no_search_results_returns_none(self):
         """Empty search page → None."""

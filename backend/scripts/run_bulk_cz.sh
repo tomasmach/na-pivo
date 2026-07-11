@@ -33,6 +33,7 @@ cd "$(dirname "$0")/.."  # repo root
 exec env DATABASE_URL="sqlite:///$(pwd)/bulk.sqlite3" \
   uv run python manage.py bulk_fill_hours \
     --bbox 12.0,48.5,18.9,51.1 \
+    --cz-only \
     --catalogue scripts/pub_catalogue_cz.json \
     --remaining-out scripts/pub_remaining_cz.json \
     --throttle 1.5 \

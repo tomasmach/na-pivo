@@ -32,7 +32,9 @@ Pipeline
      answer 410 (zero results) for most names; an ordered ladder of name forms
      (full → core-without-subtitle → de-punctuated) is tried instead, and geo
      disambiguation is handled afterwards by the pre-filter + verify_match.
-   - Extract the first /detail/{firmId}-{slug}.html link from the search HTML.
+   - Extract all search-result cards, then select the best name- and geo-matched
+     candidate before fetching its detail page. Sparse pages retain the legacy
+     first-detail-link fallback.
    - HTTP status: firmy.cz answers 410 Gone (and 404) for a search with ZERO
      results — that is a genuine no-match (→ None), NOT a transient failure.
      Only 429 (rate limit) and 5xx (server) are retryable.
@@ -144,6 +146,17 @@ _ALLOWED_HOST_DOMAINS = ("firmy.cz", "seznam.cz")
 _DETAIL_RE = re.compile(
     r'href="https://www\.firmy\.cz/detail/(\d+)-([^"]+)\.html"'
 )
+_DETAIL_URL_RE = re.compile(
+    r'https://www\.firmy\.cz/detail/(\d+)-([^"?#]+)\.html'
+)
+_SEARCH_CARD_START_RE = re.compile(
+    r'<a\b(?=[^>]*\bid="prem-(\d+)")[^>]*\btitleLinkOverlay\b[^>]*>',
+    re.IGNORECASE,
+)
+_SEARCH_TITLE_H3_RE = re.compile(r"<h3\b[^>]*>(.*?)</h3>", re.IGNORECASE | re.DOTALL)
+_SEARCH_TITLE_ATTR_RE = re.compile(r'title="Detail firmy\s+([^"]+)"', re.IGNORECASE)
+_MAPY_HREF_RE = re.compile(r'href="([^"]*mapy\.com[^"]*)"', re.IGNORECASE)
+_LOCAL_BUSINESS_TYPES = {"LocalBusiness", "Restaurant", "FoodEstablishment", "BarOrPub"}
 
 # Search-query construction.
 #
@@ -296,6 +309,17 @@ class RawHours:
     # so older call sites / fixtures without category data keep working.
     categories: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
+
+
+@dataclass
+class _SearchCandidate:
+    """A Firmy.cz search result parsed without an additional detail request."""
+
+    firm_id: str
+    slug: str
+    name: str | None = None
+    lat: float | None = None
+    lng: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -524,14 +548,94 @@ class FirmyHoursSource:
     @staticmethod
     def _local_business_block(blocks: list[dict]) -> dict | None:
         """Return the first LocalBusiness / Restaurant block."""
+        candidates = FirmyHoursSource._local_business_blocks(blocks)
+        return candidates[0] if candidates else None
+
+    @staticmethod
+    def _local_business_blocks(blocks: list[dict]) -> list[dict]:
+        """Return all LocalBusiness-family JSON-LD blocks in page order."""
+        candidates: list[dict] = []
         for b in blocks:
             t = b.get("@type", "")
             if isinstance(t, list):
-                if any(x in ("LocalBusiness", "Restaurant", "FoodEstablishment", "BarOrPub") for x in t):
-                    return b
-            elif t in ("LocalBusiness", "Restaurant", "FoodEstablishment", "BarOrPub"):
-                return b
-        return None
+                if any(x in _LOCAL_BUSINESS_TYPES for x in t):
+                    candidates.append(b)
+            elif t in _LOCAL_BUSINESS_TYPES:
+                candidates.append(b)
+        return candidates
+
+    @staticmethod
+    def _search_candidates(html: str) -> list[_SearchCandidate]:
+        """Extract all usable search candidates from Firmy.cz search HTML.
+
+        Result cards provide the most dependable name and Mapy.com coordinates.
+        JSON-LD fills gaps for server-rendered variants, while every otherwise
+        unmatched detail URL remains as a sparse fallback for compatibility.
+        """
+        candidates: list[_SearchCandidate] = []
+        by_firm_id: dict[str, _SearchCandidate] = {}
+
+        def add(candidate: _SearchCandidate) -> _SearchCandidate:
+            existing = by_firm_id.get(candidate.firm_id)
+            if existing is None:
+                by_firm_id[candidate.firm_id] = candidate
+                candidates.append(candidate)
+                return candidate
+            if existing.name is None:
+                existing.name = candidate.name
+            if existing.lat is None:
+                existing.lat = candidate.lat
+            if existing.lng is None:
+                existing.lng = candidate.lng
+            return existing
+
+        card_starts = list(_SEARCH_CARD_START_RE.finditer(html))
+        for index, start in enumerate(card_starts):
+            segment = html[start.start():card_starts[index + 1].start() if index + 1 < len(card_starts) else len(html)]
+            detail = _DETAIL_RE.search(segment)
+            if detail is None:
+                continue
+            firm_id, slug = detail.groups()
+            title_match = _SEARCH_TITLE_H3_RE.search(segment)
+            attr_match = _SEARCH_TITLE_ATTR_RE.search(segment)
+            raw_name = title_match.group(1) if title_match else (attr_match.group(1) if attr_match else "")
+            name = _clean_text(re.sub(r"<[^>]+>", "", raw_name)) or None
+
+            lat: float | None = None
+            lng: float | None = None
+            for href in _MAPY_HREF_RE.findall(segment):
+                query = urlparse(unescape(href)).query
+                values = dict(re.findall(r"(?:^|&)([^=&]+)=([^&]*)", query))
+                result_ids = re.findall(r"(?:^|&)ri=([^&]*)", query)
+                if any(result_id for result_id in result_ids) and firm_id not in result_ids:
+                    continue
+                lng = _coerce_coord(values.get("x"))
+                lat = _coerce_coord(values.get("y"))
+                if lat is not None or lng is not None:
+                    break
+            add(_SearchCandidate(firm_id, slug, name, lat, lng))
+
+        for lb in FirmyHoursSource._local_business_blocks(FirmyHoursSource._extract_ld_blocks(html)):
+            url = lb.get("url")
+            if not isinstance(url, str):
+                continue
+            detail = _DETAIL_URL_RE.search(url)
+            if detail is None:
+                continue
+            firm_id, slug = detail.groups()
+            geo = lb.get("geo") if isinstance(lb.get("geo"), dict) else {}
+            candidate_name = lb.get("name")
+            add(_SearchCandidate(
+                firm_id,
+                slug,
+                _clean_text(candidate_name) if isinstance(candidate_name, str) else None,
+                _coerce_coord(geo.get("latitude"), geo.get("lat")),
+                _coerce_coord(geo.get("longitude"), geo.get("lng")),
+            ))
+
+        for firm_id, slug in _DETAIL_RE.findall(html):
+            add(_SearchCandidate(firm_id, slug))
+        return candidates
 
     # ------------------------------------------------------------------
     # Category / tag extraction
@@ -604,31 +708,70 @@ class FirmyHoursSource:
 
         Tries an ordered ladder of query forms (full name → core name → de-
         punctuated core → name+city; see _build_search_queries) with GEO-AWARE
-        selection: a form's first hit is accepted as soon as it is NOT
-        geographically distant from (lat, lng). A distant hit (e.g. a name-only
-        search surfacing a same-named pub in another town) is held only as a
-        last-resort fallback while later, more specific forms — including the
-        name+city disambiguator — are tried for a nearer match.
+        selection: each form's search-result cards are scored by name and geo,
+        and the best nearby name match is accepted. A distant or sparse hit is
+        held only as a last-resort fallback while later, more specific forms —
+        including the name+city disambiguator — are tried for a nearer match.
         """
         fallback: tuple[str, str, dict] | None = None
+        fallback_score = -1.0
         for query in _build_search_queries(name, city):
-            hit = self._search_once(query)
-            if hit is None:
+            candidates = self._search_once(query)
+            if not candidates:
                 continue
-            _firm_id, _slug, search_lb = hit
-            if not self._search_hit_is_geographically_distant(lat, lng, search_lb):
-                # In-area hit (or no card geo to judge) — accept immediately.
-                return hit
-            # Distant hit — remember the first one as a fallback, but keep trying
-            # more specific forms (notably name+city) for a nearer match.
-            if fallback is None:
-                fallback = hit
+
+            scored: list[tuple[float, _SearchCandidate, dict, bool]] = []
+            sparse: list[tuple[_SearchCandidate, dict, bool]] = []
+            for candidate in candidates:
+                search_lb = self._candidate_search_lb(candidate)
+                distant = self._search_hit_is_geographically_distant(lat, lng, search_lb)
+                if candidate.name:
+                    score = verify_match(
+                        name, lat, lng, candidate.name, candidate.lat, candidate.lng
+                    )
+                    if score > 0:
+                        scored.append((score, candidate, search_lb, distant))
+                else:
+                    # No card metadata is deliberately a last resort: fetching
+                    # detail may still recover the authoritative name and geo.
+                    sparse.append((candidate, search_lb, distant))
+
+            nearby = [item for item in scored if not item[3]]
+            if nearby:
+                score, candidate, search_lb, _distant = max(nearby, key=lambda item: item[0])
+                return candidate.firm_id, candidate.slug, search_lb
+
+            # Preserve cross-form fallback semantics for distant matches, but
+            # retain sparse legacy links when no name-scored candidate is usable.
+            if scored:
+                score, candidate, search_lb, _distant = max(scored, key=lambda item: item[0])
+                if score > fallback_score:
+                    fallback = candidate.firm_id, candidate.slug, search_lb
+                    fallback_score = score
+            elif sparse and fallback is None:
+                candidate, search_lb, _distant = sparse[0]
+                fallback = candidate.firm_id, candidate.slug, search_lb
         return fallback
 
-    def _search_once(self, query: str) -> tuple[str, str, dict] | None:
-        """Run ONE search query; return (firm_id, slug, ld_block) or None.
+    @staticmethod
+    def _candidate_search_lb(candidate: _SearchCandidate) -> dict:
+        """Build the search metadata shape consumed by the detail pre-filter."""
+        search_lb: dict = {}
+        if candidate.name:
+            search_lb["name"] = candidate.name
+        geo: dict[str, float] = {}
+        if candidate.lat is not None:
+            geo["latitude"] = candidate.lat
+        if candidate.lng is not None:
+            geo["longitude"] = candidate.lng
+        if geo:
+            search_lb["geo"] = geo
+        return search_lb
 
-        None means a genuine zero-result page (410/404/no detail link) for THIS
+    def _search_once(self, query: str) -> list[_SearchCandidate]:
+        """Run ONE search query; return parsed candidates (empty = no result).
+
+        An empty list means a genuine zero-result page (410/404/no detail link) for THIS
         query form — the caller advances to the next ladder form. Retryable
         failures (429/5xx/consent-wall/network) raise TransientFetchError.
         """
@@ -654,7 +797,7 @@ class FirmyHoursSource:
                 "firmy: search for %r returned HTTP %d (no results) — treating as no-match",
                 query, resp.status_code,
             )
-            return None
+            return []
         if resp.status_code >= 400:
             logger.warning(
                 "firmy: search for %r returned retryable HTTP %d", query, resp.status_code
@@ -679,21 +822,10 @@ class FirmyHoursSource:
 
         html = resp.text
 
-        # Extract first detail link
-        m = _DETAIL_RE.search(html)
-        if not m:
+        candidates = self._search_candidates(html)
+        if not candidates:
             logger.debug("firmy: no detail link found for query %r", query)
-            return None
-
-        firm_id = m.group(1)
-        slug = m.group(2)
-
-        # Also extract LocalBusiness JSON-LD from the search page
-        # (contains name + geo, useful for verify_match)
-        ld_blocks = self._extract_ld_blocks(html)
-        lb = self._local_business_block(ld_blocks)
-
-        return firm_id, slug, lb or {}
+        return candidates
 
     # ------------------------------------------------------------------
     # Detail
