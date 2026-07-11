@@ -98,17 +98,23 @@ BEER (točené pivo). For each venue decide one verdict:
 - "pub": clearly pours beer — hospoda, hostinec, hospůdka, pivnice, pivovar, \
 minipivovar, nálevna, výčep, šenk, tankovna, pivotéka, bar, pub, sport bar, or \
 a Czech-style restaurace/restaurant that would serve beer.
-- "not_pub": clearly a non-beer food/drink venue — sushi, asijská/čínská/ \
-vietnamská/thajská/japonská/korejská/indická restaurace, pizzerie, kebab, \
-kavárna/café, cukrárna, čajovna, vinárna/vinotéka, fast food/občerstvení, \
-zmrzlina, pekárna, bistro that is clearly food-only.
-- "unsure": a generic or ambiguous Czech name with NO decisive signal \
-(e.g. "U Karla", "Na Růžku", a person's name, an acronym).
+- "not_pub": clearly NOT a place to drink beer. Two families: (a) a non-beer \
+food/drink venue — sushi, asijská/čínská/vietnamská/thajská/japonská/korejská/\
+indická restaurace, pizzerie, kebab, kavárna/café, cukrárna, čajovna, vinárna/\
+vinotéka, fast food/občerstvení, zmrzlina, pekárna, bistro that is clearly \
+food-only; (b) NOT A VENUE AT ALL — a shop (barvy, květiny, potraviny, \
+drogerie), service (kadeřnictví, masáže, poradna, autoservis), office or \
+institution (úřad, komora, škola, muzeum, galerie, hospodářství), monument / \
+nature / religion (socha, pomník, kaple, kostel, studánka, vyhlídka, strom), \
+street or address, or a BARE person name with no venue word (e.g. "Romana \
+Kočendová", "Ing. Petr Novák").
+- "unsure": an ambiguous name that still PLAUSIBLY names a drinking/eating \
+venue (e.g. "U Karla", "Na Růžku", "Beseda") but with no decisive signal.
 
 Rules:
-- Bias toward NOT excluding real pubs. Only answer "not_pub" when the name \
-clearly names a non-beer cuisine/type. When in doubt, answer "unsure", never \
-"not_pub".
+- Bias toward NOT excluding real pubs — but only among plausible venue names. \
+"unsure" is reserved for venue-ish names; a statue, shop, office or bare \
+person name is "not_pub", never "unsure".
 - Judge the NAME only (city is context for disambiguation, not a signal).
 - Return one result per input venue, by its index "i". Reason <=12 words.
 
