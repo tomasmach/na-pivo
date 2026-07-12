@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lokální adresář hospod — instantní mapa, minimum API dotazů</title>
+<style>
+  :root {
+    --bg: #fdfcfa; --fg: #2a2622; --muted: #6b645c; --accent: #b45309;
+    --card: #f5f1ea; --border: #e2dcd2; --ok: #15803d; --warn: #b91c1c;
+    --code-bg: #f0ece4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1a17; --fg: #e8e2d8; --muted: #a39b8f; --accent: #f59e0b;
+      --card: #26231f; --border: #3a352e; --ok: #4ade80; --warn: #f87171;
+      --code-bg: #2b2archi723;
+    }
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --code-bg: #2b2723; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0 auto; padding: 2.5rem 1.5rem 5rem; max-width: 76ch;
+    font: 16px/1.65 -apple-system, "SF Pro Text", Segoe UI, system-ui, sans-serif;
+    background: var(--bg); color: var(--fg);
+  }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .3rem; }
+  h2 { font-size: 1.25rem; margin: 2.4rem 0 .8rem; border-bottom: 1px solid var(--border); padding-bottom: .3rem; }
+  h3 { font-size: 1.05rem; margin: 1.6rem 0 .5rem; }
+  .meta { color: var(--muted); font-size: .9rem; margin-bottom: 1.8rem; }
+  .meta .badge { background: var(--accent); color: var(--bg); border-radius: 999px; padding: .1rem .6rem; font-weight: 600; }
+  .tldr { background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 8px; padding: 1rem 1.2rem; }
+  table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+  th, td { text-align: left; padding: .45rem .7rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  code, pre { font: .85em/1.5 ui-monospace, "SF Mono", Menlo, monospace; }
+  code { background: var(--code-bg); border-radius: 4px; padding: .1em .35em; }
+  pre { background: var(--code-bg); border-radius: 8px; padding: .9rem 1.1rem; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: var(--accent); }
+  ul, ol { padding-left: 1.4rem; }
+  li { margin: .3rem 0; }
+  details { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: .6rem .9rem; margin: .6rem 0; }
+  summary { cursor: pointer; font-weight: 600; }
+  .ok { color: var(--ok); font-weight: 600; }
+  .warn { color: var(--warn); font-weight: 600; }
+  .num { font-variant-numeric: tabular-nums; }
+  figure { margin: 1.2rem 0; }
+  figcaption { color: var(--muted); font-size: .85rem; margin-top: .4rem; }
+  .files td:first-child { white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<h1>Lokální adresář hospod — instantní mapa, minimum API dotazů</h1>
+<p class="meta">11. 7. 2026 · <span class="badge">návrh</span> · backend <code>na-pivo-backend</code>, drobnosti v <code>na-pivo</code></p>
+
+<div class="tldr">
+<strong>TL;DR:</strong> Ano, jde to. Po doběhnutí scrape budeme mít vlastní adresář ~28k českých podniků
+(jméno, GPS, město, otevíračka, rating, klasifikace). Naimportujeme ho do produkčního Postgresu a
+<strong>/v1/pubs/near</strong> začne odpovídat přímo z DB — mapa se otevře instantně, bez čekání na Mapy.cz.
+Mapy zůstanou jen jako fallback pro Slovensko a nepokryté oblasti; firmy.cz proxy jen na pomalý refresh.
+Úplně odejít od obou zdrojů nejde (SK data, čerstvost, nové podniky), ale API dotazy klesnou odhadem o 80–95 %.
+</div>
+
+<h2>Cíle / Ne-cíle</h2>
+<ul>
+  <li><span class="ok">Cíl:</span> mapa i kompas ukazují podniky z vlastní DB — p50 odezva v jednotkách ms místo stovek ms.</li>
+  <li><span class="ok">Cíl:</span> Mapy.cz kredity a firmy.cz proxy GB srazit na zlomek (fallback + refresh).</li>
+  <li><span class="ok">Cíl:</span> žádná změna mobilního API — response shape <code>/v1/pubs/near</code> zůstává beze změny (vydané verze!).</li>
+  <li><span class="warn">Ne-cíl:</span> úplné odpojení Mapy.cz — SK pokrytí, geocoding/suggest a čerstvost je pořád potřebují.</li>
+  <li><span class="warn">Ne-cíl:</span> real-time čerstvost dat; pracujeme s TTL a lazy refreshem.</li>
+</ul>
+
+<h2>Architektura</h2>
+<figure class="scroll">
+<svg viewBox="0 0 720 260" width="100%" style="max-width:720px" xmlns="http://www.w3.org/2000/svg" font-family="system-ui" font-size="13">
+  <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+  <g fill="none" stroke="currentColor" stroke-width="1.3">
+    <rect x="10" y="95" width="120" height="56" rx="8"/>
+    <rect x="215" y="95" width="150" height="56" rx="8"/>
+    <rect x="450" y="20" width="180" height="62" rx="8" stroke-dasharray="0"/>
+    <rect x="450" y="105" width="180" height="56" rx="8" stroke-dasharray="5 4"/>
+    <rect x="450" y="190" width="180" height="56" rx="8" stroke-dasharray="5 4"/>
+    <line x1="130" y1="123" x2="213" y2="123" marker-end="url(#arr)"/>
+    <line x1="365" y1="110" x2="448" y2="60" marker-end="url(#arr)"/>
+    <line x1="365" y1="133" x2="448" y2="133" marker-end="url(#arr)"/>
+    <line x1="365" y1="145" x2="448" y2="210" marker-end="url(#arr)"/>
+  </g>
+  <g fill="currentColor">
+    <text x="70" y="118" text-anchor="middle">mobilní</text>
+    <text x="70" y="136" text-anchor="middle">appka</text>
+    <text x="290" y="118" text-anchor="middle">GET /v1/pubs/near</text>
+    <text x="290" y="136" text-anchor="middle">(PubsNearView)</text>
+    <text x="540" y="42" text-anchor="middle">1. PubDirectory (PG)</text>
+    <text x="540" y="60" text-anchor="middle" font-size="11">CZ: autoritativní, instantní</text>
+    <text x="540" y="74" text-anchor="middle" font-size="11">bbox dotaz, index</text>
+    <text x="540" y="127" text-anchor="middle">2. Mapy.cz fallback</text>
+    <text x="540" y="145" text-anchor="middle" font-size="11">jen SK / mimo pokrytí</text>
+    <text x="540" y="212" text-anchor="middle">PubHours (už existuje)</text>
+    <text x="540" y="230" text-anchor="middle" font-size="11">import z bulk.sqlite3 → instantní hodiny</text>
+  </g>
+</svg>
+<figcaption>Čtecí cesta po změně. Krok 1 pokryje ~vše v ČR; Mapy se volají jen mimo pokrytou oblast.</figcaption>
+</figure>
+
+<p>Klíčový vhled: wire formát <code>/v1/pubs/near</code> je maličký —
+<code>{name, label, position{lat,lon}, regionalStructure[{name,type}]}</code> — a náš katalog
+(name, lat, lng, city) ho umí naplnit 1:1. Mobilní appka nepozná rozdíl.</p>
+
+<h2>Co budeme mít po doběhnutí scrape</h2>
+<div class="scroll"><table>
+  <tr><th>Dataset</th><th class="num">Rozsah</th><th>Použití</th></tr>
+  <tr><td><code>scripts/pub_catalogue_cz.json</code></td><td class="num">~28 686 CZ podniků (52 860 vč. ciziny)</td><td>seed adresáře: name, lat, lng, city</td></tr>
+  <tr><td><code>bulk.sqlite3</code> → PubHours</td><td class="num">~13–14k s otevíračkou, +5k s ratingem bez hodin (odhad po fixu)</td><td>hodiny, rating, venue_kind klasifikace</td></tr>
+  <tr><td>venue_kind</td><td class="num">pub / maybe / not_pub / unknown</td><td>filtr šumu při importu (přístřešky, kostely…)</td></tr>
+</table></div>
+
+<h2>Kroky</h2>
+<ol>
+  <li><strong>Doběhnutí scrape + quality pass</strong> — spočítat finální čísla, vyhodit šum
+    (generická jména bez matche, venue_kind=not_pub dle produktového rozhodnutí), dedupe geohash8+jméno.
+    <details><summary>detail</summary>Šum typu „Přístřešek“/„Jez“ se do adresáře nesmí dostat — mapa by
+    ukazovala nesmysly. Heuristika: importovat jen záznamy, které (a) mají firmy match, NEBO (b) mají
+    hospodské jméno (hospoda/hostinec/pivnice/bar/restaurace… v názvu) a nejsou v generickém blocklistu.
+    Hraniční případy projít ručně nad výslednými počty.</details></li>
+  <li><strong>Port multi-candidate fixu do main</strong> — produkční lazy <code>refresh_hours</code> má stejný
+    first-link bug; malý cherry-pick/port commitu <code>fb4c6ba</code> (jen <code>firmy.py</code> + testy).</li>
+  <li><strong>Model <code>PubDirectory</code> + migrace</strong> (main) — name, lat, lng, <code>geohash6</code>
+    (indexed), city, venue_kind, source, refreshed_at; unikát na (geohash8, normalizované jméno).
+    <details><summary>proč nový model, a ne PubSearchCache</summary><code>PubSearchCache</code> cachuje
+    <em>výsledky dotazů</em> (cell+radius → JSON blob), ne entity. Adresář je entita per podnik —
+    umožní bbox dotazy, ruční korekce, budoucí obohacování (amenities, fotky) a periodický refresh
+    per záznam. PubSearchCache zůstane pro Mapy fallback beze změny.</details></li>
+  <li><strong>Import command <code>import_pub_directory</code></strong> — načte katalog JSON + bulk.sqlite3,
+    naplní <code>PubDirectory</code> a upsertne PubHours řádky do produkce (stejný model + cache_key,
+    přesun je přímočarý). Idempotentní, s <code>--dry-run</code>.</li>
+  <li><strong>DB-first čtecí cesta v <code>PubsNearView</code></strong> — bbox dotaz nad PubDirectory
+    (lat/lng btree + haversine dořez, na ~30k řádcích triviální), serializace do trimmed-item shape.
+    Uvnitř CZ polygonu je DB autoritativní (žádný Mapy call); mimo něj beze změny stávající cesta.
+    Za feature flag <code>PUBS_NEAR_LOCAL_FIRST</code>.
+    <details><summary>golden test parity</summary>Test porovná serializovaný DB item s trimmed Mapy itemem
+    pro stejný podnik — pojistka proti rozbití vydaných mobilních verzí (itemToPub v appce).</details></li>
+  <li><strong>Hodiny instantně</strong> — importem PubHours se <code>POST /v1/pub-hours</code> stane čistým
+    cache hitem; TTL pro bulk-importované řádky zvednout (30 → 90 dní), ať proxy GB klesnou.</li>
+  <li><strong>Freshness smyčka</strong> — kvartální re-run bulk scrape z domácí IP (resume-safe),
+    existující lazy refresh, user reporty (report-pub-removal) a user-added pubs beze změny.</li>
+  <li><strong>Rollout</strong> — deploy migrace + import na Hetzner, flag zapnout, sledovat telemetrii:
+    fallback rate, Mapy kredity, p50 latence. Rollback = flag vypnout.</li>
+</ol>
+
+<h2>Očekávaný dopad</h2>
+<div class="scroll"><table>
+  <tr><th></th><th>Dnes</th><th>Po změně</th></tr>
+  <tr><td>Otevření mapy (cold cell)</td><td>stovky ms–s (živý Mapy dotaz)</td><td class="ok">jednotky–desítky ms (PG)</td></tr>
+  <tr><td>Mapy.cz kredity</td><td>každá necachovaná cell × radius</td><td class="ok">jen SK + díry (−80–95 %)</td></tr>
+  <tr><td>firmy.cz proxy</td><td>lazy fill na požádání</td><td class="ok">jen refresh po TTL (−~90 %)</td></tr>
+  <tr><td>Pokrytí hodin v ČR</td><td>co si uživatelé „prošlapali“</td><td class="ok">~13–14k podniků od prvního dne</td></tr>
+  <tr><td>Slovensko</td><td>Mapy live</td><td class="ok">podniky z DB (SK sweep), hodiny zatím žádné — budoucí zdroj Zoznam/Azet</td></tr>
+</table></div>
+
+<h2>Rizika a otevřené otázky</h2>
+<ul>
+  <li><span class="warn">Licence:</span> katalog pochází z Mapy.cz suggest (Extended tarif má podmínky —
+    ověřit, co říká o ukládání/redistribuci POI) a firmy.cz robots.txt crawling zakazuje. Pro dlouhodobý
+    provoz zvážit Seznam B2B licenci (viz poznámka v <code>firmy.py</code>). Rozhodnutí je na tobě —
+    technicky jedeme dál, ale ať je to vědomé riziko.</li>
+  <li><span class="warn">Čerstvost:</span> hospody zavírají; adresář bez refreshe zestárne. Mitigace: kvartální
+    re-scrape + user reporty. Zavřený podnik na mapě je horší UX než pomalejší mapa — proto TTL a refresh
+    nesmí uschnout.</li>
+  <li><span class="warn">SQLite → PG:</span> import psát a testovat proti lokálnímu Postgresu, ne sqlite
+    (sqlite už jednou schoval migrační bug).</li>
+  <li><span class="ok">Rozhodnuto (11. 7.):</span> SK katalog sweepneme přes Mapy hned po CZ běhu —
+    <code>scripts/run_bulk_sk.sh</code> (nový flag <code>--catalogue-only</code>, žádný firmy fill).
+    Mapa bude instantní i na Slovensku (podniky + GPS + město).</li>
+</ul>
+
+<h3>Research SK zdrojů otevíraček (11. 7. — živě prověřeno)</h3>
+<p>Bohužel: <strong>čistý, zdarma dostupný strukturovaný zdroj SK otevíraček neexistuje.</strong>
+Oba jmenované jsou mrtvé:</p>
+<div class="scroll"><table>
+  <tr><th>Zdroj</th><th>Stav</th><th>Hodiny?</th></tr>
+  <tr><td><code>firmy.zoznam.sk</code></td><td class="warn">Mrtvý — subdoména redirectuje na homepage zoznam.sk, i SSL cert nesedí</td><td>—</td></tr>
+  <tr><td><code>azet.sk/katalog</code></td><td class="warn">Mrtvý — firma „Azet.sk - katalog s.r.o.“ v likvidácii; <code>/katalog/vyhladavanie</code> vrací 404</td><td>—</td></tr>
+  <tr><td><code>zlatestranky.sk</code></td><td>Žije, má firmy + GPS + rating</td><td class="warn">Ne — detail stránky nenesou openingHours ani LocalBusiness JSON-LD (JS-rendered / chybí); robots blokuje /api/</td></tr>
+  <tr><td>Mapy REST API (platíme)</td><td>Funguje</td><td class="warn">Ne — suggest/geocode vrací jen jméno/pozici/adresu, žádné hodiny (živě ověřeno)</td></tr>
+  <tr><td>Google Places <strong>API</strong></td><td>Má SK hodiny i rating</td><td class="ok">Ano, ale placené ($) + licenční omezení na ukládání</td></tr>
+  <tr><td><strong>Apify Google Maps Scraper</strong><br><code>compass/crawler-google-places</code></td><td class="ok">Přes Google Maps — SK pokryté kompletně</td><td class="ok">Ano — hodiny + rating + GPS + kategorie v jednom běhu</td></tr>
+</table></div>
+
+<h3>Apify pro SK — nejlepší cesta k hodinám</h3>
+<p>Apify Google Maps Scraper obchází mrtvé SK katalogy úplně — tahá z Google Maps, kde jsou SK
+podniky i s otváracími hodinami. Jeden managed actor, nic se nestaví. Vrací jméno, GPS, adresu,
+<strong>otváracie hodiny, rating, kategórie</strong> naráz.</p>
+<div class="scroll"><table>
+  <tr><th>Actor</th><th>Cena</th><th>Pozn.</th></tr>
+  <tr><td><code>compass/crawler-google-places</code></td><td>~$4 / 1000</td><td>nejpopulárnější, nejspolehlivější</td></tr>
+  <tr><td><code>microworlds/crawler-google-places</code></td><td>~$1 / 1000</td><td>levnější alternativa</td></tr>
+</table></div>
+<p>Odhad SK: ~10–15k podniků → <strong>jednorázově cca $10–60</strong>. Actor umí <em>katalog i hodiny
+zároveň</em> — pro SK tedy vůbec nemusíme dělat Mapy sweep, jeden Apify běh dodá všechno.
+Výstup (JSON) naimportujeme do <code>PubDirectory</code> + <code>PubHours</code> stejným importem jako CZ.</p>
+<p><span class="warn">Caveat:</span> Google Maps ToS scraping/ukládání dat nepovoluje — stejná šedá zóna
+jako firmy.cz (konzistentní s dosavadním postojem, ale vědomé riziko). A z Google Maps leze podobný
+šum v názvech → projede stávající <code>venue_kind</code> klasifikace.</p>
+<p><strong>Doporučení pro SK:</strong></p>
+<ol>
+  <li><span class="ok">Cesta A (doporučeno):</span> jeden Apify Google Maps běh přes SK bbox/města →
+    katalog + hodiny + rating naráz, ~$10–60 jednorázově. Import stejný jako CZ.</li>
+  <li><span class="ok">Cesta B (zdarma, hned):</span> Mapy sweep katalogu bez hodin
+    (<code>run_bulk_sk.sh</code>, hotové) + hodiny nechat na komunitu přes „Zmapuj hospodu“ (Mapér XP).</li>
+  <li>Dá se kombinovat: spustit B teď kvůli rychlé mapě, A přidat, až budeš chtít i hodiny.</li>
+</ol>
+<p class="muted">Pozn.: stávající Apify hand-off v <code>bulk_fill_hours</code>
+(<code>delectable_incubator/firmy-cz-scraper</code>) je jiný actor — <strong>jen firmy.cz / CZ</strong>.
+Pro SK jde o samostatný Google-Maps actor a samostatný import, ne o <code>--remaining-out</code> cestu.</p>
+
+<h3>Zbylé otevřené otázky</h3>
+<ul>
+  <li><strong>Otázka:</strong> co s <code>venue_kind=not_pub</code> (vinárny, kavárny…) — do adresáře ano,
+    ale filtrovat v UI (stávající venueKind logika), nebo neimportovat vůbec? Doporučuji importovat
+    a filtrovat v UI — data už máme a filtr se dá ladit bez re-importu.</li>
+</ul>
+
+<h2>Dotčené soubory</h2>
+<div class="scroll"><table class="files">
+  <tr><th>Soubor</th><th>Změna</th></tr>
+  <tr><td><a href="vscode://file/Users/tomasmach/Code/na-pivo-backend/pubs/models.py">pubs/models.py</a></td><td>nový model <code>PubDirectory</code> + migrace</td></tr>
+  <tr><td><a href="vscode://file/Users/tomasmach/Code/na-pivo-backend/pubs/api/views.py:5380">pubs/api/views.py:5380</a></td><td><code>PubsNearView</code> — DB-first větev + serializace</td></tr>
+  <tr><td><a href="vscode://file/Users/tomasmach/Code/na-pivo-backend/pubs/enrichment/mapy.py:171">pubs/enrichment/mapy.py:171</a></td><td><code>_trim_item</code> — referenční wire shape (beze změny)</td></tr>
+  <tr><td>pubs/management/commands/import_pub_directory.py</td><td>nový import command</td></tr>
+  <tr><td><a href="vscode://file/Users/tomasmach/Code/na-pivo-backend/pubs/enrichment/firmy.py">pubs/enrichment/firmy.py</a></td><td>port fixu <code>fb4c6ba</code> na main</td></tr>
+  <tr><td><a href="vscode://file/Users/tomasmach/Code/na-pivo-backend/config/settings.py">config/settings.py</a></td><td>flag <code>PUBS_NEAR_LOCAL_FIRST</code>, TTL pro importované hodiny</td></tr>
+</table></div>
+
+<p class="meta">Odhad práce: ~1–2 dny backend (Codex), rollout separátně po doběhnutí scrape a quality passu.</p>
+
+</body>
+</html>
