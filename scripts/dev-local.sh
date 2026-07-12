@@ -46,7 +46,7 @@ else
   BACKEND_PID=$!
   STARTED_BACKEND=1
   for _ in $(seq 1 30); do
-    if curl -s -o /dev/null "http://127.0.0.1:$BACKEND_PORT/"; then
+    if curl -fsS "http://127.0.0.1:$BACKEND_PORT/v1/health" >/dev/null; then
       break
     fi
     if ! kill -0 "$BACKEND_PID" 2>/dev/null; then

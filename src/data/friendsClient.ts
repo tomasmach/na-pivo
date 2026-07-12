@@ -1,5 +1,9 @@
 import { clearCachedAnonymousAccount, ensureAccount, generateUuidV4, type AccountSession } from './account';
-import { parseAchievementsBlock, type AccountAchievements, type RawAchievementsBlock } from './auth';
+import {
+  parseAchievementsBlock,
+  type AccountAchievements,
+  type RawAchievementsBlock,
+} from './achievements';
 import { parseBeerCheckIn, type BeerCheckIn } from './beerCheckinsClient';
 import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal } from './apiFetch';

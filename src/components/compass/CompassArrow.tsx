@@ -1,11 +1,6 @@
 import React, { memo } from 'react';
 import { StyleSheet } from 'react-native';
-import Svg, {
-  Path,
-  Defs,
-  Filter,
-  FeGaussianBlur,
-} from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 import Animated, {
   useAnimatedStyle,
   SharedValue,
@@ -58,19 +53,24 @@ export const CompassArrow = memo(function CompassArrow({
         height={size}
         viewBox={`0 0 ${CompassSize} ${CompassSize}`}
       >
-        <Defs>
-          <Filter id="arrowGlowFilter" x="-80%" y="-80%" width="260%" height="260%">
-            <FeGaussianBlur stdDeviation="10" />
-          </Filter>
-        </Defs>
-
-        {/* Glow layer behind arrow */}
+        {/* Layered glow avoids the iOS off-screen SVG filter pipeline. */}
         <Path
           d={GLOW_PATH}
           fill={Colors.glow}
-          opacity={0.45}
-          filter="url(#arrowGlowFilter)"
+          stroke={Colors.glow}
+          strokeWidth={14}
+          strokeLinejoin="round"
+          opacity={0.08}
         />
+        <Path
+          d={GLOW_PATH}
+          fill={Colors.glow}
+          stroke={Colors.glow}
+          strokeWidth={7}
+          strokeLinejoin="round"
+          opacity={0.14}
+        />
+        <Path d={GLOW_PATH} fill={Colors.glow} opacity={0.24} />
 
         {/* Tail fin (depth indicator) */}
         <Path
