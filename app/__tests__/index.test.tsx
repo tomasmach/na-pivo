@@ -72,6 +72,7 @@ jest.mock('@/components/shared/GlowButton', () => ({
 jest.mock('@/components/shared/IconGlyph', () => ({
   BeerIcon: jest.fn(() => null),
   BeerOffIcon: jest.fn(() => null),
+  CompassIcon: jest.fn(() => null),
   LockKeyholeIcon: jest.fn(() => null),
   EyeIcon: jest.fn(() => null),
   MapPinIcon: jest.fn(() => null),
@@ -302,6 +303,24 @@ describe('CompassScreen', () => {
     // gear and only carries the left-aligned title (plus the centered filter).
     expect(TitleBar).toHaveBeenCalledWith(
       expect.objectContaining({ align: 'left', showGear: false }),
+      undefined,
+    );
+  });
+
+  it('switches from the active compass to the map', () => {
+    const BeerMapScreenMock = BeerMapScreen as jest.Mock;
+    useCompass.mockReturnValue(baseCompassState());
+    let renderer: any;
+
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(CompassScreen));
+    });
+
+    const mapTab = renderer!.root.findByProps({ accessibilityLabel: cs.a11y.mapSwitchToMap });
+    act(() => mapTab.props.onPress());
+
+    expect(BeerMapScreenMock).toHaveBeenCalledWith(
+      expect.objectContaining({ onShowCompass: expect.any(Function) }),
       undefined,
     );
   });

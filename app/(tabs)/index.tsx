@@ -50,6 +50,7 @@ import { formatPrice, type PriceCurrency } from '@/utils/currency';
 import { CompassContainer } from '@/components/compass/CompassContainer';
 import { OpenStatusChip } from '@/components/compass/OpenStatusChip';
 import { TitleBar } from '@/components/shared/TitleBar';
+import { ExploreSwitch } from '@/components/shared/ExploreSwitch';
 import { GlowButton } from '@/components/shared/GlowButton';
 import {
   BeerIcon,
@@ -101,6 +102,7 @@ const ARROW_SPRING_CONFIG = {
 // the Android navigation area on shorter devices.
 const PUB_PILL_MIN_HEIGHT = 166;
 const ACTIVE_CHROME_HEIGHT = 430;
+const EXPLORE_SWITCH_HEIGHT = 50;
 
 interface RenamePubModalProps {
   visible: boolean;
@@ -1226,6 +1228,7 @@ export default function CompassScreen() {
     insets.top,
     Math.max(insets.bottom, 16),
     fontScale,
+    EXPLORE_SWITCH_HEIGHT,
   );
 
   const handleSceneLayout = useCallback((event: LayoutChangeEvent) => {
@@ -1467,6 +1470,14 @@ export default function CompassScreen() {
           />
         }
       />
+
+      <View style={styles.compassExploreSwitch}>
+        <ExploreSwitch
+          activeView="compass"
+          onSelectCompass={() => undefined}
+          onSelectMap={handleShowMap}
+        />
+      </View>
 
       {/* Calibration hint (optional, subtle) */}
       {isHeadingAccuracyLow(headingAccuracy, Platform.OS) && (
@@ -1910,6 +1921,11 @@ const styles = StyleSheet.create({
   compassArea: {
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  compassExploreSwitch: {
+    height: EXPLORE_SWITCH_HEIGHT,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
   },
   flexSpacer: {
     flex: 1,

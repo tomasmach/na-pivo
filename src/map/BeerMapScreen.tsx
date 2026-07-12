@@ -21,12 +21,12 @@ import {
   CompassIcon,
   ListIcon,
   LocateFixedIcon,
-  MapIcon,
   MapPinnedIcon,
   RefreshCwIcon,
   UsersIcon,
   XIcon,
 } from '@/components/shared/IconGlyph';
+import { ExploreSwitch } from '@/components/shared/ExploreSwitch';
 import type { Pub } from '@/data/pubs';
 import type { FocusedPub } from '@/stores/focusedPubStore';
 import { useFocusedPubStore } from '@/stores/focusedPubStore';
@@ -93,32 +93,6 @@ function formatShortDate(iso: string): string {
 function friendName(live: LivePubSummary): string {
   const first = live.activities[0]?.account;
   return first?.displayName?.trim() || first?.nickname?.trim() || cs.map.friendFallback;
-}
-
-function ExploreSwitch({ onShowCompass }: { onShowCompass: () => void }) {
-  return (
-    <View style={styles.exploreSwitch} accessibilityRole="tablist">
-      <Pressable
-        onPress={onShowCompass}
-        style={({ pressed }) => [styles.exploreSegment, pressed && styles.pressed]}
-        accessibilityRole="tab"
-        accessibilityState={{ selected: false }}
-        accessibilityLabel={cs.a11y.mapSwitchCompass}
-      >
-        <CompassIcon size={16} color={Colors.foamMuted} />
-        <Text style={styles.exploreSegmentText}>{cs.map.compass}</Text>
-      </Pressable>
-      <View
-        style={[styles.exploreSegment, styles.exploreSegmentActive]}
-        accessibilityRole="tab"
-        accessibilityState={{ selected: true }}
-        accessibilityLabel={cs.a11y.mapSwitchMap}
-      >
-        <MapIcon size={16} color={Colors.stout} />
-        <Text style={styles.exploreSegmentTextActive}>{cs.map.map}</Text>
-      </View>
-    </View>
-  );
 }
 
 function LayerButton({
@@ -560,7 +534,11 @@ export default function BeerMapScreen({ initialPub, onShowCompass }: BeerMapScre
       </MapView>
 
       <View style={[styles.topChrome, { paddingTop: insets.top + 8 }]} pointerEvents="box-none">
-        <ExploreSwitch onShowCompass={onShowCompass} />
+        <ExploreSwitch
+          activeView="map"
+          onSelectCompass={onShowCompass}
+          onSelectMap={() => undefined}
+        />
         <View style={styles.layerControls}>
           <View style={styles.layerRow} accessibilityRole="tablist">
             <LayerButton active={layer === 'all'} label={cs.map.layerAll} onPress={() => selectLayer('all')} />
@@ -885,33 +863,6 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.stout },
   pressed: { opacity: 0.76, transform: [{ scale: 0.98 }] },
   topChrome: { position: 'absolute', top: 0, left: 0, right: 0, alignItems: 'center', gap: 9 },
-  exploreSwitch: {
-    height: 52,
-    padding: 4,
-    borderRadius: Radius.pill,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: withAlpha(Colors.stout, 0.94),
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.16),
-    shadowColor: Colors.black,
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-  },
-  exploreSegment: {
-    minWidth: 108,
-    height: 44,
-    borderRadius: Radius.pill,
-    paddingHorizontal: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-  },
-  exploreSegmentActive: { backgroundColor: Colors.amber },
-  exploreSegmentText: { fontFamily: Fonts.ui.bold, color: Colors.foamMuted, fontSize: 14 },
-  exploreSegmentTextActive: { fontFamily: Fonts.ui.bold, color: Colors.stout, fontSize: 14 },
   layerControls: {
     alignSelf: 'stretch',
     marginHorizontal: 12,
