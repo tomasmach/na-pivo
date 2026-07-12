@@ -62,7 +62,7 @@ jest.mock('@/map/BeerMapScreen', () => ({
 }));
 
 jest.mock('@/components/shared/TitleBar', () => ({
-  TitleBar: jest.fn(() => null),
+  TitleBar: jest.fn(({ filterSlot }) => filterSlot ?? null),
 }));
 
 jest.mock('@/components/shared/GlowButton', () => ({
@@ -317,6 +317,12 @@ describe('CompassScreen', () => {
     });
 
     const mapTab = renderer!.root.findByProps({ accessibilityLabel: cs.a11y.mapSwitchToMap });
+    expect(mapTab.props.accessibilityRole).toBe('tab');
+    expect(mapTab.props.accessibilityState).toEqual({ selected: false });
+    expect(
+      renderer!.root.findByProps({ accessibilityLabel: cs.a11y.mapSwitchCompassSelected }).props
+        .accessibilityState,
+    ).toEqual({ selected: true, disabled: true });
     act(() => mapTab.props.onPress());
 
     expect(BeerMapScreenMock).toHaveBeenCalledWith(

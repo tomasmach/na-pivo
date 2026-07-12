@@ -50,11 +50,11 @@ import { formatPrice, type PriceCurrency } from '@/utils/currency';
 import { CompassContainer } from '@/components/compass/CompassContainer';
 import { OpenStatusChip } from '@/components/compass/OpenStatusChip';
 import { TitleBar } from '@/components/shared/TitleBar';
-import { ExploreSwitch } from '@/components/shared/ExploreSwitch';
 import { GlowButton } from '@/components/shared/GlowButton';
 import {
   BeerIcon,
   BeerOffIcon,
+  CompassIcon,
   LockKeyholeIcon,
   EyeIcon,
   ExternalLinkIcon,
@@ -102,7 +102,6 @@ const ARROW_SPRING_CONFIG = {
 // the Android navigation area on shorter devices.
 const PUB_PILL_MIN_HEIGHT = 166;
 const ACTIVE_CHROME_HEIGHT = 430;
-const EXPLORE_SWITCH_HEIGHT = 50;
 
 interface RenamePubModalProps {
   visible: boolean;
@@ -1002,14 +1001,30 @@ function HeaderMapTools({
 }) {
   return (
     <View style={styles.headerMapTools}>
-      <Pressable
-        onPress={onShowMap}
-        style={({ pressed }) => [styles.headerMapButton, pressed && { opacity: 0.7 }]}
-        accessibilityRole="button"
-        accessibilityLabel={cs.a11y.openBeerMap}
-      >
-        <MapIcon size={17} color={Colors.amber} />
-      </Pressable>
+      <View style={styles.headerViewSwitch} accessibilityRole="tablist">
+        <Pressable
+          disabled
+          style={[styles.headerViewSegment, styles.headerViewSegmentActive]}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: true, disabled: true }}
+          accessibilityLabel={cs.a11y.mapSwitchCompassSelected}
+        >
+          <CompassIcon size={16} color={Colors.stout} />
+        </Pressable>
+        <Pressable
+          onPress={onShowMap}
+          hitSlop={4}
+          style={({ pressed }) => [
+            styles.headerViewSegment,
+            pressed && styles.headerViewSegmentPressed,
+          ]}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: false }}
+          accessibilityLabel={cs.a11y.mapSwitchToMap}
+        >
+          <MapIcon size={16} color={Colors.foamMuted} />
+        </Pressable>
+      </View>
       <PubFilterButton count={count} onOpen={onOpenFilter} onClear={onClearFilter} />
     </View>
   );
@@ -1228,7 +1243,6 @@ export default function CompassScreen() {
     insets.top,
     Math.max(insets.bottom, 16),
     fontScale,
-    EXPLORE_SWITCH_HEIGHT,
   );
 
   const handleSceneLayout = useCallback((event: LayoutChangeEvent) => {
@@ -1470,14 +1484,6 @@ export default function CompassScreen() {
           />
         }
       />
-
-      <View style={styles.compassExploreSwitch}>
-        <ExploreSwitch
-          activeView="compass"
-          onSelectCompass={() => undefined}
-          onSelectMap={handleShowMap}
-        />
-      </View>
 
       {/* Calibration hint (optional, subtle) */}
       {isHeadingAccuracyLow(headingAccuracy, Platform.OS) && (
@@ -1870,21 +1876,36 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout2,
   },
   headerMapTools: {
-    maxWidth: 238,
+    maxWidth: 210,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    gap: 7,
+    gap: 6,
   },
-  headerMapButton: {
-    width: HitArea.min,
-    height: HitArea.min,
+  headerViewSwitch: {
+    height: 34,
+    padding: 2,
     borderRadius: Radius.pill,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.34),
-    backgroundColor: withAlpha(Colors.amber, 0.1),
+    borderColor: withAlpha(Colors.foam, 0.14),
+    backgroundColor: withAlpha(Colors.stout, 0.9),
+  },
+  headerViewSegment: {
+    width: 28,
+    height: 28,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerViewSegmentActive: {
+    backgroundColor: Colors.amber,
+  },
+  headerViewSegmentPressed: {
+    opacity: 0.7,
+    transform: [{ scale: 0.96 }],
   },
   filterButtonActive: {
     borderColor: Colors.amber,
@@ -1921,11 +1942,6 @@ const styles = StyleSheet.create({
   compassArea: {
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  compassExploreSwitch: {
-    height: EXPLORE_SWITCH_HEIGHT,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
   },
   flexSpacer: {
     flex: 1,
