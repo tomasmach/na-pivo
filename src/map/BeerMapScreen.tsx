@@ -12,7 +12,6 @@ import {
 } from 'react-native';
 import MapView, { Marker, type MapPressEvent, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
@@ -630,9 +629,7 @@ export default function BeerMapScreen({ initialPub, onShowCompass }: BeerMapScre
         </Pressable>
       </View> : null}
 
-      <Animated.View
-        key={`dock:${selectedPub?.key ?? selectedLive?.cacheKey ?? selectedCity?.key ?? 'overview'}`}
-        entering={reduceMotion ? undefined : FadeInDown.duration(220).springify().damping(19)}
+      <View
         style={[
           styles.bottomDock,
           {
@@ -762,7 +759,7 @@ export default function BeerMapScreen({ initialPub, onShowCompass }: BeerMapScre
             ) : null}
           </ScrollView>
         )}
-      </Animated.View>
+      </View>
 
       <Modal
         visible={listOpen}
