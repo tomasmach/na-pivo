@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import * as Location from 'expo-location';
+import { updateCurrencyFromCoordinates } from '@/location/locationCurrency';
 
 export interface DevicePosition {
   lat: number;
@@ -38,6 +39,10 @@ export function useDevicePosition(enabled: boolean): UseDevicePositionResult {
         },
         (location) => {
           if (!isMountedRef.current) return;
+          void updateCurrencyFromCoordinates(
+            location.coords.latitude,
+            location.coords.longitude,
+          );
           setPosition({
             lat: location.coords.latitude,
             lng: location.coords.longitude,

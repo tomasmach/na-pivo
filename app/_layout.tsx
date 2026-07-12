@@ -42,6 +42,7 @@ import { useReleaseStore } from '@/stores/releaseStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import { usePartaSignalStore } from '@/stores/partaSignalStore';
 import { ensureFriendPushRegisteredIfGranted } from '@/notifications/friendPush';
+import { refreshCurrencyFromLastKnownLocation } from '@/location/locationCurrency';
 import { WhatsNewModal } from '@/components/shared/WhatsNewModal';
 import { PubReminderOnboardingModal } from '@/components/shared/PubReminderOnboardingModal';
 import { PubReminderEnableFailureModal } from '@/components/shared/PubReminderEnableFailureModal';
@@ -130,6 +131,7 @@ export default function RootLayout() {
   useEffect(() => {
     installClientTelemetry();
     void initializePubReminderNotifications();
+    void refreshCurrencyFromLastKnownLocation();
   }, []);
 
   useEffect(() => {
@@ -196,6 +198,9 @@ export default function RootLayout() {
       .finally(() => {
         const session = useAccountStore.getState().session;
         setTelemetrySession(session);
+        // Account hydration may restore the legacy CZK/EUR preference after the
+        // launch-time location check, so let the cached country win once more.
+        void refreshCurrencyFromLastKnownLocation();
         void trackClientEvent({ event: 'app_open', severity: 'info' });
         // A Parta invite deep link tapped before the account existed was stashed;
         // now that an account is ready, claim it (fires a Parta refresh on success).

@@ -44,6 +44,7 @@ import type { DrinkType } from '@/drinks/drinkTypes';
 import { suggestBeerBrands, type BeerBrandSuggestion } from '@/data/beerSuggestionsClient';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
+  currencyFractionDigits,
   currencySuffix,
   formatPriceInputFromCzk,
   parsePriceInputToCzk,
@@ -346,8 +347,8 @@ function BeerFormBody({ mode, beer, initialDrinkType, onCancel, onSubmit, onScan
               onChangeText={(v) => setPriceText(sanitizePriceInput(v, priceCurrency))}
               placeholder={placeholder}
               placeholderTextColor={Colors.mutedText}
-              keyboardType={priceCurrency === 'EUR' ? 'decimal-pad' : 'number-pad'}
-              maxLength={priceCurrency === 'EUR' ? 6 : 4}
+              keyboardType={currencyFractionDigits(priceCurrency) > 0 ? 'decimal-pad' : 'number-pad'}
+              maxLength={currencyFractionDigits(priceCurrency) > 0 ? 10 : 7}
               autoFocus={nameLocked}
               accessibilityLabel={placeholder}
             />

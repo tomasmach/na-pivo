@@ -28,6 +28,7 @@
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-google-signin/google-signin": "^16.1.2",
+    "country-to-currency": "^3.0.1",
     "expo": "~56.0.14",
     "expo-apple-authentication": "~56.0.4",
     "expo-asset": "~56.0.13",

@@ -2,7 +2,12 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { DEFAULT_PRICE_CURRENCY, type PriceCurrency } from '@/utils/currency';
+import {
+  DEFAULT_PRICE_CURRENCY,
+  getCurrencyRate,
+  setCurrencyRate,
+  type PriceCurrency,
+} from '@/utils/currency';
 
 export type Mode = 'nearest' | 'surprise';
 
@@ -10,6 +15,7 @@ interface SettingsState {
   mode: Mode;
   maxDistanceKm: number | null;
   priceCurrency: PriceCurrency;
+  priceCurrencyRate: number;
   hapticEnabled: boolean;
   soundEnabled: boolean;
   hideClosedPubs: boolean;
@@ -34,7 +40,7 @@ interface SettingsState {
   lastSeenPartyStreak: number;
   setMode: (m: Mode) => void;
   setMaxDistanceKm: (km: number | null) => void;
-  setPriceCurrency: (currency: PriceCurrency) => void;
+  setPriceCurrency: (currency: PriceCurrency, rateCzkPerUnit?: number) => void;
   setHapticEnabled: (v: boolean) => void;
   setSoundEnabled: (v: boolean) => void;
   setHideClosedPubs: (v: boolean) => void;
@@ -57,6 +63,7 @@ export const useSettingsStore = create<SettingsState>()(
       mode: 'nearest',
       maxDistanceKm: null,
       priceCurrency: DEFAULT_PRICE_CURRENCY,
+      priceCurrencyRate: 1,
       hapticEnabled: true,
       soundEnabled: false,
       hideClosedPubs: true,
@@ -74,7 +81,11 @@ export const useSettingsStore = create<SettingsState>()(
 
       setMode: (m) => set({ mode: m }),
       setMaxDistanceKm: (km) => set({ maxDistanceKm: km }),
-      setPriceCurrency: (currency) => set({ priceCurrency: currency }),
+      setPriceCurrency: (currency, rateCzkPerUnit) => {
+        const rate = rateCzkPerUnit ?? getCurrencyRate(currency) ?? 1;
+        setCurrencyRate(currency, rate);
+        set({ priceCurrency: currency, priceCurrencyRate: rate });
+      },
       setHapticEnabled: (v) => set({ hapticEnabled: v }),
       setSoundEnabled: (v) => set({ soundEnabled: v }),
       setHideClosedPubs: (v) => set({ hideClosedPubs: v }),
@@ -98,6 +109,7 @@ export const useSettingsStore = create<SettingsState>()(
         mode: state.mode,
         maxDistanceKm: state.maxDistanceKm,
         priceCurrency: state.priceCurrency,
+        priceCurrencyRate: state.priceCurrencyRate,
         hapticEnabled: state.hapticEnabled,
         soundEnabled: state.soundEnabled,
         hideClosedPubs: state.hideClosedPubs,
@@ -113,6 +125,11 @@ export const useSettingsStore = create<SettingsState>()(
         surpriseSeed: state.surpriseSeed,
         lastSeenPartyStreak: state.lastSeenPartyStreak,
       }),
+      onRehydrateStorage: () => (state) => {
+        if (state?.priceCurrency && state.priceCurrencyRate > 0) {
+          setCurrencyRate(state.priceCurrency, state.priceCurrencyRate);
+        }
+      },
     }
   )
 );

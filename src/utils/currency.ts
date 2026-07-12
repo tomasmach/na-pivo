@@ -1,15 +1,48 @@
-export type PriceCurrency = 'CZK' | 'EUR';
+export type PriceCurrency = string;
 
 export const DEFAULT_PRICE_CURRENCY: PriceCurrency = 'CZK';
 
-const EUR_TO_CZK = 25;
+/** CZK paid for one unit of currency. Updated by locationCurrency at runtime. */
+const czkPerUnit: Record<string, number> = {
+  CZK: 1,
+  EUR: 25,
+  THB: 0.68,
+};
+
+const ZERO_DECIMAL_CURRENCIES = new Set([
+  'BIF', 'CLP', 'CZK', 'DJF', 'GNF', 'ISK', 'JPY', 'KMF', 'KRW', 'PYG', 'RWF', 'UGX', 'VND', 'VUV', 'XAF',
+  'XOF', 'XPF',
+]);
+
+export function setCurrencyRate(currency: PriceCurrency, rateCzkPerUnit: number): void {
+  if (Number.isFinite(rateCzkPerUnit) && rateCzkPerUnit > 0) {
+    czkPerUnit[currency.toUpperCase()] = rateCzkPerUnit;
+  }
+}
+
+export function getCurrencyRate(currency: PriceCurrency): number | null {
+  return czkPerUnit[currency.toUpperCase()] ?? null;
+}
+
+export function currencyFractionDigits(currency: PriceCurrency): number {
+  return ZERO_DECIMAL_CURRENCIES.has(currency.toUpperCase()) ? 0 : 2;
+}
 
 export function currencySuffix(currency: PriceCurrency): string {
-  return currency === 'EUR' ? '€' : 'Kč';
+  try {
+    const parts = new Intl.NumberFormat('cs-CZ', {
+      style: 'currency',
+      currency,
+      currencyDisplay: 'narrowSymbol',
+    }).formatToParts(0);
+    return parts.find((part) => part.type === 'currency')?.value ?? currency;
+  } catch {
+    return currency;
+  }
 }
 
 export function pricePlaceholder(currency: PriceCurrency): string {
-  return currency === 'EUR' ? 'Cena (€)' : 'Cena (Kč)';
+  return `Cena (${currencySuffix(currency)})`;
 }
 
 function formatDecimal(value: number, maxFractionDigits: number): string {
@@ -21,39 +54,45 @@ function formatDecimal(value: number, maxFractionDigits: number): string {
 }
 
 export function formatPrice(czk: number, currency: PriceCurrency): string {
-  if (currency === 'EUR') {
-    return `${formatDecimal(czk / EUR_TO_CZK, 2)} €`;
+  const rate = getCurrencyRate(currency) ?? 1;
+  const amount = czk / rate;
+  try {
+    return new Intl.NumberFormat('cs-CZ', {
+      style: 'currency',
+      currency,
+      currencyDisplay: 'narrowSymbol',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: currencyFractionDigits(currency),
+    }).format(amount).replace(/\u00a0/g, ' ');
+  } catch {
+    return `${formatDecimal(amount, currencyFractionDigits(currency))} ${currency}`;
   }
-  return `${Math.round(czk)} Kč`;
 }
 
 export function formatPriceInputFromCzk(czk: number, currency: PriceCurrency): string {
-  if (currency === 'EUR') {
-    return formatDecimal(czk / EUR_TO_CZK, 2);
-  }
-  return String(Math.round(czk));
+  const rate = getCurrencyRate(currency) ?? 1;
+  return formatDecimal(czk / rate, currencyFractionDigits(currency));
 }
 
 export function sanitizePriceInput(raw: string, currency: PriceCurrency): string {
-  if (currency === 'CZK') {
-    return raw.replace(/\D/g, '').slice(0, 4);
-  }
+  const fractionDigits = currencyFractionDigits(currency);
+  if (fractionDigits === 0) return raw.replace(/\D/g, '').slice(0, 7);
 
   const normalized = raw.replace('.', ',').replace(/[^\d,]/g, '');
   const [integer = '', ...fractionParts] = normalized.split(',');
-  const intPart = integer.slice(0, 3);
-  const hasSeparator = normalized.includes(',');
-  if (!hasSeparator) return intPart;
+  const intPart = integer.slice(0, 7);
+  if (!normalized.includes(',')) return intPart;
 
-  const fraction = fractionParts.join('').slice(0, 2);
+  const fraction = fractionParts.join('').slice(0, fractionDigits);
   return `${intPart || '0'},${fraction}`;
 }
 
 export function parsePriceInputToCzk(text: string, currency: PriceCurrency): number | null {
   const value = Number(text.trim().replace(',', '.'));
-  if (!Number.isFinite(value)) return null;
+  const rate = getCurrencyRate(currency);
+  if (!Number.isFinite(value) || !rate) return null;
 
-  const czk = currency === 'EUR' ? Math.round(value * EUR_TO_CZK) : Math.round(value);
+  const czk = Math.round(value * rate);
   if (czk < 1 || czk > 1000) return null;
   return czk;
 }

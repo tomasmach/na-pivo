@@ -72,6 +72,7 @@ import { fireSuccessHaptic } from '@/utils/haptics';
 import {
   formatPriceInputFromCzk,
   parsePriceInputToCzk,
+  currencyFractionDigits,
   pricePlaceholder,
   sanitizePriceInput,
   type PriceCurrency,
@@ -998,8 +999,8 @@ function BeerRowView({
           onChangeText={onChangePrice}
           placeholder={placeholder}
           placeholderTextColor={Colors.mutedText}
-          keyboardType={priceCurrency === 'EUR' ? 'decimal-pad' : 'number-pad'}
-          maxLength={priceCurrency === 'EUR' ? 6 : 4}
+          keyboardType={currencyFractionDigits(priceCurrency) > 0 ? 'decimal-pad' : 'number-pad'}
+          maxLength={currencyFractionDigits(priceCurrency) > 0 ? 10 : 7}
           accessibilityLabel={placeholder}
         />
         <View style={styles.volumeGroup}>

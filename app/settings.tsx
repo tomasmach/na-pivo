@@ -257,15 +257,7 @@ function PrefRow({ icon, title, subtitle, value, onToggle, toggleLabel, borderTo
   );
 }
 
-interface CurrencyRowProps {
-  value: PriceCurrency;
-  onSelect: (currency: PriceCurrency) => void;
-  borderTop?: boolean;
-}
-
-function CurrencyRow({ value, onSelect, borderTop }: CurrencyRowProps) {
-  const options: PriceCurrency[] = ['CZK', 'EUR'];
-
+function CurrencyRow({ value, borderTop }: { value: PriceCurrency; borderTop?: boolean }) {
   return (
     <View style={[styles.prefRow, borderTop && styles.prefRowBorderTop]}>
       <View style={styles.iconWell}>
@@ -275,26 +267,8 @@ function CurrencyRow({ value, onSelect, borderTop }: CurrencyRowProps) {
         <Text style={styles.prefTitle}>{cs.settings.currency.title}</Text>
         <Text style={styles.prefSubtitle}>{cs.settings.currency.subtitle}</Text>
       </View>
-      <View style={styles.currencySegment}>
-        {options.map((currency) => {
-          const selected = value === currency;
-          const label = currency === 'EUR' ? cs.settings.currency.eur : cs.settings.currency.czk;
-          return (
-            <Pressable
-              key={currency}
-              onPress={() => onSelect(currency)}
-              style={[styles.currencyOption, selected && styles.currencyOptionSelected]}
-              accessibilityRole="button"
-              accessibilityState={{ selected }}
-              accessibilityLabel={`${cs.settings.currency.title}: ${label}`}
-              hitSlop={4}
-            >
-              <Text style={[styles.currencyOptionText, selected && styles.currencyOptionTextSelected]}>
-                {label}
-              </Text>
-            </Pressable>
-          );
-        })}
+      <View style={[styles.currencySegment, styles.currencyOptionSelected]}>
+        <Text style={[styles.currencyOptionText, styles.currencyOptionTextSelected]}>{value}</Text>
       </View>
     </View>
   );
@@ -455,7 +429,6 @@ export default function SettingsScreen() {
   const marketingEmailsEnabled = useSettingsStore((s) => s.marketingEmailsEnabled);
   const pubReminderEnabled = useSettingsStore((s) => s.pubReminderEnabled);
   const setMaxDistanceKm = useSettingsStore((s) => s.setMaxDistanceKm);
-  const setPriceCurrency = useSettingsStore((s) => s.setPriceCurrency);
   const setHapticEnabled = useSettingsStore((s) => s.setHapticEnabled);
   const setSoundEnabled = useSettingsStore((s) => s.setSoundEnabled);
   const setWaterNudgeEnabled = useSettingsStore((s) => s.setWaterNudgeEnabled);
@@ -540,13 +513,6 @@ export default function SettingsScreen() {
     }
   }, [pubReminderBusy, pubReminderEnabled, setPubReminderEnabled]);
 
-  const handleCurrencySelect = useCallback(
-    (currency: PriceCurrency) => {
-      setPriceCurrency(currency);
-      void updateAccountPreferences({ priceCurrency: currency });
-    },
-    [setPriceCurrency],
-  );
 
   // Distance display
   const distanceDisplay =
@@ -689,7 +655,6 @@ export default function SettingsScreen() {
           />
           <CurrencyRow
             value={priceCurrency}
-            onSelect={handleCurrencySelect}
             borderTop
           />
           <PrefRow

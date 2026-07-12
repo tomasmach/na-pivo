@@ -362,7 +362,7 @@ export const cs = {
     },
     currency: {
       title: 'Měna cen',
-      subtitle: 'Pro zadávání cen piva v Česku nebo na Slovensku',
+      subtitle: 'Automaticky podle země, kde zrovna jsi',
       czk: 'Kč',
       eur: '€',
     },

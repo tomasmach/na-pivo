@@ -25,7 +25,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
-import { currencySuffix, parsePriceInputToCzk, sanitizePriceInput } from '@/utils/currency';
+import { currencyFractionDigits, currencySuffix, parsePriceInputToCzk, sanitizePriceInput } from '@/utils/currency';
 import {
   buildHistoricalInterval,
   formatHistoricalDate,
@@ -375,7 +375,7 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
                             placeholder={cs.myBeers.historicalPricePlaceholder}
                             placeholderTextColor={Colors.mutedText}
                             style={styles.priceInput}
-                            keyboardType={priceCurrency === 'EUR' ? 'decimal-pad' : 'number-pad'}
+                            keyboardType={currencyFractionDigits(priceCurrency) > 0 ? 'decimal-pad' : 'number-pad'}
                             maxFontSizeMultiplier={FontScaleCap.body}
                           />
                           <Text style={styles.priceSuffix} maxFontSizeMultiplier={FontScaleCap.body}>
