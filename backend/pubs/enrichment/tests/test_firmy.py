@@ -27,6 +27,8 @@ from pubs.enrichment.firmy import (
     FirmyHoursSource,
     RawHours,
     TransientFetchError,
+    _build_search_queries,
+    _core_name,
 )
 
 # ---------------------------------------------------------------------------
@@ -71,6 +73,17 @@ def _make_search_html(firm_id: str, slug: str, name: str, lat: float, lng: float
     <script type="application/ld+json">{ld_json}</script>
     </body></html>
     """
+
+
+def _make_search_card(firm_id: str, slug: str, name: str, lat: float, lng: float) -> str:
+    """Return a representative Firmy.cz server-rendered result card."""
+    return f'''<a class="titleLinkOverlay" id="prem-{firm_id}" data-dot="premise"
+    href="https://www.firmy.cz/detail/{firm_id}-{slug}.html">
+      <h3 class="h3 title" title="Detail firmy {name}">{name}</h3>
+    </a>
+    <div class="content"><address><a data-dot="address"
+      href="https://mapy.com/cs/zakladni?x={lng}&amp;y={lat}&amp;z=17&amp;ri=&amp;ri={firm_id}">
+      Adresa</a></address></div>'''
 
 
 # ---------------------------------------------------------------------------
@@ -787,3 +800,136 @@ class TestHttpStatusSemantics:
 
         src = FirmyHoursSource(session=session, min_interval=0.0)
         assert src.fetch(name, lat, lng) is None
+
+
+# ---------------------------------------------------------------------------
+# Search query ladder and multi-candidate selection
+# ---------------------------------------------------------------------------
+
+def _query_of(request: requests.PreparedRequest) -> str:
+    """Return the decoded q parameter from a mocked search request."""
+    from urllib.parse import parse_qs, urlparse
+
+    return parse_qs(urlparse(request.url or "").query).get("q", [""])[0]
+
+
+class TestBuildSearchQueries:
+    def test_name_only_first_city_last(self):
+        queries = _build_search_queries("Pivnice U Zlatého slona", "Praha")
+        assert queries[0] == "Pivnice U Zlatého slona"
+        assert queries[-1] == "Pivnice U Zlatého slona Praha"
+
+    def test_core_name_precedes_city_form(self):
+        name = "Pilsner Urquell: The Original Beer Experience"
+        queries = _build_search_queries(name, "Praha")
+        assert _core_name(name) == "Pilsner Urquell"
+        assert queries.index("Pilsner Urquell") < queries.index(f"{name} Praha")
+
+    def test_duplicate_forms_are_removed(self):
+        assert _build_search_queries("Pivovar Staré Město", None) == [
+            "Pivovar Staré Město"
+        ]
+
+    def test_dash_subtitle_is_removed(self):
+        assert _core_name("PLNÝ PEKÁČ - restaurace a pivnice") == "PLNÝ PEKÁČ"
+
+
+class TestSearchCandidateSelection:
+    def test_sparse_multiple_links_keep_first_fallback(self):
+        name = "Hospoda U Testu"
+        lat, lng = 50.0, 14.0
+        search_html = (
+            '<a href="https://www.firmy.cz/detail/111111-hospoda-u-testu.html">first</a>'
+            '<a href="https://www.firmy.cz/detail/222222-hospoda-u-testu-jina.html">second</a>'
+        )
+        detail_html = _make_search_html("111111", "hospoda-u-testu", name, lat, lng)
+        src = _make_source(
+            search_html, detail_html, firm_id="111111", slug="hospoda-u-testu"
+        )
+
+        result = src.fetch(name, lat, lng)
+        assert result is not None
+        assert result.source_ref == "111111"
+
+    def test_second_nearby_card_beats_distant_first_card(self):
+        name = "Hostinec U Bláhů"
+        lat, lng = 49.177567, 15.594928
+        search_html = (
+            "<html><body>"
+            + _make_search_card(
+                "12000001", "hostinec-u-blahu-praha-zbraslav", name, 50.0, 14.4
+            )
+            + _make_search_card(
+                "13010131", "hostinec-u-blahu-stara-rise", name, lat, lng
+            )
+            + "</body></html>"
+        )
+        detail_html = _make_search_html(
+            "13010131", "hostinec-u-blahu-stara-rise", name, lat, lng
+        )
+        src = _make_source(
+            search_html,
+            detail_html,
+            firm_id="13010131",
+            slug="hostinec-u-blahu-stara-rise",
+        )
+
+        result = src.fetch(name, lat, lng, city="Stará Říše")
+        assert result is not None
+        assert result.source_ref == "13010131"
+
+
+class TestSearchLadderBehaviour:
+    def test_falls_back_to_core_name_when_full_name_returns_410(self):
+        name = "Pilsner Urquell: The Original Beer Experience"
+        lat, lng = 50.0875, 14.4213
+        detail_html = _make_search_html("111", "pilsner-urquell-praha", name, lat, lng)
+
+        def handle_search(request):
+            if "Original" in _query_of(request):
+                return _make_response("", status_code=410, url=request.url)
+            return _make_response(detail_html)
+
+        session = requests.Session()
+        adapter = MockFirmyAdapter({
+            r"firmy\.cz/\?q=": handle_search,
+            r"/detail/": lambda _request: _make_response(detail_html),
+        })
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+
+        result = FirmyHoursSource(session=session, min_interval=0.0).fetch(
+            name, lat, lng, city="Praha"
+        )
+        assert result is not None
+        assert result.source_ref == "111"
+
+    def test_city_form_replaces_distant_name_only_result(self):
+        name = "Nalévárna Pivovaru Hostomice"
+        lat, lng = 50.0875, 14.4213
+        far_search = _make_search_html(
+            "900", "nalevarna-hostomice", name, 49.79, 14.04
+        )
+        near_search = _make_search_html(
+            "200", "nalevarna-praha", name, lat, lng
+        )
+
+        def handle_search(request):
+            if _query_of(request).endswith("Praha"):
+                return _make_response(near_search)
+            return _make_response(far_search)
+
+        session = requests.Session()
+        adapter = MockFirmyAdapter({
+            r"firmy\.cz/\?q=": handle_search,
+            r"/detail/200": lambda _request: _make_response(near_search),
+            r"/detail/900": lambda _request: pytest.fail("fetched distant detail"),
+        })
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+
+        result = FirmyHoursSource(session=session, min_interval=0.0).fetch(
+            name, lat, lng, city="Praha"
+        )
+        assert result is not None
+        assert result.source_ref == "200"
