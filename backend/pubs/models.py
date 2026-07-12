@@ -23,6 +23,9 @@ from django.db.models import Q
 from django.db.models.functions import Lower
 from django.utils import timezone
 
+from pubs.enrichment.matcher import geohash8
+from pubs.identity import normalize_pub_name
+
 
 class PubHours(models.Model):
     """
@@ -49,6 +52,7 @@ class PubHours(models.Model):
     name = models.CharField(max_length=255)
     lat = models.FloatField()
     lng = models.FloatField()
+    city = models.CharField(max_length=128, blank=True)
 
     # ---------- enrichment result ----------
     # TextField (not CharField(512)): a heavily multi-segmented openingHoursSpecification
@@ -151,6 +155,48 @@ class PubHours(models.Model):
 
     def __str__(self) -> str:
         return f"{self.name} [{self.cache_key}] — {self.status}"
+
+
+class PubDirectory(models.Model):
+    """Imported country-wide pub directory, separate from user-owned data."""
+
+    name = models.CharField(max_length=255)
+    name_key = models.CharField(max_length=255)
+    lat = models.FloatField()
+    lng = models.FloatField()
+    cache_key = models.CharField(max_length=12, db_index=True)
+    city = models.CharField(max_length=128, blank=True)
+    country = models.CharField(max_length=2, db_index=True)
+    venue_kind = models.CharField(
+        max_length=16,
+        choices=PubHours.VenueKind.choices,
+        default=PubHours.VenueKind.UNKNOWN,
+        db_index=True,
+    )
+    source = models.CharField(max_length=32)
+    active = models.BooleanField(default=True)
+    refreshed_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["cache_key", "name_key"], name="unique_pub_directory_identity"
+            )
+        ]
+        indexes = [models.Index(fields=["lat", "lng"])]
+        verbose_name = "Pub Directory Entry"
+        verbose_name_plural = "Pub Directory Entries"
+
+    def __str__(self) -> str:
+        return f"{self.name} [{self.cache_key}]"
+
+    def save(self, *args, **kwargs) -> None:
+        """Keep derived identity fields aligned for non-import writes."""
+        self.name_key = normalize_pub_name(self.name)
+        self.cache_key = geohash8(self.lat, self.lng)
+        super().save(*args, **kwargs)
 
 
 class EnrichTask(models.Model):

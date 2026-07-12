@@ -78,6 +78,7 @@ from pubs.enrichment import (
     geohash8,
     names_match,
 )
+from pubs.identity import pub_identity_key as _pub_identity_key
 from pubs.mapper import maper_snapshot
 from pubs.menu_scan import (
     MenuScanError,
@@ -213,7 +214,6 @@ from .stats import compute_my_stats
 logger = logging.getLogger(__name__)
 
 DEFAULT_BLOCKED_REPORT_RADIUS_KM = 25.0
-_IDENTITY_SPACE_RE = re.compile(r"\s+")
 _BEER_KEY_RE = re.compile(r"\s+")
 
 # Radius buckets (km) for the Mapy "pubs near" cache — the same widening steps
@@ -278,12 +278,6 @@ def _haversine_km(a_lat: float, a_lng: float, b_lat: float, b_lng: float) -> flo
         + math.cos(lat1) * math.cos(lat2) * math.sin(d_lng / 2) ** 2
     )
     return 2 * radius_km * math.asin(math.sqrt(h))
-
-
-def _pub_identity_key(cache_key: str, name: str) -> str:
-    """Stable per-business key inside a geohash-8 cell."""
-    normalized_name = _IDENTITY_SPACE_RE.sub(" ", (name or "").strip().casefold())
-    return f"{cache_key}::{normalized_name}" if normalized_name else cache_key
 
 
 def _beer_identity_key(value: str) -> str:
