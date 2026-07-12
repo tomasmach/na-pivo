@@ -612,6 +612,14 @@ MAPY_DAILY_CAP: int = int(os.environ.get("MAPY_DAILY_CAP", "5000"))
 # fetch fails.
 PUBS_NEAR_TTL_DAYS: int = int(os.environ.get("PUBS_NEAR_TTL_DAYS", "7"))
 
+# Prefer the imported CZ/SK directory inside its coarse coverage polygons.
+PUBS_NEAR_LOCAL_FIRST: bool = os.environ.get(
+    "PUBS_NEAR_LOCAL_FIRST", "False"
+).lower() in ("1", "true", "yes")
+PUBS_NEAR_LOCAL_MAX_ITEMS: int = int(
+    os.environ.get("PUBS_NEAR_LOCAL_MAX_ITEMS", "300")
+)
+
 # OpenRouter vision (POST /v1/pub-menu-scan — beer-menu photo extraction).
 # The endpoint uploads a menu photo to an AI vision model and returns a parsed
 # beer list for the user to review (no DB writes, no XP, no image storage). If

@@ -28,7 +28,9 @@ from pubs.models import (
     BeerBrand,
     PubAmenity,
     PubBeerBrand,
+    PubDirectory,
     PubNameCorrection,
+    PubReport,
     PubSearchCache,
     UserAddedPub,
 )
@@ -55,6 +57,7 @@ def client():
 def _mapy_key(settings):
     """Configure a Mapy key by default; individual tests can clear it."""
     settings.MAPY_API_KEY = "test-key"
+    settings.PUBS_NEAR_LOCAL_FIRST = False
     # Generous throttle so the shared LocMemCache state from other tests can't
     # 429 us (each test patches the source anyway).
     settings.REST_FRAMEWORK = {
@@ -104,6 +107,252 @@ def _amenity(
         no_count=2 if status_value == PubAmenity.Status.NO else 0,
         distinct_voter_count=2,
     )
+
+
+def _directory_pub(
+    name: str = "Hospoda Z Adresáře",
+    *,
+    lat: float = _LAT,
+    lng: float = _LNG,
+    city: str = "Praha",
+    country: str = "cz",
+    venue_kind: str = "pub",
+    active: bool = True,
+) -> PubDirectory:
+    return PubDirectory.objects.create(
+        name=name,
+        lat=lat,
+        lng=lng,
+        city=city,
+        country=country,
+        venue_kind=venue_kind,
+        source="test",
+        active=active,
+        refreshed_at=dj_tz.now(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Local PubDirectory branch
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_local_first_flag_off_ignores_directory(client, settings):
+    settings.PUBS_NEAR_LOCAL_FIRST = False
+    _directory_pub()
+    factory, instance = _mock_source(MapySuggestResult(items=[_ITEM]))
+
+    with patch("pubs.api.views.MapySuggestSource", factory):
+        resp = client.get(
+            "/v1/pubs/near",
+            data={"lat": _LAT, "lng": _LNG, "radius_km": 1},
+        )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["items"] == [_ITEM]
+    instance.search_near.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_local_first_serves_directory_without_mapy_or_search_cache(client, settings):
+    settings.PUBS_NEAR_LOCAL_FIRST = True
+    _directory_pub()
+    factory, _ = _mock_source(MapySuggestResult(items=[_ITEM]))
+
+    with patch("pubs.api.views.MapySuggestSource", factory):
+        resp = client.get(
+            "/v1/pubs/near",
+            data={"lat": _LAT, "lng": _LNG, "radius_km": 1},
+        )
+
+    assert resp.status_code == status.HTTP_200_OK
+    body = resp.json()
+    assert body["cached"] is True
+    assert [item["name"] for item in body["items"]] == ["Hospoda Z Adresáře"]
+    assert body["fetched_at"]
+    factory.assert_not_called()
+    assert not PubSearchCache.objects.exists()
+
+
+@pytest.mark.django_db
+def test_directory_item_matches_trimmed_mapy_wire_shape(client, settings):
+    from pubs.api.views import _pub_directory_item
+    from pubs.enrichment.mapy import _trim_item
+
+    row = _directory_pub(venue_kind="maybe")
+    item = _pub_directory_item(row)
+    equivalent_raw = {
+        "name": row.name,
+        "label": "Restaurace a pohostinství",
+        "position": {"lat": row.lat, "lon": row.lng},
+        "regionalStructure": [
+            {"name": row.city, "type": "regional.municipality"},
+            {"name": "Česko", "type": "regional.country"},
+        ],
+    }
+    trimmed = _trim_item(equivalent_raw)
+
+    assert set(item) == set(trimmed)
+    assert set(item["position"]) == set(trimmed["position"])
+    assert all(isinstance(entry["name"], str) for entry in item["regionalStructure"])
+    assert all(isinstance(entry["type"], str) for entry in item["regionalStructure"])
+    assert item == {
+        "name": "Hospoda Z Adresáře",
+        "label": "Restaurace a pohostinství",
+        "position": {"lat": _LAT, "lon": _LNG},
+        "regionalStructure": [
+            {"name": "Praha", "type": "regional.municipality"},
+            {
+                "name": "Česko",
+                "type": "regional.country",
+                "isoCode": "CZ",
+            },
+        ],
+    }
+
+
+@pytest.mark.django_db
+def test_local_first_hides_not_pub_and_inactive_rows(client, settings):
+    settings.PUBS_NEAR_LOCAL_FIRST = True
+    _directory_pub("Viditelná")
+    _directory_pub("Není hospoda", lat=_LAT + 0.001, venue_kind="not_pub")
+    _directory_pub("Neaktivní", lat=_LAT + 0.002, active=False)
+
+    resp = client.get(
+        "/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 1}
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert [item["name"] for item in resp.json()["items"]] == ["Viditelná"]
+
+
+@pytest.mark.django_db
+def test_local_first_hides_actively_reported_cache_key(client, settings):
+    settings.PUBS_NEAR_LOCAL_FIRST = True
+    visible = _directory_pub("Viditelná")
+    reported = _directory_pub("Nahlášená", lat=_LAT + 0.001)
+    PubReport.objects.create(
+        cache_key=reported.cache_key,
+        name=reported.name,
+        lat=reported.lat,
+        lng=reported.lng,
+        reason=PubReport.Reason.NOT_PUB,
+        active=True,
+    )
+    PubReport.objects.create(
+        cache_key=visible.cache_key,
+        name=visible.name,
+        lat=visible.lat,
+        lng=visible.lng,
+        reason=PubReport.Reason.CLOSED,
+        active=False,
+    )
+
+    resp = client.get(
+        "/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 1}
+    )
+
+    assert [item["name"] for item in resp.json()["items"]] == ["Viditelná"]
+
+
+@pytest.mark.django_db
+def test_local_first_applies_name_correction(client, settings):
+    settings.PUBS_NEAR_LOCAL_FIRST = True
+    row = _directory_pub()
+    PubNameCorrection.objects.create(
+        client_id="aaaaaaaa-1111-2222-3333-444444444451",
+        cache_key=row.cache_key,
+        original_name=row.name,
+        suggested_name="Opravená hospoda",
+        lat=row.lat,
+        lng=row.lng,
+        active=True,
+    )
+
+    resp = client.get(
+        "/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 1}
+    )
+
+    assert resp.json()["items"][0]["name"] == "Opravená hospoda"
+
+
+@pytest.mark.django_db
+def test_local_first_merges_user_added_pub(client, settings):
+    settings.PUBS_NEAR_LOCAL_FIRST = True
+    _directory_pub()
+    UserAddedPub.objects.create(
+        client_id="9a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d",
+        cache_key="u2fk3abc",
+        name="Hospoda Od Komunity",
+        lat=_LAT + 0.0001,
+        lng=_LNG + 0.0001,
+        city="Praha",
+    )
+
+    resp = client.get(
+        "/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 1}
+    )
+
+    assert [item["name"] for item in resp.json()["items"]] == [
+        "Hospoda Od Komunity",
+        "Hospoda Z Adresáře",
+    ]
+
+
+@pytest.mark.django_db
+def test_local_first_zero_hits_falls_through_to_mapy(client, settings):
+    settings.PUBS_NEAR_LOCAL_FIRST = True
+    factory, instance = _mock_source(MapySuggestResult(items=[_ITEM]))
+
+    with (
+        patch("pubs.api.views.MapySuggestSource", factory),
+        patch("pubs.api.views.logger.info") as log_info,
+    ):
+        resp = client.get(
+            "/v1/pubs/near",
+            data={"lat": _LAT, "lng": _LNG, "radius_km": 1},
+        )
+
+    assert resp.json()["items"] == [_ITEM]
+    instance.search_near.assert_called_once()
+    log_info.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_local_first_outside_coverage_uses_mapy(client, settings):
+    settings.PUBS_NEAR_LOCAL_FIRST = True
+    factory, instance = _mock_source(MapySuggestResult(items=[_ITEM]))
+
+    with patch("pubs.api.views.MapySuggestSource", factory):
+        resp = client.get(
+            "/v1/pubs/near",
+            data={"lat": 48.2082, "lng": 16.3738, "radius_km": 1},
+        )
+
+    assert resp.json()["items"] == [_ITEM]
+    instance.search_near.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_local_first_cap_keeps_nearest_rows(client, settings):
+    settings.PUBS_NEAR_LOCAL_FIRST = True
+    settings.PUBS_NEAR_LOCAL_MAX_ITEMS = 3
+    for index in range(5):
+        _directory_pub(
+            f"Hospoda {index}",
+            lat=_LAT + (index + 1) * 0.001,
+        )
+
+    resp = client.get(
+        "/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 5}
+    )
+
+    assert [item["name"] for item in resp.json()["items"]] == [
+        "Hospoda 0",
+        "Hospoda 1",
+        "Hospoda 2",
+    ]
 
 
 # ---------------------------------------------------------------------------

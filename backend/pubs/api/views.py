@@ -78,6 +78,7 @@ from pubs.enrichment import (
     geohash8,
     names_match,
 )
+from pubs.enrichment.coverage import coverage_country
 from pubs.identity import pub_identity_key as _pub_identity_key
 from pubs.mapper import maper_snapshot
 from pubs.menu_scan import (
@@ -121,6 +122,8 @@ from pubs.models import (
     PubCommunityData,
     PubCommunityXpLedger,
     PubContributionLog,
+    PubDirectory,
+    PubHours,
     PubNameCorrection,
     PubRating,
     PubReport,
@@ -5371,6 +5374,72 @@ def _with_user_added_items(user_added_items: list[dict], mapy_items: list[dict])
     return [*user_added_items, *deduped_mapy]
 
 
+def _pub_directory_item(row: PubDirectory) -> dict:
+    """Serialize a directory row to the trimmed Mapy shape used by clients."""
+    country_code = row.country.lower()
+    regional_structure = []
+    if row.city:
+        regional_structure.append(
+            {"name": row.city, "type": "regional.municipality"}
+        )
+    regional_structure.append(
+        {
+            "name": "Česko" if country_code == "cz" else "Slovensko",
+            "type": "regional.country",
+            "isoCode": country_code.upper(),
+        }
+    )
+    return {
+        "name": row.name,
+        "label": (
+            "Hospoda"
+            if row.venue_kind == PubHours.VenueKind.PUB
+            else "Restaurace a pohostinství"
+        ),
+        "position": {"lat": row.lat, "lon": row.lng},
+        "regionalStructure": regional_structure,
+    }
+
+
+def _nearby_pub_directory_items(
+    lat: float,
+    lng: float,
+    radius_km: float,
+    max_items: int,
+) -> list[dict]:
+    """Return nearest eligible, unreported directory rows inside a radius."""
+    d_lat = radius_km / 111.0
+    d_lng = radius_km / (111.0 * math.cos(math.radians(lat)))
+    candidates = list(
+        PubDirectory.objects.filter(
+            active=True,
+            lat__gte=lat - d_lat,
+            lat__lte=lat + d_lat,
+            lng__gte=lng - d_lng,
+            lng__lte=lng + d_lng,
+        )
+        .exclude(venue_kind=PubHours.VenueKind.NOT_PUB)
+        .only("id", "name", "lat", "lng", "cache_key", "city", "country", "venue_kind")
+    )
+    if not candidates:
+        return []
+
+    reported_cache_keys = set(
+        PubReport.objects.filter(
+            active=True,
+            cache_key__in={row.cache_key for row in candidates},
+        ).values_list("cache_key", flat=True)
+    )
+    nearby = [
+        (_haversine_km(lat, lng, row.lat, row.lng), row)
+        for row in candidates
+        if row.cache_key not in reported_cache_keys
+    ]
+    nearby = [entry for entry in nearby if entry[0] <= radius_km]
+    nearby.sort(key=lambda entry: (entry[0], entry[1].pk))
+    return [_pub_directory_item(row) for _, row in nearby[:max(0, max_items)]]
+
+
 class PubsNearView(APIView):
     """
     GET /v1/pubs/near?lat=<float>&lng=<float>&radius_km=<float, default 25>
@@ -5512,6 +5581,31 @@ class PubsNearView(APIView):
 
         def final_items(items: list[dict]) -> list[dict]:
             return _with_pub_name_corrections(apply_filters(items))
+
+        if getattr(settings, "PUBS_NEAR_LOCAL_FIRST", False) and coverage_country(
+            data["lat"], data["lng"]
+        ):
+            directory_items = _nearby_pub_directory_items(
+                data["lat"],
+                data["lng"],
+                radius_km,
+                int(getattr(settings, "PUBS_NEAR_LOCAL_MAX_ITEMS", 300)),
+            )
+            if directory_items:
+                return Response(
+                    response_body(
+                        items=final_items(directory_items),
+                        cached=True,
+                        fetched_at=dj_timezone.now().isoformat(),
+                    ),
+                    status=status.HTTP_200_OK,
+                )
+            logger.info(
+                "pubs-near: no local directory hits at %.5f,%.5f/%gkm — falling back to Mapy",
+                data["lat"],
+                data["lng"],
+                radius_km,
+            )
 
         # Quantize to a small shared cache cell but run the search from the user's
         # actual position. The old geohash-5 centre search could be >2 km away at
