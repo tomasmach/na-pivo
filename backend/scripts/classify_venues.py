@@ -92,12 +92,14 @@ RESPONSE_SCHEMA = {
 }
 
 PROMPT_HEAD = """\
-You classify Czech venues by NAME for an app that finds places serving DRAFT \
-BEER (točené pivo). For each venue decide one verdict:
+You classify Czech and Slovak venues by NAME for an app that finds places \
+serving DRAFT BEER (točené pivo / čapované pivo). For each venue decide one \
+verdict:
 
 - "pub": clearly pours beer — hospoda, hostinec, hospůdka, pivnice, pivovar, \
-minipivovar, nálevna, výčep, šenk, tankovna, pivotéka, bar, pub, sport bar, or \
-a Czech-style restaurace/restaurant that would serve beer.
+minipivovar, nálevna, výčep, šenk, tankovna, pivotéka, bar, pub, sport bar, \
+krčma, piváreň, pohostinstvo, výčap, or a Czech/Slovak-style restaurace/\
+reštaurácia that would serve beer.
 - "not_pub": clearly NOT a place to drink beer. Two families: (a) a non-beer \
 food/drink venue — sushi, asijská/čínská/vietnamská/thajská/japonská/korejská/\
 indická restaurace, pizzerie, kebab, kavárna/café, cukrárna, čajovna, vinárna/\
