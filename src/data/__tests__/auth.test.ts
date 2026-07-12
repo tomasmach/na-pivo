@@ -322,6 +322,23 @@ describe('registerEmail', () => {
 // loginEmail
 // ---------------------------------------------------------------------------
 describe('loginEmail', () => {
+  it('does not report a durable login when secure session persistence fails', async () => {
+    installFetch(
+      fetchResolving(200, { id: 'acc-2', token: 'login-tok', is_anonymous: false }),
+    );
+    mockSetSession.mockRejectedValueOnce(new Error('Keychain unavailable'));
+
+    await expect(auth.loginEmail({ email: 'jan@example.com', password: 'pw' })).resolves.toEqual({
+      ok: false,
+      code: 'session_storage',
+      detail: 'Přihlášení se nepodařilo bezpečně uložit. Odemkni telefon a zkus to znovu.',
+    });
+    expect(mockTrackApiFailure).toHaveBeenCalledWith(
+      'auth_session_persist',
+      expect.objectContaining({ reason: 'secure_store' }),
+    );
+  });
+
   it('logs in with the anonymous bearer claim and stores the session without clearing local progress', async () => {
     const spy = installFetch(
       fetchResolving(200, { id: 'acc-2', token: 'login-tok', is_anonymous: false, providers: ['email'] }),

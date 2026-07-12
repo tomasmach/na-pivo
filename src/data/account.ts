@@ -68,6 +68,7 @@ const DEVICE_ID_KEY = 'na-pivo-device-id';
 const ACCOUNT_KEY = 'na-pivo-account';
 const REQUEST_TIMEOUT_MS = 8000;
 let ensureAccountInFlight: Promise<AccountSession | null> | null = null;
+let lastKnownAccount: CachedAccount | null = null;
 
 interface RegisterResponse {
   id?: string;
@@ -226,37 +227,54 @@ export async function getOrCreateDeviceId(): Promise<string> {
   return replaceDeviceId();
 }
 
-async function readCachedAccount(): Promise<CachedAccount | null> {
+type CachedAccountRead =
+  | { available: true; account: CachedAccount | null }
+  | { available: false; account: CachedAccount | null };
+
+async function readCachedAccount(): Promise<CachedAccountRead> {
   try {
     const raw = await SecureStore.getItemAsync(ACCOUNT_KEY);
-    if (!raw) return null;
+    if (!raw) {
+      lastKnownAccount = null;
+      return { available: true, account: null };
+    }
     const parsed = JSON.parse(raw) as Partial<CachedAccount>;
     if (parsed?.deviceId && parsed?.accountId && parsed?.token) {
-      return {
+      const account = {
         deviceId: parsed.deviceId,
         accountId: parsed.accountId,
         token: parsed.token,
         authenticated: parsed.authenticated === true,
       };
+      lastKnownAccount = account;
+      return { available: true, account };
     }
+    lastKnownAccount = null;
+    return { available: true, account: null };
   } catch {
-    // Corrupt cache, or the secure store being unavailable (e.g. web): the
-    // caller simply re-registers and idempotently recovers the same account.
+    // Keychain can be temporarily unavailable while iOS is locked or resuming.
+    // Never interpret that as a missing credential: doing so could replace a
+    // signed-in session with a freshly minted anonymous account.
+    return { available: false, account: lastKnownAccount };
   }
-  return null;
 }
 
-async function writeCachedAccount(account: CachedAccount): Promise<void> {
+async function writeCachedAccount(account: CachedAccount): Promise<boolean> {
   try {
-    await SecureStore.setItemAsync(ACCOUNT_KEY, JSON.stringify(account));
+    await SecureStore.setItemAsync(ACCOUNT_KEY, JSON.stringify(account), {
+      keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+    });
+    lastKnownAccount = account;
+    return true;
   } catch {
-    // best effort — never throw if the secure store is unavailable.
+    return false;
   }
 }
 
 /** Drop the cached account. If the old deviceId is already claimed server-side,
  *  the next ensureAccount() will mint a fresh anonymous device account. */
 export async function clearCachedAccount(): Promise<void> {
+  lastKnownAccount = null;
   try {
     await SecureStore.deleteItemAsync(ACCOUNT_KEY);
   } catch {
@@ -290,7 +308,8 @@ export async function clearCachedAnonymousAccount(session: AccountSession | null
  */
 async function ensureAccountOnce(signal?: AbortSignal): Promise<AccountSession | null> {
   let deviceId = await getOrCreateDeviceId();
-  const cached = await readCachedAccount();
+  const cachedRead = await readCachedAccount();
+  const cached = cachedRead.account;
 
   // A SIGNED-IN session is credential-backed, not device-bound: return it as-is
   // (it may have been minted on another device / after a deviceId change), and
@@ -310,6 +329,10 @@ async function ensureAccountOnce(signal?: AbortSignal): Promise<AccountSession |
   if (cached && cached.deviceId === deviceId) {
     return { deviceId, accountId: cached.accountId, token: cached.token, authenticated: false };
   }
+
+  // A failed Keychain read is not proof that the account is absent. Wait for a
+  // later retry instead of registering and overwriting a possibly signed-in user.
+  if (!cachedRead.available) return null;
 
   const endpoint = getBackendEndpoint('/v1/account');
   if (!endpoint || signal?.aborted) {
@@ -532,7 +555,7 @@ export async function updateAccountPreferences(
 /** Current bearer token, or null when there is no cached session. */
 export async function getSessionToken(): Promise<string | null> {
   const cached = await readCachedAccount();
-  return cached?.token ?? null;
+  return cached.account?.token ?? null;
 }
 
 /**
@@ -553,7 +576,10 @@ export async function setSession(session: {
     token: session.token,
     authenticated: session.authenticated,
   };
-  await writeCachedAccount(nextSession);
+  const persisted = await writeCachedAccount(nextSession);
+  if (!persisted) {
+    throw new Error('Secure session persistence failed.');
+  }
   setTelemetrySession(nextSession);
 }
 

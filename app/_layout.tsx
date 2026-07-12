@@ -263,6 +263,12 @@ export default function RootLayout() {
     useTallyStore.getState().maybeAutoArchive();
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
+        // A protected iOS Keychain can be temporarily unavailable to a locked
+        // background launch. Retry account hydration once the user foregrounds
+        // the app instead of leaving that transient miss looking like logout.
+        if (!useAccountStore.getState().session) {
+          void useAccountStore.getState().initAccount();
+        }
         void trackClientEvent({ event: 'app_foreground', severity: 'info' });
         useTallyStore.getState().maybeAutoArchive();
         void flushPubReportQueue();

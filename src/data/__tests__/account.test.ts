@@ -6,6 +6,7 @@ import {
   ensureAccount,
   fetchAccountPreferences,
   getOrCreateDeviceId,
+  setSession,
   updateAccountPreferences,
 } from '../account';
 import { trackApiFailure } from '../telemetryClient';
@@ -33,6 +34,7 @@ jest.mock('expo-secure-store', () => {
       delete store[key];
     }),
     isAvailableAsync: jest.fn(async () => true),
+    AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY: 1,
   };
 });
 
@@ -78,11 +80,12 @@ async function seedAccount(blob: {
   await SecureStore.setItemAsync(ACCOUNT_KEY, JSON.stringify(blob));
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   // Clear the in-memory AsyncStorage + SecureStore mocks so persisted
   // ids/accounts don't bleed across tests.
   (AsyncStorage as any).__INTERNAL_MOCK_STORAGE__ = {};
   secureStoreMock.__setStore({});
+  await clearCachedAccount();
 });
 
 afterEach(() => {
@@ -125,6 +128,44 @@ describe('ensureAccount — dormant feature', () => {
 });
 
 describe('ensureAccount — registration (no cache yet)', () => {
+  it('does not mint an anonymous account when SecureStore is temporarily unavailable', async () => {
+    setBackend('https://api.example.com');
+    const fetchSpy = jest.fn();
+    global.fetch = fetchSpy as unknown as typeof fetch;
+    jest.mocked(SecureStore.getItemAsync).mockRejectedValueOnce(new Error('Keychain unavailable'));
+
+    await expect(ensureAccount()).resolves.toBeNull();
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(SecureStore.setItemAsync).not.toHaveBeenCalled();
+  });
+
+  it('uses the last-known session when a later SecureStore read temporarily fails', async () => {
+    await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-1');
+    await seedAccount({
+      deviceId: 'dev-1',
+      accountId: 'acc-1',
+      token: 'signed-token',
+      authenticated: true,
+    });
+    await expect(ensureAccount()).resolves.toMatchObject({ accountId: 'acc-1', authenticated: true });
+
+    jest.mocked(SecureStore.getItemAsync).mockRejectedValueOnce(new Error('Keychain unavailable'));
+    await expect(ensureAccount()).resolves.toMatchObject({
+      accountId: 'acc-1',
+      token: 'signed-token',
+      authenticated: true,
+    });
+  });
+
+  it('throws when an authenticated session cannot be persisted securely', async () => {
+    jest.mocked(SecureStore.setItemAsync).mockRejectedValueOnce(new Error('Keychain unavailable'));
+
+    await expect(
+      setSession({ accountId: 'acc-1', token: 'signed-token', authenticated: true }),
+    ).rejects.toThrow('Secure session persistence failed');
+  });
+
   it('POSTs { device_id } to <base>/v1/account, returns the session, and caches it (in SecureStore) with the deviceId', async () => {
     setBackend('https://api.example.com');
     const fetchSpy = mockFetchOk({

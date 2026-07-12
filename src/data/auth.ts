@@ -461,12 +461,21 @@ async function applyAuthSuccess(
     if (options?.clearLocalPrivateData) {
       await clearLocalPrivateAccountData();
     }
-    await setSession({
-      deviceId: profile.deviceId || undefined,
-      accountId: profile.id,
-      token: data.token,
-      authenticated: true,
-    });
+    try {
+      await setSession({
+        deviceId: profile.deviceId || undefined,
+        accountId: profile.id,
+        token: data.token,
+        authenticated: true,
+      });
+    } catch (err) {
+      trackApiFailure('auth_session_persist', { reason: 'secure_store', error: err });
+      return {
+        ok: false,
+        code: 'session_storage',
+        detail: 'Přihlášení se nepodařilo bezpečně uložit. Odemkni telefon a zkus to znovu.',
+      };
+    }
   }
   return { ok: true, profile };
 }

@@ -391,13 +391,19 @@ export default function ProfileScreen() {
     const backend = profile?.stats;
     if (!isSignedIn || !backend) return localStats;
     return {
-      totalBeers: backend.totalBeers,
-      distinctPubs: backend.distinctPubs,
-      maxVisitsToOnePub: backend.maxVisitsToOnePub,
-      totalSpentCzk: backend.totalSpentCzk,
+      // Local queues are intentionally offline-first. Right after a reconnect or
+      // sign-in the backend snapshot can lag behind them, so totals must never
+      // visibly shrink while those records are still waiting to sync.
+      totalBeers: Math.max(backend.totalBeers, localStats.totalBeers),
+      distinctPubs: Math.max(backend.distinctPubs, localStats.distinctPubs),
+      maxVisitsToOnePub: Math.max(backend.maxVisitsToOnePub, localStats.maxVisitsToOnePub),
+      totalSpentCzk: Math.max(backend.totalSpentCzk, localStats.totalSpentCzk),
     };
   }, [isSignedIn, localStats, profile?.stats]);
-  const totalRatings = isSignedIn && profile?.stats ? profile.stats.ratingsCount : ratingsCount;
+  const totalRatings =
+    isSignedIn && profile?.stats
+      ? Math.max(profile.stats.ratingsCount, ratingsCount)
+      : ratingsCount;
   const mapper = profile?.mapper;
   const walkedM = isSignedIn ? profile?.usage?.walkedDistanceM ?? null : null;
   const recent = useMemo(() => sessions.slice(0, 3), [sessions]);

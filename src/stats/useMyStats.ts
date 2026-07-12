@@ -9,21 +9,26 @@
 import { useEffect, useState } from 'react';
 
 import { fetchMyStats, type RemoteStats } from '@/data/statsClient';
+import { useAccountStore } from '@/stores/accountStore';
 
 export function useMyStats(): RemoteStats | null {
-  const [stats, setStats] = useState<RemoteStats | null>(null);
+  const accountId = useAccountStore((state) => state.session?.accountId ?? null);
+  const [snapshot, setSnapshot] = useState<{
+    accountId: string | null;
+    stats: RemoteStats;
+  } | null>(null);
 
   useEffect(() => {
     let active = true;
     const controller = new AbortController();
     void fetchMyStats(controller.signal).then((result) => {
-      if (active && result) setStats(result);
+      if (active && result) setSnapshot({ accountId, stats: result });
     });
     return () => {
       active = false;
       controller.abort();
     };
-  }, []);
+  }, [accountId]);
 
-  return stats;
+  return snapshot?.accountId === accountId ? snapshot.stats : null;
 }
