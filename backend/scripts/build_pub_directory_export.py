@@ -83,6 +83,14 @@ def build_export(cz_catalogue: Path, sk_catalogue: Path, bulk_db: Path, verdicts
                 matched = bulk if bulk and bulk.get("source_ref") else None
                 if matched:
                     venue_kind = matched.get("venue_kind") or "unknown"
+                    # Firmy's 'maybe' bucket (inconclusive categories) also holds
+                    # lawyers/shops with great ratings. The LLM name pass covers
+                    # these too — a not_pub verdict downgrades the entry so it
+                    # keeps its enrichment but stays hidden from the map.
+                    if venue_kind == "maybe":
+                        verdict = verdicts.get(f"{name}|{city}", {}).get("verdict")
+                        if verdict == "not_pub":
+                            venue_kind = "not_pub"
                 else:
                     verdict = verdicts.get(f"{name}|{city}", {}).get("verdict")
                     venue_kind = {"pub": "pub", "unsure": "maybe"}.get(verdict)

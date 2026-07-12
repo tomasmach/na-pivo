@@ -12,6 +12,7 @@ def test_polygon_catalogue_skip_and_tier_mapping(tmp_path):
         {"name": "Unsure Pub", "lat": 49.20, "lng": 16.60, "city": "Brno"},
         {"name": "Noise", "lat": 49.75, "lng": 13.38, "city": "Plzeň"},
         {"name": "Matched Shop", "lat": 49.59, "lng": 17.25, "city": "Olomouc"},
+        {"name": "Matched Lawyer", "lat": 50.21, "lng": 15.83, "city": "Hradec Králové"},
     ]
     sk_entries = [
         {"name": "Overlap", "lat": 49.20, "lng": 16.60, "city": "Brno"},
@@ -28,6 +29,7 @@ def test_polygon_catalogue_skip_and_tier_mapping(tmp_path):
         "Verdict Pub|Praha": {"verdict": "pub", "reason": ""},
         "Unsure Pub|Brno": {"verdict": "unsure", "reason": ""},
         "Noise|Plzeň": {"verdict": "not_pub", "reason": ""},
+        "Matched Lawyer|Hradec Králové": {"verdict": "not_pub", "reason": "lawyer office"},
         "Overlap|Brno": {"verdict": "pub", "reason": ""},
         "SK Pub|Bratislava": {"verdict": "pub", "reason": ""},
     }), encoding="utf-8")
@@ -44,13 +46,24 @@ def test_polygon_catalogue_skip_and_tier_mapping(tmp_path):
              matched["lng"], None, "firmy", "firm-1", 0.9, "unknown", "not_pub",
              "[]", 3.0, 2, "Dobré", "2026-01-01"),
         )
+        # Firmy-matched 'maybe' with a not_pub name verdict → downgraded to not_pub.
+        lawyer = cz_entries[4]
+        connection.execute(
+            "INSERT INTO pubs_pubhours VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (geohash8(lawyer["lat"], lawyer["lng"]), lawyer["name"], lawyer["lat"],
+             lawyer["lng"], None, "firmy", "firm-2", 0.99, "unknown", "maybe",
+             "[]", 4.4, 1, "Výborné", "2026-01-01"),
+        )
 
     stats = build_export(cz, sk, database, verdicts, output)
     rows = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
     by_name = {row["name"]: row for row in rows}
-    assert set(by_name) == {"Verdict Pub", "Unsure Pub", "Matched Shop", "SK Pub"}
+    assert set(by_name) == {"Verdict Pub", "Unsure Pub", "Matched Shop", "Matched Lawyer", "SK Pub"}
     assert by_name["Verdict Pub"]["country"] == "cz"
     assert by_name["Unsure Pub"]["venue_kind"] == "maybe"
     assert by_name["Matched Shop"]["venue_kind"] == "not_pub"
+    # LLM not_pub verdict downgrades a firmy-matched 'maybe' but keeps enrichment.
+    assert by_name["Matched Lawyer"]["venue_kind"] == "not_pub"
+    assert by_name["Matched Lawyer"]["rating_value"] == 4.4
     assert by_name["SK Pub"]["country"] == "sk"
-    assert stats["cz"]["not_pub"] == 1
+    assert stats["cz"]["not_pub"] == 2
