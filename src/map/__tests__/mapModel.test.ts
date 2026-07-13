@@ -230,4 +230,33 @@ describe('pivní mapový model', () => {
     expect(wide[0].items).toHaveLength(2);
     expect(close).toHaveLength(2);
   });
+
+  it('grid clustering zůstane při posunu mapy na stejném zoomu stabilní', () => {
+    const points = [
+      { key: 'a', lat: 50.0876, lng: 14.4214 },
+      { key: 'b', lat: 50.088, lng: 14.422 },
+      { key: 'c', lat: 50.095, lng: 14.43 },
+    ];
+    const beforePan = clusterCoordinates(points, {
+      latitude: 50.0878,
+      longitude: 14.4217,
+      latitudeDelta: 0.1,
+      longitudeDelta: 0.1,
+    });
+    const afterPan = clusterCoordinates([...points].reverse(), {
+      latitude: 50.12,
+      longitude: 14.46,
+      latitudeDelta: 0.1,
+      longitudeDelta: 0.1,
+    });
+    const membership = (clusters: typeof beforePan) =>
+      clusters
+        .map((cluster) => ({
+          id: cluster.id,
+          keys: cluster.items.map((item) => item.key).sort(),
+        }))
+        .sort((a, b) => a.id.localeCompare(b.id));
+
+    expect(membership(afterPan)).toEqual(membership(beforePan));
+  });
 });

@@ -297,10 +297,16 @@ export default function BeerMapScreen({ initialPub, onShowCompass }: BeerMapScre
   }, [livePubs, region]);
 
   const showCities = region.latitudeDelta > 0.85 && visitedCities.length > 0;
-  const clusters = useMemo(
-    () => (showCities || layer === 'friends' ? [] : clusterCoordinates(visiblePoints, region)),
-    [layer, region, showCities, visiblePoints],
-  );
+  const clusters = useMemo(() => {
+    if (showCities || layer === 'friends') return [];
+    const latMargin = region.latitudeDelta * 0.75;
+    const lngMargin = region.longitudeDelta * 0.75;
+    return clusterCoordinates(points, region).filter(
+      (cluster) =>
+        Math.abs(cluster.lat - region.latitude) <= latMargin &&
+        Math.abs(cluster.lng - region.longitude) <= lngMargin,
+    );
+  }, [layer, points, region, showCities]);
 
   const handleRegionChange = useCallback(
     (next: Region) => {

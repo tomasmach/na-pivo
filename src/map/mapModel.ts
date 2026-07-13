@@ -278,8 +278,9 @@ export function buildLivePubs(
 }
 
 /**
- * Deterministic screen-grid clustering. It keeps render cost bounded without a
- * native dependency and naturally dissolves clusters as the map zooms in.
+ * Deterministic world-anchored grid clustering. Cell sizes follow the zoom,
+ * while cell boundaries stay fixed when the map is panned. This prevents pins
+ * from jumping between clusters just because the viewport center moved.
  */
 export function clusterCoordinates<T extends { lat: number; lng: number }>(
   items: T[],
@@ -290,30 +291,27 @@ export function clusterCoordinates<T extends { lat: number; lng: number }>(
   if (items.length === 0) return [];
   const latStep = Math.max(region.latitudeDelta / rows, 0.00005);
   const lngStep = Math.max(region.longitudeDelta / columns, 0.00005);
-  const clusters: MapCluster<T>[] = [];
+  const buckets = new Map<string, MapCluster<T>>();
 
-  // A greedy nearest-cell pass avoids the visual seam of a strict floor grid,
-  // where two adjacent pubs can land in different buckets only because they sit
-  // on opposite sides of an invisible cell boundary.
   for (const item of items) {
-    const match = clusters.find(
-      (cluster) =>
-        Math.abs(cluster.lat - item.lat) <= latStep * 0.72 &&
-        Math.abs(cluster.lng - item.lng) <= lngStep * 0.72,
-    );
-    if (!match) {
-      clusters.push({
-        id: String(clusters.length),
+    const latCell = Math.floor((item.lat + 90) / latStep);
+    const lngCell = Math.floor((item.lng + 180) / lngStep);
+    const id = `${latCell}:${lngCell}`;
+    const bucket = buckets.get(id);
+    if (!bucket) {
+      buckets.set(id, {
+        id,
         lat: item.lat,
         lng: item.lng,
         items: [item],
       });
       continue;
     }
-    match.items.push(item);
-    match.lat = match.items.reduce((sum, value) => sum + value.lat, 0) / match.items.length;
-    match.lng = match.items.reduce((sum, value) => sum + value.lng, 0) / match.items.length;
+    const nextCount = bucket.items.length + 1;
+    bucket.lat = (bucket.lat * bucket.items.length + item.lat) / nextCount;
+    bucket.lng = (bucket.lng * bucket.items.length + item.lng) / nextCount;
+    bucket.items.push(item);
   }
 
-  return clusters;
+  return [...buckets.values()];
 }
