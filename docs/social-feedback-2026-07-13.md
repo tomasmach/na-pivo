@@ -4,9 +4,11 @@ Průběžný audit zahájený 13. 7. 2026 z veřejných komentářů k Reels/Tik
 
 ## Rozsah a stav průchodu
 
-- Instagram: profil obsahuje přibližně 115 Reels; audit je veden přes celý profil, ne jen přes původně zadaný Reel.
+- Instagram: profil obsahuje 115 Reels. Byly projety aktuálně renderované rodičovské komentáře všech 115 Reels; mimo osm výše uvedených Na pivo / update zdrojů se neobjevil žádný další request k Na pivo.
 - TikTok: profil obsahuje 83 videí. Bylo identifikováno pět zjevných Na pivo / update kandidátů, ale po úplném načtení prvního 79komentářového vlákna TikTok zablokoval další přímé čtení ochranou WAF. Blokaci neobcházíme; bez obnoveného přístupu proto nelze tvrdit, že jsou komentáře u zbylých TikToků kompletní.
 - Instagram General: zahrnuté jsou výhradně konverzace s explicitním feedbackem k Na pivo; nerelevantní soukromé konverzace se nečtou ani nereportují.
+
+**Důležitý limit úplnosti:** Instagram při tomto průchodu poskytl právě renderované rodičovské komentáře. U všech videí proto nelze tvrdit, že jsou vyčtené všechny skryté odpovědi a všechny komentáře dostupné až po nekonečném dočítání. TikTok dále blokuje čtení dalších vláken ochranou WAF. Tento dokument proto neoznačuje průchod za kompletní export sociálních sítí.
 
 ### Instagram: zjištěné Na pivo zdroje
 
@@ -68,4 +70,4 @@ Tohle je přednostně incident pro sync / autentizaci, ne backlogový feature re
 
 ## Poznámka k metodě a soukromí
 
-TikTok měl 79 rodičovských komentářů a Instagram Reel 153 komentářů. Předchozí tabulka slučuje duplicitní žádosti do produktových témat; reakce, meme odpovědi a žádosti bez návrhu funkce jsou vynechané. V General byly zahrnuté pouze konverzace, jejichž náhled nebo otevřená zpráva explicitně mluvily o Na pivo; report neobsahuje osobní konverzace ani identifikátory.
+TikTok měl u původního příspěvku 79 rodičovských komentářů a původní Instagram Reel 153 komentářů. Předchozí tabulka slučuje duplicitní žádosti do produktových témat; reakce, meme odpovědi a žádosti bez návrhu funkce jsou vynechané. V General byly zahrnuté pouze konverzace, jejichž náhled nebo otevřená zpráva explicitně mluvily o Na pivo; report neobsahuje osobní konverzace ani identifikátory.
