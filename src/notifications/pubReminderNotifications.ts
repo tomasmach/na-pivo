@@ -5,7 +5,7 @@ import type * as ExpoNotifications from 'expo-notifications';
 import type * as ExpoTaskManager from 'expo-task-manager';
 
 import { disablePushDevice, PUSH_TOKEN_KEY } from '@/data/pushDeviceClient';
-import { fetchPubsNear, findNearbyPubs } from '@/data/pubs';
+import { fetchPubsNear, findNearbyPubs, type Pub } from '@/data/pubs';
 import { ensurePushTokenRegistered } from '@/notifications/pushToken';
 import {
   clearPendingPubReminder,
@@ -28,6 +28,12 @@ const PUB_REMINDER_NOTIFICATION_KIND = 'pub_reminder';
 
 /** iOS monitors at most 20 regions per app — cap the fleet to the nearest pubs. */
 const MAX_GEOFENCES = 20;
+/**
+ * Ask the spatial index for extra candidates before applying the stricter
+ * reminder policy. Otherwise one ambiguous restaurant among the nearest 20
+ * could unnecessarily crowd out a confirmed pub just behind it.
+ */
+const MAX_GEOFENCE_CANDIDATES = 50;
 /** Radius of each pub geofence (m). Tight enough that you're at the bar, not the street. */
 const GEOFENCE_RADIUS_M = 75;
 /** How far around the user we look for pubs to geofence (km). */
@@ -245,6 +251,24 @@ async function stopGeofencing(): Promise<void> {
 }
 
 /**
+ * Background reminders require stronger evidence than the foreground compass.
+ * A confirmed pub is eligible outright. Ambiguous/legacy places need a real
+ * community beer signal; explicit non-pubs are always rejected.
+ *
+ * Kept pure and exported so changes to this privacy-sensitive gate stay easy to
+ * review and test. Missing fields from older cached snapshots fail closed.
+ */
+export function isPubReminderEligible(
+  pub: Pick<Pub, 'venueKind' | 'beers'>,
+): boolean {
+  if (pub.venueKind === 'not_pub') return false;
+  if (pub.venueKind === 'pub') return true;
+  return Boolean(
+    pub.beers?.some((beer) => typeof beer?.name === 'string' && beer.name.trim().length > 0),
+  );
+}
+
+/**
  * (Re)register geofences around the user's current area. We fetch nearby pubs
  * (cheap: fetchPubsNear short-circuits within ~2 km and serves a 24h snapshot),
  * keep the nearest MAX_GEOFENCES, and hand them to the OS. The pubId→name map is
@@ -269,9 +293,11 @@ async function refreshGeofences(coords?: { lat: number; lng: number }): Promise<
   const nearby = findNearbyPubs({
     lat: center.lat,
     lng: center.lng,
-    limit: MAX_GEOFENCES,
+    limit: MAX_GEOFENCE_CANDIDATES,
     maxKm: GEOFENCE_FETCH_RADIUS_KM,
-  });
+  })
+    .filter(({ pub }) => isPubReminderEligible(pub))
+    .slice(0, MAX_GEOFENCES);
 
   if (nearby.length === 0) {
     await stopGeofencing();

@@ -166,6 +166,73 @@ describe('searchPubsNear — backend proxy only', () => {
     // The backend's raw items run through the existing itemToPub pipeline.
     expect(pubs).toHaveLength(1);
     expect(pubs[0].name).toBe('Hospoda U Testu');
+    expect(pubs[0].venueKind).toBe('pub');
+  });
+
+  it('keeps broad restaurant results for the compass but marks them ambiguous', async () => {
+    setBackend('https://api.example.com');
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        items: [
+          {
+            name: 'Restaurace U Testu',
+            label: REST,
+            position: { lat: 50.081, lon: 14.421 },
+          },
+        ],
+      }),
+    })) as unknown as typeof fetch;
+
+    const pubs = await searchPubsNear(50.08, 14.42, 25);
+
+    expect(pubs).toHaveLength(1);
+    expect(pubs[0].venueKind).toBe('maybe');
+  });
+
+  it('treats a beer-positive name under a broad category as a strong pub signal', async () => {
+    setBackend('https://api.example.com');
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        items: [
+          {
+            name: 'Vinohradský pivovar',
+            label: REST,
+            position: { lat: 50.081, lon: 14.421 },
+          },
+        ],
+      }),
+    })) as unknown as typeof fetch;
+
+    const pubs = await searchPubsNear(50.08, 14.42, 25);
+
+    expect(pubs).toHaveLength(1);
+    expect(pubs[0].venueKind).toBe('pub');
+  });
+
+  it('treats a screened bar category as a strong pub signal', async () => {
+    setBackend('https://api.example.com');
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        items: [
+          {
+            name: 'Bar U Testu',
+            label: 'Bar',
+            position: { lat: 50.081, lon: 14.421 },
+          },
+        ],
+      }),
+    })) as unknown as typeof fetch;
+
+    const pubs = await searchPubsNear(50.08, 14.42, 25);
+
+    expect(pubs).toHaveLength(1);
+    expect(pubs[0].venueKind).toBe('pub');
   });
 
   it('passes a beer brand filter to the backend pubs/near endpoint', async () => {

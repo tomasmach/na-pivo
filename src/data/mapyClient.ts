@@ -29,6 +29,10 @@ const ALLOWED_LABELS = new Set<string>([
 // (Only the broad 'Restaurace a pohostinství', 'Bar' and 'Klub' buckets — which
 // also catch sushi places, shisha lounges, cafés, etc. — get keyword-screened.)
 const TRUSTED_PUB_LABELS = new Set<string>(['Hospoda', 'Pivnice', 'Pivovar']);
+// A Mapy `Bar` result still goes through the negative-name screen above, so a
+// surviving bar is strong enough for a quiet background reminder. `Klub` and
+// the generic restaurant bucket stay ambiguous without a beer signal.
+const REMINDER_PUB_LABELS = new Set<string>([...TRUSTED_PUB_LABELS, 'Bar']);
 
 // Chain restaurants/cafés that nobody goes to for a beer. This is a HARD block:
 // applied to every label, always, regardless of any positive keyword. Matched as
@@ -571,6 +575,17 @@ function passesNameHeuristic(name: string, label: string): boolean {
 }
 
 /**
+ * Strong enough evidence to treat a Mapy result as a pub without waiting for
+ * backend enrichment. Screened bars are accepted; generic restaurants and
+ * clubs deliberately stay `maybe` until community beer data confirms them.
+ */
+function hasStrongPubSignal(name: string, label: string): boolean {
+  if (REMINDER_PUB_LABELS.has(label)) return true;
+  const tokens = tokenizeName(normalizeForMatch(name));
+  return POSITIVE_NAME_KEYWORDS.some((keyword) => nameMatchesKeyword(tokens, keyword));
+}
+
+/**
  * Full name+label classifier used by itemToPub. Exposed for unit tests so the
  * keyword table can be exercised without constructing Mapy.cz item fixtures.
  */
@@ -602,6 +617,10 @@ function itemToPub(
     name: item.name.trim(),
     lat: item.position.lat,
     lng: item.position.lon,
+    // Persist the discovery confidence with the nearby snapshot. Reminder
+    // geofences can then fail closed offline instead of treating every broad
+    // restaurant result as a confirmed pub.
+    venueKind: hasStrongPubSignal(item.name, item.label) ? 'pub' : 'maybe',
   };
   const address = pickAddress(item);
   if (address) pub.address = address;

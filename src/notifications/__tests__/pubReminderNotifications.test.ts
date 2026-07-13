@@ -2,6 +2,8 @@ const mockGetLastKnownPositionAsync = jest.fn();
 const mockGetCurrentPositionAsync = jest.fn();
 const mockGetBackgroundPermissionsAsync = jest.fn();
 const mockStartGeofencingAsync = jest.fn();
+const mockHasStartedGeofencingAsync = jest.fn();
+const mockStopGeofencingAsync = jest.fn();
 const mockFetchPubsNear = jest.fn();
 const mockFindNearbyPubs = jest.fn();
 const mockSettingsGetState = jest.fn();
@@ -36,8 +38,8 @@ jest.mock('expo-location', () => ({
   getLastKnownPositionAsync: mockGetLastKnownPositionAsync,
   getCurrentPositionAsync: mockGetCurrentPositionAsync,
   getBackgroundPermissionsAsync: mockGetBackgroundPermissionsAsync,
-  hasStartedGeofencingAsync: jest.fn(async () => false),
-  stopGeofencingAsync: jest.fn(async () => undefined),
+  hasStartedGeofencingAsync: mockHasStartedGeofencingAsync,
+  stopGeofencingAsync: mockStopGeofencingAsync,
   startGeofencingAsync: mockStartGeofencingAsync,
 }));
 
@@ -58,7 +60,10 @@ jest.mock('@/stores/settingsStore', () => ({
 }));
 
 // eslint-disable-next-line import/first
-import { refreshPubReminderGeofences } from '../pubReminderNotifications';
+import {
+  isPubReminderEligible,
+  refreshPubReminderGeofences,
+} from '../pubReminderNotifications';
 
 function location(lat: number, lng: number) {
   return {
@@ -83,9 +88,12 @@ beforeEach(() => {
         name: 'U Testu',
         lat: 50.081,
         lng: 14.419,
+        venueKind: 'pub',
       },
     },
   ]);
+  mockHasStartedGeofencingAsync.mockResolvedValue(false);
+  mockStopGeofencingAsync.mockResolvedValue(undefined);
   mockStartGeofencingAsync.mockResolvedValue(undefined);
 });
 
@@ -134,5 +142,116 @@ describe('refreshPubReminderGeofences', () => {
 
     expect(mockFetchPubsNear).not.toHaveBeenCalled();
     expect(mockStartGeofencingAsync).not.toHaveBeenCalled();
+  });
+
+  it('registers only confirmed pubs or places with a community beer signal', async () => {
+    mockGetLastKnownPositionAsync.mockResolvedValue(location(50.081, 14.419));
+    mockFindNearbyPubs.mockReturnValue([
+      {
+        pub: {
+          id: 'mapy:not-pub',
+          name: 'Pho Viet Huong',
+          lat: 50.081,
+          lng: 14.419,
+          venueKind: 'not_pub',
+          beers: [{ name: 'Pivo' }],
+        },
+      },
+      {
+        pub: {
+          id: 'mapy:ambiguous',
+          name: 'Haikky',
+          lat: 50.082,
+          lng: 14.42,
+          venueKind: 'maybe',
+        },
+      },
+      {
+        pub: {
+          id: 'mapy:community-beer',
+          name: 'Restaurace U Testu',
+          lat: 50.083,
+          lng: 14.421,
+          venueKind: 'maybe',
+          beers: [{ name: 'Radegast 12' }],
+        },
+      },
+      {
+        pub: {
+          id: 'mapy:confirmed',
+          name: 'Hospoda U Testu',
+          lat: 50.084,
+          lng: 14.422,
+          venueKind: 'pub',
+        },
+      },
+      {
+        pub: {
+          id: 'mapy:legacy',
+          name: 'Starý záznam',
+          lat: 50.085,
+          lng: 14.423,
+        },
+      },
+    ]);
+
+    await refreshPubReminderGeofences();
+
+    expect(mockFindNearbyPubs).toHaveBeenCalledWith({
+      lat: 50.081,
+      lng: 14.419,
+      limit: 50,
+      maxKm: 5,
+    });
+    const regions = mockStartGeofencingAsync.mock.calls[0]?.[1] as { identifier: string }[];
+    expect(regions.map((region) => region.identifier)).toEqual([
+      'mapy:community-beer',
+      'mapy:confirmed',
+    ]);
+  });
+
+  it('removes stale geofences when the nearby results are all ambiguous', async () => {
+    mockGetLastKnownPositionAsync.mockResolvedValue(location(50.081, 14.419));
+    mockHasStartedGeofencingAsync.mockResolvedValue(true);
+    mockFindNearbyPubs.mockReturnValue([
+      {
+        pub: {
+          id: 'mapy:restaurant',
+          name: 'Haikky',
+          lat: 50.081,
+          lng: 14.419,
+          venueKind: 'maybe',
+        },
+      },
+    ]);
+
+    await refreshPubReminderGeofences();
+
+    expect(mockStartGeofencingAsync).not.toHaveBeenCalled();
+    expect(mockStopGeofencingAsync).toHaveBeenCalledWith('na-pivo-pub-reminder-geofence');
+  });
+});
+
+describe('isPubReminderEligible', () => {
+  it('fails closed for explicit non-pubs even if stale beer data is present', () => {
+    expect(
+      isPubReminderEligible({ venueKind: 'not_pub', beers: [{ name: 'Pivo' }] }),
+    ).toBe(false);
+  });
+
+  it('accepts confirmed pubs and community-confirmed beer menus', () => {
+    expect(isPubReminderEligible({ venueKind: 'pub' })).toBe(true);
+    expect(
+      isPubReminderEligible({ venueKind: 'maybe', beers: [{ name: '  Plzeň 12  ' }] }),
+    ).toBe(true);
+    expect(
+      isPubReminderEligible({ venueKind: 'unknown', beers: [{ name: 'Kozel' }] }),
+    ).toBe(true);
+  });
+
+  it('rejects ambiguous and legacy places without a usable beer signal', () => {
+    expect(isPubReminderEligible({ venueKind: 'maybe' })).toBe(false);
+    expect(isPubReminderEligible({ venueKind: 'unknown', beers: [{ name: '   ' }] })).toBe(false);
+    expect(isPubReminderEligible({})).toBe(false);
   });
 });
