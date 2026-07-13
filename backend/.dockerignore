@@ -20,6 +20,10 @@ db.sqlite3-journal
 .env.*
 staticfiles
 media
+backups
+
+# Local data exports are operational inputs, never application image content
+**/*.jsonl
 
 # OS noise
 .DS_Store
