@@ -8,7 +8,11 @@
  * settingsStore is mocked because initAccount touches it.
  */
 
-import { useAccountStore, selectIsSignedIn } from '@/stores/accountStore';
+import {
+  useAccountStore,
+  selectIsSignedIn,
+  selectNeedsProfileSetup,
+} from '@/stores/accountStore';
 import * as auth from '@/data/auth';
 import { EMPTY_ACHIEVEMENTS, type AccountMapper, type AccountProfile, type AuthResult } from '@/data/auth';
 import { ensureAccount } from '@/data/account';
@@ -98,6 +102,17 @@ beforeEach(() => {
   // fetchAccountProfile is used by refreshProfile (e.g. inside logout); default
   // it to null so it doesn't accidentally re-populate the profile.
   mockedAuth.fetchAccountProfile.mockResolvedValue(null);
+});
+
+describe('initAccount', () => {
+  it('keeps a durable signed-in session signed in when the profile fetch is unavailable', async () => {
+    await useAccountStore.getState().initAccount();
+
+    const state = useAccountStore.getState();
+    expect(state.status).toBe('ready');
+    expect(state.profile).toBeNull();
+    expect(selectIsSignedIn(state)).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -484,18 +499,28 @@ describe('applyMapperSnapshot', () => {
 // selectIsSignedIn
 // ---------------------------------------------------------------------------
 describe('selectIsSignedIn', () => {
-  it('is false when there is no profile', () => {
-    useAccountStore.setState({ profile: null });
+  it('stays true when a signed-in session exists but the profile request failed', () => {
+    useAccountStore.setState({
+      session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true },
+      profile: null,
+    });
+    expect(selectIsSignedIn(useAccountStore.getState())).toBe(true);
+    expect(selectNeedsProfileSetup(useAccountStore.getState())).toBe(false);
+  });
+
+  it('is false for an anonymous session even if a stale claimed profile exists', () => {
+    useAccountStore.setState({
+      session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: false },
+      profile: signedInProfile(),
+    });
     expect(selectIsSignedIn(useAccountStore.getState())).toBe(false);
   });
 
-  it('is false for an anonymous profile', () => {
-    useAccountStore.setState({ profile: signedInProfile({ isAnonymous: true }) });
-    expect(selectIsSignedIn(useAccountStore.getState())).toBe(false);
-  });
-
-  it('is true only for a claimed (non-anonymous) profile', () => {
-    useAccountStore.setState({ profile: signedInProfile({ isAnonymous: false }) });
+  it('is true for a credential-backed session', () => {
+    useAccountStore.setState({
+      session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true },
+      profile: signedInProfile(),
+    });
     expect(selectIsSignedIn(useAccountStore.getState())).toBe(true);
   });
 });

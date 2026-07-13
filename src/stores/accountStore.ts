@@ -289,9 +289,13 @@ export const useAccountStore = create<AccountState>((set, get) => {
   };
 });
 
-/** Convenience selector: is the user signed in (claimed, not anonymous)? */
+/**
+ * Convenience selector: is the durable session credential-backed? Profile is
+ * remote enrichment and may be temporarily unavailable while offline; a failed
+ * GET /account/me must never make a valid local session look signed out.
+ */
 export function selectIsSignedIn(state: AccountState): boolean {
-  return !!state.profile && !state.profile.isAnonymous;
+  return state.session?.authenticated === true;
 }
 
 /**
@@ -299,7 +303,7 @@ export function selectIsSignedIn(state: AccountState): boolean {
  * Anonymous users are excluded (they create an account first).
  */
 export function selectNeedsProfileSetup(state: AccountState): boolean {
-  return selectIsSignedIn(state) && state.profile?.nickname == null;
+  return selectIsSignedIn(state) && state.profile != null && state.profile.nickname == null;
 }
 
 /** Current nickname handle (without leading @), or null. */

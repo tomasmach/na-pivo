@@ -17,8 +17,9 @@
  *    Keystore-backed EncryptedSharedPreferences on Android) — never in plaintext
  *    AsyncStorage — via expo-secure-store.
  *
- * Registration is once-per-install: once we have a cached account whose deviceId
- * matches this device, ensureAccount() returns it WITHOUT a network call.
+ * Registration is once-per-install: once we have a secure cached account,
+ * ensureAccount() returns it WITHOUT a network call and repairs a mismatched
+ * non-secret deviceId anchor from that authoritative record.
  * Re-posting a known `deviceId` requires the existing bearer token server-side;
  * if the token cache is lost or rejected, the client creates a fresh anonymous
  * device account instead of recovering a token from the non-secret deviceId.
@@ -97,9 +98,9 @@ interface AccountMeResponse {
 
 /**
  * The cached account blob. deviceId is stored alongside accountId/token so a
- * cached session is only ever surfaced for the device it was minted for — this
- * prevents pairing a stale token with a freshly-generated deviceId if the
- * DEVICE_ID_KEY read ever transiently fails.
+ * cached session keeps its original deviceId next to the bearer token. The
+ * secure, token-bearing record is authoritative if AsyncStorage temporarily
+ * loses or races its non-secret device anchor.
  */
 interface CachedAccount {
   deviceId: string;
@@ -298,15 +299,14 @@ export async function clearCachedAnonymousAccount(session: AccountSession | null
  * Ensure an anonymous account exists for this device.
  *
  * Always resolves; never throws.
- *  - If a cached account already matches this device → returns it WITHOUT a
- *    network call (registration is once-per-install).
+ *  - If a secure cached account exists → returns it WITHOUT a network call and
+ *    repairs the non-secret deviceId anchor when needed.
  *  - Otherwise, if a backend is configured → registers and caches the result.
- *  - Returns null when there is no matching cached account and the backend is
+ *  - Returns null when there is no cached account and the backend is
  *    absent/unreachable.
  *
- * @param signal Optional caller AbortSignal, layered with an internal 8s timeout.
  */
-async function ensureAccountOnce(signal?: AbortSignal): Promise<AccountSession | null> {
+async function ensureAccountOnce(): Promise<AccountSession | null> {
   let deviceId = await getOrCreateDeviceId();
   const cachedRead = await readCachedAccount();
   const cached = cachedRead.account;
@@ -323,10 +323,18 @@ async function ensureAccountOnce(signal?: AbortSignal): Promise<AccountSession |
     };
   }
 
-  // Anonymous: already established for THIS device — no network call needed. A
-  // cached blob minted for a different deviceId is ignored (re-register below),
-  // so a token is never paired with a mismatched deviceId.
-  if (cached && cached.deviceId === deviceId) {
+  // Anonymous: the secure record contains the bearer credential and is the
+  // authoritative identity. Heal a raced/lost AsyncStorage anchor from it
+  // instead of forking another server account.
+  if (cached) {
+    if (cached.deviceId !== deviceId) {
+      deviceId = cached.deviceId;
+      try {
+        await AsyncStorage.setItem(DEVICE_ID_KEY, deviceId);
+      } catch {
+        // Best effort. The secure record will heal it again on the next call.
+      }
+    }
     return { deviceId, accountId: cached.accountId, token: cached.token, authenticated: false };
   }
 
@@ -335,12 +343,12 @@ async function ensureAccountOnce(signal?: AbortSignal): Promise<AccountSession |
   if (!cachedRead.available) return null;
 
   const endpoint = getBackendEndpoint('/v1/account');
-  if (!endpoint || signal?.aborted) {
-    // Dormant (no backend) or cancelled, and no matching cached account.
+  if (!endpoint) {
+    // Dormant (no backend), and no matching cached account.
     return null;
   }
 
-  const abort = chainAbortSignal(signal);
+  const abort = chainAbortSignal();
   try {
     for (let attempt = 0; attempt < 2; attempt++) {
       const resp = await fetch(endpoint, {
@@ -380,7 +388,8 @@ async function ensureAccountOnce(signal?: AbortSignal): Promise<AccountSession |
           token: data.token,
           authenticated: false,
         };
-        await writeCachedAccount(account);
+        const persisted = await writeCachedAccount(account);
+        if (!persisted) return null;
         return {
           deviceId,
           accountId: account.accountId,
@@ -394,7 +403,7 @@ async function ensureAccountOnce(signal?: AbortSignal): Promise<AccountSession |
   } catch (err) {
     // network / timeout / abort / malformed JSON — never throw.
     const isAbortError = err instanceof Error && err.name === 'AbortError';
-    if (!signal?.aborted && !isAbortError) {
+    if (!isAbortError) {
       trackApiFailure('account_register', {
         endpoint: '/v1/account',
         reason: 'exception',
@@ -407,15 +416,38 @@ async function ensureAccountOnce(signal?: AbortSignal): Promise<AccountSession |
   }
 }
 
+/**
+ * Return the shared account session/recovery operation. An optional caller
+ * signal cancels only that caller's wait; identity mutation continues under its
+ * own timeout so another startup queue cannot begin a competing recovery.
+ */
 export async function ensureAccount(signal?: AbortSignal): Promise<AccountSession | null> {
-  if (signal) {
-    return ensureAccountOnce(signal);
-  }
+  // A cancelled queue request must not start identity recovery, but once shared
+  // recovery has begun it owns its internal timeout and continues for the app.
+  // Cancelling one caller only stops that caller waiting for the shared result.
+  if (signal?.aborted) return null;
 
   ensureAccountInFlight ??= ensureAccountOnce().finally(() => {
     ensureAccountInFlight = null;
   });
-  return ensureAccountInFlight;
+  const shared = ensureAccountInFlight;
+  if (!signal) return shared;
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (result: AccountSession | null) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener('abort', onAbort);
+      resolve(result);
+    };
+    const onAbort = () => finish(null);
+
+    signal.addEventListener('abort', onAbort, { once: true });
+    // The shared operation is designed not to reject, but keep this boundary
+    // non-throwing even if a future implementation accidentally does.
+    void shared.then(finish, () => finish(null));
+  });
 }
 
 export async function fetchAccountPreferences(

@@ -375,33 +375,49 @@ describe('ensureAccount — already established (once-per-install)', () => {
 });
 
 describe('ensureAccount — cache desync guard', () => {
-  it('ignores a cached account minted for a DIFFERENT deviceId and re-registers the current one', async () => {
+  it('repairs a mismatched deviceId from the secure cached account without re-registering', async () => {
     await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-A');
     await seedAccount({ deviceId: 'dev-B', accountId: 'old-acc', token: 'old-tok' });
     setBackend('https://api.example.com');
-    const fetchSpy = mockFetchOk({ id: 'new-acc', token: 'new-tok' });
+    const fetchSpy = jest.fn();
     global.fetch = fetchSpy as unknown as typeof fetch;
 
     const session = await ensureAccount();
 
-    // It registered the CURRENT deviceId, not the stale cached one.
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
-    expect(JSON.parse(init.body as string)).toEqual({ device_id: 'dev-A' });
-
+    expect(fetchSpy).not.toHaveBeenCalled();
     expect(session).toEqual({
-      deviceId: 'dev-A',
-      accountId: 'new-acc',
-      token: 'new-tok',
+      deviceId: 'dev-B',
+      accountId: 'old-acc',
+      token: 'old-tok',
       authenticated: false,
     });
+    expect(await AsyncStorage.getItem(DEVICE_ID_KEY)).toBe('dev-B');
+  });
 
-    // Cache was overwritten with the current device's account (in SecureStore).
+  it('serializes signal-bearing recovery callers into one coherent account transition', async () => {
+    await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-locked');
+    setBackend('https://api.example.com');
+    const fetchSpy = jest
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({}) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'acc-2', token: 'tok-2' }) });
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    const controllers = Array.from({ length: 20 }, () => new AbortController());
+    const sessions = await Promise.all(
+      controllers.map((controller) => ensureAccount(controller.signal)),
+    );
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(new Set(sessions.map((session) => session?.deviceId)).size).toBe(1);
+    expect(new Set(sessions.map((session) => session?.accountId))).toEqual(new Set(['acc-2']));
+
+    const persistedDeviceId = await AsyncStorage.getItem(DEVICE_ID_KEY);
     const cached = JSON.parse((await SecureStore.getItemAsync(ACCOUNT_KEY)) as string);
     expect(cached).toEqual({
-      deviceId: 'dev-A',
-      accountId: 'new-acc',
-      token: 'new-tok',
+      deviceId: persistedDeviceId,
+      accountId: 'acc-2',
+      token: 'tok-2',
       authenticated: false,
     });
   });
@@ -448,6 +464,26 @@ describe('ensureAccount — timeout & abort', () => {
 
     await expect(ensureAccount(controller.signal)).resolves.toBeNull();
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('lets one caller stop waiting without cancelling shared account recovery', async () => {
+    setBackend('https://api.example.com');
+    let resolveFetch!: (response: { ok: boolean; json: () => Promise<unknown> }) => void;
+    const response = new Promise<{ ok: boolean; json: () => Promise<unknown> }>((resolve) => {
+      resolveFetch = resolve;
+    });
+    const fetchSpy = jest.fn(() => response);
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    const controller = new AbortController();
+    const cancelledCaller = ensureAccount(controller.signal);
+    const survivingCaller = ensureAccount();
+    controller.abort();
+
+    await expect(cancelledCaller).resolves.toBeNull();
+    resolveFetch({ ok: true, json: async () => ({ id: 'acc-1', token: 'tok-1' }) });
+    await expect(survivingCaller).resolves.toMatchObject({ accountId: 'acc-1', token: 'tok-1' });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });
 
