@@ -67,6 +67,11 @@ def _build_description(report: FeedbackReport) -> str:
     lines = [
         report.message or "",
         "",
+        *(
+            [f"![Příloha z aplikace]({report.attachment_url})", ""]
+            if report.attachment_url
+            else []
+        ),
         "---",
         f"- app_version: {report.app_version or '—'}",
         f"- platform: {report.platform or '—'}",

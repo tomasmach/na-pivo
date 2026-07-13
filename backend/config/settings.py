@@ -164,6 +164,18 @@ AVATAR_SIZE_PX: int = int(os.environ.get("AVATAR_SIZE_PX", "256"))
 # webp encoder quality for the stored avatar.
 AVATAR_WEBP_QUALITY: int = int(os.environ.get("AVATAR_WEBP_QUALITY", "82"))
 
+# In-app feedback attachments. Mobile already compresses these, while the
+# server cap + re-encode protect older/tampered clients and strip EXIF/GPS.
+FEEDBACK_ATTACHMENT_MAX_UPLOAD_BYTES: int = int(
+    os.environ.get("FEEDBACK_ATTACHMENT_MAX_UPLOAD_BYTES", str(5 * 1024 * 1024))
+)
+FEEDBACK_ATTACHMENT_MAX_EDGE_PX: int = int(
+    os.environ.get("FEEDBACK_ATTACHMENT_MAX_EDGE_PX", "1440")
+)
+FEEDBACK_ATTACHMENT_WEBP_QUALITY: int = int(
+    os.environ.get("FEEDBACK_ATTACHMENT_WEBP_QUALITY", "78")
+)
+
 # ---------------------------------------------------------------------------
 # Default primary key type
 # ---------------------------------------------------------------------------

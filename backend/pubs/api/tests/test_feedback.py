@@ -4,10 +4,13 @@ Tests for the in-app feedback / bug-report endpoint and its Linear sync command.
 
 from __future__ import annotations
 
+import io
 from unittest import mock
 
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
+from PIL import Image
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -20,6 +23,12 @@ _CLIENT_ID = "9a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d"
 @pytest.fixture
 def client():
     return APIClient()
+
+
+@pytest.fixture
+def media_root(settings, tmp_path):
+    settings.MEDIA_ROOT = str(tmp_path / "media")
+    return tmp_path / "media"
 
 
 def _register(client: APIClient, device_id: str = _DEVICE_ID) -> str:
@@ -45,6 +54,12 @@ def _payload(**overrides):
     }
     data.update(overrides)
     return data
+
+
+def _image_upload(*, name: str = "screenshot.png") -> SimpleUploadedFile:
+    output = io.BytesIO()
+    Image.new("RGB", (1800, 900), (232, 163, 23)).save(output, format="PNG")
+    return SimpleUploadedFile(name, output.getvalue(), content_type="image/png")
 
 
 @pytest.mark.django_db
@@ -135,6 +150,81 @@ def test_create_feedback_instagram_handle_is_normalized(client):
     report = FeedbackReport.objects.get()
     assert report.contact_type == FeedbackReport.ContactType.INSTAGRAM
     assert report.contact == "pivni_kompas"
+
+
+@pytest.mark.django_db
+def test_create_feedback_with_attachment_is_reencoded_and_linked(client, media_root):
+    token = _register(client)
+    payload = _payload()
+    payload["attachment"] = _image_upload()
+
+    resp = client.post("/v1/feedback", data=payload, format="multipart", **_auth(token))
+
+    assert resp.status_code == status.HTTP_201_CREATED
+    report = FeedbackReport.objects.get()
+    assert report.attachment.name.endswith(".webp")
+    assert "/media/feedback-attachments/" in report.attachment_url
+    assert resp.json()["attachment_url"] == report.attachment_url
+    with report.attachment.open("rb") as stored_file:
+        with Image.open(stored_file) as stored:
+            assert stored.format == "WEBP"
+            assert max(stored.size) == 1440
+            assert stored.getexif() == {}
+
+
+@pytest.mark.django_db
+def test_feedback_attachment_retry_does_not_create_second_file(client, media_root):
+    token = _register(client)
+    first_payload = _payload(attachment=_image_upload())
+    first = client.post(
+        "/v1/feedback", data=first_payload, format="multipart", **_auth(token)
+    )
+    assert first.status_code == status.HTTP_201_CREATED
+    original_name = FeedbackReport.objects.get().attachment.name
+
+    retry_payload = _payload(attachment=_image_upload(name="retry.jpg"))
+    retry = client.post(
+        "/v1/feedback", data=retry_payload, format="multipart", **_auth(token)
+    )
+
+    assert retry.status_code == status.HTTP_200_OK
+    report = FeedbackReport.objects.get()
+    assert report.attachment.name == original_name
+    assert len(list(media_root.rglob("*.webp"))) == 1
+
+
+@pytest.mark.django_db
+def test_feedback_attachment_rejects_invalid_and_oversized_files(client, settings):
+    token = _register(client)
+    invalid = client.post(
+        "/v1/feedback",
+        data={
+            **_payload(),
+            "attachment": SimpleUploadedFile(
+                "not-a-photo.jpg", b"not an image", content_type="image/jpeg"
+            ),
+        },
+        format="multipart",
+        **_auth(token),
+    )
+    settings.FEEDBACK_ATTACHMENT_MAX_UPLOAD_BYTES = 3
+    oversized = client.post(
+        "/v1/feedback",
+        data={
+            **_payload(),
+            "attachment": SimpleUploadedFile(
+                "large.jpg", b"1234", content_type="image/jpeg"
+            ),
+        },
+        format="multipart",
+        **_auth(token),
+    )
+
+    assert invalid.status_code == status.HTTP_400_BAD_REQUEST
+    assert invalid.json()["code"] == "attachment_invalid"
+    assert oversized.status_code == status.HTTP_400_BAD_REQUEST
+    assert oversized.json()["code"] == "attachment_too_large"
+    assert FeedbackReport.objects.count() == 0
 
 
 @pytest.mark.django_db
@@ -254,6 +344,35 @@ def test_sync_feedback_linear_creates_issue(settings):
     assert report.linear_issue_id == "ABC-123"
     assert report.linear_issue_url == "https://linear.app/team/issue/ABC-123"
     assert report.linear_synced_at is not None
+
+
+@pytest.mark.django_db
+def test_sync_feedback_linear_embeds_attachment_link(settings):
+    settings.LINEAR_API_KEY = "lin_api_key"
+    settings.LINEAR_TEAM_ID = "team-123"
+    report = _make_feedback()
+    report.attachment_url = "https://api.napivo.app/media/feedback-attachments/a/b.webp"
+    report.save(update_fields=["attachment_url"])
+    fake_resp = mock.Mock()
+    fake_resp.raise_for_status.return_value = None
+    fake_resp.json.return_value = {
+        "data": {
+            "issueCreate": {
+                "success": True,
+                "issue": {
+                    "id": "uuid-1",
+                    "identifier": "ABC-123",
+                    "url": "https://linear.app/team/issue/ABC-123",
+                },
+            }
+        }
+    }
+
+    with mock.patch("requests.post", return_value=fake_resp) as mocked:
+        call_command("sync_feedback_linear")
+
+    description = mocked.call_args.kwargs["json"]["variables"]["input"]["description"]
+    assert "![Příloha z aplikace](https://api.napivo.app/media/" in description
 
 
 @pytest.mark.django_db

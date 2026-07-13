@@ -1276,6 +1276,16 @@ def beer_photo_path(instance, filename: str) -> str:
     return f"beer-photos/{instance.account.public_id}/{instance.public_id}.webp"
 
 
+def feedback_attachment_path(instance, filename: str) -> str:
+    """Stable path for one support screenshot/photo.
+
+    The client filename is ignored. Accepted uploads are decoded and re-encoded
+    as WebP before this path is used, stripping EXIF (including GPS).
+    """
+    account_key = instance.account.public_id if instance.account_id else "anonymous"
+    return f"feedback-attachments/{account_key}/{instance.client_id}.webp"
+
+
 class BeerPhoto(models.Model):
     """One beer diary photo, optionally tagged with a pub.
 
@@ -1925,6 +1935,18 @@ class FeedbackReport(models.Model):
     app_version = models.CharField(max_length=64, blank=True, default="")
     platform = models.CharField(max_length=32, blank=True, default="")
     os_version = models.CharField(max_length=64, blank=True, default="")
+    attachment = models.ImageField(
+        upload_to=feedback_attachment_path,
+        blank=True,
+        default="",
+        max_length=255,
+        help_text="Optional support screenshot/photo, re-encoded to WebP with metadata stripped.",
+    )
+    attachment_url = models.URLField(
+        blank=True,
+        default="",
+        help_text="Absolute media URL captured at upload time for the Linear issue link.",
+    )
     status = models.CharField(
         max_length=16,
         choices=Status.choices,
@@ -2232,6 +2254,15 @@ class PubCommunityData(models.Model):
         help_text=(
             'List of beers on tap: '
             '[{"name": str, "price_czk": int|null, "volume_ml": int|null}].'
+        ),
+    )
+    historical_beers = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Previously confirmed beers that are no longer on the current tap list. "
+            "Kept separately so released clients can continue reading `beers` as the "
+            "current menu."
         ),
     )
 

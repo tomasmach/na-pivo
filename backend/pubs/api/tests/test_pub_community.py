@@ -6,6 +6,7 @@ precedence in the pub-hours read path (POST /v1/pub-hours).
 from __future__ import annotations
 
 import pytest
+from django.core.cache import cache
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from rest_framework import status
@@ -50,6 +51,15 @@ _BEERS = [
 @pytest.fixture
 def client():
     return APIClient()
+
+
+@pytest.fixture(autouse=True)
+def _clear_throttle_cache():
+    # Community submissions are per-IP throttled. Isolate the shared localhost
+    # counter so adding endpoint tests cannot make later cases order-dependent.
+    cache.clear()
+    yield
+    cache.clear()
 
 
 def _register(client: APIClient, device_id: str = _DEVICE_ID) -> str:
@@ -221,6 +231,74 @@ def test_submit_is_idempotent_on_client_id(client):
     # get_or_create keeps the original log payload, no duplicates.
     assert PubContributionLog.objects.filter(kind="hours").count() == 1
     assert PubContributionLog.objects.filter(kind="beers").count() == 1
+
+
+@pytest.mark.django_db
+def test_replacing_menu_archives_removed_beers_and_restoring_removes_history(client):
+    token = _register(client)
+    first = client.post(
+        "/v1/pub-community",
+        data=_payload(client_id="aaaaaaaa-0000-0000-0000-000000000011"),
+        format="json",
+        **_auth(token),
+    )
+    assert first.status_code == status.HTTP_200_OK
+
+    current = [_BEERS[0]]
+    second = client.post(
+        "/v1/pub-community",
+        data=_payload(
+            client_id="aaaaaaaa-0000-0000-0000-000000000012",
+            beers=current,
+        ),
+        format="json",
+        **_auth(token),
+    )
+    assert second.status_code == status.HTTP_200_OK
+    assert second.json()["beers"] == current
+    assert second.json()["historical_beers"] == [_BEERS[1]]
+    assert second.json()["beers_updated_at"] is not None
+
+    restored = client.post(
+        "/v1/pub-community",
+        data=_payload(
+            client_id="aaaaaaaa-0000-0000-0000-000000000013",
+            beers=_BEERS,
+        ),
+        format="json",
+        **_auth(token),
+    )
+    assert restored.status_code == status.HTTP_200_OK
+    assert restored.json()["historical_beers"] == []
+    record = PubCommunityData.objects.get()
+    assert record.beers == _BEERS
+    assert record.historical_beers == []
+
+
+@pytest.mark.django_db
+def test_hours_only_write_preserves_beer_history(client):
+    token = _register(client)
+    PubCommunityData.objects.create(
+        cache_key=_KEY,
+        name=_NAME,
+        lat=_LAT,
+        lng=_LNG,
+        beers=[_BEERS[0]],
+        historical_beers=[_BEERS[1]],
+    )
+    payload = _payload(client_id="aaaaaaaa-0000-0000-0000-000000000014")
+    payload.pop("beers")
+
+    response = client.post(
+        "/v1/pub-community",
+        data=payload,
+        format="json",
+        **_auth(token),
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["historical_beers"] == [_BEERS[1]]
+    assert PubCommunityData.objects.get().historical_beers == [_BEERS[1]]
 
 
 @pytest.mark.django_db
@@ -510,7 +588,7 @@ def test_read_community_hours_override_firmy(client):
     from pubs.api.tests.test_views import _make_fresh_row
 
     _make_fresh_row()  # firmy PubHours for the same key
-    _make_community()
+    _make_community(historical_beers=[{"name": "Gambrinus 10", "price_czk": 48, "volume_ml": 500}])
 
     resp = client.post(
         "/v1/pub-hours",
@@ -525,6 +603,9 @@ def test_read_community_hours_override_firmy(client):
     assert r["opening_hours"] == community_hours_to_osm(_FULL_HOURS)
     assert r["hours_json"] == _FULL_HOURS
     assert r["beers"] == _BEERS
+    assert r["historical_beers"] == [
+        {"name": "Gambrinus 10", "price_czk": 48, "volume_ml": 500}
+    ]
     assert r["rating"] == pytest.approx(4.1)
     assert r["ratingCount"] == 364
     assert r["ratingLabel"] == "Velmi dobré"

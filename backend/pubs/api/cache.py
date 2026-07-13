@@ -98,6 +98,8 @@ def _result_from_row(row: PubHours) -> dict[str, Any]:
         "hasGarden": row.has_garden,
         "venueKind": row.venue_kind,
         "beers": [],
+        "historical_beers": [],
+        "beers_updated_at": None,
         "hours_json": None,
     }
 
@@ -123,6 +125,8 @@ def _empty_result(cache_key: str, name: str, status: str) -> dict[str, Any]:
         "hasGarden": None,
         "venueKind": PubHours.VenueKind.UNKNOWN,
         "beers": [],
+        "historical_beers": [],
+        "beers_updated_at": None,
         "hours_json": None,
     }
 
@@ -197,6 +201,8 @@ def _community_result(
         "hasGarden": hours_row.has_garden if hours_row is not None else None,
         "venueKind": venue_kind,
         "beers": row.beers or [],
+        "historical_beers": row.historical_beers or [],
+        "beers_updated_at": row.beers_updated_at,
         "hours_json": row.hours_json,
     }
 
@@ -441,6 +447,8 @@ def get_or_enrich(
         # firmy path produces below. _result_index marks where this entry's
         # result lands so we can patch its `beers` in once built.
         community_beers = comm.beers if comm_matches else None
+        community_historical_beers = comm.historical_beers if comm_matches else None
+        community_beers_updated_at = comm.beers_updated_at if comm_matches else None
         _result_index = len(results)
 
         def _attach_beers() -> None:
@@ -450,6 +458,10 @@ def get_or_enrich(
             if community_beers:
                 results[_result_index]["beers"] = community_beers
                 results[_result_index]["venueKind"] = PubHours.VenueKind.PUB
+            if community_historical_beers:
+                results[_result_index]["historical_beers"] = community_historical_beers
+            if community_beers_updated_at:
+                results[_result_index]["beers_updated_at"] = community_beers_updated_at
 
         if row is not None and _is_fresh(row, ttl_days):
             # Cache HIT — return as-is (compute isOpenNow/nextChange live), or

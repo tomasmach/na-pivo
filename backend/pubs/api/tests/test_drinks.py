@@ -302,6 +302,9 @@ def test_log_appends_new_beer_to_existing_menu(client):
         lat=_LAT,
         lng=_LNG,
         beers=[{"name": "Kozel 11", "price_czk": 45, "volume_ml": 330}],
+        historical_beers=[
+            {"name": "Pilsner Urquell", "price_czk": 58, "volume_ml": 500}
+        ],
         hours_json={"mo": [["11:00", "23:00"]]},
         opening_hours_raw="Mo 11:00-23:00",
     )
@@ -315,6 +318,7 @@ def test_log_appends_new_beer_to_existing_menu(client):
         {"name": "Kozel 11", "price_czk": 45, "volume_ml": 330},
         {"name": "Pilsner Urquell", "price_czk": 62, "volume_ml": 500},
     ]
+    assert row.historical_beers == []
 
 
 @pytest.mark.django_db

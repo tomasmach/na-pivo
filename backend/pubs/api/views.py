@@ -51,7 +51,7 @@ from django.db.models import (
 from django.utils import timezone as dj_timezone
 from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed
-from rest_framework.parsers import MultiPartParser
+from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -79,6 +79,10 @@ from pubs.enrichment import (
     names_match,
 )
 from pubs.enrichment.coverage import coverage_country
+from pubs.feedback_attachments import (
+    FeedbackAttachmentError,
+    process_feedback_attachment,
+)
 from pubs.identity import pub_identity_key as _pub_identity_key
 from pubs.mapper import maper_snapshot
 from pubs.menu_scan import (
@@ -1133,6 +1137,42 @@ class UserAddedPubView(APIView):
         return Response(UserAddedPubSerializer(pub).data, status=status.HTTP_200_OK)
 
 
+_MAX_HISTORICAL_BEERS = 24
+
+
+def _beer_menu_identity(beer: dict) -> tuple[str, int | None]:
+    """Stable menu identity shared with the current-menu replacement contract."""
+    return str(beer.get("name") or "").strip().casefold(), beer.get("volume_ml")
+
+
+def _historical_beers_after_menu_replacement(
+    *,
+    current: list[dict],
+    replacement: list[dict],
+    historical: list[dict],
+) -> list[dict]:
+    """Archive rows removed by a confirmed full-menu write.
+
+    `beers` remains the released API's current-menu field. This helper keeps a
+    bounded, de-duplicated memory of removed rows and drops any historical row
+    that the new menu confirms is back on tap.
+    """
+    replacement_keys = {_beer_menu_identity(beer) for beer in replacement}
+    removed = [beer for beer in current if _beer_menu_identity(beer) not in replacement_keys]
+
+    next_historical: list[dict] = []
+    seen: set[tuple[str, int | None]] = set()
+    for beer in [*removed, *historical]:
+        identity = _beer_menu_identity(beer)
+        if not identity[0] or identity in replacement_keys or identity in seen:
+            continue
+        seen.add(identity)
+        next_historical.append(beer)
+        if len(next_historical) >= _MAX_HISTORICAL_BEERS:
+            break
+    return next_historical
+
+
 class PubCommunityView(APIView):
     """
     POST /v1/pub-community
@@ -1183,6 +1223,14 @@ class PubCommunityView(APIView):
                 defaults["opening_hours_raw"] = community_hours_to_osm(hours_json)
                 defaults["hours_updated_at"] = now
             if has_beers:
+                previous = PubCommunityData.objects.filter(cache_key=cache_key).only(
+                    "beers", "historical_beers"
+                ).first()
+                defaults["historical_beers"] = _historical_beers_after_menu_replacement(
+                    current=previous.beers if previous else [],
+                    replacement=data["beers"],
+                    historical=previous.historical_beers if previous else [],
+                )
                 defaults["beers"] = data["beers"]
                 defaults["beers_updated_at"] = now
 
@@ -1260,6 +1308,8 @@ class PubCommunityView(APIView):
                 "cache_key": record.cache_key,
                 "hours": record.hours_json,
                 "beers": record.beers or [],
+                "historical_beers": record.historical_beers or [],
+                "beers_updated_at": record.beers_updated_at,
                 "xp_awarded": xp_awarded,
                 "mapper": mapper,
             }
@@ -1629,10 +1679,25 @@ class DrinksView(APIView):
         changed = _merge_drink_into_menu(beers, beer)
         if changed:
             row.beers = beers
+            restored_identity = _beer_menu_identity(beer)
+            historical_beers = [
+                historical
+                for historical in row.historical_beers or []
+                if _beer_menu_identity(historical) != restored_identity
+            ]
+            row.historical_beers = historical_beers
             row.beers_updated_at = now
             # Refresh the most-recent-contributor pointer; never touch hours.
             row.account = account
-            row.save(update_fields=["beers", "beers_updated_at", "account", "updated_at"])
+            row.save(
+                update_fields=[
+                    "beers",
+                    "historical_beers",
+                    "beers_updated_at",
+                    "account",
+                    "updated_at",
+                ]
+            )
         upsert_pub_beer_brand(
             cache_key=cache_key,
             data=data,
@@ -1746,15 +1811,46 @@ class FeedbackView(APIView):
 
     authentication_classes = [AccountTokenAuthentication]
     permission_classes = [IsAuthenticated]
+    # JSON keeps released clients compatible; multipart adds one optional image.
+    parser_classes = [JSONParser, MultiPartParser]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "feedback"
 
     def post(self, request: Request) -> Response:
+        uploads = [
+            upload
+            for _field_name, field_uploads in request.FILES.lists()
+            for upload in field_uploads
+        ]
+        if len(uploads) > 1:
+            return Response(
+                {"detail": "Přidej nejvýš jednu fotku.", "code": "attachment_count"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         serializer = FeedbackRequestSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         data = serializer.validated_data
+        upload = request.FILES.get("attachment")
+        if uploads and upload is None:
+            return Response(
+                {"detail": "Neznámý typ přílohy.", "code": "attachment_invalid"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # An offline retry that reached the DB before the response was lost must
+        # not decode/write the same image again (or leave a suffixed orphan).
+        existing = FeedbackReport.objects.filter(
+            account=request.user, client_id=data["client_id"]
+        ).first()
+        processed_attachment = None
+        if upload is not None and not (existing and existing.attachment):
+            try:
+                processed_attachment = process_feedback_attachment(upload)
+            except FeedbackAttachmentError as exc:
+                return _coded_error(exc)
 
         try:
             report, created = FeedbackReport.objects.update_or_create(
@@ -1770,6 +1866,17 @@ class FeedbackView(APIView):
                     "os_version": data.get("os_version") or "",
                 },
             )
+
+            if processed_attachment is not None and not report.attachment:
+                report.attachment.save("attachment.webp", processed_attachment, save=False)
+                report.attachment_url = request.build_absolute_uri(report.attachment.url)
+                try:
+                    report.save(
+                        update_fields=["attachment", "attachment_url", "updated_at"]
+                    )
+                except Exception:
+                    report.attachment.delete(save=False)
+                    raise
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "feedback: unexpected error saving feedback %r: %s",
@@ -6183,6 +6290,7 @@ def _export_account_data(account: Account) -> dict:
                 "app_version": report.app_version,
                 "platform": report.platform,
                 "os_version": report.os_version,
+                "attachment_url": report.attachment_url,
                 "status": report.status,
                 "created_at": _iso(report.created_at),
             }

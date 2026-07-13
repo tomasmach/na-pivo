@@ -259,6 +259,8 @@ class FeedbackReportAdmin(admin.ModelAdmin):
         "app_version",
         "platform",
         "os_version",
+        "attachment",
+        "attachment_url",
         "account",
         "linear_issue_id",
         "linear_issue_url",
