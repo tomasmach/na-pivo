@@ -66,6 +66,8 @@ const DEFAULT_REGION: Region = {
   longitudeDelta: 4.2,
 };
 
+const PUB_DETAIL_LOADING_TIMEOUT_MS = 3_000;
+
 const DARK_MAP_STYLE = [
   { elementType: 'geometry', stylers: [{ color: '#25170C' }] },
   { elementType: 'labels.text.fill', stylers: [{ color: '#C9B38F' }] },
@@ -230,6 +232,7 @@ export default function BeerMapScreen({
   const [listOpen, setListOpen] = useState(false);
   const [detailsByPubKey, setDetailsByPubKey] = useState<Record<string, PubHoursResult>>({});
   const [loadingDetailKey, setLoadingDetailKey] = useState<string | null>(null);
+  const [timedOutDetailKey, setTimedOutDetailKey] = useState<string | null>(null);
   const didAutoLocate = useRef(Boolean(initialPub || rememberedRegion));
 
   useEffect(() => {
@@ -293,28 +296,42 @@ export default function BeerMapScreen({
     if (!selectedPub || !selectedPubForLookup) return;
     const key = selectedPub.key;
     const controller = new AbortController();
+    const loadingTimeout = setTimeout(() => {
+      setTimedOutDetailKey(key);
+      setLoadingDetailKey((current) => current === key ? null : current);
+    }, PUB_DETAIL_LOADING_TIMEOUT_MS);
     void fetchPubHours([selectedPubForLookup], controller.signal)
       .then((result) => {
         const details = result.get(selectedPubForLookup.id);
         if (!controller.signal.aborted && details) {
           setDetailsByPubKey((current) => ({ ...current, [key]: details }));
         }
+        if (!details || details.status !== 'pending') clearTimeout(loadingTimeout);
       })
       .finally(() => {
         if (!controller.signal.aborted) {
           setLoadingDetailKey((current) => current === key ? null : current);
         }
       });
-    return () => controller.abort();
+    return () => {
+      clearTimeout(loadingTimeout);
+      controller.abort();
+    };
   }, [selectedPub, selectedPubForLookup]);
 
   const selectedDetailPub = selectedPub
     ? pubWithDetails(selectedPub.pub, detailsByPubKey[selectedPub.key])
     : null;
-  const selectedHoursStatus =
+  const rawSelectedHoursStatus =
     selectedPub && loadingDetailKey === selectedPub.key && !selectedDetailPub?.hoursStatus
       ? 'loading'
       : selectedDetailPub?.hoursStatus;
+  const selectedHoursStatus =
+    selectedPub &&
+    timedOutDetailKey === selectedPub.key &&
+    (rawSelectedHoursStatus === 'loading' || rawSelectedHoursStatus === 'pending')
+      ? 'unknown'
+      : rawSelectedHoursStatus;
   const selectedRating =
     typeof selectedDetailPub?.rating === 'number' && Number.isFinite(selectedDetailPub.rating)
       ? formatRating(selectedDetailPub.rating)
@@ -401,6 +418,7 @@ export default function BeerMapScreen({
       if (hapticEnabled) fireLightImpactHaptic();
       const next: MapSelection = { kind: 'pub', key: point.key, accountId };
       rememberedSelection = next;
+      setTimedOutDetailKey((current) => current === point.key ? current : null);
       setLoadingDetailKey(point.key);
       setSelection(next);
       void AccessibilityInfo.announceForAccessibility(point.pub.name);
