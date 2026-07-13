@@ -142,7 +142,7 @@ from pubs.photos import BeerPhotoError, process_beer_photo
 from pubs.user_added_pub_geocoding import resolve_user_added_pub_location
 
 from .authentication import AccountTokenAuthentication
-from .cache import get_or_enrich
+from .cache import get_cached_pub_details, get_or_enrich
 from .profile_helpers import (
     derive_account_achievements,
     derive_account_profile_stats,
@@ -5616,8 +5616,54 @@ class PubsNearView(APIView):
                 )
 
         def response_body(*, items: list[dict], cached: bool, fetched_at: str) -> dict:
+            detail_inputs: list[dict] = []
+            detail_indexes: list[int] = []
+            for index, item in enumerate(items):
+                position = item.get("position") or {}
+                if (
+                    item.get("name")
+                    and isinstance(position.get("lat"), (int, float))
+                    and isinstance(position.get("lon"), (int, float))
+                ):
+                    detail_inputs.append(
+                        {
+                            "name": item["name"],
+                            "lat": position["lat"],
+                            "lng": position["lon"],
+                        }
+                    )
+                    detail_indexes.append(index)
+
+            # Copy each item before attaching live cache data. Provider search
+            # cache rows must remain raw and stable across requests.
+            response_items = [dict(item) for item in items]
+            for index, detail in zip(
+                detail_indexes,
+                get_cached_pub_details(detail_inputs),
+                strict=True,
+            ):
+                if detail is not None:
+                    # Nearby cards only need the classic public preview. Keep
+                    # beer menus and structured community hours on /pub-hours
+                    # so a 300-pin city response stays compact.
+                    response_items[index]["pubDetails"] = {
+                        field: detail.get(field)
+                        for field in (
+                            "opening_hours",
+                            "isOpenNow",
+                            "nextChange",
+                            "status",
+                            "source",
+                            "rating",
+                            "ratingCount",
+                            "ratingLabel",
+                            "hasGarden",
+                            "venueKind",
+                        )
+                    }
+
             body = {
-                "items": items,
+                "items": response_items,
                 "cached": cached,
                 "fetched_at": fetched_at,
             }

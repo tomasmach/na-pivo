@@ -12,6 +12,7 @@ from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
+from django.core.cache import cache as default_cache
 from django.utils import timezone as dj_tz
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -29,6 +30,7 @@ from pubs.models import (
     PubAmenity,
     PubBeerBrand,
     PubDirectory,
+    PubHours,
     PubNameCorrection,
     PubReport,
     PubSearchCache,
@@ -1142,6 +1144,47 @@ def test_no_api_key_with_stale_row_serves_stale(client, settings):
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json()["cached"] is True
     assert resp.json()["items"] == [_ITEM]
+
+
+@pytest.mark.django_db
+def test_nearby_items_include_cached_pub_details_without_mutating_search_cache(client, settings):
+    settings.MAPY_API_KEY = ""
+    search_row = PubSearchCache.objects.create(
+        cache_key=_KEY,
+        radius_bucket=50,
+        items=[_ITEM],
+        fetched_at=dj_tz.now(),
+    )
+    PubHours.objects.create(
+        cache_key=geohash8(_ITEM["position"]["lat"], _ITEM["position"]["lon"]),
+        name=_ITEM["name"],
+        lat=_ITEM["position"]["lat"],
+        lng=_ITEM["position"]["lon"],
+        opening_hours_raw="Mo-Su 11:00-23:00",
+        rating_value=4.6,
+        rating_count=128,
+        rating_label="Výborné",
+        status=PubHours.Status.OK,
+        source="firmy",
+        fetched_at=dj_tz.now(),
+    )
+
+    resp = client.get(
+        "/v1/pubs/near",
+        data={"lat": _LAT, "lng": _LNG, "radius_km": 25},
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    details = resp.json()["items"][0]["pubDetails"]
+    assert details["opening_hours"] == "Mo-Su 11:00-23:00"
+    assert details["isOpenNow"] in (True, False)
+    assert details["rating"] == pytest.approx(4.6)
+    assert details["ratingCount"] == 128
+    search_row.refresh_from_db()
+    assert search_row.items == [_ITEM]
+    # The suite's DRF throttle uses the shared local cache. This added request
+    # must not push unrelated later tests over the process-wide test limit.
+    default_cache.clear()
 
 
 # ---------------------------------------------------------------------------

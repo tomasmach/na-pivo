@@ -21,6 +21,12 @@ get_or_enrich(pubs, sync_budget) -> list[dict]
     7. MISSING but budget exhausted:
          → Upsert an EnrichTask, return status "pending".
 
+get_cached_pub_details(pubs) -> list[dict | None]
+
+    Bulk-read already known details without scraping, refreshing, or creating
+    enrichment tasks. Used by the nearby map response where a cache miss must
+    stay free and silent.
+
     isOpenNow and nextChange are computed ON READ from opening_hours_raw
     (never stored as stale booleans).
 """
@@ -543,5 +549,74 @@ def get_or_enrich(
             results.append(_pending_result(key, name))
 
         _attach_beers()
+
+    return results
+
+
+def get_cached_pub_details(
+    pubs: list[dict[str, Any]],
+) -> list[dict[str, Any] | None]:
+    """Return existing hours/rating/community facts in input order.
+
+    Unlike :func:`get_or_enrich`, this read path has no side effects: stale
+    cached facts are still useful for the map preview, while missing rows do not
+    create ``EnrichTask`` records or spend Firmy.cz proxy traffic. Name matching
+    preserves the same geohash-collision boundary as the detail endpoint.
+    """
+    entries = [
+        {
+            "cache_key": geohash8(pub["lat"], pub["lng"]),
+            "name": pub["name"],
+        }
+        for pub in pubs
+    ]
+    keys = [entry["cache_key"] for entry in entries]
+    hours_by_key = {
+        row.cache_key: row
+        for row in PubHours.objects.filter(cache_key__in=keys)
+    }
+    community_by_key = {
+        row.cache_key: row
+        for row in PubCommunityData.objects.filter(cache_key__in=keys)
+    }
+
+    results: list[dict[str, Any] | None] = []
+    for entry in entries:
+        key = entry["cache_key"]
+        name = entry["name"]
+        hours_row = hours_by_key.get(key)
+        matching_hours = (
+            hours_row
+            if hours_row is not None and names_match(name, hours_row.name)
+            else None
+        )
+        community_row = community_by_key.get(key)
+        matching_community = (
+            community_row
+            if community_row is not None and names_match(name, community_row.name)
+            else None
+        )
+
+        if matching_community is not None and matching_community.hours_json is not None:
+            results.append(_community_result(matching_community, name, matching_hours))
+            continue
+
+        if matching_hours is not None:
+            result = _result_from_row(matching_hours)
+        elif matching_community is not None:
+            result = _unknown_result(key, name)
+        else:
+            results.append(None)
+            continue
+
+        if matching_community is not None:
+            if matching_community.beers:
+                result["beers"] = matching_community.beers
+                result["venueKind"] = PubHours.VenueKind.PUB
+            if matching_community.historical_beers:
+                result["historical_beers"] = matching_community.historical_beers
+            if matching_community.beers_updated_at:
+                result["beers_updated_at"] = matching_community.beers_updated_at
+        results.append(result)
 
     return results
