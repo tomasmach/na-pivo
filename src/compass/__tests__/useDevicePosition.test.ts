@@ -12,6 +12,10 @@ jest.mock('expo-location', () => ({
   watchPositionAsync: jest.fn(),
 }));
 
+jest.mock('@/location/locationCurrency', () => ({
+  updateCurrencyFromCoordinates: jest.fn(),
+}));
+
 const TestRenderer = require('react-test-renderer');
 const { act } = TestRenderer;
 
