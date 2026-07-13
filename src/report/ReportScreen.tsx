@@ -11,7 +11,6 @@ import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   Pressable,
   TextInput,
   KeyboardAvoidingView,
@@ -27,6 +26,7 @@ import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
 import { ChevronLeftIcon } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { getAppVersionLabel } from '@/utils/appVersion';
 import { enqueueFeedback, flushFeedbackQueue } from '@/data/feedbackQueue';
 import type { FeedbackCategory, FeedbackContactType } from '@/data/feedbackClient';
@@ -118,7 +118,7 @@ export default function ReportScreen() {
         // Android is edge-to-edge, so `adjustResize` no longer pushes content
         // above the keyboard — pad it here (iOS pads via keyboard insets below).
         <KeyboardAvoidingView style={styles.flex} behavior="padding" enabled={Platform.OS === 'android'}>
-        <ScrollView
+        <KeyboardAwareScrollView
           style={styles.flex}
           contentContainerStyle={[
             styles.scrollContent,
@@ -228,7 +228,7 @@ export default function ReportScreen() {
               {cs.report.versionCaption(appVersionLabel)}
             </Text>
           ) : null}
-        </ScrollView>
+        </KeyboardAwareScrollView>
         </KeyboardAvoidingView>
       )}
     </View>

@@ -12,7 +12,6 @@ import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   Pressable,
   TextInput,
   KeyboardAvoidingView,
@@ -29,6 +28,7 @@ import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
 import { ChevronLeftIcon } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
 
@@ -125,7 +125,7 @@ export default function ResetPasswordScreen() {
         behavior="padding"
         keyboardVerticalOffset={insets.top + 56}
       >
-        <ScrollView
+        <KeyboardAwareScrollView
           contentContainerStyle={[
             styles.scrollContent,
             { paddingBottom: Math.max(insets.bottom + 24, 32) },
@@ -173,7 +173,7 @@ export default function ResetPasswordScreen() {
               </View>
             )}
           </View>
-        </ScrollView>
+        </KeyboardAwareScrollView>
       </KeyboardAvoidingView>
     </View>
   );

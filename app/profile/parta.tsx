@@ -20,7 +20,6 @@ import {
   Platform,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -52,6 +51,7 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Spacing } from '@/theme/layout';
 
 import { AddFriendTools } from '@/friends/AddFriendTools';
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import CodeSheet from '@/friends/CodeSheet';
 import { FriendListRow } from '@/friends/FriendListRow';
 import { useFriendSafety } from '@/friends/friendSafety';
@@ -210,7 +210,7 @@ export default function ManagePartaScreen() {
         // Android is edge-to-edge, so `adjustResize` no longer pushes content
         // above the keyboard — pad it here (iOS pads via keyboard insets below).
         <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" enabled={Platform.OS === 'android'}>
-        <ScrollView
+        <KeyboardAwareScrollView
           contentContainerStyle={[
             styles.content,
             { paddingBottom: Math.max(insets.bottom + 18, 32) },
@@ -295,7 +295,7 @@ export default function ManagePartaScreen() {
               </Pressable>
             </View>
           ) : null}
-        </ScrollView>
+        </KeyboardAwareScrollView>
         </KeyboardAvoidingView>
       )}
 

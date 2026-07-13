@@ -36,6 +36,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { CheckIcon, MapPinIcon, PlusIcon, UsersIcon, XIcon } from '@/components/shared/IconGlyph';
 import { Toast } from '@/components/shared/Toast';
 import { generateUuidV4 } from '@/data/account';
@@ -473,7 +474,7 @@ function ComposeSheet({ friends, onSubmitted, onClose }: ComposeSheetProps): Rea
             <XIcon size={18} color={Colors.foamMuted} />
           </Pressable>
 
-          <ScrollView style={styles.body} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <KeyboardAwareScrollView style={styles.body} showsVerticalScrollIndicator={false}>
             {/* KOMU */}
             <SectionHeader label={cs.friends.composeAudienceLabel} />
             <ScrollView
@@ -656,7 +657,7 @@ function ComposeSheet({ friends, onSubmitted, onClose }: ComposeSheetProps): Rea
                 maxFontSizeMultiplier={FontScaleCap.body}
               />
             </View>
-          </ScrollView>
+          </KeyboardAwareScrollView>
 
           {/* Sticky CTA */}
           <View style={styles.footer}>

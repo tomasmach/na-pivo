@@ -20,7 +20,6 @@ import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   Pressable,
   TextInput,
   KeyboardAvoidingView,
@@ -38,6 +37,7 @@ import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
 import { ChevronLeftIcon, Trash2Icon, PencilIcon } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { Avatar } from '@/profile/Avatar';
 import { NicknameField } from '@/profile/NicknameField';
 import { VisibilityToggle } from '@/profile/VisibilityToggle';
@@ -205,7 +205,7 @@ export default function ProfileEditScreen() {
         behavior="padding"
         enabled={Platform.OS === 'android'}
       >
-        <ScrollView
+        <KeyboardAwareScrollView
           style={styles.flex}
           contentContainerStyle={[styles.scrollContent, { paddingBottom: Spacing.xl }]}
           keyboardShouldPersistTaps="handled"
@@ -332,7 +332,7 @@ export default function ProfileEditScreen() {
               </Text>
             )}
           </View>
-        </ScrollView>
+        </KeyboardAwareScrollView>
 
         {/* ── Sticky save bar — primary action always reachable, never lost
             below the fold of a long form. ── */}

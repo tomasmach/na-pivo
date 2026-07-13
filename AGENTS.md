@@ -107,6 +107,16 @@ Když potřebuješ rozjet iOS simulator pro ruční ověření aplikace, použí
 
 Respektuj existující Expo Router, React Native, store, queue a theme strukturu. Nezaváděj nový state management, navigační pattern nebo design systém bez silného důvodu.
 
+### Klávesnice a formuláře
+
+Každé scrollovatelné UI s `TextInput` musí používat `KeyboardAwareScrollView` z
+`src/components/shared/KeyboardAwareScrollView`. Komponenta po focusu posune
+aktivní pole nad klávesnici a přidá spodní inset; funguje i v edge-to-edge
+Androidu a v native modalech. Pro krátký ne-scrollovatelný dialog zachovej
+keyboard lift na jeho obalu (`KeyboardAvoidingView` nebo explicitní výška
+klávesnice). Nevracej do nových formulářů samotný `ScrollView` +
+`KeyboardAvoidingView` bez tohoto focus-aware chování.
+
 ## Git and deployment
 
 Po dokončení coherent změny commitni a pushni.

@@ -4,7 +4,6 @@ import {
   Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -26,6 +25,7 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { currencyFractionDigits, currencySuffix, parsePriceInputToCzk, sanitizePriceInput } from '@/utils/currency';
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import {
   buildHistoricalInterval,
   formatHistoricalDate,
@@ -286,7 +286,7 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
             </Pressable>
           </View>
 
-          <ScrollView
+          <KeyboardAwareScrollView
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.scrollContent}
@@ -504,7 +504,7 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
             >
               <Text style={styles.submitText}>{cs.myBeers.historicalSubmit}</Text>
             </Pressable>
-          </ScrollView>
+          </KeyboardAwareScrollView>
         </View>
       </View>
     </Modal>

@@ -21,7 +21,6 @@ import {
   Image,
   Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -52,6 +51,7 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { fireSuccessHaptic } from '@/utils/haptics';
 import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 
 const CAPTION_MAX = 280;
 
@@ -187,7 +187,7 @@ export function BeerPhotoComposeSheet({ pickedUri, onClose, onSaved }: BeerPhoto
             </Pressable>
           </View>
 
-          <ScrollView
+          <KeyboardAwareScrollView
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.content}
@@ -300,7 +300,7 @@ export function BeerPhotoComposeSheet({ pickedUri, onClose, onSaved }: BeerPhoto
                 height={56}
               />
             </View>
-          </ScrollView>
+          </KeyboardAwareScrollView>
         </View>
       </View>
 

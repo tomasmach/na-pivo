@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -13,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 
 import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 
 import { BeerTagChips } from '@/components/shared/BeerTagChips';
 import { BeerIcon, LockKeyholeIcon, StarIcon, UsersIcon, XIcon } from '@/components/shared/IconGlyph';
@@ -235,7 +235,7 @@ export function BeerCheckInSheet({
             </Pressable>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <KeyboardAwareScrollView showsVerticalScrollIndicator={false}>
             {memoryLoading ? (
               <View style={styles.memoryStrip}>
                 <SkeletonBlock width="55%" height={13} reduceMotion={reduceMotion} />
@@ -360,7 +360,7 @@ export function BeerCheckInSheet({
             >
               <Text style={styles.submitText}>{cs.beerCheckins.submit}</Text>
             </Pressable>
-          </ScrollView>
+          </KeyboardAwareScrollView>
         </View>
       </View>
     </Modal>

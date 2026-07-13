@@ -11,7 +11,6 @@ import {
   Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -30,6 +29,7 @@ import { enqueueDelete } from '@/data/deleteDrinksQueue';
 import { enqueueDrinkUpdate, removeQueuedDrinkUpdate } from '@/data/updateDrinksQueue';
 import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
 import { ChevronLeftIcon, MapPinIcon, PencilIcon, Trash2Icon, XIcon } from '@/components/shared/IconGlyph';
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
   useTallyStore,
@@ -160,7 +160,7 @@ export default function EveningDetailScreen() {
         // Android is edge-to-edge, so `adjustResize` no longer pushes content
         // above the keyboard — pad it here (iOS pads via keyboard insets below).
         <KeyboardAvoidingView style={styles.scroll} behavior="padding" enabled={Platform.OS === 'android'}>
-        <ScrollView
+        <KeyboardAwareScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
@@ -247,7 +247,7 @@ export default function EveningDetailScreen() {
           </View>
 
           <View style={{ height: Spacing.lg }} />
-        </ScrollView>
+        </KeyboardAwareScrollView>
         </KeyboardAvoidingView>
       )}
       <EditDrinkNameModal

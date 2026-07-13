@@ -16,7 +16,6 @@ import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   Pressable,
   TextInput,
   KeyboardAvoidingView,
@@ -36,6 +35,7 @@ import { cs } from '@/i18n/cs';
 import { ChevronLeftIcon } from '@/components/shared/IconGlyph';
 import { AppleIcon, GoogleIcon } from '@/components/shared/BrandIcon';
 import { GlowButton } from '@/components/shared/GlowButton';
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
 import { isAppleSignInSupported, isGoogleSignInConfigured } from '@/data/socialAuth';
@@ -265,7 +265,7 @@ export default function AuthScreen() {
         behavior="padding"
         keyboardVerticalOffset={insets.top + 56}
       >
-        <ScrollView
+        <KeyboardAwareScrollView
           contentContainerStyle={[
             styles.scrollContent,
             { paddingBottom: Math.max(insets.bottom + 24, 32) },
@@ -439,7 +439,7 @@ export default function AuthScreen() {
               disabled={busy != null}
             />
           )}
-        </ScrollView>
+        </KeyboardAwareScrollView>
       </KeyboardAvoidingView>
     </View>
   );

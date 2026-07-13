@@ -22,7 +22,6 @@ import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   Pressable,
   KeyboardAvoidingView,
   Platform,
@@ -38,6 +37,7 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
 import { GlowButton } from '@/components/shared/GlowButton';
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { CameraIcon, QrCodeIcon } from '@/components/shared/IconGlyph';
 import { Avatar } from '@/profile/Avatar';
 import CodeSheet from '@/friends/CodeSheet';
@@ -173,7 +173,7 @@ export default function ProfileSetupScreen() {
         behavior="padding"
         keyboardVerticalOffset={insets.top}
       >
-        <ScrollView
+        <KeyboardAwareScrollView
           style={styles.flex}
           contentContainerStyle={[
             styles.scrollContent,
@@ -338,7 +338,7 @@ export default function ProfileSetupScreen() {
               </Pressable>
             </>
           )}
-        </ScrollView>
+        </KeyboardAwareScrollView>
       </KeyboardAvoidingView>
 
       {busy && step === 2 && (

@@ -21,7 +21,6 @@ import {
   Text,
   TextInput,
   Pressable,
-  ScrollView,
   StyleSheet,
   Platform,
   Keyboard,
@@ -30,6 +29,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -254,7 +254,7 @@ function BeerFormBody({ mode, beer, initialDrinkType, onCancel, onSubmit, onScan
     <View style={styles.backdrop}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onCancel} accessibilityRole="button" accessibilityLabel={cs.counter.cancel} />
       <View style={[styles.card, { marginBottom: sheetBottomOffset, paddingBottom: bottomPad, maxHeight }]}>
-        <ScrollView
+        <KeyboardAwareScrollView
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.cardContent}
@@ -439,7 +439,7 @@ function BeerFormBody({ mode, beer, initialDrinkType, onCancel, onSubmit, onScan
               {cs.counter.cancel}
             </Text>
           </Pressable>
-        </ScrollView>
+        </KeyboardAwareScrollView>
       </View>
     </View>
   );

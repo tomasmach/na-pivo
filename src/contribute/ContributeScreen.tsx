@@ -15,7 +15,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   View,
   Text,
-  ScrollView,
   Pressable,
   TextInput,
   KeyboardAvoidingView,
@@ -44,6 +43,7 @@ import {
   ClockIcon,
 } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { ScanMenuButton } from '@/components/contribute/ScanMenuButton';
 import { ScanMenuSheet, type MenuScanSource } from '@/components/contribute/ScanMenuSheet';
 import { geohash8 } from '@/data/geohash';
@@ -650,7 +650,7 @@ export default function ContributeScreen() {
       {/* Android is edge-to-edge, so `adjustResize` no longer pushes content
           above the keyboard — pad it here (iOS pads via keyboard insets below). */}
       <KeyboardAvoidingView style={styles.flex} behavior="padding" enabled={Platform.OS === 'android'}>
-      <ScrollView
+      <KeyboardAwareScrollView
           style={styles.flex}
           contentContainerStyle={[
             styles.scrollContent,
@@ -798,7 +798,7 @@ export default function ContributeScreen() {
             />
             {!canSubmit && <View style={styles.submitDisabledOverlay} />}
           </View>
-        </ScrollView>
+        </KeyboardAwareScrollView>
         </KeyboardAvoidingView>
 
         <ScanMenuSheet

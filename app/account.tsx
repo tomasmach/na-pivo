@@ -18,7 +18,6 @@ import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   Pressable,
   TextInput,
   ActivityIndicator,
@@ -42,6 +41,7 @@ import {
 } from '@/components/shared/IconGlyph';
 import { AppleIcon, GoogleIcon } from '@/components/shared/BrandIcon';
 import { GlowButton } from '@/components/shared/GlowButton';
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { Avatar } from '@/profile/Avatar';
 import {
@@ -268,7 +268,7 @@ export default function AccountScreen() {
       {/* Android is edge-to-edge, so `adjustResize` no longer pushes content
           above the keyboard — pad it here (iOS pads via keyboard insets). */}
       <KeyboardAvoidingView style={styles.scroll} behavior="padding" enabled={Platform.OS === 'android'}>
-      <ScrollView
+      <KeyboardAwareScrollView
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
@@ -447,7 +447,7 @@ export default function AccountScreen() {
             {cs.account.deleteAccount}
           </Text>
         </Pressable>
-      </ScrollView>
+      </KeyboardAwareScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

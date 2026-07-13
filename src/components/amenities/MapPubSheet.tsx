@@ -29,7 +29,6 @@ import {
   View,
   Text,
   Pressable,
-  ScrollView,
   StyleSheet,
   TextInput,
   KeyboardAvoidingView,
@@ -49,6 +48,7 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, HitArea } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import {
   XIcon,
   CompassIcon,
@@ -587,7 +587,7 @@ export function MapPubSheet({
               {!backendConfigured ? cs.mapPub.offline : cs.mapPub.publicNote}
             </Text>
 
-            <ScrollView
+            <KeyboardAwareScrollView
               style={styles.body}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
@@ -645,7 +645,7 @@ export function MapPubSheet({
               <Text style={styles.footerHint} maxFontSizeMultiplier={FontScaleCap.body}>
                 {cs.mapPub.footerHint}
               </Text>
-            </ScrollView>
+            </KeyboardAwareScrollView>
           </Animated.View>
 
         {/* Toast host INSIDE the modal. The root <Toast> in _layout sits below

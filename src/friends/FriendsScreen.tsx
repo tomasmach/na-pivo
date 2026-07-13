@@ -61,6 +61,7 @@ import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
 import { PartaPhotoStrip } from '@/photos/PartaPhotoStrip';
 import { BeerTagChips } from '@/components/shared/BeerTagChips';
 import { GlowButton } from '@/components/shared/GlowButton';
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import {
   BellRingIcon,
   BeerIcon,
@@ -919,7 +920,7 @@ export default function FriendsScreen() {
       {/* Android is edge-to-edge, so `adjustResize` no longer pushes content
           above the keyboard — pad it here (iOS pads via keyboard insets). */}
       <KeyboardAvoidingView style={styles.root} behavior="padding" enabled={Platform.OS === 'android'}>
-      <ScrollView
+      <KeyboardAwareScrollView
         ref={scrollRef}
         contentContainerStyle={[
           styles.content,
@@ -1326,7 +1327,7 @@ export default function FriendsScreen() {
             ) : null}
           </>
         )}
-      </ScrollView>
+      </KeyboardAwareScrollView>
       </KeyboardAvoidingView>
 
       <FriendSettingsSheet

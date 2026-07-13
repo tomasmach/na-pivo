@@ -10,7 +10,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   Pressable,
   TextInput,
   KeyboardAvoidingView,
@@ -31,6 +30,7 @@ import {
   TargetIcon,
 } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { generateUuidV4 } from '@/data/account';
 import { buildAddedPubEntry } from '@/data/addedPubsClient';
 import { enqueueAddedPub } from '@/data/addedPubsQueue';
@@ -288,7 +288,7 @@ export default function AddPubScreen() {
       {/* Android is edge-to-edge, so `adjustResize` no longer pushes content
           above the keyboard — pad it here (iOS pads via keyboard insets below). */}
       <KeyboardAvoidingView style={styles.flex} behavior="padding" enabled={Platform.OS === 'android'}>
-      <ScrollView
+      <KeyboardAwareScrollView
         style={styles.flex}
         contentContainerStyle={[
           styles.scrollContent,
@@ -494,7 +494,7 @@ export default function AddPubScreen() {
           />
           {!canSubmit && <View style={styles.submitDisabledOverlay} />}
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
       </KeyboardAvoidingView>
     </View>
   );

@@ -4,7 +4,6 @@ import {
   Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -53,6 +52,7 @@ import {
   type BeerBrandSuggestion,
 } from '@/data/beerSuggestionsClient';
 import { cs } from '@/i18n/cs';
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -241,7 +241,7 @@ export function PubFilterSheet({ visible, value, onClose, onApply }: PubFilterSh
                 </Pressable>
               </View>
 
-              <ScrollView
+              <KeyboardAwareScrollView
                 style={styles.content}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
@@ -350,7 +350,7 @@ export function PubFilterSheet({ visible, value, onClose, onApply }: PubFilterSh
                     ? cs.compass.pubFilterLimit(MAX_AMENITY_FILTERS)
                     : cs.compass.pubFilterMatchAll}
                 </Text>
-              </ScrollView>
+              </KeyboardAwareScrollView>
 
               <View style={styles.actions}>
                 {hasDraftFilters ? (
