@@ -53,7 +53,6 @@ import { cs } from '@/i18n/cs';
 import {
   buildMapPubPoints,
   clusterCoordinates,
-  pubOpeningVerdict,
   type LivePubSummary,
   type MapPubPoint,
   type VisitedCitySummary,
@@ -88,7 +87,6 @@ type MapSelection =
 
 let rememberedRegion: Region | null = null;
 let rememberedLayer: Layer = 'all';
-let rememberedOpenOnly = false;
 let rememberedSelection: MapSelection | null = null;
 
 export interface BeerMapScreenProps {
@@ -226,7 +224,6 @@ export default function BeerMapScreen({
   );
   const [region, setRegion] = useState<Region>(initialRegion);
   const [layer, setLayer] = useState<Layer>(rememberedLayer);
-  const [openOnly, setOpenOnly] = useState(rememberedOpenOnly);
   const [selection, setSelection] = useState<MapSelection | null>(rememberedSelection);
   const [detailOpen, setDetailOpen] = useState(false);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
@@ -254,7 +251,7 @@ export default function BeerMapScreen({
     loadRegion(next);
   }, [loadRegion, position, reduceMotion]);
 
-  const unfilteredPoints = useMemo(
+  const points = useMemo(
     () => buildMapPubPoints(
       pubs,
       visitedPubs,
@@ -263,12 +260,6 @@ export default function BeerMapScreen({
       activeFilterCount === 0,
     ).points,
     [activeFilterCount, layer, pubs, visitedPubs],
-  );
-  const points = useMemo(
-    () => openOnly
-      ? unfilteredPoints.filter((point) => pubOpeningVerdict(point.pub) !== false)
-      : unfilteredPoints,
-    [openOnly, unfilteredPoints],
   );
 
   const activeSelection =
@@ -353,22 +344,6 @@ export default function BeerMapScreen({
       return aDistance - bDistance;
     });
   }, [points, region]);
-
-  const visibleUnfilteredPoints = useMemo(() => {
-    const latMargin = region.latitudeDelta * 0.65;
-    const lngMargin = region.longitudeDelta * 0.65;
-    return unfilteredPoints.filter(
-      (point) =>
-        Math.abs(point.lat - region.latitude) <= latMargin &&
-        Math.abs(point.lng - region.longitude) <= lngMargin,
-    );
-  }, [region, unfilteredPoints]);
-  const visibleKnownClosedCount = visibleUnfilteredPoints.filter(
-    (point) => pubOpeningVerdict(point.pub) === false,
-  ).length;
-  const visibleUnknownHoursCount = visibleUnfilteredPoints.filter(
-    (point) => pubOpeningVerdict(point.pub) == null,
-  ).length;
 
   const visibleLivePubs = useMemo(() => {
     const latMargin = region.latitudeDelta * 0.65;
@@ -460,22 +435,6 @@ export default function BeerMapScreen({
     setLayer(next);
     setSelection(null);
   }, []);
-
-  const toggleOpenOnly = useCallback(() => {
-    setOpenOnly((value) => {
-      const next = !value;
-      rememberedOpenOnly = next;
-      void AccessibilityInfo.announceForAccessibility(
-        next
-          ? cs.map.openFilterAnnouncement(
-              visibleKnownClosedCount,
-              visibleUnknownHoursCount,
-            )
-          : cs.map.openFilterOff,
-      );
-      return next;
-    });
-  }, [visibleKnownClosedCount, visibleUnknownHoursCount]);
 
   const aimCompass = useCallback(
     (target: FocusedPub) => {
@@ -677,30 +636,6 @@ export default function BeerMapScreen({
               onPress={() => selectLayer('friends')}
             />
           </View>
-          {layer !== 'friends' ? (
-            <Pressable
-              onPress={toggleOpenOnly}
-              style={({ pressed }) => [styles.openFilter, pressed && styles.pressed]}
-              accessibilityRole="switch"
-              accessibilityState={{ checked: openOnly }}
-              accessibilityLabel={cs.map.onlyOpen}
-              accessibilityHint={
-                openOnly
-                  ? cs.map.openFilterSummary(
-                      visibleKnownClosedCount,
-                      visibleUnknownHoursCount,
-                    )
-                  : cs.map.openFilterHint
-              }
-            >
-              <Text style={[styles.openFilterLabel, openOnly && styles.openFilterLabelActive]}>
-                {cs.map.onlyOpen}
-              </Text>
-              <View style={[styles.switchTrack, openOnly && styles.switchTrackActive]}>
-                <View style={[styles.switchThumb, openOnly && styles.switchThumbActive]} />
-              </View>
-            </Pressable>
-          ) : null}
         </View>
       </View>
 
@@ -863,14 +798,6 @@ export default function BeerMapScreen({
                   {layer === 'friends' ? cs.map.friendsOverviewTitle : cs.map.beerTrail}
                 </Text>
                 <Text style={styles.dockBody} maxFontSizeMultiplier={FontScaleCap.body}>{layerDescription}</Text>
-                {openOnly && layer !== 'friends' ? (
-                  <Text style={styles.filterFeedback} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {cs.map.openFilterSummary(
-                      visibleKnownClosedCount,
-                      visibleUnknownHoursCount,
-                    )}
-                  </Text>
-                ) : null}
               </View>
             </View>
             {permissionState !== 'granted' ? (
@@ -1068,38 +995,6 @@ const styles = StyleSheet.create({
   layerButtonActive: { backgroundColor: Colors.foam, borderColor: Colors.foam },
   layerButtonText: { fontFamily: Fonts.ui.semibold, fontSize: 13, color: Colors.foamMuted },
   layerButtonTextActive: { color: Colors.stout },
-  openFilter: {
-    alignSelf: 'center',
-    minHeight: 40,
-    paddingLeft: 14,
-    paddingRight: 8,
-    flexDirection: 'row',
-    gap: 10,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    backgroundColor: withAlpha(Colors.stout, 0.94),
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.2),
-  },
-  openFilterLabel: { fontFamily: Fonts.ui.semibold, fontSize: 13, color: Colors.foam },
-  openFilterLabelActive: { color: Colors.amberLight },
-  switchTrack: {
-    width: 42,
-    height: 24,
-    padding: 2,
-    borderRadius: 12,
-    backgroundColor: Colors.stout3,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.24),
-  },
-  switchTrackActive: { backgroundColor: Colors.amber, borderColor: Colors.amber },
-  switchThumb: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: Colors.foamMuted,
-  },
-  switchThumbActive: { transform: [{ translateX: 18 }], backgroundColor: Colors.stout },
   pinHit: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   pinHitSelected: { transform: [{ scale: 1.12 }] },
   pubPin: {
@@ -1299,7 +1194,6 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.28),
   },
   overviewCopy: { flex: 1, minWidth: 0 },
-  filterFeedback: { marginTop: 2, fontFamily: Fonts.ui.medium, fontSize: 12, color: Colors.amberLight },
   permissionButton: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 10, minHeight: 34 },
   permissionButtonText: { flex: 1, fontFamily: Fonts.ui.medium, fontSize: 13, color: Colors.foamMuted },
   listBackdrop: {
