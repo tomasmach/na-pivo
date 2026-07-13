@@ -66,6 +66,9 @@ type PubHoursState = {
   communityHours?: WeeklyHours | null;
   /** Beers on tap from the backend, when present. */
   beers?: CommunityBeer[];
+  /** Previously confirmed beers no longer on the current tap list. */
+  historicalBeers?: CommunityBeer[];
+  beersUpdatedAt?: string | null;
   /** Public star rating from the enrichment source, on a 0-5 scale. */
   rating?: number | null;
   /** Number of user ratings behind `rating`, when known. */
@@ -91,6 +94,8 @@ function hoursStateFromResult(result: PubHoursResult, status: HoursStatus): PubH
     source: result.source,
     communityHours: result.communityHours,
     beers: result.beers,
+    historicalBeers: result.historicalBeers,
+    beersUpdatedAt: result.beersUpdatedAt,
     rating: result.rating,
     ratingCount: result.ratingCount,
     ratingLabel: result.ratingLabel,
@@ -712,6 +717,13 @@ export function useCompass(
     if (overrideForCurrent?.beers && !(backendIsCommunity && (hoursForCurrent?.beers?.length ?? 0) > 0)) {
       beers = overrideForCurrent.beers;
     }
+    let historicalBeers = hoursForCurrent?.historicalBeers;
+    if (
+      overrideForCurrent?.historicalBeers &&
+      !(backendIsCommunity && (hoursForCurrent?.historicalBeers?.length ?? 0) > 0)
+    ) {
+      historicalBeers = overrideForCurrent.historicalBeers;
+    }
 
     // Nothing to merge → return the bare pub for referential stability.
     if (!hoursForCurrent && !overrideForCurrent) return currentPub;
@@ -725,6 +737,8 @@ export function useCompass(
       hoursSource,
       communityHours: communityHours ?? undefined,
       beers: beers && beers.length > 0 ? beers : undefined,
+      historicalBeers: historicalBeers && historicalBeers.length > 0 ? historicalBeers : undefined,
+      beersUpdatedAt: hoursForCurrent?.beersUpdatedAt ?? currentPub.beersUpdatedAt ?? null,
       rating: hoursForCurrent?.rating ?? currentPub.rating ?? null,
       ratingCount: hoursForCurrent?.ratingCount ?? currentPub.ratingCount ?? null,
       ratingLabel: hoursForCurrent?.ratingLabel ?? currentPub.ratingLabel ?? null,

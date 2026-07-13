@@ -21,6 +21,7 @@ import type { CommunityBeer, WeeklyHours } from '@/data/communityClient';
 export interface CommunityOverride {
   hours?: WeeklyHours;
   beers?: CommunityBeer[];
+  historicalBeers?: CommunityBeer[];
   /** Epoch ms when the override was written — newest write wins on merge. */
   updatedAt: number;
 }
@@ -35,7 +36,7 @@ interface CommunityState {
    */
   setOverride: (
     cell: string,
-    patch: { hours?: WeeklyHours; beers?: CommunityBeer[] },
+    patch: { hours?: WeeklyHours; beers?: CommunityBeer[]; historicalBeers?: CommunityBeer[] },
   ) => void;
 }
 
@@ -50,6 +51,7 @@ export const useCommunityStore = create<CommunityState>()(
           const next: CommunityOverride = {
             hours: patch.hours ?? prev?.hours,
             beers: patch.beers ?? prev?.beers,
+            historicalBeers: patch.historicalBeers ?? prev?.historicalBeers,
             updatedAt: Date.now(),
           };
           return { overrides: { ...state.overrides, [cell]: next } };

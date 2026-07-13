@@ -1,4 +1,10 @@
-import { mergeBeerIntoMenu, normalizeBeerName, MAX_MENU_BEERS, type CommunityBeer } from '../communityHours';
+import {
+  historicalBeersAfterMenuReplacement,
+  mergeBeerIntoMenu,
+  normalizeBeerName,
+  MAX_MENU_BEERS,
+  type CommunityBeer,
+} from '../communityHours';
 
 describe('normalizeBeerName', () => {
   it('trims and casefolds', () => {
@@ -66,5 +72,31 @@ describe('mergeBeerIntoMenu', () => {
     const result = mergeBeerIntoMenu(full, { name: 'Beer 3', priceCzk: 99, volumeMl: 500 });
     expect(result).toHaveLength(12);
     expect(result.find((b) => b.name === 'Beer 3')?.priceCzk).toBe(99);
+  });
+});
+
+describe('historicalBeersAfterMenuReplacement', () => {
+  it('archives removed rows and removes a restored row from history', () => {
+    const pilsner = { name: 'Pilsner Urquell', priceCzk: 65, volumeMl: 500 };
+    const kozel = { name: 'Kozel 11', priceCzk: 49, volumeMl: 500 };
+
+    expect(historicalBeersAfterMenuReplacement([pilsner, kozel], [pilsner], [])).toEqual([
+      kozel,
+    ]);
+    expect(historicalBeersAfterMenuReplacement([pilsner], [pilsner, kozel], [kozel])).toEqual(
+      [],
+    );
+  });
+
+  it('keeps different serving volumes separate and de-duplicates old history', () => {
+    const large = { name: 'Plzeň', volumeMl: 500 };
+    const small = { name: 'plzeň', volumeMl: 300 };
+    const result = historicalBeersAfterMenuReplacement(
+      [large, small],
+      [large],
+      [small, { ...small, priceCzk: 42 }],
+    );
+
+    expect(result).toEqual([small]);
   });
 });

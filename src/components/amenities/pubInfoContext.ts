@@ -32,6 +32,8 @@ export interface PubInfoContext {
   openingHours?: string | null;
   /** Beers on tap from the enrichment, if any (prefill source). */
   prefillBeers?: CommunityBeer[] | null;
+  /** Removed rows kept as lightweight menu history and restore suggestions. */
+  historicalBeers?: CommunityBeer[] | null;
 }
 
 /** Adapt the shared Pub shape into the hub's info context. */
@@ -45,6 +47,7 @@ export function pubInfoFromPub(pub: Pub): PubInfoContext {
     prefillHours: pub.communityHours ?? null,
     openingHours: pub.openingHours ?? null,
     prefillBeers: pub.beers ?? null,
+    historicalBeers: pub.historicalBeers ?? null,
   };
 }
 

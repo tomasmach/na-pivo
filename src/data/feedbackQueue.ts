@@ -20,11 +20,13 @@ import {
 } from './feedbackClient';
 import { generateUuidV4 } from './account';
 import { createQueueStorage, createQueueLock } from './createQueue';
+import { Directory, File, Paths } from 'expo-file-system';
 
 const STORAGE_KEY = 'na-pivo-feedback-queue';
 /** Hard cap — a queue this long means the backend has been unreachable for a
  *  very long time; dropping the oldest entries beats unbounded growth. */
 const MAX_QUEUE_LENGTH = 20;
+const ATTACHMENTS_DIRECTORY = 'feedback-attachments';
 
 function isFeedbackEntry(entry: unknown): entry is FeedbackEntry {
   const e = entry as FeedbackEntry;
@@ -35,8 +37,38 @@ function isFeedbackEntry(entry: unknown): entry is FeedbackEntry {
     typeof e.message === 'string' &&
     typeof e.app_version === 'string' &&
     typeof e.platform === 'string' &&
-    typeof e.os_version === 'string'
+    typeof e.os_version === 'string' &&
+    (e.attachment_uri === undefined || typeof e.attachment_uri === 'string')
   );
+}
+
+function attachmentsDirectory(): Directory {
+  return new Directory(Paths.document, ATTACHMENTS_DIRECTORY);
+}
+
+async function persistAttachment(uri: string, clientId: string): Promise<string> {
+  try {
+    const directory = attachmentsDirectory();
+    directory.create({ intermediates: true, idempotent: true });
+    const destination = new File(directory, `${clientId}.jpg`);
+    if (destination.exists) destination.delete();
+    await new File(uri).copy(destination);
+    return destination.uri;
+  } catch {
+    // The picker cache may still survive until the next flush; keep the report
+    // usable even if durable-copying fails on a low-storage device.
+    return uri;
+  }
+}
+
+function deleteAttachment(entry: FeedbackEntry): void {
+  if (!entry.attachment_uri) return;
+  try {
+    const durable = new File(attachmentsDirectory(), `${entry.client_id}.jpg`);
+    if (durable.exists) durable.delete();
+  } catch {
+    // Best effort: one orphaned support JPEG must never crash queue cleanup.
+  }
 }
 
 const { load: loadQueue, save: saveQueue } = createQueueStorage<FeedbackEntry>(
@@ -55,28 +87,34 @@ async function flushLocked(): Promise<void> {
 
   const remaining: FeedbackEntry[] = [];
   for (const entry of queue) {
-    const sent = await submitFeedback(entry);
-    if (!sent) remaining.push(entry);
+    const result = await submitFeedback(entry);
+    if (result === 'retry') {
+      remaining.push(entry);
+    } else {
+      deleteAttachment(entry);
+    }
   }
   await saveQueue(remaining);
 }
 
 /**
- * Persists the feedback and immediately tries to sync the whole queue.
- * Resolves true when this entry reached the backend on the first attempt;
- * false means it stays queued for a later flush. Never throws.
+ * Persist the feedback (and any picked cache image) before resolving, then kick
+ * off delivery without making the form wait for the network. Never throws.
  */
-export function enqueueFeedback(input: FeedbackInput): Promise<boolean> {
-  return enqueueTask(async () => {
-    const entry = buildFeedbackEntry(input, generateUuidV4());
+export async function enqueueFeedback(input: FeedbackInput): Promise<void> {
+  await enqueueTask(async () => {
+    const clientId = generateUuidV4();
+    const attachmentUri = input.attachmentUri
+      ? await persistAttachment(input.attachmentUri, clientId)
+      : undefined;
+    const entry = buildFeedbackEntry(input, clientId, attachmentUri);
     const queue = await loadQueue();
     queue.push(entry);
+    const dropped = queue.slice(0, Math.max(0, queue.length - MAX_QUEUE_LENGTH));
     await saveQueue(queue.slice(-MAX_QUEUE_LENGTH));
-
-    await flushLocked();
-    const after = await loadQueue();
-    return !after.some((queued) => queued.client_id === entry.client_id);
+    dropped.forEach(deleteAttachment);
   });
+  void flushFeedbackQueue();
 }
 
 /**
@@ -91,5 +129,11 @@ export function flushFeedbackQueue(): Promise<void> {
 export function clearFeedbackQueue(): Promise<void> {
   return enqueueTask(async () => {
     await saveQueue([]);
+    try {
+      const directory = attachmentsDirectory();
+      if (directory.exists) directory.delete();
+    } catch {
+      // Best-effort privacy cleanup at account boundaries.
+    }
   });
 }

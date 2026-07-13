@@ -57,6 +57,10 @@ export type Pub = {
   communityHours?: WeeklyHours;
   /** Beers on tap, when known (community-sourced). */
   beers?: CommunityBeer[];
+  /** Previously confirmed beers no longer on the current tap list. */
+  historicalBeers?: CommunityBeer[];
+  /** Latest server-confirmed update of the current tap list. */
+  beersUpdatedAt?: string | null;
   /** Public star rating from the enrichment source, on a 0-5 scale. */
   rating?: number | null;
   /** Number of user ratings behind `rating`, when known. */

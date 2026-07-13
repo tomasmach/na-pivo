@@ -53,6 +53,8 @@ export interface CommunityResponse {
   cacheKey: string;
   hours: WeeklyHours | null;
   beers: CommunityBeer[];
+  historicalBeers: CommunityBeer[];
+  beersUpdatedAt: string | null;
   /** Mapér XP this submission paid (0 when the pub's facts were already
    *  contributed by this account). Additive field — 0 on older backends. */
   xpAwarded: number;
@@ -64,6 +66,8 @@ interface WireResponse {
   cache_key?: string;
   hours?: WeeklyHours | null;
   beers?: WireBeer[];
+  historical_beers?: WireBeer[];
+  beers_updated_at?: string | null;
   xp_awarded?: number;
   mapper?: WireMapperSnapshot | null;
 }
@@ -127,6 +131,10 @@ export async function submitPubCommunity(
       cacheKey: data.cache_key,
       hours: data.hours ?? null,
       beers: Array.isArray(data.beers) ? data.beers.map(beerFromWire) : [],
+      historicalBeers: Array.isArray(data.historical_beers)
+        ? data.historical_beers.map(beerFromWire)
+        : [],
+      beersUpdatedAt: typeof data.beers_updated_at === 'string' ? data.beers_updated_at : null,
       xpAwarded: typeof data.xp_awarded === 'number' ? data.xp_awarded : 0,
       mapper: data.mapper ?? null,
     };

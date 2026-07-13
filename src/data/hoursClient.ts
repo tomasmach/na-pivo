@@ -30,6 +30,10 @@ export interface PubHoursResult {
   communityHours: WeeklyHours | null;
   /** Beers on tap, when the backend has them; empty array when none. */
   beers: CommunityBeer[];
+  /** Previously confirmed beers no longer present on the current tap list. */
+  historicalBeers: CommunityBeer[];
+  /** ISO timestamp of the latest confirmed current-menu replacement/update. */
+  beersUpdatedAt: string | null;
   /** Public star rating from the backend source, on a 0-5 scale. */
   rating: number | null;
   /** Number of user ratings behind `rating`, when known. */
@@ -77,6 +81,9 @@ interface BackendResult {
   hours_json?: unknown;
   /** Beers on tap (may be absent on older backends). */
   beers?: WireBeer[];
+  /** Additive lifecycle fields; absent on older backends. */
+  historical_beers?: WireBeer[];
+  beers_updated_at?: string | null;
   /** Public star rating (may be absent on older backends). */
   rating?: number | null;
   /** Number of public ratings (may be absent on older backends). */
@@ -141,6 +148,8 @@ function toResult(entry: BackendResult | undefined): PubHoursResult {
       source: null,
       communityHours: null,
       beers: [],
+      historicalBeers: [],
+      beersUpdatedAt: null,
       rating: null,
       ratingCount: null,
       ratingLabel: null,
@@ -153,6 +162,11 @@ function toResult(entry: BackendResult | undefined): PubHoursResult {
   const beers = Array.isArray(entry.beers)
     ? entry.beers.flatMap((b) => (b && typeof b.name === 'string' ? [beerFromWire(b as { name: string })] : []))
     : [];
+  const historicalBeers = Array.isArray(entry.historical_beers)
+    ? entry.historical_beers.flatMap((b) =>
+        b && typeof b.name === 'string' ? [beerFromWire(b as { name: string })] : [],
+      )
+    : [];
   return {
     openingHours: entry.opening_hours ?? null,
     isOpenNow: typeof entry.isOpenNow === 'boolean' ? entry.isOpenNow : null,
@@ -161,6 +175,8 @@ function toResult(entry: BackendResult | undefined): PubHoursResult {
     source: typeof entry.source === 'string' ? entry.source : null,
     communityHours,
     beers,
+    historicalBeers,
+    beersUpdatedAt: typeof entry.beers_updated_at === 'string' ? entry.beers_updated_at : null,
     rating: typeof entry.rating === 'number' && Number.isFinite(entry.rating) ? entry.rating : null,
     ratingCount:
       typeof entry.ratingCount === 'number' && Number.isFinite(entry.ratingCount)

@@ -13,6 +13,7 @@ import {
   Text,
   Pressable,
   TextInput,
+  Image,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -24,21 +25,27 @@ import { Colors } from '@/theme/colors';
 import { Fonts } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
-import { ChevronLeftIcon } from '@/components/shared/IconGlyph';
+import { CameraIcon, ChevronLeftIcon, ImagesIcon, XIcon } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
+import { showAppDialog } from '@/components/shared/AppDialog';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { getAppVersionLabel } from '@/utils/appVersion';
-import { enqueueFeedback, flushFeedbackQueue } from '@/data/feedbackQueue';
+import { enqueueFeedback } from '@/data/feedbackQueue';
 import type { FeedbackCategory, FeedbackContactType } from '@/data/feedbackClient';
+import {
+  pickFeedbackAttachment,
+  type FeedbackAttachmentSource,
+} from '@/data/feedbackAttachmentPicker';
+import { openSystemSettings } from '@/compass/permissions';
 
-const CATEGORIES: Array<{ value: FeedbackCategory; label: string }> = [
+const CATEGORIES: { value: FeedbackCategory; label: string }[] = [
   { value: 'bug', label: cs.report.categoryBug },
   { value: 'idea', label: cs.report.categoryIdea },
   { value: 'other', label: cs.report.categoryOther },
 ];
 
 // Instagram first — most users know the app from there.
-const CONTACT_CHANNELS: Array<{ value: FeedbackContactType; label: string }> = [
+const CONTACT_CHANNELS: { value: FeedbackContactType; label: string }[] = [
   { value: 'instagram', label: cs.report.contactInstagram },
   { value: 'email', label: cs.report.contactEmail },
 ];
@@ -56,27 +63,78 @@ export default function ReportScreen() {
   const [message, setMessage] = useState('');
   const [contactType, setContactType] = useState<FeedbackContactType>('instagram');
   const [contact, setContact] = useState('');
+  const [attachmentUri, setAttachmentUri] = useState<string | null>(null);
+  const [pickingAttachment, setPickingAttachment] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
   const appVersionLabel = getAppVersionLabel();
-  const canSubmit = message.trim().length > 0;
+  const canSubmit = message.trim().length > 0 && !submitting;
 
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = useCallback(async () => {
     if (!canSubmit) return;
+    setSubmitting(true);
 
-    // Fire-and-forget: the queue persists the entry before the first send and
-    // retries on launch/foreground, so we never block on the network here.
-    // buildFeedbackEntry omits the contact pair when the input is empty.
-    void enqueueFeedback({
-      category,
-      message,
-      contactType,
-      contact,
+    try {
+      // Wait only for durable local persistence, never for the network. This is
+      // what keeps a picked cache image safe if the app is closed while offline.
+      await enqueueFeedback({
+        category,
+        message,
+        contactType,
+        contact,
+        attachmentUri: attachmentUri ?? undefined,
+      });
+      setSubmitted(true);
+    } finally {
+      setSubmitting(false);
+    }
+  }, [attachmentUri, canSubmit, category, message, contactType, contact]);
+
+  const handleAttachmentPick = useCallback(async (source: FeedbackAttachmentSource) => {
+    if (pickingAttachment) return;
+    setPickingAttachment(true);
+    try {
+      const result = await pickFeedbackAttachment(source);
+      if (result.status === 'picked') {
+        setAttachmentUri(result.uri);
+      } else if (result.status === 'denied-permanent') {
+        showAppDialog({
+          title: cs.report.attachmentPermissionTitle,
+          message: cs.report.attachmentPermissionBlocked,
+          buttons: [
+            { text: cs.common.cancel, style: 'cancel' },
+            { text: cs.report.attachmentOpenSettings, onPress: () => void openSystemSettings() },
+          ],
+        });
+      } else if (result.status === 'denied') {
+        showAppDialog({
+          title: cs.report.attachmentPermissionTitle,
+          message: cs.report.attachmentPermissionDenied,
+          buttons: [{ text: cs.common.ok }],
+        });
+      } else if (result.status === 'error') {
+        showAppDialog({
+          title: cs.report.attachmentErrorTitle,
+          message: cs.report.attachmentErrorBody,
+          buttons: [{ text: cs.common.ok }],
+        });
+      }
+    } finally {
+      setPickingAttachment(false);
+    }
+  }, [pickingAttachment]);
+
+  const showAttachmentSource = useCallback(() => {
+    showAppDialog({
+      title: cs.report.attachmentSourceTitle,
+      buttons: [
+        { text: cs.report.attachmentCamera, onPress: () => void handleAttachmentPick('camera') },
+        { text: cs.report.attachmentLibrary, onPress: () => void handleAttachmentPick('library') },
+        { text: cs.common.cancel, style: 'cancel' },
+      ],
     });
-    void flushFeedbackQueue();
-
-    setSubmitted(true);
-  }, [canSubmit, category, message, contactType, contact]);
+  }, [handleAttachmentPick]);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + 12 }]}>
@@ -170,6 +228,48 @@ export default function ReportScreen() {
             accessibilityLabel={cs.report.messagePlaceholder}
           />
 
+          {/* ── Optional screenshot/photo ── */}
+          <Text style={styles.attachmentCaption}>{cs.report.attachmentCaption}</Text>
+          {attachmentUri ? (
+            <View style={styles.attachmentPreviewRow}>
+              <Image source={{ uri: attachmentUri }} style={styles.attachmentPreview} />
+              <View style={styles.attachmentPreviewCopy}>
+                <Text style={styles.attachmentReady}>{cs.report.attachmentReady}</Text>
+                <Text style={styles.attachmentPrivacy}>{cs.report.attachmentPrivacy}</Text>
+              </View>
+              <Pressable
+                onPress={() => setAttachmentUri(null)}
+                accessibilityRole="button"
+                accessibilityLabel={cs.report.attachmentRemove}
+                style={({ pressed }) => [styles.attachmentRemove, pressed && styles.pressed]}
+              >
+                <XIcon size={18} color={Colors.foamMuted} />
+              </Pressable>
+            </View>
+          ) : (
+            <Pressable
+              onPress={showAttachmentSource}
+              disabled={pickingAttachment}
+              accessibilityRole="button"
+              accessibilityLabel={cs.report.attachmentAdd}
+              style={({ pressed }) => [styles.attachmentButton, pressed && styles.pressed]}
+            >
+              <View style={styles.attachmentIcon}>
+                {pickingAttachment ? (
+                  <ImagesIcon size={20} color={Colors.mutedText} />
+                ) : (
+                  <CameraIcon size={20} color={Colors.amber} />
+                )}
+              </View>
+              <View style={styles.attachmentButtonCopy}>
+                <Text style={styles.attachmentButtonTitle}>
+                  {pickingAttachment ? cs.report.attachmentPreparing : cs.report.attachmentAdd}
+                </Text>
+                <Text style={styles.attachmentPrivacy}>{cs.report.attachmentHelper}</Text>
+              </View>
+            </Pressable>
+          )}
+
           {/* ── Optional contact ── */}
           <Text style={styles.contactCaption}>{cs.report.contactCaption}</Text>
           <View style={styles.contactChannels}>
@@ -216,7 +316,7 @@ export default function ReportScreen() {
           <View style={styles.submitButton}>
             <GlowButton
               label={cs.report.submit}
-              onPress={handleSubmit}
+              onPress={() => void handleSubmit()}
               glow={canSubmit ? 'soft' : 'none'}
               accessibilityLabel={cs.a11y.feedbackSubmitButton}
             />
@@ -330,6 +430,78 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: Spacing.lg,
   },
+
+  // ── Attachment ──
+  attachmentCaption: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 13,
+    color: Colors.foamMuted,
+    marginBottom: Spacing.sm,
+  },
+  attachmentButton: {
+    minHeight: 72,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: Radius.medium,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.stout3,
+    marginBottom: Spacing.lg,
+  },
+  attachmentIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.stout2,
+  },
+  attachmentButtonCopy: { flex: 1, gap: 3 },
+  attachmentButtonTitle: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 14,
+    color: Colors.foam,
+  },
+  attachmentPreviewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 8,
+    borderRadius: Radius.medium,
+    borderWidth: 1,
+    borderColor: Colors.amber,
+    backgroundColor: Colors.stout3,
+    marginBottom: Spacing.lg,
+  },
+  attachmentPreview: {
+    width: 68,
+    height: 68,
+    borderRadius: Radius.small,
+    backgroundColor: Colors.stout2,
+  },
+  attachmentPreviewCopy: { flex: 1, gap: 3 },
+  attachmentReady: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 14,
+    color: Colors.amberLight,
+  },
+  attachmentPrivacy: {
+    fontFamily: Fonts.ui.regular,
+    fontSize: 12,
+    lineHeight: 16,
+    color: Colors.mutedText,
+  },
+  attachmentRemove: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.stout2,
+  },
+  pressed: { opacity: 0.72 },
 
   // ── Contact ──
   contactCaption: {

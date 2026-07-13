@@ -71,6 +71,7 @@ export function isAllowedBeerVolume(volumeMl: number | undefined): boolean {
 
 /** The most beers a community menu may hold — mirrors the backend cap. */
 export const MAX_MENU_BEERS = 12;
+export const MAX_HISTORICAL_MENU_BEERS = 24;
 
 /** Normalize a beer name for identity comparison: trim + lowercase (casefold). */
 export function normalizeBeerName(name: string): string {
@@ -128,6 +129,28 @@ export function mergeBeerIntoMenu(
   if (typeof beer.priceCzk === 'number') appended.priceCzk = beer.priceCzk;
   if (typeof beer.volumeMl === 'number') appended.volumeMl = beer.volumeMl;
   next.push(appended);
+  return next;
+}
+
+/**
+ * Build the bounded restore history after a user confirms a full current menu.
+ * Removed current rows are newest, existing history follows, and anything back
+ * on tap is removed from history. Mirrors the backend lifecycle helper.
+ */
+export function historicalBeersAfterMenuReplacement(
+  current: readonly CommunityBeer[],
+  replacement: readonly CommunityBeer[],
+  historical: readonly CommunityBeer[],
+): CommunityBeer[] {
+  const isIn = (list: readonly CommunityBeer[], beer: CommunityBeer) =>
+    list.some((candidate) => isSameBeerIdentity(candidate, beer));
+  const next: CommunityBeer[] = [];
+
+  for (const beer of [...current.filter((item) => !isIn(replacement, item)), ...historical]) {
+    if (!normalizeBeerName(beer.name) || isIn(replacement, beer) || isIn(next, beer)) continue;
+    next.push({ ...beer });
+    if (next.length >= MAX_HISTORICAL_MENU_BEERS) break;
+  }
   return next;
 }
 

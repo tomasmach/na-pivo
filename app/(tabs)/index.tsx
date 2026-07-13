@@ -1347,6 +1347,9 @@ export default function CompassScreen() {
         ...(pub.city ? { city: pub.city } : {}),
         ...(prefillHours ? { hours: JSON.stringify(prefillHours) } : {}),
         ...(pub.beers && pub.beers.length > 0 ? { beers: JSON.stringify(pub.beers) } : {}),
+        ...(pub.historicalBeers && pub.historicalBeers.length > 0
+          ? { historicalBeers: JSON.stringify(pub.historicalBeers) }
+          : {}),
       },
     });
   }, [pub, router]);

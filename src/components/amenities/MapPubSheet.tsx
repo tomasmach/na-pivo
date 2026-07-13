@@ -469,6 +469,9 @@ export function MapPubSheet({
           ...(info.prefillBeers && info.prefillBeers.length > 0
             ? { beers: JSON.stringify(info.prefillBeers) }
             : {}),
+          ...(info.historicalBeers && info.historicalBeers.length > 0
+            ? { historicalBeers: JSON.stringify(info.historicalBeers) }
+            : {}),
         },
       });
     },

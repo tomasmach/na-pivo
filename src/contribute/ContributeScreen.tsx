@@ -41,6 +41,7 @@ import {
   SearchIcon,
   InfoIcon,
   ClockIcon,
+  HistoryIcon,
 } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
@@ -51,6 +52,7 @@ import {
   DAY_KEYS,
   emptyWeeklyHours,
   isAllowedBeerVolume,
+  historicalBeersAfterMenuReplacement,
   isSameBeerIdentity,
   isValidHoursInterval,
   normalizeBeerName,
@@ -71,6 +73,7 @@ import { useAccountStore } from '@/stores/accountStore';
 import { fireSuccessHaptic } from '@/utils/haptics';
 import {
   formatPriceInputFromCzk,
+  formatPrice,
   parsePriceInputToCzk,
   currencyFractionDigits,
   pricePlaceholder,
@@ -216,12 +219,23 @@ export default function ContributeScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const prefillBeers = useMemo<BeerRow[]>(() => {
+  const initialCurrentBeers = useMemo<CommunityBeer[]>(() => {
     const fromParam = decodeJsonParam<CommunityBeer[] | null>(params.beers, null);
-    const source = fromParam ?? storedOverride?.beers ?? [];
-    return source.map((b) => communityBeerToRow(b, priceCurrency));
+    return fromParam ?? storedOverride?.beers ?? [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [priceCurrency]);
+  }, []);
+
+  const prefillBeers = useMemo<BeerRow[]>(
+    () => initialCurrentBeers.map((beer) => communityBeerToRow(beer, priceCurrency)),
+    [initialCurrentBeers, priceCurrency],
+  );
+
+  const historicalBeers = useMemo<CommunityBeer[]>(
+    () => decodeJsonParam<CommunityBeer[]>(params.historicalBeers, []),
+    // History is a server-owned restore source; the form owns current rows.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
   const [hours, setHours] = useState<WeeklyHours>(prefillHours);
   const [beers, setBeers] = useState<BeerRow[]>(prefillBeers);
@@ -368,6 +382,29 @@ export default function ContributeScreen() {
     });
     setActiveBeerId(row.id);
   }, [beers]);
+
+  const availableHistoricalBeers = useMemo(
+    () =>
+      historicalBeers.filter(
+        (historical) => !beers.some((beer) => isSameBeerIdentity(beer, historical)),
+      ),
+    [beers, historicalBeers],
+  );
+
+  const restoreHistoricalBeer = useCallback(
+    (beer: CommunityBeer) => {
+      if (beersRef.current.length >= MAX_BEERS) return;
+      const row = communityBeerToRow(beer, priceCurrency);
+      setBeersTouched(true);
+      setBeers((previous) => {
+        if (previous.some((current) => isSameBeerIdentity(current, beer))) return previous;
+        const next = [...previous, row];
+        beersRef.current = next;
+        return next;
+      });
+    },
+    [priceCurrency],
+  );
 
   // ── Scan menu (AI OCR prefill) ───────────────────────────────────────────--
   // Pick/snap a menu photo, upload it to the OCR helper, then MERGE the extracted
@@ -573,6 +610,13 @@ export default function ContributeScreen() {
     setOverride(cell, {
       hours: sendHours ? hours : undefined,
       beers: sendBeers ? cleanedBeers : undefined,
+      historicalBeers: sendBeers
+        ? historicalBeersAfterMenuReplacement(
+            initialCurrentBeers,
+            cleanedBeers,
+            historicalBeers,
+          )
+        : undefined,
     });
 
     // Fire-and-forget: the queue persists before the first send and retries. Its
@@ -613,6 +657,8 @@ export default function ContributeScreen() {
     hours,
     hoursTouched,
     hoursValid,
+    historicalBeers,
+    initialCurrentBeers,
     pub.city,
     pub.id,
     pub.lat,
@@ -718,6 +764,9 @@ export default function ContributeScreen() {
               >
                 {cs.contribute.beersHeader}
               </Text>
+              <Text style={styles.beersLifecycleHint} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.contribute.beersLifecycleHint}
+              </Text>
 
               <ScanMenuButton scanning={scanning} onPress={handleScanMenu} />
 
@@ -778,6 +827,67 @@ export default function ContributeScreen() {
                 <Text style={styles.maxHint} maxFontSizeMultiplier={FontScaleCap.body}>
                   {cs.contribute.maxBeersReached}
                 </Text>
+              )}
+
+              {availableHistoricalBeers.length > 0 && (
+                <View style={styles.historicalSection}>
+                  <View style={styles.historicalHeaderRow}>
+                    <HistoryIcon size={15} color={Colors.mutedText} />
+                    <Text
+                      style={styles.historicalHeader}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {cs.contribute.historicalBeersHeader}
+                    </Text>
+                  </View>
+                  <Text style={styles.historicalHint} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {cs.contribute.historicalBeersHint}
+                  </Text>
+                  <View style={styles.historicalList}>
+                    {availableHistoricalBeers.map((beer) => {
+                      const detail = [
+                        beer.volumeMl ? `${(beer.volumeMl / 1000).toLocaleString('cs-CZ')} l` : null,
+                        typeof beer.priceCzk === 'number'
+                          ? formatPrice(beer.priceCzk, priceCurrency)
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ');
+                      return (
+                        <Pressable
+                          key={`${normalizeBeerName(beer.name)}:${beer.volumeMl ?? ''}`}
+                          onPress={() => restoreHistoricalBeer(beer)}
+                          disabled={beers.length >= MAX_BEERS}
+                          style={({ pressed }) => [
+                            styles.historicalBeer,
+                            pressed && styles.historicalBeerPressed,
+                          ]}
+                          accessibilityRole="button"
+                          accessibilityLabel={cs.a11y.contributeRestoreHistoricalBeer(beer.name)}
+                        >
+                          <View style={styles.historicalBeerCopy}>
+                            <Text
+                              style={styles.historicalBeerName}
+                              numberOfLines={1}
+                              maxFontSizeMultiplier={FontScaleCap.body}
+                            >
+                              {beer.name}
+                            </Text>
+                            {detail ? (
+                              <Text
+                                style={styles.historicalBeerDetail}
+                                maxFontSizeMultiplier={FontScaleCap.body}
+                              >
+                                {detail}
+                              </Text>
+                            ) : null}
+                          </View>
+                          <PlusIcon size={16} color={Colors.amber} />
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
               )}
             </>
           )}
@@ -1268,6 +1378,14 @@ const styles = StyleSheet.create({
   },
 
   // ── Beer row ──
+  beersLifecycleHint: {
+    fontFamily: Fonts.ui.regular,
+    fontSize: 13,
+    lineHeight: 18,
+    color: Colors.foamMuted,
+    marginTop: -4,
+    marginBottom: 12,
+  },
   beerRow: {
     backgroundColor: Colors.stout3,
     borderWidth: 1,
@@ -1403,6 +1521,66 @@ const styles = StyleSheet.create({
     color: Colors.mutedText,
     textAlign: 'center',
     marginBottom: Spacing.md,
+  },
+  historicalSection: {
+    marginTop: Spacing.sm,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  historicalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  historicalHeader: {
+    fontFamily: Fonts.ui.bold,
+    fontSize: 13,
+    color: Colors.foamMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+  },
+  historicalHint: {
+    fontFamily: Fonts.ui.regular,
+    fontSize: 13,
+    color: Colors.mutedText,
+    lineHeight: 18,
+    marginTop: 5,
+    marginBottom: 10,
+  },
+  historicalList: {
+    gap: 7,
+  },
+  historicalBeer: {
+    minHeight: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    borderRadius: Radius.medium,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.stout2,
+  },
+  historicalBeerPressed: {
+    borderColor: withAlpha(Colors.amber, 0.55),
+    backgroundColor: withAlpha(Colors.amber, 0.08),
+  },
+  historicalBeerCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  historicalBeerName: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 14,
+    color: Colors.foam,
+  },
+  historicalBeerDetail: {
+    fontFamily: Fonts.ui.regular,
+    fontSize: 12,
+    color: Colors.mutedText,
+    marginTop: 2,
   },
   invalidHint: {
     fontFamily: Fonts.ui.medium,

@@ -395,7 +395,11 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   const [formNonce, setFormNonce] = useState(0);
   // Per-beer pulse counter (key → token); bumped on each count to bounce a card.
   const [pulses, setPulses] = useState<Record<string, number>>({});
-  const [backendMenu, setBackendMenu] = useState<{ pubId: string; beers: CommunityBeer[] } | null>(null);
+  const [backendMenu, setBackendMenu] = useState<{
+    pubId: string;
+    beers: CommunityBeer[];
+    historicalBeers: CommunityBeer[];
+  } | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [sharingWithFriends, setSharingWithFriends] = useState(false);
   // The pub cell I've broadcast to; once it matches the active pub the button
@@ -433,7 +437,12 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
 
     fetchPubHours([pub], controller.signal).then((resultMap) => {
       if (controller.signal.aborted) return;
-      setBackendMenu({ pubId: pub.id, beers: resultMap.get(pub.id)?.beers ?? [] });
+      const result = resultMap.get(pub.id);
+      setBackendMenu({
+        pubId: pub.id,
+        beers: result?.beers ?? [],
+        historicalBeers: result?.historicalBeers ?? [],
+      });
     });
 
     return () => controller.abort();
@@ -489,6 +498,13 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
     if (backendBeers.length > 0) return backendBeers;
     return pub.beers ?? [];
   }, [backendMenu, override, pub.beers, pub.id]);
+
+  const historicalBeers = useMemo<CommunityBeer[]>(() => {
+    if (backendMenu?.pubId === pub.id && backendMenu.historicalBeers.length > 0) {
+      return backendMenu.historicalBeers;
+    }
+    return pub.historicalBeers ?? [];
+  }, [backendMenu, pub.historicalBeers, pub.id]);
 
   // — Count one beer (writes tally + queue + menu override) —
   // `atOverride` backdates the drink (PIV-25). When the backdated timestamp
@@ -700,9 +716,12 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
         lng: String(pub.lng),
         ...(pub.city ? { city: pub.city } : {}),
         ...(menu.length > 0 ? { beers: JSON.stringify(menu) } : {}),
+        ...(historicalBeers.length > 0
+          ? { historicalBeers: JSON.stringify(historicalBeers) }
+          : {}),
       },
     });
-  }, [menu, pub, router]);
+  }, [historicalBeers, menu, pub, router]);
 
   const runDrinkScan = useCallback(
     async (source: MenuPhotoSource) => {
