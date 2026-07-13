@@ -89,9 +89,11 @@ def normalize_business(payload: object) -> dict[str, Any]:
 
     beers: list[dict[str, Any]] = []
     for index, item in enumerate(prices):
-        if not isinstance(item, dict) or not isinstance(item.get("beer"), dict):
+        if not isinstance(item, dict):
             raise PivarovaMapaError(f"Invalid price row {index}")
-        beer = item["beer"]
+        # Some valid source rows intentionally have no canonical beer object
+        # and carry the full tap name only in ``rawBeerName``.
+        beer = item.get("beer") if isinstance(item.get("beer"), dict) else {}
         volume_l = _number(item.get("volumeL"), "volumeL")
         volume_ml = round(volume_l * 1_000)
         if volume_ml <= 0 or volume_ml > 2_000 or abs(volume_l * 1_000 - volume_ml) > 0.01:

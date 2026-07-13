@@ -54,3 +54,6 @@ Thumbs.db
 # Local pub-catalogue data dumps (large, regenerated)
 scripts/*.json
 scripts/__pycache__/
+
+# One-time third-party seed snapshots (local audit/recovery data)
+pubs/data/pivarova_mapa_seed.jsonl

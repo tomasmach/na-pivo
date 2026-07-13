@@ -67,6 +67,17 @@ def test_normalize_business_preserves_provenance_and_exact_serving():
     ]
 
 
+def test_normalize_business_accepts_uncatalogued_raw_beer_name():
+    payload = _detail()
+    payload["prices"][0]["beer"] = None
+    payload["prices"][0]["rawBeerName"] = "Fat Cat APA"
+
+    row = normalize_business(payload)
+
+    assert row["beers"][0]["name"] == "Fat Cat APA"
+    assert row["beers"][0]["source_beer_id"] is None
+
+
 @pytest.mark.parametrize(
     ("change", "message"),
     [
