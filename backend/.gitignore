@@ -57,3 +57,6 @@ scripts/__pycache__/
 
 # One-time third-party seed snapshots (local audit/recovery data)
 pubs/data/pivarova_mapa_seed.jsonl
+
+# Local operational backups and sanitized production test fixtures
+backups/
