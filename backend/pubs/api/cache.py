@@ -45,10 +45,11 @@ from pubs.enrichment import (
     classify_venue,
     geohash8,
     is_open_now,
+    name_similarity,
     names_match,
     next_change,
 )
-from pubs.models import EnrichTask, PubCommunityData, PubHours
+from pubs.models import EnrichTask, PubCommunityData, PubExternalBeerMenu, PubHours
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,8 @@ def _result_from_row(row: PubHours) -> dict[str, Any]:
         "beers": [],
         "historical_beers": [],
         "beers_updated_at": None,
+        "beers_source": None,
+        "beers_source_url": None,
         "hours_json": None,
     }
 
@@ -133,6 +136,8 @@ def _empty_result(cache_key: str, name: str, status: str) -> dict[str, Any]:
         "beers": [],
         "historical_beers": [],
         "beers_updated_at": None,
+        "beers_source": None,
+        "beers_source_url": None,
         "hours_json": None,
     }
 
@@ -209,8 +214,34 @@ def _community_result(
         "beers": row.beers or [],
         "historical_beers": row.historical_beers or [],
         "beers_updated_at": row.beers_updated_at,
+        "beers_source": "community" if row.beers_updated_at is not None else None,
+        "beers_source_url": None,
         "hours_json": row.hours_json,
     }
+
+
+def _external_by_key(keys: list[str]) -> dict[str, list[PubExternalBeerMenu]]:
+    grouped: dict[str, list[PubExternalBeerMenu]] = {}
+    for row in PubExternalBeerMenu.objects.filter(cache_key__in=keys, active=True):
+        grouped.setdefault(row.cache_key, []).append(row)
+    return grouped
+
+
+def _matching_external_menu(
+    rows: list[PubExternalBeerMenu] | None, name: str
+) -> PubExternalBeerMenu | None:
+    matching = [row for row in rows or [] if names_match(name, row.name)]
+    return max(matching, key=lambda row: name_similarity(name, row.name), default=None)
+
+
+def _attach_external_menu(result: dict[str, Any], row: PubExternalBeerMenu | None) -> None:
+    if row is None or not row.beers:
+        return
+    result["beers"] = row.beers
+    result["beers_updated_at"] = row.verified_at
+    result["beers_source"] = row.source
+    result["beers_source_url"] = row.source_url
+    result["venueKind"] = PubHours.VenueKind.PUB
 
 
 def _upsert_enrich_task(
@@ -420,6 +451,7 @@ def get_or_enrich(
         row.cache_key: row
         for row in PubCommunityData.objects.filter(cache_key__in=all_keys)
     }
+    external = _external_by_key(all_keys)
 
     # Lazy-initialise the scraper only when we actually need a sync fetch
     source: FirmyHoursSource | None = None
@@ -441,12 +473,16 @@ def get_or_enrich(
         # must not be served this pub's community data.
         comm = community.get(key)
         comm_matches = comm is not None and names_match(name, comm.name)
+        external_menu = _matching_external_menu(external.get(key), name)
 
         if comm_matches and comm.hours_json is not None:
             # Community hours satisfy this pub fully — override firmy entirely
             # and do NOT schedule an EnrichTask (it is already satisfied).
             rating_row = row if row is not None and names_match(name, row.name) else None
-            results.append(_community_result(comm, name, rating_row))
+            result = _community_result(comm, name, rating_row)
+            if not comm.beers and comm.beers_updated_at is None:
+                _attach_external_menu(result, external_menu)
+            results.append(result)
             continue
 
         # Community beers (but no community hours) are attached to whatever the
@@ -455,6 +491,7 @@ def get_or_enrich(
         community_beers = comm.beers if comm_matches else None
         community_historical_beers = comm.historical_beers if comm_matches else None
         community_beers_updated_at = comm.beers_updated_at if comm_matches else None
+        community_has_menu = bool(community_beers) or community_beers_updated_at is not None
         _result_index = len(results)
 
         def _attach_beers() -> None:
@@ -468,6 +505,9 @@ def get_or_enrich(
                 results[_result_index]["historical_beers"] = community_historical_beers
             if community_beers_updated_at:
                 results[_result_index]["beers_updated_at"] = community_beers_updated_at
+                results[_result_index]["beers_source"] = "community"
+            if not community_has_menu:
+                _attach_external_menu(results[_result_index], external_menu)
 
         if row is not None and _is_fresh(row, ttl_days):
             # Cache HIT — return as-is (compute isOpenNow/nextChange live), or
@@ -579,6 +619,7 @@ def get_cached_pub_details(
         row.cache_key: row
         for row in PubCommunityData.objects.filter(cache_key__in=keys)
     }
+    external_by_key = _external_by_key(keys)
 
     results: list[dict[str, Any] | None] = []
     for entry in entries:
@@ -596,14 +637,18 @@ def get_cached_pub_details(
             if community_row is not None and names_match(name, community_row.name)
             else None
         )
+        external_menu = _matching_external_menu(external_by_key.get(key), name)
 
         if matching_community is not None and matching_community.hours_json is not None:
-            results.append(_community_result(matching_community, name, matching_hours))
+            result = _community_result(matching_community, name, matching_hours)
+            if not matching_community.beers and matching_community.beers_updated_at is None:
+                _attach_external_menu(result, external_menu)
+            results.append(result)
             continue
 
         if matching_hours is not None:
             result = _result_from_row(matching_hours)
-        elif matching_community is not None:
+        elif matching_community is not None or external_menu is not None:
             result = _unknown_result(key, name)
         else:
             results.append(None)
@@ -617,6 +662,11 @@ def get_cached_pub_details(
                 result["historical_beers"] = matching_community.historical_beers
             if matching_community.beers_updated_at:
                 result["beers_updated_at"] = matching_community.beers_updated_at
+                result["beers_source"] = "community"
+        if matching_community is None or (
+            not matching_community.beers and matching_community.beers_updated_at is None
+        ):
+            _attach_external_menu(result, external_menu)
         results.append(result)
 
     return results

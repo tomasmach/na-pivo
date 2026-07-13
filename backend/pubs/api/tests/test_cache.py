@@ -16,7 +16,7 @@ from django.utils import timezone as dj_tz
 
 from pubs.api.cache import get_or_enrich
 from pubs.enrichment import RawHours, geohash8
-from pubs.models import EnrichTask, PubHours
+from pubs.models import EnrichTask, PubCommunityData, PubExternalBeerMenu, PubHours
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -63,6 +63,98 @@ def _make_fresh_row(**kwargs) -> PubHours:
     )
     defaults.update(kwargs)
     return PubHours.objects.create(**defaults)
+
+
+def _make_external_menu(**kwargs) -> PubExternalBeerMenu:
+    defaults = {
+        "cache_key": _FLEKY_KEY,
+        "name": _FLEKY_NAME,
+        "lat": _FLEKY_LAT,
+        "lng": _FLEKY_LNG,
+        "city": "Praha",
+        "source": PubExternalBeerMenu.Source.PIVAROVA_MAPA,
+        "source_id": "pivaro-fleky",
+        "source_url": "https://pivarovamapa.cz/podnik/u-fleku",
+        "beers": [{"name": "Flekovský ležák 13°", "price_czk": 79, "volume_ml": 400}],
+        "verified_at": dj_tz.now(),
+    }
+    defaults.update(kwargs)
+    return PubExternalBeerMenu.objects.create(**defaults)
+
+
+@pytest.mark.django_db
+def test_external_menu_fills_pub_without_user_beers():
+    _make_fresh_row()
+    external = _make_external_menu()
+
+    result = get_or_enrich([_PUB_ENTRY], sync_budget=0)[0]
+
+    assert result["beers"] == external.beers
+    assert result["beers_source"] == "pivarova_mapa"
+    assert result["beers_source_url"] == external.source_url
+    assert result["venueKind"] == "pub"
+
+
+@pytest.mark.django_db
+def test_user_menu_always_wins_over_external_menu():
+    _make_fresh_row()
+    _make_external_menu()
+    PubCommunityData.objects.create(
+        cache_key=_FLEKY_KEY,
+        name=_FLEKY_NAME,
+        lat=_FLEKY_LAT,
+        lng=_FLEKY_LNG,
+        beers=[{"name": "Uživatelské pivo", "price_czk": 55, "volume_ml": 500}],
+        beers_updated_at=dj_tz.now(),
+    )
+
+    result = get_or_enrich([_PUB_ENTRY], sync_budget=0)[0]
+
+    assert result["beers"] == [
+        {"name": "Uživatelské pivo", "price_czk": 55, "volume_ml": 500}
+    ]
+    assert result["beers_source"] == "community"
+    assert result["beers_source_url"] is None
+
+
+@pytest.mark.django_db
+def test_explicit_empty_user_menu_suppresses_external_fallback():
+    _make_fresh_row()
+    _make_external_menu()
+    PubCommunityData.objects.create(
+        cache_key=_FLEKY_KEY,
+        name=_FLEKY_NAME,
+        lat=_FLEKY_LAT,
+        lng=_FLEKY_LNG,
+        beers=[],
+        beers_updated_at=dj_tz.now(),
+    )
+
+    result = get_or_enrich([_PUB_ENTRY], sync_budget=0)[0]
+
+    assert result["beers"] == []
+    assert result["beers_source"] == "community"
+
+
+@pytest.mark.django_db
+def test_legacy_user_menu_without_timestamp_still_wins():
+    _make_fresh_row()
+    _make_external_menu()
+    PubCommunityData.objects.create(
+        cache_key=_FLEKY_KEY,
+        name=_FLEKY_NAME,
+        lat=_FLEKY_LAT,
+        lng=_FLEKY_LNG,
+        beers=[{"name": "Starší uživatelské pivo", "price_czk": 49, "volume_ml": 500}],
+        beers_updated_at=None,
+    )
+
+    result = get_or_enrich([_PUB_ENTRY], sync_budget=0)[0]
+
+    assert result["beers"] == [
+        {"name": "Starší uživatelské pivo", "price_czk": 49, "volume_ml": 500}
+    ]
+    assert result["beers_source"] is None
 
 
 # ---------------------------------------------------------------------------

@@ -15,6 +15,7 @@ next_change         — next open/close transition; see is_open.py
 verify_match        — name+geo confidence scoring; see matcher.py
 classify_venue      — classify draft-beer venue from categories/tags; see venue.py
 names_match         — name-only gate for cache-read collision guard; see matcher.py
+name_similarity     — normalized name score used to choose among safe matches
 geohash8            — canonical PubHours cache-key helper (precision 8); see matcher.py
 geohash6            — cache-cell helper for the Mapy 'pubs near' cache; see matcher.py
 geohash5            — legacy coarse cell helper; see matcher.py
@@ -41,6 +42,7 @@ from .matcher import (  # noqa: F401
     geohash5_center,
     geohash6,
     geohash8,
+    name_similarity,
     names_match,
     verify_match,
 )
@@ -69,6 +71,7 @@ __all__ = [
     "next_change",
     "verify_match",
     "names_match",
+    "name_similarity",
     "geohash8",
     "geohash6",
     "geohash5",

@@ -17,6 +17,7 @@ from .models import (
     PubBeerProduct,
     PubCommunityData,
     PubContributionLog,
+    PubExternalBeerMenu,
     PubHours,
     PubNameCorrection,
     PubRating,
@@ -366,6 +367,15 @@ class PubCommunityDataAdmin(admin.ModelAdmin):
     search_fields = ("name", "cache_key", "external_id", "city")
     readonly_fields = ("cache_key", "created_at", "updated_at")
     ordering = ("-updated_at",)
+
+
+@admin.register(PubExternalBeerMenu)
+class PubExternalBeerMenuAdmin(admin.ModelAdmin):
+    list_display = ("name", "source", "cache_key", "verified_at", "active", "updated_at")
+    list_filter = ("source", "active")
+    search_fields = ("name", "cache_key", "source_id", "city")
+    readonly_fields = ("created_at", "updated_at", "fetched_at")
+    ordering = ("-verified_at",)
 
 
 @admin.register(BeerBrand)

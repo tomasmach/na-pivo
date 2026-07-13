@@ -9,6 +9,7 @@ UserAddedPub — community-added pubs missing from Mapy.cz / suggest results.
 ReleaseNote — a "what's new" entry shown once after the app updates to a version.
 FeedbackReport — an in-app feedback / bug report submitted by a user.
 PubCommunityData — current community-contributed hours + beers for a pub.
+PubExternalBeerMenu — imported beer-price fallback that never overrides community data.
 PubContributionLog — append-only history of community contributions.
 ClientEvent — privacy-safe diagnostic / usage telemetry from the app.
 AccountUsageStats — aggregated per-account app usage counters.
@@ -2295,6 +2296,53 @@ class PubCommunityData(models.Model):
 
     def __str__(self) -> str:
         return f"PubCommunityData({self.name} [{self.cache_key}])"
+
+
+class PubExternalBeerMenu(models.Model):
+    """Reviewed third-party beer menu used only when no user menu exists.
+
+    This stays separate from ``PubCommunityData`` so imported prices cannot be
+    mistaken for a user contribution, award XP, or overwrite a menu confirmed
+    in the app.  The API read path applies that precedence rule.
+    """
+
+    class Source(models.TextChoices):
+        PIVAROVA_MAPA = "pivarova_mapa", "Pivařova mapa"
+
+    cache_key = models.CharField(max_length=12, db_index=True)
+    name = models.CharField(max_length=255)
+    lat = models.FloatField()
+    lng = models.FloatField()
+    city = models.CharField(max_length=128, blank=True, default="")
+    source = models.CharField(max_length=32, choices=Source.choices, db_index=True)
+    source_id = models.CharField(max_length=128)
+    source_url = models.URLField(max_length=500)
+    beers = models.JSONField(
+        default=list,
+        help_text='Reviewed fallback rows: [{"name": str, "price_czk": number, "volume_ml": int}].',
+    )
+    verified_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Newest source verification timestamp represented by this snapshot.",
+    )
+    fetched_at = models.DateTimeField(default=timezone.now)
+    active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source", "source_id"], name="unique_external_beer_menu_source"
+            )
+        ]
+        indexes = [models.Index(fields=["cache_key", "active"])]
+        verbose_name = "External Beer Menu"
+        verbose_name_plural = "External Beer Menus"
+
+    def __str__(self) -> str:
+        return f"{self.name} [{self.source}:{self.source_id}]"
 
 
 class BeerBrand(models.Model):
