@@ -32,6 +32,7 @@ import {
   XIcon,
 } from '@/components/shared/IconGlyph';
 import { ExploreSwitch } from '@/components/shared/ExploreSwitch';
+import { PubCardActions } from '@/components/shared/PubCardActions';
 import type { Pub } from '@/data/pubs';
 import { fetchPubHours, type PubHoursResult } from '@/data/hoursClient';
 import {
@@ -832,58 +833,24 @@ export default function BeerMapScreen({
               </View>
             </Pressable>
 
-            <View style={styles.selectedPubFooter}>
-              <Pressable
-                onPress={() =>
+            <PubCardActions
+              primary={{
+                label: cs.map.aimCompass,
+                icon: <CompassIcon size={15} color={Colors.stout} />,
+                onPress: () =>
                   aimCompass({
                     lat: selectedPub.pub.lat,
                     lng: selectedPub.pub.lng,
                     name: selectedPub.pub.name,
                     cacheKey: selectedPub.key,
-                  })
-                }
-                style={({ pressed }) => [
-                  styles.selectedPubAction,
-                  styles.selectedPubActionPrimary,
-                  pressed && styles.selectedPubActionPressed,
-                ]}
-                accessibilityRole="button"
-              >
-                <View style={styles.selectedPubPrimaryIcon}>
-                  <CompassIcon size={18} color={Colors.stout} />
-                </View>
-                <Text
-                  style={styles.selectedPubActionTextPrimary}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.8}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {cs.map.aimCompass}
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setDetailOpen(true)}
-                style={({ pressed }) => [
-                  styles.selectedPubAction,
-                  styles.selectedPubActionSecondary,
-                  pressed && styles.selectedPubActionPressed,
-                ]}
-                accessibilityLabel={cs.map.pubDetail}
-                accessibilityRole="button"
-              >
-                <MapPinnedIcon size={15} color={Colors.foamMuted} />
-                <Text
-                  style={styles.selectedPubActionText}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.78}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {cs.map.pubDetail}
-                </Text>
-              </Pressable>
-            </View>
+                  }),
+              }}
+              secondary={{
+                label: cs.map.pubDetail,
+                icon: <MapPinnedIcon size={15} color={Colors.foamMuted} />,
+                onPress: () => setDetailOpen(true),
+              }}
+            />
           </ScrollView>
         ) : (
           <ScrollView style={styles.dockScroll} contentContainerStyle={styles.dockContent} showsVerticalScrollIndicator={false}>
@@ -1283,72 +1250,6 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   selectedPubRatingText: { fontFamily: Fonts.ui.semibold, fontSize: 13, color: Colors.foam },
-  selectedPubFooter: {
-    alignSelf: 'stretch',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
-    paddingTop: 8,
-    paddingHorizontal: 4,
-    paddingBottom: 4,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    borderRadius: Radius.medium,
-    backgroundColor: withAlpha(Colors.stout, 0.34),
-  },
-  selectedPubAction: {
-    flex: 1,
-    minWidth: 0,
-    minHeight: 34,
-    paddingHorizontal: 6,
-    borderRadius: 11,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  selectedPubActionPrimary: {
-    flex: 1.38,
-    borderRadius: 12,
-    backgroundColor: Colors.amber,
-    minHeight: 42,
-    position: 'relative',
-    shadowColor: Colors.glow,
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-  },
-  selectedPubActionSecondary: {
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.22),
-    backgroundColor: withAlpha(Colors.amber, 0.08),
-  },
-  selectedPubActionPressed: { opacity: 0.78, transform: [{ scale: 0.98 }] },
-  selectedPubPrimaryIcon: {
-    position: 'absolute',
-    left: 14,
-    top: 0,
-    bottom: 0,
-    justifyContent: 'center',
-  },
-  selectedPubActionText: {
-    flexShrink: 1,
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 10.8,
-    lineHeight: 13,
-    color: Colors.foamMuted,
-    textAlign: 'center',
-  },
-  selectedPubActionTextPrimary: {
-    width: '100%',
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 14,
-    lineHeight: 17,
-    color: Colors.stout,
-    textAlign: 'center',
-    transform: [{ translateY: 2 }],
-  },
   offlineText: {
     position: 'absolute',
     top: -28,

@@ -51,6 +51,7 @@ import { CompassContainer } from '@/components/compass/CompassContainer';
 import { OpenStatusChip } from '@/components/compass/OpenStatusChip';
 import { TitleBar } from '@/components/shared/TitleBar';
 import { GlowButton } from '@/components/shared/GlowButton';
+import { PubCardActions } from '@/components/shared/PubCardActions';
 import {
   BeerIcon,
   BeerOffIcon,
@@ -820,53 +821,19 @@ function RevealedPubPill({
 
       {/* Two clear choices keep the card calm: map public facts, or handle a
           missing/wrong pub from a focused sheet. */}
-      <View style={styles.pubPillFooter}>
-        <Pressable
-          onPress={() => setMapOpen(true)}
-          hitSlop={8}
-          style={({ pressed }) => [
-            styles.footerAction,
-            styles.footerActionPrimary,
-            pressed && styles.footerActionPressed,
-          ]}
-          accessibilityLabel={cs.mapPub.triggerDefault}
-          accessibilityRole="button"
-        >
-          <MapPinnedIcon size={15} color={Colors.stout} />
-          <Text
-            style={styles.footerActionTextPrimary}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.8}
-            maxFontSizeMultiplier={FontScaleCap.body}
-          >
-            {cs.mapPub.triggerDefault}
-          </Text>
-        </Pressable>
-
-        <Pressable
-          onPress={onReport}
-          hitSlop={8}
-          style={({ pressed }) => [
-            styles.footerAction,
-            styles.footerActionSecondary,
-            pressed && styles.footerActionPressed,
-          ]}
-          accessibilityLabel={cs.a11y.pubFixButton}
-          accessibilityRole="button"
-        >
-          <MapPinPlusIcon size={15} color={Colors.foamMuted} />
-          <Text
-            style={styles.footerActionText}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.78}
-            maxFontSizeMultiplier={FontScaleCap.body}
-          >
-            {cs.compass.pubFixShort}
-          </Text>
-        </Pressable>
-      </View>
+      <PubCardActions
+        primary={{
+          label: cs.mapPub.triggerDefault,
+          icon: <MapPinnedIcon size={15} color={Colors.stout} />,
+          onPress: () => setMapOpen(true),
+        }}
+        secondary={{
+          label: cs.compass.pubFixShort,
+          accessibilityLabel: cs.a11y.pubFixButton,
+          icon: <MapPinPlusIcon size={15} color={Colors.foamMuted} />,
+          onPress: onReport,
+        }}
+      />
 
       <MapPubSheet
         visible={mapOpen}
@@ -2186,67 +2153,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.foamMuted,
   },
-  pubPillFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'stretch',
-    gap: 4,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    marginTop: 2,
-    paddingTop: 8,
-    paddingHorizontal: 4,
-    paddingBottom: 4,
-    borderRadius: Radius.medium,
-    backgroundColor: withAlpha(Colors.stout, 0.34),
-  },
-  footerAction: {
-    flex: 1,
-    flexDirection: 'row',
-    minWidth: 0,
-    minHeight: 34,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    paddingHorizontal: 6,
-  },
-  footerActionPrimary: {
-    flex: 1.38,
-    borderRadius: 12,
-    backgroundColor: Colors.amber,
-    shadowColor: Colors.glow,
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-  },
-  footerActionSecondary: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.22),
-    backgroundColor: withAlpha(Colors.amber, 0.08),
-  },
-  footerActionPressed: {
-    opacity: 0.78,
-    transform: [{ scale: 0.98 }],
-  },
-  footerActionText: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 10.8,
-    lineHeight: 13,
-    color: Colors.foamMuted,
-    textAlign: 'center',
-    flexShrink: 1,
-  },
-  footerActionTextPrimary: {
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 11.5,
-    lineHeight: 14,
-    color: Colors.stout,
-    textAlign: 'center',
-    flexShrink: 1,
-  },
-
   // ── Mode toggle ──
   bottomControls: {
     flexDirection: 'row',
