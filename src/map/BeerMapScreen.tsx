@@ -21,6 +21,7 @@ import {
   BeerIcon,
   ChevronRightIcon,
   CompassIcon,
+  ExternalLinkIcon,
   ListIcon,
   LocateFixedIcon,
   ListFilterIcon,
@@ -43,6 +44,7 @@ import { fireLightImpactHaptic } from '@/utils/haptics';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useAccountStore } from '@/stores/accountStore';
+import { openPubInMaps } from '@/utils/maps';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius } from '@/theme/layout';
@@ -93,12 +95,6 @@ export interface BeerMapScreenProps {
   filters: PubSearchFilters;
   onApplyFilters: (filters: PubSearchFilters) => void;
   onShowCompass: () => void;
-}
-
-function formatShortDate(iso: string): string {
-  const date = new Date(iso);
-  if (!Number.isFinite(date.getTime())) return '';
-  return date.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric', year: 'numeric' });
 }
 
 function friendName(live: LivePubSummary): string {
@@ -335,6 +331,11 @@ export default function BeerMapScreen({
     typeof selectedDetailPub?.ratingCount === 'number' && selectedDetailPub.ratingCount > 0
       ? selectedDetailPub.ratingCount.toLocaleString('cs-CZ')
       : null;
+  const selectedRatingLine = selectedRating
+    ? selectedRatingCount
+      ? `${selectedRating} · ${selectedRatingCount}`
+      : selectedRating
+    : null;
 
   const visiblePoints = useMemo(() => {
     const latMargin = region.latitudeDelta * 0.65;
@@ -732,6 +733,7 @@ export default function BeerMapScreen({
       <View
         style={[
           styles.bottomDock,
+          selectedPub && styles.bottomDockSelected,
           {
             paddingBottom:
               selectedPub || selectedLive || selectedCity ? Math.max(insets.bottom, 12) : 12,
@@ -783,43 +785,54 @@ export default function BeerMapScreen({
             </Pressable>
           </ScrollView>
         ) : selectedPub ? (
-          <ScrollView style={styles.dockScroll} contentContainerStyle={styles.dockContent} showsVerticalScrollIndicator={false}>
-            <Text style={styles.dockTitle} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.heading}>{selectedPub.pub.name}</Text>
-            <Text style={styles.dockBody} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
-              {[selectedPub.pub.city, selectedPub.pub.address].filter(Boolean).join(' · ') || cs.map.pubFallback}
-            </Text>
-            <View style={styles.pubFactsRow}>
-              <View style={styles.pubOpenFact}>
-                <OpenStatusChip
-                  isOpenNow={selectedDetailPub?.isOpenNow ?? null}
-                  status={selectedHoursStatus}
-                  nextChange={selectedDetailPub?.nextChange}
-                />
+          <ScrollView
+            style={styles.dockScroll}
+            contentContainerStyle={styles.selectedPubContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <Pressable
+              onPress={() => void openPubInMaps(selectedDetailPub ?? selectedPub.pub)}
+              style={({ pressed }) => [styles.selectedPubTapArea, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={cs.a11y.pubPillRevealed(selectedPub.pub.name)}
+            >
+              <View style={styles.selectedPubNameRow}>
+                <BeerIcon size={18} color={Colors.amber} />
+                <Text
+                  style={styles.selectedPubName}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.heading}
+                >
+                  {selectedPub.pub.name}
+                </Text>
+                <ExternalLinkIcon size={16} color={Colors.amber} />
               </View>
-              {selectedRating ? (
-                <View style={styles.pubRatingFact} accessibilityLabel={cs.a11y.pubRating(selectedRating, selectedRatingCount ?? undefined)}>
-                  <StarIcon size={15} color={Colors.amber} />
-                  <Text style={styles.pubRatingValue}>{selectedRating}</Text>
-                  {selectedRatingCount ? (
-                    <Text style={styles.pubRatingCount}>{cs.map.ratingCount(selectedRatingCount)}</Text>
-                  ) : null}
+              <View style={styles.selectedPubMetaRow}>
+                <View style={styles.selectedPubStatus}>
+                  <OpenStatusChip
+                    isOpenNow={selectedDetailPub?.isOpenNow ?? null}
+                    status={selectedHoursStatus}
+                    nextChange={selectedDetailPub?.nextChange}
+                  />
                 </View>
-              ) : null}
-            </View>
-            {selectedDetailPub?.openingHours ? (
-              <Text style={styles.openingHoursLine} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.map.openingHours(selectedDetailPub.openingHours)}
-              </Text>
-            ) : null}
-            <Text style={selectedPub.visit ? styles.visitedLine : styles.unvisitedLine} maxFontSizeMultiplier={FontScaleCap.body}>
-              {selectedPub.visit
-                ? cs.map.visitedSummary(
-                    selectedPub.visit.visitCount,
-                    formatShortDate(selectedPub.visit.lastVisitedAt),
-                  )
-                : cs.map.notVisited}
-            </Text>
-            <View style={styles.actionRow}>
+                {selectedRatingLine ? (
+                  <View
+                    style={styles.selectedPubRating}
+                    accessibilityLabel={cs.a11y.pubRating(
+                      selectedRating ?? '',
+                      selectedRatingCount ?? undefined,
+                    )}
+                  >
+                    <StarIcon size={13} color={Colors.amber} />
+                    <Text style={styles.selectedPubRatingText} numberOfLines={1}>
+                      {selectedRatingLine}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            </Pressable>
+
+            <View style={styles.selectedPubFooter}>
               <Pressable
                 onPress={() =>
                   aimCompass({
@@ -829,19 +842,46 @@ export default function BeerMapScreen({
                     cacheKey: selectedPub.key,
                   })
                 }
-                style={({ pressed }) => [styles.primaryButton, styles.actionGrow, pressed && styles.pressed]}
+                style={({ pressed }) => [
+                  styles.selectedPubAction,
+                  styles.selectedPubActionPrimary,
+                  pressed && styles.selectedPubActionPressed,
+                ]}
                 accessibilityRole="button"
               >
-                <CompassIcon size={18} color={Colors.stout} />
-                <Text style={styles.primaryButtonText} maxFontSizeMultiplier={FontScaleCap.heading}>{cs.map.aimCompass}</Text>
+                <View style={styles.selectedPubPrimaryIcon}>
+                  <CompassIcon size={18} color={Colors.stout} />
+                </View>
+                <Text
+                  style={styles.selectedPubActionTextPrimary}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.8}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {cs.map.aimCompass}
+                </Text>
               </Pressable>
               <Pressable
                 onPress={() => setDetailOpen(true)}
-                style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
+                style={({ pressed }) => [
+                  styles.selectedPubAction,
+                  styles.selectedPubActionSecondary,
+                  pressed && styles.selectedPubActionPressed,
+                ]}
                 accessibilityLabel={cs.map.pubDetail}
                 accessibilityRole="button"
               >
-                <ChevronRightIcon size={20} color={Colors.foam} />
+                <MapPinnedIcon size={15} color={Colors.foamMuted} />
+                <Text
+                  style={styles.selectedPubActionText}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.78}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {cs.map.pubDetail}
+                </Text>
               </Pressable>
             </View>
           </ScrollView>
@@ -1202,18 +1242,112 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 12 },
   },
+  bottomDockSelected: {
+    borderRadius: Radius.card,
+    backgroundColor: Colors.stout2,
+    borderColor: Colors.amber,
+  },
   dockContent: { paddingHorizontal: 18, paddingTop: 15, paddingBottom: 8, gap: 4 },
   dockScroll: { flexGrow: 0 },
   dockTitle: { fontFamily: Fonts.display.extrabold, fontSize: 25, lineHeight: 29, color: Colors.foam },
   dockBody: { fontFamily: Fonts.ui.regular, fontSize: 14, lineHeight: 20, color: Colors.foamMuted },
-  pubFactsRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6 },
-  pubOpenFact: { flex: 1, minWidth: 0 },
-  pubRatingFact: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  pubRatingValue: { fontFamily: Fonts.ui.bold, fontSize: 14, color: Colors.foam },
-  pubRatingCount: { fontFamily: Fonts.ui.medium, fontSize: 12, color: Colors.mutedText },
-  openingHoursLine: { fontFamily: Fonts.ui.medium, fontSize: 12, lineHeight: 17, color: Colors.foamMuted },
-  visitedLine: { fontFamily: Fonts.ui.semibold, fontSize: 13, color: Colors.amberLight, marginTop: 3 },
-  unvisitedLine: { fontFamily: Fonts.ui.medium, fontSize: 13, color: Colors.mutedText, marginTop: 3 },
+  selectedPubContent: { paddingHorizontal: 18, paddingTop: 14, paddingBottom: 4, gap: 8 },
+  selectedPubTapArea: { alignSelf: 'stretch', alignItems: 'center', gap: 8 },
+  selectedPubNameRow: {
+    height: 38,
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  selectedPubName: {
+    flex: 1,
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 24,
+    color: Colors.foam,
+  },
+  selectedPubMetaRow: {
+    minHeight: 18,
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  selectedPubStatus: { flexShrink: 1, minWidth: 0 },
+  selectedPubRating: {
+    minHeight: 18,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  selectedPubRatingText: { fontFamily: Fonts.ui.semibold, fontSize: 13, color: Colors.foam },
+  selectedPubFooter: {
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+    paddingTop: 8,
+    paddingHorizontal: 4,
+    paddingBottom: 4,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    borderRadius: Radius.medium,
+    backgroundColor: withAlpha(Colors.stout, 0.34),
+  },
+  selectedPubAction: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 34,
+    paddingHorizontal: 6,
+    borderRadius: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  selectedPubActionPrimary: {
+    flex: 1.38,
+    borderRadius: 12,
+    backgroundColor: Colors.amber,
+    minHeight: 42,
+    position: 'relative',
+    shadowColor: Colors.glow,
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  selectedPubActionSecondary: {
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.22),
+    backgroundColor: withAlpha(Colors.amber, 0.08),
+  },
+  selectedPubActionPressed: { opacity: 0.78, transform: [{ scale: 0.98 }] },
+  selectedPubPrimaryIcon: {
+    position: 'absolute',
+    left: 14,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+  },
+  selectedPubActionText: {
+    flexShrink: 1,
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 10.8,
+    lineHeight: 13,
+    color: Colors.foamMuted,
+    textAlign: 'center',
+  },
+  selectedPubActionTextPrimary: {
+    width: '100%',
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 14,
+    lineHeight: 17,
+    color: Colors.stout,
+    textAlign: 'center',
+  },
   offlineText: {
     position: 'absolute',
     top: -28,
@@ -1231,8 +1365,6 @@ const styles = StyleSheet.create({
   liveEyebrow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.success },
   liveEyebrowText: { fontFamily: Fonts.ui.bold, fontSize: 11, letterSpacing: 0.8, color: Colors.success },
-  actionRow: { flexDirection: 'row', gap: 9, marginTop: 8 },
-  actionGrow: { flex: 1 },
   primaryButton: {
     minHeight: 46,
     borderRadius: Radius.pill,
