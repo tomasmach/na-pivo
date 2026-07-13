@@ -39,6 +39,7 @@ from pubs.models import (
     DrinkLog,
     EmailCredential,
     OneTimeToken,
+    PubVisit,
     PushDevice,
 )
 
@@ -530,6 +531,68 @@ def test_google_returning_sub_signs_into_same_account(client, fake_oauth):
 
 
 @pytest.mark.django_db
+def test_google_returning_sub_merges_anonymous_progress(client, fake_oauth):
+    first = client.post(
+        "/v1/auth/google",
+        data={"id_token": "google:G-RETURN-MERGE:return-google@x.cz"},
+        format="json",
+    )
+    target = AuthIdentity.objects.get(
+        provider="google", subject="G-RETURN-MERGE"
+    ).account
+
+    anon_token, anon_id = _bootstrap_anon(client)
+    anon = Account.objects.get(public_id=anon_id)
+    drink = DrinkLog.objects.create(
+        account=anon,
+        client_id=uuid.uuid4(),
+        cache_key="u2fkbnhz",
+        name="U Vystřelenýho oka",
+        lat=50.08,
+        lng=14.45,
+        beer_name="Plzeň",
+        price_czk=55,
+        drank_at="2026-06-01T18:00:00Z",
+    )
+    visit = PubVisit.objects.create(
+        account=anon,
+        client_id=uuid.uuid4(),
+        cache_key="u2fkbnhz",
+        name="U Vystřelenýho oka",
+        lat=50.08,
+        lng=14.45,
+        started_at="2026-06-01T18:00:00Z",
+        client_updated_at="2026-06-01T18:00:00Z",
+    )
+    push_device = PushDevice.objects.create(
+        account=anon,
+        push_token="ExponentPushToken[returningGoogle]",
+        platform=PushDevice.Platform.IOS,
+        permission_status=PushDevice.PermissionStatus.GRANTED,
+        enabled=True,
+    )
+
+    returning = client.post(
+        "/v1/auth/google",
+        data={"id_token": "google:G-RETURN-MERGE:return-google@x.cz"},
+        format="json",
+        **_auth(anon_token),
+    )
+
+    assert first.status_code == status.HTTP_200_OK, first.content
+    assert returning.status_code == status.HTTP_200_OK, returning.content
+    assert returning.json()["id"] == str(target.public_id)
+    assert returning.json()["created"] is False
+    assert Account.objects.count() == 1
+    drink.refresh_from_db()
+    assert drink.account_id == target.id
+    visit.refresh_from_db()
+    assert visit.account_id == target.id
+    push_device.refresh_from_db()
+    assert push_device.account_id == target.id
+
+
+@pytest.mark.django_db
 def test_apple_signin_merges_into_existing_google_account_by_verified_email(client, fake_oauth):
     google = client.post(
         "/v1/auth/google",
@@ -638,6 +701,71 @@ def test_apple_full_name_stored_as_display_name_on_first_signin(client, fake_oau
     assert resp.json()["display_name"] == "Tomáš Macháček"
     account = AuthIdentity.objects.get(provider="apple", subject="A-SUB-3").account
     assert account.display_name == "Tomáš Macháček"
+
+
+@pytest.mark.django_db
+def test_apple_returning_sub_merges_anonymous_progress(client, fake_oauth):
+    first = client.post(
+        "/v1/auth/apple",
+        data={
+            "identity_token": "apple:A-RETURN-MERGE:return-apple@x.cz",
+            "authorization_code": "apple-auth-code",
+        },
+        format="json",
+    )
+    target = AuthIdentity.objects.get(
+        provider="apple", subject="A-RETURN-MERGE"
+    ).account
+
+    anon_token, anon_id = _bootstrap_anon(client)
+    anon = Account.objects.get(public_id=anon_id)
+    drink = DrinkLog.objects.create(
+        account=anon,
+        client_id=uuid.uuid4(),
+        cache_key="u2fkbnhz",
+        name="U Vystřelenýho oka",
+        lat=50.08,
+        lng=14.45,
+        beer_name="Plzeň",
+        price_czk=55,
+        drank_at="2026-06-01T18:00:00Z",
+    )
+    visit = PubVisit.objects.create(
+        account=anon,
+        client_id=uuid.uuid4(),
+        cache_key="u2fkbnhz",
+        name="U Vystřelenýho oka",
+        lat=50.08,
+        lng=14.45,
+        started_at="2026-06-01T18:00:00Z",
+        client_updated_at="2026-06-01T18:00:00Z",
+    )
+    push_device = PushDevice.objects.create(
+        account=anon,
+        push_token="ExponentPushToken[returningApple]",
+        platform=PushDevice.Platform.IOS,
+        permission_status=PushDevice.PermissionStatus.GRANTED,
+        enabled=True,
+    )
+
+    returning = client.post(
+        "/v1/auth/apple",
+        data={"identity_token": "apple:A-RETURN-MERGE:return-apple@x.cz"},
+        format="json",
+        **_auth(anon_token),
+    )
+
+    assert first.status_code == status.HTTP_200_OK, first.content
+    assert returning.status_code == status.HTTP_200_OK, returning.content
+    assert returning.json()["id"] == str(target.public_id)
+    assert returning.json()["created"] is False
+    assert Account.objects.count() == 1
+    drink.refresh_from_db()
+    assert drink.account_id == target.id
+    visit.refresh_from_db()
+    assert visit.account_id == target.id
+    push_device.refresh_from_db()
+    assert push_device.account_id == target.id
 
 
 @pytest.mark.django_db

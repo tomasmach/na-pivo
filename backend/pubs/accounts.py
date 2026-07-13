@@ -687,10 +687,9 @@ def _merge_usage_stats(source: Account, target: Account) -> None:
 def _merge_anonymous_account(source: Account | None, target: Account) -> None:
     """Move best-effort anonymous data onto an existing signed-in account.
 
-    This is only used when a social sign-in resolves to an existing social
-    account by verified cross-provider e-mail while the request also carries a
-    fresh anonymous bearer. Unique-key conflicts keep the target account's
-    existing row and drop the anonymous duplicate.
+    This is used when a credential sign-in resolves to an existing account while
+    the request also carries a fresh anonymous bearer. Unique-key conflicts keep
+    the target account's existing row and drop the anonymous duplicate.
     """
     if source is None or source.pk == target.pk or source.is_claimed:
         return
@@ -855,6 +854,10 @@ def resolve_social(
         if updated:
             existing.save(update_fields=updated)
         _maybe_set_display_name(account, full_name or claims.get("name", ""))
+        # The merge touches public amenity aggregates with select_for_update(),
+        # so keep the whole data move atomic on PostgreSQL.
+        with transaction.atomic():
+            _merge_anonymous_account(current_account, account)
         _maybe_capture_social_avatar(account, claims, provider)
         return account, issue_token(account), False
 
