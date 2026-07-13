@@ -8,7 +8,7 @@
  * and clamped to the radius.
  */
 
-import type { Pub } from './pubs';
+import type { HoursStatus, Pub, VenueKind } from './pubs';
 import { getBackendEndpoint } from './backendConfig';
 import { trackApiFailure } from './telemetryClient';
 
@@ -110,6 +110,19 @@ interface MapyGeocodeItem {
   location?: string;
   zip?: string;
   regionalStructure?: { name: string; type: string }[];
+  /** Additive cache-only detail attached by our backend's nearby endpoint. */
+  pubDetails?: {
+    opening_hours?: string | null;
+    isOpenNow?: boolean | null;
+    nextChange?: string | null;
+    status?: string;
+    source?: string | null;
+    rating?: number | null;
+    ratingCount?: number | null;
+    ratingLabel?: string | null;
+    hasGarden?: boolean | null;
+    venueKind?: string | null;
+  };
 }
 
 export interface PubLocationGeocodeInput {
@@ -626,6 +639,29 @@ function itemToPub(
   if (address) pub.address = address;
   const city = pickCity(item);
   if (city) pub.city = city;
+
+  const details = item.pubDetails;
+  if (details) {
+    pub.openingHours = details.opening_hours ?? null;
+    pub.isOpenNow = typeof details.isOpenNow === 'boolean' ? details.isOpenNow : null;
+    pub.nextChange = typeof details.nextChange === 'string' ? details.nextChange : null;
+    if (['ok', 'unknown', 'pending', 'error'].includes(details.status ?? '')) {
+      pub.hoursStatus = details.status as HoursStatus;
+    }
+    if (typeof details.source === 'string') pub.hoursSource = details.source;
+    pub.rating = typeof details.rating === 'number' && Number.isFinite(details.rating)
+      ? details.rating
+      : null;
+    pub.ratingCount =
+      typeof details.ratingCount === 'number' && Number.isFinite(details.ratingCount)
+        ? details.ratingCount
+        : null;
+    pub.ratingLabel = typeof details.ratingLabel === 'string' ? details.ratingLabel : null;
+    pub.hasGarden = typeof details.hasGarden === 'boolean' ? details.hasGarden : null;
+    if (['pub', 'maybe', 'not_pub', 'unknown'].includes(details.venueKind ?? '')) {
+      pub.venueKind = details.venueKind as VenueKind;
+    }
+  }
 
   return pub;
 }

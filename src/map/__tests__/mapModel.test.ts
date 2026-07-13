@@ -114,6 +114,19 @@ describe('pivní mapový model', () => {
     expect(result.points).toEqual([]);
   });
 
+  it('při aktivním serverovém filtru nepřimíchá navštívené hospody mimo výsledky', () => {
+    const visited = buildVisitedPubs([visit()], [], []);
+    const result = buildMapPubPoints(
+      [{ id: 'match', name: 'Filtrovaná hospoda', ...BRNO }],
+      visited,
+      false,
+      false,
+      false,
+    );
+
+    expect(result.points.map((point) => point.pub.name)).toEqual(['Filtrovaná hospoda']);
+  });
+
   it('sloučí serverové a lokální návštěvy bez zdvojení stejného client id', () => {
     const remote = visit({ client_id: 'same' });
     const local = session({
@@ -246,8 +259,10 @@ describe('pivní mapový model', () => {
     const afterPan = clusterCoordinates([...points].reverse(), {
       latitude: 50.12,
       longitude: 14.46,
-      latitudeDelta: 0.1,
-      longitudeDelta: 0.1,
+      // MapKit slightly changes reported deltas during a pan without a real
+      // zoom; that must not be enough to reshuffle cluster membership.
+      latitudeDelta: 0.1008,
+      longitudeDelta: 0.0994,
     });
     const membership = (clusters: typeof beforePan) =>
       clusters

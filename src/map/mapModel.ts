@@ -84,6 +84,7 @@ export function buildMapPubPoints(
   visitedPubs: VisitedPubSummary[],
   visitedOnly: boolean,
   hideClosed: boolean,
+  includeMissingVisited = true,
 ): MapPubPointSet {
   const visitedByKey = new Map(visitedPubs.map((visit) => [visit.cacheKey, visit]));
   const byKey = new Map<string, MapPubPoint>();
@@ -96,6 +97,7 @@ export function buildMapPubPoints(
   }
 
   for (const visit of visitedPubs) {
+    if (!includeMissingVisited) continue;
     if (byKey.has(visit.cacheKey)) continue;
     byKey.set(visit.cacheKey, {
       key: visit.cacheKey,
@@ -289,8 +291,15 @@ export function clusterCoordinates<T extends { lat: number; lng: number }>(
   rows: number = 12,
 ): MapCluster<T>[] {
   if (items.length === 0) return [];
-  const latStep = Math.max(region.latitudeDelta / rows, 0.00005);
-  const lngStep = Math.max(region.longitudeDelta / columns, 0.00005);
+  // Native maps report tiny delta fluctuations while panning even when the
+  // user did not zoom. Snapping the cell size to powers of two keeps those
+  // harmless changes from moving pubs across otherwise world-anchored cells.
+  const quantizeStep = (raw: number) => {
+    const safe = Math.max(raw, 0.00005);
+    return 2 ** Math.round(Math.log2(safe));
+  };
+  const latStep = quantizeStep(region.latitudeDelta / rows);
+  const lngStep = quantizeStep(region.longitudeDelta / columns);
   const buckets = new Map<string, MapCluster<T>>();
 
   for (const item of items) {

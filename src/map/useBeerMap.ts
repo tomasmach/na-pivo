@@ -20,6 +20,10 @@ import {
 } from '@/data/pubs';
 import { fetchVisits, type WireVisit } from '@/data/visitsClient';
 import {
+  pubSearchFilterKey,
+  type PubSearchFilters,
+} from '@/data/pubSearchFilters';
+import {
   loadVisitsSnapshot,
   saveVisitsSnapshot,
   subscribeVisitsBoundary,
@@ -71,10 +75,17 @@ export interface BeerMapData {
   refresh: () => void;
 }
 
-export function useBeerMap(): BeerMapData {
+export function useBeerMap(filters: PubSearchFilters): BeerMapData {
+  const filtersKey = pubSearchFilterKey(filters);
+  const beerBrandKey = filters.beerBrand?.key ?? null;
+  const amenityKeys = filters.amenityKeys;
+  const hasFilters = Boolean(beerBrandKey || amenityKeys.length > 0);
   const [focused, setFocused] = useState(false);
   const [permissionState, setPermissionState] = useState<PermissionState>('undetermined');
-  const [pubs, setPubs] = useState<Pub[]>(() => getAllLoadedPubs());
+  const [pubs, setPubs] = useState<Pub[]>(() => hasFilters ? [] : getAllLoadedPubs());
+  const [loadedFiltersKey, setLoadedFiltersKey] = useState<string | null>(
+    hasFilters ? null : filtersKey,
+  );
   const [serverVisits, setServerVisits] = useState<WireVisit[]>([]);
   const [friendActivities, setFriendActivities] = useState<FriendPubActivity[]>([]);
   const [loadingPubs, setLoadingPubs] = useState(false);
@@ -116,14 +127,18 @@ export function useBeerMap(): BeerMapData {
   }, []);
 
   useEffect(() => {
+    if (hasFilters) return;
     let cancelled = false;
     void hydratePubsSnapshot().then(() => {
-      if (!cancelled) setPubs((previous) => mergePubs(previous, getAllLoadedPubs()));
+      if (!cancelled) {
+        setPubs((previous) => mergePubs(previous, getAllLoadedPubs()));
+        setLoadedFiltersKey(filtersKey);
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, [catalogRevision]);
+  }, [catalogRevision, filtersKey, hasFilters]);
 
   useEffect(
     () =>
@@ -209,10 +224,14 @@ export function useBeerMap(): BeerMapData {
       setLoadingPubs(true);
       void fetchPubsNear(requestedRegion.latitude, requestedRegion.longitude, controller.signal, {
         radiusKm,
+        beerBrandKey,
+        amenityKeys,
       })
         .then(() => {
           if (serial !== requestSerial.current) return;
-          setPubs((previous) => mergePubs(previous, getAllLoadedPubs()));
+          const loaded = getAllLoadedPubs();
+          setPubs((previous) => hasFilters ? loaded : mergePubs(previous, loaded));
+          setLoadedFiltersKey(filtersKey);
         })
         .catch(() => {
           if (serial === requestSerial.current) setStale(true);
@@ -226,7 +245,7 @@ export function useBeerMap(): BeerMapData {
       controller.abort();
       requestSerial.current += 1;
     };
-  }, [focused, requestedRegion, refreshNonce]);
+  }, [amenityKeys, beerBrandKey, filtersKey, focused, hasFilters, requestedRegion, refreshNonce]);
 
   const sessions = useMemo(
     () => allSessionsNewestFirst(current, history),
@@ -250,9 +269,12 @@ export function useBeerMap(): BeerMapData {
 
   const loadRegion = useCallback((region: Region) => setRequestedRegion(region), []);
   const refresh = useCallback(() => setRefreshNonce((value) => value + 1), []);
+  // Hide the previous catalogue while a different filter request is pending;
+  // unfiltered pubs must never masquerade as confirmed matches.
+  const visiblePubs = loadedFiltersKey === filtersKey ? pubs : [];
 
   return {
-    pubs,
+    pubs: visiblePubs,
     visitedPubs,
     visitedCities,
     livePubs,

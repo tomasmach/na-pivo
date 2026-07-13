@@ -169,6 +169,43 @@ describe('searchPubsNear — backend proxy only', () => {
     expect(pubs[0].venueKind).toBe('pub');
   });
 
+  it('maps cache-only nearby details onto the pub', async () => {
+    setBackend('https://api.example.com');
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        items: [{
+          ...PUB_ITEM,
+          pubDetails: {
+            opening_hours: 'Mo-Su 11:00-23:00',
+            isOpenNow: true,
+            nextChange: '2026-07-13T23:00:00+02:00',
+            status: 'ok',
+            source: 'firmy',
+            rating: 4.6,
+            ratingCount: 128,
+            ratingLabel: 'Výborné',
+            venueKind: 'pub',
+          },
+        }],
+      }),
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const [pub] = await searchPubsNear(50.08, 14.42, 25);
+
+    expect(pub).toEqual(expect.objectContaining({
+      openingHours: 'Mo-Su 11:00-23:00',
+      isOpenNow: true,
+      hoursStatus: 'ok',
+      rating: 4.6,
+      ratingCount: 128,
+      ratingLabel: 'Výborné',
+      venueKind: 'pub',
+    }));
+  });
+
   it('keeps broad restaurant results for the compass but marks them ambiguous', async () => {
     setBackend('https://api.example.com');
     global.fetch = jest.fn(async () => ({

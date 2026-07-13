@@ -1393,7 +1393,14 @@ export default function CompassScreen() {
   }, [pub]);
 
   if (mapOpen) {
-    return <BeerMapScreen initialPub={pub} onShowCompass={handleShowCompass} />;
+    return (
+      <BeerMapScreen
+        initialPub={pub}
+        filters={pubFilters}
+        onApplyFilters={setPubFilters}
+        onShowCompass={handleShowCompass}
+      />
+    );
   }
 
   // ── State A: permission not granted ──────────────────────────────────────

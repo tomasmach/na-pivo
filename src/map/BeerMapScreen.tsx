@@ -15,19 +15,28 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
+import { OpenStatusChip } from '@/components/compass/OpenStatusChip';
+import { PubFilterSheet } from '@/components/compass/PubFilterSheet';
 import {
   BeerIcon,
   ChevronRightIcon,
   CompassIcon,
   ListIcon,
   LocateFixedIcon,
+  ListFilterIcon,
   MapPinnedIcon,
   RefreshCwIcon,
+  StarIcon,
   UsersIcon,
   XIcon,
 } from '@/components/shared/IconGlyph';
 import { ExploreSwitch } from '@/components/shared/ExploreSwitch';
 import type { Pub } from '@/data/pubs';
+import { fetchPubHours, type PubHoursResult } from '@/data/hoursClient';
+import {
+  activePubSearchFilterCount,
+  type PubSearchFilters,
+} from '@/data/pubSearchFilters';
 import type { FocusedPub } from '@/stores/focusedPubStore';
 import { useFocusedPubStore } from '@/stores/focusedPubStore';
 import { fireLightImpactHaptic } from '@/utils/haptics';
@@ -81,6 +90,8 @@ let rememberedSelection: MapSelection | null = null;
 
 export interface BeerMapScreenProps {
   initialPub?: Pub | null;
+  filters: PubSearchFilters;
+  onApplyFilters: (filters: PubSearchFilters) => void;
   onShowCompass: () => void;
 }
 
@@ -93,6 +104,34 @@ function formatShortDate(iso: string): string {
 function friendName(live: LivePubSummary): string {
   const first = live.activities[0]?.account;
   return first?.displayName?.trim() || first?.nickname?.trim() || cs.map.friendFallback;
+}
+
+function formatRating(value: number): string {
+  return value.toLocaleString('cs-CZ', {
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 1,
+    maximumFractionDigits: 1,
+  });
+}
+
+function pubWithDetails(pub: Pub, details: PubHoursResult | undefined): Pub {
+  if (!details) return pub;
+  return {
+    ...pub,
+    openingHours: details.openingHours,
+    isOpenNow: details.isOpenNow,
+    nextChange: details.nextChange,
+    hoursStatus: details.status,
+    ...(details.source ? { hoursSource: details.source } : {}),
+    communityHours: details.communityHours ?? undefined,
+    beers: details.beers,
+    historicalBeers: details.historicalBeers,
+    beersUpdatedAt: details.beersUpdatedAt,
+    rating: details.rating,
+    ratingCount: details.ratingCount,
+    ratingLabel: details.ratingLabel,
+    hasGarden: details.hasGarden,
+    venueKind: details.venueKind,
+  };
 }
 
 function LayerButton({
@@ -151,7 +190,12 @@ function LiveMarker({ live, selected }: { live: LivePubSummary; selected: boolea
   );
 }
 
-export default function BeerMapScreen({ initialPub, onShowCompass }: BeerMapScreenProps) {
+export default function BeerMapScreen({
+  initialPub,
+  filters,
+  onApplyFilters,
+  onShowCompass,
+}: BeerMapScreenProps) {
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
   const reduceMotion = useReduceMotion();
@@ -169,7 +213,8 @@ export default function BeerMapScreen({ initialPub, onShowCompass }: BeerMapScre
     requestPermission,
     loadRegion,
     refresh,
-  } = useBeerMap();
+  } = useBeerMap(filters);
+  const activeFilterCount = activePubSearchFilterCount(filters);
   const initialRegion = useMemo<Region>(
     () =>
       rememberedRegion ?? (initialPub
@@ -187,7 +232,10 @@ export default function BeerMapScreen({ initialPub, onShowCompass }: BeerMapScre
   const [openOnly, setOpenOnly] = useState(rememberedOpenOnly);
   const [selection, setSelection] = useState<MapSelection | null>(rememberedSelection);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [listOpen, setListOpen] = useState(false);
+  const [detailsByPubKey, setDetailsByPubKey] = useState<Record<string, PubHoursResult>>({});
+  const [loadingDetailKey, setLoadingDetailKey] = useState<string | null>(null);
   const didAutoLocate = useRef(Boolean(initialPub || rememberedRegion));
 
   useEffect(() => {
@@ -210,8 +258,14 @@ export default function BeerMapScreen({ initialPub, onShowCompass }: BeerMapScre
   }, [loadRegion, position, reduceMotion]);
 
   const unfilteredPoints = useMemo(
-    () => buildMapPubPoints(pubs, visitedPubs, layer === 'visited', false).points,
-    [layer, pubs, visitedPubs],
+    () => buildMapPubPoints(
+      pubs,
+      visitedPubs,
+      layer === 'visited',
+      false,
+      activeFilterCount === 0,
+    ).points,
+    [activeFilterCount, layer, pubs, visitedPubs],
   );
   const points = useMemo(
     () => openOnly
@@ -245,6 +299,42 @@ export default function BeerMapScreen({ initialPub, onShowCompass }: BeerMapScre
         : null,
     [activeSelection, visitedCities],
   );
+  const selectedPubForLookup = selectedPub?.pub ?? null;
+
+  useEffect(() => {
+    if (!selectedPub || !selectedPubForLookup) return;
+    const key = selectedPub.key;
+    const controller = new AbortController();
+    void fetchPubHours([selectedPubForLookup], controller.signal)
+      .then((result) => {
+        const details = result.get(selectedPubForLookup.id);
+        if (!controller.signal.aborted && details) {
+          setDetailsByPubKey((current) => ({ ...current, [key]: details }));
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setLoadingDetailKey((current) => current === key ? null : current);
+        }
+      });
+    return () => controller.abort();
+  }, [selectedPub, selectedPubForLookup]);
+
+  const selectedDetailPub = selectedPub
+    ? pubWithDetails(selectedPub.pub, detailsByPubKey[selectedPub.key])
+    : null;
+  const selectedHoursStatus =
+    selectedPub && loadingDetailKey === selectedPub.key && !selectedDetailPub?.hoursStatus
+      ? 'loading'
+      : selectedDetailPub?.hoursStatus;
+  const selectedRating =
+    typeof selectedDetailPub?.rating === 'number' && Number.isFinite(selectedDetailPub.rating)
+      ? formatRating(selectedDetailPub.rating)
+      : null;
+  const selectedRatingCount =
+    typeof selectedDetailPub?.ratingCount === 'number' && selectedDetailPub.ratingCount > 0
+      ? selectedDetailPub.ratingCount.toLocaleString('cs-CZ')
+      : null;
 
   const visiblePoints = useMemo(() => {
     const latMargin = region.latitudeDelta * 0.65;
@@ -334,6 +424,7 @@ export default function BeerMapScreen({ initialPub, onShowCompass }: BeerMapScre
       if (hapticEnabled) fireLightImpactHaptic();
       const next: MapSelection = { kind: 'pub', key: point.key, accountId };
       rememberedSelection = next;
+      setLoadingDetailKey(point.key);
       setSelection(next);
       void AccessibilityInfo.announceForAccessibility(point.pub.name);
       mapRef.current?.animateCamera(
@@ -545,6 +636,31 @@ export default function BeerMapScreen({ initialPub, onShowCompass }: BeerMapScre
           onSelectCompass={onShowCompass}
           onSelectMap={() => undefined}
         />
+        <Pressable
+          onPress={() => setFilterSheetOpen(true)}
+          style={({ pressed }) => [
+            styles.topFilterButton,
+            { top: insets.top + 8 },
+            activeFilterCount > 0 && styles.topFilterButtonActive,
+            pressed && styles.pressed,
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel={
+            activeFilterCount > 0
+              ? cs.a11y.pubFiltersActive(activeFilterCount)
+              : cs.a11y.openPubFilters
+          }
+        >
+          <ListFilterIcon
+            size={19}
+            color={activeFilterCount > 0 ? Colors.stout : Colors.foam}
+          />
+          {activeFilterCount > 0 ? (
+            <View style={styles.topFilterCount}>
+              <Text style={styles.topFilterCountText}>{activeFilterCount}</Text>
+            </View>
+          ) : null}
+        </Pressable>
         <View style={styles.layerControls}>
           <View style={styles.layerRow} accessibilityRole="tablist">
             <LayerButton active={layer === 'all'} label={cs.map.layerAll} onPress={() => selectLayer('all')} />
@@ -672,6 +788,29 @@ export default function BeerMapScreen({ initialPub, onShowCompass }: BeerMapScre
             <Text style={styles.dockBody} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
               {[selectedPub.pub.city, selectedPub.pub.address].filter(Boolean).join(' · ') || cs.map.pubFallback}
             </Text>
+            <View style={styles.pubFactsRow}>
+              <View style={styles.pubOpenFact}>
+                <OpenStatusChip
+                  isOpenNow={selectedDetailPub?.isOpenNow ?? null}
+                  status={selectedHoursStatus}
+                  nextChange={selectedDetailPub?.nextChange}
+                />
+              </View>
+              {selectedRating ? (
+                <View style={styles.pubRatingFact} accessibilityLabel={cs.a11y.pubRating(selectedRating, selectedRatingCount ?? undefined)}>
+                  <StarIcon size={15} color={Colors.amber} />
+                  <Text style={styles.pubRatingValue}>{selectedRating}</Text>
+                  {selectedRatingCount ? (
+                    <Text style={styles.pubRatingCount}>{cs.map.ratingCount(selectedRatingCount)}</Text>
+                  ) : null}
+                </View>
+              ) : null}
+            </View>
+            {selectedDetailPub?.openingHours ? (
+              <Text style={styles.openingHoursLine} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.map.openingHours(selectedDetailPub.openingHours)}
+              </Text>
+            ) : null}
             <Text style={selectedPub.visit ? styles.visitedLine : styles.unvisitedLine} maxFontSizeMultiplier={FontScaleCap.body}>
               {selectedPub.visit
                 ? cs.map.visitedSummary(
@@ -852,12 +991,21 @@ export default function BeerMapScreen({ initialPub, onShowCompass }: BeerMapScre
         </View>
       </Modal>
 
+      {filterSheetOpen ? (
+        <PubFilterSheet
+          visible
+          value={filters}
+          onClose={() => setFilterSheetOpen(false)}
+          onApply={onApplyFilters}
+        />
+      ) : null}
+
       {selectedPub ? (
         <MapPubSheet
           visible={detailOpen}
           pubKey={selectedPub.key}
           pubName={selectedPub.pub.name}
-          info={pubInfoFromPub(selectedPub.pub)}
+          info={pubInfoFromPub(selectedDetailPub ?? selectedPub.pub)}
           onClose={() => setDetailOpen(false)}
         />
       ) : null}
@@ -869,6 +1017,34 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.stout },
   pressed: { opacity: 0.76, transform: [{ scale: 0.98 }] },
   topChrome: { position: 'absolute', top: 0, left: 0, right: 0, alignItems: 'center', gap: 9 },
+  topFilterButton: {
+    position: 'absolute',
+    right: 12,
+    width: HitArea.min,
+    height: HitArea.min,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.stout, 0.94),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.16),
+  },
+  topFilterButtonActive: { backgroundColor: Colors.amber, borderColor: Colors.amber },
+  topFilterCount: {
+    position: 'absolute',
+    right: -3,
+    top: -3,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.foam,
+    borderWidth: 1,
+    borderColor: Colors.stout,
+  },
+  topFilterCountText: { fontFamily: Fonts.ui.bold, fontSize: 10, color: Colors.stout },
   layerControls: {
     alignSelf: 'stretch',
     marginHorizontal: 12,
@@ -1030,6 +1206,12 @@ const styles = StyleSheet.create({
   dockScroll: { flexGrow: 0 },
   dockTitle: { fontFamily: Fonts.display.extrabold, fontSize: 25, lineHeight: 29, color: Colors.foam },
   dockBody: { fontFamily: Fonts.ui.regular, fontSize: 14, lineHeight: 20, color: Colors.foamMuted },
+  pubFactsRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6 },
+  pubOpenFact: { flex: 1, minWidth: 0 },
+  pubRatingFact: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  pubRatingValue: { fontFamily: Fonts.ui.bold, fontSize: 14, color: Colors.foam },
+  pubRatingCount: { fontFamily: Fonts.ui.medium, fontSize: 12, color: Colors.mutedText },
+  openingHoursLine: { fontFamily: Fonts.ui.medium, fontSize: 12, lineHeight: 17, color: Colors.foamMuted },
   visitedLine: { fontFamily: Fonts.ui.semibold, fontSize: 13, color: Colors.amberLight, marginTop: 3 },
   unvisitedLine: { fontFamily: Fonts.ui.medium, fontSize: 13, color: Colors.mutedText, marginTop: 3 },
   offlineText: {
