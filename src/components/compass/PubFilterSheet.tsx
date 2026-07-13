@@ -216,7 +216,6 @@ export function PubFilterSheet({ visible, value, onClose, onApply }: PubFilterSh
               style={[
                 styles.card,
                 softDrop(),
-                { paddingBottom: Math.max(insets.bottom, Spacing.md) },
                 cardAnim,
               ]}
             >
@@ -243,6 +242,9 @@ export function PubFilterSheet({ visible, value, onClose, onApply }: PubFilterSh
 
               <KeyboardAwareScrollView
                 style={styles.content}
+                contentContainerStyle={{
+                  paddingBottom: 50 + Math.max(insets.bottom, Spacing.md) + Spacing.xl,
+                }}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
               >
@@ -352,7 +354,12 @@ export function PubFilterSheet({ visible, value, onClose, onApply }: PubFilterSh
                 </Text>
               </KeyboardAwareScrollView>
 
-              <View style={styles.actions}>
+              <View
+                style={[
+                  styles.actions,
+                  { bottom: Math.max(insets.bottom, Spacing.md) },
+                ]}
+              >
                 {hasDraftFilters ? (
                   <Pressable
                     onPress={clear}
@@ -486,7 +493,7 @@ const styles = StyleSheet.create({
   resultRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 46, borderBottomWidth: 1, borderBottomColor: withAlpha(Colors.border, 0.6) },
   resultText: { flex: 1, fontFamily: Fonts.ui.semibold, fontSize: 15, color: Colors.foam },
   noResults: { paddingVertical: Spacing.md, textAlign: 'center', fontFamily: Fonts.ui.regular, fontSize: 14, color: Colors.mutedText },
-  chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: Spacing.md },
   amenityGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
     flexDirection: 'row', alignItems: 'center', gap: 7, minHeight: HitArea.min,
@@ -499,8 +506,11 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.76, transform: [{ scale: 0.97 }] },
   matchHint: { marginTop: Spacing.lg, marginBottom: Spacing.md, fontFamily: Fonts.ui.regular, fontSize: 12, lineHeight: 17, color: Colors.mutedText },
   limitHint: { color: Colors.amberLight },
-  actions: { flexDirection: 'row', gap: Spacing.sm, paddingTop: Spacing.sm, borderTopWidth: 1, borderTopColor: withAlpha(Colors.border, 0.7) },
-  secondaryButton: { minHeight: 50, paddingHorizontal: Spacing.md, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.medium, borderWidth: 1, borderColor: Colors.border },
+  actions: {
+    position: 'absolute', left: Spacing.lg, right: Spacing.lg,
+    zIndex: 1, flexDirection: 'row', gap: Spacing.sm,
+  },
+  secondaryButton: { minHeight: 50, paddingHorizontal: Spacing.md, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.medium, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.stout2 },
   secondaryButtonText: { fontFamily: Fonts.ui.semibold, fontSize: 14, color: Colors.foamMuted },
   primaryButton: { flex: 1, minHeight: 50, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.medium, backgroundColor: Colors.amber },
   primaryButtonText: { fontFamily: Fonts.ui.bold, fontSize: 15, color: Colors.stout },
