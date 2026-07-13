@@ -1347,6 +1347,7 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     color: Colors.stout,
     textAlign: 'center',
+    transform: [{ translateY: 2 }],
   },
   offlineText: {
     position: 'absolute',
