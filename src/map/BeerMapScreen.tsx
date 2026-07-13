@@ -735,10 +735,6 @@ export default function BeerMapScreen({
         style={[
           styles.bottomDock,
           selectedPub && styles.bottomDockSelected,
-          {
-            paddingBottom:
-              selectedPub || selectedLive || selectedCity ? Math.max(insets.bottom, 12) : 12,
-          },
         ]}
       >
         {stale ? <Text style={styles.offlineText} numberOfLines={2}>{cs.map.offline}</Text> : null}
@@ -1199,6 +1195,7 @@ const styles = StyleSheet.create({
     left: 10,
     right: 10,
     bottom: 8,
+    paddingBottom: 12,
     maxHeight: '48%',
     borderRadius: Radius.cardLarge,
     backgroundColor: withAlpha(Colors.stout2, 0.97),
