@@ -91,10 +91,6 @@ const styles = StyleSheet.create({
     flex: 1.38,
     borderRadius: 12,
     backgroundColor: Colors.amber,
-    shadowColor: Colors.glow,
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
   },
   secondaryAction: {
     borderWidth: 1,
@@ -112,6 +108,8 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     color: Colors.stout,
     textAlign: 'center',
+    includeFontPadding: false,
+    transform: [{ translateY: 1 }],
   },
   secondaryText: {
     flexShrink: 1,
