@@ -6,6 +6,14 @@ module.exports = defineConfig([
   expoConfig,
   {
     ignores: ["dist/*"],
+    settings: {
+      // Prefer TypeScript's resolver for typed ESM packages whose conditional
+      // exports are valid for Metro/tsc but not understood by the Node resolver.
+      "import/resolver": {
+        typescript: true,
+        node: true,
+      },
+    },
   },
   {
     // Node CLI scripts run under CommonJS, where __dirname/require exist.
