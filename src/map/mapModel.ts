@@ -287,8 +287,10 @@ export function buildLivePubs(
 export function clusterCoordinates<T extends { lat: number; lng: number }>(
   items: T[],
   region: { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number },
-  columns: number = 7,
-  rows: number = 12,
+  // Coarse grid on purpose: fewer, larger clusters read better than a screen
+  // full of small overlapping bubbles.
+  columns: number = 5,
+  rows: number = 8,
 ): MapCluster<T>[] {
   if (items.length === 0) return [];
   // Native maps report tiny delta fluctuations while panning even when the

@@ -168,10 +168,27 @@ function PubMarker({ visited, selected }: { visited: boolean; selected: boolean 
   );
 }
 
+function clusterTier(count: number): { size: number; fontSize: number } {
+  if (count >= 30) return { size: 52, fontSize: 16 };
+  if (count >= 10) return { size: 42, fontSize: 14 };
+  return { size: 34, fontSize: 13 };
+}
+
 function ClusterMarker({ count, visited }: { count: number; visited: boolean }) {
+  const { size, fontSize } = clusterTier(count);
   return (
-    <View style={[styles.clusterPin, visited && styles.clusterPinVisited]}>
-      <Text style={[styles.clusterText, visited && styles.clusterTextVisited]}>{count}</Text>
+    <View style={styles.clusterHit}>
+      <View
+        style={[
+          styles.clusterPin,
+          { minWidth: size, height: size, borderRadius: size / 2 },
+          visited && styles.clusterPinVisited,
+        ]}
+      >
+        <Text style={[styles.clusterText, { fontSize }, visited && styles.clusterTextVisited]}>
+          {count}
+        </Text>
+      </View>
     </View>
   );
 }
@@ -640,49 +657,51 @@ export default function BeerMapScreen({
             </View>
           ) : null}
         </Pressable>
-        <View style={styles.layerControls}>
-          <View style={styles.layerRow} accessibilityRole="tablist">
-            <LayerButton active={layer === 'all'} label={cs.map.layerAll} onPress={() => selectLayer('all')} />
-            <LayerButton
-              active={layer === 'visited'}
-              label={cs.map.layerVisited}
-              onPress={() => selectLayer('visited')}
-            />
-            <LayerButton
-              active={layer === 'friends'}
-              label={cs.map.layerFriends}
-              onPress={() => selectLayer('friends')}
-            />
-          </View>
+        <View style={styles.layerRow} accessibilityRole="tablist">
+          <LayerButton active={layer === 'all'} label={cs.map.layerAll} onPress={() => selectLayer('all')} />
+          <LayerButton
+            active={layer === 'visited'}
+            label={cs.map.layerVisited}
+            onPress={() => selectLayer('visited')}
+          />
+          <LayerButton
+            active={layer === 'friends'}
+            label={cs.map.layerFriends}
+            onPress={() => selectLayer('friends')}
+          />
         </View>
       </View>
 
-      {!selectedPub && !selectedLive && !selectedCity ? <View style={styles.mapRail}>
-        <Pressable
-          onPress={locate}
-          style={({ pressed }) => [styles.railButton, pressed && styles.pressed]}
-          accessibilityRole="button"
-          accessibilityLabel={cs.a11y.mapLocate}
-        >
-          <LocateFixedIcon size={20} color={position ? Colors.amber : Colors.foamMuted} />
-        </Pressable>
-        <Pressable
-          onPress={() => setListOpen(true)}
-          style={({ pressed }) => [styles.railButton, pressed && styles.pressed]}
-          accessibilityRole="button"
-          accessibilityLabel={cs.a11y.mapList}
-        >
-          <ListIcon size={20} color={Colors.foamMuted} />
-        </Pressable>
-        <Pressable
-          onPress={refresh}
-          style={({ pressed }) => [styles.railButton, pressed && styles.pressed]}
-          accessibilityRole="button"
-          accessibilityLabel={cs.a11y.mapRefresh}
-        >
-          <RefreshCwIcon size={19} color={loadingPubs ? Colors.amber : Colors.foamMuted} />
-        </Pressable>
-      </View> : null}
+      {!selectedPub && !selectedLive && !selectedCity ? (
+        // Below both chrome rows (2×44 + gaps), tucked to the right edge so the
+        // middle of the map stays clear for pins.
+        <View style={[styles.mapRail, { top: insets.top + 117 }]}>
+          <Pressable
+            onPress={locate}
+            style={({ pressed }) => [styles.railButton, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel={cs.a11y.mapLocate}
+          >
+            <LocateFixedIcon size={20} color={position ? Colors.amber : Colors.foamMuted} />
+          </Pressable>
+          <Pressable
+            onPress={() => setListOpen(true)}
+            style={({ pressed }) => [styles.railButton, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel={cs.a11y.mapList}
+          >
+            <ListIcon size={20} color={Colors.foamMuted} />
+          </Pressable>
+          <Pressable
+            onPress={refresh}
+            style={({ pressed }) => [styles.railButton, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel={cs.a11y.mapRefresh}
+          >
+            <RefreshCwIcon size={19} color={loadingPubs ? Colors.amber : Colors.foamMuted} />
+          </Pressable>
+        </View>
+      ) : null}
 
       <View
         style={[
@@ -802,20 +821,22 @@ export default function BeerMapScreen({
             />
           </ScrollView>
         ) : (
-          <ScrollView style={styles.dockScroll} contentContainerStyle={styles.dockContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.overviewContent}>
             <View style={styles.overviewRow}>
               <View style={styles.overviewIcon}>
                 {layer === 'friends' ? (
-                  <UsersIcon size={22} color={Colors.amber} />
+                  <UsersIcon size={18} color={Colors.amber} />
                 ) : (
-                  <BeerIcon size={22} color={Colors.amber} />
+                  <BeerIcon size={18} color={Colors.amber} />
                 )}
               </View>
               <View style={styles.overviewCopy}>
-                <Text style={styles.dockTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+                <Text style={styles.overviewTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
                   {layer === 'friends' ? cs.map.friendsOverviewTitle : cs.map.beerTrail}
                 </Text>
-                <Text style={styles.dockBody} maxFontSizeMultiplier={FontScaleCap.body}>{layerDescription}</Text>
+                <Text style={styles.overviewMeta} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {layerDescription}
+                </Text>
               </View>
             </View>
             {permissionState !== 'granted' ? (
@@ -828,7 +849,7 @@ export default function BeerMapScreen({
                 <Text style={styles.permissionButtonText} maxFontSizeMultiplier={FontScaleCap.body}>{cs.map.permissionHint}</Text>
               </Pressable>
             ) : null}
-          </ScrollView>
+          </View>
         )}
       </View>
 
@@ -993,24 +1014,28 @@ const styles = StyleSheet.create({
     borderColor: Colors.stout,
   },
   topFilterCountText: { fontFamily: Fonts.ui.bold, fontSize: 10, color: Colors.stout },
-  layerControls: {
-    alignSelf: 'stretch',
-    marginHorizontal: 12,
-    gap: 7,
-  },
-  layerRow: { flexDirection: 'row', gap: 6 },
-  layerButton: {
-    flex: 1,
+  layerRow: {
     height: 44,
-    paddingHorizontal: 6,
+    padding: 3,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: Radius.pill,
+    backgroundColor: withAlpha(Colors.stout, 0.94),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.16),
+    shadowColor: Colors.black,
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  layerButton: {
+    height: 36,
+    paddingHorizontal: 13,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.stout2, 0.95),
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.14),
   },
-  layerButtonActive: { backgroundColor: Colors.foam, borderColor: Colors.foam },
+  layerButtonActive: { backgroundColor: Colors.foam },
   layerButtonText: { fontFamily: Fonts.ui.semibold, fontSize: 13, color: Colors.foamMuted },
   layerButtonTextActive: { color: Colors.stout },
   pinHit: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
@@ -1021,9 +1046,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.stout3,
-    borderWidth: 2,
-    borderColor: Colors.foamMuted,
+    backgroundColor: withAlpha(Colors.stout3, 0.96),
+    borderWidth: 1.5,
+    borderColor: withAlpha(Colors.foamMuted, 0.7),
   },
   pubPinVisited: { backgroundColor: Colors.amber, borderColor: Colors.stout, borderWidth: 3 },
   pubPinSelected: { width: 38, height: 38, borderRadius: 19, borderColor: Colors.foam },
@@ -1037,19 +1062,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.stout,
   },
-  clusterPin: {
-    minWidth: 44,
-    height: 44,
-    paddingHorizontal: 9,
-    borderRadius: 21,
+  clusterHit: {
+    minWidth: HitArea.min,
+    minHeight: HitArea.min,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.stout2,
-    borderWidth: 2,
-    borderColor: Colors.foamMuted,
   },
-  clusterPinVisited: { borderColor: Colors.amber, borderWidth: 4 },
-  clusterText: { fontFamily: Fonts.display.extrabold, fontSize: 15, color: Colors.foam },
+  clusterPin: {
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.stout2, 0.92),
+    borderWidth: 1.5,
+    borderColor: withAlpha(Colors.foamMuted, 0.55),
+  },
+  clusterPinVisited: { borderColor: Colors.amber, borderWidth: 2.5 },
+  clusterText: { fontFamily: Fonts.display.extrabold, color: Colors.foam },
   clusterTextVisited: { color: Colors.amberLight },
   livePin: {
     width: 45,
@@ -1092,7 +1120,7 @@ const styles = StyleSheet.create({
   },
   cityMarkerText: { flexShrink: 1, fontFamily: Fonts.display.extrabold, fontSize: 15, color: Colors.stout },
   cityMarkerCount: { fontFamily: Fonts.ui.bold, fontSize: 12, color: withAlpha(Colors.stout, 0.72) },
-  mapRail: { position: 'absolute', right: 14, top: '42%', gap: 9 },
+  mapRail: { position: 'absolute', right: 12, gap: 9 },
   railButton: {
     width: HitArea.min,
     height: HitArea.min,
@@ -1189,22 +1217,12 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   primaryButtonText: { fontFamily: Fonts.display.extrabold, fontSize: 15, color: Colors.stout },
-  secondaryButton: {
-    width: 48,
-    height: 46,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.stout3,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    marginTop: 8,
-  },
-  overviewRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  overviewContent: { paddingHorizontal: 16, paddingTop: 11 },
+  overviewRow: { flexDirection: 'row', alignItems: 'center', gap: 11 },
   overviewIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: withAlpha(Colors.amber, 0.12),
@@ -1212,7 +1230,9 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.28),
   },
   overviewCopy: { flex: 1, minWidth: 0 },
-  permissionButton: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 10, minHeight: 34 },
+  overviewTitle: { fontFamily: Fonts.display.extrabold, fontSize: 16, lineHeight: 20, color: Colors.foam },
+  overviewMeta: { fontFamily: Fonts.ui.regular, fontSize: 13, lineHeight: 17, color: Colors.foamMuted },
+  permissionButton: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 8, minHeight: 34 },
   permissionButtonText: { flex: 1, fontFamily: Fonts.ui.medium, fontSize: 13, color: Colors.foamMuted },
   listBackdrop: {
     flex: 1,
