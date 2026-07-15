@@ -250,13 +250,6 @@ function PartyPulsePanel({
         isMine && styles.pulseCardMine,
       ]}
     >
-      <View
-        style={[
-          styles.pulseRail,
-          (isLive || isMine) && styles.pulseRailHot,
-        ]}
-        pointerEvents="none"
-      />
       <View style={styles.pulseTopRow}>
         <View
           style={[
@@ -1452,19 +1445,6 @@ const styles = StyleSheet.create({
   },
   pulseCardMine: {
     borderColor: withAlpha(Colors.amber, 0.5),
-  },
-  pulseRail: {
-    position: 'absolute',
-    top: Spacing.lg,
-    bottom: Spacing.lg,
-    left: 0,
-    width: 3,
-    borderTopRightRadius: 3,
-    borderBottomRightRadius: 3,
-    backgroundColor: withAlpha(Colors.amber, 0.28),
-  },
-  pulseRailHot: {
-    backgroundColor: Colors.amber,
   },
   pulseTopRow: {
     flexDirection: 'row',

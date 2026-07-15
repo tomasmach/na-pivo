@@ -126,7 +126,7 @@ import { useToastStore } from '@/stores/toastStore';
 import { geohash8 } from '@/data/geohash';
 import { showAppDialog } from '@/components/shared/AppDialog';
 
-const CounterScreen = require('../CounterScreen').default;
+const { default: CounterScreen, groupMenuBeers } = require('../CounterScreen');
 const TestRenderer = require('react-test-renderer');
 const { act } = TestRenderer;
 
@@ -199,6 +199,68 @@ describe('CounterScreen states', () => {
 });
 
 describe('CounterScreen counting', () => {
+  it('groups serving sizes under one beer card and keeps each size countable', async () => {
+    useCommunityStore.setState({
+      overrides: {
+        [CELL]: {
+          beers: [
+            { name: 'Pilsner Urquell', priceCzk: 155, volumeMl: 500 },
+            { name: 'Pilsner Urquell', priceCzk: 95, volumeMl: 300 },
+          ],
+          updatedAt: 1,
+        },
+      },
+    });
+    useNearbyPub.mockReturnValue(nearbyState());
+
+    let renderer: any;
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(CounterScreen));
+    });
+
+    const beerNames = renderer.root.findAll(
+      (node: any) => node.type === 'Text' && node.props.children === 'Pilsner Urquell',
+    );
+    expect(beerNames).toHaveLength(1);
+
+    const smallPlus = renderer.root.findAll(
+      (node: any) =>
+        node.props?.accessibilityLabel ===
+          `${copy.a11y.counterCountBeer('Pilsner Urquell', copy.counter.price(95))}, 0,3 l` &&
+        typeof node.props?.onPress === 'function',
+    )[0];
+    const largePlus = renderer.root.findAll(
+      (node: any) =>
+        node.props?.accessibilityLabel ===
+          `${copy.a11y.counterCountBeer('Pilsner Urquell', copy.counter.price(155))}, 0,5 l` &&
+        typeof node.props?.onPress === 'function',
+    )[0];
+    expect(smallPlus).toBeTruthy();
+    expect(largePlus).toBeTruthy();
+
+    await act(async () => {
+      smallPlus.props.onPress();
+      await Promise.resolve();
+    });
+
+    expect(useTallyStore.getState().current?.drinks[0]).toMatchObject({
+      beerName: 'Pilsner Urquell',
+      priceCzk: 95,
+      volumeMl: 300,
+    });
+  });
+
+  it('orders grouped serving sizes from small to large', () => {
+    const groups = groupMenuBeers([
+      { name: 'Plzeň', priceCzk: 72, volumeMl: 500 },
+      { name: 'Kozel', priceCzk: 55, volumeMl: 500 },
+      { name: ' plzeň ', priceCzk: 48, volumeMl: 300 },
+    ]);
+
+    expect(groups.map((group: any) => group.name)).toEqual(['Plzeň', 'Kozel']);
+    expect(groups[0].beers.map((beer: any) => beer.volumeMl)).toEqual([300, 500]);
+  });
+
   it('renders backend community beers fetched for the active pub', async () => {
     fetchPubHours.mockResolvedValueOnce(
       new Map([
