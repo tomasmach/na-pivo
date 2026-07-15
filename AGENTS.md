@@ -84,26 +84,22 @@ Základní lokální příkazy:
 
 ```bash
 npm install
-npm run start
-npm run ios:local
+npm run dev
 npm run typecheck
 npm test
 npm run lint
 ```
 
-Pro lokální test proti backendu se backend obvykle spouští v `../na-pivo-backend`:
+Pro kompletní lokální spuštění projektu vždy používej:
 
 ```bash
-uv run python manage.py runserver 0.0.0.0:8000
+npm run dev
 ```
 
-Mobilní lokální build proti lokálnímu backendu spouštěj hlavně přes:
-
-```bash
-npm run ios:local
-```
-
-Když potřebuješ rozjet iOS simulator pro ruční ověření aplikace, používej také `npm run ios:local`.
+Tento příkaz v sousedním backend repozitáři `../na-pivo-backend` spustí databázové
+migrace a lokální backend a následně sestaví a otevře mobilní aplikaci v iOS
+simulátoru. Backend ani simulátor proto běžně nespouštěj separátními příkazy;
+udělej to jen při cílené diagnostice jedné vrstvy nebo na explicitní žádost.
 
 Respektuj existující Expo Router, React Native, store, queue a theme strukturu. Nezaváděj nový state management, navigační pattern nebo design systém bez silného důvodu.
 
