@@ -16,18 +16,12 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, Linking, useWindowDimensions } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSequence,
-  withSpring,
-  useReducedMotion,
-} from 'react-native-reanimated';
+import { useReducedMotion } from 'react-native-reanimated';
 
-import { Colors } from '@/theme/colors';
+import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { amberGlow, amberGlowStrong } from '@/theme/shadows';
@@ -215,7 +209,6 @@ function NoPubScreen({ onRetry, embedded }: { onRetry: () => void; embedded: boo
 interface MenuCardVariant {
   beer: CommunityBeer;
   count: number;
-  pulseToken: number;
   onCount: () => void;
   onDecrement: () => void;
   onEdit: () => void;
@@ -228,118 +221,96 @@ interface MenuCardProps {
 }
 
 function MenuCard({ name, variants, priceCurrency }: MenuCardProps) {
-  const reducedMotion = useReducedMotion();
-  const scale = useSharedValue(1);
-  const pulseToken = variants.reduce((total, variant) => total + variant.pulseToken, 0);
   const hasCount = variants.some((variant) => variant.count > 0);
 
-  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-
-  // Springy bounce each time this beer is counted. Keyed purely on pulseToken
-  // (which only ever increments on a +1 for this beer), the effect body is a
-  // single shared-value write — the BeerBubbles pattern the React Compiler /
-  // immutability lint accepts. pulseToken starts at 0 so mount never pulses, and
-  // an undo never bumps it.
-  useEffect(() => {
-    if (pulseToken === 0 || reducedMotion) return;
-    // Writing a reanimated shared value drives the bounce on the UI thread; the
-    // experimental immutability rule misfires on this valid pattern.
-    // eslint-disable-next-line react-hooks/immutability
-    scale.value = withSequence(
-      withSpring(1.04, { damping: 12, stiffness: 320 }),
-      withSpring(1, { damping: 14, stiffness: 260 }),
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pulseToken]);
-
   return (
-    <Animated.View style={animatedStyle}>
-      <View style={[styles.menuCard, hasCount && styles.menuCardCounted]}>
-        <Text style={styles.menuCardName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {name}
-        </Text>
+    <View style={[styles.menuCard, hasCount && styles.menuCardCounted]}>
+      <Text style={styles.menuCardName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
+        {name}
+      </Text>
 
-        <View style={styles.menuVariants}>
-          {variants.map(({ beer, count, onCount, onDecrement, onEdit }, index) => {
-            const hasPrice = typeof beer.priceCzk === 'number';
-            const price = hasPrice
-              ? formatPrice(beer.priceCzk as number, priceCurrency)
-              : pricePlaceholder(priceCurrency);
-            const volume = beer.volumeMl ? formatVolume(beer.volumeMl) : null;
-            const baseCountLabel = hasPrice
-              ? cs.a11y.counterCountBeer(beer.name, price)
-              : cs.a11y.counterCountBeerNoPrice(beer.name);
-            const countA11yLabel = variants.length > 1 && volume
-              ? `${baseCountLabel}, ${volume}`
-              : baseCountLabel;
-            const removeA11yLabel = variants.length > 1 && volume
-              ? `${cs.a11y.counterRemoveBeer(beer.name)}, ${volume}`
-              : cs.a11y.counterRemoveBeer(beer.name);
+      <View style={styles.menuVariants}>
+        {variants.map(({ beer, count, onCount, onDecrement, onEdit }, index) => {
+          const hasPrice = typeof beer.priceCzk === 'number';
+          const price = hasPrice
+            ? formatPrice(beer.priceCzk as number, priceCurrency)
+            : pricePlaceholder(priceCurrency);
+          const volume = beer.volumeMl ? formatVolume(beer.volumeMl) : null;
+          const baseCountLabel = hasPrice
+            ? cs.a11y.counterCountBeer(beer.name, price)
+            : cs.a11y.counterCountBeerNoPrice(beer.name);
+          const countA11yLabel = variants.length > 1 && volume
+            ? `${baseCountLabel}, ${volume}`
+            : baseCountLabel;
+          const removeA11yLabel = variants.length > 1 && volume
+            ? `${cs.a11y.counterRemoveBeer(beer.name)}, ${volume}`
+            : cs.a11y.counterRemoveBeer(beer.name);
 
-            return (
-              <View
-                key={beerKey(beer)}
-                style={[styles.menuVariantRow, index > 0 && styles.menuVariantRowDivided]}
+          return (
+            <View
+              key={beerKey(beer)}
+              style={[styles.menuVariantRow, index > 0 && styles.menuVariantRowDivided]}
+            >
+              {/* Each serving keeps its own edit target and stepper while the
+                  shared beer name appears only once for the whole card. */}
+              <Pressable
+                onLongPress={onEdit}
+                delayLongPress={300}
+                style={({ pressed }) => [styles.menuVariantMeta, pressed && styles.menuCardPressed]}
+                accessibilityRole="button"
+                accessibilityLabel={[beer.name, volume, price].filter(Boolean).join(', ')}
+                accessibilityHint={cs.a11y.counterEditBeer(beer.name)}
               >
-                {/* Each serving keeps its own edit target and stepper while the
-                    shared beer name appears only once for the whole card. */}
-                <Pressable
-                  onLongPress={onEdit}
-                  delayLongPress={300}
-                  style={({ pressed }) => [styles.menuVariantMeta, pressed && styles.menuCardPressed]}
-                  accessibilityRole="button"
-                  accessibilityLabel={[beer.name, volume, price].filter(Boolean).join(', ')}
-                  accessibilityHint={cs.a11y.counterEditBeer(beer.name)}
-                >
-                  {volume ? (
+                {volume ? (
+                  <View style={styles.menuVariantVolumeChip}>
                     <Text style={styles.menuVariantVolume} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
                       {volume}
                     </Text>
-                  ) : null}
-                  <Text
-                    style={[styles.menuVariantPrice, !hasPrice && styles.menuCardMetaMissing]}
-                    numberOfLines={1}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
-                    {price}
-                  </Text>
-                </Pressable>
+                  </View>
+                ) : null}
+                <Text
+                  style={[styles.menuVariantPrice, !hasPrice && styles.menuCardMetaMissing]}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {price}
+                </Text>
+              </Pressable>
 
-                <View style={styles.stepper}>
-                  {count > 0 && (
-                    <>
-                      <Pressable
-                        onPress={onDecrement}
-                        style={({ pressed }) => [styles.stepButton, styles.stepButtonMinus, pressed && styles.stepButtonPressed]}
-                        hitSlop={6}
-                        accessibilityRole="button"
-                        accessibilityLabel={removeA11yLabel}
-                      >
-                        <MinusIcon size={18} color={Colors.mutedText} />
-                      </Pressable>
-                      <View style={styles.countBadge}>
-                        <Text style={styles.countBadgeText} maxFontSizeMultiplier={FontScaleCap.body}>
-                          {cs.counter.perBeerCount(count)}
-                        </Text>
-                      </View>
-                    </>
-                  )}
-                  <Pressable
-                    onPress={onCount}
-                    style={({ pressed }) => [styles.stepButton, styles.stepButtonPlus, pressed && styles.stepButtonPressed]}
-                    hitSlop={6}
-                    accessibilityRole="button"
-                    accessibilityLabel={countA11yLabel}
-                  >
-                    <PlusIcon size={20} color={Colors.amber} />
-                  </Pressable>
-                </View>
+              <View style={styles.stepper}>
+                {count > 0 && (
+                  <>
+                    <Pressable
+                      onPress={onDecrement}
+                      style={({ pressed }) => [styles.stepButton, styles.stepButtonMinus, pressed && styles.stepButtonPressed]}
+                      hitSlop={6}
+                      accessibilityRole="button"
+                      accessibilityLabel={removeA11yLabel}
+                    >
+                      <MinusIcon size={18} color={Colors.mutedText} />
+                    </Pressable>
+                    <View style={styles.countBadge}>
+                      <Text style={styles.countBadgeText} maxFontSizeMultiplier={FontScaleCap.body}>
+                        {cs.counter.perBeerCount(count)}
+                      </Text>
+                    </View>
+                  </>
+                )}
+                <Pressable
+                  onPress={onCount}
+                  style={({ pressed }) => [styles.stepButton, styles.stepButtonPlus, pressed && styles.stepButtonPressed]}
+                  hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel={countA11yLabel}
+                >
+                  <PlusIcon size={20} color={Colors.amber} />
+                </Pressable>
               </View>
-            );
-          })}
-        </View>
+            </View>
+          );
+        })}
       </View>
-    </Animated.View>
+    </View>
   );
 }
 
@@ -457,8 +428,6 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   const [backdateAt, setBackdateAt] = useState<string | null>(null);
   // Bumped on each open so the form body remounts with fresh, prop-seeded state.
   const [formNonce, setFormNonce] = useState(0);
-  // Per-beer pulse counter (key → token); bumped on each count to bounce a card.
-  const [pulses, setPulses] = useState<Record<string, number>>({});
   const [backendMenu, setBackendMenu] = useState<{
     pubId: string;
     beers: CommunityBeer[];
@@ -637,8 +606,6 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
       if (drinkType === 'beer') {
         const mergedMenu = mergeBeerIntoMenu(menu, beer);
         setOverride(cell, { beers: mergedMenu });
-        const key = beerKey(beer);
-        setPulses((prev) => ({ ...prev, [key]: (prev[key] ?? 0) + 1 }));
       }
       // The check-in prompt ("I'm drinking this now") is now-semantic — skip it
       // for a backdated log.
@@ -1136,7 +1103,6 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
                   variants={group.beers.map((beer) => ({
                     beer,
                     count: beerCounts.get(beerKey(beer)) ?? 0,
-                    pulseToken: pulses[beerKey(beer)] ?? 0,
                     onCount: () => handleTapBeer(beer),
                     onDecrement: () => decrementBeer(beer),
                     onEdit: () => handleEditBeer(beer),
@@ -1717,7 +1683,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.display.extrabold,
     fontSize: 18,
     color: Colors.foam,
-    marginTop: 0,
+    marginTop: 12,
     marginBottom: 8,
   },
   menuList: {
@@ -1728,9 +1694,9 @@ const styles = StyleSheet.create({
     borderRadius: Radius.card,
     borderWidth: 1,
     borderColor: Colors.border,
-    paddingHorizontal: 18,
-    paddingTop: 15,
-    paddingBottom: 12,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 8,
   },
   menuCardCounted: {
     borderColor: Colors.amber,
@@ -1744,7 +1710,7 @@ const styles = StyleSheet.create({
     color: Colors.foam,
   },
   menuVariants: {
-    marginTop: 7,
+    marginTop: 4,
   },
   menuVariantRow: {
     minHeight: 48,
@@ -1754,25 +1720,37 @@ const styles = StyleSheet.create({
   },
   menuVariantRowDivided: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Colors.border,
+    borderTopColor: withAlpha(Colors.border, 0.55),
   },
   menuVariantMeta: {
     flex: 1,
     minWidth: 0,
     flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 8,
-    paddingVertical: 8,
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 6,
+  },
+  // Serving size as a small amber tag so the 0,3/0,5 choice pops before the
+  // price when both pours sit on one card.
+  menuVariantVolumeChip: {
+    minWidth: 48,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout3,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.35),
+    alignItems: 'center',
   },
   menuVariantVolume: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 14,
+    fontFamily: Fonts.display.bold,
+    fontSize: 13,
     color: Colors.amber,
   },
   menuVariantPrice: {
     flexShrink: 1,
     fontFamily: Fonts.ui.semibold,
-    fontSize: 13,
+    fontSize: 15,
     color: Colors.foamMuted,
   },
   menuCardMetaMissing: {
@@ -1813,6 +1791,7 @@ const styles = StyleSheet.create({
   // the headline gesture.
   stepButtonPlus: {
     borderColor: Colors.amber,
+    backgroundColor: withAlpha(Colors.amber, 0.14),
   },
   stepButtonMinus: {
     borderColor: Colors.border,
