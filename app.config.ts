@@ -1,5 +1,6 @@
-import { ExpoConfig, ConfigContext } from 'expo/config';
-import { ConfigPlugin, withInfoPlist } from 'expo/config-plugins';
+import type { ExpoConfig, ConfigContext } from 'expo/config';
+import type { ConfigPlugin } from 'expo/config-plugins';
+import { withInfoPlist } from 'expo/config-plugins.js';
 
 const LOCATION_REASON =
   'Na pivo používá tvou polohu k nalezení hospod v okolí a namíření šipky. Aktuální nebo přibližná poloha se může poslat našemu serveru, který pro vyhledávání využívá Mapy.cz; GPS trasu ani historii neukládáme.';
