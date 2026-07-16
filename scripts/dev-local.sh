@@ -57,6 +57,10 @@ else
   done
 fi
 
-echo "==> Building and launching the iOS app"
+echo "==> Syncing native iOS configuration"
 cd "$REPO_ROOT"
+npx expo prebuild --platform ios --no-install
+(cd "$REPO_ROOT/ios" && pod install)
+
+echo "==> Building and launching the iOS app"
 npm run ios:local

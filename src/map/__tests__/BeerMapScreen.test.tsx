@@ -3,6 +3,7 @@ import { Pressable, Text, View } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
 
 import { cs } from '@/i18n/cs';
+import type { FriendPubActivity } from '@/data/friendsClient';
 import { EMPTY_PUB_SEARCH_FILTERS } from '@/data/pubSearchFilters';
 import BeerMapScreen from '../BeerMapScreen';
 import { fetchPubHours } from '@/data/hoursClient';
@@ -15,6 +16,7 @@ jest.mock('react-native', () => {
   return {
     ...RN,
     AccessibilityInfo: { announceForAccessibility: jest.fn(async () => undefined) },
+    Image: 'Image',
     useColorScheme: () => mockColorScheme,
     Modal: ({ children, visible }: { children?: React.ReactNode; visible?: boolean }) =>
       visible ? <RN.View>{children}</RN.View> : null,
@@ -116,6 +118,61 @@ jest.mock('@/components/shared/IconGlyph', () => {
 const mockedUseBeerMap = useBeerMap as jest.MockedFunction<typeof useBeerMap>;
 const mockedFetchPubHours = fetchPubHours as jest.MockedFunction<typeof fetchPubHours>;
 
+function liveActivity(avatarUrl: string | null): FriendPubActivity {
+  return {
+    id: 'activity-1',
+    account: {
+      id: 'friend-1',
+      nickname: 'pepa',
+      displayName: 'Pepa',
+      avatarUrl,
+      isPublic: true,
+    },
+    cacheKey: 'u2fkbnvy',
+    name: 'Lokál',
+    city: 'Praha',
+    externalId: '',
+    message: '',
+    startedAt: '2026-07-16T18:00:00.000Z',
+    expiresAt: '2026-07-16T22:00:00.000Z',
+    active: true,
+    createdAt: '2026-07-16T18:00:00.000Z',
+    updatedAt: '2026-07-16T18:00:00.000Z',
+    responses: { going: 0, maybe: 0, cant: 0, goingProfiles: [] },
+    myResponse: null,
+    kind: 'live',
+    scheduledFor: null,
+    reactions: { cheers: 0 },
+    myReaction: null,
+  };
+}
+
+function mockLiveMap(avatarUrl: string | null) {
+  const activity = liveActivity(avatarUrl);
+  mockedUseBeerMap.mockReturnValue({
+    pubs: [],
+    visitedPubs: [],
+    visitedCities: [],
+    livePubs: [{
+      cacheKey: activity.cacheKey,
+      name: activity.name,
+      city: activity.city,
+      lat: 50.0876,
+      lng: 14.4214,
+      activities: [activity],
+    }],
+    position: null,
+    permissionState: 'granted',
+    loadingPubs: false,
+    stale: false,
+    requestPermission: jest.fn(async () => undefined),
+    loadRegion: jest.fn(),
+    refresh: jest.fn(),
+  });
+
+  return activity;
+}
+
 describe('BeerMapScreen opening-hours loading', () => {
   beforeEach(() => {
     jest.useFakeTimers();
@@ -172,6 +229,35 @@ describe('BeerMapScreen opening-hours loading', () => {
     screen.rerender(<BeerMapScreen {...props} />);
 
     expect(screen.getByLabelText(cs.a11y.beerMap).props.accessibilityValue.text).toBe('light');
+  });
+
+  it('shows a friend avatar in the live map marker', () => {
+    const activity = mockLiveMap('https://cdn.test/pepa.jpg');
+    const screen = render(
+      <BeerMapScreen
+        filters={EMPTY_PUB_SEARCH_FILTERS}
+        onApplyFilters={jest.fn()}
+        onShowCompass={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('live-map-avatar').props.source).toEqual({
+      uri: activity.account.avatarUrl,
+    });
+  });
+
+  it('keeps the friend initial when the live marker has no avatar', () => {
+    mockLiveMap(null);
+    const screen = render(
+      <BeerMapScreen
+        filters={EMPTY_PUB_SEARCH_FILTERS}
+        onApplyFilters={jest.fn()}
+        onShowCompass={jest.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId('live-map-avatar')).toBeNull();
+    expect(screen.getByText('P')).toBeTruthy();
   });
 
   it('replaces a pending loader with the unknown state after three seconds', async () => {

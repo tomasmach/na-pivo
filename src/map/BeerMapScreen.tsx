@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
   FlatList,
+  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -186,9 +187,28 @@ function ClusterMarker({ count, visited }: { count: number; visited: boolean }) 
 }
 
 function LiveMarker({ live, selected }: { live: LivePubSummary; selected: boolean }) {
+  const account = live.activities[0]?.account;
+  const avatarUrl = account?.avatarUrl;
+  const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
+  const showAvatar = Boolean(avatarUrl && avatarUrl !== failedAvatarUrl);
+
   return (
-    <View style={[styles.livePin, selected && styles.livePinSelected]}>
-      <Text style={styles.liveInitial}>{friendName(live).charAt(0).toLocaleUpperCase('cs-CZ')}</Text>
+    <View style={styles.liveMarkerHit}>
+      <View style={[styles.livePin, selected && styles.livePinSelected]}>
+        {showAvatar && avatarUrl ? (
+          <Image
+            source={{ uri: avatarUrl }}
+            style={styles.liveAvatar}
+            onError={() => setFailedAvatarUrl(avatarUrl)}
+            accessibilityIgnoresInvertColors
+            testID="live-map-avatar"
+          />
+        ) : (
+          <Text style={styles.liveInitial}>
+            {friendName(live).charAt(0).toLocaleUpperCase('cs-CZ')}
+          </Text>
+        )}
+      </View>
       <View style={styles.liveCount}>
         <Text style={styles.liveCountText}>{live.activities.length}</Text>
       </View>
@@ -1074,10 +1094,17 @@ const styles = StyleSheet.create({
   clusterPinVisited: { borderColor: Colors.amber, borderWidth: 2.5 },
   clusterText: { fontFamily: Fonts.display.extrabold, color: Colors.foam },
   clusterTextVisited: { color: Colors.amberLight },
+  liveMarkerHit: {
+    width: 57,
+    height: 57,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   livePin: {
     width: 45,
     height: 45,
     borderRadius: 23,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.amber,
@@ -1085,11 +1112,12 @@ const styles = StyleSheet.create({
     borderColor: Colors.foam,
   },
   livePinSelected: { transform: [{ scale: 1.14 }], borderColor: Colors.neon },
+  liveAvatar: { width: '100%', height: '100%' },
   liveInitial: { fontFamily: Fonts.display.extrabold, fontSize: 19, color: Colors.stout },
   liveCount: {
     position: 'absolute',
-    right: -5,
-    top: -5,
+    right: 0,
+    top: 0,
     minWidth: 20,
     height: 20,
     paddingHorizontal: 4,
