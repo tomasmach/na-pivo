@@ -160,13 +160,15 @@ export function AddFriendTools({
     return (
       <View style={styles.identityGate}>
         <Text style={styles.gateTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {cs.friends.coldStartAnonTitle}
+          {needsProfileSetup
+            ? cs.friends.coldStartSetupTitle
+            : cs.friends.coldStartAnonTitle}
         </Text>
         <Text style={styles.gateBody} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.friends.coldStartAnonBody}
+          {needsProfileSetup ? cs.friends.coldStartSetupBody : cs.friends.coldStartAnonBody}
         </Text>
         <GlowButton
-          label={cs.friends.coldStartAnonCta}
+          label={needsProfileSetup ? cs.friends.coldStartSetupCta : cs.friends.coldStartAnonCta}
           onPress={openIdentity}
           variant="primary"
           glow="soft"

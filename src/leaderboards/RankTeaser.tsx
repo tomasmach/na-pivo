@@ -92,7 +92,7 @@ export function RankTeaser() {
             </>
           )}
         </Text>
-        <Text style={styles.subtitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+        <Text style={styles.subtitle} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
           {subtitle}
         </Text>
       </View>

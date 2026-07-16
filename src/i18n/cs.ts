@@ -869,7 +869,7 @@ export const cs = {
     title: 'Parta',
     heroTitle: 'Kdo jde dneska na jedno?',
     heroBody:
-      'Přidej si parťáky a uvidíš, kdo je zrovna na pivu. Ukaž jim svůj kód nebo pošli pozvánku.',
+      'Kámoše přidáš kódem nebo pozvánkou. Pak hned vidíš, kdo zrovna sedí na pivu.',
     firstRunOffline: 'Zatím ticho. Načtu to, až chytneš signál.',
     refresh: 'Obnovit',
     searchPlaceholder: 'Přezdívka kámoše',
@@ -1017,9 +1017,9 @@ export const cs = {
 
     // — "CO TĚ ČEKÁ" cold-start teaser (§J) —
     whatIsPartaHeader: 'Co tě čeká',
-    whatIsParta1: 'Cinkni, když jdeš na pivo — parta to uvidí.',
-    whatIsParta2: 'Kámoši kývnou, kdo dorazí ke stolu.',
-    whatIsParta3: 'Za společné večery roste série a šplháš v žebříčku.',
+    whatIsParta1: 'Jdeš na pivo? Cinkni a parta to hned ví.',
+    whatIsParta2: 'Kámoši kývnou, jestli dorazí.',
+    whatIsParta3: 'Společné večery drží sérii a posouvají tě v žebříčku.',
 
     // — Growth block "SEŽEŇ PARTU" (§A1) —
     growthHeader: 'Sežeň partu',
@@ -1028,9 +1028,13 @@ export const cs = {
     inviteShareCta: 'Poslat pozvánku',
 
     // — Identity gate (§A2) —
-    coldStartAnonTitle: 'Nejdřív přezdívka',
-    coldStartAnonBody: 'Aby si tě parta našla, dej si přezdívku a ukaž se.',
-    coldStartAnonCta: 'Založit přezdívku',
+    coldStartAnonTitle: 'Přidej se k partě',
+    coldStartAnonBody:
+      'Přihlas se nebo si založ účet. Pak tě kámoši najdou podle přezdívky.',
+    coldStartAnonCta: 'Přihlásit se',
+    coldStartSetupTitle: 'Jak ti má parta říkat?',
+    coldStartSetupBody: 'Doplň si přezdívku, ať tě kámoši najdou.',
+    coldStartSetupCta: 'Doplnit přezdívku',
 
     // — CodeSheet "Můj kód" / QR / invite (§A3) —
     codeSheetTitle: 'Můj kód',
@@ -1305,7 +1309,7 @@ export const cs = {
     teaserTitleRank: (rank: number) => `${rank}. pivař`,
     teaserTitleAfter: ' v zemi',
     teaserFallbackTitle: 'Žebříčky',
-    teaserFallbackSubtitle: 'Změř se s pivaři z celé země — každý týden nová šance',
+    teaserFallbackSubtitle: 'Poměř se s pivaři z celé země. V pondělí se jede nanovo.',
     teaserGhostSubtitle: 'Hraješ jako duch — v žebříčku tě nikdo nevidí',
     teaserTopSubtitle: 'Držíš se v top 10 · nový závod od pondělí',
     teaserResetNote: 'Nový závod každé pondělí',
