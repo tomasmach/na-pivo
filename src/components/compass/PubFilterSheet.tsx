@@ -56,7 +56,6 @@ import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScroll
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
-import { softDrop } from '@/theme/shadows';
 
 type Glyph = ComponentType<{ size?: number; color: string }>;
 
@@ -201,198 +200,196 @@ export function PubFilterSheet({ visible, value, onClose, onApply }: PubFilterSh
     <Modal
       visible={visible}
       transparent
+      presentationStyle="overFullScreen"
       animationType="fade"
       statusBarTranslucent
+      navigationBarTranslucent
       onRequestClose={onClose}
     >
-      <Pressable style={styles.backdrop} onPress={onClose} accessible={false}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.kav}
-          pointerEvents="box-none"
-        >
-          <Pressable onPress={() => undefined} accessible={false}>
-            <Animated.View
-              style={[
-                styles.card,
-                softDrop(),
-                cardAnim,
-              ]}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.backdrop}
+      >
+        {/* Keep the dismiss target behind the sheet. A Pressable ancestor competes
+            with the ScrollView's pan gesture and makes scrolling feel sticky. */}
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          accessible={false}
+        />
+        <Animated.View style={[styles.card, cardAnim]}>
+          <View style={styles.handle} />
+          <View style={styles.titleRow}>
+            <View style={styles.titleTextWrap}>
+              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {cs.compass.pubFilterTitle}
+              </Text>
+              <Text style={styles.subtitle} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.compass.pubFilterSubtitle}
+              </Text>
+            </View>
+            <Pressable
+              onPress={onClose}
+              hitSlop={12}
+              style={styles.closeBtn}
+              accessibilityRole="button"
+              accessibilityLabel={cs.a11y.closePubFilters}
             >
-              <View style={styles.handle} />
-              <View style={styles.titleRow}>
-                <View style={styles.titleTextWrap}>
-                  <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                    {cs.compass.pubFilterTitle}
-                  </Text>
-                  <Text style={styles.subtitle} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {cs.compass.pubFilterSubtitle}
-                  </Text>
-                </View>
+              <XIcon size={18} color={Colors.foamMuted} />
+            </Pressable>
+          </View>
+
+          <KeyboardAwareScrollView
+            style={styles.content}
+            contentContainerStyle={{
+              paddingBottom: 50 + Math.max(insets.bottom, Spacing.md) + Spacing.xl,
+            }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+              PIVO
+            </Text>
+            <View style={styles.searchRow}>
+              <SearchIcon size={16} color={Colors.mutedText} />
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder={draft.beerBrand?.label ?? cs.compass.beerFilterSearchPlaceholder}
+                placeholderTextColor={draft.beerBrand ? Colors.foam : Colors.mutedText}
+                style={styles.searchInput}
+                autoCapitalize="words"
+                autoCorrect={false}
+                returnKeyType="search"
+                maxFontSizeMultiplier={FontScaleCap.body}
+                accessibilityLabel={cs.a11y.beerBrandFilterInput}
+              />
+              {(query.length > 0 || draft.beerBrand) && (
                 <Pressable
-                  onPress={onClose}
-                  hitSlop={12}
-                  style={styles.closeBtn}
+                  onPress={() => (query.length > 0 ? setQuery('') : chooseBrand(null))}
+                  hitSlop={10}
+                  style={styles.searchClear}
                   accessibilityRole="button"
-                  accessibilityLabel={cs.a11y.closePubFilters}
+                  accessibilityLabel={cs.a11y.clearBeerBrandFilter}
                 >
-                  <XIcon size={18} color={Colors.foamMuted} />
+                  <XIcon size={15} color={Colors.foamMuted} />
                 </Pressable>
-              </View>
+              )}
+            </View>
 
-              <KeyboardAwareScrollView
-                style={styles.content}
-                contentContainerStyle={{
-                  paddingBottom: 50 + Math.max(insets.bottom, Spacing.md) + Spacing.xl,
-                }}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-              >
-                <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-                  PIVO
-                </Text>
-                <View style={styles.searchRow}>
-                  <SearchIcon size={16} color={Colors.mutedText} />
-                  <TextInput
-                    value={query}
-                    onChangeText={setQuery}
-                    placeholder={draft.beerBrand?.label ?? cs.compass.beerFilterSearchPlaceholder}
-                    placeholderTextColor={draft.beerBrand ? Colors.foam : Colors.mutedText}
-                    style={styles.searchInput}
-                    autoCapitalize="words"
-                    autoCorrect={false}
-                    returnKeyType="search"
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                    accessibilityLabel={cs.a11y.beerBrandFilterInput}
-                  />
-                  {(query.length > 0 || draft.beerBrand) && (
-                    <Pressable
-                      onPress={() => (query.length > 0 ? setQuery('') : chooseBrand(null))}
-                      hitSlop={10}
-                      style={styles.searchClear}
-                      accessibilityRole="button"
-                      accessibilityLabel={cs.a11y.clearBeerBrandFilter}
-                    >
-                      <XIcon size={15} color={Colors.foamMuted} />
-                    </Pressable>
-                  )}
-                </View>
-
-                {searching ? (
-                  <View style={styles.results}>
-                    {suggestionsPending || visibleSuggestions.length === 0 ? (
-                      <Text style={styles.noResults} maxFontSizeMultiplier={FontScaleCap.body}>
-                        {suggestionsPending
-                          ? cs.compass.beerFilterSearching
-                          : cs.compass.beerFilterNoResults}
-                      </Text>
-                    ) : (
-                      visibleSuggestions.map((suggestion) => (
-                        <Pressable
-                          key={suggestion.slug}
-                          onPress={() => chooseSuggestion(suggestion)}
-                          style={styles.resultRow}
-                          accessibilityRole="button"
-                          accessibilityLabel={cs.a11y.beerBrandFilterSuggestion(suggestion.name)}
-                        >
-                          <BeerIcon size={15} color={Colors.mutedText} />
-                          <Text
-                            style={styles.resultText}
-                            numberOfLines={1}
-                            maxFontSizeMultiplier={FontScaleCap.body}
-                          >
-                            {suggestion.name}
-                          </Text>
-                        </Pressable>
-                      ))
-                    )}
-                  </View>
+            {searching ? (
+              <View style={styles.results}>
+                {suggestionsPending || visibleSuggestions.length === 0 ? (
+                  <Text style={styles.noResults} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {suggestionsPending
+                      ? cs.compass.beerFilterSearching
+                      : cs.compass.beerFilterNoResults}
+                  </Text>
                 ) : (
-                  <View style={styles.chipsWrap}>
-                    {POPULAR_BEER_BRANDS.map((brand) => {
-                      const active = draft.beerBrand?.key === brand.key;
-                      return (
-                        <FilterChip
-                          key={brand.key}
-                          label={brand.short}
-                          active={active}
-                          icon={BeerIcon}
-                          onPress={() => chooseBrand(active ? null : { key: brand.key, label: brand.short })}
-                          accessibilityLabel={cs.a11y.selectBeerBrand(brand.label)}
-                        />
-                      );
-                    })}
-                  </View>
-                )}
-
-                {groupedAmenities.map(({ section, items }) => (
-                  <View key={section}>
-                    <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {SECTION_LABELS[section]}
-                    </Text>
-                    <View style={styles.amenityGrid}>
-                      {items.map((amenity) => (
-                        <AmenityChip
-                          key={amenity.key}
-                          amenity={amenity}
-                          active={draft.amenityKeys.includes(amenity.key)}
-                          onPress={() => toggleAmenity(amenity.key)}
-                        />
-                      ))}
-                    </View>
-                  </View>
-                ))}
-
-                <Text
-                  style={[styles.matchHint, limitReached && styles.limitHint]}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                  accessibilityLiveRegion="polite"
-                >
-                  {limitReached
-                    ? cs.compass.pubFilterLimit(MAX_AMENITY_FILTERS)
-                    : cs.compass.pubFilterMatchAll}
-                </Text>
-              </KeyboardAwareScrollView>
-
-              <View
-                style={[
-                  styles.actions,
-                  { bottom: Math.max(insets.bottom, Spacing.md) },
-                ]}
-              >
-                {hasDraftFilters ? (
-                  <Pressable
-                    onPress={clear}
-                    style={styles.secondaryButton}
-                    accessibilityRole="button"
-                    accessibilityLabel={cs.a11y.clearPubFilters}
-                  >
-                    <Text
-                      style={styles.secondaryButtonText}
-                      maxFontSizeMultiplier={FontScaleCap.body}
+                  visibleSuggestions.map((suggestion) => (
+                    <Pressable
+                      key={suggestion.slug}
+                      onPress={() => chooseSuggestion(suggestion)}
+                      style={styles.resultRow}
+                      accessibilityRole="button"
+                      accessibilityLabel={cs.a11y.beerBrandFilterSuggestion(suggestion.name)}
                     >
-                      {cs.compass.pubFilterClear}
-                    </Text>
-                  </Pressable>
-                ) : null}
-                <Pressable
-                  onPress={apply}
-                  style={styles.primaryButton}
-                  accessibilityRole="button"
-                  accessibilityLabel={cs.a11y.applyPubFilters}
-                >
-                  <Text
-                    style={styles.primaryButtonText}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
-                    {cs.compass.pubFilterApply}
-                  </Text>
-                </Pressable>
+                      <BeerIcon size={15} color={Colors.mutedText} />
+                      <Text
+                        style={styles.resultText}
+                        numberOfLines={1}
+                        maxFontSizeMultiplier={FontScaleCap.body}
+                      >
+                        {suggestion.name}
+                      </Text>
+                    </Pressable>
+                  ))
+                )}
               </View>
-            </Animated.View>
-          </Pressable>
-        </KeyboardAvoidingView>
-      </Pressable>
+            ) : (
+              <View style={styles.chipsWrap}>
+                {POPULAR_BEER_BRANDS.map((brand) => {
+                  const active = draft.beerBrand?.key === brand.key;
+                  return (
+                    <FilterChip
+                      key={brand.key}
+                      label={brand.short}
+                      active={active}
+                      icon={BeerIcon}
+                      onPress={() => chooseBrand(active ? null : { key: brand.key, label: brand.short })}
+                      accessibilityLabel={cs.a11y.selectBeerBrand(brand.label)}
+                    />
+                  );
+                })}
+              </View>
+            )}
+
+            {groupedAmenities.map(({ section, items }) => (
+              <View key={section}>
+                <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {SECTION_LABELS[section]}
+                </Text>
+                <View style={styles.amenityGrid}>
+                  {items.map((amenity) => (
+                    <AmenityChip
+                      key={amenity.key}
+                      amenity={amenity}
+                      active={draft.amenityKeys.includes(amenity.key)}
+                      onPress={() => toggleAmenity(amenity.key)}
+                    />
+                  ))}
+                </View>
+              </View>
+            ))}
+
+            <Text
+              style={[styles.matchHint, limitReached && styles.limitHint]}
+              maxFontSizeMultiplier={FontScaleCap.body}
+              accessibilityLiveRegion="polite"
+            >
+              {limitReached
+                ? cs.compass.pubFilterLimit(MAX_AMENITY_FILTERS)
+                : cs.compass.pubFilterMatchAll}
+            </Text>
+          </KeyboardAwareScrollView>
+
+          <View
+            style={[
+              styles.actions,
+              { bottom: Math.max(insets.bottom, Spacing.md) },
+            ]}
+          >
+            {hasDraftFilters ? (
+              <Pressable
+                onPress={clear}
+                style={styles.secondaryButton}
+                accessibilityRole="button"
+                accessibilityLabel={cs.a11y.clearPubFilters}
+              >
+                <Text
+                  style={styles.secondaryButtonText}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {cs.compass.pubFilterClear}
+                </Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              onPress={apply}
+              style={styles.primaryButton}
+              accessibilityRole="button"
+              accessibilityLabel={cs.a11y.applyPubFilters}
+            >
+              <Text
+                style={styles.primaryButtonText}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {cs.compass.pubFilterApply}
+              </Text>
+            </Pressable>
+          </View>
+        </Animated.View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -457,7 +454,6 @@ function AmenityChip({
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: withAlpha(Colors.black, 0.64), justifyContent: 'flex-end' },
-  kav: { flex: 1, justifyContent: 'flex-end' },
   card: {
     maxHeight: '88%',
     backgroundColor: Colors.stout2,
