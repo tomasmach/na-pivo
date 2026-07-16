@@ -72,9 +72,11 @@ Override the backend port when needed:
 EXPO_PUBLIC_BACKEND_PORT=8765 npm run ios:local
 ```
 
-Android build mapy používá Google Maps SDK. Pro lokální i EAS build nastav
-`EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_API_KEY`; iOS používá nativní Apple Maps a
-žádný mapový klíč nepotřebuje.
+Mapová obrazovka používá Google Maps SDK na Androidu i iOS. Pro lokální i EAS
+build nastav oddělené klíče `EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_API_KEY` a
+`EXPO_PUBLIC_GOOGLE_MAPS_IOS_API_KEY`. Android klíč omez na package + signing
+certificate, iOS klíč na bundle ID. Serverový Google Places klíč do aplikace
+nikdy nepatří.
 
 Use `npm run start:local` only when you want to start Metro in local-backend mode without rebuilding the native iOS app.
 

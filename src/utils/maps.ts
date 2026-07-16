@@ -2,28 +2,18 @@ import * as Linking from 'expo-linking';
 import type { Pub } from '@/data/pubs';
 
 /**
- * Builds a Mapy.com URL that pins the pub at its exact coordinates. On mobile
- * this hands off to the Mapy.cz / Mapy.com app via universal links if installed,
- * else the web.
+ * Build a Google Maps universal URL for the pub's exact coordinates.
  *
- * We use the documented showmap URL API with coordinates only — never a name
- * search. The Mapy.cz suggest API gives us no place ID, so we cannot deep-link
- * to a POI detail card; and a name search (`q`) is resolved nationwide by
- * textual relevance, so it can land on a different place with a similar name far
- * away (e.g. "Restaurace Kamenec" near Olomouc resolving to "Pohostinství
- * Kamenec u Poličky" ~150 km away). showmap pins the precise position and does
- * no searching.
- *
- * Note: showmap's `center` is longitude-first (lon,lat), the opposite of
- * Google's lat,lng order. The comma is encoded as %2C, which Mapy.com accepts.
+ * The Maps URL surface needs no API key and creates no Places request. Using
+ * coordinates instead of a venue-name query also avoids sending the user to a
+ * different business with a similar name in another city.
  */
 export function buildMapsUrl(pub: Pick<Pub, 'lat' | 'lng'>): string {
   const params = new URLSearchParams({
-    center: `${pub.lng},${pub.lat}`,
-    zoom: '17',
-    marker: 'true',
+    api: '1',
+    query: `${pub.lat},${pub.lng}`,
   });
-  return `https://mapy.com/fnc/v1/showmap?${params.toString()}`;
+  return `https://www.google.com/maps/search/?${params.toString()}`;
 }
 
 /**

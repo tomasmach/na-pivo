@@ -10,7 +10,7 @@
  *   • PINS the chosen pub once a session is under way, so GPS jitter never makes
  *     the active pub flap; the user can still switch via selectPub().
  *
- * The pub id from Mapy is unstable across fetches, so the durable key is the
+ * Provider-facing pub ids can change across fetches, so the durable key is the
  * geohash-8 cell (`pubKey`) — the same key the tally store and backend use.
  */
 
@@ -77,7 +77,7 @@ export function useNearbyPub(): UseNearbyPubResult {
   const activeSessionPubKey = useTallyStore((state) =>
     state.current && state.current.drinks.length > 0 ? state.current.pubKey : null,
   );
-  const forceNextFetchRef = useRef(true);
+  const forceNextFetchRef = useRef(false);
 
   // Once the user has a pinned pub (auto or manual) we stop letting GPS reselect
   // it — the active pub is sticky for the whole sitting.
@@ -111,7 +111,6 @@ export function useNearbyPub(): UseNearbyPubResult {
   // — Focus gate: only watch GPS while this tab is on screen —
   useFocusEffect(
     useCallback(() => {
-      forceNextFetchRef.current = true;
       setFocused(true);
       return () => setFocused(false);
     }, []),

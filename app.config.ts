@@ -19,6 +19,8 @@ const GOOGLE_IOS_URL_SCHEME =
   'com.googleusercontent.apps.PLACEHOLDER';
 const GOOGLE_MAPS_ANDROID_API_KEY =
   (process.env.EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_API_KEY ?? '').trim();
+const GOOGLE_MAPS_IOS_API_KEY =
+  (process.env.EXPO_PUBLIC_GOOGLE_MAPS_IOS_API_KEY ?? '').trim();
 
 function usesLocalBackend(): boolean {
   const mode = (process.env.EXPO_PUBLIC_BACKEND_MODE ?? '').trim().toLowerCase();
@@ -32,6 +34,15 @@ function isAndroidNativeBuild(): boolean {
     process.env.EAS_BUILD_PLATFORM === 'android' ||
     lifecycle === 'android' ||
     lifecycle === 'android:local'
+  );
+}
+
+function isIosNativeBuild(): boolean {
+  const lifecycle = (process.env.npm_lifecycle_event ?? '').trim();
+  return (
+    process.env.EAS_BUILD_PLATFORM === 'ios' ||
+    lifecycle === 'ios' ||
+    lifecycle === 'ios:local'
   );
 }
 
@@ -56,6 +67,12 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   if (isAndroidNativeBuild() && !GOOGLE_MAPS_ANDROID_API_KEY) {
     throw new Error(
       'Android mapa vyžaduje EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_API_KEY. ' +
+        'Nastav ho lokálně nebo jako EAS environment secret.',
+    );
+  }
+  if (isIosNativeBuild() && !GOOGLE_MAPS_IOS_API_KEY) {
+    throw new Error(
+      'iOS mapa vyžaduje EXPO_PUBLIC_GOOGLE_MAPS_IOS_API_KEY. ' +
         'Nastav ho lokálně nebo jako EAS environment secret.',
     );
   }
@@ -140,6 +157,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         {
           ...(GOOGLE_MAPS_ANDROID_API_KEY
             ? { androidGoogleMapsApiKey: GOOGLE_MAPS_ANDROID_API_KEY }
+            : {}),
+          ...(GOOGLE_MAPS_IOS_API_KEY
+            ? { iosGoogleMapsApiKey: GOOGLE_MAPS_IOS_API_KEY }
             : {}),
         },
       ],

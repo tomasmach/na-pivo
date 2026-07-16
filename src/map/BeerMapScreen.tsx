@@ -3,14 +3,18 @@ import {
   AccessibilityInfo,
   FlatList,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import MapView, { Marker, type MapPressEvent, type Region } from 'react-native-maps';
+import MapView, {
+  Marker,
+  PROVIDER_GOOGLE,
+  type MapPressEvent,
+  type Region,
+} from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
@@ -534,11 +538,12 @@ export default function BeerMapScreen({
     <View style={styles.root}>
       <MapView
         ref={mapRef}
+        provider={PROVIDER_GOOGLE}
         style={StyleSheet.absoluteFill}
         initialRegion={initialRegion}
         onRegionChangeComplete={handleRegionChange}
         onPress={handleMapPress}
-        mapType={Platform.OS === 'ios' ? 'mutedStandard' : 'standard'}
+        mapType="standard"
         customMapStyle={DARK_MAP_STYLE as unknown as []}
         userInterfaceStyle="dark"
         showsUserLocation={permissionState === 'granted'}

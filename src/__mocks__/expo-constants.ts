@@ -3,8 +3,6 @@ export default {
   nativeBuildVersion: '4',
   expoConfig: {
     version: '1.1.5',
-    extra: {
-      mapyApiKey: 'test-key',
-    },
+    extra: {},
   },
 };

@@ -1,11 +1,10 @@
 /**
- * Mapy.cz REST API client — POI search for pubs/bars.
+ * Pub discovery client for the backend's provider-compatible v1 wire format.
  *
- * Strategy: nearby-pub search uses our backend's local directory only. Mapy.com
- * is reserved for add-pub autocomplete/geocoding, also through the backend, so
- * the mobile app never ships or calls with a public Mapy API key. Provider-shaped
- * items returned by the backend are deduplicated, label-filtered,
- * name-blocklisted, and clamped to the radius.
+ * The filename and legacy item shape remain stable for released-client
+ * compatibility, but the mobile app never calls Mapy or Google Places directly.
+ * Nearby discovery is served from our local directory; explicit location
+ * lookups are provider-swappable behind the backend.
  */
 
 import type { HoursStatus, Pub, VenueKind } from './pubs';
@@ -103,6 +102,7 @@ interface MapyPosition {
 }
 
 interface MapyGeocodeItem {
+  id?: string;
   name: string;
   label?: string;
   position: MapyPosition;
@@ -208,7 +208,7 @@ async function backendSuggest(
   try {
     const resp = await fetch(url.toString(), { signal });
     if (!resp.ok) {
-      console.warn(`[mapy] backend pubs/near HTTP ${resp.status}`);
+      console.warn(`[pubs] backend pubs/near HTTP ${resp.status}`);
       trackApiFailure('pubs_near_backend', {
         endpoint: '/v1/pubs/near',
         status: resp.status,
@@ -232,7 +232,7 @@ async function backendSuggest(
         // A rolling deploy can briefly put a new app against an older backend
         // that ignores unknown query params. Fail closed: unfiltered pubs must
         // never masquerade as confirmed amenity matches.
-        console.warn('[mapy] backend did not acknowledge amenity filters');
+        console.warn('[pubs] backend did not acknowledge amenity filters');
         trackApiFailure('pubs_near_backend', {
           endpoint: '/v1/pubs/near',
           reason: 'filter_contract_mismatch',
@@ -244,7 +244,7 @@ async function backendSuggest(
   } catch (err) {
     // An honoured abort must propagate so callers' cancellation works.
     if (signal?.aborted) throw err;
-    console.warn('[mapy] backend pubs/near failed:', err);
+    console.warn('[pubs] backend pubs/near failed:', err);
     trackApiFailure('pubs_near_backend', {
       endpoint: '/v1/pubs/near',
       reason: 'exception',
@@ -403,7 +403,7 @@ function itemToLocationSuggestion(item: MapyGeocodeItem): PubLocationSuggestion 
   const address = pickAddress(item);
   const key = `${item.position.lat.toFixed(5)},${item.position.lon.toFixed(5)}`;
   return {
-    id: `mapy:${key}:${item.name.trim()}`,
+    id: item.id?.trim() || `mapy:${key}:${item.name.trim()}`,
     name: item.name.trim(),
     lat: item.position.lat,
     lng: item.position.lon,
@@ -638,5 +638,5 @@ export async function searchPubsNear(
     return itemsToPubs(backendItems, lat, lng, kmRadius);
   }
 
-  throw new Error('Mapy backend proxy is not configured or unavailable');
+  throw new Error('Pub directory backend is not configured or unavailable');
 }

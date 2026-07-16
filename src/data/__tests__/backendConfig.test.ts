@@ -25,7 +25,7 @@ beforeEach(() => {
   setEnv('EXPO_PUBLIC_BACKEND_MODE', undefined);
   setEnv('EXPO_PUBLIC_BACKEND_HOST', undefined);
   setEnv('EXPO_PUBLIC_BACKEND_PORT', undefined);
-  constants.expoConfig = { version: '1.1.2', extra: { mapyApiKey: 'test-key' } };
+  constants.expoConfig = { version: '1.1.2', extra: {} };
   constants.expoGoConfig = null;
   constants.manifest = null;
   (Platform as { OS: string }).OS = 'ios';

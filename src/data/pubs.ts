@@ -403,7 +403,7 @@ function gateCovers(
 }
 
 /**
- * Fetch pubs near (lat, lng) through the backend/Mapy lookup and rebuild the
+ * Fetch pubs near (lat, lng) through the local-directory backend and rebuild the
  * spatial index.
  * Short-circuits when the user is within REFETCH_THRESHOLD_KM of the last
  * fetch center, so it is safe to call on every GPS update.
@@ -411,7 +411,7 @@ function gateCovers(
  * On the FIRST call of a session it also tries a persisted snapshot before the
  * network: a fresh (within TTL) snapshot whose center/radius covers the request
  * hydrates the index and skips the fetch entirely — killing the cold-start
- * Mapy requests. A force refetch always bypasses both caches.
+ * backend requests. A force refetch always bypasses both caches.
  */
 export async function fetchPubsNear(
   lat: number,

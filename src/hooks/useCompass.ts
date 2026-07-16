@@ -236,7 +236,7 @@ export function useCompass(
     };
   }, []);
 
-  // Fetch pubs through the backend/Mapy lookup whenever the user's position changes. The data
+  // Fetch pubs through the local-directory backend whenever the user's position changes. The data
   // layer short-circuits if the user hasn't moved more than ~2 km from the
   // previous fetch center (or if a fetch is already in-flight), so this is
   // safe to call on every GPS update. We intentionally do not abort the

@@ -329,7 +329,7 @@ describe('searchPubsNear — backend proxy only', () => {
       searchPubsNear(50.08, 14.42, 25, undefined, {
         amenityKeys: ['payment_card'],
       }),
-    ).rejects.toThrow('Mapy backend proxy is not configured or unavailable');
+    ).rejects.toThrow('Pub directory backend is not configured or unavailable');
   });
 
   it('feeds backend items through the existing filter pipeline (drops non-pubs)', async () => {
@@ -363,7 +363,7 @@ describe('searchPubsNear — backend proxy only', () => {
     global.fetch = fetchMock as unknown as typeof fetch;
 
     await expect(searchPubsNear(50.08, 14.42, 25)).rejects.toThrow(
-      'Mapy backend proxy is not configured or unavailable',
+      'Pub directory backend is not configured or unavailable',
     );
     expect(calledUrls(fetchMock)[0]).toContain('/v1/pubs/near');
     expect(calledUrls(fetchMock).some((url) => url.startsWith('https://api.mapy.cz/'))).toBe(false);
@@ -377,7 +377,7 @@ describe('searchPubsNear — backend proxy only', () => {
     global.fetch = fetchMock as unknown as typeof fetch;
 
     await expect(searchPubsNear(50.08, 14.42, 25)).rejects.toThrow(
-      'Mapy backend proxy is not configured or unavailable',
+      'Pub directory backend is not configured or unavailable',
     );
     expect(calledUrls(fetchMock)[0]).toContain('/v1/pubs/near');
     expect(calledUrls(fetchMock).some((url) => url.startsWith('https://api.mapy.cz/'))).toBe(false);
@@ -389,7 +389,7 @@ describe('searchPubsNear — backend proxy only', () => {
     global.fetch = fetchMock as unknown as typeof fetch;
 
     await expect(searchPubsNear(50.08, 14.42, 25)).rejects.toThrow(
-      'Mapy backend proxy is not configured or unavailable',
+      'Pub directory backend is not configured or unavailable',
     );
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -404,7 +404,7 @@ describe('searchPubsNear — backend proxy only', () => {
 
     await expect(
       searchPubsNear(50.08, 14.42, 25, controller.signal),
-    ).rejects.not.toThrow('Mapy backend proxy is not configured or unavailable');
+    ).rejects.not.toThrow('Pub directory backend is not configured or unavailable');
   });
 });
 
