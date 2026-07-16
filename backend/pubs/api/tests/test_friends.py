@@ -82,7 +82,10 @@ def client():
 
 
 @pytest.fixture(autouse=True)
-def _clear_throttle_cache():
+def _clear_throttle_cache(settings):
+    # Endpoint tests assert exact push payloads. Keep delivery deterministic;
+    # async dispatch itself has a focused test below.
+    settings.FRIEND_PUSH_ASYNC = False
     cache.clear()
     yield
     cache.clear()
@@ -174,6 +177,50 @@ def test_friend_request_accept_and_remove(client):
     assert remove.status_code == status.HTTP_200_OK
     assert remove.json() == {"removed": True}
     assert Friendship.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_friend_request_and_accept_queue_push_without_waiting(client, monkeypatch, settings):
+    token_a, account_a = _register(client, "janek")
+    token_b, account_b = _register(client, "petr")
+    account_a.quiet_hours_enabled = False
+    account_b.quiet_hours_enabled = False
+    account_a.save(update_fields=["quiet_hours_enabled"])
+    account_b.save(update_fields=["quiet_hours_enabled"])
+    _grant_push(account_a, "ExponentPushToken[janek_async]")
+    _grant_push(account_b, "ExponentPushToken[petr_async]")
+
+    queued: list[tuple[object, tuple]] = []
+
+    class FakeExecutor:
+        def submit(self, fn, *args):  # noqa: ANN001
+            queued.append((fn, args))
+
+    settings.FRIEND_PUSH_ASYNC = True
+    monkeypatch.setattr("pubs.api.views._friend_push_executor", FakeExecutor())
+    monkeypatch.setattr(
+        "pubs.api.views.requests.post",
+        lambda *args, **kwargs: pytest.fail("push delivery ran in the API request"),
+    )
+
+    request_resp = client.post(
+        "/v1/friends/requests",
+        data={"nickname": "petr"},
+        format="json",
+        **_auth(token_a),
+    )
+    assert request_resp.status_code == status.HTTP_201_CREATED
+    assert len(queued) == 1
+    assert FriendNotification.objects.filter(recipient=account_b).exists()
+
+    accept_resp = client.post(
+        f"/v1/friends/requests/{request_resp.json()['id']}/accept",
+        format="json",
+        **_auth(token_b),
+    )
+    assert accept_resp.status_code == status.HTTP_200_OK
+    assert len(queued) == 2
+    assert FriendNotification.objects.filter(recipient=account_a).exists()
 
 
 @pytest.mark.django_db

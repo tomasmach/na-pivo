@@ -300,6 +300,9 @@ FRIEND_ACTIVITY_RETENTION_DAYS: int = int(
 )
 # Batch size for Expo push fan-out (chunk the token list into POSTs of this size).
 EXPO_PUSH_CHUNK_SIZE: int = int(os.environ.get("EXPO_PUSH_CHUNK_SIZE", "100"))
+# Friend request/accept responses must not wait on Expo's network round-trip.
+FRIEND_PUSH_ASYNC: bool = os.environ.get("FRIEND_PUSH_ASYNC", "1") != "0"
+FRIEND_PUSH_WORKERS: int = int(os.environ.get("FRIEND_PUSH_WORKERS", "2"))
 
 # Per-IP rate limit for credential auth endpoints (register / login / social /
 # link / unlink / verify-email / set-password). Kept tight to blunt credential

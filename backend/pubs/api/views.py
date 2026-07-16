@@ -27,6 +27,7 @@ import re
 import secrets
 import uuid
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -34,7 +35,7 @@ import requests
 from django.conf import settings
 from django.core.cache import cache as default_cache
 from django.core.files.uploadhandler import FileUploadHandler, StopUpload
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, close_old_connections, transaction
 from django.db.models import (
     Avg,
     Count,
@@ -803,6 +804,37 @@ def _send_friend_push(account_ids: list[int], title: str, body: str, data: dict)
         PushDevice.objects.filter(push_token__in=dead_tokens).update(
             enabled=False,
             permission_status=PushDevice.PermissionStatus.DENIED,
+        )
+
+
+_friend_push_executor = ThreadPoolExecutor(
+    max_workers=max(1, int(getattr(settings, "FRIEND_PUSH_WORKERS", 2))),
+    thread_name_prefix="friend-push",
+)
+
+
+def _run_friend_push(account_ids: list[int], title: str, body: str, data: dict) -> None:
+    """Run push delivery outside the request thread with clean DB connections."""
+
+    close_old_connections()
+    try:
+        _send_friend_push(account_ids, title, body, data)
+    finally:
+        close_old_connections()
+
+
+def _dispatch_friend_push(account_ids: list[int], title: str, body: str, data: dict) -> None:
+    """Queue best-effort push without holding the API response open for Expo."""
+
+    if not getattr(settings, "FRIEND_PUSH_ASYNC", True):
+        _send_friend_push(account_ids, title, body, data)
+        return
+    try:
+        _friend_push_executor.submit(_run_friend_push, list(account_ids), title, body, dict(data))
+    except RuntimeError:
+        logger.warning(
+            "friend push dispatch unavailable",
+            extra={"event": "friend_push_dispatch_unavailable"},
         )
 
 
@@ -3235,11 +3267,14 @@ class FriendRequestView(APIView):
                             body=body,
                             friendship=reverse,
                         )
-                        _send_friend_push(
-                            [target.id],
-                            title,
-                            body,
-                            {"kind": "friend_accepted", "friendship_id": str(reverse.public_id)},
+                        push_data = {
+                            "kind": "friend_accepted",
+                            "friendship_id": str(reverse.public_id),
+                        }
+                        transaction.on_commit(
+                            lambda: _dispatch_friend_push(
+                                [target.id], title, body, push_data
+                            )
                         )
                     return Response(
                         FriendshipSerializer(reverse, context=_friend_profile_context(request)).data,
@@ -3289,7 +3324,7 @@ class FriendRequestView(APIView):
                 body=body,
                 friendship=friendship,
             )
-            _send_friend_push(
+            _dispatch_friend_push(
                 [target.id],
                 title,
                 body,
@@ -3344,7 +3379,7 @@ class FriendRequestActionView(APIView):
                     body=body,
                     friendship=friendship,
                 )
-                _send_friend_push(
+                _dispatch_friend_push(
                     [friendship.requester_id],
                     title,
                     body,
