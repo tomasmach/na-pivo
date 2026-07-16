@@ -172,10 +172,14 @@ describe('AddPubScreen', () => {
     const nameInput = renderer!.root.findByProps({
       accessibilityLabel: cs.a11y.addPubNameInput,
     });
+    const addressInput = renderer!.root.findByProps({
+      accessibilityLabel: cs.a11y.addPubAddressInput,
+    });
 
     act(() => {
       currentLocationButton.props.onPress();
       nameInput.props.onChangeText('Hospoda Bez Mapy');
+      addressInput.props.onChangeText('Dlouhá 33');
     });
     await submit();
 
@@ -188,6 +192,7 @@ describe('AddPubScreen', () => {
         lat: 50.087,
         lng: 14.421,
         city: 'Praha',
+        address: 'Dlouhá 33',
       }),
     );
     expect(mockEnqueueAddedPub).toHaveBeenCalledWith(
@@ -197,6 +202,7 @@ describe('AddPubScreen', () => {
         lat: 50.087,
         lng: 14.421,
         city: 'Praha',
+        address: 'Dlouhá 33',
       }),
     );
     expect(mockBack).toHaveBeenCalledTimes(1);
@@ -247,10 +253,18 @@ describe('AddPubScreen', () => {
     const nameInput = renderer!.root.findByProps({
       accessibilityLabel: cs.a11y.addPubNameInput,
     });
+    const cityInput = renderer!.root.findByProps({
+      accessibilityLabel: cs.a11y.addPubCityInput,
+    });
+    const addressInput = renderer!.root.findByProps({
+      accessibilityLabel: cs.a11y.addPubAddressInput,
+    });
 
     await act(async () => {
       await currentLocationButton.props.onPress();
       nameInput.props.onChangeText('Hospoda Bez Geokódu');
+      cityInput.props.onChangeText('Bratislava');
+      addressInput.props.onChangeText('Obchodná 10');
     });
     await submit();
 
@@ -261,6 +275,8 @@ describe('AddPubScreen', () => {
         name: 'Hospoda Bez Geokódu',
         lat: 48.1486,
         lng: 17.1077,
+        city: 'Bratislava',
+        address: 'Obchodná 10',
       }),
     );
     expect(mockBack).toHaveBeenCalledTimes(1);
@@ -275,10 +291,39 @@ describe('AddPubScreen', () => {
     const addressInput = renderer!.root.findByProps({
       accessibilityLabel: cs.a11y.addPubAddressInput,
     });
+    const cityInput = renderer!.root.findByProps({
+      accessibilityLabel: cs.a11y.addPubCityInput,
+    });
 
     act(() => {
       nameInput.props.onChangeText('Hospoda Bez Polohy');
       addressInput.props.onChangeText('Neznámá 123');
+      cityInput.props.onChangeText('Praha');
+    });
+    await submit();
+
+    expect(mockUpsertLocalPub).not.toHaveBeenCalled();
+    expect(mockEnqueueAddedPub).not.toHaveBeenCalled();
+    expect(mockBack).not.toHaveBeenCalled();
+  });
+
+  it('requires both city and address before saving a GPS-confirmed pub', async () => {
+    renderScreen();
+
+    const currentLocationButton = renderer!.root.findByProps({
+      accessibilityLabel: cs.a11y.addPubUseCurrentLocationButton,
+    });
+    const nameInput = renderer!.root.findByProps({
+      accessibilityLabel: cs.a11y.addPubNameInput,
+    });
+    const cityInput = renderer!.root.findByProps({
+      accessibilityLabel: cs.a11y.addPubCityInput,
+    });
+
+    act(() => {
+      currentLocationButton.props.onPress();
+      nameInput.props.onChangeText('Hospoda Bez Adresy');
+      cityInput.props.onChangeText('Praha');
     });
     await submit();
 

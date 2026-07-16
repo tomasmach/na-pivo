@@ -7,7 +7,7 @@
  *  2. Distance card  (custom discrete slider)
  *  3. Preferences card  (haptics + sound toggles)
  *  4. About card  (about + privacy rows)
- *  5. Footer  (attribution)
+ *  5. Footer
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
@@ -18,7 +18,6 @@ import {
   Pressable,
   StyleSheet,
   LayoutChangeEvent,
-  Linking,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
@@ -59,7 +58,6 @@ import {
   StarIcon,
   CheckIcon,
 } from '@/components/shared/IconGlyph';
-import { MapyLogo } from '@/components/shared/MapyLogo';
 import { Avatar } from '@/profile/Avatar';
 import {
   useAccountStore,
@@ -703,24 +701,6 @@ export default function SettingsScreen() {
         {/* ── Footer ── */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>{cs.settings.footer}</Text>
-          {/* Attribution with the official Mapy.com logo inline, replacing the
-              brand name in the sentence ("Data o místech: [logo] (Seznam.cz)…").
-              Required by the REST API attribution terms. The wordmark is black,
-              so the logo rides on a small white chip to stay legible on the dark
-              footer (it is never recoloured); tapping it opens mapy.com. */}
-          <Pressable
-            onPress={() => Linking.openURL('https://mapy.com/')}
-            hitSlop={8}
-            style={({ pressed }) => [styles.attributionRow, pressed && { opacity: 0.7 }]}
-            accessibilityRole="link"
-            accessibilityLabel={`${cs.settings.attributionBefore} Mapy.com ${cs.settings.attributionAfter}`}
-          >
-            <Text style={styles.attributionText}>{cs.settings.attributionBefore}</Text>
-            <View style={styles.mapyLogoChip}>
-              <MapyLogo height={12} />
-            </View>
-            <Text style={styles.attributionText}>{cs.settings.attributionAfter}</Text>
-          </Pressable>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -1094,25 +1074,5 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     color: Colors.mutedText,
     textAlign: 'center',
-  },
-  attributionText: {
-    fontFamily: Fonts.ui.medium,
-    fontSize: 10,
-    color: Colors.mutedText,
-    textAlign: 'center',
-  },
-  attributionRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    paddingHorizontal: Spacing.lg,
-  },
-  mapyLogoChip: {
-    backgroundColor: Colors.white,
-    borderRadius: Radius.pill,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
   },
 });

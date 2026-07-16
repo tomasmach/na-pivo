@@ -63,8 +63,6 @@ interface Coordinates {
 }
 
 interface SelectedLocation extends Coordinates {
-  city?: string;
-  address?: string;
   displayLocation?: string;
   source: 'current';
 }
@@ -95,6 +93,8 @@ export default function AddPubScreen() {
   const [selectedLocation, setSelectedLocation] = useState<SelectedLocation | null>(null);
   const canSubmit =
     name.trim().length > 0 &&
+    city.trim().length > 0 &&
+    address.trim().length > 0 &&
     selectedLocation !== null &&
     !locating &&
     !submitted;
@@ -131,7 +131,6 @@ export default function AddPubScreen() {
 
       setSelectedLocation({
         ...coords,
-        city: city.trim() || undefined,
         displayLocation: cs.addPub.currentLocationSelectedBody,
         source: 'current',
       });
@@ -141,7 +140,7 @@ export default function AddPubScreen() {
     } finally {
       setLocating(false);
     }
-  }, [city, currentLocationSelected, initialCoords, showToast]);
+  }, [currentLocationSelected, initialCoords, showToast]);
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit) return;
@@ -161,15 +160,13 @@ export default function AddPubScreen() {
       return;
     }
 
-    const resolvedCity = trimmedCity || location.city || '';
-    const resolvedAddress = trimmedAddress || location.address || '';
     const entry = buildAddedPubEntry(
       {
         name: trimmedName,
         lat: location.lat,
         lng: location.lng,
-        city: resolvedCity || undefined,
-        address: resolvedAddress || undefined,
+        city: trimmedCity,
+        address: trimmedAddress,
       },
       generateUuidV4(),
     );
@@ -179,8 +176,8 @@ export default function AddPubScreen() {
       name: trimmedName,
       lat: location.lat,
       lng: location.lng,
-      ...(resolvedCity ? { city: resolvedCity } : {}),
-      ...(resolvedAddress ? { address: resolvedAddress } : {}),
+      city: trimmedCity,
+      address: trimmedAddress,
       venueKind: 'pub',
     });
     bumpCatalogRevision();
@@ -341,7 +338,7 @@ export default function AddPubScreen() {
 
         <View style={styles.twoColumn}>
           <View style={styles.column}>
-            <Text style={styles.label}>{cs.addPub.cityLabelOptional}</Text>
+            <Text style={styles.label}>{cs.addPub.cityLabel}</Text>
             <TextInput
               style={styles.input}
               value={city}
@@ -353,7 +350,7 @@ export default function AddPubScreen() {
             />
           </View>
           <View style={styles.column}>
-            <Text style={styles.label}>{cs.addPub.addressLabelOptional}</Text>
+            <Text style={styles.label}>{cs.addPub.addressLabel}</Text>
             <TextInput
               style={styles.input}
               value={address}

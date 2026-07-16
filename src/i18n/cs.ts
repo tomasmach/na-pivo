@@ -385,11 +385,6 @@ export const cs = {
       linkedinUrl: 'https://www.linkedin.com/in/mach-tomas/',
     },
     footer: 'Bez reklam · Bez placení',
-    // The Mapy.com logo is rendered inline between these two halves (replacing
-    // the brand name), so the attribution reads "Data o místech: [logo]
-    // (Seznam.cz). …" — see app/settings.tsx footer.
-    attributionBefore: 'Data o místech:',
-    attributionAfter: '(Seznam.cz). Otevírací doba: samostatné vyhledávání.',
   },
 
   pubReminderOnboarding: {
@@ -523,7 +518,7 @@ export const cs = {
   addPub: {
     title: 'Přidat hospodu',
     intro:
-      'Zadej název podniku, který chybí, a potvrď jeho polohu. Po odeslání se bude zobrazovat i ostatním.',
+      'Vyplň název, město a adresu podniku a potvrď jeho polohu. Po odeslání se bude zobrazovat i ostatním.',
     locationHeader: 'Poloha',
     locationBody: 'Přidej hospodu tam, kde právě stojíš. Uložíme jen tento bod, žádnou trasu ani historii polohy.',
     useCurrentLocation: 'Použít moji aktuální polohu',
@@ -532,12 +527,10 @@ export const cs = {
     nameLabel: 'Název',
     namePlaceholder: 'Např. Hospoda U Komunity',
     currentLocationSelectedTitle: 'Použije se tvoje aktuální poloha',
-    currentLocationSelectedBody: 'Bod, kde stojíš teď. Adresu můžeš doplnit ručně.',
+    currentLocationSelectedBody: 'Bod, kde stojíš teď. Doplň k němu adresu a město.',
     cityLabel: 'Město',
-    cityLabelOptional: 'Město (nepovinné)',
     cityPlaceholder: 'Praha',
     addressLabel: 'Adresa',
-    addressLabelOptional: 'Adresa (nepovinná)',
     addressPlaceholder: 'Ulice a číslo',
     locationError: 'Nejdřív potvrď polohu hospody.',
     locationPermissionDenied: 'Bez povolení polohy hospodu neumístím. Povol ji v Nastavení a zkus to znovu.',
