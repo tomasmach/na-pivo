@@ -17,11 +17,11 @@ classify_venue      — classify draft-beer venue from categories/tags; see venu
 names_match         — name-only gate for cache-read collision guard; see matcher.py
 name_similarity     — normalized name score used to choose among safe matches
 geohash8            — canonical PubHours cache-key helper (precision 8); see matcher.py
-geohash6            — cache-cell helper for the Mapy 'pubs near' cache; see matcher.py
+geohash6            — cache-cell helper for legacy nearby seed rows; see matcher.py
 geohash5            — legacy coarse cell helper; see matcher.py
 geohash5_center     — legacy (lat, lng) centre of a geohash-5 cell; see matcher.py
 TransientFetchError — raised by FirmyHoursSource on a retryable network/proxy error
-MapySuggestSource   — server-side Mapy.cz /v1/suggest 'pubs near' proxy; see mapy.py
+MapySuggestSource   — server-side Mapy.com add-pub lookup client; see mapy.py
 MapyDailyCapExceededError — raised by MapySuggestSource when the daily cap is hit
 MapyAllQueriesFailedError — raised by MapySuggestSource when every query failed
 OpenRouterVisionSource — AI vision client for the beer-menu scan; see openrouter.py

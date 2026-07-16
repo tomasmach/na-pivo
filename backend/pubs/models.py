@@ -2879,23 +2879,18 @@ class PubVisit(models.Model):
 
 class PubSearchCache(models.Model):
     """
-    Shared, DB-cached result of a Mapy.cz "pubs near" suggest search.
+    Legacy nearby-search seed rows retained for local-only discovery.
 
-    The mobile app used to call Mapy.cz /v1/suggest directly from every device,
-    which exhausted the shared API credit. The server now proxies that search
-    (GET /v1/pubs/near) and caches the trimmed suggest items here so every user
-    in the same small cache cell shares ONE upstream fetch.
+    These rows were originally populated from Mapy.com. GET /v1/pubs/near may
+    still read them as immutable fallback data, but never refreshes them through
+    the provider API. New Mapy.com calls are reserved for adding a missing pub.
 
     Identity is (cache_key, radius_bucket):
       * cache_key is a geohash at precision 6 (~1.2 km × 0.6 km cell). The
-        upstream search still runs from the user's actual request coordinate, so
-        dense-city edge cases do not inherit results from a far-away cell centre.
+        original search ran from the user's actual request coordinate.
       * radius_bucket is the smallest of [5, 15, 50, 100] km that covers the
-        requested radius — the same widening steps the search itself uses, so a
-        25 km and a 40 km request in the same cell share the 50 km row.
-
-    Rows are refreshed when older than settings.PUBS_NEAR_TTL_DAYS; a stale row
-    is still served if the upstream fetch fails (better stale than nothing).
+        requested radius, so a 25 km and a 40 km request in the same cell share
+        the 50 km row.
     """
 
     cache_key = models.CharField(

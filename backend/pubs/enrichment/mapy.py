@@ -1,12 +1,12 @@
 """
-pubs.enrichment.mapy — server-side Mapy.cz POI "suggest" proxy.
+pubs.enrichment.mapy — server-side Mapy.com add-pub location lookup.
 
 WHY THIS EXISTS
 ---------------
-The mobile app used to call https://api.mapy.cz/v1/suggest directly from every
-device, which exhausted the shared Mapy.cz credit. This module ports the app's
-search strategy (src/data/mapyClient.ts) to the server so a single shared,
-DB-cached fetch serves every device in a geohash cell.
+The mobile app must not ship a public Mapy key. Add-pub autocomplete and
+geocoding therefore go through this backend client. GET /v1/pubs/near is served
+from the imported directory and legacy seed rows and never instantiates this
+client for nearby discovery.
 
 It deliberately does NOT port the client's name heuristics / blocklist: the
 mobile client still feeds the raw suggest items into its existing filtering
@@ -16,8 +16,11 @@ behaviour of the progressive bbox widening — approximated here by checking
 ALLOWED_LABELS (the client breaks once it has accepted >=1 item, and an accepted
 item always has an allowed label).
 
-Strategy (mirror of mapyClient.ts searchPubsNear)
--------------------------------------------------
+Legacy nearby import strategy
+-----------------------------
+``search_near`` is retained only for offline tooling/tests around the historical
+import shape. Runtime API views do not call it.
+
 * 4 query terms ("hospoda", "bar", "pivnice", "pivovar").
 * Progressive bbox widening over steps [5, 15, 50, 100] km filtered to the
   steps strictly below the requested radius, plus the radius itself (consecutive
@@ -270,7 +273,7 @@ _global_counter = DailyCounter()
 
 class MapySuggestSource:
     """
-    Fetch nearby pub-like POIs from Mapy.cz /v1/suggest.
+    Fetch Mapy.com suggestions/geocodes for adding a missing pub.
 
     Parameters
     ----------
@@ -282,7 +285,7 @@ class MapySuggestSource:
     timeout : int
         Per-request HTTP timeout in seconds.
     daily_cap : int
-        Hard cap on the number of suggest HTTP requests per UTC calendar day,
+        Hard cap on the number of lookup HTTP requests per UTC calendar day,
         counted across the whole process.
     """
 

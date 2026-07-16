@@ -207,6 +207,13 @@ COMMUNITY_THROTTLE_RATE: str = os.environ.get("COMMUNITY_THROTTLE_RATE", "30/min
 # reads while still allowing normal manual corrections.
 ADDED_PUBS_THROTTLE_RATE: str = os.environ.get("ADDED_PUBS_THROTTLE_RATE", "20/min")
 
+# Per-IP rate limit for add-pub autocomplete/geocoding. These are the only
+# public endpoints allowed to spend Mapy.com credits, so keep their budget
+# separate from the local-only nearby directory lookup.
+PUB_LOCATION_LOOKUP_THROTTLE_RATE: str = os.environ.get(
+    "PUB_LOCATION_LOOKUP_THROTTLE_RATE", "30/min"
+)
+
 # Per-IP rate limit for the authenticated drink-logging endpoint
 # (POST /v1/drinks). The in-app beer counter can log several beers in one
 # session (one POST each), so this is more generous than the community rate;
@@ -229,10 +236,8 @@ PUB_RATINGS_THROTTLE_RATE: str = os.environ.get("PUB_RATINGS_THROTTLE_RATE", "12
 # burst-on-sync reason. Format: DRF throttle rate string.
 PUB_VISITS_THROTTLE_RATE: str = os.environ.get("PUB_VISITS_THROTTLE_RATE", "120/min")
 
-# Per-IP rate limit for the unauthenticated Mapy.cz "pubs near" proxy
-# (GET /v1/pubs/near). The result is shared-cached per geohash-6 cell, so the
-# legitimate once-per-search call is cheap while staying local enough for dense
-# city areas; this blunts scripted enumeration.
+# Per-IP rate limit for the unauthenticated local nearby-directory endpoint
+# (GET /v1/pubs/near). This blunts scripted enumeration of the local dataset.
 # Format: DRF throttle rate string.
 PUBS_NEAR_THROTTLE_RATE: str = os.environ.get("PUBS_NEAR_THROTTLE_RATE", "60/min")
 
@@ -431,6 +436,7 @@ REST_FRAMEWORK = {
         "pub_ratings": PUB_RATINGS_THROTTLE_RATE,
         "pub_visits": PUB_VISITS_THROTTLE_RATE,
         "pubs_near": PUBS_NEAR_THROTTLE_RATE,
+        "pub_location_lookup": PUB_LOCATION_LOOKUP_THROTTLE_RATE,
         "pub_hours": PUB_HOURS_THROTTLE_RATE,
         "pub_reports": PUB_REPORTS_THROTTLE_RATE,
         "client_events": CLIENT_EVENTS_THROTTLE_RATE,
@@ -604,30 +610,17 @@ FIRMY_MIN_INTERVAL_SEC: float = float(os.environ.get("FIRMY_MIN_INTERVAL_SEC", "
 FIRMY_DAILY_CAP: int = int(os.environ.get("FIRMY_DAILY_CAP", "2000"))
 
 # ---------------------------------------------------------------------------
-# Mapy.cz "pubs near" proxy settings
+# Mapy.com add-pub lookup settings
 # ---------------------------------------------------------------------------
 
-# Mapy.cz API key for the server-side /v1/suggest proxy (GET /v1/pubs/near).
-# The mobile app no longer calls Mapy.cz directly (it exhausted the shared
-# credit); the server fetches once per geohash-6 cell and caches the result.
-# REQUIRED for the endpoint to work: if unset, /v1/pubs/near returns 503 and the
-# client falls back to calling Mapy.cz directly.
+# Backend-only key used by add-pub autocomplete/geocoding and server validation.
+# GET /v1/pubs/near is local-only and never consumes this key.
 MAPY_API_KEY: str = os.environ.get("MAPY_API_KEY", "")
 
-# Hard daily cap on Mapy.cz suggest HTTP requests across the whole process
-# (counts INDIVIDUAL requests, like FIRMY_DAILY_CAP — each search makes up to
-# 4 term-queries × the number of bbox-widening steps it needs).
+# Hard daily cap on Mapy.com add-pub lookup requests across the whole process.
 MAPY_DAILY_CAP: int = int(os.environ.get("MAPY_DAILY_CAP", "5000"))
 
-# How many days a cached PubSearchCache row is considered fresh before the
-# server re-fetches from Mapy.cz. A stale row is still served if the upstream
-# fetch fails.
-PUBS_NEAR_TTL_DAYS: int = int(os.environ.get("PUBS_NEAR_TTL_DAYS", "7"))
-
-# Prefer the imported CZ/SK directory inside its coarse coverage polygons.
-PUBS_NEAR_LOCAL_FIRST: bool = os.environ.get(
-    "PUBS_NEAR_LOCAL_FIRST", "False"
-).lower() in ("1", "true", "yes")
+# Maximum rows returned from the imported CZ/SK directory.
 PUBS_NEAR_LOCAL_MAX_ITEMS: int = int(
     os.environ.get("PUBS_NEAR_LOCAL_MAX_ITEMS", "300")
 )
