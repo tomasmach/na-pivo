@@ -13,7 +13,6 @@ from rest_framework.test import APIClient
 from pubs.enrichment import MapySuggestResult, geohash8
 from pubs.models import Account, PubReport, UserAddedPub
 from pubs.user_added_pub_geocoding import (
-    ResolvedPubLocation,
     resolve_user_added_pub_location,
     resolved_pub_location_from_item,
 )
@@ -184,76 +183,21 @@ def test_add_pub_creates_live_row(client):
 
 
 @pytest.mark.django_db
-def test_add_pub_uses_precise_geocoded_address_over_client_coords(client):
-    token = _register(client)
-    resolved = ResolvedPubLocation(
-        name=_NAME,
-        lat=49.1951,
-        lng=16.6068,
-        city="Brno",
-        address="Pekařská 1",
-        result_type="regional.address",
-    )
-
-    with patch("pubs.api.views.resolve_user_added_pub_location", return_value=resolved) as geocode:
-        resp = client.post(
-            "/v1/pubs",
-            data=_payload(city="Brno", address="Pekařská 1"),
-            format="json",
-            **_auth(token),
-        )
-
-    assert resp.status_code == status.HTTP_201_CREATED
-    geocode.assert_called_once_with(
-        name=_NAME,
-        address="Pekařská 1",
-        city="Brno",
-        lat=_LAT,
-        lng=_LNG,
-    )
-    pub = UserAddedPub.objects.get()
-    assert pub.lat == resolved.lat
-    assert pub.lng == resolved.lng
-    assert pub.cache_key == geohash8(resolved.lat, resolved.lng)
-    assert resp.json()["cache_key"] == geohash8(resolved.lat, resolved.lng)
-
-
-@pytest.mark.django_db
-def test_add_pub_keeps_client_coords_when_geocode_result_is_too_far(client, settings):
+def test_add_pub_trusts_confirmed_client_coords_without_mapy(client, settings):
     settings.MAPY_API_KEY = "test-key"
     token = _register(client)
-    far_lat = _LAT + 0.009
-    factory, source = _mapy_geocode_factory([_mapy_geocode_item(far_lat, _LNG)])
+    factory, source = _mapy_geocode_factory([_mapy_geocode_item(_LAT + 0.0008, _LNG)])
 
     with patch("pubs.user_added_pub_geocoding.MapySuggestSource", factory):
         resp = client.post("/v1/pubs", data=_payload(), format="json", **_auth(token))
 
     assert resp.status_code == status.HTTP_201_CREATED
-    assert source.geocode_location.call_count == 2
+    source.geocode_location.assert_not_called()
     pub = UserAddedPub.objects.get()
     assert pub.lat == _LAT
     assert pub.lng == _LNG
     assert pub.cache_key == _KEY
     assert resp.json()["cache_key"] == _KEY
-
-
-@pytest.mark.django_db
-def test_add_pub_uses_nearby_geocode_result(client, settings):
-    settings.MAPY_API_KEY = "test-key"
-    token = _register(client)
-    near_lat = _LAT + 0.0008
-    factory, source = _mapy_geocode_factory([_mapy_geocode_item(near_lat, _LNG)])
-
-    with patch("pubs.user_added_pub_geocoding.MapySuggestSource", factory):
-        resp = client.post("/v1/pubs", data=_payload(), format="json", **_auth(token))
-
-    assert resp.status_code == status.HTTP_201_CREATED
-    assert source.geocode_location.call_count == 1
-    pub = UserAddedPub.objects.get()
-    assert pub.lat == pytest.approx(near_lat)
-    assert pub.lng == pytest.approx(_LNG)
-    assert pub.cache_key == geohash8(near_lat, _LNG)
-    assert resp.json()["cache_key"] == geohash8(near_lat, _LNG)
 
 
 @pytest.mark.django_db
@@ -367,16 +311,14 @@ def test_rename_user_added_pub_updates_own_pub_without_geocoding(client):
     create = client.post("/v1/pubs", data=_payload(), format="json", **_auth(token))
     assert create.status_code == status.HTTP_201_CREATED
 
-    with patch("pubs.api.views.resolve_user_added_pub_location") as geocode:
-        resp = client.patch(
-            f"/v1/pubs/{_CLIENT_ID}",
-            data={"name": "Nový název hospody"},
-            format="json",
-            **_auth(token),
-        )
+    resp = client.patch(
+        f"/v1/pubs/{_CLIENT_ID}",
+        data={"name": "Nový název hospody"},
+        format="json",
+        **_auth(token),
+    )
 
     assert resp.status_code == status.HTTP_200_OK
-    geocode.assert_not_called()
     body = resp.json()
     assert body["client_id"] == _CLIENT_ID
     assert body["name"] == "Nový název hospody"

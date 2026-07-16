@@ -138,7 +138,6 @@ from pubs.models import (
 )
 from pubs.photo_contest import current_photo_contest
 from pubs.photos import BeerPhotoError, process_beer_photo
-from pubs.user_added_pub_geocoding import resolve_user_added_pub_location
 
 from .authentication import AccountTokenAuthentication
 from .cache import get_cached_pub_details, get_or_enrich
@@ -1025,9 +1024,9 @@ class UserAddedPubView(APIView):
     POST /v1/pubs
     PATCH /v1/pubs/<client_id>
 
-    Add a pub that the normal Mapy.cz nearby search does not show. The submitted
-    pub is immediately visible to all users through GET /v1/pubs/near, where it
-    is mixed into the Mapy result stream by distance. Auth + throttling mirror
+    Add a pub that the local directory does not show. The submitted pub is
+    immediately visible to all users through GET /v1/pubs/near, where it is
+    mixed into nearby directory results by distance. Auth + throttling mirror
     the existing community contribution endpoint.
     """
 
@@ -1046,20 +1045,6 @@ class UserAddedPubView(APIView):
         lng = data["lng"]
         city = data.get("city") or ""
         address = data.get("address") or ""
-
-        if address:
-            resolved_location = resolve_user_added_pub_location(
-                name=data["name"],
-                address=address,
-                city=city,
-                lat=lat,
-                lng=lng,
-            )
-            if resolved_location is not None:
-                lat = resolved_location.lat
-                lng = resolved_location.lng
-                city = city or resolved_location.city
-                address = address or resolved_location.address
 
         cache_key = geohash8(lat, lng)
 
@@ -5551,8 +5536,8 @@ class PubsNearView(APIView):
 
     Local nearby-pub lookup backed by the imported CZ/SK directory, community
     additions, and any previously populated search-cache rows. This endpoint
-    never calls Mapy.com: the shared Mapy credit is reserved exclusively for
-    the add-pub autocomplete/geocode flow.
+    never calls Mapy.com. The legacy lookup endpoints remain isolated from this
+    read path for compatibility with released mobile versions.
 
     Response 200:
         {"items": [<MapySuggestItem>...], "cached": <bool>, "fetched_at": "<ISO>"}

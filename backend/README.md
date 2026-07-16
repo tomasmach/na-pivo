@@ -181,8 +181,8 @@ All settings are read from environment variables or a `.env` file. See `.env.exa
 | `FIRMY_DAILY_CAP` | `2000` | Hard daily request cap |
 | `HOURS_TTL_DAYS` | `30` | Days before cached hours are refreshed |
 | `SYNC_ENRICH_BUDGET` | `3` | Max pubs enriched synchronously per API call; `0` makes cold lookups pending-only and leaves enrichment to the worker |
-| `MAPY_API_KEY` | _(unset)_ | Backend-only Mapy.com key for add-pub autocomplete and geocoding; `/v1/pubs/near` is local-only |
-| `MAPY_DAILY_CAP` | `5000` | Hard daily cap on Mapy.com add-pub lookup requests |
+| `MAPY_API_KEY` | _(unset)_ | Optional legacy key for released add-pub autocomplete/geocoding clients; current clients add pubs from user-confirmed GPS and `/v1/pubs/near` is local-only |
+| `MAPY_DAILY_CAP` | `5000` | Hard daily cap on legacy Mapy.com lookup requests |
 | `PUB_LOCATION_LOOKUP_THROTTLE_RATE` | `30/min` | Per-IP rate limit for Mapy-backed add-pub autocomplete/geocoding |
 | `PUBS_NEAR_MAX_AMENITY_FILTERS` | `5` | Maximum AND-matched amenity keys accepted by one nearby search |
 | `MAP_AMENITY_CONFIDENCE_FLOOR` | `0.5` | Minimum community confidence for an amenity to qualify as a hard filter match |
