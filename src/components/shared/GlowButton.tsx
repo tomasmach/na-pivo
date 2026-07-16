@@ -1,5 +1,5 @@
 import React, { memo, ReactNode } from 'react';
-import { Pressable, Text, View, StyleSheet, ViewStyle } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View, StyleSheet, ViewStyle } from 'react-native';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
@@ -16,6 +16,8 @@ export interface GlowButtonProps {
   glow?: GlowButtonGlow;
   height?: number;
   accessibilityLabel?: string;
+  loading?: boolean;
+  disabled?: boolean;
 }
 
 function resolveGlowStyle(glow: GlowButtonGlow): ViewStyle {
@@ -32,6 +34,8 @@ export const GlowButton = memo(function GlowButton({
   glow = 'soft',
   height = 62,
   accessibilityLabel,
+  loading = false,
+  disabled = false,
 }: GlowButtonProps) {
   const isPrimary = variant === 'primary';
   const glowStyle = resolveGlowStyle(glow);
@@ -50,16 +54,23 @@ export const GlowButton = memo(function GlowButton({
       )}
       <Pressable
         onPress={onPress}
+        disabled={disabled || loading}
         style={({ pressed }) => [
           styles.base,
           { height, borderRadius: Radius.pill },
           isPrimary ? styles.primaryBg : styles.secondaryBg,
           pressed && styles.pressed,
+          (disabled || loading) && styles.disabled,
         ]}
         accessibilityLabel={accessibilityLabel ?? label}
         accessibilityRole="button"
+        accessibilityState={{ disabled: disabled || loading, busy: loading }}
       >
-        {icon != null && <View style={styles.iconSlot}>{icon}</View>}
+        {loading ? (
+          <ActivityIndicator color={isPrimary ? Colors.stout : Colors.foam} size="small" />
+        ) : icon != null ? (
+          <View style={styles.iconSlot}>{icon}</View>
+        ) : null}
         <Text
           style={[styles.label, isPrimary ? styles.primaryText : styles.secondaryText]}
           numberOfLines={1}
@@ -118,5 +129,8 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.85,
     transform: [{ scale: 0.98 }],
+  },
+  disabled: {
+    opacity: 0.7,
   },
 });

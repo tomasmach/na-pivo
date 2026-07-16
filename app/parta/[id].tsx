@@ -395,6 +395,7 @@ export default function FriendProfileScreen() {
                   }
                   variant="primary"
                   glow="soft"
+                  loading={requestBusy}
                   icon={<UserPlusIcon size={20} color={Colors.stout} />}
                 />
               </View>

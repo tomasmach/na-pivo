@@ -27,6 +27,7 @@ import {
   type ReactNode,
 } from 'react';
 import {
+  ActivityIndicator,
   AppState,
   KeyboardAvoidingView,
   Linking,
@@ -164,19 +165,22 @@ function IconButton({
   accessibilityLabel,
   style,
   children,
+  disabled = false,
 }: {
   onPress: () => void;
   accessibilityLabel: string;
   style: StyleProp<ViewStyle>;
   children: ReactNode;
+  disabled?: boolean;
 }) {
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       hitSlop={ROUND_HIT_SLOP}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      style={({ pressed }) => [style, pressed && styles.dim]}
+      style={({ pressed }) => [style, (pressed || disabled) && styles.dim]}
     >
       {children}
     </Pressable>
@@ -388,6 +392,9 @@ export default function FriendsScreen() {
   const [focused, setFocused] = useState(false);
   // Bumped per dashboard load so the photo strip refetches in lockstep.
   const [photoFeedKey, setPhotoFeedKey] = useState(0);
+  const [respondingRequestActions, setRespondingRequestActions] = useState<
+    Record<string, 'accept' | 'decline'>
+  >({});
 
   // Identity: the growth block needs a nickname before a QR/code makes sense.
   const nickname = useAccountStore(selectNickname);
@@ -429,8 +436,8 @@ export default function FriendsScreen() {
       loadAbortRef.current = controller;
       if (mode === 'refresh') setRefreshing(true);
       setPhotoFeedKey((key) => key + 1);
+      const beerFeedPromise = fetchBeerCheckInFeed(controller.signal);
       const next = await fetchFriendsDashboard(controller.signal);
-      const nextBeerFeed = next ? await fetchBeerCheckInFeed(controller.signal) : null;
       if (!mountedRef.current) return;
       // A newer load superseded this one → skip the (now stale) dashboard/badge
       // writes, but ALWAYS clear the spinner/skeleton this load owns below —
@@ -439,7 +446,6 @@ export default function FriendsScreen() {
         if (next) {
           const override = settingsOverrideRef.current;
           setDashboard(override ? { ...next, settings: override } : next);
-          if (nextBeerFeed) setBeerFeed(nextBeerFeed);
           setLoadError(false);
           const willMarkRead =
             next.notifications.length > 0 && (mode === 'initial' || mode === 'refresh');
@@ -460,6 +466,10 @@ export default function FriendsScreen() {
       }
       if (mode === 'initial') setLoading(false);
       if (mode === 'refresh') setRefreshing(false);
+      if (!next) return;
+      const nextBeerFeed = await beerFeedPromise;
+      if (!mountedRef.current || gen !== loadGenRef.current || !nextBeerFeed) return;
+      setBeerFeed(nextBeerFeed);
     },
     [],
   );
@@ -543,6 +553,21 @@ export default function FriendsScreen() {
     }, [load, scrollToOffset]),
   );
 
+  // A foreground friend push can arrive while this persistent tab is already
+  // focused, so no focus transition would otherwise reload the visible rows.
+  useEffect(() => {
+    if (!focused) return;
+    return usePartaSignalStore.subscribe((state, previous) => {
+      if (!state.pendingRefresh || previous.pendingRefresh) return;
+      const target = state.consumeRefresh();
+      void load('silent').then(() => {
+        if (!target || !mountedRef.current) return;
+        if (target.friendshipId) scrollToOffset(requestsYRef.current);
+        else if (target.activityId) scrollToOffset(activeYRef.current);
+      });
+    });
+  }, [focused, load, scrollToOffset]);
+
   // Foreground: silently refresh whenever the app returns to the foreground (a
   // stale tab left open across a night out).
   useEffect(() => {
@@ -612,7 +637,15 @@ export default function FriendsScreen() {
 
   const respond = useCallback(
     async (id: string, action: 'accept' | 'decline') => {
+      if (respondingRequestActions[id]) return;
+      setRespondingRequestActions((current) => ({ ...current, [id]: action }));
       const result = await respondFriendRequest(id, action);
+      if (!mountedRef.current) return;
+      setRespondingRequestActions((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
       if (result.ok) {
         showToast(
           action === 'accept' ? cs.friends.requestAccepted : cs.friends.requestDeclined,
@@ -630,7 +663,7 @@ export default function FriendsScreen() {
         showToast(result.detail, { icon: <XIcon size={20} color={Colors.amber} /> });
       }
     },
-    [load, showToast],
+    [load, respondingRequestActions, showToast],
   );
 
   const handleSettingsSaved = useCallback((next: FriendsDashboard['settings']) => {
@@ -1169,17 +1202,27 @@ export default function FriendsScreen() {
                             <View style={styles.requestActions}>
                               <IconButton
                                 onPress={() => void respond(request.id, 'decline')}
+                                disabled={respondingRequestActions[request.id] != null}
                                 accessibilityLabel={cs.friends.decline}
                                 style={styles.declineBtn}
                               >
-                                <XIcon size={18} color={Colors.foam} />
+                                {respondingRequestActions[request.id] === 'decline' ? (
+                                  <ActivityIndicator color={Colors.foam} size="small" />
+                                ) : (
+                                  <XIcon size={18} color={Colors.foam} />
+                                )}
                               </IconButton>
                               <IconButton
                                 onPress={() => void respond(request.id, 'accept')}
+                                disabled={respondingRequestActions[request.id] != null}
                                 accessibilityLabel={cs.friends.accept}
                                 style={styles.acceptBtn}
                               >
-                                <CheckIcon size={18} color={Colors.stout} />
+                                {respondingRequestActions[request.id] === 'accept' ? (
+                                  <ActivityIndicator color={Colors.stout} size="small" />
+                                ) : (
+                                  <CheckIcon size={18} color={Colors.stout} />
+                                )}
                               </IconButton>
                             </View>
                           </View>

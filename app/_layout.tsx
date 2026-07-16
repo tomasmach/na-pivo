@@ -181,9 +181,14 @@ export default function RootLayout() {
   useEffect(() => {
     // A friend push received while the app is foregrounded (on any tab) nudges the
     // Parta badge, so it reacts without waiting for a background→foreground cycle
-    // or a Parta focus (§D1). The next dashboard/live fetch reconciles the counts.
+    // or a Parta focus (§D1). Request/accept pushes also reload an already-visible
+    // Parta screen; the next dashboard/live fetch reconciles the counts.
     const subscription = subscribeFriendPushReceived((kind) => {
-      usePartaSignalStore.getState().bumpFromPush(kind);
+      const signal = usePartaSignalStore.getState();
+      signal.bumpFromPush(kind);
+      if (kind === 'friend_request' || kind === 'friend_accepted') {
+        signal.requestRefresh();
+      }
     });
     return () => subscription.remove();
   }, []);

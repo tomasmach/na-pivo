@@ -79,6 +79,7 @@ export function AddFriendTools({
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<FriendProfile[]>([]);
+  const [requestingKey, setRequestingKey] = useState<string | null>(null);
 
   const mountedRef = useRef(true);
   useEffect(
@@ -115,6 +116,9 @@ export function AddFriendTools({
     async (profile?: FriendProfile) => {
       const nickname = query.trim().replace(/^@/, '');
       if (!profile && nickname.length < 2) return;
+      const requestKey = profile?.id ?? `nickname:${nickname.toLocaleLowerCase('cs-CZ')}`;
+      if (requestingKey) return;
+      setRequestingKey(requestKey);
       const queuedRequest: FriendQueueItem =
         profile
           ? { op: 'request', key: `account:${profile.id}`, accountId: profile.id }
@@ -123,6 +127,7 @@ export function AddFriendTools({
         ? await sendFriendRequest({ accountId: profile.id })
         : await sendFriendRequest({ nickname });
       if (!mountedRef.current) return;
+      setRequestingKey(null);
       if (result.ok || isRetriableFriendError(result)) {
         if (!result.ok) {
           await enqueueFriendOp(queuedRequest);
@@ -138,7 +143,7 @@ export function AddFriendTools({
         showToast(result.detail, { icon: <XIcon size={20} color={Colors.amber} /> });
       }
     },
-    [onChanged, query, showToast],
+    [onChanged, query, requestingKey, showToast],
   );
 
   const openIdentity = useCallback(() => {
@@ -240,12 +245,17 @@ export function AddFriendTools({
                     <FriendMini profile={profile} />
                     <Pressable
                       onPress={() => void requestFriend(profile)}
+                      disabled={requestingKey != null}
                       hitSlop={ROUND_HIT_SLOP}
                       accessibilityRole="button"
                       accessibilityLabel={cs.friends.addByNickname}
                       style={({ pressed }) => [styles.addBtn, pressed && styles.dim]}
                     >
-                      <PlusIcon size={18} color={Colors.stout} />
+                      {requestingKey === profile.id ? (
+                        <ActivityIndicator color={Colors.stout} size="small" />
+                      ) : (
+                        <PlusIcon size={18} color={Colors.stout} />
+                      )}
                     </Pressable>
                   </View>
                 </HairlineRow>
@@ -258,9 +268,16 @@ export function AddFriendTools({
               <Text style={styles.noResults} maxFontSizeMultiplier={FontScaleCap.body}>
                 {cs.friends.noResults}
               </Text>
-              <HairlineRow first onPress={() => void requestFriend()}>
+              <HairlineRow
+                first
+                onPress={requestingKey == null ? () => void requestFriend() : undefined}
+              >
                 <View style={styles.nicknameInvite}>
-                  <UserPlusIcon size={18} color={Colors.amber} />
+                  {requestingKey?.startsWith('nickname:') ? (
+                    <ActivityIndicator color={Colors.amber} size="small" />
+                  ) : (
+                    <UserPlusIcon size={18} color={Colors.amber} />
+                  )}
                   <Text
                     style={styles.nicknameInviteText}
                     maxFontSizeMultiplier={FontScaleCap.body}
