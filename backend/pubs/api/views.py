@@ -3100,13 +3100,16 @@ class LeaderboardsView(APIView):
         for row in cached["rows"]:
             if row["account_pk"] in blocked_ids:
                 continue
+            account = dict(row["account"])
+            if account.get("avatar_url"):
+                account["avatar_url"] = request.build_absolute_uri(account["avatar_url"])
             annotated_rows.append(
                 {
                     "rank": row["rank"],
                     "score": row["score"],
                     "is_me": row["account_pk"] == request.user.id,
                     "is_friend": row["account_pk"] in friend_ids,
-                    "account": row["account"],
+                    "account": account,
                     "account_pk": row["account_pk"],
                 }
             )

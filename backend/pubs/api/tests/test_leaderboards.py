@@ -117,6 +117,34 @@ def test_beers_leaderboard_orders_by_score_tiebreak_and_marks_friend(client):
 
 
 @pytest.mark.django_db
+def test_leaderboard_avatar_url_is_absolute_per_request(client):
+    token, account = _register(client, "janek")
+    account.avatar.name = "avatars/janek.webp"
+    account.save(update_fields=["avatar"])
+    _drink(account)
+
+    first = client.get(
+        "/v1/leaderboards?category=beers&period=week",
+        HTTP_HOST="first.test",
+        **_auth(token),
+    )
+    second = client.get(
+        "/v1/leaderboards?category=beers&period=week",
+        HTTP_HOST="second.test",
+        **_auth(token),
+    )
+
+    assert first.status_code == status.HTTP_200_OK
+    assert second.status_code == status.HTTP_200_OK
+    assert first.json()["entries"][0]["account"]["avatar_url"].startswith(
+        "http://first.test/media/avatars/janek.webp"
+    )
+    assert second.json()["entries"][0]["account"]["avatar_url"].startswith(
+        "http://second.test/media/avatars/janek.webp"
+    )
+
+
+@pytest.mark.django_db
 def test_pubs_leaderboard_counts_distinct_visit_and_drink_union(client):
     token, me = _register(client, "janek")
     _token_a, account_a = _register(client, "anna")
