@@ -610,15 +610,20 @@ FIRMY_MIN_INTERVAL_SEC: float = float(os.environ.get("FIRMY_MIN_INTERVAL_SEC", "
 FIRMY_DAILY_CAP: int = int(os.environ.get("FIRMY_DAILY_CAP", "2000"))
 
 # ---------------------------------------------------------------------------
-# Mapy.com add-pub lookup settings
+# Google Maps runtime settings
 # ---------------------------------------------------------------------------
 
-# Backend-only key used by add-pub autocomplete/geocoding and server validation.
-# GET /v1/pubs/near is local-only and never consumes this key.
-MAPY_API_KEY: str = os.environ.get("MAPY_API_KEY", "")
-
-# Hard daily cap on Mapy.com add-pub lookup requests across the whole process.
-MAPY_DAILY_CAP: int = int(os.environ.get("MAPY_DAILY_CAP", "5000"))
+# Server-only key. Never expose this key in Expo; native map rendering uses
+# separate platform-restricted SDK keys in the mobile repository.
+GOOGLE_MAPS_SERVER_API_KEY: str = os.environ.get(
+    "GOOGLE_MAPS_SERVER_API_KEY", ""
+)
+GOOGLE_MAPS_TIMEOUT: int = int(os.environ.get("GOOGLE_MAPS_TIMEOUT", "8"))
+# Shared database-backed cap across Google geocoding entry points and workers.
+GOOGLE_MAPS_DAILY_CAP: int = int(os.environ.get("GOOGLE_MAPS_DAILY_CAP", "250"))
+GOOGLE_MAPS_LOCAL_SCAN_LIMIT: int = int(
+    os.environ.get("GOOGLE_MAPS_LOCAL_SCAN_LIMIT", "80")
+)
 
 # Maximum rows returned from the imported CZ/SK directory.
 PUBS_NEAR_LOCAL_MAX_ITEMS: int = int(
@@ -639,7 +644,7 @@ OPENROUTER_MODEL: str = os.environ.get(
 # Per-request HTTP timeout in seconds (vision is slow).
 OPENROUTER_TIMEOUT: int = int(os.environ.get("OPENROUTER_TIMEOUT", "30"))
 # Hard process-wide daily cap on OpenRouter chat requests (cost guard; counts
-# individual requests, resets at UTC midnight, mirroring MAPY_DAILY_CAP).
+# individual requests and resets at UTC midnight).
 OPENROUTER_DAILY_CAP: int = int(os.environ.get("OPENROUTER_DAILY_CAP", "5000"))
 
 # Menu-scan image pipeline limits (mirror the avatar guards).

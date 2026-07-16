@@ -68,8 +68,8 @@ from pubs.beer_catalog import (
     upsert_pub_beer_brand,
 )
 from pubs.enrichment import (
-    MapyDailyCapExceededError,
-    MapySuggestSource,
+    GoogleGeocodingSource,
+    GoogleGeocodingUnavailableError,
     OpenRouterDailyCapExceededError,
     OpenRouterUnavailableError,
     community_hours_to_osm,
@@ -78,6 +78,7 @@ from pubs.enrichment import (
     names_match,
 )
 from pubs.enrichment.coverage import coverage_country
+from pubs.external_api_budget import reserve_external_api_request
 from pubs.feedback_attachments import (
     FeedbackAttachmentError,
     process_feedback_attachment,
@@ -138,6 +139,7 @@ from pubs.models import (
 )
 from pubs.photo_contest import current_photo_contest
 from pubs.photos import BeerPhotoError, process_beer_photo
+from pubs.user_added_pub_geocoding import resolve_user_added_pub_location
 
 from .authentication import AccountTokenAuthentication
 from .cache import get_cached_pub_details, get_or_enrich
@@ -1041,11 +1043,65 @@ class UserAddedPubView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         data = serializer.validated_data
-        lat = data["lat"]
-        lng = data["lng"]
         city = data.get("city") or ""
         address = data.get("address") or ""
 
+        # Return an already-created idempotent row before making a paid external
+        # request. The same check is repeated under a transaction below to close
+        # the race between concurrent retries.
+        try:
+            existing = UserAddedPub.objects.filter(
+                account=request.user,
+                client_id=data["client_id"],
+            ).first()
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "user-added-pub: idempotency lookup failed: %s",
+                type(exc).__name__,
+                exc_info=True,
+            )
+            return _internal_error()
+        if existing is not None:
+            return Response(UserAddedPubSerializer(existing).data, status=status.HTTP_200_OK)
+
+        if "lat" in data and "lng" in data:
+            # Released clients already submit a user-confirmed pin. Trust it and
+            # avoid a paid provider call even when they also include an address.
+            lat = data["lat"]
+            lng = data["lng"]
+        elif address and city:
+            try:
+                resolved = resolve_user_added_pub_location(
+                    name=data["name"],
+                    address=address,
+                    city=city,
+                    lat=data.get("lat"),
+                    lng=data.get("lng"),
+                )
+            except GoogleGeocodingUnavailableError as exc:
+                logger.warning(
+                    "user-added-pub: Google geocoding unavailable: %s",
+                    type(exc).__name__,
+                )
+                return Response(
+                    {
+                        "detail": "Geocoding is temporarily unavailable.",
+                        "code": "geocoding_unavailable",
+                    },
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+            if resolved is None:
+                return Response(
+                    {
+                        "detail": "The address could not be located precisely.",
+                        "code": "location_not_found",
+                    },
+                    status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                )
+            lat = resolved.lat
+            lng = resolved.lng
+            city = resolved.city
+            address = resolved.address
         cache_key = geohash8(lat, lng)
 
         try:
@@ -5540,9 +5596,9 @@ class PubsNearView(APIView):
     read path for compatibility with released mobile versions.
 
     Response 200:
-        {"items": [<MapySuggestItem>...], "cached": <bool>, "fetched_at": "<ISO>"}
-    where each MapySuggestItem is a trimmed raw Mapy suggest item the client feeds
-    into its existing filtering pipeline.
+        {"items": [<LegacyLocationItem>...], "cached": <bool>, "fetched_at": "<ISO>"}
+    where each item keeps the released provider-neutral location shape consumed
+    by the mobile filtering pipeline.
 
     A cache/directory miss is a successful empty response, not a 503. This is
     important for older app builds, where a 503 would trigger a direct Mapy.com
@@ -5735,9 +5791,7 @@ class PubsNearView(APIView):
                     status=status.HTTP_200_OK,
                 )
             logger.info(
-                "pubs-near: no local directory hits at %.5f,%.5f/%gkm — using local fallbacks",
-                data["lat"],
-                data["lng"],
+                "pubs-near: no local directory hits in covered area/%gkm — using local fallbacks",
                 radius_km,
             )
 
@@ -5778,17 +5832,57 @@ class PubsNearView(APIView):
 
 
 class _PubLocationLookupBaseView(APIView):
-    """Shared Mapy.cz lookup proxy for add-pub autocomplete and fallback geocode."""
+    """Local-first compatibility lookup for the released v1 wire shape."""
 
     authentication_classes: list = []
     permission_classes = [AllowAny]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "pub_location_lookup"
 
-    lookup_kind = "location"
+    max_items = 8
 
-    def _lookup(self, source: MapySuggestSource, query: str, lat: float | None, lng: float | None):
-        raise NotImplementedError
+    @staticmethod
+    def _local_items(
+        query: str,
+        lat: float | None,
+        lng: float | None,
+        limit: int,
+    ) -> list[dict]:
+        # Names are the only searchable provider-independent text held in the
+        # local directory. The first comma-separated segment matches the old
+        # "name, address, city" geocode contract.
+        name_query = query.split(",", 1)[0].strip()
+        if len(name_query) < 2:
+            return []
+        scan_limit = max(limit, int(getattr(settings, "GOOGLE_MAPS_LOCAL_SCAN_LIMIT", 80)))
+        rows = list(
+            PubDirectory.objects.filter(
+                active=True,
+                name__icontains=name_query,
+            )
+            .exclude(venue_kind=PubHours.VenueKind.NOT_PUB)
+            .only(
+                "id",
+                "name",
+                "lat",
+                "lng",
+                "cache_key",
+                "city",
+                "country",
+                "venue_kind",
+            )[:scan_limit]
+        )
+        if lat is not None and lng is not None:
+            rows.sort(key=lambda row: _haversine_km(lat, lng, row.lat, row.lng))
+        else:
+            rows.sort(key=lambda row: (row.name.casefold(), row.pk))
+
+        items = []
+        for row in rows[:limit]:
+            item = _pub_directory_item(row)
+            item.update({"id": f"local:{row.pk}", "provider": "local"})
+            items.append(item)
+        return items
 
     def get(self, request: Request) -> Response:
         serializer = PubLocationLookupQuerySerializer(data=request.query_params)
@@ -5796,62 +5890,89 @@ class _PubLocationLookupBaseView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         data = serializer.validated_data
-        api_key: str = getattr(settings, "MAPY_API_KEY", "") or ""
-        if not api_key:
-            return Response(
-                {"detail": "Mapy.cz proxy is not configured."},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-
-        daily_cap = int(getattr(settings, "MAPY_DAILY_CAP", 5000))
-        try:
-            with MapySuggestSource(api_key=api_key, daily_cap=daily_cap) as source:
-                result = self._lookup(
-                    source,
-                    data["query"],
-                    data.get("lat"),
-                    data.get("lng"),
-                )
-        except MapyDailyCapExceededError as exc:
-            logger.warning("pubs-%s: Mapy daily cap hit: %s", self.lookup_kind, exc)
-            return Response(
-                {"detail": "Mapy.cz daily cap exceeded."},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-        except (requests.RequestException, ValueError) as exc:
-            logger.warning("pubs-%s: Mapy lookup failed: %s", self.lookup_kind, exc)
-            return Response(
-                {"detail": "Mapy.cz is temporarily unavailable."},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.error(
-                "pubs-%s: unexpected lookup error: %s",
-                self.lookup_kind,
-                exc,
-                exc_info=True,
-            )
-            return _internal_error()
-
-        return Response({"items": result.items}, status=status.HTTP_200_OK)
+        items = self._local_items(
+            data["query"],
+            data.get("lat"),
+            data.get("lng"),
+            self.max_items,
+        )
+        return Response({"items": items}, status=status.HTTP_200_OK)
 
 
 class PubLocationSuggestView(_PubLocationLookupBaseView):
-    """GET /v1/pubs/suggest?query=...&lat=...&lng=..."""
-
-    lookup_kind = "suggest"
-
-    def _lookup(self, source: MapySuggestSource, query: str, lat: float | None, lng: float | None):
-        return source.suggest_locations(query, lat=lat, lng=lng)
+    """Cheap local-only autocomplete; it never calls a paid provider."""
 
 
 class PubLocationGeocodeView(_PubLocationLookupBaseView):
-    """GET /v1/pubs/geocode?query=...&lat=...&lng=..."""
+    """Local-first geocode with one explicit Google fallback on a miss."""
 
-    lookup_kind = "geocode"
+    max_items = 3
 
-    def _lookup(self, source: MapySuggestSource, query: str, lat: float | None, lng: float | None):
-        return source.geocode_location(query, lat=lat, lng=lng)
+    def get(self, request: Request) -> Response:
+        serializer = PubLocationLookupQuerySerializer(data=request.query_params)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        data = serializer.validated_data
+        local_items = self._local_items(
+            data["query"],
+            data.get("lat"),
+            data.get("lng"),
+            self.max_items,
+        )
+        if local_items:
+            return Response({"items": local_items}, status=status.HTTP_200_OK)
+
+        api_key = getattr(settings, "GOOGLE_MAPS_SERVER_API_KEY", "") or ""
+        if not api_key:
+            return Response(
+                {"detail": "Location lookup is not configured."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        daily_cap = int(getattr(settings, "GOOGLE_MAPS_DAILY_CAP", 250))
+        try:
+            with GoogleGeocodingSource(
+                api_key=api_key,
+                timeout=int(getattr(settings, "GOOGLE_MAPS_TIMEOUT", 8)),
+                reserve_request=lambda: reserve_external_api_request(
+                    provider="google_maps",
+                    operation="billable",
+                    cap=daily_cap,
+                ),
+            ) as source:
+                candidate = source.geocode_address(address=data["query"], city="")
+        except GoogleGeocodingUnavailableError as exc:
+            logger.warning(
+                "pubs-geocode: Google lookup unavailable: %s",
+                type(exc).__name__,
+            )
+            return Response(
+                {"detail": "Location lookup is temporarily unavailable."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        if candidate is None:
+            return Response({"items": []}, status=status.HTTP_200_OK)
+
+        regional_structure = []
+        if candidate.city:
+            regional_structure.append(
+                {"name": candidate.city, "type": "regional.municipality"}
+            )
+        if candidate.address:
+            regional_structure.append(
+                {"name": candidate.address, "type": "regional.street"}
+            )
+        item = {
+            "id": f"google:{candidate.place_id}" if candidate.place_id else "google:geocode",
+            "provider": "google",
+            "providerPlaceId": candidate.place_id,
+            "name": data["query"].split(",", 1)[0].strip(),
+            "label": "Adresa",
+            "position": {"lat": candidate.lat, "lon": candidate.lng},
+            "type": "regional.address",
+            "regionalStructure": regional_structure,
+            "attributions": ["Google Maps"],
+        }
+        return Response({"items": [item]}, status=status.HTTP_200_OK)
 
 
 class ReleaseNotesView(APIView):

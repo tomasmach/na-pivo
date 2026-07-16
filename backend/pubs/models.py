@@ -3436,3 +3436,25 @@ class PubCommunityXpLedger(models.Model):
 
     def __str__(self) -> str:
         return f"PubCommunityXpLedger({self.kind} [{self.cache_key}])"
+
+
+class ExternalApiDailyUsage(models.Model):
+    """Shared per-day request counter for metered external API operations."""
+
+    provider = models.CharField(max_length=32)
+    operation = models.CharField(max_length=64)
+    day = models.DateField()
+    request_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["provider", "operation", "day"],
+                name="unique_external_api_daily_usage",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.provider}/{self.operation}/{self.day}: {self.request_count}"

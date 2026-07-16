@@ -4,18 +4,15 @@ Tests for POST /v1/pubs — community-added pubs missing from nearby search.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from pubs.enrichment import MapySuggestResult, geohash8
+from pubs.enrichment import GoogleGeocodingUnavailableError, geohash8
 from pubs.models import Account, PubReport, UserAddedPub
-from pubs.user_added_pub_geocoding import (
-    resolve_user_added_pub_location,
-    resolved_pub_location_from_item,
-)
+from pubs.user_added_pub_geocoding import ResolvedPubLocation
 
 _DEVICE_ID = "3f8b1c2e-4d5a-6789-0abc-def012345678"
 _CLIENT_ID = "9a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d"
@@ -65,95 +62,6 @@ def _payload(**overrides):
     return data
 
 
-def _mapy_geocode_item(lat: float, lng: float, *, item_type: str = "regional.address") -> dict:
-    return {
-        "name": _NAME,
-        "type": item_type,
-        "label": "Adresa",
-        "position": {"lat": lat, "lon": lng},
-        "regionalStructure": [
-            {"name": "12", "type": "regional.address"},
-            {"name": "Testovací", "type": "regional.street"},
-            {"name": "Praha", "type": "regional.municipality"},
-        ],
-    }
-
-
-def _mapy_geocode_factory(items: list[dict]):
-    source = MagicMock()
-    source.geocode_location.return_value = MapySuggestResult(items=items)
-    cm = MagicMock()
-    cm.__enter__.return_value = source
-    cm.__exit__.return_value = False
-    return MagicMock(return_value=cm), source
-
-
-def test_user_added_pub_geocode_falls_back_to_address_only_query(settings):
-    settings.MAPY_API_KEY = "test-key"
-    source = MagicMock()
-    source.geocode_location.side_effect = [
-        MapySuggestResult(
-            items=[
-                {
-                    "name": "Praha",
-                    "type": "regional.municipality",
-                    "position": {"lat": 50.0755, "lon": 14.4378},
-                }
-            ]
-        ),
-        MapySuggestResult(
-            items=[
-                {
-                    "name": "Testovací 12",
-                    "type": "regional.address",
-                    "position": {"lat": 50.081, "lon": 14.421},
-                    "regionalStructure": [
-                        {"name": "12", "type": "regional.address"},
-                        {"name": "Testovací", "type": "regional.street"},
-                        {"name": "Praha", "type": "regional.municipality"},
-                    ],
-                }
-            ]
-        ),
-    ]
-    cm = MagicMock()
-    cm.__enter__.return_value = source
-    cm.__exit__.return_value = False
-    factory = MagicMock(return_value=cm)
-
-    with patch("pubs.user_added_pub_geocoding.MapySuggestSource", factory):
-        resolved = resolve_user_added_pub_location(
-            name="Hospoda mimo Mapy",
-            address="Testovací 12",
-            city="Praha",
-            lat=50.08,
-            lng=14.42,
-        )
-
-    assert resolved is not None
-    assert resolved.lat == 50.081
-    assert resolved.lng == 14.421
-    assert resolved.city == "Praha"
-    assert resolved.address == "Testovací 12"
-    assert [call.args[0] for call in source.geocode_location.call_args_list] == [
-        "Hospoda mimo Mapy, Testovací 12, Praha, Česko",
-        "Testovací 12, Praha, Česko",
-    ]
-
-
-def test_user_added_pub_geocode_rejects_street_centroid():
-    resolved = resolved_pub_location_from_item(
-        {
-            "name": "Testovací",
-            "type": "regional.street",
-            "position": {"lat": 50.081, "lon": 14.421},
-        },
-        requested_name="Hospoda mimo Mapy",
-    )
-
-    assert resolved is None
-
-
 @pytest.mark.django_db
 def test_add_pub_requires_account_token(client):
     resp = client.post("/v1/pubs", data=_payload(), format="json")
@@ -183,21 +91,87 @@ def test_add_pub_creates_live_row(client):
 
 
 @pytest.mark.django_db
-def test_add_pub_trusts_confirmed_client_coords_without_mapy(client, settings):
-    settings.MAPY_API_KEY = "test-key"
+def test_add_pub_trusts_confirmed_client_coords_without_google(client):
     token = _register(client)
-    factory, source = _mapy_geocode_factory([_mapy_geocode_item(_LAT + 0.0008, _LNG)])
 
-    with patch("pubs.user_added_pub_geocoding.MapySuggestSource", factory):
+    with patch("pubs.api.views.resolve_user_added_pub_location") as resolver:
         resp = client.post("/v1/pubs", data=_payload(), format="json", **_auth(token))
 
     assert resp.status_code == status.HTTP_201_CREATED
-    source.geocode_location.assert_not_called()
+    resolver.assert_not_called()
     pub = UserAddedPub.objects.get()
     assert pub.lat == _LAT
     assert pub.lng == _LNG
     assert pub.cache_key == _KEY
     assert resp.json()["cache_key"] == _KEY
+
+
+@pytest.mark.django_db
+def test_add_pub_geocodes_only_when_coordinates_are_missing(client):
+    token = _register(client)
+    payload = _payload()
+    payload.pop("lat")
+    payload.pop("lng")
+    resolved = ResolvedPubLocation(
+        name=_NAME,
+        lat=50.081,
+        lng=14.421,
+        city="Praha",
+        address="Testovací 12",
+        result_type="street_address",
+    )
+
+    with patch(
+        "pubs.api.views.resolve_user_added_pub_location",
+        return_value=resolved,
+    ) as resolver:
+        resp = client.post("/v1/pubs", data=payload, format="json", **_auth(token))
+
+    assert resp.status_code == status.HTTP_201_CREATED
+    resolver.assert_called_once_with(
+        name=_NAME,
+        address="Testovací 12",
+        city="Praha",
+        lat=None,
+        lng=None,
+    )
+    pub = UserAddedPub.objects.get()
+    assert pub.lat == resolved.lat
+    assert pub.lng == resolved.lng
+
+
+@pytest.mark.django_db
+def test_add_pub_returns_422_when_address_is_not_precise(client):
+    token = _register(client)
+    payload = _payload()
+    payload.pop("lat")
+    payload.pop("lng")
+
+    with patch(
+        "pubs.api.views.resolve_user_added_pub_location",
+        return_value=None,
+    ):
+        resp = client.post("/v1/pubs", data=payload, format="json", **_auth(token))
+
+    assert resp.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert resp.json()["code"] == "location_not_found"
+
+
+@pytest.mark.django_db
+def test_add_pub_returns_503_when_google_is_unavailable(client):
+    token = _register(client)
+    payload = _payload()
+    payload.pop("lat")
+    payload.pop("lng")
+
+    with patch(
+        "pubs.api.views.resolve_user_added_pub_location",
+        side_effect=GoogleGeocodingUnavailableError("unavailable"),
+    ):
+        resp = client.post("/v1/pubs", data=payload, format="json", **_auth(token))
+
+    assert resp.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert resp.json()["code"] == "geocoding_unavailable"
 
 
 @pytest.mark.django_db
@@ -217,6 +191,27 @@ def test_add_pub_is_idempotent_on_account_client_id(client):
     assert UserAddedPub.objects.count() == 1
     assert UserAddedPub.objects.get().name == _NAME
     assert second.json()["name"] == _NAME
+
+
+@pytest.mark.django_db
+def test_add_pub_idempotent_retry_returns_before_paid_geocode(client):
+    token = _register(client)
+    first = client.post("/v1/pubs", data=_payload(), format="json", **_auth(token))
+    assert first.status_code == status.HTTP_201_CREATED
+    retry_payload = _payload()
+    retry_payload.pop("lat")
+    retry_payload.pop("lng")
+
+    with patch("pubs.api.views.resolve_user_added_pub_location") as resolver:
+        retry = client.post(
+            "/v1/pubs",
+            data=retry_payload,
+            format="json",
+            **_auth(token),
+        )
+
+    assert retry.status_code == status.HTTP_200_OK
+    resolver.assert_not_called()
 
 
 @pytest.mark.django_db
@@ -375,7 +370,18 @@ def test_add_pub_validation(client):
     bad_lat = client.post(
         "/v1/pubs", data=_payload(lat=999), format="json", **_auth(token)
     )
+    incomplete_location = _payload()
+    incomplete_location.pop("lat")
+    incomplete_location.pop("lng")
+    incomplete_location.pop("city")
+    missing_location = client.post(
+        "/v1/pubs",
+        data=incomplete_location,
+        format="json",
+        **_auth(token),
+    )
 
     assert bad_name.status_code == status.HTTP_400_BAD_REQUEST
     assert bad_lat.status_code == status.HTTP_400_BAD_REQUEST
+    assert missing_location.status_code == status.HTTP_400_BAD_REQUEST
     assert UserAddedPub.objects.count() == 0

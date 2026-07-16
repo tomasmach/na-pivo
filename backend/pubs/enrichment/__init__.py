@@ -21,22 +21,20 @@ geohash6            — cache-cell helper for legacy nearby seed rows; see match
 geohash5            — legacy coarse cell helper; see matcher.py
 geohash5_center     — legacy (lat, lng) centre of a geohash-5 cell; see matcher.py
 TransientFetchError — raised by FirmyHoursSource on a retryable network/proxy error
-MapySuggestSource   — server-side Mapy.com add-pub lookup client; see mapy.py
-MapyDailyCapExceededError — raised by MapySuggestSource when the daily cap is hit
-MapyAllQueriesFailedError — raised by MapySuggestSource when every query failed
 OpenRouterVisionSource — AI vision client for the beer-menu scan; see openrouter.py
 OpenRouterDailyCapExceededError — raised by OpenRouterVisionSource when the daily cap is hit
 OpenRouterUnavailableError — raised by OpenRouterVisionSource when OpenRouter is unreachable
+GoogleGeocodingSource — narrow Google Geocoding v4 address client
 """
 
 from .firmy import FirmyHoursSource, RawHours, TransientFetchError  # noqa: F401
-from .is_open import is_open_now, next_change  # noqa: F401
-from .mapy import (  # noqa: F401
-    MapyAllQueriesFailedError,
-    MapyDailyCapExceededError,
-    MapySuggestResult,
-    MapySuggestSource,
+from .google_geocoding import (  # noqa: F401
+    GoogleAddressCandidate,
+    GoogleGeocodingDailyCapExceededError,
+    GoogleGeocodingSource,
+    GoogleGeocodingUnavailableError,
 )
+from .is_open import is_open_now, next_change  # noqa: F401
 from .matcher import (  # noqa: F401
     geohash5,
     geohash5_center,
@@ -58,13 +56,13 @@ __all__ = [
     "RawHours",
     "FirmyHoursSource",
     "TransientFetchError",
-    "MapySuggestSource",
-    "MapySuggestResult",
-    "MapyDailyCapExceededError",
-    "MapyAllQueriesFailedError",
     "OpenRouterVisionSource",
     "OpenRouterDailyCapExceededError",
     "OpenRouterUnavailableError",
+    "GoogleAddressCandidate",
+    "GoogleGeocodingSource",
+    "GoogleGeocodingUnavailableError",
+    "GoogleGeocodingDailyCapExceededError",
     "normalize_to_osm",
     "community_hours_to_osm",
     "is_open_now",

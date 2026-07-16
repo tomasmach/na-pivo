@@ -1,140 +1,172 @@
-"""
-Tests for Mapy-backed pub location lookup endpoints.
-"""
+"""Tests for the local-first pub location compatibility endpoints."""
 
 from __future__ import annotations
 
-import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pytest
-from requests.models import Response
+from django.utils import timezone as dj_tz
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from pubs.enrichment import MapySuggestResult
-from pubs.enrichment.mapy import MapySuggestSource
+from pubs.enrichment import (
+    GoogleAddressCandidate,
+    GoogleGeocodingDailyCapExceededError,
+    GoogleGeocodingUnavailableError,
+)
+from pubs.models import PubDirectory, PubHours
 
-_ITEM = {
-    "name": "Hospoda U Testu",
-    "label": "Hospoda",
-    "type": "poi",
-    "position": {"lat": 50.081, "lon": 14.421},
-    "location": "Testovací 12, Praha",
-    "regionalStructure": [
-        {"name": "12", "type": "regional.address"},
-        {"name": "Testovací", "type": "regional.street"},
-        {"name": "Praha", "type": "regional.municipality"},
-    ],
-}
+_QUERY = "Hospoda U Testu, Testovaci 12, Praha"
 
 
 @pytest.fixture
-def client():
+def client() -> APIClient:
     return APIClient()
 
 
 @pytest.fixture(autouse=True)
-def _mapy_settings(settings):
-    settings.MAPY_API_KEY = "test-key"
+def _lookup_settings(settings):
+    settings.GOOGLE_MAPS_SERVER_API_KEY = "test-key"
+    settings.GOOGLE_MAPS_TIMEOUT = 7
+    settings.GOOGLE_MAPS_DAILY_CAP = 25
     settings.REST_FRAMEWORK = {
         **settings.REST_FRAMEWORK,
         "DEFAULT_THROTTLE_RATES": {
             **settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"],
-            "pubs_near": "10000/min",
+            "pub_location_lookup": "10000/min",
         },
     }
 
 
-def _mock_source():
-    instance = MagicMock()
-    instance.suggest_locations.return_value = MapySuggestResult(items=[_ITEM])
-    instance.geocode_location.return_value = MapySuggestResult(items=[_ITEM])
-    cm = MagicMock()
-    cm.__enter__.return_value = instance
-    cm.__exit__.return_value = False
-    factory = MagicMock(return_value=cm)
-    return factory, instance
-
-
-def _response(payload: dict | str, status_code: int = 200) -> Response:
-    resp = Response()
-    resp.status_code = status_code
-    resp.headers["Content-Type"] = "application/json"
-    body = payload if isinstance(payload, str) else json.dumps(payload)
-    resp._content = body.encode("utf-8")
-    resp.url = "https://api.mapy.cz/v1/suggest"
-    resp.encoding = "utf-8"
-    return resp
-
-
-class _FakeMapySession:
-    def __init__(self, response: Response) -> None:
-        self.response = response
-        self.calls: list[tuple[str, list[tuple[str, str]]]] = []
-
-    def get(self, url: str, *, params, timeout: int) -> Response:
-        self.calls.append((url, list(params)))
-        return self.response
-
-
-def _real_source_factory(session: _FakeMapySession):
-    def factory(*, api_key: str, daily_cap: int) -> MapySuggestSource:
-        return MapySuggestSource(api_key=api_key, daily_cap=daily_cap, session=session)
-
-    return factory
-
-
-@pytest.mark.django_db
-def test_suggest_pub_locations(client):
-    factory, instance = _mock_source()
-
-    with patch("pubs.api.views.MapySuggestSource", factory):
-        resp = client.get(
-            "/v1/pubs/suggest",
-            data={"query": "Hospoda U Te", "lat": 50.08, "lng": 14.42},
-        )
-
-    assert resp.status_code == status.HTTP_200_OK
-    assert resp.json() == {"items": [_ITEM]}
-    factory.assert_called_once_with(api_key="test-key", daily_cap=5000)
-    instance.suggest_locations.assert_called_once_with("Hospoda U Te", lat=50.08, lng=14.42)
-    instance.geocode_location.assert_not_called()
-
-
-@pytest.mark.django_db
-def test_geocode_pub_location(client):
-    factory, instance = _mock_source()
-
-    with patch("pubs.api.views.MapySuggestSource", factory):
-        resp = client.get(
-            "/v1/pubs/geocode",
-            data={"query": "Hospoda U Testu, Testovací 12, Praha"},
-        )
-
-    assert resp.status_code == status.HTTP_200_OK
-    assert resp.json() == {"items": [_ITEM]}
-    instance.geocode_location.assert_called_once_with(
-        "Hospoda U Testu, Testovací 12, Praha",
-        lat=None,
-        lng=None,
+def _directory_pub() -> PubDirectory:
+    return PubDirectory.objects.create(
+        name="Hospoda U Testu",
+        lat=50.081,
+        lng=14.421,
+        city="Praha",
+        country="cz",
+        venue_kind=PubHours.VenueKind.PUB,
+        source="test",
+        active=True,
+        refreshed_at=dj_tz.now(),
     )
-    instance.suggest_locations.assert_not_called()
+
+
+def _google_source(candidate: GoogleAddressCandidate | None = None, *, error=None):
+    source = MagicMock()
+    if error is not None:
+        source.geocode_address.side_effect = error
+    else:
+        source.geocode_address.return_value = candidate
+    context_manager = MagicMock()
+    context_manager.__enter__.return_value = source
+    context_manager.__exit__.return_value = False
+    return MagicMock(return_value=context_manager), source
 
 
 @pytest.mark.django_db
-def test_lookup_requires_configured_mapy_key(client, settings):
-    settings.MAPY_API_KEY = ""
+def test_geocode_local_hit_does_not_require_key_or_call_google(client, settings):
+    settings.GOOGLE_MAPS_SERVER_API_KEY = ""
+    pub = _directory_pub()
+    factory, source = _google_source()
 
-    resp = client.get("/v1/pubs/suggest", data={"query": "Hospoda U Te"})
+    with patch("pubs.api.views.GoogleGeocodingSource", factory):
+        response = client.get("/v1/pubs/geocode", data={"query": _QUERY})
 
-    assert resp.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == {
+        "items": [
+            {
+                "id": f"local:{pub.pk}",
+                "provider": "local",
+                "name": "Hospoda U Testu",
+                "label": "Hospoda",
+                "position": {"lat": 50.081, "lon": 14.421},
+                "regionalStructure": [
+                    {"name": "Praha", "type": "regional.municipality"},
+                    {"name": "Česko", "type": "regional.country", "isoCode": "CZ"},
+                ],
+            }
+        ]
+    }
+    factory.assert_not_called()
+    source.geocode_address.assert_not_called()
 
 
 @pytest.mark.django_db
-def test_lookup_validates_query_and_coordinate_pair(client):
-    short = client.get("/v1/pubs/suggest", data={"query": "U"})
-    missing_lng = client.get("/v1/pubs/suggest", data={"query": "Hospoda", "lat": 50.08})
+def test_suggest_miss_returns_empty_without_google(client):
+    factory, source = _google_source()
+
+    with patch("pubs.api.views.GoogleGeocodingSource", factory):
+        response = client.get("/v1/pubs/suggest", data={"query": "Neznama hospoda"})
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == {"items": []}
+    factory.assert_not_called()
+    source.geocode_address.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_geocode_miss_uses_google_fallback(client):
+    candidate = GoogleAddressCandidate(
+        lat=50.081,
+        lng=14.421,
+        address="Testovaci 12",
+        city="Praha",
+        result_type="street_address",
+        place_id="google-place-id",
+    )
+    factory, source = _google_source(candidate)
+
+    with patch("pubs.api.views.GoogleGeocodingSource", factory):
+        response = client.get("/v1/pubs/geocode", data={"query": _QUERY})
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == {
+        "items": [
+            {
+                "id": "google:google-place-id",
+                "provider": "google",
+                "providerPlaceId": "google-place-id",
+                "name": "Hospoda U Testu",
+                "label": "Adresa",
+                "position": {"lat": 50.081, "lon": 14.421},
+                "type": "regional.address",
+                "regionalStructure": [
+                    {"name": "Praha", "type": "regional.municipality"},
+                    {"name": "Testovaci 12", "type": "regional.street"},
+                ],
+                "attributions": ["Google Maps"],
+            }
+        ]
+    }
+    factory.assert_called_once_with(
+        api_key="test-key",
+        timeout=7,
+        reserve_request=ANY,
+    )
+    source.geocode_address.assert_called_once_with(address=_QUERY, city="")
+
+
+@pytest.mark.django_db
+def test_geocode_miss_requires_configured_google_key(client, settings):
+    settings.GOOGLE_MAPS_SERVER_API_KEY = ""
+    factory, source = _google_source()
+
+    with patch("pubs.api.views.GoogleGeocodingSource", factory):
+        response = client.get("/v1/pubs/geocode", data={"query": _QUERY})
+
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert response.json() == {"detail": "Location lookup is not configured."}
+    factory.assert_not_called()
+    source.geocode_address.assert_not_called()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("path", ["/v1/pubs/suggest", "/v1/pubs/geocode"])
+def test_lookup_validates_query_and_coordinate_pair(client, path):
+    short = client.get(path, data={"query": "U"})
+    missing_lng = client.get(path, data={"query": "Hospoda", "lat": 50.08})
 
     assert short.status_code == status.HTTP_400_BAD_REQUEST
     assert missing_lng.status_code == status.HTTP_400_BAD_REQUEST
@@ -142,42 +174,18 @@ def test_lookup_validates_query_and_coordinate_pair(client):
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(
-    ("path", "query"),
+    "error",
     [
-        ("/v1/pubs/suggest", "Košická hospoda"),
-        ("/v1/pubs/geocode", "Košická hospoda, Hlavná 1, Košice"),
+        GoogleGeocodingUnavailableError("unavailable"),
+        GoogleGeocodingDailyCapExceededError("cap exceeded"),
     ],
 )
-def test_lookup_allows_czech_and_slovak_locality(client, path, query):
-    session = _FakeMapySession(_response({"items": [_ITEM]}))
+def test_geocode_google_failure_returns_503(client, error):
+    factory, source = _google_source(error=error)
 
-    with patch("pubs.api.views.MapySuggestSource", _real_source_factory(session)):
-        resp = client.get(path, data={"query": query})
+    with patch("pubs.api.views.GoogleGeocodingSource", factory):
+        response = client.get("/v1/pubs/geocode", data={"query": _QUERY})
 
-    assert resp.status_code == status.HTTP_200_OK
-    assert session.calls
-    params = session.calls[0][1]
-    assert ("locality", "cz,sk") in params
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize("path", ["/v1/pubs/suggest", "/v1/pubs/geocode"])
-def test_lookup_upstream_400_returns_empty_items(client, path):
-    session = _FakeMapySession(_response({"error": "bad request"}, status_code=400))
-
-    with patch("pubs.api.views.MapySuggestSource", _real_source_factory(session)):
-        resp = client.get(path, data={"query": "Košická hospoda"})
-
-    assert resp.status_code == status.HTTP_200_OK
-    assert resp.json() == {"items": []}
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize("path", ["/v1/pubs/suggest", "/v1/pubs/geocode"])
-def test_lookup_upstream_500_still_returns_503(client, path):
-    session = _FakeMapySession(_response("upstream error", status_code=500))
-
-    with patch("pubs.api.views.MapySuggestSource", _real_source_factory(session)):
-        resp = client.get(path, data={"query": "Košická hospoda"})
-
-    assert resp.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert response.json() == {"detail": "Location lookup is temporarily unavailable."}
+    source.geocode_address.assert_called_once_with(address=_QUERY, city="")

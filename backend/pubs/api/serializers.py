@@ -229,9 +229,13 @@ class UserAddedPubRequestSerializer(_Pub200NameValidationMixin, PubInputSerializ
 
     Lets a user add a pub missing from the nearby search results. Coordinates
     are still bounds-checked by PubInputSerializer; the fields below are the
-    retry idempotency key and optional human location hints.
+    retry idempotency key and human location hints. New clients may omit
+    coordinates when they provide a complete address and city; released clients
+    may continue submitting their already-resolved coordinates.
     """
 
+    lat = serializers.FloatField(required=False)
+    lng = serializers.FloatField(required=False)
     client_id = serializers.UUIDField()
     address = serializers.CharField(
         max_length=255,
@@ -240,6 +244,19 @@ class UserAddedPubRequestSerializer(_Pub200NameValidationMixin, PubInputSerializ
         allow_blank=True,
         trim_whitespace=True,
     )
+
+    def validate(self, attrs: dict) -> dict:
+        has_lat = "lat" in attrs
+        has_lng = "lng" in attrs
+        if has_lat != has_lng:
+            raise serializers.ValidationError("lat and lng must be provided together.")
+
+        has_complete_address = bool(attrs.get("address") and attrs.get("city"))
+        if not has_complete_address and not (has_lat and has_lng):
+            raise serializers.ValidationError(
+                "Provide both address and city, or legacy lat and lng coordinates."
+            )
+        return attrs
 
 
 class UserAddedPubRenameRequestSerializer(_Pub200NameValidationMixin, serializers.Serializer):
@@ -1717,7 +1734,7 @@ class PubsNearQuerySerializer(_LatLngBoundsValidationMixin, serializers.Serializ
 
 
 class PubLocationLookupQuerySerializer(_LatLngBoundsValidationMixin, serializers.Serializer):
-    """Query params for Mapy-backed pub name/address lookup endpoints."""
+    """Query params for local-first pub name/address lookup endpoints."""
 
     query = serializers.CharField(max_length=150, trim_whitespace=True)
     lat = serializers.FloatField(required=False)

@@ -71,42 +71,42 @@ class Command(BaseCommand):
         unchanged = 0
         candidates = []
 
-        with transaction.atomic():
-            for pub in queryset:
-                scanned += 1
-                resolved = resolve_user_added_pub_location(
-                    name=pub.name,
-                    address=pub.address,
-                    city=pub.city,
-                    lat=pub.lat,
-                    lng=pub.lng,
-                )
-                if resolved is None:
-                    unresolved += 1
-                    continue
+        for pub in queryset:
+            scanned += 1
+            # Keep the network call and its DB-backed budget reservation outside
+            # write transactions. A dry-run still spends a real provider request,
+            # so its reservation must not be rolled back.
+            resolved = resolve_user_added_pub_location(
+                name=pub.name,
+                address=pub.address,
+                city=pub.city,
+                lat=pub.lat,
+                lng=pub.lng,
+            )
+            if resolved is None:
+                unresolved += 1
+                continue
 
-                distance_m = _haversine_m(pub.lat, pub.lng, resolved.lat, resolved.lng)
-                if distance_m < min_distance_m:
-                    unchanged += 1
-                    continue
+            distance_m = _haversine_m(pub.lat, pub.lng, resolved.lat, resolved.lng)
+            if distance_m < min_distance_m:
+                unchanged += 1
+                continue
 
-                record = {
-                    "id": pub.pk,
-                    "name": pub.name,
-                    "old_cache_key": pub.cache_key,
-                    "new_cache_key": resolved.cache_key,
-                    "old_lat": pub.lat,
-                    "old_lng": pub.lng,
-                    "new_lat": resolved.lat,
-                    "new_lng": resolved.lng,
-                    "distance_m": round(distance_m, 1),
-                    "city": pub.city or resolved.city,
-                    "address": pub.address or resolved.address,
-                    "result_type": resolved.result_type,
-                }
-                candidates.append(record)
+            record = {
+                "id": pub.pk,
+                "name": pub.name,
+                "old_cache_key": pub.cache_key,
+                "new_cache_key": resolved.cache_key,
+                "distance_m": round(distance_m, 1),
+                "city": pub.city or resolved.city,
+                "address": pub.address or resolved.address,
+                "result_type": resolved.result_type,
+            }
+            candidates.append(record)
 
-                if apply:
+            if apply:
+                with transaction.atomic():
+                    pub.refresh_from_db()
                     pub.cache_key = resolved.cache_key
                     pub.lat = resolved.lat
                     pub.lng = resolved.lng
@@ -122,9 +122,6 @@ class Command(BaseCommand):
                             "updated_at",
                         ]
                     )
-
-            if not apply:
-                transaction.set_rollback(True)
 
         self.stdout.write(
             json.dumps(

@@ -181,9 +181,11 @@ All settings are read from environment variables or a `.env` file. See `.env.exa
 | `FIRMY_DAILY_CAP` | `2000` | Hard daily request cap |
 | `HOURS_TTL_DAYS` | `30` | Days before cached hours are refreshed |
 | `SYNC_ENRICH_BUDGET` | `3` | Max pubs enriched synchronously per API call; `0` makes cold lookups pending-only and leaves enrichment to the worker |
-| `MAPY_API_KEY` | _(unset)_ | Optional legacy key for released add-pub autocomplete/geocoding clients; current clients add pubs from user-confirmed GPS and `/v1/pubs/near` is local-only |
-| `MAPY_DAILY_CAP` | `5000` | Hard daily cap on legacy Mapy.com lookup requests |
-| `PUB_LOCATION_LOOKUP_THROTTLE_RATE` | `30/min` | Per-IP rate limit for Mapy-backed add-pub autocomplete/geocoding |
+| `GOOGLE_MAPS_SERVER_API_KEY` | _(unset)_ | Backend-only, IP/API-restricted key for explicit Geocoding API v4 fallbacks; never ship it in Expo |
+| `GOOGLE_MAPS_TIMEOUT` | `8` | Timeout in seconds for an explicit Google geocode |
+| `GOOGLE_MAPS_DAILY_CAP` | `250` | Shared DB-backed request cap across all Google geocoding entry points and workers |
+| `GOOGLE_MAPS_LOCAL_SCAN_LIMIT` | `80` | Maximum local directory candidates scanned by name lookup before trimming the response |
+| `PUB_LOCATION_LOOKUP_THROTTLE_RATE` | `30/min` | Per-IP rate limit for local autocomplete and explicit geocoding |
 | `PUBS_NEAR_MAX_AMENITY_FILTERS` | `5` | Maximum AND-matched amenity keys accepted by one nearby search |
 | `MAP_AMENITY_CONFIDENCE_FLOOR` | `0.5` | Minimum community confidence for an amenity to qualify as a hard filter match |
 | `MAP_AMENITY_SCAN_LIMIT` | `200` | Maximum nearby aggregate rows scanned per selected amenity |

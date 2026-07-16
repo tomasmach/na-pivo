@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from django.core.cache import cache as default_cache
@@ -12,9 +12,6 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from pubs.enrichment import (
-    MapyAllQueriesFailedError,
-    MapyDailyCapExceededError,
-    MapySuggestResult,
     geohash6,
     geohash8,
 )
@@ -50,12 +47,9 @@ def client():
 
 
 @pytest.fixture(autouse=True)
-def _mapy_key(settings):
-    """Configure a Mapy key by default; individual tests can clear it."""
-    settings.MAPY_API_KEY = "test-key"
+def _nearby_test_settings(settings):
+    """Keep shared throttle state from leaking between nearby tests."""
     settings.PUBS_NEAR_LOCAL_FIRST = False
-    # Generous throttle so the shared LocMemCache state from other tests can't
-    # 429 us (each test patches the source anyway).
     settings.REST_FRAMEWORK = {
         **settings.REST_FRAMEWORK,
         "DEFAULT_THROTTLE_RATES": {
@@ -63,20 +57,6 @@ def _mapy_key(settings):
             "pubs_near": "10000/min",
         },
     }
-
-
-def _mock_source(result_or_exc):
-    """Return a MagicMock standing in for MapySuggestSource (context manager)."""
-    instance = MagicMock()
-    if isinstance(result_or_exc, Exception):
-        instance.search_near.side_effect = result_or_exc
-    else:
-        instance.search_near.return_value = result_or_exc
-    cm = MagicMock()
-    cm.__enter__.return_value = instance
-    cm.__exit__.return_value = False
-    factory = MagicMock(return_value=cm)
-    return factory, instance
 
 
 def _amenity(
@@ -146,60 +126,39 @@ def _seed_near_cache(items: list[dict], *, radius_bucket: int = 50, age_days: in
 def test_local_directory_cannot_be_disabled_by_legacy_flag(client, settings):
     settings.PUBS_NEAR_LOCAL_FIRST = False
     _directory_pub()
-    factory, _ = _mock_source(MapySuggestResult(items=[_ITEM]))
-
-    with patch("pubs.api.views.MapySuggestSource", factory):
-        resp = client.get(
-            "/v1/pubs/near",
-            data={"lat": _LAT, "lng": _LNG, "radius_km": 1},
-        )
+    resp = client.get(
+        "/v1/pubs/near",
+        data={"lat": _LAT, "lng": _LNG, "radius_km": 1},
+    )
 
     assert resp.status_code == status.HTTP_200_OK
     assert [item["name"] for item in resp.json()["items"]] == ["Hospoda Z Adresáře"]
-    factory.assert_not_called()
 
 
 @pytest.mark.django_db
-def test_local_first_serves_directory_without_mapy_or_search_cache(client, settings):
+def test_local_first_serves_directory_without_provider_or_search_cache(client, settings):
     settings.PUBS_NEAR_LOCAL_FIRST = True
     _directory_pub()
-    factory, _ = _mock_source(MapySuggestResult(items=[_ITEM]))
-
-    with patch("pubs.api.views.MapySuggestSource", factory):
-        resp = client.get(
-            "/v1/pubs/near",
-            data={"lat": _LAT, "lng": _LNG, "radius_km": 1},
-        )
+    resp = client.get(
+        "/v1/pubs/near",
+        data={"lat": _LAT, "lng": _LNG, "radius_km": 1},
+    )
 
     assert resp.status_code == status.HTTP_200_OK
     body = resp.json()
     assert body["cached"] is True
     assert [item["name"] for item in body["items"]] == ["Hospoda Z Adresáře"]
     assert body["fetched_at"]
-    factory.assert_not_called()
     assert not PubSearchCache.objects.exists()
 
 
 @pytest.mark.django_db
-def test_directory_item_matches_trimmed_mapy_wire_shape(client, settings):
+def test_directory_item_matches_legacy_wire_shape(client):
     from pubs.api.views import _pub_directory_item
-    from pubs.enrichment.mapy import _trim_item
 
     row = _directory_pub(venue_kind="maybe")
     item = _pub_directory_item(row)
-    equivalent_raw = {
-        "name": row.name,
-        "label": "Restaurace a pohostinství",
-        "position": {"lat": row.lat, "lon": row.lng},
-        "regionalStructure": [
-            {"name": row.city, "type": "regional.municipality"},
-            {"name": "Česko", "type": "regional.country"},
-        ],
-    }
-    trimmed = _trim_item(equivalent_raw)
 
-    assert set(item) == set(trimmed)
-    assert set(item["position"]) == set(trimmed["position"])
     assert all(isinstance(entry["name"], str) for entry in item["regionalStructure"])
     assert all(isinstance(entry["type"], str) for entry in item["regionalStructure"])
     assert item == {
@@ -224,9 +183,7 @@ def test_local_first_hides_not_pub_and_inactive_rows(client, settings):
     _directory_pub("Není hospoda", lat=_LAT + 0.001, venue_kind="not_pub")
     _directory_pub("Neaktivní", lat=_LAT + 0.002, active=False)
 
-    resp = client.get(
-        "/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 1}
-    )
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 1})
 
     assert resp.status_code == status.HTTP_200_OK
     assert [item["name"] for item in resp.json()["items"]] == ["Viditelná"]
@@ -254,9 +211,7 @@ def test_local_first_hides_actively_reported_cache_key(client, settings):
         active=False,
     )
 
-    resp = client.get(
-        "/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 1}
-    )
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 1})
 
     assert [item["name"] for item in resp.json()["items"]] == ["Viditelná"]
 
@@ -275,9 +230,7 @@ def test_local_first_applies_name_correction(client, settings):
         active=True,
     )
 
-    resp = client.get(
-        "/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 1}
-    )
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 1})
 
     assert resp.json()["items"][0]["name"] == "Opravená hospoda"
 
@@ -295,9 +248,7 @@ def test_local_first_merges_user_added_pub(client, settings):
         city="Praha",
     )
 
-    resp = client.get(
-        "/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 1}
-    )
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 1})
 
     assert [item["name"] for item in resp.json()["items"]] == [
         "Hospoda Od Komunity",
@@ -306,37 +257,27 @@ def test_local_first_merges_user_added_pub(client, settings):
 
 
 @pytest.mark.django_db
-def test_local_directory_miss_returns_empty_without_mapy(client, settings):
+def test_local_directory_miss_returns_empty_without_provider(client, settings):
     settings.PUBS_NEAR_LOCAL_FIRST = True
-    factory, instance = _mock_source(MapySuggestResult(items=[_ITEM]))
-
-    with (
-        patch("pubs.api.views.MapySuggestSource", factory),
-        patch("pubs.api.views.logger.info") as log_info,
-    ):
+    with patch("pubs.api.views.logger.info") as log_info:
         resp = client.get(
             "/v1/pubs/near",
             data={"lat": _LAT, "lng": _LNG, "radius_km": 1},
         )
 
     assert resp.json()["items"] == []
-    factory.assert_not_called()
     log_info.assert_called_once()
 
 
 @pytest.mark.django_db
-def test_outside_coverage_returns_empty_without_mapy(client, settings):
+def test_outside_coverage_returns_empty_without_provider(client, settings):
     settings.PUBS_NEAR_LOCAL_FIRST = True
-    factory, instance = _mock_source(MapySuggestResult(items=[_ITEM]))
-
-    with patch("pubs.api.views.MapySuggestSource", factory):
-        resp = client.get(
-            "/v1/pubs/near",
-            data={"lat": 48.2082, "lng": 16.3738, "radius_km": 1},
-        )
+    resp = client.get(
+        "/v1/pubs/near",
+        data={"lat": 48.2082, "lng": 16.3738, "radius_km": 1},
+    )
 
     assert resp.json()["items"] == []
-    factory.assert_not_called()
 
 
 @pytest.mark.django_db
@@ -349,9 +290,7 @@ def test_local_first_cap_keeps_nearest_rows(client, settings):
             lat=_LAT + (index + 1) * 0.001,
         )
 
-    resp = client.get(
-        "/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 5}
-    )
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 5})
 
     assert [item["name"] for item in resp.json()["items"]] == [
         "Hospoda 0",
@@ -389,26 +328,20 @@ def test_negative_radius_is_400(client):
 
 
 @pytest.mark.django_db
-def test_cache_miss_returns_empty_without_mapy_or_persisting(client):
-    factory, _ = _mock_source(MapySuggestResult(items=[_ITEM]))
-
-    with patch("pubs.api.views.MapySuggestSource", factory):
-        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
+def test_cache_miss_returns_empty_without_provider_or_persisting(client):
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
 
     assert resp.status_code == status.HTTP_200_OK
     body = resp.json()
     assert body["cached"] is True
     assert body["items"] == []
     assert "fetched_at" in body and body["fetched_at"]
-    factory.assert_not_called()
     assert not PubSearchCache.objects.exists()
 
 
 @pytest.mark.django_db
 def test_response_shape_only_expected_keys(client):
-    factory, _ = _mock_source(MapySuggestResult(items=[_ITEM]))
-    with patch("pubs.api.views.MapySuggestSource", factory):
-        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG})
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG})
     body = resp.json()
     assert set(body.keys()) == {"items", "cached", "fetched_at"}
 
@@ -598,8 +531,7 @@ def test_beer_brand_filter_returns_only_known_brand_pubs_from_cache(client):
 
 
 @pytest.mark.django_db
-def test_beer_brand_filter_can_serve_known_pub_without_mapy_cache(client, settings):
-    settings.MAPY_API_KEY = ""
+def test_beer_brand_filter_can_serve_known_pub_without_search_cache(client):
     brand, _ = BeerBrand.objects.get_or_create(
         key="pilsner-urquell",
         defaults={"name": "Pilsner Urquell"},
@@ -638,27 +570,23 @@ def test_beer_brand_filter_can_serve_known_pub_without_mapy_cache(client, settin
 
 
 @pytest.mark.django_db
-def test_beer_brand_filter_does_not_call_mapy_when_no_local_signals(client):
+def test_beer_brand_filter_returns_empty_when_no_local_signals(client):
     BeerBrand.objects.get_or_create(
         key="pilsner-urquell",
         defaults={"name": "Pilsner Urquell"},
     )
-    factory, _ = _mock_source(MapySuggestResult(items=[_ITEM]))
-
-    with patch("pubs.api.views.MapySuggestSource", factory):
-        resp = client.get(
-            "/v1/pubs/near",
-            data={
-                "lat": _LAT,
-                "lng": _LNG,
-                "radius_km": 25,
-                "beer_brand": "pilsner-urquell",
-            },
-        )
+    resp = client.get(
+        "/v1/pubs/near",
+        data={
+            "lat": _LAT,
+            "lng": _LNG,
+            "radius_km": 25,
+            "beer_brand": "pilsner-urquell",
+        },
+    )
 
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json()["items"] == []
-    factory.assert_not_called()
 
 
 @pytest.mark.django_db
@@ -765,17 +693,13 @@ def test_amenity_filter_requires_every_selected_amenity(client):
 @pytest.mark.django_db
 def test_amenity_filter_only_accepts_confident_yes(client):
     _amenity("payment_card", status_value=PubAmenity.Status.DISPUTED)
-    factory, _ = _mock_source(MapySuggestResult(items=[_ITEM]))
-
-    with patch("pubs.api.views.MapySuggestSource", factory):
-        resp = client.get(
-            "/v1/pubs/near",
-            data={"lat": _LAT, "lng": _LNG, "amenities": "payment_card"},
-        )
+    resp = client.get(
+        "/v1/pubs/near",
+        data={"lat": _LAT, "lng": _LNG, "amenities": "payment_card"},
+    )
 
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json()["items"] == []
-    factory.assert_not_called()
 
 
 @pytest.mark.django_db
@@ -884,8 +808,7 @@ def test_amenity_filter_rejects_inactive_or_non_filterable_keys(client):
 
 
 @pytest.mark.django_db
-def test_beer_brand_and_amenity_filters_are_intersected(client, settings):
-    settings.MAPY_API_KEY = ""
+def test_beer_brand_and_amenity_filters_are_intersected(client):
     brand, _ = BeerBrand.objects.get_or_create(
         key="pilsner-urquell",
         defaults={"name": "Pilsner Urquell"},
@@ -942,32 +865,23 @@ def test_fresh_cache_hit_no_fetch(client):
         items=[_ITEM],
         fetched_at=dj_tz.now(),
     )
-    factory, instance = _mock_source(MapySuggestResult(items=[]))
-
-    with patch("pubs.api.views.MapySuggestSource", factory):
-        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
 
     assert resp.status_code == status.HTTP_200_OK
     body = resp.json()
     assert body["cached"] is True
     assert body["items"] == [_ITEM]
-    factory.assert_not_called()
-    instance.search_near.assert_not_called()
 
 
 @pytest.mark.django_db
 def test_stale_row_is_served_without_refresh(client):
     _seed_near_cache([_ITEM], age_days=8)
-    factory, _ = _mock_source(MapySuggestResult(items=[]))
-
-    with patch("pubs.api.views.MapySuggestSource", factory):
-        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
 
     assert resp.status_code == status.HTTP_200_OK
     body = resp.json()
     assert body["cached"] is True
     assert body["items"] == [_ITEM]
-    factory.assert_not_called()
     assert PubSearchCache.objects.filter(cache_key=_KEY, radius_bucket=50).count() == 1
     assert PubSearchCache.objects.get(cache_key=_KEY, radius_bucket=50).items == [_ITEM]
 
@@ -984,14 +898,9 @@ def test_stale_row_is_served_without_refresh(client):
 )
 def test_radius_bucketing(client, radius_km, expected_bucket):
     _seed_near_cache([_ITEM], radius_bucket=expected_bucket)
-    factory, _ = _mock_source(MapySuggestResult(items=[]))
-    with patch("pubs.api.views.MapySuggestSource", factory):
-        resp = client.get(
-            "/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": radius_km}
-        )
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": radius_km})
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json()["items"] == [_ITEM]
-    factory.assert_not_called()
     assert PubSearchCache.objects.filter(cache_key=_KEY, radius_bucket=expected_bucket).exists()
 
 
@@ -999,12 +908,9 @@ def test_radius_bucketing(client, radius_km, expected_bucket):
 def test_over_cap_radius_clamped_to_100(client):
     """A radius above 100 is clamped, not rejected, and uses the 100 bucket."""
     _seed_near_cache([_ITEM], radius_bucket=100)
-    factory, _ = _mock_source(MapySuggestResult(items=[]))
-    with patch("pubs.api.views.MapySuggestSource", factory):
-        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 250})
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 250})
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json()["items"] == [_ITEM]
-    factory.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -1015,41 +921,33 @@ def test_over_cap_radius_clamped_to_100(client):
 @pytest.mark.django_db
 def test_two_nearby_coords_share_one_cache_row(client):
     _seed_near_cache([_ITEM])
-    factory, _ = _mock_source(MapySuggestResult(items=[_ITEM]))
-
-    with patch("pubs.api.views.MapySuggestSource", factory):
-        # Both requests read the same immutable seed row.
-        client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
-        # A coord ~70 m away falls in the same geohash-6 cell → cache HIT.
-        nearby_lat, nearby_lng = _LAT + 0.0005, _LNG + 0.0005
-        assert geohash6(nearby_lat, nearby_lng) == _KEY
-        resp2 = client.get(
-            "/v1/pubs/near", data={"lat": nearby_lat, "lng": nearby_lng, "radius_km": 25}
-        )
+    # Both requests read the same immutable seed row.
+    client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
+    # A coord ~70 m away falls in the same geohash-6 cell → cache HIT.
+    nearby_lat, nearby_lng = _LAT + 0.0005, _LNG + 0.0005
+    assert geohash6(nearby_lat, nearby_lng) == _KEY
+    resp2 = client.get(
+        "/v1/pubs/near", data={"lat": nearby_lat, "lng": nearby_lng, "radius_km": 25}
+    )
 
     assert resp2.json()["cached"] is True
-    factory.assert_not_called()
     assert PubSearchCache.objects.filter(cache_key=_KEY).count() == 1
 
 
 # ---------------------------------------------------------------------------
-# Mapy failure → stale fallback / 503
+# Immutable legacy-cache fallback
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
-def test_mapy_failure_with_stale_row_serves_stale(client):
-    """An upstream failure with an existing (stale) row serves the stale row."""
+def test_stale_legacy_row_is_served(client):
     PubSearchCache.objects.create(
         cache_key=_KEY,
         radius_bucket=50,
         items=[_ITEM],
         fetched_at=dj_tz.now() - timedelta(days=30),
     )
-    factory, _ = _mock_source(MapyAllQueriesFailedError("all failed"))
-
-    with patch("pubs.api.views.MapySuggestSource", factory):
-        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
 
     assert resp.status_code == status.HTTP_200_OK
     body = resp.json()
@@ -1058,69 +956,33 @@ def test_mapy_failure_with_stale_row_serves_stale(client):
 
 
 @pytest.mark.django_db
-def test_mapy_failure_no_row_is_empty_200_without_upstream_call(client):
-    factory, _ = _mock_source(MapyAllQueriesFailedError("all failed"))
-    with patch("pubs.api.views.MapySuggestSource", factory):
-        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
+def test_no_legacy_row_is_empty_200(client):
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json()["items"] == []
-    factory.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Provider configuration does not affect local-only nearby responses
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
-def test_daily_cap_state_cannot_trigger_nearby_mapy_fallback(client):
-    factory, _ = _mock_source(MapyDailyCapExceededError("cap hit"))
-    with patch("pubs.api.views.MapySuggestSource", factory):
-        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
+def test_no_provider_configuration_no_row_is_empty_200(client):
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json()["items"] == []
-    factory.assert_not_called()
 
 
 @pytest.mark.django_db
-def test_daily_cap_with_stale_row_serves_stale(client):
+def test_no_provider_configuration_with_stale_row_serves_stale(client):
     PubSearchCache.objects.create(
         cache_key=_KEY,
         radius_bucket=50,
         items=[_ITEM],
         fetched_at=dj_tz.now() - timedelta(days=30),
     )
-    factory, _ = _mock_source(MapyDailyCapExceededError("cap hit"))
-    with patch("pubs.api.views.MapySuggestSource", factory):
-        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
-    assert resp.status_code == status.HTTP_200_OK
-    assert resp.json()["cached"] is True
-
-
-# ---------------------------------------------------------------------------
-# Missing API key → 503 (or stale fallback)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.django_db
-def test_no_api_key_no_row_is_empty_200(client, settings):
-    settings.MAPY_API_KEY = ""
-    factory, instance = _mock_source(MapySuggestResult(items=[]))
-    with patch("pubs.api.views.MapySuggestSource", factory):
-        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
-    assert resp.status_code == status.HTTP_200_OK
-    assert resp.json()["items"] == []
-    # No upstream attempt without a key.
-    factory.assert_not_called()
-
-
-@pytest.mark.django_db
-def test_no_api_key_with_stale_row_serves_stale(client, settings):
-    settings.MAPY_API_KEY = ""
-    PubSearchCache.objects.create(
-        cache_key=_KEY,
-        radius_bucket=50,
-        items=[_ITEM],
-        fetched_at=dj_tz.now() - timedelta(days=30),
-    )
-    factory, _ = _mock_source(MapySuggestResult(items=[]))
-    with patch("pubs.api.views.MapySuggestSource", factory):
-        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
     assert resp.status_code == status.HTTP_200_OK
     assert resp.json()["cached"] is True
     assert resp.json()["items"] == [_ITEM]
@@ -1128,7 +990,6 @@ def test_no_api_key_with_stale_row_serves_stale(client, settings):
 
 @pytest.mark.django_db
 def test_nearby_items_include_cached_pub_details_without_mutating_search_cache(client, settings):
-    settings.MAPY_API_KEY = ""
     search_row = PubSearchCache.objects.create(
         cache_key=_KEY,
         radius_bucket=50,
@@ -1204,12 +1065,11 @@ def test_user_added_pub_is_prepended_to_fresh_cache_hit(client):
 
 
 @pytest.mark.django_db
-def test_user_added_pub_served_without_mapy_key_or_cache(client, settings):
-    settings.MAPY_API_KEY = ""
+def test_user_added_pub_served_without_provider_or_cache(client):
     UserAddedPub.objects.create(
         client_id="9a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d",
         cache_key="u2fk3abc",
-        name="Hospoda Bez Mapy",
+        name="Hospoda Bez Provideru",
         lat=_LAT,
         lng=_LNG,
     )
@@ -1219,7 +1079,7 @@ def test_user_added_pub_served_without_mapy_key_or_cache(client, settings):
     assert resp.status_code == status.HTTP_200_OK
     body = resp.json()
     assert body["cached"] is True
-    assert body["items"][0]["name"] == "Hospoda Bez Mapy"
+    assert body["items"][0]["name"] == "Hospoda Bez Provideru"
 
 
 @pytest.mark.django_db
@@ -1246,10 +1106,7 @@ def test_user_added_pub_filters_inactive_and_far_rows(client):
         lat=49.2,
         lng=16.6,
     )
-    factory, _ = _mock_source(MapySuggestResult(items=[]))
-
-    with patch("pubs.api.views.MapySuggestSource", factory):
-        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 1})
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 1})
 
     assert resp.status_code == status.HTTP_200_OK
     names = [item["name"] for item in resp.json()["items"]]
@@ -1266,10 +1123,7 @@ def test_user_added_pub_does_not_mutate_legacy_cache(client):
         lng=_LNG,
     )
     _seed_near_cache([_ITEM])
-    factory, _ = _mock_source(MapySuggestResult(items=[_ITEM]))
-
-    with patch("pubs.api.views.MapySuggestSource", factory):
-        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
 
     assert resp.status_code == status.HTTP_200_OK
     assert [item["name"] for item in resp.json()["items"]] == ["Jen komunitně", _ITEM["name"]]
@@ -1295,10 +1149,7 @@ def test_user_added_pubs_capped_and_nearest_first(client):
             lat=_LAT + offset,
             lng=_LNG,
         )
-    factory, _ = _mock_source(MapySuggestResult(items=[]))
-
-    with patch("pubs.api.views.MapySuggestSource", factory):
-        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
 
     assert resp.status_code == status.HTTP_200_OK
     items = resp.json()["items"]
@@ -1324,9 +1175,7 @@ def test_user_added_scan_limit_keeps_old_nearby_pub(client):
         lat=_LAT + 0.00001,
         lng=_LNG,
     )
-    UserAddedPub.objects.filter(pk=old_near.pk).update(
-        updated_at=dj_tz.now() - timedelta(days=30)
-    )
+    UserAddedPub.objects.filter(pk=old_near.pk).update(updated_at=dj_tz.now() - timedelta(days=30))
 
     for i in range(_USER_ADDED_SCAN_LIMIT):
         UserAddedPub.objects.create(
@@ -1336,10 +1185,7 @@ def test_user_added_scan_limit_keeps_old_nearby_pub(client):
             lat=_LAT + 0.01 + i * 0.000001,
             lng=_LNG,
         )
-    factory, _ = _mock_source(MapySuggestResult(items=[]))
-
-    with patch("pubs.api.views.MapySuggestSource", factory):
-        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
 
     assert resp.status_code == status.HTTP_200_OK
     names = [item["name"] for item in resp.json()["items"]]
@@ -1347,22 +1193,18 @@ def test_user_added_scan_limit_keeps_old_nearby_pub(client):
 
 
 @pytest.mark.django_db
-def test_community_pub_dedupes_matching_mapy_item(client):
-    """A pub present both as a community row and in Mapy results is returned once
-    (the Mapy duplicate is dropped)."""
+def test_community_pub_dedupes_matching_legacy_item(client):
+    """A pub in community and legacy cache data is returned once."""
     UserAddedPub.objects.create(
         client_id="9a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d",
         cache_key="u2fk3abc",
         name="Hospoda U Testu",  # same name as _ITEM
-        lat=50.08,                # same rounded position as _ITEM
+        lat=50.08,  # same rounded position as _ITEM
         lng=14.42,
     )
     # _ITEM has name "Hospoda U Testu" at position (50.08, 14.42).
     _seed_near_cache([_ITEM])
-    factory, _ = _mock_source(MapySuggestResult(items=[_ITEM]))
-
-    with patch("pubs.api.views.MapySuggestSource", factory):
-        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
 
     assert resp.status_code == status.HTTP_200_OK
     items = resp.json()["items"]
@@ -1373,8 +1215,8 @@ def test_community_pub_dedupes_matching_mapy_item(client):
 
 
 @pytest.mark.django_db
-def test_distinct_mapy_item_not_deduped(client):
-    """A Mapy item that does NOT match any community pub is kept alongside."""
+def test_distinct_legacy_item_not_deduped(client):
+    """A legacy item that does not match a community pub is kept alongside."""
     UserAddedPub.objects.create(
         client_id="9a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d",
         cache_key="u2fk3abc",
@@ -1383,10 +1225,7 @@ def test_distinct_mapy_item_not_deduped(client):
         lng=_LNG,
     )
     _seed_near_cache([_ITEM])
-    factory, _ = _mock_source(MapySuggestResult(items=[_ITEM]))
-
-    with patch("pubs.api.views.MapySuggestSource", factory):
-        resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 25})
 
     assert resp.status_code == status.HTTP_200_OK
     names = [item["name"] for item in resp.json()["items"]]
