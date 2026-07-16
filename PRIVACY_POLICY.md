@@ -1,6 +1,6 @@
 # Zásady ochrany osobních údajů – Na pivo
 
-*Poslední aktualizace: 25. června 2026*
+*Poslední aktualizace: 16. července 2026*
 
 ## Kdo jsme
 
@@ -14,8 +14,8 @@ Aplikace používá vaši aktuální polohu k tomu, aby našla hospody v okolí 
 ### Pohybové senzory
 Aplikace čte data z pohybových senzorů (kompas/akcelerometr), aby správně otáčela směrovou šipku podle natočení telefonu. Tato data se rovněž zpracovávají pouze lokálně a nikam se neodesílají.
 
-### Vyhledávací dotazy
-Když při přidávání nového podniku vyhledáváte hospodu podle názvu, odešle se zadaný text a případně přibližná oblast hledání na náš server, který přes službu **Mapy.cz** vrátí návrhy míst. Běžné hledání okolních hospod používá náš lokální adresář. Více v sekci „Služby třetích stran".
+### Přidání nové hospody
+Když dobrovolně přidáte chybějící hospodu, odešle se na náš server její zadaný název, vámi potvrzený bod polohy a případně ručně doplněné město a adresa. Hospoda se následně veřejně zobrazí ostatním uživatelům. Neposíláme trasu ani průběžnou historii polohy a pro přidání hospody nepoužíváme externí službu pro vyhledávání míst.
 
 ### Otevírací doba
 Když je vybraná hospoda zobrazena, aplikace pošle její název a polohu (zeměpisné souřadnice) na náš vlastní server, který k danému místu dohledá otevírací dobu a vrátí ji zpět. Odesílá se pouze údaj o vybrané hospodě, nikoli o vás ani o vaší poloze. Tato funkce je nepovinná – pokud server není dostupný nebo dotaz selže, aplikace funguje dál bez zobrazení otevírací doby. Více v sekci „Služby třetích stran".
@@ -48,7 +48,7 @@ Aplikace ukládá počítadlo piv, historii večerů a vaše soukromé hodnocen�
 
 Zpracovávaná data slouží výhradně k fungování aplikace:
 - **Poloha a pohybové senzory** – nalezení hospod v okolí a zobrazení směrové šipky k vybrané hospodě.
-- **Vyhledávací dotazy** – získání návrhů míst z Mapy.cz.
+- **Údaje o přidané hospodě** – uložení a veřejné zobrazení názvu, potvrzené polohy a volitelně doplněného města nebo adresy.
 - **Název a poloha vybrané hospody** – dohledání otevírací doby na našem serveru.
 - **Anonymní identifikátor zařízení** – odlišení jednotlivých zařízení a vytvoření dočasného anonymního účtu na našem serveru.
 - **Provozní statistiky a technické chyby** – zjištění, kolik zařízení aplikaci používá, kolikrát byla otevřena, kde padá nebo kde selhávají backendové funkce.
@@ -59,9 +59,6 @@ Zpracovávaná data slouží výhradně k fungování aplikace:
 Data nepoužíváme k profilování, cílení reklamy ani k žádnému dalšímu účelu.
 
 ## Služby třetích stran
-
-### Mapy.cz (Seznam.cz, a.s.)
-Při přidávání nového podniku odesíláme textový dotaz a případně přibližnou oblast hledání na náš server, který volá API služby Mapy.cz pro našeptávání a geokódování. Běžné hledání okolních hospod Mapy.cz nevolá. Tato služba zpracovává dotaz podle vlastních zásad ochrany osobních údajů. Více informací: [https://o.seznam.cz/ochrana-udaju/](https://o.seznam.cz/ochrana-udaju/)
 
 ### Server pro otevírací dobu (provozovatel aplikace)
 Pro zobrazení otevírací doby vybrané hospody pošleme její název a polohu na náš vlastní server, který otevírací dobu dohledá z veřejně dostupných zdrojů a vrátí ji aplikaci. Server přijímá pouze údaje o vybraném místě – neodesíláme vaši polohu ani jiné osobní údaje a dotaz na otevírací dobu nespojujeme s vaším identifikátorem zařízení. Jde o nepovinnou funkci; když není dostupná, aplikace funguje dál bez otevírací doby.
@@ -80,7 +77,7 @@ Když dobrovolně doplníte otevírací dobu nebo piva na čepu, aplikace tyto �
 
 ## Doba uchování dat
 
-Na našich serverech uchováváme anonymní identifikátor zařízení a k němu vázaný dočasný účet, případný uživatelský účet včetně profilu (přezdívka a profilová fotka), provozní statistiky, technické chyby a dobrovolně odeslané údaje o hospodách. Aktuální nebo přibližná poloha se může použít pro jednorázové vyhledání hospod v okolí; neukládáme průběžnou GPS historii, jednotlivé GPS body ani trasu. Služby třetích stran (Mapy.cz, Resend) uchovávají případná data podle vlastních zásad.
+Na našich serverech uchováváme anonymní identifikátor zařízení a k němu vázaný dočasný účet, případný uživatelský účet včetně profilu (přezdívka a profilová fotka), provozní statistiky, technické chyby a dobrovolně odeslané údaje o hospodách. Aktuální nebo přibližná poloha se může použít pro jednorázové vyhledání hospod v okolí; při dobrovolném přidání nové hospody uložíme pouze vámi potvrzený bod daného podniku. Neukládáme průběžnou GPS historii ani trasu. Služba Resend uchovává případná data podle vlastních zásad.
 
 ## Vaše práva
 

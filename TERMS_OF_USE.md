@@ -1,6 +1,6 @@
 # Podmínky použití – Na pivo
 
-*Poslední aktualizace: 28. května 2026*
+*Poslední aktualizace: 16. července 2026*
 
 ## 1. Úvod
 
@@ -20,7 +20,7 @@ Aplikace souvisí s konzumací alkoholu. Pijte zodpovědně a dbejte platných p
 
 ## 4. Přesnost údajů a služby třetích stran
 
-Informace o hospodách a návrhy míst pocházejí z externí služby Mapy.cz. Nemůžeme zaručit, že údaje (poloha, otevírací doba, existence podniku) jsou vždy přesné, úplné a aktuální. Směrová šipka má orientační charakter a její přesnost závisí na senzorech a poloze vašeho zařízení.
+Informace o hospodách pocházejí z našeho lokálního adresáře, historických externích zdrojů a dobrovolných příspěvků uživatelů. Nemůžeme zaručit, že údaje (poloha, otevírací doba, existence podniku) jsou vždy přesné, úplné a aktuální. Směrová šipka má orientační charakter a její přesnost závisí na senzorech a poloze vašeho zařízení.
 
 ## 5. Vyloučení odpovědnosti
 

@@ -9,9 +9,11 @@ let mockSearchParams: Record<string, string> = {};
 const mockBack: jest.Mock = jest.fn();
 const mockBumpCatalogRevision: jest.Mock = jest.fn();
 const mockShowToast: jest.Mock = jest.fn();
-const mockGeocodePubLocation: jest.Mock = jest.fn();
-const mockSuggestPubLocations: jest.Mock = jest.fn(async () => []);
-const mockIsSpecificGeocodeResult: jest.Mock = jest.fn(() => true);
+const mockEnsureLocationPermission: jest.Mock = jest.fn(async () => 'granted');
+const mockOpenSystemSettings: jest.Mock = jest.fn(async () => undefined);
+const mockGetCurrentPositionAsync: jest.Mock = jest.fn(async () => ({
+  coords: { latitude: 48.1486, longitude: 17.1077 },
+}));
 const mockEnqueueAddedPub: jest.Mock = jest.fn(async () => true);
 const mockClearPubsSnapshot: jest.Mock = jest.fn(async () => undefined);
 const mockPubIdForCoords: jest.Mock = jest.fn((lat: number, lng: number) => `local:${lat}:${lng}`);
@@ -32,6 +34,16 @@ jest.mock('react-native-safe-area-context', () => ({
     bottom: 0,
     left: 0,
   })),
+}));
+
+jest.mock('expo-location', () => ({
+  Accuracy: { High: 4 },
+  getCurrentPositionAsync: (options: unknown) => mockGetCurrentPositionAsync(options),
+}));
+
+jest.mock('@/compass/permissions', () => ({
+  ensureLocationPermission: () => mockEnsureLocationPermission(),
+  openSystemSettings: () => mockOpenSystemSettings(),
 }));
 
 jest.mock('@/components/shared/GlowButton', () => {
@@ -87,12 +99,6 @@ jest.mock('@/data/addedPubsQueue', () => ({
   enqueueAddedPub: (entry: unknown) => mockEnqueueAddedPub(entry),
 }));
 
-jest.mock('@/data/mapyClient', () => ({
-  geocodePubLocation: (input: unknown) => mockGeocodePubLocation(input),
-  isSpecificGeocodeResult: (result: unknown) => mockIsSpecificGeocodeResult(result),
-  suggestPubLocations: (input: unknown, signal?: unknown) => mockSuggestPubLocations(input, signal),
-}));
-
 jest.mock('@/data/pubs', () => ({
   clearPubsSnapshot: () => mockClearPubsSnapshot(),
   pubIdForCoords: (...args: [number, number]) => mockPubIdForCoords(...args),
@@ -123,7 +129,11 @@ describe('AddPubScreen', () => {
       lng: '14.421',
       city: 'Praha',
     };
-    mockGeocodePubLocation.mockResolvedValue(null);
+    mockEnsureLocationPermission.mockResolvedValue('granted');
+    mockOpenSystemSettings.mockResolvedValue(undefined);
+    mockGetCurrentPositionAsync.mockResolvedValue({
+      coords: { latitude: 48.1486, longitude: 17.1077 },
+    });
   });
 
   afterEach(() => {
@@ -169,7 +179,8 @@ describe('AddPubScreen', () => {
     });
     await submit();
 
-    expect(mockGeocodePubLocation).not.toHaveBeenCalled();
+    expect(mockEnsureLocationPermission).not.toHaveBeenCalled();
+    expect(mockGetCurrentPositionAsync).not.toHaveBeenCalled();
     expect(mockUpsertLocalPub).toHaveBeenCalledWith(
       expect.objectContaining({
         id: 'local:50.087:14.421',
@@ -226,7 +237,36 @@ describe('AddPubScreen', () => {
     ).toBeGreaterThan(0);
   });
 
-  it('shows an error when address geocoding fails without explicit current location selection', async () => {
+  it('gets a fresh GPS fix when opened without route coordinates', async () => {
+    mockSearchParams = {};
+    renderScreen();
+
+    const currentLocationButton = renderer!.root.findByProps({
+      accessibilityLabel: cs.a11y.addPubUseCurrentLocationButton,
+    });
+    const nameInput = renderer!.root.findByProps({
+      accessibilityLabel: cs.a11y.addPubNameInput,
+    });
+
+    await act(async () => {
+      await currentLocationButton.props.onPress();
+      nameInput.props.onChangeText('Hospoda Bez Geokódu');
+    });
+    await submit();
+
+    expect(mockEnsureLocationPermission).toHaveBeenCalledTimes(1);
+    expect(mockGetCurrentPositionAsync).toHaveBeenCalledWith({ accuracy: 4 });
+    expect(mockUpsertLocalPub).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Hospoda Bez Geokódu',
+        lat: 48.1486,
+        lng: 17.1077,
+      }),
+    );
+    expect(mockBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not treat a typed address as a location without GPS confirmation', async () => {
     renderScreen();
 
     const nameInput = renderer!.root.findByProps({
@@ -237,22 +277,31 @@ describe('AddPubScreen', () => {
     });
 
     act(() => {
-      nameInput.props.onChangeText('Hospoda Bez Geokódu');
+      nameInput.props.onChangeText('Hospoda Bez Polohy');
       addressInput.props.onChangeText('Neznámá 123');
     });
     await submit();
 
-    expect(mockGeocodePubLocation).toHaveBeenCalledWith(
-      {
-        name: 'Hospoda Bez Geokódu',
-        city: 'Praha',
-        address: 'Neznámá 123',
-        near: { lat: 50.087, lng: 14.421 },
-      },
-    );
     expect(mockUpsertLocalPub).not.toHaveBeenCalled();
     expect(mockEnqueueAddedPub).not.toHaveBeenCalled();
-    expect(mockShowToast).toHaveBeenCalledWith(cs.addPub.locationImprecise);
     expect(mockBack).not.toHaveBeenCalled();
+  });
+
+  it('opens settings when location permission is denied', async () => {
+    mockSearchParams = {};
+    mockEnsureLocationPermission.mockResolvedValue('denied');
+    renderScreen();
+
+    const currentLocationButton = renderer!.root.findByProps({
+      accessibilityLabel: cs.a11y.addPubUseCurrentLocationButton,
+    });
+
+    await act(async () => {
+      await currentLocationButton.props.onPress();
+    });
+
+    expect(mockOpenSystemSettings).toHaveBeenCalledTimes(1);
+    expect(mockGetCurrentPositionAsync).not.toHaveBeenCalled();
+    expect(mockShowToast).toHaveBeenCalledWith(cs.addPub.locationPermissionDenied);
   });
 });

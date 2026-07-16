@@ -6,7 +6,7 @@
  * compass can target it immediately after returning.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
@@ -31,15 +32,10 @@ import {
 } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
+import { ensureLocationPermission, openSystemSettings } from '@/compass/permissions';
 import { generateUuidV4 } from '@/data/account';
 import { buildAddedPubEntry } from '@/data/addedPubsClient';
 import { enqueueAddedPub } from '@/data/addedPubsQueue';
-import {
-  geocodePubLocation,
-  isSpecificGeocodeResult,
-  suggestPubLocations,
-  type PubLocationSuggestion,
-} from '@/data/mapyClient';
 import { clearPubsSnapshot, pubIdForCoords, upsertLocalPub } from '@/data/pubs';
 import { usePubStore } from '@/stores/pubStore';
 import { useToastStore } from '@/stores/toastStore';
@@ -61,13 +57,16 @@ function isUsableCoordPair(lat: number | null, lng: number | null): lat is numbe
   return Math.abs(lat) > 0.0001 || Math.abs(lng) > 0.0001;
 }
 
-interface SelectedLocation {
+interface Coordinates {
   lat: number;
   lng: number;
+}
+
+interface SelectedLocation extends Coordinates {
   city?: string;
   address?: string;
   displayLocation?: string;
-  source?: 'suggestion' | 'current';
+  source: 'current';
 }
 
 export default function AddPubScreen() {
@@ -79,7 +78,7 @@ export default function AddPubScreen() {
 
   const initialLat = useMemo(() => parseCoordParam(params.lat), [params.lat]);
   const initialLng = useMemo(() => parseCoordParam(params.lng), [params.lng]);
-  const initialCoords = useMemo<SelectedLocation | null>(
+  const initialCoords = useMemo<Coordinates | null>(
     () =>
       isUsableCoordPair(initialLat, initialLng)
         ? { lat: initialLat, lng: initialLng as number }
@@ -91,135 +90,69 @@ export default function AddPubScreen() {
   const [city, setCity] = useState(parseStringParam(params.city));
   const [address, setAddress] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState('');
   const [selectedLocation, setSelectedLocation] = useState<SelectedLocation | null>(null);
-  const [suggestions, setSuggestions] = useState<PubLocationSuggestion[]>([]);
-  const [suggesting, setSuggesting] = useState(false);
-
-  // A concrete street address is what lets us geocode to an exact spot. City
-  // alone only resolves to the municipality centroid, so it must not enable a
-  // save on its own (see handleSubmit).
-  const hasStreetAddress = address.trim().length > 0;
   const canSubmit =
     name.trim().length > 0 &&
-    (selectedLocation !== null || hasStreetAddress) &&
+    selectedLocation !== null &&
+    !locating &&
     !submitted;
   const currentLocationSelected = selectedLocation?.source === 'current';
 
-  useEffect(() => {
-    const query = name.trim();
-    // No search will run for this state — make sure a previously-shown spinner
-    // does not stay visible. Done in an async tick to avoid a synchronous
-    // setState inside the effect body.
-    if (query.length < 2 || selectedLocation || submitted) {
-      const reset = setTimeout(() => setSuggesting(false), 0);
-      return () => clearTimeout(reset);
-    }
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => {
-      suggestPubLocations({ name: query, near: initialCoords }, controller.signal)
-        .then((results) => {
-          if (!controller.signal.aborted) setSuggestions(results);
-        })
-        .finally(() => {
-          if (!controller.signal.aborted) setSuggesting(false);
-        });
-    }, 250);
-
-    return () => {
-      controller.abort();
-      clearTimeout(timeout);
-    };
-  }, [initialCoords, name, selectedLocation, submitted]);
-
-  const handleNameChange = useCallback(
-    (value: string) => {
-      setName(value);
-      setLocationError('');
-      if (value.trim().length < 2 || selectedLocation?.source === 'current') {
-        setSuggestions([]);
-        setSuggesting(false);
-      } else {
-        setSuggesting(true);
-      }
-      if (selectedLocation && selectedLocation.source !== 'current') setSelectedLocation(null);
-    },
-    [selectedLocation],
-  );
-
-  const handleSuggestionPress = useCallback((suggestion: PubLocationSuggestion) => {
-    setSelectedLocation({
-      lat: suggestion.lat,
-      lng: suggestion.lng,
-      city: suggestion.city,
-      address: suggestion.address,
-      displayLocation: suggestion.location,
-      source: 'suggestion',
-    });
-    setName(suggestion.name);
-    setCity(suggestion.city ?? '');
-    setAddress(suggestion.address ?? '');
-    setSuggestions([]);
-    setLocationError('');
-  }, []);
-
-  const handleUseCurrentLocation = useCallback(() => {
-    if (!initialCoords) return;
+  const handleUseCurrentLocation = useCallback(async () => {
     if (currentLocationSelected) {
       setSelectedLocation(null);
-      setSuggestions([]);
-      setSuggesting(name.trim().length >= 2);
       setLocationError('');
       return;
     }
-    setSelectedLocation({
-      ...initialCoords,
-      city: city.trim() || undefined,
-      displayLocation: cs.addPub.currentLocationSelectedBody,
-      source: 'current',
-    });
-    setSuggestions([]);
-    setSuggesting(false);
+
+    setLocating(true);
     setLocationError('');
-  }, [city, currentLocationSelected, initialCoords, name]);
+    try {
+      let coords: Coordinates | null = initialCoords;
+      if (!coords) {
+        const permission = await ensureLocationPermission();
+        if (permission !== 'granted') {
+          setLocationError(cs.addPub.locationPermissionDenied);
+          showToast(cs.addPub.locationPermissionDenied);
+          if (permission === 'denied') await openSystemSettings();
+          return;
+        }
+
+        const fix = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+        });
+        coords = {
+          lat: fix.coords.latitude,
+          lng: fix.coords.longitude,
+        };
+      }
+
+      setSelectedLocation({
+        ...coords,
+        city: city.trim() || undefined,
+        displayLocation: cs.addPub.currentLocationSelectedBody,
+        source: 'current',
+      });
+    } catch {
+      setLocationError(cs.addPub.locationUnavailable);
+      showToast(cs.addPub.locationUnavailable);
+    } finally {
+      setLocating(false);
+    }
+  }, [city, currentLocationSelected, initialCoords, showToast]);
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit) return;
     setSubmitted(true);
     setLocationError('');
-    setSuggestions([]);
-    setSuggesting(false);
 
     const trimmedName = name.trim().slice(0, 200);
     const trimmedCity = city.trim();
     const trimmedAddress = address.trim();
 
-    // Only geocode when there is a concrete street address. Geocoding from a
-    // bare city name returns the municipality centroid, which must never be
-    // saved as the pub's location. When the user did type an address, never
-    // silently fall back to current GPS; that would put the pub under their feet.
-    let geocodedLocation = null;
-    if (!selectedLocation && trimmedAddress) {
-      const result = await geocodePubLocation({
-        name: trimmedName,
-        city: trimmedCity || undefined,
-        address: trimmedAddress,
-        near: initialCoords,
-      });
-      // Reject area centroids (regional.municipality/region/…): if the typed
-      // address cannot pin an exact place, ask for a precise pick.
-      if (result && isSpecificGeocodeResult(result)) {
-        geocodedLocation = result;
-      } else {
-        setSubmitted(false);
-        setLocationError(cs.addPub.locationImprecise);
-        showToast(cs.addPub.locationImprecise);
-        return;
-      }
-    }
-
-    const location = selectedLocation ?? geocodedLocation;
+    const location = selectedLocation;
 
     if (!location) {
       setSubmitted(false);
@@ -261,7 +194,6 @@ export default function AddPubScreen() {
     bumpCatalogRevision,
     canSubmit,
     city,
-    initialCoords,
     name,
     router,
     selectedLocation,
@@ -311,11 +243,10 @@ export default function AddPubScreen() {
         <View style={styles.locationCard}>
           <Text style={styles.locationHeader}>{cs.addPub.locationHeader}</Text>
           <Text style={styles.locationBody} maxFontSizeMultiplier={FontScaleCap.body}>
-            {initialCoords ? cs.addPub.locationWithCurrent : cs.addPub.locationFromAddress}
+            {cs.addPub.locationBody}
           </Text>
-          {initialCoords && (
-            <Pressable
-              onPress={handleUseCurrentLocation}
+          <Pressable
+              onPress={() => void handleUseCurrentLocation()}
               style={({ pressed }) => [
                 styles.currentLocationButton,
                 currentLocationSelected && styles.currentLocationButtonSelected,
@@ -345,7 +276,7 @@ export default function AddPubScreen() {
                   style={styles.currentLocationTitle}
                   maxFontSizeMultiplier={FontScaleCap.body}
                 >
-                  {cs.addPub.useCurrentLocation}
+                  {locating ? cs.addPub.locating : cs.addPub.useCurrentLocation}
                 </Text>
                 <Text
                   style={styles.currentLocationBody}
@@ -368,7 +299,6 @@ export default function AddPubScreen() {
                 )}
               </View>
             </Pressable>
-          )}
         </View>
 
         <View style={styles.fieldGroup}>
@@ -376,85 +306,42 @@ export default function AddPubScreen() {
           <TextInput
             style={styles.input}
             value={name}
-            onChangeText={handleNameChange}
+            onChangeText={(value) => {
+              setName(value);
+              setLocationError('');
+            }}
             placeholder={cs.addPub.namePlaceholder}
             placeholderTextColor={Colors.mutedText}
             maxLength={200}
             accessibilityLabel={cs.a11y.addPubNameInput}
           />
-          {(suggestions.length > 0 || suggesting || selectedLocation) && (
+          {selectedLocation && (
             <View style={styles.suggestions}>
-              {selectedLocation && (
-                <View
-                  style={[
-                    styles.selectedSuggestion,
-                    currentLocationSelected && styles.selectedCurrentLocation,
-                  ]}
-                  accessibilityLabel={
-                    currentLocationSelected ? cs.a11y.addPubCurrentLocationSelected : undefined
-                  }
-                >
-                  <MapPinIcon size={16} color={Colors.amber} />
-                  <View style={styles.suggestionText}>
-                    <Text style={styles.suggestionName} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {currentLocationSelected
-                        ? cs.addPub.currentLocationSelectedTitle
-                        : cs.addPub.selectedPlace}
-                    </Text>
-                    <Text
-                      style={styles.suggestionLocation}
-                      maxFontSizeMultiplier={FontScaleCap.body}
-                      numberOfLines={2}
-                    >
-                      {selectedLocation.displayLocation || [address, city].filter(Boolean).join(', ')}
-                    </Text>
-                  </View>
-                </View>
-              )}
-              {!selectedLocation &&
-                suggestions.map((suggestion) => (
-                  <Pressable
-                    key={suggestion.id}
-                    onPress={() => handleSuggestionPress(suggestion)}
-                    style={({ pressed }) => [styles.suggestionRow, pressed && styles.suggestionPressed]}
-                    accessibilityRole="button"
-                    accessibilityLabel={cs.a11y.addPubSuggestion(suggestion.name)}
+              <View
+                style={[styles.selectedSuggestion, styles.selectedCurrentLocation]}
+                accessibilityLabel={cs.a11y.addPubCurrentLocationSelected}
+              >
+                <MapPinIcon size={16} color={Colors.amber} />
+                <View style={styles.suggestionText}>
+                  <Text style={styles.suggestionName} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {cs.addPub.currentLocationSelectedTitle}
+                  </Text>
+                  <Text
+                    style={styles.suggestionLocation}
+                    maxFontSizeMultiplier={FontScaleCap.body}
+                    numberOfLines={2}
                   >
-                    <View style={styles.suggestionIcon}>
-                      <MapPinIcon size={15} color={Colors.amber} />
-                    </View>
-                    <View style={styles.suggestionText}>
-                      <Text
-                        style={styles.suggestionName}
-                        maxFontSizeMultiplier={FontScaleCap.body}
-                        numberOfLines={1}
-                      >
-                        {suggestion.name}
-                      </Text>
-                      {!!suggestion.location && (
-                        <Text
-                          style={styles.suggestionLocation}
-                          maxFontSizeMultiplier={FontScaleCap.body}
-                          numberOfLines={2}
-                        >
-                          {suggestion.location}
-                        </Text>
-                      )}
-                    </View>
-                  </Pressable>
-                ))}
-              {!selectedLocation && suggesting && (
-                <Text style={styles.suggestionHint} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.addPub.searchingPlaces}
-                </Text>
-              )}
+                    {selectedLocation.displayLocation}
+                  </Text>
+                </View>
+              </View>
             </View>
           )}
         </View>
 
         <View style={styles.twoColumn}>
           <View style={styles.column}>
-            <Text style={styles.label}>{cs.addPub.cityLabel}</Text>
+            <Text style={styles.label}>{cs.addPub.cityLabelOptional}</Text>
             <TextInput
               style={styles.input}
               value={city}
@@ -466,7 +353,7 @@ export default function AddPubScreen() {
             />
           </View>
           <View style={styles.column}>
-            <Text style={styles.label}>{cs.addPub.addressLabel}</Text>
+            <Text style={styles.label}>{cs.addPub.addressLabelOptional}</Text>
             <TextInput
               style={styles.input}
               value={address}
@@ -572,16 +459,6 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.24),
     backgroundColor: withAlpha(Colors.stout2, 0.9),
   },
-  suggestionRow: {
-    minHeight: 62,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: withAlpha(Colors.border, 0.45),
-  },
   selectedSuggestion: {
     minHeight: 62,
     flexDirection: 'row',
@@ -593,17 +470,6 @@ const styles = StyleSheet.create({
   },
   selectedCurrentLocation: {
     backgroundColor: withAlpha(Colors.amber, 0.18),
-  },
-  suggestionPressed: {
-    backgroundColor: withAlpha(Colors.amber, 0.1),
-  },
-  suggestionIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.1),
   },
   suggestionText: {
     flex: 1,
@@ -620,13 +486,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     color: Colors.foamMuted,
-  },
-  suggestionHint: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontFamily: Fonts.ui.medium,
-    fontSize: 13,
-    color: Colors.mutedText,
   },
   label: {
     fontFamily: Fonts.ui.bold,
