@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useColorScheme,
   View,
 } from 'react-native';
 import MapView, {
@@ -202,6 +203,8 @@ export default function BeerMapScreen({
   onShowCompass,
 }: BeerMapScreenProps) {
   const insets = useSafeAreaInsets();
+  const colorScheme = useColorScheme();
+  const mapColorScheme = colorScheme === 'dark' ? 'dark' : 'light';
   const mapRef = useRef<MapView>(null);
   const reduceMotion = useReduceMotion();
   const hapticEnabled = useSettingsStore((state) => state.hapticEnabled);
@@ -524,20 +527,21 @@ export default function BeerMapScreen({
   return (
     <View style={styles.root}>
       <MapView
+        key={mapColorScheme}
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
         style={StyleSheet.absoluteFill}
-        initialRegion={initialRegion}
+        initialRegion={region}
         onRegionChangeComplete={handleRegionChange}
         onPress={handleMapPress}
         mapType="standard"
-        userInterfaceStyle="light"
+        userInterfaceStyle={mapColorScheme}
         showsUserLocation={permissionState === 'granted'}
         showsMyLocationButton={false}
         showsCompass={false}
         showsPointsOfInterests={false}
         toolbarEnabled={false}
-        loadingBackgroundColor={Colors.foam}
+        loadingBackgroundColor={mapColorScheme === 'dark' ? Colors.stout : Colors.foam}
         loadingIndicatorColor={Colors.amber}
         accessibilityLabel={cs.a11y.beerMap}
       >

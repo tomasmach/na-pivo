@@ -85,7 +85,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     version: '1.4.0',
     icon: './assets/images/icon.png',
     orientation: 'portrait',
-    userInterfaceStyle: 'dark',
+    userInterfaceStyle: 'automatic',
     assetBundlePatterns: ['**/*'],
     ios: {
       bundleIdentifier: 'com.tomasmach.na-pivo',

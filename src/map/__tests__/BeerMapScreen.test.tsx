@@ -8,11 +8,14 @@ import BeerMapScreen from '../BeerMapScreen';
 import { fetchPubHours } from '@/data/hoursClient';
 import { useBeerMap } from '../useBeerMap';
 
+let mockColorScheme: 'light' | 'dark' | null = 'dark';
+
 jest.mock('react-native', () => {
   const RN = jest.requireActual('react-native');
   return {
     ...RN,
     AccessibilityInfo: { announceForAccessibility: jest.fn(async () => undefined) },
+    useColorScheme: () => mockColorScheme,
     Modal: ({ children, visible }: { children?: React.ReactNode; visible?: boolean }) =>
       visible ? <RN.View>{children}</RN.View> : null,
   };
@@ -21,14 +24,29 @@ jest.mock('react-native', () => {
 jest.mock('react-native-maps', () => ({
   __esModule: true,
   default: forwardRef(function MockMapView(
-    { children }: { children?: React.ReactNode },
+    {
+      accessibilityLabel,
+      children,
+      userInterfaceStyle,
+    }: {
+      accessibilityLabel?: string;
+      children?: React.ReactNode;
+      userInterfaceStyle?: 'light' | 'dark';
+    },
     ref,
   ) {
     useImperativeHandle(ref, () => ({
       animateCamera: jest.fn(),
       animateToRegion: jest.fn(),
     }));
-    return <View>{children}</View>;
+    return (
+      <View
+        accessibilityLabel={accessibilityLabel}
+        accessibilityValue={{ text: userInterfaceStyle }}
+      >
+        {children}
+      </View>
+    );
   }),
   Marker: ({ children, onPress, accessibilityLabel }: {
     children?: React.ReactNode;
@@ -102,6 +120,7 @@ describe('BeerMapScreen opening-hours loading', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     jest.clearAllMocks();
+    mockColorScheme = 'dark';
     mockedUseBeerMap.mockReturnValue({
       pubs: [{ id: 'pub-1', name: 'U Testu', lat: 50.0876, lng: 14.4214 }],
       visitedPubs: [],
@@ -137,6 +156,22 @@ describe('BeerMapScreen opening-hours loading', () => {
 
   afterEach(() => {
     jest.useRealTimers();
+  });
+
+  it('follows the system color scheme', () => {
+    const props = {
+      filters: EMPTY_PUB_SEARCH_FILTERS,
+      onApplyFilters: jest.fn(),
+      onShowCompass: jest.fn(),
+    };
+    const screen = render(<BeerMapScreen {...props} />);
+
+    expect(screen.getByLabelText(cs.a11y.beerMap).props.accessibilityValue.text).toBe('dark');
+
+    mockColorScheme = 'light';
+    screen.rerender(<BeerMapScreen {...props} />);
+
+    expect(screen.getByLabelText(cs.a11y.beerMap).props.accessibilityValue.text).toBe('light');
   });
 
   it('replaces a pending loader with the unknown state after three seconds', async () => {
