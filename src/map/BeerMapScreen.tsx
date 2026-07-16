@@ -72,19 +72,6 @@ const DEFAULT_REGION: Region = {
 
 const PUB_DETAIL_LOADING_TIMEOUT_MS = 3_000;
 
-const DARK_MAP_STYLE = [
-  { elementType: 'geometry', stylers: [{ color: '#25170C' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#C9B38F' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#1F1308' }] },
-  { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#5A3A20' }] },
-  { featureType: 'landscape.natural', elementType: 'geometry', stylers: [{ color: '#2B1A0E' }] },
-  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
-  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#49301C' }] },
-  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#24160B' }] },
-  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#101A1B' }] },
-] as const;
-
 type Layer = 'all' | 'visited' | 'friends';
 type MapSelection =
   | { kind: 'pub'; key: string; accountId: string | null }
@@ -544,14 +531,13 @@ export default function BeerMapScreen({
         onRegionChangeComplete={handleRegionChange}
         onPress={handleMapPress}
         mapType="standard"
-        customMapStyle={DARK_MAP_STYLE as unknown as []}
-        userInterfaceStyle="dark"
+        userInterfaceStyle="light"
         showsUserLocation={permissionState === 'granted'}
         showsMyLocationButton={false}
         showsCompass={false}
         showsPointsOfInterests={false}
         toolbarEnabled={false}
-        loadingBackgroundColor={Colors.stout}
+        loadingBackgroundColor={Colors.foam}
         loadingIndicatorColor={Colors.amber}
         accessibilityLabel={cs.a11y.beerMap}
       >
