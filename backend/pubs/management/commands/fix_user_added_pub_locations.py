@@ -5,6 +5,7 @@ import math
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.utils import timezone
 
 from pubs.models import UserAddedPub
 from pubs.user_added_pub_geocoding import resolve_user_added_pub_location
@@ -110,6 +111,9 @@ class Command(BaseCommand):
                     pub.cache_key = resolved.cache_key
                     pub.lat = resolved.lat
                     pub.lng = resolved.lng
+                    pub.location_source = UserAddedPub.LocationSource.GOOGLE_GEOCODE
+                    pub.google_place_id = resolved.place_id
+                    pub.location_synced_at = timezone.now()
                     pub.city = pub.city or resolved.city
                     pub.address = pub.address or resolved.address
                     pub.save(
@@ -117,6 +121,9 @@ class Command(BaseCommand):
                             "cache_key",
                             "lat",
                             "lng",
+                            "location_source",
+                            "google_place_id",
+                            "location_synced_at",
                             "city",
                             "address",
                             "updated_at",

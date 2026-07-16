@@ -1742,6 +1742,10 @@ class UserAddedPub(models.Model):
     creating duplicate side effects.
     """
 
+    class LocationSource(models.TextChoices):
+        USER_PIN = "user_pin", "User pin"
+        GOOGLE_GEOCODE = "google_geocode", "Google geocode"
+
     account = models.ForeignKey(
         Account,
         on_delete=models.SET_NULL,
@@ -1764,6 +1768,14 @@ class UserAddedPub(models.Model):
     name = models.TextField(help_text="Pub name as submitted by the client.")
     lat = models.FloatField()
     lng = models.FloatField()
+    location_source = models.CharField(
+        max_length=16,
+        choices=LocationSource.choices,
+        default=LocationSource.USER_PIN,
+        help_text="Provenance of the stored coordinates.",
+    )
+    google_place_id = models.CharField(max_length=256, blank=True, default="")
+    location_synced_at = models.DateTimeField(null=True, blank=True)
     city = models.TextField(blank=True, default="")
     address = models.TextField(blank=True, default="")
     active = models.BooleanField(

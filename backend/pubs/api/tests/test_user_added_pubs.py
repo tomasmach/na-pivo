@@ -88,6 +88,10 @@ def test_add_pub_creates_live_row(client):
     assert pub.cache_key == _KEY
     assert pub.city == "Praha"
     assert pub.address == "Testovací 12"
+    assert pub.location_source == UserAddedPub.LocationSource.USER_PIN
+    assert pub.google_place_id == ""
+    assert pub.location_synced_at is None
+    assert "location_source" not in body
 
 
 @pytest.mark.django_db
@@ -103,6 +107,9 @@ def test_add_pub_trusts_confirmed_client_coords_without_google(client):
     assert pub.lat == _LAT
     assert pub.lng == _LNG
     assert pub.cache_key == _KEY
+    assert pub.location_source == UserAddedPub.LocationSource.USER_PIN
+    assert pub.google_place_id == ""
+    assert pub.location_synced_at is None
     assert resp.json()["cache_key"] == _KEY
 
 
@@ -119,6 +126,7 @@ def test_add_pub_geocodes_only_when_coordinates_are_missing(client):
         city="Praha",
         address="Testovací 12",
         result_type="street_address",
+        place_id="ChIJ-user-added-pub",
     )
 
     with patch(
@@ -138,6 +146,10 @@ def test_add_pub_geocodes_only_when_coordinates_are_missing(client):
     pub = UserAddedPub.objects.get()
     assert pub.lat == resolved.lat
     assert pub.lng == resolved.lng
+    assert pub.location_source == UserAddedPub.LocationSource.GOOGLE_GEOCODE
+    assert pub.google_place_id == "ChIJ-user-added-pub"
+    assert pub.location_synced_at is not None
+    assert "location_source" not in resp.json()
 
 
 @pytest.mark.django_db

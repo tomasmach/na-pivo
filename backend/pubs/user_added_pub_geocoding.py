@@ -18,6 +18,7 @@ class ResolvedPubLocation:
     city: str
     address: str
     result_type: str
+    place_id: str = ""
 
     @property
     def cache_key(self) -> str:
@@ -68,4 +69,5 @@ def resolve_user_added_pub_location(
         city=candidate.city or city,
         address=candidate.address or address,
         result_type=candidate.result_type,
+        place_id=candidate.place_id,
     )

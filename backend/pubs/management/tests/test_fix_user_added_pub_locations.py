@@ -30,6 +30,7 @@ def test_fix_user_added_pub_locations_dry_run_does_not_write(capsys):
         city="Brno",
         address="Pekařská 1",
         result_type="regional.address",
+        place_id="ChIJ-fixed-pub",
     )
 
     with patch(
@@ -66,6 +67,7 @@ def test_fix_user_added_pub_locations_apply_updates_far_address(capsys):
         city="Brno",
         address="Pekařská 1",
         result_type="regional.address",
+        place_id="ChIJ-fixed-pub",
     )
 
     with patch(
@@ -79,6 +81,9 @@ def test_fix_user_added_pub_locations_apply_updates_far_address(capsys):
     assert pub.lng == resolved.lng
     assert pub.cache_key == geohash8(resolved.lat, resolved.lng)
     assert pub.city == "Brno"
+    assert pub.location_source == UserAddedPub.LocationSource.GOOGLE_GEOCODE
+    assert pub.google_place_id == "ChIJ-fixed-pub"
+    assert pub.location_synced_at is not None
     output = json.loads(capsys.readouterr().out)
     assert output["dry_run"] is False
     assert output["updates"] == 1

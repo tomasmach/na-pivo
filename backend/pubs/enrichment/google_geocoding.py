@@ -8,7 +8,7 @@ from urllib.parse import quote
 
 import requests
 
-_GEOCODING_URL = "https://geocode.googleapis.com/v4/geocode/address"
+_GEOCODING_URL = "https://geocode.googleapis.com/v4/geocode"
 _FIELD_MASK = ",".join(
     (
         "results.placeId",
@@ -59,7 +59,11 @@ def _component(components: object, *types: str) -> str:
     return ""
 
 
-def _candidate(result: object) -> GoogleAddressCandidate | None:
+def _candidate(
+    result: object,
+    *,
+    require_precise: bool,
+) -> GoogleAddressCandidate | None:
     if not isinstance(result, dict):
         return None
     result_types = {
@@ -69,8 +73,12 @@ def _candidate(result: object) -> GoogleAddressCandidate | None:
         (value for value in _PRECISE_TYPES if value in result_types),
         "",
     )
-    if not result_type or result.get("granularity") not in _PRECISE_GRANULARITIES:
+    if require_precise and (
+        not result_type or result.get("granularity") not in _PRECISE_GRANULARITIES
+    ):
         return None
+    if not result_type:
+        result_type = next(iter(result_types), "")
 
     location = result.get("location")
     if not isinstance(location, dict):
@@ -155,7 +163,24 @@ class GoogleGeocodingSource:
         if not query:
             return None
 
-        url = f"{_GEOCODING_URL}/{quote(query, safe='')}"
+        url = f"{_GEOCODING_URL}/address/{quote(query, safe='')}"
+        return self._geocode(url=url, require_precise=True)
+
+    def geocode_place_id(self, place_id: str) -> GoogleAddressCandidate | None:
+        """Resolve a known Google place without address-search precision gates."""
+
+        place_id = place_id.strip()
+        if not place_id:
+            return None
+        url = f"{_GEOCODING_URL}/places/{quote(place_id, safe='')}"
+        return self._geocode(url=url, require_precise=False)
+
+    def _geocode(
+        self,
+        *,
+        url: str,
+        require_precise: bool,
+    ) -> GoogleAddressCandidate | None:
         headers = {
             "X-Goog-Api-Key": self._api_key,
             "X-Goog-FieldMask": _FIELD_MASK,
@@ -204,7 +229,13 @@ class GoogleGeocodingSource:
             (
                 candidate
                 for result in results
-                if (candidate := _candidate(result)) is not None
+                if (
+                    candidate := _candidate(
+                        result,
+                        require_precise=require_precise,
+                    )
+                )
+                is not None
             ),
             None,
         )

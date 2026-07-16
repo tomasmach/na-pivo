@@ -1069,6 +1069,9 @@ class UserAddedPubView(APIView):
             # avoid a paid provider call even when they also include an address.
             lat = data["lat"]
             lng = data["lng"]
+            location_source = UserAddedPub.LocationSource.USER_PIN
+            google_place_id = ""
+            location_synced_at = None
         elif address and city:
             try:
                 resolved = resolve_user_added_pub_location(
@@ -1102,6 +1105,9 @@ class UserAddedPubView(APIView):
             lng = resolved.lng
             city = resolved.city
             address = resolved.address
+            location_source = UserAddedPub.LocationSource.GOOGLE_GEOCODE
+            google_place_id = resolved.place_id
+            location_synced_at = dj_timezone.now()
         cache_key = geohash8(lat, lng)
 
         try:
@@ -1125,6 +1131,9 @@ class UserAddedPubView(APIView):
                         "name": data["name"],
                         "lat": lat,
                         "lng": lng,
+                        "location_source": location_source,
+                        "google_place_id": google_place_id,
+                        "location_synced_at": location_synced_at,
                         "city": city,
                         "address": address,
                         "active": True,

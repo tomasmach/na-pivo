@@ -117,6 +117,31 @@ def test_geocoder_skips_centroid_and_returns_later_precise_result() -> None:
     assert candidate.lng == pytest.approx(14.42)
 
 
+def test_place_id_lookup_accepts_known_place_without_address_precision() -> None:
+    session = _FakeSession(
+        _response(
+            {
+                "results": [
+                    _result(
+                        result_type="establishment",
+                        granularity="APPROXIMATE",
+                    )
+                ]
+            }
+        )
+    )
+
+    candidate = _source(session).geocode_place_id("ChIJ-test/place-id")
+
+    assert candidate is not None
+    assert candidate.place_id == "ChIJ-test-place-id"
+    assert candidate.result_type == "establishment"
+    assert session.calls[0]["url"].endswith(
+        "/v4/geocode/places/ChIJ-test%2Fplace-id"
+    )
+    assert session.calls[0]["params"] == {"languageCode": "cs"}
+
+
 @pytest.mark.parametrize(
     ("result_type", "granularity"),
     [
