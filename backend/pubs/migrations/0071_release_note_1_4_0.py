@@ -14,11 +14,11 @@ from django.utils import timezone
 VERSION = "1.4.0"
 TITLE = "Mapa, žebříčky a fotky 🍻"
 ITEMS = [
-    ("🗺️", "Nová mapa piv a hospod. Kompas přepneš na mapu jedním ťuknutím, hospody si vyfiltruješ a detail otevřeš rovnou z mapy."),
-    ("🏆", "Celostátní žebříčky, nové úrovně a odznaky. Týdenní pořadí uvidíš i v partě a u počítadla."),
-    ("📸", "Pivní fotodeník. Cvakni pivo rovnou z počítadla — fotky se ti sejdou na profilu a parta je uvidí čerstvě cvaknuté."),
-    ("🥃", "Zapíšeš si i jiné pití než pivo. Víno, panák nebo limo, ať večer sedí celý."),
-    ("👤", "Nový profil a nastavení. A přibyl odkaz na Discord, kde se apka řeší."),
+    ("🗺️", "Nová mapa piv a hospod. Filtry, detail hospody a přepnutí z kompasu jedním ťuknutím."),
+    ("🏆", "Celostátní žebříčky, nové úrovně a odznaky."),
+    ("📸", "Pivní fotodeník. Cvakni pivo z počítadla, uvidí ho profil i parta."),
+    ("🥃", "Zapíšeš si i víno, panák nebo limo."),
+    ("👤", "Nový profil a nastavení, plus odkaz na Discord."),
     ("🛠️", "Ceny v místní měně, filtr hospod podle výbavy a hromada oprav."),
 ]
 
