@@ -245,7 +245,7 @@ export const cs = {
   permissions: {
     title: 'Potřebuju tvoji polohu',
     body:
-      'Bez polohy neumím najít hospody v okolí ani namířit šipku. Aktuální nebo přibližná poloha se může poslat mému serveru, který pro vyhledávání využívá Mapy.cz; GPS trasu ani historii neukládám.',
+      'Bez polohy neumím najít hospody v okolí ani namířit šipku. Aktuální nebo přibližná poloha se může poslat mému serveru; GPS trasu ani historii neukládám.',
     cta: 'Povolit polohu',
     openSettings: 'Otevřít Nastavení',
   },
@@ -1504,7 +1504,7 @@ export const cs = {
     // — Permission gate —
     permTitle: 'Potřebuju tvoji polohu',
     permBody:
-      'Ať poznám hospody v okolí a podnik, ve kterém sedíš. Aktuální nebo přibližná poloha se může poslat mému serveru, který pro vyhledávání využívá Mapy.cz; GPS trasu ani historii neukládám.',
+      'Ať poznám hospody v okolí a podnik, ve kterém sedíš. Aktuální nebo přibližná poloha se může poslat mému serveru; GPS trasu ani historii neukládám.',
     permCta: 'Povolit polohu',
     permOpenSettings: 'Otevřít Nastavení',
 
@@ -1808,7 +1808,7 @@ export const cs = {
     title: 'Soukromí',
     body: [
       'Sbírám jen omezené provozní statistiky: otevření aplikace, návrat do popředí, technické chyby, verzi aplikace a součet nachozených metrů.',
-      'Pro stažení okolních hospod může aplikace poslat aktuální nebo přibližnou polohu na můj server, který pro vyhledávání využívá Mapy.cz.',
+      'Pro stažení okolních hospod může aplikace poslat aktuální nebo přibližnou polohu na můj server.',
       'Nachozené metry se počítají v telefonu a na server se posílá jen součet po dávkách, nikdy GPS body ani trasa.',
       'Průběžnou GPS historii, trasu pohybu ani jednotlivé GPS body neukládám.',
       'Pro zobrazení otevírací doby aplikace pošle název a polohu vybrané hospody na můj server, který dohledá otevírací dobu.',

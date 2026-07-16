@@ -1,11 +1,11 @@
 /**
  * Mapy.cz REST API client — POI search for pubs/bars.
  *
- * Strategy: nearby-pub search goes through our own backend proxy, which calls
- * Mapy.cz and caches results so the app does not ship a production Mapy API key
- * or send background nearby-search requests directly to Mapy.cz. Raw Mapy items
- * returned by the backend are deduplicated, label-filtered, name-blocklisted,
- * and clamped to the radius.
+ * Strategy: nearby-pub search uses our backend's local directory only. Mapy.com
+ * is reserved for add-pub autocomplete/geocoding, also through the backend, so
+ * the mobile app never ships or calls with a public Mapy API key. Provider-shaped
+ * items returned by the backend are deduplicated, label-filtered,
+ * name-blocklisted, and clamped to the radius.
  */
 
 import type { HoursStatus, Pub, VenueKind } from './pubs';
@@ -181,9 +181,6 @@ interface BackendLocationLookupResponse {
   items?: MapyGeocodeItem[];
 }
 
-const MAPY_SUGGEST_URL = 'https://api.mapy.cz/v1/suggest';
-const MAPY_GEOCODE_URL = 'https://api.mapy.cz/v1/geocode';
-
 /**
  * Try the backend pubs-near proxy. Returns the raw Mapy items on success, or
  * null on ANY failure (no backend configured, non-200 incl. 503, network error,
@@ -297,68 +294,6 @@ async function backendLocationLookup(
   }
 }
 
-function getPublicMapyApiKey(): string {
-  return (process.env.EXPO_PUBLIC_MAPY_API_KEY ?? '').trim();
-}
-
-function buildDirectMapyLocationUrl(
-  kind: 'suggest' | 'geocode',
-  query: string,
-  near?: { lat: number; lng: number } | null,
-): string | null {
-  const apiKey = getPublicMapyApiKey();
-  if (!apiKey) return null;
-
-  const url = new URL(kind === 'suggest' ? MAPY_SUGGEST_URL : MAPY_GEOCODE_URL);
-  url.searchParams.set('query', query);
-  url.searchParams.set('lang', 'cs');
-  url.searchParams.set('limit', kind === 'suggest' ? '8' : '3');
-  url.searchParams.append('type', 'poi');
-  if (kind === 'geocode') url.searchParams.append('type', 'regional.address');
-  url.searchParams.set('locality', 'cz,sk');
-  url.searchParams.set('apikey', apiKey);
-  if (near) {
-    url.searchParams.set('preferNear', `${near.lng},${near.lat}`);
-    url.searchParams.set('preferNearPrecision', '2500');
-  }
-  return url.toString();
-}
-
-async function directMapyLocationLookup(
-  kind: 'suggest' | 'geocode',
-  query: string,
-  near?: { lat: number; lng: number } | null,
-  signal?: AbortSignal,
-): Promise<MapyGeocodeItem[] | null> {
-  if (signal?.aborted) return null;
-
-  const url = buildDirectMapyLocationUrl(kind, query, near);
-  if (!url) return null;
-
-  try {
-    const resp = await fetch(url, { signal });
-    if (!resp.ok) {
-      trackApiFailure(kind === 'suggest' ? 'pub_location_suggest_mapy' : 'pub_location_geocode_mapy', {
-        endpoint: kind === 'suggest' ? MAPY_SUGGEST_URL : MAPY_GEOCODE_URL,
-        status: resp.status,
-      });
-      return null;
-    }
-    const data = (await resp.json()) as BackendLocationLookupResponse;
-    return data.items ?? [];
-  } catch (err) {
-    const isAbortError = err instanceof Error && err.name === 'AbortError';
-    if (!signal?.aborted && !isAbortError) {
-      trackApiFailure(kind === 'suggest' ? 'pub_location_suggest_mapy' : 'pub_location_geocode_mapy', {
-        endpoint: kind === 'suggest' ? MAPY_SUGGEST_URL : MAPY_GEOCODE_URL,
-        reason: 'exception',
-        error: err,
-      });
-    }
-    return null;
-  }
-}
-
 function pickCity(item: MapyGeocodeItem): string | undefined {
   const rs = item.regionalStructure;
   if (!rs) return undefined;
@@ -428,8 +363,7 @@ async function lookupGeocodeItems(
   near?: { lat: number; lng: number } | null,
   signal?: AbortSignal,
 ): Promise<MapyGeocodeItem[] | null> {
-  const backendItems = await backendLocationLookup('/v1/pubs/geocode', query, near, signal);
-  return backendItems ?? (await directMapyLocationLookup('geocode', query, near, signal));
+  return backendLocationLookup('/v1/pubs/geocode', query, near, signal);
 }
 
 export async function geocodePubLocation(
@@ -488,9 +422,7 @@ export async function suggestPubLocations(
   const query = input.name.trim().slice(0, 150);
   if (query.length < 2) return [];
 
-  const backendItems = await backendLocationLookup('/v1/pubs/suggest', query, input.near, signal);
-  const items =
-    backendItems ?? (await directMapyLocationLookup('suggest', query, input.near, signal));
+  const items = await backendLocationLookup('/v1/pubs/suggest', query, input.near, signal);
   if (items === null) return [];
 
   const seen = new Set<string>();
@@ -666,9 +598,7 @@ function itemToPub(
   return pub;
 }
 
-/** Run a list of raw Mapy items through the filtering pipeline. Shared by the
- *  backend-proxied path and the direct Mapy path so both apply the identical
- *  label allow-list, name heuristics, radius clamp and dedupe. */
+/** Run provider-shaped backend items through the filtering pipeline. */
 function itemsToPubs(
   items: MapyGeocodeItem[],
   lat: number,

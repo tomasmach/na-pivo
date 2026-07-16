@@ -3,7 +3,7 @@ import type { ConfigPlugin } from 'expo/config-plugins';
 import { withInfoPlist } from 'expo/config-plugins.js';
 
 const LOCATION_REASON =
-  'Na pivo používá tvou polohu k nalezení hospod v okolí a namíření šipky. Aktuální nebo přibližná poloha se může poslat našemu serveru, který pro vyhledávání využívá Mapy.cz; GPS trasu ani historii neukládáme.';
+  'Na pivo používá tvou polohu k nalezení hospod v okolí a namíření šipky. Aktuální nebo přibližná poloha se může poslat našemu serveru; GPS trasu ani historii neukládáme.';
 const BACKGROUND_LOCATION_REASON =
   'Na pivo může večer občas zkontrolovat, jestli sedíš u hospody, a připomenout ti výběr hospody a počítání piv. GPS trasu ani historii neukládáme.';
 

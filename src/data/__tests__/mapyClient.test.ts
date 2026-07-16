@@ -411,7 +411,6 @@ describe('searchPubsNear — backend proxy only', () => {
 describe('geocodePubLocation', () => {
   const ORIGINAL_FETCH = global.fetch;
   const ORIGINAL_BACKEND = process.env.EXPO_PUBLIC_BACKEND_URL;
-  const ORIGINAL_MAPY_KEY = process.env.EXPO_PUBLIC_MAPY_API_KEY;
 
   afterEach(() => {
     global.fetch = ORIGINAL_FETCH;
@@ -420,17 +419,11 @@ describe('geocodePubLocation', () => {
     } else {
       process.env.EXPO_PUBLIC_BACKEND_URL = ORIGINAL_BACKEND;
     }
-    if (ORIGINAL_MAPY_KEY === undefined) {
-      delete process.env.EXPO_PUBLIC_MAPY_API_KEY;
-    } else {
-      process.env.EXPO_PUBLIC_MAPY_API_KEY = ORIGINAL_MAPY_KEY;
-    }
     jest.clearAllMocks();
   });
 
-  it('returns null without a backend geocode proxy or public Mapy key', async () => {
+  it('returns null without a backend geocode proxy', async () => {
     delete process.env.EXPO_PUBLIC_BACKEND_URL;
-    delete process.env.EXPO_PUBLIC_MAPY_API_KEY;
     const fetchMock = jest.fn();
     global.fetch = fetchMock as unknown as typeof fetch;
 
@@ -564,9 +557,8 @@ describe('geocodePubLocation', () => {
     expect(isSpecificGeocodeResult(result)).toBe(false);
   });
 
-  it('falls back to direct Mapy geocode when the backend lookup is unavailable', async () => {
+  it('does not fall back to direct Mapy geocode when the backend lookup is unavailable', async () => {
     process.env.EXPO_PUBLIC_BACKEND_URL = 'https://api.example.com';
-    process.env.EXPO_PUBLIC_MAPY_API_KEY = 'public-test-key';
     const fetchMock = jest.fn(async (url: string) => {
       const parsed = new URL(String(url));
       if (parsed.pathname === '/v1/pubs/geocode') {
@@ -583,21 +575,7 @@ describe('geocodePubLocation', () => {
           json: async () => ({}),
         };
       }
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({
-          items: [
-            {
-              name: 'Hospoda U Testu',
-              label: 'Hospoda',
-              type: 'poi',
-              position: { lat: 50.081, lon: 14.421 },
-              regionalStructure: [{ name: 'Praha', type: 'regional.municipality' }],
-            },
-          ],
-        }),
-      };
+      throw new Error(`Unexpected direct request to ${parsed.toString()}`);
     });
     global.fetch = fetchMock as unknown as typeof fetch;
 
@@ -607,24 +585,18 @@ describe('geocodePubLocation', () => {
       near: { lat: 50.08, lng: 14.42 },
     });
 
-    expect(result).toEqual({ lat: 50.081, lng: 14.421, city: 'Praha', address: undefined, type: 'poi' });
+    expect(result).toBeNull();
     const calledUrls = fetchMock.mock.calls.map((call) => new URL(String((call as unknown[])[0])));
     const backendUrl = calledUrls.find((url) => url.pathname === '/v1/pubs/geocode');
-    const mapyUrl = calledUrls.find((url) => url.origin + url.pathname === 'https://api.mapy.cz/v1/geocode');
-    if (!backendUrl || !mapyUrl) throw new Error('Expected backend and Mapy calls');
+    if (!backendUrl) throw new Error('Expected backend geocode call');
     expect(backendUrl.origin + backendUrl.pathname).toBe('https://api.example.com/v1/pubs/geocode');
-    expect(mapyUrl.origin + mapyUrl.pathname).toBe('https://api.mapy.cz/v1/geocode');
-    expect(mapyUrl.searchParams.get('query')).toBe('Hospoda U Testu, Praha');
-    expect(mapyUrl.searchParams.getAll('type')).toEqual(['poi', 'regional.address']);
-    expect(mapyUrl.searchParams.get('preferNear')).toBe('14.42,50.08');
-    expect(mapyUrl.searchParams.get('apikey')).toBe('public-test-key');
+    expect(calledUrls.some((url) => url.origin === 'https://api.mapy.cz')).toBe(false);
   });
 });
 
 describe('suggestPubLocations', () => {
   const ORIGINAL_FETCH = global.fetch;
   const ORIGINAL_BACKEND = process.env.EXPO_PUBLIC_BACKEND_URL;
-  const ORIGINAL_MAPY_KEY = process.env.EXPO_PUBLIC_MAPY_API_KEY;
 
   afterEach(() => {
     global.fetch = ORIGINAL_FETCH;
@@ -632,11 +604,6 @@ describe('suggestPubLocations', () => {
       delete process.env.EXPO_PUBLIC_BACKEND_URL;
     } else {
       process.env.EXPO_PUBLIC_BACKEND_URL = ORIGINAL_BACKEND;
-    }
-    if (ORIGINAL_MAPY_KEY === undefined) {
-      delete process.env.EXPO_PUBLIC_MAPY_API_KEY;
-    } else {
-      process.env.EXPO_PUBLIC_MAPY_API_KEY = ORIGINAL_MAPY_KEY;
     }
     jest.clearAllMocks();
   });
@@ -724,7 +691,6 @@ describe('suggestPubLocations', () => {
 
   it('does not call the backend for very short queries', async () => {
     delete process.env.EXPO_PUBLIC_BACKEND_URL;
-    process.env.EXPO_PUBLIC_MAPY_API_KEY = 'public-test-key';
     const fetchMock = jest.fn();
     global.fetch = fetchMock as unknown as typeof fetch;
 
@@ -773,9 +739,8 @@ describe('suggestPubLocations', () => {
     expect(calledUrl.searchParams.get('lng')).toBe('14.42');
   });
 
-  it('falls back to direct Mapy suggestions when the backend lookup is unavailable', async () => {
+  it('does not fall back to direct Mapy suggestions when the backend lookup is unavailable', async () => {
     process.env.EXPO_PUBLIC_BACKEND_URL = 'https://api.example.com';
-    process.env.EXPO_PUBLIC_MAPY_API_KEY = 'public-test-key';
     const fetchMock = jest.fn(async (url: string) => {
       const parsed = new URL(String(url));
       if (parsed.pathname === '/v1/pubs/suggest') {
@@ -792,20 +757,7 @@ describe('suggestPubLocations', () => {
           json: async () => ({}),
         };
       }
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({
-          items: [
-            {
-              name: 'Hospoda U Testu',
-              label: 'Hospoda',
-              position: { lat: 50.081, lon: 14.421 },
-              location: 'Testovací 12, Praha',
-            },
-          ],
-        }),
-      };
+      throw new Error(`Unexpected direct request to ${parsed.toString()}`);
     });
     global.fetch = fetchMock as unknown as typeof fetch;
 
@@ -814,26 +766,11 @@ describe('suggestPubLocations', () => {
       near: { lat: 50.08, lng: 14.42 },
     });
 
-    expect(suggestions).toEqual([
-      {
-        id: 'mapy:50.08100,14.42100:Hospoda U Testu',
-        name: 'Hospoda U Testu',
-        lat: 50.081,
-        lng: 14.421,
-        city: undefined,
-        address: undefined,
-        location: 'Testovací 12, Praha',
-      },
-    ]);
+    expect(suggestions).toEqual([]);
     const calledUrls = fetchMock.mock.calls.map((call) => new URL(String((call as unknown[])[0])));
     const backendUrl = calledUrls.find((url) => url.pathname === '/v1/pubs/suggest');
-    const mapyUrl = calledUrls.find((url) => url.origin + url.pathname === 'https://api.mapy.cz/v1/suggest');
-    if (!backendUrl || !mapyUrl) throw new Error('Expected backend and Mapy calls');
+    if (!backendUrl) throw new Error('Expected backend suggest call');
     expect(backendUrl.origin + backendUrl.pathname).toBe('https://api.example.com/v1/pubs/suggest');
-    expect(mapyUrl.origin + mapyUrl.pathname).toBe('https://api.mapy.cz/v1/suggest');
-    expect(mapyUrl.searchParams.get('query')).toBe('Hospoda U Te');
-    expect(mapyUrl.searchParams.getAll('type')).toEqual(['poi']);
-    expect(mapyUrl.searchParams.get('preferNear')).toBe('14.42,50.08');
-    expect(mapyUrl.searchParams.get('apikey')).toBe('public-test-key');
+    expect(calledUrls.some((url) => url.origin === 'https://api.mapy.cz')).toBe(false);
   });
 });

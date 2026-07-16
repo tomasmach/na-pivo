@@ -37,13 +37,13 @@
   <h2 id="data">Jaká data zpracováváme</h2>
 
   <h3>Poloha</h3>
-  <p>Aplikace používá vaši aktuální polohu k tomu, aby našla hospody v okolí a ukázala směrovou šipku k vybrané hospodě (funguje jako kompas). Aktuální nebo přibližná poloha se může odeslat na náš vlastní server, který pro vyhledání hospod a návrhů míst v okolí využívá službu Mapy.cz. <strong>Neukládáme průběžnou GPS historii, jednotlivé GPS body ani trasu pohybu.</strong> Polohu na pozadí nevyužíváme.</p>
+  <p>Aplikace používá vaši aktuální polohu k tomu, aby našla hospody v okolí a ukázala směrovou šipku k vybrané hospodě (funguje jako kompas). Aktuální nebo přibližná poloha se může odeslat na náš vlastní server, který vyhledává v lokálním adresáři hospod. <strong>Neukládáme průběžnou GPS historii, jednotlivé GPS body ani trasu pohybu.</strong> Polohu na pozadí nevyužíváme.</p>
 
   <h3>Pohybové senzory</h3>
   <p>Aplikace čte data z pohybových senzorů (kompas/akcelerometr), aby správně otáčela směrovou šipku podle natočení telefonu. Tato data se rovněž zpracovávají pouze lokálně a nikam se neodesílají.</p>
 
   <h3>Vyhledávací dotazy</h3>
-  <p>Když v aplikaci vyhledáváte hospodu podle názvu, odešle se zadaný text a případně přibližná oblast hledání na náš server, který přes službu <strong>Mapy.cz</strong> vrátí návrhy míst. Bez tohoto dotazu by vyhledávání nefungovalo. Více v sekci „Služby třetích stran".</p>
+  <p>Když při přidávání nového podniku vyhledáváte hospodu podle názvu, odešle se zadaný text a případně přibližná oblast hledání na náš server, který přes službu <strong>Mapy.cz</strong> vrátí návrhy míst. Běžné hledání okolních hospod používá náš lokální adresář. Více v sekci „Služby třetích stran".</p>
 
   <h3>Anonymní účet zařízení</h3>
   <p>Aplikace při prvním spuštění vytvoří anonymní náhodný identifikátor zařízení (náhodné UUID) a odešle ho na náš vlastní server, aby každému zařízení patřil dočasný anonymní účet. Identifikátor neobsahuje žádné osobní údaje a slouží jen k odlišení zařízení.</p>
@@ -86,7 +86,7 @@
   <h2 id="treti-strany">Služby třetích stran</h2>
 
   <h3>Mapy.cz (Seznam.cz, a.s.)</h3>
-  <p>Pro vyhledávání hospod a návrhů míst odesíláme textový dotaz a aktuální nebo přibližnou oblast hledání na náš server, který volá API služby Mapy.cz. Tato služba zpracovává dotaz podle vlastních zásad ochrany osobních údajů. Více informací: <a href="https://o.seznam.cz/ochrana-udaju/">https://o.seznam.cz/ochrana-udaju/</a></p>
+  <p>Při přidávání nového podniku odesíláme textový dotaz a případně přibližnou oblast hledání na náš server, který volá API služby Mapy.cz pro našeptávání a geokódování. Běžné hledání okolních hospod Mapy.cz nevolá. Tato služba zpracovává dotaz podle vlastních zásad ochrany osobních údajů. Více informací: <a href="https://o.seznam.cz/ochrana-udaju/">https://o.seznam.cz/ochrana-udaju/</a></p>
 
   <h3>Vlastní server provozovatele</h3>
   <p>Na vlastním serveru zpracováváme anonymní účet zařízení, případný uživatelský účet, profil s přezdívkou a profilovou fotkou, otevírací dobu vybrané hospody, dobrovolně doplněné údaje o hospodách, provozní statistiky a technické chyby. Provozní data slouží pouze k údržbě a zlepšování aplikace; neposíláme je reklamní síti ani externímu analytickému nástroji.</p>
