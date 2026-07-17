@@ -2109,6 +2109,7 @@ class ClientEvent(models.Model):
         AMENITY_VOTE_FAILED = "amenity_vote_failed", "Amenity vote sync failed"
         LEADERBOARDS_OPENED = "leaderboards_opened", "Leaderboards opened"
         ONBOARDING_STARTED = "onboarding_started", "Onboarding started"
+        ONBOARDING_AUTH_OPENED = "onboarding_auth_opened", "Onboarding auth opened"
         ONBOARDING_COMPLETED = "onboarding_completed", "Onboarding completed"
         ONBOARDING_SKIPPED = "onboarding_skipped", "Onboarding skipped"
 

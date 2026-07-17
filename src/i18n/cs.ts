@@ -254,7 +254,6 @@ export const cs = {
   onboarding: {
     skip: 'Přeskočit',
     next: 'Pokračovat',
-    finish: 'Jdeme na pivo',
     slide1Title: 'Vítej Na pivu',
     slide1Body: 'Pivní deníček do kapsy. Ať máš přehled, co piješ a kam chodíš.',
     slide2Title: 'Kompas tě dovede',
@@ -263,6 +262,11 @@ export const cs = {
     slide3Body: 'Piva si čárkuješ jako na tácku. Statistiky a odznaky naskakují samy.',
     slide4Title: 'Vezmi partu',
     slide4Body: 'Přidáš kamarády a uvidíš, kdo zrovna sedí v hospodě. Cinknout si můžete na dálku.',
+    slide5Title: 'Ať o nic nepřijdeš',
+    slide5Body:
+      'Deník se ti neztratí, ani když vyměníš telefon, a parta tě najde. Bez účtu to jde taky, doplníš ho kdykoli.',
+    slide5Cta: 'Založit účet',
+    slide5Later: 'Zatím bez účtu',
   },
 
   celebration: {

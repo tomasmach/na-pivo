@@ -70,7 +70,7 @@
 <div class="meta">2026-07-17 · větev <code>feat/first-run-onboarding</code> · autor: Claude (oponentura: Codex gpt-5.6-sol)</div>
 
 <div class="tldr">
-<b>TL;DR:</b> Čerstvá instalace dnes spadne rovnou na kompas. Přidáváme jednorázový onboarding: horizontální pager se 4 slidy (vítej → kompas → deník → parta), postavený z existujících tokenů (stout/amber, Baloo 2, GlowButton). Zobrazí se jen na skutečně čerstvé instalaci; upgrade se pozná podle existujících AsyncStorage klíčů (release/settings/tally/reminder). Slide s polohou po Codex oponentuře vypadl: kompas má vlastní priming permission screen a dvojí priming by byl horší. Reminder explainer je na první session odložený, ProfileGate čeká na doběhnutí onboardingu, splash drží do rozhodnutí.
+<b>TL;DR:</b> Čerstvá instalace dnes spadne rovnou na kompas. Přidáváme jednorázový onboarding: horizontální pager s 5 slidy (vítej → kompas → deník → parta → účet), postavený z existujících tokenů (stout/amber, Baloo 2, GlowButton). Zobrazí se jen na skutečně čerstvé instalaci; upgrade se pozná podle existujících AsyncStorage klíčů. Slide s polohou po Codex oponentuře vypadl (kompas má vlastní priming screen); slide s účtem přibyl na přání autora: naviguje na /auth, ale nenutí — „Zatím bez účtu" pustí uživatele dál. Reminder explainer je na první session odložený, ProfileGate čeká na doběhnutí onboardingu, splash drží do rozhodnutí.
 </div>
 
 <h2>Cíle / Ne-cíle</h2>
@@ -82,7 +82,7 @@
     <li>Vizuál 1:1 s existujícím theme systémem.</li>
   </ul></div>
   <div class="col"><h3>Ne-cíle</h3><ul>
-    <li>Žádný login/nickname krok (řeší ProfileGate → /profile/setup).</li>
+    <li>Žádný vynucený login (účet je nabídka, ne brána; nickname řeší ProfileGate → /profile/setup).</li>
     <li>Žádné notifikační permission (má vlastní in-context flow).</li>
     <li>Žádné nové dependency (pager = Animated.FlatList).</li>
     <li>Žádný backend zásah.</li>
@@ -94,31 +94,39 @@
 <div class="phones">
   <div class="phone"><span class="skip">Přeskočit</span>
     <div class="glyphWrap"><div class="glyph">🍺</div></div>
-    <div class="dots"><i class="on"></i><i></i><i></i><i></i></div>
+    <div class="dots"><i class="on"></i><i></i><i></i><i></i><i></i></div>
     <h4>Vítej Na pivu</h4>
     <p>Pivní deníček do kapsy. Ať máš přehled, co piješ a kam chodíš.</p>
     <div class="cta">Pokračovat</div>
   </div>
   <div class="phone"><span class="skip">Přeskočit</span>
     <div class="glyphWrap"><div class="glyph">🧭</div></div>
-    <div class="dots"><i></i><i class="on"></i><i></i><i></i></div>
+    <div class="dots"><i></i><i class="on"></i><i></i><i></i><i></i></div>
     <h4>Kompas tě dovede</h4>
     <p>Šipka míří do nejbližší otevřené hospody. Ty už jen jdeš.</p>
     <div class="cta">Pokračovat</div>
   </div>
   <div class="phone"><span class="skip">Přeskočit</span>
     <div class="glyphWrap"><div class="glyph">𝍸</div></div>
-    <div class="dots"><i></i><i></i><i class="on"></i><i></i></div>
+    <div class="dots"><i></i><i></i><i class="on"></i><i></i><i></i></div>
     <h4>Čárkuj si večer</h4>
     <p>Piva si čárkuješ jako na tácku. Statistiky a odznaky naskakují samy.</p>
     <div class="cta">Pokračovat</div>
   </div>
-  <div class="phone">
+  <div class="phone"><span class="skip">Přeskočit</span>
     <div class="glyphWrap"><div class="glyph">👥</div></div>
-    <div class="dots"><i></i><i></i><i></i><i class="on"></i></div>
+    <div class="dots"><i></i><i></i><i></i><i class="on"></i><i></i></div>
     <h4>Vezmi partu</h4>
     <p>Přidáš kamarády a uvidíš, kdo zrovna sedí v hospodě. Cinknout si můžete na dálku.</p>
-    <div class="cta">Jdeme na pivo</div>
+    <div class="cta">Pokračovat</div>
+  </div>
+  <div class="phone">
+    <div class="glyphWrap"><div class="glyph">👤</div></div>
+    <div class="dots"><i></i><i></i><i></i><i></i><i class="on"></i></div>
+    <h4>Ať o nic nepřijdeš</h4>
+    <p>Deník se ti neztratí, ani když vyměníš telefon, a parta tě najde. Bez účtu to jde taky, doplníš ho kdykoli.</p>
+    <div class="cta">Založit účet</div>
+    <div class="ghost">Zatím bez účtu</div>
   </div>
 </div>
 
@@ -140,7 +148,7 @@
 <tr><th>Rozhodnutí</th><th>Proč</th></tr>
 <tr><td>Fresh-install detekce přes 4 dlouhověké klíče (<code>na-pivo-release</code>, <code>na-pivo-settings</code>, <code>na-pivo-tally</code>, reminder stamp)</td><td>Codex námitka: samotný release klíč nepokryje upgrade z hodně staré verze. Multi-signál je konzervativní. Nutná explicitní sekvence: nejdřív <code>decide()</code>, pak <code>checkForUpdate()</code>.</td></tr>
 <tr><td>Žádný permission slide (Codex oponentura přijata)</td><td>Kompas už vlastní priming permission screen má; onboarding by primoval dvakrát a „Zatím bez polohy" by stejně skončilo na permission gate. Finální CTA vede rovnou do appky.</td></tr>
-<tr><td>Žádný login krok</td><td>Anonymní účet vzniká automaticky; produkt je local-first. Nickname wizard běží až po přihlášení.</td></tr>
+<tr><td>Účet jako poslední slide, nevynucený (přání autora)</td><td>Primární CTA „Založit účet" dokončí onboarding a otevře /auth nad taby; „Zatím bez účtu" jde rovnou do appky. Anonymní účet vzniká automaticky, po přihlášení naváže nickname wizard přes ProfileGate.</td></tr>
 <tr><td>Pager bez nové dependency</td><td>Animated.FlatList + pagingEnabled stačí; reanimated cirkus by byl proti „malé dokončitelné změny“.</td></tr>
 </table>
 

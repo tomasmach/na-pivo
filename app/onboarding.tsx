@@ -3,12 +3,15 @@
  * on a fresh install (OnboardingGate in app/_layout.tsx redirects here when
  * onboardingStore decides 'show').
  *
- * Four slides in a horizontally paged Animated.FlatList: welcome → compass →
- * beer diary → parta. No permission prompts here on purpose: the compass has
- * its own location priming screen, and asking twice in a row is worse than
- * asking once in context. The last slide's CTA (and "Přeskočit" on the
- * earlier ones) marks the onboarding complete and lands on the tabs, where
- * the compass takes over.
+ * Five slides in a horizontally paged Animated.FlatList: welcome → compass →
+ * beer diary → parta → account nudge. No permission prompts here on purpose:
+ * the compass has its own location priming screen, and asking twice in a row
+ * is worse than asking once in context. The account slide nudges toward
+ * sign-in but never forces it (the product is local-first and an anonymous
+ * account exists either way): the primary CTA finishes the onboarding and
+ * pushes /auth over the tabs; "Zatím bez účtu" (and "Přeskočit" on earlier
+ * slides) just lands on the tabs. A successful sign-in then flows into the
+ * nickname wizard via ProfileGate.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -32,7 +35,7 @@ import { Radius, Spacing } from '@/theme/layout';
 import { amberGlow } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
 import { GlowButton } from '@/components/shared/GlowButton';
-import { BeerIcon, CompassIcon, UsersIcon } from '@/components/shared/IconGlyph';
+import { BeerIcon, CompassIcon, UserIcon, UsersIcon } from '@/components/shared/IconGlyph';
 import { useOnboardingStore } from '@/stores/onboardingStore';
 import { trackClientEvent } from '@/data/telemetryClient';
 
@@ -84,6 +87,12 @@ const SLIDES: Slide[] = [
     body: cs.onboarding.slide4Body,
     glyph: <UsersIcon size={GLYPH_ICON_SIZE} color={Colors.amber} />,
   },
+  {
+    key: 'account',
+    title: cs.onboarding.slide5Title,
+    body: cs.onboarding.slide5Body,
+    glyph: <UserIcon size={GLYPH_ICON_SIZE} color={Colors.amber} />,
+  },
 ];
 
 const LAST_INDEX = SLIDES.length - 1;
@@ -116,6 +125,18 @@ export default function OnboardingScreen() {
     },
     [router],
   );
+
+  const handleOpenAuth = useCallback(() => {
+    if (finishedRef.current) return;
+    finishedRef.current = true;
+    useOnboardingStore.getState().complete();
+    void trackClientEvent({ event: 'onboarding_completed', context: { slide: indexRef.current + 1 } });
+    void trackClientEvent({ event: 'onboarding_auth_opened' });
+    // Land on the tabs first so closing the auth modal has a place to go back
+    // to; a successful sign-in continues into ProfileGate's nickname wizard.
+    router.replace('/(tabs)' as Href);
+    router.push('/auth' as Href);
+  }, [router]);
 
   const handleNext = useCallback(() => {
     if (indexRef.current >= LAST_INDEX) {
@@ -229,12 +250,33 @@ export default function OnboardingScreen() {
       </View>
 
       <View style={styles.ctaBlock}>
-        <GlowButton
-          label={isLast ? cs.onboarding.finish : cs.onboarding.next}
-          onPress={handleNext}
-          glow={isLast ? 'strong' : 'soft'}
-          accessibilityLabel={isLast ? cs.onboarding.finish : cs.onboarding.next}
-        />
+        {isLast ? (
+          <>
+            <GlowButton
+              label={cs.onboarding.slide5Cta}
+              onPress={handleOpenAuth}
+              glow="strong"
+              accessibilityLabel={cs.onboarding.slide5Cta}
+            />
+            <Pressable
+              onPress={() => finish('onboarding_completed')}
+              style={({ pressed }) => [styles.laterButton, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={cs.onboarding.slide5Later}
+            >
+              <Text style={styles.laterText} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.onboarding.slide5Later}
+              </Text>
+            </Pressable>
+          </>
+        ) : (
+          <GlowButton
+            label={cs.onboarding.next}
+            onPress={handleNext}
+            glow="soft"
+            accessibilityLabel={cs.onboarding.next}
+          />
+        )}
       </View>
     </View>
   );
@@ -345,9 +387,22 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.amber, 0.5),
   },
 
-  // ── CTA ──
+  // ── CTAs ──
   ctaBlock: {
     paddingHorizontal: Spacing.lg,
+    gap: Spacing.sm,
+  },
+  laterButton: {
+    alignSelf: 'center',
+    minHeight: 44,
+    paddingHorizontal: Spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  laterText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 14,
+    color: Colors.mutedText,
   },
   pressed: {
     opacity: 0.7,

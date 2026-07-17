@@ -18,6 +18,7 @@ export type ClientTelemetryEvent =
   | 'onboarding_started'
   | 'onboarding_completed'
   | 'onboarding_skipped'
+  | 'onboarding_auth_opened'
   | 'walking_distance'
   | 'counter_tab_opened'
   | 'counter_session_started'

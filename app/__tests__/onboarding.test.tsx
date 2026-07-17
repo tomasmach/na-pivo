@@ -16,8 +16,9 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 );
 
 const mockReplace = jest.fn();
+const mockPush = jest.fn();
 jest.mock('expo-router', () => ({
-  useRouter: jest.fn(() => ({ replace: mockReplace })),
+  useRouter: jest.fn(() => ({ replace: mockReplace, push: mockPush })),
 }));
 
 jest.mock('react-native-safe-area-context', () => ({
@@ -31,6 +32,7 @@ jest.mock('@/components/shared/GlowButton', () => ({
 jest.mock('@/components/shared/IconGlyph', () => ({
   BeerIcon: jest.fn(() => null),
   CompassIcon: jest.fn(() => null),
+  UserIcon: jest.fn(() => null),
   UsersIcon: jest.fn(() => null),
 }));
 
@@ -110,11 +112,11 @@ describe('OnboardingScreen', () => {
     expect(lastGlowButtonProps().label).toBe('Pokračovat');
   });
 
-  it('swaps the CTA on the last slide and finishes into the tabs', async () => {
+  it('swaps to the account CTA on the last slide and opens auth over the tabs', async () => {
     await render();
-    await focusSlide(3);
+    await focusSlide(4);
 
-    expect(lastGlowButtonProps().label).toBe('Jdeme na pivo');
+    expect(lastGlowButtonProps().label).toBe('Založit účet');
 
     await act(async () => {
       lastGlowButtonProps().onPress();
@@ -124,9 +126,34 @@ describe('OnboardingScreen', () => {
     expect(useOnboardingStore.getState().completed).toBe(true);
     expect(useOnboardingStore.getState().pendingShow).toBe(false);
     expect(mockReplace).toHaveBeenCalledWith('/(tabs)');
+    expect(mockPush).toHaveBeenCalledWith('/auth');
     expect(mockTrack).toHaveBeenCalledWith({
       event: 'onboarding_completed',
-      context: { slide: 4 },
+      context: { slide: 5 },
+    });
+    expect(mockTrack).toHaveBeenCalledWith({ event: 'onboarding_auth_opened' });
+  });
+
+  it('"Zatím bez účtu" finishes into the tabs without opening auth', async () => {
+    await render();
+    await focusSlide(4);
+
+    const later = renderer!.root.findAll(
+      (node: { props: Record<string, unknown> }) =>
+        node.props.accessibilityLabel === 'Zatím bez účtu' &&
+        node.props.accessibilityRole === 'button',
+    )[0];
+    await act(async () => {
+      later.props.onPress();
+      await Promise.resolve();
+    });
+
+    expect(useOnboardingStore.getState().completed).toBe(true);
+    expect(mockReplace).toHaveBeenCalledWith('/(tabs)');
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockTrack).toHaveBeenCalledWith({
+      event: 'onboarding_completed',
+      context: { slide: 5 },
     });
   });
 
@@ -150,9 +177,9 @@ describe('OnboardingScreen', () => {
     });
   });
 
-  it('a double tap on the finish CTA navigates only once', async () => {
+  it('a double tap on the last-slide CTA navigates only once', async () => {
     await render();
-    await focusSlide(3);
+    await focusSlide(4);
 
     await act(async () => {
       const { onPress } = lastGlowButtonProps();
@@ -162,5 +189,6 @@ describe('OnboardingScreen', () => {
     });
 
     expect(mockReplace).toHaveBeenCalledTimes(1);
+    expect(mockPush).toHaveBeenCalledTimes(1);
   });
 });
