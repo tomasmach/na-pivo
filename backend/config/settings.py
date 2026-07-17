@@ -265,6 +265,13 @@ PUB_HOURS_THROTTLE_RATE: str = os.environ.get("PUB_HOURS_THROTTLE_RATE", "120/mi
 # bursts while leaving normal manual reports untouched.
 # Format: DRF throttle rate string.
 PUB_REPORTS_THROTTLE_RATE: str = os.environ.get("PUB_REPORTS_THROTTLE_RATE", "30/min")
+# Number of distinct active accounts that must report the same geohash-8 pub
+# before it is hidden from everybody. The reporting installation already hides
+# its own report locally, so a quorum protects the shared directory from a
+# single mistaken or abusive report without weakening that immediate feedback.
+PUB_REPORT_GLOBAL_HIDE_THRESHOLD: int = int(
+    os.environ.get("PUB_REPORT_GLOBAL_HIDE_THRESHOLD", "3")
+)
 
 # Per-IP rate limit for privacy-safe client telemetry events. The client sends a
 # small lifecycle/error/distance whitelist only; this cap protects the endpoint

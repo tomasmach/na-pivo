@@ -16,6 +16,7 @@ from pubs.enrichment import (
     geohash8,
 )
 from pubs.models import (
+    Account,
     AmenityKind,
     BeerBrand,
     PubAmenity,
@@ -194,21 +195,43 @@ def test_local_first_hides_actively_reported_cache_key(client, settings):
     settings.PUBS_NEAR_LOCAL_FIRST = True
     visible = _directory_pub("Viditelná")
     reported = _directory_pub("Nahlášená", lat=_LAT + 0.001)
+    accounts = [Account.objects.create(device_id=f"reporter-{index}") for index in range(3)]
+    for account, reason in zip(
+        accounts[:2],
+        (PubReport.Reason.NOT_PUB, PubReport.Reason.CLOSED),
+        strict=True,
+    ):
+        PubReport.objects.create(
+            account=account,
+            cache_key=reported.cache_key,
+            name=reported.name,
+            lat=reported.lat,
+            lng=reported.lng,
+            reason=reason,
+            active=True,
+        )
     PubReport.objects.create(
-        cache_key=reported.cache_key,
-        name=reported.name,
-        lat=reported.lat,
-        lng=reported.lng,
-        reason=PubReport.Reason.NOT_PUB,
-        active=True,
-    )
-    PubReport.objects.create(
+        account=accounts[0],
         cache_key=visible.cache_key,
         name=visible.name,
         lat=visible.lat,
         lng=visible.lng,
         reason=PubReport.Reason.CLOSED,
         active=False,
+    )
+
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 1})
+
+    assert [item["name"] for item in resp.json()["items"]] == ["Viditelná", "Nahlášená"]
+
+    PubReport.objects.create(
+        account=accounts[2],
+        cache_key=reported.cache_key,
+        name=reported.name,
+        lat=reported.lat,
+        lng=reported.lng,
+        reason=PubReport.Reason.CLOSED,
+        active=True,
     )
 
     resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 1})
