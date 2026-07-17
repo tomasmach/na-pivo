@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Přenos repozitáře Na pivo na Nobara PC</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0b0e12; --panel:#131820; --panel2:#181f29; --text:#edf2f7; --muted:#9caabd; --line:#2a3544; --accent:#f5b942; --ok:#55c28b; --warn:#ef9564; --danger:#e46f6f; }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin:0; background:var(--bg); color:var(--text); font:15px/1.6 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    a { color:#8fc5ff; }
+    button, input { font:inherit; }
+    .layout { display:grid; grid-template-columns:220px minmax(0,1fr); min-height:100vh; }
+    nav { position:sticky; top:0; height:100vh; padding:28px 20px; border-right:1px solid var(--line); background:#0e1218; }
+    nav strong { display:block; margin-bottom:18px; }
+    nav a { display:block; padding:7px 10px; margin:3px 0; text-decoration:none; color:var(--muted); border-left:2px solid transparent; }
+    nav a.active { color:var(--text); border-color:var(--accent); background:var(--panel); }
+    main { width:min(100%, 980px); padding:42px 44px 80px; }
+    section { scroll-margin-top:24px; margin:0 0 54px; }
+    h1 { font-size:clamp(2rem,5vw,3.3rem); line-height:1.05; margin:10px 0 16px; max-width:17ch; }
+    h2 { font-size:1.45rem; margin:0 0 18px; }
+    h3 { margin:0 0 8px; font-size:1.05rem; }
+    p { max-width:72ch; }
+    .eyebrow, .badge { text-transform:uppercase; letter-spacing:.08em; font-size:.73rem; font-weight:750; }
+    .eyebrow { color:var(--accent); }
+    .badge { display:inline-flex; padding:5px 9px; border:1px solid #755b22; border-radius:999px; background:#2b2414; color:#ffd979; }
+    .meta { display:flex; align-items:center; gap:10px; flex-wrap:wrap; color:var(--muted); }
+    .lead { font-size:1.08rem; color:#cbd5e1; max-width:70ch; }
+    .toolbar { display:flex; gap:10px; margin:24px 0; }
+    .toolbar button, .copy, .tab, #copyAnswers { border:1px solid var(--line); background:var(--panel2); color:var(--text); border-radius:8px; padding:8px 11px; cursor:pointer; }
+    .toolbar button.active, .tab.active { border-color:var(--accent); color:#ffe5a2; }
+    .progress-shell { height:10px; border-radius:999px; background:#222b36; overflow:hidden; max-width:680px; }
+    .progress-bar { height:100%; width:0; background:var(--ok); }
+    .progress-copy { color:var(--muted); font-size:.9rem; margin-top:7px; }
+    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+    .card, .step, .question, .risk { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:18px; }
+    .card ul { padding-left:18px; }
+    .muted { color:var(--muted); }
+    .step { display:grid; grid-template-columns:auto 1fr; gap:14px; margin:12px 0; }
+    .step input { width:20px; height:20px; margin-top:3px; accent-color:var(--ok); }
+    .step.done { opacity:.65; }
+    .step.done h3 { text-decoration:line-through; }
+    .detail { color:#bec9d6; }
+    body.overview .detail { display:none; }
+    code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; color:#ffe2a0; }
+    .file { display:inline-block; margin-top:8px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.85rem; }
+    .wide { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; min-width:650px; }
+    th,td { border-bottom:1px solid var(--line); text-align:left; padding:11px; vertical-align:top; }
+    th { color:var(--muted); font-size:.82rem; text-transform:uppercase; letter-spacing:.05em; }
+    .recommended { color:var(--ok); font-weight:700; }
+    .tabs { display:flex; gap:8px; margin:18px 0 12px; flex-wrap:wrap; }
+    .tab-panel { display:none; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:18px; }
+    .tab-panel.active { display:block; }
+    pre { margin:12px 0 0; padding:14px; background:#080b0f; border:1px solid var(--line); border-radius:9px; overflow:auto; color:#d7e0eb; }
+    .cmd { position:relative; }
+    .cmd .copy { position:absolute; right:8px; top:8px; font-size:.78rem; }
+    .risks { display:grid; gap:12px; }
+    .risk strong { color:var(--warn); }
+    fieldset { border:0; padding:0; margin:10px 0 0; }
+    label.option { display:block; padding:7px 0; color:#d7e0eb; }
+    label.option input { margin-right:8px; accent-color:var(--accent); }
+    #answerStatus { color:var(--ok); min-height:1.5em; }
+    details { margin-top:10px; }
+    summary { cursor:pointer; color:#cdd8e5; }
+    svg { width:100%; min-width:700px; height:auto; background:#0e131a; border:1px solid var(--line); border-radius:12px; }
+    svg .node { fill:var(--panel2); stroke:#536174; stroke-width:1.5; cursor:pointer; }
+    svg .node:hover { stroke:var(--accent); }
+    svg text { fill:var(--text); font:14px system-ui,sans-serif; pointer-events:none; }
+    svg .edge { stroke:#536174; stroke-width:2; marker-end:url(#arrow); }
+    .callout { border-left:3px solid var(--accent); padding:10px 14px; background:#18170f; max-width:72ch; }
+    @media (max-width:780px) { .layout{display:block} nav{position:sticky;height:auto;z-index:10;border-right:0;border-bottom:1px solid var(--line);padding:10px 14px;display:flex;overflow:auto;gap:4px} nav strong{display:none} nav a{white-space:nowrap} main{padding:28px 18px 60px}.grid{grid-template-columns:1fr} }
+  </style>
+</head>
+<body class="overview">
+<div class="layout">
+  <nav aria-label="Navigace plánu">
+    <strong>Přenos na Nobaru</strong>
+    <a href="#summary">Shrnutí</a><a href="#scope">Rozsah</a><a href="#flow">Tok dat</a><a href="#steps">Kroky</a><a href="#options">Varianty</a><a href="#risks">Rizika</a><a href="#questions">Rozhodnutí</a>
+  </nav>
+  <main>
+    <section id="summary">
+      <div class="eyebrow">Na pivo · pracovní plán</div>
+      <h1>1:1 přenos repozitáře na Nobara PC</h1>
+      <div class="meta"><span class="badge">návrh</span><span>17. 7. 2026</span><span>zdroj: macOS → cíl: <code>nobara-pc:~/Code/na-pivo</code></span></div>
+      <p class="lead">Doporučený postup je bezpečný přenos přes <code>rsync</code> a SSH. Nejdřív se pouze přečte stav cíle, potom se zkopíruje celý pracovní adresář včetně <code>.git</code>, envů, ignorovaných i necommitnutých souborů; nakonec se porovná inventář a kontrolní součty citlivých souborů bez výpisu jejich obsahu.</p>
+      <div class="toolbar"><button id="overviewBtn" class="active">Přehled</button><button id="detailBtn">Plný detail</button></div>
+      <div class="progress-shell"><div class="progress-bar" id="progressBar"></div></div><div class="progress-copy" id="progressCopy">0 z 6 kroků hotovo</div>
+      <p class="callout">Cílový adresář se nebude mazat ani přepisovat, dokud nebude ověřeno, že je prázdný, neexistuje, nebo že jeho nahrazení uživatel výslovně schválil.</p>
+    </section>
+
+    <section id="scope">
+      <h2>Rozsah</h2>
+      <div class="grid">
+        <article class="card"><h3>Cíle</h3><ul><li>celý Git checkout včetně historie a pracovního stromu;</li><li><code>.env</code>, <code>.env.local</code>, <code>backend/.env</code> a lokální Xcode env;</li><li>ignorované a necommitnuté soubory pro skutečně 1:1 kopii;</li><li>zachování oprávnění, časů a symlinků, kde to platformy dovolí.</li></ul></article>
+        <article class="card"><h3>Ne-cíle</h3><ul><li>produkční deploy nebo změna vzdáleného Git repozitáře;</li><li>instalace systémových balíčků na Nobaru;</li><li>spuštění aplikace před ověřením kopie;</li><li>výpis hodnot secretů do terminálu či plánu.</li></ul></article>
+      </div>
+      <p class="detail muted">Aktuálně zjištěné citlivé/velké položky zahrnují také <code>AuthKey.p8</code>, <code>google-service-account.json</code>, <code>backend/db.sqlite3</code>, <code>backend/media/</code>, <code>node_modules/</code>, <code>ios/</code>, <code>android/</code>, build artefakty a lokální cache. Přesná varianta „1:1“ je zahrne.</p>
+    </section>
+
+    <section id="flow">
+      <h2>Tok dat a bezpečnostní brány</h2>
+      <div class="wide">
+        <svg viewBox="0 0 900 245" role="img" aria-label="Tok přenosu z Macu přes SSH na Nobara PC">
+          <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#536174"/></marker></defs>
+          <line class="edge" x1="230" y1="80" x2="350" y2="80"/><line class="edge" x1="550" y1="80" x2="670" y2="80"/><line class="edge" x1="770" y1="130" x2="770" y2="185"/>
+          <g onclick="location.hash='steps'"><rect class="node" x="40" y="35" width="190" height="90" rx="10"/><text x="135" y="72" text-anchor="middle">Mac: pracovní strom</text><text x="135" y="96" text-anchor="middle">včetně .git + envů</text></g>
+          <g onclick="location.hash='steps'"><rect class="node" x="350" y="35" width="200" height="90" rx="10"/><text x="450" y="72" text-anchor="middle">rsync přes SSH</text><text x="450" y="96" text-anchor="middle">šifrovaný přenos</text></g>
+          <g onclick="location.hash='risks'"><rect class="node" x="670" y="35" width="200" height="90" rx="10"/><text x="770" y="72" text-anchor="middle">Nobara: cílová kontrola</text><text x="770" y="96" text-anchor="middle">žádný slepý overwrite</text></g>
+          <g onclick="location.hash='steps'"><rect class="node" x="670" y="185" width="200" height="45" rx="10"/><text x="770" y="213" text-anchor="middle">ověření shody</text></g>
+        </svg>
+      </div>
+    </section>
+
+    <section id="steps">
+      <h2>Provedení</h2>
+      <article class="step" id="step-1"><input type="checkbox" data-step><div><h3>1. Ověřit SSH dostupnost</h3><p>Vyzkoušet alias <code>nobara-pc</code>; při nedostupném mDNS použít Tailscale alias <code>nobara-pc-ts</code>.</p><div class="detail cmd"><pre>ssh -o BatchMode=yes -o ConnectTimeout=7 nobara-pc 'printf ready'</pre><button class="copy">kopírovat</button></div></div></article>
+      <article class="step" id="step-2"><input type="checkbox" data-step><div><h3>2. Přečíst stav cílové složky</h3><p>Ověřit domovský adresář, volné místo a zda <code>~/Code/na-pivo</code> už existuje.</p><p class="detail">Pokud existuje a obsahuje neznámá data, přenos se zastaví. Bez schválení se nepoužije <code>--delete</code> ani destruktivní nahrazení.</p></div></article>
+      <article class="step" id="step-3"><input type="checkbox" data-step><div><h3>3. Změřit zdroj a udělat bezpečný dry-run</h3><p>Zjistit velikost adresáře a spustit <code>rsync --dry-run</code>, aby byl znám rozsah přenosu.</p><p class="detail">Obsah envů ani klíčů se nevypisuje. Kontrolují se pouze názvy, velikosti, oprávnění a později hash.</p></div></article>
+      <article class="step" id="step-4"><input type="checkbox" data-step><div><h3>4. Přenést kompletní checkout</h3><p>Použít archivní režim, kompresi a průběžně obnovitelný přenos.</p><div class="detail cmd"><pre>rsync -aHz --partial --info=progress2 /Users/tomasmach/Code/na-pivo/ nobara-pc:~/Code/na-pivo/</pre><button class="copy">kopírovat</button></div></div></article>
+      <article class="step" id="step-5"><input type="checkbox" data-step><div><h3>5. Ověřit shodu bez úniku secretů</h3><p>Porovnat Git HEAD/status, počet souborů a kontrolní součty vybraných envů a klíčů.</p><p class="detail">Kvůli rozdílům macOS/Linux se nevyžaduje shoda metadat, která Linux neumí převzít; rozhodující je obsah souborů, symlinky a pracovní strom.</p></div></article>
+      <article class="step" id="step-6"><input type="checkbox" data-step><div><h3>6. Ověřit použitelnost na Nobaře</h3><p>Nejdřív jen zkontrolovat dostupnost Node/Bun, Python/UV, Dockeru a Git LFS. Instalace nebo <code>npm run dev</code> je samostatný krok.</p><p class="detail">Přenesené <code>node_modules</code>, <code>.venv</code>, iOS buildy a macOS binárky mohou být obsahově 1:1, ale na Linuxu nemusí být spustitelné. Zdroj zůstane přesný; runtime závislosti se případně obnoví nativně.</p></div></article>
+    </section>
+
+    <section id="options">
+      <h2>Varianty přenosu</h2>
+      <div class="wide"><table><thead><tr><th>Varianta</th><th>Přesnost</th><th>Bezpečnost cíle</th><th>Velikost/čas</th><th>Doporučení</th></tr></thead><tbody><tr><td>Kompletní <code>rsync</code></td><td>Nejblíž 1:1</td><td>Vysoká po kontrole cíle</td><td>Nejvyšší</td><td class="recommended">Doporučeno</td></tr><tr><td>Zdroj + envy, bez cache</td><td>Funkční projekt, ne 1:1</td><td>Vysoká</td><td>Výrazně menší</td><td>Praktická alternativa</td></tr><tr><td>Git clone + ruční secrety</td><td>Nezachová pracovní strom</td><td>Vysoká</td><td>Nejmenší</td><td>Nesplňuje zadání</td></tr></tbody></table></div>
+      <div class="tabs" role="tablist"><button class="tab active" data-tab="full">Kompletní rsync · doporučeno</button><button class="tab" data-tab="lean">Bez generovaných dat</button><button class="tab" data-tab="clone">Git clone</button></div>
+      <article class="tab-panel active" data-panel="full"><h3>Kompletní pracovní adresář</h3><p>Přenese se vše pod kořenem projektu: Git data, envy, databáze, média, klíče, cache, buildy i závislosti. Je to jediná varianta odpovídající doslovnému „1:1“.</p></article>
+      <article class="tab-panel" data-panel="lean"><h3>Reprodukovatelný Linux checkout</h3><p>Přenesou se zdroje, Git data, envy, lokální databáze a média, ale vynechají se <code>node_modules</code>, <code>.venv</code>, platformní buildy a cache. Rychlejší a praktičtější, ale nejde o přesnou kopii.</p></article>
+      <article class="tab-panel" data-panel="clone"><h3>Čistý clone</h3><p>Nejmenší přenos, ale chybí necommitnutý plán, ignorované soubory, lokální data a secret konfigurace. Pro toto zadání nevhodné.</p></article>
+    </section>
+
+    <section id="risks">
+      <h2>Rizika a pojistky</h2>
+      <div class="risks">
+        <article class="risk"><strong>Existující cílová data</strong><p>Nejdřív pouze inventář. Žádné <code>rm</code>, <code>--delete</code> ani overwrite konfliktního checkoutu bez výslovného potvrzení.</p></article>
+        <article class="risk"><strong>Citlivé soubory</strong><p>SSH přenos je šifrovaný. Hodnoty envů a klíčů se neukazují; ověření používá SHA-256.</p></article>
+        <article class="risk"><strong>Platformně závislé artefakty</strong><p>macOS/iOS binárky a virtuální prostředí mohou být na Nobaře nepoužitelné. Kopie může být 1:1, ale pro běh bude potřeba nativní reinstall.</p></article>
+        <article class="risk"><strong>Velikost přenosu</strong><p><code>node_modules</code>, buildy, média a cache mohou přenos výrazně zvětšit. Dry-run a měření proběhnou před ostrým kopírováním.</p></article>
+      </div>
+    </section>
+
+    <section id="questions">
+      <h2>Rozhodnutí před ostrým přenosem</h2>
+      <form id="decisionForm">
+        <article class="question"><h3>Jak přesná má kopie být?</h3><fieldset><label class="option"><input type="radio" name="scope" value="Kompletní 1:1 rsync včetně cache, buildů, node_modules, .venv, databáze, médií a klíčů" checked> Kompletní 1:1 kopie</label><label class="option"><input type="radio" name="scope" value="Praktická kopie bez generovaných cache, buildů, node_modules a .venv"> Praktická kopie bez generovaných dat</label><label class="option"><input type="radio" name="scope" value="Jinak — doplním v chatu"> Jinak — doplním v chatu</label></fieldset></article>
+        <article class="question"><h3>Co dělat, pokud cíl už existuje?</h3><fieldset><label class="option"><input type="radio" name="existing" value="Zastavit a ukázat inventář; nic nepřepisovat" checked> Zastavit a ukázat inventář</label><label class="option"><input type="radio" name="existing" value="Přenést do nového adresáře na-pivo-from-mac"> Přenést do <code>na-pivo-from-mac</code></label><label class="option"><input type="radio" name="existing" value="Jinak — doplním v chatu"> Jinak — doplním v chatu</label></fieldset></article>
+        <article class="question"><h3>Které SSH spojení použít?</h3><fieldset><label class="option"><input type="radio" name="ssh" value="Nejdřív nobara-pc přes lokální síť, fallback nobara-pc-ts" checked> Lokální síť, fallback Tailscale</label><label class="option"><input type="radio" name="ssh" value="Pouze nobara-pc-ts přes Tailscale"> Pouze Tailscale</label><label class="option"><input type="radio" name="ssh" value="Jinak — doplním v chatu"> Jinak — doplním v chatu</label></fieldset></article>
+        <p><button type="button" id="copyAnswers">Zkopírovat odpovědi</button></p><div id="answerStatus" aria-live="polite"></div>
+      </form>
+    </section>
+  </main>
+</div>
+<script>
+  const key='plan:nobara-repo-transfer';
+  const steps=[...document.querySelectorAll('[data-step]')];
+  const saved=JSON.parse(localStorage.getItem(key)||'{}');
+  steps.forEach((box,i)=>{box.checked=!!saved['step'+i]; box.addEventListener('change',saveProgress);});
+  function saveProgress(){const state={};steps.forEach((b,i)=>state['step'+i]=b.checked);localStorage.setItem(key,JSON.stringify(state));renderProgress();}
+  function renderProgress(){const done=steps.filter(b=>b.checked).length;document.getElementById('progressBar').style.width=(done/steps.length*100)+'%';document.getElementById('progressCopy').textContent=`${done} z ${steps.length} kroků hotovo`;steps.forEach(b=>b.closest('.step').classList.toggle('done',b.checked));}
+  renderProgress();
+  const overviewBtn=document.getElementById('overviewBtn'),detailBtn=document.getElementById('detailBtn');
+  overviewBtn.onclick=()=>{document.body.classList.add('overview');overviewBtn.classList.add('active');detailBtn.classList.remove('active')};
+  detailBtn.onclick=()=>{document.body.classList.remove('overview');detailBtn.classList.add('active');overviewBtn.classList.remove('active')};
+  document.querySelectorAll('.tab').forEach(tab=>tab.onclick=()=>{document.querySelectorAll('.tab,.tab-panel').forEach(x=>x.classList.remove('active'));tab.classList.add('active');document.querySelector(`[data-panel="${tab.dataset.tab}"]`).classList.add('active');});
+  document.querySelectorAll('.copy').forEach(btn=>btn.onclick=async()=>{const text=btn.parentElement.querySelector('pre').innerText;await navigator.clipboard.writeText(text);btn.textContent='zkopírováno';setTimeout(()=>btn.textContent='kopírovat',1200);});
+  document.getElementById('copyAnswers').onclick=async()=>{const data=new FormData(document.getElementById('decisionForm'));const text=`Rozsah: ${data.get('scope')}\nExistující cíl: ${data.get('existing')}\nSSH: ${data.get('ssh')}`;await navigator.clipboard.writeText(text);document.getElementById('answerStatus').textContent='Odpovědi jsou ve schránce — vlož je do chatu.';};
+  const links=[...document.querySelectorAll('nav a')], sections=[...document.querySelectorAll('main section')];
+  const observer=new IntersectionObserver(entries=>entries.forEach(e=>{if(e.isIntersecting){links.forEach(a=>a.classList.toggle('active',a.getAttribute('href')==='#'+e.target.id));}}),{rootMargin:'-20% 0px -65% 0px'});sections.forEach(s=>observer.observe(s));
+</script>
+</body>
+</html>

@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Filtr cenově dostupného piva — plán</title>
+<style>
+  :root {
+    --bg: #14100c;
+    --panel: #1e1812;
+    --panel2: #261e15;
+    --border: #3a2f22;
+    --text: #e8ddcc;
+    --muted: #a3927a;
+    --amber: #e0a83c;
+    --amber-dim: #8a6a2a;
+    --green: #7cb56b;
+    --red: #d0705f;
+    --blue: #6fa8c9;
+    --ins-bg: #1d2b1a;
+    --ins-fg: #a4d894;
+    --del-bg: #33201c;
+    --del-fg: #e0a396;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { font-family: var(--mono); font-size: .85em; background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
+  pre { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; overflow-x: auto; font-size: 13px; line-height: 1.5; }
+  pre code { background: none; padding: 0; }
+  h1 { font-size: 26px; line-height: 1.25; margin: 0 0 4px; }
+  h2 { font-size: 20px; margin: 40px 0 12px; padding-top: 8px; }
+  h3 { font-size: 16px; margin: 24px 0 8px; }
+  p, li { max-width: 72ch; }
+  .layout { display: flex; max-width: 1200px; margin: 0 auto; }
+  nav.side {
+    position: sticky; top: 0; align-self: flex-start; flex: 0 0 210px;
+    padding: 24px 8px 24px 20px; height: 100vh; overflow-y: auto; font-size: 13.5px;
+  }
+  nav.side a { display: block; padding: 5px 10px; color: var(--muted); border-left: 2px solid transparent; border-radius: 0 6px 6px 0; }
+  nav.side a.active { color: var(--amber); border-left-color: var(--amber); background: var(--panel); }
+  main { flex: 1; min-width: 0; padding: 28px 32px 80px; }
+  .badge { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 20px; vertical-align: middle; }
+  .badge.draft { background: var(--amber-dim); color: #fff; }
+  .meta { color: var(--muted); font-size: 13.5px; margin-bottom: 18px; }
+  .tldr { background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--amber); border-radius: 8px; padding: 14px 18px; }
+  .cols { display: flex; gap: 16px; flex-wrap: wrap; }
+  .cols > div { flex: 1 1 280px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; }
+  .cols h3 { margin-top: 4px; }
+  ul { padding-left: 20px; }
+  /* view toggle */
+  .viewtoggle { position: fixed; top: 14px; right: 16px; z-index: 50; display: flex; background: var(--panel2); border: 1px solid var(--border); border-radius: 20px; overflow: hidden; font-size: 12.5px; }
+  .viewtoggle button { background: none; border: 0; color: var(--muted); padding: 5px 14px; cursor: pointer; font: inherit; }
+  .viewtoggle button.on { background: var(--amber); color: #201708; font-weight: 600; }
+  body.overview .detail-only { display: none; }
+  /* progress + checklist */
+  .progress { position: sticky; top: 0; z-index: 40; background: var(--bg); padding: 10px 0 8px; }
+  .progress .bar { height: 6px; background: var(--panel2); border-radius: 3px; overflow: hidden; }
+  .progress .fill { height: 100%; width: 0; background: var(--amber); transition: width .2s; }
+  .progress .label { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .step { display: flex; gap: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin: 10px 0; }
+  .step input[type=checkbox] { margin-top: 5px; width: 17px; height: 17px; accent-color: var(--amber); flex-shrink: 0; }
+  .step.done { opacity: .55; }
+  .step .t { font-weight: 600; }
+  .step .files { font-size: 12.5px; color: var(--muted); font-family: var(--mono); margin-top: 4px; }
+  .step .files a { color: var(--muted); }
+  /* tabs */
+  .tabs { display: flex; gap: 6px; margin: 12px 0 0; flex-wrap: wrap; }
+  .tabs button { background: var(--panel2); color: var(--muted); border: 1px solid var(--border); border-bottom: none; border-radius: 8px 8px 0 0; padding: 8px 16px; cursor: pointer; font: inherit; font-size: 14px; }
+  .tabs button.on { background: var(--panel); color: var(--amber); font-weight: 600; }
+  .tabpanel { display: none; background: var(--panel); border: 1px solid var(--border); border-radius: 0 8px 8px 8px; padding: 14px 18px; }
+  .tabpanel.on { display: block; }
+  .rec { font-size: 11px; background: var(--green); color: #10240c; border-radius: 10px; padding: 1px 8px; font-weight: 700; margin-left: 6px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; margin: 10px 0; }
+  th, td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: var(--panel2); }
+  td.y { color: var(--green); } td.n { color: var(--red); }
+  .tablewrap { overflow-x: auto; }
+  /* diff */
+  .diff ins { background: var(--ins-bg); color: var(--ins-fg); text-decoration: none; display: block; }
+  .diff del { background: var(--del-bg); color: var(--del-fg); text-decoration: none; display: block; }
+  /* questions */
+  .q { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin: 10px 0; }
+  .q .qt { font-weight: 600; margin-bottom: 6px; }
+  .q label { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; cursor: pointer; }
+  .q input { accent-color: var(--amber); }
+  .q .why { font-size: 12.5px; color: var(--muted); }
+  .copybtn { background: var(--amber); color: #201708; border: 0; border-radius: 8px; padding: 9px 18px; font: inherit; font-weight: 700; cursor: pointer; }
+  .copybtn:active { transform: translateY(1px); }
+  /* svg diagram */
+  .diagram { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 8px; overflow-x: auto; }
+  .diagram svg text { font: 12px -apple-system, sans-serif; fill: var(--text); }
+  .diagram .node rect { fill: var(--panel2); stroke: var(--border); rx: 8; cursor: pointer; }
+  .diagram .node.hot rect { stroke: var(--amber); }
+  .diagram .node:hover rect { stroke: var(--amber); fill: #2e2415; }
+  .diagram .edge { stroke: var(--muted); stroke-width: 1.4; fill: none; marker-end: url(#arr); opacity: .7; }
+  .diagram .edge.hl { stroke: var(--amber); opacity: 1; stroke-width: 2; }
+  .diagram .lbl { fill: var(--muted); font-size: 10.5px; }
+  /* mockup */
+  .mockwrap { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+  .phone { flex: 0 0 320px; background: #0d0a07; border: 1px solid var(--border); border-radius: 24px; padding: 14px; }
+  .sheet { background: #241c12; border-radius: 16px; padding: 16px; font-size: 14px; }
+  .sheet h4 { margin: 0 0 2px; font-size: 15px; }
+  .sheet .sub { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+  .hist { display: flex; align-items: flex-end; gap: 3px; height: 72px; margin: 10px 0 2px; }
+  .hist .b { flex: 1; background: var(--amber); border-radius: 3px 3px 0 0; min-height: 3px; transition: background .12s; }
+  .hist .b.off { background: #4a3d29; }
+  .histx { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--muted); margin-bottom: 8px; }
+  input[type=range].price { width: 100%; accent-color: var(--amber); }
+  .pill { display: inline-block; background: #33291a; border: 1px solid var(--border); border-radius: 16px; padding: 3px 12px; font-size: 12.5px; margin: 3px 3px 0 0; }
+  .pill.on { background: var(--amber); color: #201708; border-color: var(--amber); font-weight: 600; }
+  .applybtn { display: block; width: 100%; margin-top: 12px; background: var(--amber); color: #201708; border: 0; border-radius: 12px; padding: 10px; font-weight: 700; font-size: 15px; }
+  .cardmock { background: #241c12; border-radius: 14px; padding: 12px 14px; margin-top: 14px; font-size: 14px; }
+  .cardmock .nm { font-weight: 700; }
+  .cardmock .price-line { color: var(--amber); font-size: 13.5px; margin-top: 2px; }
+  .cardmock .age { color: var(--muted); font-size: 11.5px; }
+  .cardmock .age.warn { color: var(--red); }
+  .risk { border-left: 3px solid var(--red); background: var(--panel); border-radius: 0 8px 8px 0; padding: 10px 14px; margin: 8px 0; max-width: 72ch; }
+  .risk b { color: var(--red); }
+  details { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; margin: 8px 0; max-width: 80ch; }
+  summary { cursor: pointer; font-weight: 600; }
+  .flash { animation: none; }
+  .flash-on { animation: flash 1.2s ease-out; }
+  @keyframes flash { 0% { background: #3a2c12; } 100% { background: transparent; } }
+  @media (max-width: 900px) { nav.side { display: none; } main { padding: 20px 16px 60px; } }
+</style>
+</head>
+<body>
+<div class="viewtoggle" role="group" aria-label="Úroveň detailu">
+  <button id="vt-over" onclick="setView('overview')">přehled</button>
+  <button id="vt-full" class="on" onclick="setView('full')">plný detail</button>
+</div>
+
+<div class="layout">
+<nav class="side" id="sidenav">
+  <a href="#tldr">TL;DR</a>
+  <a href="#stav">Co už existuje</a>
+  <a href="#kontrakt">Cenový kontrakt</a>
+  <a href="#varianty">Varianty filtrování</a>
+  <a href="#tok">Datový tok</a>
+  <a href="#ui">UI mockup</a>
+  <a href="#kroky">Kroky</a>
+  <a href="#rizika">Rizika</a>
+  <a href="#otazky">Otevřené otázky</a>
+</nav>
+
+<main>
+<h1>Filtr cenově dostupného piva <span class="badge draft">návrh</span></h1>
+<div class="meta">2026-07-17 · backlog #8 (audit feedbacku 2026-07-13) · monorepo na-pivo (Expo + Django)</div>
+
+<section id="tldr">
+<div class="tldr">
+<p><b>Co:</b> hospody půjdou filtrovat podle ceny velkého piva, s histogramem rozložení cen v okolí ve stylu Airbnb/Booking a posuvníkem „do X Kč“. Cena bude mít definovaný původ, stáří a expiraci — UI nikdy nepředstírá přesnost.</p>
+<p><b>Jak:</b> backend dostane nový per-pub cenový index (<code>PubPriceIndex</code>) plněný z už existujících tří cenových toků (Zmapuj hospodu, počítadlo, externí menu). <code>/v1/pubs/near</code> cenu aditivně přibalí ke každé hospodě a <b>histogram i filtr se počítají na klientovi</b> z načtených hospod — žádný nový endpoint, funguje to i offline nad cache.</p>
+</div>
+
+<div class="cols" style="margin-top:16px">
+  <div>
+    <h3>Cíle</h3>
+    <ul>
+      <li>Definovaný kontrakt: odkud cena je, jak se aktualizuje, kdy expiruje</li>
+      <li>Skutečné filtrování podle ceny (kompas + mapa)</li>
+      <li>Histogram cen v okolí + posuvník ve stylu Airbnb</li>
+      <li>Viditelné stáří údaje („před 3 týdny“, „≈ starší údaj“)</li>
+      <li>API zpětně kompatibilní — vše aditivně</li>
+    </ul>
+  </div>
+  <div>
+    <h3>Ne-cíle</h3>
+    <ul>
+      <li>Žádné nové scrapování cen — jen existující zdroje</li>
+      <li>Žádná historie/graf vývoje ceny hospody (→ Wrapped-styl později)</li>
+      <li>Žádné hlasování o ceně (last-write model stačí)</li>
+      <li>Žádný cenový leaderboard („nejlevnější hospody města“)</li>
+      <li>Přesná normalizace přes objemy ≠ 0,5 l (viz kontrakt)</li>
+    </ul>
+  </div>
+</div>
+</section>
+
+<section id="stav" class="detail-only">
+<h2>Co už existuje (zjištění z kódu)</h2>
+<p>Backlog říká, že cena je „jen datum/placeholder“ — to už neplatí. Ceny reálně tečou třemi kanály; chybí jen <b>referenční cena hospody</b>, <b>čerstvost per údaj</b> a <b>filtr</b>:</p>
+<div class="tablewrap"><table>
+<tr><th>Zdroj</th><th>Kde se ukládá</th><th>Časové razítko</th><th>Slabina</th></tr>
+<tr><td>„Zmapuj hospodu“ (<code>POST /v1/pub-community</code>)</td><td><code>PubCommunityData.beers[].price_czk</code></td><td>jedno <code>beers_updated_at</code> pro celé menu</td><td>ne per-pivo; menu je full-replace</td></tr>
+<tr><td>Počítadlo (<code>POST /v1/drinks</code>)</td><td>přepíše cenu v community menu + <code>PubBeerBrand/Product.last_price_czk</code></td><td><code>last_seen_at</code></td><td>jen poslední hodnota, bez recency cutoffu</td></tr>
+<tr><td>Externí import (Pivařova mapa)</td><td><code>PubExternalBeerMenu.beers</code></td><td><code>verified_at</code> (max za snapshot)</td><td>jen fallback, nikdy nepřebije community</td></tr>
+</table></div>
+<p>Filtry hospod (<a href="vscode://file/Users/tomasmach/Code/na-pivo/src/components/compass/PubFilterSheet.tsx" title="sdílený filter sheet kompas+mapa"><code>PubFilterSheet</code></a>) dnes umí značku piva + max 5 vybaveností; jedou přes backend s fail-closed <code>applied_filters</code> ackem. <code>/v1/pubs/near</code> <b>záměrně nevrací ceny ani menu</b> — to je hlavní věc, kterou plán mění (aditivně).</p>
+</section>
+
+<section id="kontrakt">
+<h2>Cenový kontrakt</h2>
+<p>Jedna věta, kterou musí umět říct UI: <b>„Velké pivo tu stojí ~45 Kč, údaj je 3 týdny starý a přišel od lidí z appky.“</b></p>
+<ul>
+  <li><b>Referenční cena hospody</b> = nejlevnější pivo z aktuálního menu s objemem ≥ 400 ml <span class="detail-only">(objem <code>null</code> se počítá jako 0,5 l — český default)</span>. Malá piva a nápoje mimo pivo se ignorují.</li>
+  <li><b>Priorita zdrojů:</b> community menu (potvrzené uživatelem) &gt; pozorování z počítadla &gt; externí menu. Novější pozorování z vyšší priority přepisuje.</li>
+  <li><b>Čerstvost:</b> ≤ 6 měsíců = plná důvěra; 6–12 měsíců = zobrazí se se „≈“ a věkem, filtr ji stále používá; &gt; 12 měsíců = <b>expirovaná</b> — server ji vůbec nepřibalí, hospoda je ve filtru „bez známé ceny“.</li>
+  <li><b>Aktualizace:</b> každý ze tří write-paths (menu submit, drink merge, externí import) upsertne <code>PubPriceIndex</code>; smazání/vyčištění menu index deaktivuje.</li>
+  <li><b>Nejistota v UI:</b> vždy relativní věk („před 3 týdny“), nikdy jen holé číslo. Žádné „45,00 Kč“ — celé koruny.</li>
+</ul>
+<details class="detail-only"><summary>Proč min ceny, a ne medián?</summary>
+<p>Menu má max 12 řádků a typicky 1–4 oceněné položky; medián by kolísal podle toho, jestli někdo připsal speciál za 95 Kč. „Za kolik je tu nejlevnější velké pivo“ je přesně otázka, kterou si člověk před hospodou klade, a odpovídá to tónu appky. Min je taky stabilní vůči full-replace chování menu.</p></details>
+</section>
+
+<section id="varianty">
+<h2>Varianty filtrování</h2>
+<div class="tablewrap"><table>
+<tr><th></th><th>A: cena v payloadu, filtr na klientovi</th><th>B: backend filtr jako u vybaveností</th><th>C: nový histogram endpoint</th></tr>
+<tr><th>Nový endpoint</th><td class="y">ne</td><td class="y">ne</td><td class="n">ano (+cache, +provoz)</td></tr>
+<tr><th>Funguje offline / nad cache</th><td class="y">ano</td><td class="n">ne</td><td class="n">ne</td></tr>
+<tr><th>Histogram</th><td class="y">z načtených hospod, zdarma</td><td class="n">nemá data → stejně potřebuje A</td><td class="y">serverový, přesnější na velké radiusy</td></tr>
+<tr><th>Ack / verzování filtrů</th><td class="y">nepotřebuje</td><td class="n">bump <code>applied_filters</code></td><td class="n">nový kontrakt</td></tr>
+<tr><th>Serverová cena</th><td colspan="3">všechny varianty potřebují <code>PubPriceIndex</code> — to je společný základ</td></tr>
+</table></div>
+<div class="tabs" role="tablist">
+  <button class="on" data-tab="va">A: klientský filtr <span class="rec">DOPORUČUJI</span></button>
+  <button data-tab="vb">B: backend filtr</button>
+  <button data-tab="vc">C: histogram endpoint</button>
+</div>
+<div class="tabpanel on" id="tab-va">
+<p>Server ke každé hospodě v <code>/v1/pubs/near</code> aditivně přibalí <code>pubDetails.price = { czk, volume_ml, observed_at, source }</code> (jen neexpirované). Klient si z aktuálně načtené množiny postaví histogram a filtruje lokálně — přesně jako Airbnb, kde histogram ukazuje rozložení <i>aktuálních výsledků</i>.</p>
+<ul>
+<li>Žádné čekání na server při posunu slideru — bary a počet hospod reagují okamžitě.</li>
+<li>Funguje nad offline cache kompasu; výpadek syncu filtr nerozbije.</li>
+<li>Starý klient nové pole ignoruje → nulové riziko kompatibility.</li>
+<li>Slabina: histogram pokrývá jen načtený radius/viewport — což je pro „kam teď zajdu“ vlastně správně.</li>
+</ul>
+</div>
+<div class="tabpanel" id="tab-vb">
+<p>Přidat <code>price_max</code> do query <code>/v1/pubs/near</code> po vzoru vybaveností, včetně rozšíření fail-closed <code>applied_filters</code> acku.</p>
+<ul>
+<li>Nutný bump ack logiky (starý backend by cenu tiše ignoroval) — přesně ta třída složitosti, kterou vybavenosti řeší, ale tady zbytečná: data ceny jsou v payloadu, klient si to ověří sám.</li>
+<li>Každý pohyb slideru = nový request → latence + Mapy/proxy provoz.</li>
+<li>Histogram by stejně potřeboval ceny v payloadu, takže B je nadmnožina A bez přidané hodnoty.</li>
+</ul>
+</div>
+<div class="tabpanel" id="tab-vc">
+<p>Nový <code>GET /v1/pubs/price-histogram?lat&amp;lng&amp;radius</code> vracející buckety spočítané serverem.</p>
+<ul>
+<li>Jediná výhoda: přesný histogram i pro hospody, které klient nemá načtené (velká města, velké radiusy).</li>
+<li>Nový endpoint = cache, rate-limity, verzování, provozní cena — proti zásadě „nepřidávej serverově drahou funkci bez důvodu“. Kdyby klientský histogram někdy nestačil, dá se C doplnit později, aniž by se cokoli z A zahazovalo.</li>
+</ul>
+</div>
+</section>
+
+<section id="tok" class="detail-only">
+<h2>Datový tok</h2>
+<p>Kliknutí na uzel skočí na příslušný krok. Oranžové uzly jsou nové.</p>
+<div class="diagram">
+<svg width="880" height="290" viewBox="0 0 880 290">
+<defs><marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6" fill="none" stroke="#a3927a"/></marker></defs>
+<g class="node" data-step="s1" data-edges="e1"><rect x="10" y="20" width="180" height="44"/><text x="100" y="38" text-anchor="middle">Zmapuj hospodu</text><text x="100" y="53" text-anchor="middle" class="lbl">POST /v1/pub-community</text></g>
+<g class="node" data-step="s1" data-edges="e2"><rect x="10" y="80" width="180" height="44"/><text x="100" y="98" text-anchor="middle">Počítadlo</text><text x="100" y="113" text-anchor="middle" class="lbl">POST /v1/drinks (merge)</text></g>
+<g class="node" data-step="s2" data-edges="e3"><rect x="10" y="140" width="180" height="44"/><text x="100" y="158" text-anchor="middle">Externí menu</text><text x="100" y="173" text-anchor="middle" class="lbl">import_pivarova_mapa</text></g>
+<g class="node hot" data-step="s1" data-edges="e1 e2 e3 e4"><rect x="270" y="78" width="190" height="52"/><text x="365" y="98" text-anchor="middle" font-weight="bold">PubPriceIndex</text><text x="365" y="114" text-anchor="middle" class="lbl">price_czk · observed_at · source</text></g>
+<g class="node hot" data-step="s3" data-edges="e4 e5"><rect x="520" y="78" width="170" height="52"/><text x="605" y="98" text-anchor="middle">/v1/pubs/near</text><text x="605" y="114" text-anchor="middle" class="lbl">+ pubDetails.price (aditivně)</text></g>
+<g class="node hot" data-step="s5" data-edges="e5 e6"><rect x="700" y="10" width="170" height="44"/><text x="785" y="28" text-anchor="middle">PubFilterSheet</text><text x="785" y="43" text-anchor="middle" class="lbl">histogram + „do X Kč“</text></g>
+<g class="node" data-step="s4" data-edges="e5 e6 e7"><rect x="700" y="120" width="170" height="44"/><text x="785" y="138" text-anchor="middle">Spatial index klienta</text><text x="785" y="153" text-anchor="middle" class="lbl">filtr lokálně, offline OK</text></g>
+<g class="node" data-step="s6" data-edges="e7"><rect x="700" y="220" width="170" height="44"/><text x="785" y="238" text-anchor="middle">Karta hospody</text><text x="785" y="253" text-anchor="middle" class="lbl">„45 Kč · před 3 týdny“</text></g>
+<path id="e1" class="edge" d="M190,42 C230,42 235,90 268,96"/>
+<path id="e2" class="edge" d="M190,102 L268,103"/>
+<path id="e3" class="edge" d="M190,162 C230,162 235,116 268,110"/>
+<path id="e4" class="edge" d="M460,104 L518,104"/>
+<path id="e5" class="edge" d="M690,104 C700,104 730,120 740,120" style="display:none"/>
+<path id="e5b" class="edge" d="M690,104 L698,120"/>
+<path id="e6" class="edge" d="M785,120 L785,56"/>
+<path id="e7" class="edge" d="M785,164 L785,218"/>
+</svg>
+</div>
+</section>
+
+<section id="ui">
+<h2>UI mockup — vyzkoušej si to</h2>
+<p>Živý model sekce „Cena piva“ ve <code>PubFilterSheet</code> (data smyšlená, chování skutečné): táhni posuvníkem, bary a počet hospod reagují jako v appce. Pod ním karta hospody se zobrazením stáří.</p>
+<div class="mockwrap">
+  <div class="phone">
+    <div class="sheet">
+      <h4>Cena piva</h4>
+      <div class="sub">Velké pivo (0,5 l) · <span id="known">14</span> hospod v okolí zná cenu</div>
+      <div class="hist" id="hist"></div>
+      <div class="histx"><span>30 Kč</span><span>50 Kč</span><span>70+ Kč</span></div>
+      <input type="range" class="price" id="pmax" min="30" max="75" step="5" value="75">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
+        <span class="pill on" id="pmaxlbl">Bez limitu</span>
+        <span class="sub" style="margin:0"><b id="cnt" style="color:var(--amber)">14</b> hospod</span>
+      </div>
+      <div class="sub" style="margin-top:8px">Hospody bez známé ceny se při aktivním filtru schovají.</div>
+      <button class="applybtn">Ukázat hospody</button>
+    </div>
+    <div class="cardmock">
+      <div class="nm">U Zlatého soudku</div>
+      <div class="price-line">🍺 Kozel 11° · 42 Kč <span class="age">· před 3 týdny</span></div>
+    </div>
+    <div class="cardmock">
+      <div class="nm">Hostinec Na Růžku</div>
+      <div class="price-line">🍺 ≈ 38 Kč <span class="age warn">· údaj starý 8 měsíců</span></div>
+    </div>
+  </div>
+  <div style="flex:1;min-width:260px">
+    <h3>Pravidla zobrazení</h3>
+    <ul>
+      <li>Histogram: buckety po <b>5 Kč</b>, rozsah 30–70+ Kč, jen neexpirované ceny z načtené množiny.</li>
+      <li>Posuvník jen <b>max</b> („do X Kč“) — „levné pivo“ je jednosměrná otázka; dual-range by na mobilu jen překážel.</li>
+      <li>Stáří 6–12 měsíců → prefix „≈“ a varovná barva věku.</li>
+      <li>Hospody bez ceny při aktivním filtru zmizí a sheet to řekne explicitně — filtr nesmí tiše předstírat úplnost.</li>
+      <li class="detail-only">Copy formát: <code>cs.filters.price.*</code> v <code>src/i18n/cs.ts</code>, tykání, hospodský tón („Do kolika za pivo?“) — texty ukážu ke schválení před commitem.</li>
+      <li class="detail-only">Cena na kartě kompasu rozšíří existující <code>formatBeerLine()</code> v <code>app/(tabs)/index.tsx</code> o věk údaje.</li>
+    </ul>
+  </div>
+</div>
+</section>
+
+<section id="kroky">
+<h2>Kroky</h2>
+<div class="progress"><div class="bar"><div class="fill" id="pfill"></div></div><div class="label" id="plabel">0 / 7 hotovo</div></div>
+
+<div class="step" id="s1"><input type="checkbox" data-k="s1"><div>
+  <div class="t">1 · Backend: model <code>PubPriceIndex</code> + upserty (migrace 0078)</div>
+  Jeden řádek na pub identitu (cache_key + name guard, denormalizované souřadnice — vzor <code>PubBeerBrand</code>): <code>price_czk</code>, <code>volume_ml</code>, <code>observed_at</code>, <code>source</code> (community/drink/external), <code>active</code>. Upsert zapojit do <code>PubCommunityView.post()</code> (menu submit i clear), <code>DrinksView._merge_into_community()</code> a <code>import_pivarova_mapa</code> s prioritou zdrojů dle kontraktu.
+  <div class="files"><a href="vscode://file/Users/tomasmach/Code/na-pivo/backend/pubs/models.py">backend/pubs/models.py</a> · <a href="vscode://file/Users/tomasmach/Code/na-pivo/backend/pubs/api/views.py">backend/pubs/api/views.py</a> · nová migrace 0078</div>
+</div></div>
+
+<div class="step" id="s2"><input type="checkbox" data-k="s2"><div>
+  <div class="t">2 · Backend: backfill command</div>
+  <code>backfill_price_index</code> — projede <code>PubCommunityData</code> (observed_at = <code>beers_updated_at</code>) a <code>PubExternalBeerMenu</code> (observed_at = <code>verified_at</code>), naplní index. Idempotentní, spustí se jednou na produkci při deployi.
+  <div class="files">backend/pubs/management/commands/backfill_price_index.py</div>
+</div></div>
+
+<div class="step" id="s3"><input type="checkbox" data-k="s3"><div>
+  <div class="t">3 · Backend: <code>/v1/pubs/near</code> přibalí cenu</div>
+  Aditivní pole v <code>pubDetails</code>; server přibalí jen ceny s <code>observed_at</code> ≤ 12 měsíců (expirace je serverové rozhodnutí, ne klientské). Bounded lookup po vzoru stávajícího amenity/brand joinu. Testy: expirace, priorita zdrojů, starý klient bez pole.
+  <div class="diff detail-only"><pre><code>  "pubDetails": {
+    "hours": {...}, "rating": 4.4, "venueKind": "pub",
+<ins>+   "price": { "czk": 42, "volume_ml": 500,</ins>
+<ins>+              "observed_at": "2026-06-26T19:04:00Z",</ins>
+<ins>+              "source": "community" }</ins>
+  }</code></pre></div>
+  <div class="files"><a href="vscode://file/Users/tomasmach/Code/na-pivo/backend/pubs/api/views.py">backend/pubs/api/views.py</a> (PubsNearView)</div>
+</div></div>
+
+<div class="step" id="s4"><input type="checkbox" data-k="s4"><div>
+  <div class="t">4 · Mobil: datová vrstva + klientský filtr</div>
+  Parsovat <code>price</code> v <code>pubs.ts</code>/<code>mapyClient.ts</code>, rozšířit <code>PubSearchFilters</code> o <code>priceMaxCzk: number | null</code>. Filtr aplikovat lokálně ve spatial indexu (<code>useCompass</code> — vzor stávajících preference failures pro rating/garden) a v <code>useBeerMap</code> nad markery. Persistence filtru stejně jako u vybaveností.
+  <div class="files"><a href="vscode://file/Users/tomasmach/Code/na-pivo/src/data/pubs.ts">src/data/pubs.ts</a> · <a href="vscode://file/Users/tomasmach/Code/na-pivo/src/data/pubSearchFilters.ts">src/data/pubSearchFilters.ts</a> · src/hooks (useCompass, useBeerMap)</div>
+</div></div>
+
+<div class="step" id="s5"><input type="checkbox" data-k="s5"><div>
+  <div class="t">5 · Mobil: histogram + posuvník ve filter sheetu</div>
+  Nová sekce v <code>PubFilterSheet</code> dle mockupu: histogram (čisté View bary, žádná chart knihovna), slider „do X Kč“, živý počet hospod, hláška o hospodách bez ceny. Žádné ambientní animace.
+  <div class="files"><a href="vscode://file/Users/tomasmach/Code/na-pivo/src/components/compass/PubFilterSheet.tsx">src/components/compass/PubFilterSheet.tsx</a> · <a href="vscode://file/Users/tomasmach/Code/na-pivo/src/i18n/cs.ts">src/i18n/cs.ts</a></div>
+</div></div>
+
+<div class="step" id="s6"><input type="checkbox" data-k="s6"><div>
+  <div class="t">6 · Mobil: stáří ceny na kartě hospody</div>
+  <code>formatBeerLine()</code> na kompasu + map callout: cena s relativním věkem; 6–12 měsíců s „≈“ a varovnou barvou. Bez ceny → beze změny dnešního stavu.
+  <div class="files"><a href="vscode://file/Users/tomasmach/Code/na-pivo/app/(tabs)/index.tsx">app/(tabs)/index.tsx</a> · <a href="vscode://file/Users/tomasmach/Code/na-pivo/src/map/BeerMapScreen.tsx">src/map/BeerMapScreen.tsx</a></div>
+</div></div>
+
+<div class="step" id="s7"><input type="checkbox" data-k="s7"><div>
+  <div class="t">7 · Testy, typecheck, commit</div>
+  Backend testy (upsert priority, expirace, backfill), <code>npm run typecheck</code> + <code>npm test</code>, ověření v simulátoru přes <code>npm run dev</code>. Commit na <code>dev</code>. Deploy poznámka: migrace 0078 + jednorázový backfill musí na prod před mobilním releasem (řadí se za čekající 0074–0077).
+</div></div>
+</section>
+
+<section id="rizika">
+<h2>Rizika</h2>
+<div class="risk"><b>Řídká data na startu.</b> Mimo města může mít cenu jen pár hospod → histogram s 3 bary vypadá chudě. Mitigace: sekce se schová pod ~5 známých cen v okolí a místo ní se ukáže výzva „Zmapuj cenu a pomoz ostatním“ (napojení na existující Mapér flow — cena už dnes XP nese přes menu contribution).</div>
+<div class="risk"><b>Vandalismus / překlep přepíše cenu.</b> Drink-log merge je last-write; jeden útlý prst udělá z 45 Kč 450 Kč. Mitigace: rozsah 1–1000 už validuje API; do indexu navíc nepustit skoky &gt; 3× oproti předchozí hodnotě z nižší priority zdroje (jen logovat). Víc neřešit — accept-and-flag vzor jako u drink anti-abuse.</div>
+<div class="risk"><b>Objemová srovnatelnost.</b> „Nejlevnější ≥ 400 ml“ míchá 0,4 l a 0,5 l. Vědomě přijato — přepočet na litr by předstíral přesnost, kterou data nemají; UI vždy ukáže skutečný objem, když ≠ 0,5 l.</div>
+<p class="detail-only">Provozně je změna levná: žádný nový endpoint, jeden indexovaný lookup navíc v už bounded <code>/v1/pubs/near</code> scanu, žádné volání Mapy.com navíc.</p>
+</section>
+
+<section id="otazky">
+<h2>Otevřené otázky</h2>
+<p>Zaškrtni volby a tlačítkem dole zkopíruj odpovědi do chatu. Kde nic nevybereš, použiju doporučení (předvybráno).</p>
+
+<div class="q" data-q="Posuvník">
+  <div class="qt">1 · Posuvník: jen max, nebo rozsah?</div>
+  <label><input type="radio" name="q1" value="Jen max „do X Kč“ (doporučeno)" checked> Jen max „do X Kč“ <span class="why">— jednodušší na mobilu, odpovídá otázce „levné pivo“</span></label>
+  <label><input type="radio" name="q1" value="Dual-range min–max jako Airbnb"> Dual-range min–max <span class="why">— věrnější Airbnb, ale min nikdo nepoužije</span></label>
+</div>
+
+<div class="q" data-q="Expirace">
+  <div class="qt">2 · Expirace ceny</div>
+  <label><input type="radio" name="q2" value="12 měsíců tvrdá expirace, od 6 měsíců „≈“ (doporučeno)" checked> 12 měsíců tvrdě, od 6 měsíců „≈“ + věk <span class="why">— pivo v ČR zdražuje ~1× ročně</span></label>
+  <label><input type="radio" name="q2" value="6 měsíců tvrdá expirace"> 6 měsíců tvrdě <span class="why">— čerstvější, ale venkov přijde o většinu dat</span></label>
+  <label><input type="radio" name="q2" value="Bez expirace, jen zobrazovat věk"> Bez expirace, jen věk <span class="why">— proti zadání „nepředstírat přesnost“</span></label>
+</div>
+
+<div class="q" data-q="Hospody bez ceny">
+  <div class="qt">3 · Hospody bez známé ceny při aktivním filtru</div>
+  <label><input type="radio" name="q3" value="Schovat + explicitní hláška v sheetu (doporučeno)" checked> Schovat + hláška v sheetu <span class="why">— filtr říká pravdu; konzistentní s amenity filtry</span></label>
+  <label><input type="radio" name="q3" value="Nechat viditelné se štítkem „cena neznámá“"> Nechat se štítkem „cena neznámá“ <span class="why">— víc výsledků, ale filtr pak vlastně nefiltruje</span></label>
+</div>
+
+<div class="q" data-q="Implementace">
+  <div class="qt">4 · Kdy začít stavět?</div>
+  <label><input type="radio" name="q4" value="Rovnou celé (backend přes Codex, UI Fable)" checked> Rovnou celé <span class="why">— backend kroky 1–3 přes Codex, UI 4–6 udělám sám</span></label>
+  <label><input type="radio" name="q4" value="Nejdřív jen backend (kroky 1–3), UI po review"> Nejdřív backend, UI po review</label>
+  <label><input type="radio" name="q4" value="Zatím nestavět, jen plán"> Zatím nestavět</label>
+</div>
+
+<button class="copybtn" id="copyans">Zkopírovat odpovědi</button>
+<span id="copied" style="margin-left:10px;color:var(--green);display:none">Zkopírováno — vlož do chatu.</span>
+</section>
+
+</main>
+</div>
+
+<script>
+(function(){
+  var KEY = 'plan:2026-07-17-price-filter';
+  var state = {};
+  try { state = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch(e) {}
+  function save(){ localStorage.setItem(KEY, JSON.stringify(state)); }
+
+  // view toggle
+  window.setView = function(v){
+    document.body.classList.toggle('overview', v === 'overview');
+    document.getElementById('vt-over').classList.toggle('on', v === 'overview');
+    document.getElementById('vt-full').classList.toggle('on', v !== 'overview');
+    state.view = v; save();
+  };
+  if (state.view) setView(state.view);
+
+  // checklist + progress
+  var boxes = document.querySelectorAll('.step input[type=checkbox]');
+  function refresh(){
+    var done = 0;
+    boxes.forEach(function(b){
+      b.closest('.step').classList.toggle('done', b.checked);
+      if (b.checked) done++;
+    });
+    document.getElementById('pfill').style.width = (done / boxes.length * 100) + '%';
+    document.getElementById('plabel').textContent = done + ' / ' + boxes.length + ' hotovo';
+  }
+  boxes.forEach(function(b){
+    b.checked = !!state[b.dataset.k];
+    b.addEventListener('change', function(){ state[b.dataset.k] = b.checked; save(); refresh(); });
+  });
+  refresh();
+
+  // tabs
+  document.querySelectorAll('.tabs button').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('.tabs button').forEach(function(x){ x.classList.remove('on'); });
+      document.querySelectorAll('.tabpanel').forEach(function(x){ x.classList.remove('on'); });
+      btn.classList.add('on');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('on');
+    });
+  });
+
+  // histogram mockup — fake nearby pub prices
+  var prices = [32,35,38,38,40,42,42,45,45,45,48,52,58,68];
+  var bmin = 30, bstep = 5, nb = 9;
+  var hist = document.getElementById('hist');
+  var counts = [];
+  for (var i = 0; i < nb; i++) counts.push(0);
+  prices.forEach(function(p){ counts[Math.min(nb-1, Math.floor((p-bmin)/bstep))]++; });
+  var maxc = Math.max.apply(null, counts);
+  counts.forEach(function(c){
+    var d = document.createElement('div');
+    d.className = 'b';
+    d.style.height = Math.max(4, c/maxc*100) + '%';
+    hist.appendChild(d);
+  });
+  var slider = document.getElementById('pmax');
+  function updHist(){
+    var v = +slider.value;
+    var n = prices.filter(function(p){ return p <= v; }).length;
+    document.getElementById('cnt').textContent = n;
+    document.getElementById('pmaxlbl').textContent = v >= 75 ? 'Bez limitu' : 'Do ' + v + ' Kč';
+    Array.prototype.forEach.call(hist.children, function(bar, i){
+      bar.classList.toggle('off', v < 75 && (bmin + i*bstep) >= v);
+    });
+  }
+  slider.addEventListener('input', updHist);
+  updHist();
+
+  // questions copy
+  document.getElementById('copyans').addEventListener('click', function(){
+    var out = ['Odpovědi k plánu „Filtr cenově dostupného piva“:'];
+    document.querySelectorAll('.q').forEach(function(q){
+      var sel = q.querySelector('input:checked');
+      out.push('- ' + q.dataset.q + ': ' + (sel ? sel.value : '(nevybráno)'));
+    });
+    navigator.clipboard.writeText(out.join('\n')).then(function(){
+      var c = document.getElementById('copied');
+      c.style.display = 'inline';
+      setTimeout(function(){ c.style.display = 'none'; }, 2500);
+    });
+  });
+
+  // diagram: click → scroll to step, hover → highlight edges
+  document.querySelectorAll('.diagram .node').forEach(function(n){
+    n.addEventListener('click', function(){
+      var el = document.getElementById(n.dataset.step);
+      if (!el) return;
+      el.scrollIntoView({behavior:'smooth', block:'center'});
+      el.classList.remove('flash-on'); void el.offsetWidth; el.classList.add('flash-on');
+    });
+    n.addEventListener('mouseenter', function(){
+      (n.dataset.edges || '').split(' ').forEach(function(id){
+        var e = document.getElementById(id); if (e) e.classList.add('hl');
+      });
+    });
+    n.addEventListener('mouseleave', function(){
+      document.querySelectorAll('.diagram .edge').forEach(function(e){ e.classList.remove('hl'); });
+    });
+  });
+
+  // scroll-spy
+  var links = document.querySelectorAll('#sidenav a');
+  var obs = new IntersectionObserver(function(entries){
+    entries.forEach(function(en){
+      if (en.isIntersecting) {
+        links.forEach(function(l){ l.classList.toggle('active', l.getAttribute('href') === '#' + en.target.id); });
+      }
+    });
+  }, {rootMargin: '-20% 0px -70% 0px'});
+  document.querySelectorAll('main section[id]').forEach(function(s){ obs.observe(s); });
+})();
+</script>
+</body>
+</html>
