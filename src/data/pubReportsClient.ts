@@ -28,7 +28,10 @@ interface BackendBlockedResponse {
   blocked?: BackendBlockedReport[];
 }
 
-const REQUEST_TIMEOUT_MS = 8000;
+const WRITE_REQUEST_TIMEOUT_MS = 8000;
+// This read is fail-open and runs beside the authoritative nearby endpoint.
+// Never let it hold the first compass target for most of the launch timeout.
+const BLOCKED_READ_TIMEOUT_MS = 1500;
 const VALID_REASONS = new Set<string>(['closed', 'not_pub']);
 
 export async function reportPubIssue(
@@ -44,7 +47,7 @@ export async function reportPubIssue(
   const session = await ensureAccount(signal);
   if (!session || signal?.aborted) return false;
 
-  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
+  const abort = chainAbortSignal(signal, WRITE_REQUEST_TIMEOUT_MS);
   try {
     const resp = await fetch(endpoint, {
       method: 'POST',
@@ -88,7 +91,7 @@ export async function fetchBlockedPubReports(
   url.searchParams.set('lng', String(lng));
   url.searchParams.set('radius_km', String(radiusKm));
 
-  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
+  const abort = chainAbortSignal(signal, BLOCKED_READ_TIMEOUT_MS);
   try {
     const resp = await fetch(url.toString(), {
       method: 'GET',

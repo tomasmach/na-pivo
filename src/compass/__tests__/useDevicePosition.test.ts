@@ -9,6 +9,7 @@ jest.mock('expo-location', () => ({
   Accuracy: {
     BestForNavigation: 6,
   },
+  getLastKnownPositionAsync: jest.fn(),
   watchPositionAsync: jest.fn(),
 }));
 
@@ -63,6 +64,7 @@ describe('useDevicePosition', () => {
   beforeEach(() => {
     appStateHandler = undefined;
     jest.clearAllMocks();
+    (Location.getLastKnownPositionAsync as jest.Mock).mockResolvedValue(null);
     (AppState as { currentState: string }).currentState = 'active';
     (AppState.addEventListener as jest.Mock).mockImplementation((_event, handler) => {
       appStateHandler = handler;
@@ -95,6 +97,10 @@ describe('useDevicePosition', () => {
     });
 
     expect(Location.watchPositionAsync).toHaveBeenCalledTimes(1);
+    expect(Location.getLastKnownPositionAsync).toHaveBeenCalledWith({
+      maxAge: 5 * 60 * 1000,
+      requiredAccuracy: 100,
+    });
     expect(Location.watchPositionAsync).toHaveBeenCalledWith(
       {
         accuracy: Location.Accuracy.BestForNavigation,
@@ -120,6 +126,90 @@ describe('useDevicePosition', () => {
       accuracyMeters: 12,
     });
 
+    hook.unmount();
+  });
+
+  it('publishes a recent accurate cached fix before the live watcher emits', async () => {
+    let resolveCached:
+      | ((location: {
+          coords: { latitude: number; longitude: number; accuracy: number };
+          timestamp: number;
+        }) => void)
+      | undefined;
+    (Location.getLastKnownPositionAsync as jest.Mock).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveCached = resolve;
+        }),
+    );
+    (Location.watchPositionAsync as jest.Mock).mockResolvedValue({ remove: jest.fn() });
+
+    const hook = renderDevicePositionHook({ enabled: true });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      resolveCached?.({
+        coords: { latitude: 50.087, longitude: 14.421, accuracy: 24 },
+        timestamp: Date.now(),
+      });
+      await Promise.resolve();
+    });
+
+    expect(hook.result.position).toEqual({
+      lat: 50.087,
+      lng: 14.421,
+      accuracyMeters: 24,
+    });
+    hook.unmount();
+  });
+
+  it('does not let a delayed cached fix overwrite a newer live sample', async () => {
+    let emitLocation:
+      | ((location: { coords: { latitude: number; longitude: number; accuracy: number } }) => void)
+      | undefined;
+    let resolveCached:
+      | ((location: {
+          coords: { latitude: number; longitude: number; accuracy: number };
+          timestamp: number;
+        }) => void)
+      | undefined;
+    (Location.getLastKnownPositionAsync as jest.Mock).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveCached = resolve;
+        }),
+    );
+    (Location.watchPositionAsync as jest.Mock).mockImplementation(async (_options, callback) => {
+      emitLocation = callback;
+      return { remove: jest.fn() };
+    });
+
+    const hook = renderDevicePositionHook({ enabled: true });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      emitLocation?.({
+        coords: { latitude: 49.195, longitude: 16.607, accuracy: 10 },
+      });
+    });
+    await act(async () => {
+      resolveCached?.({
+        coords: { latitude: 50.087, longitude: 14.421, accuracy: 20 },
+        timestamp: Date.now(),
+      });
+      await Promise.resolve();
+    });
+
+    expect(hook.result.position).toEqual({
+      lat: 49.195,
+      lng: 16.607,
+      accuracyMeters: 10,
+    });
     hook.unmount();
   });
 

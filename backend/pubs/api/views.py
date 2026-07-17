@@ -6056,7 +6056,10 @@ class PubsNearView(APIView):
             response_items = [dict(item) for item in items]
             for index, detail in zip(
                 detail_indexes,
-                get_cached_pub_details(detail_inputs),
+                # This bulk preview keeps nextChange nullable instead of running
+                # the expensive schedule transition parser for every marker.
+                # /v1/pub-hours still computes it for the selected pub.
+                get_cached_pub_details(detail_inputs, include_next_change=False),
                 strict=True,
             ):
                 if detail is not None:

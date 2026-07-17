@@ -83,11 +83,17 @@ def _is_error_in_cooldown(row: PubHours, cooldown_minutes: int) -> bool:
     return row.fetched_at >= cutoff
 
 
-def _result_from_row(row: PubHours) -> dict[str, Any]:
+def _result_from_row(
+    row: PubHours,
+    *,
+    include_next_change: bool = True,
+) -> dict[str, Any]:
     """Build the response dict for a single PubHours row."""
     oh = row.opening_hours_raw or None
     is_open = is_open_now(oh) if oh else None
-    nc = next_change(oh) if oh else None
+    # OpeningHours.next_change can take tens of milliseconds for a complex
+    # schedule. Fine for one selected pub, but not for hundreds of map previews.
+    nc = next_change(oh) if oh and include_next_change else None
     nc_iso: str | None = nc.isoformat() if nc is not None else None
 
     return {
@@ -179,6 +185,8 @@ def _community_result(
     row: PubCommunityData,
     name: str,
     hours_row: PubHours | None = None,
+    *,
+    include_next_change: bool = True,
 ) -> dict[str, Any]:
     """Build a response dict from a community-data row whose hours override firmy.
 
@@ -187,7 +195,7 @@ def _community_result(
     """
     oh = row.opening_hours_raw or None
     is_open = is_open_now(oh) if oh else None
-    nc = next_change(oh) if oh else None
+    nc = next_change(oh) if oh and include_next_change else None
     nc_iso: str | None = nc.isoformat() if nc is not None else None
 
     # Community hours imply someone has curated this place; if they also listed
@@ -595,6 +603,8 @@ def get_or_enrich(
 
 def get_cached_pub_details(
     pubs: list[dict[str, Any]],
+    *,
+    include_next_change: bool = True,
 ) -> list[dict[str, Any] | None]:
     """Return existing hours/rating/community facts in input order.
 
@@ -640,14 +650,22 @@ def get_cached_pub_details(
         external_menu = _matching_external_menu(external_by_key.get(key), name)
 
         if matching_community is not None and matching_community.hours_json is not None:
-            result = _community_result(matching_community, name, matching_hours)
+            result = _community_result(
+                matching_community,
+                name,
+                matching_hours,
+                include_next_change=include_next_change,
+            )
             if not matching_community.beers and matching_community.beers_updated_at is None:
                 _attach_external_menu(result, external_menu)
             results.append(result)
             continue
 
         if matching_hours is not None:
-            result = _result_from_row(matching_hours)
+            result = _result_from_row(
+                matching_hours,
+                include_next_change=include_next_change,
+            )
         elif matching_community is not None or external_menu is not None:
             result = _unknown_result(key, name)
         else:

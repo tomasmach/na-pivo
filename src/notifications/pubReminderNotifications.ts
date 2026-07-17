@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import type * as ExpoNotifications from 'expo-notifications';
 import type * as ExpoTaskManager from 'expo-task-manager';
 
@@ -42,7 +42,12 @@ const GEOFENCE_FETCH_RADIUS_KM = 5;
 const LAST_KNOWN_POSITION_MAX_AGE_MS = 15 * 60 * 1000;
 /** Geofences only need city-block accuracy; worse cached fixes are ignored. */
 const LAST_KNOWN_POSITION_REQUIRED_ACCURACY_M = 500;
+/** Existing OS geofences survive app restarts. Give the foreground compass the
+ * first nearby-catalogue slot instead of racing it during the critical launch. */
+const STARTUP_GEOFENCE_REFRESH_DELAY_MS = 8_000;
 const PUB_REMINDER_DWELL_SECONDS = PUB_REMINDER_DWELL_MS / 1000;
+
+let startupGeofenceRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 export type PubReminderEnableResult =
   | { ok: true }
@@ -412,7 +417,13 @@ export async function initializePubReminderNotifications(): Promise<void> {
   }
 
   void ensurePushTokenRegistered(permissionStatus(notificationPermission.status));
-  await refreshGeofences();
+  if (!startupGeofenceRefreshTimer) {
+    startupGeofenceRefreshTimer = setTimeout(() => {
+      startupGeofenceRefreshTimer = null;
+      if (AppState.currentState !== 'active') return;
+      void refreshPubReminderGeofences();
+    }, STARTUP_GEOFENCE_REFRESH_DELAY_MS);
+  }
 }
 
 export async function enablePubReminderNotifications(): Promise<PubReminderEnableResult> {

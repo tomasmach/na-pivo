@@ -1,3 +1,5 @@
+import { AppState } from 'react-native';
+
 const mockGetLastKnownPositionAsync = jest.fn();
 const mockGetCurrentPositionAsync = jest.fn();
 const mockGetBackgroundPermissionsAsync = jest.fn();
@@ -61,6 +63,7 @@ jest.mock('@/stores/settingsStore', () => ({
 
 // eslint-disable-next-line import/first
 import {
+  initializePubReminderNotifications,
   isPubReminderEligible,
   refreshPubReminderGeofences,
 } from '../pubReminderNotifications';
@@ -95,6 +98,24 @@ beforeEach(() => {
   mockHasStartedGeofencingAsync.mockResolvedValue(false);
   mockStopGeofencingAsync.mockResolvedValue(undefined);
   mockStartGeofencingAsync.mockResolvedValue(undefined);
+});
+
+describe('initializePubReminderNotifications', () => {
+  it('lets compass startup go first and defers the catalogue-backed geofence refresh', async () => {
+    jest.useFakeTimers();
+    (AppState as { currentState: string }).currentState = 'active';
+    mockGetLastKnownPositionAsync.mockResolvedValue(location(50.081, 14.419));
+
+    await initializePubReminderNotifications();
+
+    expect(mockFetchPubsNear).not.toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(7_999);
+    expect(mockFetchPubsNear).not.toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(1);
+
+    expect(mockFetchPubsNear).toHaveBeenCalledWith(50.081, 14.419, undefined, { radiusKm: 5 });
+    jest.useRealTimers();
+  });
 });
 
 describe('refreshPubReminderGeofences', () => {

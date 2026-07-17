@@ -1099,17 +1099,20 @@ def test_nearby_items_include_cached_pub_details_without_mutating_search_cache(c
         fetched_at=dj_tz.now(),
     )
 
-    resp = client.get(
-        "/v1/pubs/near",
-        data={"lat": _LAT, "lng": _LNG, "radius_km": 25},
-    )
+    with patch("pubs.api.cache.next_change") as mocked_next_change:
+        resp = client.get(
+            "/v1/pubs/near",
+            data={"lat": _LAT, "lng": _LNG, "radius_km": 25},
+        )
 
     assert resp.status_code == status.HTTP_200_OK
     details = resp.json()["items"][0]["pubDetails"]
     assert details["opening_hours"] == "Mo-Su 11:00-23:00"
     assert details["isOpenNow"] in (True, False)
+    assert details["nextChange"] is None
     assert details["rating"] == pytest.approx(4.6)
     assert details["ratingCount"] == 128
+    mocked_next_change.assert_not_called()
     search_row.refresh_from_db()
     assert search_row.items == [_ITEM]
     # The suite's DRF throttle uses the shared local cache. This added request
