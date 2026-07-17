@@ -98,6 +98,17 @@ export function activePubSearchFilterCount(filters: PubSearchFilters): number {
   );
 }
 
+/** Fresh known prices of the given pubs, for the filter-sheet histogram. */
+export function freshPriceCzks(
+  pubs: readonly { price?: { czk: number; observedAt: string } | null }[],
+): number[] {
+  return pubs
+    .map((pub) =>
+      pub.price && isPriceFresh(pub.price.observedAt) ? pub.price.czk : undefined,
+    )
+    .filter((czk): czk is number => typeof czk === 'number');
+}
+
 /**
  * Client-side price gate. With an active boundary, pubs WITHOUT a known price
  * are excluded too — the filter must never present unknown as affordable.

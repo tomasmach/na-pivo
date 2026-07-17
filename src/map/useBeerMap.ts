@@ -22,6 +22,7 @@ import {
 import { fetchVisits, type WireVisit } from '@/data/visitsClient';
 import {
   backendPubSearchFilterKey,
+  freshPriceCzks,
   pubMatchesPriceFilter,
   type PubSearchFilters,
 } from '@/data/pubSearchFilters';
@@ -34,7 +35,6 @@ import {
 import { usePubStore } from '@/stores/pubStore';
 import { useAccountStore } from '@/stores/accountStore';
 import { allSessionsNewestFirst, useTallyStore } from '@/stores/tallyStore';
-import { isPriceFresh } from '@/utils/priceAge';
 import {
   buildLivePubs,
   buildVisitedCities,
@@ -301,15 +301,7 @@ export function useBeerMap(filters: PubSearchFilters): BeerMapData {
     const cells = new Set(reportedCacheKeys);
     return loaded.filter((pub) => !ids.has(pub.id) && !cells.has(geohash8(pub.lat, pub.lng)));
   }, [loadedFiltersKey, filtersKey, pubs, reportedPubIds, reportedCacheKeys]);
-  const nearbyPrices = useMemo(
-    () =>
-      visiblePubs
-        .map((pub) =>
-          pub.price && isPriceFresh(pub.price.observedAt) ? pub.price.czk : undefined,
-        )
-        .filter((czk): czk is number => typeof czk === 'number'),
-    [visiblePubs],
-  );
+  const nearbyPrices = useMemo(() => freshPriceCzks(visiblePubs), [visiblePubs]);
   const pricedPubs = useMemo(
     () =>
       priceMinCzk === null && priceMaxCzk === null

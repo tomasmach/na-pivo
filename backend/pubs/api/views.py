@@ -242,6 +242,25 @@ def _internal_error() -> Response:
     )
 
 
+def _upsert_price_index_from_row(
+    row,
+    *,
+    observed_at,
+    source: str,
+) -> PubPriceIndex | None:
+    return upsert_pub_price_index(
+        cache_key=row.cache_key,
+        name=row.name,
+        lat=row.lat,
+        lng=row.lng,
+        city=row.city or "",
+        external_id=row.external_id or "",
+        beers=row.beers,
+        observed_at=observed_at,
+        source=source,
+    )
+
+
 def _coded_error(exc) -> Response:
     """Map a domain error (AccountError / MenuScanError …) to its Response."""
     return Response(
@@ -1358,14 +1377,8 @@ class PubCommunityView(APIView):
                     account=request.user,
                     match_cache=match_cache,
                 )
-                upsert_pub_price_index(
-                    cache_key=cache_key,
-                    name=record.name,
-                    lat=record.lat,
-                    lng=record.lng,
-                    city=record.city or "",
-                    external_id=record.external_id or "",
-                    beers=record.beers,
+                _upsert_price_index_from_row(
+                    record,
                     observed_at=now,
                     source=PubPriceIndex.Source.COMMUNITY,
                 )
@@ -1912,14 +1925,8 @@ class DrinksView(APIView):
                     account=account,
                     match_cache=match_cache,
                 )
-                upsert_pub_price_index(
-                    cache_key=cache_key,
-                    name=row.name,
-                    lat=row.lat,
-                    lng=row.lng,
-                    city=row.city or "",
-                    external_id=row.external_id or "",
-                    beers=row.beers,
+                _upsert_price_index_from_row(
+                    row,
                     observed_at=now,
                     source=PubPriceIndex.Source.DRINK,
                 )
@@ -1979,14 +1986,8 @@ class DrinksView(APIView):
             match_cache=match_cache,
         )
         if changed:
-            upsert_pub_price_index(
-                cache_key=cache_key,
-                name=row.name,
-                lat=row.lat,
-                lng=row.lng,
-                city=row.city or "",
-                external_id=row.external_id or "",
-                beers=row.beers,
+            _upsert_price_index_from_row(
+                row,
                 observed_at=now,
                 source=PubPriceIndex.Source.DRINK,
             )
@@ -3111,15 +3112,15 @@ def _leaderboard_account_queryset():
     )
 
 
-def _leaderboard_drink_scores(period_start_utc: datetime | None, blocked_ids: set[int] | None = None) -> dict[int, int]:
-    qs = DrinkLog.objects.filter(
-        account__status=Account.Status.ACTIVE,
-        account__is_public=True,
-        account__nickname__isnull=False,
-        account__excluded_from_leaderboards=False,
+def _countable_beer_drinks():
+    return DrinkLog.objects.filter(
         is_suspect=False,
         drink_type=DrinkLog.DrinkType.BEER,
-    ).exclude(account__nickname="")
+    )
+
+
+def _leaderboard_drink_scores(period_start_utc: datetime | None, blocked_ids: set[int] | None = None) -> dict[int, int]:
+    qs = _countable_beer_drinks().filter(account__in=_leaderboard_account_queryset())
     if period_start_utc is not None:
         qs = qs.filter(drank_at__gte=period_start_utc)
     if blocked_ids:
@@ -3136,12 +3137,7 @@ def _leaderboard_pub_scores(period_start_utc: datetime | None, blocked_ids: set[
         (PubVisit, "started_at"),
         (DrinkLog, "drank_at"),
     ):
-        qs = model.objects.filter(
-            account__status=Account.Status.ACTIVE,
-            account__is_public=True,
-            account__nickname__isnull=False,
-            account__excluded_from_leaderboards=False,
-        ).exclude(account__nickname="")
+        qs = model.objects.filter(account__in=_leaderboard_account_queryset())
         if model is DrinkLog:
             qs = qs.filter(is_suspect=False, cache_key__isnull=False)
         if period_start_utc is not None:
@@ -3160,12 +3156,9 @@ def _leaderboard_pub_scores(period_start_utc: datetime | None, blocked_ids: set[
 
 def _leaderboard_mapper_scores(blocked_ids: set[int] | None = None) -> dict[int, int]:
     qs = AccountUsageStats.objects.filter(
-        account__status=Account.Status.ACTIVE,
-        account__is_public=True,
-        account__nickname__isnull=False,
-        account__excluded_from_leaderboards=False,
+        account__in=_leaderboard_account_queryset(),
         mapper_xp__gt=0,
-    ).exclude(account__nickname="")
+    )
     if blocked_ids:
         qs = qs.exclude(account_id__in=blocked_ids)
     return {
@@ -3194,11 +3187,7 @@ def _leaderboard_account_score(
     if account.excluded_from_leaderboards:
         return 0
     if category == "beers":
-        qs = DrinkLog.objects.filter(
-            account=account,
-            is_suspect=False,
-            drink_type=DrinkLog.DrinkType.BEER,
-        )
+        qs = _countable_beer_drinks().filter(account=account)
         if period_start_utc is not None:
             qs = qs.filter(drank_at__gte=period_start_utc)
         return qs.count()
@@ -3220,9 +3209,7 @@ def _leaderboard_account_score(
 
 def _leaderboard_is_eligible(account: Account) -> bool:
     return (
-        account.status == Account.Status.ACTIVE
-        and account.is_public
-        and not account.excluded_from_leaderboards
+        _leaderboard_account_queryset().filter(pk=account.pk).exists()
         and bool((account.nickname or "").strip())
     )
 

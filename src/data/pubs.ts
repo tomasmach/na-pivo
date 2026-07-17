@@ -455,6 +455,23 @@ function coverageContains(
 }
 
 /**
+ * Whether a cached data circle still covers a request. Viewport callers
+ * (coverageKm set) need true circle containment over the covered radius;
+ * compass callers use the fixed move-threshold gate.
+ */
+function cacheCovers(
+  cached: { lat: number; lng: number; radiusKm: number; coveredKm?: number | null },
+  lat: number,
+  lng: number,
+  radiusKm: number,
+  coverageKm: number | undefined,
+): boolean {
+  return coverageKm !== undefined
+    ? coverageContains(cached.lat, cached.lng, cached.coveredKm ?? cached.radiusKm, lat, lng, coverageKm)
+    : gateCovers(cached.lat, cached.lng, cached.radiusKm, lat, lng, radiusKm);
+}
+
+/**
  * Fetch pubs near (lat, lng) through the local-directory backend and rebuild the
  * spatial index.
  * Short-circuits when the user is within REFETCH_THRESHOLD_KM of the last
@@ -484,17 +501,18 @@ export async function fetchPubsNear(
 
   // In-memory short-circuit (also covers the post-hydration session).
   if (!options.force && _loaded && _lastFetchCenter) {
-    const cacheStillValid =
-      coverageKm !== undefined
-        ? coverageContains(
-            _lastFetchCenter.lat,
-            _lastFetchCenter.lng,
-            _lastFetchCoveredKm ?? _lastFetchRadiusKm ?? 0,
-            lat,
-            lng,
-            coverageKm,
-          )
-        : gateCovers(_lastFetchCenter.lat, _lastFetchCenter.lng, _lastFetchRadiusKm ?? 0, lat, lng, radiusKm);
+    const cacheStillValid = cacheCovers(
+      {
+        lat: _lastFetchCenter.lat,
+        lng: _lastFetchCenter.lng,
+        radiusKm: _lastFetchRadiusKm ?? 0,
+        coveredKm: _lastFetchCoveredKm,
+      },
+      lat,
+      lng,
+      radiusKm,
+      coverageKm,
+    );
     if (
       beerBrandKey === _lastFetchBeerBrandKey &&
       amenityKey === _lastFetchAmenityKey &&
@@ -523,16 +541,18 @@ export async function fetchPubsNear(
         if (signal?.aborted) return;
         const snapshotCovers =
           snapshot &&
-          (coverageKm !== undefined
-            ? coverageContains(
-                snapshot.centerLat,
-                snapshot.centerLng,
-                snapshot.coveredKm ?? snapshot.radiusKm,
-                lat,
-                lng,
-                coverageKm,
-              )
-            : gateCovers(snapshot.centerLat, snapshot.centerLng, snapshot.radiusKm, lat, lng, radiusKm));
+          cacheCovers(
+            {
+              lat: snapshot.centerLat,
+              lng: snapshot.centerLng,
+              radiusKm: snapshot.radiusKm,
+              coveredKm: snapshot.coveredKm,
+            },
+            lat,
+            lng,
+            radiusKm,
+            coverageKm,
+          );
         if (snapshot && snapshotCovers) {
           _lastUnfilteredPubs = snapshot.pubs.slice();
           _lastUnfilteredCenter = {

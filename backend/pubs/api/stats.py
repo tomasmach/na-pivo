@@ -64,10 +64,6 @@ def drinking_day_bounds(drank_at: datetime) -> tuple[datetime, datetime]:
     return start, end
 
 
-# Backward-compatible private alias for existing internal/tests imports.
-_drinking_day = drinking_day
-
-
 def _empty_payload() -> dict:
     """The 200 body for an account with no logged drinks (zeroes / nulls)."""
 

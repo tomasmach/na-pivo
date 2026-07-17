@@ -40,6 +40,7 @@ import { PubFilterSheet } from '@/components/compass/PubFilterSheet';
 import {
   EMPTY_PUB_SEARCH_FILTERS,
   activePubSearchFilterCount,
+  freshPriceCzks,
   type PubSearchFilters,
 } from '@/data/pubSearchFilters';
 import { usePubStore } from '@/stores/pubStore';
@@ -1333,16 +1334,7 @@ export default function CompassScreen() {
   // Snapshot the known prices when the sheet opens — the histogram should show
   // the distribution around the CURRENT loaded area, not live-shift mid-drag.
   const nearbyPrices = useMemo(
-    () =>
-      filterSheetOpen
-        ? getAllLoadedPubs()
-            .map((loadedPub) =>
-              loadedPub.price && isPriceFresh(loadedPub.price.observedAt)
-                ? loadedPub.price.czk
-                : undefined,
-            )
-            .filter((czk): czk is number => typeof czk === 'number')
-        : [],
+    () => (filterSheetOpen ? freshPriceCzks(getAllLoadedPubs()) : []),
     [filterSheetOpen],
   );
   const handleShowMap = useCallback(() => setMapOpen(true), []);

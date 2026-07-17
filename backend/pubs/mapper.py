@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from django.conf import settings
 
+from pubs.ladder import Ladder
+
 # Fixed Czech titles, lowest level first (§7.2). Disjoint from the badge names
 # {Prvomapér, Objevitel, Kartograf, Pořádkumil, Pivní detektiv}.
 MAPER_LEVEL_TITLES: tuple[str, ...] = (
@@ -31,6 +33,13 @@ MAPER_LEVEL_TITLES: tuple[str, ...] = (
 )
 
 
+def _ladder() -> Ladder:
+    return Ladder(
+        MAPER_LEVEL_TITLES,
+        getattr(settings, "MAPER_LEVEL_THRESHOLDS", [0, 300, 900, 2500, 6000, 12000, 24000]),
+    )
+
+
 def _level_thresholds() -> list[int]:
     """The min-XP threshold per level, lowest first, defensively normalised.
 
@@ -38,24 +47,7 @@ def _level_thresholds() -> list[int]:
     or out-of-order list so a bad env value can never crash the read path: the
     ladder is clamped to the number of fixed titles and forced non-decreasing.
     """
-    raw = list(
-        getattr(settings, "MAPER_LEVEL_THRESHOLDS", [0, 300, 900, 2500, 6000, 12000, 24000])
-    )
-    if not raw:
-        raw = [0]
-    # Clamp to the fixed title count (extra thresholds have no title to show).
-    raw = raw[: len(MAPER_LEVEL_TITLES)]
-    # Force non-decreasing so the "highest threshold <= xp" scan is well-defined.
-    thresholds: list[int] = []
-    prev = 0
-    for i, value in enumerate(raw):
-        v = max(0, int(value))
-        if i == 0:
-            v = 0  # level 1 always starts at 0 XP
-        v = max(v, prev)
-        thresholds.append(v)
-        prev = v
-    return thresholds
+    return list(_ladder().thresholds)
 
 
 def maper_levels() -> list[dict]:
@@ -65,11 +57,7 @@ def maper_levels() -> list[dict]:
     can map an optimistic XP estimate to a level+title locally for the level-up
     toast; the server-derived level/title are the truth on reconcile.
     """
-    thresholds = _level_thresholds()
-    return [
-        {"level": i + 1, "title": MAPER_LEVEL_TITLES[i], "xp": threshold}
-        for i, threshold in enumerate(thresholds)
-    ]
+    return _ladder().levels()
 
 
 def maper_progress(xp: int) -> dict:
@@ -80,30 +68,7 @@ def maper_progress(xp: int) -> dict:
     ``xp_for_next_level`` is the gap to the next level's threshold, or ``None`` at
     the max level (no further level to reach).
     """
-    xp = max(0, int(xp))
-    thresholds = _level_thresholds()
-
-    level_index = 0
-    for i, threshold in enumerate(thresholds):
-        if xp >= threshold:
-            level_index = i
-        else:
-            break
-
-    current_threshold = thresholds[level_index]
-    xp_into_level = xp - current_threshold
-
-    if level_index + 1 < len(thresholds):
-        xp_for_next_level = thresholds[level_index + 1] - current_threshold
-    else:
-        xp_for_next_level = None  # already at the top level
-
-    return {
-        "level": level_index + 1,
-        "title": MAPER_LEVEL_TITLES[level_index],
-        "xp_into_level": xp_into_level,
-        "xp_for_next_level": xp_for_next_level,
-    }
+    return _ladder().progress(xp)
 
 
 def maper_snapshot(xp: int, counters: dict | None = None) -> dict:
@@ -117,14 +82,7 @@ def maper_snapshot(xp: int, counters: dict | None = None) -> dict:
     The wire key is ``xp`` (NOT ``mapper_xp``) so it is identical to the §7.2
     GET /account/me snapshot — the two endpoints must never disagree.
     """
-    progress = maper_progress(xp)
-    snapshot = {
-        "xp": max(0, int(xp)),
-        "level": progress["level"],
-        "title": progress["title"],
-        "xp_into_level": progress["xp_into_level"],
-        "xp_for_next_level": progress["xp_for_next_level"],
-    }
+    snapshot = _ladder().snapshot(xp)
     if counters:
         snapshot.update(
             {

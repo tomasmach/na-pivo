@@ -105,22 +105,24 @@ def upsert_pub_price_index(
         existing = (
             PubPriceIndex.objects.select_for_update().filter(cache_key=cache_key).first()
         )
+        if (
+            existing is not None
+            and source == PubPriceIndex.Source.DRINK
+            and reference is not None
+            and _is_drink_outlier(existing, reference[0])
+        ):
+            logger.warning(
+                "pub-price-index: rejected drink outlier for cache key %s (%s -> %s CZK)",
+                cache_key,
+                existing.price_czk,
+                reference[0],
+            )
+            return existing
         if existing is not None and _keeps_precedence(
             existing,
             source=source,
             observed_at=observed_at,
         ):
-            if (
-                source == PubPriceIndex.Source.DRINK
-                and reference is not None
-                and _is_drink_outlier(existing, reference[0])
-            ):
-                logger.warning(
-                    "pub-price-index: rejected drink outlier for cache key %s (%s -> %s CZK)",
-                    cache_key,
-                    existing.price_czk,
-                    reference[0],
-                )
             return existing
 
         if reference is None:
@@ -149,19 +151,6 @@ def upsert_pub_price_index(
             return existing
 
         price_czk, volume_ml = reference
-        if (
-            source == PubPriceIndex.Source.DRINK
-            and existing is not None
-            and _is_drink_outlier(existing, price_czk)
-        ):
-            logger.warning(
-                "pub-price-index: rejected drink outlier for cache key %s (%s -> %s CZK)",
-                cache_key,
-                existing.price_czk,
-                price_czk,
-            )
-            return existing
-
         values = {
             "name": name,
             "lat": lat,
