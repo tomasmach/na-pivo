@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Keyboard,
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -92,6 +93,7 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
   const showToast = useToastStore((s) => s.show);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const initialDate = new Date();
+  const scrollRef = useRef<ScrollView>(null);
 
   const [dateText, setDateText] = useState(() => formatHistoricalDate(initialDate));
   const [startTimeText, setStartTimeText] = useState(() => formatHistoricalTime(initialDate));
@@ -105,6 +107,7 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
 
   useEffect(() => {
     if (!visible) return;
+    let frame: number | null = null;
     const timer = setTimeout(() => {
       const date = new Date();
       setDateText(formatHistoricalDate(date));
@@ -116,8 +119,14 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
       setNote('');
       setVisibility('friends');
       setDateError(false);
+      frame = requestAnimationFrame(() => {
+        scrollRef.current?.scrollTo({ y: 0, animated: false });
+      });
     }, 0);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      if (frame !== null) cancelAnimationFrame(frame);
+    };
   }, [visible]);
 
   const cleanPub = pubName.trim();
@@ -287,6 +296,7 @@ export function HistoricalBeerEntrySheet({ visible, onClose, onSaved }: Historic
           </View>
 
           <KeyboardAwareScrollView
+            ref={scrollRef}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.scrollContent}

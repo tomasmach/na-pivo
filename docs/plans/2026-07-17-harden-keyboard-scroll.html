@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Zpevnění automatického scrollu formulářů</title>
+  <style>
+    :root { color-scheme: dark; --bg:#15100d; --panel:#211914; --line:#49372b; --text:#f7ecdc; --muted:#b9a794; --amber:#e7a53a; --green:#62c98a; --red:#e27474; }
+    * { box-sizing: border-box; } html { scroll-behavior:smooth; } body { margin:0; background:var(--bg); color:var(--text); font:15px/1.55 system-ui,-apple-system,sans-serif; }
+    nav { position:sticky; top:0; z-index:2; display:flex; gap:16px; align-items:center; padding:12px 20px; background:#15100df2; border-bottom:1px solid var(--line); overflow:auto; }
+    nav a { color:var(--muted); text-decoration:none; white-space:nowrap; } nav a.active { color:var(--amber); }
+    main { width:min(980px,calc(100% - 32px)); margin:28px auto 80px; } section { scroll-margin-top:70px; margin:34px 0; }
+    h1 { font-size:clamp(30px,5vw,50px); line-height:1.05; margin:8px 0 14px; } h2 { margin:0 0 14px; font-size:24px; } h3 { margin:0 0 8px; }
+    p { max-width:72ch; } .eyebrow,.muted { color:var(--muted); } .badge { display:inline-block; padding:5px 9px; border:1px solid #805f32; border-radius:999px; color:var(--amber); }
+    .panel { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px; } .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:12px; }
+    .progress { height:8px; background:#35271f; border-radius:999px; overflow:hidden; } .progress > i { display:block; width:0; height:100%; background:var(--green); }
+    label.step { display:grid; grid-template-columns:24px 1fr; gap:10px; padding:14px 0; border-top:1px solid var(--line); } label.step:first-of-type { border-top:0; }
+    code,pre { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; } code { color:#ffd58d; } pre { margin:0; padding:14px; background:#100c0a; border-radius:10px; overflow:auto; }
+    del { color:#ff9898; text-decoration:none; } ins { color:#8ee4aa; text-decoration:none; }
+    table { width:100%; border-collapse:collapse; min-width:650px; } th,td { padding:10px; border-bottom:1px solid var(--line); text-align:left; } th { color:var(--muted); }
+    .wide { overflow-x:auto; } .tabs { display:flex; gap:8px; margin-bottom:10px; } button { color:var(--text); background:#30231c; border:1px solid var(--line); border-radius:8px; padding:9px 12px; cursor:pointer; }
+    button.selected { color:#17100c; background:var(--amber); } .tab-panel { display:none; } .tab-panel.selected { display:block; }
+    .detail-only { display:block; } body.overview .detail-only { display:none; } .toggle { margin-left:auto; }
+    svg { width:100%; min-width:640px; height:190px; } .node { fill:#2a201a; stroke:#75583d; stroke-width:2; cursor:pointer; } .node:hover { stroke:var(--amber); } .edge { stroke:#75583d; stroke-width:2; marker-end:url(#arrow); } svg text { fill:var(--text); font:14px system-ui; }
+    a.file { color:#f2bf69; } .risk { color:#ffb3a8; } .ok { color:#9ee4b7; }
+  </style>
+</head>
+<body>
+  <nav><a href="#summary">Shrnutí</a><a href="#flow">Tok</a><a href="#options">Varianta</a><a href="#steps">Kroky</a><a href="#risks">Rizika</a><button class="toggle" id="detailToggle">Přehled / detail</button></nav>
+  <main>
+    <section id="summary">
+      <div class="eyebrow">17. 7. 2026 · <span class="badge">hotovo</span></div>
+      <h1>Zpevnění automatického scrollu formulářů</h1>
+      <p>Opravíme společný mechanismus místo šestnácti lokálních záplat: automatický posun smí spustit jen skutečný <code>TextInput</code>, nesmí mířit za konec obsahu a odložený pokus se musí bezpečně zrušit. Dvě obrazovky s konkrétním rizikem dostanou cílené zjednodušení nebo reset.</p>
+      <div class="panel"><div class="progress"><i id="bar"></i></div><p class="muted" id="progressText">0 / 4 kroků</p></div>
+      <div class="grid" style="margin-top:12px"><div class="panel"><h3>Cíle</h3><p>Žádná prázdná hnědá plocha, žádný focus-trigger z tlačítka, zachovat pohodlné formuláře nad klávesnicí.</p></div><div class="panel"><h3>Ne-cíle</h3><p>Redesign obrazovek, nový state management nebo zásah do navigace.</p></div></div>
+    </section>
+
+    <section id="flow" class="detail-only">
+      <h2>Jeden zdroj, mnoho spotřebitelů</h2>
+      <div class="panel wide">
+        <svg viewBox="0 0 900 190" role="img" aria-label="Tok focus eventu do formulářů">
+          <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8z" fill="#75583d"/></marker></defs>
+          <line class="edge" x1="235" y1="95" x2="365" y2="50"/><line class="edge" x1="235" y1="95" x2="365" y2="140"/><line class="edge" x1="585" y1="50" x2="700" y2="50"/><line class="edge" x1="585" y1="140" x2="700" y2="140"/>
+          <rect class="node" x="25" y="60" width="210" height="70" rx="12" data-target="steps"/><text x="50" y="90">KeyboardAwareScrollView</text><text x="50" y="112" fill="#b9a794">sdílený focus handler</text>
+          <rect class="node" x="365" y="20" width="220" height="60" rx="12" data-target="steps"/><text x="390" y="56">Ověřit TextInput + clamp</text>
+          <rect class="node" x="365" y="110" width="220" height="60" rx="12" data-target="steps"/><text x="390" y="146">Reset dynamických modalů</text>
+          <rect class="node" x="700" y="20" width="170" height="60" rx="12"/><text x="730" y="56">16 použití</text>
+          <rect class="node" x="700" y="110" width="170" height="60" rx="12"/><text x="730" y="146">Regresní testy</text>
+        </svg>
+      </div>
+    </section>
+
+    <section id="options">
+      <h2>Zvolená varianta</h2>
+      <div class="wide"><table><thead><tr><th>Varianta</th><th>Dosah</th><th>Riziko regrese</th><th>Verdikt</th></tr></thead><tbody><tr><td>Sdílené zpevnění</td><td>Všech 16 použití</td><td>Nízké s testy</td><td class="ok">Doporučeno</td></tr><tr><td>Lokální reset všude</td><td>Jen známá místa</td><td>Střední, snadno něco unikne</td><td>Ne</td></tr><tr><td>Výměna knihovny</td><td>Celá appka</td><td>Vysoké</td><td>Ne</td></tr></tbody></table></div>
+      <div class="tabs"><button data-tab="shared" class="selected">Sdílená oprava</button><button data-tab="local">Lokální záplaty</button></div>
+      <div id="shared" class="tab-panel selected panel"><p>Handler přijme jen právě fokusovaný native input, výpočet omezí podle content size a timeout/RAF bude uklizen při změně focusu nebo unmountu.</p></div>
+      <div id="local" class="tab-panel panel"><p>Resetovat každý scroll zvlášť by opravil symptomy, ale nový formulář by chybu mohl znovu zavést.</p></div>
+    </section>
+
+    <section id="steps">
+      <h2>Implementace</h2>
+      <div class="panel">
+        <label class="step"><input type="checkbox" checked><span><strong>1. Regresní test sdílené komponenty</strong><br><span class="muted">Ověřit ignorování běžného focusu, clamp a zrušení odloženého scrollu.</span></span></label>
+        <label class="step"><input type="checkbox" checked><span><strong>2. Zpevnit focus handler</strong><br><a class="file" href="vscode://file/Users/tomasmach/Code/na-pivo/src/components/shared/KeyboardAwareScrollView.tsx:25">src/components/shared/KeyboardAwareScrollView.tsx</a></span></label>
+        <label class="step"><input type="checkbox" checked><span><strong>3. Cílený audit rizikových použití</strong><br><span class="muted">Historický zápis, detail večera a dynamické formulářové modaly.</span></span></label>
+        <label class="step"><input type="checkbox" checked><span><strong>4. Ověřit, commitnout a pushnout</strong><br><span class="muted">Typecheck, relevantní testy, lint, čistý diff a push na dev.</span></span></label>
+      </div>
+      <div class="detail-only panel" style="margin-top:12px"><h3>Náhled jádra změny</h3><pre><del>- onFocus → measure libovolného targetu → scrollTo(animated)</del>
+<ins>+ potvrdit právě fokusovaný TextInput</ins>
+<ins>+ spočítat maxOffset z contentSize a viewportu</ins>
+<ins>+ scrollTo(min(nextOffset, maxOffset))</ins>
+<ins>+ zrušit RAF a timeout při cleanupu</ins></pre></div>
+    </section>
+
+    <section id="risks">
+      <h2>Rizika a rozhodnutí</h2>
+      <div class="grid"><div class="panel"><h3 class="risk">Měření native layoutu</h3><p>iOS a Android se mohou lišit; testujeme výpočet odděleně a zachováme druhý pokus po animaci klávesnice.</p></div><div class="panel"><h3 class="ok">Rozhodnutí</h3><p>Bez nové závislosti. Zachovat stávající UX formulářů a odstranit jen neplatné scroll cíle.</p></div></div>
+    </section>
+  </main>
+  <script>
+    const key='plan:harden-keyboard-scroll'; const checks=[...document.querySelectorAll('.step input')];
+    const savedRaw=localStorage.getItem(key); if(savedRaw){const saved=JSON.parse(savedRaw);checks.forEach((c,i)=>c.checked=!!saved[i]);}
+    function update(){const done=checks.filter(c=>c.checked).length; document.querySelector('#bar').style.width=`${done/checks.length*100}%`; document.querySelector('#progressText').textContent=`${done} / ${checks.length} kroků`; localStorage.setItem(key,JSON.stringify(checks.map(c=>c.checked)));}
+    checks.forEach(c=>c.addEventListener('change',update)); update();
+    document.querySelector('#detailToggle').onclick=()=>document.body.classList.toggle('overview');
+    document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-tab],.tab-panel').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');document.querySelector('#'+b.dataset.tab).classList.add('selected');});
+    document.querySelectorAll('.node[data-target]').forEach(n=>n.onclick=()=>document.querySelector('#'+n.dataset.target).scrollIntoView());
+    const links=[...document.querySelectorAll('nav a')]; const observer=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){links.forEach(a=>a.classList.toggle('active',a.hash==='#'+e.target.id));}}),{rootMargin:'-25% 0px -65%'}); document.querySelectorAll('main section').forEach(s=>observer.observe(s));
+  </script>
+</body>
+</html>

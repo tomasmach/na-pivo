@@ -9,8 +9,8 @@ import React, { useMemo, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -30,7 +30,6 @@ import { enqueueDrinkUpdate, removeQueuedDrinkUpdate } from '@/data/updateDrinks
 import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
 import { ChevronLeftIcon, HouseIcon, MapPinIcon, PencilIcon, TreePineIcon, Trash2Icon, XIcon } from '@/components/shared/IconGlyph';
 import { contextFromPubKey, isContextPubKey } from '@/drinks/drinkTypes';
-import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
   useTallyStore,
@@ -158,16 +157,10 @@ export default function EveningDetailScreen() {
           </Text>
         </View>
       ) : (
-        // Android is edge-to-edge, so `adjustResize` no longer pushes content
-        // above the keyboard — pad it here (iOS pads via keyboard insets below).
-        <KeyboardAvoidingView style={styles.scroll} behavior="padding" enabled={Platform.OS === 'android'}>
-        <KeyboardAwareScrollView
+        <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
-          automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
         >
           {/* Place + summary (an outside evening shows its context icon) */}
           <View style={styles.card}>
@@ -268,8 +261,7 @@ export default function EveningDetailScreen() {
           ) : null}
 
           <View style={{ height: Spacing.lg }} />
-        </KeyboardAwareScrollView>
-        </KeyboardAvoidingView>
+        </ScrollView>
       )}
       <EditDrinkNameModal
         drink={editingDrink}
