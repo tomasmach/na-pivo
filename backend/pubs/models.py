@@ -2590,8 +2590,8 @@ class DrinkLog(models.Model):
     """
     A single drink the user logged via the in-app counter.
 
-    The mobile counter lets a user tally beers plus secondary soft drinks and
-    shots. Every item carries a name and price. Beer rows additionally
+    The mobile counter lets a user tally beers plus secondary soft drinks,
+    shots, and wine. Every item carries a name and price. Beer rows additionally
     community-source the pub's beer menu + prices (merged into
     ``PubCommunityData.beers`` — see ``DrinksView``); other categories remain
     private and never enter the beer catalogue. This row is the per-user,
@@ -2637,6 +2637,7 @@ class DrinkLog(models.Model):
         BEER = "beer", "Beer"
         SOFT_DRINK = "soft_drink", "Soft drink"
         SHOT = "shot", "Shot"
+        WINE = "wine", "Wine"
 
     drink_type = models.CharField(
         max_length=16,

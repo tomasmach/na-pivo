@@ -121,6 +121,7 @@ describe('scanMenuPhoto', () => {
       { drinkType: 'beer', name: 'Plzeň', priceCzk: 62, volumeMl: 500 },
       { drinkType: 'soft_drink', name: 'Kofola', priceCzk: 49, volumeMl: 400 },
       { drinkType: 'shot', name: 'Slivovice', priceCzk: 65, volumeMl: 40 },
+      { drinkType: 'wine', name: 'Ryzlink', priceCzk: 70, volumeMl: 200 },
     ]);
   });
 

@@ -2,7 +2,7 @@ import React from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { BeerIcon, CircleDotIcon, GlassWaterIcon, XIcon } from '@/components/shared/IconGlyph';
+import { BeerIcon, CircleDotIcon, GlassWaterIcon, WineIcon, XIcon } from '@/components/shared/IconGlyph';
 import type { ScannedDrink } from '@/data/menuScanClient';
 import { cs, formatVolume } from '@/i18n/cs';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -21,6 +21,7 @@ interface Props {
 function TypeIcon({ drink }: { drink: ScannedDrink }) {
   if (drink.drinkType === 'beer') return <BeerIcon size={19} color={Colors.amber} />;
   if (drink.drinkType === 'soft_drink') return <GlassWaterIcon size={19} color={Colors.amber} />;
+  if (drink.drinkType === 'wine') return <WineIcon size={19} color={Colors.amber} />;
   return <CircleDotIcon size={19} color={Colors.amber} />;
 }
 

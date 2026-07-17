@@ -1,4 +1,4 @@
-export const DRINK_TYPES = ['beer', 'soft_drink', 'shot'] as const;
+export const DRINK_TYPES = ['beer', 'soft_drink', 'shot', 'wine'] as const;
 
 export type DrinkType = (typeof DRINK_TYPES)[number];
 

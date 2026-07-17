@@ -266,11 +266,34 @@ def test_log_non_beer_stays_private_and_skips_beer_catalog(
 
 
 @pytest.mark.django_db
+def test_log_wine_is_private_and_skips_beer_catalog(client):
+    token = _register(client)
+    item = {"name": "Ryzlink vlašský", "price_czk": 70, "volume_ml": 200}
+    resp = client.post(
+        "/v1/drinks",
+        data=_payload(drink_type="wine", beer=item),
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_201_CREATED, resp.content
+    assert resp.json()["menu_updated"] is False
+    drink = DrinkLog.objects.get()
+    assert drink.drink_type == "wine"
+    assert drink.beer_name == item["name"]
+    assert drink.volume_ml == item["volume_ml"]
+    assert drink.beer_brand is None
+    assert drink.beer_brand_key == ""
+    assert drink.beer_product is None
+    assert PubCommunityData.objects.count() == 0
+
+
+@pytest.mark.django_db
 def test_log_rejects_unknown_type_and_invalid_type_specific_volumes(client):
     token = _register(client)
     unknown = client.post(
         "/v1/drinks",
-        data=_payload(drink_type="wine"),
+        data=_payload(drink_type="cocktail"),
         format="json",
         **_auth(token),
     )

@@ -160,7 +160,7 @@ def _coerce_volume(value) -> int | None:
 
 
 def _coerce_other_volume(value) -> int | None:
-    """Keep realistic soft-drink/shot volumes without beer-menu restrictions."""
+    """Keep realistic soft-drink/shot/wine volumes without beer-menu restrictions."""
     return _coerce_int(value, low=10, high=3000)
 
 

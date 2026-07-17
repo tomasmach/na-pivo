@@ -57,6 +57,20 @@ const VOLUME_MEDIUM = 400;
 const VOLUME_DEFAULT = 500;
 const BEER_VOLUME_PRESETS = [VOLUME_SMALL, VOLUME_MEDIUM, VOLUME_DEFAULT];
 const SHOT_VOLUME_PRESETS = [20, 40, 50];
+// Pub wine pours: 1 dl / 1,5 dl / "dvojka" (the default order at the bar).
+const WINE_VOLUME_PRESETS = [100, 150, 200];
+
+function volumePresets(drinkType: DrinkType): number[] {
+  if (drinkType === 'shot') return SHOT_VOLUME_PRESETS;
+  if (drinkType === 'wine') return WINE_VOLUME_PRESETS;
+  return BEER_VOLUME_PRESETS;
+}
+
+function defaultVolume(drinkType: DrinkType): number {
+  if (drinkType === 'shot') return 40;
+  if (drinkType === 'wine') return 200;
+  return VOLUME_DEFAULT;
+}
 
 /**
  * Sanitize custom volume (10..200 ml for shots, otherwise 10..3000). Beer is
@@ -162,8 +176,8 @@ function BeerFormBody({ mode, beer, initialDrinkType, onCancel, onSubmit, onScan
   );
 
   // Volume: either a preset pill (300/400/500) or a free-typed custom ml ("Jiné").
-  const initialPresets = initialDrinkType === 'shot' ? SHOT_VOLUME_PRESETS : BEER_VOLUME_PRESETS;
-  const seedVolume = beer?.volumeMl ?? (mode === 'add' ? (initialDrinkType === 'shot' ? 40 : VOLUME_DEFAULT) : undefined);
+  const initialPresets = volumePresets(initialDrinkType);
+  const seedVolume = beer?.volumeMl ?? (mode === 'add' ? defaultVolume(initialDrinkType) : undefined);
   const seedIsPreset = typeof seedVolume === 'number' && initialPresets.includes(seedVolume);
   const [selectedPreset, setSelectedPreset] = useState<number | undefined>(seedIsPreset ? seedVolume : undefined);
   const [customActive, setCustomActive] = useState<boolean>(typeof seedVolume === 'number' && !seedIsPreset);
@@ -225,7 +239,7 @@ function BeerFormBody({ mode, beer, initialDrinkType, onCancel, onSubmit, onScan
   const selectDrinkType = (next: DrinkType) => {
     setDrinkType(next);
     setSuggestions([]);
-    setSelectedPreset(next === 'shot' ? 40 : VOLUME_DEFAULT);
+    setSelectedPreset(defaultVolume(next));
     setCustomActive(false);
     setCustomMl('');
   };
@@ -266,7 +280,7 @@ function BeerFormBody({ mode, beer, initialDrinkType, onCancel, onSubmit, onScan
 
           {!nameLocked ? (
             <View style={styles.typeGroup}>
-              {(['beer', 'soft_drink', 'shot'] as const).map((type) => {
+              {(['beer', 'wine', 'soft_drink', 'shot'] as const).map((type) => {
                 const selected = drinkType === type;
                 return (
                   <Pressable
@@ -361,7 +375,7 @@ function BeerFormBody({ mode, beer, initialDrinkType, onCancel, onSubmit, onScan
             {cs.counter.priceLabel}
           </Text>
           <View style={styles.volumeGroup}>
-            {(drinkType === 'shot' ? SHOT_VOLUME_PRESETS : BEER_VOLUME_PRESETS).map((value) => {
+            {volumePresets(drinkType).map((value) => {
               const isSelected = !customActive && selectedPreset === value;
               return (
                 <Pressable

@@ -43,3 +43,8 @@ export function softDrinkCountLabel(count: number): string {
 export function shotCountLabel(count: number): string {
   return `${count} ${czechPlural(count, { one: 'panák', few: 'panáky', many: 'panáků' })}`;
 }
+
+/** "1 víno", "3 vína", "5 vín" — counted glasses, pub-order style. */
+export function wineCountLabel(count: number): string {
+  return `${count} ${czechPlural(count, { one: 'víno', few: 'vína', many: 'vín' })}`;
+}

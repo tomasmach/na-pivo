@@ -369,7 +369,7 @@ describe('totals + per-beer counts', () => {
     expect(sessionCount(current)).toBe(1);
     expect(sessionDrinkCount(current)).toBe(3);
     expect(sessionTotalCzk(current)).toBe(176);
-    expect(sessionDrinkTypeCounts(current)).toEqual({ beer: 1, soft_drink: 1, shot: 1 });
+    expect(sessionDrinkTypeCounts(current)).toEqual({ beer: 1, soft_drink: 1, shot: 1, wine: 0 });
     expect(sessionBeerCounts(current).has('kofola|400')).toBe(false);
   });
 

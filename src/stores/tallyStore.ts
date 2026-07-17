@@ -568,7 +568,7 @@ export function sessionDrinkCount(session: TallySession | null): number {
 }
 
 export function sessionDrinkTypeCounts(session: TallySession | null): Record<DrinkType, number> {
-  const counts: Record<DrinkType, number> = { beer: 0, soft_drink: 0, shot: 0 };
+  const counts: Record<DrinkType, number> = { beer: 0, soft_drink: 0, shot: 0, wine: 0 };
   for (const drink of session?.drinks ?? []) counts[normalizeDrinkType(drink.drinkType)] += 1;
   return counts;
 }

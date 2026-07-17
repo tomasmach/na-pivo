@@ -26,7 +26,7 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { amberGlow, amberGlowStrong } from '@/theme/shadows';
 import { cs, formatVolume } from '@/i18n/cs';
-import { beerCountLabel, shotCountLabel, softDrinkCountLabel } from '@/i18n/plural';
+import { beerCountLabel, shotCountLabel, softDrinkCountLabel, wineCountLabel } from '@/i18n/plural';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { SoftGlow } from '@/components/celebration/SoftGlow';
 import {
@@ -495,6 +495,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   const latestAlcoholText = latestAlcohol ? lastAlcoholAgoText(latestAlcohol.at, nowMs) : null;
   const drinkTypeCounts = useMemo(() => sessionDrinkTypeCounts(isThisPubSession ? current : null), [isThisPubSession, current]);
   const otherDrinkSummary = [
+    drinkTypeCounts.wine > 0 ? wineCountLabel(drinkTypeCounts.wine) : null,
     drinkTypeCounts.soft_drink > 0 ? softDrinkCountLabel(drinkTypeCounts.soft_drink) : null,
     drinkTypeCounts.shot > 0 ? shotCountLabel(drinkTypeCounts.shot) : null,
   ].filter((part): part is string => part !== null).join(' · ');

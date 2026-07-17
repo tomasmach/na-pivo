@@ -57,7 +57,7 @@ _DEFAULT_DAILY_CAP = 2000
 _MAX_OUTPUT_TOKENS = 2048
 
 # A scan can include the beer list plus a small secondary selection of soft
-# drinks and shots. The public beer menu still keeps its existing 12-row cap.
+# drinks, shots, and wine. The public beer menu still keeps its existing 12-row cap.
 MAX_DRINKS = 24
 MAX_BEERS = 12
 
@@ -69,13 +69,14 @@ _APP_TITLE = "Na pivo"
 # menus are Czech/Slovak; the instructions are explicit so we can parse strictly.
 _PROMPT = (
     "Jsi pomocník, který čte fotky nápojových a jídelních lístků z českých a "
-    "slovenských hospod. Z přiložené fotky vytáhni nápoje ve třech kategoriích: "
+    "slovenských hospod. Z přiložené fotky vytáhni nápoje ve čtyřech kategoriích: "
     "beer = točená, lahvová a plechovková piva včetně kategorie nealkoholická piva; "
     "patří sem i radlery a pivní mixy; soft_drink = nealkoholické nápoje jako voda, limonáda, Kofola, "
     "džus, káva nebo čaj (NE nealkoholické pivo); shot = samostatné panáky destilátů "
-    "a likérů. Ignoruj jídlo, víno po skleničce i celé lahve tvrdého alkoholu. "
+    "a likérů; wine = víno po skleničce nebo karafě, včetně rozlévaného sektu. "
+    "Ignoruj jídlo a celé lahve vína i tvrdého alkoholu. "
     "Vrať STRIKTNĚ validní JSON přesně ve tvaru "
-    '{"drinks":[{"drink_type":"beer"|"soft_drink"|"shot",'
+    '{"drinks":[{"drink_type":"beer"|"soft_drink"|"shot"|"wine",'
     '"name":<string>,"price_czk":<integer nebo null>,'
     '"volume_ml":<integer nebo null>}]}. '
     "Cena je celé číslo v korunách, nebo null, když není čitelná. "
@@ -85,6 +86,7 @@ _PROMPT = (
     "jasně spárovaný objem a cenu, včetně běžných 0,4 l sklenic jako 400 ml. "
     "Nehádej nečitelná jména, ceny ani objemy; nejasné hodnoty dej jako null. "
     "U panáků správně převáděj 0,02/0,04/0,05 l na 20/40/50 ml. "
+    "U vína převáděj 0,1/0,15/0,2 l na 100/150/200 ml. "
     "Maximálně 24 nápojů, piva upřednostni. Nevracej nic jiného než tento JSON."
 )
 

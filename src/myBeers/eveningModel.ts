@@ -10,7 +10,7 @@
 
 import { drinkingDayKey, sessionDrinkTypeCounts, type TallySession } from '@/stores/tallyStore';
 import { cs } from '@/i18n/cs';
-import { beerCountLabel, shotCountLabel, softDrinkCountLabel } from '@/i18n/plural';
+import { beerCountLabel, shotCountLabel, softDrinkCountLabel, wineCountLabel } from '@/i18n/plural';
 import { normalizeDrinkType, type DrinkType } from '@/drinks/drinkTypes';
 
 /** A grouped line in an evening's breakdown: one row per beer + volume. */
@@ -58,6 +58,7 @@ export function sessionDrinkSummary(session: TallySession | null): string {
   const counts = sessionDrinkTypeCounts(session);
   const parts = [
     counts.beer > 0 ? beerCountLabel(counts.beer) : null,
+    counts.wine > 0 ? wineCountLabel(counts.wine) : null,
     counts.soft_drink > 0 ? softDrinkCountLabel(counts.soft_drink) : null,
     counts.shot > 0 ? shotCountLabel(counts.shot) : null,
   ].filter((part): part is string => part !== null);

@@ -1589,15 +1589,21 @@ export const cs = {
     priceModalTitle: 'Kolik stojí?',
     addModalTitle: 'Jaké pivo si dáváš?',
     addDrinkModalTitle: (type: DrinkType) =>
-      type === 'beer' ? 'Jaké pivo si dáváš?' : type === 'soft_drink' ? 'Jaké nealko si dáváš?' : 'Jaký panák padl?',
+      ({
+        beer: 'Jaké pivo si dáváš?',
+        wine: 'Jaké víno si dáváš?',
+        soft_drink: 'Jaké nealko si dáváš?',
+        shot: 'Jaký panák padl?',
+      })[type],
     drinkTypeLabel: (type: DrinkType) =>
-      type === 'beer' ? 'Pivo' : type === 'soft_drink' ? 'Nealko' : 'Panák',
+      ({ beer: 'Pivo', wine: 'Víno', soft_drink: 'Nealko', shot: 'Panák' })[type],
     drinkNamePlaceholder: (type: DrinkType) =>
-      type === 'beer'
-        ? 'Název piva, např. Pilsner Urquell 12°'
-        : type === 'soft_drink'
-          ? 'Název, např. Kofola'
-          : 'Název, např. Slivovice',
+      ({
+        beer: 'Název piva, např. Pilsner Urquell 12°',
+        wine: 'Název, např. Ryzlink vlašský',
+        soft_drink: 'Název, např. Kofola',
+        shot: 'Název, např. Slivovice',
+      })[type],
     editModalTitle: 'Uprav cenu',
     beerNamePlaceholder: 'Název piva, např. Pilsner Urquell 12°',
     // Add-form shortcut into the AI menu scan (hands over to the contribute
@@ -1612,7 +1618,7 @@ export const cs = {
     volumeUnitMl: 'ml',
     confirmCount: 'Připsat pivo',
     confirmDrink: (type: DrinkType) =>
-      type === 'beer' ? 'Připsat pivo' : type === 'soft_drink' ? 'Připsat nealko' : 'Připsat panáka',
+      ({ beer: 'Připsat pivo', wine: 'Připsat víno', soft_drink: 'Připsat nealko', shot: 'Připsat panáka' })[type],
     confirmSave: 'Uložit',
     cancel: 'Zrušit',
 

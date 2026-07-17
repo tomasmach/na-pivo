@@ -210,6 +210,7 @@ def test_scan_returns_categorized_drinks_and_legacy_beers(client, monkeypatch):
         {"drink_type": "beer", "name": "Pilsner Urquell", "price_czk": 62, "volume_ml": 500},
         {"drink_type": "soft_drink", "name": "Kofola", "price_czk": 49, "volume_ml": 400},
         {"drink_type": "shot", "name": "Slivovice", "price_czk": 65, "volume_ml": 40},
+        {"drink_type": "wine", "name": "Ryzlink", "price_czk": 70, "volume_ml": 200},
     ]
 
 
