@@ -38,6 +38,7 @@ from __future__ import annotations
 import re
 import uuid
 
+from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import EmailValidator
 from django.db import IntegrityError
@@ -1299,8 +1300,8 @@ class FriendInviteSerializer(serializers.ModelSerializer):
     """Output for GET /v1/friends/invite — my reusable invite code + links.
 
     The link/QR carries only the opaque ``code`` (no PII); ``url`` is the custom
-    scheme deep link that works today and ``web_url`` is the future universal link
-    (safe to ship now — the web landing is a later step).
+    scheme deep link kept for released-client compatibility and ``web_url`` is the
+    canonical public link suitable for sharing and QR scanners.
     """
 
     url = serializers.SerializerMethodField()
@@ -1315,7 +1316,7 @@ class FriendInviteSerializer(serializers.ModelSerializer):
         return f"napivo://parta/pozvanka?code={obj.code}"
 
     def get_web_url(self, obj: FriendInviteCode) -> str:
-        return f"https://napivo.app/p/{obj.code}"
+        return f"{settings.PUBLIC_WEB_ORIGIN}/p/{obj.code}"
 
 
 # ---------------------------------------------------------------------------

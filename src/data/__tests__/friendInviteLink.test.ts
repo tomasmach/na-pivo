@@ -47,7 +47,7 @@ describe('parseInviteCodeFromUrl', () => {
   });
 
   it('reads the /p/<code> path from the web landing link', () => {
-    expect(parseInviteCodeFromUrl('https://napivo.app/p/Ab3xK9_pQ2sT')).toBe('Ab3xK9_pQ2sT');
+    expect(parseInviteCodeFromUrl('https://na-pivo.cz/p/Ab3xK9_pQ2sT')).toBe('Ab3xK9_pQ2sT');
   });
 
   it('url-decodes a query code and trims it', () => {

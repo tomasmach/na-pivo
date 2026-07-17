@@ -145,6 +145,11 @@ USE_TZ = True
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
+# Canonical public website used by shareable links and their Open Graph metadata.
+# Keep this separate from the API origin: production serves both hostnames through
+# the same reverse proxy, while the mobile app talks only to api.na-pivo.cz.
+PUBLIC_WEB_ORIGIN: str = os.environ.get("PUBLIC_WEB_ORIGIN", "https://na-pivo.cz").rstrip("/")
+
 # ---------------------------------------------------------------------------
 # Media files (user-uploaded avatars)
 # ---------------------------------------------------------------------------

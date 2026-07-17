@@ -2,8 +2,8 @@
  * Invite deep-link plumbing (Parta 3.0 §A5).
  *
  * Growth invites arrive as a link the user taps: the custom scheme
- * `napivo://parta/pozvanka?code=<code>` (works app-to-app today) or the future
- * web landing `https://napivo.app/p/<code>`. This module owns the JS half of the
+ * `napivo://parta/pozvanka?code=<code>` (kept for compatibility) or the public
+ * web landing `https://na-pivo.cz/p/<code>`. This module owns the JS half of the
  * claim flow so the UI route can stay thin:
  *   - parse the code out of either URL shape,
  *   - stash it until the (auto-created) anonymous account is ready,
@@ -39,7 +39,7 @@ export function parseInviteCodeFromUrl(url: string | null | undefined): string |
     const decoded = decodeURIComponent(query[1]).trim();
     return decoded.length > 0 ? decoded : null;
   }
-  // 2. web landing path form https://napivo.app/p/<code>.
+  // 2. web landing path form https://na-pivo.cz/p/<code>.
   const path = /\/p\/([A-Za-z0-9_-]+)/.exec(url);
   if (path?.[1]) {
     const code = path[1].trim();

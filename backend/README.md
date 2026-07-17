@@ -174,6 +174,7 @@ All settings are read from environment variables or a `.env` file. See `.env.exa
 | `DEBUG` | `True` | Enable debug mode |
 | `ENABLE_DJANGO_ADMIN` | `True` in dev, `False` in prod | Register `/admin/` routes |
 | `ALLOWED_HOSTS` | `*` in dev, env value in prod | Comma-separated allowed hosts |
+| `PUBLIC_WEB_ORIGIN` | `https://na-pivo.cz` | Canonical origin for invite links and Open Graph metadata |
 | `DATABASE_URL` | SQLite | dj-database-url connection string |
 | `FIRMY_PROXY_URL` | _(unset)_ | Residential proxy for Firmy.cz requests |
 | `FIRMY_USER_AGENT` | mobile Chrome UA | User-Agent header for Firmy.cz |
@@ -247,7 +248,7 @@ The report includes usage totals, top walkers, client error/API-failure breakdow
 
 ## Deploy (Docker Compose)
 
-Production runs as **Docker Compose** from `/opt/na-pivo/backend` on a Hetzner VPS (`api.na-pivo.cz`), behind a shared **Caddy** reverse proxy that terminates TLS. `/opt/na-pivo` is a sparse checkout of the monorepo (only `backend/` is materialised) pinned to a detached `api-*` tag — the backend never deploys from a branch.
+Production runs as **Docker Compose** from `/opt/na-pivo/backend` on a Hetzner VPS (`api.na-pivo.cz`), behind a shared **Caddy** reverse proxy that terminates TLS. The same service handles the small public invite surface on `na-pivo.cz` (`/p/*`, Open Graph assets and iOS association). `/opt/na-pivo` is a sparse checkout of the monorepo (only `backend/` is materialised) pinned to a detached `api-*` tag — the backend never deploys from a branch.
 
 Services:
 
@@ -270,6 +271,15 @@ Keep the Caddy site block aligned with `MENU_SCAN_MAX_REQUEST_BYTES`:
 ```caddy
 request_body {
     max_size 24MB
+}
+```
+
+The public website host must reach the same service so share previews and the
+custom-scheme fallback work. Keep the API upload limit on the API host only:
+
+```caddy
+na-pivo.cz {
+    reverse_proxy napivo-web:8000
 }
 ```
 
@@ -297,7 +307,8 @@ cd backend
 # Configure environment. Never commit .env.
 cp .env.production.example .env
 # Edit .env: SECRET_KEY, DEBUG=False, ENABLE_DJANGO_ADMIN=False,
-#            ALLOWED_HOSTS=api.yourdomain.com,
+#            ALLOWED_HOSTS=api.na-pivo.cz,na-pivo.cz,
+#            PUBLIC_WEB_ORIGIN=https://na-pivo.cz,
 #            DATABASE_URL=postgres://napivo:strong-pass@db:5432/napivo,
 #            FIRMY_PROXY_URL=http://user:pass@proxy:port when needed
 
