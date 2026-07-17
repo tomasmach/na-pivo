@@ -153,7 +153,7 @@ export function AddFriendTools({
   const shareInvite = useCallback(async () => {
     const invite = await fetchFriendInviteCode();
     if (!mountedRef.current) return;
-    const link = invite?.url || invite?.webUrl || '';
+    const link = invite?.webUrl || invite?.url || '';
     if (!link) {
       showToast(cs.friends.codeOffline, { icon: <LinkIcon size={20} color={Colors.amber} /> });
       return;

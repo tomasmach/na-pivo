@@ -2,7 +2,7 @@
  * Invite claim screen (Parta 3.0 §A5).
  *
  * Reached via the invite deep link (custom scheme `napivo://parta/pozvanka?code=`
- * today; the future web landing `napivo.app/p/<code>` funnels here too). It
+ * today; the public web landing `na-pivo.cz/p/<code>` funnels here too). It
  * resolves the opaque code to its inviter (name/avatar only — no PII in the link)
  * and offers a single "Přidat do party" action that sends the friend request.
  *

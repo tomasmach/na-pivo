@@ -93,7 +93,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       icon: './assets/images/icon.png',
       supportsTablet: false,
       usesAppleSignIn: true,
-      associatedDomains: ['applinks:napivo.app'],
+      associatedDomains: ['applinks:na-pivo.cz'],
       infoPlist: {
         CFBundleDisplayName: 'Na pivo',
         NSLocationWhenInUseUsageDescription: LOCATION_REASON,
@@ -125,7 +125,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
           data: [
             {
               scheme: 'https',
-              host: 'napivo.app',
+              host: 'na-pivo.cz',
               pathPrefix: '/p',
             },
           ],

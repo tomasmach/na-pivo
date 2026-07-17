@@ -1052,7 +1052,7 @@ def test_invite_code_created_and_reused(client):
     body = first.json()
     assert body["code"]
     assert body["url"] == f"napivo://parta/pozvanka?code={body['code']}"
-    assert body["web_url"] == f"https://napivo.app/p/{body['code']}"
+    assert body["web_url"] == f"https://na-pivo.cz/p/{body['code']}"
     assert body["expires_at"]
 
     second = client.get("/v1/friends/invite", **_auth(token))

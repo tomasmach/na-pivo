@@ -169,6 +169,13 @@ export interface FriendInvite {
   expiresAt: string;
 }
 
+const FRIEND_INVITE_WEB_ORIGIN = 'https://na-pivo.cz';
+
+/** Canonical public invite URL. Safe for messaging apps, browsers and QR codes. */
+export function buildFriendInviteWebUrl(code: string): string {
+  return `${FRIEND_INVITE_WEB_ORIGIN}/p/${encodeURIComponent(code)}`;
+}
+
 /** Result of resolving an invite code to its inviter (Parta 3.0 §A2). */
 export interface InviteResolveResult {
   valid: boolean;
@@ -779,7 +786,10 @@ export async function fetchFriendInviteCode(signal?: AbortSignal): Promise<Frien
   return {
     code: raw.code,
     url: raw.url ?? '',
-    webUrl: raw.web_url ?? '',
+    // Older deployed backends returned the unused napivo.app hostname. Build
+    // the canonical URL locally so the mobile fix does not depend on deploy
+    // ordering; the additive API response remains backwards-compatible.
+    webUrl: buildFriendInviteWebUrl(raw.code),
     expiresAt: raw.expires_at ?? '',
   };
 }

@@ -3,7 +3,7 @@
  *
  * A clone of the FriendSettingsSheet scaffold (transparent fade Modal +
  * absolute-fill backdrop + drag handle + absolute close + SLIDE_SPRING slide-up
- * + inside-Modal Toast). It shows my identity, a scannable QR of my invite deep
+ * + inside-Modal Toast). It shows my identity, a scannable QR of my public invite
  * link (readable in a dark pub on a foam card), and share / copy actions so the
  * party can be grown at the table in under a minute.
  *
@@ -114,7 +114,7 @@ function CodeSheet({ onClose }: CodeSheetProps): React.ReactElement {
     transform: [{ translateY: (1 - progress.value) * 48 }],
   }));
 
-  const link = invite?.url || invite?.webUrl || '';
+  const link = invite?.webUrl || invite?.url || '';
 
   const handleShare = useCallback(() => {
     if (!link) return;
