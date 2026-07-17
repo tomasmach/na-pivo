@@ -400,6 +400,9 @@ export type CounterPlace =
 interface ActiveCounterProps {
   place: CounterPlace;
   onChangePlace: () => void;
+  /** The user renamed the active pub from the mapping hub — the owner of the
+   *  selected Pub updates it so the header doesn't keep the old name. */
+  onPubRenamed: (newName: string) => void;
   /** Hosted inside the merged "Pivo" tab: the parent owns the top safe-area
    *  inset and the segment header, so the counter drops its own top padding. */
   embedded: boolean;
@@ -480,7 +483,7 @@ export function shouldWarnRapidDrink(lastDrinkAt: string | undefined, nowMs: num
   return elapsedMs >= 0 && elapsedMs < MIN_PLAUSIBLE_BEER_GAP_MS;
 }
 
-function ActiveCounter({ place, onChangePlace, embedded }: ActiveCounterProps) {
+function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveCounterProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
@@ -1220,7 +1223,12 @@ function ActiveCounter({ place, onChangePlace, embedded }: ActiveCounterProps) {
             Pub only — there is nothing to map about a living room. */}
         {pub ? (
           <View style={styles.mapPubTop}>
-            <MapPubEntry pubKey={cell} pubName={pub.name} info={pubInfoFromPub(pub)} />
+            <MapPubEntry
+              pubKey={cell}
+              pubName={pub.name}
+              info={pubInfoFromPub(pub)}
+              onRenamed={onPubRenamed}
+            />
           </View>
         ) : null}
 
@@ -1643,7 +1651,18 @@ export default function CounterScreen({ embedded = false }: { embedded?: boolean
 
   return (
     <>
-      <ActiveCounter place={place} onChangePlace={() => setPickerOpen(true)} embedded={embedded} />
+      <ActiveCounter
+        place={place}
+        onChangePlace={() => setPickerOpen(true)}
+        onPubRenamed={(name) => {
+          if (!activePub) return;
+          // Re-pin the renamed Pub so the header updates now, and keep the live
+          // evening's display name in step with it.
+          selectPub({ ...activePub, name });
+          useTallyStore.getState().renameCurrentPub(geohash8(activePub.lat, activePub.lng), name);
+        }}
+        embedded={embedded}
+      />
       {picker}
     </>
   );

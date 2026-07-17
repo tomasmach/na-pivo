@@ -21,9 +21,11 @@ interface MapPubEntryProps {
   /** Pub-info context — when set, the entry covers all three info groups
    *  (otevíračka + piva + vybavení) instead of amenities only. */
   info?: PubInfoContext;
+  /** Forwarded to the sheet so the host screen learns about a rename. */
+  onRenamed?: (newName: string) => void;
 }
 
-export function MapPubEntry({ pubKey, pubName, info }: MapPubEntryProps) {
+export function MapPubEntry({ pubKey, pubName, info, onRenamed }: MapPubEntryProps) {
   const [open, setOpen] = useState(false);
   const handleOpen = useCallback(() => setOpen(true), []);
   const handleClose = useCallback(() => setOpen(false), []);
@@ -31,7 +33,14 @@ export function MapPubEntry({ pubKey, pubName, info }: MapPubEntryProps) {
   return (
     <>
       <MapPubButton pubKey={pubKey} pubName={pubName} onPress={handleOpen} info={info} />
-      <MapPubSheet visible={open} pubKey={pubKey} pubName={pubName} info={info} onClose={handleClose} />
+      <MapPubSheet
+        visible={open}
+        pubKey={pubKey}
+        pubName={pubName}
+        info={info}
+        onClose={handleClose}
+        onRenamed={onRenamed}
+      />
     </>
   );
 }

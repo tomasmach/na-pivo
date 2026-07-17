@@ -32,7 +32,6 @@ import {
   StyleSheet,
   TextInput,
   KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -55,6 +54,7 @@ import {
   SproutIcon,
   ClockIcon,
   BeerIcon,
+  BeerOffIcon,
   ChevronRightIcon,
   PencilIcon,
 } from '@/components/shared/IconGlyph';
@@ -79,6 +79,7 @@ import { parseOsmOpeningHoursToWeeklyHours } from '@/data/communityHours';
 import { renameLocalPub, clearPubsSnapshot, type Pub } from '@/data/pubs';
 import { buildPubNameCorrectionEntry } from '@/data/pubNameCorrectionsClient';
 import { enqueuePubNameCorrection } from '@/data/pubNameCorrectionsQueue';
+import type { PubReportReason } from '@/data/pubReportsClient';
 import {
   usePubAmenitiesStore,
   selectPubVotes,
@@ -97,6 +98,7 @@ import {
 import { fetchPubAmenities } from '@/data/pubAmenitiesClient';
 import { getBackendEndpoint } from '@/data/backendConfig';
 import { useToastStore } from '@/stores/toastStore';
+import { usePubStore } from '@/stores/pubStore';
 import { useAccountStore } from '@/stores/accountStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { fireLightImpactHaptic } from '@/utils/haptics';
@@ -121,6 +123,12 @@ interface MapPubSheetProps {
   /** When set, the sheet also shows the otevíračka + piva fact rows and the ring
    *  spans all three info groups. Without it the sheet is amenities-only. */
   info?: PubInfoContext;
+  /** Fired after a successful rename so the host can update its own Pub state
+   *  (the sheet's optimistic override dies with the sheet). */
+  onRenamed?: (newName: string) => void;
+  /** When set, the sheet also offers the compass report actions ("Už nefunguje" /
+   *  "Nečepují pivo"); the host owns hiding the pub + queueing the report. */
+  onReport?: (reason: PubReportReason) => void;
 }
 
 function haptic() {
@@ -133,6 +141,8 @@ export function MapPubSheet({
   pubName,
   onClose,
   info,
+  onRenamed,
+  onReport,
 }: MapPubSheetProps) {
   const insets = useSafeAreaInsets();
   const reduceMotion = useReduceMotion();
@@ -501,10 +511,16 @@ export function MapPubSheet({
     setRenameSubmitting(true);
     // A pub with a known external id renames locally too (in-memory index +
     // snapshot clear, so the new name survives a reload); otherwise only the
-    // public correction queues.
-    if (info.externalId) renameLocalPub(info.externalId, trimmed);
+    // public correction queues. The catalog bump makes index readers (compass
+    // selection, beer map) re-read the renamed entry — the same propagation the
+    // compass rename flow uses.
+    if (info.externalId) {
+      renameLocalPub(info.externalId, trimmed);
+      usePubStore.getState().bumpCatalogRevision();
+    }
     void clearPubsSnapshot();
     setRenamedName(trimmed);
+    onRenamed?.(trimmed);
 
     const pubForCorrection: Pub = {
       id: info.externalId ?? '',
@@ -520,19 +536,18 @@ export function MapPubSheet({
         showToast(synced ? cs.compass.renameSavedToast : cs.compass.renameQueuedToast);
       })
       .finally(() => setRenameSubmitting(false));
-  }, [info, renameSubmitting, renameDraft, displayName, showToast]);
+  }, [info, renameSubmitting, renameDraft, displayName, showToast, onRenamed]);
 
   const renameTrimmed = renameDraft.trim();
   const canRename = renameTrimmed.length > 0 && renameTrimmed !== displayName.trim() && !renameSubmitting;
 
   return (
-    <>
     <Modal
       visible={showSheet}
       transparent
       animationType="fade"
       statusBarTranslucent
-      onRequestClose={onClose}
+      onRequestClose={renameOpen ? handleRenameCancel : onClose}
     >
       <View style={styles.backdrop}>
         {/* Backdrop sits BEHIND the card as an absolute-fill sibling, so tapping
@@ -645,11 +660,94 @@ export function MapPubSheet({
                 </View>
               ))}
 
+              {onReport && (
+                <View>
+                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {cs.compass.reportTitle}
+                  </Text>
+                  <ReportRow
+                    icon={<XIcon size={24} color={Colors.mutedText} />}
+                    label={cs.compass.reportClosed}
+                    onPress={() => onReport('closed')}
+                  />
+                  <ReportRow
+                    icon={<BeerOffIcon size={24} color={Colors.amberLight} />}
+                    label={cs.compass.reportNotPub}
+                    onPress={() => onReport('not_pub')}
+                  />
+                </View>
+              )}
+
               <Text style={styles.footerHint} maxFontSizeMultiplier={FontScaleCap.body}>
                 {cs.mapPub.footerHint}
               </Text>
             </KeyboardAwareScrollView>
           </Animated.View>
+
+        {/* Rename editor as an in-modal overlay, NOT a second sibling <Modal>:
+            iOS can only present one modal view controller at a time, so a second
+            Modal opened while this one is up never appears (the tap on "Název
+            hospody" looked like a no-op). */}
+        {renameOpen && (
+          <KeyboardAvoidingView
+            behavior="padding"
+            style={styles.renameOverlay}
+          >
+            <Pressable style={styles.renameScrim} onPress={handleRenameCancel} />
+            <View style={styles.renamePanel}>
+              <View style={styles.renameIconWell}>
+                <PencilIcon size={19} color={Colors.amber} />
+              </View>
+              <Text style={styles.renameTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {cs.compass.renameTitle}
+              </Text>
+              <Text style={styles.renameBody} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.compass.renameBody(displayName)}
+              </Text>
+              <TextInput
+                value={renameDraft}
+                onChangeText={setRenameDraft}
+                style={styles.renameInput}
+                placeholder={cs.compass.renamePlaceholder}
+                placeholderTextColor={Colors.mutedText}
+                maxLength={200}
+                autoFocus
+                autoCorrect={false}
+                returnKeyType="done"
+                onSubmitEditing={() => {
+                  if (canRename) handleRenameSubmit();
+                }}
+              />
+              <View style={styles.renameActions}>
+                <Pressable
+                  onPress={handleRenameCancel}
+                  style={({ pressed }) => [styles.renameSecondaryButton, pressed && { opacity: 0.72 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={cs.common.cancel}
+                >
+                  <Text style={styles.renameSecondaryText} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {cs.common.cancel}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleRenameSubmit}
+                  disabled={!canRename}
+                  style={({ pressed }) => [
+                    styles.renamePrimaryButton,
+                    !canRename && styles.renamePrimaryDisabled,
+                    pressed && canRename && { opacity: 0.86, transform: [{ scale: 0.98 }] },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={cs.compass.renameSave}
+                >
+                  <Text style={styles.renamePrimaryText} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {renameSubmitting ? cs.compass.renameSaving : cs.compass.renameSave}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+            )}
 
         {/* Toast host INSIDE the modal. The root <Toast> in _layout sits below
             this Modal's native window on iOS, so XP/level-up toasts fired from
@@ -659,74 +757,6 @@ export function MapPubSheet({
         <Toast />
       </View>
     </Modal>
-
-    <Modal
-      visible={renameOpen}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={handleRenameCancel}
-    >
-      <KeyboardAvoidingView
-        behavior="padding"
-        style={styles.renameOverlay}
-      >
-        <Pressable style={styles.renameScrim} onPress={handleRenameCancel} />
-        <View style={styles.renamePanel}>
-          <View style={styles.renameIconWell}>
-            <PencilIcon size={19} color={Colors.amber} />
-          </View>
-          <Text style={styles.renameTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.compass.renameTitle}
-          </Text>
-          <Text style={styles.renameBody} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.compass.renameBody(displayName)}
-          </Text>
-          <TextInput
-            value={renameDraft}
-            onChangeText={setRenameDraft}
-            style={styles.renameInput}
-            placeholder={cs.compass.renamePlaceholder}
-            placeholderTextColor={Colors.mutedText}
-            maxLength={200}
-            autoFocus
-            autoCorrect={false}
-            returnKeyType="done"
-            onSubmitEditing={() => {
-              if (canRename) handleRenameSubmit();
-            }}
-          />
-          <View style={styles.renameActions}>
-            <Pressable
-              onPress={handleRenameCancel}
-              style={({ pressed }) => [styles.renameSecondaryButton, pressed && { opacity: 0.72 }]}
-              accessibilityRole="button"
-              accessibilityLabel={cs.common.cancel}
-            >
-              <Text style={styles.renameSecondaryText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.common.cancel}
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={handleRenameSubmit}
-              disabled={!canRename}
-              style={({ pressed }) => [
-                styles.renamePrimaryButton,
-                !canRename && styles.renamePrimaryDisabled,
-                pressed && canRename && { opacity: 0.86, transform: [{ scale: 0.98 }] },
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel={cs.compass.renameSave}
-            >
-              <Text style={styles.renamePrimaryText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {renameSubmitting ? cs.compass.renameSaving : cs.compass.renameSave}
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
-    </>
   );
 }
 
@@ -923,6 +953,36 @@ function InfoFactRow({
         </Text>
       </View>
       <ChevronRightIcon size={20} color={Colors.mutedText} />
+    </Pressable>
+  );
+}
+
+// ─── Report row (map detail only) ────────────────────────────────────────────
+
+/** One report action ("Už nefunguje" / "Nečepují pivo"). A plain action row —
+ *  no chevron, it doesn't navigate; the host hides the pub + queues the report. */
+function ReportRow({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.row, pressed && { opacity: 0.7 }]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      {icon}
+      <View style={styles.rowTextWrap}>
+        <Text style={styles.rowLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+          {label}
+        </Text>
+      </View>
     </Pressable>
   );
 }
@@ -1126,9 +1186,9 @@ const styles = StyleSheet.create({
     color: Colors.mutedText,
   },
 
-  // ── Rename modal (mirrors the compass ReportPubModal rename) ──
+  // ── Rename overlay (mirrors the compass ReportPubModal rename) ──
   renameOverlay: {
-    flex: 1,
+    ...StyleSheet.absoluteFill,
     justifyContent: 'flex-end',
   },
   renameScrim: {

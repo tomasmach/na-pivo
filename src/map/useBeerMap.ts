@@ -10,6 +10,7 @@ import {
   openSystemSettings,
   type PermissionState,
 } from '@/compass/permissions';
+import { geohash8 } from '@/data/geohash';
 import { fetchFriendsLive, type FriendPubActivity } from '@/data/friendsClient';
 import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
 import {
@@ -105,6 +106,8 @@ export function useBeerMap(filters: PubSearchFilters): BeerMapData {
   const current = useTallyStore((state) => state.current);
   const history = useTallyStore((state) => state.history);
   const catalogRevision = usePubStore((state) => state.catalogRevision);
+  const reportedPubIds = usePubStore((state) => state.reportedPubIds);
+  const reportedCacheKeys = usePubStore((state) => state.reportedCacheKeys);
   const accountId = useAccountStore((state) => state.session?.accountId ?? null);
 
   useFocusEffect(
@@ -278,8 +281,16 @@ export function useBeerMap(filters: PubSearchFilters): BeerMapData {
   const loadRegion = useCallback((region: Region) => setRequestedRegion(region), []);
   const refresh = useCallback(() => setRefreshNonce((value) => value + 1), []);
   // Hide the previous catalogue while a different filter request is pending;
-  // unfiltered pubs must never masquerade as confirmed matches.
-  const visiblePubs = loadedFiltersKey === filtersKey ? pubs : [];
+  // unfiltered pubs must never masquerade as confirmed matches. Locally
+  // reported pubs disappear immediately (and stay hidden offline) by both
+  // signals — id and geohash-8 cell — matching the compass exclusions.
+  const visiblePubs = useMemo(() => {
+    const loaded = loadedFiltersKey === filtersKey ? pubs : [];
+    if (reportedPubIds.length === 0 && reportedCacheKeys.length === 0) return loaded;
+    const ids = new Set(reportedPubIds);
+    const cells = new Set(reportedCacheKeys);
+    return loaded.filter((pub) => !ids.has(pub.id) && !cells.has(geohash8(pub.lat, pub.lng)));
+  }, [loadedFiltersKey, filtersKey, pubs, reportedPubIds, reportedCacheKeys]);
 
   return {
     pubs: visiblePubs,

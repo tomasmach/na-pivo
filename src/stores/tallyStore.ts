@@ -162,6 +162,9 @@ interface TallyState {
   updateDrinkNameInSession: (startedAt: string, drinkId: string, beerName: string) => boolean;
   /** Mark a drink as no longer queued, so the UI does not offer a local-only undo. */
   markDrinkSynced: (id: string) => void;
+  /** The pub was renamed from the mapping hub — keep the live session's display
+   *  name in step. Archived evenings keep the name they were logged under. */
+  renameCurrentPub: (pubKey: string, pubName: string) => void;
   /**
    * Close the current session explicitly, archiving it into history with the
    * given reason ('manual' for the user's "Dopito", 'timeout' for the idle
@@ -506,6 +509,14 @@ export const useTallyStore = create<TallyState>()(
           });
           if (!changed) return state;
           return { current: { ...state.current, drinks } };
+        }),
+
+      renameCurrentPub: (pubKey, pubName) =>
+        set((state) => {
+          const trimmed = pubName.trim();
+          if (!state.current || state.current.pubKey !== pubKey || !trimmed) return state;
+          if (state.current.pubName === trimmed) return state;
+          return { current: { ...state.current, pubName: trimmed } };
         }),
 
       archiveCurrent: (reason) =>

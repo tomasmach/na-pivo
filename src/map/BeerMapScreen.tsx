@@ -40,6 +40,9 @@ import {
 import { ExploreSwitch } from '@/components/shared/ExploreSwitch';
 import { PubCardActions } from '@/components/shared/PubCardActions';
 import type { Pub } from '@/data/pubs';
+import { enqueuePubReport } from '@/data/pubReportQueue';
+import type { PubReportReason } from '@/data/pubReportsClient';
+import { usePubStore } from '@/stores/pubStore';
 import { fetchPubHours, type PubHoursResult } from '@/data/hoursClient';
 import {
   activePubSearchFilterCount,
@@ -433,6 +436,19 @@ export default function BeerMapScreen({
     rememberedSelection = null;
     setSelection(null);
   }, []);
+
+  // Report from the map detail — same semantics as the compass: hide locally by
+  // both signals (id + geohash cell, via the persisted pubStore arrays that
+  // useBeerMap filters against), then queue the durable report.
+  const addReportedPub = usePubStore((s) => s.addReportedPub);
+  const reportSelectedPub = (reason: PubReportReason) => {
+    if (!selectedPub) return;
+    const pub = selectedDetailPub ?? selectedPub.pub;
+    addReportedPub(pub.id, selectedPub.key);
+    setDetailOpen(false);
+    clearSelection();
+    void enqueuePubReport(pub, reason);
+  };
 
   const handleMapPress = useCallback(
     (event: MapPressEvent) => {
@@ -988,6 +1004,7 @@ export default function BeerMapScreen({
           pubName={selectedPub.pub.name}
           info={pubInfoFromPub(selectedDetailPub ?? selectedPub.pub)}
           onClose={() => setDetailOpen(false)}
+          onReport={reportSelectedPub}
         />
       ) : null}
     </View>
