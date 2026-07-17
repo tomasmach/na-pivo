@@ -40,7 +40,15 @@ def _auth(token: str) -> dict[str, str]:
     return {"HTTP_AUTHORIZATION": f"Bearer {token}"}
 
 
-def _drink(account: Account, *, cache_key: str = "u2fkbn1z", drank_at=None, name: str = "Plzeň") -> DrinkLog:
+def _drink(
+    account: Account,
+    *,
+    cache_key: str = "u2fkbn1z",
+    drank_at=None,
+    name: str = "Plzeň",
+    is_suspect: bool = False,
+    suspect_reason: str = "",
+) -> DrinkLog:
     return DrinkLog.objects.create(
         account=account,
         client_id=uuid.uuid4(),
@@ -53,6 +61,8 @@ def _drink(account: Account, *, cache_key: str = "u2fkbn1z", drank_at=None, name
         beer_name=name,
         price_czk=65,
         drank_at=drank_at or timezone.now(),
+        is_suspect=is_suspect,
+        suspect_reason=suspect_reason,
     )
 
 
@@ -161,6 +171,43 @@ def test_pubs_leaderboard_counts_distinct_visit_and_drink_union(client):
         ("anna", 2),
         ("janek", 1),
     ]
+
+
+@pytest.mark.django_db
+def test_leaderboards_exclude_suspect_drinks_and_excluded_accounts(client):
+    token, me = _register(client, "janek")
+    _token_visible, visible = _register(client, "anna")
+    _drink(visible, cache_key="clean")
+    _drink(visible, cache_key="suspect", is_suspect=True, suspect_reason="burst")
+    _visit(visible, cache_key="visited")
+    _drink(me, cache_key="mine")
+    _visit(me, cache_key="mine-visit")
+    me.excluded_from_leaderboards = True
+    me.save(update_fields=["excluded_from_leaderboards"])
+
+    beers = client.get("/v1/leaderboards?category=beers&period=week", **_auth(token))
+    assert beers.status_code == status.HTTP_200_OK
+    assert [(row["account"]["nickname"], row["score"]) for row in beers.json()["entries"]] == [
+        ("anna", 1)
+    ]
+    assert beers.json()["me"] == {
+        "rank": None,
+        "score": 0,
+        "listed": False,
+        "eligible": False,
+    }
+
+    pubs = client.get("/v1/leaderboards?category=pubs&period=week", **_auth(token))
+    assert pubs.status_code == status.HTTP_200_OK
+    assert [(row["account"]["nickname"], row["score"]) for row in pubs.json()["entries"]] == [
+        ("anna", 2)
+    ]
+    assert pubs.json()["me"] == {
+        "rank": None,
+        "score": 0,
+        "listed": False,
+        "eligible": False,
+    }
 
 
 @pytest.mark.django_db

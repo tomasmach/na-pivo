@@ -16,8 +16,10 @@
  * null), submitDrink returns a THREE-state result the queue uses to decide
  * whether to drop or keep a payload:
  *   - 'ok'              → 2xx: the drink reached the backend, drop from queue.
- *   - 'permanent-error' → validation error: retrying this byte-stable payload
- *                          will never succeed, drop from queue.
+ *   - 'permanent-error' → validation error or the server's daily anti-abuse cap
+ *                          (422 code "drink_limited", which also toasts the
+ *                          user): retrying this byte-stable payload will never
+ *                          succeed, drop from queue.
  *   - 'retry'           → network error / timeout / 5xx / 429 / dormant: keep in
  *                          queue and retry on the next flush.
  */
@@ -28,6 +30,8 @@ import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
 import type { CommunityBeer } from './communityHours';
 import { trackClientEvent } from './telemetryClient';
 import type { DrinkType } from '@/drinks/drinkTypes';
+import { useToastStore } from '@/stores/toastStore';
+import { cs } from '@/i18n/cs';
 
 export type { CommunityBeer };
 
@@ -71,6 +75,33 @@ export interface DrinkEntry {
 export type SubmitDrinkResult = 'ok' | 'permanent-error' | 'retry';
 
 const REQUEST_TIMEOUT_MS = 8000;
+
+/** Minimum gap between "drink limited" toasts, so a queue flush that trips the
+ *  server's daily anti-abuse cap on several drinks in a row nags only once. */
+const DRINK_LIMITED_TOAST_GAP_MS = 60_000;
+let lastDrinkLimitedToastAt = 0;
+
+/**
+ * True when a 422 response is the server's daily anti-abuse cap
+ * (`{"code": "drink_limited"}`) rather than a validation error. Body parsing is
+ * best-effort — any malformed body reads as a plain validation 422.
+ */
+async function isDrinkLimitedResponse(resp: Response): Promise<boolean> {
+  try {
+    const body = (await resp.json()) as { code?: unknown };
+    return body?.code === 'drink_limited';
+  } catch {
+    return false;
+  }
+}
+
+/** Tell the user once that a drink stays local-only; the local diary keeps it. */
+function showDrinkLimitedToast(): void {
+  const now = Date.now();
+  if (now - lastDrinkLimitedToastAt < DRINK_LIMITED_TOAST_GAP_MS) return;
+  lastDrinkLimitedToastAt = now;
+  useToastStore.getState().show(cs.counter.drinkLimitedToast);
+}
 
 type DrinkSyncOperation = 'submit_drink' | 'delete_drink' | 'update_drink';
 
@@ -175,6 +206,19 @@ export async function submitDrink(
     if (resp.ok) {
       trackDrinkSynced('submit_drink');
       return 'ok';
+    }
+    if (resp.status === 422 && (await isDrinkLimitedResponse(resp))) {
+      // Server anti-abuse daily cap: drop from the queue like any permanent
+      // error, but tell the user their entry stays local-only instead of
+      // letting it vanish silently.
+      trackDrinkSyncFailed('submit_drink', {
+        status: resp.status,
+        reason: 'drink_limited',
+        result: 'permanent-error',
+        retryable: false,
+      });
+      showDrinkLimitedToast();
+      return 'permanent-error';
     }
     const result = await classifyQueueHttpFailure(resp.status, session);
     trackDrinkSyncFailed('submit_drink', {

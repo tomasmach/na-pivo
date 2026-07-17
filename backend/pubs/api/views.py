@@ -144,6 +144,7 @@ from pubs.user_added_pub_geocoding import resolve_user_added_pub_location
 
 from .authentication import AccountTokenAuthentication
 from .cache import get_cached_pub_details, get_or_enrich
+from .drink_flags import evaluate_drink_flags
 from .profile_helpers import (
     derive_account_achievements,
     derive_account_profile_stats,
@@ -1524,38 +1525,16 @@ class DrinksView(APIView):
 
         try:
             with transaction.atomic():
-                drink, created = DrinkLog.objects.get_or_create(
-                    account=request.user,
+                # Serialize drink writes for this account. Besides making the
+                # daily cap deterministic on Postgres, this keeps the duplicate
+                # check strictly before flag evaluation as required by offline
+                # idempotency retries.
+                account = Account.objects.select_for_update().get(pk=request.user.pk)
+                drink = DrinkLog.objects.filter(
+                    account=account,
                     client_id=data["client_id"],
-                    defaults={
-                        "cache_key": cache_key,
-                        "name": data["name"],
-                        "lat": data["lat"],
-                        "lng": data["lng"],
-                        "city": data.get("city") or "",
-                        "external_id": data.get("external_id") or "",
-                        "drink_type": drink_type,
-                        "beer_name": beer["name"],
-                        "beer_brand": brand_match.brand if brand_match else None,
-                        "beer_brand_key": brand_match.brand.key if brand_match else "",
-                        "beer_brand_name": brand_match.brand.name if brand_match else "",
-                        "beer_product": brand_match.product if brand_match else None,
-                        "beer_product_key": (
-                            brand_match.product.key if brand_match and brand_match.product else ""
-                        ),
-                        "beer_product_name": (
-                            brand_match.product.name if brand_match and brand_match.product else ""
-                        ),
-                        "price_czk": beer["price_czk"],
-                        "volume_ml": beer.get("volume_ml"),
-                        "drank_at": drank_at,
-                    },
-                )
-
-                # Idempotent replay: the drink already exists, so do NOT repeat the
-                # menu merge (which is not itself idempotent — a price could have
-                # changed since).
-                if not created:
+                ).first()
+                if drink is not None:
                     return Response(
                         {
                             "accepted": True,
@@ -1566,13 +1545,61 @@ class DrinksView(APIView):
                         status=status.HTTP_200_OK,
                     )
 
+                flags = evaluate_drink_flags(account, drank_at, dj_timezone.now())
+                if flags.hard_limited:
+                    logger.warning(
+                        "daily drink limit reached",
+                        extra={
+                            "event": "drink_limited",
+                            "observability": {
+                                "account_id": account.id,
+                                "drink_count": flags.daily_count,
+                            },
+                        },
+                    )
+                    return Response(
+                        {
+                            "code": "drink_limited",
+                            "detail": "daily drink limit reached",
+                        },
+                        status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    )
+
+                drink = DrinkLog.objects.create(
+                    account=account,
+                    client_id=data["client_id"],
+                    cache_key=cache_key,
+                    name=data["name"],
+                    lat=data["lat"],
+                    lng=data["lng"],
+                    city=data.get("city") or "",
+                    external_id=data.get("external_id") or "",
+                    drink_type=drink_type,
+                    beer_name=beer["name"],
+                    beer_brand=brand_match.brand if brand_match else None,
+                    beer_brand_key=brand_match.brand.key if brand_match else "",
+                    beer_brand_name=brand_match.brand.name if brand_match else "",
+                    beer_product=brand_match.product if brand_match else None,
+                    beer_product_key=(
+                        brand_match.product.key if brand_match and brand_match.product else ""
+                    ),
+                    beer_product_name=(
+                        brand_match.product.name if brand_match and brand_match.product else ""
+                    ),
+                    price_czk=beer["price_czk"],
+                    volume_ml=beer.get("volume_ml"),
+                    drank_at=flags.drank_at,
+                    is_suspect=flags.is_suspect,
+                    suspect_reason=flags.suspect_reason,
+                )
+
                 menu_updated = False
                 if is_beer:
                     menu_updated = self._merge_into_community(
                         cache_key,
                         data,
                         beer,
-                        account=request.user,
+                        account=account,
                         match_cache=match_cache,
                     )
         except Exception as exc:  # noqa: BLE001
@@ -2891,7 +2918,7 @@ def _leaderboard_period_start(period: str, now=None) -> tuple[datetime | None, d
 
 def _leaderboard_cache_key(category: str, period: str, period_start: datetime | None) -> str:
     marker = period_start.isoformat() if period_start is not None else "all"
-    return f"v1:leaderboards:{category}:{period}:{marker}"
+    return f"v1:leaderboards:abuse-v1:{category}:{period}:{marker}"
 
 
 def _leaderboard_account_queryset():
@@ -2900,6 +2927,7 @@ def _leaderboard_account_queryset():
             status=Account.Status.ACTIVE,
             is_public=True,
             nickname__isnull=False,
+            excluded_from_leaderboards=False,
         )
         .exclude(nickname="")
         .order_by()
@@ -2911,6 +2939,8 @@ def _leaderboard_drink_scores(period_start_utc: datetime | None, blocked_ids: se
         account__status=Account.Status.ACTIVE,
         account__is_public=True,
         account__nickname__isnull=False,
+        account__excluded_from_leaderboards=False,
+        is_suspect=False,
     ).exclude(account__nickname="")
     if period_start_utc is not None:
         qs = qs.filter(drank_at__gte=period_start_utc)
@@ -2932,7 +2962,10 @@ def _leaderboard_pub_scores(period_start_utc: datetime | None, blocked_ids: set[
             account__status=Account.Status.ACTIVE,
             account__is_public=True,
             account__nickname__isnull=False,
+            account__excluded_from_leaderboards=False,
         ).exclude(account__nickname="")
+        if model is DrinkLog:
+            qs = qs.filter(is_suspect=False)
         if period_start_utc is not None:
             qs = qs.filter(**{f"{timestamp_field}__gte": period_start_utc})
         if blocked_ids:
@@ -2952,6 +2985,7 @@ def _leaderboard_mapper_scores(blocked_ids: set[int] | None = None) -> dict[int,
         account__status=Account.Status.ACTIVE,
         account__is_public=True,
         account__nickname__isnull=False,
+        account__excluded_from_leaderboards=False,
         mapper_xp__gt=0,
     ).exclude(account__nickname="")
     if blocked_ids:
@@ -2979,15 +3013,17 @@ def _leaderboard_account_score(
     category: str,
     period_start_utc: datetime | None,
 ) -> int:
+    if account.excluded_from_leaderboards:
+        return 0
     if category == "beers":
-        qs = DrinkLog.objects.filter(account=account)
+        qs = DrinkLog.objects.filter(account=account, is_suspect=False)
         if period_start_utc is not None:
             qs = qs.filter(drank_at__gte=period_start_utc)
         return qs.count()
     if category == "pubs":
         cache_keys = set()
         visits = PubVisit.objects.filter(account=account)
-        drinks = DrinkLog.objects.filter(account=account)
+        drinks = DrinkLog.objects.filter(account=account, is_suspect=False)
         if period_start_utc is not None:
             visits = visits.filter(started_at__gte=period_start_utc)
             drinks = drinks.filter(drank_at__gte=period_start_utc)
@@ -3003,6 +3039,7 @@ def _leaderboard_is_eligible(account: Account) -> bool:
     return (
         account.status == Account.Status.ACTIVE
         and account.is_public
+        and not account.excluded_from_leaderboards
         and bool((account.nickname or "").strip())
     )
 

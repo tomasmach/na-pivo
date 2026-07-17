@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import json
+import uuid
 from io import StringIO
 
 import pytest
 from django.core.management import call_command
+from django.utils import timezone
 
-from pubs.models import Account, AccountUsageStats, ClientEvent, FeedbackReport
+from pubs.models import Account, AccountUsageStats, ClientEvent, DrinkLog, FeedbackReport
 
 
 @pytest.mark.django_db
-def test_observability_report_json_output():
+def test_observability_report_json_output(settings):
+    settings.DRINK_DAILY_FLAG_CAP = 2
     account = Account.objects.create(
         device_id="3f8b1c2e-4d5a-6789-0abc-def012345678",
         token_hash="x" * 64,
@@ -66,6 +69,20 @@ def test_observability_report_json_output():
         app_version="v1.2.0 (42)",
         platform="ios",
     )
+    for index in range(2):
+        DrinkLog.objects.create(
+            account=account,
+            client_id=uuid.uuid4(),
+            cache_key="u2fkbn1z",
+            name="U Zlatého tygra",
+            lat=50.0876,
+            lng=14.4214,
+            beer_name="Pilsner Urquell",
+            price_czk=65,
+            drank_at=timezone.now(),
+            is_suspect=index == 1,
+            suspect_reason="burst" if index == 1 else "",
+        )
 
     out = StringIO()
     call_command("observability_report", "--days", "7", "--format", "json", stdout=out)
@@ -102,6 +119,14 @@ def test_observability_report_json_output():
     assert report["client_health"]["api_failures_by_operation"] == [
         {"operation": "pub_hours", "status": "503", "count": 1}
     ]
+    assert report["abuse"] == {
+        "drinks_created": 2,
+        "flagged": 1,
+        "flagged_by_reason": [{"suspect_reason": "burst", "count": 1}],
+        "top_accounts_by_daily_drinks": [
+            {"account_id": account.id, "nickname": "", "count": 2}
+        ],
+    }
     assert report["feedback"]["recent"][0]["message"] == (
         "Prosím odpovězte na [redacted-email] a přidejte žebříček."
     )

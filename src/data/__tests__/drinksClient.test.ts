@@ -1,5 +1,7 @@
 import { buildDrinkEntry, submitDrink, deleteDrink, updateDrinkName, type DrinkInput } from '../drinksClient';
 import { clearCachedAnonymousAccount, ensureAccount } from '../account';
+import { useToastStore } from '@/stores/toastStore';
+import { cs } from '@/i18n/cs';
 
 // drinksClient → account → expo-secure-store, which isn't transformed for the
 // node test env; mock it so the module loads. We also stub ensureAccount so the
@@ -128,6 +130,24 @@ describe('submitDrink', () => {
 
     global.fetch = jest.fn(async () => ({ ok: false, status: 422, json: async () => ({}) })) as unknown as typeof fetch;
     await expect(submitDrink(entry)).resolves.toBe('permanent-error');
+  });
+
+  it('drops a drink_limited 422 permanently and toasts the user (once per gap)', async () => {
+    setBackend('https://api.example.com');
+    global.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 422,
+      json: async () => ({ code: 'drink_limited', detail: 'daily drink limit reached' }),
+    })) as unknown as typeof fetch;
+
+    await expect(submitDrink(entry)).resolves.toBe('permanent-error');
+    expect(useToastStore.getState().message).toBe(cs.counter.drinkLimitedToast);
+
+    // A second rejection inside the toast gap stays quiet — a flush of several
+    // over-limit drinks must not nag repeatedly.
+    useToastStore.getState().hide();
+    await expect(submitDrink(entry)).resolves.toBe('permanent-error');
+    expect(useToastStore.getState().message).toBeNull();
   });
 
   it('keeps deploy-mismatch 404 responses queued for retry', async () => {

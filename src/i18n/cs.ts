@@ -1551,6 +1551,11 @@ export const cs = {
       return lines[index];
     },
 
+    // — Sync —
+    // Server hard-rejected a drink over the daily anti-abuse cap ("drink_limited"):
+    // the entry stays in the local diary only, so no data is lost — just not synced.
+    drinkLimitedToast: 'Dneska už toho bylo na server moc, tenhle zápis zůstává jen v tvém deníčku.',
+
     // — Menu —
     menuHeader: 'Co tu mají',
     addBeer: 'Přidat pivo',

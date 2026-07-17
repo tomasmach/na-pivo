@@ -1,0 +1,448 @@
+<title>Anti-abuse limity pro zápis drinků</title>
+<style>
+:root{
+  --bg:#14110e;--panel:#1d1915;--panel2:#242019;--line:#3a332a;
+  --text:#e8e0d3;--dim:#a89a85;--amber:#e0a63f;--amber-dim:#8a6a2c;
+  --green:#7fb069;--red:#d9705f;--blue:#7da7c9;
+  --ins:#22321f;--del:#3a2320;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+  font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em}
+code{background:var(--panel2);padding:1px 5px;border-radius:4px}
+pre{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+  padding:12px 14px;overflow-x:auto;line-height:1.45}
+pre code{background:none;padding:0}
+a{color:var(--blue);text-decoration:none}
+a:hover{text-decoration:underline}
+h1{font-size:1.5em;margin:0 0 4px}
+h2{font-size:1.15em;margin:2.2em 0 .6em;color:var(--amber)}
+h3{font-size:1em;margin:1.4em 0 .4em}
+.wrap{display:flex;max-width:1080px;margin:0 auto}
+nav{position:sticky;top:0;align-self:flex-start;width:190px;flex-shrink:0;
+  padding:28px 0 28px 18px;font-size:.85em}
+nav a{display:block;padding:4px 10px;color:var(--dim);border-left:2px solid var(--line)}
+nav a.on{color:var(--amber);border-left-color:var(--amber)}
+main{flex:1;min-width:0;padding:28px 24px 80px;max-width:76ch}
+.badge{display:inline-block;background:var(--amber-dim);color:#fff;border-radius:20px;
+  padding:1px 12px;font-size:.75em;vertical-align:middle;margin-left:10px}
+.date{color:var(--dim);font-size:.85em}
+.tldr{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--amber);
+  border-radius:8px;padding:14px 18px;margin:18px 0}
+.cols{display:flex;gap:16px;flex-wrap:wrap}
+.cols>div{flex:1;min-width:240px;background:var(--panel);border:1px solid var(--line);
+  border-radius:8px;padding:12px 16px}
+.cols h3{margin-top:0}
+ul{padding-left:20px;margin:.4em 0}
+li{margin:.25em 0}
+.no{color:var(--red)}.yes{color:var(--green)}
+table{border-collapse:collapse;width:100%;font-size:.9em;margin:.8em 0}
+th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel2)}
+.tablewrap{overflow-x:auto}
+/* tabs */
+.tabs{display:flex;gap:4px;margin:.8em 0 0}
+.tabs button{background:var(--panel2);color:var(--dim);border:1px solid var(--line);
+  border-bottom:none;border-radius:8px 8px 0 0;padding:7px 16px;cursor:pointer;font:inherit;font-size:.9em}
+.tabs button.on{background:var(--panel);color:var(--amber);font-weight:600}
+.tabpanel{display:none;background:var(--panel);border:1px solid var(--line);
+  border-radius:0 8px 8px 8px;padding:14px 18px}
+.tabpanel.on{display:block}
+.rec{color:var(--green);font-size:.8em;font-weight:600}
+/* steps */
+.step{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+  padding:12px 16px;margin:10px 0;display:flex;gap:12px}
+.step input{margin-top:5px;accent-color:var(--amber);width:16px;height:16px;flex-shrink:0;cursor:pointer}
+.step.done{opacity:.55}
+.step .files{font-size:.85em;color:var(--dim);margin-top:4px}
+.progress{position:sticky;top:0;z-index:5;background:var(--bg);padding:10px 0 6px}
+.bar{height:6px;background:var(--panel2);border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--amber);width:0;transition:width .2s}
+.progress small{color:var(--dim)}
+/* diff */
+pre ins{display:block;background:var(--ins);color:#b8d8ad;text-decoration:none}
+pre del{display:block;background:var(--del);color:#e0a89e;text-decoration:none}
+/* detail toggle */
+.toggle{position:fixed;right:16px;top:12px;z-index:10;background:var(--panel2);
+  border:1px solid var(--line);border-radius:20px;padding:5px 14px;color:var(--dim);
+  cursor:pointer;font:inherit;font-size:.8em}
+body.overview .detail{display:none}
+body.overview .toggle{color:var(--amber)}
+/* questions */
+.q{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 16px;margin:12px 0}
+.q b{display:block;margin-bottom:6px}
+.q label{display:block;padding:3px 0;cursor:pointer;color:var(--dim)}
+.q label:hover{color:var(--text)}
+.q input{accent-color:var(--amber);margin-right:8px}
+.copybtn{background:var(--amber);color:#1a1508;border:none;border-radius:8px;
+  padding:9px 20px;font:inherit;font-weight:600;cursor:pointer;margin-top:8px}
+.copybtn:active{transform:translateY(1px)}
+.copied{color:var(--green);margin-left:12px;font-size:.9em}
+/* svg diagram */
+.diagram{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+  padding:10px;overflow-x:auto}
+.diagram text{fill:var(--text);font-size:12px;font-family:inherit}
+.diagram .lbl{fill:var(--dim);font-size:10.5px}
+.diagram rect.node{fill:var(--panel2);stroke:var(--line);rx:8;cursor:pointer}
+.diagram rect.node:hover,.diagram rect.node.hl{stroke:var(--amber)}
+.diagram path,.diagram line{stroke:var(--dim);fill:none;marker-end:url(#arr)}
+.diagram .flag{stroke:var(--amber)}
+.diagram .reject{stroke:var(--red)}
+.diagram .ok{stroke:var(--green)}
+details{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+  padding:8px 14px;margin:8px 0}
+summary{cursor:pointer;color:var(--dim)}
+.copy-cmd{display:flex;gap:8px;align-items:center}
+.copy-cmd button{background:var(--panel2);border:1px solid var(--line);color:var(--dim);
+  border-radius:6px;padding:3px 10px;cursor:pointer;font-size:.8em}
+.pill{display:inline-block;border:1px solid var(--line);border-radius:12px;
+  padding:0 10px;font-size:.78em;color:var(--dim);margin-left:6px}
+@media(max-width:800px){nav{display:none}}
+</style>
+
+<button class="toggle" id="toggle">přehled / plný detail</button>
+
+<div class="wrap">
+<nav id="nav">
+  <a href="#tldr">TL;DR</a>
+  <a href="#stav">Dnešní stav</a>
+  <a href="#cile">Cíle / Ne-cíle</a>
+  <a href="#varianty">Varianty</a>
+  <a href="#navrh">Návrh</a>
+  <a href="#limity">Prahy</a>
+  <a href="#kroky">Kroky</a>
+  <a href="#rizika">Rizika</a>
+  <a href="#otazky">Otázky</a>
+</nav>
+
+<main>
+<h1 id="tldr">Anti-abuse limity pro zápis drinků <span class="badge">schváleno</span></h1>
+<div class="date">17. 7. 2026 · dotčené: Django backend + mobilní fronta</div>
+
+<div class="tldr">
+Žebříčky a gamifikace potřebují ochranu před autoclickerem, ale nesmíme trestat legitimní
+hospodský večer. Hlavní mechanismus proto <b>není odmítání, ale „přijmi a označ“</b>:
+podezřelé zápisy dostanou serverový flag <code>is_suspect</code>, zůstanou v osobním deníčku,
+ale vypadnou ze žebříčků a veřejných statistik. Tvrdé odmítnutí (nový error kód) nastane
+nad 20 zápisů/den. K tomu drobné utažení throttlu, plauzibilita
+<code>drank_at</code>, admin páky na ruční zásah a metriky v <code>observability_report</code>.
+</div>
+
+<h2 id="stav">Co dnes existuje (a proč to určuje design)</h2>
+<div class="tablewrap"><table>
+<tr><th>Fakt</th><th>Důsledek pro návrh</th></tr>
+<tr>
+  <td><a href="vscode://file/Users/tomasmach/Code/na-pivo/backend/pubs/api/views.py:1469" title="DrinksView">views.py:1469</a>
+  — <code>POST /v1/drinks</code> má idempotentní <code>client_id</code>, ale <span class="no">žádnou validaci frekvence ani věrohodnosti <code>drank_at</code></span> (klient si může poslat cokoliv, klidně zpětně).</td>
+  <td>Heuristiky můžou stavět na <code>created_at</code> (serverový čas příchodu) i <code>drank_at</code>; duplicitní retry přes <code>client_id</code> nesmí flag přepočítávat.</td>
+</tr>
+<tr>
+  <td><a href="vscode://file/Users/tomasmach/Code/na-pivo/backend/config/settings.py:217" title="throttle drinks 60/min">settings.py:217</a>
+  — throttle scope <code>drinks</code> = 60/min na účet (LocMem cache → reálně × počet workerů).</td>
+  <td>60/min je pro člověka absurdní strop; jde snížit. Ale throttle sám o sobě autoclicker nezastaví (10/min = 14 400/den).</td>
+</tr>
+<tr>
+  <td><a href="vscode://file/Users/tomasmach/Code/na-pivo/src/data/apiFetch.ts:53" title="error policy">apiFetch.ts:53</a>
+  — mobilní fronta: <span class="no">400/422 zahodí tiše</span> a lokálně označí jako synced; 429/5xx retry.</td>
+  <td>Tvrdé 422 by tiše mazalo legitimní zápisy vydaných aplikací. Proto musí být default „přijmi a označ“, ne reject — a nový reject kód musí být vyhrazený jen pro extrémy.</td>
+</tr>
+<tr>
+  <td><a href="vscode://file/Users/tomasmach/Code/na-pivo/backend/pubs/api/views.py:2909" title="leaderboard beers">views.py:2909</a>
+  — žebříčky počítají všechny <code>DrinkLog</code> řádky bez filtru; badges přes
+  <a href="vscode://file/Users/tomasmach/Code/na-pivo/backend/pubs/api/profile_helpers.py:14">profile_helpers.py</a>.</td>
+  <td>Tady je jediné místo, kde spam reálně bolí → filtrovat flag stačí zde + ve veřejných profilech. Osobní <code>/me/stats</code> může zůstat nefiltrované.</td>
+</tr>
+<tr>
+  <td><a href="vscode://file/Users/tomasmach/Code/na-pivo/backend/pubs/admin.py:438" title="DrinkLogAdmin">admin.py:438</a>
+  — read-only admin, žádné metriky kromě <code>observability_report</code>.</td>
+  <td>Ruční zásah = přidat admin akce (flag/unflag, ban ze žebříčků) + sekce v reportu. Žádná nová infrastruktura.</td>
+</tr>
+</table></div>
+
+<div class="detail">
+<details><summary>Legitimní vzory, které nesmíme rozbít</summary>
+<ul>
+<li><b>Dávkové doťukání na konci večera</b> — uživatel si vzpomene a naklape 8 piv za minutu, všechna s <code>drank_at = teď</code>. Proto burst práh vysoko (12+/10 min) a jen flag, ne reject.</li>
+<li><b>Flush fronty po offline večeru</b> — až 200 položek sekvenčně po sobě (<a href="vscode://file/Users/tomasmach/Code/na-pivo/src/data/drinksQueue.ts:25">drinksQueue.ts:25</a>). Příchozí rychlost nevypovídá nic → burst heuristika musí stát na <code>drank_at</code>, ne na času příchodu.</li>
+<li><b>Zpětné dopsání včerejška</b> — <code>drank_at</code> v minulosti je legální. Omezujeme jen budoucnost.</li>
+</ul>
+</details>
+</div>
+
+<h2 id="cile">Cíle / Ne-cíle</h2>
+<div class="cols">
+<div><h3 class="yes">Cíle</h3><ul>
+<li>autoclicker/spam se nedostane do žebříčků, badges a veřejných profilů;</li>
+<li>legitimní večer (i divoký) projde bez zásahu;</li>
+<li>fronta srozumitelně zvládne odmítnutý zápis (žádné tiché mizení);</li>
+<li>diagnostika bez surové GPS (počty flagů, top účty);</li>
+<li>ruční páky v adminu (unflag, ban ze žebříčků);</li>
+<li>API aditivně kompatibilní s vydanými verzemi.</li>
+</ul></div>
+<div><h3 class="no">Ne-cíle</h3><ul>
+<li>žádná CAPTCHA, device attestation ani proof-of-work;</li>
+<li>žádné ověřování polohy vůči hospodě (= žádná nová GPS data);</li>
+<li>žádné mazání dat — flag je vratný, reject jen extrémy;</li>
+<li>žádný ML / anomaly detection servis;</li>
+<li>neřešíme multi-účtový abuse (mimo rozsah, viz rizika).</li>
+</ul></div>
+</div>
+
+<h2 id="varianty">Varianty řešení</h2>
+<div class="tablewrap"><table>
+<tr><th></th><th>A · jen throttle</th><th>B · přijmi a označ <span class="rec">✓ doporučeno</span></th><th>C · tvrdé limity</th></tr>
+<tr><th>Zastaví autoclicker v žebříčku</th><td class="no">ne (10/min = 14k/den)</td><td class="yes">ano</td><td class="yes">ano</td></tr>
+<tr><th>Riziko pro legitimní večer</th><td class="yes">žádné</td><td class="yes">nízké — vratný flag</td><td class="no">vysoké — nevratná ztráta dat</td></tr>
+<tr><th>Offline-first fronta</th><td class="yes">beze změn</td><td class="yes">skoro beze změn</td><td class="no">nutná velká přestavba</td></tr>
+<tr><th>Pracnost</th><td>hodiny</td><td>~1–2 dny</td><td>dny + mobilní release</td></tr>
+</table></div>
+<div class="tabs" id="tabs">
+<button data-t="a">A</button><button data-t="b" class="on">B (doporučeno)</button><button data-t="c">C</button>
+</div>
+<div class="tabpanel" data-t="a">
+<b>Jen utáhnout throttle.</b> Snížit <code>drinks</code> z 60/min, hotovo. Nejlevnější, ale
+neřeší zpětně datované zápisy (<code>drank_at</code> si klient volí sám) a i pomalý klikač
+nasype tisíce záznamů denně rovnou do žebříčku. Neplní zadání.
+</div>
+<div class="tabpanel on" data-t="b">
+<b>Shadow flagging.</b> Server všechno plauzibilní přijme (offline-first UX nedotčený),
+ale při zápisu spočítá levné heuristiky a podezřelé řádky označí <code>is_suspect</code>.
+Flagnuté zápisy: <span class="yes">zůstávají</span> v osobním deníčku a <code>/me/stats</code>,
+<span class="no">nepočítají se</span> do žebříčků, badges a veřejných/kamarádských profilů.
+Flag je vratný v adminu — falešný poplach nikoho o data nepřipraví, jen ho dočasně vyřadí
+ze soutěže. Reject (nový error kód) až u zjevného spamu nad tvrdým stropem.
+Přesně „menší security“: neviditelná pro normální lidi, účinná proti klikačům.
+</div>
+<div class="tabpanel" data-t="c">
+<b>Tvrdé odmítání + potvrzování.</b> Nízké stropy, 422 na všechno podezřelé, případně
+potvrzení návštěvou/polohou. Rozbíjí offline-first (staré appky 422 tiše dropnou),
+trestá legitimní tahy a láká k ukládání polohy. Proti duchu zadání („ne mega přísný“).
+</div>
+
+<h2 id="navrh">Návrh — tok zápisu</h2>
+<div class="diagram">
+<svg viewBox="0 0 720 300" width="720" height="300">
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#a89a85" stroke="none"/></marker></defs>
+<g data-goto="kroky"><rect class="node" x="10" y="120" width="130" height="56"/><text x="75" y="144" text-anchor="middle">Mobil / fronta</text><text x="75" y="160" text-anchor="middle" class="lbl">POST /v1/drinks</text></g>
+<line x1="140" y1="148" x2="195" y2="148"/>
+<g data-goto="krok-4"><rect class="node" x="197" y="120" width="120" height="56"/><text x="257" y="144" text-anchor="middle">Throttle</text><text x="257" y="160" text-anchor="middle" class="lbl">30/min → 429 retry</text></g>
+<line x1="317" y1="148" x2="372" y2="148"/>
+<g data-goto="krok-2"><rect class="node" x="374" y="112" width="150" height="72"/><text x="449" y="136" text-anchor="middle">Heuristiky při zápisu</text><text x="449" y="152" text-anchor="middle" class="lbl">clamp drank_at · denní</text><text x="449" y="166" text-anchor="middle" class="lbl">count · burst okno</text></g>
+<path class="ok" d="M524 128 C570 110 580 70 600 62"/>
+<g data-goto="krok-2"><rect class="node" x="560" y="20" width="150" height="44"/><text x="635" y="38" text-anchor="middle">Uloženo čisté</text><text x="635" y="54" text-anchor="middle" class="lbl">vše se počítá</text></g>
+<path class="flag" d="M524 148 L558 148"/>
+<g data-goto="krok-3"><rect class="node" x="560" y="122" width="150" height="56"/><text x="635" y="142" text-anchor="middle">is_suspect = true</text><text x="635" y="158" text-anchor="middle" class="lbl">deník ✓ žebříček ✗</text></g>
+<path class="reject" d="M524 172 C570 190 580 220 600 230"/>
+<g data-goto="krok-6"><rect class="node" x="560" y="234" width="150" height="56"/><text x="635" y="254" text-anchor="middle">422 drink_limited</text><text x="635" y="270" text-anchor="middle" class="lbl">jen nad tvrdý strop</text></g>
+<text x="449" y="220" text-anchor="middle" class="lbl">zelená = čistý průchod · žlutá = soft flag · červená = tvrdý strop</text>
+</svg>
+</div>
+
+<div class="detail">
+<h3>Heuristiky (vše levné dotazy nad indexem <code>(account, created_at)</code>)</h3>
+<ul>
+<li><b>Clamp budoucnosti:</b> <code>drank_at &gt; now + 10 min</code> → server tiše nastaví <code>now</code>. Minulost bez omezení (zpětné dopsání je legální), jen <code>&gt; 60 dnů</code> zpětně → flag.</li>
+<li><b>Denní soft cap:</b> ≥ 15. zápis za kalendářní den (podle <code>drank_at</code>) → tento a další flag. Člověk přijde jen o žebříček, ne o data — flag je vratný.</li>
+<li><b>Burst:</b> &gt; 12 zápisů s <code>drank_at</code> v okně 10 minut → flag. Práh záměrně nad „doťukám večer naráz“ vzorem.</li>
+<li><b>Tvrdý strop:</b> &gt; 20 zápisů za den → <code>422 {"code":"drink_limited"}</code>. Jediný reject; vydané appky ho tiše dropnou (dnešní chování), nové ukážou hlášku. Pozor: počítají se všechny typy nápojů včetně nealka — env-laditelné, kdyby to v praxi škrtilo.</li>
+<li>Duplicitní <code>client_id</code> retry (<a href="vscode://file/Users/tomasmach/Code/na-pivo/backend/pubs/api/views.py:1555">views.py:1555</a>) vrací 200 dřív, než heuristiky běží — flag se nepřepočítává.</li>
+<li>Prahy jako env-overridovatelné settings (stejný vzor jako throttle raty v <a href="vscode://file/Users/tomasmach/Code/na-pivo/backend/config/settings.py:415">settings.py:415</a>), ať jdou ladit bez deploye kódu.</li>
+</ul>
+
+<h3>Kde se flag projeví</h3>
+<div class="tablewrap"><table>
+<tr><th>Povrch</th><th>Flagnuté zápisy</th></tr>
+<tr><td>lokální deníček + počítadlo</td><td class="yes">beze změny (server do nich nemluví)</td></tr>
+<tr><td><code>/v1/me/stats</code> (osobní statistiky)</td><td class="yes">počítají se — vlastní data uživateli nebereme</td></tr>
+<tr><td>žebříčky (<code>beers</code>, <code>pubs</code>)</td><td class="no">vyloučeny (<code>is_suspect=False</code> filtr)</td></tr>
+<tr><td>veřejný/kamarádský profil, <code>total_beers</code>, badges</td><td class="no">vyloučeny</td></tr>
+<tr><td>Django admin</td><td>viditelné, filtrovatelné, vratné</td></tr>
+</table></div>
+
+<h3>Ruční zásah</h3>
+<ul>
+<li><code>DrinkLogAdmin</code>: filtr + akce „označit / odznačit jako podezřelé“ (jediná povolená mutace, jinak zůstává read-only).</li>
+<li><code>Account.excluded_from_leaderboards</code> (bool) — ruční shadow-ban celého účtu ze žebříčků z <code>AccountAdmin</code>, pro případy, kdy heuristiky nestačí.</li>
+<li><code>observability_report</code> dostane sekci abuse: počet flagů/rejectů za období, top účty podle denních zápisů. Žádná GPS, jen agregace.</li>
+<li>Management command <code>recompute_drink_flags --since</code> pro zpětný přepočet po změně prahů.</li>
+</ul>
+</div>
+
+<h2 id="limity">Navržené prahy (výchozí, env-laditelné)</h2>
+<div class="tablewrap"><table>
+<tr><th>Limit</th><th>Hodnota</th><th>Akce</th><th>Proč</th></tr>
+<tr><td>throttle <code>drinks</code></td><td>60/min → <b>30/min</b></td><td>429 (fronta retryuje)</td><td>člověk nenaklape 30 za minutu; flush fronty se jen zpomalí, nic se neztratí</td></tr>
+<tr><td>budoucí <code>drank_at</code></td><td>&gt; now + 10 min</td><td>clamp na now</td><td>proti před-datování do dalších období žebříčku</td></tr>
+<tr><td>staré <code>drank_at</code></td><td>&gt; 60 dnů zpět</td><td>flag</td><td>hromadné zpětné plnění historie kvůli žebříčkům</td></tr>
+<tr><td>burst</td><td>&gt; 12 / 10 min</td><td>flag</td><td>nad vzor „doťukám večer naráz“</td></tr>
+<tr><td>denní soft cap</td><td>≥ 15 / den</td><td>flag</td><td>nad běžný večer; vratné</td></tr>
+<tr><td>denní hard cap</td><td>&gt; 20 / den</td><td>422 <code>drink_limited</code></td><td>rozhodnutí uživatele 17. 7.: strop 20, ne 80</td></tr>
+</table></div>
+
+<h2 id="kroky">Kroky implementace</h2>
+<div class="progress"><div class="bar"><i id="barfill"></i></div><small id="barlabel">0/7</small></div>
+
+<div class="step" id="krok-1"><input type="checkbox" data-k="1"><div>
+<b>1 · Migrace: <code>DrinkLog.is_suspect</code> + <code>Account.excluded_from_leaderboards</code></b>
+<div class="detail">Bool s defaultem <code>False</code>, index na <code>(account, created_at)</code> pro heuristiky a <code>is_suspect</code> částečný index pro filtry žebříčků. Čistě aditivní — bezpečné vůči vydaným appkám.</div>
+<div class="files"><a href="vscode://file/Users/tomasmach/Code/na-pivo/backend/pubs/models.py:2589">backend/pubs/models.py</a> + nová migrace (po 0074)</div>
+</div></div>
+
+<div class="step" id="krok-2"><input type="checkbox" data-k="2"><div>
+<b>2 · Heuristiky při zápisu v <code>DrinksView</code></b>
+<div class="detail">Po idempotency checku, před uložením: clamp <code>drank_at</code>, count za den, burst okno; prahy z settings. Diff náčrt:
+<pre><code> drank_at = parsed or timezone.now()
+<ins>+drank_at, flags = evaluate_drink_flags(account, drank_at)</ins>
+<ins>+if flags.hard_limited:</ins>
+<ins>+    return Response({"code": "drink_limited", ...}, status=422)</ins>
+ log = DrinkLog.objects.create(
+     account=account, drank_at=drank_at,
+<ins>+    is_suspect=flags.suspect,</ins>
+     ...)</code></pre></div>
+<div class="files"><a href="vscode://file/Users/tomasmach/Code/na-pivo/backend/pubs/api/views.py:1469">views.py:1469</a>, nový modul <code>backend/pubs/api/drink_flags.py</code>, <a href="vscode://file/Users/tomasmach/Code/na-pivo/backend/config/settings.py:415">settings.py</a></div>
+</div></div>
+
+<div class="step" id="krok-3"><input type="checkbox" data-k="3"><div>
+<b>3 · Filtry v žebříčcích a veřejných profilech</b>
+<div class="detail"><code>.filter(is_suspect=False)</code> + <code>account.excluded_from_leaderboards=False</code> v leaderboard queries (beers i pubs kategorie) a v <code>profile_helpers</code> (total_beers, badges, veřejné statistiky). <code>/me/stats</code> nechat být. Pozor na leaderboard cache — po deployi se pročistí sama expirací.</div>
+<div class="files"><a href="vscode://file/Users/tomasmach/Code/na-pivo/backend/pubs/api/views.py:2909">views.py:2909</a>, <a href="vscode://file/Users/tomasmach/Code/na-pivo/backend/pubs/api/profile_helpers.py:14">profile_helpers.py</a></div>
+</div></div>
+
+<div class="step" id="krok-4"><input type="checkbox" data-k="4"><div>
+<b>4 · Throttle <code>drinks</code> 60/min → 30/min</b>
+<div class="files"><a href="vscode://file/Users/tomasmach/Code/na-pivo/backend/config/settings.py:217">settings.py:217</a> (jen default; env override zůstává)</div>
+</div></div>
+
+<div class="step" id="krok-5"><input type="checkbox" data-k="5"><div>
+<b>5 · Admin + diagnostika</b>
+<div class="detail">Filtr a akce flag/unflag v <code>DrinkLogAdmin</code>, checkbox banu v <code>AccountAdmin</code>, sekce abuse v <code>observability_report</code>, command <code>recompute_drink_flags</code>.</div>
+<div class="files"><a href="vscode://file/Users/tomasmach/Code/na-pivo/backend/pubs/admin.py:438">admin.py</a>, <a href="vscode://file/Users/tomasmach/Code/na-pivo/backend/pubs/management/commands/observability_report.py:58">observability_report.py</a></div>
+</div></div>
+
+<div class="step" id="krok-6"><input type="checkbox" data-k="6"><div>
+<b>6 · Mobil: srozumitelné odmítnutí</b>
+<div class="detail">V <code>drinksClient</code> rozpoznat <code>422 {"code":"drink_limited"}</code>: item z fronty odstranit (jako dnes), ale poslat telemetrii <code>drink_sync_rejected</code> a jednorázově ukázat toast. Lokální deníček o zápis nepřijde. Navržená copy (ke schválení, viz otázky): <i>„Dneska už toho bylo na server moc, tenhle zápis zůstává jen v tvém deníčku.“</i></div>
+<div class="files"><a href="vscode://file/Users/tomasmach/Code/na-pivo/src/data/drinksClient.ts:175">drinksClient.ts:175</a>, <a href="vscode://file/Users/tomasmach/Code/na-pivo/src/data/apiFetch.ts:53">apiFetch.ts</a>, <a href="vscode://file/Users/tomasmach/Code/na-pivo/src/counter/CounterScreen.tsx:615">CounterScreen.tsx</a></div>
+</div></div>
+
+<div class="step" id="krok-7"><input type="checkbox" data-k="7"><div>
+<b>7 · Testy podle reálného rizika</b>
+<div class="detail">Backend: burst flag ano/ne kolem prahu, denní cap, hard cap 422, idempotentní retry flag nepřepočítá, žebříček flagnuté nevidí, <code>/me/stats</code> ano. Spustit i proti PG, ne jen sqlite (známý zdroj skrytých chyb migrací).</div>
+<div class="files"><code>backend/pubs/tests/</code></div>
+</div></div>
+
+<div class="detail">
+<h3>Ověření po nasazení</h3>
+<div class="copy-cmd"><pre style="flex:1;margin:0"><code>python manage.py observability_report --since 7d   # sekce abuse: flagy/rejecty</code></pre><button data-copy="python manage.py observability_report --since 7d">kopírovat</button></div>
+</div>
+
+<h2 id="rizika">Rizika a slabá místa</h2>
+<ul>
+<li><b>Determinovaný útočník limity zná</b> — 24 zápisů/den pod capem projde. Přijatelné: škoda v žebříčku je omezená a ruční ban ji dořeší. Nejsme banka.</li>
+<li><b>LocMem throttle cache</b> — reálný limit je 30/min × workery. Nechávám být (throttle je jen backstop); kdyby vadilo, samostatný krok se sdílenou cache.</li>
+<li><b>Vydané appky a hard cap</b> — 422 tiše dropnou. Se stropem 20/den se o něj může otřít i epický večer (počítá se i nealko a panáky); lokální deníček ale zápis udrží a strop jde zvednout env proměnnou bez deploye.</li>
+<li><b>Multi-účtový abuse</b> (více účtů z jednoho zařízení) tenhle návrh neřeší — mimo rozsah, řešitelné později per-IP limity na registraci.</li>
+<li><b>Falešné poplachy</b> — vratné (unflag v adminu), data se neztrácí; report je uvidí.</li>
+</ul>
+
+<h2 id="otazky">Otevřené otázky</h2>
+
+<div class="q"><b>1 · Denní soft cap (flag do žebříčků)</b>
+<label><input type="radio" name="q1" value="25/den (navrženo)" checked>25 zápisů/den — navrženo</label>
+<label><input type="radio" name="q1" value="20/den (přísnější)">20/den — přísnější</label>
+<label><input type="radio" name="q1" value="30/den (volnější)">30/den — volnější</label>
+<label><input type="radio" name="q1" value="jinak">jinak — napíšu v chatu</label>
+</div>
+
+<div class="q"><b>2 · Má vůbec existovat tvrdý strop (422 nad 80/den)?</b>
+<label><input type="radio" name="q2" value="ano, 80/den (navrženo)" checked>Ano, 80/den — chrání DB a je hluboko nad realitou</label>
+<label><input type="radio" name="q2" value="ne, jen flagovat">Ne — všechno jen flagovat, nikdy neodmítat</label>
+<label><input type="radio" name="q2" value="jinak">jinak — napíšu v chatu</label>
+</div>
+
+<div class="q"><b>3 · Toast v aplikaci při odmítnutí (copy ke schválení)</b>
+<label><input type="radio" name="q3" value="copy schvaluji" checked>„Dneska už toho bylo na server moc, tenhle zápis zůstává jen v tvém deníčku.“ — schvaluji</label>
+<label><input type="radio" name="q3" value="bez toastu, jen telemetrie">Žádný toast — jen tichá telemetrie</label>
+<label><input type="radio" name="q3" value="jinou copy">Jiná formulace — napíšu v chatu</label>
+</div>
+
+<div class="q"><b>4 · Kdo to implementuje</b>
+<label><input type="radio" name="q4" value="backend Codex, mobil Claude (navrženo)" checked>Backend přes Codex (gpt-5.6-sol), mobilní část Claude — navrženo</label>
+<label><input type="radio" name="q4" value="vše Claude">Všechno Claude v této session</label>
+<label><input type="radio" name="q4" value="jinak">jinak — napíšu v chatu</label>
+</div>
+
+<button class="copybtn" id="copyanswers">Zkopírovat odpovědi</button><span class="copied" id="copiedmsg"></span>
+
+</main>
+</div>
+
+<script>
+(function(){
+var KEY='plan:2026-07-17-drink-anti-abuse';
+var state={};try{state=JSON.parse(localStorage.getItem(KEY))||{}}catch(e){}
+function save(){localStorage.setItem(KEY,JSON.stringify(state))}
+
+// steps + progress
+var boxes=document.querySelectorAll('.step input[type=checkbox]');
+function refresh(){
+  var done=0;boxes.forEach(function(b){
+    b.checked=!!state['k'+b.dataset.k];
+    b.closest('.step').classList.toggle('done',b.checked);
+    if(b.checked)done++;});
+  document.getElementById('barfill').style.width=(100*done/boxes.length)+'%';
+  document.getElementById('barlabel').textContent=done+'/'+boxes.length;
+}
+boxes.forEach(function(b){b.addEventListener('change',function(){
+  state['k'+b.dataset.k]=b.checked;save();refresh();})});
+refresh();
+
+// tabs
+document.querySelectorAll('#tabs button').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    document.querySelectorAll('#tabs button').forEach(function(b){b.classList.toggle('on',b===btn)});
+    document.querySelectorAll('.tabpanel').forEach(function(p){p.classList.toggle('on',p.dataset.t===btn.dataset.t)});
+  });});
+
+// overview toggle
+var tg=document.getElementById('toggle');
+if(state.overview)document.body.classList.add('overview');
+tg.addEventListener('click',function(){
+  state.overview=document.body.classList.toggle('overview');save();});
+
+// scroll-spy
+var links=document.querySelectorAll('#nav a');
+var obs=new IntersectionObserver(function(es){
+  es.forEach(function(e){if(e.isIntersecting){
+    links.forEach(function(l){l.classList.toggle('on',l.hash==='#'+e.target.id)});}});
+},{rootMargin:'-10% 0px -70% 0px'});
+links.forEach(function(l){var t=document.querySelector(l.hash);if(t)obs.observe(t)});
+
+// diagram nodes → scroll
+document.querySelectorAll('.diagram g[data-goto]').forEach(function(g){
+  g.addEventListener('click',function(){
+    var t=document.getElementById(g.dataset.goto);
+    if(t){t.scrollIntoView({behavior:'smooth',block:'center'});
+      t.style.outline='2px solid var(--amber)';
+      setTimeout(function(){t.style.outline=''},1600);}
+  });});
+
+// copy buttons
+document.querySelectorAll('[data-copy]').forEach(function(b){
+  b.addEventListener('click',function(){navigator.clipboard.writeText(b.dataset.copy);
+    b.textContent='✓';setTimeout(function(){b.textContent='kopírovat'},1200);});});
+
+// answers
+document.getElementById('copyanswers').addEventListener('click',function(){
+  var out=[];
+  document.querySelectorAll('.q').forEach(function(q){
+    var t=q.querySelector('b').textContent.replace(/^\d+ · /,'');
+    var sel=q.querySelector('input:checked');
+    out.push(t+': '+(sel?sel.value:'—'));});
+  navigator.clipboard.writeText('Odpovědi k plánu anti-abuse:\n'+out.join('\n'));
+  document.getElementById('copiedmsg').textContent='zkopírováno — vlož do chatu';
+  setTimeout(function(){document.getElementById('copiedmsg').textContent=''},3000);
+});
+})();
+</script>

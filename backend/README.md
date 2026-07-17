@@ -195,6 +195,13 @@ All settings are read from environment variables or a `.env` file. See `.env.exa
 | `PUB_HOURS_THROTTLE_RATE` | `120/min` | Per-IP rate limit for `POST /v1/pub-hours` |
 | `PUB_REPORTS_THROTTLE_RATE` | `30/min` | Per-IP rate limit for `POST /v1/pub-reports` |
 | `CLIENT_EVENTS_THROTTLE_RATE` | `120/min` | Per-IP rate limit for `POST /v1/client-events` |
+| `DRINKS_THROTTLE_RATE` | `30/min` | Per-account rate limit for `POST /v1/drinks` |
+| `DRINK_FUTURE_GRACE_MINUTES` | `10` | Future timestamp grace before clamping to server time |
+| `DRINK_BACKDATE_FLAG_DAYS` | `60` | Age at which a drink is flagged as backdated |
+| `DRINK_BURST_LIMIT` | `12` | Existing drinks in the burst window before flagging |
+| `DRINK_BURST_WINDOW_MINUTES` | `10` | Burst detection window |
+| `DRINK_DAILY_FLAG_CAP` | `15` | Daily ordinal at which drinks become suspect |
+| `DRINK_DAILY_HARD_CAP` | `20` | Existing daily rows after which new drinks are rejected |
 | `LOG_LEVEL` | `INFO` | Structured JSON log level |
 
 ---

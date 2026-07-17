@@ -8,11 +8,13 @@ from collections import Counter, defaultdict
 from datetime import timedelta
 from typing import Any
 
+from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db.models import Count, Sum
+from django.db.models.functions import TruncDate
 from django.utils import timezone
 
-from pubs.models import AccountUsageStats, ClientEvent, FeedbackReport
+from pubs.models import AccountUsageStats, ClientEvent, DrinkLog, FeedbackReport
 
 _EMAIL_RE = re.compile(r"[\w.!#$%&'*+/=?^`{|}~-]+@[\w.-]+\.[A-Za-z]{2,}")
 _BEARER_RE = re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]+", re.IGNORECASE)
@@ -77,6 +79,34 @@ class Command(BaseCommand):
                 ClientEvent.Event.COUNTER_RETURNED_LATER,
             ]
         )
+        drinks_created = DrinkLog.objects.filter(created_at__gte=since)
+        flagged_by_reason = list(
+            drinks_created.filter(is_suspect=True)
+            .values("suspect_reason")
+            .annotate(count=Count("id"))
+            .order_by("-count", "suspect_reason")
+        )
+        daily_rows = (
+            DrinkLog.objects.filter(drank_at__gte=since)
+            .annotate(day=TruncDate("drank_at", tzinfo=timezone.get_current_timezone()))
+            .values("account_id", "account__nickname", "day")
+            .annotate(count=Count("id"))
+            .filter(count__gte=settings.DRINK_DAILY_FLAG_CAP)
+        )
+        max_daily_by_account: dict[int, dict[str, Any]] = {}
+        for row in daily_rows:
+            account_id = int(row["account_id"])
+            current = max_daily_by_account.get(account_id)
+            if current is None or row["count"] > current["count"]:
+                max_daily_by_account[account_id] = {
+                    "account_id": account_id,
+                    "nickname": row["account__nickname"] or "",
+                    "count": int(row["count"]),
+                }
+        top_daily_accounts = sorted(
+            max_daily_by_account.values(),
+            key=lambda row: (-row["count"], row["account_id"]),
+        )[:10]
 
         period_distance_by_account: defaultdict[str, int] = defaultdict(int)
         period_distance_total_m = 0
@@ -198,6 +228,12 @@ class Command(BaseCommand):
                     )
                 ],
             },
+            "abuse": {
+                "drinks_created": drinks_created.count(),
+                "flagged": drinks_created.filter(is_suspect=True).count(),
+                "flagged_by_reason": flagged_by_reason,
+                "top_accounts_by_daily_drinks": top_daily_accounts,
+            },
             "top_walkers_period": [
                 {
                     "account": account_id,
@@ -258,6 +294,7 @@ class Command(BaseCommand):
         usage = report["usage"]
         all_time = report["all_time"]
         counter = report["counter"]
+        abuse = report["abuse"]
         health = report["client_health"]
         lines = [
             "# Na pivo observability report",
@@ -289,6 +326,26 @@ class Command(BaseCommand):
             self._table(
                 counter["drink_sync_failures_by_operation"],
                 ["operation", "status", "sync_result", "count"],
+            )
+        )
+        lines.extend(
+            [
+                "",
+                "## Abuse",
+                "",
+                f"- Drinks created: {abuse['drinks_created']}",
+                f"- Flagged drinks: {abuse['flagged']}",
+                "",
+                "### Flagged By Reason",
+                "",
+            ]
+        )
+        lines.extend(self._table(abuse["flagged_by_reason"], ["suspect_reason", "count"]))
+        lines.extend(["", "### Top Accounts By Daily Drinks", ""])
+        lines.extend(
+            self._table(
+                abuse["top_accounts_by_daily_drinks"],
+                ["account_id", "nickname", "count"],
             )
         )
         lines.extend(

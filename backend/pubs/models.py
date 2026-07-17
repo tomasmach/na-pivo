@@ -504,6 +504,10 @@ class Account(models.Model):
         help_text="Public profile (opt-out). Gates global search and "
         "leaderboards; friends always see the profile regardless.",
     )
+    excluded_from_leaderboards = models.BooleanField(
+        default=False,
+        help_text="Manually exclude this account from global leaderboard scores and listings.",
+    )
 
     # ---------- lifecycle / deletion ----------
     status = models.CharField(
@@ -2700,6 +2704,16 @@ class DrinkLog(models.Model):
         null=True,
         blank=True,
         help_text="Glass volume in ml (one of 300/330/400/500/1000) or null if unknown.",
+    )
+    is_suspect = models.BooleanField(
+        default=False,
+        help_text="Whether this row is excluded from public aggregates by abuse controls.",
+    )
+    suspect_reason = models.CharField(
+        max_length=32,
+        blank=True,
+        default="",
+        help_text="Abuse flag reason: daily_cap, burst, backdated, or manual.",
     )
 
     # ---------- timestamps ----------

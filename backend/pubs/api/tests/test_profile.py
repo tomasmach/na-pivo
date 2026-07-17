@@ -954,6 +954,52 @@ def test_get_me_returns_backend_profile_stats_and_achievements(client):
     assert body["mapper"]["title"] == "Nováček"
 
 
+@pytest.mark.django_db
+def test_profile_stats_and_badges_exclude_suspect_drinks(client):
+    token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    local_noon = timezone.localtime(timezone.now()).replace(
+        hour=12, minute=0, second=0, microsecond=0
+    )
+    for index in range(9):
+        DrinkLog.objects.create(
+            account=account,
+            client_id=uuid.uuid4(),
+            cache_key="clean-pub",
+            name="Čistá hospoda",
+            lat=50.0876,
+            lng=14.4214,
+            beer_name="Pilsner Urquell",
+            price_czk=50,
+            drank_at=local_noon,
+        )
+    for index in range(10):
+        DrinkLog.objects.create(
+            account=account,
+            client_id=uuid.uuid4(),
+            cache_key="suspect-pub",
+            name="Podezřelá hospoda",
+            lat=50.0876,
+            lng=14.4214,
+            beer_name=f"Suspect beer {index}",
+            price_czk=100,
+            drank_at=local_noon.replace(hour=1),
+            is_suspect=True,
+            suspect_reason="manual",
+        )
+
+    response = client.get("/v1/account/me", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["stats"]["total_beers"] == 9
+    assert body["stats"]["distinct_pubs"] == 1
+    assert body["stats"]["total_spent_czk"] == 450
+    assert body["achievements"]["first_ten"] is False
+    assert body["achievements"]["night_owl"] is False
+    assert body["achievements"]["taster"] is False
+
+
 # ===========================================================================
 # 10. Google picture capture (once) + display_name seed; Apple no-op
 # ===========================================================================

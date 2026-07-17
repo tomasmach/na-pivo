@@ -14,12 +14,13 @@ PRAGUE_TZ = ZoneInfo("Europe/Prague")
 def derive_account_profile_stats(account: Account) -> dict:
     """Aggregate durable account history for profile stats and achievements."""
 
-    drink_totals = account.drinks.aggregate(
+    public_drinks = account.drinks.filter(is_suspect=False)
+    drink_totals = public_drinks.aggregate(
         total_beers=Count("id", filter=Q(drink_type=DrinkLog.DrinkType.BEER)),
         total_spent_czk=Sum("price_czk"),
     )
     pub_keys = set(account.pub_visits.values_list("cache_key", flat=True))
-    pub_keys.update(account.drinks.values_list("cache_key", flat=True))
+    pub_keys.update(public_drinks.values_list("cache_key", flat=True))
     max_visit_row = (
         account.pub_visits.values("cache_key")
         .annotate(n=Count("id"))
@@ -30,7 +31,7 @@ def derive_account_profile_stats(account: Account) -> dict:
     usage = getattr(account, "usage_stats", None)
     beer_identities: set[str] = set()
     night_owl = False
-    for drink in account.drinks.only(
+    for drink in public_drinks.only(
         "drank_at",
         "beer_product_key",
         "beer_brand_key",

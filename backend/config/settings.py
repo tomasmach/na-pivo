@@ -218,7 +218,20 @@ PUB_LOCATION_LOOKUP_THROTTLE_RATE: str = os.environ.get(
 # (POST /v1/drinks). The in-app beer counter can log several beers in one
 # session (one POST each), so this is more generous than the community rate;
 # it still blunts scripted mass logging. Format: DRF throttle rate string.
-DRINKS_THROTTLE_RATE: str = os.environ.get("DRINKS_THROTTLE_RATE", "60/min")
+DRINKS_THROTTLE_RATE: str = os.environ.get("DRINKS_THROTTLE_RATE", "30/min")
+
+# Drink-log plausibility thresholds. Suspicious rows remain in personal history
+# but are excluded from public aggregates; only the extreme daily cap rejects.
+DRINK_FUTURE_GRACE_MINUTES: int = int(
+    os.environ.get("DRINK_FUTURE_GRACE_MINUTES", "10")
+)
+DRINK_BACKDATE_FLAG_DAYS: int = int(os.environ.get("DRINK_BACKDATE_FLAG_DAYS", "60"))
+DRINK_BURST_LIMIT: int = int(os.environ.get("DRINK_BURST_LIMIT", "12"))
+DRINK_BURST_WINDOW_MINUTES: int = int(
+    os.environ.get("DRINK_BURST_WINDOW_MINUTES", "10")
+)
+DRINK_DAILY_FLAG_CAP: int = int(os.environ.get("DRINK_DAILY_FLAG_CAP", "15"))
+DRINK_DAILY_HARD_CAP: int = int(os.environ.get("DRINK_DAILY_HARD_CAP", "20"))
 
 # Per-IP rate limit for the unauthenticated beer-brand suggestion endpoint
 # (GET /v1/beer-brands/suggest). The response is tiny and cacheable, but the

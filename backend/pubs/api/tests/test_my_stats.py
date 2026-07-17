@@ -156,6 +156,28 @@ def test_single_evening_one_pub(client):
 
 
 @pytest.mark.django_db
+def test_personal_stats_still_include_suspect_drinks(client):
+    token = _register(client)
+    account = Account.objects.latest("created_at")
+    drink = _drink(
+        account,
+        cache_key=_KEY_TYGR,
+        name="U Zlatého tygra",
+        price_czk=65,
+        drank_at=datetime(2026, 6, 12, 19, 0, tzinfo=PRAGUE),
+    )
+    drink.is_suspect = True
+    drink.suspect_reason = "manual"
+    drink.save(update_fields=["is_suspect", "suspect_reason"])
+
+    response = client.get("/v1/me/stats", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["total_beers"] == 1
+    assert response.json()["total_spent_czk"] == 65
+
+
+@pytest.mark.django_db
 def test_two_evenings_two_pubs_ordering_and_records(client):
     token = _register(client)
     account = Account.objects.latest("created_at")

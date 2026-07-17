@@ -91,6 +91,7 @@ class AccountAdmin(admin.ModelAdmin):
         "nickname",
         "device_id",
         "is_public",
+        "excluded_from_leaderboards",
         "marketing_emails_enabled",
         "subscription_tier",
         "subscription_status",
@@ -99,6 +100,7 @@ class AccountAdmin(admin.ModelAdmin):
     )
     list_filter = (
         "is_public",
+        "excluded_from_leaderboards",
         "marketing_emails_enabled",
         "subscription_tier",
         "subscription_status",
@@ -439,9 +441,9 @@ class PubContributionLogAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
 class DrinkLogAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
     # Append-only per-user drink history — fully read-only, like the
     # contribution log.
-    list_display = ("drank_at", "drink_type", "beer_name", "beer_brand_name", "beer_product_name", "price_czk", "volume_ml", "name", "cache_key", "account")
+    list_display = ("drank_at", "drink_type", "beer_name", "beer_brand_name", "beer_product_name", "price_czk", "volume_ml", "is_suspect", "suspect_reason", "name", "cache_key", "account")
     list_select_related = ("account", "beer_brand", "beer_product")
-    list_filter = ("drink_type", "beer_brand_key", "beer_product_key", "volume_ml", "drank_at")
+    list_filter = ("is_suspect", "suspect_reason", "drink_type", "beer_brand_key", "beer_product_key", "volume_ml", "drank_at")
     search_fields = ("beer_name", "beer_brand_name", "beer_product_name", "name", "cache_key", "city")
     readonly_fields = (
         "account",
@@ -462,10 +464,21 @@ class DrinkLogAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
         "beer_product_name",
         "price_czk",
         "volume_ml",
+        "is_suspect",
+        "suspect_reason",
         "drank_at",
         "created_at",
     )
+    actions = ("mark_as_suspect", "clear_suspect_flag")
     ordering = ("-drank_at",)
+
+    @admin.action(description="Mark as suspect (manual)")
+    def mark_as_suspect(self, request, queryset):  # noqa: ARG002
+        queryset.update(is_suspect=True, suspect_reason="manual")
+
+    @admin.action(description="Clear suspect flag")
+    def clear_suspect_flag(self, request, queryset):  # noqa: ARG002
+        queryset.update(is_suspect=False, suspect_reason="")
 
 
 @admin.register(PubRating)
