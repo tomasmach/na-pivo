@@ -64,6 +64,7 @@ export const cs = {
     notVisited: 'Tady ještě nemáš čárku.',
     visited: 'Navštíveno',
     pubDetail: 'Detail hospody',
+    reportClosed: 'Nahlásit: už nefunguje',
     offline: 'Mapa drží poslední data. Parta se ozve, až chytíš signál.',
     permissionHint: 'Rozhlížet se můžeš i bez polohy. Klepni a najdu tě.',
     openWithoutLocation: 'Otevřít mapu bez polohy',
@@ -1986,6 +1987,7 @@ export const cs = {
     mapRefresh: 'Obnovit podniky a partu',
     mapPub: (name: string, visits: number) =>
       visits > 0 ? `${name}, navštíveno ${visits}krát` : `${name}, zatím nenavštíveno`,
+    mapReportClosed: (name: string) => `Nahlásit hospodu ${name}, že už nefunguje`,
     mapLive: (friend: string, pub: string) => `${friend} je teď v hospodě ${pub}`,
     mapCity: (city: string, visits: number) => `${city}, ${visits} pivních večerů. Přiblížit`,
     mapCluster: (count: number) => `${count} podniků. Přiblížit`,

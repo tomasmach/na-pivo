@@ -7,6 +7,7 @@ import type { FriendPubActivity } from '@/data/friendsClient';
 import { EMPTY_PUB_SEARCH_FILTERS } from '@/data/pubSearchFilters';
 import BeerMapScreen from '../BeerMapScreen';
 import { fetchPubHours } from '@/data/hoursClient';
+import { enqueuePubReport } from '@/data/pubReportQueue';
 import { useBeerMap } from '../useBeerMap';
 
 let mockColorScheme: 'light' | 'dark' | null = 'dark';
@@ -67,6 +68,11 @@ jest.mock('react-native-safe-area-context', () => ({
 
 jest.mock('../useBeerMap', () => ({ useBeerMap: jest.fn() }));
 jest.mock('@/data/hoursClient', () => ({ fetchPubHours: jest.fn() }));
+jest.mock('@/data/pubReportQueue', () => ({ enqueuePubReport: jest.fn(async () => true) }));
+jest.mock('@/stores/pubStore', () => ({
+  usePubStore: (selector: (state: { addReportedPub: jest.Mock }) => unknown) =>
+    selector({ addReportedPub: jest.fn() }),
+}));
 jest.mock('@/utils/useReduceMotion', () => ({ useReduceMotion: () => true }));
 jest.mock('@/utils/haptics', () => ({ fireLightImpactHaptic: jest.fn() }));
 jest.mock('@/theme/fonts', () => ({
@@ -117,6 +123,7 @@ jest.mock('@/components/shared/IconGlyph', () => {
 
 const mockedUseBeerMap = useBeerMap as jest.MockedFunction<typeof useBeerMap>;
 const mockedFetchPubHours = fetchPubHours as jest.MockedFunction<typeof fetchPubHours>;
+const mockedEnqueuePubReport = enqueuePubReport as jest.MockedFunction<typeof enqueuePubReport>;
 
 function liveActivity(avatarUrl: string | null): FriendPubActivity {
   return {
@@ -300,5 +307,24 @@ describe('BeerMapScreen opening-hours loading', () => {
     fireEvent.press(screen.getByLabelText(cs.a11y.mapPub('U Testu', 0)));
 
     expect(screen.UNSAFE_queryAllByType(ScrollView)).toHaveLength(0);
+  });
+
+  it('reports a closed pub directly from the selected-pub card', () => {
+    const screen = render(
+      <BeerMapScreen
+        filters={EMPTY_PUB_SEARCH_FILTERS}
+        onApplyFilters={jest.fn()}
+        onShowCompass={jest.fn()}
+      />,
+    );
+
+    fireEvent.press(screen.getByLabelText(cs.a11y.mapPub('U Testu', 0)));
+    fireEvent.press(screen.getByLabelText(cs.a11y.mapReportClosed('U Testu')));
+
+    expect(mockedEnqueuePubReport).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'pub-1', name: 'U Testu' }),
+      'closed',
+    );
+    expect(screen.queryByLabelText(cs.a11y.mapReportClosed('U Testu'))).toBeNull();
   });
 });

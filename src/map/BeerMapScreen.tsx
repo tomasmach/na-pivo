@@ -844,6 +844,22 @@ export default function BeerMapScreen({
                 onPress: () => setDetailOpen(true),
               }}
             />
+            <Pressable
+              onPress={() => reportSelectedPub('closed')}
+              hitSlop={6}
+              style={({ pressed }) => [styles.reportClosedButton, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={cs.a11y.mapReportClosed(selectedPub.pub.name)}
+            >
+              <XIcon size={14} color={Colors.foamMuted} />
+              <Text
+                style={styles.reportClosedButtonText}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {cs.map.reportClosed}
+              </Text>
+            </Pressable>
           </View>
         ) : (
           <View style={styles.overviewContent}>
@@ -1223,6 +1239,22 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   selectedPubRatingText: { fontFamily: Fonts.ui.semibold, fontSize: 13, color: Colors.foam },
+  reportClosedButton: {
+    minHeight: 32,
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 10,
+    backgroundColor: withAlpha(Colors.foam, 0.035),
+  },
+  reportClosedButtonText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 11,
+    lineHeight: 14,
+    color: Colors.foamMuted,
+  },
   offlineText: {
     position: 'absolute',
     top: -28,
