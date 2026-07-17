@@ -121,7 +121,7 @@ Commit message musí být jednorádková conventional commit zpráva bez scope, 
 
 `dev` je default branch a patří na něj všechna běžná práce pro mobil i backend. Krátké větve `feat/*` a `fix/*` vždy zakládej z `dev` a po dokončení je vrať zpátky do `dev`.
 
-`main` je přesně to, co je vydané v App Store a Google Play. Hýbe se jen při mobilním releasu mergem `dev` → `main`; nikdy do něj necommituj přímo. Backend se z `main` nedeployuje. Teče průběžně z `dev` a každý deploy dostane tag `api-YYYY.MM.DD.N`, protože backend nemá jednu „vydanou verzi“ a běží zhruba ve stovce commitů měsíčně proti asi dvěma mobilním releasům.
+`main` je přesně to, co je vydané v App Store a Google Play. Hýbe se jen při mobilním releasu (merge `dev` → `main`) nebo mobilním hotfixu (merge `fix/*` → `main`); nikdy do něj necommituj přímo. Backend se z `main` nedeployuje. Teče průběžně z `dev` a každý deploy dostane tag `api-YYYY.MM.DD.N`, protože backend nemá jednu „vydanou verzi“ a běží zhruba ve stovce commitů měsíčně proti asi dvěma mobilním releasům.
 
 Když bumpneš mobilní verzi, změň společně `package.json` a `app.config.ts` a drž odpovídající tag `vX.Y.Z` (například `v1.2.1`) v souladu s marketing verzí. Tag je součást releasu, ale vytvoř ho až ve chvíli, kdy je verze skutečně venku jako Ready for Sale / published, ne při submitu. Jinak by `main` během review nebo po zamítnutí lhal.
 

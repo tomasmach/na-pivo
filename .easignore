@@ -2,22 +2,24 @@
 node_modules/
 
 # Expo
-.expo/
-.expo-shared/
-dist/
-web-build/
+# Directory patterns are anchored to the repo root so they can't swallow
+# future files under backend/ (e.g. backend/dist/, backend/android/).
+/.expo/
+/.expo-shared/
+/dist/
+/web-build/
+/build/
 expo-env.d.ts.bak
 
 # Native
-ios/
-android/
+/ios/
+/android/
 *.xcworkspace
 *.xcodeproj
 *.jks
 *.keystore
 
 # EAS
-.easignore
 credentials.json
 AuthKey.p8
 google-service-account.json

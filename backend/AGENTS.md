@@ -4,13 +4,13 @@ Na pivo je mobilní aplikace pro lidi, kteří mají rádi hospody, pivo, večer
 
 Původní MVP mobilní aplikace bylo jednoduché: kompas tě namíří do nejbližší hospody. Produkt se ale posouvá k modernímu mobilnímu pivnímu deníčku: zaznamenávání piv a večerů, navštívené hospody, profily, statistiky, komunita, objevování a hravá gamifikace.
 
-Tento repozitář je backendová vrstva pro tento produkt. Má být nudně spolehlivá, levná na provoz, šetrná k datům a kompatibilní s mobilními verzemi, které už jsou venku.
+Tento adresář (`backend/` v monorepu na-pivo) je backendová vrstva pro tento produkt. Má být nudně spolehlivá, levná na provoz, šetrná k datům a kompatibilní s mobilními verzemi, které už jsou venku.
 
 ## Current status
 
 Backend je Django + Django REST Framework aplikace spravovaná přes `uv` a Python 3.14.
 
-Mobilní appka žije v sousedním repozitáři `../na-pivo`. Backend obsluhuje API pro účty, profily, hospody, otevírací dobu, komunitní data, hodnocení, návštěvy, pivní záznamy, telemetry, feedback a další syncované funkce.
+Mobilní appka žije v kořeni tohoto monorepa (o adresář výš). Branching a deploy model je popsaný v kořenovém `AGENTS.md`: všechna práce jde do `dev`, backend se nasazuje z `api-*` tagů, nikdy z `main`. Backend obsluhuje API pro účty, profily, hospody, otevírací dobu, komunitní data, hodnocení, návštěvy, pivní záznamy, telemetry, feedback a další syncované funkce.
 
 Mechanické detaily jsou v README, `pyproject.toml`, settings a testech. Tento soubor je hlavně produktový a agentický kompas.
 

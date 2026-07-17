@@ -3,6 +3,8 @@ const { defineConfig } = require('eslint/config');
 const expoConfig = require("eslint-config-expo/flat");
 
 module.exports = defineConfig([
+  // Global ignore: the Django backend (its .venv alone is ~7k files).
+  { ignores: ["backend/**"] },
   expoConfig,
   {
     ignores: ["dist/*"],

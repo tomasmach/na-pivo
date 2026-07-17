@@ -44,6 +44,9 @@ module.exports = {
   },
   setupFiles: ['<rootDir>/jest.setup.ts'],
   testMatch: ['**/__tests__/**/*.test.ts?(x)'],
+  testPathIgnorePatterns: ['/node_modules/', '<rootDir>/backend/'],
+  modulePathIgnorePatterns: ['<rootDir>/backend/'],
+  watchPathIgnorePatterns: ['<rootDir>/backend/'],
   passWithNoTests: true,
   // kdbush, geokdbush, tinyqueue and react-native packages need transformation
   transformIgnorePatterns: [

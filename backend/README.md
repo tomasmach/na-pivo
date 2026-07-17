@@ -40,8 +40,8 @@ The Expo mobile app lives in `../na-pivo`.
 ## Quick start
 
 ```bash
-# 1. Clone and enter
-git clone ... && cd na-pivo-backend
+# 1. Clone the monorepo and enter the backend
+git clone git@github.com:tomasmach/na-pivo.git && cd na-pivo/backend
 
 # 2. Create a .env file
 cp .env.example .env
@@ -239,7 +239,7 @@ The report includes usage totals, top walkers, client error/API-failure breakdow
 
 ## Deploy (Docker Compose)
 
-Production runs as **Docker Compose** at `/opt/na-pivo` on a Hetzner VPS (`api.na-pivo.cz`), behind a shared **Caddy** reverse proxy that terminates TLS.
+Production runs as **Docker Compose** from `/opt/na-pivo/backend` on a Hetzner VPS (`api.na-pivo.cz`), behind a shared **Caddy** reverse proxy that terminates TLS. `/opt/na-pivo` is a sparse checkout of the monorepo (only `backend/` is materialised) pinned to a detached `api-*` tag — the backend never deploys from a branch.
 
 Services:
 
@@ -268,7 +268,7 @@ request_body {
 ### First-time setup
 
 ```bash
-# As root on the VPS. Use a read-only deploy key dedicated to THIS repo.
+# As root on the VPS. Use a dedicated read-only key with access to the monorepo.
 ssh-keygen -t ed25519 -f ~/.ssh/id_napivo -N ""
 cat >> ~/.ssh/config <<'CFG'
 Host github-napivo
@@ -278,9 +278,13 @@ Host github-napivo
   IdentitiesOnly yes
 CFG
 
-# Add ~/.ssh/id_napivo.pub as a read-only Deploy key on the GitHub repo, then:
-git clone git@github-napivo:tomasmach/na-pivo-backend.git /opt/na-pivo
+# Give the key read access to the monorepo (account key or deploy key), then
+# clone it sparsely — only backend/ lands on disk, pinned to an api-* tag:
+git clone --filter=blob:none --no-checkout git@github-napivo:tomasmach/na-pivo.git /opt/na-pivo
 cd /opt/na-pivo
+git sparse-checkout set --no-cone "/backend/"
+git checkout --detach api-YYYY.MM.DD.N
+cd backend
 
 # Configure environment. Never commit .env.
 cp .env.production.example .env
@@ -289,18 +293,27 @@ cp .env.production.example .env
 #            DATABASE_URL=postgres://napivo:strong-pass@db:5432/napivo,
 #            FIRMY_PROXY_URL=http://user:pass@proxy:port when needed
 
-docker compose up -d --build
+docker compose -p na-pivo up -d --build
 ```
 
 ### Routine deploys
 
+Tag the commit to deploy as `api-YYYY.MM.DD.N` (from `dev`, or from the last
+deployed tag for a hotfix), push the tag, then on the VPS:
+
 ```bash
 cd /opt/na-pivo
-git pull
-docker compose up -d --build
-docker compose ps
-docker compose logs --tail=30 napivo-web
+git fetch origin --tags --filter=blob:none
+git checkout --detach api-YYYY.MM.DD.N
+cd backend
+docker compose -p na-pivo up -d --build
+docker compose -p na-pivo ps
+docker compose -p na-pivo logs --tail=30 napivo-web
 ```
+
+Always pass `-p na-pivo`: the compose project name is pinned in
+`docker-compose.yml`, but the explicit flag keeps a stray invocation from a
+different directory from ever creating a parallel project with empty volumes.
 
 Migrations run inside the container on start. `set -e` means a failed migration stops `napivo-web` before gunicorn; check `docker compose logs napivo-web` if it will not go healthy.
 
