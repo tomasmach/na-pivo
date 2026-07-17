@@ -1,0 +1,103 @@
+name: na-pivo
+
+services:
+  # Django + DRF served by gunicorn. This is the only service exposed to the
+  # shared Caddy network; its unique name (napivo-web) avoids colliding with
+  # culinair's own "web" service alias on culinair_default.
+  napivo-web:
+    build: .
+    image: na-pivo-backend:local
+    container_name: napivo-web
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    # User-uploaded avatars live on a named volume so they survive deploys.
+    # MEDIA_ROOT=/data/media (set in .env) must match this mount; Caddy serves
+    # /media/* from the same path on the host (Django does not serve media in
+    # prod). The worker mounts it too so it can clean up avatars on purge.
+    volumes:
+      - napivo_media:/data/media
+    networks:
+      - internal
+      - caddy
+    expose:
+      - "8000"
+    healthcheck:
+      # TCP-connect probe: confirms gunicorn is listening without tripping the
+      # production HTTPS redirect (a plain HTTP GET would be 301'd).
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8000), 3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Drains the EnrichTask queue (pubs that overflowed the per-request sync
+  # budget) and refreshes stale rows. Honours the Firmy.cz rate limits itself.
+  worker:
+    build: .
+    image: na-pivo-backend:local
+    container_name: napivo-worker
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+      # Wait until web has applied migrations (its healthcheck only passes once
+      # gunicorn — and therefore the entrypoint's migrate step — has finished),
+      # so the worker never queries tables that don't exist yet.
+      napivo-web:
+        condition: service_healthy
+    # Share the avatar volume so the worker can purge avatar files for deleted
+    # accounts. Same path as web (MEDIA_ROOT=/data/media).
+    volumes:
+      - napivo_media:/data/media
+    networks:
+      - internal
+    # Override the web entrypoint: loop the cron commands every 5 minutes.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          python manage.py refresh_hours --limit 50 || true
+          python manage.py refresh_google_pub_locations --limit 25 || true
+          python manage.py sync_feedback_linear --limit 20 || true
+          python manage.py advance_friend_plans || true
+          python manage.py advance_photo_contests || true
+          python manage.py prune_friend_data || true
+          sleep 300
+        done
+
+  db:
+    image: postgres:17-alpine
+    container_name: napivo-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: napivo
+      POSTGRES_USER: napivo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - napivo_pg:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U napivo -d napivo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  internal:
+    driver: bridge
+  # The pre-existing culinair Caddy network, joined as external so the running
+  # Caddy can reverse_proxy to napivo-web. Not created/owned by this project.
+  caddy:
+    external: true
+    name: culinair_default
+
+volumes:
+  napivo_pg:
+  # User-uploaded avatars (MEDIA_ROOT=/data/media). Caddy serves /media/* from
+  # this volume's host path; it persists across container rebuilds/deploys.
+  napivo_media:

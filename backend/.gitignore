@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+env/
+venv/
+
+# Django
+*.sqlite3
+db.sqlite3
+db.sqlite3-journal
+/staticfiles/
+/media/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Ruff / linting
+.ruff_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# uv
+.python-version
+
+# Playwright MCP scratch artifacts
+.playwright-mcp/
+
+# Local pub-catalogue data dumps (large, regenerated)
+scripts/*.json
+scripts/__pycache__/
+
+# One-time third-party seed snapshots (local audit/recovery data)
+pubs/data/pivarova_mapa_seed.jsonl
+
+# Local operational backups and sanitized production test fixtures
+backups/
