@@ -29,6 +29,7 @@ import {
   View,
   Text,
   Pressable,
+  ScrollView,
   StyleSheet,
   TextInput,
   KeyboardAvoidingView,
@@ -47,7 +48,6 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, HitArea } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { cs, formatVolume } from '@/i18n/cs';
-import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import {
   XIcon,
   CompassIcon,
@@ -206,6 +206,7 @@ export function MapPubSheet({
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
   const [renameSubmitting, setRenameSubmitting] = useState(false);
+  const bodyRef = useRef<ScrollView>(null);
 
   // Reset to "loading" during render when the pub changes, so a previous pub's
   // data never bleeds into a new open (the React-recommended alternative to a
@@ -219,6 +220,20 @@ export function MapPubSheet({
   }
 
   const displayName = renamedName ?? pubName;
+
+  // The Modal keeps this component mounted between openings, which also keeps
+  // the native ScrollView's last offset. A previously scrolled detail could
+  // therefore reopen beyond its content and show only the brown card surface.
+  // Always start a newly shown pub detail at its first row. The body itself has
+  // no editable fields, so it intentionally stays independent of keyboard
+  // insets; the rename editor handles the keyboard in its own overlay below.
+  useEffect(() => {
+    if (!showSheet) return;
+    const frame = requestAnimationFrame(() => {
+      bodyRef.current?.scrollTo({ y: 0, animated: false });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [showSheet, identityKey]);
 
   // A configured backend endpoint = the votes endpoint resolves to a URL. The
   // submit itself still degrades gracefully (returns 'retry' when truly offline /
@@ -628,11 +643,15 @@ export function MapPubSheet({
               {!backendConfigured ? cs.mapPub.offline : cs.mapPub.publicNote}
             </Text>
 
-            <KeyboardAwareScrollView
+            <ScrollView
+              ref={bodyRef}
               style={styles.body}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
               bounces={false}
+              overScrollMode="never"
+              automaticallyAdjustContentInsets={false}
+              contentInsetAdjustmentBehavior="never"
             >
               {facts && (
                 <View>
@@ -708,7 +727,7 @@ export function MapPubSheet({
               <Text style={styles.footerHint} maxFontSizeMultiplier={FontScaleCap.body}>
                 {cs.mapPub.footerHint}
               </Text>
-            </KeyboardAwareScrollView>
+            </ScrollView>
           </Animated.View>
 
         {/* Rename editor as an in-modal overlay, NOT a second sibling <Modal>:
