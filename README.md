@@ -8,9 +8,9 @@ Produktový tón je český, hospodský, hravý a lidský. UI copy uživateli ty
 
 ## What is in this repo
 
-This repository contains the Expo / React Native mobile app.
+This monorepo contains the Expo / React Native mobile app at the repository root.
 
-The backend lives next to it in `../na-pivo-backend` and powers accounts, profiles, community data, pub hours, ratings, visits, drink logs, telemetry, feedback and other synced features.
+The Django backend lives in `backend/` and powers accounts, profiles, community data, pub hours, ratings, visits, drink logs, telemetry, feedback and other synced features.
 
 The app should degrade gracefully without internet: local state and queued changes matter. Server-backed features still require sync, but the mobile experience should not collapse just because the network is unavailable.
 
@@ -53,14 +53,14 @@ npm run dev
 Start the Django backend on the LAN interface:
 
 ```bash
-cd ../na-pivo-backend
+cd backend
 uv run python manage.py runserver 0.0.0.0:8000
 ```
 
 Then build and run the local iOS app with backend mode enabled:
 
 ```bash
-cd ../na-pivo
+cd ..
 npm run ios:local
 ```
 

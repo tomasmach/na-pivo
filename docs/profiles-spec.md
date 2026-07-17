@@ -1,6 +1,6 @@
 # Profiles feature — MOBILE contract (locked)
 
-Branch `feat/user-accounts`. Beer-social profiles: unique nickname handle, avatar, public-default visibility, a full **Profile tab**, onboarding wizard, edit screen. Backend mirror at `na-pivo-backend/docs/profiles-spec.md`. Build code against this contract; runtime integration needs the backend deployed but the code is fully writable now.
+Branch `feat/user-accounts`. Beer-social profiles: unique nickname handle, avatar, public-default visibility, a full **Profile tab**, onboarding wizard, edit screen. Backend mirror at `backend/docs/profiles-spec.md`. Build code against this contract; runtime integration needs the backend deployed but the code is fully writable now.
 
 ## Canonical endpoints (post-reconcile — these paths are FINAL)
 - `PATCH /v1/account/me` — profile write (NOT `/v1/account/profile`). Body = only passed keys of `{nickname, display_name, is_public}` (+ hide_pub_names stays in the prefs path).

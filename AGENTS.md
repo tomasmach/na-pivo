@@ -8,9 +8,9 @@ Produkt má být český, hospodský, lehce vtipný a lidský. Ne korporátní w
 
 ## Current status
 
-Toto repo je Expo / React Native mobilní aplikace.
+Toto monorepo obsahuje Expo / React Native mobilní aplikaci v kořeni a Django backend v `backend/`.
 
-Backend žije v sousedním repozitáři `../na-pivo-backend`. Mobilní aplikace se serverem řeší účty, profily, komunitní data, hospody, hodnocení, návštěvy, piva, telemetry a další syncované funkce. Část zážitku musí fungovat lokálně a bez internetu, ale produkt už není čistě offline kompas.
+Mobilní aplikace se serverem řeší účty, profily, komunitní data, hospody, hodnocení, návštěvy, piva, telemetry a další syncované funkce. Část zážitku musí fungovat lokálně a bez internetu, ale produkt už není čistě offline kompas.
 
 Mechanické příkazy jsou v `package.json` a README. Tento soubor je hlavně produktový a agentický kompas.
 
@@ -96,7 +96,7 @@ Pro kompletní lokální spuštění projektu vždy používej:
 npm run dev
 ```
 
-Tento příkaz v sousedním backend repozitáři `../na-pivo-backend` spustí databázové
+Tento příkaz v `backend/` stejného repozitáře spustí databázové
 migrace a lokální backend a následně sestaví a otevře mobilní aplikaci v iOS
 simulátoru. Backend ani simulátor proto běžně nespouštěj separátními příkazy;
 udělej to jen při cílené diagnostice jedné vrstvy nebo na explicitní žádost.
@@ -119,7 +119,19 @@ Po dokončení coherent změny commitni a pushni.
 
 Commit message musí být jednorádková conventional commit zpráva bez scope, například `feat: add profile badges` nebo `fix: preserve queued drinks offline`.
 
-Když bumpneš verzi (`package.json` + `app.config.ts`), vytvoř po commitu i odpovídající git tag `vX.Y.Z` (například `git tag v1.2.1`). Tag drž v souladu s marketing verzí. Tagy ber jako součást bumpu, ne jako separátní krok.
+`dev` je default branch a patří na něj všechna běžná práce pro mobil i backend. Krátké větve `feat/*` a `fix/*` vždy zakládej z `dev` a po dokončení je vrať zpátky do `dev`.
+
+`main` je přesně to, co je vydané v App Store a Google Play. Hýbe se jen při mobilním releasu mergem `dev` → `main`; nikdy do něj necommituj přímo. Backend se z `main` nedeployuje. Teče průběžně z `dev` a každý deploy dostane tag `api-YYYY.MM.DD.N`, protože backend nemá jednu „vydanou verzi“ a běží zhruba ve stovce commitů měsíčně proti asi dvěma mobilním releasům.
+
+Když bumpneš mobilní verzi, změň společně `package.json` a `app.config.ts` a drž odpovídající tag `vX.Y.Z` (například `v1.2.1`) v souladu s marketing verzí. Tag je součást releasu, ale vytvoř ho až ve chvíli, kdy je verze skutečně venku jako Ready for Sale / published, ne při submitu. Jinak by `main` během review nebo po zamítnutí lhal.
+
+Mobilní hotfix založ z `main` přes `git worktree add ../napivo-hotfix -b fix/neco main`, oprav ho, merge zpět do `main`, udělej build a submit a po vydání vytvoř mobilní tag. Pak povinně vrať fix do vývoje přes `git checkout dev && git merge main`. Tohle je jediná systémová daň modelu; když na merge zapomeneš, `dev` fix nemá.
+
+Backend hotfix založ z posledního nasazeného API tagu, například `git worktree add ../napivo-apifix -b fix/neco api-2026.07.17.1`. Oprav ho, vytvoř další `api-YYYY.MM.DD.N` tag se zvýšeným pořadovým číslem, nasaď ho a změnu merge zpět do `dev`. Větev vzniká z tagu, aby hotfix nezávisel na tom, co je zrovna rozdělané v `dev`.
+
+OTA přes `eas update` publikuj jen z `main`, nikdy z `dev` ani feature větve. Nejdřív ověř update přes `--channel preview`, potom použij `eas update:republish --destination-channel production`. OTA z feature větve už v minulosti shodila produkci.
+
+Produkční server má sparse checkout jen pro `backend/` a stojí na detached `api-*` tagu. `docker compose` tam vždy pouštěj s explicitním `-p na-pivo`; bez něj Compose odvodí jméno projektu z adresáře `backend/`, vytvoří nové prázdné volumes a situace vypadá jako ztráta databáze.
 
 Produkční deployment nedělej bez explicitního požadavku člověka. Commit a push jsou běžné; release, EAS build, App Store/TestFlight kroky nebo zásahy do produkčního backendu jsou separátní rozhodnutí.
 

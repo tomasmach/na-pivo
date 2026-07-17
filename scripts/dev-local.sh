@@ -5,13 +5,13 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-BACKEND_DIR="$(cd "$REPO_ROOT/../na-pivo-backend" 2>/dev/null && pwd || true)"
+BACKEND_DIR="$(cd "$REPO_ROOT/backend" 2>/dev/null && pwd || true)"
 # 8012 = the dvanactka of ports; 80xx range, but clear of 8000/8080/8081
 BACKEND_PORT="${EXPO_PUBLIC_BACKEND_PORT:-8012}"
 export EXPO_PUBLIC_BACKEND_PORT="$BACKEND_PORT"
 
 if [ -z "$BACKEND_DIR" ]; then
-  echo "Backend repo not found next to this repo (expected ../na-pivo-backend)" >&2
+  echo "Backend directory not found in this repo (expected backend/)" >&2
   exit 1
 fi
 
