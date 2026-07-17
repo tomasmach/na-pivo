@@ -50,7 +50,8 @@ import {
 } from '@/components/shared/IconGlyph';
 import { PhotoDiarySection } from '@/photos/PhotoDiarySection';
 import { useReduceMotion } from '@/utils/useReduceMotion';
-import { type AccountMapper, type AccountPivar } from '@/data/auth';
+import { type AccountMapper } from '@/data/auth';
+import { accountXpProgress, type AccountXpProgress } from '@/data/accountXp';
 import { DiscordIcon, InstagramIcon, LinkedinIcon } from '@/components/shared/BrandIcon';
 import { GlowButton } from '@/components/shared/GlowButton';
 import CodeSheet from '@/friends/CodeSheet';
@@ -180,7 +181,7 @@ function HeroStat({ value }: { value: number }) {
 }
 
 
-/** The amber XP progress bar inside the Mapér level card. Width animates from 0
+/** The amber XP progress bar inside the account level card. Width animates from 0
  *  to the fill fraction, gated by reduce-motion. */
 function XpBar({ fraction }: { fraction: number }) {
   const reduceMotion = useReduceMotion();
@@ -199,57 +200,14 @@ function XpBar({ fraction }: { fraction: number }) {
 }
 
 /**
- * The MAPÉR section (spec §5.4 / Mockup 3): a level card with an XP bar, a 2×2
- * StatTile grid of mapper counters, and the five new badges. Rendered between
- * TVOJE ČÍSLA and ODZNAKY. `mapper` is the backend snapshot; when it is absent
- * (backend dormant / signed out) the caller shows the empty state instead.
+ * Mapping stays a specialization with useful counters and badges, not a second
+ * competing XP ladder. Its server-owned XP is included in the single account
+ * level rendered above this section.
  */
 function MapperSection({ mapper, signedIn }: { mapper: AccountMapper; signedIn: boolean }) {
-  const xpForNext = mapper.xpForNextLevel;
-  const isMaxed = xpForNext == null || xpForNext <= 0;
-  // xpIntoLevel / xpForNextLevel → bar fill; a maxed level shows a full bar.
-  const fraction = isMaxed ? 1 : mapper.xpIntoLevel / xpForNext;
-  const cur = mapper.xpIntoLevel;
-  const next = isMaxed ? mapper.xpIntoLevel : xpForNext;
-  const remaining = isMaxed ? 0 : Math.max(0, xpForNext - mapper.xpIntoLevel);
-  const progressText = isMaxed
-    ? cs.mapPub.mapperXpTotal(mapper.xp)
-    : cs.mapPub.mapperXpProgress(cur, next);
-
   return (
     <>
       <Text style={styles.sectionHeader}>{cs.mapPub.mapperHeader}</Text>
-
-      <View
-        style={styles.levelCard}
-        accessibilityLabel={cs.a11y.mapperLevel(
-          mapper.level,
-          mapper.title,
-          isMaxed ? mapper.xp : mapper.xpIntoLevel,
-          isMaxed ? null : xpForNext,
-        )}
-      >
-        <View style={styles.levelHeaderRow}>
-          <View style={styles.levelIconWell}>
-            <SproutIcon size={22} color={Colors.amber} />
-          </View>
-          <Text style={styles.levelTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.mapPub.mapperLevel(mapper.level, mapper.title)}
-          </Text>
-        </View>
-
-        <XpBar fraction={fraction} />
-
-        <View style={styles.xpRow}>
-          <Text style={styles.xpProgress} maxFontSizeMultiplier={FontScaleCap.body}>
-            {progressText}
-          </Text>
-          <Text style={styles.xpToNext} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-            {isMaxed ? cs.mapPub.mapperXpMaxed : cs.mapPub.mapperXpToNext(remaining)}
-          </Text>
-        </View>
-      </View>
-
       <View style={styles.statsGrid}>
         <StatTile
           icon={<MapPinnedIcon size={18} color={Colors.amber} />}
@@ -284,19 +242,19 @@ function MapperSection({ mapper, signedIn }: { mapper: AccountMapper; signedIn: 
 }
 
 /**
- * The PIVAŘ section — the drink-logging level card, mirroring the Mapér level
- * card one-to-one (same styles, shared XP bar copy). No stat grid: the beer
- * numbers already live in TVOJE ČÍSLA above; this card is purely the ladder.
+ * One account level fed by both diary and mapping contributions. The two legacy
+ * server counters stay additive for released clients, but the product presents
+ * one total, one bar and one title.
  */
-function PivarSection({ pivar }: { pivar: AccountPivar }) {
-  const xpForNext = pivar.xpForNextLevel;
+function AccountLevelSection({ progress }: { progress: AccountXpProgress }) {
+  const xpForNext = progress.xpForNextLevel;
   const isMaxed = xpForNext == null || xpForNext <= 0;
-  const fraction = isMaxed ? 1 : pivar.xpIntoLevel / xpForNext;
-  const cur = pivar.xpIntoLevel;
-  const next = isMaxed ? pivar.xpIntoLevel : xpForNext;
-  const remaining = isMaxed ? 0 : Math.max(0, xpForNext - pivar.xpIntoLevel);
+  const fraction = isMaxed ? 1 : progress.xpIntoLevel / xpForNext;
+  const cur = progress.xpIntoLevel;
+  const next = isMaxed ? progress.xpIntoLevel : xpForNext;
+  const remaining = isMaxed ? 0 : Math.max(0, xpForNext - progress.xpIntoLevel);
   const progressText = isMaxed
-    ? cs.mapPub.mapperXpTotal(pivar.xp)
+    ? cs.mapPub.mapperXpTotal(progress.xp)
     : cs.mapPub.mapperXpProgress(cur, next);
 
   return (
@@ -306,9 +264,9 @@ function PivarSection({ pivar }: { pivar: AccountPivar }) {
       <View
         style={styles.levelCard}
         accessibilityLabel={cs.a11y.pivarLevel(
-          pivar.level,
-          pivar.title,
-          isMaxed ? pivar.xp : pivar.xpIntoLevel,
+          progress.level,
+          progress.title,
+          isMaxed ? progress.xp : progress.xpIntoLevel,
           isMaxed ? null : xpForNext,
         )}
       >
@@ -317,7 +275,7 @@ function PivarSection({ pivar }: { pivar: AccountPivar }) {
             <BeerIcon size={22} color={Colors.amber} />
           </View>
           <Text style={styles.levelTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.pivar.level(pivar.level, pivar.title)}
+            {cs.pivar.level(progress.level, progress.title)}
           </Text>
         </View>
 
@@ -463,6 +421,7 @@ export default function ProfileScreen() {
       : ratingsCount;
   const mapper = profile?.mapper;
   const pivar = profile?.pivar;
+  const xpProgress = useMemo(() => accountXpProgress(mapper, pivar), [mapper, pivar]);
   const walkedM = isSignedIn ? profile?.usage?.walkedDistanceM ?? null : null;
   const recent = useMemo(() => sessions.slice(0, 3), [sessions]);
   const now = useMemo(() => new Date(), []);
@@ -701,9 +660,8 @@ export default function ProfileScreen() {
           <ChevronRightIcon size={18} color={Colors.mutedText} />
         </Pressable>
 
-        {/* ── Pivař (the drink-logging ladder; hidden until the backend sends
-            its snapshot — no fake zeros on older backends) ── */}
-        {pivar ? <PivarSection pivar={pivar} /> : null}
+        {/* One account level: diary XP + mapping XP. */}
+        {xpProgress ? <AccountLevelSection progress={xpProgress} /> : null}
 
         {/* ── Mapér (between TVOJE ČÍSLA and ODZNAKY) ── */}
         {mapper ? (

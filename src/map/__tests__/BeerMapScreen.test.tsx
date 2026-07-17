@@ -1,5 +1,5 @@
 import React, { forwardRef, useImperativeHandle } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
 
 import { cs } from '@/i18n/cs';
@@ -286,5 +286,19 @@ describe('BeerMapScreen opening-hours loading', () => {
     });
     expect(screen.queryByText(cs.compass.detailsLoading)).toBeNull();
     expect(screen.getByText(cs.compass.hoursUnknown)).toBeTruthy();
+  });
+
+  it('renders the selected-pub dock as a fixed card, not a scroll view', () => {
+    const screen = render(
+      <BeerMapScreen
+        filters={EMPTY_PUB_SEARCH_FILTERS}
+        onApplyFilters={jest.fn()}
+        onShowCompass={jest.fn()}
+      />,
+    );
+
+    fireEvent.press(screen.getByLabelText(cs.a11y.mapPub('U Testu', 0)));
+
+    expect(screen.UNSAFE_queryAllByType(ScrollView)).toHaveLength(0);
   });
 });

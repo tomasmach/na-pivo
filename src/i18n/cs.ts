@@ -152,7 +152,6 @@ export const cs = {
     // XP toasts
     xpFirstMapper: (xp: number) => `Prvomapér! +${xp} XP`,
     xpSession: (n: number, xp: number) => `Zmapováno ${n} věcí · +${xp} XP`,
-    xpLevelUp: (title: string) => `Level up! Teď jsi ${title}.`,
     // Retracting a vote only corrects the public map; the user keeps their XP
     // and counters (lifetime-achievement model — never clawed back).
     retracted: 'Smazáno z mapy. Body ti zůstávají.',
@@ -199,7 +198,7 @@ export const cs = {
       `Přidej jinou hospodu, nebo oprav „${pubName}“.`,
     reportRename: 'Opravit název',
     reportClosed: 'Už nefunguje',
-    reportNotPub: 'Nečepují pivo',
+    reportNotPub: 'Odstranit hospodu z mapy',
     reportAddMissing: 'Přidat jinou hospodu',
     renameTitle: 'Jak se jmenuje?',
     renameBody: (pubName: string) =>
@@ -1567,7 +1566,7 @@ export const cs = {
     pickerNearbyHeader: 'Blízké hospody',
     pickerOutsideHeader: 'Mimo hospodu',
     outsideLabel: (context: OutsidePlaceContext) =>
-      ({ private: 'Doma / na chatě', outdoors: 'Venku', other: 'Jinde' })[context],
+      ({ private: 'Doma / na chatě', outdoors: 'Venku', other: 'Mimo hospodu' })[context],
     // Entry from the "no pub nearby" screen and the permission gate.
     outsideNoPubCta: 'Piju mimo hospodu',
     outsideNoLocationCta: 'Zapsat pivo bez polohy',
@@ -1711,10 +1710,8 @@ export const cs = {
 
   // — Pivař (drink-logging XP ladder; XP bar strings are shared with Mapér) —
   pivar: {
-    header: 'PIVAŘ',
+    header: 'TVŮJ LEVEL',
     level: (n: number, title: string) => `Úroveň ${n} · ${title}`,
-    // Level-up toast fired when a delivered drink bumps the server level.
-    levelUpToast: (title: string) => `Nový level! Odteď jsi ${title} 🍺`,
   },
 
   myBeers: {

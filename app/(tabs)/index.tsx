@@ -58,6 +58,7 @@ import { PubCardActions } from '@/components/shared/PubCardActions';
 import {
   BeerIcon,
   BeerOffIcon,
+  Trash2Icon,
   CompassIcon,
   LockKeyholeIcon,
   EyeIcon,
@@ -280,7 +281,7 @@ function ReportPubModal({
             />
             <ReportActionButton
               label={cs.compass.reportNotPub}
-              icon={<BeerOffIcon size={18} color={Colors.amberLight} />}
+              icon={<Trash2Icon size={18} color={Colors.amberLight} />}
               onPress={handleReportNotPub}
               tone="danger"
             />

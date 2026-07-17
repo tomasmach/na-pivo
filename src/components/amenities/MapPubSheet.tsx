@@ -54,7 +54,7 @@ import {
   SproutIcon,
   ClockIcon,
   BeerIcon,
-  BeerOffIcon,
+  Trash2Icon,
   ChevronRightIcon,
   PencilIcon,
 } from '@/components/shared/IconGlyph';
@@ -103,7 +103,7 @@ import { useAccountStore } from '@/stores/accountStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { useReduceMotion } from '@/utils/useReduceMotion';
-import { FALLBACK_LEVELS, FALLBACK_XP_RULES, levelForXp } from '@/data/mapperXp';
+import { FALLBACK_XP_RULES } from '@/data/mapperXp';
 import { pubIdentityKey } from '@/data/pubIdentity';
 import { formatPrice, type PriceCurrency } from '@/utils/currency';
 import { isPriceApproximate, isPriceFresh, priceAgeLabel } from '@/utils/priceAge';
@@ -313,7 +313,6 @@ export function MapPubSheet({
   // ── XP coalescing (spec §3.5) ──
   const xpAccum = useRef({ count: 0, xp: 0 });
   const xpTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastLevel = useRef<number | null>(null);
 
   const flushXpToast = useCallback(() => {
     const { count, xp } = xpAccum.current;
@@ -340,7 +339,6 @@ export function MapPubSheet({
       xpTimer.current = null;
     }
     flushXpToast();
-    lastLevel.current = null;
   }, [visible, flushXpToast]);
 
   useEffect(
@@ -442,7 +440,7 @@ export function MapPubSheet({
           }
           consumeVoteEnvelope(result.xp_awarded, result.was_first_map);
         }
-        // Feed the fresh Mapér snapshot to Profile + name an optimistic level-up.
+        // Feed the mapping component into the one combined account level.
         const snap = res.body.mapper;
         if (snap) {
           applyMapperSnapshot({
@@ -456,7 +454,6 @@ export function MapPubSheet({
             firstMapperCount: snap.first_mapper_count,
             completedPubsCount: snap.completed_pubs_count,
           });
-          maybeLevelUpToast(snap.level, snap.title, lastLevel, showToast);
         }
       });
     },
@@ -717,7 +714,7 @@ export function MapPubSheet({
                     onPress={() => onReport('closed')}
                   />
                   <ReportRow
-                    icon={<BeerOffIcon size={24} color={Colors.amberLight} />}
+                    icon={<Trash2Icon size={24} color={Colors.amberLight} />}
                     label={cs.compass.reportNotPub}
                     onPress={() => onReport('not_pub')}
                   />
@@ -1054,24 +1051,6 @@ function mergeAggregate(
   const next = base.slice();
   next[idx] = fresh;
   return next;
-}
-
-/** Fire a level-up toast once when the server level crosses upward. */
-function maybeLevelUpToast(
-  level: number,
-  title: string,
-  lastLevel: React.MutableRefObject<number | null>,
-  showToast: (message: string, options?: { icon?: React.ReactNode }) => void,
-) {
-  const prev = lastLevel.current;
-  lastLevel.current = level;
-  // Name the level from the server title (or the bundled ladder as a fallback).
-  const named = title || levelForXp(0, FALLBACK_LEVELS).title;
-  if (prev != null && level > prev) {
-    showToast(cs.mapPub.xpLevelUp(named), {
-      icon: <SproutIcon size={18} color={Colors.amber} />,
-    });
-  }
 }
 
 const styles = StyleSheet.create({

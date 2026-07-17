@@ -72,6 +72,7 @@ jest.mock('@/components/shared/GlowButton', () => ({
 jest.mock('@/components/shared/IconGlyph', () => ({
   BeerIcon: jest.fn(() => null),
   BeerOffIcon: jest.fn(() => null),
+  Trash2Icon: jest.fn(() => null),
   CompassIcon: jest.fn(() => null),
   LockKeyholeIcon: jest.fn(() => null),
   EyeIcon: jest.fn(() => null),

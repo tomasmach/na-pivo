@@ -1,62 +1,51 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+const applyPivarSnapshot = jest.fn();
 
-jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
-);
-
-const show = jest.fn();
-jest.mock('@/stores/toastStore', () => ({
-  useToastStore: { getState: () => ({ show }) },
+jest.mock('@/stores/accountStore', () => ({
+  useAccountStore: { getState: () => ({ applyPivarSnapshot }) },
 }));
 
 import { notePivarSnapshot } from '../pivarXp';
-import { cs } from '@/i18n/cs';
 
-const LEVEL_KEY = 'na-pivo-pivar-level';
-
-beforeEach(async () => {
+beforeEach(() => {
   jest.clearAllMocks();
-  await AsyncStorage.clear();
 });
 
 describe('notePivarSnapshot', () => {
-  it('seeds the first seen level silently (no toast for history)', async () => {
-    await notePivarSnapshot({ level: 4, title: 'Výčepní' });
-    expect(show).not.toHaveBeenCalled();
-    expect(await AsyncStorage.getItem(LEVEL_KEY)).toBe('4');
+  it('patches the drink XP component used by the combined account level', () => {
+    notePivarSnapshot({
+      xp: 180,
+      level: 2,
+      title: 'Ochutnávač',
+      xp_into_level: 30,
+      xp_for_next_level: 350,
+      xp_awarded: 20,
+    });
+
+    expect(applyPivarSnapshot).toHaveBeenCalledWith({
+      xp: 180,
+      level: 2,
+      title: 'Ochutnávač',
+      xpIntoLevel: 30,
+      xpForNextLevel: 350,
+    });
   });
 
-  it('toasts once when the level increases', async () => {
-    await notePivarSnapshot({ level: 1, title: 'Zelenáč' });
-    await notePivarSnapshot({ level: 2, title: 'Ochutnávač' });
-    expect(show).toHaveBeenCalledTimes(1);
-    expect(show).toHaveBeenCalledWith(cs.pivar.levelUpToast('Ochutnávač'));
-    expect(await AsyncStorage.getItem(LEVEL_KEY)).toBe('2');
+  it('accepts a maxed level', () => {
+    notePivarSnapshot({
+      xp: 18000,
+      level: 7,
+      title: 'Pivní legenda',
+      xp_into_level: 0,
+      xp_for_next_level: null,
+    });
+    expect(applyPivarSnapshot).toHaveBeenCalledWith(expect.objectContaining({ xpForNextLevel: null }));
   });
 
-  it('stays quiet on the same or a lower level', async () => {
-    await notePivarSnapshot({ level: 3, title: 'Pivní tovaryš' });
-    await notePivarSnapshot({ level: 3, title: 'Pivní tovaryš' });
-    await notePivarSnapshot({ level: 2, title: 'Ochutnávač' });
-    expect(show).not.toHaveBeenCalled();
-    // A lower level (e.g. server reset) re-seeds so a future climb toasts again.
-    expect(await AsyncStorage.getItem(LEVEL_KEY)).toBe('2');
-  });
-
-  it('ignores malformed snapshots', async () => {
-    await notePivarSnapshot(null);
-    await notePivarSnapshot({});
-    await notePivarSnapshot({ level: 'nope' });
-    expect(show).not.toHaveBeenCalled();
-    expect(await AsyncStorage.getItem(LEVEL_KEY)).toBeNull();
-  });
-
-  it('serializes concurrent notes so one level-up toasts exactly once', async () => {
-    await notePivarSnapshot({ level: 1, title: 'Zelenáč' });
-    await Promise.all([
-      notePivarSnapshot({ level: 2, title: 'Ochutnávač' }),
-      notePivarSnapshot({ level: 2, title: 'Ochutnávač' }),
-    ]);
-    expect(show).toHaveBeenCalledTimes(1);
+  it('ignores malformed snapshots', () => {
+    notePivarSnapshot(null);
+    notePivarSnapshot({});
+    notePivarSnapshot({ xp: 10, level: 1 });
+    notePivarSnapshot({ xp: 'nope', level: 1, xp_into_level: 10 });
+    expect(applyPivarSnapshot).not.toHaveBeenCalled();
   });
 });

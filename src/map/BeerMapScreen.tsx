@@ -783,11 +783,7 @@ export default function BeerMapScreen({
             </Pressable>
           </ScrollView>
         ) : selectedPub ? (
-          <ScrollView
-            style={styles.dockScroll}
-            contentContainerStyle={styles.selectedPubContent}
-            showsVerticalScrollIndicator={false}
-          >
+          <View style={styles.selectedPubContent}>
             <Pressable
               onPress={() => void openPubInMaps(selectedDetailPub ?? selectedPub.pub)}
               style={({ pressed }) => [styles.selectedPubTapArea, pressed && styles.pressed]}
@@ -848,7 +844,7 @@ export default function BeerMapScreen({
                 onPress: () => setDetailOpen(true),
               }}
             />
-          </ScrollView>
+          </View>
         ) : (
           <View style={styles.overviewContent}>
             <View style={styles.overviewRow}>

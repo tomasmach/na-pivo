@@ -223,13 +223,13 @@ export async function submitDrink(
 
     if (resp.ok) {
       trackDrinkSynced('submit_drink');
-      // The response carries the server-authoritative Pivař XP snapshot; note
-      // it for the level-up toast. Best-effort — a malformed body is ignored.
+      // The response carries the server-authoritative drink-XP component; patch
+      // it into the one combined account level. Malformed bodies are ignored.
       try {
         const body = (await resp.json()) as { pivar?: unknown };
-        if (body?.pivar) void notePivarSnapshot(body.pivar);
+        if (body?.pivar) notePivarSnapshot(body.pivar);
       } catch {
-        // Older backend / empty body — no XP envelope to note.
+        // Older backend / empty body — no XP component to patch.
       }
       return 'ok';
     }

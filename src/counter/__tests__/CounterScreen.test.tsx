@@ -198,6 +198,26 @@ describe('CounterScreen states', () => {
     const texts = renderer.root.findAllByType('Text').map((t: any) => t.props.children);
     expect(texts.flat().join(' ')).toContain(cs.counter.noPubTitle);
   });
+
+  it('starts an outside evening directly instead of opening the pub picker', () => {
+    useNearbyPub.mockReturnValue(nearbyState({ selected: null, candidates: [nearbyState().candidates[0]] }));
+    const PubPickerModal = require('@/counter/PubPickerModal').PubPickerModal as jest.Mock;
+    let renderer: any;
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(CounterScreen));
+    });
+
+    const outside = renderer.root.findAll(
+      (node: any) =>
+        node.props?.accessibilityLabel === copy.counter.outsideNoPubCta &&
+        typeof node.props?.onPress === 'function',
+    )[0];
+    act(() => outside.props.onPress());
+
+    const texts = renderer.root.findAllByType('Text').map((t: any) => t.props.children);
+    expect(texts.flat().join(' ')).toContain(copy.counter.outsideLabel('other'));
+    expect(PubPickerModal.mock.calls.at(-1)?.[0].visible).toBe(false);
+  });
 });
 
 describe('CounterScreen counting', () => {

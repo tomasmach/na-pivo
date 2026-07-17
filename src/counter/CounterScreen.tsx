@@ -192,6 +192,7 @@ function DetectingScreen({ embedded }: { embedded: boolean }) {
 function NoPubScreen({
   candidatesCount,
   onPickPlace,
+  onLogOutside,
   onRetry,
   embedded,
 }: {
@@ -199,6 +200,8 @@ function NoPubScreen({
   candidatesCount: number;
   /** Opens the "Kde sedíš?" picker (nearby pubs + Mimo hospodu). */
   onPickPlace: () => void;
+  /** Starts a generic outside-pub evening without routing through pub choices. */
+  onLogOutside: () => void;
   onRetry: () => void;
   embedded: boolean;
 }) {
@@ -237,7 +240,7 @@ function NoPubScreen({
         )}
       </View>
       <Pressable
-        onPress={onPickPlace}
+        onPress={onLogOutside}
         style={styles.noPubAddLink}
         hitSlop={8}
         accessibilityRole="button"
@@ -1624,7 +1627,7 @@ export default function CounterScreen({ embedded = false }: { embedded?: boolean
           <PermissionScreen
             permissionState={permissionState}
             requestPermission={requestPermission}
-            onLogOutside={() => setPickerOpen(true)}
+            onLogOutside={() => setOutsideContext('other')}
             embedded={embedded}
           />
           {picker}
@@ -1641,6 +1644,7 @@ export default function CounterScreen({ embedded = false }: { embedded?: boolean
         <NoPubScreen
           candidatesCount={candidates.length}
           onPickPlace={() => setPickerOpen(true)}
+          onLogOutside={() => setOutsideContext('other')}
           onRetry={retry}
           embedded={embedded}
         />

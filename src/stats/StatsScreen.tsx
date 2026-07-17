@@ -509,7 +509,8 @@ const styles = StyleSheet.create({
   heroCount: {
     fontFamily: Fonts.display.extrabold,
     fontSize: 64,
-    lineHeight: 70,
+    lineHeight: 82,
+    paddingTop: 6,
     color: Colors.foam,
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],

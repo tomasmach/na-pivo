@@ -11,6 +11,7 @@ import {
   EMPTY_ACHIEVEMENTS,
   type AccountAchievements,
   type AccountMapper,
+  type AccountPivar,
   type AccountProfile,
   type AccountSettings,
   type AuthActionResult,
@@ -43,6 +44,14 @@ export interface MapperSnapshotPatch {
   completedPubsCount?: number;
 }
 
+export interface PivarSnapshotPatch {
+  xp: number;
+  level: number;
+  title: string;
+  xpIntoLevel: number;
+  xpForNextLevel?: number | null;
+}
+
 function mapperFromSnapshot(
   current: AccountMapper | undefined,
   snapshot: MapperSnapshotPatch,
@@ -63,6 +72,23 @@ function mapperFromSnapshot(
     completedPubsCount: snapshot.completedPubsCount ?? current?.completedPubsCount ?? 0,
     levels: current?.levels ?? [...FALLBACK_LEVELS],
     xpRules: current?.xpRules ?? FALLBACK_XP_RULES,
+  };
+}
+
+function pivarFromSnapshot(
+  current: AccountPivar | undefined,
+  snapshot: PivarSnapshotPatch,
+): AccountPivar {
+  return {
+    xp: snapshot.xp,
+    level: snapshot.level,
+    title: snapshot.title,
+    xpIntoLevel: snapshot.xpIntoLevel,
+    xpForNextLevel:
+      snapshot.xpForNextLevel === undefined
+        ? current?.xpForNextLevel ?? null
+        : snapshot.xpForNextLevel,
+    levels: current?.levels ?? [],
   };
 }
 
@@ -104,6 +130,8 @@ interface AccountState {
    * the next GET /account/me reconciles server levels + xpRules.
    */
   applyMapperSnapshot: (snapshot: MapperSnapshotPatch) => void;
+  /** Patch drink XP into the same live profile used by the combined account level. */
+  applyPivarSnapshot: (snapshot: PivarSnapshotPatch) => void;
 
   // --- credential auth (these change the session token) ---
   register: (params: { email: string; password: string; displayName?: string }) => Promise<AuthResult>;
@@ -241,6 +269,18 @@ export const useAccountStore = create<AccountState>((set, get) => {
           mapper,
           achievements: achievementsFromMapper(current.achievements, mapper),
         },
+      });
+    },
+
+    applyPivarSnapshot: (snapshot) => {
+      set((state) => {
+        if (!state.profile) return state;
+        return {
+          profile: {
+            ...state.profile,
+            pivar: pivarFromSnapshot(state.profile.pivar, snapshot),
+          },
+        };
       });
     },
 
