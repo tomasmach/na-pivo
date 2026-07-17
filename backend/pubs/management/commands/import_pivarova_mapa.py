@@ -16,9 +16,10 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from pubs.beer_catalog import BeerCatalogMatchCache, normalize_beer_payload
-from pubs.enrichment.matcher import geohash8, name_similarity, names_match, verify_match
+from pubs.enrichment.matcher import geohash8, name_similarity, verify_match
 from pubs.identity import normalize_pub_name
-from pubs.models import PubCommunityData, PubDirectory, PubExternalBeerMenu, PubHours
+from pubs.models import PubDirectory, PubExternalBeerMenu, PubHours, PubPriceIndex
+from pubs.price_index import has_user_beer_menu, upsert_pub_price_index
 
 MATCH_LAT_DELTA = 0.002
 MATCH_LNG_DELTA = 0.003
@@ -190,12 +191,7 @@ def _create_directory(row: dict) -> tuple[PubDirectory, bool]:
 
 def _has_user_beer_menu(directory: PubDirectory) -> bool:
     """Return whether an app user has already supplied or cleared this menu."""
-    for row in PubCommunityData.objects.filter(cache_key=directory.cache_key):
-        if not names_match(directory.name, row.name):
-            continue
-        if row.beers_updated_at is not None or bool(row.beers):
-            return True
-    return False
+    return has_user_beer_menu(cache_key=directory.cache_key, name=directory.name)
 
 
 def _promote_directory_pub(directory: PubDirectory) -> bool:
@@ -277,7 +273,7 @@ class Command(BaseCommand):
                         source_id=str(row["source_id"]),
                     ).first()
                     if existing is None:
-                        PubExternalBeerMenu.objects.create(
+                        external_menu = PubExternalBeerMenu.objects.create(
                             source=PubExternalBeerMenu.Source.PIVAROVA_MAPA,
                             source_id=str(row["source_id"]),
                             **values,
@@ -287,11 +283,23 @@ class Command(BaseCommand):
                         comparable = {key: value for key, value in values.items() if key != "fetched_at"}
                         if all(getattr(existing, key) == value for key, value in comparable.items()):
                             counts["unchanged"] += 1
-                            continue
-                        for key, value in values.items():
-                            setattr(existing, key, value)
-                        existing.save(update_fields=[*values, "updated_at"])
-                        counts["updated"] += 1
+                            external_menu = existing
+                        else:
+                            for key, value in values.items():
+                                setattr(existing, key, value)
+                            existing.save(update_fields=[*values, "updated_at"])
+                            counts["updated"] += 1
+                            external_menu = existing
+                    upsert_pub_price_index(
+                        cache_key=external_menu.cache_key,
+                        name=external_menu.name,
+                        lat=external_menu.lat,
+                        lng=external_menu.lng,
+                        city=external_menu.city,
+                        beers=external_menu.beers,
+                        observed_at=external_menu.verified_at or external_menu.fetched_at,
+                        source=PubPriceIndex.Source.EXTERNAL,
+                    )
                 if not options["apply"]:
                     raise DryRunRollbackError
         except DryRunRollbackError:

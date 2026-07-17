@@ -46,7 +46,7 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, HitArea } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
-import { cs } from '@/i18n/cs';
+import { cs, formatVolume } from '@/i18n/cs';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import {
   XIcon,
@@ -105,6 +105,8 @@ import { fireLightImpactHaptic } from '@/utils/haptics';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 import { FALLBACK_LEVELS, FALLBACK_XP_RULES, levelForXp } from '@/data/mapperXp';
 import { pubIdentityKey } from '@/data/pubIdentity';
+import { formatPrice, type PriceCurrency } from '@/utils/currency';
+import { isPriceApproximate, isPriceFresh, priceAgeLabel } from '@/utils/priceAge';
 
 const SECTION_LABEL: Record<AmenitySection, string> = {
   seating: cs.mapPub.sectionSeating,
@@ -135,6 +137,23 @@ function haptic() {
   if (useSettingsStore.getState().hapticEnabled) fireLightImpactHaptic();
 }
 
+function formatReferencePrice(
+  price: NonNullable<PubInfoContext['price']>,
+  currency: PriceCurrency,
+): string | null {
+  if (!isPriceFresh(price.observedAt)) return null;
+  const amount = formatPrice(price.czk, currency);
+  const approximateAmount = isPriceApproximate(price.observedAt)
+    ? cs.compass.priceApprox(amount)
+    : amount;
+  const volume =
+    price.volumeMl != null && price.volumeMl !== 500
+      ? ` / ${formatVolume(price.volumeMl)}`
+      : '';
+  const age = priceAgeLabel(price.observedAt);
+  return age ? `${approximateAmount}${volume} · ${age}` : null;
+}
+
 export function MapPubSheet({
   visible,
   pubKey,
@@ -148,6 +167,10 @@ export function MapPubSheet({
   const reduceMotion = useReduceMotion();
   const router = useRouter();
   const facts = usePubInfoFacts(info);
+  const priceCurrency = useSettingsStore((s) => s.priceCurrency);
+  const referencePrice = info?.price
+    ? formatReferencePrice(info.price, priceCurrency)
+    : null;
 
   // The sheet is an RN Modal (a native window above everything), so opening the
   // contribute editor needs it to step aside — otherwise it would cover the
@@ -496,7 +519,7 @@ export function MapPubSheet({
     if (!info) return;
     setRenameDraft(displayName);
     setRenameOpen(true);
-  }, [info, displayName]);
+  }, [info, displayName, setRenameDraft, setRenameOpen]);
 
   const handleRenameCancel = useCallback(() => {
     if (renameSubmitting) return;
@@ -627,9 +650,13 @@ export function MapPubSheet({
                     icon={<BeerIcon size={24} color={facts.hasBeers ? Colors.amber : Colors.mutedText} />}
                     label={cs.mapPub.factBeersLabel}
                     value={
-                      facts.hasBeers
-                        ? cs.mapPub.factBeersCount(facts.beerCount)
-                        : cs.mapPub.factBeersMissing
+                      referencePrice
+                        ? facts.beerCount > 0
+                          ? cs.mapPub.factBeersWithPrice(facts.beerCount, referencePrice)
+                          : cs.mapPub.factReferencePrice(referencePrice)
+                        : facts.hasBeers
+                          ? cs.mapPub.factBeersCount(facts.beerCount)
+                          : cs.mapPub.factBeersMissing
                     }
                     filled={facts.hasBeers}
                     onPress={() => openContribute('beers')}
@@ -937,7 +964,7 @@ function InfoFactRow({
       onPress={onPress}
       style={({ pressed }) => [styles.row, pressed && { opacity: 0.7 }]}
       accessibilityRole="button"
-      accessibilityLabel={cs.mapPub.factEditA11y(label, filled)}
+      accessibilityLabel={`${cs.mapPub.factEditA11y(label, filled)}. ${value}`}
     >
       {icon}
       <View style={styles.rowTextWrap}>

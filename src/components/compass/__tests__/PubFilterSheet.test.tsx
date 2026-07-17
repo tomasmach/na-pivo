@@ -64,13 +64,14 @@ jest.mock('@/data/beerSuggestionsClient', () => ({
 const TestRenderer = require('react-test-renderer');
 const { act } = TestRenderer;
 
-function renderSheet(onApply = jest.fn(), onClose = jest.fn()) {
+function renderSheet(onApply = jest.fn(), onClose = jest.fn(), nearbyPrices: number[] = []) {
   let renderer: ReturnType<typeof TestRenderer.create>;
   act(() => {
     renderer = TestRenderer.create(
       <PubFilterSheet
         visible
-        value={{ beerBrand: null, amenityKeys: [] }}
+        value={{ beerBrand: null, amenityKeys: [], priceMinCzk: null, priceMaxCzk: null }}
+        nearbyPrices={nearbyPrices}
         onClose={onClose}
         onApply={onApply}
       />,
@@ -103,6 +104,8 @@ describe('PubFilterSheet', () => {
     expect(onApply).toHaveBeenCalledWith({
       beerBrand: null,
       amenityKeys: ['payment_card', 'game_foosball'],
+      priceMinCzk: null,
+      priceMaxCzk: null,
     });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -127,6 +130,8 @@ describe('PubFilterSheet', () => {
     expect(onApply).toHaveBeenCalledWith({
       beerBrand: { key: 'pilsner-urquell', label: 'Pilsner' },
       amenityKeys: ['game_darts'],
+      priceMinCzk: null,
+      priceMaxCzk: null,
     });
   });
 
@@ -139,5 +144,32 @@ describe('PubFilterSheet', () => {
     expect(renderer.root.findAllByProps({
       accessibilityLabel: cs.a11y.togglePubAmenityFilter('Živá hudba'),
     })).toHaveLength(0);
+  });
+
+  it('applies a price range through two independent slider thumbs', () => {
+    const { renderer, onApply } = renderSheet(jest.fn(), jest.fn(), [35, 42, 48, 55, 69]);
+    const minSlider = renderer.root.findByProps({
+      accessibilityLabel: cs.a11y.priceFilterMinSlider,
+    });
+    const maxSlider = renderer.root.findByProps({
+      accessibilityLabel: cs.a11y.priceFilterMaxSlider,
+    });
+
+    act(() => {
+      minSlider.props.onAccessibilityAction({ nativeEvent: { actionName: 'increment' } });
+    });
+    act(() => {
+      maxSlider.props.onAccessibilityAction({ nativeEvent: { actionName: 'decrement' } });
+    });
+    act(() => {
+      renderer.root.findByProps({ accessibilityLabel: cs.a11y.applyPubFilters }).props.onPress();
+    });
+
+    expect(onApply).toHaveBeenCalledWith({
+      beerBrand: null,
+      amenityKeys: [],
+      priceMinCzk: 35,
+      priceMaxCzk: 70,
+    });
   });
 });

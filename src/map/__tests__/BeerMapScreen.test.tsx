@@ -151,6 +151,7 @@ function mockLiveMap(avatarUrl: string | null) {
   const activity = liveActivity(avatarUrl);
   mockedUseBeerMap.mockReturnValue({
     pubs: [],
+    nearbyPrices: [],
     visitedPubs: [],
     visitedCities: [],
     livePubs: [{
@@ -180,6 +181,7 @@ describe('BeerMapScreen opening-hours loading', () => {
     mockColorScheme = 'dark';
     mockedUseBeerMap.mockReturnValue({
       pubs: [{ id: 'pub-1', name: 'U Testu', lat: 50.0876, lng: 14.4214 }],
+      nearbyPrices: [],
       visitedPubs: [],
       visitedCities: [],
       livePubs: [],

@@ -143,6 +143,7 @@ describe('searchPubsNear — backend proxy only', () => {
   afterEach(() => {
     global.fetch = ORIGINAL_FETCH;
     setBackend(ORIGINAL_BACKEND);
+    jest.restoreAllMocks();
     jest.clearAllMocks();
   });
 
@@ -204,6 +205,62 @@ describe('searchPubsNear — backend proxy only', () => {
       ratingLabel: 'Výborné',
       venueKind: 'pub',
     }));
+  });
+
+  it('maps a fresh reference price and rejects an expired one', async () => {
+    setBackend('https://api.example.com');
+    const now = Date.parse('2026-07-17T12:00:00Z');
+    jest.spyOn(Date, 'now').mockReturnValue(now);
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        items: [
+          {
+            ...PUB_ITEM,
+            pubDetails: {
+              price: {
+                czk: 42,
+                volume_ml: 500,
+                observed_at: '2026-06-30T12:00:00Z',
+                source: 'community',
+              },
+            },
+          },
+        ],
+      }),
+    })) as unknown as typeof fetch;
+
+    const [fresh] = await searchPubsNear(50.08, 14.42, 25);
+    expect(fresh.price).toEqual({
+      czk: 42,
+      volumeMl: 500,
+      observedAt: '2026-06-30T12:00:00Z',
+      source: 'community',
+    });
+
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        items: [
+          {
+            ...PUB_ITEM,
+            pubDetails: {
+              price: {
+                czk: 39,
+                volume_ml: 500,
+                observed_at: '2025-07-01T12:00:00Z',
+                source: 'external',
+              },
+            },
+          },
+        ],
+      }),
+    })) as unknown as typeof fetch;
+
+    const [expired] = await searchPubsNear(50.08, 14.42, 25);
+    expect(expired.price).toBeNull();
   });
 
   it('keeps broad restaurant results for the compass but marks them ambiguous', async () => {

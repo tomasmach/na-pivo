@@ -6,7 +6,7 @@
  *   + Permission gate and loading state
  */
 
-import React, { useEffect, useCallback, useState } from 'react';
+import React, { useEffect, useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -29,7 +29,9 @@ import {
 } from 'react-native-reanimated';
 
 import { useCompass } from '@/hooks/useCompass';
-import type { HoursStatus } from '@/data/pubs';
+import type { HoursStatus, PubPrice } from '@/data/pubs';
+import { getAllLoadedPubs } from '@/data/pubs';
+import { isPriceApproximate, isPriceFresh, priceAgeLabel } from '@/utils/priceAge';
 import type { CommunityBeer } from '@/data/communityClient';
 import { parseOsmOpeningHoursToWeeklyHours } from '@/data/communityHours';
 import type { PubReportReason } from '@/data/pubReportsClient';
@@ -84,7 +86,7 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing, CompassSize } from '@/theme/layout';
 import { amberGlowStrong } from '@/theme/shadows';
-import { cs } from '@/i18n/cs';
+import { cs, formatVolume } from '@/i18n/cs';
 
 // Android's heading samples arrive as discrete jumps (see the rotation
 // reaction in CompassScreen); animate between them. The spring is essentially
@@ -666,23 +668,67 @@ interface RevealedPubPillProps {
   hoursStatus?: HoursStatus;
   nextChange?: string | null;
   beers?: CommunityBeer[];
+  beersUpdatedAt?: string | null;
+  price?: PubPrice | null;
   rating?: number | null;
   ratingCount?: number | null;
   hasGarden?: boolean | null;
 }
 
-/** A compact one-liner for the cheapest/first beer, with "a další" when more. */
-function formatBeerLine(beers: CommunityBeer[], priceCurrency: PriceCurrency): string | null {
+/** A compact one-liner for the cheapest/first beer, with "a další" when more.
+ *  A priced line carries the observation age ("· před 3 týdny"); observations
+ *  older than ~6 months render as approximate ("≈ 42 Kč") so a stale price
+ *  never poses as today's truth. */
+function formatBeerLine(
+  beers: CommunityBeer[],
+  priceCurrency: PriceCurrency,
+  referencePrice?: PubPrice | null,
+  beersUpdatedAt?: string | null,
+): string | null {
   if (beers.length === 0) return null;
-  // Prefer the cheapest priced beer; fall back to the first when none priced.
-  const priced = beers.filter((b) => typeof b.priceCzk === 'number');
-  const lead = priced.length
-    ? priced.reduce((a, b) => ((b.priceCzk ?? 0) < (a.priceCzk ?? 0) ? b : a))
-    : beers[0];
-  const base =
-    typeof lead.priceCzk === 'number'
-      ? cs.compass.beerWithPrice(lead.name, formatPrice(lead.priceCzk, priceCurrency))
-      : cs.compass.beerNoPrice(lead.name);
+  const freshReference =
+    referencePrice && isPriceFresh(referencePrice.observedAt) ? referencePrice : null;
+  const fallbackObservedAt =
+    beersUpdatedAt && isPriceFresh(beersUpdatedAt) ? beersUpdatedAt : null;
+  const observedAt = freshReference?.observedAt ?? fallbackObservedAt;
+  // Match the server contract: only a large beer (unknown volume = Czech 0.5 l
+  // default) can carry the reference price in the pub preview.
+  const priced = beers.filter(
+    (beer) =>
+      typeof beer.priceCzk === 'number' &&
+      (beer.volumeMl == null || beer.volumeMl >= 400),
+  );
+  const matchingReference = freshReference
+    ? priced.find(
+        (beer) =>
+          beer.priceCzk === freshReference.czk &&
+          (beer.volumeMl ?? 500) === (freshReference.volumeMl ?? 500),
+      )
+    : undefined;
+  const lead = matchingReference ?? (
+    priced.length
+      ? priced.reduce((a, b) => ((b.priceCzk ?? 0) < (a.priceCzk ?? 0) ? b : a))
+      : beers[0]
+  );
+  let base: string;
+  const displayedPrice = freshReference?.czk ?? lead.priceCzk;
+  const displayedVolume = freshReference?.volumeMl ?? lead.volumeMl;
+  if (typeof displayedPrice === 'number' && observedAt) {
+    const formatted = formatPrice(displayedPrice, priceCurrency);
+    const volume =
+      displayedVolume != null && displayedVolume !== 500
+        ? ` / ${formatVolume(displayedVolume)}`
+        : '';
+    const approx = isPriceApproximate(observedAt);
+    base = cs.compass.beerWithPrice(
+      freshReference && !matchingReference ? cs.compass.referenceBeer : lead.name,
+      `${approx ? cs.compass.priceApprox(formatted) : formatted}${volume}`,
+    );
+    const age = priceAgeLabel(observedAt);
+    if (age) base = `${base} · ${age}`;
+  } else {
+    base = cs.compass.beerNoPrice(lead.name);
+  }
   return beers.length > 1 ? `${base} · ${cs.compass.beerAndMore}` : base;
 }
 
@@ -704,6 +750,8 @@ function RevealedPubPill({
   hoursStatus,
   nextChange,
   beers,
+  beersUpdatedAt,
+  price,
   rating,
   ratingCount,
   hasGarden,
@@ -742,7 +790,10 @@ function RevealedPubPill({
   if (hasGarden === true) accessibilityParts.push(cs.a11y.pubGarden);
   const accessibilityLabel = accessibilityParts.join('. ');
 
-  const beerLine = beers && beers.length > 0 ? formatBeerLine(beers, priceCurrency) : null;
+  const beerLine =
+    beers && beers.length > 0
+      ? formatBeerLine(beers, priceCurrency, price, beersUpdatedAt)
+      : null;
 
   return (
     <View style={[styles.pubPill, styles.pubPillRevealed]}>
@@ -1193,7 +1244,13 @@ export default function CompassScreen() {
     currentPosition,
     focusedPub,
     clearFocusedPub,
-  } = useCompass(pubFilters.beerBrand?.key ?? null, pubFilters.amenityKeys, !mapOpen);
+  } = useCompass(
+    pubFilters.beerBrand?.key ?? null,
+    pubFilters.amenityKeys,
+    pubFilters.priceMinCzk,
+    pubFilters.priceMaxCzk,
+    !mapOpen,
+  );
   const activeFilterCount = activePubSearchFilterCount(pubFilters);
   const hidePubNames = useSettingsStore((s) => s.hidePubNames);
   const showPubDetails = !hidePubNames || revealed;
@@ -1270,8 +1327,23 @@ export default function CompassScreen() {
   const handleOpenFilter = useCallback(() => setFilterSheetOpen(true), []);
   const handleCloseFilter = useCallback(() => setFilterSheetOpen(false), []);
   const handleClearFilter = useCallback(
-    () => setPubFilters({ beerBrand: null, amenityKeys: [] }),
+    () => setPubFilters(EMPTY_PUB_SEARCH_FILTERS),
     [],
+  );
+  // Snapshot the known prices when the sheet opens — the histogram should show
+  // the distribution around the CURRENT loaded area, not live-shift mid-drag.
+  const nearbyPrices = useMemo(
+    () =>
+      filterSheetOpen
+        ? getAllLoadedPubs()
+            .map((loadedPub) =>
+              loadedPub.price && isPriceFresh(loadedPub.price.observedAt)
+                ? loadedPub.price.czk
+                : undefined,
+            )
+            .filter((czk): czk is number => typeof czk === 'number')
+        : [],
+    [filterSheetOpen],
   );
   const handleShowMap = useCallback(() => setMapOpen(true), []);
   const handleShowCompass = useCallback(() => setMapOpen(false), []);
@@ -1431,6 +1503,7 @@ export default function CompassScreen() {
           <PubFilterSheet
             visible
             value={pubFilters}
+            nearbyPrices={nearbyPrices}
             onClose={handleCloseFilter}
             onApply={setPubFilters}
           />
@@ -1511,6 +1584,8 @@ export default function CompassScreen() {
             hoursStatus={pub.hoursStatus}
             nextChange={pub.nextChange}
             beers={pub.beers}
+            beersUpdatedAt={pub.beersUpdatedAt}
+            price={pub.price}
             rating={pub.rating}
             ratingCount={pub.ratingCount}
             hasGarden={pub.hasGarden}
@@ -1553,6 +1628,7 @@ export default function CompassScreen() {
         <PubFilterSheet
           visible
           value={pubFilters}
+          nearbyPrices={nearbyPrices}
           onClose={handleCloseFilter}
           onApply={setPubFilters}
         />

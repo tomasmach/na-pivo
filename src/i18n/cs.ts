@@ -106,6 +106,9 @@ export const cs = {
     factBeersMissing: 'Chybí — doplň, co točí',
     factBeersCount: (n: number) =>
       n === 1 ? '1 pivo · uprav' : n >= 2 && n <= 4 ? `${n} piva · uprav` : `${n} piv · uprav`,
+    factBeersWithPrice: (n: number, price: string) =>
+      n === 1 ? `1 pivo · ${price}` : n >= 2 && n <= 4 ? `${n} piva · ${price}` : `${n} piv · ${price}`,
+    factReferencePrice: (price: string) => `Velké pivo · ${price}`,
     factEditA11y: (label: string, filled: boolean) =>
       filled ? `Upravit: ${label}` : `Doplnit: ${label}`,
 
@@ -219,6 +222,7 @@ export const cs = {
     // The leading beer glyph is a line-art icon rendered next to this text in
     // the pub card (see RevealedPubPill), not an emoji baked into the string.
     beerWithPrice: (name: string, price: string) => `${name} · ${price}`,
+    referenceBeer: 'Velké pivo',
     beerNoPrice: (name: string) => name,
     beerAndMore: 'a další',
     ratingCount: (count: string) => `${count} hodnocení`,
@@ -240,6 +244,26 @@ export const cs = {
     pubFilterLimit: (count: number) => `Vyber nejvýš ${count} vlastností, ať má kompas kde hledat.`,
     pubFilterClear: 'Zrušit',
     pubFilterApply: 'Ukázat hospody',
+    // Price filter (histogram + two-thumb range slider) copy
+    priceFilterLabel: 'CENA PIVA',
+    priceFilterSubtitle: 'Velké pivo · sloupce po 5 Kč. Ceny do roka, starší ber orientačně.',
+    priceFilterFromLowest: 'Od nejlevnějšího',
+    priceFilterFrom: (price: string) => `Od ${price}`,
+    priceFilterNoLimit: 'Bez limitu',
+    priceFilterMax: (price: string) => `Do ${price}`,
+    priceFilterPubCount: (count: number) =>
+      count === 1 ? '1 hospoda' : count >= 2 && count <= 4 ? `${count} hospody` : `${count} hospod`,
+    priceFilterHidesUnknown: 'Hospody bez známé ceny se při zapnutém filtru schovají.',
+    priceFilterNoData: 'Ceny tu zatím nikdo nezmapoval. Zapiš pivo v hospodě a bude tu líp vidět.',
+    // Price age — how old the price observation is. Rendered next to the price
+    // so the card never pretends a stale number is today's truth.
+    priceAgeToday: 'dnes',
+    priceAgeYesterday: 'včera',
+    priceAgeDays: (n: number) => `před ${n} dny`,
+    priceAgeWeeks: (n: number) => (n === 1 ? 'před týdnem' : `před ${n} týdny`),
+    priceAgeMonths: (n: number) => (n === 1 ? 'před měsícem' : `před ${n} měsíci`),
+    /** Prefix for prices older than ~6 months — visibly approximate. */
+    priceApprox: (price: string) => `≈ ${price}`,
   },
 
   permissions: {
@@ -1942,6 +1966,10 @@ export const cs = {
     clearPubFilters: 'Zrušit všechny filtry hospod',
     applyPubFilters: 'Použít vybrané filtry hospod',
     togglePubAmenityFilter: (name: string) => `Filtrovat podle vlastnosti ${name}`,
+    priceFilterMinSlider: 'Nejnižší cena piva',
+    priceFilterMaxSlider: 'Nejvyšší cena piva',
+    priceFilterValue: (label: string) => `Cenový limit: ${label}`,
+    pubPriceAge: (price: string, age: string) => `Pivo za ${price}, údaj ${age}`,
     beerMap: 'Pivní mapa hospod, navštívených míst a kamarádů',
     mapSwitchCompass: 'Přepnout na kompas',
     mapSwitchCompassSelected: 'Kompas je vybraný',

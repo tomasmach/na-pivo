@@ -8,7 +8,7 @@ from django.core.management import call_command
 
 from pubs.enrichment.matcher import geohash8
 from pubs.identity import normalize_pub_name
-from pubs.models import PubCommunityData, PubDirectory, PubExternalBeerMenu
+from pubs.models import PubCommunityData, PubDirectory, PubExternalBeerMenu, PubPriceIndex
 
 NAME = "Restaurace U Fleků"
 LAT = 50.0812
@@ -91,6 +91,32 @@ def test_apply_creates_reviewed_fallback_and_is_idempotent(tmp_path):
     assert menu.name == NAME
     assert menu.beers == [{"name": "Flekovský ležák 13°", "price_czk": 79, "volume_ml": 400}]
     assert menu.verified_at.isoformat() == "2026-06-30T16:27:49+00:00"
+    price = PubPriceIndex.objects.get(cache_key=KEY)
+    assert price.price_czk == 79
+    assert price.source == PubPriceIndex.Source.EXTERNAL
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("source", [PubPriceIndex.Source.COMMUNITY, PubPriceIndex.Source.DRINK])
+def test_external_import_never_overwrites_active_in_app_price(tmp_path, source):
+    directory = _directory()
+    PubPriceIndex.objects.create(
+        cache_key=directory.cache_key,
+        name=directory.name,
+        lat=directory.lat,
+        lng=directory.lng,
+        city=directory.city,
+        price_czk=55,
+        volume_ml=500,
+        observed_at="2026-07-01T00:00:00Z",
+        source=source,
+    )
+
+    _run(_export(tmp_path, _row()), apply=True)
+
+    price = PubPriceIndex.objects.get(cache_key=KEY)
+    assert price.price_czk == 55
+    assert price.source == source
 
 
 @pytest.mark.django_db

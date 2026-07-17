@@ -234,6 +234,7 @@ export default function BeerMapScreen({
   const accountId = useAccountStore((state) => state.session?.accountId ?? null);
   const {
     pubs,
+    nearbyPrices,
     visitedPubs,
     visitedCities,
     livePubs,
@@ -992,6 +993,7 @@ export default function BeerMapScreen({
         <PubFilterSheet
           visible
           value={filters}
+          nearbyPrices={nearbyPrices}
           onClose={() => setFilterSheetOpen(false)}
           onApply={onApplyFilters}
         />

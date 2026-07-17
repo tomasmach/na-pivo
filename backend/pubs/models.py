@@ -19,6 +19,7 @@ import hashlib
 import secrets
 import uuid
 
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import Q
 from django.db.models.functions import Lower
@@ -2363,6 +2364,63 @@ class PubExternalBeerMenu(models.Model):
 
     def __str__(self) -> str:
         return f"{self.name} [{self.source}:{self.source_id}]"
+
+
+class PubPriceIndex(models.Model):
+    """Queryable reference beer price for one geohash-backed pub identity."""
+
+    class Source(models.TextChoices):
+        COMMUNITY = "community", "Community menu"
+        DRINK = "drink", "Drink log"
+        EXTERNAL = "external", "External menu"
+
+    cache_key = models.CharField(
+        max_length=12,
+        unique=True,
+        db_index=True,
+        help_text="Geohash-8 of (lat, lng) — matches PubCommunityData.cache_key.",
+    )
+    name = models.TextField(help_text="Pub name used as the collision guard on reads.")
+    lat = models.FloatField()
+    lng = models.FloatField()
+    city = models.TextField(blank=True, default="")
+    external_id = models.TextField(blank=True, default="")
+    price_czk = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(1000)]
+    )
+    volume_ml = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1)],
+        help_text="Unknown volume is stored as null and presented as the Czech 500 ml default.",
+    )
+    observed_at = models.DateTimeField(db_index=True)
+    source = models.CharField(max_length=16, choices=Source.choices)
+    active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Pub Price Index"
+        verbose_name_plural = "Pub Price Indexes"
+        ordering = ["-observed_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(price_czk__gte=1, price_czk__lte=1000),
+                name="pub_price_index_valid_price",
+            ),
+            models.CheckConstraint(
+                condition=Q(volume_ml__isnull=True) | Q(volume_ml__gte=1),
+                name="pub_price_index_valid_volume",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["cache_key", "active"]),
+            models.Index(fields=["active", "lat", "lng"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.price_czk} CZK @ {self.name} [{self.cache_key}]"
 
 
 class BeerBrand(models.Model):

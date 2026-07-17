@@ -93,6 +93,12 @@ export const TextInput = createComponent('TextInput');
 // Modal renders its children inline in tests (visibility is a prop, not gated).
 export const Modal = createComponent('Modal');
 
+// PanResponder just returns inert handlers; gesture behavior is not exercised
+// in unit tests.
+export const PanResponder = {
+  create: jest.fn(() => ({ panHandlers: {} })),
+};
+
 export const NativeModules = {};
 export const NativeEventEmitter = jest.fn(() => ({
   addListener: jest.fn(),

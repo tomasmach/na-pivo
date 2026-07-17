@@ -130,6 +130,7 @@ from pubs.models import (
     PubDirectory,
     PubHours,
     PubNameCorrection,
+    PubPriceIndex,
     PubRating,
     PubReport,
     PubSearchCache,
@@ -141,6 +142,7 @@ from pubs.models import (
 from pubs.photo_contest import current_photo_contest
 from pubs.photos import BeerPhotoError, process_beer_photo
 from pubs.pivar import pivar_snapshot
+from pubs.price_index import upsert_pub_price_index
 from pubs.user_added_pub_geocoding import resolve_user_added_pub_location
 
 from .authentication import AccountTokenAuthentication
@@ -1356,6 +1358,17 @@ class PubCommunityView(APIView):
                     account=request.user,
                     match_cache=match_cache,
                 )
+                upsert_pub_price_index(
+                    cache_key=cache_key,
+                    name=record.name,
+                    lat=record.lat,
+                    lng=record.lng,
+                    city=record.city or "",
+                    external_id=record.external_id or "",
+                    beers=record.beers,
+                    observed_at=now,
+                    source=PubPriceIndex.Source.COMMUNITY,
+                )
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "pub-community: unexpected error saving contribution for cache key %s: %s",
@@ -1874,7 +1887,7 @@ class DrinksView(APIView):
                 # first-drink wins the unique cache_key race, the savepoint rolls back
                 # cleanly and the outer DrinkLog transaction can still continue.
                 with transaction.atomic():
-                    PubCommunityData.objects.create(
+                    row = PubCommunityData.objects.create(
                         cache_key=cache_key,
                         name=data["name"],
                         lat=data["lat"],
@@ -1898,6 +1911,17 @@ class DrinksView(APIView):
                     source=PubBeerBrand.Source.DRINK,
                     account=account,
                     match_cache=match_cache,
+                )
+                upsert_pub_price_index(
+                    cache_key=cache_key,
+                    name=row.name,
+                    lat=row.lat,
+                    lng=row.lng,
+                    city=row.city or "",
+                    external_id=row.external_id or "",
+                    beers=row.beers,
+                    observed_at=now,
+                    source=PubPriceIndex.Source.DRINK,
                 )
                 return True
             except IntegrityError:
@@ -1954,6 +1978,18 @@ class DrinksView(APIView):
             account=account,
             match_cache=match_cache,
         )
+        if changed:
+            upsert_pub_price_index(
+                cache_key=cache_key,
+                name=row.name,
+                lat=row.lat,
+                lng=row.lng,
+                city=row.city or "",
+                external_id=row.external_id or "",
+                beers=row.beers,
+                observed_at=now,
+                source=PubPriceIndex.Source.DRINK,
+            )
         return changed
 
     @staticmethod
@@ -5404,6 +5440,8 @@ _USER_ADDED_SCAN_LIMIT = 200
 _USER_ADDED_MAX_RESULTS = 50
 _BEER_BRAND_SCAN_LIMIT = 200
 _BEER_BRAND_MAX_RESULTS = 50
+_PRICE_INDEX_SCAN_LIMIT = 900
+_PRICE_INDEX_MAX_RESULTS = 300
 
 
 def _nearest_rows(
@@ -5625,6 +5663,28 @@ def _nearby_pub_beer_brand_items(
         max_results=_BEER_BRAND_MAX_RESULTS,
     )
     return [_pub_beer_brand_item(link) for link in links], {link.cache_key for link in links}
+
+
+def _nearby_pub_price_indexes(
+    *,
+    lat: float,
+    lng: float,
+    radius_km: float,
+) -> dict[str, PubPriceIndex]:
+    """Fresh price signals within the requested circle, bounded like other joins."""
+    rows = _nearest_rows(
+        PubPriceIndex.objects.filter(
+            active=True,
+            observed_at__gt=dj_timezone.now() - timedelta(days=365),
+        ),
+        lat,
+        lng,
+        radius_km,
+        tiebreak="-observed_at",
+        scan_limit=_PRICE_INDEX_SCAN_LIMIT,
+        max_results=_PRICE_INDEX_MAX_RESULTS,
+    )
+    return {row.cache_key: row for row in rows}
 
 
 def _nearby_pub_amenity_items(
@@ -5979,6 +6039,27 @@ class PubsNearView(APIView):
                             "venueKind",
                         )
                     }
+
+            price_indexes = (
+                _nearby_pub_price_indexes(
+                    lat=data["lat"],
+                    lng=data["lng"],
+                    radius_km=radius_km,
+                )
+                if response_items
+                else {}
+            )
+            for item in response_items:
+                price = price_indexes.get(_item_cache_key(item))
+                if price is None or not names_match(str(item.get("name") or ""), price.name):
+                    continue
+                details = item.setdefault("pubDetails", {})
+                details["price"] = {
+                    "czk": price.price_czk,
+                    "volume_ml": price.volume_ml or 500,
+                    "observed_at": price.observed_at.isoformat().replace("+00:00", "Z"),
+                    "source": price.source,
+                }
 
             body = {
                 "items": response_items,

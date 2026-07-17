@@ -11,6 +11,7 @@ import type { HoursStatus, Pub, VenueKind } from './pubs';
 import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal } from './apiFetch';
 import { trackApiFailure } from './telemetryClient';
+import { isPriceFresh } from '@/utils/priceAge';
 
 // Mapy.cz returns mixed categories under our text queries. Keep only the ones
 // that match a place where you can actually drink a beer. 'Vinárna' (wine bar)
@@ -123,6 +124,13 @@ interface MapyGeocodeItem {
     ratingLabel?: string | null;
     hasGarden?: boolean | null;
     venueKind?: string | null;
+    /** Reference large-beer price; only attached when observed within a year. */
+    price?: {
+      czk?: number | null;
+      volume_ml?: number | null;
+      observed_at?: string | null;
+      source?: string | null;
+    } | null;
   };
 }
 
@@ -605,6 +613,25 @@ function itemToPub(
     if (['pub', 'maybe', 'not_pub', 'unknown'].includes(details.venueKind ?? '')) {
       pub.venueKind = details.venueKind as VenueKind;
     }
+    const price = details.price;
+    pub.price =
+      price &&
+      typeof price.czk === 'number' &&
+      Number.isFinite(price.czk) &&
+      price.czk >= 1 &&
+      price.czk <= 1000 &&
+      typeof price.observed_at === 'string' &&
+      isPriceFresh(price.observed_at)
+        ? {
+            czk: Math.round(price.czk),
+            volumeMl:
+              typeof price.volume_ml === 'number' && Number.isFinite(price.volume_ml)
+                ? price.volume_ml
+                : null,
+            observedAt: price.observed_at,
+            source: typeof price.source === 'string' ? price.source : 'community',
+          }
+        : null;
   }
 
   return pub;

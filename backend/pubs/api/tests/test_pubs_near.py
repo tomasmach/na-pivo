@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -23,6 +23,7 @@ from pubs.models import (
     PubDirectory,
     PubHours,
     PubNameCorrection,
+    PubPriceIndex,
     PubReport,
     PubSearchCache,
     UserAddedPub,
@@ -150,6 +151,50 @@ def test_local_first_serves_directory_without_provider_or_search_cache(client, s
     assert [item["name"] for item in body["items"]] == ["Hospoda Z Adresáře"]
     assert body["fetched_at"]
     assert not PubSearchCache.objects.exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("age_days, expected", [(364, True), (365, False), (366, False)])
+def test_near_attaches_only_fresh_price_without_changing_existing_shape(
+    client,
+    age_days,
+    expected,
+):
+    pub = _directory_pub()
+    PubPriceIndex.objects.create(
+        cache_key=pub.cache_key,
+        name=pub.name,
+        lat=pub.lat,
+        lng=pub.lng,
+        city=pub.city,
+        price_czk=42,
+        volume_ml=None,
+        observed_at=dj_tz.now() - timedelta(days=age_days),
+        source=PubPriceIndex.Source.COMMUNITY,
+    )
+
+    resp = client.get(
+        "/v1/pubs/near",
+        data={"lat": _LAT, "lng": _LNG, "radius_km": 1},
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    body = resp.json()
+    assert set(body) == {"items", "cached", "fetched_at"}
+    item = body["items"][0]
+    if expected:
+        assert item["pubDetails"]["price"] == {
+            "czk": 42,
+            "volume_ml": 500,
+            "observed_at": (
+                PubPriceIndex.objects.get().observed_at.astimezone(UTC)
+                .isoformat()
+                .replace("+00:00", "Z")
+            ),
+            "source": "community",
+        }
+    else:
+        assert "pubDetails" not in item or "price" not in item["pubDetails"]
 
 
 @pytest.mark.django_db

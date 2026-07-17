@@ -6,6 +6,8 @@ plus the server-side merge of each drunk beer into the pub's community menu
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 from django.core.cache import cache
 from django.db import connection
@@ -17,7 +19,15 @@ from rest_framework.throttling import ScopedRateThrottle
 
 from pubs.api.views import DrinksView, _merge_drink_into_menu
 from pubs.enrichment import geohash8
-from pubs.models import Account, BeerBrand, DrinkLog, PubBeerBrand, PubBeerProduct, PubCommunityData
+from pubs.models import (
+    Account,
+    BeerBrand,
+    DrinkLog,
+    PubBeerBrand,
+    PubBeerProduct,
+    PubCommunityData,
+    PubPriceIndex,
+)
 
 from .query_helpers import count_beer_catalog_selects
 
@@ -245,6 +255,57 @@ def test_log_creates_drink_and_community_row_when_none_exists(client):
     assert row.hours_json is None
     assert row.opening_hours_raw == ""
     assert row.account == Account.objects.get(device_id=_DEVICE_ID)
+
+    price = PubPriceIndex.objects.get(cache_key=_KEY)
+    assert price.price_czk == 62
+    assert price.volume_ml == 500
+    assert price.source == PubPriceIndex.Source.DRINK
+
+
+@pytest.mark.django_db
+def test_drink_outlier_keeps_existing_price_index_but_updates_menu(client):
+    token = _register(client)
+    account = Account.objects.get(device_id=_DEVICE_ID)
+    PubCommunityData.objects.create(
+        cache_key=_KEY,
+        name=_NAME,
+        lat=_LAT,
+        lng=_LNG,
+        city="Praha",
+        account=account,
+        beers=[{"name": "Pilsner Urquell", "price_czk": 40, "volume_ml": 500}],
+        beers_updated_at=dj_timezone.now(),
+    )
+    PubPriceIndex.objects.create(
+        cache_key=_KEY,
+        name=_NAME,
+        lat=_LAT,
+        lng=_LNG,
+        city="Praha",
+        price_czk=40,
+        volume_ml=500,
+        observed_at=dj_timezone.now(),
+        source=PubPriceIndex.Source.COMMUNITY,
+    )
+
+    with patch("pubs.price_index.logger.warning") as warning:
+        resp = client.post(
+            "/v1/drinks",
+            data=_payload(beer={"name": "Pilsner Urquell", "price_czk": 200, "volume_ml": 500}),
+            format="json",
+            **_auth(token),
+        )
+
+    assert resp.status_code == status.HTTP_201_CREATED
+    assert resp.json()["menu_updated"] is True
+    assert PubCommunityData.objects.get(cache_key=_KEY).beers == [
+        {"name": "Pilsner Urquell", "price_czk": 200, "volume_ml": 500}
+    ]
+    price = PubPriceIndex.objects.get(cache_key=_KEY)
+    assert price.price_czk == 40
+    assert price.source == PubPriceIndex.Source.COMMUNITY
+    warning.assert_called_once()
+    assert "rejected drink outlier" in warning.call_args.args[0]
 
 
 @pytest.mark.django_db

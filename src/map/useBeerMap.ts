@@ -21,7 +21,8 @@ import {
 } from '@/data/pubs';
 import { fetchVisits, type WireVisit } from '@/data/visitsClient';
 import {
-  pubSearchFilterKey,
+  backendPubSearchFilterKey,
+  pubMatchesPriceFilter,
   type PubSearchFilters,
 } from '@/data/pubSearchFilters';
 import {
@@ -33,6 +34,7 @@ import {
 import { usePubStore } from '@/stores/pubStore';
 import { useAccountStore } from '@/stores/accountStore';
 import { allSessionsNewestFirst, useTallyStore } from '@/stores/tallyStore';
+import { isPriceFresh } from '@/utils/priceAge';
 import {
   buildLivePubs,
   buildVisitedCities,
@@ -71,6 +73,9 @@ function mergePubs(previous: Pub[], incoming: Pub[]): Pub[] {
 
 export interface BeerMapData {
   pubs: Pub[];
+  /** Known reference prices of the loaded pubs BEFORE the price cap — feeds
+   *  the filter sheet's histogram, which must show the full distribution. */
+  nearbyPrices: number[];
   visitedPubs: VisitedPubSummary[];
   visitedCities: VisitedCitySummary[];
   livePubs: LivePubSummary[];
@@ -84,9 +89,14 @@ export interface BeerMapData {
 }
 
 export function useBeerMap(filters: PubSearchFilters): BeerMapData {
-  const filtersKey = pubSearchFilterKey(filters);
+  // Fetch/cache identity deliberately EXCLUDES the price range: price filtering
+  // is client-side over prices already attached to the loaded pubs, so moving
+  // the price slider must never trigger a refetch or hide the catalogue.
+  const filtersKey = backendPubSearchFilterKey(filters);
   const beerBrandKey = filters.beerBrand?.key ?? null;
   const amenityKeys = filters.amenityKeys;
+  const priceMinCzk = filters.priceMinCzk;
+  const priceMaxCzk = filters.priceMaxCzk;
   const hasFilters = Boolean(beerBrandKey || amenityKeys.length > 0);
   const [focused, setFocused] = useState(false);
   const [permissionState, setPermissionState] = useState<PermissionState>('undetermined');
@@ -291,9 +301,28 @@ export function useBeerMap(filters: PubSearchFilters): BeerMapData {
     const cells = new Set(reportedCacheKeys);
     return loaded.filter((pub) => !ids.has(pub.id) && !cells.has(geohash8(pub.lat, pub.lng)));
   }, [loadedFiltersKey, filtersKey, pubs, reportedPubIds, reportedCacheKeys]);
+  const nearbyPrices = useMemo(
+    () =>
+      visiblePubs
+        .map((pub) =>
+          pub.price && isPriceFresh(pub.price.observedAt) ? pub.price.czk : undefined,
+        )
+        .filter((czk): czk is number => typeof czk === 'number'),
+    [visiblePubs],
+  );
+  const pricedPubs = useMemo(
+    () =>
+      priceMinCzk === null && priceMaxCzk === null
+        ? visiblePubs
+        : visiblePubs.filter((pub) =>
+            pubMatchesPriceFilter(pub, priceMinCzk, priceMaxCzk),
+          ),
+    [priceMaxCzk, priceMinCzk, visiblePubs],
+  );
 
   return {
-    pubs: visiblePubs,
+    pubs: pricedPubs,
+    nearbyPrices,
     visitedPubs,
     visitedCities,
     livePubs,

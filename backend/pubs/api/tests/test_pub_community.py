@@ -20,6 +20,7 @@ from pubs.models import (
     PubBeerProduct,
     PubCommunityData,
     PubContributionLog,
+    PubPriceIndex,
 )
 
 from .query_helpers import count_beer_catalog_selects
@@ -194,6 +195,40 @@ def test_submit_beers_only(client):
     assert record.beers_updated_at is not None
     assert resp.json()["hours"] is None
     assert set(PubContributionLog.objects.values_list("kind", flat=True)) == {"beers"}
+
+    price = PubPriceIndex.objects.get(cache_key=_KEY)
+    assert price.price_czk == 59
+    assert price.volume_ml == 500
+    assert price.source == PubPriceIndex.Source.COMMUNITY
+    assert price.active is True
+
+
+@pytest.mark.django_db
+def test_submit_empty_beer_menu_deactivates_price_index(client):
+    token = _register(client)
+    first = client.post(
+        "/v1/pub-community",
+        data=_payload(client_id="aaaaaaaa-0000-0000-0000-000000000031"),
+        format="json",
+        **_auth(token),
+    )
+    assert first.status_code == status.HTTP_200_OK
+
+    cleared = client.post(
+        "/v1/pub-community",
+        data=_payload(
+            client_id="aaaaaaaa-0000-0000-0000-000000000032",
+            beers=[],
+        ),
+        format="json",
+        **_auth(token),
+    )
+
+    assert cleared.status_code == status.HTTP_200_OK
+    assert cleared.json()["beers"] == []
+    price = PubPriceIndex.objects.get(cache_key=_KEY)
+    assert price.active is False
+    assert price.source == PubPriceIndex.Source.COMMUNITY
 
 
 @pytest.mark.django_db

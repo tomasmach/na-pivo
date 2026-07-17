@@ -25,6 +25,7 @@ import type { PubReportReason } from '@/data/pubReportsClient';
 import { buildPubNameCorrectionEntry } from '@/data/pubNameCorrectionsClient';
 import { enqueuePubNameCorrection } from '@/data/pubNameCorrectionsQueue';
 import { geohash8 } from '@/data/geohash';
+import { pubMatchesPriceFilter } from '@/data/pubSearchFilters';
 import type { CommunityBeer, WeeklyHours } from '@/data/communityClient';
 import { computeOpenState } from '@/data/communityHours';
 import { recordWalkingSample } from '@/data/walkingTelemetry';
@@ -147,6 +148,8 @@ export interface UseCompassResult {
 export function useCompass(
   beerBrandKey: string | null = null,
   amenityKeys: readonly string[] = [],
+  priceMinCzk: number | null = null,
+  priceMaxCzk: number | null = null,
   sensorsEnabled: boolean = true,
 ): UseCompassResult {
   // — Settings from store —
@@ -411,6 +414,10 @@ export function useCompass(
   const lastCatalogRevisionRef = useRef<number>(catalogRevision);
   const lastBeerBrandKeyRef = useRef<string>(activeBeerBrandKey);
   const lastAmenityKeyRef = useRef<string>(activeAmenityKey);
+  // The price range is applied locally at selection time (no backend request), so
+  // it only needs to drive a re-selection — not a refetch — when it changes.
+  const lastPriceMinRef = useRef<number | null>(priceMinCzk);
+  const lastPriceMaxRef = useRef<number | null>(priceMaxCzk);
   const lastPubDataRevisionRef = useRef<number>(pubDataRevision);
   // Track the excludeRevision the current target was selected against, so the
   // selection effect recomputes when (and only when) the exclusion set changes.
@@ -463,6 +470,8 @@ export function useCompass(
     const catalogChanged = catalogRevision !== lastCatalogRevisionRef.current;
     const beerBrandChanged = activeBeerBrandKey !== lastBeerBrandKeyRef.current;
     const amenityFilterChanged = activeAmenityKey !== lastAmenityKeyRef.current;
+    const priceFilterChanged =
+      priceMinCzk !== lastPriceMinRef.current || priceMaxCzk !== lastPriceMaxRef.current;
     const pubDataChanged =
       (beerBrandChanged || amenityFilterChanged) &&
       pubDataRevision !== lastPubDataRevisionRef.current;
@@ -472,7 +481,8 @@ export function useCompass(
     // apply while standing in one place. Clear them BEFORE building excludeIds so
     // the next selection starts from a clean slate. seed/excludeRevision changes
     // are NOT context changes — they intentionally keep accumulating.
-    const contextChanged = modeChanged || maxKmChanged || positionMoved || pubDataChanged;
+    const contextChanged =
+      modeChanged || maxKmChanged || positionMoved || pubDataChanged || priceFilterChanged;
     if (contextChanged) {
       resetExclusions();
     }
@@ -485,7 +495,8 @@ export function useCompass(
       excludeChanged ||
       reportedChanged ||
       catalogChanged ||
-      pubDataChanged
+      pubDataChanged ||
+      priceFilterChanged
     ) {
       lastTargetPosRef.current = currentPos;
       setHasSelectedTarget(true);
@@ -497,6 +508,8 @@ export function useCompass(
       lastCatalogRevisionRef.current = catalogRevision;
       lastBeerBrandKeyRef.current = activeBeerBrandKey;
       lastAmenityKeyRef.current = activeAmenityKey;
+      lastPriceMinRef.current = priceMinCzk;
+      lastPriceMaxRef.current = priceMaxCzk;
       lastPubDataRevisionRef.current = pubDataRevision;
       lastExcludeRevisionRef.current = excludeRevision;
 
@@ -512,9 +525,16 @@ export function useCompass(
       // derived Mapy.cz ids change between fetches, the cell does not.
       const excludeCacheKeys = reportedCacheKeys;
 
+      // Price range is a hard local filter: pubs with no known price are skipped
+      // too — the compass must not present an unknown price as affordable.
+      const filterPub =
+        priceMinCzk !== null || priceMaxCzk !== null
+          ? (candidate: Pub) => pubMatchesPriceFilter(candidate, priceMinCzk, priceMaxCzk)
+          : undefined;
+
       const pub =
         mode === 'nearest'
-          ? findNearestPub({ lat, lng, maxKm, excludeIds, excludeCacheKeys })
+          ? findNearestPub({ lat, lng, maxKm, excludeIds, excludeCacheKeys, filterPub })
           : findRandomPubInRadius({
               lat,
               lng,
@@ -522,6 +542,7 @@ export function useCompass(
               seed: surpriseSeed,
               excludeIds,
               excludeCacheKeys,
+              filterPub,
             });
 
       setCurrentPub(pub);
@@ -547,6 +568,8 @@ export function useCompass(
     excludeRevision,
     activeBeerBrandKey,
     activeAmenityKey,
+    priceMinCzk,
+    priceMaxCzk,
     activeFilterKey,
     fetchedFilterKey,
     currentPubId,

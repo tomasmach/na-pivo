@@ -15,7 +15,7 @@
 import { useMemo } from 'react';
 
 import { geohash8 } from '@/data/geohash';
-import type { Pub } from '@/data/pubs';
+import type { Pub, PubPrice } from '@/data/pubs';
 import type { CommunityBeer, WeeklyHours } from '@/data/communityHours';
 import { useCommunityStore } from '@/stores/communityStore';
 
@@ -34,6 +34,8 @@ export interface PubInfoContext {
   prefillBeers?: CommunityBeer[] | null;
   /** Removed rows kept as lightweight menu history and restore suggestions. */
   historicalBeers?: CommunityBeer[] | null;
+  /** Fresh reference price attached by nearby discovery, including its age. */
+  price?: PubPrice | null;
 }
 
 /** Adapt the shared Pub shape into the hub's info context. */
@@ -48,6 +50,7 @@ export function pubInfoFromPub(pub: Pub): PubInfoContext {
     openingHours: pub.openingHours ?? null,
     prefillBeers: pub.beers ?? null,
     historicalBeers: pub.historicalBeers ?? null,
+    price: pub.price ?? null,
   };
 }
 
@@ -80,6 +83,6 @@ export function usePubInfoFacts(info: PubInfoContext | undefined): PubInfoFactsV
       hoursHaveAnyInterval(info.prefillHours) ||
       Boolean(info.openingHours);
     const beerCount = override?.beers?.length ?? info.prefillBeers?.length ?? 0;
-    return { hasHours, hasBeers: beerCount > 0, beerCount };
+    return { hasHours, hasBeers: beerCount > 0 || Boolean(info.price), beerCount };
   }, [info, override]);
 }

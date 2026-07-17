@@ -36,6 +36,22 @@ export type HoursStatus = 'ok' | 'unknown' | 'pending' | 'error' | 'loading';
  */
 export type VenueKind = 'pub' | 'maybe' | 'not_pub' | 'unknown';
 
+/**
+ * Reference beer price of a pub — the cheapest large beer (≥ 0.4 l) known for
+ * the current tap list, attached additively by the backend nearby endpoint.
+ * The server never attaches observations older than a year, so a present value
+ * is at most 12 months old; the client still surfaces its age (see priceAge).
+ */
+export interface PubPrice {
+  czk: number;
+  /** Serving volume behind the price; null when the menu row had no volume (≈ 0.5 l). */
+  volumeMl: number | null;
+  /** ISO-8601 timestamp of the observation this price comes from. */
+  observedAt: string;
+  /** Origin of the observation: 'community' | 'drink' | 'external'. */
+  source: string;
+}
+
 export type Pub = {
   id: string;
   name: string;
@@ -69,6 +85,8 @@ export type Pub = {
   ratingLabel?: string | null;
   /** Whether the backend source explicitly marks this pub as having a garden. */
   hasGarden?: boolean | null;
+  /** Reference large-beer price from the nearby endpoint; null/undefined = unknown. */
+  price?: PubPrice | null;
   /**
    * Backend verdict on whether this place is a pub. Resolved asynchronously with
    * opening hours; 'not_pub' places are auto-excluded from compass targeting.
@@ -666,16 +684,20 @@ export function getAllLoadedPubs(): Pub[] {
 
 /** Builds an index predicate excluding pubs by id and/or geohash-8 cell. The
  *  cell match hides a reported place even when a later Mapy.cz fetch returns
- *  it under a fresh provider id (the ids are coordinate-derived and unstable). */
+ *  it under a fresh provider id (the ids are coordinate-derived and unstable).
+ *  `filterPub` additionally gates candidates by pub content (e.g. the local
+ *  price filter, which has no backend query counterpart). */
 function buildExcludePredicate(
   excludeIds?: string[],
   excludeCacheKeys?: string[],
+  filterPub?: (pub: Pub) => boolean,
 ): ((i: number) => boolean) | undefined {
   const idSet = excludeIds?.length ? new Set(excludeIds) : null;
   const keySet = excludeCacheKeys?.length ? new Set(excludeCacheKeys) : null;
-  if (!idSet && !keySet) return undefined;
+  if (!idSet && !keySet && !filterPub) return undefined;
   return (i: number) =>
-    !(idSet?.has(_pubs[i].id) || keySet?.has(_cacheKeys[i]));
+    !(idSet?.has(_pubs[i].id) || keySet?.has(_cacheKeys[i])) &&
+    (filterPub ? filterPub(_pubs[i]) : true);
 }
 
 /**
@@ -689,12 +711,13 @@ export function findNearestPub(opts: {
   maxKm?: number;
   excludeIds?: string[];
   excludeCacheKeys?: string[];
+  filterPub?: (pub: Pub) => boolean;
 }): Pub | null {
   if (!_loaded || !_index || _pubs.length === 0) return null;
 
-  const { lat, lng, maxKm, excludeIds, excludeCacheKeys } = opts;
+  const { lat, lng, maxKm, excludeIds, excludeCacheKeys, filterPub } = opts;
   const maxDistance = Number.isFinite(maxKm) ? maxKm : undefined;
-  const predicate = buildExcludePredicate(excludeIds, excludeCacheKeys);
+  const predicate = buildExcludePredicate(excludeIds, excludeCacheKeys, filterPub);
 
   const results = geokdbush.around(_index, lng, lat, 1, maxDistance, predicate);
   if (results.length === 0) return null;
@@ -714,12 +737,13 @@ export function findRandomPubInRadius(opts: {
   seed?: number;
   excludeIds?: string[];
   excludeCacheKeys?: string[];
+  filterPub?: (pub: Pub) => boolean;
 }): Pub | null {
   if (!_loaded || !_index || _pubs.length === 0) return null;
 
-  const { lat, lng, maxKm, seed, excludeIds, excludeCacheKeys } = opts;
+  const { lat, lng, maxKm, seed, excludeIds, excludeCacheKeys, filterPub } = opts;
   const maxDistance = Number.isFinite(maxKm) ? maxKm : undefined;
-  const predicate = buildExcludePredicate(excludeIds, excludeCacheKeys);
+  const predicate = buildExcludePredicate(excludeIds, excludeCacheKeys, filterPub);
 
   const results = geokdbush.around(_index, lng, lat, Infinity, maxDistance, predicate);
   if (results.length === 0) return null;
