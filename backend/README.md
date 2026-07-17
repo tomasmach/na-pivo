@@ -200,10 +200,12 @@ All settings are read from environment variables or a `.env` file. See `.env.exa
 | `DRINKS_THROTTLE_RATE` | `30/min` | Per-account rate limit for `POST /v1/drinks` |
 | `DRINK_FUTURE_GRACE_MINUTES` | `10` | Future timestamp grace before clamping to server time |
 | `DRINK_BACKDATE_FLAG_DAYS` | `60` | Age at which a drink is flagged as backdated |
-| `DRINK_BURST_LIMIT` | `12` | Existing drinks in the burst window before flagging |
+| `DRINK_BURST_LIMIT` | `8` | Countable beers allowed in a 10-minute window before later beers are flagged |
 | `DRINK_BURST_WINDOW_MINUTES` | `10` | Burst detection window |
-| `DRINK_DAILY_FLAG_CAP` | `15` | Daily ordinal at which drinks become suspect |
-| `DRINK_DAILY_HARD_CAP` | `20` | Existing daily rows after which new drinks are rejected |
+| `DRINK_DAILY_FLAG_CAP` | `21` | Beer ordinal in the 04:00 drinking day at which rows become suspect |
+| `DRINK_DAILY_HARD_CAP` | `40` | Existing rows of any drink type in the drinking day after which new rows are rejected |
+| `LEADERBOARD_BEER_RED_DAY` | `25` | Raw beers in one drinking day that temporarily hide an account from beer leaderboards |
+| `LEADERBOARD_BEER_RED_BURSTS` | `12` | Burst-flagged beers in one drinking day that temporarily hide an account from beer leaderboards |
 | `LOG_LEVEL` | `INFO` | Structured JSON log level |
 
 ---

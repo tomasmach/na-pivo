@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Fair-play kontrola pivního žebříčku</title>
+  <style>
+    :root{--bg:#0d1117;--panel:#151b23;--panel2:#1b232d;--line:#303946;--text:#e6edf3;--muted:#9da9b7;--amber:#f3b33d;--green:#56d364;--red:#ff7b72;--blue:#79c0ff}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.58 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}a{color:var(--blue)}button,input{font:inherit}.shell{display:grid;grid-template-columns:220px minmax(0,1fr);max-width:1240px;margin:auto}.nav{position:sticky;top:0;height:100vh;padding:28px 20px;border-right:1px solid var(--line);background:#10151c}.nav strong{display:block;margin-bottom:20px;color:var(--amber)}.nav a{display:block;padding:8px 10px;margin:2px 0;text-decoration:none;color:var(--muted);border-left:2px solid transparent}.nav a.active{color:var(--text);border-color:var(--amber);background:#171e27}.main{min-width:0;padding:42px 54px 90px}.content{max-width:78ch}.wide{max-width:100%;overflow-x:auto}.eyebrow{color:var(--amber);text-transform:uppercase;letter-spacing:.12em;font-size:12px}.hero{display:flex;justify-content:space-between;gap:24px;align-items:flex-start}.badge{white-space:nowrap;border:1px solid #715723;color:#ffd580;background:#291f0d;border-radius:999px;padding:5px 10px;font-size:12px}.tldr{font-size:18px;color:#cbd5df;max-width:67ch}.meta{color:var(--muted);font-size:13px}.toggle{display:flex;align-items:center;gap:8px;margin:20px 0}.toggle button,.tabs button,.copy{border:1px solid var(--line);color:var(--text);background:var(--panel);padding:8px 12px;border-radius:7px;cursor:pointer}.toggle button.on,.tabs button.on{border-color:var(--amber);color:#ffd580;background:#291f0d}section{scroll-margin-top:24px;padding:36px 0;border-top:1px solid var(--line)}h1{font-size:42px;line-height:1.08;margin:8px 0 16px;letter-spacing:-.035em}h2{font-size:26px;margin:0 0 16px}h3{font-size:17px;margin:0 0 10px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px}.card p:last-child{margin-bottom:0}.good{border-color:#285d35}.warn{border-color:#715723}.bad{border-color:#7e3432}.metric{font-size:29px;font-weight:700;line-height:1;color:var(--amber)}.muted{color:var(--muted)}.detail-only{display:block}body.overview .detail-only{display:none}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:10px}table{width:100%;border-collapse:collapse;min-width:720px;background:var(--panel)}th,td{text-align:left;padding:11px 13px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}tr:last-child td{border-bottom:0}.recommended{color:var(--green);font-weight:700}.tabs{display:flex;gap:8px;margin:18px 0 12px;flex-wrap:wrap}.tab-panel{display:none}.tab-panel.on{display:block}.flow{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}.flow svg{min-width:760px;width:100%;height:auto}.node{cursor:pointer}.node rect{fill:var(--panel2);stroke:var(--line);stroke-width:1.5}.node text{fill:var(--text);font-size:13px}.node:hover rect,.node.active rect{stroke:var(--amber);stroke-width:2}.edge{stroke:#566273;stroke-width:2;fill:none}.edge.active{stroke:var(--amber)}.steps{display:grid;gap:12px}.step{display:grid;grid-template-columns:auto 1fr;gap:13px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}.step input{width:19px;height:19px;accent-color:var(--green);margin-top:3px}.step small{display:block;color:var(--muted);margin-top:5px}.progress{height:8px;background:#202833;border-radius:10px;overflow:hidden;margin:12px 0 24px}.progress>div{height:100%;width:0;background:var(--green)}pre{white-space:pre-wrap;background:#0a0e13;border:1px solid var(--line);border-radius:8px;padding:14px;overflow:auto}pre .del{color:#ff938a;background:#291719}pre .ins{color:#7ee787;background:#13251a}code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em}.question{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:17px;margin:12px 0}.question label{display:block;margin:8px 0;color:#cbd5df}.question input{accent-color:var(--amber)}.answer{width:100%;min-height:84px;margin-top:12px;background:#0a0e13;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:10px}.risk{display:grid;grid-template-columns:110px 1fr;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}.risk:last-child{border-bottom:0}.risk strong{color:var(--amber)}details{margin:12px 0;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px}summary{cursor:pointer;font-weight:650}.file{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.callout{border-left:3px solid var(--amber);padding:12px 16px;background:#211b10}.footer{color:var(--muted);font-size:13px;margin-top:40px}@media(max-width:850px){.shell{display:block}.nav{position:sticky;height:auto;z-index:4;border-right:0;border-bottom:1px solid var(--line);padding:10px 14px;display:flex;overflow:auto;gap:4px}.nav strong{display:none}.nav a{white-space:nowrap}.main{padding:30px 20px 70px}.grid{grid-template-columns:1fr}.hero{display:block}.badge{display:inline-block;margin-top:8px}h1{font-size:34px}}
+  </style>
+</head>
+<body class="overview">
+<div class="shell">
+  <nav class="nav"><strong>Na pivo · fair play</strong><a href="#summary">Shrnutí</a><a href="#rules">Pravidla</a><a href="#variants">Varianty</a><a href="#flow">Tok dat</a><a href="#steps">Kroky</a><a href="#diff">Změny</a><a href="#risks">Rizika</a><a href="#decisions">Rozhodnutí</a></nav>
+  <main class="main">
+    <div class="content" id="summary">
+      <div class="hero"><div><div class="eyebrow">Veřejná soutěž, ne detektor lži</div><h1>Fair-play kontrola pivního žebříčku</h1></div><span class="badge">hotovo lokálně · čeká produkční dry-run</span></div>
+      <p class="tldr">Soukromý deníček zůstane celý. Veřejně se započítá až 20 piv za pivní den a nejvýše 8 piv z jednoho desetiminutového shluku. Účet se skryje pouze při opravdu červeném signálu; typický silný večer ani dohánění několika kliků trestat nebudeme.</p>
+      <p class="meta">Zvolený směr vznikl po produkčním auditu a dvou nezávislých oponenturách (Fable + adversariální review).</p>
+      <div class="toggle"><span>Detail:</span><button id="overviewBtn" class="on">přehled</button><button id="detailBtn">plný detail</button></div>
+      <div class="grid">
+        <div class="card good"><div class="metric">20</div><h3>piv / pivní den</h3><p>Prvních dvacet se může veřejně započítat, pokud nejsou v nepřirozeném shluku.</p></div>
+        <div class="card warn"><div class="metric">8 / 10 min</div><h3>benevolentní burst</h3><p>Deváté a další rychle naklikané pivo zůstane v deníčku, ale bez veřejného bodu.</p></div>
+        <div class="card bad"><div class="metric">25+</div><h3>červený den</h3><p>Takový účet dočasně zmizí pouze z pivního žebříčku daného období.</p></div>
+        <div class="card"><div class="metric">0</div><h3>smazaných záznamů</h3><p>Žádný ban profilu, žádná změna soukromých statistik bez auditovatelného flagu.</p></div>
+      </div>
+    </div>
+
+    <section id="rules" class="content">
+      <h2>Doporučená pravidla</h2>
+      <div class="table-wrap"><table><thead><tr><th>Signál</th><th>Veřejný dopad</th><th>Soukromý dopad</th><th>Proč</th></tr></thead><tbody>
+        <tr><td>1.–20. pivo v pivním dni 04:00–03:59</td><td>počítá se</td><td>beze změny</td><td>20 je podle produktového rozhodnutí stále reálný extrém</td></tr>
+        <tr><td>21. a další pivo</td><td><code>daily_cap</code>, bez bodu</td><td>zůstává</td><td>chrání soutěž bez ztráty deníčku</td></tr>
+        <tr><td>1.–8. pivo v 10 minutách</td><td>počítá se</td><td>beze změny</td><td>štědrá rezerva pro dohánění klikání u stolu</td></tr>
+        <tr><td>9. a další v 10 minutách</td><td><code>burst</code>, bez bodu</td><td>zůstává</td><td>osm piv nelze fyzicky vypít v deseti minutách, ale bulk-entry tolerujeme</td></tr>
+        <tr><td>25+ piv za pivní den</td><td>dočasně skrýt účet z pivního žebříčku období</td><td>profil i deníček zůstávají</td><td>bezpečný odstup nad povolenou dvacítkou; automaticky se vrátí po opravě/smazání</td></tr>
+        <tr><td>12+ burst-flagů za jeden den</td><td>stejné dočasné skrytí</td><td>beze změny</td><td>zachytí např. 24 piv naklikaných během minuty, i když denní red line je 25</td></tr>
+      </tbody></table></div>
+      <p class="callout detail-only">Limity se týkají pouze <code>drink_type=beer</code>. Kofola, víno ani panák nesmí spotřebovat pivní limit. Technický API hard cap může zůstat výš (navrženo 40 všech drinků za den), protože jeho účelem je ochrana serveru, ne férovost žebříčku.</p>
+    </section>
+
+    <section id="variants" class="content">
+      <h2>Zvažované varianty</h2>
+      <div class="table-wrap"><table><thead><tr><th>Varianta</th><th>False positives</th><th>Chytí 59/den</th><th>Provoz</th><th>Verdikt</th></tr></thead><tbody>
+        <tr><td>Jen ruční moderace</td><td>nízké</td><td>až po zásahu</td><td>trvalá práce</td><td>ne</td></tr>
+        <tr><td>Tvrdý ban / mazání</td><td>vysoké škody</td><td>ano</td><td>spory + support</td><td>ne</td></tr>
+        <tr><td>Řádkové flagy + červený účet</td><td>nízké</td><td>ano</td><td>levné SQL + cache</td><td class="recommended">doporučeno</td></tr>
+      </tbody></table></div>
+      <div class="tabs"><button class="tab on" data-tab="balanced">Vyvážená</button><button class="tab" data-tab="soft">Měkčí</button><button class="tab" data-tab="strict">Přísnější</button></div>
+      <div id="balanced" class="tab-panel on card"><h3>Vyvážená · doporučeno</h3><p>20/den, 8/10 min, skrytí při 25+ nebo dvanácti burst flazích. Aktuálně schová jasný extrém, ostatním pouze ořízne hromadné klikání.</p></div>
+      <div id="soft" class="tab-panel card"><h3>Měkčí</h3><p>20/den, 10/10 min, skrytí až při 30+. Menší riziko false positive, ale účet s 24 pivy za 94 sekund by zůstal viditelný.</p></div>
+      <div id="strict" class="tab-panel card"><h3>Přísnější</h3><p>20/den, 6/10 min, skrytí při 21+. Čistší soutěž, ale příliš snadno schová festivalový den nebo jednorázovou chybu.</p></div>
+    </section>
+
+    <section id="flow">
+      <div class="content"><h2>Jak rozhodnutí protéká systémem</h2><p class="muted">Kliknutím na uzel skočíš na odpovídající implementační krok.</p></div>
+      <div class="wide flow"><svg viewBox="0 0 980 250" role="img" aria-label="Tok drinku přes deníček, flagy a veřejný žebříček">
+        <path class="edge e1" d="M185 75H305"/><path class="edge e2" d="M465 75H585"/><path class="edge e3" d="M745 75H855"/><path class="edge e4" d="M385 110V178H585"/><path class="edge e5" d="M745 200H855"/>
+        <g class="node" data-target="step1" data-edges="e1"><rect x="25" y="40" rx="8" width="160" height="70"/><text x="105" y="68" text-anchor="middle">POST /drinks</text><text x="105" y="90" text-anchor="middle">vždy zachovat deníček</text></g>
+        <g class="node" data-target="step2" data-edges="e1 e2 e4"><rect x="305" y="40" rx="8" width="160" height="70"/><text x="385" y="68" text-anchor="middle">Pivní den + burst</text><text x="385" y="90" text-anchor="middle">20 / 8</text></g>
+        <g class="node" data-target="step3" data-edges="e2 e3"><rect x="585" y="40" rx="8" width="160" height="70"/><text x="665" y="68" text-anchor="middle">Řádkový flag</text><text x="665" y="90" text-anchor="middle">auditovatelný</text></g>
+        <g class="node" data-target="step5" data-edges="e3"><rect x="855" y="40" rx="8" width="100" height="70"/><text x="905" y="68" text-anchor="middle">Skóre</text><text x="905" y="90" text-anchor="middle">clean rows</text></g>
+        <g class="node" data-target="step4" data-edges="e4 e5"><rect x="585" y="165" rx="8" width="160" height="70"/><text x="665" y="193" text-anchor="middle">Červený účet</text><text x="665" y="215" text-anchor="middle">jen beers leaderboard</text></g>
+        <g class="node" data-target="step5" data-edges="e5"><rect x="855" y="165" rx="8" width="100" height="70"/><text x="905" y="193" text-anchor="middle">Dočasně</text><text x="905" y="215" text-anchor="middle">nezobrazit</text></g>
+      </svg></div>
+    </section>
+
+    <section id="steps" class="content">
+      <h2>Implementační checklist</h2><div class="progress"><div id="bar"></div></div>
+      <div class="steps">
+        <label class="step" id="step1"><input type="checkbox" data-step="1" checked><span><strong>1. Oddělit deníček od veřejných limitů</strong><small><a class="file" href="vscode://file/Users/tomasmach/Code/na-pivo/backend/pubs/api/drink_flags.py:28">backend/pubs/api/drink_flags.py</a> · thresholds počítají pouze piva; hard cap zůstane technická pojistka.</small></span></label>
+        <label class="step" id="step2"><input type="checkbox" data-step="2" checked><span><strong>2. Pivní den 04:00 a pravidla 20 / 8</strong><small><a class="file" href="vscode://file/Users/tomasmach/Code/na-pivo/backend/pubs/api/stats.py:50">backend/pubs/api/stats.py</a> · použít existující definici pivního dne, žádná druhá časová logika.</small></span></label>
+        <label class="step" id="step3"><input type="checkbox" data-step="3" checked><span><strong>3. Opravit bezpečný recompute + přidat dry-run</strong><small><a class="file" href="vscode://file/Users/tomasmach/Code/na-pivo/backend/pubs/management/commands/recompute_drink_flags.py:1">recompute_drink_flags.py</a> · backdated podle <code>created_at - drank_at</code>, zachovat manual.</small></span></label>
+        <label class="step" id="step4"><input type="checkbox" data-step="4" checked><span><strong>4. Dynamicky skrýt jen červené účty</strong><small><a class="file" href="vscode://file/Users/tomasmach/Code/na-pivo/backend/pubs/api/views.py:3115">backend/pubs/api/views.py</a> · bez trvalého banu, pouze beers + zvolené období.</small></span></label>
+        <label class="step" id="step5"><input type="checkbox" data-step="5"><span><strong>5. Testy, cache namespace a produkční dry-run</strong><small><a class="file" href="vscode://file/Users/tomasmach/Code/na-pivo/backend/pubs/api/tests/test_leaderboards.py:99">test_leaderboards.py</a> · deploy ani zápis do produkce bez samostatného explicitního rozhodnutí.</small></span></label>
+      </div>
+    </section>
+
+    <section id="diff" class="content detail-only">
+      <h2>Náhled změny pravidel</h2>
+      <pre><code><span class="del">- DRINK_BURST_LIMIT = 12</span>
+<span class="del">- DRINK_DAILY_FLAG_CAP = 15</span>
+<span class="del">- DRINK_DAILY_HARD_CAP = 20</span>
+<span class="ins">+ DRINK_BURST_LIMIT = 8          # prvních 8 veřejně</span>
+<span class="ins">+ DRINK_DAILY_FLAG_CAP = 21     # prvních 20 veřejně</span>
+<span class="ins">+ DRINK_DAILY_HARD_CAP = 40     # jen ochrana API/deníčku</span>
+<span class="ins">+ LEADERBOARD_BEER_RED_DAY = 25</span>
+<span class="ins">+ LEADERBOARD_BEER_RED_BURSTS = 12</span></code></pre>
+      <pre><code><span class="del">- if row.drank_at &lt; now - timedelta(days=60):</span>
+<span class="ins">+ if row.drank_at &lt; row.created_at - timedelta(days=60):</span></code></pre>
+    </section>
+
+    <section id="risks" class="content">
+      <h2>Rizika a pojistky</h2>
+      <div class="risk"><strong>Offline sync</strong><span>Nepoužíváme samotný <code>created_at</code> burst. Fronta může legitimně doručit stará piva najednou; rozhoduje uživatelský <code>drank_at</code> a benevolentní limit.</span></div>
+      <div class="risk"><strong>Backfill</strong><span>Nejdřív dry-run. Současná implementace má chybu „stárnutí do backdated“ a bez opravy se nesmí pustit přes historii.</span></div>
+      <div class="risk"><strong>Obcházení</strong><span>Timestampy posílané odzadu nesmí obejít burst. Ingest kontrola musí hledat celé okolní okno; recompute je deterministický podle <code>drank_at, id</code>.</span></div>
+      <div class="risk"><strong>XP</strong><span>Po změně flagů se Pivař XP přepočítá existujícím příkazem, protože suspect piva XP nedávají. Nejdřív opět dry-run.</span></div>
+      <div class="risk"><strong>Support</strong><span>Automatické skrytí je odvozené z dat a samo zmizí po opravě záznamů. Nepoužije se trvalý boolean bez reason/expiry.</span></div>
+    </section>
+
+    <section id="decisions" class="content">
+      <h2>Doladění po prvním týdnu</h2>
+      <p>Implementace použije doporučené hodnoty. Formulář je připravený pro případ, že je budeš chtít po týdnu provozu upravit.</p>
+      <div class="question"><h3>Kolik rychle doháněných piv ještě veřejně uznat?</h3><label><input type="radio" name="burst" value="8 / 10 min (doporučeno)" checked> 8 / 10 minut — benevolentní</label><label><input type="radio" name="burst" value="6 / 10 min"> 6 / 10 minut — čistší soutěž</label><label><input type="radio" name="burst" value="jinak"> Jinak — napíšu v chatu</label></div>
+      <div class="question"><h3>Kdy skrýt celý účet z pivního žebříčku?</h3><label><input type="radio" name="red" value="25 piv za den (doporučeno)" checked> 25+ piv / pivní den</label><label><input type="radio" name="red" value="30 piv za den"> 30+ piv / pivní den</label><label><input type="radio" name="red" value="jen ručně"> Jen ručně</label></div>
+      <button class="copy" id="copyAnswers">Zkopírovat odpovědi</button><textarea class="answer" id="answers" readonly aria-label="Zkopírované odpovědi"></textarea>
+    </section>
+    <p class="footer">Plán je součást repozitáře a checklist si ukládá stav lokálně v prohlížeči. Produkční zásah není součástí automatické implementace.</p>
+  </main>
+</div>
+<script>
+const key='plan:2026-07-17-leaderboard-fair-play';
+const body=document.body, overview=document.getElementById('overviewBtn'), detail=document.getElementById('detailBtn');
+function mode(full){body.classList.toggle('overview',!full);overview.classList.toggle('on',!full);detail.classList.toggle('on',full);localStorage.setItem(key+':detail',full?'1':'0')}
+overview.onclick=()=>mode(false);detail.onclick=()=>mode(true);mode(localStorage.getItem(key+':detail')==='1');
+document.querySelectorAll('.tab').forEach(btn=>btn.onclick=()=>{document.querySelectorAll('.tab,.tab-panel').forEach(x=>x.classList.remove('on'));btn.classList.add('on');document.getElementById(btn.dataset.tab).classList.add('on')});
+const checks=[...document.querySelectorAll('[data-step]')];const saved=JSON.parse(localStorage.getItem(key+':steps-v2')||'{}');
+function progress(){const done=checks.filter(x=>x.checked).length;document.getElementById('bar').style.width=(done/checks.length*100)+'%';const state={};checks.forEach(x=>state[x.dataset.step]=x.checked);localStorage.setItem(key+':steps-v2',JSON.stringify(state))}
+checks.forEach(x=>{if(Object.hasOwn(saved,x.dataset.step))x.checked=!!saved[x.dataset.step];x.onchange=progress});progress();
+document.querySelectorAll('.node').forEach(n=>{n.onclick=()=>document.getElementById(n.dataset.target).scrollIntoView({behavior:'smooth'});n.onmouseenter=()=>n.dataset.edges.split(' ').forEach(e=>document.querySelector('.'+e)?.classList.add('active'));n.onmouseleave=()=>document.querySelectorAll('.edge').forEach(e=>e.classList.remove('active'))});
+const sections=[...document.querySelectorAll('section[id],#summary')],links=[...document.querySelectorAll('.nav a')];new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){links.forEach(a=>a.classList.toggle('active',a.getAttribute('href')==='#'+e.target.id))}}),{rootMargin:'-20% 0px -65%'}).observe(sections[0]);sections.slice(1).forEach(s=>new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting)links.forEach(a=>a.classList.toggle('active',a.getAttribute('href')==='#'+e.target.id))}),{rootMargin:'-20% 0px -65%'}).observe(s));
+document.getElementById('copyAnswers').onclick=async()=>{const lines=['Fair-play žebříček:'];document.querySelectorAll('.question').forEach(q=>{const h=q.querySelector('h3').textContent;const v=q.querySelector('input:checked')?.value||'bez odpovědi';lines.push('- '+h+' '+v)});const out=lines.join('\n');document.getElementById('answers').value=out;try{await navigator.clipboard.writeText(out)}catch{document.getElementById('answers').select()}};
+</script>
+</body>
+</html>

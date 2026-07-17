@@ -60,9 +60,7 @@ def _drink(
         city="Praha" if cache_key is not None else "",
         external_id="mapy:test" if cache_key is not None else "",
         place_context=(
-            DrinkLog.PlaceContext.PUB
-            if cache_key is not None
-            else DrinkLog.PlaceContext.OUTDOORS
+            DrinkLog.PlaceContext.PUB if cache_key is not None else DrinkLog.PlaceContext.OUTDOORS
         ),
         drink_type=drink_type,
         beer_name=name,
@@ -240,6 +238,66 @@ def test_leaderboards_exclude_suspect_drinks_and_excluded_accounts(client):
         "listed": False,
         "eligible": False,
     }
+
+
+@pytest.mark.django_db
+def test_red_beer_day_temporarily_hides_account_only_from_beer_leaderboard(client):
+    token, me = _register(client, "janek")
+    red_token, red = _register(client, "extrem")
+    base = timezone.now().replace(hour=12, minute=0, second=0, microsecond=0)
+    _drink(me, cache_key="mine", drank_at=base)
+    for index in range(25):
+        _drink(red, cache_key="red-pub", drank_at=base + timedelta(minutes=index))
+
+    beers = client.get("/v1/leaderboards?category=beers&period=week", **_auth(token))
+    assert beers.status_code == status.HTTP_200_OK
+    assert [row["account"]["nickname"] for row in beers.json()["entries"]] == ["janek"]
+    assert beers.json()["total_ranked"] == 1
+
+    red_view = client.get(
+        "/v1/leaderboards?category=beers&period=week",
+        **_auth(red_token),
+    )
+    assert red_view.json()["me"] == {
+        "rank": None,
+        "score": 0,
+        "listed": False,
+        "eligible": False,
+    }
+
+    pubs = client.get("/v1/leaderboards?category=pubs&period=week", **_auth(token))
+    assert pubs.status_code == status.HTTP_200_OK
+    assert {row["account"]["nickname"] for row in pubs.json()["entries"]} == {
+        "extrem",
+        "janek",
+    }
+
+
+@pytest.mark.django_db
+def test_repeated_burst_flags_can_hide_account_below_red_day_count(client, settings):
+    settings.LEADERBOARD_BEER_RED_DAY = 25
+    settings.LEADERBOARD_BEER_RED_BURSTS = 12
+    token, me = _register(client, "janek")
+    _other_token, red = _register(client, "bulk")
+    base = timezone.now().replace(hour=12, minute=0, second=0, microsecond=0)
+    _drink(me, drank_at=base)
+    for index in range(8):
+        _drink(red, drank_at=base + timedelta(seconds=index))
+    for index in range(12):
+        _drink(
+            red,
+            drank_at=base + timedelta(seconds=8 + index),
+            is_suspect=True,
+            suspect_reason="burst",
+        )
+
+    response = client.get(
+        "/v1/leaderboards?category=beers&period=week",
+        **_auth(token),
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert [row["account"]["nickname"] for row in response.json()["entries"]] == ["janek"]
 
 
 @pytest.mark.django_db

@@ -39,6 +39,7 @@ from django.db import IntegrityError, close_old_connections, transaction
 from django.db.models import (
     Avg,
     Count,
+    DateTimeField,
     Exists,
     ExpressionWrapper,
     F,
@@ -47,8 +48,10 @@ from django.db.models import (
     OuterRef,
     Prefetch,
     Q,
+    Subquery,
     Value,
 )
+from django.db.models.functions import TruncDate
 from django.utils import timezone as dj_timezone
 from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed
@@ -1688,7 +1691,12 @@ class DrinksView(APIView):
                         status=status.HTTP_200_OK,
                     )
 
-                flags = evaluate_drink_flags(account, drank_at, dj_timezone.now())
+                flags = evaluate_drink_flags(
+                    account,
+                    drank_at,
+                    dj_timezone.now(),
+                    drink_type,
+                )
                 if flags.hard_limited:
                     logger.warning(
                         "daily drink limit reached",
@@ -3096,7 +3104,7 @@ def _leaderboard_period_start(period: str, now=None) -> tuple[datetime | None, d
 
 def _leaderboard_cache_key(category: str, period: str, period_start: datetime | None) -> str:
     marker = period_start.isoformat() if period_start is not None else "all"
-    return f"v1:leaderboards:abuse-v1:{category}:{period}:{marker}"
+    return f"v1:leaderboards:abuse-v2:{category}:{period}:{marker}"
 
 
 def _leaderboard_account_queryset():
@@ -3119,8 +3127,48 @@ def _countable_beer_drinks():
     )
 
 
-def _leaderboard_drink_scores(period_start_utc: datetime | None, blocked_ids: set[int] | None = None) -> dict[int, int]:
-    qs = _countable_beer_drinks().filter(account__in=_leaderboard_account_queryset())
+def _leaderboard_red_beer_days(period_start_utc: datetime | None):
+    """Beer days that are too implausible for the public competition."""
+
+    qs = DrinkLog.objects.filter(drink_type=DrinkLog.DrinkType.BEER)
+    if period_start_utc is not None:
+        context_start = drinking_day_bounds(period_start_utc)[0]
+        qs = qs.filter(drank_at__gte=context_start)
+    shifted = ExpressionWrapper(
+        F("drank_at") - timedelta(hours=4),
+        output_field=DateTimeField(),
+    )
+    return (
+        qs.annotate(drinking_day=TruncDate(shifted, tzinfo=PRAGUE_TZ))
+        .values("account_id", "drinking_day")
+        .annotate(
+            raw_beers=Count("id"),
+            burst_beers=Count("id", filter=Q(suspect_reason="burst")),
+        )
+        .filter(
+            Q(raw_beers__gte=settings.LEADERBOARD_BEER_RED_DAY)
+            | Q(burst_beers__gte=settings.LEADERBOARD_BEER_RED_BURSTS)
+        )
+        .order_by()
+    )
+
+
+def _leaderboard_has_red_beer_day(
+    account_id: int,
+    period_start_utc: datetime | None,
+) -> bool:
+    return _leaderboard_red_beer_days(period_start_utc).filter(account_id=account_id).exists()
+
+
+def _leaderboard_drink_scores(
+    period_start_utc: datetime | None, blocked_ids: set[int] | None = None
+) -> dict[int, int]:
+    red_accounts = _leaderboard_red_beer_days(period_start_utc).values("account_id")
+    qs = (
+        _countable_beer_drinks()
+        .filter(account__in=_leaderboard_account_queryset())
+        .exclude(account_id__in=Subquery(red_accounts))
+    )
     if period_start_utc is not None:
         qs = qs.filter(drank_at__gte=period_start_utc)
     if blocked_ids:
@@ -3183,10 +3231,14 @@ def _leaderboard_account_score(
     account: Account,
     category: str,
     period_start_utc: datetime | None,
+    *,
+    red_beer_day: bool = False,
 ) -> int:
     if account.excluded_from_leaderboards:
         return 0
     if category == "beers":
+        if red_beer_day:
+            return 0
         qs = _countable_beer_drinks().filter(account=account)
         if period_start_utc is not None:
             qs = qs.filter(drank_at__gte=period_start_utc)
@@ -3207,11 +3259,16 @@ def _leaderboard_account_score(
     return int(getattr(stats, "mapper_xp", 0) or 0)
 
 
-def _leaderboard_is_eligible(account: Account) -> bool:
+def _leaderboard_is_eligible(
+    account: Account,
+    *,
+    red_beer_day: bool = False,
+) -> bool:
     return (
         account.status == Account.Status.ACTIVE
         and account.is_public
         and not account.excluded_from_leaderboards
+        and not red_beer_day
         and bool((account.nickname or "").strip())
     )
 
@@ -3276,7 +3333,16 @@ def _leaderboard_me_payload(
     blocked_ids: set[int],
 ) -> dict:
     me = request.user
-    score = _leaderboard_account_score(me, category, period_start_utc)
+    red_beer_day = category == "beers" and _leaderboard_has_red_beer_day(
+        me.id,
+        period_start_utc,
+    )
+    score = _leaderboard_account_score(
+        me,
+        category,
+        period_start_utc,
+        red_beer_day=red_beer_day,
+    )
     rank = None
     if score > 0:
         score_by_account = _leaderboard_score_map(category, period_start_utc, blocked_ids)
@@ -3297,7 +3363,7 @@ def _leaderboard_me_payload(
         "rank": rank,
         "score": score,
         "listed": any(row["account_pk"] == me.id for row in rows),
-        "eligible": _leaderboard_is_eligible(me),
+        "eligible": _leaderboard_is_eligible(me, red_beer_day=red_beer_day),
     }
 
 

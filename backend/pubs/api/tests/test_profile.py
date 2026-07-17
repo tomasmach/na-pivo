@@ -837,7 +837,7 @@ def test_account_settings_round_trip_through_me(client):
 def test_get_me_returns_backend_profile_stats_and_achievements(client):
     token, account_id = _bootstrap(client)
     account = Account.objects.get(public_id=account_id)
-    now = timezone.now()
+    now = timezone.now().replace(hour=12, minute=0, second=0, microsecond=0)
 
     for i in range(10):
         DrinkLog.objects.create(

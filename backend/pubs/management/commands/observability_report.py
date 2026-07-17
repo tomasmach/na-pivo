@@ -11,9 +11,9 @@ from typing import Any
 from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db.models import Count, Sum
-from django.db.models.functions import TruncDate
 from django.utils import timezone
 
+from pubs.api.stats import drinking_day
 from pubs.models import AccountUsageStats, ClientEvent, DrinkLog, FeedbackReport
 
 _EMAIL_RE = re.compile(r"[\w.!#$%&'*+/=?^`{|}~-]+@[\w.-]+\.[A-Za-z]{2,}")
@@ -86,22 +86,22 @@ class Command(BaseCommand):
             .annotate(count=Count("id"))
             .order_by("-count", "suspect_reason")
         )
-        daily_rows = (
-            DrinkLog.objects.filter(drank_at__gte=since)
-            .annotate(day=TruncDate("drank_at", tzinfo=timezone.get_current_timezone()))
-            .values("account_id", "account__nickname", "day")
-            .annotate(count=Count("id"))
-            .filter(count__gte=settings.DRINK_DAILY_FLAG_CAP)
-        )
+        daily_counts: Counter[tuple[int, str, object]] = Counter()
+        for account_id, nickname, drank_at in DrinkLog.objects.filter(
+            drank_at__gte=since,
+            drink_type=DrinkLog.DrinkType.BEER,
+        ).values_list("account_id", "account__nickname", "drank_at"):
+            daily_counts[(account_id, nickname or "", drinking_day(drank_at))] += 1
         max_daily_by_account: dict[int, dict[str, Any]] = {}
-        for row in daily_rows:
-            account_id = int(row["account_id"])
+        for (account_id, nickname, _day), count in daily_counts.items():
+            if count < settings.DRINK_DAILY_FLAG_CAP:
+                continue
             current = max_daily_by_account.get(account_id)
-            if current is None or row["count"] > current["count"]:
+            if current is None or count > current["count"]:
                 max_daily_by_account[account_id] = {
                     "account_id": account_id,
-                    "nickname": row["account__nickname"] or "",
-                    "count": int(row["count"]),
+                    "nickname": nickname,
+                    "count": count,
                 }
         top_daily_accounts = sorted(
             max_daily_by_account.values(),

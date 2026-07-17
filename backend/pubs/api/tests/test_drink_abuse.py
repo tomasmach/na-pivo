@@ -44,13 +44,20 @@ def _payload(*, drank_at, client_id=None) -> dict:
         "name": "U Zlatého tygra",
         "lat": 50.0876,
         "lng": 14.4214,
-        "drink_type": "soft_drink",
-        "beer": {"name": "Kofola", "price_czk": 49, "volume_ml": 400},
+        "drink_type": "beer",
+        "beer": {"name": "Pilsner Urquell", "price_czk": 65, "volume_ml": 500},
         "drank_at": drank_at.isoformat(),
     }
 
 
-def _drink(account: Account, drank_at, *, is_suspect=False, suspect_reason="") -> DrinkLog:
+def _drink(
+    account: Account,
+    drank_at,
+    *,
+    drink_type=DrinkLog.DrinkType.BEER,
+    is_suspect=False,
+    suspect_reason="",
+) -> DrinkLog:
     return DrinkLog.objects.create(
         account=account,
         client_id=uuid.uuid4(),
@@ -58,10 +65,10 @@ def _drink(account: Account, drank_at, *, is_suspect=False, suspect_reason="") -
         name="U Zlatého tygra",
         lat=50.0876,
         lng=14.4214,
-        drink_type=DrinkLog.DrinkType.SOFT_DRINK,
-        beer_name="Kofola",
-        price_czk=49,
-        volume_ml=400,
+        drink_type=drink_type,
+        beer_name="Pilsner Urquell" if drink_type == DrinkLog.DrinkType.BEER else "Kofola",
+        price_czk=65 if drink_type == DrinkLog.DrinkType.BEER else 49,
+        volume_ml=500 if drink_type == DrinkLog.DrinkType.BEER else 400,
         drank_at=drank_at,
         is_suspect=is_suspect,
         suspect_reason=suspect_reason,
@@ -110,28 +117,28 @@ def test_drink_older_than_backdate_window_is_flagged(client):
 
 
 @pytest.mark.django_db
-def test_fifteenth_drink_is_daily_cap_but_fourteenth_is_not(client):
+def test_twenty_first_beer_is_daily_cap_but_twentieth_is_not(client):
     token, account = _register(client)
-    start = _yesterday_noon() - timedelta(hours=12)
-    for index in range(13):
-        _drink(account, start + timedelta(minutes=50 * index))
+    start = _yesterday_noon()
+    for index in range(19):
+        _drink(account, start + timedelta(minutes=30 * index))
 
-    fourteenth = client.post(
+    twentieth = client.post(
         "/v1/drinks",
-        data=_payload(drank_at=start + timedelta(minutes=50 * 13)),
+        data=_payload(drank_at=start + timedelta(minutes=30 * 19)),
         format="json",
         **_auth(token),
     )
-    fifteenth = client.post(
+    twenty_first = client.post(
         "/v1/drinks",
-        data=_payload(drank_at=start + timedelta(minutes=50 * 14)),
+        data=_payload(drank_at=start + timedelta(minutes=30 * 20)),
         format="json",
         **_auth(token),
     )
 
-    assert fourteenth.status_code == status.HTTP_201_CREATED
-    assert fifteenth.status_code == status.HTTP_201_CREATED
-    newest = list(DrinkLog.objects.order_by("drank_at"))[13:]
+    assert twentieth.status_code == status.HTTP_201_CREATED
+    assert twenty_first.status_code == status.HTTP_201_CREATED
+    newest = list(DrinkLog.objects.order_by("drank_at"))[19:]
     assert [(row.is_suspect, row.suspect_reason) for row in newest] == [
         (False, ""),
         (True, "daily_cap"),
@@ -139,14 +146,45 @@ def test_fifteenth_drink_is_daily_cap_but_fourteenth_is_not(client):
 
 
 @pytest.mark.django_db
-def test_thirteenth_drink_in_burst_is_flagged_but_spread_drinks_are_not(client):
+def test_daily_beer_limit_uses_the_0400_drinking_day(client, settings):
+    settings.DRINK_DAILY_FLAG_CAP = 3
+    token, account = _register(client)
+    late_evening = _yesterday_noon().replace(hour=23)
+    _drink(account, late_evening)
+    _drink(account, late_evening + timedelta(hours=3))
+    before_id = uuid.uuid4()
+
+    before_cutoff = client.post(
+        "/v1/drinks",
+        data=_payload(
+            drank_at=late_evening + timedelta(hours=4),
+            client_id=before_id,
+        ),
+        format="json",
+        **_auth(token),
+    )
+    after_cutoff = client.post(
+        "/v1/drinks",
+        data=_payload(drank_at=late_evening + timedelta(hours=5)),
+        format="json",
+        **_auth(token),
+    )
+
+    assert before_cutoff.status_code == status.HTTP_201_CREATED
+    assert DrinkLog.objects.get(client_id=before_id).suspect_reason == "daily_cap"
+    assert after_cutoff.status_code == status.HTTP_201_CREATED
+    assert DrinkLog.objects.latest("drank_at").is_suspect is False
+
+
+@pytest.mark.django_db
+def test_ninth_beer_in_burst_is_flagged_but_spread_beers_are_not(client):
     token, account = _register(client)
     base = _yesterday_noon()
-    for index in range(12):
+    for index in range(8):
         _drink(account, base + timedelta(seconds=index))
     burst_response = client.post(
         "/v1/drinks",
-        data=_payload(drank_at=base + timedelta(seconds=12)),
+        data=_payload(drank_at=base + timedelta(seconds=8)),
         format="json",
         **_auth(token),
     )
@@ -154,11 +192,11 @@ def test_thirteenth_drink_in_burst_is_flagged_but_spread_drinks_are_not(client):
     assert DrinkLog.objects.latest("drank_at").suspect_reason == "burst"
 
     other_token, other = _register(client)
-    for index in range(12):
+    for index in range(8):
         _drink(other, base + timedelta(minutes=11 * index))
     spread_response = client.post(
         "/v1/drinks",
-        data=_payload(drank_at=base + timedelta(minutes=11 * 12)),
+        data=_payload(drank_at=base + timedelta(minutes=11 * 8)),
         format="json",
         **_auth(other_token),
     )
@@ -169,15 +207,15 @@ def test_thirteenth_drink_in_burst_is_flagged_but_spread_drinks_are_not(client):
 
 
 @pytest.mark.django_db
-def test_twenty_first_drink_is_hard_limited_and_existing_rows_remain(client):
+def test_forty_first_drink_is_hard_limited_and_existing_rows_remain(client):
     token, account = _register(client)
-    start = _yesterday_noon() - timedelta(hours=10)
-    for index in range(20):
-        _drink(account, start + timedelta(minutes=25 * index))
+    start = _yesterday_noon()
+    for index in range(40):
+        _drink(account, start + timedelta(minutes=20 * index))
 
     response = client.post(
         "/v1/drinks",
-        data=_payload(drank_at=start + timedelta(minutes=25 * 20)),
+        data=_payload(drank_at=start + timedelta(minutes=20 * 40)),
         format="json",
         **_auth(token),
     )
@@ -187,15 +225,15 @@ def test_twenty_first_drink_is_hard_limited_and_existing_rows_remain(client):
         "code": "drink_limited",
         "detail": "daily drink limit reached",
     }
-    assert DrinkLog.objects.filter(account=account).count() == 20
+    assert DrinkLog.objects.filter(account=account).count() == 40
 
 
 @pytest.mark.django_db
-def test_pub_and_non_pub_drinks_share_daily_flag_and_hard_cap(client):
+def test_pub_and_non_pub_beers_share_daily_flag_and_hard_cap(client):
     token, account = _register(client)
-    start = _yesterday_noon() - timedelta(hours=10)
-    for index in range(14):
-        drink = _drink(account, start + timedelta(minutes=35 * index))
+    start = _yesterday_noon()
+    for index in range(20):
+        drink = _drink(account, start + timedelta(minutes=20 * index))
         if index % 2:
             DrinkLog.objects.filter(pk=drink.pk).update(
                 cache_key=None,
@@ -205,32 +243,76 @@ def test_pub_and_non_pub_drinks_share_daily_flag_and_hard_cap(client):
                 place_context=DrinkLog.PlaceContext.OUTDOORS,
             )
 
-    fifteenth = client.post(
+    twenty_first = client.post(
         "/v1/drinks",
         data={
             "client_id": str(uuid.uuid4()),
             "place_context": "private",
-            "drink_type": "soft_drink",
-            "beer": {"name": "Kofola", "volume_ml": 400},
-            "drank_at": (start + timedelta(minutes=35 * 14)).isoformat(),
+            "drink_type": "beer",
+            "beer": {"name": "Pilsner Urquell", "volume_ml": 500},
+            "drank_at": (start + timedelta(minutes=20 * 20)).isoformat(),
         },
         format="json",
         **_auth(token),
     )
-    assert fifteenth.status_code == status.HTTP_201_CREATED
+    assert twenty_first.status_code == status.HTTP_201_CREATED
     assert DrinkLog.objects.latest("drank_at").suspect_reason == "daily_cap"
 
-    for index in range(15, 20):
-        _drink(account, start + timedelta(minutes=35 * index))
-    twenty_first = client.post(
+    for index in range(21, 40):
+        _drink(account, start + timedelta(minutes=20 * index))
+    forty_first = client.post(
         "/v1/drinks",
-        data=_payload(drank_at=start + timedelta(minutes=35 * 20)),
+        data=_payload(drank_at=start + timedelta(minutes=20 * 40)),
         format="json",
         **_auth(token),
     )
-    assert twenty_first.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
-    assert twenty_first.json()["code"] == "drink_limited"
-    assert DrinkLog.objects.filter(account=account).count() == 20
+    assert forty_first.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert forty_first.json()["code"] == "drink_limited"
+    assert DrinkLog.objects.filter(account=account).count() == 40
+
+
+@pytest.mark.django_db
+def test_non_beers_do_not_consume_beer_fair_play_limits(client):
+    token, account = _register(client)
+    base = _yesterday_noon()
+    for index in range(20):
+        _drink(
+            account,
+            base + timedelta(seconds=index),
+            drink_type=DrinkLog.DrinkType.SOFT_DRINK,
+        )
+
+    response = client.post(
+        "/v1/drinks",
+        data=_payload(drank_at=base + timedelta(seconds=20)),
+        format="json",
+        **_auth(token),
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    drink = DrinkLog.objects.latest("created_at")
+    assert drink.is_suspect is False
+    assert drink.suspect_reason == ""
+
+
+@pytest.mark.django_db
+def test_burst_cannot_be_bypassed_with_descending_timestamps(client):
+    token, account = _register(client)
+    base = _yesterday_noon()
+    for index in range(8):
+        _drink(account, base + timedelta(seconds=20 - index))
+
+    response = client.post(
+        "/v1/drinks",
+        data=_payload(drank_at=base + timedelta(seconds=12)),
+        format="json",
+        **_auth(token),
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    drink = DrinkLog.objects.latest("created_at")
+    assert drink.is_suspect is True
+    assert drink.suspect_reason == "burst"
 
 
 @pytest.mark.django_db

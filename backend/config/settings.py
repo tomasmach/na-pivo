@@ -225,18 +225,30 @@ PUB_LOCATION_LOOKUP_THROTTLE_RATE: str = os.environ.get(
 # it still blunts scripted mass logging. Format: DRF throttle rate string.
 DRINKS_THROTTLE_RATE: str = os.environ.get("DRINKS_THROTTLE_RATE", "30/min")
 
-# Drink-log plausibility thresholds. Suspicious rows remain in personal history
-# but are excluded from public aggregates; only the extreme daily cap rejects.
+# Drink-log plausibility thresholds. Suspicious beer rows remain in personal
+# history but are excluded from public aggregates. The higher hard cap counts
+# every drink type and exists only to bound abusive API/storage usage.
 DRINK_FUTURE_GRACE_MINUTES: int = int(
     os.environ.get("DRINK_FUTURE_GRACE_MINUTES", "10")
 )
 DRINK_BACKDATE_FLAG_DAYS: int = int(os.environ.get("DRINK_BACKDATE_FLAG_DAYS", "60"))
-DRINK_BURST_LIMIT: int = int(os.environ.get("DRINK_BURST_LIMIT", "12"))
+DRINK_BURST_LIMIT: int = int(os.environ.get("DRINK_BURST_LIMIT", "8"))
 DRINK_BURST_WINDOW_MINUTES: int = int(
     os.environ.get("DRINK_BURST_WINDOW_MINUTES", "10")
 )
-DRINK_DAILY_FLAG_CAP: int = int(os.environ.get("DRINK_DAILY_FLAG_CAP", "15"))
-DRINK_DAILY_HARD_CAP: int = int(os.environ.get("DRINK_DAILY_HARD_CAP", "20"))
+DRINK_DAILY_FLAG_CAP: int = int(os.environ.get("DRINK_DAILY_FLAG_CAP", "21"))
+DRINK_DAILY_HARD_CAP: int = int(os.environ.get("DRINK_DAILY_HARD_CAP", "40"))
+
+# A red account is temporarily omitted from the public beer leaderboard for a
+# period containing an obviously implausible drinking day. This is derived at
+# read time, so correcting/deleting the bad rows automatically restores it; the
+# profile, private diary and the other leaderboard categories remain untouched.
+LEADERBOARD_BEER_RED_DAY: int = int(
+    os.environ.get("LEADERBOARD_BEER_RED_DAY", "25")
+)
+LEADERBOARD_BEER_RED_BURSTS: int = int(
+    os.environ.get("LEADERBOARD_BEER_RED_BURSTS", "12")
+)
 
 # Per-IP rate limit for the unauthenticated beer-brand suggestion endpoint
 # (GET /v1/beer-brands/suggest). The response is tiny and cacheable, but the
