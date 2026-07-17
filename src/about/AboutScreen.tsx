@@ -154,29 +154,27 @@ function ChangelogBody({ state }: { state: ChangelogState }) {
   );
 }
 
-/** One published version: a version badge + title, then its highlight rows. */
+/** One published version: a quiet version label + title, then its highlight rows. */
 function NoteBlock({ note }: { note: ReleaseNote }) {
   return (
     <View style={styles.noteBlock}>
       <View style={styles.noteHeader}>
-        <View style={styles.versionBadge}>
-          <Text style={styles.versionBadgeText}>
-            {cs.whatsNew.versionLabel(note.version)}
-          </Text>
-        </View>
         <Text style={styles.noteTitle} numberOfLines={2}>
           {note.title}
+        </Text>
+        <Text style={styles.noteVersion}>
+          {cs.whatsNew.versionLabel(note.version)}
         </Text>
       </View>
 
       <View style={styles.list}>
         {note.items.map((item, i) => (
           <View key={i} style={styles.row}>
-            <View style={styles.chip}>
+            <View style={styles.marker}>
               {item.icon ? (
-                <Text style={styles.chipIcon}>{item.icon}</Text>
+                <Text style={styles.markerIcon}>{item.icon}</Text>
               ) : (
-                <View style={styles.bullet} />
+                <View style={styles.diamond} />
               )}
             </View>
             <Text style={styles.itemText}>{item.text}</Text>
@@ -316,22 +314,11 @@ const styles = StyleSheet.create({
   },
   noteHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'baseline',
     gap: Spacing.sm,
-  },
-  versionBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.amber, 0.14),
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.4),
-  },
-  versionBadgeText: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 12,
-    letterSpacing: 0.3,
-    color: Colors.amberLight,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: withAlpha(Colors.amber, 0.35),
+    paddingBottom: Spacing.sm,
   },
   noteTitle: {
     flex: 1,
@@ -339,46 +326,43 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: Colors.foam,
   },
+  noteVersion: {
+    fontFamily: Fonts.ui.medium,
+    fontSize: 12,
+    letterSpacing: 0.4,
+    fontVariant: ['tabular-nums'],
+    color: Colors.mutedText,
+  },
 
   // ── Note item rows (mirror WhatsNewModal) ──
   list: {
-    gap: Spacing.sm,
+    gap: Spacing.md,
   },
   row: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: Spacing.md,
-    backgroundColor: Colors.stout2,
-    borderRadius: Radius.medium,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.border, 0.6),
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.md,
   },
-  chip: {
-    width: 40,
-    height: 40,
-    borderRadius: Radius.medium,
-    backgroundColor: withAlpha(Colors.amber, 0.16),
+  marker: {
+    width: 26,
     alignItems: 'center',
-    justifyContent: 'center',
   },
-  chipIcon: {
-    fontSize: 20,
-    lineHeight: 24,
-    textAlign: 'center',
+  markerIcon: {
+    fontSize: 18,
+    lineHeight: 22,
   },
-  bullet: {
-    width: 8,
-    height: 8,
-    borderRadius: Radius.pill,
+  diamond: {
+    width: 7,
+    height: 7,
+    marginTop: 8,
     backgroundColor: Colors.amber,
+    transform: [{ rotate: '45deg' }],
   },
   itemText: {
     flex: 1,
     fontFamily: Fonts.ui.regular,
     fontSize: 15,
-    lineHeight: 21,
+    lineHeight: 22,
     color: Colors.foamMuted,
   },
 
