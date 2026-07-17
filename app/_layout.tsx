@@ -37,6 +37,7 @@ import {
 } from '@/data/telemetryClient';
 import { flushWalkingDistance } from '@/data/walkingTelemetry';
 import { useAccountStore, selectIsSignedIn, selectNeedsProfileSetup } from '@/stores/accountStore';
+import { useOnboardingStore } from '@/stores/onboardingStore';
 import { usePubStore } from '@/stores/pubStore';
 import { useReleaseStore } from '@/stores/releaseStore';
 import { useTallyStore } from '@/stores/tallyStore';
@@ -66,6 +67,30 @@ import {
  * guarded — `selectNeedsProfileSetup` flips to false the moment a nickname is
  * set — and we never redirect while already on the setup route.
  */
+/**
+ * First-run gate: when the onboarding store resolves 'show' (fresh install,
+ * never completed), replace the stack root with the welcome pager. Stays out
+ * of the way of a Parta invite deep link — the invite screen wins, and the
+ * decision stays 'show' so the gate fires once the invite closes.
+ */
+function OnboardingGate() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const decision = useOnboardingStore((s) => s.decision);
+
+  useEffect(() => {
+    if (
+      decision === 'show' &&
+      pathname !== '/onboarding' &&
+      !pathname.startsWith('/parta/pozvanka')
+    ) {
+      router.replace('/onboarding' as Href);
+    }
+  }, [decision, pathname, router]);
+
+  return null;
+}
+
 function ProfileGate() {
   const router = useRouter();
   const pathname = usePathname();
@@ -73,7 +98,15 @@ function ProfileGate() {
   const needsSetup = useAccountStore(selectNeedsProfileSetup);
 
   useEffect(() => {
-    if (status === 'ready' && needsSetup && pathname !== '/profile/setup') {
+    // The first-run pager wins over the setup wizard (a Keychain-restored
+    // session can look signed-in on a fresh install): wait it out, then fire
+    // once the onboarding completes and navigation lands back on the tabs.
+    if (
+      status === 'ready' &&
+      needsSetup &&
+      pathname !== '/profile/setup' &&
+      pathname !== '/onboarding'
+    ) {
       router.replace('/profile/setup' as Href);
     }
   }, [status, needsSetup, pathname, router]);
@@ -118,15 +151,25 @@ SplashScreen.preventAutoHideAsync().catch(() => {
   // ignore — splash may already be hidden
 });
 
+// Kick the first-run decision off at module scope, BEFORE any component
+// mounts: launch effects write persisted stores within the first frames
+// (tally auto-archive, currency restore, queue flushes), and decide()'s
+// existing-install key sniff must enqueue its AsyncStorage reads ahead of
+// those writes or a fresh install gets misread as an upgrade.
+const onboardingDecisionPromise = useOnboardingStore.getState().decide();
+
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts(fontAssets);
   const router = useRouter();
+  // Hold the splash until the first-run decision resolves too, so a fresh
+  // install fades straight into the onboarding instead of flashing the compass.
+  const onboardingDecided = useOnboardingStore((s) => s.decision !== 'pending');
 
   useEffect(() => {
-    if (fontsLoaded || fontError) {
+    if ((fontsLoaded || fontError) && onboardingDecided) {
       SplashScreen.hideAsync().catch(() => undefined);
     }
-  }, [fontsLoaded, fontError]);
+  }, [fontsLoaded, fontError, onboardingDecided]);
 
   useEffect(() => {
     installClientTelemetry();
@@ -216,10 +259,15 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    // Fire-and-forget: after an app update, surface the "what's new" popup. Waits
-    // for persisted state internally and never throws — a miss just retries next
-    // launch.
-    void useReleaseStore.getState().checkForUpdate();
+    // First-run decision (kicked off at module scope) MUST resolve before the
+    // release check: on a fresh install checkForUpdate() writes the
+    // `na-pivo-release` baseline, one of the keys decide() reads to tell a
+    // fresh install from an upgrade. Then, fire-and-forget: after an app
+    // update, surface the "what's new" popup. Waits for persisted state
+    // internally and never throws — a miss just retries next launch.
+    void onboardingDecisionPromise.finally(() => {
+      void useReleaseStore.getState().checkForUpdate();
+    });
   }, []);
 
   useEffect(() => {
@@ -322,6 +370,15 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="(tabs)" />
+          <Stack.Screen
+            name="onboarding"
+            options={{
+              presentation: 'fullScreenModal',
+              animation: 'fade',
+              // One-way door: finish or skip, never swipe away.
+              gestureEnabled: false,
+            }}
+          />
           <Stack.Screen
             name="settings"
             options={{
@@ -500,6 +557,7 @@ export default function RootLayout() {
             }}
           />
         </Stack>
+        <OnboardingGate />
         <ProfileGate />
         <WhatsNewModal />
         <PubReminderOnboardingModal />

@@ -250,6 +250,21 @@ export const cs = {
     openSettings: 'Otevřít Nastavení',
   },
 
+  // — First-run onboarding (route /onboarding, shown once on a fresh install) —
+  onboarding: {
+    skip: 'Přeskočit',
+    next: 'Pokračovat',
+    finish: 'Jdeme na pivo',
+    slide1Title: 'Vítej Na pivu',
+    slide1Body: 'Pivní deníček do kapsy. Ať máš přehled, co piješ a kam chodíš.',
+    slide2Title: 'Kompas tě dovede',
+    slide2Body: 'Šipka míří do nejbližší otevřené hospody. Ty už jen jdeš.',
+    slide3Title: 'Čárkuj si večer',
+    slide3Body: 'Piva si čárkuješ jako na tácku. Statistiky a odznaky naskakují samy.',
+    slide4Title: 'Vezmi partu',
+    slide4Body: 'Přidáš kamarády a uvidíš, kdo zrovna sedí v hospodě. Cinknout si můžete na dálku.',
+  },
+
   celebration: {
     eyebrow: 'VÍTEJ V',
     headlineLine1: 'Na',

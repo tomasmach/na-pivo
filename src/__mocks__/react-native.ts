@@ -90,6 +90,25 @@ export const AccessibilityInfo = {
 
 export const KeyboardAvoidingView = createComponent('KeyboardAvoidingView');
 export const TextInput = createComponent('TextInput');
+export const FlatList = createComponent('FlatList');
+
+/** Minimal Animated stand-in: value/interpolate return inert objects, the
+ *  animated components render like their plain counterparts. */
+class MockAnimatedValue {
+  constructor(private value: number) {}
+  interpolate = jest.fn(() => 0);
+  setValue = jest.fn();
+}
+
+export const Animated = {
+  Value: MockAnimatedValue,
+  event: jest.fn(() => jest.fn()),
+  View: createComponent('AnimatedView'),
+  Text: createComponent('AnimatedText'),
+  ScrollView: createComponent('AnimatedScrollView'),
+  FlatList: createComponent('AnimatedFlatList'),
+  createAnimatedComponent: <T,>(component: T): T => component,
+};
 // Modal renders its children inline in tests (visibility is a prop, not gated).
 export const Modal = createComponent('Modal');
 
