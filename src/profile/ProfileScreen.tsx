@@ -50,7 +50,7 @@ import {
 } from '@/components/shared/IconGlyph';
 import { PhotoDiarySection } from '@/photos/PhotoDiarySection';
 import { useReduceMotion } from '@/utils/useReduceMotion';
-import { type AccountMapper } from '@/data/auth';
+import { type AccountMapper, type AccountPivar } from '@/data/auth';
 import { DiscordIcon, InstagramIcon, LinkedinIcon } from '@/components/shared/BrandIcon';
 import { GlowButton } from '@/components/shared/GlowButton';
 import CodeSheet from '@/friends/CodeSheet';
@@ -283,6 +283,59 @@ function MapperSection({ mapper, signedIn }: { mapper: AccountMapper; signedIn: 
   );
 }
 
+/**
+ * The PIVAŘ section — the drink-logging level card, mirroring the Mapér level
+ * card one-to-one (same styles, shared XP bar copy). No stat grid: the beer
+ * numbers already live in TVOJE ČÍSLA above; this card is purely the ladder.
+ */
+function PivarSection({ pivar }: { pivar: AccountPivar }) {
+  const xpForNext = pivar.xpForNextLevel;
+  const isMaxed = xpForNext == null || xpForNext <= 0;
+  const fraction = isMaxed ? 1 : pivar.xpIntoLevel / xpForNext;
+  const cur = pivar.xpIntoLevel;
+  const next = isMaxed ? pivar.xpIntoLevel : xpForNext;
+  const remaining = isMaxed ? 0 : Math.max(0, xpForNext - pivar.xpIntoLevel);
+  const progressText = isMaxed
+    ? cs.mapPub.mapperXpTotal(pivar.xp)
+    : cs.mapPub.mapperXpProgress(cur, next);
+
+  return (
+    <>
+      <Text style={styles.sectionHeader}>{cs.pivar.header}</Text>
+
+      <View
+        style={styles.levelCard}
+        accessibilityLabel={cs.a11y.pivarLevel(
+          pivar.level,
+          pivar.title,
+          isMaxed ? pivar.xp : pivar.xpIntoLevel,
+          isMaxed ? null : xpForNext,
+        )}
+      >
+        <View style={styles.levelHeaderRow}>
+          <View style={styles.levelIconWell}>
+            <BeerIcon size={22} color={Colors.amber} />
+          </View>
+          <Text style={styles.levelTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
+            {cs.pivar.level(pivar.level, pivar.title)}
+          </Text>
+        </View>
+
+        <XpBar fraction={fraction} />
+
+        <View style={styles.xpRow}>
+          <Text style={styles.xpProgress} maxFontSizeMultiplier={FontScaleCap.body}>
+            {progressText}
+          </Text>
+          <Text style={styles.xpToNext} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+            {isMaxed ? cs.mapPub.mapperXpMaxed : cs.mapPub.mapperXpToNext(remaining)}
+          </Text>
+        </View>
+      </View>
+    </>
+  );
+}
+
 /** The empty MAPÉR state — shown when no backend mapper block exists yet. */
 function MapperEmptySection({ signedIn }: { signedIn: boolean }) {
   return (
@@ -409,6 +462,7 @@ export default function ProfileScreen() {
       ? Math.max(profile.stats.ratingsCount, ratingsCount)
       : ratingsCount;
   const mapper = profile?.mapper;
+  const pivar = profile?.pivar;
   const walkedM = isSignedIn ? profile?.usage?.walkedDistanceM ?? null : null;
   const recent = useMemo(() => sessions.slice(0, 3), [sessions]);
   const now = useMemo(() => new Date(), []);
@@ -646,6 +700,10 @@ export default function ProfileScreen() {
           </View>
           <ChevronRightIcon size={18} color={Colors.mutedText} />
         </Pressable>
+
+        {/* ── Pivař (the drink-logging ladder; hidden until the backend sends
+            its snapshot — no fake zeros on older backends) ── */}
+        {pivar ? <PivarSection pivar={pivar} /> : null}
 
         {/* ── Mapér (between TVOJE ČÍSLA and ODZNAKY) ── */}
         {mapper ? (

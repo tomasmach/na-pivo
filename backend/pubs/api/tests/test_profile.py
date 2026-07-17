@@ -947,11 +947,18 @@ def test_get_me_returns_backend_profile_stats_and_achievements(client):
         "night_owl": False,
         "taster": False,
         "party_animal": False,
+        "chatar": False,
+        "pod_sirakem": False,
+        "lahvacovy_filozof": False,
+        "plechovkac": False,
     }
     # The additive Mapér block is present even for an account that never voted.
     assert body["mapper"]["xp"] == 0
     assert body["mapper"]["level"] == 1
     assert body["mapper"]["title"] == "Nováček"
+    assert body["pivar"]["xp"] == 0
+    assert body["pivar"]["level"] == 1
+    assert body["pivar"]["title"] == "Zelenáč"
 
 
 @pytest.mark.django_db
@@ -1036,6 +1043,71 @@ def test_profile_counts_non_pub_beer_but_not_a_distinct_pub(client):
     assert response.json()["stats"]["total_beers"] == 2
     assert response.json()["stats"]["distinct_pubs"] == 1
     assert response.json()["stats"]["total_spent_czk"] == 62
+
+
+@pytest.mark.django_db
+def test_pivar_achievements_flip_at_documentation_thresholds(client):
+    token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    now = timezone.now()
+
+    for index in range(25):
+        DrinkLog.objects.create(
+            account=account,
+            client_id=uuid.uuid4(),
+            cache_key=None,
+            name="",
+            lat=None,
+            lng=None,
+            place_context=(
+                DrinkLog.PlaceContext.OUTDOORS
+                if index == 0
+                else DrinkLog.PlaceContext.PRIVATE
+            ),
+            serving_type=DrinkLog.ServingType.BOTTLE,
+            beer_name="Lahváč",
+            price_czk=None,
+            drank_at=now,
+        )
+    for index in range(25):
+        DrinkLog.objects.create(
+            account=account,
+            client_id=uuid.uuid4(),
+            cache_key=None,
+            name="",
+            lat=None,
+            lng=None,
+            place_context=DrinkLog.PlaceContext.PRIVATE,
+            serving_type=DrinkLog.ServingType.CAN,
+            beer_name="Plech",
+            price_czk=None,
+            drank_at=now,
+            is_suspect=index == 24,
+            suspect_reason="manual" if index == 24 else "",
+        )
+
+    achievements = client.get("/v1/account/me", **_auth(token)).json()["achievements"]
+    assert achievements["chatar"] is True
+    assert achievements["pod_sirakem"] is True
+    assert achievements["lahvacovy_filozof"] is True
+    assert achievements["plechovkac"] is False
+
+    DrinkLog.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        cache_key=None,
+        name="",
+        lat=None,
+        lng=None,
+        place_context=DrinkLog.PlaceContext.PRIVATE,
+        serving_type=DrinkLog.ServingType.CAN,
+        beer_name="Plech",
+        price_czk=None,
+        drank_at=now,
+    )
+    assert client.get("/v1/account/me", **_auth(token)).json()["achievements"][
+        "plechovkac"
+    ] is True
 
 
 # ===========================================================================

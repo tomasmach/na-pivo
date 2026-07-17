@@ -32,6 +32,7 @@ import { trackClientEvent } from './telemetryClient';
 import { normalizePlaceContext, type DrinkType, type PlaceContext, type ServingType } from '@/drinks/drinkTypes';
 import { useToastStore } from '@/stores/toastStore';
 import { cs } from '@/i18n/cs';
+import { notePivarSnapshot } from './pivarXp';
 
 export type { CommunityBeer };
 
@@ -222,6 +223,14 @@ export async function submitDrink(
 
     if (resp.ok) {
       trackDrinkSynced('submit_drink');
+      // The response carries the server-authoritative Pivař XP snapshot; note
+      // it for the level-up toast. Best-effort — a malformed body is ignored.
+      try {
+        const body = (await resp.json()) as { pivar?: unknown };
+        if (body?.pivar) void notePivarSnapshot(body.pivar);
+      } catch {
+        // Older backend / empty body — no XP envelope to note.
+      }
       return 'ok';
     }
     if (resp.status === 422 && (await isDrinkLimitedResponse(resp))) {

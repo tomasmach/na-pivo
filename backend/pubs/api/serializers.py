@@ -81,6 +81,7 @@ from pubs.models import (
     ReleaseNote,
     UserAddedPub,
 )
+from pubs.pivar import pivar_levels, pivar_progress, pivar_xp_rules
 
 from .profile_helpers import (
     derive_account_achievements,
@@ -2075,6 +2076,10 @@ class AccountAchievementsSerializer(serializers.Serializer):
     night_owl = serializers.BooleanField(read_only=True)
     taster = serializers.BooleanField(read_only=True)
     party_animal = serializers.BooleanField(read_only=True)
+    chatar = serializers.BooleanField(read_only=True)
+    pod_sirakem = serializers.BooleanField(read_only=True)
+    lahvacovy_filozof = serializers.BooleanField(read_only=True)
+    plechovkac = serializers.BooleanField(read_only=True)
 
 
 class AccountMeSerializer(serializers.ModelSerializer):
@@ -2105,6 +2110,7 @@ class AccountMeSerializer(serializers.ModelSerializer):
     stats = serializers.SerializerMethodField()
     achievements = serializers.SerializerMethodField()
     mapper = serializers.SerializerMethodField()
+    pivar = serializers.SerializerMethodField()
 
     class Meta:
         model = Account
@@ -2127,6 +2133,7 @@ class AccountMeSerializer(serializers.ModelSerializer):
             "stats",
             "achievements",
             "mapper",
+            "pivar",
             "usage",
             "created_at",
             "last_seen_at",
@@ -2281,6 +2288,20 @@ class AccountMeSerializer(serializers.ModelSerializer):
                 for lvl in maper_levels()
             ],
             "xp_rules": maper_xp_rules(),
+        }
+
+    def get_pivar(self, obj: Account) -> dict:
+        """Additive Pivař ladder, parallel to the Mapér account block."""
+        xp = self._stats_for(obj)["pivar_xp"]
+        progress = pivar_progress(xp)
+        return {
+            "xp": xp,
+            "level": progress["level"],
+            "title": progress["title"],
+            "xp_into_level": progress["xp_into_level"],
+            "xp_for_next_level": progress["xp_for_next_level"],
+            "levels": pivar_levels(),
+            "xp_rules": pivar_xp_rules(),
         }
 
 

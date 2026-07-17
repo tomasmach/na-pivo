@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Pivař XP — backend implementační plán</title>
+  <style>
+    :root{color-scheme:dark;--bg:#0d1117;--panel:#151b23;--line:#2b3440;--text:#e6edf3;--muted:#9da7b3;--amber:#f0b44d;--green:#48c78e;--red:#ff7b72;--blue:#6cb6ff}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 system-ui,-apple-system,sans-serif}nav{position:sticky;top:0;z-index:2;display:flex;gap:18px;align-items:center;padding:12px 5vw;background:#0d1117ee;border-bottom:1px solid var(--line)}nav a{color:var(--muted);text-decoration:none}nav a.active{color:var(--amber)}main{width:min(1100px,90vw);margin:32px auto 80px}section{scroll-margin-top:70px;margin:50px 0}.copy{max-width:72ch}.top{display:flex;justify-content:space-between;gap:20px;align-items:flex-start}.badge{border:1px solid var(--amber);color:var(--amber);padding:4px 10px;border-radius:999px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px}.progress{height:9px;background:#222a35;border-radius:99px;overflow:hidden}.progress>i{display:block;height:100%;width:0;background:var(--green)}.step{display:grid;grid-template-columns:34px 1fr;gap:10px;margin:12px 0}.step input{width:18px;height:18px;margin-top:4px}.step small,.muted{color:var(--muted)}code{color:#ffd580}a.file{color:var(--blue)}table{border-collapse:collapse;width:100%;min-width:700px}th,td{padding:10px;border-bottom:1px solid var(--line);text-align:left}.wide{overflow-x:auto}.detail{display:none}body.full .detail{display:block}.controls{display:flex;gap:10px;align-items:center}button{background:#202938;color:var(--text);border:1px solid var(--line);border-radius:7px;padding:7px 11px;cursor:pointer}pre{padding:15px;background:#090c10;border:1px solid var(--line);overflow:auto}ins{color:var(--green);text-decoration:none}del{color:var(--red)}svg{width:100%;min-width:760px;height:260px}svg rect{fill:#18212c;stroke:#536170;rx:8}svg text{fill:var(--text);font-size:13px}svg path{stroke:#637083;stroke-width:2;fill:none;marker-end:url(#arrow)}svg a:hover rect{stroke:var(--amber)}@media(max-width:700px){nav{overflow:auto}.top{display:block}.badge{display:inline-block;margin-top:10px}}
+  </style>
+</head>
+<body>
+<nav><strong>Pivař XP</strong><a href="#scope">Rozsah</a><a href="#flow">Tok</a><a href="#steps">Kroky</a><a href="#risk">Rizika</a><span class="controls"><button id="detail">Plný detail</button></span></nav>
+<main>
+<header class="top"><div class="copy"><h1>Druhá XP větev „Pivař“</h1><p>Backend dostane serverově autoritativní XP za dokumentování a objevování při zápisu pití. Implementace zachová idempotenci, 04:00 pražskou hranici dne, F()-inkrementy v transakci a aditivní wire kontrakty.</p></div><span class="badge">kód hotov · commit blokován · 17. 7. 2026</span></header>
+  <div class="panel"><div id="progressText">0 / 7 kroků</div><div class="progress"><i id="bar"></i></div></div>
+
+  <section id="scope"><h2>Rozsah a pevná rozhodnutí</h2><div class="wide"><table><thead><tr><th>Součást</th><th>V rozsahu</th><th>Mimo rozsah</th></tr></thead><tbody><tr><td>XP</td><td>Drink POST, první photo/check-in dne, backfill</td><td>Rollback XP při DELETE</td></tr><tr><td>API</td><td><code>pivar</code> na drink POST a account/me</td><td>Změny existujících polí či mobilního <code>src/</code></td></tr><tr><td>Data</td><td><code>pivar_xp</code> + cílené kompozitní indexy v 0077</td><td>Nový ledger nebo nový state management</td></tr><tr><td>Ocenění</td><td>Dokumentace/discovery, extra beer jen #2–#6</td><td>Neomezené XP za objem</td></tr></tbody></table></div></section>
+
+  <section id="flow"><h2>Transakční datový tok</h2><div class="panel wide"><svg viewBox="0 0 900 260" role="img" aria-label="Pivař XP flow"><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8z" fill="#637083"/></marker></defs><path d="M190 75H310"/><path d="M510 75H630"/><path d="M730 110V180H510"/><path d="M310 205H190"/><a href="#s3"><rect x="30" y="40" width="160" height="70"/><text x="55" y="70">POST /v1/drinks</text><text x="55" y="91">account row lock</text></a><a href="#s3"><rect x="310" y="40" width="200" height="70"/><text x="337" y="70">prior-row existence checks</text><text x="337" y="91">04:00 day bounds</text></a><a href="#s3"><rect x="630" y="40" width="210" height="70"/><text x="657" y="70">DrinkLog INSERT</text><text x="657" y="91">+ F(pivar_xp) award</text></a><a href="#s4"><rect x="310" y="170" width="200" height="70"/><text x="345" y="200">pivar_snapshot</text><text x="345" y="221">xp_awarded envelope</text></a><a href="#s6"><rect x="30" y="170" width="160" height="70"/><text x="58" y="200">AccountUsageStats</text><text x="58" y="221">durable total</text></a></svg></div></section>
+
+  <section id="steps"><h2>Implementační kroky</h2><div class="panel" id="checklist">
+    <label class="step" id="s1"><input type="checkbox" checked><span><strong>1. Sdílená matematika a čas</strong><br><small><a class="file" href="vscode://file/Users/tomasmach/Code/na-pivo/backend/pubs/pivar.py">backend/pubs/pivar.py</a>, <a class="file" href="vscode://file/Users/tomasmach/Code/na-pivo/backend/pubs/api/stats.py">stats.py</a> — žebřík a veřejný helper pro drinking-day bounds.</small></span></label>
+    <label class="step" id="s2"><input type="checkbox" checked><span><strong>2. Nastavení, model a migrace 0077</strong><br><small>Přidat osm env tunables, <code>pivar_xp</code> a indexy pro account+cache_key/brand/context; existující account+drank_at ponechat.</small></span></label>
+    <label class="step" id="s3"><input type="checkbox" checked><span><strong>3. Live accrual</strong><br><small>Vyhodnotit komponenty před INSERTem; suspect/duplicate/reject jsou nula. Photo/check-in odměnit pouze při skutečném vytvoření a první události drinking day.</small></span></label>
+    <label class="step" id="s4"><input type="checkbox" checked><span><strong>4. Aditivní wire bloky</strong><br><small>Drink odpověď dostane kompaktní snapshot + <code>xp_awarded</code>; AccountMeSerializer plný ladder + rules.</small></span></label>
+    <label class="step" id="s5"><input type="checkbox" checked><span><strong>5. Achievementy</strong><br><small>Čtyři snake_case boolean klíče, počítané pouze z nesuspektních DrinkLog řádků.</small></span></label>
+    <label class="step" id="s6"><input type="checkbox" checked><span><strong>6. Idempotentní backfill</strong><br><small>Jedno načtení historie účtu po typech, in-memory replay, set výsledku; <code>--dry-run</code> bez zápisu.</small></span></label>
+    <label class="step" id="s7"><input type="checkbox"><span><strong>7. Ověření, commit a push</strong><br><small>Ověření je hotové; commit a push blokuje read-only oprávnění k <code>.git</code> v této relaci.</small></span></label>
+  </div>
+  <details class="detail"><summary>Náhled změny odpovědi</summary><pre>{
+  "accepted": true,
+  "duplicate": false,
+  <ins>"pivar": {"xp": 60, "level": 1, "title": "Zelenáč",</ins>
+  <ins>          "xp_into_level": 60, "xp_for_next_level": 150,</ins>
+  <ins>          "xp_awarded": 60}</ins>
+}</pre></details></section>
+
+  <section id="risk"><h2>Rizika a kontrolní body</h2><div class="wide"><table><thead><tr><th>Riziko</th><th>Ošetření</th></tr></thead><tbody><tr><td>Současné POSTy zdvojí „first“ bonus</td><td>Existující per-account <code>select_for_update</code> serializuje drink zápisy; stejné zamknutí použít pro photo/check-in award.</td></tr><tr><td>Historické photo/check-in časy vs „current day“</td><td>Live hook se řídí uloženým event timestampem, aby backfill reprodukoval live accrual a historický zápis byl deterministický.</td></tr><tr><td>Nová hospoda kombinuje DrinkLog a PubVisit</td><td>Dvě indexed <code>exists</code> kontroly pod jednou komponentou; geohash musí být nový v obou zdrojích.</td></tr><tr><td>DELETE umožní opakování bonusu</td><td>XP se záměrně nevrací; komentář v DELETE cestě a tvrdé denní capy omezují zneužití.</td></tr></tbody></table></div><p class="muted">Rozhraní jsou zadáním uzavřená; nejsou potřeba produktová rozhodnutí.</p></section>
+
+  <section><h2>Ověřovací příkazy</h2><div class="panel"><p><code>cd backend &amp;&amp; .venv/bin/pytest -q</code> <button data-copy="cd backend && .venv/bin/pytest -q">kopírovat</button></p><p><code>cd backend &amp;&amp; .venv/bin/ruff check</code> <button data-copy="cd backend && .venv/bin/ruff check">kopírovat</button></p><p><code>cd backend &amp;&amp; .venv/bin/python manage.py makemigrations --check --dry-run</code> <button data-copy="cd backend && .venv/bin/python manage.py makemigrations --check --dry-run">kopírovat</button></p></div></section>
+</main>
+<script>
+const key='plan:pivar-xp-backend', boxes=[...document.querySelectorAll('#checklist input')];
+const saved=JSON.parse(localStorage.getItem(key)||'[]'); if(saved.length) boxes.forEach((b,i)=>b.checked=!!saved[i]);
+function update(){const done=boxes.filter(b=>b.checked).length;document.querySelector('#progressText').textContent=`${done} / ${boxes.length} kroků`;document.querySelector('#bar').style.width=`${done/boxes.length*100}%`;localStorage.setItem(key,JSON.stringify(boxes.map(b=>b.checked)))} boxes.forEach(b=>b.addEventListener('change',update));update();
+document.querySelector('#detail').onclick=e=>{document.body.classList.toggle('full');e.target.textContent=document.body.classList.contains('full')?'Přehled':'Plný detail'};
+document.querySelectorAll('[data-copy]').forEach(b=>b.onclick=()=>navigator.clipboard.writeText(b.dataset.copy));
+const links=[...document.querySelectorAll('nav a')], secs=[...document.querySelectorAll('section[id]')];new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){links.forEach(a=>a.classList.toggle('active',a.hash==='#'+e.target.id))}}),{rootMargin:'-20% 0px -70%'}).observe(secs[0]);secs.slice(1).forEach(s=>new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting)links.forEach(a=>a.classList.toggle('active',a.hash==='#'+e.target.id))}),{rootMargin:'-20% 0px -70%'}).observe(s));
+</script>
+</body>
+</html>

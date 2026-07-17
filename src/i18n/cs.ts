@@ -1380,6 +1380,15 @@ export const cs = {
     badgeReviewerLocked: 'Ohodnoť 10 hospod',
     badgeFotoPivarTitle: 'FotoPivař',
     badgeFotoPivarLocked: 'Vyhraj kolo fotosoutěže',
+    // — Pivař badges (outside-pub drinking wave) —
+    badgeChatarTitle: 'Chatař',
+    badgeChatarLocked: 'Zapiš první pivo mimo hospodu',
+    badgePodSirakemTitle: 'Pod širákem',
+    badgePodSirakemLocked: 'Zapiš pivo venku pod širým nebem',
+    badgeLahvacTitle: 'Lahváčový filozof',
+    badgeLahvacLocked: 'Zapiš 25 lahváčů',
+    badgePlechTitle: 'Plechovkáč',
+    badgePlechLocked: 'Zapiš 25 plechovek',
     // — Diary/social badges (leaderboards wave) —
     badgeFirstBeerTitle: 'První pivo',
     badgeFirstBeerLocked: 'Zapiš svoje první pivo',
@@ -1668,6 +1677,14 @@ export const cs = {
       ml ? `${price} · ${formatVolume(ml)}` : price,
   },
 
+  // — Pivař (drink-logging XP ladder; XP bar strings are shared with Mapér) —
+  pivar: {
+    header: 'PIVAŘ',
+    level: (n: number, title: string) => `Úroveň ${n} · ${title}`,
+    // Level-up toast fired when a delivered drink bumps the server level.
+    levelUpToast: (title: string) => `Nový level! Odteď jsi ${title} 🍺`,
+  },
+
   myBeers: {
     // Tab label + screen title.
     title: 'Moje piva',
@@ -1947,6 +1964,10 @@ export const cs = {
       next == null
         ? `Mapér úroveň ${n}, ${title}, máš všechno`
         : `Mapér úroveň ${n}, ${title}, ${into} z ${next} XP`,
+    pivarLevel: (n: number, title: string, into: number, next: number | null) =>
+      next == null
+        ? `Pivař úroveň ${n}, ${title}, máš všechno`
+        : `Pivař úroveň ${n}, ${title}, ${into} z ${next} XP`,
     // Mapér badge state (announced after the title so VoiceOver reads e.g.
     // "Objevitel, splněno" or "Objevitel, zamčeno, Zmapuj 10 hospod").
     badgeUnlocked: (title: string) => `${title}, splněno`,

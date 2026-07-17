@@ -660,6 +660,7 @@ def _merge_usage_stats(source: Account, target: Account) -> None:
     # pub double-counting across both accounts is accepted as a soft over-count on
     # a cosmetic counter (the public PubAmenity aggregate is recounted separately).
     target_stats.mapper_xp += source_stats.mapper_xp
+    target_stats.pivar_xp += source_stats.pivar_xp
     target_stats.mapped_pubs_count += source_stats.mapped_pubs_count
     target_stats.first_mapper_count += source_stats.first_mapper_count
     target_stats.amenity_votes_count += source_stats.amenity_votes_count

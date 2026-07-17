@@ -398,6 +398,26 @@ MAPER_LEVEL_THRESHOLDS: list[int] = [
     if x.strip() != ""
 ]
 
+# Pivař XP rewards documenting and discovery, never unbounded drink volume.
+PIVAR_XP_EVENING: int = int(os.environ.get("PIVAR_XP_EVENING", "20"))
+PIVAR_XP_NEW_PUB: int = int(os.environ.get("PIVAR_XP_NEW_PUB", "40"))
+PIVAR_XP_NEW_BRAND: int = int(os.environ.get("PIVAR_XP_NEW_BRAND", "15"))
+PIVAR_XP_EXTRA_BEER: int = int(os.environ.get("PIVAR_XP_EXTRA_BEER", "2"))
+PIVAR_XP_EXTRA_BEER_DAILY_CAP: int = int(
+    os.environ.get("PIVAR_XP_EXTRA_BEER_DAILY_CAP", "5")
+)
+PIVAR_XP_CONTEXT_FIRST: int = int(os.environ.get("PIVAR_XP_CONTEXT_FIRST", "25"))
+PIVAR_XP_PHOTO: int = int(os.environ.get("PIVAR_XP_PHOTO", "10"))
+PIVAR_XP_CHECKIN: int = int(os.environ.get("PIVAR_XP_CHECKIN", "5"))
+PIVAR_LEVEL_THRESHOLDS: list[int] = [
+    int(x.strip())
+    for x in os.environ.get(
+        "PIVAR_LEVEL_THRESHOLDS",
+        "0,150,500,1500,4000,9000,18000",
+    ).split(",")
+    if x.strip() != ""
+]
+
 # --- Beer photo diary + FotoPivař photo contest ---
 # Reject photo uploads larger than this BEFORE decoding (decompression-bomb guard).
 BEER_PHOTO_MAX_UPLOAD_BYTES: int = int(

@@ -214,6 +214,14 @@ def test_log_creates_drink_and_community_row_when_none_exists(client):
         "place_context": "pub",
         "serving_type": "unknown",
         "menu_updated": True,
+        "pivar": {
+            "xp": 75,
+            "level": 1,
+            "title": "Zelenáč",
+            "xp_into_level": 75,
+            "xp_for_next_level": 150,
+            "xp_awarded": 75,
+        },
     }
 
     drink = DrinkLog.objects.get()
@@ -568,6 +576,14 @@ def test_log_idempotent_replay_returns_duplicate_and_no_double_merge(client):
         "place_context": "pub",
         "serving_type": "unknown",
         "menu_updated": False,
+        "pivar": {
+            "xp": 75,
+            "level": 1,
+            "title": "Zelenáč",
+            "xp_into_level": 75,
+            "xp_for_next_level": 150,
+            "xp_awarded": 0,
+        },
     }
 
     assert DrinkLog.objects.count() == 1
@@ -593,6 +609,14 @@ def test_non_pub_drink_without_pub_identity_or_price_is_private(client):
         "place_context": "private",
         "serving_type": "bottle",
         "menu_updated": False,
+        "pivar": {
+            "xp": 60,
+            "level": 1,
+            "title": "Zelenáč",
+            "xp_into_level": 60,
+            "xp_for_next_level": 150,
+            "xp_awarded": 60,
+        },
     }
     drink = DrinkLog.objects.get()
     assert (drink.cache_key, drink.name, drink.lat, drink.lng) == (None, "", None, None)

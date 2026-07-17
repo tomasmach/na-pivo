@@ -25,6 +25,10 @@ const ALL_UNLOCKED: AccountAchievements = {
   taster: true,
   partyAnimal: true,
   fotoPivar: true,
+  chatar: true,
+  podSirakem: true,
+  lahvacovyFilozof: true,
+  plechovkac: true,
 };
 
 describe('parseAchievementsBlock', () => {
@@ -47,6 +51,10 @@ describe('parseAchievementsBlock', () => {
         taster: true,
         party_animal: true,
         foto_pivar: true,
+        chatar: true,
+        pod_sirakem: true,
+        lahvacovy_filozof: true,
+        plechovkac: true,
       }),
     ).toEqual(ALL_UNLOCKED);
   });

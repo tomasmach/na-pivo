@@ -18,6 +18,26 @@ def derive_account_profile_stats(account: Account) -> dict:
     drink_totals = public_drinks.aggregate(
         total_beers=Count("id", filter=Q(drink_type=DrinkLog.DrinkType.BEER)),
         total_spent_czk=Sum("price_czk"),
+        outside_drinks=Count(
+            "id", filter=~Q(place_context=DrinkLog.PlaceContext.PUB)
+        ),
+        outdoors_drinks=Count(
+            "id", filter=Q(place_context=DrinkLog.PlaceContext.OUTDOORS)
+        ),
+        bottled_beers=Count(
+            "id",
+            filter=Q(
+                drink_type=DrinkLog.DrinkType.BEER,
+                serving_type=DrinkLog.ServingType.BOTTLE,
+            ),
+        ),
+        canned_beers=Count(
+            "id",
+            filter=Q(
+                drink_type=DrinkLog.DrinkType.BEER,
+                serving_type=DrinkLog.ServingType.CAN,
+            ),
+        ),
     )
     pub_keys = set(account.pub_visits.values_list("cache_key", flat=True))
     pub_keys.update(
@@ -63,6 +83,7 @@ def derive_account_profile_stats(account: Account) -> dict:
         "total_spent_czk": int(drink_totals["total_spent_czk"] or 0),
         "max_visits_to_one_pub": int(max_visit_row["n"]) if max_visit_row else 0,
         "mapper_xp": int(getattr(usage, "mapper_xp", 0) or 0),
+        "pivar_xp": int(getattr(usage, "pivar_xp", 0) or 0),
         "mapped_pubs_count": int(getattr(usage, "mapped_pubs_count", 0) or 0),
         "first_mapper_count": int(getattr(usage, "first_mapper_count", 0) or 0),
         "amenity_votes_count": int(getattr(usage, "amenity_votes_count", 0) or 0),
@@ -72,6 +93,10 @@ def derive_account_profile_stats(account: Account) -> dict:
         "night_owl": night_owl,
         "distinct_beer_identities": len(beer_identities),
         "accepted_friend_count": accepted_friend_count,
+        "outside_drinks": int(drink_totals["outside_drinks"] or 0),
+        "outdoors_drinks": int(drink_totals["outdoors_drinks"] or 0),
+        "bottled_beers": int(drink_totals["bottled_beers"] or 0),
+        "canned_beers": int(drink_totals["canned_beers"] or 0),
     }
 
 
@@ -97,6 +122,10 @@ def derive_account_achievements(account: Account, stats: dict | None = None) -> 
         "night_owl": bool(stats["night_owl"]),
         "taster": stats["distinct_beer_identities"] >= 10,
         "party_animal": stats["accepted_friend_count"] >= 5,
+        "chatar": stats["outside_drinks"] >= 1,
+        "pod_sirakem": stats["outdoors_drinks"] >= 1,
+        "lahvacovy_filozof": stats["bottled_beers"] >= 25,
+        "plechovkac": stats["canned_beers"] >= 25,
     }
 
 

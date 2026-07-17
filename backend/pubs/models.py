@@ -2180,6 +2180,10 @@ class AccountUsageStats(models.Model):
     # / AccountPubCompletion markers already make re-farming impossible, and a number
     # that drops when a user fixes their own mistake is a deliberate non-goal (§7.3).
     mapper_xp = models.PositiveIntegerField(default=0, db_index=True)
+    # Pivař is a separate monotonic XP ladder for drink-diary documentation.
+    # It is F()-incremented in the same transaction as the source row; level and
+    # title are derived on read. Deletes intentionally never claw XP back.
+    pivar_xp = models.PositiveIntegerField(default=0, db_index=True)
     # Distinct pubs (cache_keys) the account has EVER cast an amenity vote on.
     mapped_pubs_count = models.PositiveIntegerField(default=0)
     # Times this account was the FIRST mapper of a (pub, amenity) aggregate.
@@ -2763,6 +2767,18 @@ class DrinkLog(models.Model):
         ordering = ["-drank_at"]
         indexes = [
             models.Index(fields=["account", "drank_at"]),
+            models.Index(
+                fields=["account", "cache_key"],
+                name="pubs_drink_account_pub_idx",
+            ),
+            models.Index(
+                fields=["account", "beer_brand"],
+                name="pubs_drink_account_brand_idx",
+            ),
+            models.Index(
+                fields=["account", "place_context"],
+                name="pubs_drink_account_context_idx",
+            ),
         ]
         constraints = [
             models.UniqueConstraint(
@@ -2929,6 +2945,10 @@ class PubVisit(models.Model):
         ordering = ["-started_at"]
         indexes = [
             models.Index(fields=["account", "started_at"]),
+            models.Index(
+                fields=["account", "cache_key"],
+                name="pubs_visit_account_pub_idx",
+            ),
         ]
         constraints = [
             models.UniqueConstraint(

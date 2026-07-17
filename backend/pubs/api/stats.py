@@ -20,7 +20,7 @@ evening, drinks are ordered by ``drank_at``; the evening's duration is
 from __future__ import annotations
 
 from collections import OrderedDict
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from pubs.models import Account, DrinkLog
@@ -47,11 +47,25 @@ def _as_utc(value: datetime) -> datetime:
     return value.astimezone(UTC)
 
 
-def _drinking_day(drank_at: datetime) -> date:
+def drinking_day(drank_at: datetime) -> date:
     """The 04:00-rolling drinking day for ``drank_at``, bucketed in Europe/Prague."""
 
     local = _as_utc(drank_at).astimezone(_DRINKING_DAY_TZ)
     return (local - _DRINKING_DAY_CUTOFF).date()
+
+
+def drinking_day_bounds(drank_at: datetime) -> tuple[datetime, datetime]:
+    """Return the Prague-local 04:00 bounds containing ``drank_at``."""
+    day = drinking_day(drank_at)
+    start = datetime.combine(day, time(hour=4), tzinfo=_DRINKING_DAY_TZ)
+    end = datetime.combine(
+        day + timedelta(days=1), time(hour=4), tzinfo=_DRINKING_DAY_TZ
+    )
+    return start, end
+
+
+# Backward-compatible private alias for existing internal/tests imports.
+_drinking_day = drinking_day
 
 
 def _empty_payload() -> dict:
@@ -112,7 +126,7 @@ def compute_my_stats(account: Account) -> dict:
         if is_beer:
             total_beers += 1
 
-        ekey = (drink.cache_key, _drinking_day(drink.drank_at))
+        ekey = (drink.cache_key, drinking_day(drink.drank_at))
         evening_times.setdefault(ekey, []).append(at)
         if is_beer:
             evening_beer_times.setdefault(ekey, []).append(at)

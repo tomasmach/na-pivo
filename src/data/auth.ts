@@ -100,6 +100,18 @@ export interface AccountMapper {
   xpRules: MapperXpRules;
 }
 
+/** The Pivař gamification block off GET /v1/account/me — the drink-logging
+ *  ladder, parallel to the Mapér block. Level rungs share MapperLevel's shape. */
+export interface AccountPivar {
+  /** Durable XP total. */
+  xp: number;
+  level: number;
+  title: string;
+  xpIntoLevel: number;
+  xpForNextLevel: number | null;
+  levels: MapperLevel[];
+}
+
 export interface AccountProfile {
   id: string;
   deviceId: string;
@@ -123,6 +135,8 @@ export interface AccountProfile {
   usage?: { walkedDistanceM: number };
   /** Mapér gamification snapshot — attached only when the backend returns it. */
   mapper?: AccountMapper;
+  /** Pivař gamification snapshot — attached only when the backend returns it. */
+  pivar?: AccountPivar;
 }
 
 /** Success carries the fresh account state; failure carries a code + message. */
@@ -188,6 +202,14 @@ interface RawAccount {
       confirm?: number;
       pub_complete_bonus?: number;
     };
+  };
+  pivar?: {
+    xp?: number;
+    level?: number;
+    title?: string;
+    xp_into_level?: number;
+    xp_for_next_level?: number | null;
+    levels?: { level?: number; title?: string; xp?: number }[];
   };
   email?: string;
   email_verified?: boolean;
@@ -313,6 +335,29 @@ function parseMapper(data: RawAccount): AccountMapper | undefined {
   };
 }
 
+/** Parse the Pivař block off GET /v1/account/me — parallel to parseMapper.
+ *  Returns undefined when absent (older backend) so the Profile can hide the
+ *  section instead of showing a fake zero. */
+function parsePivar(data: RawAccount): AccountPivar | undefined {
+  const raw = data.pivar;
+  if (!raw) return undefined;
+  const levels: MapperLevel[] = Array.isArray(raw.levels)
+    ? raw.levels.map((l) => ({
+        level: numberOr(l?.level, 0),
+        title: typeof l?.title === 'string' ? l.title : '',
+        xp: numberOr(l?.xp, 0),
+      }))
+    : [];
+  return {
+    xp: numberOr(raw.xp, 0),
+    level: numberOr(raw.level, 1),
+    title: typeof raw.title === 'string' ? raw.title : '',
+    xpIntoLevel: numberOr(raw.xp_into_level, 0),
+    xpForNextLevel: raw.xp_for_next_level === null ? null : numberOr(raw.xp_for_next_level, 0),
+    levels,
+  };
+}
+
 function parseUsage(data: RawAccount): AccountProfile['usage'] | undefined {
   const walked = data.usage?.walked_distance_m;
   if (typeof walked !== 'number' || !Number.isFinite(walked)) return undefined;
@@ -343,12 +388,14 @@ function parseProfile(data: RawAccount): AccountProfile {
   const achievements = parseAchievements(data);
   const usage = parseUsage(data);
   const mapper = parseMapper(data);
+  const pivar = parsePivar(data);
   if (settings) profile.settings = settings;
   if (subscription) profile.subscription = subscription;
   if (stats) profile.stats = stats;
   if (achievements) profile.achievements = achievements;
   if (usage) profile.usage = usage;
   if (mapper) profile.mapper = mapper;
+  if (pivar) profile.pivar = pivar;
   return profile;
 }
 

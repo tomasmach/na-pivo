@@ -140,6 +140,7 @@ from pubs.models import (
 )
 from pubs.photo_contest import current_photo_contest
 from pubs.photos import BeerPhotoError, process_beer_photo
+from pubs.pivar import pivar_snapshot
 from pubs.user_added_pub_geocoding import resolve_user_added_pub_location
 
 from .authentication import AccountTokenAuthentication
@@ -218,7 +219,7 @@ from .serializers import (
     _amenity_vote_item,
     normalize_beer_checkin_tags,
 )
-from .stats import compute_my_stats
+from .stats import compute_my_stats, drinking_day_bounds
 
 logger = logging.getLogger(__name__)
 
@@ -1467,6 +1468,118 @@ def _merge_drink_into_menu(beers: list[dict], beer: dict) -> bool:
     return True
 
 
+def _increment_pivar_xp(account: Account, amount: int) -> int:
+    """F()-increment durable Pivař XP and return the fresh total."""
+    stats, _ = AccountUsageStats.objects.get_or_create(account=account)
+    if amount > 0:
+        AccountUsageStats.objects.filter(pk=stats.pk).update(
+            pivar_xp=F("pivar_xp") + amount
+        )
+        # The account row lock serializes every XP source for this account, so
+        # the value read by get_or_create plus this F() award is the fresh total.
+        stats.pivar_xp += amount
+    return int(stats.pivar_xp)
+
+
+def _pivar_envelope(account: Account, xp_awarded: int) -> dict:
+    """Compact write response with this request's authoritative award."""
+    stats, _ = AccountUsageStats.objects.get_or_create(account=account)
+    return {**pivar_snapshot(stats.pivar_xp), "xp_awarded": xp_awarded}
+
+
+def _drink_pivar_award(
+    *,
+    account: Account,
+    drank_at: datetime,
+    is_suspect: bool,
+    drink_type: str,
+    cache_key: str | None,
+    beer_brand: BeerBrand | None,
+    place_context: str,
+) -> int:
+    """Compute one new DrinkLog's XP from prior rows only.
+
+    The caller holds the account row lock, so concurrent writes for one account
+    cannot both observe the same "first" state. Suspect rows intentionally skip
+    every added existence query and award no XP.
+    """
+    if is_suspect:
+        return 0
+
+    prior_drinks = DrinkLog.objects.filter(account=account)
+    day_start, day_end = drinking_day_bounds(drank_at)
+    daily = prior_drinks.filter(
+        drank_at__gte=day_start,
+        drank_at__lt=day_end,
+    ).aggregate(
+        drinks=Count("id"),
+        beers=Count("id", filter=Q(drink_type=DrinkLog.DrinkType.BEER)),
+    )
+    prior_day_drinks = int(daily["drinks"] or 0)
+    prior_day_beers = int(daily["beers"] or 0)
+
+    award = settings.PIVAR_XP_EVENING if prior_day_drinks == 0 else 0
+    if (
+        drink_type == DrinkLog.DrinkType.BEER
+        and prior_day_drinks > 0
+        and 1 <= prior_day_beers < settings.PIVAR_XP_EXTRA_BEER_DAILY_CAP + 1
+    ):
+        award += settings.PIVAR_XP_EXTRA_BEER
+
+    if cache_key is not None:
+        pub_history = (
+            Account.objects.filter(pk=account.pk)
+            .annotate(
+                has_drink_pub=Exists(
+                    DrinkLog.objects.filter(
+                        account_id=OuterRef("pk"),
+                        cache_key=cache_key,
+                    )
+                ),
+                has_visit_pub=Exists(
+                    PubVisit.objects.filter(
+                        account_id=OuterRef("pk"),
+                        cache_key=cache_key,
+                    )
+                ),
+            )
+            .values("has_drink_pub", "has_visit_pub")
+            .get()
+        )
+        if not pub_history["has_drink_pub"] and not pub_history["has_visit_pub"]:
+            award += settings.PIVAR_XP_NEW_PUB
+
+    if beer_brand is not None and not prior_drinks.filter(beer_brand=beer_brand).exists():
+        award += settings.PIVAR_XP_NEW_BRAND
+
+    if (
+        place_context != DrinkLog.PlaceContext.PUB
+        and not prior_drinks.filter(place_context=place_context).exists()
+    ):
+        award += settings.PIVAR_XP_CONTEXT_FIRST
+    return award
+
+
+def _award_first_diary_event_xp(
+    *,
+    account: Account,
+    event_model,
+    timestamp_field: str,
+    occurred_at: datetime,
+    amount: int,
+) -> int:
+    """Award a photo/check-in only when no prior event exists that drinking day."""
+    day_start, day_end = drinking_day_bounds(occurred_at)
+    had_event = event_model.objects.filter(
+        account=account,
+        **{
+            f"{timestamp_field}__gte": day_start,
+            f"{timestamp_field}__lt": day_end,
+        },
+    ).exists()
+    return _increment_pivar_xp(account, amount if not had_event else 0)
+
+
 class DrinksView(APIView):
     """
     POST   /v1/drinks
@@ -1544,6 +1657,7 @@ class DrinksView(APIView):
                             "place_context": drink.place_context,
                             "serving_type": drink.serving_type,
                             "menu_updated": False,
+                            "pivar": _pivar_envelope(account, 0),
                         },
                         status=status.HTTP_200_OK,
                     )
@@ -1568,6 +1682,16 @@ class DrinksView(APIView):
                         status=status.HTTP_422_UNPROCESSABLE_ENTITY,
                     )
 
+                beer_brand = brand_match.brand if brand_match else None
+                xp_awarded = _drink_pivar_award(
+                    account=account,
+                    drank_at=flags.drank_at,
+                    is_suspect=flags.is_suspect,
+                    drink_type=drink_type,
+                    cache_key=cache_key,
+                    beer_brand=beer_brand,
+                    place_context=data["place_context"],
+                )
                 drink = DrinkLog.objects.create(
                     account=account,
                     client_id=data["client_id"],
@@ -1581,7 +1705,7 @@ class DrinksView(APIView):
                     serving_type=beer["serving_type"],
                     drink_type=drink_type,
                     beer_name=beer["name"],
-                    beer_brand=brand_match.brand if brand_match else None,
+                    beer_brand=beer_brand,
                     beer_brand_key=brand_match.brand.key if brand_match else "",
                     beer_brand_name=brand_match.brand.name if brand_match else "",
                     beer_product=brand_match.product if brand_match else None,
@@ -1597,6 +1721,11 @@ class DrinksView(APIView):
                     is_suspect=flags.is_suspect,
                     suspect_reason=flags.suspect_reason,
                 )
+                pivar_xp = _increment_pivar_xp(account, xp_awarded)
+                pivar = {
+                    **pivar_snapshot(pivar_xp),
+                    "xp_awarded": xp_awarded,
+                }
 
                 menu_updated = False
                 if is_pub and is_beer:
@@ -1624,6 +1753,7 @@ class DrinksView(APIView):
                 "place_context": data["place_context"],
                 "serving_type": beer["serving_type"],
                 "menu_updated": menu_updated,
+                "pivar": pivar,
             },
             status=status.HTTP_201_CREATED,
         )
@@ -1705,7 +1835,8 @@ class DrinksView(APIView):
         # deleted) simply matches nothing → deleted: false, never a hard 404,
         # so the client's offline delete queue can retry safely. The community
         # menu (PubCommunityData) is deliberately left untouched — the price was
-        # real community data and stays.
+        # real community data and stays. Pivař XP is a monotonic lifetime score
+        # and is deliberately not rolled back here; hard daily caps bound abuse.
         return _idempotent_delete(
             DrinkLog.objects.filter(account=request.user, client_id=client_id),
             scope="drinks",
@@ -4199,8 +4330,21 @@ class BeerCheckInView(APIView):
 
         try:
             with transaction.atomic():
+                account = Account.objects.select_for_update().get(pk=request.user.pk)
+                existed = BeerCheckIn.objects.filter(
+                    account=account,
+                    client_id=data["client_id"],
+                ).exists()
+                if not existed:
+                    _award_first_diary_event_xp(
+                        account=account,
+                        event_model=BeerCheckIn,
+                        timestamp_field="checked_in_at",
+                        occurred_at=defaults["checked_in_at"],
+                        amount=settings.PIVAR_XP_CHECKIN,
+                    )
                 checkin, created = BeerCheckIn.objects.update_or_create(
-                    account=request.user,
+                    account=account,
                     client_id=data["client_id"],
                     defaults=defaults,
                 )
@@ -4606,6 +4750,22 @@ class BeerPhotoView(APIView):
         photo.image.save("photo.webp", content, save=False)
         try:
             with transaction.atomic():
+                account = Account.objects.select_for_update().get(pk=request.user.pk)
+                existing = BeerPhoto.objects.filter(
+                    account=account,
+                    client_id=data["client_id"],
+                ).first()
+                if existing is not None:
+                    photo.image.delete(save=False)
+                    return _existing_response(existing.pk)
+                photo.account = account
+                _award_first_diary_event_xp(
+                    account=account,
+                    event_model=BeerPhoto,
+                    timestamp_field="taken_at",
+                    occurred_at=photo.taken_at,
+                    amount=settings.PIVAR_XP_PHOTO,
+                )
                 photo.save()
         except IntegrityError:
             # A concurrent retry of the same client_id won the insert race;

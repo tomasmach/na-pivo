@@ -19,6 +19,11 @@ export interface AccountAchievements {
   /** "FotoPivař" — won a biweekly photo-contest round. Server-only; additive,
    *  absent on older backends → false. */
   fotoPivar: boolean;
+  /** Pivař badges (outside-pub drinking wave) — additive; absent → false. */
+  chatar: boolean;
+  podSirakem: boolean;
+  lahvacovyFilozof: boolean;
+  plechovkac: boolean;
 }
 
 /** All-locked achievements — the fallback when no server block has arrived. */
@@ -39,6 +44,10 @@ export const EMPTY_ACHIEVEMENTS: AccountAchievements = {
   taster: false,
   partyAnimal: false,
   fotoPivar: false,
+  chatar: false,
+  podSirakem: false,
+  lahvacovyFilozof: false,
+  plechovkac: false,
 };
 
 /** Raw snake_case achievements block as sent by the backend. */
@@ -59,6 +68,10 @@ export interface RawAchievementsBlock {
   taster?: boolean;
   party_animal?: boolean;
   foto_pivar?: boolean;
+  chatar?: boolean;
+  pod_sirakem?: boolean;
+  lahvacovy_filozof?: boolean;
+  plechovkac?: boolean;
 }
 
 /** Parse additive achievements while keeping older backend payloads compatible. */
@@ -80,5 +93,9 @@ export function parseAchievementsBlock(raw: RawAchievementsBlock): AccountAchiev
     taster: raw.taster === true,
     partyAnimal: raw.party_animal === true,
     fotoPivar: raw.foto_pivar === true,
+    chatar: raw.chatar === true,
+    podSirakem: raw.pod_sirakem === true,
+    lahvacovyFilozof: raw.lahvacovy_filozof === true,
+    plechovkac: raw.plechovkac === true,
   };
 }
