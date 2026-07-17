@@ -372,6 +372,12 @@ export const cs = {
         },
       },
     },
+    beerCountReminder: {
+      title: 'Připomenout další pivo',
+      subtitle: 'Po každém pivu posunu jednu upomínku. Sama se neopakuje.',
+      intervalLabel: 'Za',
+      intervalOption: (minutes: number) => `Připomenout za ${minutes} minut`,
+    },
     sound: {
       title: 'Zvuk cinknutí',
       subtitle: 'Drobné „cink“ u cíle',

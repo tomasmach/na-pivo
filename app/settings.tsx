@@ -37,7 +37,11 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
-import { useSettingsStore } from '@/stores/settingsStore';
+import {
+  BEER_COUNT_REMINDER_INTERVAL_OPTIONS,
+  useSettingsStore,
+  type BeerCountReminderIntervalMinutes,
+} from '@/stores/settingsStore';
 import { updateAccountPreferences } from '@/data/account';
 import { getAppVersionLabel } from '@/utils/appVersion';
 import {
@@ -71,6 +75,11 @@ import {
   enablePubReminderNotifications,
 } from '@/notifications/pubReminderNotifications';
 import { showPubReminderEnableFailure } from '@/notifications/pubReminderEnableFailure';
+import {
+  disableBeerCountReminderNotifications,
+  enableBeerCountReminderNotifications,
+  reschedulePendingBeerCountReminder,
+} from '@/notifications/beerCountReminder';
 
 // ---------------------------------------------------------------------------
 // Discrete slider positions
@@ -255,6 +264,65 @@ function PrefRow({ icon, title, subtitle, value, onToggle, toggleLabel, borderTo
   );
 }
 
+function BeerCountReminderRow({
+  enabled,
+  intervalMinutes,
+  onToggle,
+  onIntervalChange,
+}: {
+  enabled: boolean;
+  intervalMinutes: BeerCountReminderIntervalMinutes;
+  onToggle: () => void;
+  onIntervalChange: (minutes: BeerCountReminderIntervalMinutes) => void;
+}) {
+  return (
+    <View style={styles.prefRowBorderTop}>
+      <PrefRow
+        icon={<BellRingIcon size={18} color={Colors.foamMuted} />}
+        title={cs.settings.beerCountReminder.title}
+        subtitle={cs.settings.beerCountReminder.subtitle}
+        value={enabled}
+        onToggle={onToggle}
+        toggleLabel={`${cs.settings.beerCountReminder.title}: ${enabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+      />
+      {enabled ? (
+        <View style={styles.reminderIntervalRow}>
+          <Text style={styles.reminderIntervalLabel}>
+            {cs.settings.beerCountReminder.intervalLabel}
+          </Text>
+          <View style={styles.reminderIntervalOptions}>
+            {BEER_COUNT_REMINDER_INTERVAL_OPTIONS.map((minutes) => {
+              const selected = intervalMinutes === minutes;
+              return (
+                <Pressable
+                  key={minutes}
+                  onPress={() => onIntervalChange(minutes)}
+                  style={[
+                    styles.reminderIntervalOption,
+                    selected && styles.reminderIntervalOptionSelected,
+                  ]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={cs.settings.beerCountReminder.intervalOption(minutes)}
+                >
+                  <Text
+                    style={[
+                      styles.reminderIntervalOptionText,
+                      selected && styles.reminderIntervalOptionTextSelected,
+                    ]}
+                  >
+                    {minutes} min
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 function CurrencyRow({ value, borderTop }: { value: PriceCurrency; borderTop?: boolean }) {
   return (
     <View style={[styles.prefRow, borderTop && styles.prefRowBorderTop]}>
@@ -426,6 +494,10 @@ export default function SettingsScreen() {
   const hidePubNames = useSettingsStore((s) => s.hidePubNames);
   const marketingEmailsEnabled = useSettingsStore((s) => s.marketingEmailsEnabled);
   const pubReminderEnabled = useSettingsStore((s) => s.pubReminderEnabled);
+  const beerCountReminderEnabled = useSettingsStore((s) => s.beerCountReminderEnabled);
+  const beerCountReminderIntervalMinutes = useSettingsStore(
+    (s) => s.beerCountReminderIntervalMinutes,
+  );
   const setMaxDistanceKm = useSettingsStore((s) => s.setMaxDistanceKm);
   const setHapticEnabled = useSettingsStore((s) => s.setHapticEnabled);
   const setSoundEnabled = useSettingsStore((s) => s.setSoundEnabled);
@@ -435,7 +507,11 @@ export default function SettingsScreen() {
   const setHidePubNames = useSettingsStore((s) => s.setHidePubNames);
   const setMarketingEmailsEnabled = useSettingsStore((s) => s.setMarketingEmailsEnabled);
   const setPubReminderEnabled = useSettingsStore((s) => s.setPubReminderEnabled);
+  const setBeerCountReminderIntervalMinutes = useSettingsStore(
+    (s) => s.setBeerCountReminderIntervalMinutes,
+  );
   const [pubReminderBusy, setPubReminderBusy] = useState(false);
+  const [beerCountReminderBusy, setBeerCountReminderBusy] = useState(false);
 
   const sliderIndex = positionIndexForKm(maxDistanceKm);
   const appVersionLabel = getAppVersionLabel();
@@ -510,6 +586,30 @@ export default function SettingsScreen() {
       setPubReminderBusy(false);
     }
   }, [pubReminderBusy, pubReminderEnabled, setPubReminderEnabled]);
+
+  const toggleBeerCountReminder = useCallback(async () => {
+    if (beerCountReminderBusy) return;
+    setBeerCountReminderBusy(true);
+    try {
+      if (beerCountReminderEnabled) {
+        await disableBeerCountReminderNotifications();
+        return;
+      }
+
+      const result = await enableBeerCountReminderNotifications();
+      if (!result.ok) showPubReminderEnableFailure('notifications-denied');
+    } finally {
+      setBeerCountReminderBusy(false);
+    }
+  }, [beerCountReminderBusy, beerCountReminderEnabled]);
+
+  const changeBeerCountReminderInterval = useCallback(
+    (minutes: BeerCountReminderIntervalMinutes) => {
+      setBeerCountReminderIntervalMinutes(minutes);
+      void reschedulePendingBeerCountReminder();
+    },
+    [setBeerCountReminderIntervalMinutes],
+  );
 
 
   // Distance display
@@ -623,6 +723,12 @@ export default function SettingsScreen() {
             value={pubReminderEnabled}
             onToggle={() => void togglePubReminders()}
             toggleLabel={`${cs.settings.pubReminders.title}: ${pubReminderEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+          />
+          <BeerCountReminderRow
+            enabled={beerCountReminderEnabled}
+            intervalMinutes={beerCountReminderIntervalMinutes}
+            onToggle={() => void toggleBeerCountReminder()}
+            onIntervalChange={changeBeerCountReminderInterval}
           />
           <PrefRow
             icon={<BellRingIcon size={18} color={Colors.foamMuted} />}
@@ -948,6 +1054,48 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.regular,
     fontSize: 12,
     color: Colors.mutedText,
+  },
+  reminderIntervalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 18,
+    paddingLeft: 66,
+    paddingBottom: 12,
+  },
+  reminderIntervalLabel: {
+    fontFamily: Fonts.ui.medium,
+    fontSize: 11,
+    color: Colors.mutedText,
+  },
+  reminderIntervalOptions: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 5,
+  },
+  reminderIntervalOption: {
+    minWidth: 45,
+    height: 28,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.stout3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 7,
+  },
+  reminderIntervalOptionSelected: {
+    borderColor: Colors.amber,
+    backgroundColor: Colors.amber,
+  },
+  reminderIntervalOptionText: {
+    fontFamily: Fonts.ui.bold,
+    fontSize: 11,
+    color: Colors.mutedText,
+  },
+  reminderIntervalOptionTextSelected: {
+    color: Colors.stout,
   },
   currencySegment: {
     flexDirection: 'row',

@@ -102,6 +102,7 @@ import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
 import { ScanMenuSheet } from '@/components/contribute/ScanMenuSheet';
 import { ScannedDrinkPicker } from '@/counter/ScannedDrinkPicker';
 import { WeeklyRankChip } from '@/leaderboards/WeeklyRankChip';
+import { refreshBeerCountReminderAfterBeer } from '@/notifications/beerCountReminder';
 
 // ─── Gate states (permission / detecting / no pub) ─────────────────────────────
 
@@ -716,6 +717,12 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
       } else {
         addDrink(tallyPlace, tallyBeer);
         landedSession = useTallyStore.getState().current;
+      }
+      // Every real-time beer moves the evening's single reminder forward. It
+      // never repeats by itself; only a new beer or a notification tap re-arms
+      // it. The session id keeps the whole chain scoped to this one evening.
+      if (!atOverride && drinkType === 'beer' && landedSession) {
+        void refreshBeerCountReminderAfterBeer(landedSession.clientId);
       }
       // Push/refresh the visit ("evening") record for the session the drink
       // actually landed in. addDrink/addBackdatedDrink write synchronously, so

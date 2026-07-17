@@ -11,6 +11,10 @@ import {
 
 export type Mode = 'nearest' | 'surprise';
 
+export const BEER_COUNT_REMINDER_INTERVAL_OPTIONS = [15, 20, 30, 45] as const;
+export type BeerCountReminderIntervalMinutes =
+  (typeof BEER_COUNT_REMINDER_INTERVAL_OPTIONS)[number];
+
 interface SettingsState {
   mode: Mode;
   maxDistanceKm: number | null;
@@ -24,6 +28,10 @@ interface SettingsState {
   hidePubNames: boolean;
   marketingEmailsEnabled: boolean;
   pubReminderEnabled: boolean;
+  /** One-shot reminder refreshed by each beer of an active evening. */
+  beerCountReminderEnabled: boolean;
+  /** Delay used for the first reminder and each user-confirmed follow-up. */
+  beerCountReminderIntervalMinutes: BeerCountReminderIntervalMinutes;
   /** Gentle "grab a water" nudge in the counter every few beers in a row. */
   waterNudgeEnabled: boolean;
   /** Parta push opt-in (notification permission only, decoupled from reminders). */
@@ -49,6 +57,8 @@ interface SettingsState {
   setHidePubNames: (v: boolean) => void;
   setMarketingEmailsEnabled: (v: boolean) => void;
   setPubReminderEnabled: (v: boolean) => void;
+  setBeerCountReminderEnabled: (v: boolean) => void;
+  setBeerCountReminderIntervalMinutes: (v: BeerCountReminderIntervalMinutes) => void;
   setWaterNudgeEnabled: (v: boolean) => void;
   setFriendPushEnabled: (v: boolean) => void;
   setFriendPushPrompted: (v: boolean) => void;
@@ -72,6 +82,8 @@ export const useSettingsStore = create<SettingsState>()(
       hidePubNames: false,
       marketingEmailsEnabled: false,
       pubReminderEnabled: false,
+      beerCountReminderEnabled: true,
+      beerCountReminderIntervalMinutes: 20,
       waterNudgeEnabled: true,
       friendPushEnabled: false,
       friendPushPrompted: false,
@@ -94,6 +106,9 @@ export const useSettingsStore = create<SettingsState>()(
       setHidePubNames: (v) => set({ hidePubNames: v }),
       setMarketingEmailsEnabled: (v) => set({ marketingEmailsEnabled: v }),
       setPubReminderEnabled: (v) => set({ pubReminderEnabled: v }),
+      setBeerCountReminderEnabled: (v) => set({ beerCountReminderEnabled: v }),
+      setBeerCountReminderIntervalMinutes: (v) =>
+        set({ beerCountReminderIntervalMinutes: v }),
       setWaterNudgeEnabled: (v) => set({ waterNudgeEnabled: v }),
       setFriendPushEnabled: (v) => set({ friendPushEnabled: v }),
       setFriendPushPrompted: (v) => set({ friendPushPrompted: v }),
@@ -118,6 +133,8 @@ export const useSettingsStore = create<SettingsState>()(
         hidePubNames: state.hidePubNames,
         marketingEmailsEnabled: state.marketingEmailsEnabled,
         pubReminderEnabled: state.pubReminderEnabled,
+        beerCountReminderEnabled: state.beerCountReminderEnabled,
+        beerCountReminderIntervalMinutes: state.beerCountReminderIntervalMinutes,
         waterNudgeEnabled: state.waterNudgeEnabled,
         friendPushEnabled: state.friendPushEnabled,
         friendPushPrompted: state.friendPushPrompted,

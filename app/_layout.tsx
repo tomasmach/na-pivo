@@ -59,6 +59,11 @@ import {
   subscribePubReminderTap,
   type FriendTapPayload,
 } from '@/notifications/pubReminderNotifications';
+import {
+  consumeInitialBeerCountReminderTap,
+  initializeBeerCountReminderNotifications,
+  subscribeBeerCountReminderTap,
+} from '@/notifications/beerCountReminder';
 
 /**
  * One-time gate: when the onboarding store resolves 'show' (fresh install or
@@ -147,6 +152,7 @@ export default function RootLayout() {
   useEffect(() => {
     installClientTelemetry();
     void initializePubReminderNotifications();
+    void initializeBeerCountReminderNotifications();
     void refreshCurrencyFromLastKnownLocation();
   }, []);
 
@@ -161,9 +167,14 @@ export default function RootLayout() {
     };
     if (fontsLoaded || fontError) {
       void consumeInitialPubReminderTap(navigateToCounter, navigateToFriends);
+      void consumeInitialBeerCountReminderTap(navigateToCounter);
     }
-    const subscription = subscribePubReminderTap(navigateToCounter, navigateToFriends);
-    return () => subscription.remove();
+    const pubSubscription = subscribePubReminderTap(navigateToCounter, navigateToFriends);
+    const beerCountSubscription = subscribeBeerCountReminderTap(navigateToCounter);
+    return () => {
+      pubSubscription.remove();
+      beerCountSubscription.remove();
+    };
   }, [fontsLoaded, fontError, router]);
 
   useEffect(() => {
