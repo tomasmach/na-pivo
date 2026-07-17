@@ -6,7 +6,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("pubs", "0077_accountusagestats_pivar_xp_and_indexes"),
+        ("pubs", "0079_alter_clientevent_event"),
     ]
 
     operations = [
