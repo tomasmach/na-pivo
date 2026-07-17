@@ -65,11 +65,4 @@ class Ladder:
     def snapshot(self, xp: int) -> dict:
         """Return the compact wire envelope derived from stored XP."""
         normalized_xp = max(0, int(xp))
-        progress = self.progress(normalized_xp)
-        return {
-            "xp": normalized_xp,
-            "level": progress["level"],
-            "title": progress["title"],
-            "xp_into_level": progress["xp_into_level"],
-            "xp_for_next_level": progress["xp_for_next_level"],
-        }
+        return {"xp": normalized_xp, **self.progress(normalized_xp)}

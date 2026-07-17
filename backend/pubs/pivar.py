@@ -24,11 +24,6 @@ def _ladder() -> Ladder:
     )
 
 
-def _level_thresholds() -> list[int]:
-    """Return defensive, non-decreasing thresholds aligned with fixed titles."""
-    return list(_ladder().thresholds)
-
-
 def pivar_levels() -> list[dict]:
     """Return the full wire ladder as ``{level, title, xp}`` rows."""
     return _ladder().levels()

@@ -3209,7 +3209,9 @@ def _leaderboard_account_score(
 
 def _leaderboard_is_eligible(account: Account) -> bool:
     return (
-        _leaderboard_account_queryset().filter(pk=account.pk).exists()
+        account.status == Account.Status.ACTIVE
+        and account.is_public
+        and not account.excluded_from_leaderboards
         and bool((account.nickname or "").strip())
     )
 

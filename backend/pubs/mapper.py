@@ -40,16 +40,6 @@ def _ladder() -> Ladder:
     )
 
 
-def _level_thresholds() -> list[int]:
-    """The min-XP threshold per level, lowest first, defensively normalised.
-
-    Reads the env-tunable ``MAPER_LEVEL_THRESHOLDS`` but tolerates a short/long
-    or out-of-order list so a bad env value can never crash the read path: the
-    ladder is clamped to the number of fixed titles and forced non-decreasing.
-    """
-    return list(_ladder().thresholds)
-
-
 def maper_levels() -> list[dict]:
     """The full ladder for the wire ``levels`` array: {level, title, xp} x7.
 
