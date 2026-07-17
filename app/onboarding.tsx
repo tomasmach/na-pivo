@@ -10,8 +10,8 @@
  * sign-in but never forces it (the product is local-first and an anonymous
  * account exists either way): the primary CTA finishes the onboarding and
  * pushes /auth over the tabs; "Zatím bez účtu" (and "Přeskočit" on earlier
- * slides) just lands on the tabs. A successful sign-in then flows into the
- * nickname wizard via ProfileGate.
+ * slides) just lands on the tabs. A new registration then gets one concise
+ * public/private profile choice before entering the app.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -32,7 +32,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
+import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { useOnboardingStore } from '@/stores/onboardingStore';
@@ -118,7 +118,7 @@ export default function OnboardingScreen() {
     void trackClientEvent({ event: 'onboarding_completed', context: { slide: indexRef.current + 1 } });
     void trackClientEvent({ event: 'onboarding_auth_opened' });
     // Land on the tabs first so closing the auth modal has a place to go back
-    // to; a successful sign-in continues into ProfileGate's nickname wizard.
+    // to; a new registration replaces auth with the privacy choice.
     router.replace('/(tabs)' as Href);
     router.push('/auth' as Href);
   }, [router]);
@@ -231,7 +231,7 @@ export default function OnboardingScreen() {
         getItemLayout={(_, i) => ({ length: width, offset: width * i, index: i })}
       />
 
-      {/* Progress dots — same bar style as the profile setup wizard. */}
+      {/* Progress dots — compact progress without a step counter. */}
       <View style={styles.dots}>
         {SLIDES.map((slide, i) => (
           <View
@@ -243,13 +243,25 @@ export default function OnboardingScreen() {
 
       <View style={styles.ctaBlock}>
         {isLast ? (
-          <>
-            <GlowButton
-              label={cs.onboarding.slide5Cta}
-              onPress={handleOpenAuth}
-              glow="strong"
-              accessibilityLabel={cs.onboarding.slide5Cta}
-            />
+          <GlowButton
+            label={cs.onboarding.slide5Cta}
+            onPress={handleOpenAuth}
+            glow="strong"
+            accessibilityLabel={cs.onboarding.slide5Cta}
+          />
+        ) : (
+          <GlowButton
+            label={cs.onboarding.next}
+            onPress={handleNext}
+            glow="soft"
+            accessibilityLabel={cs.onboarding.next}
+          />
+        )}
+
+        {/* Reserve this row on every slide so the primary CTA never jumps
+            when the account opt-out appears on the final page. */}
+        <View style={styles.secondaryCtaSlot} testID="onboarding-secondary-cta-slot">
+          {isLast && (
             <Pressable
               onPress={() => finish('onboarding_completed')}
               style={({ pressed }) => [styles.laterButton, pressed && styles.pressed]}
@@ -260,15 +272,8 @@ export default function OnboardingScreen() {
                 {cs.onboarding.slide5Later}
               </Text>
             </Pressable>
-          </>
-        ) : (
-          <GlowButton
-            label={cs.onboarding.next}
-            onPress={handleNext}
-            glow="soft"
-            accessibilityLabel={cs.onboarding.next}
-          />
-        )}
+          )}
+        </View>
       </View>
     </View>
   );
@@ -351,9 +356,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     gap: Spacing.sm,
   },
+  secondaryCtaSlot: {
+    minHeight: HitArea.min,
+  },
   laterButton: {
-    alignSelf: 'center',
-    minHeight: 44,
+    minHeight: HitArea.min,
     paddingHorizontal: Spacing.lg,
     alignItems: 'center',
     justifyContent: 'center',

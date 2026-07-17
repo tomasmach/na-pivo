@@ -1,7 +1,6 @@
 /**
- * Public-profile visibility toggle row — a labelled switch reused by the
- * onboarding wizard (step 3) and the edit screen. Mirrors the Settings screen
- * Toggle visuals (amber on, stout3 off, spring-animated thumb) so the control
+ * Public-profile visibility toggle row used by the edit screen. Mirrors the
+ * Settings switch (amber on, stout3 off, spring-animated thumb) so the control
  * feels identical across the app.
  */
 

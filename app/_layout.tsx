@@ -36,7 +36,7 @@ import {
   trackClientEvent,
 } from '@/data/telemetryClient';
 import { flushWalkingDistance } from '@/data/walkingTelemetry';
-import { useAccountStore, selectIsSignedIn, selectNeedsProfileSetup } from '@/stores/accountStore';
+import { useAccountStore, selectIsSignedIn } from '@/stores/accountStore';
 import { useOnboardingStore } from '@/stores/onboardingStore';
 import { usePubStore } from '@/stores/pubStore';
 import { useReleaseStore } from '@/stores/releaseStore';
@@ -60,14 +60,6 @@ import {
 } from '@/notifications/pubReminderNotifications';
 
 /**
- * Onboarding gate: once auth resolves (`status==='ready'`) and a signed-in
- * account has no nickname yet, push the user into the setup wizard. Runs after
- * initAccount/auth settles so it catches email/Google/Apple sign-ups AND
- * returning users upgrading from an older build. Re-entrancy is naturally
- * guarded — `selectNeedsProfileSetup` flips to false the moment a nickname is
- * set — and we never redirect while already on the setup route.
- */
-/**
  * First-run gate: when the onboarding store resolves 'show' (fresh install,
  * never completed), replace the stack root with the welcome pager. Stays out
  * of the way of a Parta invite deep link — the invite screen wins, and the
@@ -87,29 +79,6 @@ function OnboardingGate() {
       router.replace('/onboarding' as Href);
     }
   }, [decision, pathname, router]);
-
-  return null;
-}
-
-function ProfileGate() {
-  const router = useRouter();
-  const pathname = usePathname();
-  const status = useAccountStore((s) => s.status);
-  const needsSetup = useAccountStore(selectNeedsProfileSetup);
-
-  useEffect(() => {
-    // The first-run pager wins over the setup wizard (a Keychain-restored
-    // session can look signed-in on a fresh install): wait it out, then fire
-    // once the onboarding completes and navigation lands back on the tabs.
-    if (
-      status === 'ready' &&
-      needsSetup &&
-      pathname !== '/profile/setup' &&
-      pathname !== '/onboarding'
-    ) {
-      router.replace('/profile/setup' as Href);
-    }
-  }, [status, needsSetup, pathname, router]);
 
   return null;
 }
@@ -483,11 +452,10 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen
-            name="profile/setup"
+            name="profile/privacy"
             options={{
               presentation: 'fullScreenModal',
               animation: 'slide_from_bottom',
-              // The nickname step is the hard gate — it must not be swipe-dismissable.
               gestureEnabled: false,
             }}
           />
@@ -558,7 +526,6 @@ export default function RootLayout() {
           />
         </Stack>
         <OnboardingGate />
-        <ProfileGate />
         <WhatsNewModal />
         <PubReminderOnboardingModal />
         <PubReminderEnableFailureModal />

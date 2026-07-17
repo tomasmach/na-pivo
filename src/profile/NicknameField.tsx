@@ -1,7 +1,7 @@
 /**
  * Nickname picker field — an "@"-prefixed text input with live, debounced
- * availability checking. Shared by the onboarding wizard (step 1) and the edit
- * screen.
+ * availability checking. Used by the profile edit screen and contextual
+ * identity prompts.
  *
  * Validation pipeline (mirrors the backend order):
  *   1. Local charset/length/reserved check (instant, no network) — see nickname.ts.
@@ -174,7 +174,7 @@ export const NicknameField = memo(function NicknameField({
           style={styles.input}
           value={value}
           onChangeText={onChangeText}
-          placeholder={cs.profile.setup.nicknamePlaceholder}
+          placeholder={cs.profile.form.nicknamePlaceholder}
           placeholderTextColor={Colors.mutedText}
           autoCapitalize="none"
           autoCorrect={false}
@@ -199,9 +199,9 @@ function NicknameHint({ hint }: { hint: HintState }) {
   let text: string;
   let style: TextStyle = styles.hintNeutral;
   if (hint.kind === 'checking') {
-    text = cs.profile.setup.nicknameChecking;
+    text = cs.profile.form.nicknameChecking;
   } else if (hint.kind === 'available') {
-    text = cs.profile.setup.nicknameAvailable;
+    text = cs.profile.form.nicknameAvailable;
     style = styles.hintOk;
   } else {
     text = hint.message;
