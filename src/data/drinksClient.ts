@@ -29,24 +29,30 @@ import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
 import type { CommunityBeer } from './communityHours';
 import { trackClientEvent } from './telemetryClient';
-import type { DrinkType } from '@/drinks/drinkTypes';
+import { normalizePlaceContext, type DrinkType, type PlaceContext, type ServingType } from '@/drinks/drinkTypes';
 import { useToastStore } from '@/stores/toastStore';
 import { cs } from '@/i18n/cs';
 
 export type { CommunityBeer };
 
-/** A single counted drink, in app (camelCase) form — what the UI hands over. */
+/** A single counted drink, in app (camelCase) form — what the UI hands over.
+ *  Pub identity fields are required for a pub drink and MUST be absent for an
+ *  outside one (`placeContext` other than pub) — no coordinates ever leave the
+ *  device for a beer at home. */
 export interface DrinkInput {
-  /** The pub the drink was had at. */
+  /** Where the drink was had. Missing means pub (compat with old callers). */
+  placeContext?: PlaceContext;
+  /** The pub the drink was had at (pub context only). */
   externalId?: string | null;
-  name: string;
-  lat: number;
-  lng: number;
+  name?: string;
+  lat?: number;
+  lng?: number;
   city?: string;
   /** Beer remains the default for compatibility with older queued payloads. */
   drinkType?: DrinkType;
-  /** The beer (price REQUIRED — it is the community-sourcing hook). */
-  beer: CommunityBeer & { priceCzk: number };
+  /** The beer. Price is REQUIRED at a pub (the community-sourcing hook) and
+   *  optional outside one. */
+  beer: CommunityBeer & { servingType?: ServingType };
   /** ISO-8601 timestamp; defaults to now server-side when omitted. */
   drankAt?: string;
 }
@@ -54,16 +60,18 @@ export interface DrinkInput {
 /** A single beer in backend (snake_case) wire form for a drink. */
 interface WireDrinkBeer {
   name: string;
-  price_czk: number;
+  price_czk?: number;
   volume_ml?: number;
+  serving_type?: ServingType;
 }
 
 /** The byte-stable payload persisted in the queue and POSTed on every retry. */
 export interface DrinkEntry {
   client_id: string;
-  name: string;
-  lat: number;
-  lng: number;
+  place_context?: PlaceContext;
+  name?: string;
+  lat?: number;
+  lng?: number;
   city?: string;
   external_id?: string | null;
   drink_type?: DrinkType;
@@ -134,25 +142,34 @@ function trackDrinkSyncFailed(
  * `external_id` and `city` are only included when present; `drank_at` defaults
  * to the build time so a delayed retry still records when the beer was actually
  * had (the server defaults to its own now only if omitted).
+ *
+ * An outside drink (`placeContext` ≠ pub) sends `place_context` and NO pub
+ * fields at all — the server rejects coordinates for non-pub contexts, so
+ * omitting them here is both privacy and correctness.
  */
 export function buildDrinkEntry(input: DrinkInput, clientId: string): DrinkEntry {
-  const beer: WireDrinkBeer = {
-    name: input.beer.name,
-    price_czk: input.beer.priceCzk,
-  };
-  if (typeof input.beer.volumeMl === 'number') beer.volume_ml = input.beer.volumeMl;
+  const placeContext = normalizePlaceContext(input.placeContext);
+  const atPub = placeContext === 'pub';
 
-  const entry: DrinkEntry = {
-    client_id: clientId,
-    name: input.name,
-    lat: input.lat,
-    lng: input.lng,
-    beer,
-  };
+  const beer: WireDrinkBeer = { name: input.beer.name };
+  if (typeof input.beer.priceCzk === 'number') beer.price_czk = input.beer.priceCzk;
+  if (typeof input.beer.volumeMl === 'number') beer.volume_ml = input.beer.volumeMl;
+  if (input.beer.servingType && input.beer.servingType !== 'unknown') {
+    beer.serving_type = input.beer.servingType;
+  }
+
+  const entry: DrinkEntry = { client_id: clientId, beer };
+  if (atPub) {
+    entry.name = input.name ?? '';
+    entry.lat = input.lat;
+    entry.lng = input.lng;
+    const city = input.city?.trim();
+    if (city) entry.city = city;
+    if (input.externalId !== undefined) entry.external_id = input.externalId;
+  } else {
+    entry.place_context = placeContext;
+  }
   if (input.drinkType && input.drinkType !== 'beer') entry.drink_type = input.drinkType;
-  const city = input.city?.trim();
-  if (city) entry.city = city;
-  if (input.externalId !== undefined) entry.external_id = input.externalId;
   entry.drank_at = input.drankAt ?? new Date().toISOString();
   return entry;
 }

@@ -4,7 +4,7 @@
  */
 
 import { beerCountLabel, beerNoun, czechPlural } from './plural';
-import type { DrinkType } from '@/drinks/drinkTypes';
+import type { DrinkType, OutsidePlaceContext, ServingType } from '@/drinks/drinkTypes';
 
 /** Format a serving volume in ml as a Czech litre string with a decimal comma:
  *  500 → "0,5 l", 300 → "0,3 l", 1000 → "1 l", 330 → "0,33 l". */
@@ -1510,12 +1510,33 @@ export const cs = {
     detecting: 'Hledám, kde sedíš…',
     noPubTitle: 'Žádná hospoda nablízku',
     noPubBody: 'Nenašel jsem hospodu ve tvém okolí. Zkus to znovu.',
+    // Pubs exist nearby, but none close enough to say "you're sitting in it" —
+    // instead of guessing we let the user pick (or log outside a pub).
+    noPubChooseBody: 'Přímo u tebe žádnou hospodu nevidím, ale pár jich je kousek. Vyber, kde jsi.',
+    noPubChooseCta: 'Vybrat hospodu',
     retry: 'Zkusit znovu',
     noPubAddPub: 'Přidat hospodu',
 
     // — Active header —
     changePub: 'Změnit',
     pickerTitle: 'Kde sedíš?',
+
+    // — Mimo hospodu (logging outside a pub) —
+    // The picker splits into two sections: nearby pubs + the outside contexts.
+    pickerNearbyHeader: 'Blízké hospody',
+    pickerOutsideHeader: 'Mimo hospodu',
+    outsideLabel: (context: OutsidePlaceContext) =>
+      ({ private: 'Doma / na chatě', outdoors: 'Venku', other: 'Jinde' })[context],
+    // Entry from the "no pub nearby" screen and the permission gate.
+    outsideNoPubCta: 'Piju mimo hospodu',
+    outsideNoLocationCta: 'Zapsat pivo bez polohy',
+    // Header of the session-beers list (outside there is no pub menu; the list
+    // holds what you've logged tonight so the next one is a single tap).
+    outsideMenuHeader: 'Dnes piješ',
+    // Empty outside counter — no community framing, it's just your evening.
+    outsideEmptyTitle: 'Zapiš si, co piješ',
+    outsideEmptyBody: 'Lahváč, plechovka, cokoliv.\nPočítá se to jako každé jiné pivo.',
+    outsideEmptyCta: 'Zapsat první pivo',
 
     // — Hero —
     totalSpent: (price: string) => `Utraceno ${price}`,
@@ -1614,6 +1635,19 @@ export const cs = {
     // Add-form shortcut into the AI menu scan (hands over to the contribute
     // editor). Framed as filling the PUB's menu, not logging your own drinks.
     scanMenuShortcut: 'Vyfoť lístek a doplním, co tu mají',
+    // — Serving type (only asked outside a pub; in a pub it stays unasked) —
+    servingLabel: 'Jak je podané?',
+    servingTypeLabel: (serving: ServingType) =>
+      ({
+        unknown: 'Nevím',
+        draft: 'Točené',
+        bottle: 'Lahváč',
+        can: 'Plechovka',
+        plastic_bottle: 'PETka',
+        other: 'Jinak',
+      })[serving],
+    // Outside a pub the price is optional — you rarely know it at home.
+    outsidePricePlaceholder: 'Cena (nepovinná)',
     priceLabel: 'Cena za',
     volumeSmall: '0,3 l',
     volumeMedium: '0,4 l',

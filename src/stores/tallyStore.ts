@@ -24,7 +24,13 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { generateUuidV4 } from '@/data/account';
-import { normalizeDrinkType, type DrinkType } from '@/drinks/drinkTypes';
+import {
+  normalizeDrinkType,
+  normalizePlaceContext,
+  type DrinkType,
+  type PlaceContext,
+  type ServingType,
+} from '@/drinks/drinkTypes';
 
 /** Hours to subtract from local time before taking the calendar date, so the
  *  "drinking day" rolls at 04:00 local rather than at midnight. */
@@ -49,15 +55,21 @@ export interface TallyDrink {
   beerName: string;
   /** Missing on persisted v1 rows means beer. */
   drinkType?: DrinkType;
-  priceCzk: number;
+  /** Optional only for drinks outside a pub (price unknown at home); every
+   *  pub-counted drink still carries one. */
+  priceCzk?: number;
   volumeMl?: number;
+  /** How the beer was served (lahváč/plechovka…). Missing means unknown. */
+  servingType?: ServingType;
   /** ISO-8601 timestamp of when it was counted. */
   at: string;
   /** Delivery state for undo safety. Pending drinks may still be removed from the queue. */
   syncStatus?: 'pending' | 'sent';
 }
 
-/** One sitting at one pub on one drinking day. */
+/** One sitting at one place on one drinking day. Usually a pub; an outside
+ *  evening ("mimo hospodu") uses a synthetic `ctx:*` pubKey, a display label in
+ *  pubName and carries its placeContext explicitly. */
 export interface TallySession {
   /** Stable per-session id, generated once when the session is opened. It is the
    *  idempotency key for the /v1/pub-visits sync (a "visit" = one evening), so a
@@ -69,6 +81,8 @@ export interface TallySession {
   /** Confirmed pub metadata used by the private visit history/map. */
   pubCity?: string;
   pubExternalId?: string;
+  /** Where the evening happens. Missing on persisted sessions means `pub`. */
+  placeContext?: PlaceContext;
   /** ISO-8601 timestamp of when the session started (first drink). */
   startedAt: string;
   drinks: TallyDrink[];
@@ -77,12 +91,14 @@ export interface TallySession {
   archivedReason?: ArchivedReason;
 }
 
-/** The minimal pub identity a count needs. */
+/** The minimal place identity a count needs. */
 export interface TallyPub {
   pubKey: string;
   pubName: string;
   pubCity?: string;
   pubExternalId?: string;
+  /** Missing means pub. */
+  placeContext?: PlaceContext;
 }
 
 /** The beer being counted. */
@@ -90,8 +106,10 @@ export interface TallyBeerInput {
   id: string;
   beerName: string;
   drinkType?: DrinkType;
-  priceCzk: number;
+  /** Optional only outside a pub. */
+  priceCzk?: number;
   volumeMl?: number;
+  servingType?: ServingType;
   /** ISO timestamp; defaults to now. */
   at?: string;
 }
@@ -251,12 +269,13 @@ export const useTallyStore = create<TallyState>()(
           const drink: TallyDrink = {
             id: beer.id,
             beerName: beer.beerName,
-            priceCzk: beer.priceCzk,
             at,
             syncStatus: 'pending',
           };
+          if (typeof beer.priceCzk === 'number') drink.priceCzk = beer.priceCzk;
           if (beer.drinkType && beer.drinkType !== 'beer') drink.drinkType = beer.drinkType;
           if (typeof beer.volumeMl === 'number') drink.volumeMl = beer.volumeMl;
+          if (beer.servingType && beer.servingType !== 'unknown') drink.servingType = beer.servingType;
 
           const rollover = shouldStartNewSession(state.current, pub.pubKey, atDate);
 
@@ -277,6 +296,9 @@ export const useTallyStore = create<TallyState>()(
                 pubName: pub.pubName,
                 ...(pub.pubCity ? { pubCity: pub.pubCity } : {}),
                 ...(pub.pubExternalId ? { pubExternalId: pub.pubExternalId } : {}),
+                ...(pub.placeContext && pub.placeContext !== 'pub'
+                  ? { placeContext: pub.placeContext }
+                  : {}),
                 startedAt: at,
                 drinks: [drink],
               },
@@ -310,12 +332,13 @@ export const useTallyStore = create<TallyState>()(
           const drink: TallyDrink = {
             id: beer.id,
             beerName: beer.beerName,
-            priceCzk: beer.priceCzk,
             at,
             syncStatus: 'pending',
           };
+          if (typeof beer.priceCzk === 'number') drink.priceCzk = beer.priceCzk;
           if (beer.drinkType && beer.drinkType !== 'beer') drink.drinkType = beer.drinkType;
           if (typeof beer.volumeMl === 'number') drink.volumeMl = beer.volumeMl;
+          if (beer.servingType && beer.servingType !== 'unknown') drink.servingType = beer.servingType;
 
           const dayKey = drinkingDayKey(atDate);
           // Append to the archived evening at the same pub + drinking day, if any.
@@ -350,6 +373,9 @@ export const useTallyStore = create<TallyState>()(
             pubName: pub.pubName,
             ...(pub.pubCity ? { pubCity: pub.pubCity } : {}),
             ...(pub.pubExternalId ? { pubExternalId: pub.pubExternalId } : {}),
+            ...(pub.placeContext && pub.placeContext !== 'pub'
+              ? { placeContext: pub.placeContext }
+              : {}),
             startedAt: at,
             drinks: [drink],
             archivedReason: 'manual',
@@ -573,9 +599,20 @@ export function sessionDrinkTypeCounts(session: TallySession | null): Record<Dri
   return counts;
 }
 
-/** Total spent (CZK) in the current session. */
+/** Total spent (CZK) in the current session. Drinks without a price (possible
+ *  outside a pub) simply don't add — unknown stays unknown, never 0. */
 export function sessionTotalCzk(session: TallySession | null): number {
-  return session?.drinks.reduce((sum, d) => sum + d.priceCzk, 0) ?? 0;
+  return (
+    session?.drinks.reduce(
+      (sum, d) => sum + (typeof d.priceCzk === 'number' ? d.priceCzk : 0),
+      0,
+    ) ?? 0
+  );
+}
+
+/** The session's place context, defaulting persisted pre-feature rows to pub. */
+export function sessionPlaceContext(session: TallySession | null): PlaceContext {
+  return normalizePlaceContext(session?.placeContext);
 }
 
 /**

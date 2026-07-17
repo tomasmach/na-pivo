@@ -40,7 +40,7 @@ import { BetaBadge } from '@/components/shared/BetaBadge';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { cs, formatVolume } from '@/i18n/cs';
 import { isAllowedBeerVolume, type CommunityBeer } from '@/data/communityHours';
-import type { DrinkType } from '@/drinks/drinkTypes';
+import type { DrinkType, PlaceContext, ServingType } from '@/drinks/drinkTypes';
 import { suggestBeerBrands, type BeerBrandSuggestion } from '@/data/beerSuggestionsClient';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
@@ -56,14 +56,20 @@ const VOLUME_SMALL = 300;
 const VOLUME_MEDIUM = 400;
 const VOLUME_DEFAULT = 500;
 const BEER_VOLUME_PRESETS = [VOLUME_SMALL, VOLUME_MEDIUM, VOLUME_DEFAULT];
+// Outside a pub the natural beer formats are the lahváč/plechovka sizes.
+const OUTSIDE_BEER_VOLUME_PRESETS = [330, VOLUME_DEFAULT];
 const SHOT_VOLUME_PRESETS = [20, 40, 50];
 // Pub wine pours: 1 dl / 1,5 dl / "dvojka" (the default order at the bar).
 const WINE_VOLUME_PRESETS = [100, 150, 200];
 
-function volumePresets(drinkType: DrinkType): number[] {
+// Serving choices offered outside a pub, lahváč first (the most common case);
+// draft last for the keg-at-the-cottage crowd. In a pub the row never shows.
+const OUTSIDE_SERVING_TYPES: readonly ServingType[] = ['bottle', 'can', 'plastic_bottle', 'draft'];
+
+function volumePresets(drinkType: DrinkType, outside: boolean): number[] {
   if (drinkType === 'shot') return SHOT_VOLUME_PRESETS;
   if (drinkType === 'wine') return WINE_VOLUME_PRESETS;
-  return BEER_VOLUME_PRESETS;
+  return outside ? OUTSIDE_BEER_VOLUME_PRESETS : BEER_VOLUME_PRESETS;
 }
 
 function defaultVolume(drinkType: DrinkType): number {
@@ -92,8 +98,11 @@ export type BeerFormMode = 'add' | 'price' | 'edit';
 export interface BeerFormResult {
   drinkType: DrinkType;
   name: string;
-  priceCzk: number;
+  /** Absent only outside a pub (price optional there). */
+  priceCzk?: number;
   volumeMl?: number;
+  /** Set only outside a pub, for beer. */
+  servingType?: ServingType;
 }
 
 interface BeerFormModalProps {
@@ -102,6 +111,11 @@ interface BeerFormModalProps {
   /** Prefilled beer (name locked in 'price'/'edit'; price/volume seed the form). */
   beer?: CommunityBeer | null;
   initialDrinkType?: DrinkType;
+  /** Where the drink is being logged. Outside a pub ('private'/'outdoors'/
+   *  'other') the form asks how the beer is served and the price is optional. */
+  placeContext?: PlaceContext;
+  /** Seed for the serving row — the session's last used choice. */
+  initialServingType?: ServingType;
   /** Changes per open so the form body remounts with fresh, prop-seeded state. */
   formKey?: string | number;
   onCancel: () => void;
@@ -115,7 +129,7 @@ interface BeerFormModalProps {
  * the open instance (`formKey`) so every open mounts a FRESH body whose state is
  * initialized from props — no re-seeding effect, no setState-in-effect.
  */
-export function BeerFormModal({ visible, mode, beer, initialDrinkType = 'beer', formKey, onCancel, onSubmit, onScanMenu }: BeerFormModalProps) {
+export function BeerFormModal({ visible, mode, beer, initialDrinkType = 'beer', placeContext = 'pub', initialServingType, formKey, onCancel, onSubmit, onScanMenu }: BeerFormModalProps) {
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onCancel}>
       {visible ? (
@@ -124,6 +138,8 @@ export function BeerFormModal({ visible, mode, beer, initialDrinkType = 'beer', 
           mode={mode}
           beer={beer}
           initialDrinkType={initialDrinkType}
+          placeContext={placeContext}
+          initialServingType={initialServingType}
           onCancel={onCancel}
           onSubmit={onSubmit}
           onScanMenu={onScanMenu}
@@ -137,18 +153,24 @@ interface BeerFormBodyProps {
   mode: BeerFormMode;
   beer?: CommunityBeer | null;
   initialDrinkType: DrinkType;
+  placeContext: PlaceContext;
+  initialServingType?: ServingType;
   onCancel: () => void;
   onSubmit: (result: BeerFormResult) => void;
   onScanMenu?: () => void;
 }
 
-function BeerFormBody({ mode, beer, initialDrinkType, onCancel, onSubmit, onScanMenu }: BeerFormBodyProps) {
+function BeerFormBody({ mode, beer, initialDrinkType, placeContext, initialServingType, onCancel, onSubmit, onScanMenu }: BeerFormBodyProps) {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const keyboardHeight = useKeyboardHeight();
   const nameLocked = mode !== 'add';
+  const outside = placeContext !== 'pub';
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const [drinkType, setDrinkType] = useState<DrinkType>(initialDrinkType);
+  // "Jak je podané?" — asked only outside a pub, beer only. Seeded with the
+  // session's last choice so the second lahváč is a single confirm.
+  const [servingType, setServingType] = useState<ServingType>(initialServingType ?? 'bottle');
 
   // Initialized once at mount from props (the body is remounted per open).
   const [name, setName] = useState(beer?.name ?? '');
@@ -176,7 +198,7 @@ function BeerFormBody({ mode, beer, initialDrinkType, onCancel, onSubmit, onScan
   );
 
   // Volume: either a preset pill (300/400/500) or a free-typed custom ml ("Jiné").
-  const initialPresets = volumePresets(initialDrinkType);
+  const initialPresets = volumePresets(initialDrinkType, outside);
   const seedVolume = beer?.volumeMl ?? (mode === 'add' ? defaultVolume(initialDrinkType) : undefined);
   const seedIsPreset = typeof seedVolume === 'number' && initialPresets.includes(seedVolume);
   const [selectedPreset, setSelectedPreset] = useState<number | undefined>(seedIsPreset ? seedVolume : undefined);
@@ -187,10 +209,12 @@ function BeerFormBody({ mode, beer, initialDrinkType, onCancel, onSubmit, onScan
 
   const trimmedName = name.trim();
   const priceCzk = parsePriceInputToCzk(priceText, priceCurrency);
-  const priceValid = priceCzk !== null;
+  // Outside a pub the price is optional: an empty field is fine (unknown stays
+  // unknown), a non-empty one must still parse.
+  const priceValid = outside ? priceText.trim() === '' || priceCzk !== null : priceCzk !== null;
   const nameValid = nameLocked || trimmedName.length > 0;
   const canSubmit = priceValid && nameValid;
-  const placeholder = pricePlaceholder(priceCurrency);
+  const placeholder = outside ? cs.counter.outsidePricePlaceholder : pricePlaceholder(priceCurrency);
 
   // Debounced beer-name suggestions: fetch once the name is 2+ chars and was
   // typed (not just picked). Falls back to a local brand list when offline.
@@ -249,9 +273,10 @@ function BeerFormBody({ mode, beer, initialDrinkType, onCancel, onSubmit, onScan
     const result: BeerFormResult = {
       drinkType,
       name: nameLocked ? (beer?.name ?? '') : trimmedName.slice(0, 80),
-      priceCzk: priceCzk as number,
     };
+    if (typeof priceCzk === 'number') result.priceCzk = priceCzk;
     if (typeof volumeMl === 'number') result.volumeMl = volumeMl;
+    if (outside && drinkType === 'beer') result.servingType = servingType;
     onSubmit(result);
   };
 
@@ -354,6 +379,37 @@ function BeerFormBody({ mode, beer, initialDrinkType, onCancel, onSubmit, onScan
             </Pressable>
           ) : null}
 
+          {outside && drinkType === 'beer' ? (
+            <>
+              <Text style={styles.volumeLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.counter.servingLabel}
+              </Text>
+              <View style={styles.volumeGroup}>
+                {OUTSIDE_SERVING_TYPES.map((value) => {
+                  const isSelected = servingType === value;
+                  return (
+                    <Pressable
+                      key={value}
+                      onPress={() => setServingType(value)}
+                      style={[styles.volumePill, isSelected && styles.volumePillSelected]}
+                      hitSlop={4}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: isSelected }}
+                      accessibilityLabel={cs.counter.servingTypeLabel(value)}
+                    >
+                      <Text
+                        style={[styles.volumePillText, isSelected && styles.volumePillTextSelected]}
+                        maxFontSizeMultiplier={FontScaleCap.body}
+                      >
+                        {cs.counter.servingTypeLabel(value)}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </>
+          ) : null}
+
           <View style={styles.priceRow}>
             <TextInput
               style={styles.priceInput}
@@ -375,7 +431,7 @@ function BeerFormBody({ mode, beer, initialDrinkType, onCancel, onSubmit, onScan
             {cs.counter.priceLabel}
           </Text>
           <View style={styles.volumeGroup}>
-            {volumePresets(drinkType).map((value) => {
+            {volumePresets(drinkType, outside).map((value) => {
               const isSelected = !customActive && selectedPreset === value;
               return (
                 <Pressable

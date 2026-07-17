@@ -2595,8 +2595,8 @@ class DrinkLog(models.Model):
     A single drink the user logged via the in-app counter.
 
     The mobile counter lets a user tally beers plus secondary soft drinks,
-    shots, and wine. Every item carries a name and price. Beer rows additionally
-    community-source the pub's beer menu + prices (merged into
+    shots, and wine. Drinks may be logged at a pub or in a non-pub context.
+    Beer rows logged at pubs additionally community-source the pub's menu + prices (merged into
     ``PubCommunityData.beers`` — see ``DrinksView``); other categories remain
     private and never enter the beer catalogue. This row is the per-user,
     append-only record of one drink.
@@ -2604,9 +2604,10 @@ class DrinkLog(models.Model):
     Keyed by (account, client_id): the client generates a UUID per logged drink
     and re-POSTs it verbatim on offline retries, so the unique constraint lets
     the endpoint get_or_create the same row instead of duplicating it (and skip
-    repeating the menu merge on replay). ``cache_key`` is the geohash-8 cell of
-    (lat, lng) — computed server-side, matching PubCommunityData / PubHours — so
-    the drink merges into the same per-pub community row.
+    repeating the menu merge on replay). For pub rows, ``cache_key`` is the
+    geohash-8 cell of (lat, lng) — computed server-side, matching
+    PubCommunityData / PubHours. Non-pub rows never store coordinates and keep
+    ``cache_key`` null.
     """
 
     account = models.ForeignKey(
@@ -2620,16 +2621,21 @@ class DrinkLog(models.Model):
     )
     cache_key = models.CharField(
         max_length=12,
+        null=True,
         db_index=True,
-        help_text="Geohash-8 of (lat, lng) — ~38 m precision; matches PubCommunityData.cache_key.",
+        help_text="Geohash-8 of pub (lat, lng), or null outside a pub.",
     )
     # TextField (not bounded CharField): free text from the client. SQLite (dev /
     # tests) silently truncates an over-length CharField while Postgres (prod)
     # raises DataError, so use unbounded TextField and let the serializer enforce
     # the length bound. Same rationale for city / external_id / beer_name below.
-    name = models.TextField(help_text="Pub name as the client saw it (1..200 chars, enforced by the serializer).")
-    lat = models.FloatField()
-    lng = models.FloatField()
+    name = models.TextField(
+        blank=True,
+        default="",
+        help_text="Pub name as the client saw it, or empty outside a pub.",
+    )
+    lat = models.FloatField(null=True)
+    lng = models.FloatField(null=True)
     city = models.TextField(blank=True, default="", help_text="Optional city hint from the client.")
     external_id = models.TextField(
         blank=True,
@@ -2642,6 +2648,34 @@ class DrinkLog(models.Model):
         SOFT_DRINK = "soft_drink", "Soft drink"
         SHOT = "shot", "Shot"
         WINE = "wine", "Wine"
+
+    class PlaceContext(models.TextChoices):
+        PUB = "pub", "Pub"
+        PRIVATE = "private", "Private"
+        OUTDOORS = "outdoors", "Outdoors"
+        OTHER = "other", "Other"
+
+    class ServingType(models.TextChoices):
+        UNKNOWN = "unknown", "Unknown"
+        DRAFT = "draft", "Draft"
+        BOTTLE = "bottle", "Bottle"
+        CAN = "can", "Can"
+        PLASTIC_BOTTLE = "plastic_bottle", "Plastic bottle"
+        OTHER = "other", "Other"
+
+    place_context = models.CharField(
+        max_length=16,
+        choices=PlaceContext.choices,
+        default=PlaceContext.PUB,
+        db_index=True,
+        help_text="Where the drink was consumed. Defaults to pub for released clients.",
+    )
+    serving_type = models.CharField(
+        max_length=16,
+        choices=ServingType.choices,
+        default=ServingType.UNKNOWN,
+        help_text="How the drink was served; unknown when the client did not provide it.",
+    )
 
     drink_type = models.CharField(
         max_length=16,
@@ -2698,7 +2732,8 @@ class DrinkLog(models.Model):
         help_text="Denormalized BeerProduct.name as it was at log time.",
     )
     price_czk = models.PositiveSmallIntegerField(
-        help_text="Price paid in CZK (1..1000) — mandatory; this is the community-sourcing hook.",
+        null=True,
+        help_text="Price paid in CZK (1..1000), or null when unknown outside a pub.",
     )
     volume_ml = models.PositiveSmallIntegerField(
         null=True,
@@ -2737,7 +2772,9 @@ class DrinkLog(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"DrinkLog({self.drink_type}: {self.beer_name} @ {self.name} [{self.cache_key}] — {self.price_czk} Kč)"
+        location = self.name or self.place_context
+        price = f"{self.price_czk} Kč" if self.price_czk is not None else "price unknown"
+        return f"DrinkLog({self.drink_type}: {self.beer_name} @ {location} [{self.cache_key}] — {price})"
 
 
 class PubRating(models.Model):

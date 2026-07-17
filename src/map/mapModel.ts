@@ -3,6 +3,7 @@ import type { FriendPubActivity } from '@/data/friendsClient';
 import type { Pub } from '@/data/pubs';
 import type { WireVisit } from '@/data/visitsClient';
 import type { TallySession } from '@/stores/tallyStore';
+import { isContextPubKey } from '@/drinks/drinkTypes';
 
 export interface VisitedPubSummary {
   cacheKey: string;
@@ -146,6 +147,9 @@ export function buildVisitedPubs(
   for (const visit of serverVisits) visitsByClientId.set(visit.client_id, visit);
 
   for (const session of localSessions) {
+    // Outside evenings ("ctx:*") are not pub visits — decoding their synthetic
+    // key would fabricate a map pin in the middle of nowhere.
+    if (isContextPubKey(session.pubKey)) continue;
     const coords = decodeGeohash8(session.pubKey);
     const match = catalog.get(session.pubKey);
     const endedAt = latestSessionDrinkAt(session);

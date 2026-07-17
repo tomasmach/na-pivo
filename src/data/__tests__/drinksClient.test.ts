@@ -96,6 +96,51 @@ describe('buildDrinkEntry', () => {
     expect(entry.drink_type).toBe('shot');
     expect(entry.beer).toEqual({ name: 'Slivovice', price_czk: 65, volume_ml: 40 });
   });
+
+  it('an outside drink carries place_context and NO pub fields, even when given some', () => {
+    const entry = buildDrinkEntry(
+      {
+        placeContext: 'private',
+        // Pub-ish data must never leak into an outside payload (privacy):
+        name: 'Obývák',
+        lat: 50.1,
+        lng: 14.4,
+        city: 'Praha',
+        externalId: 'mapy:whatever',
+        beer: { name: 'Kozel 11', volumeMl: 500, servingType: 'bottle' },
+        drankAt: '2026-07-17T20:00:00+02:00',
+      },
+      'out-1',
+    );
+    expect(entry).toEqual({
+      client_id: 'out-1',
+      place_context: 'private',
+      beer: { name: 'Kozel 11', volume_ml: 500, serving_type: 'bottle' },
+      drank_at: '2026-07-17T20:00:00+02:00',
+    });
+  });
+
+  it('outside drink keeps an optional price and drops serving_type unknown', () => {
+    const entry = buildDrinkEntry(
+      {
+        placeContext: 'outdoors',
+        beer: { name: 'Braník', priceCzk: 25, servingType: 'unknown' },
+      },
+      'out-2',
+    );
+    expect(entry.place_context).toBe('outdoors');
+    expect(entry.beer).toEqual({ name: 'Braník', price_czk: 25 });
+  });
+
+  it('a pub drink may carry serving_type too (lahváč in a pub is legal)', () => {
+    const entry = buildDrinkEntry(
+      { name: 'X', lat: 1, lng: 2, beer: { name: 'Kozel', priceCzk: 40, servingType: 'bottle' } },
+      'c',
+    );
+    expect(entry.place_context).toBeUndefined();
+    expect(entry.beer.serving_type).toBe('bottle');
+    expect(entry.name).toBe('X');
+  });
 });
 
 describe('submitDrink', () => {

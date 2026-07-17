@@ -79,6 +79,7 @@ import {
   GlassWater,
   Wine,
   ListFilter,
+  House,
   LucideProps,
 } from 'lucide-react-native';
 
@@ -144,6 +145,7 @@ export const CameraIcon = wrap(Camera, 'CameraIcon');
 export const ImagesIcon = wrap(Images, 'ImagesIcon');
 export const SparklesIcon = wrap(Sparkles, 'SparklesIcon');
 export const TreePineIcon = wrap(TreePine, 'TreePineIcon');
+export const HouseIcon = wrap(House, 'HouseIcon');
 export const SearchIcon = wrap(Search, 'SearchIcon');
 export const ListFilterIcon = wrap(ListFilter, 'ListFilterIcon');
 // "Zmapuj hospodu" amenity + Mapér glyphs.

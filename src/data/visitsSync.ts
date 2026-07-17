@@ -22,6 +22,7 @@ import { decodeGeohash8 } from './geohash';
 import { enqueueVisitOp, flushVisitsQueue } from './visitsQueue';
 import type { VisitEntry } from './visitsClient';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
+import { isContextPubKey } from '@/drinks/drinkTypes';
 
 /** AsyncStorage flag guarding the one-time history seed. */
 const SEEDED_KEY = 'na-pivo-visits-seeded';
@@ -42,9 +43,13 @@ function lastDrinkAt(session: TallySession): string | null {
 }
 
 /** Build the wire VisitEntry for a session, or null when it has no clientId
- *  (defensive — every session minted/migrated under v1 has one). */
+ *  (defensive — every session minted/migrated under v1 has one) or when it is
+ *  an outside evening — a `ctx:*` session is not a pub visit: decoding its key
+ *  would fabricate coordinates, and drinking at home must never become a
+ *  PubVisit (pub stats, párty rituals) server-side. */
 export function buildVisitEntry(session: TallySession, updatedAt?: string): VisitEntry | null {
   if (!session.clientId) return null;
+  if (isContextPubKey(session.pubKey)) return null;
   const { lat, lng } = decodeGeohash8(session.pubKey);
   const endedAt = lastDrinkAt(session);
   const entry: VisitEntry = {

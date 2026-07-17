@@ -28,7 +28,8 @@ import { updateQueuedDrinkBeerName, removeQueuedDrink, flushDrinksQueue } from '
 import { enqueueDelete } from '@/data/deleteDrinksQueue';
 import { enqueueDrinkUpdate, removeQueuedDrinkUpdate } from '@/data/updateDrinksQueue';
 import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
-import { ChevronLeftIcon, MapPinIcon, PencilIcon, Trash2Icon, XIcon } from '@/components/shared/IconGlyph';
+import { ChevronLeftIcon, HouseIcon, MapPinIcon, PencilIcon, TreePineIcon, Trash2Icon, XIcon } from '@/components/shared/IconGlyph';
+import { contextFromPubKey, isContextPubKey } from '@/drinks/drinkTypes';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
@@ -168,10 +169,15 @@ export default function EveningDetailScreen() {
           keyboardDismissMode="interactive"
           automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
         >
-          {/* Pub + summary */}
+          {/* Place + summary (an outside evening shows its context icon) */}
           <View style={styles.card}>
             <View style={styles.pubRow}>
-              <MapPinIcon size={18} color={Colors.amber} />
+              {(() => {
+                const context = contextFromPubKey(session.pubKey);
+                const Icon =
+                  context === 'private' ? HouseIcon : context === 'outdoors' ? TreePineIcon : MapPinIcon;
+                return <Icon size={18} color={Colors.amber} />;
+              })()}
               <Text style={styles.pubName} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.heading}>
                 {session.pubName}
               </Text>
@@ -208,7 +214,16 @@ export default function EveningDetailScreen() {
                     {drink.drinkType && drink.drinkType !== 'beer' ? ` · ${cs.counter.drinkTypeLabel(drink.drinkType)}` : ''}
                   </Text>
                   <Text style={styles.drinkMeta} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {formatPrice(drink.priceCzk, priceCurrency)}
+                    {[
+                      drink.servingType && drink.servingType !== 'unknown'
+                        ? cs.counter.servingTypeLabel(drink.servingType)
+                        : null,
+                      typeof drink.priceCzk === 'number'
+                        ? formatPrice(drink.priceCzk, priceCurrency)
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ') || '—'}
                   </Text>
                 </View>
                 <View style={styles.drinkActions}>
@@ -235,16 +250,22 @@ export default function EveningDetailScreen() {
             ))}
           </View>
 
-          {/* Rating */}
-          <View style={styles.card}>
-            <PubRatingControl pubKey={session.pubKey} pubName={session.pubName} />
-          </View>
+          {/* Rating + public mapping are pub concepts — an outside evening
+              ("Doma / na chatě") has nothing to rate or map. */}
+          {!isContextPubKey(session.pubKey) ? (
+            <>
+              {/* Rating */}
+              <View style={styles.card}>
+                <PubRatingControl pubKey={session.pubKey} pubName={session.pubName} />
+              </View>
 
-          {/* Public community mapping — separate card so the public/private split
-              is visually obvious next to the private rating above. */}
-          <View style={styles.card}>
-            <MapPubEntry pubKey={session.pubKey} pubName={session.pubName} />
-          </View>
+              {/* Public community mapping — separate card so the public/private
+                  split is visually obvious next to the private rating above. */}
+              <View style={styles.card}>
+                <MapPubEntry pubKey={session.pubKey} pubName={session.pubName} />
+              </View>
+            </>
+          ) : null}
 
           <View style={{ height: Spacing.lg }} />
         </KeyboardAwareScrollView>

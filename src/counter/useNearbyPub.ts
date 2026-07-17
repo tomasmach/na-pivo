@@ -25,6 +25,7 @@ import { fetchPubsNear, findNearbyPubs, type Pub } from '@/data/pubs';
 import { decodeGeohash8, geohash8 } from '@/data/geohash';
 import { recordWalkingSample } from '@/data/walkingTelemetry';
 import { useTallyStore } from '@/stores/tallyStore';
+import { isContextPubKey } from '@/drinks/drinkTypes';
 
 /** Auto-detect the pub when the nearest is within this many metres. GPS indoors
  *  is often coarse, so the threshold is generous (a small pub block). */
@@ -74,8 +75,13 @@ export function useNearbyPub(): UseNearbyPubResult {
   const [selected, setSelected] = useState<Pub | null>(null);
   const [hasFix, setHasFix] = useState(false);
   const [retryNonce, setRetryNonce] = useState(0);
+  // Outside ("ctx:*") sessions are not pubs: their key is no geohash, so the
+  // stand-in/pinning logic below must never see them — CounterScreen owns the
+  // outside mode entirely.
   const activeSessionPubKey = useTallyStore((state) =>
-    state.current && state.current.drinks.length > 0 ? state.current.pubKey : null,
+    state.current && state.current.drinks.length > 0 && !isContextPubKey(state.current.pubKey)
+      ? state.current.pubKey
+      : null,
   );
   const forceNextFetchRef = useRef(false);
 

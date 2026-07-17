@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plán: Pití mimo hospodu (lahváč / plechovka / PET)</title>
+<style>
+  :root {
+    --bg: #14100c;
+    --panel: #1d1712;
+    --panel2: #241c15;
+    --border: #35291d;
+    --text: #e8ddce;
+    --muted: #a08d75;
+    --amber: #f2a93b;
+    --amber-dim: #b97f2a;
+    --green: #7fbf6a;
+    --red: #d97a6c;
+    --blue: #7aa8d9;
+    --code-bg: #100d09;
+    --ins-bg: #1d2a17;
+    --ins-fg: #a8d68f;
+    --del-bg: #2e1a16;
+    --del-fg: #e0a196;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 880px; margin: 0 auto; padding: 24px 20px 96px; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 8px 0 4px; }
+  h2 { font-size: 1.25rem; margin: 44px 0 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  h3 { font-size: 1.02rem; margin: 22px 0 8px; color: var(--amber); }
+  p, li { max-width: 72ch; }
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-size: .86em; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; overflow-x: auto; font-size: .84rem; line-height: 1.5; }
+  pre code { background: none; border: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+  th, td { border: 1px solid var(--border); padding: 7px 10px; text-align: left; vertical-align: top; }
+  th { background: var(--panel2); }
+  .tablewrap { overflow-x: auto; margin: 12px 0; }
+  .muted { color: var(--muted); }
+  .badge { display: inline-block; font-size: .72rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+           border-radius: 20px; padding: 3px 11px; vertical-align: middle; }
+  .badge.status { background: #3a2c14; color: var(--amber); border: 1px solid var(--amber-dim); }
+  .badge.rec { background: #223317; color: var(--green); border: 1px solid #3e5c2f; }
+  .pill { display:inline-block; font-size:.74rem; border:1px solid var(--border); border-radius:20px; padding:1px 9px; color:var(--muted); margin-left:6px; }
+
+  /* ── top bar: progress + detail toggle ── */
+  .topbar {
+    position: sticky; top: 0; z-index: 50; background: rgba(20,16,12,.96);
+    border-bottom: 1px solid var(--border); backdrop-filter: blur(4px);
+  }
+  .topbar-inner { max-width: 880px; margin: 0 auto; padding: 8px 20px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .progress-wrap { flex: 1 1 200px; display: flex; align-items: center; gap: 10px; min-width: 180px; }
+  .progress-track { flex: 1; height: 8px; background: var(--panel2); border-radius: 6px; overflow: hidden; border: 1px solid var(--border); }
+  .progress-fill { height: 100%; width: 0%; background: var(--amber); border-radius: 6px; transition: width .2s; }
+  .progress-label { font-size: .78rem; color: var(--muted); white-space: nowrap; }
+  .toggle-detail { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .toggle-detail button { background: var(--panel); color: var(--muted); border: 0; padding: 5px 12px; font-size: .8rem; cursor: pointer; }
+  .toggle-detail button.active { background: var(--amber); color: #14100c; font-weight: 700; }
+  nav.toc { display: flex; gap: 4px; flex-wrap: wrap; }
+  nav.toc a { font-size: .8rem; color: var(--muted); padding: 4px 9px; border-radius: 6px; }
+  nav.toc a.current { color: var(--amber); background: var(--panel2); }
+  nav.toc a:hover { text-decoration: none; color: var(--text); }
+
+  /* overview mode hides .detail */
+  body.overview .detail { display: none; }
+
+  .tldr { background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--amber); border-radius: 8px; padding: 14px 18px; margin: 18px 0; }
+  .callout { background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--red); border-radius: 8px; padding: 12px 16px; margin: 14px 0; }
+  .callout.good { border-left-color: var(--green); }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 14px 0; }
+  @media (max-width: 640px) { .cols { grid-template-columns: 1fr; } }
+  .col-card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; }
+  .col-card h4 { margin: 2px 0 8px; font-size: .95rem; }
+  .col-card ul { margin: 0; padding-left: 20px; }
+  .yes h4 { color: var(--green); } .no h4 { color: var(--red); }
+
+  /* ── tabs ── */
+  .tabs { margin: 16px 0; }
+  .tabbar { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tabbar button {
+    background: var(--panel); color: var(--muted); border: 1px solid var(--border);
+    border-radius: 8px 8px 0 0; border-bottom: none; padding: 8px 16px; font-size: .88rem; cursor: pointer;
+  }
+  .tabbar button.active { background: var(--panel2); color: var(--amber); font-weight: 700; }
+  .tabpanel { display: none; background: var(--panel2); border: 1px solid var(--border); border-radius: 0 8px 8px 8px; padding: 14px 18px; }
+  .tabpanel.active { display: block; }
+
+  /* ── steps checklist ── */
+  .phase-title { font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 26px 0 8px; }
+  .step { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; margin: 8px 0; padding: 10px 14px; }
+  .step.done { opacity: .55; }
+  .step-head { display: flex; gap: 10px; align-items: baseline; cursor: pointer; }
+  .step-head input { transform: translateY(2px) scale(1.15); accent-color: var(--amber); cursor: pointer; }
+  .step-head b { font-size: .95rem; }
+  .step .files { font-size: .8rem; margin-top: 4px; }
+  .step .files a { margin-right: 10px; white-space: nowrap; }
+  .step .why { margin: 6px 0 2px; font-size: .88rem; color: var(--muted); }
+  .step .detail { margin-top: 8px; }
+
+  /* ── mockup phone ── */
+  .mockwrap { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; margin: 16px 0; }
+  .phone {
+    width: 320px; background: #0e0a07; border: 2px solid #3a2e21; border-radius: 28px;
+    padding: 14px 12px 18px; flex-shrink: 0;
+  }
+  .mock-switch { display: flex; flex-direction: column; gap: 6px; min-width: 190px; flex: 1; }
+  .mock-switch button {
+    text-align: left; background: var(--panel); border: 1px solid var(--border); color: var(--muted);
+    border-radius: 8px; padding: 8px 12px; font-size: .85rem; cursor: pointer;
+  }
+  .mock-switch button.active { border-color: var(--amber-dim); color: var(--amber); background: var(--panel2); }
+  .mock-note { font-size: .8rem; color: var(--muted); max-width: 34ch; }
+  .mscreen { display: none; }
+  .mscreen.active { display: block; }
+  /* app-ish styles */
+  .m-sheet-title { color: #efe4d2; font-weight: 800; font-size: 1.05rem; margin: 4px 4px 10px; }
+  .m-sec { font-size: .68rem; letter-spacing: .1em; text-transform: uppercase; color: #937f64; margin: 12px 6px 5px; }
+  .m-row { display: flex; align-items: center; gap: 10px; background: #1c1510; border: 1px solid #302518;
+           border-radius: 12px; padding: 10px 12px; margin: 5px 0; color: #e8ddce; font-size: .9rem; }
+  .m-row .ico { width: 22px; text-align: center; }
+  .m-row small { color: #937f64; margin-left: auto; font-size: .74rem; }
+  .m-row.sel { border-color: #f2a93b; box-shadow: 0 0 10px rgba(242,169,59,.15); }
+  .m-header { display: flex; align-items: center; gap: 8px; margin: 2px 4px 10px; }
+  .m-header .place { color: #efe4d2; font-weight: 700; font-size: .95rem; }
+  .m-chip { margin-left: auto; font-size: .72rem; color: #f2a93b; border: 1px solid #6b5124; border-radius: 14px; padding: 2px 9px; }
+  .m-hero { text-align: center; padding: 18px 0 8px; }
+  .m-hero .num { font-size: 4.4rem; font-weight: 800; color: #f2a93b; line-height: 1; text-shadow: 0 0 24px rgba(242,169,59,.35); }
+  .m-hero .noun { color: #efe4d2; font-weight: 700; margin-top: 2px; }
+  .m-hero .sub { color: #937f64; font-size: .8rem; margin-top: 6px; }
+  .m-bigbtn { display: flex; align-items: center; justify-content: center; gap: 8px; background: #f2a93b; color: #14100c;
+              font-weight: 800; border-radius: 14px; padding: 13px; margin: 14px 4px 6px; font-size: .95rem; }
+  .m-linkrow { text-align: center; color: #937f64; font-size: .8rem; padding: 6px; }
+  .m-field-label { font-size: .74rem; color: #937f64; margin: 12px 6px 5px; text-transform: uppercase; letter-spacing: .06em; }
+  .m-input { background: #14100c; border: 1px solid #302518; border-radius: 10px; padding: 10px 12px; color: #e8ddce; font-size: .9rem; margin: 0 2px; }
+  .m-input.ghost { color: #6d5c47; }
+  .m-chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 2px; }
+  .m-chips span { border: 1px solid #302518; background: #1c1510; color: #cbbca6; border-radius: 16px; padding: 5px 12px; font-size: .8rem; }
+  .m-chips span.on { background: #3a2c14; border-color: #f2a93b; color: #f2a93b; font-weight: 700; }
+
+  /* diagram */
+  .diagram-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin: 14px 0; }
+  svg text { font-family: inherit; }
+  .dg-node { cursor: pointer; }
+  .dg-node:hover rect { stroke: var(--amber); }
+
+  /* questions form */
+  .qcard { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin: 10px 0; }
+  .qcard p.q { font-weight: 700; margin: 2px 0 8px; }
+  .qcard label { display: block; padding: 4px 0 4px 2px; font-size: .92rem; cursor: pointer; }
+  .qcard input { accent-color: var(--amber); margin-right: 8px; }
+  .qcard .recmark { color: var(--green); font-size: .78rem; margin-left: 6px; }
+  .copy-answers { background: var(--amber); color: #14100c; font-weight: 800; border: 0; border-radius: 10px;
+                  padding: 11px 22px; font-size: .95rem; cursor: pointer; margin-top: 10px; }
+  .copy-answers:active { transform: translateY(1px); }
+  .copied-note { color: var(--green); font-size: .85rem; margin-left: 12px; display: none; }
+
+  del { background: var(--del-bg); color: var(--del-fg); text-decoration: none; display: block; padding: 0 6px; }
+  ins { background: var(--ins-bg); color: var(--ins-fg); text-decoration: none; display: block; padding: 0 6px; }
+  details { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; margin: 10px 0; }
+  summary { cursor: pointer; color: var(--amber); font-size: .92rem; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="progress-wrap">
+      <div class="progress-track"><div class="progress-fill" id="pfill"></div></div>
+      <span class="progress-label" id="plabel">0/14 kroků</span>
+    </div>
+    <div class="toggle-detail" role="group" aria-label="Úroveň detailu">
+      <button id="btn-overview">Přehled</button>
+      <button id="btn-detail" class="active">Plný detail</button>
+    </div>
+    <nav class="toc" id="toc">
+      <a href="#tldr">TL;DR</a>
+      <a href="#goals">Cíle</a>
+      <a href="#model">Model</a>
+      <a href="#variants">Varianty</a>
+      <a href="#ux">UX</a>
+      <a href="#flow">Tok dat</a>
+      <a href="#xp">XP</a>
+      <a href="#steps">Kroky</a>
+      <a href="#risks">Rizika</a>
+      <a href="#questions">Otázky</a>
+    </nav>
+  </div>
+</div>
+
+<main>
+  <p><span class="badge status">core hotové (fáze 1–4) · zbývá Pivař XP (fáze 5)</span> <span class="muted">17. 7. 2026 · konzultováno s Codexem (gpt-5.6-sol, read-only analýza repa)</span></p>
+  <h1>Pití mimo hospodu — lahváč, plechovka, PETka</h1>
+
+  <section id="tldr">
+    <div class="tldr">
+      <p><b>TL;DR:</b> Přidáme možnost zapsat pivo mimo hospodu přes dvě nové, nezávislé osy:
+      <b><code>place_context</code></b> (kde večer probíhá — hospoda / doma / venku / jinde, per session) a
+      <b><code>serving_type</code></b> (jak je pivo podané — točené / lahváč / plechovka / PET, per pivo).
+      Vstupní bod je <b>stávající picker „Kde sedíš?"</b> + záchytné body na permission a no-pub obrazovkách —
+      <b>žádné nové tlačítko na hlavní obrazovce počítadla</b>. Mimo hospodu se počítadlo zjednoduší
+      (zmizí menu, mapa, scan, sdílení „jsem tady"), zůstane velké číslo a rychlé zapisování.
+      Mimo-hospodské pivo se počítá jako pivo (deník, statistiky, žebříček piv, Wrapped), ale <b>nikdy</b> jako
+      návštěva či objev hospody. Navazuje <b>Pivař XP</b> (fáze 5): levely a odznaky za zapisování postavené
+      na hotovém Mapér systému — XP za dokumentování a objevování, ne za objem.</p>
+    </div>
+    <div class="callout">
+      <b>Vedlejší nález (chceme opravit):</b> počítadlo dnes spadne na nejbližší kandidátní hospodu
+      i mimo 120m auto-pick rádius (<code>selected ?? candidates[0]?.pub</code> v
+      <a href="vscode://file/Users/tomasmach/Code/na-pivo/src/counter/CounterScreen.tsx:1377" title="activePub fallback">CounterScreen.tsx:1377</a>).
+      Kdo dnes zapisuje doma ve městě, přiřazuje piva hospodě až 3 km daleko — špiní to komunitní menu i statistiky hospod.
+      Tahle feature je zároveň fix tohoto problému.
+    </div>
+  </section>
+
+  <section id="goals">
+    <h2>Cíle / Ne-cíle</h2>
+    <div class="cols">
+      <div class="col-card yes">
+        <h4>Cíle</h4>
+        <ul>
+          <li>Zapsat pivo doma / na chatě / venku bez hospody, i bez polohy.</li>
+          <li>Zachytit „jak je podané" (lahváč/plechovka/PET/točené) jako zábavný signál pro statistiky a Wrapped.</li>
+          <li>Nezaplevelit hlavní obrazovku počítadla — vstup přes existující picker.</li>
+          <li>Aditivní API, starší mobilní verze fungují beze změny.</li>
+          <li>Neukládat souřadnice domova; žádná syntetická „hospoda Doma".</li>
+        </ul>
+      </div>
+      <div class="col-card no">
+        <h4>Ne-cíle</h4>
+        <ul>
+          <li>Žádný katalog obchodních piv ani skenování etiket (samostatný nápad).</li>
+          <li>Mimo-hospodské pivo se nepočítá do návštěv, top hospod, pub žebříčku, štamgast/poutník odznaků ani párty rituálů.</li>
+          <li>Serving type se zatím nevystavuje v hospodském flow (výchozí „točené" se neptáme).</li>
+          <li>Žádné place_context u fotek v první verzi (fotka jen defaultně „Bez hospody").</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="model">
+    <h2>Datový model — dvě osy, ne jedna</h2>
+    <p>Klíčové rozhodnutí z diskuse s Codexem: <b>místo</b> a <b>podání</b> jsou nezávislé otázky.
+    Lahváč si dáš i v hospodě, točené z bečky i na chatě. Sloučený enum
+    (<code>home_bottle</code>, <code>pub_draft</code>…) by byl křehký a kombinatoricky ošklivý.</p>
+    <div class="tablewrap"><table>
+      <tr><th>Osa</th><th>Otázka</th><th>Hodnoty</th><th>Kde žije</th></tr>
+      <tr><td><code>place_context</code></td><td>Kde večer probíhá?</td><td><code>pub</code> · <code>private</code> (doma/chata) · <code>outdoors</code> · <code>other</code></td><td>Session (jednou) + každý řádek na serveru</td></tr>
+      <tr><td><code>serving_type</code></td><td>Jak je tohle pivo podané?</td><td><code>unknown</code> · <code>draft</code> · <code>bottle</code> · <code>can</code> · <code>plastic_bottle</code> · <code>other</code></td><td>Jednotlivé pivo</td></tr>
+    </table></div>
+    <div class="detail">
+    <h3>Aditivní API (POST /v1/drinks)</h3>
+    <pre><code> {
+   "client_id": "…",
+<del>  "name": "U Tygra",        // dnes povinné</del>
+<del>  "lat": 50.08, "lng": 14.42, // dnes povinné</del>
+<ins>  "name": "U Tygra",        // povinné jen pro place_context=pub</ins>
+<ins>  "lat": 50.08, "lng": 14.42, // povinné jen pro pub; jinak se NEPOSÍLÁ</ins>
+<ins>  "place_context": "private",   // chybí ⇒ "pub" (staré klienty)</ins>
+   "beer": {
+     "name": "Kozel 11",
+<del>    "price_czk": 45           // dnes povinné</del>
+<ins>    "price_czk": 45,          // mimo pub volitelné (doma cenu neznáš)</ins>
+<ins>    "serving_type": "bottle"  // chybí ⇒ "unknown"</ins>
+   },
+   "drank_at": "…"
+ }</code></pre>
+    <ul>
+      <li>Chybějící <code>place_context</code> = <code>pub</code> → staré appky beze změny, stávající validace platí.</li>
+      <li>Pro ne-pub kontext jsou pub pole <b>zakázaná</b> (žádné souřadnice domova na server), <code>cache_key</code> je null.</li>
+      <li>Anti-abuse (burst / 15 suspect / 20 hard cap z migrace 0075) počítá všechny kontexty dohromady — místo není bypass.</li>
+      <li>Lokálně: <code>TallySession.placeContext</code> + syntetický <code>pubKey</code> (<code>ctx:private</code>…), aby session rollover (změna místa / 04:00 hranice dne) fungoval beze změny logiky.</li>
+    </ul>
+    </div>
+  </section>
+
+  <section id="variants">
+    <h2>Zvažované varianty</h2>
+    <div class="tablewrap"><table>
+      <tr><th></th><th>A — jen „mimo hospodu"</th><th>B — místo + podání <span class="badge rec">doporučeno</span></th><th>C — přes BeerCheckIn</th></tr>
+      <tr><td>Řeší lahváč/plechovku</td><td style="color:var(--red)">ne</td><td style="color:var(--green)">ano</td><td style="color:var(--red)">ne</td></tr>
+      <tr><td>Počítá se do statistik/žebříčků piv</td><td style="color:var(--green)">ano</td><td style="color:var(--green)">ano</td><td style="color:var(--red)">ne (jiná datová cesta)</td></tr>
+      <tr><td>Migrace DB</td><td>1 malá</td><td>1 střední</td><td>žádná</td></tr>
+      <tr><td>Odhad</td><td>5–8 dní</td><td>8–12 dní</td><td>3–5 dní (MVP) / 10–15 (parita)</td></tr>
+      <tr><td>Riziko fragmentace</td><td>nízké</td><td>nízké</td><td style="color:var(--red)">vysoké</td></tr>
+    </table></div>
+
+    <div class="tabs">
+      <div class="tabbar" role="tablist">
+        <button data-tab="ta">A — jen pub/elsewhere</button>
+        <button data-tab="tb" class="active">B — místo + podání ★</button>
+        <button data-tab="tc">C — BeerCheckIn</button>
+      </div>
+      <div class="tabpanel" id="ta">
+        <p>Jediný nový flag <code>place_context = pub | elsewhere</code>. Pub pole nullable, cena zůstává povinná, podání se nezaznamenává.</p>
+        <p class="muted">Levnější (5–8 dní), ale ztrácí přesně ten signál, o který uživatelé žádají („zapsat lahváč"). Dodatečné přidání serving_type = druhá migrace a druhé kolo UI. Ušetří ~3 dny teď, stojí víc později.</p>
+      </div>
+      <div class="tabpanel active" id="tb">
+        <p><b>Doporučená varianta.</b> Dvě nezávislé osy popsané výše. Místo se vybírá jednou za večer v pickeru, podání je jeden malý řádek chipů ve formuláři piva — a to <b>jen mimo hospodu</b> (v hospodě se nic nepřidává, výchozí <code>unknown</code>).</p>
+        <ul>
+          <li>Jádro UX zůstává: <i>„vyber jednou kde jsi, pak rychle ťukej piva".</i></li>
+          <li>Mimo hospodu je obrazovka <b>jednodušší</b>, ne složitější — pub-only prvky zmizí.</li>
+          <li><code>private</code> záměrně kryje domov, chatu i návštěvu — bez adresy, bez GPS.</li>
+          <li>Data krmí budoucí Pivní Wrapped („letos 68 % točené, 24 % lahváč…").</li>
+        </ul>
+      </div>
+      <div class="tabpanel" id="tc">
+        <p>Model <code>BeerCheckIn</code> už má pub volitelný — šlo by mimo-hospodské pití vést jako check-iny.</p>
+        <p class="muted">Ale check-iny nejdou do tally, statistik, žebříčků ani anti-abuse capu, mají vlastní deníkovou cestu a hrozí duplicity (pivo z počítadla + check-in). Vznikla by druhá kolej „piv, co se nepočítají". Codex i já to zamítáme.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="ux">
+    <h2>UX — vstupní body a zjednodušené počítadlo</h2>
+    <p>Tři vstupní body, všechny v místech, která už existují (žádné nové tlačítko v hlavním flow):</p>
+    <ol>
+      <li><b>Picker „Kde sedíš?"</b> dostane sekci <b>Mimo hospodu</b> (Doma/na chatě · Venku · Jinde). Chip „Změnit" v hlavičce se bude ukazovat <b>vždy</b> (dnes jen při ≥2 kandidátech).</li>
+      <li><b>NoPubScreen</b> („žádná hospoda poblíž"): primární užitečná cesta „Piju mimo hospodu".</li>
+      <li><b>PermissionScreen</b>: sekundární „Zapsat bez polohy" — konec tvrdé závislosti počítadla na GPS.</li>
+    </ol>
+    <div class="mockwrap">
+      <div class="phone">
+        <div class="mscreen active" id="ms1">
+          <div class="m-sheet-title">Kde sedíš?</div>
+          <div class="m-sec">Blízké hospody</div>
+          <div class="m-row sel"><span class="ico">🍺</span> U Zlatého tygra <small>40 m</small></div>
+          <div class="m-row"><span class="ico">🍺</span> Lokál Dlouhááá <small>210 m</small></div>
+          <div class="m-sec">Mimo hospodu</div>
+          <div class="m-row"><span class="ico">🏠</span> Doma / na chatě</div>
+          <div class="m-row"><span class="ico">🌳</span> Venku</div>
+          <div class="m-row"><span class="ico">📍</span> Jinde</div>
+        </div>
+        <div class="mscreen" id="ms2">
+          <div class="m-header"><span>🏠</span><span class="place">Doma / na chatě</span><span class="m-chip">Změnit</span></div>
+          <div class="m-hero">
+            <div class="num">3</div>
+            <div class="noun">piva</div>
+            <div class="sub">poslední před 24 min</div>
+          </div>
+          <div class="m-bigbtn">＋ Zapsat pivo</div>
+          <div class="m-linkrow">Zapsat zpětně · Jiné pití · 📷 Cvaknout pivo</div>
+        </div>
+        <div class="mscreen" id="ms3">
+          <div class="m-sheet-title">Zapsat pivo</div>
+          <div class="m-field-label">Co piješ?</div>
+          <div class="m-input">Kozel 11</div>
+          <div class="m-field-label">Jak je podané?</div>
+          <div class="m-chips"><span class="on">Lahváč</span><span>Plechovka</span><span>PETka</span><span>Točené</span></div>
+          <div class="m-field-label">Objem</div>
+          <div class="m-chips"><span class="on">0,5 l</span><span>0,33 l</span><span>Jiný</span></div>
+          <div class="m-field-label">Cena (nepovinné)</div>
+          <div class="m-input ghost">Kolik stál? Klidně nech prázdné</div>
+          <div class="m-bigbtn">Zapsat</div>
+        </div>
+      </div>
+      <div class="mock-switch">
+        <button data-ms="ms1" class="active">1 · Picker „Kde sedíš?" se sekcí Mimo hospodu</button>
+        <button data-ms="ms2">2 · Zjednodušené počítadlo (kontext Doma)</button>
+        <button data-ms="ms3">3 · Formulář piva s řádkem „Jak je podané?"</button>
+        <p class="mock-note">Mimo hospodu zmizí: mapa hospody, „Co tu mají", scan lístku, hodnocení, „Jsem tady" broadcast a pub check-in. Zůstává: velké číslo, zapisování, undo, zpětný zápis, vodní nudge, foto (default „Bez hospody"). Chips „Jak je podané?" si pamatují poslední volbu v rámci session — druhý lahváč je zase jeden tap.</p>
+      </div>
+    </div>
+    <div class="detail">
+      <h3>Návrh copy (finální texty ukážu ke schválení před commitem)</h3>
+      <p class="muted"><code>Mimo hospodu</code> · <code>Doma / na chatě</code> · <code>Venku</code> · <code>Jinde</code> · <code>Piju mimo hospodu</code> · <code>Zapsat bez polohy</code> · <code>Jak je podané?</code> · <code>Točené</code> · <code>Lahváč</code> · <code>Plechovka</code> · <code>PETka</code> · deník: <code>🏠 Doma / na chatě</code> místo jména hospody.</p>
+    </div>
+  </section>
+
+  <section id="flow">
+    <h2>Kam mimo-hospodské pivo teče — a kam ne</h2>
+    <p class="muted">Klikni na uzel → skočíš na příslušný krok. Invariant celé feature: <b>pití mimo hospodu se počítá jako pití, nikdy jako objevení nebo návštěva hospody.</b></p>
+    <div class="diagram-wrap">
+      <svg viewBox="0 0 820 320" width="820" height="320" role="img" aria-label="Tok dat mimo-hospodského piva">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="#a08d75"/>
+          </marker>
+        </defs>
+        <!-- source -->
+        <g class="dg-node" data-target="step-m1">
+          <rect x="20" y="130" width="150" height="56" rx="10" fill="#241c15" stroke="#f2a93b"/>
+          <text x="95" y="153" text-anchor="middle" fill="#f2a93b" font-size="13" font-weight="700">Pivo mimo hospodu</text>
+          <text x="95" y="171" text-anchor="middle" fill="#a08d75" font-size="11">place_context ≠ pub</text>
+        </g>
+        <!-- middle -->
+        <g class="dg-node" data-target="step-m2">
+          <rect x="230" y="130" width="130" height="56" rx="10" fill="#241c15" stroke="#35291d"/>
+          <text x="295" y="153" text-anchor="middle" fill="#e8ddce" font-size="12">fronta → POST</text>
+          <text x="295" y="170" text-anchor="middle" fill="#a08d75" font-size="11">/v1/drinks (0076)</text>
+        </g>
+        <line x1="170" y1="158" x2="228" y2="158" stroke="#a08d75" stroke-width="1.5" marker-end="url(#arr)"/>
+        <!-- includes -->
+        <text x="560" y="38" text-anchor="middle" fill="#7fbf6a" font-size="12" font-weight="700">POČÍTÁ SE ✓</text>
+        <g class="dg-node" data-target="step-b2"><rect x="430" y="50" width="120" height="34" rx="8" fill="#1d2a17" stroke="#3e5c2f"/><text x="490" y="71" text-anchor="middle" fill="#a8d68f" font-size="11.5">Počet piv / deník</text></g>
+        <g class="dg-node" data-target="step-b2"><rect x="560" y="50" width="120" height="34" rx="8" fill="#1d2a17" stroke="#3e5c2f"/><text x="620" y="71" text-anchor="middle" fill="#a8d68f" font-size="11.5">Žebříček piv</text></g>
+        <g class="dg-node" data-target="step-b2"><rect x="690" y="50" width="110" height="34" rx="8" fill="#1d2a17" stroke="#3e5c2f"/><text x="745" y="71" text-anchor="middle" fill="#a8d68f" font-size="11.5">Wrapped / styly</text></g>
+        <g class="dg-node" data-target="step-b1"><rect x="430" y="92" width="120" height="34" rx="8" fill="#1d2a17" stroke="#3e5c2f"/><text x="490" y="113" text-anchor="middle" fill="#a8d68f" font-size="11.5">Anti-abuse cap</text></g>
+        <g class="dg-node" data-target="step-b2"><rect x="560" y="92" width="120" height="34" rx="8" fill="#1d2a17" stroke="#3e5c2f"/><text x="620" y="113" text-anchor="middle" fill="#a8d68f" font-size="11.5">Útrata (je-li cena)</text></g>
+        <line x1="360" y1="145" x2="425" y2="90" stroke="#3e5c2f" stroke-width="1.5" marker-end="url(#arr)"/>
+        <!-- excludes -->
+        <text x="560" y="205" text-anchor="middle" fill="#d97a6c" font-size="12" font-weight="700">NIKDY ✗</text>
+        <g class="dg-node" data-target="step-m2"><rect x="430" y="215" width="115" height="34" rx="8" fill="#2e1a16" stroke="#6b3a31"/><text x="487" y="236" text-anchor="middle" fill="#e0a196" font-size="11.5">PubVisit</text></g>
+        <g class="dg-node" data-target="step-b2"><rect x="553" y="215" width="122" height="34" rx="8" fill="#2e1a16" stroke="#6b3a31"/><text x="614" y="236" text-anchor="middle" fill="#e0a196" font-size="11.5">Top / počet hospod</text></g>
+        <g class="dg-node" data-target="step-b1"><rect x="683" y="215" width="120" height="34" rx="8" fill="#2e1a16" stroke="#6b3a31"/><text x="743" y="236" text-anchor="middle" fill="#e0a196" font-size="11.5">Komunitní menu</text></g>
+        <g class="dg-node" data-target="step-b2"><rect x="430" y="257" width="115" height="34" rx="8" fill="#2e1a16" stroke="#6b3a31"/><text x="487" y="278" text-anchor="middle" fill="#e0a196" font-size="11.5">Pub žebříček</text></g>
+        <g class="dg-node" data-target="step-b2"><rect x="553" y="257" width="122" height="34" rx="8" fill="#2e1a16" stroke="#6b3a31"/><text x="614" y="278" text-anchor="middle" fill="#e0a196" font-size="11.5">Odznaky hospod</text></g>
+        <g class="dg-node" data-target="step-m3"><rect x="683" y="257" width="120" height="34" rx="8" fill="#2e1a16" stroke="#6b3a31"/><text x="743" y="278" text-anchor="middle" fill="#e0a196" font-size="11.5">Párty rituály</text></g>
+        <line x1="360" y1="172" x2="425" y2="228" stroke="#6b3a31" stroke-width="1.5" marker-end="url(#arr)"/>
+      </svg>
+    </div>
+  </section>
+
+  <section id="xp">
+    <h2>Gamifikace — Pivař XP a levely</h2>
+    <p>Rozšíření na přání: zapisování piv dostane vlastní XP dráhu a levely.
+    <b>Recyklujeme hotový Mapér systém</b> (<a href="vscode://file/Users/tomasmach/Code/na-pivo/backend/pubs/mapper.py:23" title="Mapér ladder">backend/pubs/mapper.py</a>:
+    XP pole na účtu, 7-levelový žebřík s env-tunable prahy, snapshot v profilových odpovědích, badge katalog) —
+    žádná nová architektura, druhá instance osvědčeného patternu.</p>
+
+    <div class="callout good">
+      <b>Klíčový princip: XP odměňuje <u>zapisování a objevování</u>, ne objem alkoholu.</b>
+      Většina XP je za „poprvé" a za dokumentování večera; další pivo v řadě dává málo a s denním stropem.
+      Nesmí vzniknout „levluj chlastáním" — to by bylo proti tónu appky i proti anti-abuse práci (0075).
+      Suspect piva (burst / nad denní limit) dávají 0 XP.
+    </div>
+
+    <div class="detail">
+    <h3>Zdroje XP (návrh výchozích hodnot, env-tunable jako u Mapéra)</h3>
+    <div class="tablewrap"><table>
+      <tr><th>Akce</th><th>XP</th><th>Limit</th></tr>
+      <tr><td>Zapsaný večer (první pivo pivního dne)</td><td>+20</td><td>1× / pivní den</td></tr>
+      <tr><td>První návštěva nové hospody</td><td>+40</td><td>—</td></tr>
+      <tr><td>Nové pivo (poprvé ochutnaná značka)</td><td>+15</td><td>—</td></tr>
+      <tr><td>Fotka večera / check-in piva</td><td>+10 / +5</td><td>1× / pivní den</td></tr>
+      <tr><td>Další zapsané pivo</td><td>+2</td><td>max 5 piv/den do XP</td></tr>
+      <tr><td>První zápis v každém kontextu (doma · venku · jinde)</td><td>+25</td><td>jednorázově</td></tr>
+      <tr><td>Suspect pivo (is_suspect)</td><td>0</td><td>—</td></tr>
+    </table></div>
+
+    <h3>Levely a odznaky</h3>
+    <p>7 titulů v hospodském tónu (finální copy ke schválení, nesmí kolidovat s Mapér tituly — „Štamgast" už je zabraný):
+    <span class="muted">Zelenáč · Ochutnávač · Pivní tovaryš · Výčepní · Sládek · Pivní mistr · Pivní legenda.</span>
+    K téhle feature sednou i nové odznaky:
+    <span class="muted">„Chatař" (první pivo mimo hospodu) · „Pod širákem" (první venku) · „Lahváčový filozof" (25 lahváčů) · „Plechovkáč" (25 plechovek).</span></p>
+
+    <h3>Kde se ukazuje</h3>
+    <ul>
+      <li>Profil: „Pivař level" vedle „Mapér level" (stejná vizuální komponenta, progress bar do dalšího levelu).</li>
+      <li>Level-up: celebration moment po zápisu piva (existující <code>celebration.tsx</code> pattern), ne modální otrava.</li>
+      <li>Statistiky: řádek s XP a levelem.</li>
+    </ul>
+    </div>
+
+    <p><b>Doporučený rozsah:</b> nasadit jako <b>navazující feature hned po</b> mimo-hospodském pití (fáze 5 níže, klidně vlastní větev).
+    Nezdrží to core feature, ale díky <code>place_context</code> a <code>serving_type</code> v datech od prvního dne
+    můžou být kontextové bonusy a lahváčové odznaky součástí XP od startu. Jednorázový <b>retro backfill</b> z existující
+    historie DrinkLogů znamená, že věrní uživatelé se proberou rovnou na vyšším levelu — nejlepší možný první dojem z feature.</p>
+  </section>
+
+  <section id="steps">
+    <h2>Kroky implementace</h2>
+    <p class="muted">Backend napřed (aditivní deploy <code>api-*</code> tagem), mobil až potom — starší appky nesmí nic poznat. Checkboxy sledují průběh (ukládá se lokálně).</p>
+
+    <div class="phase-title">Fáze 1 — Backend (nasadit před mobilem, spolu s čekajícími 0074+0075)</div>
+
+    <div class="step" id="step-b1">
+      <label class="step-head"><input type="checkbox" data-step="b1"><b>1. Migrace 0076 + serializer: place_context, serving_type, podmíněná validace</b></label>
+      <div class="files">
+        <a href="vscode://file/Users/tomasmach/Code/na-pivo/backend/pubs/models.py:2593" title="DrinkLog model">backend/pubs/models.py:2593</a>
+        <a href="vscode://file/Users/tomasmach/Code/na-pivo/backend/pubs/api/serializers.py:1519" title="Drink serializer">backend/pubs/api/serializers.py:1519</a>
+      </div>
+      <p class="why">Nová pole na <code>DrinkLog</code>; pub pole (name/lat/lng/cache_key) a cena nullable jen pro ne-pub kontext; pro <code>pub</code> platí dnešní pravidla beze změny. Ne-pub řádek nikdy nespouští merge do komunitního menu. Anti-abuse (drink_flags) beze změny — počítá vše.</p>
+      <div class="detail"><p class="muted">Chybějící <code>place_context</code> ⇒ <code>pub</code>; pub pole pro jiný kontext explicitně odmítnout (400), ať klient omylem neposílá souřadnice domova. Idempotence na <code>client_id</code> beze změny.</p></div>
+    </div>
+
+    <div class="step" id="step-b2">
+      <label class="step-head"><input type="checkbox" data-step="b2"><b>2. Statistiky a žebříčky: vyloučit ne-pub z pub metrik + opravit beer filtr</b></label>
+      <div class="files">
+        <a href="vscode://file/Users/tomasmach/Code/na-pivo/backend/pubs/api/stats.py:77" title="me/stats grouping">backend/pubs/api/stats.py:77</a>
+        <a href="vscode://file/Users/tomasmach/Code/na-pivo/backend/pubs/api/views.py:2937" title="leaderboards">backend/pubs/api/views.py:2937</a>
+        <a href="vscode://file/Users/tomasmach/Code/na-pivo/backend/pubs/api/profile_helpers.py:14" title="distinct pubs">backend/pubs/api/profile_helpers.py:14</a>
+      </div>
+      <p class="why">Ne-pub řádky (cache_key null) nesmí do distinct-pubs, top hospod ani pub žebříčku; do počtu piv a beer žebříčku patří. Zároveň Codex našel existující nekonzistenci: části serverových statistik nefiltrují <code>drink_type=beer</code> (víno/panáky se počítají jako „piva") — opravit při jedné návštěvě těchto míst.</p>
+    </div>
+
+    <div class="step" id="step-b3">
+      <label class="step-head"><input type="checkbox" data-step="b3"><b>3. Backend testy + deploy <code>api-YYYY.MM.DD.N</code></b></label>
+      <p class="why">Testy: podmíněná validace, idempotentní replay, anti-abuse napříč kontexty, vyloučení z pub metrik. Deploy na prod před mobilním releasem (spolu s čekajícími migracemi 0074 víno + 0075 anti-abuse).</p>
+    </div>
+
+    <div class="phase-title">Fáze 2 — Mobil: data a store</div>
+
+    <div class="step" id="step-m1">
+      <label class="step-head"><input type="checkbox" data-step="m1"><b>4. tallyStore: placeContext na session + syntetický pubKey + migrace persistence</b></label>
+      <div class="files"><a href="vscode://file/Users/tomasmach/Code/na-pivo/src/stores/tallyStore.ts:61" title="TallySession">src/stores/tallyStore.ts:61</a></div>
+      <p class="why">Session dostane <code>placeContext</code>; ne-pub session má <code>pubKey = 'ctx:private' | 'ctx:outdoors' | 'ctx:other'</code>, takže rollover (změna místa, 04:00 hranice) funguje stávající logikou. Staré uložené sessions ⇒ <code>pub</code>.</p>
+    </div>
+
+    <div class="step" id="step-m2">
+      <label class="step-head"><input type="checkbox" data-step="m2"><b>5. drinksClient + fronty + visitsSync: podmíněná pub pole</b></label>
+      <div class="files">
+        <a href="vscode://file/Users/tomasmach/Code/na-pivo/src/data/drinksClient.ts:138" title="buildDrinkEntry">src/data/drinksClient.ts:138</a>
+        <a href="vscode://file/Users/tomasmach/Code/na-pivo/src/data/drinksQueue.ts:32" title="queue validator">src/data/drinksQueue.ts:32</a>
+        <a href="vscode://file/Users/tomasmach/Code/na-pivo/src/data/visitsSync.ts:46" title="PubVisit sync">src/data/visitsSync.ts:46</a>
+      </div>
+      <p class="why"><code>DrinkEntry</code> bez pub polí pro ne-pub kontext + <code>place_context</code> a <code>serving_type</code> na drátě. Validátor fronty nesmí publess záznamy zahazovat. <b>visitsSync se pro ne-pub session vůbec nevolá</b> — žádný PubVisit, žádné párty streaky za obývák.</p>
+    </div>
+
+    <div class="step" id="step-m3">
+      <label class="step-head"><input type="checkbox" data-step="m3"><b>6. TallyDrink: servingType per pivo</b></label>
+      <div class="files"><a href="vscode://file/Users/tomasmach/Code/na-pivo/src/stores/tallyStore.ts:47" title="TallyDrink">src/stores/tallyStore.ts:47</a> <a href="vscode://file/Users/tomasmach/Code/na-pivo/src/drinks/drinkTypes.ts" title="enums">src/drinks/drinkTypes.ts</a></div>
+      <p class="why">Nový enum vedle <code>DrinkType</code>; poslední volba se v rámci session pamatuje (druhý lahváč = jeden tap).</p>
+    </div>
+
+    <div class="phase-title">Fáze 3 — Mobil: UI</div>
+
+    <div class="step" id="step-u1">
+      <label class="step-head"><input type="checkbox" data-step="u1"><b>7. Vstupní body: picker se sekcí „Mimo hospodu", NoPubScreen, PermissionScreen</b></label>
+      <div class="files">
+        <a href="vscode://file/Users/tomasmach/Code/na-pivo/src/counter/PubPickerModal.tsx" title="picker">src/counter/PubPickerModal.tsx</a>
+        <a href="vscode://file/Users/tomasmach/Code/na-pivo/src/counter/CounterScreen.tsx:1010" title="header + gates">src/counter/CounterScreen.tsx:1010</a>
+      </div>
+      <p class="why">Chip „Změnit" v hlavičce vždy viditelný (dnes jen při ≥2 kandidátech). NoPubScreen: „Piju mimo hospodu" jako užitečná cesta. PermissionScreen: „Zapsat bez polohy" — počítadlo poprvé funguje bez GPS.</p>
+    </div>
+
+    <div class="step" id="step-u2">
+      <label class="step-head"><input type="checkbox" data-step="u2"><b>8. Zjednodušené počítadlo pro ne-pub kontext</b></label>
+      <div class="files"><a href="vscode://file/Users/tomasmach/Code/na-pivo/src/counter/CounterScreen.tsx:397" title="ActiveCounter">src/counter/CounterScreen.tsx:397</a></div>
+      <p class="why">Skrýt: MapPubEntry, menu „Co tu mají", scan lístku, „Jsem tady", pub check-in. Nechat: hero číslo, zapisování + undo, zpětný zápis, jiné pití, vodní nudge, foto (default „Bez hospody"). Hlavička ukazuje kontext (🏠 Doma / na chatě) místo jména hospody.</p>
+    </div>
+
+    <div class="step" id="step-u3">
+      <label class="step-head"><input type="checkbox" data-step="u3"><b>9. BeerFormModal: řádek „Jak je podané?" + volitelná cena mimo hospodu</b></label>
+      <div class="files"><a href="vscode://file/Users/tomasmach/Code/na-pivo/src/counter/BeerFormModal.tsx" title="form">src/counter/BeerFormModal.tsx</a></div>
+      <p class="why">Chips jen v ne-pub kontextu; v hospodě se formulář nemění. Cena mimo hospodu nepovinná — neznámá cena zůstane neznámá, ne 0 Kč (útrata ji prostě nezapočítá). Přidat preset 0,33 l (backend ho už bere).</p>
+    </div>
+
+    <div class="step" id="step-u4">
+      <label class="step-head"><input type="checkbox" data-step="u4"><b>10. Deník + statistiky: kontextový štítek místo hospody</b></label>
+      <div class="files">
+        <a href="vscode://file/Users/tomasmach/Code/na-pivo/src/myBeers/MyBeersScreen.tsx:59" title="diary card">src/myBeers/MyBeersScreen.tsx:59</a>
+        <a href="vscode://file/Users/tomasmach/Code/na-pivo/src/myBeers/EveningDetailScreen.tsx:171" title="evening detail">src/myBeers/EveningDetailScreen.tsx:171</a>
+        <a href="vscode://file/Users/tomasmach/Code/na-pivo/src/stats/statsModel.ts:232" title="top pubs">src/stats/statsModel.ts:232</a>
+      </div>
+      <p class="why">Karta večera a detail ukážou 🏠/🌳/📍 štítek; hodnocení hospody a „Zmapuj hospodu" se pro ne-pub večer nenabízí. Lokální top hospody filtrují <code>ctx:*</code> klíče.</p>
+    </div>
+
+    <div class="step" id="step-u5">
+      <label class="step-head"><input type="checkbox" data-step="u5"><b>11. Fix fallbacku: neatribuovat automaticky hospodě dál než 120 m</b></label>
+      <div class="files"><a href="vscode://file/Users/tomasmach/Code/na-pivo/src/counter/CounterScreen.tsx:1377" title="activePub fallback">src/counter/CounterScreen.tsx:1377</a></div>
+      <p class="why">Dnes <code>selected ?? candidates[0]?.pub</code> přiřadí pivo hospodě až 3 km daleko. Nově: bez auto-picku (≤120 m) a bez ruční volby se ukáže volba „Kde sedíš?" (hospody + Mimo hospodu) místo tichého odhadu. Přesnější data pro hospody, přirozený vstup pro domácí pití.</p>
+    </div>
+
+    <div class="phase-title">Fáze 4 — Dokončení</div>
+
+    <div class="step" id="step-f1">
+      <label class="step-head"><input type="checkbox" data-step="f1"><b>12. Copy do <code>cs.ts</code> — ukázat ke schválení před commitem</b></label>
+      <div class="files"><a href="vscode://file/Users/tomasmach/Code/na-pivo/src/i18n/cs.ts:1501" title="counter copy">src/i18n/cs.ts:1501</a></div>
+      <p class="why">Všechny nové texty (picker, gate obrazovky, chips, deník) vypíšu v chatu ke schválení — per zavedený proces.</p>
+    </div>
+
+    <div class="step" id="step-f2">
+      <label class="step-head"><input type="checkbox" data-step="f2"><b>13. Mobilní testy: store migrace, rollover, fronta, UI gating</b></label>
+      <p class="why">Hlavně: stará persistence → migrace, ne-pub session rollover, publess payload projde frontou, pub-only prvky se nerenderují mimo hospodu.</p>
+    </div>
+
+    <div class="step" id="step-f3">
+      <label class="step-head"><input type="checkbox" data-step="f3"><b>14. Ověření v simulátoru + commit/push na dev</b></label>
+      <p class="why">Projít všechny tři vstupní body + offline zápis doma + sync po připojení. Ships s příštím mobilním releasem (backend musí být na produ dřív).</p>
+    </div>
+
+    <div class="phase-title">Fáze 5 — Pivař XP a levely (navazující feature, vlastní větev)</div>
+
+    <div class="step" id="step-x1">
+      <label class="step-head"><input type="checkbox" data-step="x1"><b>15. Backend: <code>pivar.py</code> žebřík + XP účtování + retro backfill</b></label>
+      <div class="files">
+        <a href="vscode://file/Users/tomasmach/Code/na-pivo/backend/pubs/mapper.py" title="vzor: Mapér ladder">backend/pubs/mapper.py (vzor)</a>
+        <a href="vscode://file/Users/tomasmach/Code/na-pivo/backend/pubs/models.py:2593" title="DrinkLog">backend/pubs/models.py</a>
+      </div>
+      <p class="why">Kopie Mapér patternu: <code>drinker_xp</code> na účtu, env-tunable prahy a XP hodnoty, snapshot v profilových odpovědích. Účtování při POST /v1/drinks (idempotentní na client_id, suspect = 0 XP, denní stropy). Management command na jednorázový retro backfill z historie.</p>
+    </div>
+
+    <div class="step" id="step-x2">
+      <label class="step-head"><input type="checkbox" data-step="x2"><b>16. Mobil: Pivař level na profilu + odznaky + level-up moment</b></label>
+      <div class="files">
+        <a href="vscode://file/Users/tomasmach/Code/na-pivo/src/profile/badgeCatalog.tsx:39" title="badge katalog">src/profile/badgeCatalog.tsx</a>
+        <a href="vscode://file/Users/tomasmach/Code/na-pivo/app/celebration.tsx" title="celebration">app/celebration.tsx</a>
+      </div>
+      <p class="why">Stejná level komponenta jako Mapér (progress do dalšího levelu), nové odznaky (Chatař, Pod širákem, Lahváčový filozof, Plechovkáč), level-up celebration po zápisu — jeden hezký moment, žádný modální spam.</p>
+    </div>
+
+    <div class="step" id="step-x3">
+      <label class="step-head"><input type="checkbox" data-step="x3"><b>17. Copy (tituly levelů, odznaky) ke schválení + testy + release</b></label>
+      <p class="why">Tituly nesmí kolidovat s Mapér žebříčkem. Testy: idempotence XP, denní stropy, suspect = 0, retro backfill. Backend deploy zase před mobilem.</p>
+    </div>
+  </section>
+
+  <section id="risks">
+    <h2>Rizika</h2>
+    <ul>
+      <li><b>Nullable cena</b> protéká do součtů a UI („utraceno") — všude explicitně přeskočit, ne sčítat nuly. <span class="muted">Mitigace: jeden helper pro útratu session, testy.</span></li>
+      <li><b>Zapomenutý pub-only konzument</b> — nejnebezpečnější je <code>visitsSync</code> (PubVisit za obývák) a merge do komunitního menu. <span class="muted">Mitigace: server ne-pub řádky do menu merge vůbec nepustí (obrana v hloubce), testy na obou stranách.</span></li>
+      <li><b>Parita lokálních vs. serverových statistik</b> — obojí musí vylučovat stejně. <span class="muted">Mitigace: krok 2 + krok 10 dělat proti společné tabulce „počítá se / nikdy" z diagramu.</span></li>
+      <li><b>Pořadí nasazení</b> — mobil s <code>place_context</code> proti starému backendu = 400 a zahozený záznam. <span class="muted">Mitigace: backend deploy (fáze 1) je tvrdá podmínka mobilního releasu; čekají i migrace 0074+0075.</span></li>
+      <li><b>Rozsah</b> — 8–12 dní je na solo tempo hodně; fáze jsou ale samostatně commitovatelné a backend lze nasadit v předstihu bez viditelné změny.</li>
+      <li><b>XP incentiva</b> — odměna za pivo nesmí motivovat k pití ani k fake zápisům. <span class="muted">Mitigace: XP váží „poprvé" a dokumentaci, další piva mají strop 5/den, suspect piva 0 XP; hodnoty env-tunable, takže se dají doladit bez releasu.</span></li>
+    </ul>
+  </section>
+
+  <section id="questions">
+    <h2>Otevřené otázky — vyber a zkopíruj odpovědi do chatu</h2>
+
+    <div class="qcard">
+      <p class="q">1 · Granularita místa mimo hospodu?</p>
+      <label><input type="radio" name="q1" value="Tři volby: Doma/na chatě · Venku · Jinde" checked> Tři volby (Doma/na chatě · Venku · Jinde)<span class="recmark">← doporučuju: jeden tap navíc nic nestojí a krmí Wrapped</span></label>
+      <label><input type="radio" name="q1" value="Jen jedna volba „Mimo hospodu“"> Jen jedna volba „Mimo hospodu" (bez rozlišení)</label>
+      <label><input type="radio" name="q1" value="jinak — napíšu v chatu"> Jinak — napíšu v chatu</label>
+    </div>
+
+    <div class="qcard">
+      <p class="q">2 · Cena piva mimo hospodu?</p>
+      <label><input type="radio" name="q2" value="Nepovinná" checked> Nepovinná — doma cenu často neznáš<span class="recmark">← doporučuju</span></label>
+      <label><input type="radio" name="q2" value="Povinná jako v hospodě"> Povinná jako v hospodě (konzistence útraty)</label>
+      <label><input type="radio" name="q2" value="jinak — napíšu v chatu"> Jinak — napíšu v chatu</label>
+    </div>
+
+    <div class="qcard">
+      <p class="q">3 · Počítat mimo-hospodská piva do týdenního žebříčku piv?</p>
+      <label><input type="radio" name="q3" value="Ano, pivo jako pivo" checked> Ano — jedno zapsané pivo je jedno pivo, anti-abuse platí stejně<span class="recmark">← doporučuju; pub metriky jsou vyloučené tak jako tak</span></label>
+      <label><input type="radio" name="q3" value="Ne, žebříček jen z hospod"> Ne — žebříček jen z hospodských piv</label>
+      <label><input type="radio" name="q3" value="jinak — napíšu v chatu"> Jinak — napíšu v chatu</label>
+    </div>
+
+    <div class="qcard">
+      <p class="q">4 · Opravit v rámci feature i 3km fallback (krok 11)?</p>
+      <label><input type="radio" name="q4" value="Ano, je to součást stejného problému" checked> Ano — je to stejný problém (špatná atribuce piva)<span class="recmark">← doporučuju</span></label>
+      <label><input type="radio" name="q4" value="Ne, nechat na potom"> Ne — nechat na samostatný fix</label>
+    </div>
+
+    <div class="qcard">
+      <p class="q">5 · Pivař XP — kdy a v jakém rozsahu?</p>
+      <label><input type="radio" name="q6" value="Navazující feature hned po (fáze 5)" checked> Navazující feature hned po mimo-hospodském pití (fáze 5)<span class="recmark">← doporučuju: nezdrží core, data budou od startu</span></label>
+      <label><input type="radio" name="q6" value="Vše v jednom releasu"> Všechno najednou v jednom releasu</label>
+      <label><input type="radio" name="q6" value="Jen odznaky bez XP/levelů"> Jen nové odznaky, bez XP/levelů</label>
+      <label><input type="radio" name="q6" value="jinak — napíšu v chatu"> Jinak — napíšu v chatu</label>
+    </div>
+
+    <div class="qcard">
+      <p class="q">6 · Retro backfill XP z existující historie piv?</p>
+      <label><input type="radio" name="q7" value="Ano, retro přiznat" checked> Ano — věrní uživatelé se proberou na vyšším levelu<span class="recmark">← doporučuju</span></label>
+      <label><input type="radio" name="q7" value="Ne, všichni od nuly"> Ne — všichni startují od nuly</label>
+    </div>
+
+    <div class="qcard">
+      <p class="q">7 · Kdo to implementuje?</p>
+      <label><input type="radio" name="q5" value="Backend Codex, UI Claude" checked> Backend přes Codex (gpt-5.6-sol), mobilní UI já (Claude)<span class="recmark">← doporučuju dle dělby backend/taste</span></label>
+      <label><input type="radio" name="q5" value="Vše Claude"> Vše Claude</label>
+      <label><input type="radio" name="q5" value="jinak — napíšu v chatu"> Jinak — napíšu v chatu</label>
+    </div>
+
+    <button class="copy-answers" id="copyAnswers">Zkopírovat odpovědi</button>
+    <span class="copied-note" id="copiedNote">Zkopírováno — vlož do chatu ✓</span>
+  </section>
+</main>
+
+<script>
+(function () {
+  var KEY = 'plan:2026-07-17-drinking-outside-pub';
+  var state = {};
+  try { state = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) {}
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+
+  // steps + progress
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('input[data-step]'));
+  function refresh() {
+    var done = 0;
+    boxes.forEach(function (b) {
+      if (b.checked) done++;
+      b.closest('.step').classList.toggle('done', b.checked);
+    });
+    document.getElementById('pfill').style.width = (boxes.length ? (100 * done / boxes.length) : 0) + '%';
+    document.getElementById('plabel').textContent = done + '/' + boxes.length + ' kroků';
+  }
+  boxes.forEach(function (b) {
+    b.checked = !!state['s:' + b.dataset.step];
+    b.addEventListener('change', function () {
+      state['s:' + b.dataset.step] = b.checked; save(); refresh();
+    });
+  });
+  refresh();
+
+  // detail toggle
+  var bo = document.getElementById('btn-overview'), bd = document.getElementById('btn-detail');
+  function setMode(m) {
+    document.body.classList.toggle('overview', m === 'overview');
+    bo.classList.toggle('active', m === 'overview');
+    bd.classList.toggle('active', m !== 'overview');
+    state.mode = m; save();
+  }
+  bo.addEventListener('click', function () { setMode('overview'); });
+  bd.addEventListener('click', function () { setMode('detail'); });
+  if (state.mode) setMode(state.mode);
+
+  // tabs
+  document.querySelectorAll('.tabbar button').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      btn.parentNode.querySelectorAll('button').forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      var tabs = btn.closest('.tabs');
+      tabs.querySelectorAll('.tabpanel').forEach(function (p) { p.classList.remove('active'); });
+      document.getElementById(btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  // mockup screens
+  document.querySelectorAll('.mock-switch button[data-ms]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('.mock-switch button[data-ms]').forEach(function (b) { b.classList.remove('active'); });
+      document.querySelectorAll('.mscreen').forEach(function (s) { s.classList.remove('active'); });
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.ms).classList.add('active');
+    });
+  });
+
+  // diagram nodes → scroll
+  document.querySelectorAll('.dg-node').forEach(function (n) {
+    n.addEventListener('click', function () {
+      var t = document.getElementById(n.dataset.target);
+      if (t) { t.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        t.style.outline = '2px solid #f2a93b';
+        setTimeout(function () { t.style.outline = ''; }, 1600); }
+    });
+  });
+
+  // scroll-spy
+  var links = Array.prototype.slice.call(document.querySelectorAll('#toc a'));
+  var sections = links.map(function (a) { return document.querySelector(a.getAttribute('href')); });
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) {
+          links.forEach(function (a) { a.classList.toggle('current', a.getAttribute('href') === '#' + e.target.id); });
+        }
+      });
+    }, { rootMargin: '-20% 0px -70% 0px' });
+    sections.forEach(function (s) { if (s) io.observe(s); });
+  }
+
+  // copy answers
+  document.getElementById('copyAnswers').addEventListener('click', function () {
+    var out = ['Odpovědi k plánu „Pití mimo hospodu":'];
+    [['q1', 'Granularita místa'], ['q2', 'Cena mimo hospodu'], ['q3', 'Týdenní žebříček'], ['q4', '3km fallback fix'], ['q6', 'Pivař XP rozsah'], ['q7', 'Retro backfill XP'], ['q5', 'Implementace']].forEach(function (q) {
+      var sel = document.querySelector('input[name="' + q[0] + '"]:checked');
+      out.push(q[1] + ': ' + (sel ? sel.value : '—'));
+    });
+    var text = out.join('\n');
+    (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(function () {
+      var n = document.getElementById('copiedNote');
+      n.style.display = 'inline';
+      setTimeout(function () { n.style.display = 'none'; }, 2500);
+    }).catch(function () { window.prompt('Zkopíruj ručně:', text); });
+  });
+})();
+</script>
+</body>
+</html>

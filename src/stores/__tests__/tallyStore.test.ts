@@ -32,6 +32,11 @@ import {
 
 const PUB_A = { pubKey: 'aaaaaaaa', pubName: 'U Zlatého tygra' };
 const PUB_B = { pubKey: 'bbbbbbbb', pubName: 'U Černého vola' };
+const OUTSIDE_HOME = {
+  pubKey: 'ctx:private',
+  pubName: 'Doma / na chatě',
+  placeContext: 'private' as const,
+};
 
 let idSeq = 0;
 function beer(over: Partial<{ beerName: string; priceCzk: number; volumeMl: number; at: string }> = {}) {
@@ -377,6 +382,43 @@ describe('totals + per-beer counts', () => {
     expect(sessionCount(null)).toBe(0);
     expect(sessionTotalCzk(null)).toBe(0);
     expect(sessionBeerCounts(null).size).toBe(0);
+  });
+
+  it('drinks without a price count as beers but add nothing to the total', () => {
+    const { priceCzk: _omit, ...priceless } = beer();
+    useTallyStore.getState().addDrink(OUTSIDE_HOME, priceless);
+    useTallyStore.getState().addDrink(OUTSIDE_HOME, beer({ priceCzk: 25 }));
+    const { current } = useTallyStore.getState();
+    expect(sessionCount(current)).toBe(2);
+    expect(sessionTotalCzk(current)).toBe(25);
+  });
+});
+
+describe('outside ("mimo hospodu") sessions', () => {
+  it('stamps placeContext on a fresh outside session and keeps servingType per drink', () => {
+    useTallyStore.getState().addDrink(OUTSIDE_HOME, {
+      ...beer({ beerName: 'Kozel 11' }),
+      servingType: 'bottle',
+    });
+    const { current } = useTallyStore.getState();
+    expect(current?.pubKey).toBe('ctx:private');
+    expect(current?.placeContext).toBe('private');
+    expect(current?.pubName).toBe('Doma / na chatě');
+    expect(current?.drinks[0]?.servingType).toBe('bottle');
+  });
+
+  it('never stamps placeContext for a pub session', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer());
+    expect(useTallyStore.getState().current?.placeContext).toBeUndefined();
+  });
+
+  it('switching pub → outside rolls the session over like a pub change', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer());
+    useTallyStore.getState().addDrink(OUTSIDE_HOME, beer());
+    const { current, history } = useTallyStore.getState();
+    expect(current?.pubKey).toBe('ctx:private');
+    expect(history[0]?.pubKey).toBe(PUB_A.pubKey);
+    expect(history[0]?.archivedReason).toBe('pub-change');
   });
 });
 

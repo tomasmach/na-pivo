@@ -52,6 +52,7 @@ import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { fireSuccessHaptic } from '@/utils/haptics';
 import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
+import { isContextPubKey } from '@/drinks/drinkTypes';
 
 const CAPTION_MAX = 280;
 
@@ -74,6 +75,8 @@ interface BeerPhotoComposeSheetProps {
 function tallyPubSuggestion(): PhotoPubTag | null {
   const current = useTallyStore.getState().current;
   if (!current || !current.pubName) return null;
+  // An outside evening is no pub — the photo defaults to "Bez hospody".
+  if (isContextPubKey(current.pubKey)) return null;
   return { pubKey: current.pubKey, name: current.pubName, city: '' };
 }
 

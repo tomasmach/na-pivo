@@ -71,6 +71,7 @@ import {
   allSessionsNewestFirst,
   type TallySession,
 } from '@/stores/tallyStore';
+import { isContextPubKey } from '@/drinks/drinkTypes';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { eveningDateLabel, sessionDrinkSummary } from '@/myBeers/eveningModel';
@@ -98,6 +99,9 @@ function deriveStats(sessions: TallySession[]): DerivedStats {
   for (const session of sessions) {
     totalBeers += sessionCount(session);
     totalSpentCzk += sessionTotalCzk(session);
+    // Outside evenings ("ctx:*") count as beers/spend but never as a pub —
+    // distinct pubs and the Stálý host badge stay pub-only.
+    if (isContextPubKey(session.pubKey)) continue;
     pubKeys.add(session.pubKey);
     perPubVisits.set(session.pubKey, (perPubVisits.get(session.pubKey) ?? 0) + 1);
   }

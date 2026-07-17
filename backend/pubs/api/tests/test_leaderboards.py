@@ -43,9 +43,10 @@ def _auth(token: str) -> dict[str, str]:
 def _drink(
     account: Account,
     *,
-    cache_key: str = "u2fkbn1z",
+    cache_key: str | None = "u2fkbn1z",
     drank_at=None,
     name: str = "Plzeň",
+    drink_type: str = DrinkLog.DrinkType.BEER,
     is_suspect: bool = False,
     suspect_reason: str = "",
 ) -> DrinkLog:
@@ -53,11 +54,17 @@ def _drink(
         account=account,
         client_id=uuid.uuid4(),
         cache_key=cache_key,
-        name="U Zlatého tygra",
-        lat=50.0876,
-        lng=14.4214,
-        city="Praha",
-        external_id="mapy:test",
+        name="U Zlatého tygra" if cache_key is not None else "",
+        lat=50.0876 if cache_key is not None else None,
+        lng=14.4214 if cache_key is not None else None,
+        city="Praha" if cache_key is not None else "",
+        external_id="mapy:test" if cache_key is not None else "",
+        place_context=(
+            DrinkLog.PlaceContext.PUB
+            if cache_key is not None
+            else DrinkLog.PlaceContext.OUTDOORS
+        ),
+        drink_type=drink_type,
         beer_name=name,
         price_czk=65,
         drank_at=drank_at or timezone.now(),
@@ -171,6 +178,31 @@ def test_pubs_leaderboard_counts_distinct_visit_and_drink_union(client):
         ("anna", 2),
         ("janek", 1),
     ]
+
+
+@pytest.mark.django_db
+def test_non_pub_beer_counts_only_in_beer_leaderboard_and_non_beers_do_not(client):
+    token, me = _register(client, "janek")
+    _drink(me, cache_key="pub-one")
+    _drink(me, cache_key=None)
+    _drink(me, cache_key="wine-pub", drink_type=DrinkLog.DrinkType.WINE, name="Víno")
+    _drink(me, cache_key="shot-pub", drink_type=DrinkLog.DrinkType.SHOT, name="Panák")
+    _drink(
+        me,
+        cache_key="soft-pub",
+        drink_type=DrinkLog.DrinkType.SOFT_DRINK,
+        name="Kofola",
+    )
+
+    beers = client.get("/v1/leaderboards?category=beers&period=week", **_auth(token))
+    pubs = client.get("/v1/leaderboards?category=pubs&period=week", **_auth(token))
+
+    assert beers.status_code == status.HTTP_200_OK
+    assert beers.json()["me"]["score"] == 2
+    assert beers.json()["entries"][0]["score"] == 2
+    assert pubs.status_code == status.HTTP_200_OK
+    assert pubs.json()["me"]["score"] == 4
+    assert pubs.json()["entries"][0]["score"] == 4
 
 
 @pytest.mark.django_db

@@ -53,20 +53,27 @@ def _auth(token: str) -> dict[str, str]:
 def _drink(
     account: Account,
     *,
-    cache_key: str,
+    cache_key: str | None,
     name: str,
-    price_czk: int,
+    price_czk: int | None,
     drank_at: datetime,
+    drink_type: str = DrinkLog.DrinkType.BEER,
 ) -> DrinkLog:
     return DrinkLog.objects.create(
         account=account,
         client_id=uuid.uuid4(),
         cache_key=cache_key,
         name=name,
-        lat=50.0876,
-        lng=14.4214,
-        city="Praha",
+        lat=50.0876 if cache_key is not None else None,
+        lng=14.4214 if cache_key is not None else None,
+        city="Praha" if cache_key is not None else "",
         external_id="",
+        place_context=(
+            DrinkLog.PlaceContext.PUB
+            if cache_key is not None
+            else DrinkLog.PlaceContext.PRIVATE
+        ),
+        drink_type=drink_type,
         beer_name="Pilsner Urquell",
         price_czk=price_czk,
         volume_ml=500,
@@ -175,6 +182,60 @@ def test_personal_stats_still_include_suspect_drinks(client):
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["total_beers"] == 1
     assert response.json()["total_spent_czk"] == 65
+
+
+@pytest.mark.django_db
+def test_non_pub_and_non_beer_rows_follow_stats_contract(client):
+    token = _register(client)
+    account = Account.objects.latest("created_at")
+    pub_time = datetime(2026, 6, 12, 19, 0, tzinfo=PRAGUE)
+    outside_time = datetime(2026, 6, 13, 19, 0, tzinfo=PRAGUE)
+    _drink(
+        account,
+        cache_key=_KEY_TYGR,
+        name="U Zlatého tygra",
+        price_czk=60,
+        drank_at=pub_time,
+    )
+    _drink(
+        account,
+        cache_key=None,
+        name="",
+        price_czk=None,
+        drank_at=outside_time,
+    )
+    for drink_type, price in (
+        (DrinkLog.DrinkType.WINE, 80),
+        (DrinkLog.DrinkType.SHOT, 55),
+        (DrinkLog.DrinkType.SOFT_DRINK, 45),
+    ):
+        _drink(
+            account,
+            cache_key=_KEY_TYGR,
+            name="U Zlatého tygra",
+            price_czk=price,
+            drank_at=pub_time,
+            drink_type=drink_type,
+        )
+
+    response = client.get("/v1/me/stats", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["total_beers"] == 2
+    assert body["total_evenings"] == 2
+    assert body["distinct_pubs"] == 1
+    assert body["total_spent_czk"] == 240
+    assert body["top_pubs"] == [
+        {
+            "cache_key": _KEY_TYGR,
+            "name": "U Zlatého tygra",
+            "beers": 1,
+            "spent_czk": 240,
+            "last_drank_at": pub_time.astimezone(UTC).isoformat(),
+        }
+    ]
+    assert body["records"]["most_beers_in_evening"] == 1
 
 
 @pytest.mark.django_db

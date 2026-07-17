@@ -79,6 +79,8 @@ jest.mock('@/components/shared/IconGlyph', () => ({
   CameraIcon: jest.fn(() => null),
   InfoIcon: jest.fn(() => null),
   SparklesIcon: jest.fn(() => null),
+  HouseIcon: jest.fn(() => null),
+  TreePineIcon: jest.fn(() => null),
 }));
 
 // Drinks delivery layer — assert calls without touching the network.

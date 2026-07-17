@@ -40,6 +40,8 @@ import {
   BellRingIcon,
   GlassWaterIcon,
   HistoryIcon,
+  HouseIcon,
+  TreePineIcon,
   CameraIcon,
   InfoIcon,
 } from '@/components/shared/IconGlyph';
@@ -79,7 +81,14 @@ import {
   isPastEveningBackdate,
   type TallySession,
 } from '@/stores/tallyStore';
-import { normalizeDrinkType, type DrinkType } from '@/drinks/drinkTypes';
+import {
+  contextFromPubKey,
+  contextPubKey,
+  normalizeDrinkType,
+  type DrinkType,
+  type OutsidePlaceContext,
+  type ServingType,
+} from '@/drinks/drinkTypes';
 import { MIN_PLAUSIBLE_BEER_GAP_MS } from '@/drinks/drinkTiming';
 import type { Pub } from '@/data/pubs';
 
@@ -110,10 +119,13 @@ function CenteredScreen({ embedded, children }: { embedded: boolean; children: R
 function PermissionScreen({
   permissionState,
   requestPermission,
+  onLogOutside,
   embedded,
 }: {
   permissionState: 'denied' | 'undetermined';
   requestPermission: () => Promise<void>;
+  /** "Zapsat pivo bez polohy" — the counter no longer hard-requires GPS. */
+  onLogOutside: () => void;
   embedded: boolean;
 }) {
   return (
@@ -146,6 +158,18 @@ function PermissionScreen({
           />
         </View>
       )}
+      <Pressable
+        onPress={onLogOutside}
+        style={styles.noPubAddLink}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel={cs.counter.outsideNoLocationCta}
+      >
+        <HouseIcon size={16} color={Colors.mutedText} />
+        <Text style={styles.noPubAddLinkText} maxFontSizeMultiplier={FontScaleCap.body}>
+          {cs.counter.outsideNoLocationCta}
+        </Text>
+      </Pressable>
     </CenteredScreen>
   );
 }
@@ -165,28 +189,79 @@ function DetectingScreen({ embedded }: { embedded: boolean }) {
   );
 }
 
-function NoPubScreen({ onRetry, embedded }: { onRetry: () => void; embedded: boolean }) {
+function NoPubScreen({
+  candidatesCount,
+  onPickPlace,
+  onRetry,
+  embedded,
+}: {
+  /** Nearby pubs found but none close enough to auto-pick. */
+  candidatesCount: number;
+  /** Opens the "Kde sedíš?" picker (nearby pubs + Mimo hospodu). */
+  onPickPlace: () => void;
+  onRetry: () => void;
+  embedded: boolean;
+}) {
   const router = useRouter();
+  // With candidates in range we never silently guess a pub (the old behaviour
+  // attributed home drinks to a pub up to 3 km away) — the user picks instead.
+  const hasCandidates = candidatesCount > 0;
   return (
     <CenteredScreen embedded={embedded}>
       <View style={styles.permIconWrap}>
         <BeerIcon size={56} color={Colors.amber} />
       </View>
       <Text style={styles.bigTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-        {cs.counter.noPubTitle}
+        {hasCandidates ? cs.counter.pickerTitle : cs.counter.noPubTitle}
       </Text>
       <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
-        {cs.counter.noPubBody}
+        {hasCandidates ? cs.counter.noPubChooseBody : cs.counter.noPubBody}
       </Text>
       <View style={styles.permButtonWrap}>
-        <GlowButton
-          label={cs.counter.retry}
-          onPress={onRetry}
-          glow="soft"
-          icon={<RefreshCwIcon size={20} color={Colors.stout} />}
-          accessibilityLabel={cs.a11y.counterRetry}
-        />
+        {hasCandidates ? (
+          <GlowButton
+            label={cs.counter.noPubChooseCta}
+            onPress={onPickPlace}
+            glow="soft"
+            icon={<MapPinIcon size={20} color={Colors.stout} />}
+            accessibilityLabel={cs.counter.noPubChooseCta}
+          />
+        ) : (
+          <GlowButton
+            label={cs.counter.retry}
+            onPress={onRetry}
+            glow="soft"
+            icon={<RefreshCwIcon size={20} color={Colors.stout} />}
+            accessibilityLabel={cs.a11y.counterRetry}
+          />
+        )}
       </View>
+      <Pressable
+        onPress={onPickPlace}
+        style={styles.noPubAddLink}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel={cs.counter.outsideNoPubCta}
+      >
+        <HouseIcon size={16} color={Colors.mutedText} />
+        <Text style={styles.noPubAddLinkText} maxFontSizeMultiplier={FontScaleCap.body}>
+          {cs.counter.outsideNoPubCta}
+        </Text>
+      </Pressable>
+      {hasCandidates ? (
+        <Pressable
+          onPress={onRetry}
+          style={styles.noPubAddLink}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={cs.a11y.counterRetry}
+        >
+          <RefreshCwIcon size={16} color={Colors.mutedText} />
+          <Text style={styles.noPubAddLinkText} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.counter.retry}
+          </Text>
+        </Pressable>
+      ) : null}
       {/* Parity with the compass empty state: if it's not on the map yet, add it. */}
       <Pressable
         onPress={() => router.push('/add-pub')}
@@ -316,14 +391,25 @@ function MenuCard({ name, variants, priceCurrency }: MenuCardProps) {
 
 // ─── Active counter ───────────────────────────────────────────────────────────
 
+/** Where the counter is counting: a real pub, or one of the "Mimo hospodu"
+ *  contexts (home / outdoors / elsewhere) with no pub identity at all. */
+export type CounterPlace =
+  | { kind: 'pub'; pub: Pub }
+  | { kind: 'outside'; context: OutsidePlaceContext };
+
 interface ActiveCounterProps {
-  pub: Pub;
-  candidatesCount: number;
-  onChangePub: () => void;
+  place: CounterPlace;
+  onChangePlace: () => void;
   /** Hosted inside the merged "Pivo" tab: the parent owns the top safe-area
    *  inset and the segment header, so the counter drops its own top padding. */
   embedded: boolean;
 }
+
+const OUTSIDE_HEADER_ICONS: Record<OutsidePlaceContext, typeof HouseIcon> = {
+  private: HouseIcon,
+  outdoors: TreePineIcon,
+  other: MapPinIcon,
+};
 
 /** A stable identity key for a menu beer (normalized name + volume). */
 function beerKey(beer: CommunityBeer): string {
@@ -394,7 +480,7 @@ export function shouldWarnRapidDrink(lastDrinkAt: string | undefined, nowMs: num
   return elapsedMs >= 0 && elapsedMs < MIN_PLAUSIBLE_BEER_GAP_MS;
 }
 
-function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCounterProps) {
+function ActiveCounter({ place, onChangePlace, embedded }: ActiveCounterProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
@@ -406,7 +492,19 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   // tab owns the inset + segment), the safe-area inset when standalone.
   const topInset = embedded ? 0 : insets.top;
 
-  const cell = useMemo(() => geohash8(pub.lat, pub.lng), [pub.lat, pub.lng]);
+  // Null outside a pub — every pub-only affordance (menu, mapping, check-in,
+  // visit sync, community merge, share-here) keys off this.
+  const pub = place.kind === 'pub' ? place.pub : null;
+  const outsideContext = place.kind === 'outside' ? place.context : null;
+  const placeLabel = pub ? pub.name : cs.counter.outsideLabel(outsideContext as OutsidePlaceContext);
+
+  const cell = useMemo(
+    () =>
+      place.kind === 'pub'
+        ? geohash8(place.pub.lat, place.pub.lng)
+        : contextPubKey(place.context),
+    [place],
+  );
 
   const setOverride = useCommunityStore((s) => s.setOverride);
   const override = useCommunityStore((s) => s.overrides[cell]);
@@ -423,6 +521,9 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   const [formMode, setFormMode] = useState<BeerFormMode | null>(null);
   const [formBeer, setFormBeer] = useState<CommunityBeer | null>(null);
   const [formDrinkType, setFormDrinkType] = useState<DrinkType>('beer');
+  // Outside a pub: the serving the user last picked ("Jak je podané?"), seeding
+  // the next add form so the second lahváč is a single confirm.
+  const [lastServingType, setLastServingType] = useState<ServingType>('bottle');
   // Set when the add form was opened via "zapsat zpětně": the ISO timestamp the
   // next added beer is counted at. Cleared on submit/cancel.
   const [backdateAt, setBackdateAt] = useState<string | null>(null);
@@ -466,13 +567,15 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   }, []);
 
   useEffect(() => {
+    if (!pub) return;
     const controller = new AbortController();
+    const pubId = pub.id;
 
     fetchPubHours([pub], controller.signal).then((resultMap) => {
       if (controller.signal.aborted) return;
-      const result = resultMap.get(pub.id);
+      const result = resultMap.get(pubId);
       setBackendMenu({
-        pubId: pub.id,
+        pubId,
         beers: result?.beers ?? [],
         historicalBeers: result?.historicalBeers ?? [],
       });
@@ -487,7 +590,10 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   const isThisPubSession = current?.pubKey === cell;
   const count = isThisPubSession ? sessionCount(current) : 0;
   const totalCzk = isThisPubSession ? sessionTotalCzk(current) : 0;
-  const sessionDrinks = isThisPubSession ? current?.drinks ?? [] : [];
+  const sessionDrinks = useMemo(
+    () => (isThisPubSession ? current?.drinks ?? [] : []),
+    [isThisPubSession, current],
+  );
   const latestBeer = [...sessionDrinks].reverse().find((drink) => normalizeDrinkType(drink.drinkType) === 'beer');
   const latestAlcohol = [...sessionDrinks].reverse().find((drink) => normalizeDrinkType(drink.drinkType) !== 'soft_drink');
   const latestDrinkAt = latestAlcohol?.at;
@@ -527,19 +633,37 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   // folds in every beer counted this session (we setOverride on each count), so
   // it is the single source of truth for the visible menu.
   const menu = useMemo<CommunityBeer[]>(() => {
+    if (!pub) {
+      // Outside a pub there is no community menu. The list holds what you've
+      // logged tonight (one row per beer identity, latest first) so the next
+      // one of the same beer is a single tap.
+      const seen = new Map<string, CommunityBeer>();
+      for (const drink of sessionDrinks) {
+        if (normalizeDrinkType(drink.drinkType) !== 'beer') continue;
+        const key = `${drink.beerName.trim().toLowerCase()}|${drink.volumeMl ?? ''}`;
+        if (seen.has(key)) continue;
+        seen.set(key, {
+          name: drink.beerName,
+          ...(typeof drink.priceCzk === 'number' ? { priceCzk: drink.priceCzk } : {}),
+          ...(typeof drink.volumeMl === 'number' ? { volumeMl: drink.volumeMl } : {}),
+        });
+      }
+      return [...seen.values()];
+    }
     const backendBeers = backendMenu?.pubId === pub.id ? backendMenu.beers : [];
     if (override?.beers && override.beers.length > 0) return override.beers;
     if (backendBeers.length > 0) return backendBeers;
     return pub.beers ?? [];
-  }, [backendMenu, override, pub.beers, pub.id]);
+  }, [backendMenu, override, pub, sessionDrinks]);
   const menuGroups = useMemo(() => groupMenuBeers(menu), [menu]);
 
   const historicalBeers = useMemo<CommunityBeer[]>(() => {
+    if (!pub) return [];
     if (backendMenu?.pubId === pub.id && backendMenu.historicalBeers.length > 0) {
       return backendMenu.historicalBeers;
     }
     return pub.historicalBeers ?? [];
-  }, [backendMenu, pub.historicalBeers, pub.id]);
+  }, [backendMenu, pub]);
 
   // — Count one beer (writes tally + queue + menu override) —
   // `atOverride` backdates the drink (PIV-25). When the backdated timestamp
@@ -549,12 +673,30 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   // Backdated drinks skip the "now"-relative touches (nowMs sync, rapid-drink
   // warning, check-in prompt, water nudge).
   const countBeer = useCallback(
-    (beer: CommunityBeer & { priceCzk: number; drinkType?: DrinkType }, atOverride?: string) => {
+    (
+      beer: CommunityBeer & { priceCzk?: number; drinkType?: DrinkType; servingType?: ServingType },
+      atOverride?: string,
+    ) => {
       const id = generateUuidV4();
       const at = atOverride ?? new Date().toISOString();
       const drinkType = beer.drinkType ?? 'beer';
       const startsSession = !isThisPubSession || (current?.drinks.length ?? 0) === 0;
       setNowMs(atOverride ? Date.now() : Date.parse(at));
+
+      // The tally place identity: a pub, or the synthetic outside context whose
+      // display label doubles as the "pub name" everywhere the diary shows one.
+      const tallyPlace = pub
+        ? { pubKey: cell, pubName: pub.name, pubCity: pub.city, pubExternalId: pub.id }
+        : { pubKey: cell, pubName: placeLabel, placeContext: outsideContext as OutsidePlaceContext };
+      const tallyBeer = {
+        id,
+        beerName: beer.name,
+        drinkType,
+        priceCzk: beer.priceCzk,
+        volumeMl: beer.volumeMl,
+        servingType: beer.servingType,
+        at,
+      };
 
       // A backdate to an earlier drinking day is a past evening: file it into
       // history so it never becomes/clobbers the live session — regardless of
@@ -564,32 +706,16 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
       let landedSession: TallySession | null;
       if (backdateToPast) {
         // Files into a past evening, leaving the live session untouched.
-        landedSession = addBackdatedDrink(
-          {
-            pubKey: cell,
-            pubName: pub.name,
-            pubCity: pub.city,
-            pubExternalId: pub.id,
-          },
-          { id, beerName: beer.name, drinkType, priceCzk: beer.priceCzk, volumeMl: beer.volumeMl, at },
-        );
+        landedSession = addBackdatedDrink(tallyPlace, tallyBeer);
       } else {
-        addDrink(
-          {
-            pubKey: cell,
-            pubName: pub.name,
-            pubCity: pub.city,
-            pubExternalId: pub.id,
-          },
-          { id, beerName: beer.name, drinkType, priceCzk: beer.priceCzk, volumeMl: beer.volumeMl, at },
-        );
+        addDrink(tallyPlace, tallyBeer);
         landedSession = useTallyStore.getState().current;
       }
       // Push/refresh the visit ("evening") record for the session the drink
       // actually landed in. addDrink/addBackdatedDrink write synchronously, so
       // the freshest session is on the store now; the POST is idempotent on the
-      // session clientId.
-      syncVisit(landedSession);
+      // session clientId. An outside evening is NOT a pub visit — skip.
+      if (pub) syncVisit(landedSession);
       if (!atOverride && startsSession) {
         void trackClientEvent({ event: 'counter_session_started' });
       }
@@ -599,29 +725,40 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
           had_active_session: !startsSession,
           backdated: !!atOverride,
           ...(drinkType === 'beer' ? {} : { drink_type: drinkType }),
+          ...(outsideContext ? { place_context: outsideContext } : {}),
         },
       });
 
       // Merge into the local community menu so the price shows instantly across
-      // the app (same rule as the backend merge).
-      if (drinkType === 'beer') {
-        const mergedMenu = mergeBeerIntoMenu(menu, beer);
+      // the app (same rule as the backend merge). Pub only — an outside beer
+      // must never enter any pub's community data.
+      if (pub && drinkType === 'beer' && typeof beer.priceCzk === 'number') {
+        const mergedMenu = mergeBeerIntoMenu(menu, { ...beer, priceCzk: beer.priceCzk });
         setOverride(cell, { beers: mergedMenu });
       }
-      // The check-in prompt ("I'm drinking this now") is now-semantic — skip it
-      // for a backdated log.
-      if (!atOverride && drinkType === 'beer') setCheckInBeerName(beer.name);
+      // The check-in prompt ("I'm drinking this now") is now-semantic and
+      // pub-bound — skip it for a backdated or outside log.
+      if (pub && !atOverride && drinkType === 'beer') setCheckInBeerName(beer.name);
 
       // Persist + best-effort deliver the drink.
       const entry = buildDrinkEntry(
         {
-          externalId: pub.id || null,
-          name: pub.name,
-          lat: pub.lat,
-          lng: pub.lng,
-          city: pub.city,
+          ...(pub
+            ? {
+                externalId: pub.id || null,
+                name: pub.name,
+                lat: pub.lat,
+                lng: pub.lng,
+                city: pub.city,
+              }
+            : { placeContext: outsideContext as OutsidePlaceContext }),
           drinkType,
-          beer: { name: beer.name, priceCzk: beer.priceCzk, volumeMl: beer.volumeMl },
+          beer: {
+            name: beer.name,
+            priceCzk: beer.priceCzk,
+            volumeMl: beer.volumeMl,
+            servingType: beer.servingType,
+          },
           drankAt: at,
         },
         id,
@@ -666,11 +803,14 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
         });
       }
     },
-    [addDrink, addBackdatedDrink, cell, current, hapticEnabled, isThisPubSession, markDrinkSynced, menu, pub, setOverride, showToast, waterNudgeEnabled],
+    [addDrink, addBackdatedDrink, cell, current, hapticEnabled, isThisPubSession, markDrinkSynced, menu, outsideContext, placeLabel, pub, setOverride, showToast, waterNudgeEnabled],
   );
 
   const requestCountBeer = useCallback(
-    (beer: CommunityBeer & { priceCzk: number; drinkType?: DrinkType }, atOverride?: string) => {
+    (
+      beer: CommunityBeer & { priceCzk?: number; drinkType?: DrinkType; servingType?: ServingType },
+      atOverride?: string,
+    ) => {
       // A backdated beer can't be "too fast right now" — count it straight away.
       if (atOverride || beer.drinkType === 'soft_drink' || !shouldWarnRapidDrink(latestDrinkAt)) {
         countBeer(beer, atOverride);
@@ -704,13 +844,29 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
 
   const handleTapBeer = useCallback(
     (beer: CommunityBeer) => {
+      if (!pub) {
+        // Outside a pub a repeat tap counts straight away — price optional, no
+        // price prompt. Reuse the serving of the last logged drink of this beer.
+        const key = `${beer.name.trim().toLowerCase()}|${beer.volumeMl ?? ''}`;
+        const previous = [...sessionDrinks]
+          .reverse()
+          .find(
+            (drink) => `${drink.beerName.trim().toLowerCase()}|${drink.volumeMl ?? ''}` === key,
+          );
+        requestCountBeer({
+          ...beer,
+          drinkType: 'beer',
+          servingType: previous?.servingType ?? lastServingType,
+        });
+        return;
+      }
       if (typeof beer.priceCzk === 'number') {
         requestCountBeer({ ...beer, priceCzk: beer.priceCzk, drinkType: 'beer' });
       } else {
         openForm('price', beer);
       }
     },
-    [openForm, requestCountBeer],
+    [lastServingType, openForm, pub, requestCountBeer, sessionDrinks],
   );
 
   const handleEditBeer = useCallback(
@@ -734,6 +890,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   // editor's AI scan with the current menu prefilled. The scanned beers land
   // back here through the community override the editor writes on save.
   const handleScanMenu = useCallback(() => {
+    if (!pub) return;
     setFormMode(null);
     setFormBeer(null);
     setBackdateAt(null);
@@ -861,14 +1018,19 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
         priceCzk: result.priceCzk,
         volumeMl: result.volumeMl,
         drinkType: result.drinkType,
+        servingType: result.servingType,
       };
-      if (result.drinkType === 'beer') {
+      if (result.servingType) setLastServingType(result.servingType);
+      if (result.drinkType === 'beer' && typeof result.priceCzk === 'number' && pub) {
         void trackClientEvent({
           event: 'beer_price_added',
           context: { mode: mode ?? 'unknown' },
         });
       }
       if (mode === 'edit') {
+        // Community-menu edit is a pub concept; outside rows are session-derived
+        // and never editable (the long-press target is disabled there).
+        if (!pub) return;
         // Replace the edited row in place. mergeBeerIntoMenu matches on
         // name+volume, so a volume change would otherwise append a NEW row and
         // orphan the original — the PIV-33 bug. Editing the pre-change identity
@@ -887,7 +1049,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
         requestCountBeer(beer, at);
       }
     },
-    [backdateAt, cell, formBeer, formMode, menu, requestCountBeer, setOverride],
+    [backdateAt, cell, formBeer, formMode, menu, pub, requestCountBeer, setOverride],
   );
 
   // Remove the most recently counted drink OF THIS BEER. Optimistically drops it
@@ -919,11 +1081,14 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
       const visitUpdatedAt = new Date().toISOString();
       const currentVisitClientId = current?.clientId;
       removeDrink(targetId);
-      const nextSession = useTallyStore.getState().current;
-      if (nextSession && nextSession.drinks.length > 0) {
-        syncVisit(nextSession, visitUpdatedAt);
-      } else if (currentVisitClientId) {
-        deleteVisitByClientId(currentVisitClientId);
+      // Outside evenings never had a visit record, so there's none to touch.
+      if (pub) {
+        const nextSession = useTallyStore.getState().current;
+        if (nextSession && nextSession.drinks.length > 0) {
+          syncVisit(nextSession, visitUpdatedAt);
+        } else if (currentVisitClientId) {
+          deleteVisitByClientId(currentVisitClientId);
+        }
       }
       const removedId = targetId;
       void removeQueuedDrink(removedId).then((pulledFromQueue) => {
@@ -942,7 +1107,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
         fireLightImpactHaptic();
       }
     },
-    [cell, current, hapticEnabled, removeDrink],
+    [cell, current, hapticEnabled, pub, removeDrink],
   );
 
   // "Dopito" — confirm, then archive the evening into history. The deferred
@@ -976,7 +1141,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
   }, [cell, hapticEnabled, resumeLast]);
 
   const handleShareWithFriends = useCallback(async () => {
-    if (sharingWithFriends || broadcasted) return;
+    if (!pub || sharingWithFriends || broadcasted) return;
     setSharingWithFriends(true);
     const shareClientId = isThisPubSession && current?.clientId ? current.clientId : generateUuidV4();
     // One-tap quick broadcast: empty message (the rich compose with a message
@@ -1005,23 +1170,30 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
           above the scroll so they're always discoverable, and stay subordinate
           to the big amber +/- counting in the body. */}
       <View style={styles.header}>
-        <MapPinIcon size={18} color={Colors.amber} />
-        <Text style={styles.headerPub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {pub.name}
-        </Text>
-        {candidatesCount > 1 && (
-          <Pressable
-            onPress={onChangePub}
-            style={styles.changeButton}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={cs.a11y.counterChangePub}
-          >
-            <Text style={styles.changeButtonText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.counter.changePub}
-            </Text>
-          </Pressable>
+        {outsideContext ? (
+          (() => {
+            const HeaderIcon = OUTSIDE_HEADER_ICONS[outsideContext];
+            return <HeaderIcon size={18} color={Colors.amber} />;
+          })()
+        ) : (
+          <MapPinIcon size={18} color={Colors.amber} />
         )}
+        <Text style={styles.headerPub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
+          {placeLabel}
+        </Text>
+        {/* Always available: with the "Mimo hospodu" section the picker is
+            meaningful even when GPS found a single (or no) candidate. */}
+        <Pressable
+          onPress={onChangePlace}
+          style={styles.changeButton}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={cs.a11y.counterChangePub}
+        >
+          <Text style={styles.changeButtonText} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.counter.changePub}
+          </Text>
+        </Pressable>
         {count > 0 && (
           <Pressable
             onPress={handleDone}
@@ -1044,10 +1216,13 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
         showsVerticalScrollIndicator={false}
       >
         {/* Keep the public mapping prompt in the motivation zone, but as one
-            compact strip so it doesn't push the beer stepper below the fold. */}
-        <View style={styles.mapPubTop}>
-          <MapPubEntry pubKey={cell} pubName={pub.name} info={pubInfoFromPub(pub)} />
-        </View>
+            compact strip so it doesn't push the beer stepper below the fold.
+            Pub only — there is nothing to map about a living room. */}
+        {pub ? (
+          <View style={styles.mapPubTop}>
+            <MapPubEntry pubKey={cell} pubName={pub.name} info={pubInfoFromPub(pub)} />
+          </View>
+        ) : null}
 
         {/* Hero */}
         <Hero
@@ -1055,6 +1230,9 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
           hasSessionDrinks={sessionDrinks.length > 0}
           otherDrinkSummary={otherDrinkSummary}
           totalCzk={totalCzk}
+          // Outside a pub the price is optional; a wallet line of "0 Kč" would
+          // claim knowledge we don't have — unknown stays unknown.
+          showSpent={!outsideContext || totalCzk > 0}
           latestDrinkText={latestDrinkText}
           reducedMotion={reducedMotion}
           priceCurrency={priceCurrency}
@@ -1094,7 +1272,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
         {hasMenu ? (
           <>
             <Text style={styles.menuHeader} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.counter.menuHeader}
+              {pub ? cs.counter.menuHeader : cs.counter.outsideMenuHeader}
             </Text>
             <View style={styles.menuList}>
               {menuGroups.map((group) => (
@@ -1106,7 +1284,9 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
                     count: beerCounts.get(beerKey(beer)) ?? 0,
                     onCount: () => handleTapBeer(beer),
                     onDecrement: () => decrementBeer(beer),
-                    onEdit: () => handleEditBeer(beer),
+                    // Long-press edit rewrites the pub's community menu; the
+                    // outside list is session-derived, nothing to edit.
+                    onEdit: pub ? () => handleEditBeer(beer) : () => undefined,
                   }))}
                   priceCurrency={priceCurrency}
                 />
@@ -1140,14 +1320,14 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
         ) : (
           <View style={styles.emptyMenu}>
             <Text style={styles.emptyMenuTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {cs.counter.emptyMenuTitle}
+              {pub ? cs.counter.emptyMenuTitle : cs.counter.outsideEmptyTitle}
             </Text>
             <Text style={styles.emptyMenuBody} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.counter.emptyMenuBody}
+              {pub ? cs.counter.emptyMenuBody : cs.counter.outsideEmptyBody}
             </Text>
             <View style={styles.emptyMenuButton}>
               <GlowButton
-                label={cs.counter.emptyMenuCta}
+                label={pub ? cs.counter.emptyMenuCta : cs.counter.outsideEmptyCta}
                 onPress={handleAddBeer}
                 glow="soft"
                 icon={<PlusIcon size={20} color={Colors.stout} />}
@@ -1169,18 +1349,20 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
               {cs.counter.addOtherDrink}
             </Text>
           </Pressable>
-          <Pressable
-            onPress={() => setScanSourceVisible(true)}
-            disabled={scanningDrinks}
-            style={({ pressed }) => [styles.secondaryDrinkButton, (pressed || scanningDrinks) && styles.friendShareButtonPressed]}
-            accessibilityRole="button"
-            accessibilityLabel={cs.counter.scanDrinks}
-          >
-            <CameraIcon size={17} color={Colors.foamMuted} />
-            <Text style={styles.secondaryDrinkText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {scanningDrinks ? cs.counter.scanDrinksLoading : cs.counter.scanDrinks}
-            </Text>
-          </Pressable>
+          {pub ? (
+            <Pressable
+              onPress={() => setScanSourceVisible(true)}
+              disabled={scanningDrinks}
+              style={({ pressed }) => [styles.secondaryDrinkButton, (pressed || scanningDrinks) && styles.friendShareButtonPressed]}
+              accessibilityRole="button"
+              accessibilityLabel={cs.counter.scanDrinks}
+            >
+              <CameraIcon size={17} color={Colors.foamMuted} />
+              <Text style={styles.secondaryDrinkText} maxFontSizeMultiplier={FontScaleCap.body}>
+                {scanningDrinks ? cs.counter.scanDrinksLoading : cs.counter.scanDrinks}
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
 
         {/* Secondary social actions. Mapping already lives near the top; these
@@ -1199,25 +1381,27 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
               {cs.photoDiary.counterCta}
             </Text>
           </Pressable>
-          <Pressable
-            onPress={() => void handleShareWithFriends()}
-            disabled={sharingWithFriends || broadcasted}
-            style={({ pressed }) => [
-              styles.friendShareButton,
-              (pressed || sharingWithFriends || broadcasted) && styles.friendShareButtonPressed,
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel={broadcasted ? cs.friends.counterAlreadyLive : cs.friends.shareHereShort}
-          >
-            {broadcasted ? (
-              <CheckIcon size={18} color={Colors.amber} />
-            ) : (
-              <BellRingIcon size={18} color={Colors.amber} />
-            )}
-            <Text style={styles.friendShareText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-              {broadcasted ? cs.friends.counterAlreadyLive : cs.friends.shareHereShort}
-            </Text>
-          </Pressable>
+          {pub ? (
+            <Pressable
+              onPress={() => void handleShareWithFriends()}
+              disabled={sharingWithFriends || broadcasted}
+              style={({ pressed }) => [
+                styles.friendShareButton,
+                (pressed || sharingWithFriends || broadcasted) && styles.friendShareButtonPressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={broadcasted ? cs.friends.counterAlreadyLive : cs.friends.shareHereShort}
+            >
+              {broadcasted ? (
+                <CheckIcon size={18} color={Colors.amber} />
+              ) : (
+                <BellRingIcon size={18} color={Colors.amber} />
+              )}
+              <Text style={styles.friendShareText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                {broadcasted ? cs.friends.counterAlreadyLive : cs.friends.shareHereShort}
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
       </ScrollView>
 
@@ -1226,6 +1410,8 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
         mode={formMode ?? 'add'}
         beer={formBeer}
         initialDrinkType={formDrinkType}
+        placeContext={outsideContext ?? 'pub'}
+        initialServingType={lastServingType}
         formKey={formNonce}
         onCancel={() => {
           setFormMode(null);
@@ -1233,9 +1419,10 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
           setBackdateAt(null);
         }}
         onSubmit={handleFormSubmit}
-        // Hidden in the backdate flow: the scan hands over to the contribute
-        // editor, which would silently drop the picked past timestamp.
-        onScanMenu={backdateAt ? undefined : handleScanMenu}
+        // Hidden in the backdate flow (the scan hands over to the contribute
+        // editor, which would silently drop the picked past timestamp) and
+        // outside a pub (there is no pub menu to fill).
+        onScanMenu={backdateAt || !pub ? undefined : handleScanMenu}
       />
       <ScanMenuSheet
         visible={scanSourceVisible}
@@ -1250,7 +1437,7 @@ function ActiveCounter({ pub, candidatesCount, onChangePub, embedded }: ActiveCo
         onClose={() => setScannedDrinks([])}
         onSelect={handleSelectScannedDrink}
       />
-      {checkInBeerName && checkInSheetOpen ? (
+      {pub && checkInBeerName && checkInSheetOpen ? (
         <BeerCheckInSheet
           visible={checkInSheetOpen}
           key={checkInBeerName}
@@ -1276,6 +1463,7 @@ function Hero({
   latestDrinkText,
   reducedMotion,
   priceCurrency,
+  showSpent = true,
   onResume,
   resumeSummary,
 }: {
@@ -1286,6 +1474,9 @@ function Hero({
   latestDrinkText: string | null;
   reducedMotion: boolean;
   priceCurrency: PriceCurrency;
+  /** Hide the "Utraceno" pill when the total is genuinely unknown (outside a
+   *  pub with no prices entered) — unknown must not read as 0 Kč. */
+  showSpent?: boolean;
   /** Resume a recent auto-completed evening — only shown when count === 0. */
   onResume?: () => void;
   /** Short "3 piva" recap of the resumable evening, for the hint line. */
@@ -1340,11 +1531,13 @@ function Hero({
       <Text style={styles.heroNoun} maxFontSizeMultiplier={FontScaleCap.heading}>
         {beerCountLabel(count).split(' ')[1]}
       </Text>
-      <View style={styles.spentPill}>
-        <Text style={styles.spentPillText} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {cs.counter.totalSpent(formatPrice(totalCzk, priceCurrency))}
-        </Text>
-      </View>
+      {showSpent ? (
+        <View style={styles.spentPill}>
+          <Text style={styles.spentPillText} maxFontSizeMultiplier={FontScaleCap.heading}>
+            {cs.counter.totalSpent(formatPrice(totalCzk, priceCurrency))}
+          </Text>
+        </View>
+      ) : null}
       {otherDrinkSummary ? (
         <Text style={styles.otherDrinkSummary} maxFontSizeMultiplier={FontScaleCap.body}>
           {otherDrinkSummary}
@@ -1365,6 +1558,13 @@ export default function CounterScreen({ embedded = false }: { embedded?: boolean
   const { candidates, selected, selectPub, permissionState, requestPermission, loading, retry } =
     useNearbyPub();
   const [pickerOpen, setPickerOpen] = useState(false);
+  // "Mimo hospodu" mode. Restored from a live outside session so returning to
+  // the tab mid-evening lands back in it (useNearbyPub ignores ctx sessions).
+  const [outsideContext, setOutsideContext] = useState<OutsidePlaceContext | null>(() => {
+    const current = useTallyStore.getState().current;
+    if (!current || current.drinks.length === 0) return null;
+    return contextFromPubKey(current.pubKey);
+  });
   const hadActiveSessionOnOpen = React.useRef(
     (useTallyStore.getState().current?.drinks.length ?? 0) > 0,
   );
@@ -1373,46 +1573,78 @@ export default function CounterScreen({ embedded = false }: { embedded?: boolean
     void trackCounterTabOpened(hadActiveSessionOnOpen.current);
   }, []);
 
-  // Active pub: an explicit selection, else the nearest candidate.
-  const activePub = selected ?? candidates[0]?.pub ?? null;
-  const activeKey = activePub ? geohash8(activePub.lat, activePub.lng) : null;
+  // Active pub: ONLY an explicit selection (auto-pick within 120 m, a pinned
+  // session, or a manual pick). The old `?? candidates[0]` fallback silently
+  // attributed drinks to a pub up to 3 km away — when nothing is close enough,
+  // the user picks a place instead (NoPubScreen → picker).
+  const activePub = outsideContext ? null : selected;
+  const place: CounterPlace | null = useMemo(() => {
+    if (outsideContext) return { kind: 'outside', context: outsideContext };
+    if (activePub) return { kind: 'pub', pub: activePub };
+    return null;
+  }, [activePub, outsideContext]);
+  const activeKey = outsideContext
+    ? contextPubKey(outsideContext)
+    : activePub
+      ? geohash8(activePub.lat, activePub.lng)
+      : null;
 
-  if (permissionState !== 'granted') {
+  // One picker for every entry point: gates open it too (with no candidates it
+  // is just the "Mimo hospodu" sheet).
+  const picker = (
+    <PubPickerModal
+      visible={pickerOpen}
+      candidates={candidates}
+      selectedKey={activeKey}
+      onSelect={(pub) => {
+        setOutsideContext(null);
+        selectPub(pub);
+        setPickerOpen(false);
+      }}
+      onSelectOutside={(context) => {
+        setOutsideContext(context);
+        setPickerOpen(false);
+      }}
+      onClose={() => setPickerOpen(false)}
+    />
+  );
+
+  if (!place) {
+    if (permissionState !== 'granted') {
+      return (
+        <>
+          <PermissionScreen
+            permissionState={permissionState}
+            requestPermission={requestPermission}
+            onLogOutside={() => setPickerOpen(true)}
+            embedded={embedded}
+          />
+          {picker}
+        </>
+      );
+    }
+
+    if (loading) {
+      return <DetectingScreen embedded={embedded} />;
+    }
+
     return (
-      <PermissionScreen
-        permissionState={permissionState}
-        requestPermission={requestPermission}
-        embedded={embedded}
-      />
+      <>
+        <NoPubScreen
+          candidatesCount={candidates.length}
+          onPickPlace={() => setPickerOpen(true)}
+          onRetry={retry}
+          embedded={embedded}
+        />
+        {picker}
+      </>
     );
-  }
-
-  if (loading) {
-    return <DetectingScreen embedded={embedded} />;
-  }
-
-  if (!activePub) {
-    return <NoPubScreen onRetry={retry} embedded={embedded} />;
   }
 
   return (
     <>
-      <ActiveCounter
-        pub={activePub}
-        candidatesCount={candidates.length}
-        onChangePub={() => setPickerOpen(true)}
-        embedded={embedded}
-      />
-      <PubPickerModal
-        visible={pickerOpen}
-        candidates={candidates}
-        selectedKey={activeKey}
-        onSelect={(pub) => {
-          selectPub(pub);
-          setPickerOpen(false);
-        }}
-        onClose={() => setPickerOpen(false)}
-      />
+      <ActiveCounter place={place} onChangePlace={() => setPickerOpen(true)} embedded={embedded} />
+      {picker}
     </>
   );
 }

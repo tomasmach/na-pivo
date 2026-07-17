@@ -143,6 +143,23 @@ describe('computeLifetime', () => {
       totalSpentCzk: 0,
     });
   });
+
+  it('counts outside evenings as beers/evenings/spend but never as a pub', () => {
+    const sessions = [
+      session([drink({ priceCzk: 50 })], { pubKey: 'a' }),
+      session([drink({ priceCzk: 25 }), drink({ priceCzk: 25 })], {
+        pubKey: 'ctx:private',
+        pubName: 'Doma / na chatě',
+        placeContext: 'private',
+      }),
+    ];
+    expect(computeLifetime(sessions)).toEqual({
+      totalBeers: 3,
+      totalEvenings: 2,
+      distinctPubs: 1,
+      totalSpentCzk: 100,
+    });
+  });
 });
 
 describe('computeRecords', () => {
@@ -211,6 +228,20 @@ describe('computeTopPubs', () => {
       session([drink()], { pubKey: `pub-${i}`, startedAt: at(2026, 6, 1 + i, 19, 0) }),
     );
     expect(computeTopPubs(sessions, 3)).toHaveLength(3);
+  });
+
+  it('excludes outside ("ctx:*") evenings — the top-pubs chart is a pub chart', () => {
+    const sessions = [
+      session([drink()], { pubKey: 'a', pubName: 'U Tygra' }),
+      session([drink(), drink(), drink()], {
+        pubKey: 'ctx:private',
+        pubName: 'Doma / na chatě',
+        placeContext: 'private',
+      }),
+    ];
+    const top = computeTopPubs(sessions);
+    expect(top).toHaveLength(1);
+    expect(top[0].pubKey).toBe('a');
   });
 });
 

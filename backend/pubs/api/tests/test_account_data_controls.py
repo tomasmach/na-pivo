@@ -221,6 +221,8 @@ def test_account_export_includes_diary_data_and_excludes_secrets(client):
     assert body["account"]["id"] == account_id
     assert body["drinks"][0]["beer_name"] == "Ležák"
     assert body["drinks"][0]["drink_type"] == "beer"
+    assert body["drinks"][0]["place_context"] == "pub"
+    assert body["drinks"][0]["serving_type"] == "unknown"
     assert body["beer_checkins"][0]["beer_name"] == "Exportní pivo"
     assert body["beer_checkins"][0]["quantity"] == 3
     assert body["beer_checkins"][0]["price_czk"] == 62

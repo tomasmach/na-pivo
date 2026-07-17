@@ -323,3 +323,39 @@ describe('updateQueuedDrinkBeerName', () => {
     await expect(updateQueuedDrinkBeerName('missing', 'Kozel')).resolves.toBe('missing');
   });
 });
+
+describe('queue validator (persistence round-trip)', () => {
+  it('keeps outside (publess) entries and still drops malformed ones on load', async () => {
+    const outside: DrinkEntry = {
+      client_id: 'out-1',
+      place_context: 'private',
+      beer: { name: 'Kozel 11', serving_type: 'bottle' },
+      drank_at: '2026-07-17T20:00:00+02:00',
+    };
+    // No pub fields AND no place_context → legacy shape missing its pub → invalid.
+    const malformed = { client_id: 'bad-1', beer: { name: 'X', price_czk: 40 } };
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([entry(), outside, malformed]));
+
+    await flushDrinksQueue();
+
+    const sent = (submitDrink as jest.Mock).mock.calls.map((call) => call[0].client_id);
+    expect(sent).toContain('c1');
+    expect(sent).toContain('out-1');
+    expect(sent).not.toContain('bad-1');
+  });
+
+  it('rejects an outside entry that smuggles coordinates', async () => {
+    const leaky = {
+      client_id: 'leak-1',
+      place_context: 'private',
+      lat: 50.1,
+      lng: 14.4,
+      beer: { name: 'Kozel 11' },
+    };
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([leaky]));
+
+    await flushDrinksQueue();
+
+    expect(submitDrink).not.toHaveBeenCalled();
+  });
+});

@@ -40,6 +40,7 @@ import { sessionBreakdown, sessionDrinkSummary, eveningDateLabel, eveningDayRela
 import { EveningBreakdown } from '@/myBeers/EveningBreakdown';
 import { PubRatingControl } from '@/myBeers/PubRatingControl';
 import { MapPubEntry } from '@/components/amenities/MapPubEntry';
+import { isContextPubKey } from '@/drinks/drinkTypes';
 import { VerdictBadge } from '@/myBeers/VerdictBadge';
 import { HistoricalBeerEntrySheet } from '@/myBeers/HistoricalBeerEntrySheet';
 import type { PriceCurrency } from '@/utils/currency';
@@ -100,13 +101,20 @@ function CurrentEveningCard({
         showTotal={false}
       />
 
-      <View style={styles.divider} />
-      <PubRatingControl pubKey={session.pubKey} pubName={session.pubName} />
+      {/* Rating + public mapping are pub concepts; an outside evening
+          ("Doma / na chatě") has nothing to rate or map. */}
+      {!isContextPubKey(session.pubKey) ? (
+        <>
+          <View style={styles.divider} />
+          <PubRatingControl pubKey={session.pubKey} pubName={session.pubName} />
 
-      {/* Public community mapping — distinct from the private rating above. One
-          clear trigger; the sheet holds the detail so the card stays compact. */}
-      <View style={styles.divider} />
-      <MapPubEntry pubKey={session.pubKey} pubName={session.pubName} />
+          {/* Public community mapping — distinct from the private rating above.
+              One clear trigger; the sheet holds the detail so the card stays
+              compact. */}
+          <View style={styles.divider} />
+          <MapPubEntry pubKey={session.pubKey} pubName={session.pubName} />
+        </>
+      ) : null}
     </View>
   );
 }

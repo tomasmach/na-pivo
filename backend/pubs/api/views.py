@@ -1512,7 +1512,8 @@ class DrinksView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         data = serializer.validated_data
-        cache_key = geohash8(data["lat"], data["lng"])
+        is_pub = data["place_context"] == DrinkLog.PlaceContext.PUB
+        cache_key = geohash8(data["lat"], data["lng"]) if is_pub else None
         beer = data["beer"]
         drink_type = data["drink_type"]
         is_beer = drink_type == DrinkLog.DrinkType.BEER
@@ -1540,6 +1541,8 @@ class DrinksView(APIView):
                             "accepted": True,
                             "duplicate": True,
                             "cache_key": drink.cache_key,
+                            "place_context": drink.place_context,
+                            "serving_type": drink.serving_type,
                             "menu_updated": False,
                         },
                         status=status.HTTP_200_OK,
@@ -1569,11 +1572,13 @@ class DrinksView(APIView):
                     account=account,
                     client_id=data["client_id"],
                     cache_key=cache_key,
-                    name=data["name"],
-                    lat=data["lat"],
-                    lng=data["lng"],
-                    city=data.get("city") or "",
-                    external_id=data.get("external_id") or "",
+                    name=data.get("name") or "",
+                    lat=data.get("lat") if is_pub else None,
+                    lng=data.get("lng") if is_pub else None,
+                    city=(data.get("city") or "") if is_pub else "",
+                    external_id=(data.get("external_id") or "") if is_pub else "",
+                    place_context=data["place_context"],
+                    serving_type=beer["serving_type"],
                     drink_type=drink_type,
                     beer_name=beer["name"],
                     beer_brand=brand_match.brand if brand_match else None,
@@ -1586,7 +1591,7 @@ class DrinksView(APIView):
                     beer_product_name=(
                         brand_match.product.name if brand_match and brand_match.product else ""
                     ),
-                    price_czk=beer["price_czk"],
+                    price_czk=beer.get("price_czk"),
                     volume_ml=beer.get("volume_ml"),
                     drank_at=flags.drank_at,
                     is_suspect=flags.is_suspect,
@@ -1594,7 +1599,7 @@ class DrinksView(APIView):
                 )
 
                 menu_updated = False
-                if is_beer:
+                if is_pub and is_beer:
                     menu_updated = self._merge_into_community(
                         cache_key,
                         data,
@@ -1616,6 +1621,8 @@ class DrinksView(APIView):
                 "accepted": True,
                 "duplicate": False,
                 "cache_key": cache_key,
+                "place_context": data["place_context"],
+                "serving_type": beer["serving_type"],
                 "menu_updated": menu_updated,
             },
             status=status.HTTP_201_CREATED,
@@ -1670,7 +1677,10 @@ class DrinksView(APIView):
                     ]
                 )
 
-                if drink.drink_type == DrinkLog.DrinkType.BEER:
+                if (
+                    drink.place_context == DrinkLog.PlaceContext.PUB
+                    and drink.drink_type == DrinkLog.DrinkType.BEER
+                ):
                     self._refresh_drink_brand_indexes_after_patch(
                         drink=drink,
                         old_brand_key=old_brand_key,
@@ -2941,6 +2951,7 @@ def _leaderboard_drink_scores(period_start_utc: datetime | None, blocked_ids: se
         account__nickname__isnull=False,
         account__excluded_from_leaderboards=False,
         is_suspect=False,
+        drink_type=DrinkLog.DrinkType.BEER,
     ).exclude(account__nickname="")
     if period_start_utc is not None:
         qs = qs.filter(drank_at__gte=period_start_utc)
@@ -2965,7 +2976,7 @@ def _leaderboard_pub_scores(period_start_utc: datetime | None, blocked_ids: set[
             account__excluded_from_leaderboards=False,
         ).exclude(account__nickname="")
         if model is DrinkLog:
-            qs = qs.filter(is_suspect=False)
+            qs = qs.filter(is_suspect=False, cache_key__isnull=False)
         if period_start_utc is not None:
             qs = qs.filter(**{f"{timestamp_field}__gte": period_start_utc})
         if blocked_ids:
@@ -3016,7 +3027,11 @@ def _leaderboard_account_score(
     if account.excluded_from_leaderboards:
         return 0
     if category == "beers":
-        qs = DrinkLog.objects.filter(account=account, is_suspect=False)
+        qs = DrinkLog.objects.filter(
+            account=account,
+            is_suspect=False,
+            drink_type=DrinkLog.DrinkType.BEER,
+        )
         if period_start_utc is not None:
             qs = qs.filter(drank_at__gte=period_start_utc)
         return qs.count()
@@ -3030,6 +3045,7 @@ def _leaderboard_account_score(
         cache_keys.update(visits.values_list("cache_key", flat=True))
         cache_keys.update(drinks.values_list("cache_key", flat=True))
         cache_keys.discard("")
+        cache_keys.discard(None)
         return len(cache_keys)
     stats = getattr(account, "usage_stats", None)
     return int(getattr(stats, "mapper_xp", 0) or 0)
@@ -6271,6 +6287,8 @@ def _export_account_data(account: Account) -> dict:
                 "city": drink.city,
                 "external_id": drink.external_id,
                 "drink_type": drink.drink_type,
+                "place_context": drink.place_context,
+                "serving_type": drink.serving_type,
                 "beer_name": drink.beer_name,
                 "price_czk": drink.price_czk,
                 "volume_ml": drink.volume_ml,

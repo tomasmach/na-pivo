@@ -191,6 +191,49 @@ def test_twenty_first_drink_is_hard_limited_and_existing_rows_remain(client):
 
 
 @pytest.mark.django_db
+def test_pub_and_non_pub_drinks_share_daily_flag_and_hard_cap(client):
+    token, account = _register(client)
+    start = _yesterday_noon() - timedelta(hours=10)
+    for index in range(14):
+        drink = _drink(account, start + timedelta(minutes=35 * index))
+        if index % 2:
+            DrinkLog.objects.filter(pk=drink.pk).update(
+                cache_key=None,
+                name="",
+                lat=None,
+                lng=None,
+                place_context=DrinkLog.PlaceContext.OUTDOORS,
+            )
+
+    fifteenth = client.post(
+        "/v1/drinks",
+        data={
+            "client_id": str(uuid.uuid4()),
+            "place_context": "private",
+            "drink_type": "soft_drink",
+            "beer": {"name": "Kofola", "volume_ml": 400},
+            "drank_at": (start + timedelta(minutes=35 * 14)).isoformat(),
+        },
+        format="json",
+        **_auth(token),
+    )
+    assert fifteenth.status_code == status.HTTP_201_CREATED
+    assert DrinkLog.objects.latest("drank_at").suspect_reason == "daily_cap"
+
+    for index in range(15, 20):
+        _drink(account, start + timedelta(minutes=35 * index))
+    twenty_first = client.post(
+        "/v1/drinks",
+        data=_payload(drank_at=start + timedelta(minutes=35 * 20)),
+        format="json",
+        **_auth(token),
+    )
+    assert twenty_first.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert twenty_first.json()["code"] == "drink_limited"
+    assert DrinkLog.objects.filter(account=account).count() == 20
+
+
+@pytest.mark.django_db
 def test_duplicate_retry_does_not_recompute_or_change_flags(client):
     token, account = _register(client)
     client_id = uuid.uuid4()

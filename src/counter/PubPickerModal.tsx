@@ -1,7 +1,9 @@
 /**
  * "Where are you?" picker — a bottom-sheet list of the nearest pubs with
  * distances, used when GPS auto-detect is wrong or the user wants to switch
- * pubs. Plain RN Modal (same pattern as WhatsNewModal / BeerFormModal).
+ * pubs, plus the "Mimo hospodu" section (home / outdoors / elsewhere) for
+ * logging outside any pub. Plain RN Modal (same pattern as WhatsNewModal /
+ * BeerFormModal).
  */
 
 import React from 'react';
@@ -11,21 +13,36 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { MapPinIcon, XIcon } from '@/components/shared/IconGlyph';
+import { HouseIcon, MapPinIcon, TreePineIcon, XIcon } from '@/components/shared/IconGlyph';
 import { formatDistanceCs } from '@/compass/distance';
 import { cs } from '@/i18n/cs';
 import type { Pub } from '@/data/pubs';
 import type { NearbyCandidate } from '@/counter/useNearbyPub';
+import {
+  OUTSIDE_PLACE_CONTEXTS,
+  contextPubKey,
+  type OutsidePlaceContext,
+} from '@/drinks/drinkTypes';
+
+const OUTSIDE_ICONS: Record<OutsidePlaceContext, typeof HouseIcon> = {
+  private: HouseIcon,
+  outdoors: TreePineIcon,
+  other: MapPinIcon,
+};
 
 interface PubPickerModalProps {
   visible: boolean;
   candidates: NearbyCandidate[];
+  /** Selected pubKey — a geohash cell, or a `ctx:*` key for an outside choice. */
   selectedKey: string | null;
   onSelect: (pub: Pub) => void;
+  /** Pick one of the "Mimo hospodu" contexts instead of a pub. When omitted
+   *  (e.g. the photo compose pub tagger) the outside section doesn't render. */
+  onSelectOutside?: (context: OutsidePlaceContext) => void;
   onClose: () => void;
 }
 
-export function PubPickerModal({ visible, candidates, selectedKey, onSelect, onClose }: PubPickerModalProps) {
+export function PubPickerModal({ visible, candidates, selectedKey, onSelect, onSelectOutside, onClose }: PubPickerModalProps) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -52,6 +69,11 @@ export function PubPickerModal({ visible, candidates, selectedKey, onSelect, onC
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
           >
+            {candidates.length > 0 ? (
+              <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.counter.pickerNearbyHeader}
+              </Text>
+            ) : null}
             {candidates.map((candidate) => {
               const isSelected = candidate.pubKey === selectedKey;
               const distance = formatDistanceCs(candidate.distanceMeters);
@@ -85,6 +107,40 @@ export function PubPickerModal({ visible, candidates, selectedKey, onSelect, onC
                 </Pressable>
               );
             })}
+
+            {onSelectOutside ? (
+              <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.counter.pickerOutsideHeader}
+              </Text>
+            ) : null}
+            {onSelectOutside ? OUTSIDE_PLACE_CONTEXTS.map((context) => {
+              const isSelected = contextPubKey(context) === selectedKey;
+              const Icon = OUTSIDE_ICONS[context];
+              const label = cs.counter.outsideLabel(context);
+              return (
+                <Pressable
+                  key={context}
+                  onPress={() => onSelectOutside(context)}
+                  style={({ pressed }) => [
+                    styles.row,
+                    isSelected && styles.rowSelected,
+                    pressed && styles.rowPressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isSelected }}
+                  accessibilityLabel={label}
+                >
+                  <Icon size={18} color={isSelected ? Colors.stout : Colors.amber} />
+                  <Text
+                    style={[styles.rowName, isSelected && styles.rowNameSelected]}
+                    numberOfLines={1}
+                    maxFontSizeMultiplier={FontScaleCap.body}
+                  >
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            }) : null}
           </ScrollView>
         </View>
       </View>
@@ -135,6 +191,16 @@ const styles = StyleSheet.create({
   listContent: {
     gap: 8,
     paddingBottom: Spacing.sm,
+  },
+  sectionHeader: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 12,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: Colors.mutedText,
+    marginTop: Spacing.xs,
+    marginBottom: 2,
+    marginLeft: 4,
   },
   row: {
     flexDirection: 'row',

@@ -23,7 +23,7 @@ from collections import OrderedDict
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from pubs.models import Account
+from pubs.models import Account, DrinkLog
 
 # The app's drinking day rolls at 04:00 *device-local*. Our users are CZ/SK, so
 # we bucket server-side in Europe/Prague to line up with what the device shows
@@ -84,7 +84,13 @@ def compute_my_stats(account: Account) -> dict:
     """
 
     drinks = list(
-        account.drinks.only("cache_key", "name", "price_czk", "drank_at").order_by("drank_at")
+        account.drinks.only(
+            "cache_key",
+            "name",
+            "price_czk",
+            "drink_type",
+            "drank_at",
+        ).order_by("drank_at")
     )
     if not drinks:
         return _empty_payload()
@@ -92,31 +98,42 @@ def compute_my_stats(account: Account) -> dict:
     # Fold the ascending drinks into evenings (cache_key, drinking_day) and
     # per-pub tallies. Insertion order = ascending drank_at, so within each
     # bucket the last appended drink is the most recent one.
-    evening_times: OrderedDict[tuple[str, date], list[datetime]] = OrderedDict()
-    evening_name: dict[tuple[str, date], str] = {}
+    evening_times: OrderedDict[tuple[str | None, date], list[datetime]] = OrderedDict()
+    evening_beer_times: OrderedDict[tuple[str | None, date], list[datetime]] = OrderedDict()
+    evening_name: dict[tuple[str | None, date], str | None] = {}
     pubs: OrderedDict[str, dict] = OrderedDict()
 
     total_spent = 0
+    total_beers = 0
     for drink in drinks:
         at = _as_utc(drink.drank_at)
-        total_spent += drink.price_czk
+        total_spent += drink.price_czk or 0
+        is_beer = drink.drink_type == DrinkLog.DrinkType.BEER
+        if is_beer:
+            total_beers += 1
 
         ekey = (drink.cache_key, _drinking_day(drink.drank_at))
         evening_times.setdefault(ekey, []).append(at)
-        evening_name[ekey] = drink.name  # ascending iteration → newest name wins
+        if is_beer:
+            evening_beer_times.setdefault(ekey, []).append(at)
+        # Non-pub evenings participate in day-based records, but never pretend
+        # to have a pub name.
+        evening_name[ekey] = drink.name if drink.cache_key is not None else None
 
+        if drink.cache_key is None:
+            continue
         pub = pubs.get(drink.cache_key)
         if pub is None:
             pubs[drink.cache_key] = {
                 "cache_key": drink.cache_key,
                 "name": drink.name,
-                "beers": 1,
-                "spent_czk": drink.price_czk,
+                "beers": int(is_beer),
+                "spent_czk": drink.price_czk or 0,
                 "last_drank_at": at,
             }
         else:
-            pub["beers"] += 1
-            pub["spent_czk"] += drink.price_czk
+            pub["beers"] += int(is_beer)
+            pub["spent_czk"] += drink.price_czk or 0
             pub["name"] = drink.name  # ascending → newest name / timestamp win
             pub["last_drank_at"] = at
 
@@ -138,15 +155,15 @@ def compute_my_stats(account: Account) -> dict:
     ]
 
     # records: biggest evening (ties → most recent), fastest beer, longest evening.
-    best_key: tuple[str, date] | None = None
+    best_key: tuple[str | None, date] | None = None
     best_size = 0
     best_newest: datetime | None = None
     fastest_gap: timedelta | None = None
     longest_duration: timedelta | None = None
 
-    for ekey, times in evening_times.items():
-        size = len(times)
-        newest = times[-1]  # ascending → last is most recent
+    for ekey, beer_times in evening_beer_times.items():
+        size = len(beer_times)
+        newest = beer_times[-1]  # ascending → last is most recent
         if (
             best_key is None
             or size > best_size
@@ -155,12 +172,16 @@ def compute_my_stats(account: Account) -> dict:
             best_key, best_size, best_newest = ekey, size, newest
 
         if size >= 2:
-            smallest = min(times[i] - times[i - 1] for i in range(1, size))
+            smallest = min(
+                beer_times[i] - beer_times[i - 1]
+                for i in range(1, size)
+            )
             if fastest_gap is None or smallest < fastest_gap:
                 fastest_gap = smallest
-            # Mirror the app: only a positive span counts as a "longest evening"
-            # (two drinks at the same instant don't), while a zero gap still
-            # counts as the fastest beer.
+
+    for times in evening_times.values():
+        if len(times) >= 2:
+            # Mirror the app: only a positive span counts as a "longest evening".
             duration = times[-1] - times[0]
             if duration > timedelta(0) and (
                 longest_duration is None or duration > longest_duration
@@ -180,7 +201,7 @@ def compute_my_stats(account: Account) -> dict:
     }
 
     return {
-        "total_beers": len(drinks),
+        "total_beers": total_beers,
         "total_evenings": len(evening_times),
         "distinct_pubs": len(pubs),
         "total_spent_czk": total_spent,

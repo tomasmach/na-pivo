@@ -70,6 +70,12 @@ describe('buildVisitEntry', () => {
     expect(buildVisitEntry(session())?.updated_at).toBe('2026-06-14T20:30:00.000Z');
   });
 
+  it('returns null for an outside ("ctx:*") session — never a PubVisit', () => {
+    expect(buildVisitEntry(session({ pubKey: 'ctx:private', pubName: 'Doma / na chatě' }))).toBeNull();
+    expect(buildVisitEntry(session({ pubKey: 'ctx:outdoors' }))).toBeNull();
+    expect(buildVisitEntry(session({ pubKey: 'ctx:other' }))).toBeNull();
+  });
+
   it('sets ended_at to null for an empty session', () => {
     expect(buildVisitEntry(session({ drinks: [] }))?.ended_at).toBeNull();
     expect(buildVisitEntry(session({ drinks: [] }))?.updated_at).toBe(

@@ -20,7 +20,10 @@ def derive_account_profile_stats(account: Account) -> dict:
         total_spent_czk=Sum("price_czk"),
     )
     pub_keys = set(account.pub_visits.values_list("cache_key", flat=True))
-    pub_keys.update(public_drinks.values_list("cache_key", flat=True))
+    pub_keys.update(
+        public_drinks.filter(cache_key__isnull=False).values_list("cache_key", flat=True)
+    )
+    pub_keys.discard("")
     max_visit_row = (
         account.pub_visits.values("cache_key")
         .annotate(n=Count("id"))

@@ -1507,24 +1507,39 @@ class DrinkItemSerializer(serializers.Serializer):
     """
 
     name = serializers.CharField(max_length=80, trim_whitespace=True)
-    price_czk = serializers.IntegerField(required=True, min_value=1, max_value=1000)
+    price_czk = serializers.IntegerField(required=False, min_value=1, max_value=1000)
     volume_ml = serializers.IntegerField(
         required=False,
         allow_null=True,
         min_value=10,
         max_value=3000,
     )
+    serving_type = serializers.ChoiceField(
+        choices=DrinkLog.ServingType.choices,
+        default=DrinkLog.ServingType.UNKNOWN,
+    )
 
 
 class DrinkRequestSerializer(_Pub200NameValidationMixin, PubInputSerializer):
     """Request body for POST /v1/drinks.
 
-    Inherits name/lat/lng/city (+ lat/lng bounds) from PubInputSerializer and
-    adds the idempotency key, optional external id, additive ``drink_type``, the
-    required legacy ``beer`` object (with a mandatory price), and an optional
-    ``drank_at`` (server defaults to now()).
-    The pub name is tightened to 1..200 by _Pub200NameValidationMixin.
+    Pub identity and price remain mandatory when ``place_context`` is ``pub``.
+    Outside a pub, pub identity fields are forbidden and price is optional.
+    Missing ``place_context`` and ``serving_type`` retain released-client
+    defaults of ``pub`` and ``unknown``.
     """
+
+    name = serializers.CharField(
+        max_length=255,
+        required=False,
+        allow_blank=True,
+    )
+    lat = serializers.FloatField(required=False, allow_null=True)
+    lng = serializers.FloatField(required=False, allow_null=True)
+    place_context = serializers.ChoiceField(
+        choices=DrinkLog.PlaceContext.choices,
+        default=DrinkLog.PlaceContext.PUB,
+    )
 
     client_id = serializers.UUIDField()
     external_id = serializers.CharField(
@@ -1542,6 +1557,25 @@ class DrinkRequestSerializer(_Pub200NameValidationMixin, PubInputSerializer):
     drank_at = serializers.DateTimeField(required=False, allow_null=True)
 
     def validate(self, attrs: dict) -> dict:
+        place_context = attrs["place_context"]
+        if place_context == DrinkLog.PlaceContext.PUB:
+            required_errors = {}
+            for field in ("name", "lat", "lng"):
+                if attrs.get(field) in (None, ""):
+                    required_errors[field] = "This field is required."
+            if "price_czk" not in attrs["beer"]:
+                required_errors.setdefault("beer", {})["price_czk"] = "This field is required."
+            if required_errors:
+                raise serializers.ValidationError(required_errors)
+        else:
+            forbidden = {
+                field: "This field must not be provided outside a pub."
+                for field in ("name", "lat", "lng", "city", "external_id")
+                if field in self.initial_data
+            }
+            if forbidden:
+                raise serializers.ValidationError(forbidden)
+
         item = attrs["beer"]
         if attrs["drink_type"] == DrinkLog.DrinkType.BEER:
             volume_ml = item.get("volume_ml")
@@ -1549,10 +1583,12 @@ class DrinkRequestSerializer(_Pub200NameValidationMixin, PubInputSerializer):
                 raise serializers.ValidationError(
                     {"beer": {"volume_ml": f"volume_ml must be one of {sorted(ALLOWED_BEER_VOLUMES_ML)}."}}
                 )
-            attrs["beer"] = normalize_beer_payload(
+            normalized = normalize_beer_payload(
                 item,
                 match_cache=self.context.get("beer_match_cache"),
             )
+            normalized["serving_type"] = item["serving_type"]
+            attrs["beer"] = normalized
         else:
             volume_ml = item.get("volume_ml")
             if (
@@ -1566,8 +1602,9 @@ class DrinkRequestSerializer(_Pub200NameValidationMixin, PubInputSerializer):
             # Keep non-beer names human-entered and avoid beer catalogue aliases.
             attrs["beer"] = {
                 "name": item["name"],
-                "price_czk": item["price_czk"],
+                "price_czk": item.get("price_czk"),
                 "volume_ml": item.get("volume_ml"),
+                "serving_type": item["serving_type"],
             }
         return attrs
 

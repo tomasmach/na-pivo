@@ -34,17 +34,19 @@ export function sessionBreakdown(session: TallySession | null): BreakdownLine[] 
   for (const drink of session.drinks) {
     const drinkType = normalizeDrinkType(drink.drinkType);
     const key = `${drinkType}|${drink.beerName.trim().toLowerCase()}|${drink.volumeMl ?? ''}`;
+    // A drink outside a pub may have no price — it just doesn't add to totals.
+    const priceCzk = typeof drink.priceCzk === 'number' ? drink.priceCzk : 0;
     const existing = lines.get(key);
     if (existing) {
       existing.count += 1;
-      existing.totalCzk += drink.priceCzk;
+      existing.totalCzk += priceCzk;
     } else {
       order.push(key);
       const line: BreakdownLine = {
         name: drink.beerName,
         drinkType,
         count: 1,
-        totalCzk: drink.priceCzk,
+        totalCzk: priceCzk,
       };
       if (typeof drink.volumeMl === 'number') line.volumeMl = drink.volumeMl;
       lines.set(key, line);

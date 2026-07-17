@@ -30,7 +30,7 @@ import {
   type TallySession,
 } from '@/stores/tallyStore';
 import { eveningDayRelation } from '@/myBeers/eveningModel';
-import { normalizeDrinkType } from '@/drinks/drinkTypes';
+import { isContextPubKey, normalizeDrinkType } from '@/drinks/drinkTypes';
 import { MIN_PLAUSIBLE_BEER_GAP_MS } from '@/drinks/drinkTiming';
 
 /** A drink count threshold bucket, used to pick the hospodský one-liner that
@@ -186,7 +186,8 @@ export function computeLifetime(sessions: TallySession[]): LifetimeStats {
   for (const session of sessions) {
     totalBeers += sessionCount(session);
     totalSpentCzk += sessionTotalCzk(session);
-    pubKeys.add(session.pubKey);
+    // Outside evenings count as beers/evenings/spend, never as a visited pub.
+    if (!isContextPubKey(session.pubKey)) pubKeys.add(session.pubKey);
   }
 
   return {
@@ -238,6 +239,9 @@ export function computeTopPubs(sessions: TallySession[], limit = 8): PubTally[] 
   const byPub = new Map<string, PubTally & { lastAtMs: number }>();
 
   for (const session of sessions) {
+    // Outside evenings ("Doma / na chatě") are not pubs — beers still count in
+    // the totals elsewhere, but the top-pubs chart is a pub chart.
+    if (isContextPubKey(session.pubKey)) continue;
     const beers = sessionCount(session);
     if (beers === 0) continue;
     const spent = sessionTotalCzk(session);

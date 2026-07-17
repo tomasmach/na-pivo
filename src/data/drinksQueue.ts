@@ -20,7 +20,7 @@
 
 import { submitDrink, type DrinkEntry } from './drinksClient';
 import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
-import { isDrinkType } from '@/drinks/drinkTypes';
+import { isDrinkType, isOutsidePlaceContext, isServingType } from '@/drinks/drinkTypes';
 
 const STORAGE_KEY = 'na-pivo-drinks-queue';
 /** Hard cap — a queue this long means the backend has been unreachable for a
@@ -31,15 +31,30 @@ const deliveringIds = new Set<string>();
 
 function isDrinkEntry(entry: unknown): entry is DrinkEntry {
   const e = entry as DrinkEntry;
+  if (
+    !e ||
+    typeof e.client_id !== 'string' ||
+    (e.drink_type !== undefined && !isDrinkType(e.drink_type)) ||
+    !e.beer ||
+    typeof e.beer.name !== 'string' ||
+    (e.beer.serving_type !== undefined && !isServingType(e.beer.serving_type))
+  ) {
+    return false;
+  }
+  // Outside drinks (place_context ≠ pub) carry no pub identity and may have no
+  // price; a pub drink (or a legacy entry without place_context) must have both.
+  if (isOutsidePlaceContext(e.place_context)) {
+    return (
+      e.name === undefined &&
+      e.lat === undefined &&
+      e.lng === undefined &&
+      (e.beer.price_czk === undefined || typeof e.beer.price_czk === 'number')
+    );
+  }
   return (
-    !!e &&
-    typeof e.client_id === 'string' &&
     typeof e.name === 'string' &&
     typeof e.lat === 'number' &&
     typeof e.lng === 'number' &&
-    (e.drink_type === undefined || isDrinkType(e.drink_type)) &&
-    !!e.beer &&
-    typeof e.beer.name === 'string' &&
     typeof e.beer.price_czk === 'number'
   );
 }

@@ -1000,6 +1000,44 @@ def test_profile_stats_and_badges_exclude_suspect_drinks(client):
     assert body["achievements"]["taster"] is False
 
 
+@pytest.mark.django_db
+def test_profile_counts_non_pub_beer_but_not_a_distinct_pub(client):
+    token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    now = timezone.now()
+    DrinkLog.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        cache_key="real-pub",
+        name="U Zlatého tygra",
+        lat=50.0876,
+        lng=14.4214,
+        beer_name="Pilsner Urquell",
+        price_czk=62,
+        drank_at=now,
+    )
+    DrinkLog.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        cache_key=None,
+        name="",
+        lat=None,
+        lng=None,
+        place_context=DrinkLog.PlaceContext.PRIVATE,
+        serving_type=DrinkLog.ServingType.BOTTLE,
+        beer_name="Pilsner Urquell",
+        price_czk=None,
+        drank_at=now,
+    )
+
+    response = client.get("/v1/account/me", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["stats"]["total_beers"] == 2
+    assert response.json()["stats"]["distinct_pubs"] == 1
+    assert response.json()["stats"]["total_spent_czk"] == 62
+
+
 # ===========================================================================
 # 10. Google picture capture (once) + display_name seed; Apple no-op
 # ===========================================================================
