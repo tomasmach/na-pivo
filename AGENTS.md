@@ -131,7 +131,7 @@ Backend hotfix založ z posledního nasazeného API tagu, například `git workt
 
 OTA přes `eas update` publikuj jen z `main`, nikdy z `dev` ani feature větve. Nejdřív ověř update přes `--channel preview`, potom použij `eas update:republish --destination-channel production`. OTA z feature větve už v minulosti shodila produkci.
 
-Produkční server má sparse checkout jen pro `backend/` a stojí na detached `api-*` tagu. `docker compose` tam vždy pouštěj s explicitním `-p na-pivo`; bez něj Compose odvodí jméno projektu z adresáře `backend/`, vytvoří nové prázdné volumes a situace vypadá jako ztráta databáze.
+Produkční server má v `/opt/na-pivo` sparse checkout jen pro `backend/` (nutně `--no-cone`, protože cone mode vždy vysype i root soubory) a stojí na detached `api-*` tagu. Deploy je `git fetch origin --tags --filter=blob:none`, `git checkout --detach api-YYYY.MM.DD.N` a z `backend/` pak `docker compose -p na-pivo up -d --build`. Jméno projektu drží `name: na-pivo` přímo v `docker-compose.yml` a volumes jsou pojmenované, takže přesun compose souboru je nerozbije; `-p na-pivo` je jen pojistka. Ve `/opt/na-pivo.pre-monorepo-2026-07-17` leží starý checkout archivovaného backend repa — odtud nikdy nedeployuj, vrátil bys produkci zpátky.
 
 Produkční deployment nedělej bez explicitního požadavku člověka. Commit a push jsou běžné; release, EAS build, App Store/TestFlight kroky nebo zásahy do produkčního backendu jsou separátní rozhodnutí.
 
