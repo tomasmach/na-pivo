@@ -1,0 +1,750 @@
+<title>Monorepo + branching strategie</title>
+<style>
+  :root {
+    --bg: #0f1113;
+    --bg-raised: #16191c;
+    --bg-sunken: #0a0c0d;
+    --border: #2a2f34;
+    --border-strong: #3d444b;
+    --text: #dfe3e7;
+    --text-dim: #9aa3ac;
+    --text-faint: #6b747d;
+    --amber: #d99a2b;
+    --amber-dim: #8a6420;
+    --green: #5aa86a;
+    --red: #c05a5a;
+    --blue: #5a86c0;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; display: flex; gap: 40px; }
+  main { flex: 1; min-width: 0; max-width: 78ch; padding: 32px 0 120px; }
+
+  nav.toc {
+    width: 210px; flex: none; align-self: flex-start;
+    position: sticky; top: 0; max-height: 100vh; overflow-y: auto;
+    padding: 32px 0 40px; font-size: 13px;
+  }
+  nav.toc ol { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--border); }
+  nav.toc a {
+    display: block; padding: 5px 0 5px 14px; margin-left: -1px;
+    color: var(--text-faint); text-decoration: none; border-left: 1px solid transparent;
+  }
+  nav.toc a:hover { color: var(--text); }
+  nav.toc a.active { color: var(--amber); border-left-color: var(--amber); }
+
+  header { padding-top: 8px; }
+  h1 { font-size: 28px; line-height: 1.25; margin: 0 0 10px; letter-spacing: -0.02em; }
+  .meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 24px; }
+  .badge {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600;
+    padding: 3px 9px; border-radius: 4px; border: 1px solid var(--amber-dim);
+    color: var(--amber); background: rgba(217,154,43,0.08);
+  }
+  .date { font-size: 13px; color: var(--text-faint); }
+
+  h2 {
+    font-size: 20px; margin: 52px 0 14px; letter-spacing: -0.01em;
+    padding-bottom: 8px; border-bottom: 1px solid var(--border);
+  }
+  h3 { font-size: 15px; margin: 26px 0 8px; color: var(--text); }
+  p { margin: 0 0 14px; }
+  a { color: var(--blue); }
+
+  .tldr {
+    background: var(--bg-raised); border: 1px solid var(--border);
+    border-left: 3px solid var(--amber); border-radius: 6px;
+    padding: 18px 20px; margin-bottom: 8px;
+  }
+  .tldr p:last-child { margin-bottom: 0; }
+  .verdict { font-size: 17px; font-weight: 600; color: var(--amber); margin-bottom: 10px; }
+
+  .controls {
+    position: sticky; top: 0; z-index: 20; background: var(--bg);
+    padding: 14px 0 12px; margin-bottom: 4px;
+    border-bottom: 1px solid var(--border); display: flex; gap: 14px; align-items: center;
+  }
+  .seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 6px; overflow: hidden; }
+  .seg button {
+    background: transparent; border: 0; color: var(--text-dim); font: inherit; font-size: 12px;
+    padding: 5px 12px; cursor: pointer;
+  }
+  .seg button[aria-pressed="true"] { background: var(--amber); color: #17130a; font-weight: 600; }
+  body.overview .detail { display: none; }
+
+  .progress-box { flex: 1; display: flex; align-items: center; gap: 10px; }
+  .bar { flex: 1; height: 5px; background: var(--bg-sunken); border-radius: 3px; overflow: hidden; border: 1px solid var(--border); }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--green); transition: width .2s; }
+  .progress-box span { font-size: 12px; color: var(--text-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+  .card { background: var(--bg-raised); border: 1px solid var(--border); border-radius: 6px; padding: 14px 16px; }
+  .card h4 { margin: 0 0 10px; font-size: 12px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-faint); }
+  .card ul { margin: 0; padding-left: 18px; font-size: 14px; color: var(--text-dim); }
+  .card li { margin-bottom: 5px; }
+  .card.yes { border-left: 2px solid var(--green); }
+  .card.no { border-left: 2px solid var(--red); }
+
+  .tabs { margin: 20px 0; }
+  .tablist { display: flex; gap: 2px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .tablist button {
+    background: transparent; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px;
+    color: var(--text-faint); font: inherit; font-size: 14px; padding: 9px 14px; cursor: pointer;
+  }
+  .tablist button:hover { color: var(--text); }
+  .tablist button[aria-selected="true"] { color: var(--amber); border-bottom-color: var(--amber); }
+  .tablist .rec::after {
+    content: "doporučeno"; font-size: 9px; text-transform: uppercase; letter-spacing: .06em;
+    background: var(--amber); color: #17130a; padding: 1px 5px; border-radius: 3px; margin-left: 7px; font-weight: 700;
+  }
+  .tabpanel { padding: 18px 2px; font-size: 15px; }
+  .tabpanel[hidden] { display: none; }
+
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; margin: 14px 0; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--text-faint); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+  td:first-child { color: var(--text-dim); }
+  .ok { color: var(--green); }
+  .bad { color: var(--red); }
+  .mid { color: var(--amber); }
+
+  ol.steps { list-style: none; margin: 18px 0; padding: 0; counter-reset: s; }
+  ol.steps > li {
+    background: var(--bg-raised); border: 1px solid var(--border); border-radius: 6px;
+    margin-bottom: 10px; padding: 14px 16px 14px 46px; position: relative;
+  }
+  ol.steps > li::before {
+    counter-increment: s; content: counter(s);
+    position: absolute; left: 15px; top: 15px;
+    font: 600 11px/18px var(--mono); width: 18px; height: 18px; text-align: center;
+    border-radius: 50%; background: var(--bg-sunken); border: 1px solid var(--border-strong); color: var(--text-faint);
+  }
+  ol.steps > li.done { opacity: 0.55; }
+  ol.steps > li.done .stitle { text-decoration: line-through; }
+  .shead { display: flex; align-items: baseline; gap: 10px; }
+  .stitle { font-weight: 600; font-size: 15px; flex: 1; cursor: pointer; }
+  ol.steps input[type=checkbox] { position: absolute; left: 15px; top: 15px; width: 18px; height: 18px; margin: 0; opacity: 0; cursor: pointer; z-index: 2; }
+  ol.steps > li:has(input:checked)::before { background: var(--green); border-color: var(--green); color: #0a0c0d; content: "✓"; }
+  .sdesc { font-size: 14px; color: var(--text-dim); margin: 6px 0 0; }
+  .tag { font: 500 10px var(--mono); padding: 2px 6px; border-radius: 3px; text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
+  .tag.mobile { background: rgba(90,134,192,.14); color: var(--blue); border: 1px solid rgba(90,134,192,.3); }
+  .tag.be { background: rgba(90,168,106,.14); color: var(--green); border: 1px solid rgba(90,168,106,.3); }
+  .tag.both { background: rgba(217,154,43,.14); color: var(--amber); border: 1px solid rgba(217,154,43,.3); }
+  .phase { font: 600 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-faint); margin: 30px 0 10px; }
+
+  .code { position: relative; margin: 10px 0; }
+  pre {
+    background: var(--bg-sunken); border: 1px solid var(--border); border-radius: 5px;
+    padding: 12px 14px; margin: 0; overflow-x: auto; font: 12.5px/1.6 var(--mono); color: #c8d0d8;
+  }
+  pre .c { color: var(--text-faint); }
+  code { font: 0.88em var(--mono); background: var(--bg-sunken); padding: 1px 5px; border-radius: 3px; border: 1px solid var(--border); }
+  .copy {
+    position: absolute; top: 6px; right: 6px; background: var(--bg-raised); border: 1px solid var(--border-strong);
+    color: var(--text-faint); font: inherit; font-size: 11px; padding: 3px 8px; border-radius: 4px; cursor: pointer; opacity: 0;
+  }
+  .code:hover .copy { opacity: 1; }
+  .copy:hover { color: var(--text); border-color: var(--text-faint); }
+  .copy.done { color: var(--green); border-color: var(--green); }
+
+  .diff pre { padding: 0; }
+  .diff .l { display: block; padding: 1px 14px; }
+  .diff .add { background: rgba(90,168,106,.12); color: #a8dab4; }
+  .diff .del { background: rgba(192,90,90,.12); color: #e0a8a8; }
+
+  figure { margin: 20px 0; }
+  figcaption { font-size: 12px; color: var(--text-faint); margin-top: 8px; }
+  svg text { font-family: -apple-system, system-ui, sans-serif; }
+  svg .node { cursor: pointer; }
+  svg .node rect, svg .node circle { transition: stroke .15s; }
+  svg .node:hover rect, svg .node:hover circle { stroke: var(--amber); }
+
+  .q { background: var(--bg-raised); border: 1px solid var(--border); border-radius: 6px; padding: 16px; margin-bottom: 12px; }
+  .q > p { font-weight: 600; margin: 0 0 4px; font-size: 15px; }
+  .q .why { font-size: 13px; color: var(--text-faint); margin: 0 0 12px; font-weight: 400; }
+  .q label { display: flex; gap: 9px; align-items: flex-start; padding: 6px 0; font-size: 14px; cursor: pointer; color: var(--text-dim); }
+  .q label:hover { color: var(--text); }
+  .q input { margin: 4px 0 0; accent-color: var(--amber); flex: none; }
+  .q label span b { color: var(--text); font-weight: 600; }
+  .q label small { display: block; color: var(--text-faint); font-size: 12.5px; }
+  .submit { display: flex; gap: 12px; align-items: center; margin-top: 16px; }
+  .submit button {
+    background: var(--amber); border: 0; color: #17130a; font: 600 14px/1 inherit;
+    padding: 10px 18px; border-radius: 6px; cursor: pointer;
+  }
+  .submit button:hover { background: #eaa835; }
+  .submit .hint { font-size: 12.5px; color: var(--text-faint); }
+
+  .risk { border-left: 2px solid var(--red); }
+  .risk h4 { color: var(--red); }
+  details { background: var(--bg-raised); border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; margin: 10px 0; }
+  details summary { cursor: pointer; font-size: 14px; color: var(--text-dim); font-weight: 500; }
+  details summary:hover { color: var(--text); }
+  details > *:not(summary) { font-size: 14px; }
+  details[open] summary { margin-bottom: 10px; }
+  .fileref { font: 12px var(--mono); color: var(--blue); text-decoration: none; }
+  .fileref:hover { text-decoration: underline; }
+  .note { font-size: 13.5px; color: var(--text-faint); font-style: italic; }
+  .callout {
+    background: rgba(217,154,43,.06); border: 1px solid var(--amber-dim); border-radius: 6px;
+    padding: 14px 16px; margin: 18px 0;
+  }
+  .callout p:last-child { margin-bottom: 0; }
+  .callout strong { color: var(--amber); }
+  @media (max-width: 900px) {
+    nav.toc { display: none; }
+    .cols { grid-template-columns: 1fr; }
+  }
+</style>
+
+<div class="wrap">
+<nav class="toc" aria-label="Obsah">
+  <ol>
+    <li><a href="#tldr">Verdikt</a></li>
+    <li><a href="#tvuj-model">Tvůj model</a></li>
+    <li><a href="#asymetrie">Mobil ≠ backend</a></li>
+    <li><a href="#reseni">Výsledný model</a></li>
+    <li><a href="#hotfix">Hotfix</a></li>
+    <li><a href="#monorepo">Monorepo</a></li>
+    <li><a href="#deploy">Deploy backendu</a></li>
+    <li><a href="#kroky">Kroky</a></li>
+    <li><a href="#rizika">Rizika</a></li>
+    <li><a href="#otazky">Otázky</a></li>
+  </ol>
+</nav>
+
+<main>
+<header>
+  <h1>Monorepo + branching pro Na pivo</h1>
+  <div class="meta">
+    <span class="badge">návrh v2</span>
+    <span class="date">17. 7. 2026 · po upřesnění záměru</span>
+  </div>
+</header>
+
+<div class="controls">
+  <div class="seg" role="group" aria-label="Úroveň detailu">
+    <button id="btn-ov" aria-pressed="false">Přehled</button>
+    <button id="btn-fu" aria-pressed="true">Plný detail</button>
+  </div>
+  <div class="progress-box">
+    <div class="bar"><i id="pbar"></i></div>
+    <span id="pnum">0/0 kroků</span>
+  </div>
+</div>
+
+<section id="tldr">
+  <div class="tldr">
+    <div class="verdict">Tvůj dev/main model je pro mobil správný. Pro backend nefunguje — a monorepo tuhle trhlinu odhalí.</div>
+    <p>Nechceš <code>dev</code> jako šuplík na nepořádek, chceš <code>main</code> jako <strong>zrcadlo toho, co mají lidi v telefonu</strong>. To je legitimní model a u mobilu dává smysl přesně z těch důvodů, co popisuješ: release je drahý, vzácný a schvalovaný, takže se vyplatí mít větev, kterou checkoutneš a hned z ní stavíš hotfix.</p>
+    <p>Jenže <strong>backend žádný „vydaný stav“ nemá</strong> — deployuje se průběžně, 104 commitů za 30 dní proti 8 mobilním releasům. Jedna větev <code>main</code> nemůže znamenat „to, co je ve store“ i „to, co běží na Hetzneru“ zároveň; jsou to různé commity v různý čas. <strong>To je přesně tvoje původní obava</strong> — a odpověď je, že backend se řídí tagy, ne větví.</p>
+    <p>Výsledek: <code>dev</code> + <code>main</code> pro mobil (tvůj model, beze změny) + <code>api-*</code> tagy pro backend. Pak monorepo sedne a backend deploy se <code>main</code> vůbec nedotkne.</p>
+  </div>
+</section>
+
+<h2 id="tvuj-model">Tvůj model, jak jsi ho popsal</h2>
+
+<p>Ať se bavíme o tomtéž — takhle jsem to pochopil:</p>
+
+<figure>
+  <svg viewBox="0 0 680 220" width="100%" role="img" aria-label="Diagram: dev větev sbírá vývoj, main odpovídá vydané verzi, hotfix jde z mainu rovnou do storu">
+    <defs>
+      <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#5a86c0"/></marker>
+      <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#c05a5a"/></marker>
+    </defs>
+
+    <text x="0" y="34" fill="#6b747d" font-size="12" font-family="monospace">dev</text>
+    <line x1="42" y1="30" x2="660" y2="30" stroke="#3d444b" stroke-width="1.5"/>
+    <circle cx="90" cy="30" r="5" fill="#16191c" stroke="#5a86c0" stroke-width="1.5"/>
+    <circle cx="150" cy="30" r="5" fill="#16191c" stroke="#5a86c0" stroke-width="1.5"/>
+    <circle cx="210" cy="30" r="5" fill="#16191c" stroke="#5a86c0" stroke-width="1.5"/>
+    <circle cx="330" cy="30" r="5" fill="#16191c" stroke="#5a86c0" stroke-width="1.5"/>
+    <circle cx="390" cy="30" r="5" fill="#16191c" stroke="#5a86c0" stroke-width="1.5"/>
+    <circle cx="560" cy="30" r="5" fill="#16191c" stroke="#5a86c0" stroke-width="1.5"/>
+    <circle cx="620" cy="30" r="5" fill="#16191c" stroke="#5a86c0" stroke-width="1.5"/>
+    <text x="90" y="16" fill="#6b747d" font-size="10.5" text-anchor="middle">featury, bugy, blbosti</text>
+
+    <path d="M250 30 L250 88 L268 100" fill="none" stroke="#5a86c0" stroke-width="1.5" marker-end="url(#a1)"/>
+    <text x="258" y="66" fill="#5a86c0" font-size="10.5">merge — vydávám 1.5.0</text>
+
+    <text x="0" y="114" fill="#6b747d" font-size="12" font-family="monospace">main</text>
+    <line x1="42" y1="110" x2="660" y2="110" stroke="#3d444b" stroke-width="1.5"/>
+    <g class="node" data-go="#reseni">
+      <circle cx="270" cy="110" r="6" fill="#12190f" stroke="#5aa86a" stroke-width="2"/>
+    </g>
+    <text x="270" y="132" fill="#a8dab4" font-size="11" text-anchor="middle" font-family="monospace">v1.5.0</text>
+    <text x="270" y="146" fill="#6b747d" font-size="10.5" text-anchor="middle">→ App Store + Play</text>
+
+    <path d="M430 110 L430 168" fill="none" stroke="#c05a5a" stroke-width="1.5"/>
+    <text x="440" y="164" fill="#c05a5a" font-size="10.5">„hele, rozbilo se tohle“ → checkout main, fix</text>
+    <g class="node" data-go="#hotfix">
+      <circle cx="490" cy="110" r="6" fill="#1f1416" stroke="#c05a5a" stroke-width="2"/>
+    </g>
+    <path d="M430 168 L484 168 L490 122" fill="none" stroke="#c05a5a" stroke-width="1.5" marker-end="url(#a2)"/>
+    <text x="490" y="98" fill="#e0a8a8" font-size="11" text-anchor="middle" font-family="monospace">v1.5.1</text>
+
+    <path d="M496 104 L540 104 L556 42" fill="none" stroke="#c05a5a" stroke-width="1.2" stroke-dasharray="3 3" marker-end="url(#a2)"/>
+    <text x="576" y="72" fill="#6b747d" font-size="10.5">merge zpět do dev</text>
+    <text x="576" y="86" fill="#6b747d" font-size="10.5">(jinak si to zase rozbiješ)</text>
+  </svg>
+  <figcaption><code>dev</code> sbírá práci, <code>main</code> = vydaná verze, hotfix z <code>main</code> rovnou do storu. Klikni na uzly. Ta čárkovaná šipka zpátky do <code>dev</code> je jediná věc, na kterou v tomhle modelu musíš myslet.</figcaption>
+</figure>
+
+<p><strong>Tenhle model funguje.</strong> Dřív jsem argumentoval proti <code>dev</code> jako proti šuplíku na rozdělanou práci — to není, co děláš. Ty používáš <code>main</code> jako pojmenovaný ukazatel na produkci, a to má reálnou ergonomickou hodnotu: <code>git checkout main</code> a víš, že stojíš na tom, co mají lidi v mobilu. Nemusíš nic dohledávat. To tag nenahradí stejně pohodlně.</p>
+
+<div class="callout detail">
+  <p><strong>Dvě místa, kde ti ten model zalže</strong> — ne fatálně, ale ať o nich víš:</p>
+  <p><strong>1. Okno review.</strong> Mergneš <code>dev</code> → <code>main</code>, submitneš, Apple to schvaluje 1–3 dny. V tom okně <code>main</code> není „co lidi mají“, ale „co jsem poslal“. Když v tu chvíli přijde hotfix, checkoutneš main a stavíš nad verzí, kterou nikdo nemá.</p>
+  <p><strong>2. Zamítnutý release.</strong> Apple to shodí. V <code>main</code> teď leží verze, co se nikdy nevydala, a invariant je pryč. To je přesně ten původní hřích, jen o patro výš.</p>
+  <p>Lék je levný a nemusíš kvůli němu na model sáhnout: <strong>tagni až to, co fakt vyjde</strong> (<code>v1.5.0</code> ve chvíli, kdy je Ready for Sale, ne při submitu). Větev je pohodlí, tag je pravda. Když ty dva nesouhlasí, věř tagu.</p>
+</div>
+
+<h2 id="asymetrie">Proč to samé nejde na backend</h2>
+
+<p>Tady je ta věc, kvůli které se tvoje branching otázka a tvoje monorepo otázka potkávají — a je to zároveň odpověď na to, na co ses ptal původně.</p>
+
+<div class="scroll">
+<table>
+  <tr><th>&nbsp;</th><th>Mobil</th><th>Backend</th></tr>
+  <tr><td>Kadence</td><td>8 releasů / 5 týdnů</td><td class="mid">104 commitů / 30 dní</td></tr>
+  <tr><td>Cena releasu</td><td class="bad">build + review 1–3 dny</td><td class="ok"><code>git pull</code>, 2 minuty</td></tr>
+  <tr><td>Zpětné vzetí</td><td class="bad">nejde (jen OTA / nová verze)</td><td class="ok">redeploy předchozího tagu</td></tr>
+  <tr><td>Verzí venku naráz</td><td class="bad">všechny, co si lidi nechali</td><td class="ok">právě jedna</td></tr>
+  <tr><td>Existuje „vydaný stav“?</td><td class="ok">ano, diskrétní a vzácný</td><td class="bad">ne, teče to průběžně</td></tr>
+</table>
+</div>
+
+<p><code>main</code> jako „vydaná verze“ dává smysl jenom tam, kde je vydání <strong>událost</strong>. U backendu žádná událost není. Kdyby se backend deployoval z <code>main</code>, musel bys do <code>main</code> mergovat 104× za měsíc — a <code>main</code> by tím přestal být zrcadlem storu. A obráceně: kdyby backend čekal na mobilní release, dvakrát týdně bys nemohl nasadit opravu API.</p>
+
+<div class="callout">
+  <p><strong>Tohle je doslova tvoje původní otázka.</strong> Ptal ses: „když bude monorepo s jedním mainem, jak nasadím backend, aniž bych mergnul nehotový mobil?“ Odpověď: <strong>backend se z <code>main</code> nedeployuje vůbec.</strong> Deployuje se z <code>dev</code>, otagovaný jako <code>api-*</code>. <code>main</code> zůstane čistě mobilní věc — sáhne se na něj 2× do měsíce při releasu. Monorepo tenhle model nerozbije, protože se ty dvě komponenty o <code>main</code> nikdy nepoperou.</p>
+</div>
+
+<h3 class="detail">Ale backend tím pádem potřebuje vlastní ochranu</h3>
+<p class="detail"><code>dev</code> chrání mobil před nehotovou prací. Backend nechrání nic — v <code>dev</code> ti může ležet rozdělaný endpoint ve chvíli, kdy potřebuješ nasadit opravu. To je ta <em>úplně stejná</em> bolest, kvůli které jsi tenhle plán zadal, jen přestěhovaná. Proto backend tagy nejsou kosmetika: <strong>bez <code>api-*</code> tagu nemáš z čeho větvit backendový hotfix</strong> a jsi zpátky v pasti.</p>
+
+<h2 id="reseni">Výsledný model</h2>
+
+<div class="scroll">
+<table>
+  <tr><th>Ref</th><th>Znamená</th><th>Kdo se hýbe</th></tr>
+  <tr><td><code>dev</code></td><td>všechna práce — mobil i backend</td><td>pořád</td></tr>
+  <tr><td><code>main</code></td><td class="ok">to, co mají lidi ve storu</td><td>2× měsíčně, při releasu</td></tr>
+  <tr><td><code>v1.5.0</code></td><td>tag: konkrétní vydaná mobilní verze</td><td>neměnný</td></tr>
+  <tr><td><code>api-2026.07.17.1</code></td><td class="ok">tag: co běží na Hetzneru</td><td>neměnný</td></tr>
+  <tr><td><code>feat/*</code>, <code>fix/*</code></td><td>krátkodobé, větví se z <code>dev</code></td><td>—</td></tr>
+</table>
+</div>
+
+<div class="tabs" id="tabs-flow">
+  <div class="tablist" role="tablist">
+    <button role="tab" id="t1" aria-controls="p1" aria-selected="true">Mobilní release</button>
+    <button role="tab" id="t2" aria-controls="p2" aria-selected="false">Mobilní hotfix</button>
+    <button role="tab" id="t3" aria-controls="p3" aria-selected="false">Backend deploy</button>
+    <button role="tab" id="t4" aria-controls="p4" aria-selected="false">Backend hotfix</button>
+  </div>
+
+  <div class="tabpanel" role="tabpanel" id="p1" aria-labelledby="t1">
+    <p>Přesně jak jsi to popsal.</p>
+    <div class="code">
+<pre>git checkout main && git merge dev        <span class="c"># vydávám, co je v devu</span>
+<span class="c"># bump verze: package.json + app.config.ts</span>
+eas build --profile production --platform all
+eas submit --profile production --platform all
+<span class="c"># ---- až je to Ready for Sale / published: ----</span>
+git tag v1.5.0 && git push origin main --tags</pre>
+      <button class="copy">kopírovat</button>
+    </div>
+    <p class="note">Tag až po vydání, ne po submitu — tím ošetříš zamítnutý release i okno review.</p>
+  </div>
+
+  <div class="tabpanel" role="tabpanel" id="p2" aria-labelledby="t2" hidden>
+    <p>„Hele, rozbilo se tohle.“ Rozdělaná práce v <code>dev</code> tě nezajímá a nemusíš ji ani stashovat.</p>
+    <div class="code">
+<pre>git worktree add ../napivo-hotfix -b fix/crash-na-mape main
+cd ../napivo-hotfix
+<span class="c"># … oprava, bump na 1.5.1 …</span>
+git commit -am "fix: prevent crash on empty map region"
+git checkout main &amp;&amp; git merge fix/crash-na-mape
+eas build --profile production --platform all &amp;&amp; eas submit --profile production --platform all
+git tag v1.5.1                            <span class="c"># až je venku</span>
+git checkout dev &amp;&amp; git merge main        <span class="c"># ← NEZAPOMENOUT</span></pre>
+      <button class="copy">kopírovat</button>
+    </div>
+    <p class="detail"><code>git worktree</code> místo <code>git checkout main</code>: vedle vznikne druhý adresář, hlavní checkout s rozdělaným devem zůstane netknutý. Až budeš hotov: <code>git worktree remove ../napivo-hotfix</code>.</p>
+    <p class="detail">Ten poslední řádek je ta jediná daň za tvůj model. Když ho vynecháš, <code>dev</code> nemá fix, ty nad ním dál vyvíjíš a při příštím releasu ho můžeš omylem přepsat zpátky.</p>
+  </div>
+
+  <div class="tabpanel" role="tabpanel" id="p3" aria-labelledby="t3" hidden>
+    <p>Průběžně z <code>dev</code>. Nemá to s <code>main</code> nic společného — proto tě monorepo nesváže.</p>
+    <div class="code">
+<pre><span class="c"># lokálně: otagovat, co chci nasadit</span>
+git tag api-2026.07.17.1 dev &amp;&amp; git push origin dev --tags
+
+<span class="c"># na serveru</span>
+cd /opt/na-pivo &amp;&amp; git fetch origin --tags
+git checkout --detach api-2026.07.17.1
+cd backend
+docker compose -p na-pivo run --rm web python manage.py migrate
+docker compose -p na-pivo up -d --build</pre>
+      <button class="copy">kopírovat</button>
+    </div>
+    <p class="note">Tagovat i rutinní deploy vypadá jako buzerace — je to ale to jediné, díky čemu jde další panel udělat za 5 minut.</p>
+  </div>
+
+  <div class="tabpanel" role="tabpanel" id="p4" aria-labelledby="t4" hidden>
+    <p>Tady <code>main</code> nepomůže — nasazený backend v něm není. Větví se z posledního <code>api-*</code> tagu.</p>
+    <div class="code">
+<pre>git fetch origin --tags
+git worktree add ../napivo-apifix -b fix/expired-tokens api-2026.07.17.1
+cd ../napivo-apifix
+<span class="c"># … oprava jen v backend/ …</span>
+git commit -am "fix: reject expired login tokens"
+git tag api-2026.07.17.2 &amp;&amp; git push origin fix/expired-tokens --tags
+<span class="c"># deploy tagu (viz vedlejší panel), teprve pak:</span>
+git checkout dev &amp;&amp; git merge fix/expired-tokens</pre>
+      <button class="copy">kopírovat</button>
+    </div>
+    <p class="detail">Protože se větví z tagu, nezáleží na tom, co máš v <code>dev</code> rozdělaného. Kdybys neměl <code>api-*</code> tagy, musel bys deployovat <code>dev</code> — i s rozdělanou prací. Přesně to, čemu se vyhýbáš u mobilu.</p>
+  </div>
+</div>
+
+<h2 id="monorepo">Monorepo: ano, mobil zůstane v rootu</h2>
+
+<p>Když <code>main</code> = mobil a backend jede z tagů, ty dvě komponenty se v jednom repu o nic nepoperou. Monorepo je pak čistý zisk.</p>
+<p><strong>Expo aplikace zůstane v rootu, Django přibude do <code>backend/</code>.</strong> Nestěhovat mobil do <code>mobile/</code> — přepsalo by to EAS root, nativní projekty <code>ios/</code> a <code>android/</code>, metro config i credentials. Zisk nula, riziko velké.</p>
+
+<div class="cols">
+  <div class="card yes">
+    <h4>Co tím získáš</h4>
+    <ul>
+      <li>Cross-stack featura = <strong>jedna větev, jeden commit</strong>. Podle historie je to u tebe standard, ne výjimka.</li>
+      <li>Agent vidí obě strany API kontraktu — méně „přidej to pole i do klienta“ ping-pongu.</li>
+      <li>Změna API a její klient v <strong>jednom diffu</strong> → kompatibilita jde reviewovat.</li>
+      <li>Jedny AGENTS.md, <code>npm run dev</code> bez <code>../</code>.</li>
+      <li>Konec „commitnuto v obou repech, pushnuto v jednom“.</li>
+    </ul>
+  </div>
+  <div class="card no">
+    <h4>Co tě to stojí</h4>
+    <ul>
+      <li>Jednorázově ~1 h + překlopení serveru.</li>
+      <li>Backend historie se schová do <code>backend/</code> — <code>git log</code> chce cestu.</li>
+      <li>Server tahá i mobilní historii (176 MB) — řeší <code>--filter=blob:none</code>.</li>
+      <li>Tagy v jednom jmenném prostoru → nutný prefix. <span class="note">Backend teď nemá žádné tagy, takže kolize nehrozí.</span></li>
+      <li><code>main</code> bude obsahovat i backend kód, který je dávno nasazený z <code>dev</code>. Neškodné, ale mate.</li>
+    </ul>
+  </div>
+</div>
+
+<h3>Nejsilnější protiargument</h3>
+<p>Ta bolest, kvůli které se ptáš, zmizí už tím branchingem výš — a ten je zadarmo. Monorepo je pak už jen pohodlí a hodinu práce plus riziko na produkčním deployi je legitimní odložit. Proto: fáze 1 teď, monorepo až budeš mít nula nemergnutých větví (mobil má 3, backend 4).</p>
+
+<h2 id="deploy">Server: sparse checkout</h2>
+
+<p>Server si vytáhne na disk <strong>jen složku <code>backend/</code></strong> a stojí na <code>api-*</code> tagu. Mobilního kódu se nedotkne — ani ho nemá kde vzít.</p>
+
+<div class="code">
+<pre><span class="c"># jednorázová konverze /opt/na-pivo</span>
+cd /opt/na-pivo
+git remote set-url origin git@github-napivo:tomasmach/na-pivo.git
+git fetch origin --tags --filter=blob:none   <span class="c"># netahá mobilní bloby</span>
+git sparse-checkout init --cone
+git sparse-checkout set backend              <span class="c"># na disku je JEN backend/</span>
+git checkout --detach api-2026.07.17.1</pre>
+  <button class="copy">kopírovat</button>
+</div>
+
+<div class="card risk">
+  <h4>Pozor — tichý zabiják</h4>
+  <p style="margin:0;font-size:14px;color:var(--text-dim)">Docker Compose odvozuje jméno projektu <strong>z názvu adresáře</strong>. Až se <code>docker compose</code> začne pouštět z <code>/opt/na-pivo/backend</code> místo <code>/opt/na-pivo</code>, projekt se přejmenuje z <code>na-pivo</code> na <code>backend</code> a Compose <em>vyrobí nové prázdné volumes</em> — databáze zdánlivě zmizí. Proto všude explicitní <strong><code>-p na-pivo</code></strong> (přesné jméno ověř přes <code>docker compose ls</code> ještě před migrací), nebo rovnou <code>name: na-pivo</code> do <code>docker-compose.yml</code>.</p>
+</div>
+
+<h3>A OTA</h3>
+<p>Tvůj OTA incident z <code>parta-3</code> tenhle model řeší sám od sebe: <strong>OTA se publikuje z <code>main</code>, nikdy z <code>dev</code>.</strong> Kanály <code>preview</code> a <code>production</code> už v <a class="fileref" href="vscode://file/Users/tomasmach/Code/na-pivo/eas.json" title="build.preview.channel / build.production.channel">eas.json</a> máš.</p>
+<div class="code">
+<pre>git checkout main
+eas update --channel preview       <span class="c"># nejdřív si to sám ověř</span>
+eas update:republish --destination-channel production</pre>
+  <button class="copy">kopírovat</button>
+</div>
+<p class="note detail"><code>update:republish</code> promotuje <em>identický</em> bundle — nebuildí se znovu, takže do produkce nemůže proklouznout nic jiného, než co jsi otestoval v preview.</p>
+
+<h2 id="kroky">Kroky</h2>
+
+<div class="phase">Fáze 1 — branching (dneska, zadarmo)</div>
+<ol class="steps">
+  <li>
+    <input type="checkbox" data-k="1"><div class="shead"><span class="stitle">Otagovat, co běží na Hetzneru</span><span class="tag be">backend</span></div>
+    <p class="sdesc">Backend nemá jediný tag → dnes deployuješ „co je zrovna v main“. Bez tagu nejde udělat backendový hotfix. Na serveru <code>git -C /opt/na-pivo rev-parse HEAD</code>, lokálně <code>git tag api-2026.07.17.1 &lt;sha&gt;</code>.</p>
+  </li>
+  <li>
+    <input type="checkbox" data-k="2"><div class="shead"><span class="stitle">Založit <code>dev</code> z aktuálního <code>main</code></span><span class="tag both">oba repy</span></div>
+    <p class="sdesc">Pozor na pořadí: <code>main</code> teď obsahuje víc, než co je vydané (v1.4.0 je z 13. 7., od té doby do main přibyly věci). Takže: <code>dev</code> = dnešní <code>main</code>, a <code>main</code> se <strong>přetočí zpátky na <code>v1.4.0</code></strong>, aby zase odpovídal storu.</p>
+    <div class="code">
+<pre>git checkout main &amp;&amp; git pull
+git checkout -b dev &amp;&amp; git push -u origin dev   <span class="c"># dev = všechno, co mám</span>
+git checkout main &amp;&amp; git reset --hard v1.4.0    <span class="c"># main = co je fakt ve storu</span>
+git push --force-with-lease origin main</pre>
+      <button class="copy">kopírovat</button>
+    </div>
+    <p class="sdesc detail"><strong>Force push na main.</strong> Nic se neztratí (všechno je v <code>dev</code>), ale je to nevratná operace na sdíleném refu — udělej ji vědomě. U backendu je to jinak: tam <code>main</code> = nasazený stav, takže <code>reset</code> na <code>api-*</code> tag, ne na <code>v1.4.0</code>. <span class="note">Nebo u backendu <code>main</code> zrušit úplně a nechat jen <code>dev</code> + tagy — backend „vydanou větev“ nepotřebuje.</span></p>
+  </li>
+  <li>
+    <input type="checkbox" data-k="3"><div class="shead"><span class="stitle">Přepnout default branch na <code>dev</code></span><span class="tag both">oba repy</span></div>
+    <p class="sdesc">Na GitHubu Settings → Branches. Jinak budou PR i <code>git clone</code> mířit na <code>main</code> a dřív nebo později do něj něco spadne omylem. Případně na <code>main</code> zapnout branch protection.</p>
+  </li>
+  <li>
+    <input type="checkbox" data-k="4"><div class="shead"><span class="stitle">Zapsat model do AGENTS.md</span><span class="tag both">oba repy</span></div>
+    <p class="sdesc">Bez tohohle to za měsíc zapomeneme oba a agenti to nepřečtou nikde jinde. Musí tam být: co znamená <code>dev</code>/<code>main</code>, že tag vzniká až po vydání, že backend jede z <code>api-*</code>, že hotfix se dělá přes worktree, a že po mobilním hotfixu je nutný merge <code>main</code> → <code>dev</code>. <a class="fileref" href="vscode://file/Users/tomasmach/Code/na-pivo/AGENTS.md">AGENTS.md</a></p>
+  </li>
+  <li>
+    <input type="checkbox" data-k="5"><div class="shead"><span class="stitle">Uklidit nemergnuté větve</span><span class="tag both">oba repy</span></div>
+    <p class="sdesc">Mobil: <code>feat/other-drink-types</code>, <code>feat/venue-amenity-filters</code>, <code>fix/linear-backlog-sweep</code>. Backend: 4 další. U každé dodělat a mergnout do <code>dev</code>, nebo smazat. Zároveň brána do fáze 2.</p>
+  </li>
+</ol>
+
+<div class="phase">Fáze 2 — monorepo (~1 h, až je fáze 1 hotová)</div>
+<ol class="steps">
+  <li>
+    <input type="checkbox" data-k="6"><div class="shead"><span class="stitle">Vlít backend do <code>backend/</code> se zachováním historie</span><span class="tag both">oba repy</span></div>
+    <p class="sdesc">Subtree merge do <code>dev</code> (ne do <code>main</code> — ten je vydaná verze). Obě historie zůstanou, <code>git log --follow backend/…</code> funguje.</p>
+    <div class="code">
+<pre>git checkout dev
+git remote add backend-src ../na-pivo-backend
+git fetch --no-tags backend-src main:refs/remotes/backend-src/main
+git merge -s ours --allow-unrelated-histories --no-commit backend-src/main
+git read-tree --prefix=backend/ -u backend-src/main
+git commit -m "chore: merge backend repository"</pre>
+      <button class="copy">kopírovat</button>
+    </div>
+  </li>
+  <li>
+    <input type="checkbox" data-k="7"><div class="shead"><span class="stitle">Opravit <code>dev-local.sh</code> a zmínky v docs</span><span class="tag mobile">mobil</span></div>
+    <p class="sdesc">Odkaz na sousední repo zmizí. <a class="fileref" href="vscode://file/Users/tomasmach/Code/na-pivo/scripts/dev-local.sh">scripts/dev-local.sh</a> + 5 dalších souborů (<code>README.md</code>, <code>AGENTS.md</code>, <code>docs/*.md</code>).</p>
+    <div class="code diff">
+<pre><span class="l del">- BACKEND_DIR="$(cd "$(dirname "$0")/../../na-pivo-backend" &amp;&amp; pwd)"</span><span class="l add">+ BACKEND_DIR="$(cd "$(dirname "$0")/../backend" &amp;&amp; pwd)"</span></pre>
+    </div>
+  </li>
+  <li>
+    <input type="checkbox" data-k="8"><div class="shead"><span class="stitle">Přidat <code>.easignore</code></span><span class="tag mobile">mobil</span></div>
+    <p class="sdesc">Aby se Django netahalo do každého EAS buildu. Obsah = stávající <code>.gitignore</code> + řádek <code>/backend</code>. <span class="note">Bez tohohle se ti do buildu nahraje i <code>backend/media/</code>.</span></p>
+  </li>
+  <li>
+    <input type="checkbox" data-k="9"><div class="shead"><span class="stitle">Přidat deploy key mobilnímu repu</span><span class="tag be">backend</span></div>
+    <p class="sdesc">Server má <code>id_napivo</code> / alias <code>github-napivo</code> jen pro backend repo. Bez toho <code>git fetch</code> na serveru spadne na permission denied. Udělat <strong>před</strong> překlopením serveru.</p>
+  </li>
+  <li>
+    <input type="checkbox" data-k="10"><div class="shead"><span class="stitle">Překlopit server na sparse checkout</span><span class="tag be">backend</span></div>
+    <p class="sdesc"><strong>Nejdřív záloha DB.</strong> Pak přesun <code>.env</code> do <code>backend/.env</code>, sparse checkout, a hlídat <code>-p na-pivo</code>. Ověřit, že po přepnutí běží stará data — ne prázdná DB.</p>
+  </li>
+  <li>
+    <input type="checkbox" data-k="11"><div class="shead"><span class="stitle">Archivovat starý backend repozitář</span><span class="tag be">backend</span></div>
+    <p class="sdesc">Na GitHubu označit jako archived (read-only) s odkazem na nový domov. Lokální adresář nechat ležet týden, pak smazat.</p>
+  </li>
+</ol>
+
+<h2 id="rizika">Rizika</h2>
+
+<div class="cols">
+  <div class="card risk">
+    <h4>Force push na main (krok 2)</h4>
+    <ul><li>Přetočení <code>main</code> na <code>v1.4.0</code> je nevratné. Před tím ověřit, že <code>dev</code> je pushnutý a obsahuje všechno. Alternativa: <code>main</code> nechat být a smířit se s tím, že první release ho srovná.</li></ul>
+  </div>
+  <div class="card risk">
+    <h4>Zapomenutý merge main → dev</h4>
+    <ul><li>Jediná systémová daň tvého modelu. Po každém mobilním hotfixu. Nezachytí to nic než AGENTS.md a zvyk.</li></ul>
+  </div>
+  <div class="card risk">
+    <h4>Compose volumes (krok 10)</h4>
+    <ul><li>Změna working directory může vyrobit nový Compose projekt a prázdné volumes. Vypadá to jako ztráta DB. Vždy <code>-p na-pivo</code> + záloha.</li></ul>
+  </div>
+  <div class="card risk">
+    <h4>Deploy během přechodu</h4>
+    <ul><li>Mezi krokem 6 a 10 ukazuje server na starý repozitář. V tom okně nedělat backendový release, nebo krok 10 udělat hned po 6.</li></ul>
+  </div>
+</div>
+
+<details>
+  <summary>Co bych naopak <strong>nedělal</strong></summary>
+  <ul>
+    <li><strong>Nedeployoval backend z <code>main</code>.</strong> Rozbilo by to význam <code>main</code> a vrátilo tě to k původní pasti.</li>
+    <li><strong>Nezaváděl <code>release/*</code> větve.</strong> Git Flow bez týmu a QA je čistá ceremonie.</li>
+    <li><strong>Nestěhoval mobil do <code>mobile/</code></strong> při téhle migraci. Riziko na EAS/nativních projektech bez užitku.</li>
+    <li><strong>Nezaváděl npm workspaces / Turborepo / Nx.</strong> Django a Expo nesdílí balíčky — není co spravovat.</li>
+    <li><strong>Nespojoval migraci s CI.</strong> Když se něco rozbije, chceš vědět co.</li>
+    <li><strong>Nezaváděl submoduly.</strong> Mají všechny nevýhody dvou repozitářů plus vlastní.</li>
+  </ul>
+</details>
+
+<h2 id="otazky">Otevřené otázky</h2>
+
+<form id="qform">
+  <div class="q">
+    <p>Souhlasí ten model s tím, cos myslel?</p>
+    <p class="why">dev/main pro mobil (tvoje verze) + <code>api-*</code> tagy pro backend, který se <code>main</code> vůbec nedotkne.</p>
+    <label><input type="radio" name="q1" value="Ano, model sedí — jedeme podle plánu." checked><span><b>Sedí, jedeme</b></span></label>
+    <label><input type="radio" name="q1" value="Skoro, ale něco upravím — napíšu v chatu."><span><b>Skoro</b><small>Napíšu, co jinak.</small></span></label>
+    <label><input type="radio" name="q1" value="Ne, backend chci taky přes dev/main, ne přes tagy — vysvětli/uprav."><span><b>Backend chci taky přes dev/main</b><small>Můžeme — ale pak deploy hýbe mainem 100× měsíčně.</small></span></label>
+  </div>
+
+  <div class="q">
+    <p>Backend: má vůbec mít <code>main</code>?</p>
+    <p class="why">Backend nemá „vydanou verzi“ — nasazený stav plně popisuje <code>api-*</code> tag.</p>
+    <label><input type="radio" name="q2" value="Backend: nechat jen dev + api-* tagy, main zrušit." checked><span><b>Jen <code>dev</code> + tagy</b><small>Míň refů, žádná dvojznačnost. Před monorepem stejně splynou.</small></span></label>
+    <label><input type="radio" name="q2" value="Backend: nechat main jako ukazatel na nasazený stav, symetricky s mobilem."><span><b>Nechat <code>main</code> = nasazený stav</b><small>Symetrie s mobilem, ale <code>main</code> se hýbe po každém deployi.</small></span></label>
+  </div>
+
+  <div class="q">
+    <p>Přetočit <code>main</code> na <code>v1.4.0</code>?</p>
+    <p class="why">Krok 2. <code>main</code> teď obsahuje víc, než co je ve storu — force push to srovná.</p>
+    <label><input type="radio" name="q3" value="Ano, přetoč main na v1.4.0 (force-with-lease), dev bude mít všechno." checked><span><b>Ano, přetočit</b><small>Model platí od prvního dne.</small></span></label>
+    <label><input type="radio" name="q3" value="Ne, main nech být — srovná ho až první release z devu."><span><b>Nechat být</b><small>Bez force pushe; do prvního releasu <code>main</code> trochu lže.</small></span></label>
+  </div>
+
+  <div class="q">
+    <p>Kdy monorepo?</p>
+    <label><input type="radio" name="q4" value="Monorepo až po fázi 1, až budou větve čisté." checked><span><b>Po fázi 1</b><small>Doporučeno.</small></span></label>
+    <label><input type="radio" name="q4" value="Monorepo udělej rovnou teď, i s nemergnutými větvemi."><span><b>Rovnou teď</b><small>Jde to, větve se dají přenést — práce navíc.</small></span></label>
+    <label><input type="radio" name="q4" value="Monorepo nedělat, zůstáváme u dvou repozitářů."><span><b>Nedělat</b><small>Legitimní — fáze 1 řeší tvůj problém sama.</small></span></label>
+  </div>
+
+  <div class="q">
+    <p>Kdo sahá na produkci?</p>
+    <label><input type="radio" name="q5" value="Naskriptuj lokální část, server (Hetzner) si překlopím sám." checked><span><b>Server si udělám sám</b><small>Kroky 6–9 lokálně, krok 10 na tobě.</small></span></label>
+    <label><input type="radio" name="q5" value="Udělej celé včetně serveru — mám zálohu DB, potvrzuju."><span><b>Celé včetně serveru</b><small>Sáhne to na produkční DB — chci explicitní potvrzení a zálohu.</small></span></label>
+  </div>
+
+  <div class="submit">
+    <button type="button" id="copyq">Zkopírovat odpovědi</button>
+    <span class="hint">Vlož zpátky do terminálu — pak podle toho jedu.</span>
+  </div>
+</form>
+
+</main>
+</div>
+
+<script>
+(function () {
+  var KEY = 'plan:monorepo-a-branching';
+  var state = {};
+  try { state = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { state = {}; }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+
+  var bOv = document.getElementById('btn-ov'), bFu = document.getElementById('btn-fu');
+  function setLevel(ov) {
+    document.body.classList.toggle('overview', ov);
+    bOv.setAttribute('aria-pressed', String(ov));
+    bFu.setAttribute('aria-pressed', String(!ov));
+    state.overview = ov; save();
+  }
+  bOv.onclick = function () { setLevel(true); };
+  bFu.onclick = function () { setLevel(false); };
+  setLevel(!!state.overview);
+
+  var boxes = [].slice.call(document.querySelectorAll('ol.steps input[type=checkbox]'));
+  var pbar = document.getElementById('pbar'), pnum = document.getElementById('pnum');
+  state.steps = state.steps || {};
+  function refresh() {
+    var n = 0;
+    boxes.forEach(function (b) {
+      b.closest('li').classList.toggle('done', b.checked);
+      if (b.checked) n++;
+    });
+    pbar.style.width = (boxes.length ? (n / boxes.length * 100) : 0) + '%';
+    pnum.textContent = n + '/' + boxes.length + ' kroků';
+  }
+  boxes.forEach(function (b) {
+    b.checked = !!state.steps[b.dataset.k];
+    b.onchange = function () { state.steps[b.dataset.k] = b.checked; save(); refresh(); };
+    var t = b.closest('li').querySelector('.stitle');
+    if (t) t.onclick = function () { b.checked = !b.checked; b.onchange(); };
+  });
+  refresh();
+
+  var tl = document.querySelector('#tabs-flow .tablist');
+  var tabs = [].slice.call(tl.querySelectorAll('[role=tab]'));
+  function pick(id) {
+    tabs.forEach(function (t) {
+      var on = t.id === id;
+      t.setAttribute('aria-selected', String(on));
+      document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+    });
+    state.tab = id; save();
+  }
+  tabs.forEach(function (t) { t.onclick = function () { pick(t.id); }; });
+  tl.onkeydown = function (e) {
+    var i = tabs.indexOf(document.activeElement);
+    if (i < 0) return;
+    var j = e.key === 'ArrowRight' ? i + 1 : e.key === 'ArrowLeft' ? i - 1 : -1;
+    if (j < 0 || j >= tabs.length) return;
+    e.preventDefault(); tabs[j].focus(); pick(tabs[j].id);
+  };
+  if (state.tab && document.getElementById(state.tab)) pick(state.tab);
+
+  [].forEach.call(document.querySelectorAll('.copy'), function (btn) {
+    btn.onclick = function () {
+      var pre = btn.parentNode.querySelector('pre').cloneNode(true);
+      [].forEach.call(pre.querySelectorAll('.c'), function (c) { c.remove(); });
+      var txt = pre.textContent.split('\n').map(function (l) { return l.replace(/\s+$/, ''); }).join('\n').trim();
+      navigator.clipboard.writeText(txt).then(function () {
+        btn.textContent = 'zkopírováno'; btn.classList.add('done');
+        setTimeout(function () { btn.textContent = 'kopírovat'; btn.classList.remove('done'); }, 1400);
+      });
+    };
+  });
+
+  [].forEach.call(document.querySelectorAll('svg .node[data-go]'), function (n) {
+    n.onclick = function () {
+      var el = document.querySelector(n.dataset.go);
+      if (el) el.scrollIntoView({ block: 'start' });
+    };
+  });
+
+  var links = [].slice.call(document.querySelectorAll('nav.toc a'));
+  var secs = links.map(function (a) { return document.querySelector(a.getAttribute('href')); }).filter(Boolean);
+  if ('IntersectionObserver' in window) {
+    var seen = {};
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) { seen[e.target.id] = e.isIntersecting; });
+      for (var i = 0; i < secs.length; i++) {
+        if (seen[secs[i].id]) {
+          links.forEach(function (a) { a.classList.remove('active'); });
+          links[i].classList.add('active');
+          break;
+        }
+      }
+    }, { rootMargin: '-70px 0px -70% 0px' });
+    secs.forEach(function (s) { io.observe(s); });
+  }
+
+  var form = document.getElementById('qform');
+  state.q = state.q || {};
+  [].forEach.call(form.elements, function (el) {
+    if (el.type !== 'radio') return;
+    if (state.q[el.name] === el.value) el.checked = true;
+    el.onchange = function () { state.q[el.name] = el.value; save(); };
+  });
+  document.getElementById('copyq').onclick = function () {
+    var out = ['Rozhodnutí k plánu (docs/plans/2026-07-17-monorepo-a-branching.html):', ''];
+    ['q1', 'q2', 'q3', 'q4', 'q5'].forEach(function (n) {
+      var c = form.querySelector('input[name=' + n + ']:checked');
+      if (c) out.push('- ' + c.value);
+    });
+    var b = document.getElementById('copyq');
+    navigator.clipboard.writeText(out.join('\n')).then(function () {
+      b.textContent = 'Zkopírováno ✓';
+      setTimeout(function () { b.textContent = 'Zkopírovat odpovědi'; }, 1600);
+    });
+  };
+})();
+</script>
