@@ -128,6 +128,8 @@ export interface AccountProfile {
   providers: AuthProvider[];
   isAnonymous: boolean;
   status: string;
+  /** Present on auth responses: whether this provider sign-in created a new account. */
+  created?: boolean;
   settings?: AccountSettings;
   subscription?: AccountSubscription;
   stats?: AccountStats;
@@ -153,6 +155,7 @@ interface RawAccount {
   nickname?: string | null;
   display_name?: string;
   is_public?: boolean;
+  created?: boolean;
   avatar_url?: string | null;
   /** Defensive alias some providers/responses use instead of avatar_url. */
   picture?: string | null;
@@ -382,6 +385,7 @@ function parseProfile(data: RawAccount): AccountProfile {
     isAnonymous: data.is_anonymous !== false,
     status: data.status ?? 'active',
   };
+  if (typeof data.created === 'boolean') profile.created = data.created;
   const settings = parseSettings(data);
   const subscription = parseSubscription(data);
   const stats = parseStats(data);

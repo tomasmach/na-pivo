@@ -6,10 +6,10 @@
  * the primary CTA: a "nebo" divider, then the native social buttons (Apple only
  * on iOS) and a "Zapomenuté heslo?" inline flow.
  *
- * Every store action resolves to an AuthResult and never throws. On `ok:true`
- * we pop back to settings; on `ok:false` with code !== 'cancelled' we surface
- * `detail` inline. Client-side validation (valid email, password >= 8 chars)
- * runs before any network call so obvious mistakes show instantly.
+ * Every store action resolves to an AuthResult and never throws. A newly
+ * registered account continues to the one-screen privacy choice; returning
+ * users pop back to the app. On `ok:false` with code !== 'cancelled' we surface
+ * `detail` inline. Client-side validation runs before any network call.
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
@@ -25,7 +25,7 @@ import {
   type KeyboardTypeOptions,
   type TextInputProps,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
@@ -187,7 +187,11 @@ export default function AuthScreen() {
         if (mode === 'register' && !result.profile.emailVerified) {
           showToast(cs.account.verifyEmailSentToast);
         }
-        router.back();
+        if (mode === 'register') {
+          router.replace('/profile/privacy' as Href);
+        } else {
+          router.back();
+        }
         return;
       }
       if (result.code !== 'cancelled') {
@@ -206,7 +210,14 @@ export default function AuthScreen() {
       try {
         const result = provider === 'google' ? await signInGoogle() : await signInApple();
         if (result.ok) {
-          router.back();
+          // Social buttons serve both login and registration. The backend marks
+          // new accounts; a missing nickname is the compatibility fallback for
+          // claimed anonymous accounts where `created` can be false.
+          if (result.profile.created === true || result.profile.nickname == null) {
+            router.replace('/profile/privacy' as Href);
+          } else {
+            router.back();
+          }
           return;
         }
         if (result.code !== 'cancelled') {

@@ -37,6 +37,7 @@ import {
   shouldShowPubReminderOnboarding,
 } from '@/notifications/pubReminderOnboarding';
 import { getCurrentAppVersion } from '@/data/releaseNotesClient';
+import { useOnboardingStore } from '@/stores/onboardingStore';
 import { useReleaseStore } from '@/stores/releaseStore';
 import { useSettingsStore, waitForSettingsHydration } from '@/stores/settingsStore';
 
@@ -115,8 +116,14 @@ export function PubReminderOnboardingModal() {
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState<'intro' | 'permissions'>('intro');
   const [version, setVersion] = useState<string | null>(null);
+  // The very first launch belongs to the welcome pager — this explainer stays
+  // quiet for that whole session (not just while the pager route is open) and
+  // gets its turn on the next launch. Mark-seen only happens on user action,
+  // so staying hidden here never burns the once-per-version stamp.
+  const firstLaunchSession = useOnboardingStore((s) => s.firstLaunchSession);
   // A late-arriving note must also hide an already-eligible onboarding.
-  const visible = eligible && !pubReminderEnabled && releaseNote === null;
+  const visible =
+    eligible && !pubReminderEnabled && releaseNote === null && !firstLaunchSession;
 
   const progress = useSharedValue(0);
 

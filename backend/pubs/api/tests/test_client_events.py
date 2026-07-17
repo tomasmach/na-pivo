@@ -253,6 +253,42 @@ def test_leaderboards_opened_event_is_accepted(client):
 
 
 @pytest.mark.django_db
+def test_onboarding_event_is_accepted_with_slide_context(client):
+    resp = client.post(
+        "/v1/client-events",
+        data={
+            "event": "onboarding_started",
+            "severity": "info",
+            "context": {"slide": 2},
+        },
+        format="json",
+    )
+
+    assert resp.status_code == status.HTTP_202_ACCEPTED
+    event = ClientEvent.objects.get()
+    assert event.event == ClientEvent.Event.ONBOARDING_STARTED
+    assert event.context == {"slide": 2}
+
+
+@pytest.mark.django_db
+def test_onboarding_auth_opened_event_is_accepted_with_slide_context(client):
+    resp = client.post(
+        "/v1/client-events",
+        data={
+            "event": "onboarding_auth_opened",
+            "severity": "info",
+            "context": {"slide": 2},
+        },
+        format="json",
+    )
+
+    assert resp.status_code == status.HTTP_202_ACCEPTED
+    event = ClientEvent.objects.get()
+    assert event.event == ClientEvent.Event.ONBOARDING_AUTH_OPENED
+    assert event.context == {"slide": 2}
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     "event_name",
     ["rating_synced", "rating_sync_failed", "visit_synced", "visit_sync_failed"],

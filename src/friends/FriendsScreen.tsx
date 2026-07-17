@@ -77,7 +77,7 @@ import {
 } from '@/components/shared/IconGlyph';
 import { cs } from '@/i18n/cs';
 import {
-  selectNeedsProfileSetup,
+  selectNeedsNickname,
   selectNickname,
   useAccountStore,
 } from '@/stores/accountStore';
@@ -398,7 +398,7 @@ export default function FriendsScreen() {
 
   // Identity: the growth block needs a nickname before a QR/code makes sense.
   const nickname = useAccountStore(selectNickname);
-  const needsProfileSetup = useAccountStore(selectNeedsProfileSetup);
+  const needsNickname = useAccountStore(selectNeedsNickname);
   const hasIdentity = nickname != null;
 
   const friendPushEnabled = useSettingsStore((s) => s.friendPushEnabled);
@@ -1074,7 +1074,7 @@ export default function FriendsScreen() {
                   <SectionHeader label={cs.friends.growthHeader} />
                   <AddFriendTools
                     hasIdentity={hasIdentity}
-                    needsProfileSetup={needsProfileSetup}
+                    needsNickname={needsNickname}
                     onOpenCode={() => setCodeVisible(true)}
                     onChanged={reload}
                     showSearch
