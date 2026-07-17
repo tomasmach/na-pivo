@@ -1,7 +1,7 @@
 /**
- * First-run onboarding (route `/onboarding`) — a one-time welcome pager shown
- * on a fresh install (OnboardingGate in app/_layout.tsx redirects here when
- * onboardingStore decides 'show').
+ * One-time onboarding (route `/onboarding`) — a welcome pager shown on a fresh
+ * install or once to an existing signed-out install (OnboardingGate in
+ * app/_layout.tsx redirects here when onboardingStore decides 'show').
  *
  * Five slides in a horizontally paged Animated.FlatList: welcome → compass →
  * beer diary → parta → account nudge. No permission prompts here on purpose:

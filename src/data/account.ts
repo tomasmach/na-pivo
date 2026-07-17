@@ -110,6 +110,20 @@ interface CachedAccount {
   authenticated?: boolean;
 }
 
+/**
+ * Read only the durable sign-in state needed by launch-time UI gates.
+ *
+ * This deliberately does not create an anonymous account, perform a network
+ * request, or expose the cached bearer token. `null` means SecureStore was
+ * temporarily unavailable, so callers must not mistake that for a signed-out
+ * user.
+ */
+export async function getCachedAuthenticationState(): Promise<boolean | null> {
+  const cachedRead = await readCachedAccount();
+  if (!cachedRead.available) return null;
+  return cachedRead.account?.authenticated === true;
+}
+
 function chainAbortSignal(signal?: AbortSignal): {
   signal: AbortSignal;
   cleanup: () => void;

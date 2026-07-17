@@ -5,6 +5,7 @@ import {
   clearCachedAccount,
   ensureAccount,
   fetchAccountPreferences,
+  getCachedAuthenticationState,
   getOrCreateDeviceId,
   setSession,
   updateAccountPreferences,
@@ -108,6 +109,38 @@ describe('getOrCreateDeviceId', () => {
     // A second call returns the SAME id.
     const second = await getOrCreateDeviceId();
     expect(second).toBe(first);
+  });
+});
+
+describe('getCachedAuthenticationState', () => {
+  it('reads signed-in, anonymous, and missing cached sessions without a network call', async () => {
+    const fetchSpy = jest.fn();
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    await expect(getCachedAuthenticationState()).resolves.toBe(false);
+
+    await seedAccount({
+      deviceId: 'dev-1',
+      accountId: 'acc-1',
+      token: 'anonymous-token',
+      authenticated: false,
+    });
+    await expect(getCachedAuthenticationState()).resolves.toBe(false);
+
+    await seedAccount({
+      deviceId: 'dev-1',
+      accountId: 'acc-1',
+      token: 'signed-token',
+      authenticated: true,
+    });
+    await expect(getCachedAuthenticationState()).resolves.toBe(true);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('returns unknown when SecureStore is temporarily unavailable', async () => {
+    jest.mocked(SecureStore.getItemAsync).mockRejectedValueOnce(new Error('Keychain unavailable'));
+
+    await expect(getCachedAuthenticationState()).resolves.toBeNull();
   });
 });
 

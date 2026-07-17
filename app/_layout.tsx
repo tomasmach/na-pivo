@@ -36,6 +36,7 @@ import {
   trackClientEvent,
 } from '@/data/telemetryClient';
 import { flushWalkingDistance } from '@/data/walkingTelemetry';
+import { getCachedAuthenticationState } from '@/data/account';
 import { useAccountStore, selectIsSignedIn } from '@/stores/accountStore';
 import { useOnboardingStore } from '@/stores/onboardingStore';
 import { usePubStore } from '@/stores/pubStore';
@@ -60,10 +61,11 @@ import {
 } from '@/notifications/pubReminderNotifications';
 
 /**
- * First-run gate: when the onboarding store resolves 'show' (fresh install,
- * never completed), replace the stack root with the welcome pager. Stays out
- * of the way of a Parta invite deep link — the invite screen wins, and the
- * decision stays 'show' so the gate fires once the invite closes.
+ * One-time gate: when the onboarding store resolves 'show' (fresh install or
+ * signed-out existing install, never completed), replace the stack root with
+ * the welcome pager. Stays out of the way of a Parta invite deep link — the
+ * invite screen wins, and the decision stays 'show' so the gate fires once the
+ * invite closes.
  */
 function OnboardingGate() {
   const router = useRouter();
@@ -125,7 +127,9 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 // (tally auto-archive, currency restore, queue flushes), and decide()'s
 // existing-install key sniff must enqueue its AsyncStorage reads ahead of
 // those writes or a fresh install gets misread as an upgrade.
-const onboardingDecisionPromise = useOnboardingStore.getState().decide();
+const onboardingDecisionPromise = useOnboardingStore
+  .getState()
+  .decide(getCachedAuthenticationState);
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts(fontAssets);

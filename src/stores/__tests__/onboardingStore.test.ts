@@ -1,8 +1,8 @@
 /**
  * Tests for the first-run onboarding store — the decide() launch logic that
- * tells a genuinely fresh install (show the pager) from an upgrade of an
- * existing install (grandfather in silently via the na-pivo-release key) and
- * from a device that already completed the onboarding.
+ * tells a genuinely fresh install (show the pager) from an existing signed-out
+ * install (show once), an existing signed-in install (grandfather silently),
+ * and a device that already completed the onboarding.
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -37,37 +37,43 @@ describe('useOnboardingStore.decide', () => {
   it('shows the onboarding on a truly fresh install (no persisted keys)', async () => {
     const { useOnboardingStore } = requireStore();
 
-    await useOnboardingStore.getState().decide();
+    await useOnboardingStore.getState().decide(async () => false);
 
     expect(useOnboardingStore.getState().decision).toBe('show');
     expect(useOnboardingStore.getState().completed).toBe(false);
     expect(useOnboardingStore.getState().firstLaunchSession).toBe(true);
   });
 
-  it('grandfathers in an existing install (na-pivo-release key present)', async () => {
+  it('grandfathers in a signed-in existing install', async () => {
     await currentAsyncStorage().setItem(
       'na-pivo-release',
       JSON.stringify({ state: { lastSeenVersion: '1.4.0' }, version: 0 }),
     );
     const { useOnboardingStore } = requireStore();
 
-    await useOnboardingStore.getState().decide();
+    await useOnboardingStore.getState().decide(async () => true);
 
     expect(useOnboardingStore.getState().decision).toBe('hide');
     expect(useOnboardingStore.getState().completed).toBe(true);
     expect(useOnboardingStore.getState().firstLaunchSession).toBe(false);
   });
 
-  it.each(['na-pivo-settings', 'na-pivo-tally', 'na-pivo-pub-reminder-onboarding-seen-version'])(
-    'grandfathers in an existing install on any long-lived key (%s)',
+  it.each([
+    'na-pivo-device-id',
+    'na-pivo-settings',
+    'na-pivo-tally',
+    'na-pivo-pub-reminder-onboarding-seen-version',
+  ])(
+    'shows once to a signed-out existing install detected by %s',
     async (key) => {
       await currentAsyncStorage().setItem(key, '{"anything":true}');
       const { useOnboardingStore } = requireStore();
 
-      await useOnboardingStore.getState().decide();
+      await useOnboardingStore.getState().decide(async () => false);
 
-      expect(useOnboardingStore.getState().decision).toBe('hide');
-      expect(useOnboardingStore.getState().completed).toBe(true);
+      expect(useOnboardingStore.getState().decision).toBe('show');
+      expect(useOnboardingStore.getState().completed).toBe(false);
+      expect(useOnboardingStore.getState().pendingShow).toBe(true);
     },
   );
 
@@ -78,16 +84,30 @@ describe('useOnboardingStore.decide', () => {
     );
     const { useOnboardingStore } = requireStore();
 
-    await useOnboardingStore.getState().decide();
+    await useOnboardingStore.getState().decide(async () => false);
 
     expect(useOnboardingStore.getState().decision).toBe('hide');
     expect(useOnboardingStore.getState().completed).toBe(true);
   });
 
+  it('does not persist a decision when the existing install sign-in state is unavailable', async () => {
+    await currentAsyncStorage().setItem(
+      'na-pivo-release',
+      JSON.stringify({ state: { lastSeenVersion: '1.4.0' }, version: 0 }),
+    );
+    const { useOnboardingStore } = requireStore();
+
+    await useOnboardingStore.getState().decide(async () => null);
+
+    expect(useOnboardingStore.getState().decision).toBe('hide');
+    expect(useOnboardingStore.getState().completed).toBe(false);
+    expect(useOnboardingStore.getState().pendingShow).toBe(false);
+  });
+
   it('is idempotent within a session (second call keeps the first decision)', async () => {
     const { useOnboardingStore } = requireStore();
 
-    await useOnboardingStore.getState().decide();
+    await useOnboardingStore.getState().decide(async () => false);
     expect(useOnboardingStore.getState().decision).toBe('show');
 
     // A late release-baseline write (checkForUpdate) must not flip the decision.
@@ -95,7 +115,7 @@ describe('useOnboardingStore.decide', () => {
       'na-pivo-release',
       JSON.stringify({ state: { lastSeenVersion: '1.4.0' }, version: 0 }),
     );
-    await useOnboardingStore.getState().decide();
+    await useOnboardingStore.getState().decide(async () => false);
 
     expect(useOnboardingStore.getState().decision).toBe('show');
   });
@@ -114,7 +134,7 @@ describe('useOnboardingStore.decide', () => {
     );
     const { useOnboardingStore } = requireStore();
 
-    await useOnboardingStore.getState().decide();
+    await useOnboardingStore.getState().decide(async () => false);
 
     expect(useOnboardingStore.getState().decision).toBe('show');
     expect(useOnboardingStore.getState().firstLaunchSession).toBe(true);
@@ -123,7 +143,7 @@ describe('useOnboardingStore.decide', () => {
   it('complete() persists and flips the decision to hide', async () => {
     const { useOnboardingStore } = requireStore();
 
-    await useOnboardingStore.getState().decide();
+    await useOnboardingStore.getState().decide(async () => false);
     useOnboardingStore.getState().complete();
 
     expect(useOnboardingStore.getState().decision).toBe('hide');
