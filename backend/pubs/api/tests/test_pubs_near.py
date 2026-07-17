@@ -299,6 +299,27 @@ def test_local_first_cap_keeps_nearest_rows(client, settings):
     ]
 
 
+@pytest.mark.django_db
+def test_local_directory_bounds_haversine_scan_to_three_times_cap():
+    from pubs.api import views
+
+    for index in range(12):
+        _directory_pub(
+            f"Hospoda {index}",
+            lat=_LAT + (index + 1) * 0.001,
+        )
+
+    with patch.object(views, "_haversine_km", wraps=views._haversine_km) as haversine:
+        items = views._nearby_pub_directory_items(_LAT, _LNG, 5, 3)
+
+    assert haversine.call_count == 9
+    assert [item["name"] for item in items] == [
+        "Hospoda 0",
+        "Hospoda 1",
+        "Hospoda 2",
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------

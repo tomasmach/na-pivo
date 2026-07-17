@@ -5603,6 +5603,14 @@ def _nearby_pub_directory_items(
     """Return nearest eligible, unreported directory rows inside a radius."""
     d_lat = radius_km / 111.0
     d_lng = radius_km / (111.0 * math.cos(math.radians(lat)))
+    lng_scale = math.cos(math.radians(lat))
+    lat_distance = F("lat") - Value(lat)
+    lng_distance = (F("lng") - Value(lng)) * Value(lng_scale)
+    distance_score = ExpressionWrapper(
+        lat_distance * lat_distance + lng_distance * lng_distance,
+        output_field=FloatField(),
+    )
+    scan_limit = max(0, max_items) * 3
     candidates = list(
         PubDirectory.objects.filter(
             active=True,
@@ -5612,7 +5620,18 @@ def _nearby_pub_directory_items(
             lng__lte=lng + d_lng,
         )
         .exclude(venue_kind=PubHours.VenueKind.NOT_PUB)
-        .only("id", "name", "lat", "lng", "cache_key", "city", "country", "venue_kind")
+        .annotate(distance_score=distance_score)
+        .order_by("distance_score", "pk")
+        .only(
+            "id",
+            "name",
+            "lat",
+            "lng",
+            "cache_key",
+            "city",
+            "country",
+            "venue_kind",
+        )[:scan_limit]
     )
     if not candidates:
         return []

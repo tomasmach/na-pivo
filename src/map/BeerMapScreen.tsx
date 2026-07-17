@@ -414,14 +414,11 @@ export default function BeerMapScreen({
   const showCities = region.latitudeDelta > 0.85 && visitedCities.length > 0;
   const clusters = useMemo(() => {
     if (showCities || layer === 'friends') return [];
-    const latMargin = region.latitudeDelta * 0.75;
-    const lngMargin = region.longitudeDelta * 0.75;
-    return clusterCoordinates(points, region).filter(
-      (cluster) =>
-        Math.abs(cluster.lat - region.latitude) <= latMargin &&
-        Math.abs(cluster.lng - region.longitude) <= lngMargin,
-    );
-  }, [layer, points, region, showCities]);
+    // Cluster only the viewport-filtered points — clustering the full
+    // accumulated catalogue (up to 600) and discarding offscreen clusters
+    // afterwards wastes work on every pan.
+    return clusterCoordinates(visiblePoints, region);
+  }, [layer, region, showCities, visiblePoints]);
 
   const handleRegionChange = useCallback(
     (next: Region) => {

@@ -45,9 +45,16 @@ const VIEWPORT_DEBOUNCE_MS = 650;
 const LIVE_REFRESH_MS = 35_000;
 
 function viewportRadiusKm(region: Region): number {
+  return Math.min(100, Math.max(1, viewportCoverageKm(region) * 1.25));
+}
+
+/** Half-diagonal of the visible viewport (km) — what a fetch must actually
+ *  cover. Passed to the pubs cache gate so a short pan that reveals uncovered
+ *  map refetches instead of hitting the old fixed 2 km move threshold. */
+function viewportCoverageKm(region: Region): number {
   const latKm = region.latitudeDelta * 111;
   const lngKm = region.longitudeDelta * 111 * Math.cos((region.latitude * Math.PI) / 180);
-  return Math.min(100, Math.max(1, Math.hypot(latKm / 2, lngKm / 2) * 1.25));
+  return Math.hypot(latKm / 2, lngKm / 2);
 }
 
 function mergePubs(previous: Pub[], incoming: Pub[]): Pub[] {
@@ -224,6 +231,7 @@ export function useBeerMap(filters: PubSearchFilters): BeerMapData {
       setLoadingPubs(true);
       void fetchPubsNear(requestedRegion.latitude, requestedRegion.longitude, controller.signal, {
         radiusKm,
+        coverageKm: Math.min(viewportCoverageKm(requestedRegion), radiusKm),
         beerBrandKey,
         amenityKeys,
       })

@@ -130,6 +130,9 @@ let _cacheKeys: string[] = [];
 let _loaded = false;
 let _lastFetchCenter: { lat: number; lng: number } | null = null;
 let _lastFetchRadiusKm: number | null = null;
+/** Honest covered radius of the last fetch — equals the requested radius unless
+ *  the backend cap truncated the result (dense areas). */
+let _lastFetchCoveredKm: number | null = null;
 let _lastFetchBeerBrandKey = "";
 let _lastFetchAmenityKey = "";
 let _inflight: Promise<void> | null = null;
@@ -142,6 +145,11 @@ let _hydrationAttempted = false;
 interface FetchPubsNearOptions {
   force?: boolean;
   radiusKm?: number;
+  /** Radius (km) the caller actually needs covered around (lat, lng) — e.g. the
+   *  visible map viewport. When set, the fetch gate switches from the fixed
+   *  move threshold to true circle containment, so a short pan that reveals
+   *  uncovered map still triggers a fetch. */
+  coverageKm?: number;
   beerBrandKey?: string | null;
   amenityKeys?: readonly string[];
 }
@@ -150,6 +158,10 @@ interface FetchPubsNearOptions {
  *  the previous fetch center (km). */
 const REFETCH_THRESHOLD_KM = 2;
 const DEFAULT_FETCH_RADIUS_KM = 25;
+/** The backend caps /v1/pubs/near responses (300 by default). A result at the
+ *  cap does NOT cover the full requested radius — in dense areas the data ends
+ *  at the farthest returned pub, so coverage gating must use that distance. */
+const RESULT_CAP_HINT = 300;
 
 /** AsyncStorage key for the persisted result snapshot. */
 const SNAPSHOT_KEY = "na-pivo-pubs-snapshot";
@@ -165,6 +177,9 @@ interface PubsSnapshot {
   centerLat: number;
   centerLng: number;
   radiusKm: number;
+  /** Honest covered radius (km) — smaller than radiusKm when the backend cap
+   *  truncated the result. Absent in snapshots written by older builds. */
+  coveredKm?: number;
   savedAt: number;
 }
 
@@ -220,6 +235,7 @@ async function loadSnapshot(): Promise<PubsSnapshot | null> {
       !Number.isFinite(parsed.centerLat) ||
       !Number.isFinite(parsed.centerLng) ||
       !Number.isFinite(parsed.radiusKm) ||
+      (parsed.coveredKm !== undefined && !Number.isFinite(parsed.coveredKm)) ||
       !Number.isFinite(parsed.savedAt)
     ) {
       return null;
@@ -377,6 +393,7 @@ export function _reset(): void {
   _loaded = false;
   _lastFetchCenter = null;
   _lastFetchRadiusKm = null;
+  _lastFetchCoveredKm = null;
   _lastFetchBeerBrandKey = "";
   _lastFetchAmenityKey = "";
   _inflight = null;
@@ -403,6 +420,23 @@ function gateCovers(
 }
 
 /**
+ * True circle containment used by viewport callers (options.coverageKm): the
+ * cached data circle must cover EVERYTHING within coverageKm of the new center.
+ * Unlike gateCovers, a sub-threshold pan that reveals uncovered map refetches.
+ */
+function coverageContains(
+  centerLat: number,
+  centerLng: number,
+  cachedCoveredKm: number,
+  lat: number,
+  lng: number,
+  coverageKm: number,
+): boolean {
+  const movedKm = haversineKm(centerLat, centerLng, lat, lng);
+  return movedKm + coverageKm <= cachedCoveredKm;
+}
+
+/**
  * Fetch pubs near (lat, lng) through the local-directory backend and rebuild the
  * spatial index.
  * Short-circuits when the user is within REFETCH_THRESHOLD_KM of the last
@@ -422,6 +456,9 @@ export async function fetchPubsNear(
   const radiusKm = Number.isFinite(options.radiusKm)
     ? Math.max(options.radiusKm ?? DEFAULT_FETCH_RADIUS_KM, 0.1)
     : DEFAULT_FETCH_RADIUS_KM;
+  const coverageKm = Number.isFinite(options.coverageKm)
+    ? Math.max(options.coverageKm ?? 0, 0)
+    : undefined;
   const beerBrandKey = (options.beerBrandKey ?? "").trim();
   const amenityKeys = Array.from(new Set(options.amenityKeys ?? [])).sort();
   const amenityKey = amenityKeys.join(',');
@@ -429,10 +466,21 @@ export async function fetchPubsNear(
 
   // In-memory short-circuit (also covers the post-hydration session).
   if (!options.force && _loaded && _lastFetchCenter) {
+    const cacheStillValid =
+      coverageKm !== undefined
+        ? coverageContains(
+            _lastFetchCenter.lat,
+            _lastFetchCenter.lng,
+            _lastFetchCoveredKm ?? _lastFetchRadiusKm ?? 0,
+            lat,
+            lng,
+            coverageKm,
+          )
+        : gateCovers(_lastFetchCenter.lat, _lastFetchCenter.lng, _lastFetchRadiusKm ?? 0, lat, lng, radiusKm);
     if (
       beerBrandKey === _lastFetchBeerBrandKey &&
       amenityKey === _lastFetchAmenityKey &&
-      gateCovers(_lastFetchCenter.lat, _lastFetchCenter.lng, _lastFetchRadiusKm ?? 0, lat, lng, radiusKm)
+      cacheStillValid
     ) {
       return;
     }
@@ -455,10 +503,19 @@ export async function fetchPubsNear(
         _hydrationAttempted = true;
         const snapshot = await loadSnapshot();
         if (signal?.aborted) return;
-        if (
+        const snapshotCovers =
           snapshot &&
-          gateCovers(snapshot.centerLat, snapshot.centerLng, snapshot.radiusKm, lat, lng, radiusKm)
-        ) {
+          (coverageKm !== undefined
+            ? coverageContains(
+                snapshot.centerLat,
+                snapshot.centerLng,
+                snapshot.coveredKm ?? snapshot.radiusKm,
+                lat,
+                lng,
+                coverageKm,
+              )
+            : gateCovers(snapshot.centerLat, snapshot.centerLng, snapshot.radiusKm, lat, lng, radiusKm));
+        if (snapshot && snapshotCovers) {
           _lastUnfilteredPubs = snapshot.pubs.slice();
           _lastUnfilteredCenter = {
             lat: snapshot.centerLat,
@@ -469,15 +526,20 @@ export async function fetchPubsNear(
           replaceBasePubs(snapshot.pubs);
           _lastFetchCenter = { lat: snapshot.centerLat, lng: snapshot.centerLng };
           _lastFetchRadiusKm = snapshot.radiusKm;
+          _lastFetchCoveredKm = snapshot.coveredKm ?? snapshot.radiusKm;
           _lastFetchBeerBrandKey = "";
           _lastFetchAmenityKey = "";
           return;
         }
       }
 
-      const pubs = await searchPubsNear(lat, lng, radiusKm, signal, { beerBrandKey, amenityKeys });
-      if (signal?.aborted) return;
-      const blockedReports = await fetchBlockedPubReports(lat, lng, radiusKm, signal);
+      // Fetch pubs and blocked reports CONCURRENTLY — the blocked lookup is
+      // fail-open (returns [] on any failure) and must never add a sequential
+      // round trip before markers can appear on the map.
+      const [pubs, blockedReports] = await Promise.all([
+        searchPubsNear(lat, lng, radiusKm, signal, { beerBrandKey, amenityKeys }),
+        fetchBlockedPubReports(lat, lng, radiusKm, signal),
+      ]);
       if (signal?.aborted) return;
       // A place is hidden if it matches a report by either signal:
       //  - external_id: the exact Mapy.cz item id that was reported, or
@@ -492,6 +554,19 @@ export async function fetchPubsNear(
           !blockedExternalIds.has(pub.id) &&
           !blockedCacheKeys.has(geohash8(pub.lat, pub.lng)),
       );
+      // A result at the backend cap does not cover the full requested radius:
+      // in dense areas the data honestly ends at the farthest returned pub.
+      // Record that distance so the coverage gate refetches once the user pans
+      // past the truncation edge instead of showing a silently empty map.
+      let coveredKm = radiusKm;
+      if (pubs.length >= RESULT_CAP_HINT) {
+        let farthestKm = 0;
+        for (const pub of pubs) {
+          const distanceKm = haversineKm(lat, lng, pub.lat, pub.lng);
+          if (distanceKm > farthestKm) farthestKm = distanceKm;
+        }
+        coveredKm = Math.min(radiusKm, farthestKm);
+      }
       if (!beerBrandKey && !amenityKey) {
         _lastUnfilteredPubs = filtered.slice();
         _lastUnfilteredCenter = { lat, lng };
@@ -501,6 +576,7 @@ export async function fetchPubsNear(
       replaceBasePubs(filtered, !beerBrandKey && !amenityKey);
       _lastFetchCenter = { lat, lng };
       _lastFetchRadiusKm = radiusKm;
+      _lastFetchCoveredKm = coveredKm;
       _lastFetchBeerBrandKey = beerBrandKey;
       _lastFetchAmenityKey = amenityKey;
       // Persist the post-block-filtering result so the next cold start can skip
@@ -513,6 +589,7 @@ export async function fetchPubsNear(
           centerLat: lat,
           centerLng: lng,
           radiusKm,
+          coveredKm,
           savedAt: Date.now(),
         });
       }
@@ -532,6 +609,7 @@ export async function fetchPubsNear(
         _lastFetchAmenityKey = "";
         _lastFetchCenter = null;
         _lastFetchRadiusKm = null;
+        _lastFetchCoveredKm = null;
         const canRestore = Boolean(
           _lastUnfilteredCenter &&
           _lastUnfilteredRadiusKm != null &&
@@ -576,6 +654,7 @@ export async function hydratePubsSnapshot(): Promise<boolean> {
   replaceBasePubs(snapshot.pubs);
   _lastFetchCenter = { lat: snapshot.centerLat, lng: snapshot.centerLng };
   _lastFetchRadiusKm = snapshot.radiusKm;
+  _lastFetchCoveredKm = snapshot.coveredKm ?? snapshot.radiusKm;
   _lastFetchBeerBrandKey = "";
   return true;
 }

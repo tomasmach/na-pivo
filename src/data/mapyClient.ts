@@ -9,6 +9,7 @@
 
 import type { HoursStatus, Pub, VenueKind } from './pubs';
 import { getBackendEndpoint } from './backendConfig';
+import { chainAbortSignal } from './apiFetch';
 import { trackApiFailure } from './telemetryClient';
 
 // Mapy.cz returns mixed categories under our text queries. Keep only the ones
@@ -181,11 +182,15 @@ interface BackendLocationLookupResponse {
   items?: MapyGeocodeItem[];
 }
 
+/** Hard cap on a nearby-pubs request; generous enough for a slow mobile
+ *  connection, short enough that a stalled socket cannot pin the map. */
+const PUBS_NEAR_TIMEOUT_MS = 10_000;
+
 /**
  * Try the backend pubs-near proxy. Returns the raw Mapy items on success, or
  * null on ANY failure (no backend configured, non-200 incl. 503, network error,
- * malformed JSON). Never throws except for an honoured abort, which must
- * propagate like a real cancel.
+ * malformed JSON, timeout). Never throws except for an honoured caller abort,
+ * which must propagate like a real cancel.
  */
 async function backendSuggest(
   lat: number,
@@ -205,8 +210,12 @@ async function backendSuggest(
   if (beerBrandKey) url.searchParams.set('beer_brand', beerBrandKey);
   if (amenityKeys.length > 0) url.searchParams.set('amenities', amenityKeys.join(','));
 
+  // Hard timeout: without it a stalled request on a bad connection pins the
+  // map in its loading state forever — failing fast surfaces the stale banner
+  // and lets the next pan retry.
+  const abort = chainAbortSignal(signal, PUBS_NEAR_TIMEOUT_MS);
   try {
-    const resp = await fetch(url.toString(), { signal });
+    const resp = await fetch(url.toString(), { signal: abort.signal });
     if (!resp.ok) {
       console.warn(`[pubs] backend pubs/near HTTP ${resp.status}`);
       trackApiFailure('pubs_near_backend', {
@@ -242,7 +251,8 @@ async function backendSuggest(
     }
     return data.items ?? [];
   } catch (err) {
-    // An honoured abort must propagate so callers' cancellation works.
+    // An honoured CALLER abort must propagate so cancellation works; an
+    // internal timeout abort falls through to the null (unavailable) path.
     if (signal?.aborted) throw err;
     console.warn('[pubs] backend pubs/near failed:', err);
     trackApiFailure('pubs_near_backend', {
@@ -251,6 +261,8 @@ async function backendSuggest(
       error: err,
     });
     return null;
+  } finally {
+    abort.cleanup();
   }
 }
 
