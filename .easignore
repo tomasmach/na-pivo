@@ -17,6 +17,7 @@ android/
 *.keystore
 
 # EAS
+.easignore
 credentials.json
 AuthKey.p8
 google-service-account.json
@@ -50,3 +51,6 @@ yarn-error.log*
 expo-env.d.ts
 # @end expo-cli
 store-assets/logs/
+
+# The backend is server-side and is not part of the mobile bundle.
+/backend
