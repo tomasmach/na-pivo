@@ -41,6 +41,7 @@ module.exports = {
     '^expo-file-system$': '<rootDir>/src/__mocks__/expo-file-system.ts',
     '^react-native$': '<rootDir>/src/__mocks__/react-native.ts',
     '^react-native-svg$': '<rootDir>/src/__mocks__/react-native-svg.ts',
+    '\\.(png|jpg|jpeg|gif|ttf|mp3|wav)$': '<rootDir>/src/__mocks__/assetFileMock.ts',
   },
   setupFiles: ['<rootDir>/jest.setup.ts'],
   testMatch: ['**/__tests__/**/*.test.ts?(x)'],

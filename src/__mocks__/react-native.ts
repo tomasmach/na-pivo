@@ -91,6 +91,7 @@ export const AccessibilityInfo = {
 export const KeyboardAvoidingView = createComponent('KeyboardAvoidingView');
 export const TextInput = createComponent('TextInput');
 export const FlatList = createComponent('FlatList');
+export const Image = createComponent('Image');
 
 /** Minimal Animated stand-in: value/interpolate return inert objects, the
  *  animated components render like their plain counterparts. */

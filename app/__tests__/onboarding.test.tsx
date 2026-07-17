@@ -29,13 +29,6 @@ jest.mock('@/components/shared/GlowButton', () => ({
   GlowButton: jest.fn(() => null),
 }));
 
-jest.mock('@/components/shared/IconGlyph', () => ({
-  BeerIcon: jest.fn(() => null),
-  CompassIcon: jest.fn(() => null),
-  UserIcon: jest.fn(() => null),
-  UsersIcon: jest.fn(() => null),
-}));
-
 jest.mock('@/theme/fonts', () => ({
   Fonts: {
     display: { extrabold: 'display-extrabold' },

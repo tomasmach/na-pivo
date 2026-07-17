@@ -17,6 +17,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -32,34 +33,18 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { amberGlow } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
 import { GlowButton } from '@/components/shared/GlowButton';
-import { BeerIcon, CompassIcon, UserIcon, UsersIcon } from '@/components/shared/IconGlyph';
 import { useOnboardingStore } from '@/stores/onboardingStore';
 import { trackClientEvent } from '@/data/telemetryClient';
-
-const GLYPH_SIZE = 136;
-const GLYPH_ICON_SIZE = 56;
-
-/** Hand-drawn tally group (four bars + the diagonal strike) — the counter's
- *  "čárky na tácku" brand motif, built from plain Views. */
-function TallyGlyph() {
-  return (
-    <View style={styles.tally}>
-      {[0, 1, 2, 3].map((i) => (
-        <View key={i} style={styles.tallyBar} />
-      ))}
-      <View style={styles.tallyStrike} />
-    </View>
-  );
-}
 
 interface Slide {
   key: string;
   title: string;
   body: string;
-  glyph: React.ReactNode;
+  /** Full-bleed illustration on the stout background (generated brand art —
+   *  the PNG background matches Colors.stout exactly, so it blends edge-free). */
+  image: number;
 }
 
 const SLIDES: Slide[] = [
@@ -67,31 +52,31 @@ const SLIDES: Slide[] = [
     key: 'welcome',
     title: cs.onboarding.slide1Title,
     body: cs.onboarding.slide1Body,
-    glyph: <BeerIcon size={GLYPH_ICON_SIZE} color={Colors.amber} />,
+    image: require('../assets/images/onboarding/slide-welcome.png'),
   },
   {
     key: 'compass',
     title: cs.onboarding.slide2Title,
     body: cs.onboarding.slide2Body,
-    glyph: <CompassIcon size={GLYPH_ICON_SIZE} color={Colors.amber} />,
+    image: require('../assets/images/onboarding/slide-compass.png'),
   },
   {
     key: 'diary',
     title: cs.onboarding.slide3Title,
     body: cs.onboarding.slide3Body,
-    glyph: <TallyGlyph />,
+    image: require('../assets/images/onboarding/slide-diary.png'),
   },
   {
     key: 'parta',
     title: cs.onboarding.slide4Title,
     body: cs.onboarding.slide4Body,
-    glyph: <UsersIcon size={GLYPH_ICON_SIZE} color={Colors.amber} />,
+    image: require('../assets/images/onboarding/slide-parta.png'),
   },
   {
     key: 'account',
     title: cs.onboarding.slide5Title,
     body: cs.onboarding.slide5Body,
-    glyph: <UserIcon size={GLYPH_ICON_SIZE} color={Colors.amber} />,
+    image: require('../assets/images/onboarding/slide-account.png'),
   },
 ];
 
@@ -175,11 +160,18 @@ export default function OnboardingScreen() {
         extrapolate: 'clamp',
       });
 
+      const illustrationSide = Math.min(width * 0.84, 380);
+
       return (
         <View style={[styles.slide, { width }]}>
-          <View style={styles.glyphArea}>
-            <Animated.View style={[styles.glyphBadge, { transform: [{ scale }], opacity }]}>
-              {item.glyph}
+          <View style={styles.illustrationArea}>
+            <Animated.View style={{ transform: [{ scale }], opacity }}>
+              <Image
+                source={item.image}
+                style={{ width: illustrationSide, height: illustrationSide }}
+                resizeMode="contain"
+                accessibilityIgnoresInvertColors
+              />
             </Animated.View>
           </View>
           <Animated.View style={{ opacity }}>
@@ -313,21 +305,10 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     paddingBottom: Spacing.xl,
   },
-  glyphArea: {
+  illustrationArea: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  glyphBadge: {
-    width: GLYPH_SIZE,
-    height: GLYPH_SIZE,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout2,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...amberGlow(28),
   },
   title: {
     fontFamily: Fonts.display.extrabold,
@@ -343,28 +324,6 @@ const styles = StyleSheet.create({
     color: Colors.foamMuted,
     textAlign: 'center',
     marginTop: Spacing.sm,
-  },
-
-  // ── Tally glyph (slide 3) ──
-  tally: {
-    flexDirection: 'row',
-    gap: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tallyBar: {
-    width: 5,
-    height: 52,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.amber,
-  },
-  tallyStrike: {
-    position: 'absolute',
-    width: 74,
-    height: 5,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.amberLight,
-    transform: [{ rotate: '-24deg' }],
   },
 
   // ── Dots ──
