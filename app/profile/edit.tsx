@@ -86,20 +86,20 @@ export default function ProfileEditScreen() {
       const picked = await pickAndPrepareAvatar();
       if (picked.status === 'cancelled') return;
       if (picked.status === 'denied') {
-        setAvatarError(cs.profile.setup.permissionBody);
+        setAvatarError(cs.profile.form.permissionBody);
         return;
       }
       if (picked.status === 'denied-permanent') {
-        setAvatarError(cs.profile.setup.permissionBlockedBody);
+        setAvatarError(cs.profile.form.permissionBlockedBody);
         setPermissionBlocked(true);
         return;
       }
       if (picked.status === 'error') {
-        setAvatarError(cs.profile.setup.avatarUploadError);
+        setAvatarError(cs.profile.form.avatarUploadError);
         return;
       }
       const result = await uploadAvatar(picked.uri);
-      if (!result.ok) setAvatarError(result.detail || cs.profile.setup.avatarUploadError);
+      if (!result.ok) setAvatarError(result.detail || cs.profile.form.avatarUploadError);
     } finally {
       setAvatarBusy(false);
     }
@@ -129,7 +129,7 @@ export default function ProfileEditScreen() {
 
     // A changed nickname must be submit-ready (valid + available).
     if (nicknameChanged && !nicknameReady) {
-      setNicknameError(cs.profile.setup.nicknameInvalid);
+      setNicknameError(cs.profile.form.nicknameInvalid);
       return;
     }
 
@@ -161,7 +161,7 @@ export default function ProfileEditScreen() {
         isTaken || result.code.startsWith('nickname_') || result.code.startsWith('http_4');
       if (nicknameChanged && isNicknameError) {
         setNicknameError(
-          isTaken ? cs.profile.setup.nicknameTaken : result.detail || nicknameServerReasonMessage(result.code),
+          isTaken ? cs.profile.form.nicknameTaken : result.detail || nicknameServerReasonMessage(result.code),
         );
       } else {
         setNicknameError(result.detail || cs.profile.edit.errorGeneric);
@@ -273,9 +273,9 @@ export default function ProfileEditScreen() {
               onPress={() => void Linking.openSettings()}
               style={({ pressed }) => [styles.avatarBtn, styles.avatarBtnPrimary, pressed && styles.pressed]}
               accessibilityRole="button"
-              accessibilityLabel={cs.profile.setup.openSettings}
+              accessibilityLabel={cs.profile.form.openSettings}
             >
-              <Text style={styles.avatarBtnPrimaryText}>{cs.profile.setup.openSettings}</Text>
+              <Text style={styles.avatarBtnPrimaryText}>{cs.profile.form.openSettings}</Text>
             </Pressable>
           )}
 

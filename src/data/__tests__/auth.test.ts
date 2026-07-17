@@ -181,6 +181,7 @@ describe('registerEmail', () => {
         providers: ['email'],
         is_anonymous: false,
         status: 'active',
+        created: true,
         settings: {
           mode: 'surprise',
           max_distance_km: 5,
@@ -226,6 +227,7 @@ describe('registerEmail', () => {
       providers: ['email'],
       isAnonymous: false,
       status: 'active',
+      created: true,
       settings: {
         mode: 'surprise',
         maxDistanceKm: 5,

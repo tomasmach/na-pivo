@@ -274,6 +274,25 @@ export const cs = {
     openSettings: 'Otevřít Nastavení',
   },
 
+  // — First-run onboarding (route /onboarding, shown once on a fresh install) —
+  onboarding: {
+    skip: 'Přeskočit',
+    next: 'Pokračovat',
+    slide1Title: 'Vítej Na pivu',
+    slide1Body: 'Pivní deníček do kapsy. Ať máš přehled, co piješ a kam chodíš.',
+    slide2Title: 'Kompas tě dovede',
+    slide2Body: 'Šipka míří do nejbližší otevřené hospody. Ty už jen jdeš.',
+    slide3Title: 'Čárkuj si večer',
+    slide3Body: 'Piva si čárkuješ jako na tácku. Statistiky a odznaky naskakují samy.',
+    slide4Title: 'Vezmi partu',
+    slide4Body: 'Přidáš kamarády a uvidíš, kdo zrovna sedí v hospodě. Cinknout si můžete na dálku.',
+    slide5Title: 'Ať o nic nepřijdeš',
+    slide5Body:
+      'Deník se ti neztratí, ani když vyměníš telefon, a parta tě najde. Bez účtu to jde taky, doplníš ho kdykoli.',
+    slide5Cta: 'Založit účet',
+    slide5Later: 'Zatím bez účtu',
+  },
+
   celebration: {
     eyebrow: 'VÍTEJ V',
     headlineLine1: 'Na',
@@ -1463,12 +1482,25 @@ export const cs = {
       'Vytvoř si účet a měj svá piva, hodnocení, partu a žebříčky synchronizované na všech zařízeních.',
     signedOutCta: 'Vytvořit účet',
 
-    // — Onboarding wizard —
-    setup: {
-      // STEP 1 — nickname + photo (one screen)
-      step1Eyebrow: 'KROK 1 ZE 3',
-      step1Title: 'Vytvoř si profil',
-      step1Body: 'Vyber si přezdívku a klidně přidej fotku. Obojí změníš kdykoli později.',
+    // — One-screen privacy choice after registration —
+    privacy: {
+      eyebrow: 'JEŠTĚ JEDNA VĚC',
+      title: 'Jak chceš být vidět?',
+      body: 'Vyber si, kdo tě v Na pivu najde. Kdykoli to změníš v profilu.',
+      publicTitle: 'Veřejný štamgast',
+      publicBody: 'Lidi tě najdou podle jména nebo přezdívky a uvidí tě v žebříčcích.',
+      privateTitle: 'Jen pro partu',
+      privateBody: 'Veřejně tě nikdo nenajde. Profil uvidí jen tvoji kamarádi.',
+      promise: 'Přesnou polohu ani soukromý pivní deník tahle volba nikdy nezveřejní.',
+      confirm: 'Potvrdit a jít na pivo',
+      saving: 'Ukládám…',
+      skip: 'Přeskočit, nic neměnit',
+      skipAfterError: 'Pokračovat beze změny',
+      error: 'Nastavení se nepodařilo uložit. Zkus to znovu, nebo pokračuj beze změny.',
+    },
+
+    // — Shared profile form copy —
+    form: {
       nicknamePlaceholder: 'prezdivka',
       nicknameChecking: 'Ověřuji…',
       nicknameAvailable: 'Volné',
@@ -1478,34 +1510,10 @@ export const cs = {
       nicknameTooLong: 'Nejvíc 20 znaků',
       nicknameCharset: 'Jen písmena bez diakritiky, číslice, _ a .',
       nicknameReserved: 'Tahle přezdívka není dostupná',
-      // Photo affordance: tap the avatar. Optional, so there is no skip button —
-      // you just leave it empty and continue.
-      photoHintEmpty: 'Klepni a přidej fotku (nepovinné)',
-      photoHintSet: 'Klepni a změň fotku',
       avatarUploadError: 'Fotku se nepodařilo nahrát. Zkus to prosím znovu.',
       permissionBody: 'Pro výběr fotky potřebuju přístup ke knihovně fotek. Povol ho v Nastavení.',
-      // Shown when the OS won't re-prompt (canAskAgain=false) — the only path is Settings.
       permissionBlockedBody: 'Přístup k fotkám je zakázaný. Povol ho v systémovém Nastavení a zkus to znovu.',
       openSettings: 'Otevřít Nastavení',
-      continue: 'Pokračovat',
-
-      // STEP 2 — visibility
-      step2Eyebrow: 'KROK 2 ZE 3',
-      step2Title: 'Viditelnost profilu',
-      visibilityToggleLabel: 'Veřejný profil',
-      // The GDPR consent copy the user MUST see on the visibility step (locked).
-      consentPublic:
-        'Veřejný profil znamená, že tě podle přezdívky a fotky najdou ostatní v žebříčcích a vyhledávání. Tvoje přesná poloha ani jednotlivá piva se nikdy nezveřejňují. Kdykoli to vypneš v nastavení profilu.',
-      consentPrivate: 'Když vypneš, uvidí tě jen tví kamarádi.',
-      visibilitySaveError: 'Viditelnost profilu se nepodařilo uložit. Zkus to prosím znovu.',
-      finish: 'Hotovo',
-
-      // STEP 3 — first friends (optional, Parta 3.0 §A2)
-      step3Eyebrow: 'KROK 3 ZE 3',
-      step3Title: 'Přidej první parťáky',
-      step3Body: 'Ukaž kámošovi svůj kód u stolu, nebo mu pošli pozvánku. Můžeš i přeskočit.',
-      step3ShowCode: 'Ukázat můj kód',
-      step3Skip: 'Přeskočit',
     },
 
     // — Edit screen —
@@ -1520,7 +1528,7 @@ export const cs = {
       displayNamePlaceholder: 'Jak ti mám říkat',
       visibilityHeader: 'VIDITELNOST',
       visibilityToggleLabel: 'Veřejný profil',
-      // Short GDPR copy on the edit screen (the wizard carries the full version).
+      // Compact reminder; the post-registration privacy screen carries the full choice.
       consent:
         'Veřejný profil tě zviditelní v žebříčcích a vyhledávání podle přezdívky a fotky. Poloha ani jednotlivá piva se nikdy nezveřejňují.',
       consentPrivate: 'Když vypneš, uvidí tě jen tví kamarádi.',

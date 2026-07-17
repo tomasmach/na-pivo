@@ -14,6 +14,7 @@ from pubs.models import Account, EnrichTask, PubHours, PubReport
 
 _DEVICE_ID = "3f8b1c2e-4d5a-6789-0abc-def012345678"
 _OTHER_DEVICE_ID = "11111111-2222-3333-4444-555555555555"
+_THIRD_DEVICE_ID = "66666666-7777-8888-9999-aaaaaaaaaaaa"
 _NAME = "Palačinkárna U Testu"
 _LAT = 50.0812
 _LNG = 14.4182
@@ -171,31 +172,51 @@ def test_create_pub_report_is_throttled(client, monkeypatch):
 
 
 @pytest.mark.django_db
-def test_blocked_reports_returns_active_reports_in_radius_for_all_accounts(client):
+def test_blocked_reports_requires_three_distinct_active_accounts(client):
     token = _register(client)
     other_token = _register(client, _OTHER_DEVICE_ID)
+    third_token = _register(client, _THIRD_DEVICE_ID)
+
+    # One account can report both reasons, but it still contributes one vote.
     client.post("/v1/pub-reports", data=_payload(reason="closed"), format="json", **_auth(token))
     client.post(
         "/v1/pub-reports",
-        data=_payload(
-            name="Jiná restaurace",
-            lat=_LAT + 0.001,
-            lng=_LNG + 0.001,
-            external_id="mapy:other",
-            reason="not_pub",
-        ),
+        data=_payload(reason="not_pub"),
+        format="json",
+        **_auth(token),
+    )
+    client.post(
+        "/v1/pub-reports",
+        data=_payload(reason="not_pub"),
         format="json",
         **_auth(other_token),
     )
-    far = PubReport.objects.create(
-        account=Account.objects.get(device_id=_DEVICE_ID),
-        cache_key=geohash8(49.2, 16.6),
-        external_id="mapy:far",
-        name="Daleko",
-        lat=49.2,
-        lng=16.6,
-        reason=PubReport.Reason.CLOSED,
+
+    below_threshold = client.get(
+        "/v1/pub-reports/blocked",
+        data={"lat": _LAT, "lng": _LNG, "radius_km": 1},
     )
+    assert below_threshold.status_code == status.HTTP_200_OK
+    assert below_threshold.json()["blocked"] == []
+
+    client.post(
+        "/v1/pub-reports",
+        data=_payload(reason="closed"),
+        format="json",
+        **_auth(third_token),
+    )
+    far = None
+    for device_id in (_DEVICE_ID, _OTHER_DEVICE_ID, _THIRD_DEVICE_ID):
+        far = PubReport.objects.create(
+            account=Account.objects.get(device_id=device_id),
+            cache_key=geohash8(49.2, 16.6),
+            external_id="mapy:far",
+            name="Daleko",
+            lat=49.2,
+            lng=16.6,
+            reason=PubReport.Reason.CLOSED,
+        )
+    assert far is not None
     inactive = PubReport.objects.create(
         account=Account.objects.get(device_id=_DEVICE_ID),
         cache_key=geohash8(_LAT + 0.002, _LNG + 0.002),
@@ -214,11 +235,67 @@ def test_blocked_reports_returns_active_reports_in_radius_for_all_accounts(clien
 
     assert resp.status_code == status.HTTP_200_OK
     blocked = resp.json()["blocked"]
-    external_ids = {entry["external_id"] for entry in blocked}
-    assert external_ids == {"mapy:50.08120,14.41820", "mapy:other"}
-    assert far.external_id not in external_ids
-    assert inactive.external_id not in external_ids
+    assert len(blocked) == 1
+    assert blocked[0]["cache_key"] == _KEY
+    assert blocked[0]["external_id"] == "mapy:50.08120,14.41820"
+    assert far.external_id != blocked[0]["external_id"]
+    assert inactive.external_id != blocked[0]["external_id"]
     assert set(blocked[0]) == {"cache_key", "external_id", "reason"}
+
+    # Consensus is derived live: removing one vote restores the pub globally.
+    PubReport.objects.filter(
+        account__device_id=_THIRD_DEVICE_ID,
+        cache_key=_KEY,
+        reason=PubReport.Reason.CLOSED,
+    ).update(active=False)
+    assert client.get(
+        "/v1/pub-reports/blocked",
+        data={"lat": _LAT, "lng": _LNG, "radius_km": 1},
+    ).json()["blocked"] == []
+
+
+@pytest.mark.django_db
+def test_blocked_reports_ignore_inactive_or_deleted_accounts(client, settings):
+    settings.PUB_REPORT_GLOBAL_HIDE_THRESHOLD = 2
+    active = Account.objects.create(device_id="active-reporter")
+    pending = Account.objects.create(
+        device_id="pending-reporter",
+        status=Account.Status.PENDING_DELETION,
+    )
+    for account in (active, pending, None):
+        PubReport.objects.create(
+            account=account,
+            cache_key=_KEY,
+            external_id="mapy:test",
+            name=_NAME,
+            lat=_LAT,
+            lng=_LNG,
+            reason=PubReport.Reason.CLOSED,
+        )
+
+    resp = client.get(
+        "/v1/pub-reports/blocked",
+        data={"lat": _LAT, "lng": _LNG, "radius_km": 1},
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["blocked"] == []
+
+    second_active = Account.objects.create(device_id="second-active-reporter")
+    PubReport.objects.create(
+        account=second_active,
+        cache_key=_KEY,
+        external_id="mapy:test",
+        name=_NAME,
+        lat=_LAT,
+        lng=_LNG,
+        reason=PubReport.Reason.NOT_PUB,
+    )
+
+    assert client.get(
+        "/v1/pub-reports/blocked",
+        data={"lat": _LAT, "lng": _LNG, "radius_km": 1},
+    ).json()["blocked"] != []
 
 
 def test_blocked_reports_validates_query(client):

@@ -194,6 +194,7 @@ All settings are read from environment variables or a `.env` file. See `.env.exa
 | `PUBS_NEAR_THROTTLE_RATE` | `60/min` | Per-IP rate limit for `GET /v1/pubs/near` |
 | `PUB_HOURS_THROTTLE_RATE` | `120/min` | Per-IP rate limit for `POST /v1/pub-hours` |
 | `PUB_REPORTS_THROTTLE_RATE` | `30/min` | Per-IP rate limit for `POST /v1/pub-reports` |
+| `PUB_REPORT_GLOBAL_HIDE_THRESHOLD` | `3` | Distinct active reporting accounts required before a pub is hidden globally |
 | `CLIENT_EVENTS_THROTTLE_RATE` | `120/min` | Per-IP rate limit for `POST /v1/client-events` |
 | `DRINKS_THROTTLE_RATE` | `30/min` | Per-account rate limit for `POST /v1/drinks` |
 | `DRINK_FUTURE_GRACE_MINUTES` | `10` | Future timestamp grace before clamping to server time |

@@ -57,7 +57,7 @@ const ROUND_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
 
 interface AddFriendToolsProps {
   hasIdentity: boolean;
-  needsProfileSetup: boolean;
+  needsNickname: boolean;
   /** Parent mounts the CodeSheet (Modal state lives above the ScrollView). */
   onOpenCode: () => void;
   /** After a successful request → reload the parent dashboard. */
@@ -68,7 +68,7 @@ interface AddFriendToolsProps {
 
 export function AddFriendTools({
   hasIdentity,
-  needsProfileSetup,
+  needsNickname,
   onOpenCode,
   onChanged,
   showSearch = true,
@@ -147,8 +147,8 @@ export function AddFriendTools({
   );
 
   const openIdentity = useCallback(() => {
-    router.push((needsProfileSetup ? '/profile/setup' : '/auth') as Href);
-  }, [needsProfileSetup, router]);
+    router.push((needsNickname ? '/profile/edit' : '/auth') as Href);
+  }, [needsNickname, router]);
 
   const shareInvite = useCallback(async () => {
     const invite = await fetchFriendInviteCode();
@@ -165,15 +165,15 @@ export function AddFriendTools({
     return (
       <View style={styles.identityGate}>
         <Text style={styles.gateTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {needsProfileSetup
+          {needsNickname
             ? cs.friends.coldStartSetupTitle
             : cs.friends.coldStartAnonTitle}
         </Text>
         <Text style={styles.gateBody} maxFontSizeMultiplier={FontScaleCap.body}>
-          {needsProfileSetup ? cs.friends.coldStartSetupBody : cs.friends.coldStartAnonBody}
+          {needsNickname ? cs.friends.coldStartSetupBody : cs.friends.coldStartAnonBody}
         </Text>
         <GlowButton
-          label={needsProfileSetup ? cs.friends.coldStartSetupCta : cs.friends.coldStartAnonCta}
+          label={needsNickname ? cs.friends.coldStartSetupCta : cs.friends.coldStartAnonCta}
           onPress={openIdentity}
           variant="primary"
           glow="soft"

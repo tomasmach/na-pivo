@@ -60,14 +60,14 @@ export function checkNicknameLocal(raw: string): NicknameCheck {
 export function nicknameReasonMessage(reason: NicknameReason): string {
   switch (reason) {
     case 'too_short':
-      return cs.profile.setup.nicknameTooShort;
+      return cs.profile.form.nicknameTooShort;
     case 'too_long':
-      return cs.profile.setup.nicknameTooLong;
+      return cs.profile.form.nicknameTooLong;
     case 'reserved':
-      return cs.profile.setup.nicknameReserved;
+      return cs.profile.form.nicknameReserved;
     case 'invalid':
     default:
-      return cs.profile.setup.nicknameCharset;
+      return cs.profile.form.nicknameCharset;
   }
 }
 
@@ -81,15 +81,15 @@ export function nicknameServerReasonMessage(reason: string | undefined): string 
   const key = (reason ?? '').replace(/^nickname_/, '');
   switch (key) {
     case 'too_short':
-      return cs.profile.setup.nicknameTooShort;
+      return cs.profile.form.nicknameTooShort;
     case 'too_long':
-      return cs.profile.setup.nicknameTooLong;
+      return cs.profile.form.nicknameTooLong;
     case 'reserved':
-      return cs.profile.setup.nicknameReserved;
+      return cs.profile.form.nicknameReserved;
     case 'taken':
-      return cs.profile.setup.nicknameTaken;
+      return cs.profile.form.nicknameTaken;
     case 'invalid':
     default:
-      return cs.profile.setup.nicknameInvalid;
+      return cs.profile.form.nicknameInvalid;
   }
 }

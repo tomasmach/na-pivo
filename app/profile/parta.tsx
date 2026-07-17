@@ -41,7 +41,7 @@ import {
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { cs } from '@/i18n/cs';
 import {
-  selectNeedsProfileSetup,
+  selectNeedsNickname,
   selectNickname,
   useAccountStore,
 } from '@/stores/accountStore';
@@ -72,7 +72,7 @@ export default function ManagePartaScreen() {
   const [codeVisible, setCodeVisible] = useState(false);
 
   const nickname = useAccountStore(selectNickname);
-  const needsProfileSetup = useAccountStore(selectNeedsProfileSetup);
+  const needsNickname = useAccountStore(selectNeedsNickname);
   const hasIdentity = nickname != null;
 
   const mountedRef = useRef(true);
@@ -237,7 +237,7 @@ export default function ManagePartaScreen() {
             <SectionHeader label={cs.friends.growthHeader} />
             <AddFriendTools
               hasIdentity={hasIdentity}
-              needsProfileSetup={needsProfileSetup}
+              needsNickname={needsNickname}
               onOpenCode={() => setCodeVisible(true)}
               onChanged={reload}
               showSearch

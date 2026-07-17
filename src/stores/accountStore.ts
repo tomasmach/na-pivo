@@ -299,10 +299,10 @@ export function selectIsSignedIn(state: AccountState): boolean {
 }
 
 /**
- * Signed-in but hasn't picked a nickname yet — the onboarding gate condition.
- * Anonymous users are excluded (they create an account first).
+ * Signed-in but hasn't picked a nickname yet. Used by contextual Parta and
+ * leaderboard nudges; it must never hard-gate entry into the app.
  */
-export function selectNeedsProfileSetup(state: AccountState): boolean {
+export function selectNeedsNickname(state: AccountState): boolean {
   return selectIsSignedIn(state) && state.profile != null && state.profile.nickname == null;
 }
 

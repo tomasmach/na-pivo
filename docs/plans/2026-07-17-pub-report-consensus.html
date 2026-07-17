@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Ochrana hospod před chybným globálním skrytím</title>
+  <style>
+    :root{color-scheme:dark;--bg:#0d1117;--panel:#161b22;--line:#30363d;--text:#e6edf3;--muted:#8b949e;--amber:#f2a900;--green:#3fb950;--red:#f85149;--blue:#58a6ff}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.nav{position:sticky;top:0;z-index:3;display:flex;gap:18px;align-items:center;padding:12px max(18px,calc((100vw - 1120px)/2));background:#0d1117ee;border-bottom:1px solid var(--line);backdrop-filter:blur(10px)}.nav a{color:var(--muted);text-decoration:none}.nav a.active,.nav a:hover{color:var(--amber)}.nav .spacer{flex:1}.toggle{border:1px solid var(--line);background:var(--panel);color:var(--text);padding:7px 10px;border-radius:8px;cursor:pointer}main{max-width:1120px;margin:auto;padding:42px 24px 80px}section{scroll-margin-top:68px;margin:0 0 54px}.hero{display:grid;grid-template-columns:1fr auto;gap:24px;align-items:start}.badge{display:inline-flex;border:1px solid #7a5700;color:#ffc94d;background:#2b210c;padding:5px 9px;border-radius:999px;font-size:12px;font-weight:700}.date{color:var(--muted);font-size:13px;margin-top:9px;text-align:right}h1{font-size:clamp(30px,4vw,50px);line-height:1.05;letter-spacing:-.035em;margin:0 0 16px;max-width:780px}h2{font-size:25px;margin:0 0 18px}h3{margin:0 0 8px}.lede{font-size:18px;color:#c9d1d9;max-width:72ch}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}.card p:last-child{margin-bottom:0}.muted{color:var(--muted)}.table-wrap,.diagram{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--panel)}table{border-collapse:collapse;width:100%;min-width:720px}th,td{text-align:left;padding:12px 14px;border-bottom:1px solid var(--line)}th{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em}.recommended{color:var(--green);font-weight:700}.tabs{display:flex;gap:8px;margin:16px 0}.tab{border:1px solid var(--line);background:var(--panel);color:var(--muted);padding:9px 12px;border-radius:8px;cursor:pointer}.tab[aria-selected="true"]{border-color:var(--amber);color:var(--text)}.panel{display:none}.panel.active{display:block}.steps{display:grid;gap:12px}.step{display:grid;grid-template-columns:auto 1fr;gap:12px}.step input{margin-top:5px;accent-color:var(--green);width:18px;height:18px}.step.checked{opacity:.58}.progress{height:8px;background:var(--panel);border:1px solid var(--line);border-radius:999px;overflow:hidden;margin:16px 0 8px}.progress>div{height:100%;width:0;background:var(--green)}.path{font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--blue);text-decoration:none}.detail{color:#c9d1d9}.overview .detail{display:none}.diff{font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;background:#090c10;border:1px solid var(--line);border-radius:10px;padding:14px;overflow:auto}.del{color:#ff9b96;background:#2d1214}.ins{color:#8ddb8c;background:#102516}.decision label{display:block;padding:8px 0}.decision input{accent-color:var(--amber)}button.copy{margin-top:12px;background:var(--amber);border:0;color:#1b1403;font-weight:750;padding:9px 13px;border-radius:8px;cursor:pointer}svg{display:block;min-width:760px;width:100%;height:auto}.node{cursor:pointer}.node rect{fill:#0d1117;stroke:#4b5563;stroke-width:1.5}.node text{fill:var(--text);font:14px system-ui}.edge{stroke:#6e7681;stroke-width:2;fill:none;marker-end:url(#arrow)}.node.hot rect{stroke:var(--amber)}.risk{border-left:3px solid var(--red)}.ok{border-left:3px solid var(--green)}details{margin-top:10px}summary{cursor:pointer;color:#c9d1d9}@media(max-width:760px){.nav a{display:none}.grid,.hero{grid-template-columns:1fr}.date{text-align:left}.nav{padding:10px 16px}main{padding:30px 16px 60px}}
+  </style>
+</head>
+<body class="overview">
+  <nav class="nav"><a href="#summary">Shrnutí</a><a href="#options">Varianty</a><a href="#flow">Tok</a><a href="#steps">Kroky</a><a href="#risks">Rizika</a><span class="spacer"></span><button class="toggle" id="detailToggle">Plný detail</button></nav>
+  <main>
+    <section id="summary">
+      <div class="hero"><div><h1>Ochrana hospod před chybným globálním skrytím</h1><p class="lede">První dva nezávislí reportéři skryjí hospodu pouze na svých instalacích. Třetí aktivní účet vytvoří konsenzus a podnik zmizí globálně. Veřejné API zůstává kompatibilní a změna nevyžaduje mobilní release ani databázovou migraci.</p></div><div><span class="badge">HOTOVO</span><div class="date">17. 7. 2026</div></div></div>
+      <div class="grid">
+        <div class="card ok"><h3>Cíle</h3><p>Zabránit tomu, aby jeden omyl skryl správný podnik všem. Zachovat okamžité lokální skrytí pro autora reportu a kompatibilitu vydaných verzí.</p></div>
+        <div class="card"><h3>Ne-cíle</h3><p>Nestavíme plný moderační systém, reputační skóre ani admin workflow. Neměníme geohash identitu hospod a nepřidáváme novou externí službu.</p></div>
+      </div>
+    </section>
+
+    <section id="options">
+      <h2>Zvolené pravidlo</h2>
+      <div class="table-wrap"><table><thead><tr><th>Varianta</th><th>Odolnost</th><th>UX reportéra</th><th>Komplexita</th><th>Verdikt</th></tr></thead><tbody>
+        <tr><td>Jeden report = globální skrytí</td><td>Nízká</td><td>Okamžitá</td><td>Nízká</td><td style="color:var(--red)">Současný bug</td></tr>
+        <tr><td>3 nezávislé účty, stejné místo</td><td>Dobrá</td><td>Autor ho nevidí hned</td><td>Malá</td><td class="recommended">Doporučeno</td></tr>
+        <tr><td>Jen ruční admin schválení</td><td>Vysoká</td><td>Pomalá</td><td>Provozní práce</td><td>Nevhodné pro solo provoz</td></tr>
+      </tbody></table></div>
+      <div class="tabs" role="tablist"><button class="tab" aria-selected="true" data-tab="consensus">Konsenzus 3</button><button class="tab" aria-selected="false" data-tab="admin">Admin</button><button class="tab" aria-selected="false" data-tab="score">Reputace</button></div>
+      <div id="consensus" class="panel active card"><h3>Konsenzus tří účtů</h3><p>Počítají se unikátní nenulové aktivní účty s aktivním reportem pro stejný <code>cache_key</code>. Autorovo zařízení podnik skryje ihned; veřejnost až po dosažení prahu.</p><p class="detail">Důvody „closed“ a „not_pub“ se sčítají jako signál, že daný bod nemá být v katalogu. Jeden účet však pořád představuje jen jeden hlas, i když odešle oba důvody.</p></div>
+      <div id="admin" class="panel card"><h3>Ruční schválení</h3><p>Bez falešných pozitiv, ale vytváří frontu, kterou musí solo provozovatel pravidelně hlídat.</p></div>
+      <div id="score" class="panel card"><h3>Reputační skóre</h3><p>Silnější dlouhodobě, ale vyžaduje historii správnosti, odvolání a vysvětlitelnou kalibraci. Pro tento incident zbytečně velké.</p></div>
+    </section>
+
+    <section id="flow">
+      <h2>Datový tok</h2>
+      <div class="diagram"><svg viewBox="0 0 920 290" role="img" aria-label="Tok reportu od uživatele přes API k osobnímu nebo globálnímu skrytí">
+        <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#6e7681"/></marker></defs>
+        <path class="edge" d="M205 80H340"/><path class="edge" d="M530 80H660"/><path class="edge" d="M755 115V190"/><path class="edge" d="M660 225H535"/><path class="edge" d="M755 115V190"/>
+        <g class="node hot" data-target="step1" transform="translate(35 45)"><rect width="170" height="70" rx="10"/><text x="18" y="30">Uživatel nahlásí</text><text x="18" y="51">hospodu</text></g>
+        <g class="node" data-target="step2" transform="translate(340 45)"><rect width="190" height="70" rx="10"/><text x="18" y="30">PubReport</text><text x="18" y="51">account + key + reason</text></g>
+        <g class="node hot" data-target="step3" transform="translate(660 45)"><rect width="190" height="70" rx="10"/><text x="18" y="30">Počet unikátních</text><text x="18" y="51">reportérů</text></g>
+        <g class="node" data-target="step4" transform="translate(660 190)"><rect width="190" height="70" rx="10"/><text x="18" y="30">3+ → globálně</text><text x="18" y="51">1–2 → jen autorovi</text></g>
+        <g class="node" data-target="step5" transform="translate(345 190)"><rect width="190" height="70" rx="10"/><text x="18" y="30">Mobilní filtr</text><text x="18" y="51">beze změny tvaru</text></g>
+      </svg></div>
+    </section>
+
+    <section id="steps">
+      <h2>Implementace</h2>
+      <div class="progress"><div id="bar"></div></div><p class="muted" id="progressText">0 / 5 hotovo</p>
+      <div class="steps">
+        <label class="step" id="step1"><input type="checkbox"><span><strong>1. Zafixovat konsenzuální pravidlo</strong><br><span class="detail">Jedna konfigurovatelná konstanta prahu a sdílený queryset helper pro globální reporty. Osobní skrytí už klient perzistentně řeší lokálně.</span></span></label>
+        <label class="step" id="step2"><input type="checkbox"><span><strong>2. Upravit backendový výběr blokací</strong><br><a class="path" href="vscode://file/Users/tomasmach/.t3/worktrees/na-pivo/t3code-add7c1aa/backend/pubs/api/views.py:5320">backend/pubs/api/views.py</a><br><span class="detail">Veřejné requesty vrátí jen konsenzus; validní bearer dostane navíc vlastní aktivní reporty. Adresář filtruje pouze konsenzuální klíče.</span></span></label>
+        <label class="step" id="step3"><input type="checkbox"><span><strong>3. Zachovat kompatibilitu API</strong><br><span class="detail">Endpoint zůstává AllowAny a vrací stejná pole. Osobní sync napříč reinstalací není součástí této backendové opravy.</span></span></label>
+        <label class="step" id="step4"><input type="checkbox"><span><strong>4. Přidat regresní testy</strong><br><a class="path" href="vscode://file/Users/tomasmach/.t3/worktrees/na-pivo/t3code-add7c1aa/backend/pubs/api/tests/test_pub_reports.py:174">backend/pubs/api/tests/test_pub_reports.py</a><br><span class="detail">1–2 lokální, třetí globální, duplicita stejného účtu, smíšené důvody, neaktivní/smazané účty a veřejný directory endpoint.</span></span></label>
+        <label class="step" id="step5"><input type="checkbox"><span><strong>5. Ověřit, commitnout a pushnout</strong><br><span class="detail">Cílené pytesty, širší backend suite podle rizika, TypeScript testy pouze pokud se klient mění.</span></span></label>
+      </div>
+      <h3 style="margin-top:24px">Zamýšlený diff</h3>
+      <pre class="diff"><span class="del">- active report ⇒ hidden for everyone</span>
+<span class="ins">+ own active report ⇒ hidden for reporter</span>
+<span class="ins">+ 3 distinct active reporters for same cache_key ⇒ hidden for everyone</span>
+<span class="ins">+ public / released clients keep the same response shape</span></pre>
+    </section>
+
+    <section id="risks">
+      <h2>Rizika a rozhodnutí</h2>
+      <div class="grid"><div class="card risk"><h3>Legacy klienti bez beareru</h3><p>Jejich první osobní report se skryje okamžitě v lokálním indexu, ale po reinstalaci se bez identity neobnoví. Novější klient s účtem dostane osobní blokaci ze serveru.</p></div><div class="card ok"><h3>Žádná migrace</h3><p>Stávající unikátní vazba account + cache_key + reason obsahuje vše potřebné. Změna je pouze ve čtení a filtrování.</p></div></div>
+      <div class="card decision" style="margin-top:16px"><h3>Rozhodnutí pro implementaci</h3><label><input type="radio" name="threshold" value="3-any" checked> Práh 3 unikátní účty bez ohledu na důvod (doporučeno)</label><label><input type="radio" name="threshold" value="3-reason"> Práh 3 účty pro stejný důvod</label><label><input type="radio" name="threshold" value="other"> Jinak — napíšu v chatu</label><button class="copy" id="copyDecision">Zkopírovat odpovědi</button></div>
+    </section>
+  </main>
+  <script>
+    const key='plan:2026-07-17-pub-report-consensus';
+    const body=document.body,toggle=document.getElementById('detailToggle');
+    toggle.onclick=()=>{body.classList.toggle('overview');toggle.textContent=body.classList.contains('overview')?'Plný detail':'Přehled'};
+    document.querySelectorAll('.tab').forEach(btn=>btn.onclick=()=>{document.querySelectorAll('.tab').forEach(b=>b.setAttribute('aria-selected','false'));document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));btn.setAttribute('aria-selected','true');document.getElementById(btn.dataset.tab).classList.add('active')});
+    const boxes=[...document.querySelectorAll('.step input')],saved=JSON.parse(localStorage.getItem(key)||'[]');boxes.forEach((box,i)=>{box.checked=!!saved[i];box.onchange=update});
+    function update(){const values=boxes.map(b=>b.checked);localStorage.setItem(key,JSON.stringify(values));const done=values.filter(Boolean).length;document.getElementById('bar').style.width=`${done/boxes.length*100}%`;document.getElementById('progressText').textContent=`${done} / ${boxes.length} hotovo`;boxes.forEach((b,i)=>b.closest('.step').classList.toggle('checked',values[i]))}update();
+    document.querySelectorAll('.node').forEach(n=>n.onclick=()=>document.getElementById(n.dataset.target).scrollIntoView({behavior:'smooth'}));
+    document.getElementById('copyDecision').onclick=async()=>{const v=document.querySelector('input[name=threshold]:checked').value;const text=`Rozhodnutí k ochraně reportů: ${v}.`;await navigator.clipboard.writeText(text);document.getElementById('copyDecision').textContent='Zkopírováno'};
+    const links=[...document.querySelectorAll('.nav a')],sections=[...document.querySelectorAll('main section')];new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){links.forEach(a=>a.classList.toggle('active',a.getAttribute('href')==='#'+e.target.id))}}),{rootMargin:'-20% 0px -70%'}).observe;const observer=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting)links.forEach(a=>a.classList.toggle('active',a.getAttribute('href')==='#'+e.target.id))}),{rootMargin:'-20% 0px -70%'});sections.forEach(s=>observer.observe(s));
+  </script>
+</body>
+</html>

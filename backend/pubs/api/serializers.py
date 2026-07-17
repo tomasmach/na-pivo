@@ -373,6 +373,7 @@ class RestorePurchasesRequestSerializer(serializers.Serializer):
 
 _MAX_CLIENT_EVENT_CONTEXT_KEYS = 16
 _MAX_CLIENT_EVENT_DISTANCE_M = 50_000
+_MAX_CLIENT_EVENT_SLIDE = 100
 _CLIENT_EVENT_CONTEXT_KEYS = {
     "operation",
     "endpoint",
@@ -392,6 +393,7 @@ _CLIENT_EVENT_CONTEXT_KEYS = {
     "retryable",
     "distance_m",
     "duration_ms",
+    "slide",
 }
 _EMAIL_RE = re.compile(r"[\w.!#$%&'*+/=?^`{|}~-]+@[\w.-]+\.[A-Za-z]{2,}")
 _BEARER_RE = re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]+", re.IGNORECASE)
@@ -426,6 +428,13 @@ def _sanitize_client_scalar(key: str, value: object) -> object | None:
         except (TypeError, ValueError):
             return None
         return max(0, min(distance, _MAX_CLIENT_EVENT_DISTANCE_M))
+
+    if key == "slide":
+        try:
+            slide = int(value)
+        except (TypeError, ValueError):
+            return None
+        return max(0, min(slide, _MAX_CLIENT_EVENT_SLIDE))
 
     if key in {"status", "pending_count", "return_days", "duration_ms"}:
         try:

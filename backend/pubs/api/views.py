@@ -5353,6 +5353,34 @@ class FriendNotificationReadView(APIView):
         return Response({"marked_read": updated}, status=status.HTTP_200_OK)
 
 
+def _globally_reported_pub_cache_keys(cache_keys: set[str]) -> set[str]:
+    """Return pub cells backed by reports from enough independent accounts.
+
+    A reporting installation hides its own report locally. Shared reads only
+    trust a quorum, counted dynamically so deactivating a report or account
+    restores the pub immediately. Reasons intentionally share one vote pool:
+    one account still counts once even if it submitted both supported reasons.
+    """
+
+    if not cache_keys:
+        return set()
+    threshold = max(
+        1,
+        int(getattr(settings, "PUB_REPORT_GLOBAL_HIDE_THRESHOLD", 3)),
+    )
+    return set(
+        PubReport.objects.filter(
+            active=True,
+            account__status=Account.Status.ACTIVE,
+            cache_key__in=cache_keys,
+        )
+        .values("cache_key")
+        .annotate(reporter_count=Count("account_id", distinct=True))
+        .filter(reporter_count__gte=threshold)
+        .values_list("cache_key", flat=True)
+    )
+
+
 class BlockedPubReportsView(APIView):
     """
     GET /v1/pub-reports/blocked?lat=...&lng=...&radius_km=...
@@ -5379,21 +5407,35 @@ class BlockedPubReportsView(APIView):
 
         reports = PubReport.objects.filter(
             active=True,
+            account__status=Account.Status.ACTIVE,
             lat__gte=lat - lat_delta,
             lat__lte=lat + lat_delta,
             lng__gte=lng - lng_delta,
             lng__lte=lng + lng_delta,
         ).order_by("-created_at")
 
+        # Qualify the pub using all of its reports, not just rows whose reported
+        # coordinates happen to fall inside this request's radius. Reports for
+        # one geohash cell can differ by a few metres.
+        candidate_cache_keys = {
+            report.cache_key
+            for report in reports
+            if _haversine_km(lat, lng, report.lat, report.lng) <= radius_km
+        }
+        globally_blocked_cache_keys = _globally_reported_pub_cache_keys(
+            candidate_cache_keys
+        )
+
         blocked = []
-        seen: set[tuple[str, str | None]] = set()
+        seen: set[str] = set()
         for report in reports:
             if _haversine_km(lat, lng, report.lat, report.lng) > radius_km:
                 continue
-            key = (report.cache_key, report.external_id)
-            if key in seen:
+            if report.cache_key not in globally_blocked_cache_keys:
                 continue
-            seen.add(key)
+            if report.cache_key in seen:
+                continue
+            seen.add(report.cache_key)
             blocked.append(
                 {
                     "cache_key": report.cache_key,
@@ -5909,11 +5951,8 @@ def _nearby_pub_directory_items(
     if not candidates:
         return []
 
-    reported_cache_keys = set(
-        PubReport.objects.filter(
-            active=True,
-            cache_key__in={row.cache_key for row in candidates},
-        ).values_list("cache_key", flat=True)
+    reported_cache_keys = _globally_reported_pub_cache_keys(
+        {row.cache_key for row in candidates}
     )
     nearby = [
         (_haversine_km(lat, lng, row.lat, row.lng), row)

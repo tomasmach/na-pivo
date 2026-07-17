@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>First-run onboarding — Na pivo</title>
+<style>
+  :root{
+    --bg:#141210; --panel:#1e1a16; --panel2:#282218; --line:#3a3226;
+    --text:#ece4d4; --muted:#a89880; --accent:#e8a317; --accent2:#f5b642;
+    --ok:#7dd66b; --warn:#e88a5a;
+    --stout:#1F1308; --stout2:#2B1A0E; --stout3:#3A2515; --border:#5A3A20;
+    --foam:#FBF3E0; --foamMuted:#E8DCC0; --mutedText:#A8896A;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:0 0 80px}
+  main{max-width:880px;margin:0 auto;padding:32px 20px}
+  h1{font-size:26px;margin:0 0 4px}
+  h2{font-size:19px;margin:36px 0 10px;border-bottom:1px solid var(--line);padding-bottom:6px}
+  h3{font-size:15px;margin:18px 0 6px}
+  p,li{max-width:72ch}
+  code{background:var(--panel2);padding:1px 5px;border-radius:4px;font-size:13px}
+  a{color:var(--accent2)}
+  .badge{display:inline-block;background:var(--accent);color:#141210;font-weight:700;font-size:12px;border-radius:999px;padding:2px 10px;vertical-align:middle;margin-left:8px}
+  .meta{color:var(--muted);font-size:13px;margin-bottom:20px}
+  .tldr{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:14px 16px;margin:16px 0}
+  .cols{display:flex;gap:16px;flex-wrap:wrap}
+  .col{flex:1 1 300px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 16px}
+  .col h3{margin-top:0}
+  ul{padding-left:20px;margin:6px 0}
+  /* checklist */
+  #progressWrap{position:sticky;top:0;background:var(--bg);padding:10px 0;z-index:5}
+  #progressBar{height:6px;background:var(--panel2);border-radius:999px;overflow:hidden}
+  #progressFill{height:100%;width:0;background:var(--accent);transition:width .2s}
+  #progressLabel{font-size:12px;color:var(--muted);margin-top:4px}
+  .step{display:flex;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;align-items:flex-start}
+  .step input{margin-top:4px;accent-color:var(--accent)}
+  .step .files{font-size:12.5px;color:var(--muted);margin-top:3px}
+  .step .files code{font-size:12px}
+  .step label{cursor:pointer}
+  .step.done label{opacity:.55;text-decoration:line-through}
+  .step.done .files{text-decoration:none}
+  /* mockup */
+  .phones{display:flex;gap:14px;overflow-x:auto;padding:10px 2px 16px}
+  .phone{flex:0 0 240px;height:480px;background:var(--stout);border:1px solid var(--border);border-radius:26px;padding:22px 16px 16px;display:flex;flex-direction:column;position:relative}
+  .phone .skip{position:absolute;top:14px;right:16px;font-size:11.5px;color:var(--mutedText)}
+  .phone .glyphWrap{flex:1;display:flex;align-items:center;justify-content:center}
+  .glyph{width:120px;height:120px;border-radius:999px;background:var(--stout2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:52px;box-shadow:0 0 42px rgba(232,163,23,.28)}
+  .phone h4{font-family:Georgia,serif;color:var(--foam);font-size:19px;line-height:1.25;margin:0 0 6px;font-weight:800}
+  .phone p{color:var(--foamMuted);font-size:12.5px;line-height:1.45;margin:0 0 14px}
+  .dots{display:flex;gap:5px;margin-bottom:12px}
+  .dots i{width:20px;height:5px;border-radius:99px;background:var(--stout3)}
+  .dots i.on{background:var(--accent)}
+  .cta{background:var(--accent);color:var(--stout);text-align:center;border-radius:999px;padding:11px 0;font-weight:800;font-size:14px;box-shadow:0 0 24px rgba(232,163,23,.35)}
+  .cta.sec{background:transparent;color:var(--foamMuted);box-shadow:none;border:1px solid var(--border);margin-top:8px}
+  .ghost{color:var(--mutedText);text-align:center;font-size:12px;padding:9px 0 0}
+  .note{font-size:13px;color:var(--muted)}
+  /* flow diagram */
+  svg text{fill:var(--text);font-size:12px}
+  .risk{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--warn);border-radius:8px;padding:10px 14px;margin:8px 0}
+  .risk b{color:var(--accent2)}
+  table{border-collapse:collapse;width:100%;font-size:13.5px}
+  td,th{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+  th{background:var(--panel2)}
+</style>
+</head>
+<body>
+<main>
+<h1>First-run onboarding <span class="badge" id="statusBadge">probíhá</span></h1>
+<div class="meta">2026-07-17 · větev <code>feat/first-run-onboarding</code> · autor: Claude (oponentura: Codex gpt-5.6-sol)</div>
+
+<div class="tldr">
+<b>TL;DR:</b> Čerstvá instalace dnes spadne rovnou na kompas. Přidáváme jednorázový onboarding: horizontální pager s 5 slidy (vítej → kompas → deník → parta → účet), postavený z existujících tokenů (stout/amber, Baloo 2, GlowButton). Zobrazí se jen na skutečně čerstvé instalaci; upgrade se pozná podle existujících AsyncStorage klíčů. Slide s polohou po Codex oponentuře vypadl (kompas má vlastní priming screen); slide s účtem přibyl na přání autora: naviguje na /auth, ale nenutí — „Zatím bez účtu" pustí uživatele dál. Reminder explainer je na první session odložený, ProfileGate čeká na doběhnutí onboardingu, splash drží do rozhodnutí.
+</div>
+
+<h2>Cíle / Ne-cíle</h2>
+<div class="cols">
+  <div class="col"><h3>Cíle</h3><ul>
+    <li>Za ~20 s vysvětlit tři pilíře: kompas, deník, parta.</li>
+    <li>Slušně si říct o polohu (priming), ne studený systémový prompt.</li>
+    <li>Zobrazit jen jednou a jen novým uživatelům.</li>
+    <li>Vizuál 1:1 s existujícím theme systémem.</li>
+  </ul></div>
+  <div class="col"><h3>Ne-cíle</h3><ul>
+    <li>Žádný vynucený login (účet je nabídka, ne brána; nickname řeší ProfileGate → /profile/setup).</li>
+    <li>Žádné notifikační permission (má vlastní in-context flow).</li>
+    <li>Žádné nové dependency (pager = Animated.FlatList).</li>
+    <li>Žádný backend zásah.</li>
+  </ul></div>
+</div>
+
+<h2>Mockup slidů</h2>
+<p class="note">Živý HTML mock v barvách appky (Baloo 2 nahrazeno serif fallbackem; emoji zastupují finální ilustrace). Slidy v appce používají generované brand ilustrace (Codex imagegen, amber malba na stout pozadí #1F1308, 750×750) v <code>assets/images/onboarding/</code>: půllitr s pěnou, mosazný kompas s hospodským štítem, tácek s čárkami a tužkou, přípitek tří půllitrů, štamgastova kartička.</p>
+<div class="phones">
+  <div class="phone"><span class="skip">Přeskočit</span>
+    <div class="glyphWrap"><div class="glyph">🍺</div></div>
+    <div class="dots"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+    <h4>Vítej Na pivu</h4>
+    <p>Pivní deníček do kapsy. Ať máš přehled, co piješ a kam chodíš.</p>
+    <div class="cta">Pokračovat</div>
+  </div>
+  <div class="phone"><span class="skip">Přeskočit</span>
+    <div class="glyphWrap"><div class="glyph">🧭</div></div>
+    <div class="dots"><i></i><i class="on"></i><i></i><i></i><i></i></div>
+    <h4>Kompas tě dovede</h4>
+    <p>Šipka míří do nejbližší otevřené hospody. Ty už jen jdeš.</p>
+    <div class="cta">Pokračovat</div>
+  </div>
+  <div class="phone"><span class="skip">Přeskočit</span>
+    <div class="glyphWrap"><div class="glyph">𝍸</div></div>
+    <div class="dots"><i></i><i></i><i class="on"></i><i></i><i></i></div>
+    <h4>Čárkuj si večer</h4>
+    <p>Piva si čárkuješ jako na tácku. Statistiky a odznaky naskakují samy.</p>
+    <div class="cta">Pokračovat</div>
+  </div>
+  <div class="phone"><span class="skip">Přeskočit</span>
+    <div class="glyphWrap"><div class="glyph">👥</div></div>
+    <div class="dots"><i></i><i></i><i></i><i class="on"></i><i></i></div>
+    <h4>Vezmi partu</h4>
+    <p>Přidáš kamarády a uvidíš, kdo zrovna sedí v hospodě. Cinknout si můžete na dálku.</p>
+    <div class="cta">Pokračovat</div>
+  </div>
+  <div class="phone">
+    <div class="glyphWrap"><div class="glyph">👤</div></div>
+    <div class="dots"><i></i><i></i><i></i><i></i><i class="on"></i></div>
+    <h4>Ať o nic nepřijdeš</h4>
+    <p>Deník se ti neztratí, ani když vyměníš telefon, a parta tě najde. Bez účtu to jde taky, doplníš ho kdykoli.</p>
+    <div class="cta">Založit účet</div>
+    <div class="ghost">Zatím bez účtu</div>
+  </div>
+</div>
+
+<h2>Kroky</h2>
+<div id="progressWrap"><div id="progressBar"><div id="progressFill"></div></div><div id="progressLabel"></div></div>
+<div id="steps">
+  <div class="step"><input type="checkbox" id="s1"><div><label for="s1">Store <code>onboardingStore</code>: persisted <code>completed</code>, <code>decide()</code> s fresh-install detekcí přes klíč <code>na-pivo-release</code>.</label><div class="files">nový <code>src/stores/onboardingStore.ts</code> + test</div></div></div>
+  <div class="step"><input type="checkbox" id="s2"><div><label for="s2">Gate v root layoutu: sekvence <code>decide()</code> → <code>checkForUpdate()</code> (race na fresh installu), redirect na <code>/onboarding</code>.</label><div class="files"><code>app/_layout.tsx</code></div></div></div>
+  <div class="step"><input type="checkbox" id="s3"><div><label for="s3">Obrazovka <code>app/onboarding.tsx</code>: Animated.FlatList pager, 5 slidů, dots, skip, permission CTA, animace opacity/scale.</label><div class="files">nový <code>app/onboarding.tsx</code>, Stack.Screen v <code>app/_layout.tsx</code></div></div></div>
+  <div class="step"><input type="checkbox" id="s4"><div><label for="s4">Texty do <code>cs.onboarding</code> + telemetrie (completed/skipped/location_granted).</label><div class="files"><code>src/i18n/cs.ts</code></div></div></div>
+  <div class="step"><input type="checkbox" id="s5"><div><label for="s5">Zapracovat Codex oponenturu návrhu.</label><div class="files"><code>/tmp/codex-onboarding-opposition.md</code></div></div></div>
+  <div class="step"><input type="checkbox" id="s6"><div><label for="s6">Typecheck + testy + lint, oprava všeho rozbitého.</label><div class="files"><code>npm run typecheck && npm test && npm run lint</code></div></div></div>
+  <div class="step"><input type="checkbox" id="s7"><div><label for="s7">Codex kritika hotové implementace (codex review) + zapracování.</label></div></div>
+  <div class="step"><input type="checkbox" id="s8"><div><label for="s8">Humanizer na všechny texty, commit + push větve.</label></div></div>
+</div>
+
+<h2>Klíčová rozhodnutí</h2>
+<table>
+<tr><th>Rozhodnutí</th><th>Proč</th></tr>
+<tr><td>Fresh-install detekce přes 4 dlouhověké klíče (<code>na-pivo-release</code>, <code>na-pivo-settings</code>, <code>na-pivo-tally</code>, reminder stamp)</td><td>Codex námitka: samotný release klíč nepokryje upgrade z hodně staré verze. Multi-signál je konzervativní. Nutná explicitní sekvence: nejdřív <code>decide()</code>, pak <code>checkForUpdate()</code>.</td></tr>
+<tr><td>Žádný permission slide (Codex oponentura přijata)</td><td>Kompas už vlastní priming permission screen má; onboarding by primoval dvakrát a „Zatím bez polohy" by stejně skončilo na permission gate. Finální CTA vede rovnou do appky.</td></tr>
+<tr><td>Účet jako poslední slide, nevynucený (přání autora)</td><td>Primární CTA „Založit účet" dokončí onboarding a otevře /auth nad taby; „Zatím bez účtu" jde rovnou do appky. Anonymní účet vzniká automaticky, po přihlášení naváže nickname wizard přes ProfileGate.</td></tr>
+<tr><td>Pager bez nové dependency</td><td>Animated.FlatList + pagingEnabled stačí; reanimated cirkus by byl proti „malé dokončitelné změny“.</td></tr>
+</table>
+
+<h2>Rizika (a co se při verifikaci opravdu stalo)</h2>
+<div class="risk"><b>Race decide() × checkForUpdate():</b> řešeno sekvencí decide → checkForUpdate.</div>
+<div class="risk"><b>Race decide() × launch efekty (CHYCENO v simulátoru):</b> tally auto-archive a currency restore zapisují persisted klíče v prvních frames, takže decide() v efektu prohrával a čerstvá instalace vypadala jako upgrade. Oprava: decide() startuje na module scope _layout.tsx, jeho čtení jdou do AsyncStorage fronty první.</div>
+<div class="risk"><b>Kill uprostřed onboardingu:</b> baseline už je zapsaná a re-launch by pager zahodil. Oprava: persisted <code>pendingShow</code> drží nárok na zobrazení, dokud uživatel nedokončí/nepřeskočí.</div>
+<div class="risk"><b>Reminder explainer přes onboarding:</b> na fresh installu by vyskočil po 600 ms. Oprava: session-level gate <code>firstLaunchSession</code>; explainer dostane slovo až při dalším spuštění.</div>
+<div class="risk"><b>Deep link na pozvánku:</b> gate neredirectuje, dokud je otevřená /parta/pozvanka; rozhodnutí zůstává 'show' a pager se ukáže po zavření pozvánky. Kód pozvánky se stashuje a claimne automaticky.</div>
+<div class="risk"><b>ProfileGate:</b> čeká, dokud je otevřený /onboarding (Keychain-restored session po reinstalu); setup wizard se spustí až po dokončení pageru.</div>
+</main>
+<script>
+(function(){
+  var KEY='plan:2026-07-17-first-run-onboarding';
+  var boxes=[].slice.call(document.querySelectorAll('.step input'));
+  var saved={};try{saved=JSON.parse(localStorage.getItem(KEY)||'{}')}catch(e){}
+  function render(){
+    var done=0;
+    boxes.forEach(function(b){b.parentElement.classList.toggle('done',b.checked);if(b.checked)done++});
+    document.getElementById('progressFill').style.width=(100*done/boxes.length)+'%';
+    document.getElementById('progressLabel').textContent=done+' / '+boxes.length+' kroků hotovo';
+    document.getElementById('statusBadge').textContent=done===boxes.length?'hotovo':'probíhá';
+  }
+  boxes.forEach(function(b){
+    b.checked=!!saved[b.id];
+    b.addEventListener('change',function(){saved[b.id]=b.checked;localStorage.setItem(KEY,JSON.stringify(saved));render()});
+  });
+  render();
+})();
+</script>
+</body>
+</html>

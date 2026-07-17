@@ -15,6 +15,10 @@ import { getAppVersionLabel } from '@/utils/appVersion';
 export type ClientTelemetryEvent =
   | 'app_open'
   | 'app_foreground'
+  | 'onboarding_started'
+  | 'onboarding_completed'
+  | 'onboarding_skipped'
+  | 'onboarding_auth_opened'
   | 'walking_distance'
   | 'counter_tab_opened'
   | 'counter_session_started'
@@ -74,6 +78,7 @@ const CONTEXT_KEYS = new Set([
   'retryable',
   'distance_m',
   'duration_ms',
+  'slide',
 ]);
 
 const EMAIL_RE = /[\w.!#$%&'*+/=?^`{|}~-]+@[\w.-]+\.[A-Za-z]{2,}/g;
@@ -188,7 +193,8 @@ function sanitizeContext(
       key === 'status' ||
       key === 'pending_count' ||
       key === 'return_days' ||
-      key === 'duration_ms'
+      key === 'duration_ms' ||
+      key === 'slide'
     ) {
       const numberValue = Number(value);
       if (Number.isFinite(numberValue)) out[key] = Math.max(0, Math.round(numberValue));

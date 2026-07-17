@@ -11,7 +11,7 @@
 import {
   useAccountStore,
   selectIsSignedIn,
-  selectNeedsProfileSetup,
+  selectNeedsNickname,
 } from '@/stores/accountStore';
 import * as auth from '@/data/auth';
 import { EMPTY_ACHIEVEMENTS, type AccountMapper, type AccountProfile, type AuthResult } from '@/data/auth';
@@ -505,7 +505,7 @@ describe('selectIsSignedIn', () => {
       profile: null,
     });
     expect(selectIsSignedIn(useAccountStore.getState())).toBe(true);
-    expect(selectNeedsProfileSetup(useAccountStore.getState())).toBe(false);
+    expect(selectNeedsNickname(useAccountStore.getState())).toBe(false);
   });
 
   it('is false for an anonymous session even if a stale claimed profile exists', () => {
