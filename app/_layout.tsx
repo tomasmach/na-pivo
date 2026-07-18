@@ -55,6 +55,7 @@ import { PubReminderOnboardingModal } from '@/components/shared/PubReminderOnboa
 import { NicknameNudgeModal } from '@/components/shared/NicknameNudgeModal';
 import { PubReminderEnableFailureModal } from '@/components/shared/PubReminderEnableFailureModal';
 import { AppDialogHost } from '@/components/shared/AppDialog';
+import { AppReviewPromptGate } from '@/reviews/AppReviewPromptGate';
 import { Toast } from '@/components/shared/Toast';
 import {
   cancelPendingPubReminder,
@@ -578,6 +579,7 @@ export default function RootLayout() {
         <NicknameNudgeModal />
         <PubReminderEnableFailureModal />
         <AppDialogHost />
+        <AppReviewPromptGate />
         <Toast />
       </SafeAreaProvider>
     </GestureHandlerRootView>
