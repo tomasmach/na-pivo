@@ -59,6 +59,9 @@ export type Pub = {
   lng: number;
   address?: string;
   city?: string;
+  /** Google Place ID from the backend nearby endpoint — lets external map links
+   *  open the exact business (place card) instead of bare coordinates. */
+  googlePlaceId?: string;
   /** Human-readable opening hours (e.g. "Po–Pá 11:00–23:00"), or null if none. */
   openingHours?: string | null;
   /** Whether the pub is open at the moment the lookup resolved, or null/unknown. */

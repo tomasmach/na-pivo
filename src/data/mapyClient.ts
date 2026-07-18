@@ -112,6 +112,9 @@ interface MapyGeocodeItem {
   location?: string;
   zip?: string;
   regionalStructure?: { name: string; type: string }[];
+  /** Additive backend-only field: Google Place ID, attached by our backend's
+   *  nearby endpoint when known. Never present on raw Mapy.cz responses. */
+  googlePlaceId?: string | null;
   /** Additive cache-only detail attached by our backend's nearby endpoint. */
   pubDetails?: {
     opening_hours?: string | null;
@@ -591,6 +594,9 @@ function itemToPub(
   if (address) pub.address = address;
   const city = pickCity(item);
   if (city) pub.city = city;
+  if (typeof item.googlePlaceId === 'string' && item.googlePlaceId.length > 0) {
+    pub.googlePlaceId = item.googlePlaceId;
+  }
 
   const details = item.pubDetails;
   if (details) {

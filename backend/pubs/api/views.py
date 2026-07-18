@@ -87,6 +87,7 @@ from pubs.feedback_attachments import (
     FeedbackAttachmentError,
     process_feedback_attachment,
 )
+from pubs.identity import normalize_pub_name
 from pubs.identity import pub_identity_key as _pub_identity_key
 from pubs.mapper import maper_snapshot
 from pubs.menu_scan import (
@@ -131,6 +132,7 @@ from pubs.models import (
     PubCommunityXpLedger,
     PubContributionLog,
     PubDirectory,
+    PubGooglePlace,
     PubHours,
     PubNameCorrection,
     PubPriceIndex,
@@ -5658,6 +5660,28 @@ def _item_cache_key(item: dict) -> str:
     return geohash8(float(lat), float(lng))
 
 
+def _attach_google_place_ids(items: list[dict]) -> None:
+    """Attach additive `googlePlaceId` to already-copied nearby items in place."""
+    wanted: dict[int, tuple[str, str]] = {}
+    for index, item in enumerate(items):
+        cache_key = _item_cache_key(item)
+        name_key = normalize_pub_name(str(item.get("name") or ""))
+        if cache_key and name_key:
+            wanted[index] = (cache_key, name_key)
+    if not wanted:
+        return
+    matches = {
+        (row.cache_key, row.name_key): row.google_place_id
+        for row in PubGooglePlace.objects.filter(
+            cache_key__in={identity[0] for identity in wanted.values()}
+        ).only("cache_key", "name_key", "google_place_id")
+    }
+    for index, identity in wanted.items():
+        place_id = matches.get(identity)
+        if place_id:
+            items[index]["googlePlaceId"] = place_id
+
+
 def _item_external_id(item: dict) -> str | None:
     external_id = item.get("id")
     if isinstance(external_id, str) and external_id.strip():
@@ -6109,6 +6133,7 @@ class PubsNearView(APIView):
             # Copy each item before attaching live cache data. Provider search
             # cache rows must remain raw and stable across requests.
             response_items = [dict(item) for item in items]
+            _attach_google_place_ids(response_items)
             for index, detail in zip(
                 detail_indexes,
                 # This bulk preview keeps nextChange nullable instead of running

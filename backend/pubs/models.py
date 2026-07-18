@@ -201,6 +201,38 @@ class PubDirectory(models.Model):
         super().save(*args, **kwargs)
 
 
+class PubGooglePlace(models.Model):
+    """
+    Google Place ID lookup for a pub identity (geohash-8 cell + normalized name).
+
+    Populated by the `import_google_place_ids` management command from an
+    offline Places API matching run. Served additively on /v1/pubs/near so
+    released mobile builds can deep-link straight to the Google Maps place
+    card instead of bare coordinates. Place IDs are exempt from Google's
+    caching restrictions and may be stored indefinitely.
+    """
+
+    cache_key = models.CharField(max_length=12, db_index=True)
+    name_key = models.CharField(max_length=255)
+    google_place_id = models.CharField(max_length=256)
+    matched_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["cache_key", "name_key"],
+                name="unique_pub_google_place_identity",
+            )
+        ]
+        verbose_name = "Pub Google Place"
+        verbose_name_plural = "Pub Google Places"
+
+    def __str__(self) -> str:
+        return f"{self.name_key} [{self.cache_key}] -> {self.google_place_id}"
+
+
 class EnrichTask(models.Model):
     """
     A queued enrichment job for a pub that could not be enriched synchronously.
