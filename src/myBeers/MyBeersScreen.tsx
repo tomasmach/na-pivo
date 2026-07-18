@@ -11,7 +11,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet, Platform } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
@@ -44,6 +44,7 @@ import { isContextPubKey } from '@/drinks/drinkTypes';
 import { VerdictBadge } from '@/myBeers/VerdictBadge';
 import { HistoricalBeerEntrySheet } from '@/myBeers/HistoricalBeerEntrySheet';
 import type { PriceCurrency } from '@/utils/currency';
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 
 function lastDrinkText(session: TallySession, now: Date): string | null {
   if (eveningDayRelation(session.startedAt, now) !== 'today') return null;
@@ -407,13 +408,12 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
           <HistoricalEntryButton onPress={openHistorical} />
         </View>
       ) : (
-        <ScrollView
+        <KeyboardAwareScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
-          automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
         >
           <HistoricalEntryButton onPress={openHistorical} />
 
@@ -481,7 +481,7 @@ export default function MyBeersScreen({ embedded = false }: { embedded?: boolean
           )}
 
           <View style={{ height: Spacing.lg }} />
-        </ScrollView>
+        </KeyboardAwareScrollView>
       )}
       <HistoricalBeerEntrySheet
         visible={historicalOpen}

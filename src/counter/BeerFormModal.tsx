@@ -120,6 +120,9 @@ interface BeerFormModalProps {
   formKey?: string | number;
   onCancel: () => void;
   onSubmit: (result: BeerFormResult) => void;
+  /** Optional copy overrides when the shared form is used outside the live counter. */
+  titleOverride?: string;
+  submitLabelOverride?: string;
   /** 'add' mode only: shows the "vyfoť celý lístek" shortcut into the AI menu scan. */
   onScanMenu?: () => void;
 }
@@ -129,7 +132,20 @@ interface BeerFormModalProps {
  * the open instance (`formKey`) so every open mounts a FRESH body whose state is
  * initialized from props — no re-seeding effect, no setState-in-effect.
  */
-export function BeerFormModal({ visible, mode, beer, initialDrinkType = 'beer', placeContext = 'pub', initialServingType, formKey, onCancel, onSubmit, onScanMenu }: BeerFormModalProps) {
+export function BeerFormModal({
+  visible,
+  mode,
+  beer,
+  initialDrinkType = 'beer',
+  placeContext = 'pub',
+  initialServingType,
+  formKey,
+  onCancel,
+  onSubmit,
+  titleOverride,
+  submitLabelOverride,
+  onScanMenu,
+}: BeerFormModalProps) {
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onCancel}>
       {visible ? (
@@ -142,6 +158,8 @@ export function BeerFormModal({ visible, mode, beer, initialDrinkType = 'beer', 
           initialServingType={initialServingType}
           onCancel={onCancel}
           onSubmit={onSubmit}
+          titleOverride={titleOverride}
+          submitLabelOverride={submitLabelOverride}
           onScanMenu={onScanMenu}
         />
       ) : null}
@@ -157,10 +175,23 @@ interface BeerFormBodyProps {
   initialServingType?: ServingType;
   onCancel: () => void;
   onSubmit: (result: BeerFormResult) => void;
+  titleOverride?: string;
+  submitLabelOverride?: string;
   onScanMenu?: () => void;
 }
 
-function BeerFormBody({ mode, beer, initialDrinkType, placeContext, initialServingType, onCancel, onSubmit, onScanMenu }: BeerFormBodyProps) {
+function BeerFormBody({
+  mode,
+  beer,
+  initialDrinkType,
+  placeContext,
+  initialServingType,
+  onCancel,
+  onSubmit,
+  titleOverride,
+  submitLabelOverride,
+  onScanMenu,
+}: BeerFormBodyProps) {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const keyboardHeight = useKeyboardHeight();
@@ -242,13 +273,16 @@ function BeerFormBody({ mode, beer, initialDrinkType, placeContext, initialServi
   const volumeMl = customActive ? parseCustomMl(customMl, drinkType) : selectedPreset;
 
   const title =
-    mode === 'add'
+    titleOverride ??
+    (mode === 'add'
       ? cs.counter.addDrinkModalTitle(drinkType)
       : mode === 'edit'
         ? cs.counter.editModalTitle
-        : cs.counter.priceModalTitle;
+        : cs.counter.priceModalTitle);
 
-  const submitLabel = mode === 'edit' ? cs.counter.confirmSave : cs.counter.confirmDrink(drinkType);
+  const submitLabel =
+    submitLabelOverride ??
+    (mode === 'edit' ? cs.counter.confirmSave : cs.counter.confirmDrink(drinkType));
 
   const selectPreset = (value: number) => {
     setSelectedPreset(value);

@@ -162,6 +162,52 @@ describe('addBackdatedDrink', () => {
   });
 });
 
+describe('addDrinkToSession', () => {
+  it('appends to the exact archived evening without touching the live session', () => {
+    const target: TallySession = {
+      clientId: 'target-evening',
+      pubKey: PUB_A.pubKey,
+      pubName: PUB_A.pubName,
+      startedAt: '2026-06-12T18:00:00',
+      drinks: [{ ...beer(), at: '2026-06-12T18:00:00' }],
+      archivedReason: 'manual',
+    };
+    const samePubSameDay: TallySession = {
+      ...target,
+      clientId: 'other-evening',
+      startedAt: '2026-06-12T22:00:00',
+      drinks: [{ ...beer(), at: '2026-06-12T22:00:00' }],
+    };
+    const live: TallySession = {
+      ...target,
+      clientId: 'live-evening',
+      startedAt: '2026-06-13T20:00:00',
+      drinks: [{ ...beer(), at: '2026-06-13T20:00:00' }],
+      archivedReason: undefined,
+    };
+    useTallyStore.setState({ current: live, history: [samePubSameDay, target] });
+
+    const landed = useTallyStore
+      .getState()
+      .addDrinkToSession('target-evening', beer({ at: '2026-06-12T20:00:00' }));
+    const state = useTallyStore.getState();
+
+    expect(landed?.drinks).toHaveLength(2);
+    expect(state.current).toBe(live);
+    expect(state.history[0]).toBe(samePubSameDay);
+    expect(state.history[1].drinks).toHaveLength(2);
+  });
+
+  it('returns null and leaves state untouched for an unknown evening', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer());
+    const before = useTallyStore.getState();
+
+    expect(useTallyStore.getState().addDrinkToSession('missing', beer())).toBeNull();
+    expect(useTallyStore.getState().current).toBe(before.current);
+    expect(useTallyStore.getState().history).toBe(before.history);
+  });
+});
+
 describe('session rollover by drinking day (04:00 cutoff)', () => {
   it('keeps a 01:30 beer in the previous evening session (before the cutoff)', () => {
     // Use local-time ISO strings (no Z) so the device-local cutoff math is exercised.
@@ -324,6 +370,17 @@ describe('updateDrinkNameInSession', () => {
     expect(useTallyStore.getState().updateDrinkNameInSession(startedAt, 'id-1', '   ')).toBe(false);
 
     expect(useTallyStore.getState().current?.drinks[0].beerName).toBe('Plzeň');
+  });
+});
+
+describe('markDrinkSynced', () => {
+  it('marks a newly added drink in archived history as sent', () => {
+    useTallyStore.getState().addDrink(PUB_A, beer());
+    useTallyStore.getState().archiveCurrent('manual');
+
+    useTallyStore.getState().markDrinkSynced('id-1');
+
+    expect(useTallyStore.getState().history[0].drinks[0].syncStatus).toBe('sent');
   });
 });
 

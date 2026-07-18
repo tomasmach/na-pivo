@@ -139,6 +139,12 @@ interface TallyState {
    */
   addBackdatedDrink: (pub: TallyPub, beer: TallyBeerInput) => TallySession;
   /**
+   * Append a missed drink to one exact existing evening without reopening it or
+   * routing by pub/day. The stable session clientId matters when somebody left
+   * and later returned to the same pub on the same drinking day.
+   */
+  addDrinkToSession: (sessionClientId: string, beer: TallyBeerInput) => TallySession | null;
+  /**
    * Remove the most recently counted drink from the current session and return
    * its id (so the caller can also remove the queued payload). Returns null when
    * there is nothing to undo. Empties the session object if it was the last
@@ -391,6 +397,40 @@ export const useTallyStore = create<TallyState>()(
         return box.session as TallySession;
       },
 
+      addDrinkToSession: (sessionClientId, beer) => {
+        const box: { session: TallySession | null } = { session: null };
+        set((state) => {
+          const at = beer.at ?? new Date().toISOString();
+          const drink: TallyDrink = {
+            id: beer.id,
+            beerName: beer.beerName,
+            at,
+            syncStatus: 'pending',
+          };
+          if (typeof beer.priceCzk === 'number') drink.priceCzk = beer.priceCzk;
+          if (beer.drinkType && beer.drinkType !== 'beer') drink.drinkType = beer.drinkType;
+          if (typeof beer.volumeMl === 'number') drink.volumeMl = beer.volumeMl;
+          if (beer.servingType && beer.servingType !== 'unknown') drink.servingType = beer.servingType;
+
+          if (state.current?.clientId === sessionClientId) {
+            const updated = { ...state.current, drinks: [...state.current.drinks, drink] };
+            box.session = updated;
+            return { current: updated };
+          }
+
+          let changed = false;
+          const history = state.history.map((session) => {
+            if (changed || session.clientId !== sessionClientId) return session;
+            changed = true;
+            const updated = { ...session, drinks: [...session.drinks, drink] };
+            box.session = updated;
+            return updated;
+          });
+          return changed ? { history } : state;
+        });
+        return box.session;
+      },
+
       undoLast: (expectedId) => {
         let removedId: string | null = null;
         set((state) => {
@@ -500,15 +540,23 @@ export const useTallyStore = create<TallyState>()(
 
       markDrinkSynced: (id) =>
         set((state) => {
-          if (!state.current) return state;
           let changed = false;
-          const drinks = state.current.drinks.map((drink) => {
-            if (drink.id !== id) return drink;
-            changed = true;
-            return { ...drink, syncStatus: 'sent' as const };
-          });
-          if (!changed) return state;
-          return { current: { ...state.current, drinks } };
+          const mark = (session: TallySession): TallySession => {
+            const drinks = session.drinks.map((drink) => {
+              if (drink.id !== id) return drink;
+              changed = true;
+              return { ...drink, syncStatus: 'sent' as const };
+            });
+            return changed ? { ...session, drinks } : session;
+          };
+
+          if (state.current) {
+            const current = mark(state.current);
+            if (changed) return { current };
+          }
+
+          const history = state.history.map((session) => (changed ? session : mark(session)));
+          return changed ? { history } : state;
         }),
 
       renameCurrentPub: (pubKey, pubName) =>

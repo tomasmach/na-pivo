@@ -1,8 +1,8 @@
 /**
  * Evening detail — the full breakdown of one drinking evening plus the private
  * pub rating. Reached from the "Moje piva" list by the session's `startedAt`
- * (a stable per-session identity). Read-only over tallyStore; the only writable
- * thing here is the personal rating.
+ * (a stable per-session identity). Drinks can be corrected, removed or added
+ * back into the same evening while the personal pub rating stays editable.
  */
 
 import React, { useMemo, useState } from 'react';
@@ -10,7 +10,6 @@ import {
   KeyboardAvoidingView,
   Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -24,24 +23,65 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { cs, formatVolume } from '@/i18n/cs';
 import { formatPrice } from '@/utils/currency';
-import { updateQueuedDrinkBeerName, removeQueuedDrink, flushDrinksQueue } from '@/data/drinksQueue';
+import {
+  enqueueDrink,
+  updateQueuedDrinkBeerName,
+  removeQueuedDrink,
+  flushDrinksQueue,
+} from '@/data/drinksQueue';
+import { buildDrinkEntry } from '@/data/drinksClient';
 import { enqueueDelete } from '@/data/deleteDrinksQueue';
 import { enqueueDrinkUpdate, removeQueuedDrinkUpdate } from '@/data/updateDrinksQueue';
 import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
-import { ChevronLeftIcon, HouseIcon, MapPinIcon, PencilIcon, TreePineIcon, Trash2Icon, XIcon } from '@/components/shared/IconGlyph';
-import { contextFromPubKey, isContextPubKey } from '@/drinks/drinkTypes';
+import {
+  BeerIcon,
+  ChevronLeftIcon,
+  HouseIcon,
+  MapPinIcon,
+  PencilIcon,
+  PlusIcon,
+  TreePineIcon,
+  Trash2Icon,
+  XIcon,
+} from '@/components/shared/IconGlyph';
+import {
+  contextFromPubKey,
+  isContextPubKey,
+  normalizeDrinkType,
+  normalizePlaceContext,
+} from '@/drinks/drinkTypes';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
   useTallyStore,
   findSessionByStart,
   sessionTotalCzk,
   type TallyDrink,
+  type TallySession,
 } from '@/stores/tallyStore';
 import { sessionBreakdown, sessionDrinkSummary, eveningDateLabel } from '@/myBeers/eveningModel';
 import { EveningBreakdown } from '@/myBeers/EveningBreakdown';
 import { PubRatingControl } from '@/myBeers/PubRatingControl';
 import { MapPubEntry } from '@/components/amenities/MapPubEntry';
 import { showAppDialog } from '@/components/shared/AppDialog';
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
+import { BeerFormModal, type BeerFormResult } from '@/counter/BeerFormModal';
+import { generateUuidV4 } from '@/data/account';
+import { decodeGeohash8 } from '@/data/geohash';
+import { trackClientEvent } from '@/data/telemetryClient';
+import { useToastStore } from '@/stores/toastStore';
+
+function latestDrinkAt(session: TallySession): string {
+  let latest = session.startedAt;
+  let latestMs = Date.parse(latest);
+  for (const drink of session.drinks) {
+    const atMs = Date.parse(drink.at);
+    if (Number.isFinite(atMs) && (!Number.isFinite(latestMs) || atMs > latestMs)) {
+      latest = drink.at;
+      latestMs = atMs;
+    }
+  }
+  return latest;
+}
 
 export default function EveningDetailScreen() {
   const router = useRouter();
@@ -55,8 +95,13 @@ export default function EveningDetailScreen() {
   const history = useTallyStore((s) => s.history);
   const removeDrinkFromSession = useTallyStore((s) => s.removeDrinkFromSession);
   const updateDrinkNameInSession = useTallyStore((s) => s.updateDrinkNameInSession);
+  const addDrinkToSession = useTallyStore((s) => s.addDrinkToSession);
+  const markDrinkSynced = useTallyStore((s) => s.markDrinkSynced);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
+  const showToast = useToastStore((s) => s.show);
   const [editingDrink, setEditingDrink] = useState<TallyDrink | null>(null);
+  const [addingDrink, setAddingDrink] = useState(false);
+  const [addDrinkFormNonce, setAddDrinkFormNonce] = useState(0);
 
   const session = useMemo(
     () => findSessionByStart(current, history, startedAt),
@@ -64,6 +109,15 @@ export default function EveningDetailScreen() {
   );
 
   const breakdown = useMemo(() => sessionBreakdown(session), [session]);
+  const addDrinkSeed = useMemo(() => {
+    if (!session?.drinks.length) return null;
+    const drink = session.drinks[session.drinks.length - 1];
+    return {
+      name: drink.beerName,
+      priceCzk: drink.priceCzk,
+      volumeMl: drink.volumeMl,
+    };
+  }, [session]);
 
   const handleSaveDrinkName = (drink: TallyDrink, beerName: string) => {
     if (!session) return;
@@ -131,6 +185,74 @@ export default function EveningDetailScreen() {
     });
   };
 
+  const openAddDrink = () => {
+    setAddDrinkFormNonce((value) => value + 1);
+    setAddingDrink(true);
+  };
+
+  const handleAddDrink = (result: BeerFormResult) => {
+    if (!session) return;
+    setAddingDrink(false);
+
+    const id = generateUuidV4();
+    const isCurrentEvening = current?.clientId === session.clientId;
+    const drankAt = isCurrentEvening ? new Date().toISOString() : latestDrinkAt(session);
+    const placeContext = normalizePlaceContext(
+      session.placeContext ?? contextFromPubKey(session.pubKey),
+    );
+    const updatedSession = addDrinkToSession(session.clientId, {
+      id,
+      beerName: result.name,
+      drinkType: result.drinkType,
+      priceCzk: result.priceCzk,
+      volumeMl: result.volumeMl,
+      servingType: result.servingType,
+      at: drankAt,
+    });
+    if (!updatedSession) return;
+
+    syncVisit(updatedSession, new Date().toISOString());
+    const pubIdentity =
+      placeContext === 'pub'
+        ? {
+            externalId: session.pubExternalId ?? null,
+            name: session.pubName,
+            city: session.pubCity,
+            ...decodeGeohash8(session.pubKey),
+          }
+        : { placeContext };
+    const entry = buildDrinkEntry(
+      {
+        ...pubIdentity,
+        drinkType: result.drinkType,
+        beer: {
+          name: result.name,
+          priceCzk: result.priceCzk,
+          volumeMl: result.volumeMl,
+          servingType: result.servingType,
+        },
+        drankAt,
+      },
+      id,
+    );
+    void enqueueDrink(entry).then((delivered) => {
+      if (delivered) markDrinkSynced(id);
+    });
+    void trackClientEvent({
+      event: 'drink_added',
+      context: {
+        had_active_session: isCurrentEvening,
+        backdated: !isCurrentEvening,
+        source: 'evening_detail',
+        ...(result.drinkType === 'beer' ? {} : { drink_type: result.drinkType }),
+        ...(placeContext === 'pub' ? {} : { place_context: placeContext }),
+      },
+    });
+    showToast(cs.myBeers.addDrinkToEveningSaved, {
+      icon: <BeerIcon size={20} color={Colors.amber} />,
+    });
+  };
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>
       {/* Header */}
@@ -157,10 +279,11 @@ export default function EveningDetailScreen() {
           </Text>
         </View>
       ) : (
-        <ScrollView
+        <KeyboardAwareScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          keyboardDismissMode="interactive"
         >
           {/* Place + summary (an outside evening shows its context icon) */}
           <View style={styles.card}>
@@ -198,6 +321,16 @@ export default function EveningDetailScreen() {
           <View style={styles.card}>
             <View style={styles.cardSectionHeader}>
               <Text style={styles.cardSectionHeaderText}>{cs.myBeers.drinkActionsHeader}</Text>
+              <View style={styles.headerFlex} />
+              <Pressable
+                onPress={openAddDrink}
+                style={({ pressed }) => [styles.addDrinkButton, pressed && styles.iconButtonPressed]}
+                accessibilityRole="button"
+                accessibilityLabel={cs.a11y.myBeersAddDrinkToEvening}
+              >
+                <PlusIcon size={15} color={Colors.stout} />
+                <Text style={styles.addDrinkButtonText}>{cs.myBeers.addDrinkToEvening}</Text>
+              </Pressable>
             </View>
             {session.drinks.map((drink, index) => (
               <View key={`${drink.id}-${index}`} style={[styles.drinkRow, index > 0 && styles.drinkRowBorder]}>
@@ -261,12 +394,29 @@ export default function EveningDetailScreen() {
           ) : null}
 
           <View style={{ height: Spacing.lg }} />
-        </ScrollView>
+        </KeyboardAwareScrollView>
       )}
       <EditDrinkNameModal
         drink={editingDrink}
         onCancel={() => setEditingDrink(null)}
         onSave={handleSaveDrinkName}
+      />
+      <BeerFormModal
+        visible={addingDrink}
+        mode="add"
+        beer={addDrinkSeed}
+        initialDrinkType={normalizeDrinkType(
+          session?.drinks[session.drinks.length - 1]?.drinkType,
+        )}
+        placeContext={normalizePlaceContext(
+          session?.placeContext ?? contextFromPubKey(session?.pubKey ?? ''),
+        )}
+        initialServingType={session?.drinks[session.drinks.length - 1]?.servingType}
+        formKey={addDrinkFormNonce}
+        titleOverride={cs.myBeers.addDrinkToEveningTitle}
+        submitLabelOverride={cs.myBeers.addDrinkToEveningSubmit}
+        onCancel={() => setAddingDrink(false)}
+        onSubmit={handleAddDrink}
       />
     </SafeAreaView>
   );
@@ -429,6 +579,21 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
+  },
+  headerFlex: { flex: 1 },
+  addDrinkButton: {
+    minHeight: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.amber,
+    paddingHorizontal: 11,
+  },
+  addDrinkButtonText: {
+    fontFamily: Fonts.ui.bold,
+    fontSize: 12,
+    color: Colors.stout,
   },
   drinkRow: {
     flexDirection: 'row',

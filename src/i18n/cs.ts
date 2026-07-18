@@ -1785,6 +1785,10 @@ export const cs = {
     // The volume is appended to the name separately in EveningBreakdown.
     breakdownLine: (count: number, price: string) => `${count}× · ${price}`,
     drinkActionsHeader: 'JEDNOTLIVÉ NÁPOJE',
+    addDrinkToEvening: 'Dopsat pivo',
+    addDrinkToEveningTitle: 'Co ještě padlo?',
+    addDrinkToEveningSubmit: 'Dopsat do večera',
+    addDrinkToEveningSaved: 'Pivo dopsané. Večer sedí.',
     editDrink: 'Upravit',
     deleteDrink: 'Smazat',
     editDrinkTitle: 'Opravit název nápoje',
@@ -2053,6 +2057,7 @@ export const cs = {
     myBeersEvening: (pub: string, summary: string) =>
       `Večer v hospodě ${pub}, ${summary}. Ťukni pro detail.`,
     myBeersAddHistorical: 'Zapsat piva zpětně',
+    myBeersAddDrinkToEvening: 'Dopsat pivo do tohoto večera',
     myBeersRemoveHistoricalBeer: (beer: string) => `Odebrat pivo ${beer}`,
     myBeersDiaryEntry: (beer: string, meta: string) =>
       `Zápis piva ${beer}${meta ? `, ${meta}` : ''}. Ťukni pro detail.`,
