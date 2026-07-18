@@ -15,10 +15,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useRouter, type Href } from 'expo-router';
 
-import { CameraIcon, ChevronRightIcon } from '@/components/shared/IconGlyph';
+import { CameraIcon, ChevronRightIcon, TrophyIcon } from '@/components/shared/IconGlyph';
 import { fetchPhotoContestTeaser, type PhotoContestSnapshot } from '@/data/photoContestClient';
 import { cs } from '@/i18n/cs';
 import { contestCountdownLabel } from '@/photos/contestCountdown';
+import { useContestResultsStore } from '@/stores/contestResultsStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -35,12 +36,19 @@ export function ContestTeaser() {
     [],
   );
 
+  const lastSeenResultsId = useContestResultsStore((s) => s.lastSeenResultsContestId);
+  const ingestSnapshot = useContestResultsStore((s) => s.ingestSnapshot);
+
   useFocusEffect(
     useCallback(() => {
       void fetchPhotoContestTeaser().then((s) => {
-        if (mountedRef.current && s) setSnapshot(s);
+        if (!s) return;
+        if (mountedRef.current) setSnapshot(s);
+        // Also feed the results store, so a podium finisher who only opens
+        // Parta still gets the one-time celebration queued.
+        void ingestSnapshot(s);
       });
-    }, []),
+    }, [ingestSnapshot]),
   );
 
   const contest = snapshot?.contest ?? null;
@@ -49,20 +57,34 @@ export function ContestTeaser() {
   const voted = snapshot?.myVoteEntryId != null;
   const foreignCount = entries.length - (myEntry ? 1 : 0);
 
-  let base: string;
-  if (!contest) {
-    base = cs.photoContest.teaserFallbackSubtitle;
-  } else if (myEntry) {
-    base = cs.photoContest.teaserMyEntrySubtitle(cs.photoContest.votesCount(myEntry.votes));
-  } else if (voted) {
-    base = cs.photoContest.teaserVotedSubtitle;
-  } else if (foreignCount > 0) {
-    base = cs.photoContest.teaserVoteSubtitle(foreignCount);
+  // Fresh, unseen results outrank every running-round state for a few days:
+  // opening the contest (or dismissing the celebration) marks them seen.
+  const lastResults = snapshot?.lastResults ?? null;
+  const resultsUnseen = lastResults != null && lastResults.contest.id !== lastSeenResultsId;
+  const myRank = lastResults?.myResult?.rank ?? null;
+
+  let subtitle: string;
+  if (resultsUnseen) {
+    subtitle =
+      myRank != null && myRank <= 3
+        ? cs.photoContest.teaserResultsPodiumSubtitle
+        : cs.photoContest.teaserResultsSubtitle;
   } else {
-    base = cs.photoContest.teaserEmptySubtitle;
+    let base: string;
+    if (!contest) {
+      base = cs.photoContest.teaserFallbackSubtitle;
+    } else if (myEntry) {
+      base = cs.photoContest.teaserMyEntrySubtitle(cs.photoContest.votesCount(myEntry.votes));
+    } else if (voted) {
+      base = cs.photoContest.teaserVotedSubtitle;
+    } else if (foreignCount > 0) {
+      base = cs.photoContest.teaserVoteSubtitle(foreignCount);
+    } else {
+      base = cs.photoContest.teaserEmptySubtitle;
+    }
+    const countdown = contest ? contestCountdownLabel(contest.periodEnd) : '';
+    subtitle = countdown ? `${base} · ${countdown}` : base;
   }
-  const countdown = contest ? contestCountdownLabel(contest.periodEnd) : '';
-  const subtitle = countdown ? `${base} · ${countdown}` : base;
 
   const open = useCallback(() => {
     router.push('/photo-contest' as Href);
@@ -76,7 +98,11 @@ export function ContestTeaser() {
       style={({ pressed }) => [styles.strip, pressed && styles.pressed]}
     >
       <View style={styles.iconWell}>
-        <CameraIcon size={20} color={Colors.amber} />
+        {resultsUnseen ? (
+          <TrophyIcon size={20} color={Colors.amber} />
+        ) : (
+          <CameraIcon size={20} color={Colors.amber} />
+        )}
       </View>
       <View style={styles.textCol}>
         <Text style={styles.title} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>

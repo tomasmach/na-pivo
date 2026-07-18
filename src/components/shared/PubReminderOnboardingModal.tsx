@@ -37,6 +37,7 @@ import {
   shouldShowPubReminderOnboarding,
 } from '@/notifications/pubReminderOnboarding';
 import { getCurrentAppVersion } from '@/data/releaseNotesClient';
+import { useLaunchModalMutex } from '@/stores/launchModalMutex';
 import { useOnboardingStore } from '@/stores/onboardingStore';
 import { useReleaseStore } from '@/stores/releaseStore';
 import { useSettingsStore, waitForSettingsHydration } from '@/stores/settingsStore';
@@ -122,8 +123,19 @@ export function PubReminderOnboardingModal() {
   // so staying hidden here never burns the once-per-version stamp.
   const firstLaunchSession = useOnboardingStore((s) => s.firstLaunchSession);
   // A late-arriving note must also hide an already-eligible onboarding.
-  const visible =
+  const wantVisible =
     eligible && !pubReminderEnabled && releaseNote === null && !firstLaunchSession;
+
+  // Launch-modal mutex: don't present while another launch popup (e.g. the
+  // FotoPivař results celebration) holds the slot; re-claim when it frees.
+  const mutexHolder = useLaunchModalMutex((s) => s.holder);
+  useEffect(() => {
+    const mutex = useLaunchModalMutex.getState();
+    if (wantVisible) mutex.claim('pub-reminder');
+    else mutex.release('pub-reminder');
+  }, [wantVisible, mutexHolder]);
+  useEffect(() => () => useLaunchModalMutex.getState().release('pub-reminder'), []);
+  const visible = wantVisible && mutexHolder === 'pub-reminder';
 
   const progress = useSharedValue(0);
 

@@ -892,9 +892,28 @@ export const cs = {
     reportConfirmBody: 'Poletí na kontrolu. Díky, že hlídáš výčep.',
     reportedToast: 'Nahlášeno. Mrkneme na to.',
 
+    // — Results celebration (top 3, shown once per round) —
+    resultsEyebrow: 'VÝSLEDKY KOLA',
+    resultsTitleFirst: 'Zlatý tácek je tvůj!',
+    resultsTitleSecond: 'Druhé místo!',
+    resultsTitleThird: 'Třetí místo!',
+    resultsBodyFirst: 'Tvoje fotka vyhrála celé kolo. Klobouk dolů a pěnu nahoru.',
+    resultsBodySecond: 'Stříbro na bedně. Na zlatý tácek chybělo jen pár hlasů.',
+    resultsBodyThird: 'Bronz na bedně. Příště to cinkne výš.',
+    resultsStatVotes: 'Hlasy',
+    resultsStatXp: 'XP',
+    resultsStatWins: 'Výhry',
+    resultsCta: 'Otevřít soutěž',
+    resultsClose: 'Zavřít',
+
+    // — Reigning winner strip (next round) —
+    reigningTitle: 'Úřadující FotoPivař',
+
     // — Parta teaser strip —
     teaserFallbackSubtitle: 'Soutěž o nejlepší pivní fotku každých 14 dní',
     teaserEmptySubtitle: 'Nové kolo běží a čeká na první fotku',
+    teaserResultsSubtitle: 'Kolo skončilo a výsledky jsou venku',
+    teaserResultsPodiumSubtitle: 'Jsi na bedně! Mrkni na výsledky',
     teaserVoteSubtitle: (n: number) =>
       n === 1
         ? '1 fotka v kole čeká na tvůj hlas'

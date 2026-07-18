@@ -46,6 +46,7 @@ import { usePartaSignalStore } from '@/stores/partaSignalStore';
 import { ensureFriendPushRegisteredIfGranted } from '@/notifications/friendPush';
 import { refreshCurrencyFromLastKnownLocation } from '@/location/locationCurrency';
 import { WhatsNewModal } from '@/components/shared/WhatsNewModal';
+import { ContestResultsModal } from '@/photos/ContestResultsModal';
 import { PubReminderOnboardingModal } from '@/components/shared/PubReminderOnboardingModal';
 import { PubReminderEnableFailureModal } from '@/components/shared/PubReminderEnableFailureModal';
 import { AppDialogHost } from '@/components/shared/AppDialog';
@@ -542,6 +543,7 @@ export default function RootLayout() {
         </Stack>
         <OnboardingGate />
         <WhatsNewModal />
+        <ContestResultsModal />
         <PubReminderOnboardingModal />
         <PubReminderEnableFailureModal />
         <AppDialogHost />

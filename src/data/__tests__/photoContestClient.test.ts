@@ -123,6 +123,14 @@ describe('fetchPhotoContest', () => {
             votes: 30,
           },
         ],
+        my_result: {
+          entered: true,
+          voted: true,
+          rank: 1,
+          votes: 30,
+          xp_awarded: 100,
+          wins_count: 2,
+        },
       },
     });
 
@@ -160,6 +168,14 @@ describe('fetchPhotoContest', () => {
             votes: 30,
           },
         ],
+        myResult: {
+          entered: true,
+          voted: true,
+          rank: 1,
+          votes: 30,
+          xpAwarded: 100,
+          winsCount: 2,
+        },
       },
     });
     const [url, init] = spy.mock.calls[0] as [string, RequestInit];

@@ -63,10 +63,25 @@ export interface PhotoContestWinner {
   votes: number;
 }
 
+/**
+ * MY outcome in the finished round (additive `my_result` on the wire; null on
+ * older backends). Powers the one-time results celebration and teaser copy.
+ */
+export interface PhotoContestMyResult {
+  entered: boolean;
+  voted: boolean;
+  /** 1–3 when I made the podium, null otherwise. */
+  rank: number | null;
+  votes: number;
+  xpAwarded: number;
+  winsCount: number;
+}
+
 /** The finished previous round, when the backend still surfaces it. */
 export interface PhotoContestResults {
   contest: PhotoContest;
   winners: PhotoContestWinner[];
+  myResult: PhotoContestMyResult | null;
 }
 
 /**
@@ -118,6 +133,31 @@ interface RawWinner {
   image_url?: string | null;
   caption?: string;
   votes?: number;
+}
+
+interface RawMyResult {
+  entered?: boolean;
+  voted?: boolean;
+  rank?: number | null;
+  votes?: number;
+  xp_awarded?: number;
+  wins_count?: number;
+}
+
+function parseMyResult(raw?: RawMyResult | null): PhotoContestMyResult | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+  return {
+    entered: raw.entered === true,
+    voted: raw.voted === true,
+    rank:
+      typeof raw.rank === 'number' && Number.isFinite(raw.rank) && raw.rank >= 1
+        ? raw.rank
+        : null,
+    votes: num(raw.votes),
+    xpAwarded: num(raw.xp_awarded),
+    winsCount: num(raw.wins_count),
+  };
 }
 
 function parseProfile(raw?: RawContestProfile): FriendProfile {
@@ -260,7 +300,7 @@ export async function fetchPhotoContest(
   if (!res.ok) return null;
   const d = res.data;
   const rawLast = d.last_results as
-    | { contest?: RawContest; winners?: RawWinner[] }
+    | { contest?: RawContest; winners?: RawWinner[]; my_result?: RawMyResult | null }
     | null
     | undefined;
   const snapshot: PhotoContestSnapshot = {
@@ -280,6 +320,7 @@ export async function fetchPhotoContest(
             winners: Array.isArray(rawLast.winners)
               ? rawLast.winners.map(parsePhotoContestWinner)
               : [],
+            myResult: parseMyResult(rawLast.my_result),
           }
         : null,
   };

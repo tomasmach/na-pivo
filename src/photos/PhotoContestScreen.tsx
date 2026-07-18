@@ -65,6 +65,7 @@ import { contestCountdownLabel } from '@/photos/contestCountdown';
 import { ScalePressable } from '@/photos/ScalePressable';
 import { Avatar } from '@/profile/Avatar';
 import { loadBeerPhotos, useBeerPhotosStore } from '@/stores/beerPhotosStore';
+import { useContestResultsStore } from '@/stores/contestResultsStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -332,6 +333,16 @@ export default function PhotoContestScreen() {
     setEntries(snap.entries);
     entriesGenRef.current += 1;
     setState('loaded');
+    // Feed the results store: queue a podium celebration first, then mark the
+    // round's results as seen (the user is looking at the podium right now).
+    // markResultsSeen skips rounds owned by a queued celebration, so the modal
+    // still pops over this screen and advances the baseline on dismiss.
+    void (async () => {
+      const results = useContestResultsStore.getState();
+      await results.ingestSnapshot(snap);
+      const lastId = snap.lastResults?.contest.id;
+      if (lastId) results.markResultsSeen(lastId);
+    })();
   }, []);
 
   useEffect(() => {
@@ -643,6 +654,35 @@ export default function PhotoContestScreen() {
             {cs.photoContest.subtitle}
           </Text>
 
+          {/* Reigning winner — the traveling golden coaster: last round's
+              winning photo stays featured while the new round runs. */}
+          {contest && winners.length > 0 && winners[0].rank === 1 ? (
+            <View style={styles.reigningStrip}>
+              <View style={styles.reigningThumbWrap}>
+                <Image
+                  source={{ uri: winners[0].imageUrl }}
+                  style={StyleSheet.absoluteFill}
+                  resizeMode="cover"
+                  accessibilityIgnoresInvertColors
+                />
+              </View>
+              <View style={styles.reigningTextCol}>
+                <View style={styles.reigningTitleRow}>
+                  <TrophyIcon size={13} color={Colors.amber} />
+                  <Text style={styles.reigningTitle} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {cs.photoContest.reigningTitle}
+                  </Text>
+                </View>
+                <Text style={styles.reigningName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {nameOf(winners[0])}
+                </Text>
+                <Text style={styles.reigningVotes} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {cs.photoContest.votesCount(winners[0].votes)}
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
           {!contest ? (
             <View style={styles.emptyCard}>
               <Text style={styles.emptyText} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -853,6 +893,52 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     color: Colors.mutedText,
+  },
+  reigningStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    marginTop: Spacing.lg,
+    padding: Spacing.sm + 2,
+    borderRadius: Radius.card,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.35),
+    backgroundColor: withAlpha(Colors.amber, 0.07),
+  },
+  reigningThumbWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: Radius.medium,
+    overflow: 'hidden',
+    backgroundColor: Colors.stout3,
+  },
+  reigningTextCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  reigningTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  reigningTitle: {
+    fontFamily: Fonts.ui.bold,
+    fontSize: 10.5,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    color: Colors.amber,
+  },
+  reigningName: {
+    marginTop: 2,
+    fontFamily: Fonts.display.bold,
+    fontSize: 16,
+    color: Colors.foam,
+  },
+  reigningVotes: {
+    marginTop: 1,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 12,
+    color: Colors.foamMuted,
   },
   sectionHeader: {
     fontFamily: Fonts.ui.bold,
