@@ -128,8 +128,7 @@ interface MapPubSheetProps {
   /** Fired after a successful rename so the host can update its own Pub state
    *  (the sheet's optimistic override dies with the sheet). */
   onRenamed?: (newName: string) => void;
-  /** When set, the sheet also offers the compass report actions ("Už nefunguje" /
-   *  "Nečepují pivo"); the host owns hiding the pub + queueing the report. */
+  /** When set, the sheet also offers the shared pub-report flow. */
   onReport?: (reason: PubReportReason) => void;
 }
 
@@ -709,13 +708,8 @@ export function MapPubSheet({
                     {cs.compass.reportTitle}
                   </Text>
                   <ReportRow
-                    icon={<XIcon size={24} color={Colors.mutedText} />}
-                    label={cs.compass.reportClosed}
-                    onPress={() => onReport('closed')}
-                  />
-                  <ReportRow
                     icon={<Trash2Icon size={24} color={Colors.amberLight} />}
-                    label={cs.compass.reportNotPub}
+                    label={cs.compass.reportRemove}
                     onPress={() => onReport('not_pub')}
                   />
                 </View>
@@ -1002,7 +996,7 @@ function InfoFactRow({
 
 // ─── Report row (map detail only) ────────────────────────────────────────────
 
-/** One report action ("Už nefunguje" / "Nečepují pivo"). A plain action row —
+/** One report action. A plain action row —
  *  no chevron, it doesn't navigate; the host hides the pub + queues the report. */
 function ReportRow({
   icon,

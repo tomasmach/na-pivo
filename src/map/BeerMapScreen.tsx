@@ -18,11 +18,13 @@ import MapView, {
   type Region,
 } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 
 import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
 import { OpenStatusChip } from '@/components/compass/OpenStatusChip';
 import { PubFilterSheet } from '@/components/compass/PubFilterSheet';
+import { ReportPubModal } from '@/components/compass/ReportPubModal';
 import {
   BeerIcon,
   ChevronRightIcon,
@@ -226,6 +228,7 @@ export default function BeerMapScreen({
   onApplyFilters,
   onShowCompass,
 }: BeerMapScreenProps) {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const mapColorScheme = colorScheme === 'dark' ? 'dark' : 'light';
@@ -264,6 +267,7 @@ export default function BeerMapScreen({
   const [layer, setLayer] = useState<Layer>(rememberedLayer);
   const [selection, setSelection] = useState<MapSelection | null>(rememberedSelection);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [listOpen, setListOpen] = useState(false);
   const [detailsByPubKey, setDetailsByPubKey] = useState<Record<string, PubHoursResult>>({});
@@ -451,6 +455,20 @@ export default function BeerMapScreen({
     clearSelection();
     void enqueuePubReport(pub, reason);
   };
+
+  const openSelectedPubReport = useCallback(() => {
+    if (selectedPub) setReportOpen(true);
+  }, [selectedPub]);
+
+  const addPubNearSelection = useCallback(() => {
+    if (!selectedPub) return;
+    router.push({
+      pathname: '/add-pub' as never,
+      params: { lat: String(selectedPub.pub.lat), lng: String(selectedPub.pub.lng) },
+    });
+  }, [router, selectedPub]);
+
+  const renameSelectedPub = useCallback(() => setDetailOpen(true), []);
 
   const handleMapPress = useCallback(
     (event: MapPressEvent) => {
@@ -847,7 +865,7 @@ export default function BeerMapScreen({
               tertiary={{
                 label: cs.a11y.mapReportClosed(selectedPub.pub.name),
                 icon: <FlagIcon size={15} color={Colors.foamMuted} />,
-                onPress: () => reportSelectedPub('closed'),
+                onPress: openSelectedPubReport,
               }}
             />
           </View>
@@ -1008,7 +1026,21 @@ export default function BeerMapScreen({
           pubName={selectedPub.pub.name}
           info={pubInfoFromPub(selectedDetailPub ?? selectedPub.pub)}
           onClose={() => setDetailOpen(false)}
-          onReport={reportSelectedPub}
+          onReport={() => {
+            setDetailOpen(false);
+            setTimeout(() => setReportOpen(true), 250);
+          }}
+        />
+      ) : null}
+
+      {selectedPub ? (
+        <ReportPubModal
+          visible={reportOpen}
+          pubName={selectedPub.pub.name}
+          onClose={() => setReportOpen(false)}
+          onAddPub={addPubNearSelection}
+          onRename={renameSelectedPub}
+          onReportReason={reportSelectedPub}
         />
       ) : null}
     </View>

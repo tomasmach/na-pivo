@@ -58,14 +58,12 @@ import { PubCardActions } from '@/components/shared/PubCardActions';
 import {
   BeerIcon,
   BeerOffIcon,
-  Trash2Icon,
   CompassIcon,
   LockKeyholeIcon,
   EyeIcon,
   ExternalLinkIcon,
   RefreshCwIcon,
   SettingsIcon,
-  FlagIcon,
   MapPinnedIcon,
   MapPinPlusIcon,
   PencilIcon,
@@ -79,6 +77,7 @@ import {
   ListFilterIcon,
 } from '@/components/shared/IconGlyph';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
+import { ReportPubModal } from '@/components/compass/ReportPubModal';
 import { pubInfoFromPub, type PubInfoContext } from '@/components/amenities/pubInfoContext';
 import { geohash8 } from '@/data/geohash';
 import { useToastStore } from '@/stores/toastStore';
@@ -192,154 +191,6 @@ function RenamePubModal({
         </View>
       </KeyboardAvoidingView>
     </Modal>
-  );
-}
-
-interface ReportPubModalProps {
-  visible: boolean;
-  pubName: string;
-  onClose: () => void;
-  onAddPub: () => void;
-  onRename: () => void;
-  onReportReason: (reason: PubReportReason) => void;
-}
-
-function ReportPubModal({
-  visible,
-  pubName,
-  onClose,
-  onAddPub,
-  onRename,
-  onReportReason,
-}: ReportPubModalProps) {
-  const handleAddPub = useCallback(() => {
-    onClose();
-    onAddPub();
-  }, [onAddPub, onClose]);
-
-  const handleRename = useCallback(() => {
-    onClose();
-    onRename();
-  }, [onClose, onRename]);
-
-  const handleReportClosed = useCallback(() => {
-    onClose();
-    onReportReason('closed');
-  }, [onClose, onReportReason]);
-
-  const handleReportNotPub = useCallback(() => {
-    onClose();
-    onReportReason('not_pub');
-  }, [onClose, onReportReason]);
-
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={onClose}
-    >
-      <View style={styles.reportOverlay}>
-        <Pressable
-          style={styles.reportScrim}
-          onPress={onClose}
-          accessibilityRole="button"
-          accessibilityLabel={cs.common.cancel}
-        />
-        <View style={styles.reportPanel}>
-          <View style={styles.reportHeader}>
-            <View style={styles.reportIconWell}>
-              <FlagIcon size={18} color={Colors.amber} />
-            </View>
-            <View style={styles.reportTitleWrap}>
-              <Text style={styles.reportTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {cs.compass.reportTitle}
-              </Text>
-              <Text style={styles.reportBody} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.compass.reportBody(pubName)}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.reportActions}>
-            <ReportActionButton
-              label={cs.compass.reportAddMissing}
-              icon={<MapPinPlusIcon size={18} color={Colors.foam} />}
-              onPress={handleAddPub}
-            />
-            <ReportActionButton
-              label={cs.compass.reportRename}
-              icon={<PencilIcon size={18} color={Colors.foam} />}
-              onPress={handleRename}
-            />
-            <ReportActionButton
-              label={cs.compass.reportClosed}
-              icon={<XIcon size={18} color={Colors.foamMuted} />}
-              onPress={handleReportClosed}
-              tone="muted"
-            />
-            <ReportActionButton
-              label={cs.compass.reportNotPub}
-              icon={<Trash2Icon size={18} color={Colors.amberLight} />}
-              onPress={handleReportNotPub}
-              tone="danger"
-            />
-            <ReportActionButton
-              label={cs.common.cancel}
-              icon={<XIcon size={18} color={Colors.mutedText} />}
-              onPress={onClose}
-              tone="ghost"
-            />
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-interface ReportActionButtonProps {
-  label: string;
-  icon: React.ReactNode;
-  onPress: () => void;
-  tone?: 'default' | 'muted' | 'danger' | 'ghost';
-}
-
-function ReportActionButton({
-  label,
-  icon,
-  onPress,
-  tone = 'default',
-}: ReportActionButtonProps) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.reportAction,
-        tone === 'muted' && styles.reportActionMuted,
-        tone === 'danger' && styles.reportActionDanger,
-        tone === 'ghost' && styles.reportActionGhost,
-        pressed && styles.reportActionPressed,
-      ]}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-    >
-      <View style={styles.reportActionIcon}>{icon}</View>
-      <Text
-        style={[
-          styles.reportActionText,
-          tone === 'danger' && styles.reportActionTextDanger,
-          tone === 'ghost' && styles.reportActionTextGhost,
-        ]}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.82}
-        maxFontSizeMultiplier={FontScaleCap.heading}
-      >
-        {label}
-      </Text>
-      <View style={styles.reportActionIconSpacer} />
-    </Pressable>
   );
 }
 

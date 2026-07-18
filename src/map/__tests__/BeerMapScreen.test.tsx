@@ -66,6 +66,8 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
 
+jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn() }) }));
+
 jest.mock('../useBeerMap', () => ({ useBeerMap: jest.fn() }));
 jest.mock('@/data/hoursClient', () => ({ fetchPubHours: jest.fn() }));
 jest.mock('@/data/pubReportQueue', () => ({ enqueuePubReport: jest.fn(async () => true) }));
@@ -110,6 +112,9 @@ jest.mock('@/components/shared/IconGlyph', () => {
     CompassIcon: MockIcon,
     ExternalLinkIcon: MockIcon,
     FlagIcon: MockIcon,
+    MapPinPlusIcon: MockIcon,
+    PencilIcon: MockIcon,
+    Trash2Icon: MockIcon,
     ListIcon: MockIcon,
     LocateFixedIcon: MockIcon,
     ListFilterIcon: MockIcon,
@@ -309,7 +314,7 @@ describe('BeerMapScreen opening-hours loading', () => {
     expect(screen.UNSAFE_queryAllByType(ScrollView)).toHaveLength(0);
   });
 
-  it('reports a closed pub directly from the selected-pub card', () => {
+  it('asks for confirmation before reporting a pub from the selected-pub card', () => {
     const screen = render(
       <BeerMapScreen
         filters={EMPTY_PUB_SEARCH_FILTERS}
@@ -321,9 +326,13 @@ describe('BeerMapScreen opening-hours loading', () => {
     fireEvent.press(screen.getByLabelText(cs.a11y.mapPub('U Testu', 0)));
     fireEvent.press(screen.getByLabelText(cs.a11y.mapReportClosed('U Testu')));
 
+    expect(mockedEnqueuePubReport).not.toHaveBeenCalled();
+
+    fireEvent.press(screen.getByLabelText(cs.compass.reportRemove));
+
     expect(mockedEnqueuePubReport).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'pub-1', name: 'U Testu' }),
-      'closed',
+      'not_pub',
     );
     expect(screen.queryByLabelText(cs.a11y.mapReportClosed('U Testu'))).toBeNull();
   });

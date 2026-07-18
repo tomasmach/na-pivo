@@ -432,7 +432,7 @@ describe('CompassScreen', () => {
     });
 
     const notPubButton = renderer!.root.findByProps({
-      accessibilityLabel: cs.compass.reportNotPub,
+      accessibilityLabel: cs.compass.reportRemove,
     });
 
     act(() => {

@@ -197,8 +197,7 @@ export const cs = {
     reportBody: (pubName: string) =>
       `Přidej jinou hospodu, nebo oprav „${pubName}“.`,
     reportRename: 'Opravit název',
-    reportClosed: 'Už nefunguje',
-    reportNotPub: 'Odstranit hospodu z mapy',
+    reportRemove: 'Není tu nebo už nefunguje',
     reportAddMissing: 'Přidat jinou hospodu',
     renameTitle: 'Jak se jmenuje?',
     renameBody: (pubName: string) =>
