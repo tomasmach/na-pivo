@@ -102,7 +102,6 @@ jest.mock('@/components/compass/OpenStatusChip', () => ({
   ),
 }));
 jest.mock('@/components/shared/ExploreSwitch', () => ({ ExploreSwitch: () => null }));
-jest.mock('@/components/shared/PubCardActions', () => ({ PubCardActions: () => null }));
 jest.mock('@/components/shared/IconGlyph', () => {
   const MockIcon = () => null;
   return {
@@ -110,6 +109,7 @@ jest.mock('@/components/shared/IconGlyph', () => {
     ChevronRightIcon: MockIcon,
     CompassIcon: MockIcon,
     ExternalLinkIcon: MockIcon,
+    FlagIcon: MockIcon,
     ListIcon: MockIcon,
     LocateFixedIcon: MockIcon,
     ListFilterIcon: MockIcon,

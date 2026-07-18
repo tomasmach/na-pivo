@@ -15,9 +15,10 @@ interface PubCardAction {
 interface PubCardActionsProps {
   primary: PubCardAction;
   secondary: PubCardAction;
+  tertiary?: PubCardAction;
 }
 
-export function PubCardActions({ primary, secondary }: PubCardActionsProps) {
+export function PubCardActions({ primary, secondary, tertiary }: PubCardActionsProps) {
   return (
     <View style={styles.footer}>
       <Pressable
@@ -57,6 +58,18 @@ export function PubCardActions({ primary, secondary }: PubCardActionsProps) {
           {secondary.label}
         </Text>
       </Pressable>
+
+      {tertiary ? (
+        <Pressable
+          onPress={tertiary.onPress}
+          hitSlop={8}
+          style={({ pressed }) => [styles.action, styles.tertiaryAction, pressed && styles.pressed]}
+          accessibilityLabel={tertiary.accessibilityLabel ?? tertiary.label}
+          accessibilityRole="button"
+        >
+          {tertiary.icon}
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -88,7 +101,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   primaryAction: {
-    flex: 1.38,
+    flex: 1.15,
     borderRadius: 12,
     backgroundColor: Colors.amber,
   },
@@ -96,6 +109,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: withAlpha(Colors.amber, 0.22),
     backgroundColor: withAlpha(Colors.amber, 0.08),
+  },
+  tertiaryAction: {
+    flex: 0,
+    width: 38,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.14),
+    backgroundColor: withAlpha(Colors.foam, 0.04),
   },
   pressed: {
     opacity: 0.78,

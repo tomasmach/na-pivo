@@ -64,7 +64,6 @@ export const cs = {
     notVisited: 'Tady ještě nemáš čárku.',
     visited: 'Navštíveno',
     pubDetail: 'Detail hospody',
-    reportClosed: 'Nahlásit: už nefunguje',
     offline: 'Mapa drží poslední data. Parta se ozve, až chytíš signál.',
     permissionHint: 'Rozhlížet se můžeš i bez polohy. Klepni a najdu tě.',
     openWithoutLocation: 'Otevřít mapu bez polohy',
