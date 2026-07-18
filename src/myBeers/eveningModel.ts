@@ -8,7 +8,12 @@
  * beer is shown under the night it belongs to, not the calendar date.
  */
 
-import { drinkingDayKey, sessionDrinkTypeCounts, type TallySession } from '@/stores/tallyStore';
+import {
+  drinkingDayKey,
+  sessionDrinkTypeCounts,
+  type TallyDrink,
+  type TallySession,
+} from '@/stores/tallyStore';
 import { cs } from '@/i18n/cs';
 import { beerCountLabel, shotCountLabel, softDrinkCountLabel, wineCountLabel } from '@/i18n/plural';
 import { normalizeDrinkType, type DrinkType } from '@/drinks/drinkTypes';
@@ -21,6 +26,58 @@ export interface BreakdownLine {
   volumeMl?: number;
   count: number;
   totalCzk: number;
+}
+
+/** One editable row in the evening detail. Unlike the compact breakdown, this
+ * keeps the concrete drinks so a grouped rename can update every server row and
+ * the remove action can still retract exactly one counted drink. */
+export interface DrinkActionGroup extends BreakdownLine {
+  key: string;
+  pricedCount: number;
+  servingType?: TallyDrink['servingType'];
+  drinks: TallyDrink[];
+}
+
+/** Group repeated drinks for the editable list. Serving stays in the identity
+ * so a bottled and a draft beer never collapse into a misleading single row. */
+export function sessionDrinkActionGroups(session: TallySession | null): DrinkActionGroup[] {
+  if (!session) return [];
+  const groups = new Map<string, DrinkActionGroup>();
+  for (const drink of session.drinks) {
+    const drinkType = normalizeDrinkType(drink.drinkType);
+    const servingType = drink.servingType ?? 'unknown';
+    const key = [
+      drinkType,
+      drink.beerName.trim().toLowerCase(),
+      drink.volumeMl ?? '',
+      servingType,
+    ].join('|');
+    const priceCzk = typeof drink.priceCzk === 'number' ? drink.priceCzk : 0;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.count += 1;
+      existing.totalCzk += priceCzk;
+      if (typeof drink.priceCzk === 'number') existing.pricedCount += 1;
+      existing.drinks.push(drink);
+      continue;
+    }
+
+    const group: DrinkActionGroup = {
+      key,
+      name: drink.beerName,
+      drinkType,
+      count: 1,
+      totalCzk: priceCzk,
+      pricedCount: typeof drink.priceCzk === 'number' ? 1 : 0,
+      drinks: [drink],
+    };
+    if (typeof drink.volumeMl === 'number') group.volumeMl = drink.volumeMl;
+    if (drink.servingType && drink.servingType !== 'unknown') {
+      group.servingType = drink.servingType;
+    }
+    groups.set(key, group);
+  }
+  return Array.from(groups.values());
 }
 
 /**

@@ -38,10 +38,10 @@ import {
   ChevronLeftIcon,
   HouseIcon,
   MapPinIcon,
+  MinusIcon,
   PencilIcon,
   PlusIcon,
   TreePineIcon,
-  Trash2Icon,
   XIcon,
 } from '@/components/shared/IconGlyph';
 import {
@@ -58,7 +58,13 @@ import {
   type TallyDrink,
   type TallySession,
 } from '@/stores/tallyStore';
-import { sessionBreakdown, sessionDrinkSummary, eveningDateLabel } from '@/myBeers/eveningModel';
+import {
+  sessionBreakdown,
+  sessionDrinkActionGroups,
+  sessionDrinkSummary,
+  eveningDateLabel,
+  type DrinkActionGroup,
+} from '@/myBeers/eveningModel';
 import { EveningBreakdown } from '@/myBeers/EveningBreakdown';
 import { PubRatingControl } from '@/myBeers/PubRatingControl';
 import { MapPubEntry } from '@/components/amenities/MapPubEntry';
@@ -99,7 +105,7 @@ export default function EveningDetailScreen() {
   const markDrinkSynced = useTallyStore((s) => s.markDrinkSynced);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const showToast = useToastStore((s) => s.show);
-  const [editingDrink, setEditingDrink] = useState<TallyDrink | null>(null);
+  const [editingGroup, setEditingGroup] = useState<DrinkActionGroup | null>(null);
   const [addingDrink, setAddingDrink] = useState(false);
   const [addDrinkFormNonce, setAddDrinkFormNonce] = useState(0);
 
@@ -109,6 +115,7 @@ export default function EveningDetailScreen() {
   );
 
   const breakdown = useMemo(() => sessionBreakdown(session), [session]);
+  const drinkActionGroups = useMemo(() => sessionDrinkActionGroups(session), [session]);
   const addDrinkSeed = useMemo(() => {
     if (!session?.drinks.length) return null;
     const drink = session.drinks[session.drinks.length - 1];
@@ -119,7 +126,7 @@ export default function EveningDetailScreen() {
     };
   }, [session]);
 
-  const handleSaveDrinkName = (drink: TallyDrink, beerName: string) => {
+  const handleSaveDrinkName = (group: DrinkActionGroup, beerName: string) => {
     if (!session) return;
     const trimmed = beerName.trim();
     if (!trimmed) {
@@ -129,9 +136,13 @@ export default function EveningDetailScreen() {
       });
       return;
     }
-    const changed = updateDrinkNameInSession(session.startedAt, drink.id, trimmed);
-    setEditingDrink(null);
-    if (!changed) return;
+    const changedDrinks = group.drinks.filter((drink) => drink.beerName !== trimmed);
+    setEditingGroup(null);
+    if (changedDrinks.length === 0) return;
+
+    for (const drink of changedDrinks) {
+      updateDrinkNameInSession(session.startedAt, drink.id, trimmed);
+    }
 
     const nextSession = findSessionByStart(
       useTallyStore.getState().current,
@@ -140,9 +151,13 @@ export default function EveningDetailScreen() {
     );
     if (nextSession) syncVisit(nextSession, new Date().toISOString());
 
-    void updateQueuedDrinkBeerName(drink.id, trimmed).then((updateState) => {
-      if (updateState !== 'queued') void enqueueDrinkUpdate({ client_id: drink.id, beer_name: trimmed });
-    });
+    for (const drink of changedDrinks) {
+      void updateQueuedDrinkBeerName(drink.id, trimmed).then((updateState) => {
+        if (updateState !== 'queued') {
+          void enqueueDrinkUpdate({ client_id: drink.id, beer_name: trimmed });
+        }
+      });
+    }
   };
 
   const handleDeleteDrink = (drink: TallyDrink) => {
@@ -332,20 +347,25 @@ export default function EveningDetailScreen() {
                 <Text style={styles.addDrinkButtonText}>{cs.myBeers.addDrinkToEvening}</Text>
               </Pressable>
             </View>
-            {session.drinks.map((drink, index) => (
-              <View key={`${drink.id}-${index}`} style={[styles.drinkRow, index > 0 && styles.drinkRowBorder]}>
+            {drinkActionGroups.map((group, index) => (
+              <View key={group.key} style={[styles.drinkRow, index > 0 && styles.drinkRowBorder]}>
                 <View style={styles.drinkInfo}>
                   <Text style={styles.drinkName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {drink.volumeMl ? `${drink.beerName} · ${formatVolume(drink.volumeMl)}` : drink.beerName}
-                    {drink.drinkType && drink.drinkType !== 'beer' ? ` · ${cs.counter.drinkTypeLabel(drink.drinkType)}` : ''}
+                    {group.volumeMl ? `${group.name} · ${formatVolume(group.volumeMl)}` : group.name}
+                    {group.drinkType !== 'beer' ? ` · ${cs.counter.drinkTypeLabel(group.drinkType)}` : ''}
+                    {group.count > 1 ? ` · ${group.count}×` : ''}
                   </Text>
                   <Text style={styles.drinkMeta} maxFontSizeMultiplier={FontScaleCap.body}>
                     {[
-                      drink.servingType && drink.servingType !== 'unknown'
-                        ? cs.counter.servingTypeLabel(drink.servingType)
+                      group.servingType
+                        ? cs.counter.servingTypeLabel(group.servingType)
                         : null,
-                      typeof drink.priceCzk === 'number'
-                        ? formatPrice(drink.priceCzk, priceCurrency)
+                      group.pricedCount === group.count
+                        ? group.count > 1
+                          ? cs.myBeers.drinkGroupTotal(
+                              formatPrice(group.totalCzk, priceCurrency),
+                            )
+                          : formatPrice(group.totalCzk, priceCurrency)
                         : null,
                     ]
                       .filter(Boolean)
@@ -354,7 +374,7 @@ export default function EveningDetailScreen() {
                 </View>
                 <View style={styles.drinkActions}>
                   <Pressable
-                    onPress={() => setEditingDrink(drink)}
+                    onPress={() => setEditingGroup(group)}
                     style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
                     hitSlop={6}
                     accessibilityRole="button"
@@ -363,13 +383,13 @@ export default function EveningDetailScreen() {
                     <PencilIcon size={17} color={Colors.amber} />
                   </Pressable>
                   <Pressable
-                    onPress={() => handleDeleteDrink(drink)}
+                    onPress={() => handleDeleteDrink(group.drinks[group.drinks.length - 1])}
                     style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
                     hitSlop={6}
                     accessibilityRole="button"
                     accessibilityLabel={cs.myBeers.deleteDrink}
                   >
-                    <Trash2Icon size={17} color={Colors.mutedText} />
+                    <MinusIcon size={17} color={Colors.mutedText} />
                   </Pressable>
                 </View>
               </View>
@@ -397,8 +417,8 @@ export default function EveningDetailScreen() {
         </KeyboardAwareScrollView>
       )}
       <EditDrinkNameModal
-        drink={editingDrink}
-        onCancel={() => setEditingDrink(null)}
+        group={editingGroup}
+        onCancel={() => setEditingGroup(null)}
         onSave={handleSaveDrinkName}
       />
       <BeerFormModal
@@ -423,24 +443,24 @@ export default function EveningDetailScreen() {
 }
 
 function EditDrinkNameModal({
-  drink,
+  group,
   onCancel,
   onSave,
 }: {
-  drink: TallyDrink | null;
+  group: DrinkActionGroup | null;
   onCancel: () => void;
-  onSave: (drink: TallyDrink, beerName: string) => void;
+  onSave: (group: DrinkActionGroup, beerName: string) => void;
 }) {
   return (
-    <Modal visible={!!drink} transparent animationType="fade" statusBarTranslucent onRequestClose={onCancel}>
+    <Modal visible={!!group} transparent animationType="fade" statusBarTranslucent onRequestClose={onCancel}>
       <KeyboardAvoidingView
         style={styles.modalBackdrop}
         behavior="padding"
       >
-        {drink ? (
+        {group ? (
           <EditDrinkNameForm
-            key={drink.id}
-            drink={drink}
+            key={group.key}
+            group={group}
             onCancel={onCancel}
             onSave={onSave}
           />
@@ -451,21 +471,21 @@ function EditDrinkNameModal({
 }
 
 function EditDrinkNameForm({
-  drink,
+  group,
   onCancel,
   onSave,
 }: {
-  drink: TallyDrink;
+  group: DrinkActionGroup;
   onCancel: () => void;
-  onSave: (drink: TallyDrink, beerName: string) => void;
+  onSave: (group: DrinkActionGroup, beerName: string) => void;
 }) {
-  const [name, setName] = useState(drink.beerName);
+  const [name, setName] = useState(group.name);
 
   return (
     <View style={styles.modalCard}>
       <View style={styles.modalHeader}>
         <Text style={styles.modalTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {cs.myBeers.editDrinkTitle}
+          {cs.myBeers.editDrinkGroupTitle(group.count)}
         </Text>
         <Pressable
           onPress={onCancel}
@@ -486,14 +506,14 @@ function EditDrinkNameForm({
         autoCorrect
         maxLength={80}
         returnKeyType="done"
-        onSubmitEditing={() => onSave(drink, name)}
+        onSubmitEditing={() => onSave(group, name)}
       />
       <View style={styles.modalActions}>
         <Pressable onPress={onCancel} style={styles.modalSecondaryButton} accessibilityRole="button">
           <Text style={styles.modalSecondaryText}>{cs.myBeers.editDrinkCancel}</Text>
         </Pressable>
         <Pressable
-          onPress={() => onSave(drink, name)}
+          onPress={() => onSave(group, name)}
           style={styles.modalPrimaryButton}
           accessibilityRole="button"
         >

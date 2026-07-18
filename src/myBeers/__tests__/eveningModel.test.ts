@@ -4,6 +4,7 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 
 import {
   sessionBreakdown,
+  sessionDrinkActionGroups,
   drinkingDaysBetween,
   eveningDayRelation,
   formatEveningDate,
@@ -13,7 +14,7 @@ import {
 import type { TallySession } from '@/stores/tallyStore';
 
 let idSeq = 0;
-function drink(over: Partial<{ beerName: string; priceCzk: number; volumeMl: number; at: string; drinkType: 'beer' | 'soft_drink' | 'shot' }> = {}) {
+function drink(over: Partial<{ beerName: string; priceCzk: number; volumeMl: number; at: string; drinkType: 'beer' | 'soft_drink' | 'shot'; servingType: 'draft' | 'bottle' }> = {}) {
   idSeq += 1;
   return {
     id: `id-${idSeq}`,
@@ -22,6 +23,7 @@ function drink(over: Partial<{ beerName: string; priceCzk: number; volumeMl: num
     volumeMl: over.volumeMl,
     at: over.at ?? '2026-06-14T19:00:00.000Z',
     drinkType: over.drinkType,
+    servingType: over.servingType,
   };
 }
 
@@ -40,6 +42,7 @@ function session(drinks: ReturnType<typeof drink>[], over: Partial<TallySession>
       };
       if (d.drinkType && d.drinkType !== 'beer') out.drinkType = d.drinkType;
       if (typeof d.volumeMl === 'number') out.volumeMl = d.volumeMl;
+      if (d.servingType) out.servingType = d.servingType;
       return out;
     }),
   };
@@ -107,6 +110,36 @@ describe('sessionBreakdown', () => {
       'shot',
     ]);
     expect(sessionDrinkSummary(s)).toBe('1 pivo · 1 nealko · 2 panáky');
+  });
+});
+
+describe('sessionDrinkActionGroups', () => {
+  it('collapses repeated drinks into one editable row with a count and total', () => {
+    const groups = sessionDrinkActionGroups(
+      session([
+        drink({ beerName: 'Pilsner Urquell', priceCzk: 74, volumeMl: 500 }),
+        drink({ beerName: ' pilsner urquell ', priceCzk: 74, volumeMl: 500 }),
+        drink({ beerName: 'Pilsner Urquell', priceCzk: 76, volumeMl: 500 }),
+      ]),
+    );
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({
+      name: 'Pilsner Urquell',
+      count: 3,
+      totalCzk: 224,
+      volumeMl: 500,
+    });
+    expect(groups[0].drinks).toHaveLength(3);
+  });
+
+  it('keeps different volumes, drink types and serving types on separate rows', () => {
+    const draft = drink({ beerName: 'Kozel', priceCzk: 55, volumeMl: 500, servingType: 'draft' });
+    const bottle = drink({ beerName: 'Kozel', priceCzk: 55, volumeMl: 500, servingType: 'bottle' });
+    const small = drink({ beerName: 'Kozel', priceCzk: 45, volumeMl: 300 });
+    const softDrink = drink({ beerName: 'Kozel', priceCzk: 45, volumeMl: 500, drinkType: 'soft_drink' });
+
+    expect(sessionDrinkActionGroups(session([draft, bottle, small, softDrink]))).toHaveLength(4);
   });
 });
 
