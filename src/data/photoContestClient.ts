@@ -233,6 +233,25 @@ async function requestJson(
   }
 }
 
+/**
+ * Teaser cache — the Parta strip refetches on every tab focus, which would
+ * hammer GET /v1/photo-contest for a surface that only shows a countdown and
+ * counts. Any successful full fetch (e.g. opening the contest screen)
+ * refreshes it, so the teaser is at most TTL-stale.
+ */
+const TEASER_SNAPSHOT_TTL_MS = 5 * 60 * 1000;
+let teaserCache: { at: number; snapshot: PhotoContestSnapshot } | null = null;
+
+/** The snapshot for lightweight teaser surfaces: cached, TTL-bounded. */
+export async function fetchPhotoContestTeaser(
+  signal?: AbortSignal,
+): Promise<PhotoContestSnapshot | null> {
+  if (teaserCache && Date.now() - teaserCache.at < TEASER_SNAPSHOT_TTL_MS) {
+    return teaserCache.snapshot;
+  }
+  return fetchPhotoContest(signal);
+}
+
 /** GET /v1/photo-contest — the whole round snapshot. null on any failure. */
 export async function fetchPhotoContest(
   signal?: AbortSignal,
@@ -244,7 +263,7 @@ export async function fetchPhotoContest(
     | { contest?: RawContest; winners?: RawWinner[] }
     | null
     | undefined;
-  return {
+  const snapshot: PhotoContestSnapshot = {
     contest:
       d.contest && typeof d.contest === 'object'
         ? parsePhotoContest(d.contest as RawContest)
@@ -264,6 +283,8 @@ export async function fetchPhotoContest(
           }
         : null,
   };
+  teaserCache = { at: Date.now(), snapshot };
+  return snapshot;
 }
 
 /**

@@ -892,6 +892,18 @@ export const cs = {
     reportConfirmBody: 'Poletí na kontrolu. Díky, že hlídáš výčep.',
     reportedToast: 'Nahlášeno. Mrkneme na to.',
 
+    // — Parta teaser strip —
+    teaserFallbackSubtitle: 'Soutěž o nejlepší pivní fotku každých 14 dní',
+    teaserEmptySubtitle: 'Nové kolo běží a čeká na první fotku',
+    teaserVoteSubtitle: (n: number) =>
+      n === 1
+        ? '1 fotka v kole čeká na tvůj hlas'
+        : n >= 2 && n <= 4
+          ? `${n} fotky v kole čekají na tvůj hlas`
+          : `${n} fotek v kole čeká na tvůj hlas`,
+    teaserVotedSubtitle: 'Tvůj hlas je uvnitř, sleduj finiš',
+    teaserMyEntrySubtitle: (votes: string) => `Tvoje fotka drží ${votes}`,
+
     // — Loading / error —
     loadError: 'Soutěž se teď nenačetla. Zkus to znovu.',
     retry: 'Zkusit znovu',

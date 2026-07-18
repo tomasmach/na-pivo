@@ -110,6 +110,7 @@ import Reveal from './Reveal';
 import SectionHeader from './SectionHeader';
 import StreakBadge from './StreakBadge';
 import { RankTeaser } from '@/leaderboards/RankTeaser';
+import { ContestTeaser } from '@/photos/ContestTeaser';
 
 /** Notification kinds whose feed row opens the actor's friend profile (§F3). */
 const PROFILE_FEED_KINDS = new Set(['friend_accepted', 'friend_cheers']);
@@ -1051,6 +1052,12 @@ export default function FriendsScreen() {
               <RankTeaser />
             </View>
 
+            {/* FotoPivař teaser — the biweekly photo round with the voting
+                nudge; the Profile entry alone buried it. */}
+            <View style={styles.contestTeaserWrap}>
+              <ContestTeaser />
+            </View>
+
             {isColdStart ? <View style={styles.heroRule} /> : null}
           </View>
         </Reveal>
@@ -1598,6 +1605,9 @@ const styles = StyleSheet.create({
   },
   rankTeaserWrap: {
     marginTop: Spacing.md,
+  },
+  contestTeaserWrap: {
+    marginTop: Spacing.sm,
   },
 
   // — Section rhythm —
