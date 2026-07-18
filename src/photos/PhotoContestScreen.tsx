@@ -176,7 +176,10 @@ function VotePill({
 /**
  * One gallery tile: photo + author footer + vote pill. The report action is a
  * VISIBLE overflow button (screen-reader reachable, discoverable); long-press
- * on the tile stays as a shortcut.
+ * on the tile stays as a shortcut. The overflow button is a SIBLING of the
+ * tile pressable, not a child — a Pressable nested inside the tile's
+ * ScalePressable did not receive taps reliably, so it overlays the tile from
+ * a shared wrapper instead.
  */
 function EntryTile({
   entry,
@@ -190,55 +193,58 @@ function EntryTile({
   onActions: () => void;
 }) {
   return (
-    <ScalePressable onLongPress={entry.isMine ? undefined : onActions} style={styles.entryTile}>
-      <View style={[styles.entryImageWrap, tall ? styles.entryImageTall : styles.entryImageShort]}>
-        <Image
-          source={{ uri: entry.imageUrl }}
-          style={StyleSheet.absoluteFill}
-          resizeMode="cover"
-          accessibilityIgnoresInvertColors
-        />
-        {entry.isMine ? (
-          <View style={styles.mineChip}>
-            <Text style={styles.mineChipText} allowFontScaling={false}>
-              {cs.photoContest.myEntryBadge}
-            </Text>
-          </View>
-        ) : (
-          <Pressable
-            onPress={onActions}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={cs.a11y.contestEntryActions(nameOf(entry))}
-            style={({ pressed }) => [styles.entryOverflow, pressed && styles.pressedDim]}
-          >
-            <EllipsisIcon size={16} color={Colors.foam} />
-          </Pressable>
-        )}
-      </View>
-      <View style={styles.entryFooter}>
-        <View style={styles.entryAuthorRow}>
-          <Avatar
-            uri={entry.account.avatarUrl}
-            nickname={entry.account.nickname}
-            displayName={entry.account.displayName}
-            size={22}
+    <View>
+      <ScalePressable onLongPress={entry.isMine ? undefined : onActions} style={styles.entryTile}>
+        <View style={[styles.entryImageWrap, tall ? styles.entryImageTall : styles.entryImageShort]}>
+          <Image
+            source={{ uri: entry.imageUrl }}
+            style={StyleSheet.absoluteFill}
+            resizeMode="cover"
+            accessibilityIgnoresInvertColors
           />
-          <Text style={styles.entryAuthor} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-            {nameOf(entry)}
-          </Text>
+          {entry.isMine ? (
+            <View style={styles.mineChip}>
+              <Text style={styles.mineChipText} allowFontScaling={false}>
+                {cs.photoContest.myEntryBadge}
+              </Text>
+            </View>
+          ) : null}
         </View>
-        {entry.pubName ? (
-          <View style={styles.entryPubRow}>
-            <MapPinIcon size={11} color={Colors.mutedText} />
-            <Text style={styles.entryPub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-              {entry.pubName}
+        <View style={styles.entryFooter}>
+          <View style={styles.entryAuthorRow}>
+            <Avatar
+              uri={entry.account.avatarUrl}
+              nickname={entry.account.nickname}
+              displayName={entry.account.displayName}
+              size={22}
+            />
+            <Text style={styles.entryAuthor} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+              {nameOf(entry)}
             </Text>
           </View>
-        ) : null}
-        <VotePill entry={entry} onPress={onVote} />
-      </View>
-    </ScalePressable>
+          {entry.pubName ? (
+            <View style={styles.entryPubRow}>
+              <MapPinIcon size={11} color={Colors.mutedText} />
+              <Text style={styles.entryPub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                {entry.pubName}
+              </Text>
+            </View>
+          ) : null}
+          <VotePill entry={entry} onPress={onVote} />
+        </View>
+      </ScalePressable>
+      {entry.isMine ? null : (
+        <Pressable
+          onPress={onActions}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={cs.a11y.contestEntryActions(nameOf(entry))}
+          style={({ pressed }) => [styles.entryOverflow, pressed && styles.pressedDim]}
+        >
+          <EllipsisIcon size={16} color={Colors.foam} />
+        </Pressable>
+      )}
+    </View>
   );
 }
 
