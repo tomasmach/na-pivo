@@ -32,10 +32,14 @@ export interface AppDialogOptions {
 
 type AppDialogPresenter = (options: AppDialogOptions) => void;
 
-let presenter: AppDialogPresenter | null = null;
+// Full-screen native routes live in their own presentation layer. They may
+// mount a local host so dialogs appear above that layer; the newest mounted
+// host wins, while the root host remains available after the route unmounts.
+const presenters: AppDialogPresenter[] = [];
 let pendingDialog: AppDialogOptions | null = null;
 
 export function showAppDialog(options: AppDialogOptions): void {
+  const presenter = presenters[presenters.length - 1];
   if (presenter) {
     presenter(options);
     return;
@@ -49,14 +53,16 @@ export function AppDialogHost() {
   const progress = useSharedValue(0);
 
   useEffect(() => {
-    presenter = (options) => setDialog(normalizeDialog(options));
+    const ownPresenter: AppDialogPresenter = (options) => setDialog(normalizeDialog(options));
+    presenters.push(ownPresenter);
     if (pendingDialog) {
       const next = pendingDialog;
       pendingDialog = null;
-      presenter(next);
+      ownPresenter(next);
     }
     return () => {
-      presenter = null;
+      const index = presenters.lastIndexOf(ownPresenter);
+      if (index >= 0) presenters.splice(index, 1);
     };
   }, []);
 

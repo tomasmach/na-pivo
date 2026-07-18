@@ -19,12 +19,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import Animated, {
   Easing,
@@ -37,7 +39,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 
-import { showAppDialog } from '@/components/shared/AppDialog';
+import { AppDialogHost, showAppDialog } from '@/components/shared/AppDialog';
 import { GlowButton } from '@/components/shared/GlowButton';
 import {
   BeerIcon,
@@ -46,6 +48,7 @@ import {
   EllipsisIcon,
   MapPinIcon,
   TrophyIcon,
+  XIcon,
 } from '@/components/shared/IconGlyph';
 import { reportProfileContent } from '@/data/auth';
 import type { FriendActionError } from '@/data/friendsClient';
@@ -80,6 +83,7 @@ type LoadState = 'loading' | 'loaded' | 'error';
 /** Cap the stagger so a long gallery never keeps late tiles invisible. */
 const REVEAL_STEP_MS = 60;
 const REVEAL_MAX_STEPS = 8;
+const ENTRY_FRAME = require('../../assets/images/photo-contest/entry-frame.png');
 
 function nameOf(entry: PhotoContestEntry | PhotoContestWinner): string {
   const p = entry.account;
@@ -187,63 +191,95 @@ function EntryTile({
   tall,
   onVote,
   onActions,
+  onOpenPhoto,
+  onOpenProfile,
 }: {
   entry: PhotoContestEntry;
   tall: boolean;
   onVote: () => void;
   onActions: () => void;
+  onOpenPhoto: () => void;
+  onOpenProfile: () => void;
 }) {
+  const [imageWidth, setImageWidth] = useState(0);
+
   return (
-    <View>
-      <ScalePressable onLongPress={entry.isMine ? undefined : onActions} style={styles.entryTile}>
-        <View style={[styles.entryImageWrap, tall ? styles.entryImageTall : styles.entryImageShort]}>
-          <Image
-            source={{ uri: entry.imageUrl }}
-            style={StyleSheet.absoluteFill}
-            resizeMode="cover"
-            accessibilityIgnoresInvertColors
-          />
-          {entry.isMine ? (
-            <View style={styles.mineChip}>
-              <Text style={styles.mineChipText} allowFontScaling={false}>
-                {cs.photoContest.myEntryBadge}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-        <View style={styles.entryFooter}>
-          <View style={styles.entryAuthorRow}>
-            <Avatar
-              uri={entry.account.avatarUrl}
-              nickname={entry.account.nickname}
-              displayName={entry.account.displayName}
-              size={22}
-            />
-            <Text style={styles.entryAuthor} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-              {nameOf(entry)}
+    <View style={styles.entryTile}>
+      <ScalePressable
+        onPress={(event) => {
+          const { locationX, locationY } = event.nativeEvent;
+          const hitOverflow =
+            !entry.isMine && imageWidth > 0 && locationY <= 52 && locationX >= imageWidth - 52;
+          if (hitOverflow) onActions();
+          else onOpenPhoto();
+        }}
+        onLongPress={entry.isMine ? undefined : onActions}
+        onLayout={(event) => setImageWidth(event.nativeEvent.layout.width)}
+        accessibilityRole="button"
+        accessibilityLabel={cs.a11y.contestOpenPhoto(nameOf(entry))}
+        accessibilityHint={entry.isMine ? undefined : cs.a11y.contestPhotoActionsHint}
+        accessibilityActions={
+          entry.isMine
+            ? undefined
+            : [{ name: 'longpress', label: cs.a11y.contestEntryActions(nameOf(entry)) }]
+        }
+        onAccessibilityAction={(event) => {
+          if (event.nativeEvent.actionName === 'longpress') onActions();
+        }}
+        style={[styles.entryImageWrap, tall ? styles.entryImageTall : styles.entryImageShort]}
+      >
+        <Image
+          source={{ uri: entry.imageUrl }}
+          style={StyleSheet.absoluteFill}
+          resizeMode="cover"
+          accessibilityIgnoresInvertColors
+        />
+        {entry.isMine ? (
+          <View style={styles.mineChip}>
+            <Text style={styles.mineChipText} allowFontScaling={false}>
+              {cs.photoContest.myEntryBadge}
             </Text>
           </View>
-          {entry.pubName ? (
-            <View style={styles.entryPubRow}>
-              <MapPinIcon size={11} color={Colors.mutedText} />
-              <Text style={styles.entryPub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                {entry.pubName}
-              </Text>
-            </View>
-          ) : null}
-          <VotePill entry={entry} onPress={onVote} />
-        </View>
+        ) : null}
       </ScalePressable>
-      {entry.isMine ? null : (
+      <View style={styles.entryFooter}>
         <Pressable
-          onPress={onActions}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel={cs.a11y.contestEntryActions(nameOf(entry))}
-          style={({ pressed }) => [styles.entryOverflow, pressed && styles.pressedDim]}
+          onPress={entry.isMine ? undefined : onOpenProfile}
+          disabled={entry.isMine}
+          hitSlop={4}
+          accessibilityRole={entry.isMine ? undefined : 'button'}
+          accessibilityLabel={entry.isMine ? undefined : cs.a11y.contestOpenProfile(nameOf(entry))}
+          style={({ pressed }) => [styles.entryAuthorRow, pressed && styles.pressedDim]}
+        >
+          <Avatar
+            uri={entry.account.avatarUrl}
+            nickname={entry.account.nickname}
+            displayName={entry.account.displayName}
+            size={22}
+          />
+          <Text style={styles.entryAuthor} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+            {nameOf(entry)}
+          </Text>
+        </Pressable>
+        {entry.pubName ? (
+          <View style={styles.entryPubRow}>
+            <MapPinIcon size={11} color={Colors.mutedText} />
+            <Text style={styles.entryPub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+              {entry.pubName}
+            </Text>
+          </View>
+        ) : null}
+        <VotePill entry={entry} onPress={onVote} />
+      </View>
+      {entry.isMine ? null : (
+        <View
+          pointerEvents="none"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={styles.entryOverflow}
         >
           <EllipsisIcon size={16} color={Colors.foam} />
-        </Pressable>
+        </View>
       )}
     </View>
   );
@@ -287,6 +323,7 @@ function WinnerTile({ winner, lead }: { winner: PhotoContestWinner; lead: boolea
 
 export default function PhotoContestScreen() {
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
   const router = useRouter();
   const reduceMotion = useReduceMotion();
   const showToast = useToastStore((s) => s.show);
@@ -294,6 +331,7 @@ export default function PhotoContestScreen() {
   const [state, setState] = useState<LoadState>('loading');
   const [refreshing, setRefreshing] = useState(false);
   const [snapshot, setSnapshot] = useState<PhotoContestSnapshot | null>(null);
+  const [viewerEntry, setViewerEntry] = useState<PhotoContestEntry | null>(null);
   // Optimistic working copy of the entries (votes flip here before the server).
   const [entries, setEntries] = useState<PhotoContestEntry[]>([]);
   // Bumped whenever a fresh server snapshot replaces `entries`; a vote revert
@@ -510,9 +548,19 @@ export default function PhotoContestScreen() {
     [showToast],
   );
 
-  const openEntryActions = useCallback(
+  const openProfile = useCallback(
     (entry: PhotoContestEntry) => {
-      if (entry.isMine) return;
+      if (entry.isMine) {
+        router.push('/profile' as Href);
+        return;
+      }
+      router.push({ pathname: '/parta/[id]', params: { id: entry.account.id } } as Href);
+    },
+    [router],
+  );
+
+  const confirmReport = useCallback(
+    (entry: PhotoContestEntry) => {
       showAppDialog({
         title: cs.photoContest.reportConfirmTitle,
         message: cs.photoContest.reportConfirmBody,
@@ -523,6 +571,22 @@ export default function PhotoContestScreen() {
       });
     },
     [doReport],
+  );
+
+  const openEntryActions = useCallback(
+    (entry: PhotoContestEntry) => {
+      if (entry.isMine) return;
+      showAppDialog({
+        title: cs.photoContest.entryActionsTitle(nameOf(entry)),
+        buttons: [
+          { text: cs.photoContest.openPhotoAction, onPress: () => setViewerEntry(entry) },
+          { text: cs.photoContest.openProfileAction, onPress: () => openProfile(entry) },
+          { text: cs.photoContest.reportAction, style: 'destructive', onPress: () => confirmReport(entry) },
+          { text: cs.common.cancel, style: 'cancel' },
+        ],
+      });
+    },
+    [confirmReport, openProfile],
   );
 
   // ── Derived ───────────────────────────────────────────────────────────────
@@ -572,6 +636,8 @@ export default function PhotoContestScreen() {
             tall={(i + (columnOffset ? 1 : 0)) % 2 === 0}
             onVote={() => handleVote(entry)}
             onActions={() => openEntryActions(entry)}
+            onOpenPhoto={() => setViewerEntry(entry)}
+            onOpenProfile={() => openProfile(entry)}
           />
         </Reveal>
       ))}
@@ -816,6 +882,109 @@ export default function PhotoContestScreen() {
           ) : null}
         </ScrollView>
       )}
+
+      <Modal
+        visible={viewerEntry != null}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setViewerEntry(null)}
+      >
+        <View style={styles.viewerBackdrop}>
+          <Pressable
+            onPress={() => setViewerEntry(null)}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={cs.a11y.photoViewerClose}
+            style={({ pressed }) => [
+              styles.viewerClose,
+              { top: insets.top + Spacing.sm },
+              pressed && styles.pressedDim,
+            ]}
+          >
+            <XIcon size={22} color={Colors.foam} />
+          </Pressable>
+          {viewerEntry ? (
+            <>
+              <View
+                style={[
+                  styles.viewerStage,
+                  {
+                    width: Math.min(screenWidth - Spacing.md, 430),
+                    height: Math.min(screenWidth - Spacing.md, 430) * (4 / 3),
+                    marginTop: insets.top + Spacing.xl,
+                  },
+                ]}
+              >
+                <View style={styles.viewerPhotoWell}>
+                  <Image
+                    source={{ uri: viewerEntry.imageUrl }}
+                    style={StyleSheet.absoluteFill}
+                    resizeMode="contain"
+                    accessibilityIgnoresInvertColors
+                  />
+                </View>
+                <View
+                  style={styles.viewerFrameOverlay}
+                  pointerEvents="none"
+                  accessibilityElementsHidden
+                  importantForAccessibility="no-hide-descendants"
+                >
+                  <Image
+                    source={ENTRY_FRAME}
+                    style={styles.viewerFrameImage}
+                    resizeMode="stretch"
+                  />
+                </View>
+              </View>
+              <View style={[styles.viewerMeta, { paddingBottom: insets.bottom + Spacing.lg }]}>
+                <Pressable
+                  onPress={() => {
+                    const entry = viewerEntry;
+                    setViewerEntry(null);
+                    setTimeout(() => openProfile(entry), 0);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={cs.a11y.contestOpenProfile(nameOf(viewerEntry))}
+                  style={({ pressed }) => [styles.viewerAuthorRow, pressed && styles.pressedDim]}
+                >
+                  <Avatar
+                    uri={viewerEntry.account.avatarUrl}
+                    nickname={viewerEntry.account.nickname}
+                    displayName={viewerEntry.account.displayName}
+                    size={28}
+                  />
+                  <Text
+                    style={styles.viewerAuthor}
+                    numberOfLines={1}
+                    maxFontSizeMultiplier={FontScaleCap.body}
+                  >
+                    {nameOf(viewerEntry)}
+                  </Text>
+                </Pressable>
+                {viewerEntry.caption ? (
+                  <Text style={styles.viewerCaption} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {viewerEntry.caption}
+                  </Text>
+                ) : null}
+                {viewerEntry.pubName ? (
+                  <View style={styles.viewerPubRow}>
+                    <MapPinIcon size={14} color={Colors.amber} />
+                    <Text
+                      style={styles.viewerPub}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {[viewerEntry.pubName, viewerEntry.pubCity].filter(Boolean).join(' · ')}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            </>
+          ) : null}
+        </View>
+      </Modal>
+      <AppDialogHost />
     </View>
   );
 }
@@ -1110,6 +1279,8 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.foam, 0.18),
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 2,
+    elevation: 2,
   },
   entryFooter: {
     padding: Spacing.sm + 2,
@@ -1136,6 +1307,84 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.regular,
     fontSize: 11,
     color: Colors.mutedText,
+  },
+
+  // — Fullscreen entry viewer —
+  viewerBackdrop: {
+    flex: 1,
+    backgroundColor: Colors.stout,
+  },
+  viewerClose: {
+    position: 'absolute',
+    right: Spacing.lg,
+    zIndex: 2,
+    width: HitArea.min,
+    height: HitArea.min,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout2,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  viewerStage: {
+    alignSelf: 'center',
+  },
+  viewerPhotoWell: {
+    position: 'absolute',
+    top: '7%',
+    right: '5.5%',
+    bottom: '4.5%',
+    left: '5.5%',
+    overflow: 'hidden',
+    borderRadius: Radius.medium,
+    backgroundColor: Colors.stout2,
+  },
+  viewerFrameOverlay: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    overflow: 'hidden',
+  },
+  viewerFrameImage: {
+    width: '100%',
+    height: '100%',
+  },
+  viewerMeta: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+    gap: Spacing.sm,
+  },
+  viewerAuthorRow: {
+    minHeight: 36,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  viewerAuthor: {
+    flex: 1,
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 15,
+    color: Colors.foam,
+  },
+  viewerCaption: {
+    fontFamily: Fonts.ui.regular,
+    fontSize: 15,
+    lineHeight: 22,
+    color: Colors.foam,
+  },
+  viewerPubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  viewerPub: {
+    flex: 1,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
+    color: Colors.foamMuted,
   },
 
   // — Vote pill —

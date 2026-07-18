@@ -886,6 +886,9 @@ export const cs = {
     myEntryBadge: 'Tvoje fotka',
 
     // — Reporting an entry —
+    entryActionsTitle: (name: string) => `Fotka od ${name}`,
+    openPhotoAction: 'Otevřít fotku',
+    openProfileAction: 'Mrknout na profil',
     reportAction: 'Nahlásit fotku',
     reportConfirmTitle: 'Nahlásit tuhle fotku?',
     reportConfirmBody: 'Poletí na kontrolu. Díky, že hlídáš výčep.',
@@ -2146,6 +2149,9 @@ export const cs = {
     contestVote: (name: string) => `Dát hlas fotce od ${name}`,
     contestUnvote: (name: string) => `Vzít hlas fotce od ${name}`,
     contestEntryActions: (name: string) => `Možnosti fotky od ${name}`,
+    contestOpenPhoto: (name: string) => `Otevřít fotku od ${name}`,
+    contestOpenProfile: (name: string) => `Otevřít profil ${name}`,
+    contestPhotoActionsHint: 'Podržením otevřeš další možnosti fotky.',
     contestPickMyPhoto: (label: string) =>
       `Přihlásit fotku${label ? ` ${label}` : ''} do soutěže`,
     friendPhotoTile: (name: string) => `Fotka od ${name}. Ťukni pro zvětšení.`,
