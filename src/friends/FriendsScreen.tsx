@@ -108,6 +108,7 @@ import PlanCard from './PlanCard';
 import PushOptInStrip from './PushOptInStrip';
 import Reveal from './Reveal';
 import SectionHeader from './SectionHeader';
+import SharedNightCard from './SharedNightCard';
 import StreakBadge from './StreakBadge';
 import { RankTeaser } from '@/leaderboards/RankTeaser';
 
@@ -497,6 +498,7 @@ export default function FriendsScreen() {
             ...prev,
             activeFriends: slice.activeFriends,
             myActiveActivity: slice.myActiveActivity,
+            sharedNights: slice.sharedNights,
             plans: slice.plans,
             myPlan: slice.myPlan,
           }
@@ -517,7 +519,14 @@ export default function FriendsScreen() {
     let alive = true;
     void loadFriendsDashboardSnapshot().then((snap) => {
       if (!alive || !snap) return;
-      setDashboard((prev) => prev ?? snap.dashboard);
+      setDashboard((prev) =>
+        prev
+          ? prev
+          : {
+              ...snap.dashboard,
+              sharedNights: snap.dashboard.sharedNights ?? [],
+            },
+      );
       setLoading(false);
     });
     return () => {
@@ -726,9 +735,19 @@ export default function FriendsScreen() {
 
   const d = dashboard;
   const friendsLive = d ? d.activeFriends.length : 0;
+  const sharedNights = d?.sharedNights ?? [];
+  const groupedActivityIds = new Set(
+    sharedNights.flatMap((night) => night.activityIds),
+  );
+  const ungroupedActiveFriends =
+    d?.activeFriends.filter((activity) => !groupedActivityIds.has(activity.id)) ?? [];
+  const myActivityIsGrouped = !!(
+    d?.myActiveActivity && groupedActivityIds.has(d.myActiveActivity.id)
+  );
   // The live section earns its caption only when it has live friend cards. Quiet
   // and mine-only states are carried by the hero pulse instead of another block.
-  const showActiveSection = !!d && friendsLive > 0;
+  const showActiveSection =
+    !!d && (sharedNights.length > 0 || ungroupedActiveFriends.length > 0);
   // Cold start: no friends AND no incoming requests (a null dashboard — offline
   // first run with no snapshot — also reads as cold start).
   const isColdStart = !d || (d.friends.length === 0 && d.incomingRequests.length === 0);
@@ -1123,7 +1142,7 @@ export default function FriendsScreen() {
             ) : null}
 
             {/* §3 — MyActivityCard: my own live broadcast, the one card with a glow */}
-            {d?.myActiveActivity ? (
+            {d?.myActiveActivity && !myActivityIsGrouped ? (
               <Reveal index={nextReveal()}>
                 <View style={styles.section}>
                   <MyActivityCard activity={d.myActiveActivity} onEnded={reload} stale={loadError} />
@@ -1169,13 +1188,21 @@ export default function FriendsScreen() {
                     live
                     stale={loadError}
                   />
-                  {loadError && friendsLive > 0 ? (
+                  {loadError && showActiveSection ? (
                     <Text style={styles.staleNote} maxFontSizeMultiplier={FontScaleCap.body}>
                       {cs.friends.staleNote}
                     </Text>
                   ) : null}
                   <View style={styles.stack}>
-                    {d.activeFriends.map((activity) => (
+                    {sharedNights.map((night) => (
+                      <SharedNightCard
+                        key={night.id}
+                        night={night}
+                        onChanged={reload}
+                        stale={loadError}
+                      />
+                    ))}
+                    {ungroupedActiveFriends.map((activity) => (
                       <FriendActiveCard
                         key={activity.id}
                         activity={activity}

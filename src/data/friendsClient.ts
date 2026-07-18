@@ -76,6 +76,28 @@ export interface FriendPubActivity {
   myReaction: ReactionKind | null;
 }
 
+export interface SharedNightParticipant {
+  account: FriendProfile;
+  beerCount: number;
+  isMe: boolean;
+}
+
+/** One live party view derived from explicit cinks / GOING responses at a pub. */
+export interface SharedNight {
+  id: string;
+  cacheKey: string;
+  name: string;
+  city: string;
+  startedAt: string;
+  expiresAt: string;
+  activityIds: string[];
+  myActivityId: string | null;
+  joinActivityId: string;
+  myResponse: ActivityResponseKind | null;
+  participants: SharedNightParticipant[];
+  totalBeers: number;
+}
+
 export type FriendNotificationKind =
   | 'friend_request'
   | 'friend_accepted'
@@ -134,6 +156,8 @@ export interface FriendsDashboard {
   outgoingRequests: Friendship[];
   activeFriends: FriendPubActivity[];
   myActiveActivity: FriendPubActivity | null;
+  /** Live cinks at one pub collapsed into one explicit party overview. */
+  sharedNights: SharedNight[];
   /** Friends' plans for today (kind=plan). Empty on older backends. */
   plans: FriendPubActivity[];
   /** My own plan for today, or null. */
@@ -154,6 +178,7 @@ export interface FriendsDashboard {
 export interface FriendsLiveSlice {
   activeFriends: FriendPubActivity[];
   myActiveActivity: FriendPubActivity | null;
+  sharedNights: SharedNight[];
   plans: FriendPubActivity[];
   myPlan: FriendPubActivity | null;
   incomingCount: number;
@@ -291,6 +316,27 @@ interface RawFriendActivity {
   scheduled_for?: string | null;
   reactions?: RawActivityReactions;
   my_reaction?: string | null;
+}
+
+interface RawSharedNightParticipant {
+  account?: RawFriendProfile;
+  beer_count?: number;
+  is_me?: boolean;
+}
+
+interface RawSharedNight {
+  id?: string;
+  cache_key?: string;
+  name?: string;
+  city?: string;
+  started_at?: string;
+  expires_at?: string;
+  activity_ids?: unknown[];
+  my_activity_id?: string | null;
+  join_activity_id?: string;
+  my_response?: string | null;
+  participants?: RawSharedNightParticipant[];
+  total_beers?: number;
 }
 
 interface RawFriendStreak {
@@ -473,6 +519,38 @@ function parseActivity(raw: RawFriendActivity): FriendPubActivity {
     scheduledFor: raw.scheduled_for ?? null,
     reactions: parseReactions(raw.reactions),
     myReaction: parseReactionKind(raw.my_reaction),
+  };
+}
+
+export function parseSharedNight(raw: RawSharedNight): SharedNight {
+  const participants = Array.isArray(raw.participants)
+    ? raw.participants.map((item) => ({
+        account: parseProfile(item.account),
+        beerCount:
+          typeof item.beer_count === 'number' && Number.isFinite(item.beer_count)
+            ? Math.max(0, Math.floor(item.beer_count))
+            : 0,
+        isMe: item.is_me === true,
+      }))
+    : [];
+  return {
+    id: raw.id ?? '',
+    cacheKey: raw.cache_key ?? '',
+    name: raw.name ?? '',
+    city: raw.city ?? '',
+    startedAt: raw.started_at ?? '',
+    expiresAt: raw.expires_at ?? '',
+    activityIds: Array.isArray(raw.activity_ids)
+      ? raw.activity_ids.filter((id): id is string => typeof id === 'string')
+      : [],
+    myActivityId: raw.my_activity_id ?? null,
+    joinActivityId: raw.join_activity_id ?? '',
+    myResponse: parseResponseKind(raw.my_response),
+    participants,
+    totalBeers:
+      typeof raw.total_beers === 'number' && Number.isFinite(raw.total_beers)
+        ? Math.max(0, Math.floor(raw.total_beers))
+        : participants.reduce((sum, item) => sum + item.beerCount, 0),
   };
 }
 
@@ -687,6 +765,9 @@ export async function fetchFriendsDashboard(signal?: AbortSignal): Promise<Frien
     myActiveActivity: res.data.my_active_activity
       ? parseActivity(res.data.my_active_activity as RawFriendActivity)
       : null,
+    sharedNights: Array.isArray(res.data.shared_nights)
+      ? (res.data.shared_nights as RawSharedNight[]).map(parseSharedNight)
+      : [],
     plans: Array.isArray(res.data.plans)
       ? (res.data.plans as RawFriendActivity[]).map(parseActivity)
       : [],
@@ -725,6 +806,7 @@ export async function fetchFriendsLive(signal?: AbortSignal): Promise<FriendsLiv
       return {
         activeFriends: dashboard.activeFriends,
         myActiveActivity: dashboard.myActiveActivity,
+        sharedNights: dashboard.sharedNights,
         plans: dashboard.plans,
         myPlan: dashboard.myPlan,
         incomingCount: dashboard.incomingRequests.length,
@@ -741,6 +823,9 @@ export async function fetchFriendsLive(signal?: AbortSignal): Promise<FriendsLiv
     myActiveActivity: res.data.my_active_activity
       ? parseActivity(res.data.my_active_activity as RawFriendActivity)
       : null,
+    sharedNights: Array.isArray(res.data.shared_nights)
+      ? (res.data.shared_nights as RawSharedNight[]).map(parseSharedNight)
+      : [],
     plans: Array.isArray(res.data.plans)
       ? (res.data.plans as RawFriendActivity[]).map(parseActivity)
       : [],

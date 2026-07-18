@@ -122,7 +122,14 @@ def _visit(account: Account, *, day: str = "2026-06-12", pub_name: str = _PUB_NA
     )
 
 
-def _drink(account: Account, *, drank_at=None, cache_key: str = "u2fkbn1z") -> DrinkLog:
+def _drink(
+    account: Account,
+    *,
+    drank_at=None,
+    cache_key: str = "u2fkbn1z",
+    drink_type: str = DrinkLog.DrinkType.BEER,
+    is_suspect: bool = False,
+) -> DrinkLog:
     return DrinkLog.objects.create(
         account=account,
         client_id=uuid.uuid4(),
@@ -132,8 +139,10 @@ def _drink(account: Account, *, drank_at=None, cache_key: str = "u2fkbn1z") -> D
         lng=_LNG,
         city="Praha",
         external_id="mapy:test",
+        drink_type=drink_type,
         beer_name="Plzeň",
         price_czk=65,
+        is_suspect=is_suspect,
         drank_at=drank_at or timezone.now(),
     )
 
@@ -1289,6 +1298,100 @@ def test_friends_live_slice(client, monkeypatch):
     assert body["incoming_count"] == 0
     assert body["unread_count"] >= 1
     assert body["server_time"]
+
+
+@pytest.mark.django_db
+def test_shared_night_merges_explicit_party_and_counts_only_current_pub_beers(
+    client,
+    monkeypatch,
+):
+    monkeypatch.setattr("pubs.api.views.requests.post", _push_recorder([]))
+    token_owner, owner = _register(client, "janek")
+    token_friend, friend = _register(client, "petr")
+    _make_friends(owner, friend)
+    activity = _broadcast(client, token_owner)
+
+    solo = client.get("/v1/friends/live", **_auth(token_owner))
+    assert solo.status_code == status.HTTP_200_OK
+    assert solo.json()["shared_nights"] == []
+
+    going = client.post(
+        f"/v1/friends/pub-activity/{activity['id']}/respond",
+        data={"response": "going"},
+        format="json",
+        **_auth(token_friend),
+    )
+    assert going.status_code == status.HTTP_200_OK
+
+    pub_key = activity["cache_key"]
+    activity_row = FriendPubActivity.objects.get(public_id=activity["id"])
+    session_start = timezone.now() - timedelta(minutes=30)
+    PubVisit.objects.create(
+        account=owner,
+        client_id=activity_row.client_id,
+        cache_key=pub_key,
+        name=_PUB_NAME,
+        lat=_LAT,
+        lng=_LNG,
+        city="Praha",
+        external_id="mapy:test",
+        started_at=session_start,
+        client_updated_at=session_start,
+    )
+    # The first tap happened before the user cinked; the matching visit client id
+    # still makes it part of the same counter evening.
+    _drink(owner, cache_key=pub_key, drank_at=session_start + timedelta(minutes=5))
+    _drink(owner, cache_key=pub_key)
+    _drink(owner, cache_key=pub_key)
+    _drink(friend, cache_key=pub_key)
+    # These rows must never inflate the visible beer tally.
+    _drink(friend, cache_key="u2fkbn1x")
+    _drink(friend, cache_key=pub_key, drink_type=DrinkLog.DrinkType.SOFT_DRINK)
+    _drink(friend, cache_key=pub_key, is_suspect=True)
+    _drink(
+        friend,
+        cache_key=pub_key,
+        drank_at=timezone.now() - timedelta(hours=5),
+    )
+
+    live = client.get("/v1/friends/live", **_auth(token_owner))
+    assert live.status_code == status.HTTP_200_OK
+    nights = live.json()["shared_nights"]
+    assert len(nights) == 1
+    night = nights[0]
+    assert night["id"] == activity["id"]
+    assert night["cache_key"] == pub_key
+    assert night["name"] == _PUB_NAME
+    assert night["my_activity_id"] == activity["id"]
+    assert night["total_beers"] == 4
+    assert [(p["account"]["nickname"], p["beer_count"], p["is_me"]) for p in night["participants"]] == [
+        ("janek", 3, True),
+        ("petr", 1, False),
+    ]
+    assert set(night["activity_ids"]) == {activity["id"]}
+    assert "lat" not in night
+    assert "lng" not in night
+
+
+@pytest.mark.django_db
+def test_shared_night_collapses_multiple_cinks_at_same_pub(client, monkeypatch):
+    monkeypatch.setattr("pubs.api.views.requests.post", _push_recorder([]))
+    token_a, account_a = _register(client, "janek")
+    token_b, account_b = _register(client, "petr")
+    _make_friends(account_a, account_b)
+    activity_a = _broadcast(client, token_a)
+    activity_b = _broadcast(client, token_b)
+
+    dashboard = client.get("/v1/friends", **_auth(token_a))
+
+    assert dashboard.status_code == status.HTTP_200_OK
+    nights = dashboard.json()["shared_nights"]
+    assert len(nights) == 1
+    assert set(nights[0]["activity_ids"]) == {activity_a["id"], activity_b["id"]}
+    assert {p["account"]["nickname"] for p in nights[0]["participants"]} == {
+        "janek",
+        "petr",
+    }
 
 
 @pytest.mark.django_db

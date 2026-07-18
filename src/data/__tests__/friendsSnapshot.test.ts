@@ -21,6 +21,7 @@ function dashboard(overrides: Partial<FriendsDashboard> = {}): FriendsDashboard 
     outgoingRequests: [],
     activeFriends: [],
     myActiveActivity: null,
+    sharedNights: [],
     plans: [],
     myPlan: null,
     blockedIds: [],

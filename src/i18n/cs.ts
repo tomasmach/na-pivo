@@ -927,6 +927,12 @@ export const cs = {
     emptyFriends: 'Zatím piješ solo. Najdi přezdívku a pošli první pozvánku.',
     emptyActive: 'Nikdo z party teď nesvítí v hospodě.',
     activeHeader: 'Teď na pivu',
+    sharedNightTitle: 'SPOLEČNÝ VEČER',
+    sharedNightLive: 'právě teď',
+    sharedNightMe: 'Ty',
+    sharedNightPeople: (n: number) => `${n} u stolu`,
+    sharedNightTotal: (n: number) =>
+      n === 1 ? '1 pivo celkem' : n >= 2 && n <= 4 ? `${n} piva celkem` : `${n} piv celkem`,
     requestsHeader: 'Čekají na tebe',
     addHeader: 'Přidat do party',
     friendsHeader: 'Kámoši',

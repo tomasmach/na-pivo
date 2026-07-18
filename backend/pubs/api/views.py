@@ -2734,6 +2734,169 @@ class PushDeviceView(APIView):
         return Response({"disabled": disabled}, status=status.HTTP_200_OK)
 
 
+def _shared_night_summaries(
+    activities: list[FriendPubActivity],
+    *,
+    viewer: Account,
+    now: datetime,
+    context: dict,
+) -> list[dict]:
+    """Collapse live cinks at one pub into privacy-bounded party overviews.
+
+    A shared night is deliberately derived instead of persisted: personal visits
+    remain owned by each account, while the Parta read model groups overlapping
+    live activities by coarse pub cell. Participants are explicit only — an
+    activity owner or someone who answered GOING. Beer counts cover only
+    non-suspect beer taps at that pub after the first cink; no coordinates,
+    prices, other drinks, or older alcohol history leave this endpoint.
+    """
+    if not activities:
+        return []
+
+    blocked_ids = context.get("blocked_ids") or set()
+    groups: dict[str, dict] = {}
+    for activity in sorted(activities, key=lambda row: row.started_at):
+        group = groups.setdefault(
+            activity.cache_key,
+            {
+                "activities": [],
+                "accounts": {},
+                "started_at": activity.started_at,
+                "expires_at": activity.expires_at,
+                "name": activity.name,
+                "city": activity.city,
+                "my_response": None,
+                "my_response_activity_id": None,
+            },
+        )
+        group["activities"].append(activity)
+        group["started_at"] = min(group["started_at"], activity.started_at)
+        group["expires_at"] = max(group["expires_at"], activity.expires_at)
+        group["accounts"][activity.account_id] = activity.account
+
+        for response in activity.responses.all():
+            if response.account_id == viewer.id:
+                group["my_response"] = response.response
+                group["my_response_activity_id"] = str(activity.public_id)
+            if response.response != FriendActivityResponse.Response.GOING:
+                continue
+            account = response.account
+            if (
+                account.status != Account.Status.ACTIVE
+                or account.ghost_mode
+                or account.id in blocked_ids
+            ):
+                continue
+            group["accounts"][account.id] = account
+
+    # Solo cinks keep their existing card. Only a real party gets the merged
+    # read model and therefore enters the bounded beer-count query below.
+    shared_groups = {
+        cache_key: group
+        for cache_key, group in groups.items()
+        if len(group["accounts"]) >= 2
+    }
+    if not shared_groups:
+        return []
+
+    # The counter reuses a TallySession id as the cink client_id. When that
+    # matching visit exists, start the shared tally at the actual first beer,
+    # not a few taps later when the user pressed "Cinknout partě".
+    activity_pairs = {
+        (activity.account_id, activity.client_id)
+        for group in shared_groups.values()
+        for activity in group["activities"]
+    }
+    visit_starts = {
+        (visit.account_id, visit.client_id): visit.started_at
+        for visit in PubVisit.objects.filter(
+            account_id__in={pair[0] for pair in activity_pairs},
+            client_id__in={pair[1] for pair in activity_pairs},
+            cache_key__in=shared_groups,
+        ).only("account_id", "client_id", "cache_key", "started_at")
+    }
+    for group in shared_groups.values():
+        for activity in group["activities"]:
+            visit_start = visit_starts.get((activity.account_id, activity.client_id))
+            if visit_start is not None:
+                group["started_at"] = min(group["started_at"], visit_start)
+
+    account_ids = {
+        account_id
+        for group in shared_groups.values()
+        for account_id in group["accounts"]
+    }
+    earliest_start = min(group["started_at"] for group in shared_groups.values())
+    counts: dict[tuple[str, int], int] = defaultdict(int)
+    drinks = DrinkLog.objects.filter(
+        account_id__in=account_ids,
+        cache_key__in=shared_groups,
+        drink_type=DrinkLog.DrinkType.BEER,
+        is_suspect=False,
+        drank_at__gte=earliest_start,
+        drank_at__lte=now,
+    ).only("account_id", "cache_key", "drank_at")
+    for drink in drinks:
+        group = shared_groups.get(drink.cache_key)
+        if group is None or drink.account_id not in group["accounts"]:
+            continue
+        if drink.drank_at < group["started_at"]:
+            continue
+        counts[(drink.cache_key, drink.account_id)] += 1
+
+    payload: list[dict] = []
+    for cache_key, group in shared_groups.items():
+        activity_ids = [str(activity.public_id) for activity in group["activities"]]
+        my_activity = next(
+            (activity for activity in group["activities"] if activity.account_id == viewer.id),
+            None,
+        )
+        join_activity = next(
+            (
+                activity
+                for activity in group["activities"]
+                if str(activity.public_id) == group["my_response_activity_id"]
+            ),
+            next(
+                (activity for activity in group["activities"] if activity.account_id != viewer.id),
+                group["activities"][0],
+            ),
+        )
+        participants = []
+        total_beers = 0
+        for account_id, account in group["accounts"].items():
+            beer_count = counts[(cache_key, account_id)]
+            total_beers += beer_count
+            participants.append(
+                {
+                    "account": FriendProfileSerializer(account, context=context).data,
+                    "beer_count": beer_count,
+                    "is_me": account_id == viewer.id,
+                }
+            )
+        participants.sort(
+            key=lambda item: (not item["is_me"], -item["beer_count"], item["account"]["display_name"])
+        )
+        payload.append(
+            {
+                "id": activity_ids[0],
+                "cache_key": cache_key,
+                "name": group["name"],
+                "city": group["city"],
+                "started_at": group["started_at"].isoformat(),
+                "expires_at": group["expires_at"].isoformat(),
+                "activity_ids": activity_ids,
+                "my_activity_id": str(my_activity.public_id) if my_activity else None,
+                "join_activity_id": str(join_activity.public_id),
+                "my_response": group["my_response"],
+                "participants": participants,
+                "total_beers": total_beers,
+            }
+        )
+    payload.sort(key=lambda item: item["started_at"], reverse=True)
+    return payload
+
+
 def _friend_activity_slices(request, friend_ids, now, activity_context) -> dict:
     """Serialized live + plan activity slices shared by the dashboard and the poll.
 
@@ -2746,7 +2909,7 @@ def _friend_activity_slices(request, friend_ids, now, activity_context) -> dict:
     prefetches = _friend_activity_prefetches()
     day_start, day_end = _prague_today_bounds(now)
 
-    active = (
+    active = list(
         _apply_friend_activity_visibility(
             FriendPubActivity.objects.filter(
                 account_id__in=friend_ids,
@@ -2806,6 +2969,12 @@ def _friend_activity_slices(request, friend_ids, now, activity_context) -> dict:
         .order_by("scheduled_for")
         .first()
     )
+    shared_nights = _shared_night_summaries(
+        [*active, *([my_active_activity] if my_active_activity is not None else [])],
+        viewer=request.user,
+        now=now,
+        context=activity_context,
+    )
     return {
         "active_friends": FriendPubActivitySerializer(
             active, many=True, context=activity_context
@@ -2821,6 +2990,7 @@ def _friend_activity_slices(request, friend_ids, now, activity_context) -> dict:
             if my_plan is not None
             else None
         ),
+        "shared_nights": shared_nights,
     }
 
 
@@ -2921,6 +3091,7 @@ class FriendsView(APIView):
                 "outgoing_requests": FriendshipSerializer(outgoing, many=True, context=context).data,
                 "active_friends": slices["active_friends"],
                 "my_active_activity": slices["my_active_activity"],
+                "shared_nights": slices["shared_nights"],
                 "plans": slices["plans"],
                 "my_plan": slices["my_plan"],
                 "notifications": FriendNotificationSerializer(notifications, many=True, context=context).data,
@@ -3041,6 +3212,7 @@ class FriendsLiveView(APIView):
             {
                 "active_friends": slices["active_friends"],
                 "my_active_activity": slices["my_active_activity"],
+                "shared_nights": slices["shared_nights"],
                 "plans": slices["plans"],
                 "my_plan": slices["my_plan"],
                 "incoming_count": incoming_count,
