@@ -443,7 +443,7 @@ def test_advance_closes_ranks_awards_and_is_idempotent(client):
     assert ranked[win.pk] == (1, 3)
     assert ranked[third.pk] == (2, 2)  # earlier created_at wins the tie
     assert ranked[second.pk] == (3, 2)
-    assert ranked[fourth.pk] == (None, None)
+    assert ranked[fourth.pk] == (None, 0)
     assert _stats(win) == (100, 1)
     assert _stats(third) == (50, 0)
     assert _stats(second) == (25, 0)
@@ -471,6 +471,74 @@ def test_advance_closes_ranks_awards_and_is_idempotent(client):
     assert [(w["rank"], w["votes"]) for w in results["winners"]] == [(1, 3), (2, 2), (3, 2)]
     assert results["winners"][0]["account"]["nickname"] == "vitez"
     assert results["winners"][0]["image_url"].endswith(".webp")
+    assert results["my_result"] == {
+        "entered": True,
+        "voted": False,
+        "rank": 1,
+        "votes": 3,
+        "xp_awarded": 100,
+        "wins_count": 1,
+    }
+
+
+@pytest.mark.django_db
+def test_last_results_my_result_for_non_podium_voter_only_and_bystander(client):
+    entrant_tokens = []
+    entrants = []
+    for nickname in ("prvni", "druhy", "treti", "ctvrty"):
+        token, account = _register(client, nickname)
+        entrant_tokens.append(token)
+        entrants.append(account)
+        assert _enter(client, token, _upload_photo(client, token)).status_code == 201
+    token_voter, _voter = _register(client, "hlasujici")
+    token_bystander, _bystander = _register(client, "divak")
+
+    contest = PhotoContest.objects.get()
+    entries = {entry.account_id: entry for entry in contest.entries.all()}
+    # The voter-only account contributes one of the winner's four votes.
+    assert _vote(client, token_voter, str(entries[entrants[0].pk].public_id)).status_code == 200
+    _add_votes(contest, entries[entrants[0].pk], 3)
+    _add_votes(contest, entries[entrants[1].pk], 3)
+    _add_votes(contest, entries[entrants[2].pk], 2)
+    _add_votes(contest, entries[entrants[3].pk], 1)
+    _shift_contest_to_past(contest)
+    call_command("advance_photo_contests")
+
+    non_podium = client.get(
+        "/v1/photo-contest", **_auth(entrant_tokens[3])
+    ).json()["last_results"]["my_result"]
+    assert non_podium == {
+        "entered": True,
+        "voted": False,
+        "rank": None,
+        "votes": 1,
+        "xp_awarded": 0,
+        "wins_count": 0,
+    }
+
+    voter_only = client.get(
+        "/v1/photo-contest", **_auth(token_voter)
+    ).json()["last_results"]["my_result"]
+    assert voter_only == {
+        "entered": False,
+        "voted": True,
+        "rank": None,
+        "votes": 0,
+        "xp_awarded": 0,
+        "wins_count": 0,
+    }
+
+    bystander = client.get(
+        "/v1/photo-contest", **_auth(token_bystander)
+    ).json()["last_results"]["my_result"]
+    assert bystander == {
+        "entered": False,
+        "voted": False,
+        "rank": None,
+        "votes": 0,
+        "xp_awarded": 0,
+        "wins_count": 0,
+    }
 
 
 @pytest.mark.django_db
@@ -508,7 +576,7 @@ def test_advance_zero_vote_round_has_no_winners_or_xp(client):
     # A zero-vote entry never ranks: a lone entrant cannot farm the badge + XP
     # just by being the only one who showed up.
     entry = contest.entries.get()
-    assert (entry.final_rank, entry.final_votes) == (None, None)
+    assert (entry.final_rank, entry.final_votes) == (None, 0)
     assert _stats(account) == (0, 0)
     me = client.get("/v1/account/me", **_auth(token))
     assert me.json()["achievements"]["foto_pivar"] is False

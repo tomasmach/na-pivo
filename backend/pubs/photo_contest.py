@@ -22,7 +22,7 @@ from django.db import transaction
 from django.db.models import Count, F
 from django.utils import timezone
 
-from pubs.models import AccountUsageStats, PhotoContest
+from pubs.models import AccountUsageStats, PhotoContest, PhotoContestEntry
 
 logger = logging.getLogger("pubs.photo_contest")
 
@@ -83,10 +83,10 @@ def close_due_contests(now: datetime | None = None) -> list[PhotoContest]:
     Per contest, inside a transaction with ``select_for_update()`` and a status
     re-check (idempotent under concurrent workers / repeated runs):
 
-    * rank the top 3 entries with AT LEAST ONE vote by vote count (tiebreak:
-      earlier ``created_at``, then pk, wins) and stamp ``final_rank`` /
-      ``final_votes`` — a zero-vote entry never ranks, so an uncontested round
-      pays nothing;
+    * stamp every entry's ``final_votes``, rank the top 3 entries with AT LEAST
+      ONE vote by vote count (tiebreak: earlier ``created_at``, then pk, wins),
+      and stamp their ``final_rank`` — a zero-vote entry never ranks, so an
+      uncontested round pays nothing;
     * pay ``PHOTO_CONTEST_XP_FIRST/SECOND/THIRD`` onto ``mapper_xp`` with F()
       increments (never a read-modify-write);
     * rank 1 also increments the monotonic ``photo_contest_wins_count``;
@@ -117,18 +117,23 @@ def close_due_contests(now: datetime | None = None) -> list[PhotoContest]:
                 # Another worker closed it between the id scan and the lock.
                 continue
 
-            # Only entries somebody actually voted for can rank: without the
-            # >= 1 floor a lone zero-vote entrant would farm the FotoPivař
-            # badge + rank-1 XP every round just by showing up.
-            winners = list(
-                contest.entries.annotate(vote_count=Count("votes"))
-                .filter(vote_count__gte=1)
-                .order_by("-vote_count", "created_at", "pk")[:3]
+            # Stamp every entry's closing vote count, including non-podium
+            # entries, so the result stays final even if a voter account is
+            # deleted later. Only entries with at least one vote can rank:
+            # without that floor a lone zero-vote entrant could farm rank-1 XP.
+            entries = list(
+                contest.entries.annotate(vote_count=Count("votes")).order_by(
+                    "-vote_count", "created_at", "pk"
+                )
             )
+            winners = [entry for entry in entries if entry.vote_count >= 1][:3]
+            for entry in entries:
+                entry.final_votes = entry.vote_count
+            PhotoContestEntry.objects.bulk_update(entries, ["final_votes"])
+
             for rank, entry in enumerate(winners, start=1):
                 entry.final_rank = rank
-                entry.final_votes = entry.vote_count
-                entry.save(update_fields=["final_rank", "final_votes"])
+                entry.save(update_fields=["final_rank"])
 
                 inc: dict[str, object] = {"mapper_xp": F("mapper_xp") + _rank_xp(rank)}
                 if rank == 1:

@@ -1419,10 +1419,10 @@ class PhotoContest(models.Model):
 class PhotoContestEntry(models.Model):
     """One account's entry (a photo of their own) in one contest round.
 
-    ``final_rank`` / ``final_votes`` are stamped 1–3 at close time and are the
-    DURABLE results record; the entry row itself still CASCADEs away if the user
-    later deletes the photo or account (the monotonic
-    ``photo_contest_wins_count`` counter is never decremented).
+    ``final_votes`` is stamped for every entry at close time and ``final_rank``
+    for the top 3, making them the DURABLE results record. The entry row itself
+    still CASCADEs away if the user later deletes the photo or account (the
+    monotonic ``photo_contest_wins_count`` counter is never decremented).
     """
 
     public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)

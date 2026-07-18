@@ -144,7 +144,7 @@ from pubs.models import (
     ReleaseNote,
     UserAddedPub,
 )
-from pubs.photo_contest import current_photo_contest
+from pubs.photo_contest import _rank_xp, current_photo_contest
 from pubs.photos import BeerPhotoError, process_beer_photo
 from pubs.pivar import pivar_snapshot
 from pubs.price_index import upsert_pub_price_index
@@ -4731,6 +4731,42 @@ def _photo_contest_entry_context(request: Request, contest: PhotoContest) -> dic
     }
 
 
+def _photo_contest_my_result(contest: PhotoContest, account: Account) -> dict:
+    """The requesting account's durable outcome for one closed round.
+
+    Deleting the entry photo cascades the entry (and votes attached to it), so
+    deleted history can only degrade to the documented non-entry defaults. The
+    monotonic lifetime win counter remains durable independently.
+    """
+    entry = (
+        PhotoContestEntry.objects.filter(contest=contest, account=account)
+        .annotate(vote_count=Count("votes"))
+        .values("final_rank", "final_votes", "vote_count")
+        .first()
+    )
+    rank = entry["final_rank"] if entry is not None else None
+    wins_count = (
+        AccountUsageStats.objects.filter(account=account)
+        .values_list("photo_contest_wins_count", flat=True)
+        .first()
+        or 0
+    )
+    return {
+        "entered": entry is not None,
+        "voted": PhotoContestVote.objects.filter(contest=contest, voter=account).exists(),
+        "rank": rank,
+        # Older closed rounds predate final_votes on non-podium entries; their
+        # surviving immutable vote rows are the best available final count.
+        "votes": (
+            int(entry["final_votes"] if entry["final_votes"] is not None else entry["vote_count"])
+            if entry is not None
+            else 0
+        ),
+        "xp_awarded": _rank_xp(rank) if rank is not None else 0,
+        "wins_count": int(wins_count),
+    }
+
+
 def _photo_not_found() -> Response:
     return Response(
         {"detail": "Tuhle fotku nevidím.", "code": "photo_not_found"},
@@ -5036,6 +5072,7 @@ class PhotoContestView(APIView):
                 "winners": PhotoContestWinnerSerializer(
                     winners, many=True, context={"request": request}
                 ).data,
+                "my_result": _photo_contest_my_result(last_closed, request.user),
             }
 
         return Response(
