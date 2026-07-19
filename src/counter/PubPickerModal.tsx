@@ -44,6 +44,7 @@ interface PubPickerModalProps {
 
 export function PubPickerModal({ visible, candidates, selectedKey, onSelect, onSelectOutside, onClose }: PubPickerModalProps) {
   const insets = useSafeAreaInsets();
+  const genericOutsideSelected = contextPubKey('other') === selectedKey;
 
   return (
     <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
@@ -53,15 +54,38 @@ export function PubPickerModal({ visible, candidates, selectedKey, onSelect, onS
             <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
               {cs.counter.pickerTitle}
             </Text>
-            <Pressable
-              onPress={onClose}
-              style={styles.closeButton}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={cs.a11y.counterCloseModal}
-            >
-              <XIcon size={20} color={Colors.foamMuted} />
-            </Pressable>
+            <View style={styles.headerActions}>
+              {onSelectOutside ? (
+                <Pressable
+                  onPress={() => onSelectOutside('other')}
+                  style={({ pressed }) => [
+                    styles.outsideButton,
+                    genericOutsideSelected && styles.outsideButtonSelected,
+                    pressed && styles.rowPressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: genericOutsideSelected }}
+                  accessibilityLabel={cs.counter.outsideLabel('other')}
+                >
+                  <HouseIcon size={16} color={genericOutsideSelected ? Colors.stout : Colors.amber} />
+                  <Text
+                    style={[styles.outsideButtonText, genericOutsideSelected && styles.outsideButtonTextSelected]}
+                    maxFontSizeMultiplier={FontScaleCap.body}
+                  >
+                    {cs.counter.outsideLabel('other')}
+                  </Text>
+                </Pressable>
+              ) : null}
+              <Pressable
+                onPress={onClose}
+                style={styles.closeButton}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={cs.a11y.counterCloseModal}
+              >
+                <XIcon size={20} color={Colors.foamMuted} />
+              </Pressable>
+            </View>
           </View>
 
           <ScrollView
@@ -113,7 +137,7 @@ export function PubPickerModal({ visible, candidates, selectedKey, onSelect, onS
                 {cs.counter.pickerOutsideHeader}
               </Text>
             ) : null}
-            {onSelectOutside ? OUTSIDE_PLACE_CONTEXTS.map((context) => {
+            {onSelectOutside ? OUTSIDE_PLACE_CONTEXTS.filter((context) => context !== 'other').map((context) => {
               const isSelected = contextPubKey(context) === selectedKey;
               const Icon = OUTSIDE_ICONS[context];
               const label = cs.counter.outsideLabel(context);
@@ -171,9 +195,38 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
   },
   title: {
+    flexShrink: 1,
     fontFamily: Fonts.display.extrabold,
     fontSize: 22,
     color: Colors.foam,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  outsideButton: {
+    minHeight: 36,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout3,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  outsideButtonSelected: {
+    backgroundColor: Colors.amber,
+    borderColor: Colors.amber,
+  },
+  outsideButtonText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 13,
+    color: Colors.foam,
+  },
+  outsideButtonTextSelected: {
+    color: Colors.stout,
   },
   closeButton: {
     width: 36,

@@ -219,21 +219,25 @@ describe('CounterScreen states', () => {
     expect(PubPickerModal.mock.calls.at(-1)?.[0].visible).toBe(false);
   });
 
-  it('offers outside counting when GPS auto-selects a nearby pub', () => {
+  it('offers outside counting from the change-place picker near a pub', () => {
     useNearbyPub.mockReturnValue(nearbyState());
+    const PubPickerModal = require('@/counter/PubPickerModal').PubPickerModal as jest.Mock;
     let renderer: any;
     act(() => {
       renderer = TestRenderer.create(React.createElement(CounterScreen));
     });
 
-    const outside = renderer.root.findAll(
+    const changePlace = renderer.root.findAll(
       (node: any) =>
-        node.props?.accessibilityLabel === copy.counter.outsideNoPubCta &&
+        node.props?.accessibilityLabel === copy.a11y.counterChangePub &&
         typeof node.props?.onPress === 'function',
     )[0];
-    expect(outside).toBeDefined();
+    act(() => changePlace.props.onPress());
 
-    act(() => outside.props.onPress());
+    const pickerProps = PubPickerModal.mock.calls.at(-1)?.[0];
+    expect(pickerProps.visible).toBe(true);
+
+    act(() => pickerProps.onSelectOutside('other'));
 
     const texts = renderer.root.findAllByType('Text').map((t: any) => t.props.children);
     expect(texts.flat().join(' ')).toContain(copy.counter.outsideLabel('other'));

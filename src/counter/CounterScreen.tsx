@@ -404,8 +404,6 @@ export type CounterPlace =
 interface ActiveCounterProps {
   place: CounterPlace;
   onChangePlace: () => void;
-  /** Starts outside-pub counting directly when GPS auto-selected a nearby pub. */
-  onLogOutside: () => void;
   /** The user renamed the active pub from the mapping hub — the owner of the
    *  selected Pub updates it so the header doesn't keep the old name. */
   onPubRenamed: (newName: string) => void;
@@ -489,7 +487,7 @@ export function shouldWarnRapidDrink(lastDrinkAt: string | undefined, nowMs: num
   return elapsedMs >= 0 && elapsedMs < MIN_PLAUSIBLE_BEER_GAP_MS;
 }
 
-function ActiveCounter({ place, onChangePlace, onLogOutside, onPubRenamed, embedded }: ActiveCounterProps) {
+function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveCounterProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
@@ -1230,23 +1228,6 @@ function ActiveCounter({ place, onChangePlace, onLogOutside, onPubRenamed, embed
         contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom + 16, 28) }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* GPS may confidently auto-select a nearby pub, but that does not mean
-            the user is drinking there. Keep the outside choice visible until
-            the first drink anchors the evening. */}
-        {pub && count === 0 ? (
-          <Pressable
-            onPress={onLogOutside}
-            style={({ pressed }) => [styles.outsideShortcut, pressed && styles.friendShareButtonPressed]}
-            accessibilityRole="button"
-            accessibilityLabel={cs.counter.outsideNoPubCta}
-          >
-            <HouseIcon size={16} color={Colors.amber} />
-            <Text style={styles.outsideShortcutText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.counter.outsideNoPubCta}
-            </Text>
-          </Pressable>
-        ) : null}
-
         {/* Keep the public mapping prompt in the motivation zone, but as one
             compact strip so it doesn't push the beer stepper below the fold.
             Pub only — there is nothing to map about a living room. */}
@@ -1684,7 +1665,6 @@ export default function CounterScreen({ embedded = false }: { embedded?: boolean
       <ActiveCounter
         place={place}
         onChangePlace={() => setPickerOpen(true)}
-        onLogOutside={() => setOutsideContext('other')}
         onPubRenamed={(name) => {
           if (!activePub) return;
           // Re-pin the renamed Pub so the header updates now, and keep the live
@@ -1739,24 +1719,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.mutedText,
   },
-  outsideShortcut: {
-    alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout2,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  outsideShortcutText: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 14,
-    color: Colors.foamMuted,
-  },
-
   // — Header —
   header: {
     flexDirection: 'row',
