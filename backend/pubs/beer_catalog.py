@@ -198,6 +198,36 @@ def match_beer_brand(
     return match_beer(name, fuzzy=fuzzy, match_cache=match_cache)
 
 
+def match_beer_identity(
+    beer_name: str,
+    brewery_name: str = "",
+    *,
+    match_cache: BeerCatalogMatchCache | None = None,
+) -> BeerMatch | None:
+    """Match separate beer/brewery fields, preferring a concrete product."""
+
+    beer = beer_name.strip()
+    brewery = brewery_name.strip()
+    if not beer:
+        return None
+
+    standalone = match_beer(beer, fuzzy=True, match_cache=match_cache)
+    if standalone is not None and standalone.product is not None:
+        if not brewery:
+            return standalone
+        brewery_match = match_beer(brewery, fuzzy=True, match_cache=match_cache)
+        if brewery_match is not None and brewery_match.brand.id == standalone.brand.id:
+            return standalone
+
+    if brewery:
+        combined = match_beer(f"{brewery} {beer}", fuzzy=True, match_cache=match_cache)
+        if combined is not None and combined.product is not None:
+            brewery_match = match_beer(brewery, fuzzy=True, match_cache=match_cache)
+            if brewery_match is not None and brewery_match.brand.id == combined.brand.id:
+                return combined
+    return None
+
+
 def normalize_beer_payload(
     beer: dict,
     *,
@@ -324,9 +354,12 @@ def sync_pub_beer_indexes_for_menu(
     stale_products.update(active=False, last_seen_at=now)
 
 
-def suggest_beers(query: str, *, limit: int = 12) -> list[BeerSuggestion]:
+def suggest_beers(query: str, *, brewery: str = "", limit: int = 12) -> list[BeerSuggestion]:
     """Return active product-first suggestions for beer autocomplete."""
     normalized_query = normalize_beer_text(query)
+    normalized_brewery = normalize_beer_text(brewery)
+    combined_query = " ".join(part for part in (normalized_brewery, normalized_query) if part)
+    query_tokens = set(combined_query.split())
     products = BeerProduct.objects.select_related("brand").filter(active=True, brand__active=True)
     if len(normalized_query) < 2:
         return [
@@ -343,15 +376,24 @@ def suggest_beers(query: str, *, limit: int = 12) -> list[BeerSuggestion]:
     scored: list[tuple[int, int, str, BeerSuggestion]] = []
     for product in products.order_by("rank", "name"):
         aliases = _alias_candidates(product)
+        brand_aliases = _alias_candidates(product.brand)
+        aliases = list(
+            dict.fromkeys(
+                [
+                    *aliases,
+                    *(f"{brand_alias} {alias}" for brand_alias in brand_aliases for alias in aliases),
+                ]
+            )
+        )
         if not aliases:
             continue
         score = 3
         for alias in aliases:
-            if alias == normalized_query:
+            if alias == combined_query:
                 score = min(score, 0)
-            elif alias.startswith(normalized_query) or normalized_query.startswith(f"{alias} "):
+            elif alias.startswith(combined_query) or combined_query.startswith(f"{alias} "):
                 score = min(score, 1)
-            elif normalized_query in alias:
+            elif query_tokens and query_tokens.issubset(set(alias.split())):
                 score = min(score, 2)
         if score < 3:
             scored.append(
@@ -401,6 +443,8 @@ def suggest_beers(query: str, *, limit: int = 12) -> list[BeerSuggestion]:
     return [item for _, _, _, item in scored[:limit]]
 
 
-def suggest_beer_brands(query: str, *, limit: int = 12) -> list[BeerSuggestion]:
+def suggest_beer_brands(
+    query: str, *, brewery: str = "", limit: int = 12
+) -> list[BeerSuggestion]:
     """Compatibility wrapper: endpoint now suggests concrete beers first."""
-    return suggest_beers(query, limit=limit)
+    return suggest_beers(query, brewery=brewery, limit=limit)

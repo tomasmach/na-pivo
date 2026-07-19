@@ -25,6 +25,10 @@ import {
   type BeerTag,
 } from '@/data/beerCheckinsClient';
 import { enqueueBeerCheckInOp } from '@/data/beerCheckinsQueue';
+import {
+  suggestBeerBrands,
+  type BeerBrandSuggestion,
+} from '@/data/beerSuggestionsClient';
 import type { Pub } from '@/data/pubs';
 import SkeletonBlock from '@/friends/SkeletonBlock';
 import { cs } from '@/i18n/cs';
@@ -36,6 +40,7 @@ import { useReduceMotion } from '@/utils/useReduceMotion';
 
 /** ~400 ms debounce for the memory lookup while the beer name is being typed. */
 const MEMORY_DEBOUNCE_MS = 400;
+const SUGGEST_DEBOUNCE_MS = 220;
 
 function shortDate(iso: string): string {
   const ms = Date.parse(iso);
@@ -115,6 +120,8 @@ export function BeerCheckInSheet({
   const [visibility, setVisibility] = useState<'private' | 'friends'>('friends');
   const [memory, setMemory] = useState<BeerMemory | null>(null);
   const [memoryLoading, setMemoryLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState<BeerBrandSuggestion[]>([]);
+  const pickedSuggestionRef = useRef('');
 
   const cleanName = name.trim();
   const canSubmit = cleanName.length > 0;
@@ -141,6 +148,7 @@ export function BeerCheckInSheet({
       setTags([]);
       setMemory(null);
       setMemoryLoading(false);
+      setSuggestions([]);
     }, 0);
     return () => clearTimeout(t);
   }, [visible]);
@@ -180,6 +188,34 @@ export function BeerCheckInSheet({
       clearTimeout(timer);
     };
   }, [visible, name, brewery]);
+
+  useEffect(() => {
+    if (
+      !visible ||
+      name.trim().length < 2 ||
+      pickedSuggestionRef.current === `${name}|${brewery}`
+    ) {
+      setSuggestions([]);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      void suggestBeerBrands(name, controller.signal, 5, brewery).then((items) => {
+        if (!controller.signal.aborted) setSuggestions(items);
+      });
+    }, SUGGEST_DEBOUNCE_MS);
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [visible, name, brewery]);
+
+  const selectSuggestion = useCallback((suggestion: BeerBrandSuggestion) => {
+    pickedSuggestionRef.current = `${suggestion.name}|${suggestion.brandName ?? ''}`;
+    setName(suggestion.name);
+    if (suggestion.brandName) setBrewery(suggestion.brandName);
+    setSuggestions([]);
+  }, []);
 
   const submit = useCallback(() => {
     if (!canSubmit) return;
@@ -267,19 +303,55 @@ export function BeerCheckInSheet({
             <Text style={styles.label}>{cs.beerCheckins.beerLabel}</Text>
             <TextInput
               value={name}
-              onChangeText={setName}
+              onChangeText={(value) => {
+                pickedSuggestionRef.current = '';
+                setName(value);
+              }}
               placeholder={cs.beerCheckins.beerPlaceholder}
               placeholderTextColor={Colors.mutedText}
               style={styles.input}
               maxFontSizeMultiplier={FontScaleCap.body}
             />
+            {suggestions.length > 0 ? (
+              <View style={styles.suggestionsBox}>
+                {suggestions.map((suggestion, index) => (
+                  <Pressable
+                    key={suggestion.slug}
+                    onPress={() => selectSuggestion(suggestion)}
+                    style={[styles.suggestionRow, index > 0 && styles.suggestionDivider]}
+                    accessibilityRole="button"
+                    accessibilityLabel={cs.beerCheckins.useSuggestion(suggestion.name)}
+                  >
+                    <Text
+                      style={styles.suggestionName}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {suggestion.name}
+                    </Text>
+                    {suggestion.brandName && suggestion.brandName !== suggestion.name ? (
+                      <Text
+                        style={styles.suggestionBrand}
+                        numberOfLines={1}
+                        maxFontSizeMultiplier={FontScaleCap.body}
+                      >
+                        {suggestion.brandName}
+                      </Text>
+                    ) : null}
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
 
             <View style={styles.twoCols}>
               <View style={styles.col}>
                 <Text style={styles.label}>{cs.beerCheckins.breweryLabel}</Text>
                 <TextInput
                   value={brewery}
-                  onChangeText={setBrewery}
+                  onChangeText={(value) => {
+                    pickedSuggestionRef.current = '';
+                    setBrewery(value);
+                  }}
                   placeholder={cs.beerCheckins.optionalPlaceholder}
                   placeholderTextColor={Colors.mutedText}
                   style={styles.input}
@@ -426,6 +498,18 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.medium,
     fontSize: 15,
   },
+  suggestionsBox: {
+    marginTop: 4,
+    borderRadius: Radius.medium,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.stout2,
+    overflow: 'hidden',
+  },
+  suggestionRow: { minHeight: 48, justifyContent: 'center', paddingHorizontal: Spacing.md },
+  suggestionDivider: { borderTopWidth: 1, borderTopColor: Colors.border },
+  suggestionName: { fontFamily: Fonts.display.bold, fontSize: 14, color: Colors.foam },
+  suggestionBrand: { fontFamily: Fonts.ui.regular, fontSize: 11, color: Colors.mutedText, marginTop: 2 },
   noteInput: {
     minHeight: 92,
     paddingTop: Spacing.sm,

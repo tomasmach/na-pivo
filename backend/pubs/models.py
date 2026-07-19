@@ -1096,6 +1096,75 @@ class FriendActivityReaction(models.Model):
         return f"FriendActivityReaction({self.account_id} -> {self.activity_id}: {self.kind})"
 
 
+class PartyEvening(models.Model):
+    """One explicit shared pub evening, separate from private diary visits."""
+
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
+    client_id = models.UUIDField(help_text="Host-generated idempotency key for offline create retries.")
+    join_code = models.CharField(max_length=8, unique=True, db_index=True)
+    host = models.ForeignKey(
+        "pubs.Account", on_delete=models.CASCADE, related_name="hosted_party_evenings"
+    )
+    pub_name = models.CharField(max_length=200)
+    pub_city = models.CharField(max_length=120, blank=True, default="")
+    active = models.BooleanField(default=True, db_index=True)
+    started_at = models.DateTimeField(default=timezone.now, db_index=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-started_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["host", "client_id"], name="unique_party_evening_host_client"
+            )
+        ]
+        indexes = [models.Index(fields=["host", "active", "started_at"])]
+
+
+class PartyEveningMember(models.Model):
+    """Explicit opt-in membership; leaving keeps the audit row but revokes access."""
+
+    evening = models.ForeignKey(PartyEvening, on_delete=models.CASCADE, related_name="memberships")
+    account = models.ForeignKey(
+        "pubs.Account", on_delete=models.CASCADE, related_name="party_evening_memberships"
+    )
+    active = models.BooleanField(default=True, db_index=True)
+    joined_at = models.DateTimeField(default=timezone.now)
+    left_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["evening", "account"], name="unique_party_evening_member"
+            )
+        ]
+        indexes = [models.Index(fields=["account", "active", "joined_at"])]
+
+
+class PartyEveningDrink(models.Model):
+    """A drink shared explicitly into a party evening, not a private diary copy."""
+
+    evening = models.ForeignKey(PartyEvening, on_delete=models.CASCADE, related_name="shared_drinks")
+    account = models.ForeignKey(
+        "pubs.Account", on_delete=models.CASCADE, related_name="party_evening_drinks"
+    )
+    client_id = models.UUIDField()
+    beer_name = models.CharField(max_length=120)
+    quantity = models.PositiveSmallIntegerField(default=1)
+    shared_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        ordering = ["shared_at", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "client_id"], name="unique_party_evening_drink_client"
+            )
+        ]
+        indexes = [models.Index(fields=["evening", "shared_at"])]
+
+
 class FriendInviteCode(models.Model):
     """A reusable, opaque invite code for the "add me to your parta" growth loop.
 
@@ -1214,6 +1283,14 @@ class BeerCheckIn(models.Model):
     client_id = models.UUIDField(help_text="Client-generated idempotency key.")
     beer_name = models.TextField(help_text="Beer name (1..120 chars, enforced by serializer).")
     brewery_name = models.TextField(blank=True, default="")
+    beer_product = models.ForeignKey(
+        "pubs.BeerProduct",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="checkins",
+        help_text="Matched canonical beer product used by diary statistics.",
+    )
     beer_style = models.TextField(blank=True, default="")
     abv = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)
     quantity = models.PositiveSmallIntegerField(default=1)
@@ -1231,8 +1308,8 @@ class BeerCheckIn(models.Model):
         default=Visibility.PRIVATE,
         db_index=True,
     )
-    beer_key = models.CharField(max_length=64, db_index=True)
-    brewery_key = models.CharField(max_length=64, blank=True, default="", db_index=True)
+    beer_key = models.CharField(max_length=100, db_index=True)
+    brewery_key = models.CharField(max_length=80, blank=True, default="", db_index=True)
     checked_in_at = models.DateTimeField(default=timezone.now, db_index=True)
     ended_at = models.DateTimeField(null=True, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -2551,6 +2628,28 @@ class BeerProduct(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+
+class BeerProductMergeAudit(models.Model):
+    """Append-only audit record for an administrator-initiated product merge."""
+
+    source_product_id = models.PositiveBigIntegerField()
+    source_key = models.SlugField(max_length=100, unique=True)
+    source_name = models.CharField(max_length=160)
+    target_product_id = models.PositiveBigIntegerField()
+    target_key = models.SlugField(max_length=100, db_index=True)
+    target_name = models.CharField(max_length=160)
+    actor = models.CharField(max_length=160, blank=True, default="")
+    rewired = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Beer Product Merge Audit"
+        verbose_name_plural = "Beer Product Merge Audits"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.source_key} -> {self.target_key}"
 
 
 class PubBeerBrand(models.Model):

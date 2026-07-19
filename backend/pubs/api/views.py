@@ -67,6 +67,7 @@ from pubs.accounts import AccountError
 from pubs.beer_catalog import (
     BeerCatalogMatchCache,
     match_beer_brand,
+    match_beer_identity,
     suggest_beer_brands,
     sync_pub_beer_indexes_for_menu,
     upsert_pub_beer_brand,
@@ -358,6 +359,27 @@ def _beer_identity_filters(beer_key: str, brewery_key: str) -> dict[str, str]:
     return filters
 
 
+def _beer_identity_query(beer_name: str, brewery_name: str, *, exact_brewery: bool = False) -> Q:
+    """Canonical product identity plus the legacy text-hash fallback."""
+
+    legacy_beer_key = _beer_identity_key(beer_name)
+    legacy_brewery_key = _beer_identity_key(brewery_name)
+    legacy = (
+        Q(beer_key=legacy_beer_key, brewery_key=legacy_brewery_key)
+        if exact_brewery
+        else Q(**_beer_identity_filters(legacy_beer_key, legacy_brewery_key))
+    )
+    match = match_beer_identity(beer_name, brewery_name)
+    if match is None or match.product is None:
+        return legacy
+    canonical = Q(beer_key=match.product.key)
+    if exact_brewery:
+        canonical &= Q(brewery_key=match.brand.key if brewery_name.strip() else "")
+    elif brewery_name.strip():
+        canonical &= Q(brewery_key=match.brand.key)
+    return canonical | legacy
+
+
 def _beer_tag_counts(tag_values) -> dict[str, int]:
     counts = {tag: 0 for tag in BEER_CHECKIN_TAGS}
     for tags in tag_values:
@@ -555,7 +577,7 @@ def _beer_checkin_reactions_prefetch() -> Prefetch:
 
 
 def _beer_checkin_queryset():
-    return BeerCheckIn.objects.select_related("account").prefetch_related(
+    return BeerCheckIn.objects.select_related("account", "beer_product__brand").prefetch_related(
         _beer_checkin_reactions_prefetch()
     )
 
@@ -1587,6 +1609,7 @@ class BeerBrandSuggestView(APIView):
 
         brands = suggest_beer_brands(
             query.validated_data.get("q") or "",
+            brewery=query.validated_data.get("brewery") or "",
             limit=query.validated_data["limit"],
         )
         return Response(
@@ -4581,9 +4604,16 @@ class BeerCheckInView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         data = serializer.validated_data
+        catalog_match = match_beer_identity(
+            data["beer_name"],
+            data.get("brewery_name") or "",
+        )
+        product = catalog_match.product if catalog_match is not None else None
+        brand = catalog_match.brand if product is not None else None
         defaults = {
             "beer_name": data["beer_name"],
             "brewery_name": data.get("brewery_name") or "",
+            "beer_product": product,
             "beer_style": data.get("beer_style") or "",
             "abv": data.get("abv"),
             "quantity": data.get("quantity") or 1,
@@ -4596,8 +4626,12 @@ class BeerCheckInView(APIView):
             "pub_city": data.get("pub_city") or "",
             "visit_client_id": data.get("visit_client_id"),
             "visibility": data.get("visibility") or BeerCheckIn.Visibility.PRIVATE,
-            "beer_key": _beer_identity_key(data["beer_name"]),
-            "brewery_key": _beer_identity_key(data.get("brewery_name") or ""),
+            "beer_key": product.key if product is not None else _beer_identity_key(data["beer_name"]),
+            "brewery_key": (
+                brand.key
+                if brand is not None and (data.get("brewery_name") or "").strip()
+                else _beer_identity_key(data.get("brewery_name") or "")
+            ),
             "checked_in_at": data.get("checked_in_at") or dj_timezone.now(),
             "ended_at": data.get("ended_at"),
         }
@@ -4758,15 +4792,11 @@ class BeerMemoryView(APIView):
     def get(self, request: Request) -> Response:
         beer_name = (request.query_params.get("beer_name") or "").strip()
         brewery_name = (request.query_params.get("brewery_name") or "").strip()
-        beer_key = _beer_identity_key(beer_name)
-        brewery_key = _beer_identity_key(brewery_name)
         rows = []
-        if beer_key:
+        if beer_name:
             rows = list(
-                BeerCheckIn.objects.filter(
-                    account=request.user,
-                    **_beer_identity_filters(beer_key, brewery_key),
-                )
+                BeerCheckIn.objects.filter(account=request.user)
+                .filter(_beer_identity_query(beer_name, brewery_name))
                 .only("checked_in_at", "pub_name", "rating", "tags")
                 .order_by("checked_in_at", "id")
             )
@@ -4806,23 +4836,16 @@ class BeerDetailView(APIView):
                 {"detail": "beer_name is required.", "code": "missing_beer_name"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        beer_key = _beer_identity_key(beer_name)
-        brewery_key = _beer_identity_key(brewery_name)
+        identity = _beer_identity_query(beer_name, brewery_name, exact_brewery=True)
         blocked_ids = _blocked_account_ids(request.user)
         friend_ids = [fid for fid in _accepted_friend_ids(request.user) if fid not in blocked_ids]
-        mine = BeerCheckIn.objects.filter(
-            account=request.user,
-            beer_key=beer_key,
-            brewery_key=brewery_key,
-        )
+        mine = BeerCheckIn.objects.filter(account=request.user).filter(identity)
         party = BeerCheckIn.objects.filter(
             account_id__in=friend_ids,
             account__status=Account.Status.ACTIVE,
             account__ghost_mode=False,
             visibility=BeerCheckIn.Visibility.FRIENDS,
-            beer_key=beer_key,
-            brewery_key=brewery_key,
-        )
+        ).filter(identity)
         party_accounts = Account.objects.filter(id__in=party.values("account_id")).order_by(
             "nickname",
             "display_name",
@@ -4831,9 +4854,8 @@ class BeerDetailView(APIView):
             _beer_checkin_queryset()
             .filter(
                 Q(account=request.user) | Q(account_id__in=friend_ids),
-                beer_key=beer_key,
-                brewery_key=brewery_key,
             )
+            .filter(identity)
             .filter(Q(account=request.user) | Q(visibility=BeerCheckIn.Visibility.FRIENDS))
             .filter(
                 Q(account=request.user)
@@ -4844,7 +4866,8 @@ class BeerDetailView(APIView):
         )
         my_history = (
             _beer_checkin_queryset()
-            .filter(account=request.user, beer_key=beer_key, brewery_key=brewery_key)
+            .filter(account=request.user)
+            .filter(identity)
             .order_by("-checked_in_at", "created_at", "id")[:50]
         )
         my_summary = mine.aggregate(

@@ -86,6 +86,28 @@ def _post_checkin(
 
 
 @pytest.mark.django_db
+def test_checkin_normalizes_combined_beer_identity_to_canonical_product(client):
+    token, account = _register(client, "kanonik")
+
+    response = _post_checkin(
+        client,
+        token,
+        beer_name="12",
+        brewery_name="Radegast",
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    body = response.json()
+    assert body["beer_name"] == "12"
+    assert body["brewery_name"] == "Radegast"
+    assert body["beer_product_key"] == "radegast-ryze-horka-12"
+    assert body["beer_brand_key"] == "radegast"
+    checkin = BeerCheckIn.objects.get(account=account)
+    assert checkin.beer_product.key == "radegast-ryze-horka-12"
+    assert checkin.beer_key == "radegast-ryze-horka-12"
+
+
+@pytest.mark.django_db
 def test_private_checkin_is_not_in_friend_feed(client):
     token_owner, owner = _register(client, "janek")
     token_friend, friend = _register(client, "petr")

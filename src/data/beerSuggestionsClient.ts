@@ -207,8 +207,8 @@ function normalizeText(value: string): string {
     .trim();
 }
 
-function localSuggestions(query: string, limit: number): BeerBrandSuggestion[] {
-  const normalizedQuery = normalizeText(query);
+function localSuggestions(query: string, limit: number, brewery = ''): BeerBrandSuggestion[] {
+  const normalizedQuery = normalizeText(`${brewery} ${query}`);
   if (normalizedQuery.length < 2) return [];
   return LOCAL_BEER_BRAND_SUGGESTIONS.filter((item) => {
     const values = [item.name, ...(item.aliases ?? [])].map(normalizeText);
@@ -259,12 +259,14 @@ export async function suggestBeerBrands(
   query: string,
   signal?: AbortSignal,
   limit = DEFAULT_LIMIT,
+  brewery = '',
 ): Promise<BeerBrandSuggestion[]> {
   const trimmed = query.trim().slice(0, 80);
   const cappedLimit = Math.max(1, Math.min(20, Math.floor(limit)));
   if (trimmed.length < 2 || signal?.aborted) return [];
 
-  const fallback = localSuggestions(trimmed, cappedLimit);
+  const cleanBrewery = brewery.trim().slice(0, 80);
+  const fallback = localSuggestions(trimmed, cappedLimit, cleanBrewery);
   const endpoint = getBackendEndpoint('/v1/beer-brands/suggest');
   if (!endpoint) return fallback;
 
@@ -273,6 +275,7 @@ export async function suggestBeerBrands(
     const url = new URL(endpoint);
     url.searchParams.set('q', trimmed);
     url.searchParams.set('limit', String(cappedLimit));
+    if (cleanBrewery) url.searchParams.set('brewery', cleanBrewery);
     const resp = await fetch(url.toString(), {
       method: 'GET',
       signal: abort.signal,

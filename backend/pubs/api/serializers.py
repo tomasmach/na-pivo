@@ -883,6 +883,12 @@ class BeerCheckInSerializer(serializers.ModelSerializer):
     tags = serializers.SerializerMethodField()
     reactions = serializers.SerializerMethodField()
     my_reaction = serializers.SerializerMethodField()
+    beer_product_key = serializers.CharField(
+        source="beer_product.key", read_only=True, allow_null=True
+    )
+    beer_brand_key = serializers.CharField(
+        source="beer_product.brand.key", read_only=True, allow_null=True
+    )
 
     class Meta:
         model = BeerCheckIn
@@ -892,6 +898,8 @@ class BeerCheckInSerializer(serializers.ModelSerializer):
             "client_id",
             "beer_name",
             "brewery_name",
+            "beer_product_key",
+            "beer_brand_key",
             "beer_style",
             "abv",
             "quantity",
@@ -1423,6 +1431,12 @@ class BeerBrandSuggestQuerySerializer(serializers.Serializer):
     """Query parameters for GET /v1/beer-brands/suggest."""
 
     q = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=80,
+        trim_whitespace=True,
+    )
+    brewery = serializers.CharField(
         required=False,
         allow_blank=True,
         max_length=80,

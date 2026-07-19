@@ -750,6 +750,7 @@ export const cs = {
     sheetTitle: 'Zapsat pivo',
     beerLabel: 'Pivo',
     beerPlaceholder: 'Co máš ve skle?',
+    useSuggestion: (name: string) => `Použít existující pivo ${name}`,
     breweryLabel: 'Pivovar',
     styleLabel: 'Styl',
     optionalPlaceholder: 'Nepovinné',
