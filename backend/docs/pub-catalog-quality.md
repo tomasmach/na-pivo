@@ -17,3 +17,15 @@ Příkaz nic nemění. Vypíše jeden JSON snapshot s časem měření, agregova
 5. Po změně spusť report znovu. Denní snapshot musí ukázat pokles příslušné fronty bez zhoršení `usable_venue_share`.
 
 Nearby API řadí výsledky primárně po krátkých vzdálenostních pásmech. U míst ve stejném 250m pásmu dostane potvrzená hospoda přednost před nejasnou restaurací; napříč pásmy zůstává rozhodující vzdálenost. Tohle pravidlo je pokryté API testy.
+
+## Smoke test pokrytí
+
+Po každém importu a alespoň jednou denně spusť:
+
+```bash
+uv run python manage.py check_pub_coverage --strict
+```
+
+Výchozí sada kontroluje Brno, Bratislavu, Košice a transparentně hlásí Tenerife jako komunitní oblast mimo CZ/SK adresář. Kontrola nikdy nevolá externí mapový zdroj, takže nepřidává proxy ani API náklady. Vlastní produkční vzorek lze přidat opakovaným parametrem `--sample "Město,lat,lng,radius_km,minimum"`.
+
+Když podporované město klesne pod minimum, nejdřív ověř poslední import a `audit_pub_catalog`. Jednotlivé mezery oprav přes komunitní přidání nebo auditovaný fix. Rozšíření placeného/licencovaného datového zdroje mimo CZ/SK je samostatné produktové rozhodnutí; do té doby tam nearby API bezpečně vrací uživatelsky přidané podniky.
