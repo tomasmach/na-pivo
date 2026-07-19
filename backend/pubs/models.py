@@ -3753,3 +3753,6 @@ class ExternalApiDailyUsage(models.Model):
 
     def __str__(self) -> str:
         return f"{self.provider}/{self.operation}/{self.day}: {self.request_count}"
+
+
+from .pub_events import PubEvent  # noqa: E402,F401

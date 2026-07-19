@@ -42,6 +42,7 @@ from .party_views import (
     PartyEveningEndView,
     PartyEveningJoinView,
 )
+from .pub_event_views import PubEventView
 from .views import (
     AccountAvatarView,
     AccountExportView,
@@ -102,6 +103,7 @@ from .views import (
 )
 
 urlpatterns = [
+    path("pub-events", PubEventView.as_view(), name="pub-events"),
     path("party-evenings", PartyEveningCollectionView.as_view(), name="party-evenings"),
     path(
         "party-evenings/<str:code>/join",

@@ -108,6 +108,7 @@ import { FALLBACK_XP_RULES } from '@/data/mapperXp';
 import { pubIdentityKey } from '@/data/pubIdentity';
 import { formatPrice, type PriceCurrency } from '@/utils/currency';
 import { isPriceApproximate, isPriceFresh, priceAgeLabel } from '@/utils/priceAge';
+import { PubEventsSection } from '@/pubEvents/PubEventsSection';
 
 const SECTION_LABEL: Record<AmenitySection, string> = {
   seating: cs.mapPub.sectionSeating,
@@ -710,6 +711,13 @@ export function MapPubSheet({
                   )}
                 </View>
               )}
+
+              <PubEventsSection
+                visible={showSheet}
+                pubKey={pubKey}
+                pubName={displayName}
+                info={info}
+              />
 
               {grouped.map(({ section, items }) => (
                 <View key={section}>

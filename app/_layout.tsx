@@ -443,6 +443,14 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen
+            name="suggest-pub-event"
+            options={{
+              presentation: 'fullScreenModal',
+              animation: 'slide_from_bottom',
+              gestureEnabled: false,
+            }}
+          />
+          <Stack.Screen
             name="evening"
             options={{
               presentation: 'fullScreenModal',
