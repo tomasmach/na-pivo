@@ -1613,6 +1613,7 @@ def _award_first_diary_event_xp(
 
 class DrinksView(APIView):
     """
+    GET    /v1/drinks
     POST   /v1/drinks
     PATCH  /v1/drinks/<client_id>
     DELETE /v1/drinks/<client_id>
@@ -1620,6 +1621,8 @@ class DrinksView(APIView):
     Log one categorized drink via the in-app counter. Beer remains the default
     for released clients and is merged into PubCommunityData.beers. Soft drinks
     and shots are stored privately without touching beer menus or catalogues.
+    GET returns the calling account's private rows for cross-device/offline
+    reconciliation; it never exposes another account's diary.
 
     Auth: Bearer token (per-account). Idempotent on (account, client_id): a
     replayed client_id returns 200 ``duplicate: true`` with NO repeated side
@@ -1645,6 +1648,42 @@ class DrinksView(APIView):
     permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "drinks"
+
+    def get(self, request: Request) -> Response:
+        """Return the account's authoritative private drink snapshot.
+
+        The mobile app reconciles this owner-only list with its offline queue by
+        ``client_id`` after sign-in. Keeping the read on the existing endpoint is
+        additive for released clients and mirrors GET /v1/pub-visits.
+        """
+        try:
+            drinks = DrinkLog.objects.filter(account=request.user)
+            items = [
+                {
+                    "client_id": str(drink.client_id),
+                    "cache_key": drink.cache_key,
+                    "name": drink.name,
+                    "lat": drink.lat,
+                    "lng": drink.lng,
+                    "city": drink.city,
+                    "external_id": drink.external_id,
+                    "place_context": drink.place_context,
+                    "drink_type": drink.drink_type,
+                    "beer": {
+                        "name": drink.beer_name,
+                        "price_czk": drink.price_czk,
+                        "volume_ml": drink.volume_ml,
+                        "serving_type": drink.serving_type,
+                    },
+                    "drank_at": drink.drank_at.isoformat(),
+                    "is_suspect": drink.is_suspect,
+                }
+                for drink in drinks
+            ]
+        except Exception as exc:  # noqa: BLE001
+            logger.error("drinks: unexpected error listing drinks: %s", exc, exc_info=True)
+            return _internal_error()
+        return Response({"drinks": items}, status=status.HTTP_200_OK)
 
     def post(self, request: Request) -> Response:
         match_cache = BeerCatalogMatchCache()

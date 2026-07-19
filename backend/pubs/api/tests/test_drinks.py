@@ -1,5 +1,5 @@
 """
-Tests for the drink-logging endpoint (POST /v1/drinks): per-user DrinkLog rows
+Tests for the drink-logging endpoint (GET/POST /v1/drinks): per-user DrinkLog rows
 plus the server-side merge of each drunk beer into the pub's community menu
 (PubCommunityData.beers).
 """
@@ -145,6 +145,58 @@ def test_log_requires_account_token(client):
     assert resp.status_code == status.HTTP_401_UNAUTHORIZED
     assert DrinkLog.objects.count() == 0
     assert PubCommunityData.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_get_returns_only_the_accounts_authoritative_drink_snapshot(client):
+    token = _register(client)
+    created = client.post("/v1/drinks", data=_payload(), format="json", **_auth(token))
+    assert created.status_code == status.HTTP_201_CREATED
+
+    other_client = APIClient()
+    other_token = _register(
+        other_client,
+        device_id="11112222-3333-4444-5555-666677778888",
+    )
+    other_client.post(
+        "/v1/drinks",
+        data=_payload(client_id="11111111-2222-4333-8444-555555555555"),
+        format="json",
+        **_auth(other_token),
+    )
+
+    response = client.get("/v1/drinks", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == {
+        "drinks": [
+            {
+                "client_id": _CLIENT_ID,
+                "cache_key": _KEY,
+                "name": _NAME,
+                "lat": _LAT,
+                "lng": _LNG,
+                "city": "Praha",
+                "external_id": "mapy:50.08755,14.42141",
+                "place_context": "pub",
+                "drink_type": "beer",
+                "beer": {
+                    "name": "Pilsner Urquell",
+                    "price_czk": 62,
+                    "volume_ml": 500,
+                    "serving_type": "unknown",
+                },
+                "drank_at": "2026-06-12T17:45:00+00:00",
+                "is_suspect": False,
+            }
+        ]
+    }
+
+
+@pytest.mark.django_db
+def test_get_drinks_requires_account_token(client):
+    response = client.get("/v1/drinks")
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
 @pytest.mark.django_db

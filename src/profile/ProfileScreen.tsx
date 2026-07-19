@@ -73,6 +73,7 @@ import {
   type TallySession,
 } from '@/stores/tallyStore';
 import { isContextPubKey } from '@/drinks/drinkTypes';
+import { deriveReconciledDiaryStats } from '@/data/diarySync';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { eveningDateLabel, sessionDrinkSummary } from '@/myBeers/eveningModel';
@@ -396,15 +397,37 @@ export default function ProfileScreen() {
   const history = useTallyStore((s) => s.history);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const ratingsCount = usePubRatingsStore((s) => Object.keys(s.ratings).length);
+  const diarySnapshot = useAccountStore((s) => {
+    const snapshot = s.diarySnapshot;
+    if (!snapshot || snapshot.accountId !== s.session?.accountId) return null;
+    return snapshot.data;
+  });
 
   const sessions = useMemo(
     () => allSessionsNewestFirst(current, history),
     [current, history],
   );
   const localStats = useMemo(() => deriveStats(sessions), [sessions]);
+  const reconciledStats = useMemo(
+    () => (diarySnapshot ? deriveReconciledDiaryStats(diarySnapshot, sessions) : null),
+    [diarySnapshot, sessions],
+  );
   const stats = useMemo(() => {
     const backend = profile?.stats;
-    if (!isSignedIn || !backend) return localStats;
+    if (!isSignedIn) return localStats;
+    if (reconciledStats) {
+      return {
+        ...reconciledStats,
+        // The snapshot carries visits and drinks, while the profile aggregate
+        // remains the compatibility fallback for accounts predating visit sync.
+        distinctPubs: Math.max(reconciledStats.distinctPubs, backend?.distinctPubs ?? 0),
+        maxVisitsToOnePub: Math.max(
+          reconciledStats.maxVisitsToOnePub,
+          backend?.maxVisitsToOnePub ?? 0,
+        ),
+      };
+    }
+    if (!backend) return localStats;
     return {
       // Local queues are intentionally offline-first. Right after a reconnect or
       // sign-in the backend snapshot can lag behind them, so totals must never
@@ -414,7 +437,7 @@ export default function ProfileScreen() {
       maxVisitsToOnePub: Math.max(backend.maxVisitsToOnePub, localStats.maxVisitsToOnePub),
       totalSpentCzk: Math.max(backend.totalSpentCzk, localStats.totalSpentCzk),
     };
-  }, [isSignedIn, localStats, profile?.stats]);
+  }, [isSignedIn, localStats, profile?.stats, reconciledStats]);
   const totalRatings =
     isSignedIn && profile?.stats
       ? Math.max(profile.stats.ratingsCount, ratingsCount)

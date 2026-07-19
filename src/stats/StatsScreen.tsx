@@ -23,6 +23,7 @@ import { Radius, Spacing } from '@/theme/layout';
 import { amberGlow } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
 import { beerCountLabel, beerNoun } from '@/i18n/plural';
+import { deriveReconciledDiaryStats } from '@/data/diarySync';
 import { formatPrice } from '@/utils/currency';
 import {
   BeerIcon,
@@ -36,6 +37,7 @@ import {
   SparklesIcon,
 } from '@/components/shared/IconGlyph';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useAccountStore } from '@/stores/accountStore';
 import { useTallyStore, allSessionsNewestFirst } from '@/stores/tallyStore';
 import {
   computeLastPerformance,
@@ -348,6 +350,11 @@ export default function StatsScreen({ embedded = false }: { embedded?: boolean }
   const history = useTallyStore((s) => s.history);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const remote = useMyStats();
+  const diarySnapshot = useAccountStore((state) => {
+    const snapshot = state.diarySnapshot;
+    if (!snapshot || snapshot.accountId !== state.session?.accountId) return null;
+    return snapshot.data;
+  });
 
   const sessions = useMemo(() => allSessionsNewestFirst(current, history), [current, history]);
   const last = useMemo(
@@ -357,13 +364,24 @@ export default function StatsScreen({ embedded = false }: { embedded?: boolean }
   const localLifetime = useMemo(() => computeLifetime(sessions), [sessions]);
   const localRecords = useMemo(() => computeRecords(sessions), [sessions]);
   const localTopPubs = useMemo(() => computeTopPubs(sessions), [sessions]);
+  const reconciled = useMemo(
+    () => (diarySnapshot ? deriveReconciledDiaryStats(diarySnapshot, sessions) : null),
+    [diarySnapshot, sessions],
+  );
 
   // Prefer durable backend numbers only when they're at least as complete as the
   // local view — so freshly-counted-but-not-yet-synced beers never make the
   // totals appear to shrink.
   const useRemote = remote != null && remote.totalBeers >= localLifetime.totalBeers;
 
-  const lifetime: LifetimeStats = useRemote
+  const lifetime: LifetimeStats = reconciled
+    ? {
+        totalBeers: reconciled.totalBeers,
+        totalEvenings: Math.max(remote?.totalEvenings ?? 0, localLifetime.totalEvenings),
+        distinctPubs: Math.max(reconciled.distinctPubs, remote?.distinctPubs ?? 0),
+        totalSpentCzk: reconciled.totalSpentCzk,
+      }
+    : useRemote
     ? {
         totalBeers: remote!.totalBeers,
         totalEvenings: remote!.totalEvenings,

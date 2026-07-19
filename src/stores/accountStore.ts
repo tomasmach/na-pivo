@@ -22,6 +22,7 @@ import {
   type NicknameAvailability,
 } from '@/data/auth';
 import { FALLBACK_LEVELS, FALLBACK_XP_RULES } from '@/data/mapperXp';
+import { reconcileDiarySnapshot, type DiarySnapshot } from '@/data/diarySync';
 import { useSettingsStore } from '@/stores/settingsStore';
 
 export type AccountStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -115,6 +116,8 @@ interface AccountState {
   status: AccountStatus;
   /** Full account state once known (anonymous or signed in). */
   profile: AccountProfile | null;
+  /** Owner-only drink + visit snapshot used to reconcile offline diary totals. */
+  diarySnapshot: { accountId: string; data: DiarySnapshot } | null;
 
   /**
    * Ensure an account (anonymous or the signed-in one) exists. Never throws. A
@@ -123,6 +126,8 @@ interface AccountState {
   initAccount: () => Promise<void>;
   /** Re-fetch GET /v1/account/me into `profile`. */
   refreshProfile: () => Promise<void>;
+  /** Flush local diary queues, then refresh the authoritative drink/visit snapshot. */
+  refreshDiarySnapshot: () => Promise<void>;
   /**
    * Patch the live Mapér XP/level/title from a PUT /pub-amenities/votes envelope
    * snapshot so Profile climbs immediately after a vote, without a second GET.
@@ -197,7 +202,21 @@ export const useAccountStore = create<AccountState>((set, get) => {
   const syncSession = async () => {
     const session = await ensureAccount();
     setTelemetrySession(session);
-    set({ session, status: session ? 'ready' : 'idle' });
+    set((state) => ({
+      session,
+      status: session ? 'ready' : 'idle',
+      diarySnapshot:
+        state.diarySnapshot?.accountId === session?.accountId ? state.diarySnapshot : null,
+    }));
+  };
+
+  const refreshDiarySnapshot = async () => {
+    const accountId = get().session?.accountId;
+    if (!accountId) return;
+    const data = await reconcileDiarySnapshot();
+    if (data && get().session?.accountId === accountId) {
+      set({ diarySnapshot: { accountId, data } });
+    }
   };
 
   /** After a session-changing auth call: persist the new token + profile. */
@@ -206,6 +225,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
       set({ profile: result.profile });
       applyAccountSettings(result.profile.settings);
       await syncSession();
+      await refreshDiarySnapshot();
     }
     return result;
   };
@@ -225,6 +245,7 @@ export const useAccountStore = create<AccountState>((set, get) => {
     session: null,
     status: 'idle',
     profile: null,
+    diarySnapshot: null,
 
     initAccount: async () => {
       if (get().status === 'loading') return;
@@ -232,11 +253,17 @@ export const useAccountStore = create<AccountState>((set, get) => {
       try {
         const session = await ensureAccount();
         setTelemetrySession(session);
-        set({ session, status: session ? 'ready' : 'idle' });
+        set((state) => ({
+          session,
+          status: session ? 'ready' : 'idle',
+          diarySnapshot:
+            state.diarySnapshot?.accountId === session?.accountId ? state.diarySnapshot : null,
+        }));
         if (session) {
           const [preferences, profile] = await Promise.all([
             fetchAccountPreferences(),
             auth.fetchAccountProfile(),
+            refreshDiarySnapshot(),
           ]);
           if (preferences) {
             applyAccountSettings(preferences);
@@ -258,6 +285,8 @@ export const useAccountStore = create<AccountState>((set, get) => {
         applyAccountSettings(profile.settings);
       }
     },
+
+    refreshDiarySnapshot,
 
     applyMapperSnapshot: (snapshot) => {
       const current = get().profile;
@@ -303,14 +332,14 @@ export const useAccountStore = create<AccountState>((set, get) => {
 
     logout: async (options) => {
       await auth.logout(options);
-      set({ profile: null });
+      set({ profile: null, diarySnapshot: null });
       await syncSession();
       await get().refreshProfile();
     },
     deleteAccount: async () => {
       const result = await auth.deleteAccount();
       if (result.ok) {
-        set({ profile: null });
+        set({ profile: null, diarySnapshot: null });
         await syncSession();
         await get().refreshProfile();
       }

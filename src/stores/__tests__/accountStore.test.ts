@@ -17,6 +17,7 @@ import * as auth from '@/data/auth';
 import { EMPTY_ACHIEVEMENTS, type AccountMapper, type AccountProfile, type AuthResult } from '@/data/auth';
 import { ensureAccount } from '@/data/account';
 import { setTelemetrySession } from '@/data/telemetryClient';
+import { reconcileDiarySnapshot } from '@/data/diarySync';
 
 jest.mock('@/data/auth');
 jest.mock('@/data/account', () => ({
@@ -31,6 +32,9 @@ jest.mock('@/data/account', () => ({
 jest.mock('@/data/telemetryClient', () => ({
   setTelemetrySession: jest.fn(),
 }));
+jest.mock('@/data/diarySync', () => ({
+  reconcileDiarySnapshot: jest.fn(async () => null),
+}));
 jest.mock('@/stores/settingsStore', () => ({
   useSettingsStore: {
     getState: () => ({ setHidePubNames: jest.fn() }),
@@ -40,6 +44,9 @@ jest.mock('@/stores/settingsStore', () => ({
 const mockedAuth = auth as jest.Mocked<typeof auth>;
 const mockEnsureAccount = ensureAccount as jest.MockedFunction<typeof ensureAccount>;
 const mockSetTelemetrySession = setTelemetrySession as jest.MockedFunction<typeof setTelemetrySession>;
+const mockReconcileDiarySnapshot = reconcileDiarySnapshot as jest.MockedFunction<
+  typeof reconcileDiarySnapshot
+>;
 
 function signedInProfile(overrides: Partial<AccountProfile> = {}): AccountProfile {
   return {
@@ -92,7 +99,7 @@ function errResult(code = 'invalid_credentials', detail = 'nope'): AuthResult {
 beforeEach(() => {
   jest.clearAllMocks();
   // Reset the singleton store back to a clean slate between tests.
-  useAccountStore.setState({ session: null, status: 'idle', profile: null });
+  useAccountStore.setState({ session: null, status: 'idle', profile: null, diarySnapshot: null });
   mockEnsureAccount.mockResolvedValue({
     deviceId: 'd',
     accountId: 'a',
@@ -102,6 +109,7 @@ beforeEach(() => {
   // fetchAccountProfile is used by refreshProfile (e.g. inside logout); default
   // it to null so it doesn't accidentally re-populate the profile.
   mockedAuth.fetchAccountProfile.mockResolvedValue(null);
+  mockReconcileDiarySnapshot.mockResolvedValue(null);
 });
 
 describe('initAccount', () => {
@@ -159,14 +167,18 @@ describe('register', () => {
 });
 
 describe('login', () => {
-  it('sets the profile on success', async () => {
+  it('sets the profile and loads the authoritative diary snapshot on success', async () => {
     const profile = signedInProfile();
     mockedAuth.loginEmail.mockResolvedValue(okResult(profile));
+    const snapshot = { drinks: [], visits: [] };
+    mockReconcileDiarySnapshot.mockResolvedValue(snapshot);
 
     await useAccountStore.getState().login({ email: 'jan@example.com', password: 'pw' });
 
     expect(useAccountStore.getState().profile).toEqual(profile);
     expect(mockEnsureAccount).toHaveBeenCalledTimes(1);
+    expect(mockReconcileDiarySnapshot).toHaveBeenCalledTimes(1);
+    expect(useAccountStore.getState().diarySnapshot).toEqual({ accountId: 'a', data: snapshot });
   });
 
   it('leaves the profile null on failure', async () => {

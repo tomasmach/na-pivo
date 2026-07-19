@@ -24,12 +24,20 @@
  *                          queue and retry on the next flush.
  */
 
-import { ensureAccount } from './account';
+import { clearCachedAnonymousAccount, ensureAccount } from './account';
 import { getBackendEndpoint } from './backendConfig';
 import { chainAbortSignal, classifyQueueHttpFailure } from './apiFetch';
 import type { CommunityBeer } from './communityHours';
 import { trackClientEvent } from './telemetryClient';
-import { normalizePlaceContext, type DrinkType, type PlaceContext, type ServingType } from '@/drinks/drinkTypes';
+import {
+  isDrinkType,
+  isOutsidePlaceContext,
+  isServingType,
+  normalizePlaceContext,
+  type DrinkType,
+  type PlaceContext,
+  type ServingType,
+} from '@/drinks/drinkTypes';
 import { useToastStore } from '@/stores/toastStore';
 import { cs } from '@/i18n/cs';
 import { notePivarSnapshot } from './pivarXp';
@@ -80,10 +88,90 @@ export interface DrinkEntry {
   drank_at?: string;
 }
 
+/** One private drink in the authoritative account snapshot returned by GET. */
+export interface WireDrink {
+  client_id: string;
+  cache_key: string | null;
+  name: string;
+  lat: number | null;
+  lng: number | null;
+  city: string;
+  external_id: string;
+  place_context: PlaceContext;
+  drink_type: DrinkType;
+  beer: {
+    name: string;
+    price_czk: number | null;
+    volume_ml: number | null;
+    serving_type: ServingType;
+  };
+  drank_at: string;
+  is_suspect: boolean;
+}
+
 /** Outcome of one POST attempt — drives queue keep/drop decisions. */
 export type SubmitDrinkResult = 'ok' | 'permanent-error' | 'retry';
 
 const REQUEST_TIMEOUT_MS = 8000;
+
+function isWireDrink(value: unknown): value is WireDrink {
+  const drink = value as Partial<WireDrink>;
+  const beer = drink?.beer as Partial<WireDrink['beer']> | undefined;
+  return (
+    !!drink &&
+    typeof drink.client_id === 'string' &&
+    (drink.cache_key === null || typeof drink.cache_key === 'string') &&
+    typeof drink.name === 'string' &&
+    (drink.lat === null || (typeof drink.lat === 'number' && Number.isFinite(drink.lat))) &&
+    (drink.lng === null || (typeof drink.lng === 'number' && Number.isFinite(drink.lng))) &&
+    typeof drink.city === 'string' &&
+    typeof drink.external_id === 'string' &&
+    (drink.place_context === 'pub' || isOutsidePlaceContext(drink.place_context)) &&
+    isDrinkType(drink.drink_type) &&
+    typeof drink.drank_at === 'string' &&
+    typeof drink.is_suspect === 'boolean' &&
+    !!beer &&
+    typeof beer.name === 'string' &&
+    (beer.price_czk === null ||
+      (typeof beer.price_czk === 'number' && Number.isFinite(beer.price_czk))) &&
+    (beer.volume_ml === null ||
+      (typeof beer.volume_ml === 'number' && Number.isFinite(beer.volume_ml))) &&
+    isServingType(beer.serving_type)
+  );
+}
+
+/** GET the account's full private drink snapshot. Best-effort and never throws. */
+export async function fetchDrinks(signal?: AbortSignal): Promise<WireDrink[] | null> {
+  if (signal?.aborted) return null;
+
+  const endpoint = getBackendEndpoint('/v1/drinks');
+  if (!endpoint) return null;
+
+  const session = await ensureAccount(signal);
+  if (!session || signal?.aborted) return null;
+
+  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
+  try {
+    const resp = await fetch(endpoint, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${session.token}` },
+      signal: abort.signal,
+    });
+    if (resp.status === 401) {
+      await clearCachedAnonymousAccount(session);
+      return null;
+    }
+    if (!resp.ok) return null;
+
+    const data = (await resp.json()) as { drinks?: unknown };
+    if (!data || !Array.isArray(data.drinks)) return null;
+    return data.drinks.filter(isWireDrink);
+  } catch {
+    return null;
+  } finally {
+    abort.cleanup();
+  }
+}
 
 /** Minimum gap between "drink limited" toasts, so a queue flush that trips the
  *  server's daily anti-abuse cap on several drinks in a row nags only once. */

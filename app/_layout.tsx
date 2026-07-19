@@ -324,6 +324,7 @@ export default function RootLayout() {
         void flushFriendsQueue();
         void flushBeerCheckinsQueue();
         void flushBeerPhotosQueue();
+        void useAccountStore.getState().refreshDiarySnapshot();
         // Re-seed pub geofences for wherever the user is now (no-op when the
         // feature is off; cheap unless they moved a few km since last fetch).
         if ((useTallyStore.getState().current?.drinks.length ?? 0) > 0) {

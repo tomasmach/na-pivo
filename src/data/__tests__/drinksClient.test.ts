@@ -1,4 +1,11 @@
-import { buildDrinkEntry, submitDrink, deleteDrink, updateDrinkName, type DrinkInput } from '../drinksClient';
+import {
+  buildDrinkEntry,
+  fetchDrinks,
+  submitDrink,
+  deleteDrink,
+  updateDrinkName,
+  type DrinkInput,
+} from '../drinksClient';
 import { clearCachedAnonymousAccount, ensureAccount } from '../account';
 import { useToastStore } from '@/stores/toastStore';
 import { cs } from '@/i18n/cs';
@@ -140,6 +147,61 @@ describe('buildDrinkEntry', () => {
     expect(entry.place_context).toBeUndefined();
     expect(entry.beer.serving_type).toBe('bottle');
     expect(entry.name).toBe('X');
+  });
+});
+
+describe('fetchDrinks', () => {
+  it('loads and validates the private account snapshot', async () => {
+    setBackend('https://api.example.com');
+    const wireDrink = {
+      client_id: 'client-1',
+      cache_key: 'u2fkbn0x',
+      name: 'U Tygra',
+      lat: 50.0876,
+      lng: 14.4214,
+      city: 'Praha',
+      external_id: '',
+      place_context: 'pub',
+      drink_type: 'beer',
+      beer: {
+        name: 'Plzeň',
+        price_czk: 62,
+        volume_ml: 500,
+        serving_type: 'unknown',
+      },
+      drank_at: '2026-07-19T18:00:00Z',
+      is_suspect: false,
+    };
+    const fetchSpy = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ drinks: [wireDrink, { nope: true }] }),
+    }));
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    await expect(fetchDrinks()).resolves.toEqual([wireDrink]);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://api.example.com/v1/drinks',
+      expect.objectContaining({
+        method: 'GET',
+        headers: { Authorization: 'Bearer tok' },
+      }),
+    );
+  });
+
+  it('returns null on a failed or malformed snapshot', async () => {
+    setBackend('https://api.example.com');
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ drinks: 'nope' }),
+    })) as unknown as typeof fetch;
+    await expect(fetchDrinks()).resolves.toBeNull();
+
+    global.fetch = jest.fn(async () => {
+      throw new Error('offline');
+    }) as unknown as typeof fetch;
+    await expect(fetchDrinks()).resolves.toBeNull();
   });
 });
 

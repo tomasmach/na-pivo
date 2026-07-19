@@ -11,6 +11,7 @@ GET    pub-reports/blocked → BlockedPubReportsView
 GET    pubs/suggest → PubLocationSuggestView
 GET    pubs/geocode → PubLocationGeocodeView
 GET    beer-brands/suggest → BeerBrandSuggestView
+GET    drinks       → DrinksView
 POST   drinks       → DrinksView
 DELETE drinks/<client_id> → DrinksView
 GET    release-notes → ReleaseNotesView
