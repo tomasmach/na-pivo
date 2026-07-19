@@ -124,6 +124,8 @@ describe('StatsScreen', () => {
     // Section headers present.
     expect(texts).toContain(cs.stats.recordsHeader);
     expect(texts).toContain(cs.stats.totalsHeader);
+    expect(texts).toContain(cs.stats.periodsHeader);
+    expect(texts).toContain(cs.stats.monthsHeader);
     expect(texts).toContain(cs.stats.pubsHeader);
     // Hero count numeral (3 beers tonight) + pub name.
     expect(texts).toContain('3');
@@ -147,6 +149,11 @@ describe('StatsScreen', () => {
         mostBeersDate: null,
         fastestBeerSeconds: 1,
         longestEveningSeconds: 1800,
+      },
+      periods: {
+        timezone: 'Europe/Prague',
+        months: [],
+        years: [],
       },
     });
 

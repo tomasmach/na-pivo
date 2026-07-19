@@ -39,6 +39,20 @@ export interface RemoteRecords {
   longestEveningSeconds: number | null;
 }
 
+export interface RemotePeriodStat {
+  period: string;
+  beers: number;
+  evenings: number;
+  spentCzk: number;
+  averageBeersPerEvening: number;
+}
+
+export interface RemotePeriodStats {
+  timezone: string;
+  months: RemotePeriodStat[];
+  years: RemotePeriodStat[];
+}
+
 /** The account's durable beer stats. */
 export interface RemoteStats {
   totalBeers: number;
@@ -48,6 +62,7 @@ export interface RemoteStats {
   firstDrinkAt: string | null;
   topPubs: RemotePubTally[];
   records: RemoteRecords;
+  periods: RemotePeriodStats;
 }
 
 function num(value: unknown, fallback = 0): number {
@@ -78,12 +93,31 @@ function parsePub(raw: unknown): RemotePubTally | null {
   };
 }
 
+function parsePeriod(raw: unknown): RemotePeriodStat | null {
+  const period = raw as Record<string, unknown>;
+  if (!period || typeof period.period !== 'string') return null;
+  return {
+    period: period.period,
+    beers: num(period.beers),
+    evenings: num(period.evenings),
+    spentCzk: num(period.spent_czk),
+    averageBeersPerEvening: num(period.average_beers_per_evening),
+  };
+}
+
 function parseStats(body: unknown): RemoteStats | null {
   const b = body as Record<string, unknown>;
   if (!b || typeof b !== 'object') return null;
   const records = (b.records ?? {}) as Record<string, unknown>;
   const topPubs = Array.isArray(b.top_pubs)
     ? b.top_pubs.map(parsePub).filter((p): p is RemotePubTally => p != null)
+    : [];
+  const periods = (b.periods ?? {}) as Record<string, unknown>;
+  const months = Array.isArray(periods.months)
+    ? periods.months.map(parsePeriod).filter((p): p is RemotePeriodStat => p != null)
+    : [];
+  const years = Array.isArray(periods.years)
+    ? periods.years.map(parsePeriod).filter((p): p is RemotePeriodStat => p != null)
     : [];
 
   return {
@@ -100,7 +134,21 @@ function parseStats(body: unknown): RemoteStats | null {
       fastestBeerSeconds: nullableNum(records.fastest_beer_seconds),
       longestEveningSeconds: nullableNum(records.longest_evening_seconds),
     },
+    periods: {
+      timezone: str(periods.timezone),
+      months,
+      years,
+    },
   };
+}
+
+function deviceTimezone(): string | null {
+  try {
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return typeof timezone === 'string' && timezone.length > 0 ? timezone : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -109,8 +157,12 @@ function parseStats(body: unknown): RemoteStats | null {
 export async function fetchMyStats(signal?: AbortSignal): Promise<RemoteStats | null> {
   if (signal?.aborted) return null;
 
-  const endpoint = getBackendEndpoint('/v1/me/stats');
-  if (!endpoint) return null;
+  const baseEndpoint = getBackendEndpoint('/v1/me/stats');
+  if (!baseEndpoint) return null;
+  const timezone = deviceTimezone();
+  const endpoint = timezone
+    ? `${baseEndpoint}${baseEndpoint.includes('?') ? '&' : '?'}timezone=${encodeURIComponent(timezone)}`
+    : baseEndpoint;
 
   const session = await ensureAccount(signal);
   if (!session || signal?.aborted) return null;

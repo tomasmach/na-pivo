@@ -1872,13 +1872,12 @@ export const cs = {
     notePlaceholder: 'Co si chceš zapamatovat? Třeba „výčep super, účet už míň".',
   },
 
-  // "Výkon" — the personal beer-stats segment in the "Štamgast" tab. Restrained
-  // on purpose: last night's performance, personal records, lifetime totals and
-  // per-pub counts. The big yearly/monthly recap is saved for Pivní Wrapped.
+  // "Výkon" includes practical monthly/yearly trends. Pivní Wrapped remains a
+  // separate narrative recap.
   stats: {
     // — Empty state —
     emptyTitle: 'Zatím není co měřit',
-    emptyBody: 'Začni počítat piva a ráno tu najdeš svůj výkon — kolik jich padlo, jak rychle a kde.',
+    emptyBody: 'Začni počítat piva a ráno tu najdeš svůj výkon: kolik jich padlo, jak rychle a kde.',
 
     // — Hero: last performance ("ráno koukni na výkon") —
     heroToday: 'DNEŠNÍ VÝKON',
@@ -1904,7 +1903,7 @@ export const cs = {
     // "9 piv · U Zlatého tygra" (pub optional).
     recordMostBeersValue: (beersLabel: string, pub: string | null) =>
       pub ? `${beersLabel} · ${pub}` : beersLabel,
-    recordEmpty: '—',
+    recordEmpty: 'Zatím nic',
 
     // — Lifetime totals —
     totalsHeader: 'CELKEM',
@@ -1912,6 +1911,20 @@ export const cs = {
     totalEvenings: 'VEČERŮ',
     totalPubs: 'HOSPOD SE ZÁPISEM',
     totalSpent: 'UTRACENO',
+
+    // — Monthly and yearly trend —
+    periodsHeader: 'PIVNÍ TEMPO',
+    monthsHeader: 'POSLEDNÍCH 12 MĚSÍCŮ',
+    yearsHeader: 'ROKY',
+    periodBeers: 'PIV TENTO MĚSÍC',
+    periodEvenings: (count: number) =>
+      count === 1 ? '1 pivní večer' : count >= 2 && count <= 4 ? `${count} pivní večery` : `${count} pivních večerů`,
+    periodAverage: (average: number) =>
+      average > 0 ? `Průměrně ${average.toLocaleString('cs-CZ')} piva na večer` : 'Tenhle měsíc zatím na suchu',
+    yearSummary: (beers: number, average: number) =>
+      `${beers} piv, průměr ${average.toLocaleString('cs-CZ')} na večer`,
+    monthsA11y: 'Počet piv za posledních dvanáct měsíců',
+    monthA11y: (period: string, beers: number) => `${period}: ${beerCountLabel(beers)}`,
 
     // — Top pubs ("kolik jsem kde vypil") —
     pubsHeader: 'TVOJE HOSPODY',

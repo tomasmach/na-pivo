@@ -2611,12 +2611,14 @@ class MyStatsView(APIView):
     GET /v1/me/stats
 
     Personal beer stats for the signed-in account: lifetime totals, per-pub
-    tallies, and personal records aggregated from the account's DrinkLog history.
+    tallies, personal records, and additive monthly/yearly period summaries.
     Read-only and the durable, server-side mirror of the app's local "Výkon"
     model — an account holder keeps stats beyond the device's 50-evening cap, and
     the same numbers later feed the Pivní Wrapped. An account that has logged
     nothing gets a 200 with zeroes / nulls (never a 404). Auth required (401
     without a valid token); no throttle scope of its own (cheap indexed scan).
+    New clients may pass an IANA ``timezone`` query parameter; invalid or absent
+    values use Europe/Prague for backwards compatibility.
     """
 
     authentication_classes = [AccountTokenAuthentication]
@@ -2624,7 +2626,10 @@ class MyStatsView(APIView):
 
     def get(self, request: Request) -> Response:
         try:
-            payload = compute_my_stats(request.user)
+            payload = compute_my_stats(
+                request.user,
+                timezone_name=request.query_params.get("timezone"),
+            )
         except Exception as exc:  # noqa: BLE001
             logger.error("me-stats: unexpected error computing stats: %s", exc, exc_info=True)
             return _internal_error()
