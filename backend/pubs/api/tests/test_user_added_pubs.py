@@ -7,6 +7,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
+from django.core.cache import cache
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -29,6 +30,7 @@ def client():
 
 @pytest.fixture(autouse=True)
 def _generous_throttle(settings):
+    cache.clear()
     settings.REST_FRAMEWORK = {
         **settings.REST_FRAMEWORK,
         "DEFAULT_THROTTLE_RATES": {
@@ -37,6 +39,8 @@ def _generous_throttle(settings):
             "added_pubs": "10000/min",
         },
     }
+    yield
+    cache.clear()
 
 
 def _register(client: APIClient, device_id: str = _DEVICE_ID) -> str:
