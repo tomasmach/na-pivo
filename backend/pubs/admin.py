@@ -3,7 +3,7 @@ import hashlib
 from django.contrib import admin
 from django.utils import timezone
 
-from . import pub_event_admin  # noqa: F401
+from . import community_event_admin, pub_event_admin  # noqa: F401
 from .models import (
     Account,
     AccountUsageStats,

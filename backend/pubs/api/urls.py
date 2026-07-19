@@ -35,6 +35,14 @@ from .auth_views import (
     UnlinkView,
     VerifyEmailView,
 )
+from .community_event_views import (
+    CommunityEventCancelView,
+    CommunityEventCollectionView,
+    CommunityEventDiscoveryView,
+    CommunityEventJoinView,
+    CommunityEventReportView,
+    CommunityEventRequestDecisionView,
+)
 from .party_views import (
     PartyEveningCollectionView,
     PartyEveningDetailView,
@@ -103,6 +111,32 @@ from .views import (
 )
 
 urlpatterns = [
+    path("community-events", CommunityEventCollectionView.as_view(), name="community-events"),
+    path(
+        "community-events/discover",
+        CommunityEventDiscoveryView.as_view(),
+        name="community-events-discover",
+    ),
+    path(
+        "community-events/<uuid:event_id>/join",
+        CommunityEventJoinView.as_view(),
+        name="community-event-join",
+    ),
+    path(
+        "community-events/<uuid:event_id>/requests/<uuid:request_id>/<str:action>",
+        CommunityEventRequestDecisionView.as_view(),
+        name="community-event-request-decision",
+    ),
+    path(
+        "community-events/<uuid:event_id>/cancel",
+        CommunityEventCancelView.as_view(),
+        name="community-event-cancel",
+    ),
+    path(
+        "community-events/<uuid:event_id>/report",
+        CommunityEventReportView.as_view(),
+        name="community-event-report",
+    ),
     path("pub-events", PubEventView.as_view(), name="pub-events"),
     path("party-evenings", PartyEveningCollectionView.as_view(), name="party-evenings"),
     path(

@@ -1138,7 +1138,12 @@ class PartyEvening(models.Model):
                 fields=["host", "client_id"], name="unique_party_evening_host_client"
             )
         ]
-        indexes = [models.Index(fields=["host", "active", "started_at"])]
+        indexes = [
+            models.Index(
+                fields=["host", "active", "started_at"],
+                name="pubs_partye_host_id_310b62_idx",
+            )
+        ]
 
 
 class PartyEveningMember(models.Model):
@@ -1158,7 +1163,12 @@ class PartyEveningMember(models.Model):
                 fields=["evening", "account"], name="unique_party_evening_member"
             )
         ]
-        indexes = [models.Index(fields=["account", "active", "joined_at"])]
+        indexes = [
+            models.Index(
+                fields=["account", "active", "joined_at"],
+                name="pubs_partye_account_bf67fe_idx",
+            )
+        ]
 
 
 class PartyEveningDrink(models.Model):
@@ -1180,7 +1190,12 @@ class PartyEveningDrink(models.Model):
                 fields=["account", "client_id"], name="unique_party_evening_drink_client"
             )
         ]
-        indexes = [models.Index(fields=["evening", "shared_at"])]
+        indexes = [
+            models.Index(
+                fields=["evening", "shared_at"],
+                name="pubs_partye_evening_c017e6_idx",
+            )
+        ]
 
 
 class FriendInviteCode(models.Model):
@@ -3755,4 +3770,5 @@ class ExternalApiDailyUsage(models.Model):
         return f"{self.provider}/{self.operation}/{self.day}: {self.request_count}"
 
 
+from .community_events import CommunityEvent, CommunityEventMembership  # noqa: E402,F401
 from .pub_events import PubEvent  # noqa: E402,F401

@@ -1076,6 +1076,24 @@ export default function FriendsScreen() {
               <ChevronRightIcon size={17} color={Colors.mutedText} />
             </Pressable>
 
+            <Pressable
+              onPress={() => router.push('/community-events' as Href)}
+              accessibilityRole="button"
+              accessibilityLabel={cs.communityEvents.open}
+              style={({ pressed }) => [styles.eveningLink, pressed && styles.dim]}
+            >
+              <View style={styles.eveningLinkIcon}>
+                <UsersIcon size={18} color={Colors.amber} />
+              </View>
+              <View style={styles.eveningLinkText}>
+                <Text style={styles.eveningLinkTitle}>{cs.communityEvents.open}</Text>
+                <Text style={styles.eveningLinkHint} numberOfLines={2}>
+                  {cs.communityEvents.openHint}
+                </Text>
+              </View>
+              <ChevronRightIcon size={17} color={Colors.mutedText} />
+            </Pressable>
+
             {isColdStart ? <View style={styles.heroRule} /> : null}
           </View>
         </Reveal>
