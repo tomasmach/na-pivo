@@ -14,7 +14,6 @@ import {
   Text,
   Pressable,
   TextInput,
-  KeyboardAvoidingView,
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
@@ -104,19 +103,15 @@ export default function ResetPasswordScreen() {
   return (
     <View style={styles.root}>
       {header}
-      <KeyboardAvoidingView
+      <KeyboardAwareScrollView
         style={styles.flex}
-        behavior="padding"
-        keyboardVerticalOffset={insets.top + 56}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: Math.max(insets.bottom + 24, 32) },
+        ]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        <KeyboardAwareScrollView
-          contentContainerStyle={[
-            styles.scrollContent,
-            { paddingBottom: Math.max(insets.bottom + 24, 32) },
-          ]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
           {!linkToken && (
             <View style={styles.fieldGroup}>
               <Text style={styles.label}>{cs.account.resetCodeLabel}</Text>
@@ -179,8 +174,7 @@ export default function ResetPasswordScreen() {
               </View>
             )}
           </View>
-        </KeyboardAwareScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
     </View>
   );
 }
