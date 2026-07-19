@@ -25,7 +25,8 @@ import { FALLBACK_LEVELS, FALLBACK_XP_RULES } from '@/data/mapperXp';
 import { reconcileDiarySnapshot, type DiarySnapshot } from '@/data/diarySync';
 import { useSettingsStore } from '@/stores/settingsStore';
 
-export type AccountStatus = 'idle' | 'loading' | 'ready' | 'error';
+export type AccountStatus = 'idle' | 'loading' | 'ready' | 'reauth-required' | 'error';
+export type SessionResumeResult = 'valid' | 'invalid' | 'unavailable' | 'anonymous';
 
 /**
  * The Mapér snapshot fields the PUT /pub-amenities/votes envelope returns
@@ -124,6 +125,8 @@ interface AccountState {
    * call made while one is already in flight is ignored (concurrency guard).
    */
   initAccount: () => Promise<void>;
+  /** Rehydrate a missing session or validate the signed-in one after resume. */
+  resumeSession: () => Promise<SessionResumeResult>;
   /** Re-fetch GET /v1/account/me into `profile`. */
   refreshProfile: () => Promise<void>;
   /** Flush local diary queues, then refresh the authoritative drink/visit snapshot. */
@@ -276,6 +279,36 @@ export const useAccountStore = create<AccountState>((set, get) => {
       } catch {
         set({ status: 'error' });
       }
+    },
+
+    resumeSession: async () => {
+      let session = get().session;
+      if (!session) {
+        await get().initAccount();
+        session = get().session;
+      }
+      if (!session) return 'unavailable';
+      if (!session.authenticated) return 'anonymous';
+
+      const validation = await auth.validateAccountSession(session);
+      // Ignore a response for a session that was replaced while validation was
+      // in flight (for example by a manual login opened from another screen).
+      if (get().session?.token !== session.token) return 'unavailable';
+
+      if (validation.status === 'invalid') {
+        // Keep the credential and all account-local state intact. The auth
+        // screen can replace the token after an explicit login, while queued
+        // diary work remains available offline in the meantime.
+        set({ status: 'reauth-required' });
+        setTelemetrySession(null);
+        return 'invalid';
+      }
+      if (validation.status === 'unavailable') return 'unavailable';
+
+      set({ profile: validation.profile, status: 'ready' });
+      setTelemetrySession(session);
+      applyAccountSettings(validation.profile.settings);
+      return 'valid';
     },
 
     refreshProfile: async () => {

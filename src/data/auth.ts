@@ -20,6 +20,7 @@ import {
   getSessionToken,
   revertToAnonymous,
   setSession,
+  type AccountSession,
 } from './account';
 import {
   parseAchievementsBlock,
@@ -148,6 +149,12 @@ export type AuthResult =
 
 /** Lightweight ok/err result for calls that don't return a profile. */
 export type AuthActionResult = { ok: true } | { ok: false; code: string; detail: string };
+
+/** Result of explicitly checking a credential-backed session on app resume. */
+export type SessionValidationResult =
+  | { status: 'valid'; profile: AccountProfile }
+  | { status: 'invalid' }
+  | { status: 'unavailable' };
 
 interface RawAccount {
   id?: string;
@@ -750,6 +757,53 @@ export async function fetchAccountProfile(): Promise<AccountProfile | null> {
   const res = await authFetch('/v1/account/me', { method: 'GET', bearer: 'current' });
   if ('networkError' in res || !res.ok) return null;
   return parseProfile(res.data);
+}
+
+/**
+ * Validate the exact in-memory session that was active before the app went to
+ * the background. Unlike `fetchAccountProfile`, this keeps a real 401 separate
+ * from a timeout or server failure, so callers never turn a transient outage
+ * into a logout. The token is used only as the Authorization header and is
+ * never included in telemetry.
+ */
+export async function validateAccountSession(
+  session: AccountSession,
+): Promise<SessionValidationResult> {
+  const endpoint = getBackendEndpoint('/v1/account/me');
+  if (!endpoint) return { status: 'unavailable' };
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const resp = await fetch(endpoint, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${session.token}` },
+      signal: controller.signal,
+    });
+    let data: Record<string, unknown> = {};
+    try {
+      const text = await resp.text();
+      data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+    } catch {
+      data = {};
+    }
+
+    if (resp.status === 401) return { status: 'invalid' };
+    if (!resp.ok) return { status: 'unavailable' };
+    return { status: 'valid', profile: parseProfile(data) };
+  } catch (err) {
+    const isAbort = err instanceof Error && err.name === 'AbortError';
+    if (!isAbort) {
+      trackApiFailure('auth_session_validate', {
+        endpoint: '/v1/account/me',
+        reason: 'exception',
+        error: err,
+      });
+    }
+    return { status: 'unavailable' };
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 /**

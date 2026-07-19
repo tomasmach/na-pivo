@@ -5,7 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { AppState, Linking } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 import { fontAssets } from '@/theme/fonts';
 import { Colors } from '@/theme/colors';
@@ -141,6 +141,11 @@ const onboardingDecisionPromise = useOnboardingStore
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts(fontAssets);
   const router = useRouter();
+  const pathname = usePathname();
+  const pathnameRef = useRef(pathname);
+  useEffect(() => {
+    pathnameRef.current = pathname;
+  }, [pathname]);
   // Hold the splash until the first-run decision resolves too, so a fresh
   // install fades straight into the onboarding instead of flashing the compass.
   const onboardingDecided = useOnboardingStore((s) => s.decision !== 'pending');
@@ -302,12 +307,13 @@ export default function RootLayout() {
     useTallyStore.getState().maybeAutoArchive();
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
-        // A protected iOS Keychain can be temporarily unavailable to a locked
-        // background launch. Retry account hydration once the user foregrounds
-        // the app instead of leaving that transient miss looking like logout.
-        if (!useAccountStore.getState().session) {
-          void useAccountStore.getState().initAccount();
-        }
+        // Rehydrate credentials that were temporarily unavailable, then validate
+        // a signed-in session. Only a real 401 opens the recovery screen; an
+        // offline/server failure keeps the previous state intact.
+        void useAccountStore.getState().resumeSession().then((result) => {
+          if (result !== 'invalid') return;
+          if (!pathnameRef.current.startsWith('/auth')) router.push('/auth' as Href);
+        });
         void trackClientEvent({ event: 'app_foreground', severity: 'info' });
         useTallyStore.getState().maybeAutoArchive();
         void flushPubReportQueue();
@@ -339,7 +345,7 @@ export default function RootLayout() {
       flushWalkingDistance();
       subscription.remove();
     };
-  }, []);
+  }, [router]);
 
   if (!fontsLoaded && !fontError) {
     return null;

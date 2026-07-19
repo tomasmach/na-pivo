@@ -791,6 +791,55 @@ describe('exportAccountData', () => {
 });
 
 // ---------------------------------------------------------------------------
+// validateAccountSession — foreground credential check
+// ---------------------------------------------------------------------------
+describe('validateAccountSession', () => {
+  const session = {
+    deviceId: 'dev-1',
+    accountId: 'acc-1',
+    token: 'session-token',
+    authenticated: true,
+  };
+
+  it('returns the refreshed profile for a valid credential', async () => {
+    const spy = installFetch(
+      fetchResolving(200, {
+        id: 'acc-1',
+        device_id: 'dev-1',
+        nickname: 'jan',
+        display_name: 'Jan',
+        is_anonymous: false,
+        status: 'active',
+      }),
+    );
+
+    const result = await auth.validateAccountSession(session);
+
+    expect(result).toMatchObject({
+      status: 'valid',
+      profile: { id: 'acc-1', nickname: 'jan', displayName: 'Jan', isAnonymous: false },
+    });
+    expect(authHeader(firstCall(spy).init)).toBe('Bearer session-token');
+    expect(mockGetSessionToken).not.toHaveBeenCalled();
+  });
+
+  it('reports only an explicit 401 as an invalid credential', async () => {
+    installFetch(fetchResolving(401, { detail: 'Account token has expired.' }));
+
+    await expect(auth.validateAccountSession(session)).resolves.toEqual({ status: 'invalid' });
+    expect(mockTrackApiFailure).not.toHaveBeenCalled();
+  });
+
+  it.each([500, 503])('keeps HTTP %s separate from invalid credentials', async (status) => {
+    installFetch(fetchResolving(status, { detail: 'Server unavailable.' }));
+
+    await expect(auth.validateAccountSession(session)).resolves.toEqual({
+      status: 'unavailable',
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // fetchAccountProfile — parseMapper + extended parseAchievements (spec §5)
 // ---------------------------------------------------------------------------
 describe('fetchAccountProfile — Mapér block + new badges', () => {

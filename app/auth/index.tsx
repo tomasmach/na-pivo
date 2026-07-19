@@ -141,6 +141,7 @@ export default function AuthScreen() {
   const signInApple = useAccountStore((s) => s.signInApple);
   const requestPasswordReset = useAccountStore((s) => s.requestPasswordReset);
   const updateProfile = useAccountStore((s) => s.updateProfile);
+  const sessionRecoveryRequired = useAccountStore((s) => s.status === 'reauth-required');
 
   const [mode, setMode] = useState<Mode>('login');
   const [email, setEmail] = useState('');
@@ -283,6 +284,11 @@ export default function AuthScreen() {
       : mode === 'login'
         ? cs.account.submitLogin
         : cs.account.submitRegister;
+  const visibleError =
+    error ||
+    (sessionRecoveryRequired
+      ? 'Přihlášení vypršelo. Přihlas se znovu, piva uložená v telefonu zůstanou v bezpečí.'
+      : '');
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + 12 }]}>
@@ -387,9 +393,9 @@ export default function AuthScreen() {
             textContentType={mode === 'login' ? 'password' : 'newPassword'}
           />
 
-          {!!error && (
+          {!!visibleError && (
             <Text style={styles.errorText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {error}
+              {visibleError}
             </Text>
           )}
 
@@ -398,7 +404,7 @@ export default function AuthScreen() {
             <GlowButton
               label={submitLabel}
               onPress={handleSubmit}
-              glow={busy ? 'none' : 'soft'}
+              glow={busy || sessionRecoveryRequired ? 'none' : 'soft'}
               accessibilityLabel={submitLabel}
             />
             {busy === 'submit' && (

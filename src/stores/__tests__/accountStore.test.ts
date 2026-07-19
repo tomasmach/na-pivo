@@ -109,6 +109,10 @@ beforeEach(() => {
   // fetchAccountProfile is used by refreshProfile (e.g. inside logout); default
   // it to null so it doesn't accidentally re-populate the profile.
   mockedAuth.fetchAccountProfile.mockResolvedValue(null);
+  mockedAuth.validateAccountSession.mockResolvedValue({
+    status: 'valid',
+    profile: signedInProfile(),
+  });
   mockReconcileDiarySnapshot.mockResolvedValue(null);
 });
 
@@ -120,6 +124,73 @@ describe('initAccount', () => {
     expect(state.status).toBe('ready');
     expect(state.profile).toBeNull();
     expect(selectIsSignedIn(state)).toBe(true);
+  });
+});
+
+describe('resumeSession', () => {
+  it('validates an existing credential and refreshes its profile', async () => {
+    const previous = signedInProfile({ displayName: 'Starý profil' });
+    const refreshed = signedInProfile({ displayName: 'Čerstvý profil' });
+    useAccountStore.setState({
+      session: { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true },
+      status: 'ready',
+      profile: previous,
+    });
+    mockedAuth.validateAccountSession.mockResolvedValue({ status: 'valid', profile: refreshed });
+
+    await expect(useAccountStore.getState().resumeSession()).resolves.toBe('valid');
+
+    expect(mockedAuth.validateAccountSession).toHaveBeenCalledWith({
+      deviceId: 'd',
+      accountId: 'a',
+      token: 'tok',
+      authenticated: true,
+    });
+    expect(useAccountStore.getState()).toMatchObject({ status: 'ready', profile: refreshed });
+  });
+
+  it('rehydrates credentials that became available again before validating them', async () => {
+    useAccountStore.setState({ session: null, status: 'idle', profile: null });
+    const refreshed = signedInProfile();
+    mockedAuth.fetchAccountProfile.mockResolvedValue(refreshed);
+    mockedAuth.validateAccountSession.mockResolvedValue({ status: 'valid', profile: refreshed });
+
+    await expect(useAccountStore.getState().resumeSession()).resolves.toBe('valid');
+
+    expect(mockEnsureAccount).toHaveBeenCalled();
+    expect(mockedAuth.validateAccountSession).toHaveBeenCalledWith(
+      expect.objectContaining({ token: 'tok', authenticated: true }),
+    );
+    expect(selectIsSignedIn(useAccountStore.getState())).toBe(true);
+  });
+
+  it('preserves the session, profile and local diary work when the token is invalid', async () => {
+    const session = { deviceId: 'd', accountId: 'a', token: 'expired', authenticated: true };
+    const profile = signedInProfile();
+    const diarySnapshot = { accountId: 'a', data: { drinks: [], visits: [] } };
+    useAccountStore.setState({ session, status: 'ready', profile, diarySnapshot });
+    mockedAuth.validateAccountSession.mockResolvedValue({ status: 'invalid' });
+
+    await expect(useAccountStore.getState().resumeSession()).resolves.toBe('invalid');
+
+    expect(useAccountStore.getState()).toMatchObject({
+      session,
+      profile,
+      diarySnapshot,
+      status: 'reauth-required',
+    });
+    expect(mockSetTelemetrySession).toHaveBeenCalledWith(null);
+  });
+
+  it('treats an outage as unavailable and leaves a working session untouched', async () => {
+    const session = { deviceId: 'd', accountId: 'a', token: 'tok', authenticated: true };
+    const profile = signedInProfile();
+    useAccountStore.setState({ session, status: 'ready', profile });
+    mockedAuth.validateAccountSession.mockResolvedValue({ status: 'unavailable' });
+
+    await expect(useAccountStore.getState().resumeSession()).resolves.toBe('unavailable');
+
+    expect(useAccountStore.getState()).toMatchObject({ session, profile, status: 'ready' });
   });
 });
 
@@ -188,6 +259,22 @@ describe('login', () => {
 
     expect(useAccountStore.getState().profile).toBeNull();
     expect(mockEnsureAccount).not.toHaveBeenCalled();
+  });
+
+  it('returns a session waiting for recovery to ready after successful login', async () => {
+    const profile = signedInProfile();
+    const diarySnapshot = { accountId: 'a', data: { drinks: [], visits: [] } };
+    useAccountStore.setState({ status: 'reauth-required', diarySnapshot });
+    mockedAuth.loginEmail.mockResolvedValue(okResult(profile));
+    mockReconcileDiarySnapshot.mockResolvedValue(diarySnapshot.data);
+
+    await useAccountStore.getState().login({ email: 'jan@example.com', password: 'pw' });
+
+    expect(useAccountStore.getState()).toMatchObject({
+      status: 'ready',
+      profile,
+      diarySnapshot,
+    });
   });
 });
 
