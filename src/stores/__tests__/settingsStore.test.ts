@@ -29,6 +29,8 @@ describe('useSettingsStore', () => {
     const state = useSettingsStore.getState();
 
     expect(state.mode).toBe('nearest');
+    expect(state.homePoint).toBeNull();
+    expect(state.navigationProvider).toBe('google');
     expect(state.maxDistanceKm).toBeNull();
     expect(state.priceCurrency).toBe('CZK');
     expect(state.hapticEnabled).toBe(true);
@@ -37,6 +39,21 @@ describe('useSettingsStore', () => {
     expect(state.hidePubNames).toBe(false);
     expect(state.pubReminderEnabled).toBe(false);
     expect(typeof state.surpriseSeed).toBe('number');
+  });
+
+  it('stores only an explicitly set home point and navigation provider', async () => {
+    const { useSettingsStore } = require('../settingsStore');
+    await (useSettingsStore.persist as any).rehydrate?.();
+
+    useSettingsStore.getState().setHomePoint({ lat: 50.08, lng: 14.42 });
+    useSettingsStore.getState().setNavigationProvider('mapy');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(useSettingsStore.getState().homePoint).toEqual({ lat: 50.08, lng: 14.42 });
+    const raw = await currentAsyncStorage().getItem('na-pivo-settings');
+    const persisted = JSON.parse(raw as string).state;
+    expect(persisted.homePoint).toEqual({ lat: 50.08, lng: 14.42 });
+    expect(persisted.navigationProvider).toBe('mapy');
   });
 
   it('defaults hidePubNames to false (show pub names out of the box)', () => {

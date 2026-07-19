@@ -387,6 +387,14 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen
+            name="home-point"
+            options={{
+              presentation: 'fullScreenModal',
+              animation: 'slide_from_right',
+              gestureEnabled: false,
+            }}
+          />
+          <Stack.Screen
             name="celebration"
             options={{
               presentation: 'fullScreenModal',

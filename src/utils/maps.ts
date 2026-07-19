@@ -1,5 +1,6 @@
 import * as Linking from 'expo-linking';
 import type { Pub } from '@/data/pubs';
+import { useSettingsStore, type HomePoint, type NavigationProvider } from '@/stores/settingsStore';
 
 type MapsLinkPub = Pick<Pub, 'lat' | 'lng'> &
   Partial<Pick<Pub, 'name' | 'googlePlaceId'>>;
@@ -33,6 +34,39 @@ export function buildMapsUrl(pub: MapsLinkPub): string {
  * Convenience wrapper that uses expo-linking to open the URL.
  */
 export async function openPubInMaps(pub: MapsLinkPub): Promise<void> {
-  const url = buildMapsUrl(pub);
+  const url = buildNavigationUrl(
+    pub,
+    useSettingsStore.getState().navigationProvider,
+    pub.googlePlaceId,
+  );
+  await Linking.openURL(url);
+}
+
+/** Builds a destination-only route URL. The navigation app determines the start point. */
+export function buildNavigationUrl(
+  destination: HomePoint,
+  provider: NavigationProvider,
+  googlePlaceId?: string,
+): string {
+  if (provider === 'mapy') {
+    const params = new URLSearchParams({
+      end: `${destination.lng},${destination.lat}`,
+      routeType: 'foot_fast',
+      navigate: 'true',
+    });
+    return `https://mapy.com/fnc/v1/route?${params.toString()}`;
+  }
+
+  const params = new URLSearchParams({
+    api: '1',
+    destination: `${destination.lat},${destination.lng}`,
+    travelmode: 'walking',
+  });
+  if (googlePlaceId) params.set('destination_place_id', googlePlaceId);
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
+}
+
+export async function openHomeInMaps(point: HomePoint): Promise<void> {
+  const url = buildNavigationUrl(point, useSettingsStore.getState().navigationProvider);
   await Linking.openURL(url);
 }

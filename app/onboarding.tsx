@@ -19,6 +19,7 @@ import {
   Animated,
   Image,
   Pressable,
+  Platform,
   StyleSheet,
   Text,
   View,
@@ -179,7 +180,9 @@ export default function OnboardingScreen() {
               {item.title}
             </Text>
             <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
-              {item.body}
+              {item.key === 'account' && Platform.OS === 'android'
+                ? 'Účet je volitelný a drží deník v bezpečí napříč telefony. Věk může ověřit Google Play; Na pivo nevidí datum narození ani doklady.'
+                : item.body}
             </Text>
           </Animated.View>
         </View>

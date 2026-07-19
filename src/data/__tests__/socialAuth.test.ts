@@ -43,4 +43,24 @@ describe('getGoogleIdToken', () => {
       code: 'misconfigured',
     });
   });
+
+  it('classifies unavailable Play Services without exposing the native error', async () => {
+    mockHasPlayServices.mockRejectedValueOnce(new Error('private provider detail'));
+    const { getGoogleIdToken } = await import('@/data/socialAuth');
+
+    await expect(getGoogleIdToken()).rejects.toMatchObject({
+      code: 'play_services',
+      message: 'play_services',
+    });
+  });
+
+  it('classifies account-picker failures without exposing the native error', async () => {
+    mockSignIn.mockRejectedValueOnce(new Error('user@example.com private picker detail'));
+    const { getGoogleIdToken } = await import('@/data/socialAuth');
+
+    await expect(getGoogleIdToken()).rejects.toMatchObject({
+      code: 'account_picker',
+      message: 'account_picker',
+    });
+  });
 });
