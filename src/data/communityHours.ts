@@ -185,6 +185,33 @@ export function parseHhMm(value: string): number | null {
   return h * 60 + min;
 }
 
+/**
+ * Canonicalize a time typed into the split hours editor. The editor accepts a
+ * natural single-digit hour such as `0:00`, but the persisted API contract must
+ * always receive `HH:MM`. `24:00` is preserved as the explicit end-of-day
+ * marker; other 24:xx values remain invalid.
+ */
+export function normalizeEditableHhMm(value: string): string | null {
+  const match = /^(\d{1,2}):(\d{1,2})$/.exec(value);
+  if (!match) return null;
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 24 || minutes > 59 || (hours === 24 && minutes !== 0)) return null;
+
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+/** Return an API-ready interval from editor input, or null when it is invalid. */
+export function normalizeEditableHoursInterval(
+  [start, end]: HoursInterval,
+): HoursInterval | null {
+  const normalizedStart = normalizeEditableHhMm(start);
+  const normalizedEnd = normalizeEditableHhMm(end);
+  if (!normalizedStart || !normalizedEnd || normalizedStart === normalizedEnd) return null;
+  return [normalizedStart, normalizedEnd];
+}
+
 /** True when an editable interval is well-formed and non-empty. */
 export function isValidHoursInterval([start, end]: HoursInterval): boolean {
   return parseHhMm(start) !== null && parseHhMm(end) !== null && start !== end;

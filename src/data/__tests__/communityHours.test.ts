@@ -3,6 +3,8 @@ import {
   isAllowedBeerVolume,
   isWeeklyHours,
   isValidHoursInterval,
+  normalizeEditableHhMm,
+  normalizeEditableHoursInterval,
   emptyWeeklyHours,
   parseHhMm,
   formatHhMm,
@@ -108,6 +110,30 @@ describe('isValidHoursInterval', () => {
   it('accepts regular and overnight intervals', () => {
     expect(isValidHoursInterval(['17:00', '22:00'])).toBe(true);
     expect(isValidHoursInterval(['17:00', '02:00'])).toBe(true);
+    expect(isValidHoursInterval(['15:00', '00:00'])).toBe(true);
+    expect(isValidHoursInterval(['15:00', '24:00'])).toBe(true);
+  });
+});
+
+describe('editable opening-hours normalization', () => {
+  it('pads a single-digit midnight before persistence', () => {
+    expect(normalizeEditableHhMm('0:00')).toBe('00:00');
+    expect(normalizeEditableHoursInterval(['15:00', '0:00'])).toEqual([
+      '15:00',
+      '00:00',
+    ]);
+  });
+
+  it('preserves 24:00 as a valid end-of-day marker', () => {
+    expect(normalizeEditableHoursInterval(['15:00', '24:00'])).toEqual([
+      '15:00',
+      '24:00',
+    ]);
+  });
+
+  it('rejects invalid or empty normalized intervals', () => {
+    expect(normalizeEditableHhMm('24:01')).toBeNull();
+    expect(normalizeEditableHoursInterval(['0:00', '00:00'])).toBeNull();
   });
 });
 

@@ -54,8 +54,9 @@ import {
   isAllowedBeerVolume,
   historicalBeersAfterMenuReplacement,
   isSameBeerIdentity,
-  isValidHoursInterval,
   normalizeBeerName,
+  normalizeEditableHhMm,
+  normalizeEditableHoursInterval,
   type DayKey,
   type WeeklyHours,
   type HoursInterval,
@@ -551,14 +552,20 @@ export default function ContributeScreen() {
 
   // ── Validation + submit ───────────────────────────────────────────────────
 
-  // Every typed interval must parse to HH:MM; empty days are fine (closed).
-  const hoursValid = useMemo(
-    () =>
-      DAY_KEYS.every((day) =>
-        hours[day].every((interval) => isValidHoursInterval(interval)),
-      ),
-    [hours],
-  );
+  // Accept natural shorthand such as 0:00 in the editor, but always persist the
+  // canonical HH:MM contract. Empty days remain valid and mean closed.
+  const normalizedHours = useMemo<WeeklyHours | null>(() => {
+    const next = emptyWeeklyHours();
+    for (const day of DAY_KEYS) {
+      for (const interval of hours[day]) {
+        const normalized = normalizeEditableHoursInterval(interval);
+        if (!normalized) return null;
+        next[day].push(normalized);
+      }
+    }
+    return next;
+  }, [hours]);
+  const hoursValid = normalizedHours !== null;
 
   // Clean the beer rows into the exact shape the write endpoint accepts: drop
   // empty names, cap at MAX_BEERS, and only keep values within the endpoint's
@@ -591,7 +598,10 @@ export default function ContributeScreen() {
     const sendHours = hoursTouched;
     const sendBeers = beersTouched;
     if (!sendHours && !sendBeers) return;
-    if (sendHours && !hoursValid) return;
+    if (sendHours && !normalizedHours) return;
+    const submittedHours: WeeklyHours | undefined = sendHours
+      ? (normalizedHours ?? undefined)
+      : undefined;
 
     const entry = buildCommunityEntry(
       {
@@ -600,7 +610,7 @@ export default function ContributeScreen() {
         lat: pub.lat,
         lng: pub.lng,
         city: pub.city,
-        hours: sendHours ? hours : undefined,
+        hours: submittedHours,
         beers: sendBeers ? cleanedBeers : undefined,
       },
       generateUuidV4(),
@@ -608,7 +618,7 @@ export default function ContributeScreen() {
 
     // Optimistic local override so the edit shows instantly, even offline.
     setOverride(cell, {
-      hours: sendHours ? hours : undefined,
+      hours: submittedHours,
       beers: sendBeers ? cleanedBeers : undefined,
       historicalBeers: sendBeers
         ? historicalBeersAfterMenuReplacement(
@@ -654,11 +664,10 @@ export default function ContributeScreen() {
     beersTouched,
     cell,
     cleanedBeers,
-    hours,
     hoursTouched,
-    hoursValid,
     historicalBeers,
     initialCurrentBeers,
+    normalizedHours,
     pub.city,
     pub.id,
     pub.lat,
@@ -1176,6 +1185,10 @@ function SplitTimeInput({
         style={styles.timePartInput}
         value={hours}
         onChangeText={(part) => onChange(withTimePart(value, 0, part))}
+        onBlur={() => {
+          const normalized = normalizeEditableHhMm(value);
+          if (normalized && normalized !== value) onChange(normalized);
+        }}
         placeholder={hourPlaceholder}
         placeholderTextColor={Colors.mutedText}
         keyboardType="number-pad"
@@ -1190,6 +1203,10 @@ function SplitTimeInput({
         style={styles.timePartInput}
         value={minutes}
         onChangeText={(part) => onChange(withTimePart(value, 1, part))}
+        onBlur={() => {
+          const normalized = normalizeEditableHhMm(value);
+          if (normalized && normalized !== value) onChange(normalized);
+        }}
         placeholder={minutePlaceholder}
         placeholderTextColor={Colors.mutedText}
         keyboardType="number-pad"
