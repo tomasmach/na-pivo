@@ -35,6 +35,13 @@ from .auth_views import (
     UnlinkView,
     VerifyEmailView,
 )
+from .party_views import (
+    PartyEveningCollectionView,
+    PartyEveningDetailView,
+    PartyEveningDrinkView,
+    PartyEveningEndView,
+    PartyEveningJoinView,
+)
 from .views import (
     AccountAvatarView,
     AccountExportView,
@@ -95,6 +102,27 @@ from .views import (
 )
 
 urlpatterns = [
+    path("party-evenings", PartyEveningCollectionView.as_view(), name="party-evenings"),
+    path(
+        "party-evenings/<str:code>/join",
+        PartyEveningJoinView.as_view(),
+        name="party-evening-join",
+    ),
+    path(
+        "party-evenings/<str:code>/end",
+        PartyEveningEndView.as_view(),
+        name="party-evening-end",
+    ),
+    path(
+        "party-evenings/<str:code>/drinks",
+        PartyEveningDrinkView.as_view(),
+        name="party-evening-drinks",
+    ),
+    path(
+        "party-evenings/<str:code>",
+        PartyEveningDetailView.as_view(),
+        name="party-evening-detail",
+    ),
     path("pub-hours", PubHoursView.as_view(), name="pub-hours"),
     path("pub-community", PubCommunityView.as_view(), name="pub-community"),
     path("pub-menu-scan", MenuScanView.as_view(), name="pub-menu-scan"),

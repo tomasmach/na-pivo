@@ -1058,6 +1058,24 @@ export default function FriendsScreen() {
               <ContestTeaser />
             </View>
 
+            <Pressable
+              onPress={() => router.push('/party' as Href)}
+              accessibilityRole="button"
+              accessibilityLabel={cs.partyEvening.open}
+              style={({ pressed }) => [styles.eveningLink, pressed && styles.dim]}
+            >
+              <View style={styles.eveningLinkIcon}>
+                <UsersIcon size={18} color={Colors.amber} />
+              </View>
+              <View style={styles.eveningLinkText}>
+                <Text style={styles.eveningLinkTitle}>{cs.partyEvening.open}</Text>
+                <Text style={styles.eveningLinkHint} numberOfLines={2}>
+                  {cs.partyEvening.openHint}
+                </Text>
+              </View>
+              <ChevronRightIcon size={17} color={Colors.mutedText} />
+            </Pressable>
+
             {isColdStart ? <View style={styles.heroRule} /> : null}
           </View>
         </Reveal>
@@ -1477,6 +1495,38 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 21,
     color: Colors.foamMuted,
+  },
+  eveningLink: {
+    minHeight: 64,
+    marginTop: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: Colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  eveningLinkIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.amber, 0.1),
+  },
+  eveningLinkText: { flex: 1, minWidth: 0 },
+  eveningLinkTitle: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 15,
+    color: Colors.foam,
+  },
+  eveningLinkHint: {
+    marginTop: 2,
+    fontFamily: Fonts.ui.regular,
+    fontSize: 12,
+    lineHeight: 16,
+    color: Colors.mutedText,
   },
   pulseCard: {
     position: 'relative',
