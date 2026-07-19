@@ -5,6 +5,7 @@ import json
 import pytest
 from django.core.management import call_command
 
+from pubs.enrichment import geohash8
 from pubs.management.commands.apply_missing_pub_fixes import FIXES
 from pubs.models import PubReport, UserAddedPub
 
@@ -51,3 +52,33 @@ def test_apply_missing_pub_fixes_deactivates_matching_piv4_report():
     report.refresh_from_db()
     assert report.active is False
     assert UserAddedPub.objects.filter(cache_key=fix.cache_key, name=fix.name).exists()
+
+
+@pytest.mark.django_db
+def test_apply_missing_pub_fixes_includes_verified_kurnik_sopa(capsys):
+    call_command("apply_missing_pub_fixes", "--apply", "--issue", "PIV-71")
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["dry_run"] is False
+    assert payload["records"] == [
+        {
+            "action": "create",
+            "active_report_ids_to_deactivate": [],
+            "address": "Pavlouskova 4457/24, 708 00 Ostrava-Poruba",
+            "cache_key": geohash8(49.8388742, 18.1629726),
+            "city": "Ostrava-Poruba",
+            "client_id": str(FIXES[-1].client_id),
+            "issue": "PIV-71",
+            "lat": 49.8388742,
+            "lng": 18.1629726,
+            "name": "Kurnik Šopa Hospoda",
+            "source_note": (
+                "The venue's official website and current Firmy.cz listing confirm "
+                "the Poruba pub, address, and map position."
+            ),
+            "source_url": "https://www.kurniksopahospoda.cz/",
+        }
+    ]
+    pub = UserAddedPub.objects.get(client_id=FIXES[-1].client_id)
+    assert pub.active is True
+    assert pub.address == "Pavlouskova 4457/24, 708 00 Ostrava-Poruba"
