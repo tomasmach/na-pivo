@@ -95,7 +95,9 @@ export const useSettingsStore = create<SettingsState>()(
       pubReminderEnabled: false,
       beerCountReminderEnabled: true,
       beerCountReminderIntervalMinutes: 20,
-      waterNudgeEnabled: true,
+      // Explicit opt-in: a responsible-drinking nudge must never appear as an
+      // unexpected judgment during an evening.
+      waterNudgeEnabled: false,
       friendPushEnabled: false,
       friendPushPrompted: false,
       friendPushOptedOut: false,

@@ -38,7 +38,20 @@ describe('useSettingsStore', () => {
     expect(state.hideClosedPubs).toBe(true);
     expect(state.hidePubNames).toBe(false);
     expect(state.pubReminderEnabled).toBe(false);
+    expect(state.waterNudgeEnabled).toBe(false);
     expect(typeof state.surpriseSeed).toBe('number');
+  });
+
+  it('persists the local-only water reminder opt-in', async () => {
+    const { useSettingsStore } = require('../settingsStore');
+    await (useSettingsStore.persist as any).rehydrate?.();
+
+    useSettingsStore.getState().setWaterNudgeEnabled(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const raw = await currentAsyncStorage().getItem('na-pivo-settings');
+    const persisted = JSON.parse(raw as string).state;
+    expect(persisted.waterNudgeEnabled).toBe(true);
   });
 
   it('stores only an explicitly set home point and navigation provider', async () => {

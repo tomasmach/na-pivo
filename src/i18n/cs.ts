@@ -382,7 +382,7 @@ export const cs = {
     },
     waterNudge: {
       title: 'Připomenout vodu',
-      subtitle: 'Po pár pivech v tahu ti šeptnu, ať dáš i jednu vodu',
+      subtitle: 'Volitelně po čtyřech pivech, jen v telefonu. Neodhaduje střízlivost.',
     },
     hideClosed: {
       title: 'Skrýt zavřené hospody',
@@ -1676,14 +1676,13 @@ export const cs = {
     rapidDrinkBody: (lastDrinkText: string) =>
       `${lastDrinkText}. Fakt chceš přidat další?`,
     rapidDrinkConfirm: 'Přidat další',
-    // — Water nudge — a light, self-aware poke every few beers in a row. It's a
-    // mate at the table, not a health app: never moralizing. `count` is the beer
-    // that tripped it (4, 8, 12…); the line rotates so it doesn't get old.
+    // A local, optional hydration nudge. It makes no health, sobriety, BAC, or
+    // driving claim. `count` is the beer that triggered it (4, 8, 12...).
     waterNudge: (count: number) => {
       const lines = [
-        'Čtvrtý v tahu. Co takhle prohodit jedno s vodou? 💧',
-        'Osmý padá. Sklenka vody mezi tím a ráno ti poděkuje. 💧',
-        'Jedeš jak parní stroj. Voda taky teče, dej jednu. 💧',
+        'Jestli chceš, dej si teď i sklenici vody.',
+        'Jen malá připomínka: voda může přijít vhod.',
+        'Co takhle krátká pauza a sklenice vody?',
       ];
       const index = Math.max(0, Math.round(count / 4) - 1) % lines.length;
       return lines[index];

@@ -160,7 +160,7 @@ beforeEach(() => {
   fetchPubHours.mockImplementation(() => new Promise(() => undefined));
   useTallyStore.setState({ current: null, history: [] });
   useCommunityStore.setState({ overrides: {} });
-  useSettingsStore.setState({ priceCurrency: 'CZK' });
+  useSettingsStore.setState({ priceCurrency: 'CZK', waterNudgeEnabled: false });
 });
 
 afterEach(() => {
@@ -667,6 +667,7 @@ describe('CounterScreen water nudge', () => {
   }
 
   it('fires once when a session hits its 4th beer, and again for a fresh session', async () => {
+    useSettingsStore.setState({ waterNudgeEnabled: true });
     const showToast = jest.fn();
     useToastStore.setState({ show: showToast });
     useCommunityStore.setState({
@@ -710,5 +711,27 @@ describe('CounterScreen water nudge', () => {
       copy.counter.waterNudge(4),
       expect.objectContaining({ icon: expect.anything() }),
     );
+  });
+
+  it('stays quiet when the local opt-in is disabled', async () => {
+    const showToast = jest.fn();
+    useToastStore.setState({ show: showToast });
+    useCommunityStore.setState({
+      overrides: { [CELL]: { beers: [{ name: 'Plzeň', priceCzk: 62, volumeMl: 500 }], updatedAt: 1 } },
+    });
+    useNearbyPub.mockReturnValue(nearbyState());
+    seedSession('session-disabled', 3);
+
+    let renderer: any;
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(CounterScreen));
+    });
+
+    await act(async () => {
+      findBeerCard(renderer).props.onPress();
+      await Promise.resolve();
+    });
+
+    expect(showToast).not.toHaveBeenCalled();
   });
 });
