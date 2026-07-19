@@ -1778,6 +1778,7 @@ class PubsNearQuerySerializer(_LatLngBoundsValidationMixin, serializers.Serializ
         max_length=400,
         trim_whitespace=True,
     )
+    include_other_places = serializers.BooleanField(required=False, default=False)
 
     def validate_radius_km(self, value: float | None) -> float:
         # Default when omitted/null; otherwise clamp into (0, 100]. A value <= 0

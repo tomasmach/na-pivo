@@ -11,15 +11,18 @@ from pathlib import Path
 import geohash2
 
 try:
+    from pubs.discovery import discovery_metadata
     from pubs.enrichment.coverage import coverage_country
 except ImportError:  # Direct invocation: python scripts/build_pub_directory_export.py
     import sys
 
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from pubs.discovery import discovery_metadata
     from pubs.enrichment.coverage import coverage_country
 
 OUTPUT_FIELDS = (
     "country", "name", "lat", "lng", "cache_key", "city", "venue_kind",
+    "discovery_kind", "has_beer_signal",
     "opening_hours_raw", "rating_value", "rating_count", "rating_label",
     "source_ref", "confidence", "status",
 )
@@ -46,13 +49,25 @@ def _load_verdicts(path: Path) -> dict[str, dict]:
 def _load_bulk_rows(path: Path) -> dict[str, dict]:
     columns = (
         "cache_key", "name", "lat", "lng", "opening_hours_raw", "source",
-        "source_ref", "confidence", "status", "venue_kind", "venue_categories",
+        "source_ref", "confidence", "status", "venue_kind", "venue_categories", "venue_tags",
         "rating_value", "rating_count", "rating_label", "fetched_at",
     )
     with sqlite3.connect(path) as connection:
         connection.row_factory = sqlite3.Row
         rows = connection.execute(f"SELECT {', '.join(columns)} FROM pubs_pubhours")
         return {row["cache_key"]: dict(row) for row in rows}
+
+
+def _string_list(value: object) -> list[str]:
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, str)]
+    if not isinstance(value, str) or not value.strip():
+        return []
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return []
+    return [item for item in parsed if isinstance(item, str)] if isinstance(parsed, list) else []
 
 
 def build_export(cz_catalogue: Path, sk_catalogue: Path, bulk_db: Path, verdicts_path: Path, out: Path) -> dict[str, Counter]:
@@ -98,6 +113,21 @@ def build_export(cz_catalogue: Path, sk_catalogue: Path, bulk_db: Path, verdicts
                         stats[country]["skipped_noise"] += 1
                         continue
 
+                categories = _string_list(
+                    matched.get("venue_categories") if matched else entry.get("venue_categories")
+                )
+                tags = _string_list(
+                    matched.get("venue_tags") if matched else entry.get("venue_tags")
+                )
+                discovery_kind, has_beer_signal = discovery_metadata(
+                    name=name,
+                    categories=categories,
+                    tags=tags,
+                )
+                if discovery_kind != "pub" and not has_beer_signal:
+                    stats[country]["skipped_noise"] += 1
+                    continue
+
                 row = {
                     "country": country,
                     "name": name,
@@ -106,6 +136,8 @@ def build_export(cz_catalogue: Path, sk_catalogue: Path, bulk_db: Path, verdicts
                     "cache_key": cache_key,
                     "city": city,
                     "venue_kind": venue_kind,
+                    "discovery_kind": discovery_kind,
+                    "has_beer_signal": has_beer_signal,
                     "opening_hours_raw": matched.get("opening_hours_raw") if matched else None,
                     "rating_value": matched.get("rating_value") if matched else None,
                     "rating_count": matched.get("rating_count") if matched else None,

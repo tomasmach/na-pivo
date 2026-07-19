@@ -5788,10 +5788,16 @@ _PRICE_INDEX_MAX_RESULTS = 300
 _PUB_RELEVANCE_DISTANCE_BAND_KM = 0.25
 
 
-def _directory_relevance_rank(distance_km: float, venue_kind: str, pk: int) -> tuple:
+def _directory_relevance_rank(
+    distance_km: float,
+    venue_kind: str,
+    discovery_kind: str,
+    pk: int,
+) -> tuple:
+    discovery_rank = 0 if discovery_kind == PubDirectory.DiscoveryKind.PUB else 1
     venue_rank = 0 if venue_kind == PubHours.VenueKind.PUB else 1
     distance_band = int(distance_km / _PUB_RELEVANCE_DISTANCE_BAND_KM)
-    return distance_band, venue_rank, distance_km, pk
+    return discovery_rank, distance_band, venue_rank, distance_km, pk
 
 
 def _nearest_rows(
@@ -6227,7 +6233,7 @@ def _pub_directory_item(row: PubDirectory) -> dict:
             "isoCode": country_code.upper(),
         }
     )
-    return {
+    item = {
         "name": row.name,
         "label": (
             "Hospoda"
@@ -6237,6 +6243,10 @@ def _pub_directory_item(row: PubDirectory) -> dict:
         "position": {"lat": row.lat, "lon": row.lng},
         "regionalStructure": regional_structure,
     }
+    if row.discovery_kind != PubDirectory.DiscoveryKind.PUB:
+        item["label"] = "Bar"
+        item["discoveryKind"] = row.discovery_kind
+    return item
 
 
 def _nearby_pub_directory_items(
@@ -6244,6 +6254,8 @@ def _nearby_pub_directory_items(
     lng: float,
     radius_km: float,
     max_items: int,
+    *,
+    include_other_places: bool = False,
 ) -> list[dict]:
     """Return nearest eligible, unreported directory rows inside a radius."""
     d_lat = radius_km / 111.0
@@ -6256,8 +6268,19 @@ def _nearby_pub_directory_items(
         output_field=FloatField(),
     )
     scan_limit = max(0, max_items) * 3
+    discovery_filter = Q(discovery_kind=PubDirectory.DiscoveryKind.PUB)
+    if include_other_places:
+        discovery_filter |= Q(
+            discovery_kind__in=(
+                PubDirectory.DiscoveryKind.SEASONAL_STAND,
+                PubDirectory.DiscoveryKind.CAMPSITE,
+                PubDirectory.DiscoveryKind.SPORTS_VENUE,
+            ),
+            has_beer_signal=True,
+        )
     candidates = list(
         PubDirectory.objects.filter(
+            discovery_filter,
             active=True,
             lat__gte=lat - d_lat,
             lat__lte=lat + d_lat,
@@ -6276,6 +6299,8 @@ def _nearby_pub_directory_items(
             "city",
             "country",
             "venue_kind",
+            "discovery_kind",
+            "has_beer_signal",
         )[:scan_limit]
     )
     if not candidates:
@@ -6292,7 +6317,7 @@ def _nearby_pub_directory_items(
     nearby = [entry for entry in nearby if entry[0] <= radius_km]
     nearby.sort(
         key=lambda entry: _directory_relevance_rank(
-            entry[0], entry[1].venue_kind, entry[1].pk
+            entry[0], entry[1].venue_kind, entry[1].discovery_kind, entry[1].pk
         )
     )
     return [_pub_directory_item(row) for _, row in nearby[:max(0, max_items)]]
@@ -6334,6 +6359,7 @@ class PubsNearView(APIView):
         radius_km: float = data["radius_km"]
         beer_brand_key = data.get("beer_brand") or ""
         amenity_keys: list[str] = data.get("amenities") or []
+        include_other_places: bool = data["include_other_places"]
         max_amenity_filters = max(
             1,
             int(getattr(settings, "PUBS_NEAR_MAX_AMENITY_FILTERS", 5)),
@@ -6443,13 +6469,16 @@ class PubsNearView(APIView):
                 "cached": cached,
                 "fetched_at": fetched_at,
             }
-            if amenity_keys:
-                body["applied_filters"] = {
-                    "version": 1,
+            if amenity_keys or include_other_places:
+                applied_filters = {
+                    "version": 2 if include_other_places else 1,
                     "match": "all",
                     "amenities": amenity_keys,
                     "beer_brand": beer_brand_key or None,
                 }
+                if include_other_places:
+                    applied_filters["include_other_places"] = True
+                body["applied_filters"] = applied_filters
             return body
 
         user_added_items = _nearby_user_added_pub_items(data["lat"], data["lng"], radius_km)
@@ -6517,6 +6546,7 @@ class PubsNearView(APIView):
                 data["lng"],
                 radius_km,
                 int(getattr(settings, "PUBS_NEAR_LOCAL_MAX_ITEMS", 300)),
+                include_other_places=include_other_places,
             )
             if directory_items:
                 return Response(

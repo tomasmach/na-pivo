@@ -37,22 +37,22 @@ def test_polygon_catalogue_skip_and_tier_mapping(tmp_path):
         connection.execute("""CREATE TABLE pubs_pubhours (
             cache_key TEXT, name TEXT, lat REAL, lng REAL, opening_hours_raw TEXT,
             source TEXT, source_ref TEXT, confidence REAL, status TEXT, venue_kind TEXT,
-            venue_categories TEXT, rating_value REAL, rating_count INTEGER,
+            venue_categories TEXT, venue_tags TEXT, rating_value REAL, rating_count INTEGER,
             rating_label TEXT, fetched_at TEXT)""")
         matched = cz_entries[3]
         connection.execute(
-            "INSERT INTO pubs_pubhours VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO pubs_pubhours VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (geohash8(matched["lat"], matched["lng"]), matched["name"], matched["lat"],
              matched["lng"], None, "firmy", "firm-1", 0.9, "unknown", "not_pub",
-             "[]", 3.0, 2, "Dobré", "2026-01-01"),
+             "[]", "[]", 3.0, 2, "Dobré", "2026-01-01"),
         )
         # Firmy-matched 'maybe' with a not_pub name verdict → downgraded to not_pub.
         lawyer = cz_entries[4]
         connection.execute(
-            "INSERT INTO pubs_pubhours VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO pubs_pubhours VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (geohash8(lawyer["lat"], lawyer["lng"]), lawyer["name"], lawyer["lat"],
              lawyer["lng"], None, "firmy", "firm-2", 0.99, "unknown", "maybe",
-             "[]", 4.4, 1, "Výborné", "2026-01-01"),
+             "[]", "[]", 4.4, 1, "Výborné", "2026-01-01"),
         )
 
     stats = build_export(cz, sk, database, verdicts, output)

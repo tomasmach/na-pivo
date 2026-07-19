@@ -170,6 +170,30 @@ describe('searchPubsNear — backend proxy only', () => {
     expect(pubs[0].venueKind).toBe('pub');
   });
 
+  it('requests and preserves reviewed other tap place metadata only when opted in', async () => {
+    setBackend('https://api.example.com');
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        items: [{
+          ...PUB_ITEM,
+          name: 'Kemp s výčepem',
+          label: 'Bar',
+          discoveryKind: 'campsite',
+        }],
+      }),
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const pubs = await searchPubsNear(50.08, 14.42, 25, undefined, {
+      includeOtherPlaces: true,
+    });
+
+    expect(calledUrls(fetchMock)[0]).toContain('include_other_places=true');
+    expect(pubs[0].discoveryKind).toBe('campsite');
+  });
+
   it('maps cache-only nearby details onto the pub', async () => {
     setBackend('https://api.example.com');
     const fetchMock = jest.fn(async () => ({

@@ -151,6 +151,7 @@ export function useCompass(
   priceMinCzk: number | null = null,
   priceMaxCzk: number | null = null,
   sensorsEnabled: boolean = true,
+  includeOtherPlaces: boolean = false,
 ): UseCompassResult {
   // — Settings from store —
   const mode = useSettingsStore((s) => s.mode);
@@ -220,6 +221,7 @@ export function useCompass(
   const lastFetchedMaxKmRef = useRef<number | null | undefined>(undefined);
   const lastFetchedBeerBrandKeyRef = useRef<string>("");
   const lastFetchedAmenityKeyRef = useRef<string>("");
+  const lastFetchedIncludeOtherPlacesRef = useRef(false);
   const filterRequestInFlightKeyRef = useRef<string | null>(null);
   const latestFilterKeyRef = useRef("|");
   const mountedRef = useRef(true);
@@ -227,7 +229,7 @@ export function useCompass(
   const RADIUS_DEBOUNCE_MS = 700;
   const activeBeerBrandKey = (beerBrandKey ?? "").trim();
   const activeAmenityKey = Array.from(new Set(amenityKeys)).sort().join(',');
-  const activeFilterKey = `${activeBeerBrandKey}|${activeAmenityKey}`;
+  const activeFilterKey = `${activeBeerBrandKey}|${activeAmenityKey}|${includeOtherPlaces ? 'other' : ''}`;
   const [fetchedFilterKey, setFetchedFilterKey] = useState('|');
   const [selectedFilterKey, setSelectedFilterKey] = useState('|');
   const filterLookupPending = activeFilterKey !== selectedFilterKey;
@@ -256,8 +258,14 @@ export function useCompass(
       if (cancelled) return;
       const brandFilterChanged = activeBeerBrandKey !== lastFetchedBeerBrandKeyRef.current;
       const amenityFilterChanged = activeAmenityKey !== lastFetchedAmenityKeyRef.current;
-      const force = forceNextSearchRef.current || brandFilterChanged || amenityFilterChanged;
-      if (brandFilterChanged || amenityFilterChanged) {
+      const otherPlacesChanged =
+        includeOtherPlaces !== lastFetchedIncludeOtherPlacesRef.current;
+      const force =
+        forceNextSearchRef.current ||
+        brandFilterChanged ||
+        amenityFilterChanged ||
+        otherPlacesChanged;
+      if (brandFilterChanged || amenityFilterChanged || otherPlacesChanged) {
         preserveFilterRequest = true;
         filterRequestInFlightKeyRef.current = activeFilterKey;
       }
@@ -266,12 +274,14 @@ export function useCompass(
       lastFetchedMaxKmRef.current = maxDistanceKm;
       lastFetchedBeerBrandKeyRef.current = activeBeerBrandKey;
       lastFetchedAmenityKeyRef.current = activeAmenityKey;
+      lastFetchedIncludeOtherPlacesRef.current = includeOtherPlaces;
 
       fetchPubsNear(positionLat, positionLng, undefined, {
         force,
         radiusKm,
         beerBrandKey: activeBeerBrandKey || null,
         amenityKeys: activeAmenityKey ? activeAmenityKey.split(',') : [],
+        includeOtherPlaces,
       })
         .then(() => {
           if (
@@ -314,6 +324,7 @@ export function useCompass(
       maxDistanceKm !== lastFetchedMaxKmRef.current &&
       activeBeerBrandKey === lastFetchedBeerBrandKeyRef.current &&
       activeAmenityKey === lastFetchedAmenityKeyRef.current &&
+      includeOtherPlaces === lastFetchedIncludeOtherPlacesRef.current &&
       !forceNextSearchRef.current;
 
     if (radiusOnlyChange) {
@@ -340,6 +351,7 @@ export function useCompass(
     activeBeerBrandKey,
     activeAmenityKey,
     activeFilterKey,
+    includeOtherPlaces,
     searchRetryNonce,
   ]);
 
@@ -414,6 +426,7 @@ export function useCompass(
   const lastCatalogRevisionRef = useRef<number>(catalogRevision);
   const lastBeerBrandKeyRef = useRef<string>(activeBeerBrandKey);
   const lastAmenityKeyRef = useRef<string>(activeAmenityKey);
+  const lastIncludeOtherPlacesRef = useRef(includeOtherPlaces);
   // The price range is applied locally at selection time (no backend request), so
   // it only needs to drive a re-selection — not a refetch — when it changes.
   const lastPriceMinRef = useRef<number | null>(priceMinCzk);
@@ -470,10 +483,11 @@ export function useCompass(
     const catalogChanged = catalogRevision !== lastCatalogRevisionRef.current;
     const beerBrandChanged = activeBeerBrandKey !== lastBeerBrandKeyRef.current;
     const amenityFilterChanged = activeAmenityKey !== lastAmenityKeyRef.current;
+    const otherPlacesChanged = includeOtherPlaces !== lastIncludeOtherPlacesRef.current;
     const priceFilterChanged =
       priceMinCzk !== lastPriceMinRef.current || priceMaxCzk !== lastPriceMaxRef.current;
     const pubDataChanged =
-      (beerBrandChanged || amenityFilterChanged) &&
+      (beerBrandChanged || amenityFilterChanged || otherPlacesChanged) &&
       pubDataRevision !== lastPubDataRevisionRef.current;
 
     // A genuine context change (the user moved enough, or switched mode/maxKm)
@@ -508,6 +522,7 @@ export function useCompass(
       lastCatalogRevisionRef.current = catalogRevision;
       lastBeerBrandKeyRef.current = activeBeerBrandKey;
       lastAmenityKeyRef.current = activeAmenityKey;
+      lastIncludeOtherPlacesRef.current = includeOtherPlaces;
       lastPriceMinRef.current = priceMinCzk;
       lastPriceMaxRef.current = priceMaxCzk;
       lastPubDataRevisionRef.current = pubDataRevision;
@@ -534,7 +549,15 @@ export function useCompass(
 
       const pub =
         mode === 'nearest'
-          ? findNearestPub({ lat, lng, maxKm, excludeIds, excludeCacheKeys, filterPub })
+          ? findNearestPub({
+              lat,
+              lng,
+              maxKm,
+              excludeIds,
+              excludeCacheKeys,
+              filterPub,
+              includeOtherPlaces,
+            })
           : findRandomPubInRadius({
               lat,
               lng,
@@ -543,6 +566,7 @@ export function useCompass(
               excludeIds,
               excludeCacheKeys,
               filterPub,
+              includeOtherPlaces,
             });
 
       setCurrentPub(pub);
@@ -568,6 +592,7 @@ export function useCompass(
     excludeRevision,
     activeBeerBrandKey,
     activeAmenityKey,
+    includeOtherPlaces,
     priceMinCzk,
     priceMaxCzk,
     activeFilterKey,

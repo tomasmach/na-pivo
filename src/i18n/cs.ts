@@ -242,6 +242,9 @@ export const cs = {
     pubFilterLimit: (count: number) => `Vyber nejvýš ${count} vlastností, ať má kompas kde hledat.`,
     pubFilterClear: 'Zrušit',
     pubFilterApply: 'Ukázat hospody',
+    otherPlacesSection: 'MÍSTA',
+    otherPlacesFilter: 'Další místa s výčepem',
+    otherPlacesHint: 'Stánky, kempy a sportovní areály jen s potvrzeným pivním signálem.',
     // Price filter (histogram + two-thumb range slider) copy
     priceFilterLabel: 'CENA PIVA',
     priceFilterSubtitle: 'Velké pivo · sloupce po 5 Kč. Ceny do roka, starší ber orientačně.',
@@ -2103,6 +2106,7 @@ export const cs = {
     beerBrandFilterInput: 'Filtrovat hospody podle značky piva ze záznamů',
     beerBrandFilterSuggestion: (name: string) => `Vybrat značku ${name}`,
     clearBeerBrandFilter: 'Zrušit filtr značky piva',
+    toggleOtherTapPlaces: 'Zahrnout další místa s výčepem',
     openBeerBrandFilter: 'Otevřít filtr značky piva',
     beerBrandFilterActive: (name: string) => `Filtr piva: ${name}. Klepni pro změnu`,
     selectBeerBrand: (name: string) => `Filtrovat na ${name}`,

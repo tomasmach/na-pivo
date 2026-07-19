@@ -1118,6 +1118,7 @@ export default function CompassScreen() {
     pubFilters.priceMinCzk,
     pubFilters.priceMaxCzk,
     !mapOpen,
+    pubFilters.includeOtherPlaces === true,
   );
   const activeFilterCount = activePubSearchFilterCount(pubFilters);
   const hidePubNames = useSettingsStore((s) => s.hidePubNames);

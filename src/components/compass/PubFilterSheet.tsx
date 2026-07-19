@@ -26,6 +26,7 @@ import {
   CircleDotIcon,
   CreditCardIcon,
   MicIcon,
+  MapPinnedIcon,
   RadioIcon,
   SearchIcon,
   SoccerBallIcon,
@@ -196,7 +197,13 @@ export function PubFilterSheet({
   }, [draft]);
 
   const clear = useCallback(() => {
-    setDraft({ beerBrand: null, amenityKeys: [], priceMinCzk: null, priceMaxCzk: null });
+    setDraft({
+      beerBrand: null,
+      amenityKeys: [],
+      includeOtherPlaces: false,
+      priceMinCzk: null,
+      priceMaxCzk: null,
+    });
     setQuery('');
     setSuggestions([]);
     setSuggestionsQuery('');
@@ -215,6 +222,7 @@ export function PubFilterSheet({
   const hasDraftFilters =
     draft.beerBrand !== null ||
     draft.amenityKeys.length > 0 ||
+    draft.includeOtherPlaces === true ||
     draft.priceMinCzk !== null ||
     draft.priceMaxCzk !== null;
 
@@ -352,6 +360,27 @@ export function PubFilterSheet({
               priceMaxCzk={draft.priceMaxCzk}
               onChange={setPriceRange}
             />
+
+            <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.compass.otherPlacesSection}
+            </Text>
+            <View style={styles.chipsWrap}>
+              <FilterChip
+                label={cs.compass.otherPlacesFilter}
+                active={draft.includeOtherPlaces === true}
+                icon={MapPinnedIcon}
+                onPress={() =>
+                  setDraft((current) => ({
+                    ...current,
+                    includeOtherPlaces: current.includeOtherPlaces !== true,
+                  }))
+                }
+                accessibilityLabel={cs.a11y.toggleOtherTapPlaces}
+              />
+            </View>
+            <Text style={styles.otherPlacesHint} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.compass.otherPlacesHint}
+            </Text>
 
             {groupedAmenities.map(({ section, items }) => (
               <View key={section}>
@@ -758,6 +787,14 @@ const styles = StyleSheet.create({
   titleTextWrap: { flex: 1 },
   title: { fontFamily: Fonts.display.extrabold, fontSize: 24, color: Colors.foam },
   subtitle: { marginTop: 2, fontFamily: Fonts.ui.regular, fontSize: 13, lineHeight: 18, color: Colors.mutedText },
+  otherPlacesHint: {
+    marginTop: Spacing.xs,
+    marginBottom: Spacing.sm,
+    fontFamily: Fonts.ui.regular,
+    fontSize: 12,
+    lineHeight: 17,
+    color: Colors.mutedText,
+  },
   closeBtn: { width: HitArea.min, height: HitArea.min, alignItems: 'center', justifyContent: 'center', marginTop: -Spacing.xs },
   content: { marginTop: Spacing.sm },
   sectionLabel: {

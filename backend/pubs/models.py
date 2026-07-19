@@ -162,6 +162,12 @@ class PubHours(models.Model):
 class PubDirectory(models.Model):
     """Imported country-wide pub directory, separate from user-owned data."""
 
+    class DiscoveryKind(models.TextChoices):
+        PUB = "pub", "Pub"
+        SEASONAL_STAND = "seasonal_stand", "Seasonal stand"
+        CAMPSITE = "campsite", "Campsite"
+        SPORTS_VENUE = "sports_venue", "Sports venue"
+
     name = models.CharField(max_length=255)
     name_key = models.CharField(max_length=255)
     lat = models.FloatField()
@@ -174,6 +180,18 @@ class PubDirectory(models.Model):
         choices=PubHours.VenueKind.choices,
         default=PubHours.VenueKind.UNKNOWN,
         db_index=True,
+    )
+    discovery_kind = models.CharField(
+        max_length=24,
+        choices=DiscoveryKind.choices,
+        default=DiscoveryKind.PUB,
+        db_index=True,
+        help_text="Primary pub or one of the reviewed opt-in discovery categories.",
+    )
+    has_beer_signal = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Reviewed source has an explicit draft-beer, beer, bar, or pub signal.",
     )
     source = models.CharField(max_length=32)
     active = models.BooleanField(default=True)

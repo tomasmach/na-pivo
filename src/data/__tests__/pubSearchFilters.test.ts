@@ -38,14 +38,14 @@ describe('pub search filters', () => {
       priceMaxCzk: null,
     };
     expect(pubSearchFilterKey({ ...filters, amenityKeys: [...filters.amenityKeys] })).toBe(
-      'pilsner-urquell|payment_card,game_foosball|:',
+      'pilsner-urquell|payment_card,game_foosball||:',
     );
     expect(activePubSearchFilterCount({ ...filters, amenityKeys: [...filters.amenityKeys] })).toBe(3);
   });
 
   it('counts the price range as one active filter and keys both boundaries', () => {
     const filters = { beerBrand: null, amenityKeys: [], priceMinCzk: 35, priceMaxCzk: 45 };
-    expect(pubSearchFilterKey(filters)).toBe('||35:45');
+    expect(pubSearchFilterKey(filters)).toBe('|||35:45');
     expect(activePubSearchFilterCount(filters)).toBe(1);
   });
 
@@ -53,6 +53,18 @@ describe('pub search filters', () => {
     const ranged = { beerBrand: null, amenityKeys: [], priceMinCzk: 35, priceMaxCzk: 45 };
     const open = { beerBrand: null, amenityKeys: [], priceMinCzk: null, priceMaxCzk: null };
     expect(backendPubSearchFilterKey(ranged)).toBe(backendPubSearchFilterKey(open));
+  });
+
+  it('treats other tap places as one explicit backend filter', () => {
+    const filters = {
+      beerBrand: null,
+      amenityKeys: [],
+      includeOtherPlaces: true,
+      priceMinCzk: null,
+      priceMaxCzk: null,
+    };
+    expect(backendPubSearchFilterKey(filters)).toBe('||other|:');
+    expect(activePubSearchFilterCount(filters)).toBe(1);
   });
 
   it('normalizes an at-ceiling price cap to "no limit"', () => {
