@@ -167,12 +167,13 @@ def _verify_email_page(
       box-shadow: 0 0 0 8px rgba(217, 154, 43, 0.12);
     }}
     a {{
-      display: inline-block;
+      display: block;
       margin-top: 24px;
-      padding: 13px 20px;
+      padding: 17px 20px;
       border-radius: 999px;
       background: #d99a2b;
       color: #1c1410;
+      font-size: 17px;
       font-weight: 800;
       text-decoration: none;
     }}
