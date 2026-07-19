@@ -288,7 +288,13 @@ export function syncOwnAddedPubs(): Promise<boolean> {
 }
 
 export function clearAddedPubsQueue(): Promise<void> {
-  return registryTask(async () => saveRegistry([]));
+  return registryTask(async () => {
+    const registry = await loadRegistry();
+    for (const submission of registry) {
+      removeLocalPub(pubIdForCoords(submission.lat, submission.lng));
+    }
+    await saveRegistry([]);
+  });
 }
 
 export function restoreQueuedAddedPubs(): Promise<number> {
