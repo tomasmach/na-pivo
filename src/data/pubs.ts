@@ -59,6 +59,9 @@ export type Pub = {
   lng: number;
   address?: string;
   city?: string;
+  /** Client id of a pub this device/account added. Presence unlocks owner-only
+   * address and pin correction; never inferred from coordinates or name. */
+  userAddedClientId?: string;
   /** Google Place ID from the backend nearby endpoint — lets external map links
    *  open the exact business (place card) instead of bare coordinates. */
   googlePlaceId?: string;

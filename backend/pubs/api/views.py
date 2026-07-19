@@ -1126,6 +1126,20 @@ class UserAddedPubView(APIView):
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "added_pubs"
 
+    def get(self, request: Request) -> Response:
+        """Return this account's additions for durable client reconciliation."""
+
+        try:
+            pubs = UserAddedPub.objects.filter(account=request.user).order_by("-updated_at")[:100]
+            return Response(UserAddedPubSerializer(pubs, many=True).data, status=status.HTTP_200_OK)
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "user-added-pub: unexpected error listing own pubs: %s",
+                type(exc).__name__,
+                exc_info=True,
+            )
+            return _internal_error()
+
     def post(self, request: Request) -> Response:
         serializer = UserAddedPubRequestSerializer(data=request.data)
         if not serializer.is_valid():
@@ -1247,6 +1261,72 @@ class UserAddedPubView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+        # Resolve ownership before a potentially billable geocode. The locked
+        # lookup below repeats the same owner filter before writing.
+        try:
+            owned_pub = UserAddedPub.objects.filter(
+                account=request.user,
+                client_id=client_id,
+            ).first()
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "user-added-pub: unexpected error loading pub %s for edit: %s",
+                client_id,
+                exc,
+                exc_info=True,
+            )
+            return _internal_error()
+        if owned_pub is None:
+            return Response(
+                {"detail": "User-added pub not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        data = serializer.validated_data
+        resolved = None
+        if "address" in data:
+            try:
+                resolved = resolve_user_added_pub_location(
+                    name=data.get("name", owned_pub.name),
+                    address=data["address"],
+                    city=data["city"],
+                    lat=data["lat"],
+                    lng=data["lng"],
+                )
+            except GoogleGeocodingUnavailableError as exc:
+                logger.warning(
+                    "user-added-pub: edit geocoding unavailable: %s",
+                    type(exc).__name__,
+                )
+                return Response(
+                    {
+                        "detail": "Geocoding is temporarily unavailable.",
+                        "code": "geocoding_unavailable",
+                    },
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+            if resolved is None:
+                return Response(
+                    {
+                        "detail": "The address could not be located precisely.",
+                        "code": "location_not_found",
+                    },
+                    status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                )
+
+            verify_max_km = max(
+                0.05,
+                float(getattr(settings, "USER_ADDED_PUB_LOCATION_VERIFY_MAX_METERS", 500)) / 1000,
+            )
+            if _haversine_km(data["lat"], data["lng"], resolved.lat, resolved.lng) > verify_max_km:
+                return Response(
+                    {
+                        "detail": "The selected point is too far from the entered address.",
+                        "code": "location_mismatch",
+                    },
+                    status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                )
+
         try:
             with transaction.atomic():
                 pub = (
@@ -1260,11 +1340,39 @@ class UserAddedPubView(APIView):
                         status=status.HTTP_404_NOT_FOUND,
                     )
 
-                pub.name = serializer.validated_data["name"]
-                pub.save(update_fields=["name", "updated_at"])
+                update_fields = ["updated_at"]
+                if "name" in data:
+                    pub.name = data["name"]
+                    update_fields.append("name")
+                if resolved is not None:
+                    # Keep the user's explicitly selected point as the exact pub
+                    # location, after Google has verified the typed address is
+                    # plausibly nearby. The provider result normalizes address
+                    # text and supplies a stable place id.
+                    pub.lat = data["lat"]
+                    pub.lng = data["lng"]
+                    pub.cache_key = geohash8(pub.lat, pub.lng)
+                    pub.city = resolved.city or data["city"]
+                    pub.address = resolved.address or data["address"]
+                    pub.location_source = UserAddedPub.LocationSource.USER_PIN
+                    pub.google_place_id = resolved.place_id
+                    pub.location_synced_at = dj_timezone.now()
+                    update_fields.extend(
+                        [
+                            "lat",
+                            "lng",
+                            "cache_key",
+                            "city",
+                            "address",
+                            "location_source",
+                            "google_place_id",
+                            "location_synced_at",
+                        ]
+                    )
+                pub.save(update_fields=update_fields)
         except Exception as exc:  # noqa: BLE001
             logger.error(
-                "user-added-pub: unexpected error renaming pub %s: %s",
+                "user-added-pub: unexpected error editing pub %s: %s",
                 client_id,
                 exc,
                 exc_info=True,

@@ -35,7 +35,7 @@ import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScroll
 import { ensureLocationPermission, openSystemSettings } from '@/compass/permissions';
 import { generateUuidV4 } from '@/data/account';
 import { buildAddedPubEntry } from '@/data/addedPubsClient';
-import { enqueueAddedPub } from '@/data/addedPubsQueue';
+import { enqueueAddedPub, enqueueAddedPubEdit } from '@/data/addedPubsQueue';
 import { clearPubsSnapshot, pubIdForCoords, upsertLocalPub } from '@/data/pubs';
 import { usePubStore } from '@/stores/pubStore';
 import { useToastStore } from '@/stores/toastStore';
@@ -71,6 +71,8 @@ export default function AddPubScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
+  const editedClientId = useMemo(() => parseStringParam(params.clientId), [params.clientId]);
+  const isEditing = editedClientId.length > 0;
   const bumpCatalogRevision = usePubStore((s) => s.bumpCatalogRevision);
   const showToast = useToastStore((s) => s.show);
 
@@ -84,9 +86,9 @@ export default function AddPubScreen() {
     [initialLat, initialLng],
   );
 
-  const [name, setName] = useState('');
+  const [name, setName] = useState(parseStringParam(params.name));
   const [city, setCity] = useState(parseStringParam(params.city));
-  const [address, setAddress] = useState('');
+  const [address, setAddress] = useState(parseStringParam(params.address));
   const [submitted, setSubmitted] = useState(false);
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState('');
@@ -110,7 +112,10 @@ export default function AddPubScreen() {
     setLocating(true);
     setLocationError('');
     try {
-      let coords: Coordinates | null = initialCoords;
+      // Creation receives the compass' fresh position as a shortcut. During an
+      // edit those route coordinates describe the OLD pub position, so always
+      // request a new fix and make the user deliberately reselect the point.
+      let coords: Coordinates | null = isEditing ? null : initialCoords;
       if (!coords) {
         const permission = await ensureLocationPermission();
         if (permission !== 'granted') {
@@ -140,7 +145,7 @@ export default function AddPubScreen() {
     } finally {
       setLocating(false);
     }
-  }, [currentLocationSelected, initialCoords, showToast]);
+  }, [currentLocationSelected, initialCoords, isEditing, showToast]);
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit) return;
@@ -168,7 +173,7 @@ export default function AddPubScreen() {
         city: trimmedCity,
         address: trimmedAddress,
       },
-      generateUuidV4(),
+      editedClientId || generateUuidV4(),
     );
 
     upsertLocalPub({
@@ -182,15 +187,38 @@ export default function AddPubScreen() {
     });
     bumpCatalogRevision();
     void clearPubsSnapshot();
-    void enqueueAddedPub(entry).then(() => bumpCatalogRevision());
+    const sync = isEditing
+      ? enqueueAddedPubEdit({
+          client_id: editedClientId,
+          name: trimmedName,
+          lat: location.lat,
+          lng: location.lng,
+          city: trimmedCity,
+          address: trimmedAddress,
+        })
+      : enqueueAddedPub(entry);
+    void sync.then((state) => {
+      bumpCatalogRevision();
+      showToast(
+        state === 'synced'
+          ? isEditing
+            ? cs.addPub.editSavedToast
+            : cs.addPub.savedToast
+          : state === 'failed'
+            ? cs.addPub.failedToast
+            : cs.addPub.queuedToast,
+      );
+    });
     void fireSuccessHaptic();
-    showToast(cs.addPub.savedToast);
+    showToast(isEditing ? cs.addPub.editQueuedToast : cs.addPub.queuedToast);
     router.back();
   }, [
     address,
     bumpCatalogRevision,
     canSubmit,
     city,
+    editedClientId,
+    isEditing,
     name,
     router,
     selectedLocation,
@@ -210,7 +238,7 @@ export default function AddPubScreen() {
           <ChevronLeftIcon size={22} color={Colors.foam} />
         </Pressable>
 
-        <Text style={styles.headerTitle}>{cs.addPub.title}</Text>
+        <Text style={styles.headerTitle}>{isEditing ? cs.addPub.editTitle : cs.addPub.title}</Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -233,7 +261,7 @@ export default function AddPubScreen() {
             <MapPinIcon size={18} color={Colors.amber} />
           </View>
           <Text style={styles.intro} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.addPub.intro}
+            {isEditing ? cs.addPub.editIntro : cs.addPub.intro}
           </Text>
         </View>
 
@@ -371,9 +399,9 @@ export default function AddPubScreen() {
 
         <View style={styles.submitButton}>
           <GlowButton
-            label={submitted ? cs.addPub.saving : cs.addPub.save}
+            label={submitted ? cs.addPub.saving : isEditing ? cs.addPub.editSave : cs.addPub.save}
             onPress={handleSubmit}
-            glow={canSubmit ? 'soft' : 'none'}
+            glow="none"
             accessibilityLabel={cs.a11y.addPubSaveButton}
           />
           {!canSubmit && <View style={styles.submitDisabledOverlay} />}

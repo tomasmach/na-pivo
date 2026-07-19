@@ -87,6 +87,7 @@ describe('submitAddedPub', () => {
       ok: true,
       status: 201,
       json: async () => ({
+        client_id: 'client-1',
         cache_key: 'u2fkbnhz',
         name: 'U Testu',
         lat: 50.0813,
@@ -97,6 +98,7 @@ describe('submitAddedPub', () => {
     global.fetch = fetchSpy as unknown as typeof fetch;
 
     await expect(submitAddedPub(entry)).resolves.toEqual({
+      clientId: 'client-1',
       cacheKey: 'u2fkbnhz',
       name: 'U Testu',
       lat: 50.0813,

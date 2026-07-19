@@ -13,7 +13,11 @@ import { flushPubReportQueue } from '@/data/pubReportQueue';
 import { flushPubNameCorrectionsQueue } from '@/data/pubNameCorrectionsQueue';
 import { flushFeedbackQueue } from '@/data/feedbackQueue';
 import { flushCommunityQueue } from '@/data/communityQueue';
-import { flushAddedPubsQueue, restoreQueuedAddedPubs } from '@/data/addedPubsQueue';
+import {
+  flushAddedPubsQueue,
+  restoreQueuedAddedPubs,
+  syncOwnAddedPubs,
+} from '@/data/addedPubsQueue';
 import { flushDrinksQueue } from '@/data/drinksQueue';
 import { flushDeleteDrinksQueue } from '@/data/deleteDrinksQueue';
 import { flushUpdateDrinksQueue } from '@/data/updateDrinksQueue';
@@ -116,7 +120,9 @@ function restoreAndFlushAddedPubsQueue(): void {
       if (restoredCount > 0) {
         usePubStore.getState().bumpCatalogRevision();
       }
-      return flushAddedPubsQueue().then(() => restoredCount);
+      return flushAddedPubsQueue()
+        .then(() => syncOwnAddedPubs())
+        .then(() => restoredCount);
     })
     .then((restoredCount) => {
       if (restoredCount > 0) {

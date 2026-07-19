@@ -30,6 +30,7 @@ export interface AddedPubEntry {
 }
 
 export interface AddedPubResponse {
+  clientId: string;
   cacheKey: string;
   name: string;
   lat: number;
@@ -39,6 +40,7 @@ export interface AddedPubResponse {
 }
 
 interface WireResponse {
+  client_id?: string;
   cache_key?: string;
   name?: string;
   lat?: number;
@@ -50,6 +52,15 @@ interface WireResponse {
 const REQUEST_TIMEOUT_MS = 8000;
 
 export type SubmitAddedPubResult = AddedPubResponse | 'permanent-error' | 'retry';
+
+export interface AddedPubEditEntry {
+  client_id: string;
+  name?: string;
+  lat: number;
+  lng: number;
+  city: string;
+  address: string;
+}
 
 export function buildAddedPubEntry(input: AddedPubInput, clientId: string): AddedPubEntry {
   const entry: AddedPubEntry = {
@@ -109,10 +120,11 @@ export async function submitAddedPub(
     }
 
     const data = (await resp.json()) as WireResponse;
-    if (!data?.cache_key || !data.name || typeof data.lat !== 'number' || typeof data.lng !== 'number') {
+    if (!data?.client_id || !data.cache_key || !data.name || typeof data.lat !== 'number' || typeof data.lng !== 'number') {
       return 'retry';
     }
     return {
+      clientId: data.client_id,
       cacheKey: data.cache_key,
       name: data.name,
       lat: data.lat,
@@ -132,6 +144,123 @@ export async function submitAddedPub(
       });
     }
     return 'retry';
+  } finally {
+    abort.cleanup();
+  }
+}
+
+async function authenticatedAddedPubRequest(
+  path: string,
+  init: RequestInit,
+  signal?: AbortSignal,
+): Promise<SubmitAddedPubResult> {
+  if (signal?.aborted) return 'retry';
+  const endpoint = getBackendEndpoint(path);
+  if (!endpoint) return 'retry';
+  const session = await ensureAccount(signal);
+  if (!session || signal?.aborted) return 'retry';
+  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
+  try {
+    const resp = await fetch(endpoint, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.token}`,
+        ...init.headers,
+      },
+      signal: abort.signal,
+    });
+    if (resp.status === 401) {
+      await clearCachedAnonymousAccount(session);
+      return 'retry';
+    }
+    if (!resp.ok) {
+      const result = resp.status === 400 || resp.status === 404 || resp.status === 422
+        ? 'permanent-error'
+        : 'retry';
+      trackApiFailure('added_pub_edit', {
+        endpoint: '/v1/pubs/<client_id>',
+        status: resp.status,
+        sync_result: result,
+        retryable: result === 'retry',
+      });
+      return result;
+    }
+    const data = (await resp.json()) as WireResponse;
+    if (!data.client_id || !data.cache_key || !data.name || typeof data.lat !== 'number' || typeof data.lng !== 'number') {
+      return 'retry';
+    }
+    return {
+      clientId: data.client_id,
+      cacheKey: data.cache_key,
+      name: data.name,
+      lat: data.lat,
+      lng: data.lng,
+      city: data.city || undefined,
+      address: data.address || undefined,
+    };
+  } catch (err) {
+    const isAbortError = err instanceof Error && err.name === 'AbortError';
+    if (!signal?.aborted && !isAbortError) {
+      trackApiFailure('added_pub_edit', {
+        endpoint: '/v1/pubs/<client_id>',
+        reason: 'exception',
+        error: err,
+        sync_result: 'retry',
+        retryable: true,
+      });
+    }
+    return 'retry';
+  } finally {
+    abort.cleanup();
+  }
+}
+
+export function submitAddedPubEdit(
+  entry: AddedPubEditEntry,
+  signal?: AbortSignal,
+): Promise<SubmitAddedPubResult> {
+  return authenticatedAddedPubRequest(
+    `/v1/pubs/${encodeURIComponent(entry.client_id)}`,
+    { method: 'PATCH', body: JSON.stringify(entry) },
+    signal,
+  );
+}
+
+export async function fetchOwnAddedPubs(signal?: AbortSignal): Promise<AddedPubResponse[] | null> {
+  if (signal?.aborted) return null;
+  const endpoint = getBackendEndpoint('/v1/pubs');
+  if (!endpoint) return null;
+  const session = await ensureAccount(signal);
+  if (!session || signal?.aborted) return null;
+  const abort = chainAbortSignal(signal, REQUEST_TIMEOUT_MS);
+  try {
+    const resp = await fetch(endpoint, {
+      headers: { Authorization: `Bearer ${session.token}` },
+      signal: abort.signal,
+    });
+    if (resp.status === 401) {
+      await clearCachedAnonymousAccount(session);
+      return null;
+    }
+    if (!resp.ok) return null;
+    const rows = (await resp.json()) as WireResponse[];
+    if (!Array.isArray(rows)) return null;
+    return rows.flatMap((data) =>
+      data.client_id && data.cache_key && data.name && typeof data.lat === 'number' && typeof data.lng === 'number'
+        ? [{
+            clientId: data.client_id,
+            cacheKey: data.cache_key,
+            name: data.name,
+            lat: data.lat,
+            lng: data.lng,
+            city: data.city || undefined,
+            address: data.address || undefined,
+          }]
+        : [],
+    );
+  } catch {
+    return null;
   } finally {
     abort.cleanup();
   }

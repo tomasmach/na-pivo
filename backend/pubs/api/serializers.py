@@ -262,9 +262,32 @@ class UserAddedPubRequestSerializer(_Pub200NameValidationMixin, PubInputSerializ
 
 
 class UserAddedPubRenameRequestSerializer(_Pub200NameValidationMixin, serializers.Serializer):
-    """Request body for PATCH /v1/pubs/<client_id>."""
+    """Additive owner edit contract for PATCH /v1/pubs/<client_id>.
 
-    name = serializers.CharField(max_length=255)
+    Released clients only send ``name``. New clients may also correct the full
+    location tuple; keeping it atomic prevents an offline retry from briefly
+    pairing a new address with stale coordinates (or vice versa).
+    """
+
+    name = serializers.CharField(max_length=255, required=False)
+    address = serializers.CharField(max_length=255, required=False, trim_whitespace=True)
+    city = serializers.CharField(max_length=128, required=False, trim_whitespace=True)
+    lat = serializers.FloatField(required=False, min_value=-90, max_value=90)
+    lng = serializers.FloatField(required=False, min_value=-180, max_value=180)
+
+    def validate(self, attrs: dict) -> dict:
+        if not attrs:
+            raise serializers.ValidationError("Provide a name or a complete location correction.")
+
+        location_fields = {"address", "city", "lat", "lng"}
+        supplied_location_fields = location_fields.intersection(attrs)
+        if supplied_location_fields and supplied_location_fields != location_fields:
+            raise serializers.ValidationError(
+                "Address, city, lat and lng must be provided together."
+            )
+        if supplied_location_fields and (not attrs["address"] or not attrs["city"]):
+            raise serializers.ValidationError("Address and city must not be empty.")
+        return attrs
 
 
 class FeedbackRequestSerializer(serializers.Serializer):

@@ -575,8 +575,11 @@ export const cs = {
 
   addPub: {
     title: 'Přidat hospodu',
+    editTitle: 'Opravit hospodu',
     intro:
       'Vyplň název, město a adresu podniku a potvrď jeho polohu. Po odeslání se bude zobrazovat i ostatním.',
+    editIntro:
+      'Oprav adresu a potvrď přesný bod přímo u hospody. Nejdřív ověřím, že adresa s bodem souhlasí.',
     locationHeader: 'Poloha',
     locationBody: 'Přidej hospodu tam, kde právě stojíš. Uložíme jen tento bod, žádnou trasu ani historii polohy.',
     useCurrentLocation: 'Použít moji aktuální polohu',
@@ -594,8 +597,25 @@ export const cs = {
     locationPermissionDenied: 'Bez povolení polohy hospodu neumístím. Povol ji v Nastavení a zkus to znovu.',
     locationUnavailable: 'Polohu se teď nepodařilo zjistit. Zkus to ještě jednou venku nebo blíž k oknu.',
     save: 'Přidat hospodu',
+    editSave: 'Uložit opravu',
     saving: 'Ukládám…',
     savedToast: 'Mám ji, díky!',
+    queuedToast: 'Hospoda čeká na připojení. Uložil jsem ji v telefonu.',
+    failedToast: 'Hospodu se nepodařilo ověřit. Oprav údaje nebo to zkus znovu.',
+    editQueuedToast: 'Opravu mám v telefonu a pošlu ji, až budeš online.',
+    editSavedToast: 'Adresa i poloha jsou opravené.',
+    myPubsTitle: 'Moje přidané hospody',
+    myPubsSubtitle: 'Tady vidíš, co už je venku a co ještě čeká.',
+    myPubsEmpty: 'Zatím jsi žádnou chybějící hospodu nepřidal.',
+    statusPending: 'Čeká na odeslání',
+    statusSynced: 'Je v kompasu',
+    statusFailed: 'Potřebuje opravit',
+    retry: 'Zkusit znovu',
+    retrying: 'Zkouším…',
+    edit: 'Opravit adresu a polohu',
+    editFromDetailHint: 'Jen u hospody, kterou jsi přidal ty',
+    openMyPubs: 'Moje přidané hospody',
+    openMyPubsHint: 'Stav odeslání, opravy a opakování',
   },
 
   account: {
