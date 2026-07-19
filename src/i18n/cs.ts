@@ -455,6 +455,17 @@ export const cs = {
     skip: 'Teď ne, nech mě pít v klidu',
   },
 
+  nicknameNudge: {
+    eyebrow: 'DOKONČI SI ÚČET',
+    title: 'Chybí ti @přezdívka',
+    body:
+      'Účet máš, ale bez přezdívky tě parta nenajde. Vyber si ji a profil, kamarádi i žebříčky pojedou naplno.',
+    cta: 'Uložit přezdívku',
+    ctaBusy: 'Ukládám…',
+    savedToast: 'A je to, přezdívka je tvoje.',
+    skip: 'Teď ne',
+  },
+
   report: {
     title: 'Napiš mi',
     intro: 'Něco nefunguje nebo ti něco chybí? Napiš mi pár slov, pomůže to.',
@@ -597,8 +608,11 @@ export const cs = {
     emailPlaceholder: 'tvuj@email.cz',
     passwordLabel: 'Heslo',
     passwordPlaceholder: 'Alespoň 8 znaků',
-    nameLabel: 'Jméno (nepovinné)',
-    namePlaceholder: 'Jak ti mám říkat',
+    nicknameLabel: 'Přezdívka',
+    nicknameHint: 'Pod @přezdívkou tě najdou kamarádi.',
+    nicknameSetFailedToast: 'Přezdívku se teď nepodařilo uložit, nastavíš ji v profilu.',
+    errorNicknameMissing: 'Vyber si přezdívku, bez ní tě parta nenajde.',
+    errorNicknameNotReady: 'Mrkni ještě na přezdívku, něco s ní nehraje.',
     submitLogin: 'Přihlásit se',
     submitRegister: 'Vytvořit účet',
     loading: 'Pracuji…',
@@ -2108,7 +2122,6 @@ export const cs = {
     accountRow: 'Otevřít účet',
     authEmailInput: 'E-mail',
     authPasswordInput: 'Heslo',
-    authNameInput: 'Jméno',
     authResetEmailInput: 'E-mail pro obnovu hesla',
     authResetCodeInput: 'Kód pro obnovu hesla',
     authNewPasswordInput: 'Nové heslo',

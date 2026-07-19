@@ -2,7 +2,7 @@
  * Auth screen — sign in / sign up (route `/auth`).
  *
  * A two-tab toggle switches between "Přihlásit se" and "Registrovat". Both modes
- * share email + password fields (register adds an optional display name). Below
+ * share email + password fields (register adds a required @nickname). Below
  * the primary CTA: a "nebo" divider, then the native social buttons (Apple only
  * on iOS) and a "Zapomenuté heslo?" inline flow.
  *
@@ -18,7 +18,6 @@ import {
   Text,
   Pressable,
   TextInput,
-  KeyboardAvoidingView,
   ActivityIndicator,
   StyleSheet,
   type KeyboardTypeOptions,
@@ -35,6 +34,7 @@ import { ChevronLeftIcon } from '@/components/shared/IconGlyph';
 import { AppleIcon, GoogleIcon } from '@/components/shared/BrandIcon';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
+import { NicknameField } from '@/profile/NicknameField';
 import { useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
 import { isAppleSignInSupported, isGoogleSignInConfigured } from '@/data/socialAuth';
@@ -140,11 +140,13 @@ export default function AuthScreen() {
   const signInGoogle = useAccountStore((s) => s.signInGoogle);
   const signInApple = useAccountStore((s) => s.signInApple);
   const requestPasswordReset = useAccountStore((s) => s.requestPasswordReset);
+  const updateProfile = useAccountStore((s) => s.updateProfile);
 
   const [mode, setMode] = useState<Mode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [displayName, setDisplayName] = useState('');
+  const [nickname, setNickname] = useState('');
+  const [nicknameReady, setNicknameReady] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<null | 'submit' | 'google' | 'apple'>(null);
 
@@ -170,23 +172,39 @@ export default function AuthScreen() {
       setError(cs.account.errorPasswordShort);
       return;
     }
+    const trimmedNickname = nickname.trim();
+    if (mode === 'register') {
+      if (!trimmedNickname) {
+        setError(cs.account.errorNicknameMissing);
+        return;
+      }
+      if (!nicknameReady) {
+        setError(cs.account.errorNicknameNotReady);
+        return;
+      }
+    }
     setError('');
     setBusy('submit');
     try {
       const result =
         mode === 'login'
           ? await login({ email: trimmedEmail, password })
-          : await register({
-              email: trimmedEmail,
-              password,
-              displayName: displayName.trim() || undefined,
-            });
+          : await register({ email: trimmedEmail, password });
 
       if (result.ok) {
-        if (mode === 'register' && !result.profile.emailVerified) {
-          showToast(cs.account.verifyEmailSentToast);
-        }
         if (mode === 'register') {
+          // The handle is claimed right after the account exists. Losing the
+          // race (or a network hiccup) must not block registration — the
+          // nickname stays editable in the profile.
+          if (trimmedNickname) {
+            const nickResult = await updateProfile({ nickname: trimmedNickname });
+            if (!nickResult.ok) {
+              showToast(cs.account.nicknameSetFailedToast);
+            }
+          }
+          if (!result.profile.emailVerified) {
+            showToast(cs.account.verifyEmailSentToast);
+          }
           router.replace('/profile/privacy' as Href);
         } else {
           router.back();
@@ -199,7 +217,19 @@ export default function AuthScreen() {
     } finally {
       setBusy(null);
     }
-  }, [busy, email, password, displayName, mode, login, register, router, showToast]);
+  }, [
+    busy,
+    email,
+    password,
+    nickname,
+    nicknameReady,
+    mode,
+    login,
+    register,
+    updateProfile,
+    router,
+    showToast,
+  ]);
 
   const handleSocial = useCallback(
     async (provider: 'google' | 'apple') => {
@@ -271,19 +301,15 @@ export default function AuthScreen() {
         <View style={styles.headerSpacer} />
       </View>
 
-      <KeyboardAvoidingView
+      <KeyboardAwareScrollView
         style={styles.flex}
-        behavior="padding"
-        keyboardVerticalOffset={insets.top + 56}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: Math.max(insets.bottom + 24, 32) },
+        ]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        <KeyboardAwareScrollView
-          contentContainerStyle={[
-            styles.scrollContent,
-            { paddingBottom: Math.max(insets.bottom + 24, 32) },
-          ]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
           <Text style={styles.intro} maxFontSizeMultiplier={FontScaleCap.body}>
             {cs.account.intro}
           </Text>
@@ -317,15 +343,22 @@ export default function AuthScreen() {
 
           {/* ── Fields ── */}
           {mode === 'register' && (
-            <Field
-              label={cs.account.nameLabel}
-              value={displayName}
-              onChangeText={setDisplayName}
-              placeholder={cs.account.namePlaceholder}
-              accessibilityLabel={cs.a11y.authNameInput}
-              autoComplete="name"
-              textContentType="name"
-            />
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>{cs.account.nicknameLabel}</Text>
+              <NicknameField
+                value={nickname}
+                onChangeText={(value) => {
+                  setNickname(value);
+                  if (error) setError('');
+                }}
+                onReadyChange={setNicknameReady}
+              />
+              {nickname.trim().length === 0 && (
+                <Text style={styles.nicknameHint} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {cs.account.nicknameHint}
+                </Text>
+              )}
+            </View>
           )}
           <Field
             label={cs.account.emailLabel}
@@ -450,8 +483,7 @@ export default function AuthScreen() {
               disabled={busy != null}
             />
           )}
-        </KeyboardAwareScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
     </View>
   );
 }
@@ -557,6 +589,13 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.medium,
     fontSize: 16,
     color: Colors.foam,
+  },
+  nicknameHint: {
+    fontFamily: Fonts.ui.regular,
+    fontSize: 13,
+    lineHeight: 18,
+    color: Colors.mutedText,
+    marginLeft: 2,
   },
   errorText: {
     fontFamily: Fonts.ui.medium,

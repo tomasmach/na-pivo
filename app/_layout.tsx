@@ -48,6 +48,7 @@ import { refreshCurrencyFromLastKnownLocation } from '@/location/locationCurrenc
 import { WhatsNewModal } from '@/components/shared/WhatsNewModal';
 import { ContestResultsModal } from '@/photos/ContestResultsModal';
 import { PubReminderOnboardingModal } from '@/components/shared/PubReminderOnboardingModal';
+import { NicknameNudgeModal } from '@/components/shared/NicknameNudgeModal';
 import { PubReminderEnableFailureModal } from '@/components/shared/PubReminderEnableFailureModal';
 import { AppDialogHost } from '@/components/shared/AppDialog';
 import { Toast } from '@/components/shared/Toast';
@@ -545,6 +546,7 @@ export default function RootLayout() {
         <WhatsNewModal />
         <ContestResultsModal />
         <PubReminderOnboardingModal />
+        <NicknameNudgeModal />
         <PubReminderEnableFailureModal />
         <AppDialogHost />
         <Toast />
