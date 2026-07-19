@@ -132,6 +132,6 @@ it('clears local private stores and private sync queue storage', async () => {
   expect(usePubStore.getState().reportedCacheKeys).toEqual([]);
 
   for (const key of PRIVATE_KEYS) {
-    expect(await AsyncStorage.getItem(key)).toBeNull();
+    expect({ key, value: await AsyncStorage.getItem(key) }).toEqual({ key, value: null });
   }
 });

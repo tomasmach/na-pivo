@@ -33,6 +33,7 @@ const PRIVATE_STORAGE_KEYS = [
   'na-pivo-visits-seeded',
   'na-pivo-community',
   'na-pivo-pub',
+  'na-pivo-added-pubs-queue',
   'na-pivo-party-groups',
   'na-pivo-beer-photos',
   // Note: the Parta social-graph snapshot ('na-pivo-friends-dashboard') is cleared

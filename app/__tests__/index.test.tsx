@@ -367,7 +367,7 @@ describe('CompassScreen', () => {
       expect.objectContaining({ initialPub: expect.objectContaining({ name: 'U Testu' }) }),
       undefined,
     );
-    expect(useCompass).toHaveBeenLastCalledWith(null, [], null, null, false);
+    expect(useCompass).toHaveBeenLastCalledWith(null, [], null, null, false, false);
   });
 
   it('reserves revealed-card height before the pub is revealed', () => {
