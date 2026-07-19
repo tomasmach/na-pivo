@@ -5646,6 +5646,16 @@ _BEER_BRAND_SCAN_LIMIT = 200
 _BEER_BRAND_MAX_RESULTS = 50
 _PRICE_INDEX_SCAN_LIMIT = 900
 _PRICE_INDEX_MAX_RESULTS = 300
+# Treat venues inside the same short walking-distance band as similarly close.
+# A confirmed pub should win over an ambiguous restaurant-like result inside the
+# band, while distance remains authoritative across bands.
+_PUB_RELEVANCE_DISTANCE_BAND_KM = 0.25
+
+
+def _directory_relevance_rank(distance_km: float, venue_kind: str, pk: int) -> tuple:
+    venue_rank = 0 if venue_kind == PubHours.VenueKind.PUB else 1
+    distance_band = int(distance_km / _PUB_RELEVANCE_DISTANCE_BAND_KM)
+    return distance_band, venue_rank, distance_km, pk
 
 
 def _nearest_rows(
@@ -6144,7 +6154,11 @@ def _nearby_pub_directory_items(
         if row.cache_key not in reported_cache_keys
     ]
     nearby = [entry for entry in nearby if entry[0] <= radius_km]
-    nearby.sort(key=lambda entry: (entry[0], entry[1].pk))
+    nearby.sort(
+        key=lambda entry: _directory_relevance_rank(
+            entry[0], entry[1].venue_kind, entry[1].pk
+        )
+    )
     return [_pub_directory_item(row) for _, row in nearby[:max(0, max_items)]]
 
 

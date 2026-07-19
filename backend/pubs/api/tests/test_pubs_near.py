@@ -368,6 +368,48 @@ def test_local_first_cap_keeps_nearest_rows(client, settings):
 
 
 @pytest.mark.django_db
+def test_local_directory_prefers_confirmed_pub_at_similar_distance(client):
+    _directory_pub(
+        "Nejasná restaurace",
+        lat=_LAT + 0.0004,
+        venue_kind=PubHours.VenueKind.MAYBE,
+    )
+    _directory_pub(
+        "Potvrzená hospoda",
+        lat=_LAT + 0.0008,
+        venue_kind=PubHours.VenueKind.PUB,
+    )
+
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 1})
+
+    assert [item["name"] for item in resp.json()["items"]] == [
+        "Potvrzená hospoda",
+        "Nejasná restaurace",
+    ]
+
+
+@pytest.mark.django_db
+def test_local_directory_keeps_distance_authoritative_across_relevance_bands(client):
+    _directory_pub(
+        "Blízká restaurace",
+        lat=_LAT + 0.0004,
+        venue_kind=PubHours.VenueKind.MAYBE,
+    )
+    _directory_pub(
+        "Vzdálenější hospoda",
+        lat=_LAT + 0.003,
+        venue_kind=PubHours.VenueKind.PUB,
+    )
+
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 1})
+
+    assert [item["name"] for item in resp.json()["items"]] == [
+        "Blízká restaurace",
+        "Vzdálenější hospoda",
+    ]
+
+
+@pytest.mark.django_db
 def test_local_directory_bounds_haversine_scan_to_three_times_cap():
     from pubs.api import views
 
