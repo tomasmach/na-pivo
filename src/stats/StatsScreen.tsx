@@ -731,16 +731,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   recordLabel: {
-    flex: 1,
+    width: 112,
+    flexShrink: 0,
     fontFamily: Fonts.ui.semibold,
     fontSize: 14,
     color: Colors.foamMuted,
   },
   recordValue: {
+    flex: 1,
+    minWidth: 0,
     fontFamily: Fonts.display.bold,
     fontSize: 15,
     color: Colors.amber,
-    flexShrink: 1,
     textAlign: 'right',
   },
 
