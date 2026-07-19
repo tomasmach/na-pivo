@@ -1120,7 +1120,7 @@ def verify_email(raw_token: str) -> Account:
     return account
 
 
-def request_password_reset(email: str) -> None:
+def request_password_reset(email: str, *, link_base: str | None = None) -> None:
     """Email a password-reset link. ALWAYS succeeds silently (no enumeration)."""
     norm = normalize_email(email)
     cred = EmailCredential.objects.select_related("account").filter(email=norm).first()
@@ -1132,7 +1132,8 @@ def request_password_reset(email: str) -> None:
         purpose=OneTimeToken.Purpose.RESET_PASSWORD,
         ttl=timedelta(hours=settings.PASSWORD_RESET_TTL_HOURS),
     )
-    emailer.send_password_reset_email(cred.email, link=_deep_link("reset", raw), code=raw)
+    link = _append_token(link_base, raw) if link_base else _deep_link("reset", raw)
+    emailer.send_password_reset_email(cred.email, link=link, code=raw)
 
 
 def reset_password(raw_token: str, *, new_password: str) -> Account:

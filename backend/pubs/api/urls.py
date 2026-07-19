@@ -28,6 +28,7 @@ from .auth_views import (
     RegisterView,
     RequestEmailVerificationView,
     RequestPasswordResetView,
+    ResetPasswordLandingView,
     ResetPasswordView,
     SetPasswordView,
     UnlinkView,
@@ -233,6 +234,7 @@ urlpatterns = [
         RequestPasswordResetView.as_view(),
         name="auth-request-password-reset",
     ),
+    path("auth/reset", ResetPasswordLandingView.as_view(), name="auth-reset-page"),
     path("auth/reset-password", ResetPasswordView.as_view(), name="auth-reset-password"),
     path(
         "auth/request-email-verify",

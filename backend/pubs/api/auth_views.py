@@ -17,6 +17,7 @@ Endpoint map (all under /v1/):
   POST auth/set-password            — add / change the password (escape hatch)
   POST auth/logout                  — revoke this token (or all)
   POST auth/request-password-reset  — email a reset link (always 202)
+  GET  auth/reset?token=...         — browser landing page that opens the app
   POST auth/reset-password          — consume reset token, set new password
   POST auth/request-email-verify    — (re)send the verification email
   GET  auth/verify-email?token=...  — browser-friendly verification link from e-mail
@@ -28,6 +29,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from urllib.parse import urlencode
 
 from django.conf import settings
 from django.http import HttpResponse
@@ -99,10 +101,12 @@ def _verify_email_page(
     body: str,
     success: bool,
     status_code: int,
+    action_link: str | None = None,
+    action_label: str = "Otevřít Na Pivo",
 ) -> HttpResponse:
-    """Small standalone HTML page for users opening verification links from e-mail."""
+    """Small standalone HTML page for users opening auth links from e-mail."""
     accent = "#46c173" if success else "#d99a2b"
-    app_link = f"{settings.APP_DEEP_LINK_SCHEME}://"
+    app_link = action_link or f"{settings.APP_DEEP_LINK_SCHEME}://"
     html = f"""<!doctype html>
 <html lang="cs">
 <head>
@@ -180,7 +184,7 @@ def _verify_email_page(
     <div class="dot" aria-hidden="true"></div>
     <h1>{title}</h1>
     <p>{body}</p>
-    <a href="{app_link}">Otevřít Na Pivo</a>
+    <a href="{app_link}">{action_label}</a>
   </main>
 </body>
 </html>"""
@@ -439,10 +443,47 @@ class RequestPasswordResetView(_AuthView):
 
         def run() -> Response:
             # Always 202 regardless of whether the email exists (no enumeration).
-            accounts.request_password_reset(ser.validated_data["email"])
+            accounts.request_password_reset(
+                ser.validated_data["email"],
+                link_base=request.build_absolute_uri(reverse("auth-reset-page")),
+            )
             return Response({"ok": True}, status=status.HTTP_202_ACCEPTED)
 
         return self._safe(run)
+
+
+class ResetPasswordLandingView(APIView):
+    authentication_classes: list = []
+    permission_classes = [AllowAny]
+
+    def get(self, request: Request) -> HttpResponse:
+        raw_token = str(request.query_params.get("token") or "").strip()
+        if not raw_token:
+            return _verify_email_page(
+                title="Tenhle odkaz nefunguje",
+                body=(
+                    "Odkazu chybí kód. Otevři e-mail znovu a klepni na tlačítko, "
+                    "nebo si v appce řekni o nový."
+                ),
+                success=False,
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        app_link = (
+            f"{settings.APP_DEEP_LINK_SCHEME}://auth/reset?"
+            f"{urlencode({'token': raw_token})}"
+        )
+        return _verify_email_page(
+            title="Nové heslo",
+            body=(
+                "Klepni na tlačítko a nastav si nové heslo přímo v appce. "
+                "Otevři tenhle odkaz na telefonu, kde máš Na Pivo nainstalované."
+            ),
+            success=True,
+            status_code=status.HTTP_200_OK,
+            action_link=app_link,
+            action_label="Nastavit nové heslo v appce",
+        )
 
 
 class ResetPasswordView(_AuthView):

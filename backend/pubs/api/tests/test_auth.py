@@ -1054,19 +1054,65 @@ def test_logout_all_revokes_every_token(client, sent_emails):
 
 
 @pytest.mark.django_db
-def test_request_password_reset_known_email_sends_email_and_creates_token(client, sent_emails):
+def test_request_password_reset_known_email_sends_web_link_and_creates_token(client, monkeypatch):
+    captured: dict[str, str | None] = {}
+
+    def fake_send_email(to, subject, html, *, text=None, attachments=None):
+        captured["html"] = html
+        captured["text"] = text
+        return True
+
+    monkeypatch.setattr(emailer, "send_email", fake_send_email)
     _register(client, "reset@x.cz", "Tr0ub4dor&3")
-    # Clear the verification email captured during register so we isolate reset.
-    sent_emails.clear()
+    captured.clear()
 
     resp = client.post(
         "/v1/auth/request-password-reset", data={"email": "reset@x.cz"}, format="json"
     )
     assert resp.status_code == status.HTTP_202_ACCEPTED
-    assert any(r["tag"] == "reset" for r in sent_emails)
+    html = captured["html"] or ""
+    text = captured["text"] or ""
+    assert 'href="http://testserver/v1/auth/reset?token=' in html
+    assert "napivo://" not in html
+    link_start = html.index('href="http://testserver/v1/auth/reset?token=') + len('href="')
+    link = html[link_start : html.index('"', link_start)]
+    raw = link.removeprefix("http://testserver/v1/auth/reset?token=")
+    assert link in text
+    assert raw in html
+    assert raw in text
     assert OneTimeToken.objects.filter(
         purpose=OneTimeToken.Purpose.RESET_PASSWORD
     ).count() == 1
+
+
+def test_reset_password_landing_page_opens_app(client):
+    resp = client.get("/v1/auth/reset?token=abc")
+
+    assert resp.status_code == status.HTTP_200_OK
+    html = resp.content.decode("utf-8")
+    assert 'href="napivo://auth/reset?token=abc"' in html
+    assert "Nastavit nové heslo v appce" in html
+
+
+def test_reset_password_landing_page_rejects_missing_token(client):
+    resp = client.get("/v1/auth/reset")
+
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST
+    html = resp.content.decode("utf-8")
+    assert "Tenhle odkaz nefunguje" in html
+    assert (
+        "Odkazu chybí kód. Otevři e-mail znovu a klepni na tlačítko, "
+        "nebo si v appce řekni o nový."
+    ) in html
+
+
+def test_reset_password_landing_page_url_encodes_token(client):
+    resp = client.get("/v1/auth/reset", data={"token": "abc&next=value"})
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert 'href="napivo://auth/reset?token=abc%26next%3Dvalue"' in resp.content.decode(
+        "utf-8"
+    )
 
 
 @pytest.mark.django_db
