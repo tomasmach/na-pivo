@@ -124,6 +124,34 @@ def test_verification_email_renders_app_link(monkeypatch):
     )
 
 
+def test_password_reset_email_renders_app_link_and_manual_code(monkeypatch):
+    captured: dict[str, str | None] = {}
+
+    def fake_send_email(to, subject, html, *, text=None, attachments=None):
+        captured["to"] = to
+        captured["subject"] = subject
+        captured["html"] = html
+        captured["text"] = text
+        return True
+
+    monkeypatch.setattr(emailer, "send_email", fake_send_email)
+
+    sent = emailer.send_password_reset_email(
+        "person@example.com",
+        link="napivo://auth/reset?token=reset-token",
+        code="reset-token",
+    )
+
+    assert sent is True
+    assert captured["to"] == "person@example.com"
+    assert captured["subject"] == "Nové heslo – Na Pivo"
+    assert 'href="napivo://auth/reset?token=reset-token"' in captured["html"]
+    assert "Nastavit nové heslo" in captured["html"]
+    assert "reset-token" in captured["html"]
+    assert "napivo://auth/reset?token=reset-token" in (captured["text"] or "")
+    assert "reset-token" in (captured["text"] or "")
+
+
 @pytest.mark.django_db
 def test_marketing_email_preference_is_returned_and_patchable(client):
     token, _ = _bootstrap(client)

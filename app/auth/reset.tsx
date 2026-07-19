@@ -2,10 +2,10 @@
  * Password reset screen — route `/auth/reset`, reachable via the deep link
  * `napivo://auth/reset?token=...`.
  *
- * Reads the one-time `token` from the URL, takes a new password (>= 8 chars),
- * and calls `resetPassword({ token, password })`. On success we toast and send
- * the user to the tabs; on error we surface `detail`. With no token (a malformed
- * link, or someone navigating here directly) we show a friendly invalid state.
+ * Reads the one-time `token` from the URL, or lets the user paste the code from
+ * the e-mail manually. It then takes a new password (>= 8 chars) and calls
+ * `resetPassword({ token, password })`. On success we toast and send the user
+ * to the tabs; on error we surface `detail`.
  */
 
 import React, { useCallback, useMemo, useState } from 'react';
@@ -15,7 +15,6 @@ import {
   Pressable,
   TextInput,
   KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
@@ -45,8 +44,9 @@ export default function ResetPasswordScreen() {
   const showToast = useToastStore((s) => s.show);
   const resetPassword = useAccountStore((s) => s.resetPassword);
 
-  const token = useMemo(() => firstParam(params.token).trim(), [params.token]);
+  const linkToken = useMemo(() => firstParam(params.token).trim(), [params.token]);
 
+  const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -61,6 +61,11 @@ export default function ResetPasswordScreen() {
 
   const handleSubmit = useCallback(async () => {
     if (busy) return;
+    const token = linkToken || code.trim();
+    if (!token) {
+      setError(cs.account.errorResetCodeMissing);
+      return;
+    }
     if (password.length < MIN_PASSWORD) {
       setError(cs.account.errorPasswordShort);
       return;
@@ -78,7 +83,7 @@ export default function ResetPasswordScreen() {
     } finally {
       setBusy(false);
     }
-  }, [busy, password, token, resetPassword, showToast, router]);
+  }, [busy, code, linkToken, password, resetPassword, showToast, router]);
 
   const header = (
     <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
@@ -96,27 +101,6 @@ export default function ResetPasswordScreen() {
     </View>
   );
 
-  if (!token) {
-    return (
-      <View style={styles.root}>
-        {header}
-        <View style={[styles.centered, { paddingBottom: Math.max(insets.bottom + 24, 32) }]}>
-          <Text style={styles.stateTitle}>{cs.account.resetInvalidTitle}</Text>
-          <Text style={styles.stateBody} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.account.resetInvalidBody}
-          </Text>
-          <View style={styles.stateButton}>
-            <GlowButton
-              label={cs.account.resetInvalidCta}
-              onPress={leave}
-              accessibilityLabel={cs.account.resetInvalidCta}
-            />
-          </View>
-        </View>
-      </View>
-    );
-  }
-
   return (
     <View style={styles.root}>
       {header}
@@ -133,6 +117,28 @@ export default function ResetPasswordScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          {!linkToken && (
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>{cs.account.resetCodeLabel}</Text>
+              <TextInput
+                style={styles.input}
+                value={code}
+                onChangeText={(value) => {
+                  setCode(value.trim());
+                  if (error) setError('');
+                }}
+                placeholder={cs.account.resetCodePlaceholder}
+                placeholderTextColor={Colors.mutedText}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="one-time-code"
+                textContentType="oneTimeCode"
+                accessibilityLabel={cs.a11y.authResetCodeInput}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              />
+            </View>
+          )}
+
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>{cs.account.resetNewPasswordLabel}</Text>
             <TextInput
@@ -262,29 +268,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // ── Invalid state ──
-  centered: {
-    flex: 1,
-    paddingHorizontal: Spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.md,
-  },
-  stateTitle: {
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 32,
-    color: Colors.foam,
-    textAlign: 'center',
-  },
-  stateBody: {
-    fontFamily: Fonts.ui.regular,
-    fontSize: 15,
-    lineHeight: 22,
-    color: Colors.foamMuted,
-    textAlign: 'center',
-  },
-  stateButton: {
-    alignSelf: 'stretch',
-    marginTop: Spacing.sm,
-  },
 });

@@ -218,19 +218,27 @@ def send_verification_email(to: str, *, link: str, code: str) -> bool:
 def send_password_reset_email(to: str, *, link: str, code: str) -> bool:
     """Send the password-reset message.
 
-    Code-only (see send_verification_email for why). ``link`` is accepted for a
-    future https Universal/App Link but is intentionally not rendered yet.
+    The app link is the quickest path, while the code remains available for
+    manual entry when an e-mail client refuses to open custom URL schemes.
     """
     subject = "Nové heslo – Na Pivo"
     message = (
         "Někdo si řekl o nové heslo k tvému účtu. Snad ty. "
-        "Vrať se do appky, zadej tenhle kód a nastav si nové.<br><br>"
+        "Klepni na tlačítko, nebo se vrať do appky a zadej kód.<br><br>"
         "Jestli to nebyl ty, klidně to nech být, nic se nestane."
     )
-    html = _render("Nové heslo", message, code=code)
+    html = _render(
+        "Nové heslo",
+        message,
+        code=code,
+        link=link,
+        link_label="Nastavit nové heslo",
+    )
     text = (
         "Někdo si řekl o nové heslo k tvému účtu. Snad ty.\n\n"
-        "Vrať se do appky, zadej tenhle kód a nastav si nové heslo:\n\n"
+        "Klepni na odkaz a nastav si nové heslo:\n\n"
+        f"{link}\n\n"
+        "Nebo se vrať do appky a zadej tenhle kód:\n\n"
         f"    {code}\n\n"
         "Jestli to nebyl ty, nech to být. Kód platí jen chvíli.\n\nNa Pivo"
     )

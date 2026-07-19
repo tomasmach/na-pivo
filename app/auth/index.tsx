@@ -19,7 +19,6 @@ import {
   Pressable,
   TextInput,
   KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
   StyleSheet,
   type KeyboardTypeOptions,
@@ -245,7 +244,8 @@ export default function AuthScreen() {
     setResetOpen(false);
     setResetEmail('');
     showToast(cs.account.resetSentToast);
-  }, [resetEmail, requestPasswordReset, showToast]);
+    router.push('/auth/reset');
+  }, [resetEmail, requestPasswordReset, showToast, router]);
 
   const submitLabel =
     busy === 'submit'

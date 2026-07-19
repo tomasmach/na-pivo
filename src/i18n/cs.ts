@@ -613,9 +613,9 @@ export const cs = {
     errorGeneric: 'Něco se pokazilo. Zkus to prosím znovu.',
 
     // — Forgot password (inline) —
-    resetPrompt: 'Zadej e-mail a pošlu ti odkaz na obnovu hesla.',
-    resetSend: 'Poslat odkaz',
-    resetSentToast: 'Pokud účet existuje, poslal jsem odkaz na obnovu.',
+    resetPrompt: 'Zadej e-mail a pošlu ti odkaz i kód pro obnovu hesla.',
+    resetSend: 'Poslat odkaz a kód',
+    resetSentToast: 'Pokud účet existuje, poslal jsem odkaz a kód pro obnovu.',
 
     // — Post-register / verification —
     verifyEmailSentToast: 'Ověřovací e-mail je na cestě.',
@@ -679,9 +679,12 @@ export const cs = {
 
     // — Password reset screen (deep link) —
     resetTitle: 'Obnova hesla',
+    resetCodeLabel: 'Kód z e-mailu',
+    resetCodePlaceholder: 'Vlož sem celý kód',
     resetNewPasswordLabel: 'Nové heslo',
     resetSubmit: 'Změnit heslo',
     resetDoneToast: 'Heslo změněno.',
+    errorResetCodeMissing: 'Zadej kód z e-mailu.',
     resetInvalidTitle: 'Neplatný odkaz',
     resetInvalidBody: 'Tento odkaz na obnovu hesla už neplatí. Vyžádej si nový.',
     resetInvalidCta: 'Zpět do aplikace',
@@ -2107,6 +2110,7 @@ export const cs = {
     authPasswordInput: 'Heslo',
     authNameInput: 'Jméno',
     authResetEmailInput: 'E-mail pro obnovu hesla',
+    authResetCodeInput: 'Kód pro obnovu hesla',
     authNewPasswordInput: 'Nové heslo',
     authTabLogin: 'Přepnout na přihlášení',
     authTabRegister: 'Přepnout na registraci',
