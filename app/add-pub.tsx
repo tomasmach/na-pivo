@@ -364,31 +364,30 @@ export default function AddPubScreen() {
           )}
         </View>
 
-        <View style={styles.twoColumn}>
-          <View style={styles.column}>
-            <Text style={styles.label}>{cs.addPub.cityLabel}</Text>
-            <TextInput
-              style={styles.input}
-              value={city}
-              onChangeText={setCity}
-              placeholder={cs.addPub.cityPlaceholder}
-              placeholderTextColor={Colors.mutedText}
-              maxLength={128}
-              accessibilityLabel={cs.a11y.addPubCityInput}
-            />
-          </View>
-          <View style={styles.column}>
-            <Text style={styles.label}>{cs.addPub.addressLabel}</Text>
-            <TextInput
-              style={styles.input}
-              value={address}
-              onChangeText={setAddress}
-              placeholder={cs.addPub.addressPlaceholder}
-              placeholderTextColor={Colors.mutedText}
-              maxLength={255}
-              accessibilityLabel={cs.a11y.addPubAddressInput}
-            />
-          </View>
+        <View style={styles.fieldGroup}>
+          <Text style={styles.label}>{cs.addPub.cityLabel}</Text>
+          <TextInput
+            style={styles.input}
+            value={city}
+            onChangeText={setCity}
+            placeholder={cs.addPub.cityPlaceholder}
+            placeholderTextColor={Colors.mutedText}
+            maxLength={128}
+            accessibilityLabel={cs.a11y.addPubCityInput}
+          />
+        </View>
+
+        <View style={styles.fieldGroup}>
+          <Text style={styles.label}>{cs.addPub.addressLabel}</Text>
+          <TextInput
+            style={styles.input}
+            value={address}
+            onChangeText={setAddress}
+            placeholder={cs.addPub.addressPlaceholder}
+            placeholderTextColor={Colors.mutedText}
+            maxLength={255}
+            accessibilityLabel={cs.a11y.addPubAddressInput}
+          />
         </View>
 
         {!!locationError && (
@@ -526,17 +525,10 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     backgroundColor: Colors.stout2,
     paddingHorizontal: 14,
-    fontFamily: Fonts.ui.medium,
+    fontFamily: Fonts.ui.regular,
     fontSize: 16,
+    letterSpacing: 0,
     color: Colors.foam,
-  },
-  twoColumn: {
-    flexDirection: 'row',
-    gap: Spacing.md,
-  },
-  column: {
-    flex: 1,
-    gap: Spacing.sm,
   },
   locationCard: {
     overflow: 'hidden',

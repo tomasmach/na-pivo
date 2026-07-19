@@ -429,7 +429,7 @@ const styles = StyleSheet.create({
   buttonText: { fontFamily: Fonts.ui.bold, fontSize: 14, color: Colors.stout },
   buttonTextSecondary: { color: Colors.foam },
   pressed: { opacity: 0.55 },
-  input: { minHeight: 48, borderWidth: 1, borderColor: Colors.border, borderRadius: Radius.medium, backgroundColor: Colors.stout2, paddingHorizontal: Spacing.md, fontFamily: Fonts.ui.medium, fontSize: 15, color: Colors.foam },
+  input: { minHeight: 48, borderWidth: 1, borderColor: Colors.border, borderRadius: Radius.medium, backgroundColor: Colors.stout2, paddingHorizontal: Spacing.md, fontFamily: Fonts.ui.regular, fontSize: 15, letterSpacing: 0, color: Colors.foam },
   multiline: { minHeight: 100, paddingTop: Spacing.md, textAlignVertical: 'top' },
   inputLabel: { fontFamily: Fonts.ui.medium, fontSize: 13, color: Colors.foamMuted },
   hint: { fontFamily: Fonts.ui.regular, fontSize: 12, lineHeight: 17, color: Colors.mutedText },

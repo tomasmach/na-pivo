@@ -272,7 +272,7 @@ export function PubFilterSheet({
           <KeyboardAwareScrollView
             style={styles.content}
             contentContainerStyle={{
-              paddingBottom: 50 + Math.max(insets.bottom, Spacing.md) + Spacing.xl,
+              paddingBottom: Spacing.lg,
             }}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
@@ -414,7 +414,7 @@ export function PubFilterSheet({
           <View
             style={[
               styles.actions,
-              { bottom: Math.max(insets.bottom, Spacing.md) },
+              { paddingBottom: Math.max(insets.bottom, Spacing.md) },
             ]}
           >
             {hasDraftFilters ? (
@@ -770,7 +770,7 @@ function AmenityChip({
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: withAlpha(Colors.black, 0.64), justifyContent: 'flex-end' },
   card: {
-    maxHeight: '88%',
+    height: '88%',
     backgroundColor: Colors.stout2,
     borderTopLeftRadius: Radius.cardLarge,
     borderTopRightRadius: Radius.cardLarge,
@@ -796,7 +796,7 @@ const styles = StyleSheet.create({
     color: Colors.mutedText,
   },
   closeBtn: { width: HitArea.min, height: HitArea.min, alignItems: 'center', justifyContent: 'center', marginTop: -Spacing.xs },
-  content: { marginTop: Spacing.sm },
+  content: { flex: 1, marginTop: Spacing.sm },
   sectionLabel: {
     marginTop: Spacing.md, marginBottom: Spacing.sm, fontFamily: Fonts.ui.semibold,
     fontSize: 11, letterSpacing: 1.1, color: Colors.mutedText,
@@ -861,8 +861,7 @@ const styles = StyleSheet.create({
   matchHint: { marginTop: Spacing.lg, marginBottom: Spacing.md, fontFamily: Fonts.ui.regular, fontSize: 12, lineHeight: 17, color: Colors.mutedText },
   limitHint: { color: Colors.amberLight },
   actions: {
-    position: 'absolute', left: Spacing.lg, right: Spacing.lg,
-    zIndex: 1, flexDirection: 'row', gap: Spacing.sm,
+    flexDirection: 'row', gap: Spacing.sm, paddingTop: Spacing.sm,
   },
   secondaryButton: { minHeight: 50, paddingHorizontal: Spacing.md, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.medium, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.stout2 },
   secondaryButtonText: { fontFamily: Fonts.ui.semibold, fontSize: 14, color: Colors.foamMuted },
