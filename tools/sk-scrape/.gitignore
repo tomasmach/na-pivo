@@ -1,0 +1,9 @@
+# Local working data — code is tracked, scraped data and artifacts are not.
+logs/
+*.jsonl
+*.log
+sample_record.json
+smoke_*.json
+.venv/
+__pycache__/
+.ruff_cache/
