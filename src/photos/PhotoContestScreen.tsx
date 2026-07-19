@@ -85,6 +85,10 @@ type LoadState = 'loading' | 'loaded' | 'error';
 const REVEAL_STEP_MS = 60;
 const REVEAL_MAX_STEPS = 8;
 const ENTRY_FRAME = require('../../assets/images/photo-contest/entry-frame.png');
+/** Fraction of the frame artwork occupied by its transparent photo window. */
+const FRAME_WINDOW = { top: 0.07, right: 0.055, bottom: 0.045, left: 0.055 };
+/** Photo aspect ratio (w/h) assumed until the image reports its real size. */
+const FRAME_FALLBACK_RATIO = 3 / 4;
 
 function nameOf(entry: PhotoContestEntry | PhotoContestWinner): string {
   const p = entry.account;
@@ -324,7 +328,7 @@ function WinnerTile({ winner, lead }: { winner: PhotoContestWinner; lead: boolea
 
 export default function PhotoContestScreen() {
   const insets = useSafeAreaInsets();
-  const { width: screenWidth } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const router = useRouter();
   const reduceMotion = useReduceMotion();
   const showToast = useToastStore((s) => s.show);
@@ -334,6 +338,18 @@ export default function PhotoContestScreen() {
   const [snapshot, setSnapshot] = useState<PhotoContestSnapshot | null>(null);
   const [viewerEntry, setViewerEntry] = useState<PhotoContestEntry | null>(null);
   const [captureOpen, setCaptureOpen] = useState(false);
+  // Measured w/h of the viewer photo, so the frame window can match it exactly.
+  const [viewerPhotoRatio, setViewerPhotoRatio] = useState<number | null>(null);
+  const openViewer = useCallback((entry: PhotoContestEntry) => {
+    setViewerPhotoRatio(null);
+    setViewerEntry(entry);
+  }, []);
+  // Size the stage so the artwork's transparent window matches the real photo.
+  const stageAspect =
+    ((viewerPhotoRatio ?? FRAME_FALLBACK_RATIO) * (1 - FRAME_WINDOW.top - FRAME_WINDOW.bottom)) /
+    (1 - FRAME_WINDOW.left - FRAME_WINDOW.right);
+  const stageWidth = Math.min(screenWidth - Spacing.md, 430, screenHeight * 0.62 * stageAspect);
+  const stageHeight = stageWidth / stageAspect;
   // Optimistic working copy of the entries (votes flip here before the server).
   const [entries, setEntries] = useState<PhotoContestEntry[]>([]);
   // Bumped whenever a fresh server snapshot replaces `entries`; a vote revert
@@ -581,14 +597,14 @@ export default function PhotoContestScreen() {
       showAppDialog({
         title: cs.photoContest.entryActionsTitle(nameOf(entry)),
         buttons: [
-          { text: cs.photoContest.openPhotoAction, onPress: () => setViewerEntry(entry) },
+          { text: cs.photoContest.openPhotoAction, onPress: () => openViewer(entry) },
           { text: cs.photoContest.openProfileAction, onPress: () => openProfile(entry) },
           { text: cs.photoContest.reportAction, style: 'destructive', onPress: () => confirmReport(entry) },
           { text: cs.common.cancel, style: 'cancel' },
         ],
       });
     },
-    [confirmReport, openProfile],
+    [confirmReport, openProfile, openViewer],
   );
 
   // ── Derived ───────────────────────────────────────────────────────────────
@@ -638,7 +654,7 @@ export default function PhotoContestScreen() {
             tall={(i + (columnOffset ? 1 : 0)) % 2 === 0}
             onVote={() => handleVote(entry)}
             onActions={() => openEntryActions(entry)}
-            onOpenPhoto={() => setViewerEntry(entry)}
+            onOpenPhoto={() => openViewer(entry)}
             onOpenProfile={() => openProfile(entry)}
           />
         </Reveal>
@@ -916,18 +932,32 @@ export default function PhotoContestScreen() {
                 style={[
                   styles.viewerStage,
                   {
-                    width: Math.min(screenWidth - Spacing.md, 430),
-                    height: Math.min(screenWidth - Spacing.md, 430) * (4 / 3),
+                    width: stageWidth,
+                    height: stageHeight,
                     marginTop: insets.top + Spacing.xl,
                   },
                 ]}
               >
-                <View style={styles.viewerPhotoWell}>
+                <View
+                  style={[
+                    styles.viewerPhotoWell,
+                    {
+                      top: stageHeight * FRAME_WINDOW.top,
+                      right: stageWidth * FRAME_WINDOW.right,
+                      bottom: stageHeight * FRAME_WINDOW.bottom,
+                      left: stageWidth * FRAME_WINDOW.left,
+                    },
+                  ]}
+                >
                   <Image
                     source={{ uri: viewerEntry.imageUrl }}
                     style={StyleSheet.absoluteFill}
-                    resizeMode="contain"
+                    resizeMode="cover"
                     accessibilityIgnoresInvertColors
+                    onLoad={(event) => {
+                      const { width, height } = event.nativeEvent.source;
+                      if (width > 0 && height > 0) setViewerPhotoRatio(width / height);
+                    }}
                   />
                 </View>
                 <View
@@ -1372,10 +1402,6 @@ const styles = StyleSheet.create({
   },
   viewerPhotoWell: {
     position: 'absolute',
-    top: '7%',
-    right: '5.5%',
-    bottom: '4.5%',
-    left: '5.5%',
     overflow: 'hidden',
     borderRadius: Radius.medium,
     backgroundColor: Colors.stout2,
