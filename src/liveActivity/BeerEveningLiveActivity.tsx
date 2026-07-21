@@ -190,6 +190,7 @@ const BeerEveningLiveActivity = (
           systemImage="plus"
           target="add-beer"
           modifiers={[
+            font({ size: 15, weight: 'semibold', design: 'rounded' }),
             buttonStyle('borderedProminent'),
             buttonBorderShape('capsule'),
             controlSize('regular'),
@@ -337,6 +338,7 @@ const BeerEveningLiveActivity = (
           systemImage="plus"
           target="add-beer"
           modifiers={[
+            font({ size: 15, weight: 'semibold', design: 'rounded' }),
             buttonStyle('borderedProminent'),
             buttonBorderShape('capsule'),
             controlSize('small'),
