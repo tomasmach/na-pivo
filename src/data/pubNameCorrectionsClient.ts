@@ -72,7 +72,10 @@ export async function submitPubNameCorrection(
     });
 
     if (resp.status === 401) {
-      await clearCachedAnonymousAccount(session);
+      await clearCachedAnonymousAccount(session, {
+        source: 'pub_name_correction_submit',
+        endpoint: '/v1/pub-name-corrections',
+      });
       return 'retry';
     }
     if (!resp.ok) {

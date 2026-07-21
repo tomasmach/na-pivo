@@ -3,10 +3,11 @@ import { create } from 'zustand';
 import {
   ensureAccount,
   fetchAccountPreferences,
+  setAnonymousSessionEvictionListener,
   type AccountSession,
 } from '@/data/account';
 import * as auth from '@/data/auth';
-import { setTelemetrySession } from '@/data/telemetryClient';
+import { setTelemetrySession, trackApiFailure } from '@/data/telemetryClient';
 import {
   EMPTY_ACHIEVEMENTS,
   type AccountAchievements,
@@ -276,7 +277,11 @@ export const useAccountStore = create<AccountState>((set, get) => {
             applyAccountSettings(profile.settings);
           }
         }
-      } catch {
+      } catch (error) {
+        trackApiFailure('account_init_exception', {
+          reason: 'exception',
+          errorName: error instanceof Error ? error.name : typeof error,
+        });
         set({ status: 'error' });
       }
     },
@@ -389,6 +394,11 @@ export const useAccountStore = create<AccountState>((set, get) => {
       return result;
     },
   };
+});
+
+setAnonymousSessionEvictionListener(async () => {
+  useAccountStore.setState({ session: null, status: 'idle' });
+  await useAccountStore.getState().initAccount();
 });
 
 /**

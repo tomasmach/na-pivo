@@ -134,7 +134,10 @@ describe('submitAddedPub', () => {
 
     await expect(submitAddedPub(entry)).resolves.toBe('retry');
 
-    expect(clearCachedAnonymousAccount).toHaveBeenCalledWith(session);
+    expect(clearCachedAnonymousAccount).toHaveBeenCalledWith(session, {
+      source: 'added_pub_submit',
+      endpoint: '/v1/pubs',
+    });
   });
 
   it('returns retry for throttling, server errors, malformed OK responses, and network failures', async () => {

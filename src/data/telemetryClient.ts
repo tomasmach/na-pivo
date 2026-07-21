@@ -274,6 +274,8 @@ export function trackApiFailure(
     status?: number;
     reason?: string;
     endpoint?: string;
+    source?: string;
+    errorName?: string;
     error?: unknown;
     sync_result?: string;
     retryable?: boolean;
@@ -289,7 +291,8 @@ export function trackApiFailure(
       endpoint: details.endpoint,
       status: details.status,
       reason: details.reason,
-      error_name: cleanError?.errorName,
+      source: details.source,
+      error_name: details.errorName ?? cleanError?.errorName,
       error_message: cleanError?.errorMessage,
       stack: cleanError?.stack,
       sync_result: details.sync_result,

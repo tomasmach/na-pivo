@@ -278,6 +278,9 @@ describe('submitDrink', () => {
       accountId: 'a',
       token: 'tok',
       authenticated: false,
+    }, {
+      source: 'drink_submit',
+      endpoint: '/v1/drinks',
     });
   });
 
@@ -298,6 +301,9 @@ describe('submitDrink', () => {
       accountId: 'a',
       token: 'tok',
       authenticated: true,
+    }, {
+      source: 'drink_submit',
+      endpoint: '/v1/drinks',
     });
   });
 
@@ -388,6 +394,9 @@ describe('deleteDrink', () => {
       accountId: 'a',
       token: 'tok',
       authenticated: true,
+    }, {
+      source: 'drink_delete',
+      endpoint: '/v1/drinks/:client_id',
     });
   });
 

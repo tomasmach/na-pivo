@@ -100,7 +100,10 @@ describe('submitPubNameCorrection', () => {
 
     await expect(submitPubNameCorrection(entry)).resolves.toBe('retry');
 
-    expect(clearCachedAnonymousAccount).toHaveBeenCalledWith(session);
+    expect(clearCachedAnonymousAccount).toHaveBeenCalledWith(session, {
+      source: 'pub_name_correction_submit',
+      endpoint: '/v1/pub-name-corrections',
+    });
   });
 
   it('returns permanent-error for validation failures', async () => {

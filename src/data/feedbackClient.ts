@@ -126,7 +126,10 @@ export async function submitFeedback(
     }
 
     if (status >= 200 && status < 300) return 'ok';
-    return classifyQueueHttpFailure(status, session);
+    return classifyQueueHttpFailure(status, session, {
+      source: 'feedback_submit',
+      endpoint: '/v1/feedback',
+    });
   } catch {
     return 'retry';
   } finally {

@@ -262,7 +262,10 @@ export async function submitAmenityVotes(
       trackAmenitySynced('submit_votes');
       return 'ok';
     }
-    const result = await classifyQueueHttpFailure(resp.status, session);
+    const result = await classifyQueueHttpFailure(resp.status, session, {
+      source: 'amenity_votes_submit',
+      endpoint: '/v1/pub-amenities/votes',
+    });
     trackAmenitySyncFailed('submit_votes', {
       status: resp.status,
       reason: 'http_error',
@@ -381,7 +384,10 @@ export async function submitAmenityVotesDetailed(
       }
       return { status: 'ok', body };
     }
-    const result = await classifyQueueHttpFailure(resp.status, session);
+    const result = await classifyQueueHttpFailure(resp.status, session, {
+      source: 'amenity_votes_submit',
+      endpoint: '/v1/pub-amenities/votes',
+    });
     trackAmenitySyncFailed('submit_votes', {
       status: resp.status,
       reason: 'http_error',
@@ -435,7 +441,10 @@ export async function fetchMyAmenityVotes(signal?: AbortSignal): Promise<WireMyA
     });
 
     if (resp.status === 401) {
-      await clearCachedAnonymousAccount(session);
+      await clearCachedAnonymousAccount(session, {
+        source: 'amenity_votes_fetch',
+        endpoint: '/v1/pub-amenities/votes',
+      });
       return null;
     }
     if (!resp.ok) {
@@ -512,7 +521,10 @@ export async function fetchPubAmenities(
     });
 
     if (resp.status === 401) {
-      await clearCachedAnonymousAccount(session);
+      await clearCachedAnonymousAccount(session, {
+        source: 'pub_amenities_fetch',
+        endpoint: '/v1/pub-amenities',
+      });
       return null;
     }
     if (!resp.ok) {

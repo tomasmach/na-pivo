@@ -106,7 +106,10 @@ jest.mock('@/data/friendsClient', () => ({ shareFriendPubActivity: mockShareFrie
 const fetchPubHours = jest.fn(async () => new Map());
 jest.mock('@/data/hoursClient', () => ({ fetchPubHours }));
 
-jest.mock('@/data/account', () => ({ generateUuidV4: jest.fn(() => 'uuid-fixed') }));
+jest.mock('@/data/account', () => ({
+  generateUuidV4: jest.fn(() => 'uuid-fixed'),
+  setAnonymousSessionEvictionListener: jest.fn(),
+}));
 
 // Visit ("evening") sync — keep it out of the network path; the wiring is
 // covered by visitsSync/visitsQueue tests.

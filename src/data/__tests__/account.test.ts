@@ -3,14 +3,16 @@ import * as SecureStore from 'expo-secure-store';
 
 import {
   clearCachedAccount,
+  clearCachedAnonymousAccount,
   ensureAccount,
   fetchAccountPreferences,
   getCachedAuthenticationState,
   getOrCreateDeviceId,
   setSession,
+  setAnonymousSessionEvictionListener,
   updateAccountPreferences,
 } from '../account';
-import { trackApiFailure } from '../telemetryClient';
+import { setTelemetrySession, trackApiFailure } from '../telemetryClient';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
@@ -48,6 +50,7 @@ const secureStoreMock = SecureStore as unknown as {
   __setStore: (s: Record<string, string>) => void;
 };
 const mockTrackApiFailure = trackApiFailure as jest.MockedFunction<typeof trackApiFailure>;
+const mockSetTelemetrySession = setTelemetrySession as jest.MockedFunction<typeof setTelemetrySession>;
 
 const ORIGINAL_FETCH = global.fetch;
 const ORIGINAL_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
@@ -86,6 +89,7 @@ beforeEach(async () => {
   // ids/accounts don't bleed across tests.
   (AsyncStorage as any).__INTERNAL_MOCK_STORAGE__ = {};
   secureStoreMock.__setStore({});
+  setAnonymousSessionEvictionListener(null);
   await clearCachedAccount();
 });
 
@@ -141,6 +145,18 @@ describe('getCachedAuthenticationState', () => {
     jest.mocked(SecureStore.getItemAsync).mockRejectedValueOnce(new Error('Keychain unavailable'));
 
     await expect(getCachedAuthenticationState()).resolves.toBeNull();
+    expect(mockTrackApiFailure).toHaveBeenCalledWith('session_cache_read', {
+      reason: 'session_cache_read_unavailable',
+    });
+  });
+
+  it('treats malformed SecureStore data as unavailable session data', async () => {
+    secureStoreMock.__setStore({ [ACCOUNT_KEY]: '{not-json' });
+
+    await expect(getCachedAuthenticationState()).resolves.toBe(false);
+    expect(mockTrackApiFailure).toHaveBeenCalledWith('session_cache_read', {
+      reason: 'session_cache_malformed',
+    });
   });
 });
 
@@ -197,6 +213,9 @@ describe('ensureAccount — registration (no cache yet)', () => {
     await expect(
       setSession({ accountId: 'acc-1', token: 'signed-token', authenticated: true }),
     ).rejects.toThrow('Secure session persistence failed');
+    expect(mockTrackApiFailure).toHaveBeenCalledWith('session_cache_write', {
+      reason: 'session_cache_write_failed',
+    });
   });
 
   it('POSTs { device_id } to <base>/v1/account, returns the session, and caches it (in SecureStore) with the deviceId', async () => {
@@ -336,15 +355,62 @@ describe('ensureAccount — registration (no cache yet)', () => {
     await expect(ensureAccount()).resolves.toBeNull();
 
     expect(fetchSpy).toHaveBeenCalledTimes(2);
-    expect(mockTrackApiFailure).toHaveBeenCalledWith('account_register_recovery', {
+    expect(mockTrackApiFailure).toHaveBeenCalledWith('account_bootstrap', {
       endpoint: '/v1/account',
       status: 401,
-      reason: 'claimed_device_id',
+      reason: 'bootstrap_replacement_rejected',
     });
     expect(mockTrackApiFailure).not.toHaveBeenCalledWith(
       'account_register',
       expect.objectContaining({ status: 401 })
     );
+  });
+
+  it('suppresses retry waves during bootstrap cooldown and resets backoff after success', async () => {
+    jest.useFakeTimers();
+    const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
+    try {
+      jest.setSystemTime(new Date('2026-07-21T10:00:00Z'));
+      await AsyncStorage.setItem(DEVICE_ID_KEY, 'dev-locked');
+      setBackend('https://api.example.com');
+      const fetchSpy = jest
+        .fn()
+        .mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({}) })
+        .mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({}) })
+        .mockResolvedValueOnce({ ok: true, status: 201, json: async () => ({ id: 'acc-2', token: 'tok-2' }) })
+        .mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({}) })
+        .mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({}) })
+        .mockResolvedValueOnce({ ok: true, status: 201, json: async () => ({ id: 'acc-3', token: 'tok-3' }) });
+      global.fetch = fetchSpy as unknown as typeof fetch;
+
+      await expect(ensureAccount()).resolves.toBeNull();
+      await expect(Promise.all([ensureAccount(), ensureAccount(), ensureAccount()])).resolves.toEqual([
+        null,
+        null,
+        null,
+      ]);
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+      expect(mockTrackApiFailure).toHaveBeenCalledWith('account_bootstrap', {
+        endpoint: '/v1/account',
+        reason: 'bootstrap_retry_suppressed',
+      });
+
+      jest.advanceTimersByTime(30_001);
+      await expect(ensureAccount()).resolves.toMatchObject({ accountId: 'acc-2' });
+
+      // Remove only the persisted blob so this test can prove the successful
+      // bootstrap reset the exponential failure counter itself.
+      await SecureStore.deleteItemAsync(ACCOUNT_KEY);
+      await expect(ensureAccount()).resolves.toBeNull();
+      expect(fetchSpy).toHaveBeenCalledTimes(5);
+
+      jest.advanceTimersByTime(30_001);
+      await expect(ensureAccount()).resolves.toMatchObject({ accountId: 'acc-3' });
+      expect(fetchSpy).toHaveBeenCalledTimes(6);
+    } finally {
+      randomSpy.mockRestore();
+      jest.useRealTimers();
+    }
   });
 
   it('resolves to null on a 2xx body missing id/token and caches nothing', async () => {
@@ -544,6 +610,88 @@ describe('clearCachedAccount', () => {
     expect(session?.deviceId).not.toBe('dev-1');
     expect(session?.accountId).toBe('acc-2');
     expect(session?.token).toBe('tok-2');
+  });
+
+  it('reports a SecureStore delete failure without throwing', async () => {
+    jest.mocked(SecureStore.deleteItemAsync).mockRejectedValueOnce(new Error('Keychain unavailable'));
+
+    await expect(clearCachedAccount()).resolves.toBeUndefined();
+    expect(mockTrackApiFailure).toHaveBeenCalledWith('session_cache_delete', {
+      reason: 'session_cache_delete_failed',
+    });
+  });
+});
+
+describe('clearCachedAnonymousAccount', () => {
+  const requestContext = {
+    source: 'account_preferences_fetch',
+    endpoint: '/v1/account/me',
+  };
+
+  it('ignores an old anonymous 401 after an authenticated session was saved', async () => {
+    await seedAccount({
+      deviceId: 'dev-1',
+      accountId: 'anon-1',
+      token: 'old-anonymous-token',
+      authenticated: false,
+    });
+    const oldSession = await ensureAccount();
+
+    await setSession({
+      deviceId: 'dev-1',
+      accountId: 'signed-1',
+      token: 'new-authenticated-token',
+      authenticated: true,
+    });
+
+    await expect(clearCachedAnonymousAccount(oldSession, requestContext)).resolves.toBe(false);
+    await expect(ensureAccount()).resolves.toMatchObject({
+      accountId: 'signed-1',
+      token: 'new-authenticated-token',
+      authenticated: true,
+    });
+    expect(mockTrackApiFailure).toHaveBeenCalledWith('anonymous_session_eviction', {
+      endpoint: '/v1/account/me',
+      source: 'account_preferences_fetch',
+      status: 401,
+      reason: 'anonymous_401_stale_session_ignored',
+    });
+  });
+
+  it('evicts the matching anonymous session and notifies the store listener', async () => {
+    await seedAccount({
+      deviceId: 'dev-1',
+      accountId: 'anon-1',
+      token: 'current-anonymous-token',
+      authenticated: false,
+    });
+    const listener = jest.fn();
+    setAnonymousSessionEvictionListener(listener);
+    jest.clearAllMocks();
+
+    await expect(
+      clearCachedAnonymousAccount(
+        {
+          deviceId: 'dev-1',
+          accountId: 'anon-1',
+          token: 'current-anonymous-token',
+          authenticated: false,
+        },
+        requestContext,
+      ),
+    ).resolves.toBe(true);
+
+    expect(await SecureStore.getItemAsync(ACCOUNT_KEY)).toBeNull();
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(mockTrackApiFailure).toHaveBeenCalledWith('anonymous_session_eviction', {
+      endpoint: '/v1/account/me',
+      source: 'account_preferences_fetch',
+      status: 401,
+      reason: 'anonymous_401_current_session_evicted',
+    });
+    expect(mockSetTelemetrySession.mock.invocationCallOrder[0]).toBeLessThan(
+      mockTrackApiFailure.mock.invocationCallOrder[0],
+    );
   });
 });
 

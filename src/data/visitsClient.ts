@@ -132,7 +132,10 @@ export async function submitVisit(
       trackVisitSynced('submit_visit');
       return 'ok';
     }
-    const result = await classifyQueueHttpFailure(resp.status, session);
+    const result = await classifyQueueHttpFailure(resp.status, session, {
+      source: 'visit_submit',
+      endpoint: '/v1/pub-visits',
+    });
     trackVisitSyncFailed('submit_visit', {
       status: resp.status,
       reason: 'http_error',
@@ -195,7 +198,10 @@ export async function deleteVisit(
       trackVisitSynced('delete_visit');
       return 'ok';
     }
-    const result = await classifyQueueHttpFailure(resp.status, session);
+    const result = await classifyQueueHttpFailure(resp.status, session, {
+      source: 'visit_delete',
+      endpoint: '/v1/pub-visits/:client_id',
+    });
     trackVisitSyncFailed('delete_visit', {
       status: resp.status,
       reason: 'http_error',
@@ -249,7 +255,10 @@ export async function fetchVisits(signal?: AbortSignal): Promise<WireVisit[] | n
     });
 
     if (resp.status === 401) {
-      await clearCachedAnonymousAccount(session);
+      await clearCachedAnonymousAccount(session, {
+        source: 'visits_fetch',
+        endpoint: '/v1/pub-visits',
+      });
       return null;
     }
     if (!resp.ok) {

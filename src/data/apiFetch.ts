@@ -63,9 +63,10 @@ export type QueueSyncResult = 'ok' | 'permanent-error' | 'retry';
 export async function classifyQueueHttpFailure(
   status: number,
   session: AccountSession,
+  context: { source: string; endpoint: string },
 ): Promise<QueueSyncResult> {
   if (status === 401) {
-    await clearCachedAnonymousAccount(session);
+    await clearCachedAnonymousAccount(session, context);
     return 'retry';
   }
   if (status === 400 || status === 422) {

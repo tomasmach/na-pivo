@@ -240,8 +240,8 @@ function extractError(data: Record<string, unknown>, status: number): FriendActi
   return { ok: false, code, detail };
 }
 
-async function handleUnauthorized(session: AccountSession): Promise<void> {
-  await classifyQueueHttpFailure(401, session);
+async function handleUnauthorized(session: AccountSession, endpoint: string): Promise<void> {
+  await classifyQueueHttpFailure(401, session, { source: 'beer_checkins_request', endpoint });
 }
 
 async function requestJson(
@@ -277,7 +277,7 @@ async function requestJson(
       data = {};
     }
     if (resp.status === 401) {
-      await handleUnauthorized(session);
+      await handleUnauthorized(session, path);
       return { ok: false, result: { ok: false, code: 'auth', detail: 'Přihlášení vypršelo.' } };
     }
     if (!resp.ok) return { ok: false, result: extractError(data, resp.status) };

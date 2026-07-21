@@ -15,8 +15,8 @@ import {
 } from '@/stores/accountStore';
 import * as auth from '@/data/auth';
 import { EMPTY_ACHIEVEMENTS, type AccountMapper, type AccountProfile, type AuthResult } from '@/data/auth';
-import { ensureAccount } from '@/data/account';
-import { setTelemetrySession } from '@/data/telemetryClient';
+import { ensureAccount, setAnonymousSessionEvictionListener } from '@/data/account';
+import { setTelemetrySession, trackApiFailure } from '@/data/telemetryClient';
 import { reconcileDiarySnapshot } from '@/data/diarySync';
 
 jest.mock('@/data/auth');
@@ -28,9 +28,11 @@ jest.mock('@/data/account', () => ({
     authenticated: true,
   })),
   fetchAccountPreferences: jest.fn(async () => null),
+  setAnonymousSessionEvictionListener: jest.fn(),
 }));
 jest.mock('@/data/telemetryClient', () => ({
   setTelemetrySession: jest.fn(),
+  trackApiFailure: jest.fn(),
 }));
 jest.mock('@/data/diarySync', () => ({
   reconcileDiarySnapshot: jest.fn(async () => null),
@@ -43,7 +45,10 @@ jest.mock('@/stores/settingsStore', () => ({
 
 const mockedAuth = auth as jest.Mocked<typeof auth>;
 const mockEnsureAccount = ensureAccount as jest.MockedFunction<typeof ensureAccount>;
+const registeredAnonymousSessionEvictionListener = jest.mocked(setAnonymousSessionEvictionListener)
+  .mock.calls[0]?.[0] as (() => Promise<void>) | undefined;
 const mockSetTelemetrySession = setTelemetrySession as jest.MockedFunction<typeof setTelemetrySession>;
+const mockTrackApiFailure = trackApiFailure as jest.MockedFunction<typeof trackApiFailure>;
 const mockReconcileDiarySnapshot = reconcileDiarySnapshot as jest.MockedFunction<
   typeof reconcileDiarySnapshot
 >;
@@ -124,6 +129,44 @@ describe('initAccount', () => {
     expect(state.status).toBe('ready');
     expect(state.profile).toBeNull();
     expect(selectIsSignedIn(state)).toBe(true);
+  });
+
+  it('refreshes in-memory state when the account layer evicts an anonymous session', async () => {
+    useAccountStore.setState({
+      session: { deviceId: 'old-d', accountId: 'old-a', token: 'dead', authenticated: false },
+      status: 'ready',
+    });
+    mockEnsureAccount.mockResolvedValueOnce({
+      deviceId: 'new-d',
+      accountId: 'new-a',
+      token: 'fresh',
+      authenticated: false,
+    });
+
+    expect(registeredAnonymousSessionEvictionListener).toBeDefined();
+    await registeredAnonymousSessionEvictionListener?.();
+
+    expect(useAccountStore.getState()).toMatchObject({
+      session: {
+        deviceId: 'new-d',
+        accountId: 'new-a',
+        token: 'fresh',
+        authenticated: false,
+      },
+      status: 'ready',
+    });
+  });
+
+  it('reports init exceptions with only the error class', async () => {
+    mockEnsureAccount.mockRejectedValueOnce(new TypeError('sensitive detail'));
+
+    await useAccountStore.getState().initAccount();
+
+    expect(mockTrackApiFailure).toHaveBeenCalledWith('account_init_exception', {
+      reason: 'exception',
+      errorName: 'TypeError',
+    });
+    expect(useAccountStore.getState().status).toBe('error');
   });
 });
 

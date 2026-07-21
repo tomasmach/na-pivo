@@ -515,25 +515,32 @@ async function applyAuthSuccess(
   options?: { clearLocalPrivateData?: boolean },
 ): Promise<AuthResult> {
   const profile = parseProfile(data);
-  if (data.token && profile.id) {
-    if (options?.clearLocalPrivateData) {
-      await clearLocalPrivateAccountData();
-    }
-    try {
-      await setSession({
-        deviceId: profile.deviceId || undefined,
-        accountId: profile.id,
-        token: data.token,
-        authenticated: true,
-      });
-    } catch (err) {
-      trackApiFailure('auth_session_persist', { reason: 'secure_store', error: err });
-      return {
-        ok: false,
-        code: 'session_storage',
-        detail: 'Přihlášení se nepodařilo bezpečně uložit. Odemkni telefon a zkus to znovu.',
-      };
-    }
+  if (!data.token || !profile.id) {
+    trackApiFailure('auth_session', { reason: 'auth_success_missing_session' });
+    return {
+      ok: false,
+      code: 'protocol',
+      detail: 'Server neposlal platné přihlášení. Zkus to prosím znovu.',
+    };
+  }
+
+  if (options?.clearLocalPrivateData) {
+    await clearLocalPrivateAccountData();
+  }
+  try {
+    await setSession({
+      deviceId: profile.deviceId || undefined,
+      accountId: profile.id,
+      token: data.token,
+      authenticated: true,
+    });
+  } catch (err) {
+    trackApiFailure('auth_session_persist', { reason: 'secure_store', error: err });
+    return {
+      ok: false,
+      code: 'session_storage',
+      detail: 'Přihlášení se nepodařilo bezpečně uložit. Odemkni telefon a zkus to znovu.',
+    };
   }
   return { ok: true, profile };
 }
@@ -579,7 +586,22 @@ export async function loginEmail(params: { email: string; password: string }): P
     body: { email: params.email, password: params.password },
   });
   if ('networkError' in res) return NETWORK_ERROR;
-  if (!res.ok) return { ok: false, ...extractError(res.data, res.status) };
+  if (!res.ok) {
+    if (res.status === 401) {
+      trackApiFailure('auth_login', {
+        endpoint: '/v1/auth/login',
+        status: res.status,
+        reason: 'login_invalid_credentials',
+      });
+    } else if (res.status >= 500) {
+      trackApiFailure('auth_login', {
+        endpoint: '/v1/auth/login',
+        status: res.status,
+        reason: 'login_server_error',
+      });
+    }
+    return { ok: false, ...extractError(res.data, res.status) };
+  }
   return applyAuthSuccess(res.data);
 }
 

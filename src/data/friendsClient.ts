@@ -385,8 +385,8 @@ interface RawInviteResolve {
   inviter?: RawFriendProfile | null;
 }
 
-async function handleUnauthorized(session: AccountSession): Promise<void> {
-  await clearCachedAnonymousAccount(session);
+async function handleUnauthorized(session: AccountSession, endpoint: string): Promise<void> {
+  await clearCachedAnonymousAccount(session, { source: 'friends_request', endpoint });
 }
 
 function parseProfile(raw: RawFriendProfile | undefined | null): FriendProfile {
@@ -641,7 +641,7 @@ async function requestJson(
       data = {};
     }
     if (resp.status === 401) {
-      await handleUnauthorized(session);
+      await handleUnauthorized(session, path);
       return { ok: false, result: { ok: false, code: 'auth', detail: 'Přihlášení vypršelo.' } };
     }
     if (!resp.ok) return { ok: false, result: extractError(data, resp.status) };

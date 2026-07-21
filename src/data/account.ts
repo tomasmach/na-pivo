@@ -68,8 +68,14 @@ export interface AccountPreferences {
 const DEVICE_ID_KEY = 'na-pivo-device-id';
 const ACCOUNT_KEY = 'na-pivo-account';
 const REQUEST_TIMEOUT_MS = 8000;
+const BOOTSTRAP_BACKOFF_BASE_MS = 30_000;
+const BOOTSTRAP_BACKOFF_MAX_MS = 5 * 60_000;
 let ensureAccountInFlight: Promise<AccountSession | null> | null = null;
 let lastKnownAccount: CachedAccount | null = null;
+let sessionCacheQueue: Promise<void> = Promise.resolve();
+let bootstrapFailureCount = 0;
+let bootstrapRetryAfter = 0;
+let anonymousSessionEvictionListener: (() => void | Promise<void>) | null = null;
 
 interface RegisterResponse {
   id?: string;
@@ -246,13 +252,51 @@ type CachedAccountRead =
   | { available: true; account: CachedAccount | null }
   | { available: false; account: CachedAccount | null };
 
-async function readCachedAccount(): Promise<CachedAccountRead> {
+function serializeSessionCache<T>(operation: () => Promise<T>): Promise<T> {
+  const result = sessionCacheQueue.then(operation, operation);
+  sessionCacheQueue = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
+
+function resetBootstrapBackoff(): void {
+  bootstrapFailureCount = 0;
+  bootstrapRetryAfter = 0;
+}
+
+function applyBootstrapBackoff(): void {
+  bootstrapFailureCount += 1;
+  const exponentialDelay = Math.min(
+    BOOTSTRAP_BACKOFF_MAX_MS,
+    BOOTSTRAP_BACKOFF_BASE_MS * 2 ** (bootstrapFailureCount - 1),
+  );
+  const jitteredDelay = Math.min(
+    BOOTSTRAP_BACKOFF_MAX_MS,
+    exponentialDelay * (0.8 + Math.random() * 0.4),
+  );
+  bootstrapRetryAfter = Date.now() + Math.round(jitteredDelay);
+}
+
+async function readCachedAccountUnlocked(): Promise<CachedAccountRead> {
+  let raw: string | null;
   try {
-    const raw = await SecureStore.getItemAsync(ACCOUNT_KEY);
-    if (!raw) {
-      lastKnownAccount = null;
-      return { available: true, account: null };
-    }
+    raw = await SecureStore.getItemAsync(ACCOUNT_KEY);
+  } catch {
+    trackApiFailure('session_cache_read', { reason: 'session_cache_read_unavailable' });
+    // Keychain can be temporarily unavailable while iOS is locked or resuming.
+    // Never interpret that as a missing credential: doing so could replace a
+    // signed-in session with a freshly minted anonymous account.
+    return { available: false, account: lastKnownAccount };
+  }
+
+  if (!raw) {
+    lastKnownAccount = null;
+    return { available: true, account: null };
+  }
+
+  try {
     const parsed = JSON.parse(raw) as Partial<CachedAccount>;
     if (parsed?.deviceId && parsed?.accountId && parsed?.token) {
       const account = {
@@ -265,37 +309,62 @@ async function readCachedAccount(): Promise<CachedAccountRead> {
       return { available: true, account };
     }
     lastKnownAccount = null;
+    trackApiFailure('session_cache_read', { reason: 'session_cache_malformed' });
     return { available: true, account: null };
   } catch {
-    // Keychain can be temporarily unavailable while iOS is locked or resuming.
-    // Never interpret that as a missing credential: doing so could replace a
-    // signed-in session with a freshly minted anonymous account.
-    return { available: false, account: lastKnownAccount };
+    lastKnownAccount = null;
+    trackApiFailure('session_cache_read', { reason: 'session_cache_malformed' });
+    return { available: true, account: null };
   }
 }
 
-async function writeCachedAccount(account: CachedAccount): Promise<boolean> {
+async function readCachedAccount(): Promise<CachedAccountRead> {
+  return serializeSessionCache(readCachedAccountUnlocked);
+}
+
+async function writeCachedAccountUnlocked(account: CachedAccount): Promise<boolean> {
   try {
     await SecureStore.setItemAsync(ACCOUNT_KEY, JSON.stringify(account), {
       keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
     });
     lastKnownAccount = account;
+    resetBootstrapBackoff();
     return true;
   } catch {
+    trackApiFailure('session_cache_write', { reason: 'session_cache_write_failed' });
+    return false;
+  }
+}
+
+async function writeCachedAccount(account: CachedAccount): Promise<boolean> {
+  return serializeSessionCache(() => writeCachedAccountUnlocked(account));
+}
+
+async function deleteCachedAccountUnlocked(): Promise<boolean> {
+  try {
+    await SecureStore.deleteItemAsync(ACCOUNT_KEY);
+    lastKnownAccount = null;
+    return true;
+  } catch {
+    trackApiFailure('session_cache_delete', { reason: 'session_cache_delete_failed' });
     return false;
   }
 }
 
 /** Drop the cached account. If the old deviceId is already claimed server-side,
  *  the next ensureAccount() will mint a fresh anonymous device account. */
-export async function clearCachedAccount(): Promise<void> {
-  lastKnownAccount = null;
-  try {
-    await SecureStore.deleteItemAsync(ACCOUNT_KEY);
-  } catch {
-    // best effort
-  }
+export async function clearCachedAccount(
+  options: { resetBootstrapBackoff?: boolean } = {},
+): Promise<void> {
+  await serializeSessionCache(deleteCachedAccountUnlocked);
+  if (options.resetBootstrapBackoff !== false) resetBootstrapBackoff();
   setTelemetrySession(null);
+}
+
+export function setAnonymousSessionEvictionListener(
+  listener: (() => void | Promise<void>) | null,
+): void {
+  anonymousSessionEvictionListener = listener;
 }
 
 /**
@@ -303,10 +372,46 @@ export async function clearCachedAccount(): Promise<void> {
  * session must not silently fall forward into a fresh anonymous account because
  * private retry queues could then upload the signed-in user's data elsewhere.
  */
-export async function clearCachedAnonymousAccount(session: AccountSession | null): Promise<boolean> {
+export async function clearCachedAnonymousAccount(
+  session: AccountSession | null,
+  context: { source: string; endpoint: string },
+): Promise<boolean> {
   if (!session || session.authenticated) return false;
-  await clearCachedAccount();
-  return true;
+
+  const evicted = await serializeSessionCache(async () => {
+    const cachedRead = await readCachedAccountUnlocked();
+    const cached = cachedRead.available ? cachedRead.account : null;
+    if (!cached || cached.authenticated || cached.token !== session.token) {
+      trackApiFailure('anonymous_session_eviction', {
+        endpoint: context.endpoint,
+        source: context.source,
+        status: 401,
+        reason: 'anonymous_401_stale_session_ignored',
+      });
+      return false;
+    }
+
+    const deleted = await deleteCachedAccountUnlocked();
+    if (!deleted) return false;
+
+    setTelemetrySession(null);
+    trackApiFailure('anonymous_session_eviction', {
+      endpoint: context.endpoint,
+      source: context.source,
+      status: 401,
+      reason: 'anonymous_401_current_session_evicted',
+    });
+    return true;
+  });
+
+  if (evicted && anonymousSessionEvictionListener) {
+    try {
+      void Promise.resolve(anonymousSessionEvictionListener()).catch(() => undefined);
+    } catch {
+      // Store synchronization is best effort and must not undo a safe eviction.
+    }
+  }
+  return evicted;
 }
 
 /**
@@ -329,6 +434,7 @@ async function ensureAccountOnce(): Promise<AccountSession | null> {
   // (it may have been minted on another device / after a deviceId change), and
   // never re-register or fork it. Sign-out is explicit (revertToAnonymous).
   if (cached && cached.authenticated) {
+    resetBootstrapBackoff();
     return {
       deviceId: cached.deviceId,
       accountId: cached.accountId,
@@ -341,6 +447,7 @@ async function ensureAccountOnce(): Promise<AccountSession | null> {
   // authoritative identity. Heal a raced/lost AsyncStorage anchor from it
   // instead of forking another server account.
   if (cached) {
+    resetBootstrapBackoff();
     if (cached.deviceId !== deviceId) {
       deviceId = cached.deviceId;
       try {
@@ -355,6 +462,14 @@ async function ensureAccountOnce(): Promise<AccountSession | null> {
   // A failed Keychain read is not proof that the account is absent. Wait for a
   // later retry instead of registering and overwriting a possibly signed-in user.
   if (!cachedRead.available) return null;
+
+  if (Date.now() < bootstrapRetryAfter) {
+    trackApiFailure('account_bootstrap', {
+      endpoint: '/v1/account',
+      reason: 'bootstrap_retry_suppressed',
+    });
+    return null;
+  }
 
   const endpoint = getBackendEndpoint('/v1/account');
   if (!endpoint) {
@@ -373,17 +488,23 @@ async function ensureAccountOnce(): Promise<AccountSession | null> {
       });
 
       if (resp.status === 401 && attempt === 0) {
-        await clearCachedAccount();
+        await clearCachedAccount({ resetBootstrapBackoff: false });
+        trackApiFailure('account_bootstrap', {
+          endpoint: '/v1/account',
+          status: resp.status,
+          reason: 'bootstrap_claimed_device_rotated',
+        });
         deviceId = await replaceDeviceId();
         continue;
       }
 
       if (!resp.ok) {
         if (resp.status === 401) {
-          trackApiFailure('account_register_recovery', {
+          applyBootstrapBackoff();
+          trackApiFailure('account_bootstrap', {
             endpoint: '/v1/account',
             status: resp.status,
-            reason: 'claimed_device_id',
+            reason: 'bootstrap_replacement_rejected',
           });
           return null;
         }
@@ -484,7 +605,10 @@ export async function fetchAccountPreferences(
     });
 
     if (resp.status === 401) {
-      await clearCachedAnonymousAccount(session);
+      await clearCachedAnonymousAccount(session, {
+        source: 'account_preferences_fetch',
+        endpoint: '/v1/account/me',
+      });
       return null;
     }
     if (!resp.ok) {
@@ -566,7 +690,10 @@ export async function updateAccountPreferences(
     });
 
     if (resp.status === 401) {
-      await clearCachedAnonymousAccount(session);
+      await clearCachedAnonymousAccount(session, {
+        source: 'account_preferences_update',
+        endpoint: '/v1/account/me',
+      });
       return null;
     }
     if (!resp.ok) {

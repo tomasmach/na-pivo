@@ -12,8 +12,8 @@ export type PushPermissionStatus = 'granted' | 'denied' | 'undetermined';
 const REQUEST_TIMEOUT_MS = 8000;
 export const PUSH_TOKEN_KEY = 'na-pivo-expo-push-token';
 
-async function handleUnauthorized(session: AccountSession): Promise<void> {
-  await clearCachedAnonymousAccount(session);
+async function handleUnauthorized(session: AccountSession, source: string): Promise<void> {
+  await clearCachedAnonymousAccount(session, { source, endpoint: '/v1/push-device' });
 }
 
 export async function registerPushDevice(
@@ -46,7 +46,7 @@ export async function registerPushDevice(
     });
 
     if (resp.status === 401) {
-      await handleUnauthorized(session);
+      await handleUnauthorized(session, 'push_device_register');
       return false;
     }
     if (!resp.ok) {
@@ -95,7 +95,7 @@ export async function disablePushDevice(
     });
 
     if (resp.status === 401) {
-      await handleUnauthorized(session);
+      await handleUnauthorized(session, 'push_device_disable');
       return false;
     }
     if (!resp.ok) {

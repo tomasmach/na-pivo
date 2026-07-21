@@ -158,7 +158,10 @@ export async function fetchDrinks(signal?: AbortSignal): Promise<WireDrink[] | n
       signal: abort.signal,
     });
     if (resp.status === 401) {
-      await clearCachedAnonymousAccount(session);
+      await clearCachedAnonymousAccount(session, {
+        source: 'drinks_fetch',
+        endpoint: '/v1/drinks',
+      });
       return null;
     }
     if (!resp.ok) return null;
@@ -334,7 +337,10 @@ export async function submitDrink(
       showDrinkLimitedToast();
       return 'permanent-error';
     }
-    const result = await classifyQueueHttpFailure(resp.status, session);
+    const result = await classifyQueueHttpFailure(resp.status, session, {
+      source: 'drink_submit',
+      endpoint: '/v1/drinks',
+    });
     trackDrinkSyncFailed('submit_drink', {
       status: resp.status,
       reason: 'http_error',
@@ -401,7 +407,10 @@ export async function deleteDrink(
     });
 
     if (resp.ok) return 'ok';
-    const result = await classifyQueueHttpFailure(resp.status, session);
+    const result = await classifyQueueHttpFailure(resp.status, session, {
+      source: 'drink_delete',
+      endpoint: '/v1/drinks/:client_id',
+    });
     trackDrinkSyncFailed('delete_drink', {
       status: resp.status,
       reason: 'http_error',
@@ -470,7 +479,10 @@ export async function updateDrinkName(
       trackDrinkSynced('update_drink');
       return 'ok';
     }
-    const result = await classifyQueueHttpFailure(resp.status, session);
+    const result = await classifyQueueHttpFailure(resp.status, session, {
+      source: 'drink_update',
+      endpoint: '/v1/drinks/:client_id',
+    });
     trackDrinkSyncFailed('update_drink', {
       status: resp.status,
       reason: 'http_error',

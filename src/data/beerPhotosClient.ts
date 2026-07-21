@@ -162,7 +162,10 @@ export async function uploadBeerPhoto(
     if (resp.status >= 200 && resp.status < 300) {
       return { status: 'ok', photo: beerPhotoFromWire((data.photo ?? {}) as RawBeerPhoto) };
     }
-    const classified = await classifyQueueHttpFailure(resp.status, session);
+    const classified = await classifyQueueHttpFailure(resp.status, session, {
+      source: 'beer_photos_upload',
+      endpoint: '/v1/beer-photos',
+    });
     if (classified === 'permanent-error') {
       return {
         status: 'permanent-error',
@@ -199,8 +202,8 @@ function extractError(data: Record<string, unknown>, status: number): FriendActi
   return { ok: false, code, detail };
 }
 
-async function handleUnauthorized(session: AccountSession): Promise<void> {
-  await classifyQueueHttpFailure(401, session);
+async function handleUnauthorized(session: AccountSession, endpoint: string): Promise<void> {
+  await classifyQueueHttpFailure(401, session, { source: 'beer_photos_request', endpoint });
 }
 
 async function requestJson(
@@ -236,7 +239,7 @@ async function requestJson(
       data = {};
     }
     if (resp.status === 401) {
-      await handleUnauthorized(session);
+      await handleUnauthorized(session, path);
       return { ok: false, result: { ok: false, code: 'auth', detail: 'Přihlášení vypršelo.' } };
     }
     if (!resp.ok) return { ok: false, result: extractError(data, resp.status) };

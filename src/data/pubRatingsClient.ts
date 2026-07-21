@@ -131,7 +131,10 @@ export async function submitRatingUpsert(
       trackRatingSynced('submit_rating');
       return 'ok';
     }
-    const result = await classifyQueueHttpFailure(resp.status, session);
+    const result = await classifyQueueHttpFailure(resp.status, session, {
+      source: 'rating_submit',
+      endpoint: '/v1/pub-ratings',
+    });
     trackRatingSyncFailed('submit_rating', {
       status: resp.status,
       reason: 'http_error',
@@ -195,7 +198,10 @@ export async function submitRatingDelete(
       trackRatingSynced('delete_rating');
       return 'ok';
     }
-    const result = await classifyQueueHttpFailure(resp.status, session);
+    const result = await classifyQueueHttpFailure(resp.status, session, {
+      source: 'rating_delete',
+      endpoint: '/v1/pub-ratings/:pub_key',
+    });
     trackRatingSyncFailed('delete_rating', {
       status: resp.status,
       reason: 'http_error',
@@ -248,7 +254,10 @@ export async function fetchRatings(signal?: AbortSignal): Promise<WireRating[] |
     });
 
     if (resp.status === 401) {
-      await clearCachedAnonymousAccount(session);
+      await clearCachedAnonymousAccount(session, {
+        source: 'ratings_fetch',
+        endpoint: '/v1/pub-ratings',
+      });
       return null;
     }
     if (!resp.ok) {

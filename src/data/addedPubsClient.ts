@@ -90,7 +90,10 @@ export async function submitAddedPub(
     });
 
     if (resp.status === 401) {
-      await clearCachedAnonymousAccount(session);
+      await clearCachedAnonymousAccount(session, {
+        source: 'added_pub_submit',
+        endpoint: '/v1/pubs',
+      });
       return 'retry';
     }
     if (!resp.ok) {

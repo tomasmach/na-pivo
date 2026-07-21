@@ -124,7 +124,10 @@ export async function fetchMyStats(signal?: AbortSignal): Promise<RemoteStats | 
     });
 
     if (resp.status === 401) {
-      await clearCachedAnonymousAccount(session);
+      await clearCachedAnonymousAccount(session, {
+        source: 'stats_fetch',
+        endpoint: '/v1/me/stats',
+      });
       return null;
     }
     if (!resp.ok) return null;

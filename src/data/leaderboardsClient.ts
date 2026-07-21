@@ -166,7 +166,10 @@ export async function fetchLeaderboard(
       signal: abort.signal,
     });
     if (resp.status === 401) {
-      await clearCachedAnonymousAccount(session);
+      await clearCachedAnonymousAccount(session, {
+        source: 'leaderboards_fetch',
+        endpoint: '/v1/leaderboards',
+      });
       return null;
     }
     if (!resp.ok) {

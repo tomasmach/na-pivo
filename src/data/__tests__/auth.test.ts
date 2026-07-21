@@ -328,6 +328,20 @@ describe('registerEmail', () => {
 // loginEmail
 // ---------------------------------------------------------------------------
 describe('loginEmail', () => {
+  it('rejects a 2xx response that does not contain a complete session', async () => {
+    installFetch(fetchResolving(200, { id: 'acc-2', is_anonymous: false }));
+
+    await expect(auth.loginEmail({ email: 'jan@example.com', password: 'pw' })).resolves.toEqual({
+      ok: false,
+      code: 'protocol',
+      detail: 'Server neposlal platné přihlášení. Zkus to prosím znovu.',
+    });
+    expect(mockSetSession).not.toHaveBeenCalled();
+    expect(mockTrackApiFailure).toHaveBeenCalledWith('auth_session', {
+      reason: 'auth_success_missing_session',
+    });
+  });
+
   it('does not report a durable login when secure session persistence fails', async () => {
     installFetch(
       fetchResolving(200, { id: 'acc-2', token: 'login-tok', is_anonymous: false }),
@@ -407,6 +421,27 @@ describe('loginEmail', () => {
     });
     expect(mockSetSession).not.toHaveBeenCalled();
     expect(mockClearLocalPrivateAccountData).not.toHaveBeenCalled();
+    expect(mockTrackApiFailure).toHaveBeenCalledWith('auth_login', {
+      endpoint: '/v1/auth/login',
+      status: 401,
+      reason: 'login_invalid_credentials',
+    });
+  });
+
+  it('reports a server-side login failure without retrying the claim', async () => {
+    const spy = installFetch(fetchResolving(503, { detail: 'Zkus to později.' }));
+
+    await expect(auth.loginEmail({ email: 'jan@example.com', password: 'pw' })).resolves.toEqual({
+      ok: false,
+      code: 'http_503',
+      detail: 'Zkus to později.',
+    });
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(mockTrackApiFailure).toHaveBeenCalledWith('auth_login', {
+      endpoint: '/v1/auth/login',
+      status: 503,
+      reason: 'login_server_error',
+    });
   });
 });
 
