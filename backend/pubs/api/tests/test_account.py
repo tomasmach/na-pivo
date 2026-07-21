@@ -18,6 +18,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework.throttling import ScopedRateThrottle
 
+import pubs.accounts as accounts
 from pubs.api.serializers import AccountMeSerializer
 from pubs.models import (
     Account,
@@ -72,6 +73,18 @@ def test_register_creates_account(client):
     assert body["created_at"]
 
     assert Account.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_register_rolls_back_new_account_when_token_issue_fails(client, monkeypatch):
+    def fail_issue_token(*_args, **_kwargs):
+        raise RuntimeError("forced token issue failure")
+
+    monkeypatch.setattr(accounts, "issue_token", fail_issue_token)
+    resp = client.post("/v1/account", data={"device_id": _DEVICE_ID}, format="json")
+
+    assert resp.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+    assert not Account.objects.filter(device_id=_DEVICE_ID).exists()
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -134,8 +147,8 @@ def test_register_is_idempotent(client):
 
 
 @pytest.mark.django_db
-def test_authenticated_reregistration_rotates_token(client):
-    """Re-POSTing a known device_id with its valid token rotates that token."""
+def test_authenticated_reregistration_keeps_old_token_for_lost_response_retry(client):
+    """A lost rotation response can be retried with the previously valid token."""
     first = client.post("/v1/account", data={"device_id": _DEVICE_ID}, format="json")
     first_token = first.json()["token"]
     second = client.post(
@@ -147,16 +160,26 @@ def test_authenticated_reregistration_rotates_token(client):
     second_token = second.json()["token"]
     assert first_token != second_token
 
-    # The old token no longer authenticates; the new one does.
+    # Both tokens authenticate until a later successful rotation prunes stale
+    # device tokens. This lets a client retry when it never received the response.
     old = client.get("/v1/account/me", HTTP_AUTHORIZATION=f"Bearer {first_token}")
-    assert old.status_code == status.HTTP_401_UNAUTHORIZED
+    assert old.status_code == status.HTTP_200_OK
     new = client.get("/v1/account/me", HTTP_AUTHORIZATION=f"Bearer {second_token}")
     assert new.status_code == status.HTTP_200_OK
+
+    retry = client.post(
+        "/v1/account",
+        data={"device_id": _DEVICE_ID},
+        format="json",
+        HTTP_AUTHORIZATION=f"Bearer {first_token}",
+    )
+    assert retry.status_code == status.HTTP_200_OK
+    assert retry.json()["token"] not in {first_token, second_token}
 
 
 @pytest.mark.django_db
 def test_reregistration_without_bearer_does_not_rotate_token(client):
-    """A known device_id alone cannot recover or rotate a bearer token."""
+    """A known device_id with any token cannot recover without a bearer."""
     first = client.post("/v1/account", data={"device_id": _DEVICE_ID}, format="json")
     assert first.status_code == status.HTTP_201_CREATED
     token = first.json()["token"]
@@ -169,6 +192,29 @@ def test_reregistration_without_bearer_does_not_rotate_token(client):
     assert AuthToken.objects.get(account__device_id=_DEVICE_ID).token_hash == original_hash
     resp = client.get("/v1/account/me", HTTP_AUTHORIZATION=f"Bearer {token}")
     assert resp.status_code == status.HTTP_200_OK
+
+
+@pytest.mark.django_db
+def test_existing_zero_token_account_recovers_without_bearer(client, monkeypatch):
+    account = Account.objects.create(device_id=_DEVICE_ID)
+    logged: dict = {}
+
+    def capture_recovery(_message, *, extra):
+        logged.update(extra)
+
+    monkeypatch.setattr("pubs.api.views.auth_logger.warning", capture_recovery)
+    resp = client.post(
+        "/v1/account", data={"device_id": _DEVICE_ID}, format="json"
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["id"] == str(account.public_id)
+    assert resp.json()["created"] is False
+    assert resp.json()["token"]
+    token = AuthToken.objects.get(account=account)
+    assert token.kind == AuthToken.Kind.DEVICE
+    assert logged["event"] == "account_bootstrap_recovered"
+    assert logged["observability"]["reason"] == "zero_tokens"
 
 
 @pytest.mark.django_db
@@ -192,6 +238,21 @@ def test_reregistration_with_invalid_bearer_does_not_rotate_token(client):
     assert AuthToken.objects.get(account__device_id=_DEVICE_ID).token_hash == original_hash
     me = client.get("/v1/account/me", HTTP_AUTHORIZATION=f"Bearer {token}")
     assert me.status_code == status.HTTP_200_OK
+
+
+@pytest.mark.django_db
+def test_new_device_with_invalid_bearer_still_bootstraps(client):
+    """A garbage optional bearer cannot block first-time device bootstrap."""
+    resp = client.post(
+        "/v1/account",
+        data={"device_id": _DEVICE_ID},
+        format="json",
+        HTTP_AUTHORIZATION="Bearer not-a-real-token",
+    )
+
+    assert resp.status_code == status.HTTP_201_CREATED
+    assert resp.json()["created"] is True
+    assert resp.json()["token"]
 
 
 @pytest.mark.django_db

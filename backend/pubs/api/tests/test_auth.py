@@ -26,9 +26,11 @@ from urllib.parse import urlsplit
 import pytest
 from django.core.cache import cache
 from django.core.management import call_command
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
+import pubs.accounts as accounts
 import pubs.emailer as emailer
 import pubs.oauth as oauth
 from pubs.accounts import _delete_or_move_account_rows
@@ -39,6 +41,8 @@ from pubs.models import (
     DrinkLog,
     EmailCredential,
     OneTimeToken,
+    PubAmenity,
+    PubAmenityVote,
     PubVisit,
     PushDevice,
 )
@@ -179,6 +183,33 @@ def _email_record(sent_emails, tag: str) -> dict:
         if record["tag"] == tag:
             return record
     raise AssertionError(f"no {tag} email captured in {sent_emails!r}")
+
+
+def _seed_amenity_vote(account: Account) -> PubAmenity:
+    cache_key = "u2fkbnhz"
+    pub_identity_key = f"{cache_key}::u vystreleneho oka"
+    PubAmenityVote.objects.create(
+        account=account,
+        cache_key=cache_key,
+        pub_identity_key=pub_identity_key,
+        amenity_key="seating_garden",
+        name="U Vystřelenýho oka",
+        lat=50.08,
+        lng=14.45,
+        value=PubAmenityVote.Value.YES,
+        client_updated_at=timezone.now(),
+    )
+    return PubAmenity.objects.create(
+        cache_key=cache_key,
+        pub_identity_key=pub_identity_key,
+        amenity_key="seating_garden",
+        name="U Vystřelenýho oka",
+        lat=50.08,
+        lng=14.45,
+        yes_count=1,
+        distinct_voter_count=1,
+        first_mapper=account,
+    )
 
 
 # ===========================================================================
@@ -356,6 +387,79 @@ def test_login_with_anonymous_bearer_merges_progress_into_existing_account(
     assert drink.account_id == target.id
     push_device.refresh_from_db()
     assert push_device.account_id == target.id
+
+
+@pytest.mark.django_db
+def test_login_merge_recounts_existing_amenity_aggregate(client, sent_emails):
+    _register(client, "merge-amenity@x.cz", "Tr0ub4dor&3")
+    target = EmailCredential.objects.get(email="merge-amenity@x.cz").account
+    anon_token, anon_id = _bootstrap_anon(client)
+    anon = Account.objects.get(public_id=anon_id)
+    aggregate = _seed_amenity_vote(anon)
+
+    resp = client.post(
+        "/v1/auth/login",
+        data={"email": "merge-amenity@x.cz", "password": "Tr0ub4dor&3"},
+        format="json",
+        **_auth(anon_token),
+    )
+
+    assert resp.status_code == status.HTTP_200_OK, resp.content
+    vote = PubAmenityVote.objects.get()
+    assert vote.account == target
+    aggregate.refresh_from_db()
+    assert aggregate.yes_count == 1
+    assert aggregate.distinct_voter_count == 1
+
+
+@pytest.mark.django_db
+def test_login_merge_failure_rolls_back_source_token_and_can_retry(
+    client, sent_emails, monkeypatch
+):
+    _register(client, "merge-retry@x.cz", "Tr0ub4dor&3")
+    anon_token, anon_id = _bootstrap_anon(client)
+    anon = Account.objects.get(public_id=anon_id)
+    _seed_amenity_vote(anon)
+    original_recount = accounts._recount_amenity_aggregate
+
+    def fail_recount(*_args):
+        raise RuntimeError("forced recount failure")
+
+    monkeypatch.setattr(accounts, "_recount_amenity_aggregate", fail_recount)
+    failed = client.post(
+        "/v1/auth/login",
+        data={"email": "merge-retry@x.cz", "password": "Tr0ub4dor&3"},
+        format="json",
+        **_auth(anon_token),
+    )
+
+    assert failed.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+    assert Account.objects.filter(pk=anon.pk).exists()
+    assert AuthToken.objects.filter(account_id=anon.pk).exists()
+    assert PubAmenityVote.objects.filter(account_id=anon.pk).exists()
+
+    monkeypatch.setattr(
+        accounts, "_recount_amenity_aggregate", original_recount
+    )
+    retry = client.post(
+        "/v1/auth/login",
+        data={"email": "merge-retry@x.cz", "password": "Tr0ub4dor&3"},
+        format="json",
+        **_auth(anon_token),
+    )
+    assert retry.status_code == status.HTTP_200_OK, retry.content
+    assert not Account.objects.filter(pk=anon.pk).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_merge_requires_atomic_transaction():
+    source = Account.objects.create(device_id="merge-guard-source")
+    target = Account.objects.create(device_id="merge-guard-target")
+
+    with pytest.raises(RuntimeError, match=r"transaction\.atomic"):
+        accounts._merge_anonymous_account(source, target)
+
+    assert Account.objects.filter(pk=source.pk).exists()
 
 
 @pytest.mark.django_db

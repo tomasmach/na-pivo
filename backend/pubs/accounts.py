@@ -406,6 +406,14 @@ def revoke_token(raw_token: str) -> None:
     AuthToken.objects.filter(token_hash=hash_account_token(raw_token)).delete()
 
 
+def prune_device_tokens(account: Account, *, keep_raw_tokens: tuple[str, ...]) -> None:
+    """Delete stale bootstrap tokens while preserving the supplied raw tokens."""
+    keep_hashes = [hash_account_token(raw_token) for raw_token in keep_raw_tokens]
+    account.auth_tokens.filter(kind=AuthToken.Kind.DEVICE).exclude(
+        token_hash__in=keep_hashes
+    ).delete()
+
+
 def revoke_all_tokens(account: Account) -> None:
     """Revoke every token for the account (sign out everywhere)."""
     account.auth_tokens.all().delete()
@@ -519,9 +527,12 @@ def login_email(
         raise generic
 
     account = cred.account
-    _reactivate_if_pending(account)
-    _merge_anonymous_account(current_account, account)
-    token = issue_token(account)
+    # The merge touches public amenity aggregates with select_for_update(), and
+    # every earlier token deletion / data move must roll back if any step fails.
+    with transaction.atomic():
+        _reactivate_if_pending(account)
+        _merge_anonymous_account(current_account, account)
+        token = issue_token(account)
     return account, token
 
 
@@ -692,8 +703,26 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
     the request also carries a fresh anonymous bearer. Unique-key conflicts keep
     the target account's existing row and drop the anonymous duplicate.
     """
+    if not transaction.get_connection().in_atomic_block:
+        raise RuntimeError(
+            "_merge_anonymous_account must run inside transaction.atomic()"
+        )
+
     if source is None or source.pk == target.pk or source.is_claimed:
         return
+
+    source_id = source.id
+    target_id = target.id
+    logger.info(
+        "anonymous account merge started",
+        extra={
+            "event": "account_merge_started",
+            "observability": {
+                "source_account_id": source_id,
+                "target_account_id": target_id,
+            },
+        },
+    )
 
     source.auth_tokens.all().delete()
     source.one_time_tokens.all().delete()
@@ -788,6 +817,17 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
     _merge_usage_stats(source, target)
 
     source.delete()
+    logger.info(
+        "anonymous account merge completed",
+        extra={
+            "event": "account_merge_completed",
+            "observability": {
+                "source_account_id": source_id,
+                "target_account_id": target_id,
+                "amenity_aggregates_recounted": len(affected_amenities),
+            },
+        },
+    )
 
 
 def _social_account_for_verified_email(

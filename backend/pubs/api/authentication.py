@@ -9,9 +9,24 @@ future per-user features).
 
 from __future__ import annotations
 
+import logging
+
 from rest_framework import authentication, exceptions
 
 from pubs.models import Account, AuthToken, hash_account_token
+
+logger = logging.getLogger("pubs.api.auth")
+
+
+def _authentication_failed(reason: str, detail: str) -> exceptions.AuthenticationFailed:
+    logger.warning(
+        "account token rejected",
+        extra={
+            "event": "auth_token_rejected",
+            "observability": {"reason": reason},
+        },
+    )
+    return exceptions.AuthenticationFailed(detail)
 
 
 class AccountTokenAuthentication(authentication.BaseAuthentication):
@@ -33,31 +48,38 @@ class AccountTokenAuthentication(authentication.BaseAuthentication):
             return None
 
         if len(header) == 1:
-            raise exceptions.AuthenticationFailed("Invalid token header: no credentials provided.")
+            raise _authentication_failed(
+                "malformed_header", "Invalid token header: no credentials provided."
+            )
         if len(header) > 2:
-            raise exceptions.AuthenticationFailed(
-                "Invalid token header: token must not contain spaces."
+            raise _authentication_failed(
+                "malformed_header", "Invalid token header: token must not contain spaces."
             )
 
-        token = header[1].decode()
+        try:
+            token = header[1].decode()
+        except UnicodeDecodeError:
+            raise _authentication_failed(
+                "malformed_header", "Invalid token header: invalid encoding."
+            ) from None
         try:
             # Tokens are stored hashed; look up by the digest of the presented token.
             auth_token = AuthToken.objects.select_related("account").get(
                 token_hash=hash_account_token(token)
             )
         except AuthToken.DoesNotExist:
-            raise exceptions.AuthenticationFailed("Invalid account token.") from None
+            raise _authentication_failed("unknown_token", "Invalid account token.") from None
 
         if auth_token.is_expired:
             # Prune the dead row so it can't linger, then reject.
             auth_token.delete()
-            raise exceptions.AuthenticationFailed("Account token has expired.")
+            raise _authentication_failed("token_expired", "Account token has expired.")
 
         account = auth_token.account
         if account.status != Account.Status.ACTIVE:
             # Soft-deleted (pending deletion) accounts can't authenticate by token;
             # reactivation happens via a fresh credential login, not the old token.
-            raise exceptions.AuthenticationFailed("Account is no longer active.")
+            raise _authentication_failed("account_inactive", "Account is no longer active.")
 
         # The request logging middleware runs outside DRF's Request wrapper.
         # Attach only the public account id to the underlying HttpRequest so logs

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import pytest
 from django.core.cache import cache
+from django.db import transaction
 from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework.throttling import ScopedRateThrottle
@@ -919,7 +920,8 @@ def test_merge_moves_amenity_votes_and_recomputes_aggregate(client):
     source = Account.objects.get(device_id=_DEVICE_ID)
     target = Account.objects.create(device_id="merge-target-0000")
 
-    _merge_anonymous_account(source, target)
+    with transaction.atomic():
+        _merge_anonymous_account(source, target)
 
     # Vote followed the user onto the target, and the aggregate recount keeps the
     # count at 1 (no over-count from the dropped source account).
@@ -948,7 +950,8 @@ def test_merge_conflict_drops_duplicate_and_recomputes(client):
     row = PubAmenity.objects.get()
     assert row.yes_count == 2  # two distinct accounts pre-merge
 
-    _merge_anonymous_account(source, target)
+    with transaction.atomic():
+        _merge_anonymous_account(source, target)
 
     # Source duplicate dropped; aggregate recounted to a single live vote.
     assert PubAmenityVote.objects.count() == 1

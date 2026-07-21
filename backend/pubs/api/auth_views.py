@@ -86,6 +86,28 @@ def _optional_bearer_account(request: Request) -> Account | None:
     return account if isinstance(account, Account) else None
 
 
+def _bearer_was_present(request: Request) -> bool:
+    """Return only whether the request carried a Bearer header, never its value."""
+    scheme = str(request.META.get("HTTP_AUTHORIZATION", "")).partition(" ")[0]
+    return scheme.lower() == "bearer"
+
+
+def _log_auth_failure(
+    flow: str, reason: str, *, anonymous_bearer_present: bool
+) -> None:
+    logger.warning(
+        "authentication flow rejected",
+        extra={
+            "event": "auth_failure",
+            "observability": {
+                "flow": flow,
+                "reason": reason,
+                "anonymous_bearer_present": anonymous_bearer_present,
+            },
+        },
+    )
+
+
 def _error_response(exc: AccountError) -> Response:
     return Response({"detail": exc.message, "code": exc.code}, status=exc.http_status)
 
@@ -197,13 +219,38 @@ class _AuthView(APIView):
 
     throttle_classes = [ScopedRateThrottle]
 
-    def _safe(self, fn):
+    def _safe(
+        self,
+        fn,
+        *,
+        flow: str | None = None,
+        anonymous_bearer_present: bool = False,
+    ):
         try:
             return fn()
         except AccountError as exc:
+            if flow is not None:
+                _log_auth_failure(
+                    flow,
+                    exc.code,
+                    anonymous_bearer_present=anonymous_bearer_present,
+                )
             return _error_response(exc)
         except Exception as exc:  # noqa: BLE001
-            logger.error("auth: unexpected error: %s", exc, exc_info=True)
+            observability = {"reason": "unexpected_error"}
+            if flow is not None:
+                observability.update(
+                    {
+                        "flow": flow,
+                        "anonymous_bearer_present": anonymous_bearer_present,
+                    }
+                )
+            logger.error(
+                "auth: unexpected error: %s",
+                exc,
+                exc_info=True,
+                extra={"event": "auth_failure", "observability": observability},
+            )
             return Response(
                 {"detail": "Internal server error."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -222,7 +269,13 @@ class RegisterView(_AuthView):
 
     def post(self, request: Request) -> Response:
         ser = s.RegisterSerializer(data=request.data)
-        ser.is_valid(raise_exception=True)
+        if not ser.is_valid():
+            _log_auth_failure(
+                "register",
+                "invalid_request",
+                anonymous_bearer_present=_bearer_was_present(request),
+            )
+            return Response(ser.errors, status=status.HTTP_400_BAD_REQUEST)
 
         def run() -> Response:
             account = _optional_bearer_account(request)
@@ -240,7 +293,11 @@ class RegisterView(_AuthView):
                 status=status.HTTP_201_CREATED,
             )
 
-        return self._safe(run)
+        return self._safe(
+            run,
+            flow="register",
+            anonymous_bearer_present=_bearer_was_present(request),
+        )
 
 
 class LoginView(_AuthView):
@@ -250,7 +307,13 @@ class LoginView(_AuthView):
 
     def post(self, request: Request) -> Response:
         ser = s.LoginSerializer(data=request.data)
-        ser.is_valid(raise_exception=True)
+        if not ser.is_valid():
+            _log_auth_failure(
+                "login",
+                "invalid_request",
+                anonymous_bearer_present=_bearer_was_present(request),
+            )
+            return Response(ser.errors, status=status.HTTP_400_BAD_REQUEST)
 
         def run() -> Response:
             account, token = accounts.login_email(
@@ -263,7 +326,11 @@ class LoginView(_AuthView):
                 status=status.HTTP_200_OK,
             )
 
-        return self._safe(run)
+        return self._safe(
+            run,
+            flow="login",
+            anonymous_bearer_present=_bearer_was_present(request),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +343,13 @@ class GoogleAuthView(_AuthView):
 
     def post(self, request: Request) -> Response:
         ser = s.GoogleAuthSerializer(data=request.data)
-        ser.is_valid(raise_exception=True)
+        if not ser.is_valid():
+            _log_auth_failure(
+                "google",
+                "invalid_request",
+                anonymous_bearer_present=_bearer_was_present(request),
+            )
+            return Response(ser.errors, status=status.HTTP_400_BAD_REQUEST)
 
         def run() -> Response:
             claims = accounts.verify_provider_token(
@@ -295,7 +368,11 @@ class GoogleAuthView(_AuthView):
                 status=status.HTTP_200_OK,
             )
 
-        return self._safe(run)
+        return self._safe(
+            run,
+            flow="google",
+            anonymous_bearer_present=_bearer_was_present(request),
+        )
 
 
 class AppleAuthView(_AuthView):
@@ -305,7 +382,13 @@ class AppleAuthView(_AuthView):
 
     def post(self, request: Request) -> Response:
         ser = s.AppleAuthSerializer(data=request.data)
-        ser.is_valid(raise_exception=True)
+        if not ser.is_valid():
+            _log_auth_failure(
+                "apple",
+                "invalid_request",
+                anonymous_bearer_present=_bearer_was_present(request),
+            )
+            return Response(ser.errors, status=status.HTTP_400_BAD_REQUEST)
 
         def run() -> Response:
             data = ser.validated_data
@@ -325,7 +408,11 @@ class AppleAuthView(_AuthView):
                 status=status.HTTP_200_OK,
             )
 
-        return self._safe(run)
+        return self._safe(
+            run,
+            flow="apple",
+            anonymous_bearer_present=_bearer_was_present(request),
+        )
 
 
 # ---------------------------------------------------------------------------

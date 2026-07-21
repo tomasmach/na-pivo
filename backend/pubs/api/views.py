@@ -229,6 +229,7 @@ from .serializers import (
 from .stats import compute_my_stats, drinking_day_bounds
 
 logger = logging.getLogger(__name__)
+auth_logger = logging.getLogger("pubs.api.auth")
 
 DEFAULT_BLOCKED_REPORT_RADIUS_KM = 25.0
 _BEER_KEY_RE = re.compile(r"\s+")
@@ -244,6 +245,34 @@ def _internal_error() -> Response:
     return Response(
         {"detail": "Internal server error."},
         status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+    )
+
+
+def _log_account_bootstrap_failure(
+    reason: str, *, device_id_already_existed: bool
+) -> None:
+    auth_logger.warning(
+        "account bootstrap rejected",
+        extra={
+            "event": "account_bootstrap_failure",
+            "observability": {
+                "reason": reason,
+                "device_id_already_existed": device_id_already_existed,
+            },
+        },
+    )
+
+
+def _log_account_bootstrap_recovery(reason: str) -> None:
+    auth_logger.warning(
+        "account bootstrap recovered",
+        extra={
+            "event": "account_bootstrap_recovered",
+            "observability": {
+                "reason": reason,
+                "device_id_already_existed": True,
+            },
+        },
     )
 
 
@@ -7010,7 +7039,8 @@ class AccountView(APIView):
     app sends the device_id it generated and persisted locally; we get_or_create
     the Account and return it with a token. Re-posting a known device_id rotates
     and returns a fresh token only when the request already carries a valid Bearer
-    token for that same account.
+    token for that same account. The sole recovery exception is an existing
+    account with zero AuthToken rows, which cannot otherwise authenticate.
 
     Unauthenticated by design — this is how a brand-new device gets its first
     credentials — but throttled per-IP (scope "account") to blunt scripted mass
@@ -7025,9 +7055,20 @@ class AccountView(APIView):
     def post(self, request: Request) -> Response:
         serializer = AccountRegisterSerializer(data=request.data)
         if not serializer.is_valid():
+            raw_device_id = request.data.get("device_id")
+            device_id_already_existed = bool(
+                isinstance(raw_device_id, str)
+                and raw_device_id
+                and Account.objects.filter(device_id=raw_device_id).exists()
+            )
+            _log_account_bootstrap_failure(
+                "invalid_request",
+                device_id_already_existed=device_id_already_existed,
+            )
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         device_id = serializer.validated_data["device_id"]
+        device_id_already_existed = False
         try:
             # Idempotent on the device_id UNIQUE constraint: under a concurrent
             # first-registration race, get_or_create wraps the INSERT in a
@@ -7037,14 +7078,35 @@ class AccountView(APIView):
             # Tokens live in AuthToken now (kind=device for this bootstrap path).
             # Only the SHA-256 hash is stored, so a raw token cannot be recovered.
             # A known device_id is therefore allowed to rotate only when the caller
-            # proves possession of the current token for this same account;
-            # otherwise device_id would act as a bearer-equivalent recovery key.
-            account, created = Account.objects.get_or_create(device_id=device_id)
-            if created:
-                raw_token = accounts.issue_token(account, kind=AuthToken.Kind.DEVICE)
-            else:
+            # proves possession of a token for this same account. The sole exception
+            # is a stranded account with zero AuthToken rows.
+            recovered = False
+            with transaction.atomic():
+                account, created = Account.objects.select_for_update().get_or_create(
+                    device_id=device_id
+                )
+                device_id_already_existed = not created
+                if created:
+                    raw_token = accounts.issue_token(
+                        account, kind=AuthToken.Kind.DEVICE
+                    )
+                elif not account.auth_tokens.exists():
+                    # Production recovery: a device account with no token rows is
+                    # unusable by anyone. The per-IP throttle remains the abuse
+                    # brake; any account with a token still requires possession.
+                    raw_token = accounts.issue_token(
+                        account, kind=AuthToken.Kind.DEVICE
+                    )
+                    recovered = True
+
+            if recovered:
+                _log_account_bootstrap_recovery("zero_tokens")
+            elif not created:
                 auth_result = AccountTokenAuthentication().authenticate(request)
                 if auth_result is None:
+                    _log_account_bootstrap_failure(
+                        "token_missing", device_id_already_existed=True
+                    )
                     return Response(
                         {"detail": "Authentication credentials were not provided."},
                         status=status.HTTP_401_UNAUTHORIZED,
@@ -7053,23 +7115,38 @@ class AccountView(APIView):
 
                 authenticated_account, presented_token = auth_result
                 if authenticated_account.pk != account.pk:
+                    _log_account_bootstrap_failure(
+                        "token_mismatch", device_id_already_existed=True
+                    )
                     return Response(
                         {"detail": "Bearer token does not match device account."},
                         status=status.HTTP_403_FORBIDDEN,
                     )
 
-                # Rotate: revoke the presented token and mint a fresh device token.
-                # Touch last_seen_at (auto_now fires via update_fields).
-                accounts.revoke_token(presented_token)
-                raw_token = accounts.issue_token(account, kind=AuthToken.Kind.DEVICE)
-                account.save(update_fields=["last_seen_at"])
+                # Keep the presented token as a recovery path if the response is
+                # lost. A later successful rotation prunes older device tokens,
+                # while session tokens remain untouched.
+                with transaction.atomic():
+                    raw_token = accounts.issue_token(account, kind=AuthToken.Kind.DEVICE)
+                    accounts.prune_device_tokens(
+                        account, keep_raw_tokens=(presented_token, raw_token)
+                    )
+                    account.save(update_fields=["last_seen_at"])
         except AuthenticationFailed as exc:
+            _log_account_bootstrap_failure(
+                "token_invalid",
+                device_id_already_existed=device_id_already_existed,
+            )
             return Response(
                 {"detail": str(exc)},
                 status=status.HTTP_401_UNAUTHORIZED,
                 headers={"WWW-Authenticate": "Bearer"},
             )
         except Exception as exc:  # noqa: BLE001
+            _log_account_bootstrap_failure(
+                "unexpected_error",
+                device_id_already_existed=device_id_already_existed,
+            )
             logger.error(
                 "account: unexpected error registering account: %s",
                 exc,
