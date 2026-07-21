@@ -89,7 +89,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     assetBundlePatterns: ['**/*'],
     ios: {
       bundleIdentifier: 'com.tomasmach.na-pivo',
-      buildNumber: '4',
       icon: './assets/images/icon.png',
       supportsTablet: false,
       usesAppleSignIn: true,
@@ -117,7 +116,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     },
     android: {
       package: 'com.tomasmach.na_pivo',
-      versionCode: 1,
       intentFilters: [
         {
           action: 'VIEW',
