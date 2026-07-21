@@ -171,7 +171,10 @@ async function authenticatedAddedPubRequest(
       signal: abort.signal,
     });
     if (resp.status === 401) {
-      await clearCachedAnonymousAccount(session);
+      await clearCachedAnonymousAccount(session, {
+        source: 'added_pub_edit',
+        endpoint: path,
+      });
       return 'retry';
     }
     if (!resp.ok) {
@@ -240,7 +243,10 @@ export async function fetchOwnAddedPubs(signal?: AbortSignal): Promise<AddedPubR
       signal: abort.signal,
     });
     if (resp.status === 401) {
-      await clearCachedAnonymousAccount(session);
+      await clearCachedAnonymousAccount(session, {
+        source: 'added_pub_list',
+        endpoint: '/v1/pubs',
+      });
       return null;
     }
     if (!resp.ok) return null;

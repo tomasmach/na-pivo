@@ -124,7 +124,12 @@ export async function submitPubEventSuggestion(
     });
     if (response.ok) return 'ok';
     if (response.status === 401 || response.status === 403) {
-      if (response.status === 401) await clearCachedAnonymousAccount(session);
+      if (response.status === 401) {
+        await clearCachedAnonymousAccount(session, {
+          source: 'pub_event_submit',
+          endpoint: '/v1/pub-events',
+        });
+      }
       return 'auth-required';
     }
     if (response.status === 400 || response.status === 422) return 'permanent-error';
