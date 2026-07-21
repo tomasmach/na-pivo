@@ -52,19 +52,47 @@ const BeerEveningLiveActivity = (
   const isDimmed = environment.isLuminanceReduced === true;
   const accent = isDimmed ? '#A98E58' : '#FFB84D';
   const primaryText = isDimmed ? '#CFC5B3' : '#FFF7E8';
-  const secondaryText = isDimmed ? '#817767' : '#BDA98B';
-  const activityBackground = isDimmed ? '#080604' : '#170E07';
-  const raisedSurface = isDimmed ? '#17120C' : '#2B1A0E';
+  const secondaryText = isDimmed ? '#817767' : '#C4AE8E';
+  const activityBackground = isDimmed ? '#080604' : '#150D06';
+  const raisedSurface = isDimmed ? '#17120C' : '#2E1C0D';
   const buttonText = '#241404';
-  const latestBeerLabel = props.latestBeerName
-    ? `Poslední · ${props.latestBeerName}`
-    : 'První kolo čeká na ťuknutí';
+  // Poured-beer gold gradient for the hero number; flat on the dimmed display.
+  const countStyle:
+    | string
+    | {
+        type: 'linearGradient';
+        colors: string[];
+        startPoint: { x: number; y: number };
+        endPoint: { x: number; y: number };
+      } = isDimmed
+    ? accent
+    : {
+        type: 'linearGradient',
+        colors: ['#FFD98F', '#FFB84D', '#E8953A'],
+        startPoint: { x: 0.5, y: 0 },
+        endPoint: { x: 0.5, y: 1 },
+      };
+
+  const beerWord =
+    props.beerCount === 1
+      ? 'pivo'
+      : props.beerCount >= 2 && props.beerCount <= 4
+        ? 'piva'
+        : 'piv';
+  // Single metadata line: latest beer plus the running total, one dot max.
+  const metaLabel = props.latestBeerName
+    ? props.totalPrice
+      ? `${props.latestBeerName} · ${props.totalPrice}`
+      : props.latestBeerName
+    : props.totalPrice
+      ? props.totalPrice
+      : 'První pivo se teprve točí';
 
   return {
     banner: (
       <VStack
         alignment="leading"
-        spacing={10}
+        spacing={12}
         modifiers={[
           padding({ horizontal: 16, vertical: 14 }),
           frame({ maxWidth: 1000, alignment: 'leading' }),
@@ -74,48 +102,32 @@ const BeerEveningLiveActivity = (
       >
         <HStack
           alignment="center"
-          spacing={6}
-          modifiers={[frame({ maxWidth: 1000 })]}
-        >
-          <Image systemName="circle.fill" size={6} color={accent} />
-          <Text
-            modifiers={[
-              font({ size: 10, weight: 'bold', design: 'rounded' }),
-              foregroundStyle(accent),
-            ]}
-          >
-            VEČER BĚŽÍ
-          </Text>
-          <Spacer />
-          {props.totalPrice ? (
-            <Text
-              modifiers={[
-                font({ size: 12, weight: 'semibold', design: 'rounded' }),
-                foregroundStyle(primaryText),
-                padding({ horizontal: 10, vertical: 5 }),
-                background(raisedSurface, shapes.capsule()),
-                lineLimit(1),
-                privacySensitive(),
-              ]}
-            >
-              {props.totalPrice}
-            </Text>
-          ) : null}
-        </HStack>
-
-        <HStack
-          alignment="bottom"
           spacing={12}
           modifiers={[frame({ maxWidth: 1000 })]}
         >
+          <Image
+            systemName="mug.fill"
+            size={20}
+            modifiers={[
+              foregroundStyle(countStyle),
+              frame({ width: 42, height: 42 }),
+              background(
+                raisedSurface,
+                shapes.roundedRectangle({
+                  cornerRadius: 13,
+                  roundedCornerStyle: 'continuous',
+                }),
+              ),
+            ]}
+          />
           <VStack
             alignment="leading"
-            spacing={4}
+            spacing={3}
             modifiers={[frame({ maxWidth: 1000 })]}
           >
             <Text
               modifiers={[
-                font({ size: 21, weight: 'bold', design: 'rounded' }),
+                font({ size: 19, weight: 'bold', design: 'rounded' }),
                 lineLimit(1),
                 minimumScaleFactor(0.72),
                 privacySensitive(),
@@ -125,36 +137,37 @@ const BeerEveningLiveActivity = (
             </Text>
             <Text
               modifiers={[
-                font({ size: 12, weight: 'regular', design: 'rounded' }),
+                font({ size: 12, weight: 'medium', design: 'rounded' }),
                 foregroundStyle(secondaryText),
                 lineLimit(1),
                 privacySensitive(),
               ]}
             >
-              {latestBeerLabel}
+              {metaLabel}
             </Text>
           </VStack>
           <Spacer />
-          <HStack alignment="firstTextBaseline" spacing={4}>
+          <VStack alignment="trailing" spacing={0}>
             <Text
               modifiers={[
-                font({ size: 42, weight: 'bold', design: 'rounded' }),
-                foregroundStyle(accent),
+                font({ size: 40, weight: 'heavy', design: 'rounded' }),
+                foregroundStyle(countStyle),
                 monospacedDigit(),
                 contentTransition('numericText'),
+                accessibilityLabel(`${props.beerCount} ${beerWord}`),
               ]}
             >
               {props.beerCount}
             </Text>
             <Text
               modifiers={[
-                font({ size: 10, weight: 'bold', design: 'rounded' }),
+                font({ size: 11, weight: 'semibold', design: 'rounded' }),
                 foregroundStyle(secondaryText),
               ]}
             >
-              PIV
+              {beerWord}
             </Text>
-          </HStack>
+          </VStack>
         </HStack>
 
         <Button
@@ -198,12 +211,12 @@ const BeerEveningLiveActivity = (
         <Text
           modifiers={[
             font({ size: 18, weight: 'bold', design: 'rounded' }),
-            foregroundStyle(accent),
+            foregroundStyle(countStyle),
             monospacedDigit(),
             contentTransition('numericText'),
           ]}
         >
-          {props.beerCount} piv
+          {`${props.beerCount} ${beerWord}`}
         </Text>
       </HStack>
     ),
@@ -237,21 +250,11 @@ const BeerEveningLiveActivity = (
     ),
 
     expandedLeading: (
-      <VStack
-        alignment="leading"
-        spacing={4}
-        modifiers={[padding({ leading: 4 })]}
-      >
-        <Image systemName="circle.fill" size={7} color={accent} />
-        <Text
-          modifiers={[
-            font({ size: 10, weight: 'bold', design: 'rounded' }),
-            foregroundStyle(accent),
-          ]}
-        >
-          BĚŽÍ
-        </Text>
-      </VStack>
+      <Image
+        systemName="mug.fill"
+        size={18}
+        modifiers={[foregroundStyle(countStyle), padding({ leading: 4 })]}
+      />
     ),
     expandedTrailing: (
       <VStack
@@ -261,21 +264,22 @@ const BeerEveningLiveActivity = (
       >
         <Text
           modifiers={[
-            font({ size: 26, weight: 'bold', design: 'rounded' }),
-            foregroundStyle(accent),
+            font({ size: 26, weight: 'heavy', design: 'rounded' }),
+            foregroundStyle(countStyle),
             monospacedDigit(),
             contentTransition('numericText'),
+            accessibilityLabel(`${props.beerCount} ${beerWord}`),
           ]}
         >
           {props.beerCount}
         </Text>
         <Text
           modifiers={[
-            font({ size: 9, weight: 'bold', design: 'rounded' }),
+            font({ size: 9, weight: 'semibold', design: 'rounded' }),
             foregroundStyle(secondaryText),
           ]}
         >
-          PIV
+          {beerWord}
         </Text>
       </VStack>
     ),
@@ -303,31 +307,16 @@ const BeerEveningLiveActivity = (
           foregroundStyle(primaryText),
         ]}
       >
-        <HStack alignment="firstTextBaseline" spacing={8}>
-          <Text
-            modifiers={[
-              font({ size: 11, weight: 'regular', design: 'rounded' }),
-              foregroundStyle(secondaryText),
-              lineLimit(1),
-              privacySensitive(),
-            ]}
-          >
-            {latestBeerLabel}
-          </Text>
-          <Spacer />
-          {props.totalPrice ? (
-            <Text
-              modifiers={[
-                font({ size: 12, weight: 'semibold', design: 'rounded' }),
-                foregroundStyle(primaryText),
-                lineLimit(1),
-                privacySensitive(),
-              ]}
-            >
-              {props.totalPrice}
-            </Text>
-          ) : null}
-        </HStack>
+        <Text
+          modifiers={[
+            font({ size: 11, weight: 'medium', design: 'rounded' }),
+            foregroundStyle(secondaryText),
+            lineLimit(1),
+            privacySensitive(),
+          ]}
+        >
+          {metaLabel}
+        </Text>
         <Button
           label="Přidat další"
           systemImage="plus"

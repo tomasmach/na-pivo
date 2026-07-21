@@ -185,7 +185,6 @@ internal object BeerLiveActivityNotification {
     context: Context,
     state: NotificationState
   ): Notification {
-    val countLabel = beerCountLabel(state.beerCount)
     val detail = notificationDetail(state)
     val progressStyle = NotificationCompat.ProgressStyle()
       .setProgressIndeterminate(true)
@@ -199,11 +198,14 @@ internal object BeerLiveActivityNotification {
     return NotificationCompat.Builder(context, CHANNEL_ID)
       .setSmallIcon(R.drawable.beer_live_activity_notification)
       .setColor(AMBER)
-      .setContentTitle(countLabel)
+      .setContentTitle(
+        state.pubName.trim().takeIf { it.isNotEmpty() }?.take(80)
+          ?: beerCountLabel(state.beerCount)
+      )
       .setContentText(detail)
-      .setSubText(state.latestBeerName.trim().takeIf { it.isNotEmpty() }?.take(80)?.let {
-        "Poslední · $it"
-      } ?: "Večer běží")
+      .setSubText(
+        state.totalPrice.trim().takeIf { it.isNotEmpty() }?.take(40) ?: "Večer běží"
+      )
       .setCategory(NotificationCompat.CATEGORY_PROGRESS)
       .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
       .setPriority(NotificationCompat.PRIORITY_DEFAULT)
@@ -293,9 +295,9 @@ internal object BeerLiveActivityNotification {
   }
 
   private fun notificationDetail(state: NotificationState): String {
-    val pubName = state.pubName.trim().takeIf { it.isNotEmpty() }?.take(80)
-    val price = state.totalPrice.trim().takeIf { it.isNotEmpty() }?.take(40)
-    return listOfNotNull(pubName, price).joinToString(" · ").ifEmpty { "Večer běží" }
+    val countLabel = beerCountLabel(state.beerCount)
+    val latestBeer = state.latestBeerName.trim().takeIf { it.isNotEmpty() }?.take(80)
+    return listOfNotNull(countLabel, latestBeer).joinToString(" · ")
   }
 
   private fun persistState(context: Context, state: NotificationState) {
