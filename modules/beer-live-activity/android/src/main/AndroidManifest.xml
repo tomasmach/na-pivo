@@ -1,0 +1,12 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Normal/app-op permission: no runtime dialog. POST_NOTIFICATIONS is still
+       required separately on Android 13+, and is already declared by the app. -->
+  <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
+
+  <application>
+    <receiver
+      android:name=".BeerLiveActivityActionReceiver"
+      android:enabled="true"
+      android:exported="false" />
+  </application>
+</manifest>

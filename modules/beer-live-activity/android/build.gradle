@@ -1,0 +1,21 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.napivo'
+version = '1.0.0'
+
+android {
+  namespace 'com.napivo.beerliveactivity'
+  defaultConfig {
+    versionCode 1
+    versionName '1.0.0'
+  }
+}
+
+dependencies {
+  // 1.18.0 is the newest stable Core compatible with Expo 56's compileSdk 36.
+  // Core 1.19.0 requires compileSdk 37 and cannot be consumed by this release.
+  implementation 'androidx.core:core-ktx:1.18.0'
+}

@@ -70,6 +70,10 @@ import {
   initializeBeerCountReminderNotifications,
   subscribeBeerCountReminderTap,
 } from '@/notifications/beerCountReminder';
+import {
+  initializeLiveBeerActivity,
+  reconcilePendingLiveBeerAdds,
+} from '@/liveActivity/liveBeerActivity';
 
 /**
  * One-time gate: when the onboarding store resolves 'show' (fresh install or
@@ -166,6 +170,7 @@ export default function RootLayout() {
     installClientTelemetry();
     void initializePubReminderNotifications();
     void initializeBeerCountReminderNotifications();
+    void initializeLiveBeerActivity();
     void refreshCurrencyFromLastKnownLocation();
   }, []);
 
@@ -308,9 +313,8 @@ export default function RootLayout() {
     void flushBeerCheckinsQueue();
     void flushBeerPhotosQueue();
     void ensureFriendPushRegisteredIfGranted();
-    // Close an evening left idle past the timeout while the app was away, so the
-    // counter reopens clean (the evening stays resumable for the same day/pub).
-    useTallyStore.getState().maybeAutoArchive();
+    // Live Activity initialization reconciles lock-screen additions and then
+    // applies the tally's idle cutoff once both persisted stores are hydrated.
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         // Rehydrate credentials that were temporarily unavailable, then validate
@@ -321,7 +325,11 @@ export default function RootLayout() {
           if (!pathnameRef.current.startsWith('/auth')) router.push('/auth' as Href);
         });
         void trackClientEvent({ event: 'app_foreground', severity: 'info' });
-        useTallyStore.getState().maybeAutoArchive();
+        // Commit any lock-screen `+ pivo` taps before applying the idle cutoff;
+        // the native action's timestamp may be the latest activity tonight.
+        void reconcilePendingLiveBeerAdds().finally(() => {
+          useTallyStore.getState().maybeAutoArchive();
+        });
         void flushPubReportQueue();
         void flushPubNameCorrectionsQueue();
         void flushFeedbackQueue();

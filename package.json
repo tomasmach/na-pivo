@@ -16,7 +16,7 @@
     "start": "expo start",
     "dev": "bash scripts/dev-local.sh",
     "start:local": "EXPO_PUBLIC_BACKEND_MODE=local EXPO_PUBLIC_BACKEND_HOST=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo localhost) expo start --lan",
-    "postinstall": "node scripts/patch-expo-location-heading.js",
+    "postinstall": "node scripts/patch-expo-location-heading.js && node scripts/patch-expo-widgets-live-activity.js",
     "ios": "expo run:ios",
     "ios:local": "EXPO_PUBLIC_BACKEND_MODE=local EXPO_PUBLIC_BACKEND_HOST=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo localhost) expo run:ios",
     "android": "expo run:android",
@@ -26,6 +26,7 @@
     "lint": "expo lint"
   },
   "dependencies": {
+    "@expo/ui": "~56.0.22",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-google-signin/google-signin": "^16.1.2",
     "country-to-currency": "^3.0.1",
@@ -53,6 +54,7 @@
     "expo-system-ui": "~56.0.5",
     "expo-task-manager": "~56.0.22",
     "expo-updates": "~56.0.22",
+    "expo-widgets": "~56.0.23",
     "geokdbush": "^2.1.0",
     "kdbush": "^4.1.0",
     "lucide-react-native": "^1.16.0",

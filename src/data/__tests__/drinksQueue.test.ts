@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   clearDrinksQueue,
   enqueueDrink,
+  ensureDrinkQueued,
   flushDrinksQueue,
   removeQueuedDrink,
   updateQueuedDrinkBeerName,
@@ -98,6 +99,20 @@ describe('enqueueDrink', () => {
     // Oldest dropped, newest kept.
     expect(queue[queue.length - 1].client_id).toBe('id-204');
     expect(queue.some((e) => e.client_id === 'id-0')).toBe(false);
+  });
+});
+
+describe('ensureDrinkQueued', () => {
+  it('persists one replayable client id only once without delivering it', async () => {
+    const repeated = entry({ client_id: 'lock-screen-add' });
+
+    await ensureDrinkQueued(repeated);
+    await ensureDrinkQueued(repeated);
+
+    expect((await readQueue()).map((queued) => queued.client_id)).toEqual([
+      'lock-screen-add',
+    ]);
+    expect(submitDrink).not.toHaveBeenCalled();
   });
 });
 
