@@ -40,6 +40,8 @@ export interface BeerEveningLiveActivityProps {
   totalPrice: string;
   /** Most recently counted beer; empty when the name is unavailable. */
   latestBeerName: string;
+  /** Localized wall-clock time such as "21:47" of the latest counted beer. */
+  latestBeerAt: string;
   /** `file://` URI of the staged app icon in the app-group container. */
   iconUri?: string;
 }
@@ -83,14 +85,13 @@ const BeerEveningLiveActivity = (
       : props.beerCount >= 2 && props.beerCount <= 4
         ? 'piva'
         : 'piv';
-  // Single metadata line: latest beer plus the running total, one dot max.
-  const metaLabel = props.latestBeerName
-    ? props.totalPrice
-      ? `${props.latestBeerName} · ${props.totalPrice}`
-      : props.latestBeerName
-    : props.totalPrice
-      ? props.totalPrice
-      : 'První pivo se teprve točí';
+  // Running total sits under the pub name; the latest beer with its wall-clock
+  // time lives next to the button so the freshest info is closest to the action.
+  const priceLabel = props.totalPrice ? `Celkem ${props.totalPrice}` : '';
+  const latestBeerLabel = props.latestBeerName || 'Poslední pivo';
+  const latestTimeLabel = props.latestBeerAt
+    ? `zapsáno v ${props.latestBeerAt}`
+    : 'První pivo se teprve točí';
 
   return {
     banner: (
@@ -150,16 +151,18 @@ const BeerEveningLiveActivity = (
             >
               {props.pubName}
             </Text>
-            <Text
-              modifiers={[
-                font({ size: 12, weight: 'medium', design: 'rounded' }),
-                foregroundStyle(secondaryText),
-                lineLimit(1),
-                privacySensitive(),
-              ]}
-            >
-              {metaLabel}
-            </Text>
+            {priceLabel ? (
+              <Text
+                modifiers={[
+                  font({ size: 12, weight: 'medium', design: 'rounded' }),
+                  foregroundStyle(secondaryText),
+                  lineLimit(1),
+                  privacySensitive(),
+                ]}
+              >
+                {priceLabel}
+              </Text>
+            ) : null}
           </VStack>
           <Spacer />
           <VStack alignment="trailing" spacing={0}>
@@ -185,21 +188,53 @@ const BeerEveningLiveActivity = (
           </VStack>
         </HStack>
 
-        <Button
-          label="Přidat další"
-          systemImage="plus"
-          target="add-beer"
-          modifiers={[
-            font({ size: 15, weight: 'semibold', design: 'rounded' }),
-            buttonStyle('borderedProminent'),
-            buttonBorderShape('capsule'),
-            controlSize('regular'),
-            frame({ maxWidth: 1000 }),
-            tint(accent),
-            foregroundStyle(buttonText),
-            accessibilityLabel('Přidat stejné pivo'),
-          ]}
-        />
+        <HStack
+          alignment="center"
+          spacing={12}
+          modifiers={[frame({ maxWidth: 1000 })]}
+        >
+          <VStack
+            alignment="leading"
+            spacing={2}
+            modifiers={[frame({ maxWidth: 1000 })]}
+          >
+            <Text
+              modifiers={[
+                font({ size: 13, weight: 'semibold', design: 'rounded' }),
+                lineLimit(1),
+                minimumScaleFactor(0.8),
+                privacySensitive(),
+              ]}
+            >
+              {latestBeerLabel}
+            </Text>
+            <Text
+              modifiers={[
+                font({ size: 11, weight: 'medium', design: 'rounded' }),
+                foregroundStyle(secondaryText),
+                lineLimit(1),
+                privacySensitive(),
+              ]}
+            >
+              {latestTimeLabel}
+            </Text>
+          </VStack>
+          <Spacer />
+          <Button
+            label="Přidat další"
+            systemImage="plus"
+            target="add-beer"
+            modifiers={[
+              font({ size: 15, weight: 'semibold', design: 'rounded' }),
+              buttonStyle('borderedProminent'),
+              buttonBorderShape('capsule'),
+              controlSize('regular'),
+              tint(accent),
+              foregroundStyle(buttonText),
+              accessibilityLabel('Přidat stejné pivo'),
+            ]}
+          />
+        </HStack>
       </VStack>
     ),
 
@@ -314,41 +349,57 @@ const BeerEveningLiveActivity = (
       </Text>
     ),
     expandedBottom: (
-      <VStack
-        alignment="leading"
-        spacing={8}
+      <HStack
+        alignment="center"
+        spacing={12}
         modifiers={[
           padding({ top: 5, bottom: 4 }),
-          frame({ maxWidth: 1000, alignment: 'leading' }),
+          frame({ maxWidth: 1000 }),
           foregroundStyle(primaryText),
         ]}
       >
-        <Text
-          modifiers={[
-            font({ size: 11, weight: 'medium', design: 'rounded' }),
-            foregroundStyle(secondaryText),
-            lineLimit(1),
-            privacySensitive(),
-          ]}
+        <VStack
+          alignment="leading"
+          spacing={2}
+          modifiers={[frame({ maxWidth: 1000 })]}
         >
-          {metaLabel}
-        </Text>
+          <Text
+            modifiers={[
+              font({ size: 12, weight: 'semibold', design: 'rounded' }),
+              lineLimit(1),
+              minimumScaleFactor(0.8),
+              privacySensitive(),
+            ]}
+          >
+            {latestBeerLabel}
+          </Text>
+          <Text
+            modifiers={[
+              font({ size: 10, weight: 'medium', design: 'rounded' }),
+              foregroundStyle(secondaryText),
+              lineLimit(1),
+              privacySensitive(),
+            ]}
+          >
+            {latestTimeLabel}
+          </Text>
+        </VStack>
+        <Spacer />
         <Button
           label="Přidat další"
           systemImage="plus"
           target="add-beer"
           modifiers={[
-            font({ size: 15, weight: 'semibold', design: 'rounded' }),
+            font({ size: 14, weight: 'semibold', design: 'rounded' }),
             buttonStyle('borderedProminent'),
             buttonBorderShape('capsule'),
             controlSize('small'),
-            frame({ maxWidth: 1000 }),
             tint(accent),
             foregroundStyle(buttonText),
             accessibilityLabel('Přidat stejné pivo'),
           ]}
         />
-      </VStack>
+      </HStack>
     ),
   };
 };

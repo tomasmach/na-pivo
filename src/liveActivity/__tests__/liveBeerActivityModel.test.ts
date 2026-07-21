@@ -36,6 +36,10 @@ describe('buildBeerEveningLiveActivityProps', () => {
       beerCount: 1,
       totalPrice: '65 Kč',
       latestBeerName: 'Plzeň 12°',
+      latestBeerAt: new Date('2026-07-21T18:00:00.000Z').toLocaleTimeString('cs-CZ', {
+        hour: 'numeric',
+        minute: '2-digit',
+      }),
     });
   });
 

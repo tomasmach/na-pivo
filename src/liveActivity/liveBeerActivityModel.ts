@@ -9,6 +9,8 @@ export interface BeerEveningLiveActivityProps {
   beerCount: number;
   totalPrice: string;
   latestBeerName: string;
+  /** Localized wall-clock time such as "21:47" of the latest counted beer. */
+  latestBeerAt: string;
   /** iOS only: `file://` URI of the staged app icon in the app-group container. */
   iconUri?: string;
 }
@@ -31,6 +33,13 @@ interface LiveBeerActivityPreferences {
 }
 
 const MAX_LABEL_LENGTH = 64;
+
+function formatWallClock(iso: string | undefined): string {
+  if (!iso) return '';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString('cs-CZ', { hour: 'numeric', minute: '2-digit' });
+}
 
 function compactLabel(value: string, fallback: string): string {
   const normalized = value.trim().replace(/\s+/g, ' ');
@@ -66,5 +75,6 @@ export function buildBeerEveningLiveActivityProps(
       ? formatPrice(sessionTotalCzk(session), preferences.priceCurrency)
       : '',
     latestBeerName: latestBeer ? compactLabel(latestBeer.beerName, 'Pivo') : '',
+    latestBeerAt: formatWallClock(latestBeer?.at),
   };
 }
