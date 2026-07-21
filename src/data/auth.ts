@@ -60,6 +60,7 @@ export interface AccountSubscription {
 
 export interface AccountStats {
   totalBeers: number;
+  firstBeerAt: string | null;
   distinctPubs: number;
   ratingsCount: number;
   totalSpentCzk: number;
@@ -188,6 +189,7 @@ interface RawAccount {
   };
   stats?: {
     total_beers?: number;
+    first_beer_at?: string | null;
     distinct_pubs?: number;
     ratings_count?: number;
     total_spent_czk?: number;
@@ -287,6 +289,7 @@ function parseStats(data: RawAccount): AccountStats | undefined {
   if (!raw) return undefined;
   return {
     totalBeers: typeof raw.total_beers === 'number' ? raw.total_beers : 0,
+    firstBeerAt: typeof raw.first_beer_at === 'string' ? raw.first_beer_at : null,
     distinctPubs: typeof raw.distinct_pubs === 'number' ? raw.distinct_pubs : 0,
     ratingsCount: typeof raw.ratings_count === 'number' ? raw.ratings_count : 0,
     totalSpentCzk: typeof raw.total_spent_czk === 'number' ? raw.total_spent_czk : 0,

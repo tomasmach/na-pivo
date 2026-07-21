@@ -25,6 +25,7 @@ from __future__ import annotations
 import io
 import time
 import uuid
+from datetime import datetime
 
 import pytest
 from django.core.cache import cache
@@ -923,6 +924,7 @@ def test_get_me_returns_backend_profile_stats_and_achievements(client):
     body = resp.json()
     assert body["stats"] == {
         "total_beers": 10,
+        "first_beer_at": timezone.localtime(now).isoformat(),
         "distinct_pubs": 2,
         "ratings_count": 10,
         "total_spent_czk": sum(range(50, 60)) + 49 + 65,
@@ -1000,6 +1002,7 @@ def test_profile_stats_and_badges_exclude_suspect_drinks(client):
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
     assert body["stats"]["total_beers"] == 9
+    assert datetime.fromisoformat(body["stats"]["first_beer_at"]) == local_noon
     assert body["stats"]["distinct_pubs"] == 1
     assert body["stats"]["total_spent_czk"] == 450
     assert body["achievements"]["first_ten"] is False
