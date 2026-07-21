@@ -86,25 +86,35 @@ export default function AddPubScreen() {
     [initialLat, initialLng],
   );
 
-  const [name, setName] = useState(parseStringParam(params.name));
-  const [city, setCity] = useState(parseStringParam(params.city));
-  const [address, setAddress] = useState(parseStringParam(params.address));
+  const initialName = useMemo(() => parseStringParam(params.name).trim(), [params.name]);
+  const initialCity = useMemo(() => parseStringParam(params.city).trim(), [params.city]);
+  const initialAddress = useMemo(() => parseStringParam(params.address).trim(), [params.address]);
+  const [name, setName] = useState(initialName);
+  const [city, setCity] = useState(initialCity);
+  const [address, setAddress] = useState(initialAddress);
   const [submitted, setSubmitted] = useState(false);
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState('');
   const [selectedLocation, setSelectedLocation] = useState<SelectedLocation | null>(null);
+  const nameChanged = name.trim() !== initialName;
+  const locationCorrectionSelected = selectedLocation !== null;
   const canSubmit =
     name.trim().length > 0 &&
-    city.trim().length > 0 &&
-    address.trim().length > 0 &&
-    selectedLocation !== null &&
+    (isEditing
+      ? (nameChanged || locationCorrectionSelected) &&
+        (!locationCorrectionSelected || (city.trim().length > 0 && address.trim().length > 0))
+      : city.trim().length > 0 && address.trim().length > 0 && locationCorrectionSelected) &&
     !locating &&
     !submitted;
-  const currentLocationSelected = selectedLocation?.source === 'current';
+  const currentLocationSelected = locationCorrectionSelected;
 
   const handleUseCurrentLocation = useCallback(async () => {
     if (currentLocationSelected) {
       setSelectedLocation(null);
+      if (isEditing) {
+        setCity(initialCity);
+        setAddress(initialAddress);
+      }
       setLocationError('');
       return;
     }
@@ -112,9 +122,8 @@ export default function AddPubScreen() {
     setLocating(true);
     setLocationError('');
     try {
-      // Creation receives the compass' fresh position as a shortcut. During an
-      // edit those route coordinates describe the OLD pub position, so always
-      // request a new fix and make the user deliberately reselect the point.
+      // Creation receives the compass' fresh position as a shortcut. A location
+      // correction deliberately requires a new fix taken at the pub.
       let coords: Coordinates | null = isEditing ? null : initialCoords;
       if (!coords) {
         const permission = await ensureLocationPermission();
@@ -145,7 +154,7 @@ export default function AddPubScreen() {
     } finally {
       setLocating(false);
     }
-  }, [currentLocationSelected, initialCoords, isEditing, showToast]);
+  }, [currentLocationSelected, initialAddress, initialCity, initialCoords, isEditing, showToast]);
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit) return;
@@ -156,47 +165,51 @@ export default function AddPubScreen() {
     const trimmedCity = city.trim();
     const trimmedAddress = address.trim();
 
-    const location = selectedLocation;
+    const location = selectedLocation ?? initialCoords;
 
-    if (!location) {
+    if (!isEditing && !location) {
       setSubmitted(false);
       setLocationError(cs.addPub.locationError);
       showToast(cs.addPub.locationError);
       return;
     }
 
-    const entry = buildAddedPubEntry(
-      {
+    if (location) {
+      upsertLocalPub({
+        id: pubIdForCoords(location.lat, location.lng),
         name: trimmedName,
         lat: location.lat,
         lng: location.lng,
         city: trimmedCity,
         address: trimmedAddress,
-      },
-      editedClientId || generateUuidV4(),
-    );
-
-    upsertLocalPub({
-      id: pubIdForCoords(location.lat, location.lng),
-      name: trimmedName,
-      lat: location.lat,
-      lng: location.lng,
-      city: trimmedCity,
-      address: trimmedAddress,
-      venueKind: 'pub',
-    });
-    bumpCatalogRevision();
-    void clearPubsSnapshot();
+        venueKind: 'pub',
+      });
+      bumpCatalogRevision();
+      void clearPubsSnapshot();
+    }
     const sync = isEditing
       ? enqueueAddedPubEdit({
           client_id: editedClientId,
-          name: trimmedName,
-          lat: location.lat,
-          lng: location.lng,
-          city: trimmedCity,
-          address: trimmedAddress,
+          ...(nameChanged ? { name: trimmedName } : {}),
+          ...(selectedLocation
+            ? {
+                lat: selectedLocation.lat,
+                lng: selectedLocation.lng,
+                city: trimmedCity,
+                address: trimmedAddress,
+              }
+            : {}),
         })
-      : enqueueAddedPub(entry);
+      : enqueueAddedPub(buildAddedPubEntry(
+          {
+            name: trimmedName,
+            lat: selectedLocation!.lat,
+            lng: selectedLocation!.lng,
+            city: trimmedCity,
+            address: trimmedAddress,
+          },
+          generateUuidV4(),
+        ));
     void sync.then((state) => {
       bumpCatalogRevision();
       showToast(
@@ -218,7 +231,9 @@ export default function AddPubScreen() {
     canSubmit,
     city,
     editedClientId,
+    initialCoords,
     isEditing,
+    nameChanged,
     name,
     router,
     selectedLocation,
@@ -266,9 +281,9 @@ export default function AddPubScreen() {
         </View>
 
         <View style={styles.locationCard}>
-          <Text style={styles.locationHeader}>{cs.addPub.locationHeader}</Text>
+          <Text style={styles.locationHeader}>{isEditing ? cs.addPub.editLocationHeader : cs.addPub.locationHeader}</Text>
           <Text style={styles.locationBody} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.addPub.locationBody}
+            {isEditing ? cs.addPub.editLocationBody : cs.addPub.locationBody}
           </Text>
           <Pressable
               onPress={() => void handleUseCurrentLocation()}
@@ -301,14 +316,14 @@ export default function AddPubScreen() {
                   style={styles.currentLocationTitle}
                   maxFontSizeMultiplier={FontScaleCap.body}
                 >
-                  {locating ? cs.addPub.locating : cs.addPub.useCurrentLocation}
+                  {locating ? cs.addPub.locating : isEditing ? cs.addPub.editUseCurrentLocation : cs.addPub.useCurrentLocation}
                 </Text>
                 <Text
                   style={styles.currentLocationBody}
                   maxFontSizeMultiplier={FontScaleCap.body}
                   numberOfLines={3}
                 >
-                  {cs.addPub.useCurrentLocationHint}
+                  {isEditing ? cs.addPub.editUseCurrentLocationHint : cs.addPub.useCurrentLocationHint}
                 </Text>
               </View>
               <View
@@ -367,9 +382,10 @@ export default function AddPubScreen() {
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>{cs.addPub.cityLabel}</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, isEditing && !locationCorrectionSelected && styles.inputDisabled]}
             value={city}
             onChangeText={setCity}
+            editable={!isEditing || locationCorrectionSelected}
             placeholder={cs.addPub.cityPlaceholder}
             placeholderTextColor={Colors.mutedText}
             maxLength={128}
@@ -380,9 +396,10 @@ export default function AddPubScreen() {
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>{cs.addPub.addressLabel}</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, isEditing && !locationCorrectionSelected && styles.inputDisabled]}
             value={address}
             onChangeText={setAddress}
+            editable={!isEditing || locationCorrectionSelected}
             placeholder={cs.addPub.addressPlaceholder}
             placeholderTextColor={Colors.mutedText}
             maxLength={255}
@@ -529,6 +546,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     letterSpacing: 0,
     color: Colors.foam,
+  },
+  inputDisabled: {
+    opacity: 0.55,
   },
   locationCard: {
     overflow: 'hidden',

@@ -79,6 +79,7 @@ export default function SuggestPubEventScreen() {
   const [ends, setEnds] = useState(defaults.ends);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [draftClientId] = useState(() => generateUuidV4());
 
   const name = stringParam(params.name);
   const lat = numberParam(params.lat);
@@ -109,7 +110,7 @@ export default function SuggestPubEventScreen() {
     setSubmitting(true);
     setError(null);
     const result = await submitPubEventSuggestion({
-      clientId: generateUuidV4(),
+      clientId: draftClientId,
       name,
       lat,
       lng,

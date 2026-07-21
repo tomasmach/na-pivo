@@ -6,6 +6,7 @@ import {
   flushAddedPubsQueue,
   loadAddedPubSubmissions,
   retryAddedPub,
+  syncOwnAddedPubs,
 } from '../addedPubsQueue';
 import { fetchOwnAddedPubs, submitAddedPub, submitAddedPubEdit } from '../addedPubsClient';
 import { removeLocalPub, upsertLocalPub } from '../pubs';
@@ -168,7 +169,6 @@ describe('added pub state registry', () => {
       address: ENTRY.address,
     }]);
 
-    const { syncOwnAddedPubs } = await import('../addedPubsQueue');
     await syncOwnAddedPubs();
 
     await expect(loadAddedPubSubmissions()).resolves.toEqual([
@@ -177,6 +177,122 @@ describe('added pub state registry', () => {
         pendingOperation: 'edit',
         lat: 50.09,
         address: 'Nová 9',
+      }),
+    ]);
+  });
+
+  it('never evicts unsettled creates when the history limit is exceeded', async () => {
+    (submitAddedPub as jest.Mock).mockResolvedValue('retry');
+
+    for (let index = 0; index < 31; index += 1) {
+      await enqueueAddedPub({
+        ...ENTRY,
+        client_id: `pending-${index}`,
+        name: `Hospoda ${index}`,
+      });
+    }
+
+    const rows = await loadAddedPubSubmissions();
+    expect(rows).toHaveLength(31);
+    expect(rows.every((row) => row.syncState === 'pending')).toBe(true);
+    expect(rows.map((row) => row.client_id)).toContain('pending-0');
+  });
+
+  it('keeps a pending edit while syncing a full page of server history', async () => {
+    await AsyncStorage.setItem('na-pivo-added-pubs-queue', JSON.stringify([{
+      ...ENTRY,
+      syncState: 'pending',
+      pendingOperation: 'edit',
+      pendingEdit: { client_id: ENTRY.client_id, name: 'Nový název' },
+      updatedAt: '2026-07-21T10:00:00.000Z',
+    }]));
+    (fetchOwnAddedPubs as jest.Mock).mockResolvedValueOnce(
+      Array.from({ length: 30 }, (_, index) => ({
+        clientId: `remote-${index}`,
+        cacheKey: `cache-${index}`,
+        name: `Server ${index}`,
+        lat: ENTRY.lat + index / 1000,
+        lng: ENTRY.lng,
+      })),
+    );
+
+    await syncOwnAddedPubs();
+
+    const rows = await loadAddedPubSubmissions();
+    expect(rows).toHaveLength(31);
+    expect(rows).toContainEqual(expect.objectContaining({
+      client_id: ENTRY.client_id,
+      syncState: 'pending',
+      pendingEdit: expect.objectContaining({ name: 'Nový název' }),
+    }));
+  });
+
+  it('keeps the newest server rows when trimming synced history', async () => {
+    (fetchOwnAddedPubs as jest.Mock).mockResolvedValueOnce(
+      Array.from({ length: 35 }, (_, index) => ({
+        clientId: `remote-${index}`,
+        cacheKey: `cache-${index}`,
+        name: `Server ${index}`,
+        lat: ENTRY.lat + index / 1000,
+        lng: ENTRY.lng,
+      })),
+    );
+
+    await syncOwnAddedPubs();
+
+    const rows = await loadAddedPubSubmissions();
+    expect(rows).toHaveLength(30);
+    expect(rows.map((row) => row.client_id)).toEqual(
+      Array.from({ length: 30 }, (_, index) => `remote-${index}`),
+    );
+  });
+
+  it('uses insertion order to break equal history timestamps in favor of newer rows', async () => {
+    await AsyncStorage.setItem(
+      'na-pivo-added-pubs-queue',
+      JSON.stringify(Array.from({ length: 31 }, (_, index) => ({
+        ...ENTRY,
+        client_id: `synced-${index}`,
+        syncState: 'synced',
+        pendingOperation: null,
+        updatedAt: '2026-07-21T10:00:00.000Z',
+      }))),
+    );
+    (fetchOwnAddedPubs as jest.Mock).mockResolvedValueOnce([]);
+
+    await syncOwnAddedPubs();
+
+    const rows = await loadAddedPubSubmissions();
+    expect(rows).toHaveLength(30);
+    expect(rows.map((row) => row.client_id)).not.toContain('synced-0');
+    expect(rows.map((row) => row.client_id)).toContain('synced-30');
+  });
+
+  it('retries a rename as a name-only PATCH', async () => {
+    (submitAddedPub as jest.Mock).mockResolvedValueOnce({
+      clientId: ENTRY.client_id,
+      cacheKey: 'u2fkbnvy',
+      name: ENTRY.name,
+      lat: ENTRY.lat,
+      lng: ENTRY.lng,
+      city: ENTRY.city,
+      address: ENTRY.address,
+    });
+    await enqueueAddedPub(ENTRY);
+    (submitAddedPubEdit as jest.Mock).mockResolvedValueOnce('retry');
+
+    await enqueueAddedPubEdit({ client_id: ENTRY.client_id, name: 'U Krátkého patche' });
+
+    expect(submitAddedPubEdit).toHaveBeenCalledWith({
+      client_id: ENTRY.client_id,
+      name: 'U Krátkého patche',
+    });
+    await expect(loadAddedPubSubmissions()).resolves.toEqual([
+      expect.objectContaining({
+        name: 'U Krátkého patche',
+        lat: ENTRY.lat,
+        lng: ENTRY.lng,
+        pendingEdit: { client_id: ENTRY.client_id, name: 'U Krátkého patche' },
       }),
     ]);
   });

@@ -164,6 +164,18 @@ export const useSettingsStore = create<SettingsState>()(
           setCurrencyRate(state.priceCurrency, state.priceCurrencyRate);
         }
       },
+      version: 1,
+      migrate: (persistedState, version) => {
+        const state = persistedState as Partial<SettingsState>;
+        if (version < 1) {
+          return {
+            ...state,
+            // The old value was an implicit default, not recorded consent.
+            waterNudgeEnabled: false,
+          } as SettingsState;
+        }
+        return persistedState as SettingsState;
+      },
     }
   )
 );

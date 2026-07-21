@@ -3,6 +3,7 @@ import * as Location from 'expo-location';
 
 import { ensureLocationPermission } from '@/compass/permissions';
 import { geocodePubLocation } from '@/data/mapyClient';
+import { cs } from '@/i18n/cs';
 import { useSettingsStore } from '@/stores/settingsStore';
 import HomePointScreen from '../home-point';
 
@@ -191,6 +192,24 @@ describe('HomePointScreen', () => {
           typeof node.props.children === 'string' && node.props.children.includes('vybrat ručně'),
       ),
     ).not.toHaveLength(0);
+    expect(useSettingsStore.getState().homePoint).toBeNull();
+  });
+
+  it('shows a useful error when the current location provider fails', async () => {
+    jest.mocked(ensureLocationPermission).mockResolvedValue('granted');
+    jest.mocked(Location.getCurrentPositionAsync).mockRejectedValue(new Error('GPS unavailable'));
+    act(() => {
+      renderer = TestRenderer.create(<HomePointScreen />);
+    });
+
+    const locate = renderer.root.findByProps({ children: 'Použít moji polohu' }).parent;
+    await act(async () => {
+      await locate.props.onPress();
+    });
+
+    expect(
+      renderer.root.findByProps({ children: cs.addPub.locationUnavailable }),
+    ).toBeTruthy();
     expect(useSettingsStore.getState().homePoint).toBeNull();
   });
 });

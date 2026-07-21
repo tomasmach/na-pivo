@@ -8,8 +8,8 @@ POST   pubs/        → UserAddedPubView
 POST   pub-reports/ → PubReportView
 POST   pub-name-corrections/ → PubNameCorrectionView
 GET    pub-reports/blocked → BlockedPubReportsView
-GET    pubs/suggest → PubLocationSuggestView
-GET    pubs/geocode → PubLocationGeocodeView
+GET/POST pubs/suggest → PubLocationSuggestView
+GET/POST pubs/geocode → PubLocationGeocodeView
 GET    beer-brands/suggest → BeerBrandSuggestView
 GET    drinks       → DrinksView
 POST   drinks       → DrinksView

@@ -3,10 +3,20 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from pubs.models import Account, FriendBlock, Friendship, PartyEvening, PartyEveningDrink
+from pubs.api.party_views import _serialize_evening
+from pubs.models import (
+    Account,
+    FriendBlock,
+    Friendship,
+    PartyEvening,
+    PartyEveningDrink,
+    PartyEveningMember,
+)
 
 
 @pytest.fixture
@@ -227,6 +237,44 @@ def test_host_cannot_start_two_active_evenings(client):
     assert second.status_code == status.HTTP_409_CONFLICT
     assert second.json()["code"] == "active_party_exists"
     assert PartyEvening.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_member_cannot_join_or_host_two_active_evenings(client):
+    first_host_token, first_host = _register(client, "first-host")
+    second_host_token, second_host = _register(client, "second-host")
+    member_token, member = _register(client, "member")
+    _friend(first_host, member)
+    _friend(second_host, member)
+    assert _create(client, first_host_token, code="PRVNI2").status_code == 201
+    assert _create(client, second_host_token, code="DRUHY2").status_code == 201
+    assert client.post("/v1/party-evenings/PRVNI2/join", **_auth(member_token)).status_code == 200
+
+    second_join = client.post("/v1/party-evenings/DRUHY2/join", **_auth(member_token))
+    assert second_join.status_code == status.HTTP_409_CONFLICT
+    assert second_join.json()["code"] == "active_party_membership_exists"
+    assert PartyEveningMember.objects.filter(account=member, active=True).count() == 1
+
+    hosted = _create(client, member_token, code="HOST33")
+    assert hosted.status_code == status.HTTP_409_CONFLICT
+    assert hosted.json()["code"] == "active_party_membership_exists"
+
+
+@pytest.mark.django_db
+def test_evening_serialization_query_count_does_not_scale_with_members(client):
+    host_token, host = _register(client, "host")
+    assert _create(client, host_token).status_code == 201
+    evening = PartyEvening.objects.select_related("host").get()
+    for index in range(8):
+        _token, friend = _register(client, f"friend-{index}")
+        _friend(host, friend)
+        PartyEveningMember.objects.create(evening=evening, account=friend)
+
+    with CaptureQueriesContext(connection) as queries:
+        payload = _serialize_evening(evening, host)
+
+    assert len(payload["members"]) == 9
+    assert len(queries) <= 4
 
 
 @pytest.mark.django_db

@@ -22,7 +22,7 @@ import { clearPubsSnapshot, pubIdForCoords, removeLocalPub, upsertLocalPub } fro
 import { createQueueLock } from './createQueue';
 
 const STORAGE_KEY = 'na-pivo-added-pubs-queue';
-const MAX_SUBMISSIONS = 30;
+const MAX_SYNCED_SUBMISSIONS = 30;
 
 export type AddedPubSyncState = 'pending' | 'synced' | 'failed';
 
@@ -32,6 +32,28 @@ export interface AddedPubSubmission extends AddedPubEntry {
   updatedAt: string;
   /** Last server-confirmed value used to undo a permanently rejected edit. */
   rollback?: AddedPubEntry;
+  /** Exact partial PATCH to retry without turning a rename into a location edit. */
+  pendingEdit?: AddedPubEditEntry;
+}
+
+function normalizePendingEdit(value: unknown, clientId: string): AddedPubEditEntry | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const candidate = value as Partial<AddedPubEditEntry>;
+  const pending: AddedPubEditEntry = { client_id: clientId };
+  if (typeof candidate.name === 'string') pending.name = candidate.name;
+
+  const hasLocation =
+    typeof candidate.lat === 'number' &&
+    typeof candidate.lng === 'number' &&
+    typeof candidate.city === 'string' &&
+    typeof candidate.address === 'string';
+  if (hasLocation) {
+    pending.lat = candidate.lat;
+    pending.lng = candidate.lng;
+    pending.city = candidate.city;
+    pending.address = candidate.address;
+  }
+  return pending.name !== undefined || hasLocation ? pending : undefined;
 }
 
 function isAddedPubEntry(entry: unknown): entry is AddedPubEntry {
@@ -58,6 +80,7 @@ function normalizeSubmission(value: unknown): AddedPubSubmission | null {
     : candidate.pendingOperation === null || syncState === 'synced'
       ? null
       : 'create';
+  const pendingEdit = normalizePendingEdit(candidate.pendingEdit, value.client_id);
   return {
     client_id: value.client_id,
     name: value.name,
@@ -69,6 +92,7 @@ function normalizeSubmission(value: unknown): AddedPubSubmission | null {
     pendingOperation,
     updatedAt: typeof candidate.updatedAt === 'string' ? candidate.updatedAt : new Date(0).toISOString(),
     ...(isAddedPubEntry(candidate.rollback) ? { rollback: candidate.rollback } : {}),
+    ...(pendingEdit ? { pendingEdit } : {}),
   };
 }
 
@@ -88,7 +112,20 @@ async function loadRegistry(): Promise<AddedPubSubmission[]> {
 }
 
 async function saveRegistry(items: AddedPubSubmission[]): Promise<void> {
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(items.slice(-MAX_SUBMISSIONS)));
+  const keptSyncedIds = new Set(
+    items
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => item.syncState === 'synced')
+      .sort((left, right) =>
+        Date.parse(right.item.updatedAt) - Date.parse(left.item.updatedAt) || right.index - left.index,
+      )
+      .slice(0, MAX_SYNCED_SUBMISSIONS)
+      .map(({ item }) => item.client_id),
+  );
+  const kept = items.filter(
+    (item) => item.syncState !== 'synced' || keptSyncedIds.has(item.client_id),
+  );
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(kept));
 }
 
 const registryTask = createQueueLock();
@@ -113,6 +150,7 @@ function pubFromSubmission(submission: AddedPubSubmission) {
 function submissionFromResponse(
   previous: AddedPubSubmission | undefined,
   result: AddedPubResponse,
+  updatedAt = previous?.updatedAt ?? new Date().toISOString(),
 ): AddedPubSubmission {
   return {
     client_id: result.clientId,
@@ -123,7 +161,7 @@ function submissionFromResponse(
     ...(result.address ? { address: result.address } : {}),
     syncState: 'synced',
     pendingOperation: null,
-    updatedAt: previous?.updatedAt ?? new Date().toISOString(),
+    updatedAt,
   };
 }
 
@@ -144,7 +182,9 @@ async function flushLocked(): Promise<void> {
 
     const result = submission.pendingOperation === 'create'
       ? await submitAddedPub(submission)
-      : await submitAddedPubEdit({
+      : await submitAddedPubEdit(submission.pendingEdit ?? {
+          // Legacy pending edits predate the partial-payload field and must keep
+          // their original full-location retry behavior.
           client_id: submission.client_id,
           name: submission.name,
           lat: submission.lat,
@@ -210,16 +250,36 @@ export function enqueueAddedPubEdit(entry: AddedPubEditEntry): Promise<AddedPubS
     const registry = await loadRegistry();
     const previous = registry.find((item) => item.client_id === entry.client_id);
     if (!previous) return 'failed';
+    const nextName = entry.name?.trim() || previous.name;
+    const locationEdit =
+      entry.lat !== undefined &&
+      entry.lng !== undefined &&
+      entry.city !== undefined &&
+      entry.address !== undefined
+        ? {
+            lat: entry.lat,
+            lng: entry.lng,
+            city: entry.city.trim(),
+            address: entry.address.trim(),
+          }
+        : null;
+    const pendingEdit: AddedPubEditEntry = {
+      ...(previous.pendingEdit ?? {}),
+      client_id: entry.client_id,
+      ...(entry.name !== undefined ? { name: nextName } : {}),
+      ...(locationEdit ?? {}),
+    };
     const submission: AddedPubSubmission = {
       ...previous,
-      name: entry.name?.trim() || previous.name,
-      lat: entry.lat,
-      lng: entry.lng,
-      city: entry.city.trim(),
-      address: entry.address.trim(),
+      name: nextName,
+      lat: locationEdit?.lat ?? previous.lat,
+      lng: locationEdit?.lng ?? previous.lng,
+      city: locationEdit?.city ?? previous.city,
+      address: locationEdit?.address ?? previous.address,
       syncState: 'pending',
       pendingOperation: previous.pendingOperation === 'create' ? 'create' : 'edit',
       updatedAt: new Date().toISOString(),
+      ...(previous.pendingOperation === 'create' ? {} : { pendingEdit }),
       ...(previous.pendingOperation === 'create'
         ? {}
         : {
@@ -258,7 +318,7 @@ export function retryAddedPub(clientId: string): Promise<AddedPubSyncState | nul
     await saveRegistry(registry);
     upsertLocalPub(pubFromSubmission(registry[index]));
     await flushLocked();
-    return (await loadRegistry())[index]?.syncState ?? 'pending';
+    return (await loadRegistry()).find((item) => item.client_id === clientId)?.syncState ?? null;
   });
 }
 
@@ -272,12 +332,17 @@ export function syncOwnAddedPubs(): Promise<boolean> {
     if (!remote) return false;
     const registry = await loadRegistry();
     const byClientId = new Map(registry.map((item) => [item.client_id, item]));
-    for (const result of remote) {
+    const syncStartedAt = Date.now();
+    for (const [index, result] of remote.entries()) {
       const previous = byClientId.get(result.clientId);
       // A GET may succeed while a geocoding-backed PATCH is temporarily down.
       // Never let the older server row erase an offline edit or its failed state.
       if (previous && previous.syncState !== 'synced') continue;
-      const synced = submissionFromResponse(previous, result);
+      const synced = submissionFromResponse(
+        previous,
+        result,
+        previous?.updatedAt ?? new Date(syncStartedAt - index).toISOString(),
+      );
       byClientId.set(result.clientId, synced);
       if (previous) applySubmittedResult(previous, synced);
       else upsertLocalPub(pubFromSubmission(synced));

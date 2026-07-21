@@ -6,6 +6,7 @@ import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { usePubStore } from '@/stores/pubStore';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
@@ -74,6 +75,7 @@ beforeEach(async () => {
     reportedPubIds: [],
     reportedCacheKeys: [],
   });
+  useSettingsStore.setState({ homePoint: null, navigationProvider: 'google' });
 });
 
 it('clears local private stores and private sync queue storage', async () => {
@@ -119,6 +121,17 @@ it('clears local private stores and private sync queue storage', async () => {
   for (const key of PRIVATE_KEYS) {
     await AsyncStorage.setItem(key, JSON.stringify({ private: true }));
   }
+  useSettingsStore.setState({
+    homePoint: { lat: 50.08, lng: 14.42 },
+    navigationProvider: 'mapy',
+  });
+  await AsyncStorage.setItem('na-pivo-settings', JSON.stringify({
+    state: {
+      homePoint: { lat: 50.08, lng: 14.42 },
+      navigationProvider: 'mapy',
+    },
+    version: 1,
+  }));
 
   await clearLocalPrivateAccountData();
 
@@ -130,6 +143,14 @@ it('clears local private stores and private sync queue storage', async () => {
   expect(usePubStore.getState().revealedPub).toBeNull();
   expect(usePubStore.getState().reportedPubIds).toEqual([]);
   expect(usePubStore.getState().reportedCacheKeys).toEqual([]);
+  expect(useSettingsStore.getState().homePoint).toBeNull();
+  expect(useSettingsStore.getState().navigationProvider).toBe('mapy');
+
+  const settings = JSON.parse(
+    await AsyncStorage.getItem('na-pivo-settings') as string,
+  ) as { state: { homePoint: unknown; navigationProvider: string } };
+  expect(settings.state.homePoint).toBeNull();
+  expect(settings.state.navigationProvider).toBe('mapy');
 
   for (const key of PRIVATE_KEYS) {
     expect({ key, value: await AsyncStorage.getItem(key) }).toEqual({ key, value: null });

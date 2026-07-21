@@ -56,10 +56,10 @@ export type SubmitAddedPubResult = AddedPubResponse | 'permanent-error' | 'retry
 export interface AddedPubEditEntry {
   client_id: string;
   name?: string;
-  lat: number;
-  lng: number;
-  city: string;
-  address: string;
+  lat?: number;
+  lng?: number;
+  city?: string;
+  address?: string;
 }
 
 export function buildAddedPubEntry(input: AddedPubInput, clientId: string): AddedPubEntry {

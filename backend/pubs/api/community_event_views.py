@@ -4,7 +4,7 @@ import math
 from datetime import timedelta
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 from django.utils import timezone
 from rest_framework import serializers, status
 from rest_framework.permissions import IsAuthenticated
@@ -107,6 +107,18 @@ def _blocked(left: Account, right: Account) -> bool:
     ).exists()
 
 
+def _blocked_account_ids(account: Account) -> set[int]:
+    """Return both directions of the account's block graph in one query."""
+
+    rows = FriendBlock.objects.filter(Q(blocker=account) | Q(blocked=account)).values_list(
+        "blocker_id", "blocked_id"
+    )
+    return {
+        blocked_id if blocker_id == account.id else blocker_id
+        for blocker_id, blocked_id in rows
+    }
+
+
 def _distance_km(lat_a: float, lng_a: float, lat_b: float, lng_b: float) -> float:
     earth_km = 6371.0
     lat1, lat2 = math.radians(lat_a), math.radians(lat_b)
@@ -143,7 +155,14 @@ def _serialize_event(
     viewer: Account,
     *,
     distance_km: float | None = None,
+    blocked_account_ids: set[int] | None = None,
+    now=None,
 ) -> dict:
+    if blocked_account_ids is None:
+        blocked_account_ids = _blocked_account_ids(viewer)
+    if now is None:
+        now = timezone.now()
+    event_is_open = event.status == CommunityEvent.Status.ACTIVE and event.ends_at > now
     membership = next(
         (member for member in event.memberships.all() if member.account_id == viewer.id),
         None,
@@ -152,9 +171,10 @@ def _serialize_event(
     approved = (
         membership is not None
         and membership.status == CommunityEventMembership.Status.APPROVED
+        and event_is_open
         and not viewer.ghost_mode
         and not event.host.ghost_mode
-        and not _blocked(event.host, viewer)
+        and event.host_id not in blocked_account_ids
     )
     approved_count = sum(
         member.status == CommunityEventMembership.Status.APPROVED
@@ -172,7 +192,7 @@ def _serialize_event(
         "capacity": event.capacity,
         "available_spots": max(0, event.capacity - 1 - approved_count),
         "adults_only": True,
-        "status": _time_status(event, timezone.now()),
+        "status": _time_status(event, now),
         "distance_band": _distance_band(distance_km),
         "is_host": is_host,
         "membership_status": membership.status if membership else None,
@@ -193,18 +213,25 @@ def _serialize_event(
                 CommunityEventMembership.Status.PENDING,
                 CommunityEventMembership.Status.APPROVED,
             )
+            and member.account.status == Account.Status.ACTIVE
             and not member.account.ghost_mode
-            and not _blocked(event.host, member.account)
+            and member.account_id not in blocked_account_ids
         ]
     return payload
 
 
 def _event_queryset():
-    return CommunityEvent.objects.select_related("host").prefetch_related("memberships__account")
+    return CommunityEvent.objects.select_related("host").prefetch_related(
+        Prefetch(
+            "memberships",
+            queryset=CommunityEventMembership.objects.select_related("account"),
+        )
+    )
 
 
 def _dashboard_payload(viewer: Account, viewer_lat: float | None, viewer_lng: float | None) -> dict:
     now = timezone.now()
+    blocked_account_ids = _blocked_account_ids(viewer)
     nearby = []
     if viewer_lat is not None and viewer_lng is not None:
         candidates = _event_queryset().filter(
@@ -217,12 +244,25 @@ def _dashboard_payload(viewer: Account, viewer_lat: float | None, viewer_lng: fl
             lat__range=(viewer_lat - 0.2, viewer_lat + 0.2),
             lng__range=(viewer_lng - 0.3, viewer_lng + 0.3),
         )
+        if blocked_account_ids:
+            candidates = candidates.exclude(host_id__in=blocked_account_ids)
         for event in candidates[:100]:
-            if event.host_id == viewer.id or _blocked(event.host, viewer):
+            if event.host_id == viewer.id:
                 continue
             distance = _distance_km(viewer_lat, viewer_lng, event.lat, event.lng)
             if distance <= 15:
-                nearby.append((_serialize_event(event, viewer, distance_km=distance), distance))
+                nearby.append(
+                    (
+                        _serialize_event(
+                            event,
+                            viewer,
+                            distance_km=distance,
+                            blocked_account_ids=blocked_account_ids,
+                            now=now,
+                        ),
+                        distance,
+                    )
+                )
         nearby.sort(key=lambda item: (item[1], item[0]["starts_at"]))
 
     hosted = _event_queryset().filter(host=viewer, ends_at__gt=now - timedelta(days=1))[:30]
@@ -233,11 +273,32 @@ def _dashboard_payload(viewer: Account, viewer_lat: float | None, viewer_lng: fl
             CommunityEventMembership.Status.APPROVED,
         ),
         ends_at__gt=now - timedelta(days=1),
-    )[:30]
+        host__status=Account.Status.ACTIVE,
+        host__ghost_mode=False,
+    )
+    if blocked_account_ids:
+        joined = joined.exclude(host_id__in=blocked_account_ids)
+    joined = joined[:30]
     return {
         "nearby": [item[0] for item in nearby[:30]],
-        "hosted": [_serialize_event(event, viewer) for event in hosted],
-        "joined": [_serialize_event(event, viewer) for event in joined],
+        "hosted": [
+            _serialize_event(
+                event,
+                viewer,
+                blocked_account_ids=blocked_account_ids,
+                now=now,
+            )
+            for event in hosted
+        ],
+        "joined": [
+            _serialize_event(
+                event,
+                viewer,
+                blocked_account_ids=blocked_account_ids,
+                now=now,
+            )
+            for event in joined
+        ],
     }
 
 
@@ -397,6 +458,14 @@ class CommunityEventRequestDecisionView(APIView):
             if not membership:
                 return Response(status=status.HTTP_404_NOT_FOUND)
             if action == "approve":
+                if (
+                    event.status != CommunityEvent.Status.ACTIVE
+                    or event.ends_at <= timezone.now()
+                ):
+                    return Response(
+                        {"detail": "Setkání už není otevřené.", "code": "event_not_open"},
+                        status=status.HTTP_409_CONFLICT,
+                    )
                 approved_count = event.memberships.filter(
                     status=CommunityEventMembership.Status.APPROVED
                 ).count()

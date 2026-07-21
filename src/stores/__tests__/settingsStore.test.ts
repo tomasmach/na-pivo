@@ -54,6 +54,20 @@ describe('useSettingsStore', () => {
     expect(persisted.waterNudgeEnabled).toBe(true);
   });
 
+  it('migrates the old implicit water nudge default to opt-in off', async () => {
+    const storage = currentAsyncStorage();
+    await storage.setItem('na-pivo-settings', JSON.stringify({
+      state: { waterNudgeEnabled: true, hideClosedPubs: false },
+      version: 0,
+    }));
+
+    const { useSettingsStore } = require('../settingsStore');
+    await (useSettingsStore.persist as any).rehydrate?.();
+
+    expect(useSettingsStore.getState().waterNudgeEnabled).toBe(false);
+    expect(useSettingsStore.getState().hideClosedPubs).toBe(false);
+  });
+
   it('stores only an explicitly set home point and navigation provider', async () => {
     const { useSettingsStore } = require('../settingsStore');
     await (useSettingsStore.persist as any).rehydrate?.();

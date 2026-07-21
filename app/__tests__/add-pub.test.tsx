@@ -284,7 +284,42 @@ describe('AddPubScreen', () => {
     expect(mockBack).toHaveBeenCalledTimes(1);
   });
 
-  it('requires a fresh GPS fix when correcting an existing user-added pub', async () => {
+  it('sends a name-only edit without asking for location again', async () => {
+    mockSearchParams = {
+      clientId: 'existing-client-id',
+      name: 'Hospoda U Poutníka',
+      city: 'Praha',
+      address: 'Stará 1',
+      lat: '50.087',
+      lng: '14.421',
+    };
+    renderScreen();
+
+    const nameInput = renderer!.root.findByProps({
+      accessibilityLabel: cs.a11y.addPubNameInput,
+    });
+
+    act(() => {
+      nameInput.props.onChangeText('Hospoda U Pocestného');
+    });
+    await submit();
+
+    expect(mockEnsureLocationPermission).not.toHaveBeenCalled();
+    expect(mockGetCurrentPositionAsync).not.toHaveBeenCalled();
+    expect(mockEnqueueAddedPubEdit).toHaveBeenCalledWith({
+      client_id: 'existing-client-id',
+      name: 'Hospoda U Pocestného',
+    });
+    expect(mockUpsertLocalPub).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Hospoda U Pocestného',
+      lat: 50.087,
+      lng: 14.421,
+      city: 'Praha',
+      address: 'Stará 1',
+    }));
+  });
+
+  it('requires a fresh GPS fix only when correcting an existing pub location', async () => {
     mockSearchParams = {
       clientId: 'existing-client-id',
       name: 'Hospoda U Poutníka',
@@ -312,7 +347,6 @@ describe('AddPubScreen', () => {
     expect(mockGetCurrentPositionAsync).toHaveBeenCalledWith({ accuracy: 4 });
     expect(mockEnqueueAddedPubEdit).toHaveBeenCalledWith({
       client_id: 'existing-client-id',
-      name: 'Hospoda U Poutníka',
       city: 'Praha',
       address: 'Opravená 9',
       lat: 48.1486,

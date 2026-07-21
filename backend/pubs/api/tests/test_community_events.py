@@ -5,11 +5,14 @@ from datetime import timedelta
 
 import pytest
 from django.contrib.auth.hashers import make_password
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
 from pubs.accounts import issue_token
+from pubs.api.community_event_views import _dashboard_payload
 from pubs.community_events import CommunityEvent, CommunityEventMembership
 from pubs.models import Account, ContentReport, EmailCredential, FriendBlock
 
@@ -198,6 +201,72 @@ def test_host_rejects_and_cancels_event(client):
 
 
 @pytest.mark.django_db
+def test_cancelled_event_hides_address_and_rejects_pending_approval(client):
+    _host, host_token = _account("host")
+    _approved_guest, approved_token = _account("approved")
+    _pending_guest, pending_token = _account("pending")
+    event_id = _create(client, host_token).json()["id"]
+    approved_request_id = client.post(
+        f"/v1/community-events/{event_id}/join",
+        data={"adults_confirmed": True},
+        format="json",
+        **_auth(approved_token),
+    ).json()["request_id"]
+    pending_request_id = client.post(
+        f"/v1/community-events/{event_id}/join",
+        data={"adults_confirmed": True},
+        format="json",
+        **_auth(pending_token),
+    ).json()["request_id"]
+    assert (
+        client.post(
+            f"/v1/community-events/{event_id}/requests/{approved_request_id}/approve",
+            **_auth(host_token),
+        ).status_code
+        == status.HTTP_200_OK
+    )
+
+    client.post(f"/v1/community-events/{event_id}/cancel", **_auth(host_token))
+
+    denied = client.post(
+        f"/v1/community-events/{event_id}/requests/{pending_request_id}/approve",
+        **_auth(host_token),
+    )
+    assert denied.status_code == status.HTTP_409_CONFLICT
+    assert denied.json()["code"] == "event_not_open"
+    joined = client.get("/v1/community-events", **_auth(approved_token)).json()["joined"]
+    assert joined[0]["status"] == "cancelled"
+    assert joined[0]["exact_address"] is None
+
+
+@pytest.mark.django_db
+def test_ended_event_hides_address_and_rejects_pending_approval(client):
+    _host, host_token = _account("host")
+    _guest, guest_token = _account("guest")
+    event_id = _create(client, host_token).json()["id"]
+    request_id = client.post(
+        f"/v1/community-events/{event_id}/join",
+        data={"adults_confirmed": True},
+        format="json",
+        **_auth(guest_token),
+    ).json()["request_id"]
+    CommunityEvent.objects.filter(pk=event_id).update(
+        starts_at=timezone.now() - timedelta(hours=2),
+        ends_at=timezone.now() - timedelta(hours=1),
+    )
+
+    denied = client.post(
+        f"/v1/community-events/{event_id}/requests/{request_id}/approve",
+        **_auth(host_token),
+    )
+    assert denied.status_code == status.HTTP_409_CONFLICT
+    assert denied.json()["code"] == "event_not_open"
+    joined = client.get("/v1/community-events", **_auth(guest_token)).json()["joined"]
+    assert joined[0]["status"] == "ended"
+    assert joined[0]["exact_address"] is None
+
+
+@pytest.mark.django_db
 def test_block_and_ghost_mode_remove_event_from_discovery_and_join(client):
     host, host_token = _account("host")
     viewer, viewer_token = _account("viewer")
@@ -228,6 +297,70 @@ def test_block_and_ghost_mode_remove_event_from_discovery_and_join(client):
         **_auth(viewer_token),
     ).json()["nearby"]
     assert nearby == []
+
+
+@pytest.mark.django_db
+def test_joined_events_and_host_requests_follow_account_privacy(client):
+    host, host_token = _account("host")
+    guest, guest_token = _account("guest")
+    event_id = _create(client, host_token).json()["id"]
+    client.post(
+        f"/v1/community-events/{event_id}/join",
+        data={"adults_confirmed": True},
+        format="json",
+        **_auth(guest_token),
+    )
+
+    guest.ghost_mode = True
+    guest.save(update_fields=["ghost_mode"])
+    hosted = client.get("/v1/community-events", **_auth(host_token)).json()["hosted"]
+    assert hosted[0]["join_requests"] == []
+    guest.ghost_mode = False
+    guest.save(update_fields=["ghost_mode"])
+
+    FriendBlock.objects.create(blocker=guest, blocked=host)
+    assert client.get("/v1/community-events", **_auth(guest_token)).json()["joined"] == []
+    FriendBlock.objects.all().delete()
+
+    host.ghost_mode = True
+    host.save(update_fields=["ghost_mode"])
+    assert client.get("/v1/community-events", **_auth(guest_token)).json()["joined"] == []
+    host.ghost_mode = False
+    host.status = Account.Status.PENDING_DELETION
+    host.save(update_fields=["ghost_mode", "status"])
+    assert client.get("/v1/community-events", **_auth(guest_token)).json()["joined"] == []
+
+
+@pytest.mark.django_db
+def test_dashboard_query_count_does_not_scale_with_events_or_members():
+    viewer, _token = _account("viewer")
+    for index in range(5):
+        host, _host_token = _account(f"host-{index}")
+        event = CommunityEvent.objects.create(
+            host=host,
+            client_id=uuid.uuid4(),
+            title=f"Setkání {index}",
+            city="Praha",
+            area_label="Vinohrady",
+            exact_address=f"Testovací {index}",
+            lat=50.0755,
+            lng=14.4378,
+            starts_at=timezone.now() + timedelta(hours=2),
+            ends_at=timezone.now() + timedelta(hours=6),
+            capacity=10,
+        )
+        CommunityEventMembership.objects.create(
+            event=event,
+            account=viewer,
+            status=CommunityEventMembership.Status.PENDING,
+        )
+
+    with CaptureQueriesContext(connection) as queries:
+        payload = _dashboard_payload(viewer, 50.0750, 14.4380)
+
+    assert len(payload["nearby"]) == 5
+    assert len(payload["joined"]) == 5
+    assert len(queries) <= 8
 
 
 @pytest.mark.django_db

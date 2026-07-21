@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -112,18 +112,15 @@ function Stepper({ value, onChange, min, max }: { value: number; onChange: (valu
 function EventCard({
   event,
   busy,
-  joinMessage,
-  setJoinMessage,
   reload,
 }: {
   event: CommunityEvent;
   busy: boolean;
-  joinMessage: string;
-  setJoinMessage: (value: string) => void;
   reload: () => Promise<void>;
 }) {
   const showToast = useToastStore((state) => state.show);
   const [acting, setActing] = useState(false);
+  const [joinMessage, setJoinMessage] = useState('');
   const run = useCallback(async (action: () => Promise<{ ok: boolean; detail?: string }>, success: string) => {
     setActing(true);
     const result = await action();
@@ -242,7 +239,8 @@ export default function CommunityEventsScreen() {
   const [eventLocation, setEventLocation] = useState<Coords | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [joinMessage, setJoinMessage] = useState('');
+  const loadRequestRef = useRef(0);
+  const [draftClientId, setDraftClientId] = useState(() => generateUuidV4());
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [city, setCity] = useState('');
@@ -254,12 +252,15 @@ export default function CommunityEventsScreen() {
   const [capacity, setCapacity] = useState(6);
   const [adultsConfirmed, setAdultsConfirmed] = useState(false);
 
-  const load = useCallback(async (coords: Coords | null = location) => {
+  const load = useCallback(async (coords: Coords | null) => {
+    const requestId = loadRequestRef.current + 1;
+    loadRequestRef.current = requestId;
     const result = await fetchCommunityEvents(coords ?? undefined);
+    if (requestId !== loadRequestRef.current) return;
     if (result.ok) setDashboard(result.dashboard);
     else showToast(result.code === 'auth' ? cs.communityEvents.authError : result.detail);
     setLoading(false);
-  }, [location, showToast]);
+  }, [showToast]);
 
   useEffect(() => {
     const kickoff = setTimeout(() => void load(null), 0);
@@ -300,7 +301,7 @@ export default function CommunityEventsScreen() {
     starts.setHours(hour, 0, 0, 0);
     const ends = new Date(starts.getTime() + duration * 60 * 60 * 1000);
     const result = await createCommunityEvent({
-      clientId: generateUuidV4(),
+      clientId: draftClientId,
       title: title.trim(),
       description: description.trim(),
       city: city.trim(),
@@ -313,12 +314,13 @@ export default function CommunityEventsScreen() {
       capacity,
     });
     if (result.ok) {
+      setDraftClientId(generateUuidV4());
       showToast(cs.communityEvents.created);
       setMode('mine');
       await load(location);
     } else showToast(result.detail);
     setBusy(false);
-  }, [address, adultsConfirmed, area, busy, capacity, city, dayOffset, description, duration, eventLocation, hour, load, location, showToast, title]);
+  }, [address, adultsConfirmed, area, busy, capacity, city, dayOffset, description, draftClientId, duration, eventLocation, hour, load, location, showToast, title]);
 
   const mine = useMemo(() => [...dashboard.hosted, ...dashboard.joined].filter((event, index, all) => all.findIndex((item) => item.id === event.id) === index), [dashboard]);
   const events = mode === 'mine' ? mine : dashboard.nearby;
@@ -383,7 +385,7 @@ export default function CommunityEventsScreen() {
           ) : loading ? <ActivityIndicator color={Colors.amber} style={styles.loader} /> : (
             <View style={styles.list}>
               {mode === 'nearby' && !location ? <Button label={busy ? cs.communityEvents.locating : cs.communityEvents.locate} onPress={() => void locate(false)} disabled={busy} secondary icon={<MapPinIcon size={18} color={Colors.amber} />} /> : null}
-              {events.length === 0 ? <Text style={styles.empty}>{mode === 'nearby' ? cs.communityEvents.noNearby : cs.communityEvents.noMine}</Text> : events.map((event) => <EventCard key={event.id} event={event} busy={busy} joinMessage={joinMessage} setJoinMessage={setJoinMessage} reload={() => load(location)} />)}
+              {events.length === 0 ? <Text style={styles.empty}>{mode === 'nearby' ? cs.communityEvents.noNearby : cs.communityEvents.noMine}</Text> : events.map((event) => <EventCard key={event.id} event={event} busy={busy} reload={() => load(location)} />)}
             </View>
           )}
         </KeyboardAwareScrollView>

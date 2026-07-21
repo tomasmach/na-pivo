@@ -292,15 +292,16 @@ async function backendLocationLookup(
   const endpoint = getBackendEndpoint(path);
   if (!endpoint || signal?.aborted) return null;
 
-  const url = new URL(endpoint);
-  url.searchParams.set('query', query);
-  if (near) {
-    url.searchParams.set('lat', String(near.lat));
-    url.searchParams.set('lng', String(near.lng));
-  }
-
   try {
-    const resp = await fetch(url.toString(), { signal });
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query,
+        ...(near ? { lat: near.lat, lng: near.lng } : {}),
+      }),
+      signal,
+    });
     if (!resp.ok) {
       trackApiFailure(path === '/v1/pubs/suggest' ? 'pub_location_suggest_backend' : 'pub_location_geocode_backend', {
         endpoint: path,

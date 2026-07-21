@@ -18,6 +18,7 @@ import { ChevronLeftIcon, MapPinIcon, TargetIcon, Trash2Icon } from '@/component
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { ensureLocationPermission, openSystemSettings } from '@/compass/permissions';
 import { geocodePubLocation } from '@/data/mapyClient';
+import { cs } from '@/i18n/cs';
 import { useSettingsStore, type HomePoint } from '@/stores/settingsStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts } from '@/theme/fonts';
@@ -160,6 +161,8 @@ export default function HomePointScreen() {
       setDraftPoint(point);
       setRegion(regionFor(point));
       setPermissionDenied(false);
+    } catch {
+      setSearchError(cs.addPub.locationUnavailable);
     } finally {
       setLocating(false);
     }

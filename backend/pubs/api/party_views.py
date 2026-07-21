@@ -43,6 +43,27 @@ def _blocked(left: Account, right: Account) -> bool:
     ).exists()
 
 
+def _accepted_friend_ids(account: Account) -> set[int]:
+    rows = Friendship.objects.filter(
+        Q(requester=account) | Q(recipient=account),
+        status=Friendship.Status.ACCEPTED,
+    ).values_list("requester_id", "recipient_id")
+    return {
+        recipient_id if requester_id == account.id else requester_id
+        for requester_id, recipient_id in rows
+    }
+
+
+def _blocked_account_ids(account: Account) -> set[int]:
+    rows = FriendBlock.objects.filter(Q(blocker=account) | Q(blocked=account)).values_list(
+        "blocker_id", "blocked_id"
+    )
+    return {
+        blocked_id if blocker_id == account.id else blocker_id
+        for blocker_id, blocked_id in rows
+    }
+
+
 def _can_access(evening: PartyEvening, account: Account) -> bool:
     if account.ghost_mode or evening.host.ghost_mode:
         return False
@@ -52,12 +73,41 @@ def _can_access(evening: PartyEvening, account: Account) -> bool:
 
 
 def _visible_members(evening: PartyEvening) -> list[PartyEveningMember]:
-    members = list(
+    visible_account_ids = {
+        evening.host_id,
+        *(_accepted_friend_ids(evening.host) - _blocked_account_ids(evening.host)),
+    }
+    return list(
         evening.memberships.select_related("account")
-        .filter(active=True, account__status=Account.Status.ACTIVE, account__ghost_mode=False)
+        .filter(
+            active=True,
+            account_id__in=visible_account_ids,
+            account__status=Account.Status.ACTIVE,
+            account__ghost_mode=False,
+        )
         .order_by("joined_at", "id")
     )
-    return [member for member in members if _can_access(evening, member.account)]
+
+
+def _has_other_active_membership(account: Account, evening: PartyEvening | None = None) -> bool:
+    memberships = PartyEveningMember.objects.filter(
+        account=account,
+        active=True,
+        evening__active=True,
+    )
+    if evening is not None:
+        memberships = memberships.exclude(evening=evening)
+    return memberships.exists()
+
+
+def _active_membership_conflict() -> Response:
+    return Response(
+        {
+            "detail": "Leave the active party evening before joining another.",
+            "code": "active_party_membership_exists",
+        },
+        status=status.HTTP_409_CONFLICT,
+    )
 
 
 def _serialize_evening(evening: PartyEvening, viewer: Account) -> dict:
@@ -162,6 +212,8 @@ class PartyEveningCollectionView(APIView):
                         },
                         status=status.HTTP_409_CONFLICT,
                     )
+                if _has_other_active_membership(host, evening):
+                    return _active_membership_conflict()
                 if evening is None:
                     evening = PartyEvening.objects.create(
                         host=host,
@@ -232,11 +284,15 @@ class PartyEveningJoinView(APIView):
                 {"detail": "Only accepted friends can join.", "code": "not_friends"},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        PartyEveningMember.objects.update_or_create(
-            evening=evening,
-            account=request.user,
-            defaults={"active": True, "left_at": None, "joined_at": timezone.now()},
-        )
+        with transaction.atomic():
+            account = Account.objects.select_for_update().get(pk=request.user.pk)
+            if _has_other_active_membership(account, evening):
+                return _active_membership_conflict()
+            PartyEveningMember.objects.update_or_create(
+                evening=evening,
+                account=account,
+                defaults={"active": True, "left_at": None, "joined_at": timezone.now()},
+            )
         return Response(_serialize_evening(evening, request.user))
 
     def delete(self, request: Request, code: str) -> Response:
