@@ -2,7 +2,10 @@ import { Button, HStack, Image, Spacer, Text, VStack } from '@expo/ui/swift-ui';
 import {
   accessibilityLabel,
   activityBackgroundTint,
+  background as viewBackground,
+  buttonBorderShape,
   buttonStyle,
+  contentTransition,
   controlSize,
   font,
   foregroundStyle,
@@ -12,6 +15,7 @@ import {
   monospacedDigit,
   padding,
   privacySensitive,
+  shapes,
   tint,
 } from '@expo/ui/swift-ui/modifiers';
 import { createLiveActivity, type LiveActivityEnvironment } from 'expo-widgets';
@@ -41,22 +45,24 @@ const BeerEveningLiveActivity = (
   'widget';
 
   // Always-On renders the Lock Screen with reduced luminance and without
-  // animations. A restrained amber and darker background remain legible without
-  // becoming a large bright patch on the dimmed display.
+  // animations. The palette keeps the warm pub character while avoiding a
+  // large bright patch on the dimmed display.
   const isDimmed = environment.isLuminanceReduced === true;
-  const accent = isDimmed ? '#B79B63' : '#F5B642';
-  const primaryText = isDimmed ? '#D8D0C0' : '#FBF3E0';
-  const secondaryText = isDimmed ? '#8F8574' : '#C9B99B';
-  const background = isDimmed ? '#090806' : '#1F1308';
+  const accent = isDimmed ? '#A98E58' : '#FFB84D';
+  const primaryText = isDimmed ? '#CFC5B3' : '#FFF7E8';
+  const secondaryText = isDimmed ? '#817767' : '#BDA98B';
+  const background = isDimmed ? '#080604' : '#170E07';
+  const raisedSurface = isDimmed ? '#17120C' : '#2B1A0E';
+  const buttonText = '#241404';
   const latestBeerLabel = props.latestBeerName
-    ? `Naposledy: ${props.latestBeerName}`
-    : 'První kolo je na stole';
+    ? `Poslední · ${props.latestBeerName}`
+    : 'První kolo čeká na ťuknutí';
 
   return {
     banner: (
-      <HStack
-        alignment="center"
-        spacing={14}
+      <VStack
+        alignment="leading"
+        spacing={10}
         modifiers={[
           padding({ horizontal: 16, vertical: 14 }),
           frame({ maxWidth: 1000, alignment: 'leading' }),
@@ -64,65 +70,28 @@ const BeerEveningLiveActivity = (
           activityBackgroundTint(background),
         ]}
       >
-        <VStack alignment="leading" spacing={4} modifiers={[frame({ maxWidth: 1000 })]}>
-          <HStack alignment="center" spacing={6}>
-            <Image systemName="mug.fill" size={12} color={accent} />
-            <Text
-              modifiers={[
-                font({ size: 11, weight: 'semibold', design: 'rounded' }),
-                foregroundStyle(accent),
-              ]}
-            >
-              VEČER BĚŽÍ
-            </Text>
-          </HStack>
+        <HStack
+          alignment="center"
+          spacing={6}
+          modifiers={[frame({ maxWidth: 1000 })]}
+        >
+          <Image systemName="circle.fill" size={6} color={accent} />
           <Text
             modifiers={[
-              font({ size: 18, weight: 'bold', design: 'rounded' }),
-              lineLimit(1),
-              minimumScaleFactor(0.75),
-              privacySensitive(),
-            ]}
-          >
-            {props.pubName}
-          </Text>
-          <Text
-            modifiers={[
-              font({ size: 12, weight: 'regular', design: 'rounded' }),
-              foregroundStyle(secondaryText),
-              lineLimit(1),
-              privacySensitive(),
-            ]}
-          >
-            {latestBeerLabel}
-          </Text>
-        </VStack>
-
-        <Spacer />
-
-        <VStack alignment="trailing" spacing={1}>
-          <Text
-            modifiers={[
-              font({ size: 34, weight: 'bold', design: 'rounded' }),
+              font({ size: 10, weight: 'bold', design: 'rounded' }),
               foregroundStyle(accent),
-              monospacedDigit(),
             ]}
           >
-            {props.beerCount}
+            VEČER BĚŽÍ
           </Text>
-          <Text
-            modifiers={[
-              font({ size: 9, weight: 'bold', design: 'rounded' }),
-              foregroundStyle(secondaryText),
-            ]}
-          >
-            POČET PIV
-          </Text>
+          <Spacer />
           {props.totalPrice ? (
             <Text
               modifiers={[
                 font({ size: 12, weight: 'semibold', design: 'rounded' }),
                 foregroundStyle(primaryText),
+                padding({ horizontal: 10, vertical: 5 }),
+                viewBackground(raisedSurface, shapes.capsule()),
                 lineLimit(1),
                 privacySensitive(),
               ]}
@@ -130,18 +99,77 @@ const BeerEveningLiveActivity = (
               {props.totalPrice}
             </Text>
           ) : null}
-          <Button
-            label="+ pivo"
-            target="add-beer"
-            modifiers={[
-              buttonStyle('borderedProminent'),
-              controlSize('small'),
-              tint(accent),
-              accessibilityLabel('Přidat stejné pivo'),
-            ]}
-          />
-        </VStack>
-      </HStack>
+        </HStack>
+
+        <HStack
+          alignment="bottom"
+          spacing={12}
+          modifiers={[frame({ maxWidth: 1000 })]}
+        >
+          <VStack
+            alignment="leading"
+            spacing={4}
+            modifiers={[frame({ maxWidth: 1000 })]}
+          >
+            <Text
+              modifiers={[
+                font({ size: 21, weight: 'bold', design: 'rounded' }),
+                lineLimit(1),
+                minimumScaleFactor(0.72),
+                privacySensitive(),
+              ]}
+            >
+              {props.pubName}
+            </Text>
+            <Text
+              modifiers={[
+                font({ size: 12, weight: 'regular', design: 'rounded' }),
+                foregroundStyle(secondaryText),
+                lineLimit(1),
+                privacySensitive(),
+              ]}
+            >
+              {latestBeerLabel}
+            </Text>
+          </VStack>
+          <Spacer />
+          <HStack alignment="firstTextBaseline" spacing={4}>
+            <Text
+              modifiers={[
+                font({ size: 42, weight: 'bold', design: 'rounded' }),
+                foregroundStyle(accent),
+                monospacedDigit(),
+                contentTransition('numericText'),
+              ]}
+            >
+              {props.beerCount}
+            </Text>
+            <Text
+              modifiers={[
+                font({ size: 10, weight: 'bold', design: 'rounded' }),
+                foregroundStyle(secondaryText),
+              ]}
+            >
+              PIV
+            </Text>
+          </HStack>
+        </HStack>
+
+        <Button
+          label="Přidat další"
+          systemImage="plus"
+          target="add-beer"
+          modifiers={[
+            buttonStyle('borderedProminent'),
+            buttonBorderShape('capsule'),
+            controlSize('regular'),
+            frame({ maxWidth: 1000 }),
+            tint(accent),
+            foregroundStyle(buttonText),
+            accessibilityLabel('Přidat stejné pivo'),
+          ]}
+        />
+      </VStack>
     ),
 
     bannerSmall: (
@@ -154,7 +182,7 @@ const BeerEveningLiveActivity = (
           activityBackgroundTint(background),
         ]}
       >
-        <Image systemName="mug.fill" size={15} color={accent} />
+        <Image systemName="mug.fill" size={14} color={accent} />
         <Text
           modifiers={[
             font({ size: 14, weight: 'semibold', design: 'rounded' }),
@@ -170,9 +198,10 @@ const BeerEveningLiveActivity = (
             font({ size: 18, weight: 'bold', design: 'rounded' }),
             foregroundStyle(accent),
             monospacedDigit(),
+            contentTransition('numericText'),
           ]}
         >
-          {props.beerCount}×
+          {props.beerCount} piv
         </Text>
       </HStack>
     ),
@@ -184,10 +213,11 @@ const BeerEveningLiveActivity = (
           font({ size: 15, weight: 'bold', design: 'rounded' }),
           foregroundStyle(accent),
           monospacedDigit(),
+          contentTransition('numericText'),
           accessibilityLabel(`Počet piv ${props.beerCount}`),
         ]}
       >
-        {props.beerCount}×
+        {props.beerCount}
       </Text>
     ),
     minimal: (
@@ -196,6 +226,7 @@ const BeerEveningLiveActivity = (
           font({ size: 13, weight: 'bold', design: 'rounded' }),
           foregroundStyle(accent),
           monospacedDigit(),
+          contentTransition('numericText'),
           accessibilityLabel(`Počet piv ${props.beerCount}`),
         ]}
       >
@@ -204,25 +235,34 @@ const BeerEveningLiveActivity = (
     ),
 
     expandedLeading: (
-      <VStack alignment="leading" spacing={3} modifiers={[padding({ leading: 4 })]}>
-        <Image systemName="mug.fill" size={18} color={accent} />
+      <VStack
+        alignment="leading"
+        spacing={4}
+        modifiers={[padding({ leading: 4 })]}
+      >
+        <Image systemName="circle.fill" size={7} color={accent} />
         <Text
           modifiers={[
-            font({ size: 10, weight: 'semibold', design: 'rounded' }),
-            foregroundStyle(secondaryText),
+            font({ size: 10, weight: 'bold', design: 'rounded' }),
+            foregroundStyle(accent),
           ]}
         >
-          NA PIVO
+          BĚŽÍ
         </Text>
       </VStack>
     ),
     expandedTrailing: (
-      <VStack alignment="trailing" spacing={0} modifiers={[padding({ trailing: 4 })]}>
+      <VStack
+        alignment="trailing"
+        spacing={0}
+        modifiers={[padding({ trailing: 4 })]}
+      >
         <Text
           modifiers={[
             font({ size: 26, weight: 'bold', design: 'rounded' }),
             foregroundStyle(accent),
             monospacedDigit(),
+            contentTransition('numericText'),
           ]}
         >
           {props.beerCount}
@@ -237,26 +277,30 @@ const BeerEveningLiveActivity = (
         </Text>
       </VStack>
     ),
+    expandedCenter: (
+      <Text
+        modifiers={[
+          padding({ horizontal: 10 }),
+          font({ size: 15, weight: 'bold', design: 'rounded' }),
+          foregroundStyle(primaryText),
+          lineLimit(1),
+          minimumScaleFactor(0.72),
+          privacySensitive(),
+        ]}
+      >
+        {props.pubName}
+      </Text>
+    ),
     expandedBottom: (
       <VStack
         alignment="leading"
-        spacing={4}
+        spacing={8}
         modifiers={[
           padding({ top: 5, bottom: 4 }),
           frame({ maxWidth: 1000, alignment: 'leading' }),
           foregroundStyle(primaryText),
         ]}
       >
-        <Text
-          modifiers={[
-            font({ size: 16, weight: 'bold', design: 'rounded' }),
-            lineLimit(1),
-            minimumScaleFactor(0.75),
-            privacySensitive(),
-          ]}
-        >
-          {props.pubName}
-        </Text>
         <HStack alignment="firstTextBaseline" spacing={8}>
           <Text
             modifiers={[
@@ -282,19 +326,20 @@ const BeerEveningLiveActivity = (
             </Text>
           ) : null}
         </HStack>
-        <HStack alignment="center" spacing={8}>
-          <Spacer />
-          <Button
-            label="+ pivo"
-            target="add-beer"
-            modifiers={[
-              buttonStyle('borderedProminent'),
-              controlSize('small'),
-              tint(accent),
-              accessibilityLabel('Přidat stejné pivo'),
-            ]}
-          />
-        </HStack>
+        <Button
+          label="Přidat další"
+          systemImage="plus"
+          target="add-beer"
+          modifiers={[
+            buttonStyle('borderedProminent'),
+            buttonBorderShape('capsule'),
+            controlSize('small'),
+            frame({ maxWidth: 1000 }),
+            tint(accent),
+            foregroundStyle(buttonText),
+            accessibilityLabel('Přidat stejné pivo'),
+          ]}
+        />
       </VStack>
     ),
   };

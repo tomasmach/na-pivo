@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.graphics.drawable.IconCompat
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -31,7 +32,7 @@ internal object BeerLiveActivityNotification {
   private const val LATEST_BEER_NAME_KEY = "latestBeerName"
   private const val PENDING_ADDS_KEY = "pendingAdds"
   private const val FLAG_PROMOTED_ONGOING = 0x00040000
-  private const val AMBER = 0xFFFFB300.toInt()
+  private const val AMBER = 0xFFFFB84D.toInt()
 
   @Synchronized
   fun startOrUpdate(context: Context, payload: BeerLiveActivityPayload): Map<String, Any?> {
@@ -188,6 +189,9 @@ internal object BeerLiveActivityNotification {
     val detail = notificationDetail(state)
     val progressStyle = NotificationCompat.ProgressStyle()
       .setProgressIndeterminate(true)
+      .setProgressTrackerIcon(
+        IconCompat.createWithResource(context, R.drawable.beer_live_activity_notification)
+      )
       .addProgressSegment(
         NotificationCompat.ProgressStyle.Segment(100).setColor(AMBER)
       )
@@ -198,8 +202,8 @@ internal object BeerLiveActivityNotification {
       .setContentTitle(countLabel)
       .setContentText(detail)
       .setSubText(state.latestBeerName.trim().takeIf { it.isNotEmpty() }?.take(80)?.let {
-        "Naposledy: $it"
-      } ?: "Na pivo")
+        "Poslední · $it"
+      } ?: "Večer běží")
       .setCategory(NotificationCompat.CATEGORY_PROGRESS)
       .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
       .setPriority(NotificationCompat.PRIORITY_DEFAULT)
@@ -210,8 +214,8 @@ internal object BeerLiveActivityNotification {
       .setDeleteIntent(deleteIntent(context, state.sessionId))
       .addAction(
         NotificationCompat.Action.Builder(
-          R.drawable.beer_live_activity_notification,
-          "+ pivo",
+          R.drawable.beer_live_activity_add,
+          "Přidat další",
           addBeerIntent(context, state.sessionId)
         ).build()
       )
@@ -265,10 +269,10 @@ internal object BeerLiveActivityNotification {
     val manager = context.getSystemService(NotificationManager::class.java)
     val channel = NotificationChannel(
       CHANNEL_ID,
-      "Počítání piv",
+      "Večer na pivu",
       NotificationManager.IMPORTANCE_DEFAULT
     ).apply {
-      description = "Průběžný počet piv během večera"
+      description = "Živý počet piv během večera"
       enableVibration(false)
       setSound(null, null)
       setShowBadge(false)
@@ -291,7 +295,7 @@ internal object BeerLiveActivityNotification {
   private fun notificationDetail(state: NotificationState): String {
     val pubName = state.pubName.trim().takeIf { it.isNotEmpty() }?.take(80)
     val price = state.totalPrice.trim().takeIf { it.isNotEmpty() }?.take(40)
-    return listOfNotNull(pubName, price).joinToString(" • ").ifEmpty { "Večer běží" }
+    return listOfNotNull(pubName, price).joinToString(" · ").ifEmpty { "Večer běží" }
   }
 
   private fun persistState(context: Context, state: NotificationState) {
