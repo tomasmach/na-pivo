@@ -1,8 +1,10 @@
 import { Button, HStack, Image, Spacer, Text, VStack } from '@expo/ui/swift-ui';
+// The isolated widget runtime exposes modifier globals by their exported names.
+// Keep these imports unaliased so the serialized layout can resolve them.
 import {
   accessibilityLabel,
   activityBackgroundTint,
-  background as viewBackground,
+  background,
   buttonBorderShape,
   buttonStyle,
   contentTransition,
@@ -51,7 +53,7 @@ const BeerEveningLiveActivity = (
   const accent = isDimmed ? '#A98E58' : '#FFB84D';
   const primaryText = isDimmed ? '#CFC5B3' : '#FFF7E8';
   const secondaryText = isDimmed ? '#817767' : '#BDA98B';
-  const background = isDimmed ? '#080604' : '#170E07';
+  const activityBackground = isDimmed ? '#080604' : '#170E07';
   const raisedSurface = isDimmed ? '#17120C' : '#2B1A0E';
   const buttonText = '#241404';
   const latestBeerLabel = props.latestBeerName
@@ -67,7 +69,7 @@ const BeerEveningLiveActivity = (
           padding({ horizontal: 16, vertical: 14 }),
           frame({ maxWidth: 1000, alignment: 'leading' }),
           foregroundStyle(primaryText),
-          activityBackgroundTint(background),
+          activityBackgroundTint(activityBackground),
         ]}
       >
         <HStack
@@ -91,7 +93,7 @@ const BeerEveningLiveActivity = (
                 font({ size: 12, weight: 'semibold', design: 'rounded' }),
                 foregroundStyle(primaryText),
                 padding({ horizontal: 10, vertical: 5 }),
-                viewBackground(raisedSurface, shapes.capsule()),
+                background(raisedSurface, shapes.capsule()),
                 lineLimit(1),
                 privacySensitive(),
               ]}
@@ -179,7 +181,7 @@ const BeerEveningLiveActivity = (
         modifiers={[
           padding({ horizontal: 12, vertical: 10 }),
           foregroundStyle(primaryText),
-          activityBackgroundTint(background),
+          activityBackgroundTint(activityBackground),
         ]}
       >
         <Image systemName="mug.fill" size={14} color={accent} />
