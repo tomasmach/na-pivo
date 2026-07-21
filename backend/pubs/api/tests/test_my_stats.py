@@ -107,6 +107,11 @@ def test_empty_stats_returns_zeroes_not_404(client):
             "fastest_beer_seconds": None,
             "longest_evening_seconds": None,
         },
+        "periods": {
+            "timezone": "Europe/Prague",
+            "months": [],
+            "years": [],
+        },
     }
 
 
@@ -339,3 +344,98 @@ def test_drinking_day_cutoff_rolls_at_4am_prague(client):
     # The bigger evening is the June 12 night (2 beers).
     assert body["records"]["most_beers_in_evening"] == 2
     assert body["records"]["most_beers_date"] == "2026-06-12"
+
+
+@pytest.mark.django_db
+def test_monthly_and_yearly_periods_include_zero_safe_averages(client):
+    token = _register(client)
+    account = Account.objects.latest("created_at")
+
+    for drank_at, price in (
+        (datetime(2025, 12, 31, 20, 0, tzinfo=PRAGUE), 55),
+        (datetime(2026, 1, 2, 1, 0, tzinfo=PRAGUE), 60),
+        (datetime(2026, 1, 2, 1, 30, tzinfo=PRAGUE), 65),
+    ):
+        _drink(
+            account,
+            cache_key=_KEY_TYGR,
+            name="U Zlatého tygra",
+            price_czk=price,
+            drank_at=drank_at,
+        )
+
+    body = client.get("/v1/me/stats", **_auth(token)).json()
+
+    assert body["periods"] == {
+        "timezone": "Europe/Prague",
+        "months": [
+            {
+                "period": "2025-12",
+                "beers": 1,
+                "evenings": 1,
+                "spent_czk": 55,
+                "average_beers_per_evening": 1.0,
+            },
+            {
+                "period": "2026-01",
+                "beers": 2,
+                "evenings": 1,
+                "spent_czk": 125,
+                "average_beers_per_evening": 2.0,
+            },
+        ],
+        "years": [
+            {
+                "period": "2025",
+                "beers": 1,
+                "evenings": 1,
+                "spent_czk": 55,
+                "average_beers_per_evening": 1.0,
+            },
+            {
+                "period": "2026",
+                "beers": 2,
+                "evenings": 1,
+                "spent_czk": 125,
+                "average_beers_per_evening": 2.0,
+            },
+        ],
+    }
+
+
+@pytest.mark.django_db
+def test_requested_timezone_controls_period_and_drinking_day_buckets(client):
+    token = _register(client)
+    account = Account.objects.latest("created_at")
+    # 03:30 UTC is already after the 04:00 cutoff in Prague, but still belongs
+    # to the previous drinking day in UTC.
+    _drink(
+        account,
+        cache_key=_KEY_TYGR,
+        name="U Zlatého tygra",
+        price_czk=50,
+        drank_at=datetime(2026, 2, 1, 3, 30, tzinfo=UTC),
+    )
+
+    utc_body = client.get("/v1/me/stats?timezone=UTC", **_auth(token)).json()
+    prague_body = client.get(
+        "/v1/me/stats?timezone=Europe%2FPrague", **_auth(token)
+    ).json()
+
+    assert utc_body["periods"]["timezone"] == "UTC"
+    assert utc_body["periods"]["months"][0]["period"] == "2026-01"
+    assert utc_body["records"]["most_beers_date"] == "2026-01-31"
+    assert prague_body["periods"]["timezone"] == "Europe/Prague"
+    assert prague_body["periods"]["months"][0]["period"] == "2026-02"
+    assert prague_body["records"]["most_beers_date"] == "2026-02-01"
+
+
+@pytest.mark.django_db
+def test_invalid_requested_timezone_falls_back_to_prague(client):
+    token = _register(client)
+
+    body = client.get(
+        "/v1/me/stats?timezone=Not%2FA-Timezone", **_auth(token)
+    ).json()
+
+    assert body["periods"]["timezone"] == "Europe/Prague"

@@ -3,11 +3,13 @@ import hashlib
 from django.contrib import admin
 from django.utils import timezone
 
+from . import community_event_admin, pub_event_admin  # noqa: F401
 from .models import (
     Account,
     AccountUsageStats,
     BeerBrand,
     BeerProduct,
+    BeerProductMergeAudit,
     ClientEvent,
     ContentReport,
     DrinkLog,
@@ -396,6 +398,24 @@ class BeerProductAdmin(admin.ModelAdmin):
     search_fields = ("name", "key", "brand_name", "aliases")
     readonly_fields = ("created_at", "updated_at")
     ordering = ("rank", "name")
+
+
+@admin.register(BeerProductMergeAudit)
+class BeerProductMergeAuditAdmin(_ReadOnlyAdmin, admin.ModelAdmin):
+    list_display = ("source_key", "target_key", "actor", "created_at")
+    search_fields = ("source_key", "source_name", "target_key", "target_name", "actor")
+    readonly_fields = (
+        "source_product_id",
+        "source_key",
+        "source_name",
+        "target_product_id",
+        "target_key",
+        "target_name",
+        "actor",
+        "rewired",
+        "created_at",
+    )
+    ordering = ("-created_at",)
 
 
 @admin.register(PubBeerBrand)

@@ -7,8 +7,8 @@ POST   /v1/pub-hours   → PubHoursView
 POST   /v1/pubs        → UserAddedPubView
 POST   /v1/pub-reports → PubReportView
 GET    /v1/pub-reports/blocked → BlockedPubReportsView
-GET    /v1/pubs/suggest → PubLocationSuggestView
-GET    /v1/pubs/geocode → PubLocationGeocodeView
+GET/POST /v1/pubs/suggest → PubLocationSuggestView
+GET/POST /v1/pubs/geocode → PubLocationGeocodeView
 GET    /v1/beer-brands/suggest → BeerBrandSuggestView
 POST   /v1/drinks      → DrinksView
 PATCH  /v1/drinks/<client_id> → DrinksView
@@ -67,6 +67,7 @@ from pubs.accounts import AccountError
 from pubs.beer_catalog import (
     BeerCatalogMatchCache,
     match_beer_brand,
+    match_beer_identity,
     suggest_beer_brands,
     sync_pub_beer_indexes_for_menu,
     upsert_pub_beer_brand,
@@ -109,6 +110,8 @@ from pubs.models import (
     BeerCheckInReaction,
     BeerPhoto,
     ClientEvent,
+    CommunityEvent,
+    CommunityEventMembership,
     ContentReport,
     DrinkLog,
     FeedbackReport,
@@ -120,6 +123,9 @@ from pubs.models import (
     FriendPubActivity,
     FriendPubActivityRecipient,
     Friendship,
+    PartyEvening,
+    PartyEveningDrink,
+    PartyEveningMember,
     PhotoContest,
     PhotoContestEntry,
     PhotoContestVote,
@@ -132,6 +138,7 @@ from pubs.models import (
     PubCommunityXpLedger,
     PubContributionLog,
     PubDirectory,
+    PubEvent,
     PubGooglePlace,
     PubHours,
     PubNameCorrection,
@@ -358,6 +365,27 @@ def _beer_identity_filters(beer_key: str, brewery_key: str) -> dict[str, str]:
     return filters
 
 
+def _beer_identity_query(beer_name: str, brewery_name: str, *, exact_brewery: bool = False) -> Q:
+    """Canonical product identity plus the legacy text-hash fallback."""
+
+    legacy_beer_key = _beer_identity_key(beer_name)
+    legacy_brewery_key = _beer_identity_key(brewery_name)
+    legacy = (
+        Q(beer_key=legacy_beer_key, brewery_key=legacy_brewery_key)
+        if exact_brewery
+        else Q(**_beer_identity_filters(legacy_beer_key, legacy_brewery_key))
+    )
+    match = match_beer_identity(beer_name, brewery_name)
+    if match is None or match.product is None:
+        return legacy
+    canonical = Q(beer_key=match.product.key)
+    if exact_brewery:
+        canonical &= Q(brewery_key=match.brand.key if brewery_name.strip() else "")
+    elif brewery_name.strip():
+        canonical &= Q(brewery_key=match.brand.key)
+    return canonical | legacy
+
+
 def _beer_tag_counts(tag_values) -> dict[str, int]:
     counts = {tag: 0 for tag in BEER_CHECKIN_TAGS}
     for tags in tag_values:
@@ -555,7 +583,7 @@ def _beer_checkin_reactions_prefetch() -> Prefetch:
 
 
 def _beer_checkin_queryset():
-    return BeerCheckIn.objects.select_related("account").prefetch_related(
+    return BeerCheckIn.objects.select_related("account", "beer_product__brand").prefetch_related(
         _beer_checkin_reactions_prefetch()
     )
 
@@ -1126,6 +1154,20 @@ class UserAddedPubView(APIView):
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "added_pubs"
 
+    def get(self, request: Request) -> Response:
+        """Return this account's additions for durable client reconciliation."""
+
+        try:
+            pubs = UserAddedPub.objects.filter(account=request.user).order_by("-updated_at")[:100]
+            return Response(UserAddedPubSerializer(pubs, many=True).data, status=status.HTTP_200_OK)
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "user-added-pub: unexpected error listing own pubs: %s",
+                type(exc).__name__,
+                exc_info=True,
+            )
+            return _internal_error()
+
     def post(self, request: Request) -> Response:
         serializer = UserAddedPubRequestSerializer(data=request.data)
         if not serializer.is_valid():
@@ -1247,6 +1289,72 @@ class UserAddedPubView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+        # Resolve ownership before a potentially billable geocode. The locked
+        # lookup below repeats the same owner filter before writing.
+        try:
+            owned_pub = UserAddedPub.objects.filter(
+                account=request.user,
+                client_id=client_id,
+            ).first()
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "user-added-pub: unexpected error loading pub %s for edit: %s",
+                client_id,
+                exc,
+                exc_info=True,
+            )
+            return _internal_error()
+        if owned_pub is None:
+            return Response(
+                {"detail": "User-added pub not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        data = serializer.validated_data
+        resolved = None
+        if "address" in data:
+            try:
+                resolved = resolve_user_added_pub_location(
+                    name=data.get("name", owned_pub.name),
+                    address=data["address"],
+                    city=data["city"],
+                    lat=data["lat"],
+                    lng=data["lng"],
+                )
+            except GoogleGeocodingUnavailableError as exc:
+                logger.warning(
+                    "user-added-pub: edit geocoding unavailable: %s",
+                    type(exc).__name__,
+                )
+                return Response(
+                    {
+                        "detail": "Geocoding is temporarily unavailable.",
+                        "code": "geocoding_unavailable",
+                    },
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+            if resolved is None:
+                return Response(
+                    {
+                        "detail": "The address could not be located precisely.",
+                        "code": "location_not_found",
+                    },
+                    status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                )
+
+            verify_max_km = max(
+                0.05,
+                float(getattr(settings, "USER_ADDED_PUB_LOCATION_VERIFY_MAX_METERS", 500)) / 1000,
+            )
+            if _haversine_km(data["lat"], data["lng"], resolved.lat, resolved.lng) > verify_max_km:
+                return Response(
+                    {
+                        "detail": "The selected point is too far from the entered address.",
+                        "code": "location_mismatch",
+                    },
+                    status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                )
+
         try:
             with transaction.atomic():
                 pub = (
@@ -1260,11 +1368,39 @@ class UserAddedPubView(APIView):
                         status=status.HTTP_404_NOT_FOUND,
                     )
 
-                pub.name = serializer.validated_data["name"]
-                pub.save(update_fields=["name", "updated_at"])
+                update_fields = ["updated_at"]
+                if "name" in data:
+                    pub.name = data["name"]
+                    update_fields.append("name")
+                if resolved is not None:
+                    # Keep the user's explicitly selected point as the exact pub
+                    # location, after Google has verified the typed address is
+                    # plausibly nearby. The provider result normalizes address
+                    # text and supplies a stable place id.
+                    pub.lat = data["lat"]
+                    pub.lng = data["lng"]
+                    pub.cache_key = geohash8(pub.lat, pub.lng)
+                    pub.city = resolved.city or data["city"]
+                    pub.address = resolved.address or data["address"]
+                    pub.location_source = UserAddedPub.LocationSource.USER_PIN
+                    pub.google_place_id = resolved.place_id
+                    pub.location_synced_at = dj_timezone.now()
+                    update_fields.extend(
+                        [
+                            "lat",
+                            "lng",
+                            "cache_key",
+                            "city",
+                            "address",
+                            "location_source",
+                            "google_place_id",
+                            "location_synced_at",
+                        ]
+                    )
+                pub.save(update_fields=update_fields)
         except Exception as exc:  # noqa: BLE001
             logger.error(
-                "user-added-pub: unexpected error renaming pub %s: %s",
+                "user-added-pub: unexpected error editing pub %s: %s",
                 client_id,
                 exc,
                 exc_info=True,
@@ -1479,6 +1615,7 @@ class BeerBrandSuggestView(APIView):
 
         brands = suggest_beer_brands(
             query.validated_data.get("q") or "",
+            brewery=query.validated_data.get("brewery") or "",
             limit=query.validated_data["limit"],
         )
         return Response(
@@ -2611,12 +2748,14 @@ class MyStatsView(APIView):
     GET /v1/me/stats
 
     Personal beer stats for the signed-in account: lifetime totals, per-pub
-    tallies, and personal records aggregated from the account's DrinkLog history.
+    tallies, personal records, and additive monthly/yearly period summaries.
     Read-only and the durable, server-side mirror of the app's local "Výkon"
     model — an account holder keeps stats beyond the device's 50-evening cap, and
     the same numbers later feed the Pivní Wrapped. An account that has logged
     nothing gets a 200 with zeroes / nulls (never a 404). Auth required (401
     without a valid token); no throttle scope of its own (cheap indexed scan).
+    New clients may pass an IANA ``timezone`` query parameter; invalid or absent
+    values use Europe/Prague for backwards compatibility.
     """
 
     authentication_classes = [AccountTokenAuthentication]
@@ -2624,7 +2763,10 @@ class MyStatsView(APIView):
 
     def get(self, request: Request) -> Response:
         try:
-            payload = compute_my_stats(request.user)
+            payload = compute_my_stats(
+                request.user,
+                timezone_name=request.query_params.get("timezone"),
+            )
         except Exception as exc:  # noqa: BLE001
             logger.error("me-stats: unexpected error computing stats: %s", exc, exc_info=True)
             return _internal_error()
@@ -4468,9 +4610,16 @@ class BeerCheckInView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         data = serializer.validated_data
+        catalog_match = match_beer_identity(
+            data["beer_name"],
+            data.get("brewery_name") or "",
+        )
+        product = catalog_match.product if catalog_match is not None else None
+        brand = catalog_match.brand if product is not None else None
         defaults = {
             "beer_name": data["beer_name"],
             "brewery_name": data.get("brewery_name") or "",
+            "beer_product": product,
             "beer_style": data.get("beer_style") or "",
             "abv": data.get("abv"),
             "quantity": data.get("quantity") or 1,
@@ -4483,8 +4632,12 @@ class BeerCheckInView(APIView):
             "pub_city": data.get("pub_city") or "",
             "visit_client_id": data.get("visit_client_id"),
             "visibility": data.get("visibility") or BeerCheckIn.Visibility.PRIVATE,
-            "beer_key": _beer_identity_key(data["beer_name"]),
-            "brewery_key": _beer_identity_key(data.get("brewery_name") or ""),
+            "beer_key": product.key if product is not None else _beer_identity_key(data["beer_name"]),
+            "brewery_key": (
+                brand.key
+                if brand is not None and (data.get("brewery_name") or "").strip()
+                else _beer_identity_key(data.get("brewery_name") or "")
+            ),
             "checked_in_at": data.get("checked_in_at") or dj_timezone.now(),
             "ended_at": data.get("ended_at"),
         }
@@ -4645,15 +4798,11 @@ class BeerMemoryView(APIView):
     def get(self, request: Request) -> Response:
         beer_name = (request.query_params.get("beer_name") or "").strip()
         brewery_name = (request.query_params.get("brewery_name") or "").strip()
-        beer_key = _beer_identity_key(beer_name)
-        brewery_key = _beer_identity_key(brewery_name)
         rows = []
-        if beer_key:
+        if beer_name:
             rows = list(
-                BeerCheckIn.objects.filter(
-                    account=request.user,
-                    **_beer_identity_filters(beer_key, brewery_key),
-                )
+                BeerCheckIn.objects.filter(account=request.user)
+                .filter(_beer_identity_query(beer_name, brewery_name))
                 .only("checked_in_at", "pub_name", "rating", "tags")
                 .order_by("checked_in_at", "id")
             )
@@ -4693,23 +4842,16 @@ class BeerDetailView(APIView):
                 {"detail": "beer_name is required.", "code": "missing_beer_name"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        beer_key = _beer_identity_key(beer_name)
-        brewery_key = _beer_identity_key(brewery_name)
+        identity = _beer_identity_query(beer_name, brewery_name, exact_brewery=True)
         blocked_ids = _blocked_account_ids(request.user)
         friend_ids = [fid for fid in _accepted_friend_ids(request.user) if fid not in blocked_ids]
-        mine = BeerCheckIn.objects.filter(
-            account=request.user,
-            beer_key=beer_key,
-            brewery_key=brewery_key,
-        )
+        mine = BeerCheckIn.objects.filter(account=request.user).filter(identity)
         party = BeerCheckIn.objects.filter(
             account_id__in=friend_ids,
             account__status=Account.Status.ACTIVE,
             account__ghost_mode=False,
             visibility=BeerCheckIn.Visibility.FRIENDS,
-            beer_key=beer_key,
-            brewery_key=brewery_key,
-        )
+        ).filter(identity)
         party_accounts = Account.objects.filter(id__in=party.values("account_id")).order_by(
             "nickname",
             "display_name",
@@ -4718,9 +4860,8 @@ class BeerDetailView(APIView):
             _beer_checkin_queryset()
             .filter(
                 Q(account=request.user) | Q(account_id__in=friend_ids),
-                beer_key=beer_key,
-                brewery_key=brewery_key,
             )
+            .filter(identity)
             .filter(Q(account=request.user) | Q(visibility=BeerCheckIn.Visibility.FRIENDS))
             .filter(
                 Q(account=request.user)
@@ -4731,7 +4872,8 @@ class BeerDetailView(APIView):
         )
         my_history = (
             _beer_checkin_queryset()
-            .filter(account=request.user, beer_key=beer_key, brewery_key=brewery_key)
+            .filter(account=request.user)
+            .filter(identity)
             .order_by("-checked_in_at", "created_at", "id")[:50]
         )
         my_summary = mine.aggregate(
@@ -5646,6 +5788,22 @@ _BEER_BRAND_SCAN_LIMIT = 200
 _BEER_BRAND_MAX_RESULTS = 50
 _PRICE_INDEX_SCAN_LIMIT = 900
 _PRICE_INDEX_MAX_RESULTS = 300
+# Treat venues inside the same short walking-distance band as similarly close.
+# A confirmed pub should win over an ambiguous restaurant-like result inside the
+# band, while distance remains authoritative across bands.
+_PUB_RELEVANCE_DISTANCE_BAND_KM = 0.25
+
+
+def _directory_relevance_rank(
+    distance_km: float,
+    venue_kind: str,
+    discovery_kind: str,
+    pk: int,
+) -> tuple:
+    discovery_rank = 0 if discovery_kind == PubDirectory.DiscoveryKind.PUB else 1
+    venue_rank = 0 if venue_kind == PubHours.VenueKind.PUB else 1
+    distance_band = int(distance_km / _PUB_RELEVANCE_DISTANCE_BAND_KM)
+    return discovery_rank, distance_band, venue_rank, distance_km, pk
 
 
 def _nearest_rows(
@@ -6081,7 +6239,7 @@ def _pub_directory_item(row: PubDirectory) -> dict:
             "isoCode": country_code.upper(),
         }
     )
-    return {
+    item = {
         "name": row.name,
         "label": (
             "Hospoda"
@@ -6091,6 +6249,10 @@ def _pub_directory_item(row: PubDirectory) -> dict:
         "position": {"lat": row.lat, "lon": row.lng},
         "regionalStructure": regional_structure,
     }
+    if row.discovery_kind != PubDirectory.DiscoveryKind.PUB:
+        item["label"] = "Bar"
+        item["discoveryKind"] = row.discovery_kind
+    return item
 
 
 def _nearby_pub_directory_items(
@@ -6098,6 +6260,8 @@ def _nearby_pub_directory_items(
     lng: float,
     radius_km: float,
     max_items: int,
+    *,
+    include_other_places: bool = False,
 ) -> list[dict]:
     """Return nearest eligible, unreported directory rows inside a radius."""
     d_lat = radius_km / 111.0
@@ -6110,8 +6274,19 @@ def _nearby_pub_directory_items(
         output_field=FloatField(),
     )
     scan_limit = max(0, max_items) * 3
+    discovery_filter = Q(discovery_kind=PubDirectory.DiscoveryKind.PUB)
+    if include_other_places:
+        discovery_filter |= Q(
+            discovery_kind__in=(
+                PubDirectory.DiscoveryKind.SEASONAL_STAND,
+                PubDirectory.DiscoveryKind.CAMPSITE,
+                PubDirectory.DiscoveryKind.SPORTS_VENUE,
+            ),
+            has_beer_signal=True,
+        )
     candidates = list(
         PubDirectory.objects.filter(
+            discovery_filter,
             active=True,
             lat__gte=lat - d_lat,
             lat__lte=lat + d_lat,
@@ -6130,6 +6305,8 @@ def _nearby_pub_directory_items(
             "city",
             "country",
             "venue_kind",
+            "discovery_kind",
+            "has_beer_signal",
         )[:scan_limit]
     )
     if not candidates:
@@ -6144,7 +6321,11 @@ def _nearby_pub_directory_items(
         if row.cache_key not in reported_cache_keys
     ]
     nearby = [entry for entry in nearby if entry[0] <= radius_km]
-    nearby.sort(key=lambda entry: (entry[0], entry[1].pk))
+    nearby.sort(
+        key=lambda entry: _directory_relevance_rank(
+            entry[0], entry[1].venue_kind, entry[1].discovery_kind, entry[1].pk
+        )
+    )
     return [_pub_directory_item(row) for _, row in nearby[:max(0, max_items)]]
 
 
@@ -6184,6 +6365,7 @@ class PubsNearView(APIView):
         radius_km: float = data["radius_km"]
         beer_brand_key = data.get("beer_brand") or ""
         amenity_keys: list[str] = data.get("amenities") or []
+        include_other_places: bool = data["include_other_places"]
         max_amenity_filters = max(
             1,
             int(getattr(settings, "PUBS_NEAR_MAX_AMENITY_FILTERS", 5)),
@@ -6293,13 +6475,16 @@ class PubsNearView(APIView):
                 "cached": cached,
                 "fetched_at": fetched_at,
             }
-            if amenity_keys:
-                body["applied_filters"] = {
-                    "version": 1,
+            if amenity_keys or include_other_places:
+                applied_filters = {
+                    "version": 2 if include_other_places else 1,
                     "match": "all",
                     "amenities": amenity_keys,
                     "beer_brand": beer_brand_key or None,
                 }
+                if include_other_places:
+                    applied_filters["include_other_places"] = True
+                body["applied_filters"] = applied_filters
             return body
 
         user_added_items = _nearby_user_added_pub_items(data["lat"], data["lng"], radius_km)
@@ -6367,6 +6552,7 @@ class PubsNearView(APIView):
                 data["lng"],
                 radius_km,
                 int(getattr(settings, "PUBS_NEAR_LOCAL_MAX_ITEMS", 300)),
+                include_other_places=include_other_places,
             )
             if directory_items:
                 return Response(
@@ -6471,12 +6657,7 @@ class _PubLocationLookupBaseView(APIView):
             items.append(item)
         return items
 
-    def get(self, request: Request) -> Response:
-        serializer = PubLocationLookupQuerySerializer(data=request.query_params)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-        data = serializer.validated_data
+    def _lookup_response(self, data: dict) -> Response:
         items = self._local_items(
             data["query"],
             data.get("lat"),
@@ -6484,6 +6665,20 @@ class _PubLocationLookupBaseView(APIView):
             self.max_items,
         )
         return Response({"items": items}, status=status.HTTP_200_OK)
+
+    def _handle(self, payload) -> Response:
+        serializer = PubLocationLookupQuerySerializer(data=payload)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return self._lookup_response(serializer.validated_data)
+
+    def get(self, request: Request) -> Response:
+        return self._handle(request.query_params)
+
+    def post(self, request: Request) -> Response:
+        # POST keeps addresses and free-form lookup text out of normal access-log
+        # request targets. GET remains available for released mobile clients.
+        return self._handle(request.data)
 
 
 class PubLocationSuggestView(_PubLocationLookupBaseView):
@@ -6495,11 +6690,7 @@ class PubLocationGeocodeView(_PubLocationLookupBaseView):
 
     max_items = 3
 
-    def get(self, request: Request) -> Response:
-        serializer = PubLocationLookupQuerySerializer(data=request.query_params)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        data = serializer.validated_data
+    def _lookup_response(self, data: dict) -> Response:
         local_items = self._local_items(
             data["query"],
             data.get("lat"),
@@ -6665,6 +6856,36 @@ def _load_export_account(account: Account) -> Account:
             Prefetch(
                 "content_reports_made",
                 queryset=ContentReport.objects.select_related("target_account"),
+            ),
+            Prefetch(
+                "hosted_party_evenings",
+                queryset=PartyEvening.objects.order_by("-started_at", "id"),
+            ),
+            Prefetch(
+                "party_evening_memberships",
+                queryset=PartyEveningMember.objects.select_related("evening").order_by(
+                    "-joined_at", "id"
+                ),
+            ),
+            Prefetch(
+                "party_evening_drinks",
+                queryset=PartyEveningDrink.objects.select_related("evening").order_by(
+                    "shared_at", "id"
+                ),
+            ),
+            Prefetch(
+                "pub_event_suggestions",
+                queryset=PubEvent.objects.order_by("starts_at", "created_at"),
+            ),
+            Prefetch(
+                "hosted_community_events",
+                queryset=CommunityEvent.objects.order_by("starts_at", "created_at"),
+            ),
+            Prefetch(
+                "community_event_memberships",
+                queryset=CommunityEventMembership.objects.select_related("event").order_by(
+                    "requested_at", "id"
+                ),
             ),
         )
         .get(pk=account.pk)
@@ -6895,6 +7116,98 @@ def _export_account_data(account: Account) -> dict:
                     "revoked": row.revoked,
                 }
                 for row in account.invite_codes.all()
+            ],
+        },
+        "party_evenings": {
+            "hosted": [
+                {
+                    "id": str(evening.public_id),
+                    "client_id": str(evening.client_id),
+                    "join_code": evening.join_code,
+                    "pub_name": evening.pub_name,
+                    "pub_city": evening.pub_city,
+                    "active": evening.active,
+                    "started_at": _iso(evening.started_at),
+                    "ended_at": _iso(evening.ended_at),
+                    "created_at": _iso(evening.created_at),
+                    "updated_at": _iso(evening.updated_at),
+                }
+                for evening in account.hosted_party_evenings.all()
+            ],
+            "memberships": [
+                {
+                    "evening_id": str(membership.evening.public_id),
+                    "active": membership.active,
+                    "joined_at": _iso(membership.joined_at),
+                    "left_at": _iso(membership.left_at),
+                }
+                for membership in account.party_evening_memberships.all()
+            ],
+            "drinks": [
+                {
+                    "evening_id": str(drink.evening.public_id),
+                    "client_id": str(drink.client_id),
+                    "beer_name": drink.beer_name,
+                    "quantity": drink.quantity,
+                    "shared_at": _iso(drink.shared_at),
+                }
+                for drink in account.party_evening_drinks.all()
+            ],
+        },
+        "pub_event_suggestions": [
+            {
+                "id": str(event.id),
+                "client_id": str(event.client_id),
+                "cache_key": event.cache_key,
+                "name": event.name,
+                "lat": event.lat,
+                "lng": event.lng,
+                "city": event.city,
+                "external_id": event.external_id,
+                "title": event.title,
+                "details": event.details,
+                "starts_at": _iso(event.starts_at),
+                "ends_at": _iso(event.ends_at),
+                "status": event.status,
+                "verified_at": _iso(event.verified_at),
+                "created_at": _iso(event.created_at),
+                "updated_at": _iso(event.updated_at),
+            }
+            for event in account.pub_event_suggestions.all()
+        ],
+        "community_events": {
+            "hosted": [
+                {
+                    "id": str(event.id),
+                    "client_id": str(event.client_id),
+                    "title": event.title,
+                    "description": event.description,
+                    "city": event.city,
+                    "area_label": event.area_label,
+                    "exact_address": event.exact_address,
+                    "lat": event.lat,
+                    "lng": event.lng,
+                    "starts_at": _iso(event.starts_at),
+                    "ends_at": _iso(event.ends_at),
+                    "capacity": event.capacity,
+                    "adults_only": event.adults_only,
+                    "status": event.status,
+                    "cancelled_at": _iso(event.cancelled_at),
+                    "created_at": _iso(event.created_at),
+                    "updated_at": _iso(event.updated_at),
+                }
+                for event in account.hosted_community_events.all()
+            ],
+            "memberships": [
+                {
+                    "event_id": str(membership.event_id),
+                    "message": membership.message,
+                    "status": membership.status,
+                    "requested_at": _iso(membership.requested_at),
+                    "decided_at": _iso(membership.decided_at),
+                    "updated_at": _iso(membership.updated_at),
+                }
+                for membership in account.community_event_memberships.all()
             ],
         },
         "visits": [_visit_item(visit) for visit in account.pub_visits.all()],

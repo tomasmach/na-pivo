@@ -9,6 +9,7 @@ import {
   performanceTone,
   computeLastPerformance,
   computeLifetime,
+  computePeriodStats,
   computeRecords,
   computeTopPubs,
 } from '../statsModel';
@@ -158,6 +159,68 @@ describe('computeLifetime', () => {
       totalEvenings: 2,
       distinctPubs: 1,
       totalSpentCzk: 100,
+    });
+  });
+});
+
+describe('computePeriodStats', () => {
+  it('groups by local drinking month and year and computes the average per evening', () => {
+    const sessions = [
+      session([drink({ priceCzk: 50 }), drink({ priceCzk: 60 })], {
+        pubKey: 'a',
+        startedAt: at(2025, 12, 31, 20, 0),
+      }),
+      session([drink({ priceCzk: 70 })], {
+        pubKey: 'b',
+        startedAt: at(2026, 1, 2, 1, 30),
+      }),
+      session([drink({ priceCzk: 80 }), drink({ priceCzk: 80 }), drink({ priceCzk: 80 })], {
+        pubKey: 'c',
+        startedAt: at(2026, 1, 20, 19, 0),
+      }),
+    ];
+
+    expect(computePeriodStats(sessions)).toEqual({
+      months: [
+        {
+          period: '2025-12',
+          beers: 2,
+          evenings: 1,
+          spentCzk: 110,
+          averageBeersPerEvening: 2,
+        },
+        {
+          period: '2026-01',
+          beers: 4,
+          evenings: 2,
+          spentCzk: 310,
+          averageBeersPerEvening: 2,
+        },
+      ],
+      years: [
+        {
+          period: '2025',
+          beers: 2,
+          evenings: 1,
+          spentCzk: 110,
+          averageBeersPerEvening: 2,
+        },
+        {
+          period: '2026',
+          beers: 4,
+          evenings: 2,
+          spentCzk: 310,
+          averageBeersPerEvening: 2,
+        },
+      ],
+    });
+  });
+
+  it('returns empty arrays without sessions and ignores malformed dates', () => {
+    expect(computePeriodStats([])).toEqual({ months: [], years: [] });
+    expect(computePeriodStats([session([drink()], { startedAt: 'not-a-date' })])).toEqual({
+      months: [],
+      years: [],
     });
   });
 });

@@ -22,6 +22,7 @@ import {
   Pressable,
   ActivityIndicator,
   StyleSheet,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -30,12 +31,13 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
-import { ChevronLeftIcon } from '@/components/shared/IconGlyph';
+import { ChevronLeftIcon, ExternalLinkIcon } from '@/components/shared/IconGlyph';
 import { getAppVersionLabel } from '@/utils/appVersion';
 import {
   fetchAllReleaseNotes,
   type ReleaseNote,
 } from '@/data/releaseNotesClient';
+import { openPlayStoreListing } from '@/utils/storeLinks';
 
 type ChangelogState =
   | { kind: 'loading' }
@@ -109,6 +111,18 @@ export default function AboutScreen() {
             </View>
           ) : null}
         </View>
+
+        {Platform.OS === 'android' ? (
+          <Pressable
+            onPress={() => void openPlayStoreListing()}
+            style={({ pressed }) => [styles.playStoreButton, pressed && styles.pressed]}
+            accessibilityRole="link"
+            accessibilityLabel="Otevřít Na pivo v Google Play"
+          >
+            <Text style={styles.playStoreButtonText}>Na pivo v Google Play</Text>
+            <ExternalLinkIcon size={17} color={Colors.amber} />
+          </Pressable>
+        ) : null}
 
         {/* ── Changelog ── */}
         <View style={styles.section}>
@@ -236,6 +250,23 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     paddingTop: Spacing.md,
   },
+  playStoreButton: {
+    minHeight: 50,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.medium,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.stout2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  playStoreButtonText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 15,
+    color: Colors.foam,
+  },
+  pressed: { opacity: 0.72 },
   medallion: {
     width: 88,
     height: 88,

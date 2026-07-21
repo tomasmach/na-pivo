@@ -35,6 +35,7 @@ export type HoursStatus = 'ok' | 'unknown' | 'pending' | 'error' | 'loading';
  * - 'unknown' — no verdict (also the default for older backends) — kept.
  */
 export type VenueKind = 'pub' | 'maybe' | 'not_pub' | 'unknown';
+export type PubDiscoveryKind = 'pub' | 'seasonal_stand' | 'campsite' | 'sports_venue';
 
 /**
  * Reference beer price of a pub — the cheapest large beer (≥ 0.4 l) known for
@@ -59,6 +60,9 @@ export type Pub = {
   lng: number;
   address?: string;
   city?: string;
+  /** Client id of a pub this device/account added. Presence unlocks owner-only
+   * address and pin correction; never inferred from coordinates or name. */
+  userAddedClientId?: string;
   /** Google Place ID from the backend nearby endpoint — lets external map links
    *  open the exact business (place card) instead of bare coordinates. */
   googlePlaceId?: string;
@@ -97,6 +101,8 @@ export type Pub = {
    * 'unknown' (shown).
    */
   venueKind?: VenueKind;
+  /** Primary pub or a reviewed opt-in place with an explicit beer signal. */
+  discoveryKind?: PubDiscoveryKind;
   /**
    * "Zmapuj hospodu" community amenity truth (spec §4.6). Server-owned + cached,
    * NEVER written by the client. `undefined` = unresolved / backend dormant. These
@@ -156,6 +162,7 @@ let _lastFetchRadiusKm: number | null = null;
 let _lastFetchCoveredKm: number | null = null;
 let _lastFetchBeerBrandKey = "";
 let _lastFetchAmenityKey = "";
+let _lastFetchIncludeOtherPlaces = false;
 let _inflight: Promise<void> | null = null;
 let _inflightRequestKey = "";
 /** Whether we have already attempted to hydrate from AsyncStorage this session.
@@ -173,6 +180,7 @@ interface FetchPubsNearOptions {
   coverageKm?: number;
   beerBrandKey?: string | null;
   amenityKeys?: readonly string[];
+  includeOtherPlaces?: boolean;
 }
 
 /** Re-fetch nearby pubs when the user has moved more than this distance from
@@ -417,6 +425,7 @@ export function _reset(): void {
   _lastFetchCoveredKm = null;
   _lastFetchBeerBrandKey = "";
   _lastFetchAmenityKey = "";
+  _lastFetchIncludeOtherPlaces = false;
   _inflight = null;
   _inflightRequestKey = "";
   _hydrationAttempted = false;
@@ -500,7 +509,8 @@ export async function fetchPubsNear(
   const beerBrandKey = (options.beerBrandKey ?? "").trim();
   const amenityKeys = Array.from(new Set(options.amenityKeys ?? [])).sort();
   const amenityKey = amenityKeys.join(',');
-  const requestKey = `${lat}:${lng}:${radiusKm}:${beerBrandKey}:${amenityKey}`;
+  const includeOtherPlaces = options.includeOtherPlaces === true;
+  const requestKey = `${lat}:${lng}:${radiusKm}:${beerBrandKey}:${amenityKey}:${includeOtherPlaces}`;
 
   // In-memory short-circuit (also covers the post-hydration session).
   if (!options.force && _loaded && _lastFetchCenter) {
@@ -519,6 +529,7 @@ export async function fetchPubsNear(
     if (
       beerBrandKey === _lastFetchBeerBrandKey &&
       amenityKey === _lastFetchAmenityKey &&
+      includeOtherPlaces === _lastFetchIncludeOtherPlaces &&
       cacheStillValid
     ) {
       return;
@@ -570,7 +581,8 @@ export async function fetchPubsNear(
           _lastFetchCoveredKm = snapshot.coveredKm ?? snapshot.radiusKm;
           _lastFetchBeerBrandKey = "";
           _lastFetchAmenityKey = "";
-          return;
+          _lastFetchIncludeOtherPlaces = false;
+          if (!includeOtherPlaces) return;
         }
       }
 
@@ -578,7 +590,11 @@ export async function fetchPubsNear(
       // fail-open (returns [] on any failure) and must never add a sequential
       // round trip before markers can appear on the map.
       const [pubs, blockedReports] = await Promise.all([
-        searchPubsNear(lat, lng, radiusKm, signal, { beerBrandKey, amenityKeys }),
+        searchPubsNear(lat, lng, radiusKm, signal, {
+          beerBrandKey,
+          amenityKeys,
+          ...(includeOtherPlaces ? { includeOtherPlaces: true } : {}),
+        }),
         fetchBlockedPubReports(lat, lng, radiusKm, signal),
       ]);
       if (signal?.aborted) return;
@@ -608,7 +624,7 @@ export async function fetchPubsNear(
         }
         coveredKm = Math.min(radiusKm, farthestKm);
       }
-      if (!beerBrandKey && !amenityKey) {
+      if (!beerBrandKey && !amenityKey && !includeOtherPlaces) {
         _lastUnfilteredPubs = filtered.slice();
         _lastUnfilteredCenter = { lat, lng };
         _lastUnfilteredRadiusKm = radiusKm;
@@ -620,9 +636,10 @@ export async function fetchPubsNear(
       _lastFetchCoveredKm = coveredKm;
       _lastFetchBeerBrandKey = beerBrandKey;
       _lastFetchAmenityKey = amenityKey;
+      _lastFetchIncludeOtherPlaces = includeOtherPlaces;
       // Persist the post-block-filtering result so the next cold start can skip
       // the network. Fire-and-forget — saveSnapshot never throws.
-      if (!beerBrandKey && !amenityKey) {
+      if (!beerBrandKey && !amenityKey && !includeOtherPlaces) {
         // Strip server-owned amenity summaries so they aren't double-cached in the
         // 24h snapshot (spec §4.6); they rehydrate from their own short-TTL cache.
         void saveSnapshot({
@@ -641,13 +658,14 @@ export async function fetchPubsNear(
       if (beerBrandKey || amenityKey) {
         _currentIndexIsFiltered = true;
         replaceBasePubs([], false);
-      } else if (_currentIndexIsFiltered) {
+      } else if (_currentIndexIsFiltered || (!includeOtherPlaces && _lastFetchIncludeOtherPlaces)) {
         // Clearing filters while offline must not leave the last filtered index
         // presented as an unfiltered result. Restore the last known unfiltered
         // catalogue only when it still covers this location; otherwise an old
         // city's pubs would be worse than an honest empty state.
         _lastFetchBeerBrandKey = "";
         _lastFetchAmenityKey = "";
+        _lastFetchIncludeOtherPlaces = false;
         _lastFetchCenter = null;
         _lastFetchRadiusKm = null;
         _lastFetchCoveredKm = null;
@@ -697,6 +715,7 @@ export async function hydratePubsSnapshot(): Promise<boolean> {
   _lastFetchRadiusKm = snapshot.radiusKm;
   _lastFetchCoveredKm = snapshot.coveredKm ?? snapshot.radiusKm;
   _lastFetchBeerBrandKey = "";
+  _lastFetchIncludeOtherPlaces = false;
   return true;
 }
 
@@ -723,6 +742,10 @@ function buildExcludePredicate(
     (filterPub ? filterPub(_pubs[i]) : true);
 }
 
+function isPrimaryDiscoveryPub(pub: Pub): boolean {
+  return pub.discoveryKind === undefined || pub.discoveryKind === 'pub';
+}
+
 /**
  * Returns the nearest pub within maxKm kilometers.
  * When maxKm is omitted, there is no distance limit.
@@ -735,12 +758,26 @@ export function findNearestPub(opts: {
   excludeIds?: string[];
   excludeCacheKeys?: string[];
   filterPub?: (pub: Pub) => boolean;
+  includeOtherPlaces?: boolean;
 }): Pub | null {
   if (!_loaded || !_index || _pubs.length === 0) return null;
 
   const { lat, lng, maxKm, excludeIds, excludeCacheKeys, filterPub } = opts;
   const maxDistance = Number.isFinite(maxKm) ? maxKm : undefined;
-  const predicate = buildExcludePredicate(excludeIds, excludeCacheKeys, filterPub);
+  const contentFilter = (pub: Pub) =>
+    (opts.includeOtherPlaces === true || isPrimaryDiscoveryPub(pub)) &&
+    (filterPub ? filterPub(pub) : true);
+  const predicate = buildExcludePredicate(excludeIds, excludeCacheKeys, contentFilter);
+
+  if (opts.includeOtherPlaces) {
+    const primaryPredicate = buildExcludePredicate(
+      excludeIds,
+      excludeCacheKeys,
+      (pub) => isPrimaryDiscoveryPub(pub) && (filterPub ? filterPub(pub) : true),
+    );
+    const primary = geokdbush.around(_index, lng, lat, 1, maxDistance, primaryPredicate);
+    if (primary.length > 0) return _pubs[primary[0]];
+  }
 
   const results = geokdbush.around(_index, lng, lat, 1, maxDistance, predicate);
   if (results.length === 0) return null;
@@ -761,12 +798,28 @@ export function findRandomPubInRadius(opts: {
   excludeIds?: string[];
   excludeCacheKeys?: string[];
   filterPub?: (pub: Pub) => boolean;
+  includeOtherPlaces?: boolean;
 }): Pub | null {
   if (!_loaded || !_index || _pubs.length === 0) return null;
 
   const { lat, lng, maxKm, seed, excludeIds, excludeCacheKeys, filterPub } = opts;
   const maxDistance = Number.isFinite(maxKm) ? maxKm : undefined;
-  const predicate = buildExcludePredicate(excludeIds, excludeCacheKeys, filterPub);
+  const eligible = (pub: Pub) =>
+    (opts.includeOtherPlaces === true || isPrimaryDiscoveryPub(pub)) &&
+    (filterPub ? filterPub(pub) : true);
+  let predicate = buildExcludePredicate(excludeIds, excludeCacheKeys, eligible);
+
+  if (opts.includeOtherPlaces) {
+    const primaryPredicate = buildExcludePredicate(
+      excludeIds,
+      excludeCacheKeys,
+      (pub) => isPrimaryDiscoveryPub(pub) && (filterPub ? filterPub(pub) : true),
+    );
+    const primary = geokdbush.around(_index, lng, lat, Infinity, maxDistance, primaryPredicate);
+    if (primary.length > 0) {
+      predicate = primaryPredicate;
+    }
+  }
 
   const results = geokdbush.around(_index, lng, lat, Infinity, maxDistance, predicate);
   if (results.length === 0) return null;
@@ -792,7 +845,14 @@ export function findNearbyPubs(opts: {
 
   const { lat, lng, limit, maxKm } = opts;
   const maxDistance = Number.isFinite(maxKm) ? maxKm : undefined;
-  const results = geokdbush.around(_index, lng, lat, limit, maxDistance);
+  const results = geokdbush.around(
+    _index,
+    lng,
+    lat,
+    limit,
+    maxDistance,
+    (index) => isPrimaryDiscoveryPub(_pubs[index]),
+  );
   return results.map((i) => ({
     pub: _pubs[i],
     // geokdbush returns results sorted by distance; recompute meters for the UI.

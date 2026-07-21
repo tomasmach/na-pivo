@@ -112,6 +112,8 @@ interface MapyGeocodeItem {
   location?: string;
   zip?: string;
   regionalStructure?: { name: string; type: string }[];
+  /** Additive backend classification for opt-in non-pub tap places. */
+  discoveryKind?: 'pub' | 'seasonal_stand' | 'campsite' | 'sports_venue';
   /** Additive backend-only field: Google Place ID, attached by our backend's
    *  nearby endpoint when known. Never present on raw Mapy.cz responses. */
   googlePlaceId?: string | null;
@@ -186,6 +188,7 @@ interface BackendPubsNearResponse {
     match?: string;
     amenities?: string[];
     beer_brand?: string | null;
+    include_other_places?: boolean;
   };
 }
 
@@ -209,6 +212,7 @@ async function backendSuggest(
   kmRadius: number,
   beerBrandKey?: string,
   amenityKeys: readonly string[] = [],
+  includeOtherPlaces = false,
   signal?: AbortSignal,
 ): Promise<MapyGeocodeItem[] | null> {
   const endpoint = getBackendEndpoint('/v1/pubs/near');
@@ -220,6 +224,7 @@ async function backendSuggest(
   url.searchParams.set('radius_km', String(kmRadius));
   if (beerBrandKey) url.searchParams.set('beer_brand', beerBrandKey);
   if (amenityKeys.length > 0) url.searchParams.set('amenities', amenityKeys.join(','));
+  if (includeOtherPlaces) url.searchParams.set('include_other_places', 'true');
 
   // Hard timeout: without it a stalled request on a bad connection pins the
   // map in its loading state forever — failing fast surfaces the stale banner
@@ -243,11 +248,12 @@ async function backendSuggest(
         : [];
       const requestedAmenities = [...amenityKeys].sort();
       const acknowledged =
-        applied?.version === 1 &&
+        applied?.version === (includeOtherPlaces ? 2 : 1) &&
         applied.match === 'all' &&
         acknowledgedAmenities.length === requestedAmenities.length &&
         acknowledgedAmenities.every((key, index) => key === requestedAmenities[index]) &&
-        (applied.beer_brand ?? null) === (beerBrandKey || null);
+        (applied.beer_brand ?? null) === (beerBrandKey || null) &&
+        (applied.include_other_places ?? false) === includeOtherPlaces;
       if (!acknowledged) {
         // A rolling deploy can briefly put a new app against an older backend
         // that ignores unknown query params. Fail closed: unfiltered pubs must
@@ -286,15 +292,16 @@ async function backendLocationLookup(
   const endpoint = getBackendEndpoint(path);
   if (!endpoint || signal?.aborted) return null;
 
-  const url = new URL(endpoint);
-  url.searchParams.set('query', query);
-  if (near) {
-    url.searchParams.set('lat', String(near.lat));
-    url.searchParams.set('lng', String(near.lng));
-  }
-
   try {
-    const resp = await fetch(url.toString(), { signal });
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query,
+        ...(near ? { lat: near.lat, lng: near.lng } : {}),
+      }),
+      signal,
+    });
     if (!resp.ok) {
       trackApiFailure(path === '/v1/pubs/suggest' ? 'pub_location_suggest_backend' : 'pub_location_geocode_backend', {
         endpoint: path,
@@ -589,6 +596,7 @@ function itemToPub(
     // geofences can then fail closed offline instead of treating every broad
     // restaurant result as a confirmed pub.
     venueKind: hasStrongPubSignal(item.name, item.label) ? 'pub' : 'maybe',
+    discoveryKind: item.discoveryKind ?? 'pub',
   };
   const address = pickAddress(item);
   if (address) pub.address = address;
@@ -669,7 +677,11 @@ export async function searchPubsNear(
   lng: number,
   kmRadius = 25,
   signal?: AbortSignal,
-  options: { beerBrandKey?: string; amenityKeys?: readonly string[] } = {},
+  options: {
+    beerBrandKey?: string;
+    amenityKeys?: readonly string[];
+    includeOtherPlaces?: boolean;
+  } = {},
 ): Promise<Pub[]> {
   const backendItems = await backendSuggest(
     lat,
@@ -677,6 +689,7 @@ export async function searchPubsNear(
     kmRadius,
     options.beerBrandKey,
     options.amenityKeys,
+    options.includeOtherPlaces,
     signal,
   );
   if (backendItems !== null) {

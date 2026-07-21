@@ -262,9 +262,32 @@ class UserAddedPubRequestSerializer(_Pub200NameValidationMixin, PubInputSerializ
 
 
 class UserAddedPubRenameRequestSerializer(_Pub200NameValidationMixin, serializers.Serializer):
-    """Request body for PATCH /v1/pubs/<client_id>."""
+    """Additive owner edit contract for PATCH /v1/pubs/<client_id>.
 
-    name = serializers.CharField(max_length=255)
+    Released clients only send ``name``. New clients may also correct the full
+    location tuple; keeping it atomic prevents an offline retry from briefly
+    pairing a new address with stale coordinates (or vice versa).
+    """
+
+    name = serializers.CharField(max_length=255, required=False)
+    address = serializers.CharField(max_length=255, required=False, trim_whitespace=True)
+    city = serializers.CharField(max_length=128, required=False, trim_whitespace=True)
+    lat = serializers.FloatField(required=False, min_value=-90, max_value=90)
+    lng = serializers.FloatField(required=False, min_value=-180, max_value=180)
+
+    def validate(self, attrs: dict) -> dict:
+        if not attrs:
+            raise serializers.ValidationError("Provide a name or a complete location correction.")
+
+        location_fields = {"address", "city", "lat", "lng"}
+        supplied_location_fields = location_fields.intersection(attrs)
+        if supplied_location_fields and supplied_location_fields != location_fields:
+            raise serializers.ValidationError(
+                "Address, city, lat and lng must be provided together."
+            )
+        if supplied_location_fields and (not attrs["address"] or not attrs["city"]):
+            raise serializers.ValidationError("Address and city must not be empty.")
+        return attrs
 
 
 class FeedbackRequestSerializer(serializers.Serializer):
@@ -860,6 +883,12 @@ class BeerCheckInSerializer(serializers.ModelSerializer):
     tags = serializers.SerializerMethodField()
     reactions = serializers.SerializerMethodField()
     my_reaction = serializers.SerializerMethodField()
+    beer_product_key = serializers.CharField(
+        source="beer_product.key", read_only=True, allow_null=True
+    )
+    beer_brand_key = serializers.CharField(
+        source="beer_product.brand.key", read_only=True, allow_null=True
+    )
 
     class Meta:
         model = BeerCheckIn
@@ -869,6 +898,8 @@ class BeerCheckInSerializer(serializers.ModelSerializer):
             "client_id",
             "beer_name",
             "brewery_name",
+            "beer_product_key",
+            "beer_brand_key",
             "beer_style",
             "abv",
             "quantity",
@@ -1405,6 +1436,12 @@ class BeerBrandSuggestQuerySerializer(serializers.Serializer):
         max_length=80,
         trim_whitespace=True,
     )
+    brewery = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=80,
+        trim_whitespace=True,
+    )
     limit = serializers.IntegerField(required=False, min_value=1, max_value=20, default=12)
 
 
@@ -1741,6 +1778,7 @@ class PubsNearQuerySerializer(_LatLngBoundsValidationMixin, serializers.Serializ
         max_length=400,
         trim_whitespace=True,
     )
+    include_other_places = serializers.BooleanField(required=False, default=False)
 
     def validate_radius_km(self, value: float | None) -> float:
         # Default when omitted/null; otherwise clamp into (0, 100]. A value <= 0

@@ -621,6 +621,20 @@ function mapSocialError(err: unknown): AuthResult {
         detail: 'Google přihlášení teď není správně nastavené. Zkus zatím přihlášení e-mailem.',
       };
     }
+    if (err.code === 'play_services') {
+      return {
+        ok: false,
+        code: err.code,
+        detail: 'Google Play služby nejsou dostupné nebo potřebují aktualizaci. Aktualizuj je v Google Play, nebo se přihlas e-mailem.',
+      };
+    }
+    if (err.code === 'account_picker') {
+      return {
+        ok: false,
+        code: err.code,
+        detail: 'Výběr Google účtu se nepodařilo otevřít. Zkontroluj účet v telefonu, zkus to znovu, nebo se přihlas e-mailem.',
+      };
+    }
     return {
       ok: false,
       code: err.code,

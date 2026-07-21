@@ -120,6 +120,22 @@ describe('suggestBeerBrands', () => {
     ]);
   });
 
+  it('sends the optional brewery and uses it in the local fallback identity', async () => {
+    setBackend('https://api.example.com');
+    const fetchSpy = jest.fn(async () => ({ ok: false, json: async () => ({}) }));
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    const result = await suggestBeerBrands('12', undefined, 4, 'Radegast');
+
+    expect(result[0]).toMatchObject({
+      slug: 'radegast-ryze-horka-12',
+      brandSlug: 'radegast',
+    });
+    const [url] = fetchSpy.mock.calls[0] as unknown as [string];
+    expect(url).toContain('q=12');
+    expect(url).toContain('brewery=Radegast');
+  });
+
   it('returns empty results when aborted before fetch', async () => {
     setBackend('https://api.example.com');
     const controller = new AbortController();

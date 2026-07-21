@@ -52,6 +52,11 @@ jest.mock('@/data/beerCheckinsQueue', () => ({
   enqueueBeerCheckInOp: (op: unknown) => enqueueBeerCheckInOp(op),
 }));
 
+const suggestBeerBrands = jest.fn();
+jest.mock('@/data/beerSuggestionsClient', () => ({
+  suggestBeerBrands: (...args: unknown[]) => suggestBeerBrands(...(args as [])),
+}));
+
 const showToast = jest.fn();
 jest.mock('@/stores/toastStore', () => ({
   useToastStore: (selector: (s: { show: unknown }) => unknown) => selector({ show: showToast }),
@@ -103,6 +108,29 @@ function renderSheet(visible = true) {
 beforeEach(() => {
   jest.clearAllMocks();
   fetchBeerMemory.mockResolvedValue(null);
+  suggestBeerBrands.mockResolvedValue([]);
+});
+
+describe('BeerCheckInSheet - canonical beer suggestion', () => {
+  it('fills both canonical beer and brewery after choosing a likely match', async () => {
+    suggestBeerBrands.mockResolvedValue([
+      {
+        slug: 'radegast-ryze-horka-12',
+        name: 'Radegast Ryzí hořká 12°',
+        kind: 'product',
+        brandSlug: 'radegast',
+        brandName: 'Radegast',
+      },
+    ]);
+    const screen = renderSheet();
+
+    const label = t.useSuggestion('Radegast Ryzí hořká 12°');
+    await waitFor(() => expect(screen.getByLabelText(label)).toBeTruthy());
+    fireEvent.press(screen.getByLabelText(label));
+
+    expect(screen.getByDisplayValue('Radegast Ryzí hořká 12°')).toBeTruthy();
+    expect(screen.getByDisplayValue('Radegast')).toBeTruthy();
+  });
 });
 
 describe('BeerCheckInSheet — verdict tags', () => {

@@ -272,6 +272,31 @@ describe("fetchPubsNear — persistent snapshot cache", () => {
     expect(getPubById("mapy:cached-1")?.name).toBe("U Cache");
   });
 
+  it("keeps the primary offline snapshot when opt-in discovery cannot refresh", async () => {
+    await writeSnapshot({
+      pubs: SNAPSHOT_PUBS,
+      centerLat: PRAGUE.lat,
+      centerLng: PRAGUE.lng,
+      radiusKm: 25,
+      savedAt: Date.now(),
+    });
+    (searchPubsNear as jest.Mock).mockRejectedValueOnce(new Error("offline"));
+
+    await expect(
+      fetchPubsNear(PRAGUE.lat, PRAGUE.lng, undefined, {
+        radiusKm: 25,
+        includeOtherPlaces: true,
+      }),
+    ).rejects.toThrow("offline");
+
+    expect(getPubById("mapy:cached-1")?.name).toBe("U Cache");
+    expect(searchPubsNear).toHaveBeenCalledWith(PRAGUE.lat, PRAGUE.lng, 25, undefined, {
+      beerBrandKey: "",
+      amenityKeys: [],
+      includeOtherPlaces: true,
+    });
+  });
+
   it("ignores the unfiltered snapshot when a beer brand filter is active", async () => {
     await writeSnapshot({
       pubs: SNAPSHOT_PUBS,
@@ -547,6 +572,20 @@ describe("renameLocalPub", () => {
 });
 
 describe("findNearestPub", () => {
+  it("keeps reviewed other places opt-in and behind a primary pub", () => {
+    _init([
+      { id: "stand", name: "Stánek s výčepem", lat: 50.0, lng: 14.0, discoveryKind: "seasonal_stand" },
+      { id: "pub", name: "Hospoda", lat: 50.01, lng: 14.0, discoveryKind: "pub" },
+    ]);
+
+    expect(findNearestPub({ lat: 50.0, lng: 14.0 })?.id).toBe("pub");
+    expect(findNearestPub({ lat: 50.0, lng: 14.0, includeOtherPlaces: true })?.id).toBe("pub");
+
+    _init([{ id: "stand", name: "Stánek s výčepem", lat: 50.0, lng: 14.0, discoveryKind: "seasonal_stand" }]);
+    expect(findNearestPub({ lat: 50.0, lng: 14.0 })).toBeNull();
+    expect(findNearestPub({ lat: 50.0, lng: 14.0, includeOtherPlaces: true })?.id).toBe("stand");
+  });
+
   it("returns the pub at the exact same coordinates", () => {
     const pub = findNearestPub({ lat: 50.0822, lng: 14.4127 });
     expect(pub).not.toBeNull();
@@ -597,6 +636,17 @@ describe("findNearestPub", () => {
 });
 
 describe("findNearbyPubs", () => {
+  it("never offers secondary discovery places to counter and reminder callers", () => {
+    _init([
+      { id: "camp", name: "Kemp s pivem", lat: 50.0, lng: 14.0, discoveryKind: "campsite" },
+      { id: "pub", name: "Hospoda", lat: 50.001, lng: 14.0, discoveryKind: "pub" },
+    ]);
+
+    expect(findNearbyPubs({ lat: 50.0, lng: 14.0, limit: 5 }).map(({ pub }) => pub.id)).toEqual([
+      "pub",
+    ]);
+  });
+
   it("returns the nearest pubs sorted nearest-first with distances", () => {
     const result = findNearbyPubs({ lat: 50.0822, lng: 14.4127, limit: 3, maxKm: 5 });
     // Three Prague pubs within 5 km, nearest first (U Fleků at the query point).

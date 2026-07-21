@@ -26,6 +26,11 @@ import {
 const REST = 'Restaurace a pohostinství';
 const BAR = 'Bar';
 
+function requestJson(call: unknown[]): Record<string, unknown> {
+  const init = call[1] as RequestInit | undefined;
+  return JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+}
+
 describe('isAcceptablePubName — must KEEP (live data)', () => {
   it.each([
     // Village "Restaurace …" — often the only pub around; recall must hold.
@@ -168,6 +173,30 @@ describe('searchPubsNear — backend proxy only', () => {
     expect(pubs).toHaveLength(1);
     expect(pubs[0].name).toBe('Hospoda U Testu');
     expect(pubs[0].venueKind).toBe('pub');
+  });
+
+  it('requests and preserves reviewed other tap place metadata only when opted in', async () => {
+    setBackend('https://api.example.com');
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        items: [{
+          ...PUB_ITEM,
+          name: 'Kemp s výčepem',
+          label: 'Bar',
+          discoveryKind: 'campsite',
+        }],
+      }),
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const pubs = await searchPubsNear(50.08, 14.42, 25, undefined, {
+      includeOtherPlaces: true,
+    });
+
+    expect(calledUrls(fetchMock)[0]).toContain('include_other_places=true');
+    expect(pubs[0].discoveryKind).toBe('campsite');
   });
 
   it('maps cache-only nearby details onto the pub', async () => {
@@ -523,16 +552,22 @@ describe('geocodePubLocation', () => {
     expect(result).toEqual({ lat: 50.081, lng: 14.421, city: 'Praha', address: undefined, type: 'poi' });
     const calledUrl = new URL(String((fetchMock.mock.calls[0] as unknown[])[0]));
     expect(calledUrl.origin + calledUrl.pathname).toBe('https://api.example.com/v1/pubs/geocode');
-    expect(calledUrl.searchParams.get('query')).toBe('Hospoda U Testu, Praha');
-    expect(calledUrl.searchParams.get('lat')).toBe('50.08');
-    expect(calledUrl.searchParams.get('lng')).toBe('14.42');
+    expect((fetchMock.mock.calls[0] as unknown[])[1]).toEqual(expect.objectContaining({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    }));
+    expect(requestJson(fetchMock.mock.calls[0] as unknown[])).toEqual({
+      query: 'Hospoda U Testu, Praha',
+      lat: 50.08,
+      lng: 14.42,
+    });
+    expect(calledUrl.search).toBe('');
   });
 
   it('falls back to an address-only geocode when the named pub is not a Mapy POI', async () => {
     process.env.EXPO_PUBLIC_BACKEND_URL = 'https://api.example.com';
-    const fetchMock = jest.fn(async (url: string) => {
-      const parsed = new URL(String(url));
-      const query = parsed.searchParams.get('query');
+    const fetchMock = jest.fn(async (_url: string, init?: RequestInit) => {
+      const query = JSON.parse(String(init?.body ?? '{}')).query;
       return {
         ok: true,
         status: 200,
@@ -577,9 +612,7 @@ describe('geocodePubLocation', () => {
       address: 'Testovací 12',
       type: 'regional.address',
     });
-    const queries = fetchMock.mock.calls.map((call) =>
-      new URL(String((call as unknown[])[0])).searchParams.get('query'),
-    );
+    const queries = fetchMock.mock.calls.map((call) => requestJson(call as unknown[]).query);
     expect(queries).toEqual([
       'Hospoda mimo Mapy, Testovací 12, Praha',
       'Testovací 12, Praha',
@@ -741,9 +774,12 @@ describe('suggestPubLocations', () => {
     ]);
     const calledUrl = new URL(String((fetchMock.mock.calls[0] as unknown[])[0]));
     expect(calledUrl.origin + calledUrl.pathname).toBe('https://api.example.com/v1/pubs/suggest');
-    expect(calledUrl.searchParams.get('query')).toBe('Hospoda U Te');
-    expect(calledUrl.searchParams.get('lat')).toBe('50.08');
-    expect(calledUrl.searchParams.get('lng')).toBe('14.42');
+    expect(requestJson(fetchMock.mock.calls[0] as unknown[])).toEqual({
+      query: 'Hospoda U Te',
+      lat: 50.08,
+      lng: 14.42,
+    });
+    expect(calledUrl.search).toBe('');
   });
 
   it('does not call the backend for very short queries', async () => {
@@ -791,9 +827,12 @@ describe('suggestPubLocations', () => {
     ]);
     const calledUrl = new URL(String((fetchMock.mock.calls[0] as unknown[])[0]));
     expect(calledUrl.origin + calledUrl.pathname).toBe('https://api.example.com/v1/pubs/suggest');
-    expect(calledUrl.searchParams.get('query')).toBe('Hospoda U Te');
-    expect(calledUrl.searchParams.get('lat')).toBe('50.08');
-    expect(calledUrl.searchParams.get('lng')).toBe('14.42');
+    expect(requestJson(fetchMock.mock.calls[0] as unknown[])).toEqual({
+      query: 'Hospoda U Te',
+      lat: 50.08,
+      lng: 14.42,
+    });
+    expect(calledUrl.search).toBe('');
   });
 
   it('does not fall back to direct Mapy suggestions when the backend lookup is unavailable', async () => {

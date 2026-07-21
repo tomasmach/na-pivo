@@ -35,7 +35,7 @@ import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScroll
 import { ensureLocationPermission, openSystemSettings } from '@/compass/permissions';
 import { generateUuidV4 } from '@/data/account';
 import { buildAddedPubEntry } from '@/data/addedPubsClient';
-import { enqueueAddedPub } from '@/data/addedPubsQueue';
+import { enqueueAddedPub, enqueueAddedPubEdit } from '@/data/addedPubsQueue';
 import { clearPubsSnapshot, pubIdForCoords, upsertLocalPub } from '@/data/pubs';
 import { usePubStore } from '@/stores/pubStore';
 import { useToastStore } from '@/stores/toastStore';
@@ -71,6 +71,8 @@ export default function AddPubScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
+  const editedClientId = useMemo(() => parseStringParam(params.clientId), [params.clientId]);
+  const isEditing = editedClientId.length > 0;
   const bumpCatalogRevision = usePubStore((s) => s.bumpCatalogRevision);
   const showToast = useToastStore((s) => s.show);
 
@@ -84,25 +86,35 @@ export default function AddPubScreen() {
     [initialLat, initialLng],
   );
 
-  const [name, setName] = useState('');
-  const [city, setCity] = useState(parseStringParam(params.city));
-  const [address, setAddress] = useState('');
+  const initialName = useMemo(() => parseStringParam(params.name).trim(), [params.name]);
+  const initialCity = useMemo(() => parseStringParam(params.city).trim(), [params.city]);
+  const initialAddress = useMemo(() => parseStringParam(params.address).trim(), [params.address]);
+  const [name, setName] = useState(initialName);
+  const [city, setCity] = useState(initialCity);
+  const [address, setAddress] = useState(initialAddress);
   const [submitted, setSubmitted] = useState(false);
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState('');
   const [selectedLocation, setSelectedLocation] = useState<SelectedLocation | null>(null);
+  const nameChanged = name.trim() !== initialName;
+  const locationCorrectionSelected = selectedLocation !== null;
   const canSubmit =
     name.trim().length > 0 &&
-    city.trim().length > 0 &&
-    address.trim().length > 0 &&
-    selectedLocation !== null &&
+    (isEditing
+      ? (nameChanged || locationCorrectionSelected) &&
+        (!locationCorrectionSelected || (city.trim().length > 0 && address.trim().length > 0))
+      : city.trim().length > 0 && address.trim().length > 0 && locationCorrectionSelected) &&
     !locating &&
     !submitted;
-  const currentLocationSelected = selectedLocation?.source === 'current';
+  const currentLocationSelected = locationCorrectionSelected;
 
   const handleUseCurrentLocation = useCallback(async () => {
     if (currentLocationSelected) {
       setSelectedLocation(null);
+      if (isEditing) {
+        setCity(initialCity);
+        setAddress(initialAddress);
+      }
       setLocationError('');
       return;
     }
@@ -110,7 +122,9 @@ export default function AddPubScreen() {
     setLocating(true);
     setLocationError('');
     try {
-      let coords: Coordinates | null = initialCoords;
+      // Creation receives the compass' fresh position as a shortcut. A location
+      // correction deliberately requires a new fix taken at the pub.
+      let coords: Coordinates | null = isEditing ? null : initialCoords;
       if (!coords) {
         const permission = await ensureLocationPermission();
         if (permission !== 'granted') {
@@ -140,7 +154,7 @@ export default function AddPubScreen() {
     } finally {
       setLocating(false);
     }
-  }, [currentLocationSelected, initialCoords, showToast]);
+  }, [currentLocationSelected, initialAddress, initialCity, initialCoords, isEditing, showToast]);
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit) return;
@@ -151,46 +165,75 @@ export default function AddPubScreen() {
     const trimmedCity = city.trim();
     const trimmedAddress = address.trim();
 
-    const location = selectedLocation;
+    const location = selectedLocation ?? initialCoords;
 
-    if (!location) {
+    if (!isEditing && !location) {
       setSubmitted(false);
       setLocationError(cs.addPub.locationError);
       showToast(cs.addPub.locationError);
       return;
     }
 
-    const entry = buildAddedPubEntry(
-      {
+    if (location) {
+      upsertLocalPub({
+        id: pubIdForCoords(location.lat, location.lng),
         name: trimmedName,
         lat: location.lat,
         lng: location.lng,
         city: trimmedCity,
         address: trimmedAddress,
-      },
-      generateUuidV4(),
-    );
-
-    upsertLocalPub({
-      id: pubIdForCoords(location.lat, location.lng),
-      name: trimmedName,
-      lat: location.lat,
-      lng: location.lng,
-      city: trimmedCity,
-      address: trimmedAddress,
-      venueKind: 'pub',
+        venueKind: 'pub',
+      });
+      bumpCatalogRevision();
+      void clearPubsSnapshot();
+    }
+    const sync = isEditing
+      ? enqueueAddedPubEdit({
+          client_id: editedClientId,
+          ...(nameChanged ? { name: trimmedName } : {}),
+          ...(selectedLocation
+            ? {
+                lat: selectedLocation.lat,
+                lng: selectedLocation.lng,
+                city: trimmedCity,
+                address: trimmedAddress,
+              }
+            : {}),
+        })
+      : enqueueAddedPub(buildAddedPubEntry(
+          {
+            name: trimmedName,
+            lat: selectedLocation!.lat,
+            lng: selectedLocation!.lng,
+            city: trimmedCity,
+            address: trimmedAddress,
+          },
+          generateUuidV4(),
+        ));
+    void sync.then((state) => {
+      bumpCatalogRevision();
+      showToast(
+        state === 'synced'
+          ? isEditing
+            ? cs.addPub.editSavedToast
+            : cs.addPub.savedToast
+          : state === 'failed'
+            ? cs.addPub.failedToast
+            : cs.addPub.queuedToast,
+      );
     });
-    bumpCatalogRevision();
-    void clearPubsSnapshot();
-    void enqueueAddedPub(entry).then(() => bumpCatalogRevision());
     void fireSuccessHaptic();
-    showToast(cs.addPub.savedToast);
+    showToast(isEditing ? cs.addPub.editQueuedToast : cs.addPub.queuedToast);
     router.back();
   }, [
     address,
     bumpCatalogRevision,
     canSubmit,
     city,
+    editedClientId,
+    initialCoords,
+    isEditing,
+    nameChanged,
     name,
     router,
     selectedLocation,
@@ -210,7 +253,7 @@ export default function AddPubScreen() {
           <ChevronLeftIcon size={22} color={Colors.foam} />
         </Pressable>
 
-        <Text style={styles.headerTitle}>{cs.addPub.title}</Text>
+        <Text style={styles.headerTitle}>{isEditing ? cs.addPub.editTitle : cs.addPub.title}</Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -233,14 +276,14 @@ export default function AddPubScreen() {
             <MapPinIcon size={18} color={Colors.amber} />
           </View>
           <Text style={styles.intro} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.addPub.intro}
+            {isEditing ? cs.addPub.editIntro : cs.addPub.intro}
           </Text>
         </View>
 
         <View style={styles.locationCard}>
-          <Text style={styles.locationHeader}>{cs.addPub.locationHeader}</Text>
+          <Text style={styles.locationHeader}>{isEditing ? cs.addPub.editLocationHeader : cs.addPub.locationHeader}</Text>
           <Text style={styles.locationBody} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.addPub.locationBody}
+            {isEditing ? cs.addPub.editLocationBody : cs.addPub.locationBody}
           </Text>
           <Pressable
               onPress={() => void handleUseCurrentLocation()}
@@ -273,14 +316,14 @@ export default function AddPubScreen() {
                   style={styles.currentLocationTitle}
                   maxFontSizeMultiplier={FontScaleCap.body}
                 >
-                  {locating ? cs.addPub.locating : cs.addPub.useCurrentLocation}
+                  {locating ? cs.addPub.locating : isEditing ? cs.addPub.editUseCurrentLocation : cs.addPub.useCurrentLocation}
                 </Text>
                 <Text
                   style={styles.currentLocationBody}
                   maxFontSizeMultiplier={FontScaleCap.body}
                   numberOfLines={3}
                 >
-                  {cs.addPub.useCurrentLocationHint}
+                  {isEditing ? cs.addPub.editUseCurrentLocationHint : cs.addPub.useCurrentLocationHint}
                 </Text>
               </View>
               <View
@@ -336,31 +379,32 @@ export default function AddPubScreen() {
           )}
         </View>
 
-        <View style={styles.twoColumn}>
-          <View style={styles.column}>
-            <Text style={styles.label}>{cs.addPub.cityLabel}</Text>
-            <TextInput
-              style={styles.input}
-              value={city}
-              onChangeText={setCity}
-              placeholder={cs.addPub.cityPlaceholder}
-              placeholderTextColor={Colors.mutedText}
-              maxLength={128}
-              accessibilityLabel={cs.a11y.addPubCityInput}
-            />
-          </View>
-          <View style={styles.column}>
-            <Text style={styles.label}>{cs.addPub.addressLabel}</Text>
-            <TextInput
-              style={styles.input}
-              value={address}
-              onChangeText={setAddress}
-              placeholder={cs.addPub.addressPlaceholder}
-              placeholderTextColor={Colors.mutedText}
-              maxLength={255}
-              accessibilityLabel={cs.a11y.addPubAddressInput}
-            />
-          </View>
+        <View style={styles.fieldGroup}>
+          <Text style={styles.label}>{cs.addPub.cityLabel}</Text>
+          <TextInput
+            style={[styles.input, isEditing && !locationCorrectionSelected && styles.inputDisabled]}
+            value={city}
+            onChangeText={setCity}
+            editable={!isEditing || locationCorrectionSelected}
+            placeholder={cs.addPub.cityPlaceholder}
+            placeholderTextColor={Colors.mutedText}
+            maxLength={128}
+            accessibilityLabel={cs.a11y.addPubCityInput}
+          />
+        </View>
+
+        <View style={styles.fieldGroup}>
+          <Text style={styles.label}>{cs.addPub.addressLabel}</Text>
+          <TextInput
+            style={[styles.input, isEditing && !locationCorrectionSelected && styles.inputDisabled]}
+            value={address}
+            onChangeText={setAddress}
+            editable={!isEditing || locationCorrectionSelected}
+            placeholder={cs.addPub.addressPlaceholder}
+            placeholderTextColor={Colors.mutedText}
+            maxLength={255}
+            accessibilityLabel={cs.a11y.addPubAddressInput}
+          />
         </View>
 
         {!!locationError && (
@@ -371,9 +415,9 @@ export default function AddPubScreen() {
 
         <View style={styles.submitButton}>
           <GlowButton
-            label={submitted ? cs.addPub.saving : cs.addPub.save}
+            label={submitted ? cs.addPub.saving : isEditing ? cs.addPub.editSave : cs.addPub.save}
             onPress={handleSubmit}
-            glow={canSubmit ? 'soft' : 'none'}
+            glow="none"
             accessibilityLabel={cs.a11y.addPubSaveButton}
           />
           {!canSubmit && <View style={styles.submitDisabledOverlay} />}
@@ -498,17 +542,13 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     backgroundColor: Colors.stout2,
     paddingHorizontal: 14,
-    fontFamily: Fonts.ui.medium,
+    fontFamily: Fonts.ui.regular,
     fontSize: 16,
+    letterSpacing: 0,
     color: Colors.foam,
   },
-  twoColumn: {
-    flexDirection: 'row',
-    gap: Spacing.md,
-  },
-  column: {
-    flex: 1,
-    gap: Spacing.sm,
+  inputDisabled: {
+    opacity: 0.55,
   },
   locationCard: {
     overflow: 'hidden',

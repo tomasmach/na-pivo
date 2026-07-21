@@ -19,6 +19,7 @@ import {
   Pressable,
   TextInput,
   ActivityIndicator,
+  Platform,
   StyleSheet,
   type KeyboardTypeOptions,
   type TextInputProps,
@@ -481,13 +482,20 @@ export default function AuthScreen() {
             />
           )}
           {googleConfigured && (
-            <SocialButton
-              label={cs.account.continueWithGoogle}
-              icon={<GoogleIcon size={20} color={Colors.foam} />}
-              onPress={() => handleSocial('google')}
-              accessibilityLabel={cs.a11y.authSignInGoogle}
-              disabled={busy != null}
-            />
+            <>
+              <SocialButton
+                label={cs.account.continueWithGoogle}
+                icon={<GoogleIcon size={20} color={Colors.foam} />}
+                onPress={() => handleSocial('google')}
+                accessibilityLabel={cs.a11y.authSignInGoogle}
+                disabled={busy != null}
+              />
+              {Platform.OS === 'android' ? (
+                <Text style={styles.googleHelp}>
+                  Google účet je volitelná cesta k přihlášení a synchronizaci. Případné ověření věku řeší Google Play; Na pivo nevidí datum narození ani doklady.
+                </Text>
+              ) : null}
+            </>
           )}
       </KeyboardAwareScrollView>
     </View>
@@ -501,6 +509,14 @@ const styles = StyleSheet.create({
   },
   flex: {
     flex: 1,
+  },
+  googleHelp: {
+    marginTop: Spacing.xs,
+    fontFamily: Fonts.ui.regular,
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: Colors.mutedText,
+    textAlign: 'center',
   },
 
   // ── Header ──

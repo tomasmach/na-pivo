@@ -59,6 +59,7 @@ import {
   MailIcon,
   MessageSquareIcon,
   MapPinIcon,
+  HouseIcon,
   StarIcon,
   CheckIcon,
 } from '@/components/shared/IconGlyph';
@@ -485,6 +486,8 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
 
   const maxDistanceKm = useSettingsStore((s) => s.maxDistanceKm);
+  const homePoint = useSettingsStore((s) => s.homePoint);
+  const navigationProvider = useSettingsStore((s) => s.navigationProvider);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
   const soundEnabled = useSettingsStore((s) => s.soundEnabled);
@@ -499,6 +502,7 @@ export default function SettingsScreen() {
     (s) => s.beerCountReminderIntervalMinutes,
   );
   const setMaxDistanceKm = useSettingsStore((s) => s.setMaxDistanceKm);
+  const setNavigationProvider = useSettingsStore((s) => s.setNavigationProvider);
   const setHapticEnabled = useSettingsStore((s) => s.setHapticEnabled);
   const setSoundEnabled = useSettingsStore((s) => s.setSoundEnabled);
   const setWaterNudgeEnabled = useSettingsStore((s) => s.setWaterNudgeEnabled);
@@ -713,6 +717,42 @@ export default function SettingsScreen() {
           />
         </View>
 
+        <View style={[styles.card, styles.cardNoPaddingV]}>
+          <AboutRow
+            icon={<HouseIcon size={18} color={Colors.foamMuted} />}
+            title="Domovský bod"
+            rightLabel={homePoint ? 'Nastavený' : 'Nenastavený'}
+            onPress={() => router.push('/home-point' as Href)}
+          />
+          <View style={[styles.navigationRow, styles.prefRowBorderTop]}>
+            <View style={styles.iconWell}><MapPinIcon size={18} color={Colors.foamMuted} /></View>
+            <View style={styles.navigationText}>
+              <Text style={styles.prefTitle}>Navigace</Text>
+              <Text style={styles.prefSubtitle}>Kam se otevře cesta k hospodě i domů</Text>
+            </View>
+            <View style={styles.navigationSegment}>
+              {(['google', 'mapy'] as const).map((provider) => {
+                const selected = navigationProvider === provider;
+                return (
+                  <Pressable
+                    key={provider}
+                    onPress={() => setNavigationProvider(provider)}
+                    style={[styles.navigationOption, selected && styles.navigationOptionSelected]}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: selected }}
+                    accessibilityLabel={provider === 'google' ? 'Google Maps' : 'Mapy.com'}
+                  >
+                    <Text style={[styles.navigationOptionText, selected && styles.navigationOptionTextSelected]}>
+                      {provider === 'google' ? 'Google' : 'Mapy'}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+          <Text style={styles.locationPrivacy}>Domov zůstává jen v telefonu. Trasy ani historii polohy aplikace neukládá.</Text>
+        </View>
+
         {/* ── App preferences ── */}
         <SectionHeader label={cs.settings.sections.app} />
         <View style={[styles.card, styles.cardNoPaddingV]}>
@@ -779,6 +819,12 @@ export default function SettingsScreen() {
           title={cs.settings.addPub}
           subtitle={cs.settings.addPubCtaSubtitle}
           onPress={() => router.push('/add-pub' as Href)}
+        />
+        <ActionCta
+          icon={<StarIcon size={20} color={Colors.amber} />}
+          title={cs.addPub.openMyPubs}
+          subtitle={cs.addPub.openMyPubsHint}
+          onPress={() => router.push('/my-added-pubs' as Href)}
         />
         <ActionCta
           icon={<MessageSquareIcon size={20} color={Colors.amber} />}
@@ -1144,6 +1190,54 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: Radius.pill,
     backgroundColor: Colors.foam,
+  },
+
+  // ── Local navigation ──
+  navigationRow: {
+    minHeight: 70,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  navigationText: {
+    flex: 1,
+  },
+  navigationSegment: {
+    flexDirection: 'row',
+    padding: 3,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.stout3,
+  },
+  navigationOption: {
+    minHeight: 30,
+    minWidth: 54,
+    paddingHorizontal: 8,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navigationOptionSelected: {
+    backgroundColor: Colors.amber,
+  },
+  navigationOptionText: {
+    fontFamily: Fonts.ui.bold,
+    fontSize: 12,
+    color: Colors.mutedText,
+  },
+  navigationOptionTextSelected: {
+    color: Colors.stout,
+  },
+  locationPrivacy: {
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    fontFamily: Fonts.ui.regular,
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: Colors.mutedText,
   },
 
   // ── About rows ──

@@ -9,7 +9,12 @@ from django.test.utils import CaptureQueriesContext
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from pubs.beer_catalog import BeerCatalogMatchCache, match_beer, normalize_beer_payload
+from pubs.beer_catalog import (
+    BeerCatalogMatchCache,
+    match_beer,
+    match_beer_identity,
+    normalize_beer_payload,
+)
 from pubs.models import BeerBrand, BeerProduct
 
 from .query_helpers import count_beer_catalog_selects
@@ -42,6 +47,26 @@ def test_suggest_matches_alias_without_diacritics(client):
     assert resp.status_code == status.HTTP_200_OK
     names = [item["name"] for item in resp.json()["suggestions"]]
     assert "Zlatý Bažant 10°" in names
+
+
+@pytest.mark.django_db
+def test_suggest_uses_separate_brewery_and_beer_fields(client):
+    resp = client.get(
+        "/v1/beer-brands/suggest",
+        {"q": "12", "brewery": "Radegast", "limit": 5},
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["suggestions"][0]["slug"] == "radegast-ryze-horka-12"
+
+
+@pytest.mark.django_db
+def test_match_identity_normalizes_brewery_and_beer_combination():
+    match = match_beer_identity("12", "Radegast")
+
+    assert match is not None
+    assert match.product is not None
+    assert match.product.key == "radegast-ryze-horka-12"
 
 
 @pytest.mark.django_db

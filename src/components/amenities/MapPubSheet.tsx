@@ -57,6 +57,7 @@ import {
   Trash2Icon,
   ChevronRightIcon,
   PencilIcon,
+  MapPinIcon,
 } from '@/components/shared/IconGlyph';
 import { CompletenessRing } from '@/components/amenities/CompletenessRing';
 import { Toast } from '@/components/shared/Toast';
@@ -107,6 +108,7 @@ import { FALLBACK_XP_RULES } from '@/data/mapperXp';
 import { pubIdentityKey } from '@/data/pubIdentity';
 import { formatPrice, type PriceCurrency } from '@/utils/currency';
 import { isPriceApproximate, isPriceFresh, priceAgeLabel } from '@/utils/priceAge';
+import { PubEventsSection } from '@/pubEvents/PubEventsSection';
 
 const SECTION_LABEL: Record<AmenitySection, string> = {
   seating: cs.mapPub.sectionSeating,
@@ -532,6 +534,21 @@ export function MapPubSheet({
     setRenameOpen(true);
   }, [info, displayName, setRenameDraft, setRenameOpen]);
 
+  const handleEditAddedPub = useCallback(() => {
+    if (!info?.userAddedClientId) return;
+    router.push({
+      pathname: '/add-pub',
+      params: {
+        clientId: info.userAddedClientId,
+        name: displayName,
+        city: info.city ?? '',
+        address: info.address ?? '',
+        lat: String(info.lat),
+        lng: String(info.lng),
+      },
+    });
+  }, [displayName, info, router]);
+
   const handleRenameCancel = useCallback(() => {
     if (renameSubmitting) return;
     setRenameOpen(false);
@@ -683,8 +700,24 @@ export function MapPubSheet({
                     filled
                     onPress={handleRenamePress}
                   />
+                  {info?.userAddedClientId && (
+                    <InfoFactRow
+                      icon={<MapPinIcon size={24} color={Colors.amber} />}
+                      label={cs.addPub.edit}
+                      value={cs.addPub.editFromDetailHint}
+                      filled
+                      onPress={handleEditAddedPub}
+                    />
+                  )}
                 </View>
               )}
+
+              <PubEventsSection
+                visible={showSheet}
+                pubKey={pubKey}
+                pubName={displayName}
+                info={info}
+              />
 
               {grouped.map(({ section, items }) => (
                 <View key={section}>

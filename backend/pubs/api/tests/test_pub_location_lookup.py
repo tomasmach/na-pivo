@@ -149,6 +149,20 @@ def test_geocode_miss_uses_google_fallback(client):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("path", ["/v1/pubs/suggest", "/v1/pubs/geocode"])
+def test_lookup_accepts_private_post_body_without_dropping_get_compatibility(client, path):
+    pub = _directory_pub()
+
+    post_response = client.post(path, data={"query": _QUERY}, format="json")
+    get_response = client.get(path, data={"query": _QUERY})
+
+    assert post_response.status_code == status.HTTP_200_OK
+    assert get_response.status_code == status.HTTP_200_OK
+    assert post_response.json() == get_response.json()
+    assert post_response.json()["items"][0]["id"] == f"local:{pub.pk}"
+
+
+@pytest.mark.django_db
 def test_geocode_miss_requires_configured_google_key(client, settings):
     settings.GOOGLE_MAPS_SERVER_API_KEY = ""
     factory, source = _google_source()

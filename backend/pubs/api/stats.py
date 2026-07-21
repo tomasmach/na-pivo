@@ -25,10 +25,10 @@ from zoneinfo import ZoneInfo
 
 from pubs.models import Account, DrinkLog
 
-# The app's drinking day rolls at 04:00 *device-local*. Our users are CZ/SK, so
-# we bucket server-side in Europe/Prague to line up with what the device shows
-# locally; revisit this assumption if the audience ever spans other zones.
-_DRINKING_DAY_TZ = ZoneInfo("Europe/Prague")
+# The app's drinking day rolls at 04:00 device-local. New clients send their
+# IANA timezone; older clients and invalid values keep the CZ/SK default.
+_DEFAULT_TIMEZONE_NAME = "Europe/Prague"
+_DRINKING_DAY_TZ = ZoneInfo(_DEFAULT_TIMEZONE_NAME)
 _DRINKING_DAY_CUTOFF = timedelta(hours=4)
 _TOP_PUBS_LIMIT = 8
 
@@ -47,10 +47,22 @@ def _as_utc(value: datetime) -> datetime:
     return value.astimezone(UTC)
 
 
-def drinking_day(drank_at: datetime) -> date:
-    """The 04:00-rolling drinking day for ``drank_at``, bucketed in Europe/Prague."""
+def resolve_stats_timezone(timezone_name: str | None) -> tuple[str, ZoneInfo]:
+    """Resolve a client IANA zone, falling back to the product's CZ/SK default."""
 
-    local = _as_utc(drank_at).astimezone(_DRINKING_DAY_TZ)
+    candidate = (timezone_name or "").strip()
+    if not candidate or len(candidate) > 64:
+        return _DEFAULT_TIMEZONE_NAME, _DRINKING_DAY_TZ
+    try:
+        return candidate, ZoneInfo(candidate)
+    except (KeyError, ValueError):
+        return _DEFAULT_TIMEZONE_NAME, _DRINKING_DAY_TZ
+
+
+def drinking_day(drank_at: datetime, tz: ZoneInfo = _DRINKING_DAY_TZ) -> date:
+    """The 04:00-rolling drinking day for ``drank_at`` in ``tz``."""
+
+    local = _as_utc(drank_at).astimezone(tz)
     return (local - _DRINKING_DAY_CUTOFF).date()
 
 
@@ -81,18 +93,43 @@ def _empty_payload() -> dict:
             "fastest_beer_seconds": None,
             "longest_evening_seconds": None,
         },
+        "periods": {
+            "timezone": _DEFAULT_TIMEZONE_NAME,
+            "months": [],
+            "years": [],
+        },
     }
 
 
-def compute_my_stats(account: Account) -> dict:
+def _period_payload(
+    period: str,
+    *,
+    beers: int,
+    evening_keys: set[tuple[str | None, date]],
+    spent_czk: int,
+) -> dict:
+    evenings = len(evening_keys)
+    return {
+        "period": period,
+        "beers": beers,
+        "evenings": evenings,
+        "spent_czk": spent_czk,
+        "average_beers_per_evening": round(beers / evenings, 1) if evenings else 0,
+    }
+
+
+def compute_my_stats(account: Account, *, timezone_name: str | None = None) -> dict:
     """Aggregate ``account``'s drinks into the ``/v1/me/stats`` payload.
 
     Pure and read-only. Pulls the (small) per-user drink history ascending by
     ``drank_at`` — covered by the ``(account, drank_at)`` index — and folds it in
-    Python so the rules stay aligned with the device model. Returns the empty
-    payload (200, never 404) when the account has logged nothing.
+    Python so the rules stay aligned with the device model. ``timezone_name``
+    affects drinking-day and period buckets without changing the wire shape for
+    older clients. Returns the empty payload (200, never 404) when the account
+    has logged nothing.
     """
 
+    resolved_timezone_name, stats_tz = resolve_stats_timezone(timezone_name)
     drinks = list(
         account.drinks.only(
             "cache_key",
@@ -103,7 +140,9 @@ def compute_my_stats(account: Account) -> dict:
         ).order_by("drank_at")
     )
     if not drinks:
-        return _empty_payload()
+        payload = _empty_payload()
+        payload["periods"]["timezone"] = resolved_timezone_name
+        return payload
 
     # Fold the ascending drinks into evenings (cache_key, drinking_day) and
     # per-pub tallies. Insertion order = ascending drank_at, so within each
@@ -112,6 +151,8 @@ def compute_my_stats(account: Account) -> dict:
     evening_beer_times: OrderedDict[tuple[str | None, date], list[datetime]] = OrderedDict()
     evening_name: dict[tuple[str | None, date], str | None] = {}
     pubs: OrderedDict[str, dict] = OrderedDict()
+    months: OrderedDict[str, dict] = OrderedDict()
+    years: OrderedDict[str, dict] = OrderedDict()
 
     total_spent = 0
     total_beers = 0
@@ -122,13 +163,23 @@ def compute_my_stats(account: Account) -> dict:
         if is_beer:
             total_beers += 1
 
-        ekey = (drink.cache_key, drinking_day(drink.drank_at))
+        day = drinking_day(drink.drank_at, stats_tz)
+        ekey = (drink.cache_key, day)
         evening_times.setdefault(ekey, []).append(at)
         if is_beer:
             evening_beer_times.setdefault(ekey, []).append(at)
         # Non-pub evenings participate in day-based records, but never pretend
         # to have a pub name.
         evening_name[ekey] = drink.name if drink.cache_key is not None else None
+
+        for period_map, period in ((months, day.strftime("%Y-%m")), (years, str(day.year))):
+            summary = period_map.setdefault(
+                period,
+                {"beers": 0, "evening_keys": set(), "spent_czk": 0},
+            )
+            summary["beers"] += int(is_beer)
+            summary["evening_keys"].add(ekey)
+            summary["spent_czk"] += drink.price_czk or 0
 
         if drink.cache_key is None:
             continue
@@ -210,6 +261,16 @@ def compute_my_stats(account: Account) -> dict:
         ),
     }
 
+    periods = {
+        "timezone": resolved_timezone_name,
+        "months": [
+            _period_payload(period, **summary) for period, summary in months.items()
+        ],
+        "years": [
+            _period_payload(period, **summary) for period, summary in years.items()
+        ],
+    }
+
     return {
         "total_beers": total_beers,
         "total_evenings": len(evening_times),
@@ -218,4 +279,5 @@ def compute_my_stats(account: Account) -> dict:
         "first_drink_at": _as_utc(drinks[0].drank_at).isoformat(),  # ascending → oldest
         "top_pubs": top_pubs_payload,
         "records": records,
+        "periods": periods,
     }

@@ -17,9 +17,9 @@
  *   • the gap between two consecutive drinks is the "drinking pace"; the average
  *     gap = duration / (beers − 1), and the smallest gap = the fastest beer.
  *
- * Deliberately restrained: lifetime totals, personal records, and per-pub counts
- * — the everyday "how was last night" surface. The big yearly/monthly
- * retrospective is intentionally left for the year-end Pivní Wrapped.
+ * Deliberately restrained: lifetime totals, personal records, per-pub counts,
+ * and lightweight monthly/yearly trends for everyday use. This is not the
+ * narrative year-end Pivní Wrapped.
  */
 
 import {
@@ -27,6 +27,7 @@ import {
   sessionTotalCzk,
   sessionLastActivityMs,
   allSessionsNewestFirst,
+  drinkingDayKey,
   type TallySession,
 } from '@/stores/tallyStore';
 import { eveningDayRelation } from '@/myBeers/eveningModel';
@@ -83,6 +84,28 @@ export interface PubTally {
   spentCzk: number;
   /** ISO of the most recent drink here. */
   lastAt: string;
+}
+
+/** One calendar-period summary, bucketed by the local 04:00 drinking day. */
+export interface PeriodStat {
+  /** `YYYY-MM` for a month or `YYYY` for a year. */
+  period: string;
+  beers: number;
+  evenings: number;
+  spentCzk: number;
+  averageBeersPerEvening: number;
+}
+
+export interface PeriodStats {
+  months: PeriodStat[];
+  years: PeriodStat[];
+}
+
+interface MutablePeriodStat {
+  period: string;
+  beers: number;
+  evenings: number;
+  spentCzk: number;
 }
 
 /** Drink timestamps (epoch ms) in ascending order, dropping any unparseable. */
@@ -196,6 +219,44 @@ export function computeLifetime(sessions: TallySession[]): LifetimeStats {
     distinctPubs: pubKeys.size,
     totalSpentCzk,
   };
+}
+
+/** Monthly and yearly summaries for the locally retained history. */
+export function computePeriodStats(sessions: TallySession[]): PeriodStats {
+  const months = new Map<string, MutablePeriodStat>();
+  const years = new Map<string, MutablePeriodStat>();
+
+  for (const session of sessions) {
+    const startedAt = new Date(session.startedAt);
+    if (!Number.isFinite(startedAt.getTime())) continue;
+    const day = drinkingDayKey(startedAt);
+    const month = day.slice(0, 7);
+    const year = day.slice(0, 4);
+    const beers = sessionCount(session);
+    const spentCzk = sessionTotalCzk(session);
+
+    for (const [target, period] of [[months, month], [years, year]] as const) {
+      const current = target.get(period);
+      if (current) {
+        current.beers += beers;
+        current.evenings += 1;
+        current.spentCzk += spentCzk;
+      } else {
+        target.set(period, { period, beers, evenings: 1, spentCzk });
+      }
+    }
+  }
+
+  const finish = (values: Iterable<MutablePeriodStat>): PeriodStat[] =>
+    [...values]
+      .sort((a, b) => a.period.localeCompare(b.period))
+      .map((period) => ({
+        ...period,
+        averageBeersPerEvening:
+          period.evenings > 0 ? Math.round((period.beers / period.evenings) * 10) / 10 : 0,
+      }));
+
+  return { months: finish(months.values()), years: finish(years.values()) };
 }
 
 /** Personal bests across every evening. */

@@ -7,6 +7,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
+from django.core.cache import cache
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -29,6 +30,7 @@ def client():
 
 @pytest.fixture(autouse=True)
 def _generous_throttle(settings):
+    cache.clear()
     settings.REST_FRAMEWORK = {
         **settings.REST_FRAMEWORK,
         "DEFAULT_THROTTLE_RATES": {
@@ -37,6 +39,8 @@ def _generous_throttle(settings):
             "added_pubs": "10000/min",
         },
     }
+    yield
+    cache.clear()
 
 
 def _register(client: APIClient, device_id: str = _DEVICE_ID) -> str:
@@ -373,15 +377,134 @@ def test_rename_user_added_pub_requires_account_token(client):
 
 
 @pytest.mark.django_db
+def test_list_user_added_pubs_only_returns_own_rows(client):
+    first_token = _register(client)
+    second_token = _register(client, "11111111-2222-3333-4444-555555555555")
+    client.post("/v1/pubs", data=_payload(), format="json", **_auth(first_token))
+    client.post(
+        "/v1/pubs",
+        data=_payload(
+            client_id="aaaaaaaa-0000-0000-0000-000000000001",
+            name="Cizí hospoda",
+        ),
+        format="json",
+        **_auth(second_token),
+    )
+
+    resp = client.get("/v1/pubs", **_auth(first_token))
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert len(resp.json()) == 1
+    assert resp.json()[0]["client_id"] == _CLIENT_ID
+
+
+@pytest.mark.django_db
+def test_owner_can_correct_verified_address_and_exact_pin(client, settings):
+    settings.USER_ADDED_PUB_LOCATION_VERIFY_MAX_METERS = 500
+    token = _register(client)
+    create = client.post("/v1/pubs", data=_payload(), format="json", **_auth(token))
+    assert create.status_code == status.HTTP_201_CREATED
+    exact_lat = 50.0820
+    exact_lng = 14.4190
+    resolved = ResolvedPubLocation(
+        name=_NAME,
+        lat=50.0821,
+        lng=14.4191,
+        city="Praha 1",
+        address="Opravená 9",
+        result_type="street_address",
+        place_id="ChIJ-corrected-pub",
+    )
+
+    with patch(
+        "pubs.api.views.resolve_user_added_pub_location",
+        return_value=resolved,
+    ) as resolver:
+        resp = client.patch(
+            f"/v1/pubs/{_CLIENT_ID}",
+            data={
+                "address": "Opravená 9",
+                "city": "Praha",
+                "lat": exact_lat,
+                "lng": exact_lng,
+            },
+            format="json",
+            **_auth(token),
+        )
+
+    assert resp.status_code == status.HTTP_200_OK
+    resolver.assert_called_once_with(
+        name=_NAME,
+        address="Opravená 9",
+        city="Praha",
+        lat=exact_lat,
+        lng=exact_lng,
+    )
+    pub = UserAddedPub.objects.get()
+    assert pub.lat == exact_lat
+    assert pub.lng == exact_lng
+    assert pub.cache_key == geohash8(exact_lat, exact_lng)
+    assert pub.address == "Opravená 9"
+    assert pub.city == "Praha 1"
+    assert pub.google_place_id == "ChIJ-corrected-pub"
+    assert pub.location_synced_at is not None
+
+
+@pytest.mark.django_db
+def test_location_correction_rejects_pin_far_from_verified_address(client, settings):
+    settings.USER_ADDED_PUB_LOCATION_VERIFY_MAX_METERS = 500
+    token = _register(client)
+    client.post("/v1/pubs", data=_payload(), format="json", **_auth(token))
+    resolved = ResolvedPubLocation(
+        name=_NAME,
+        lat=49.1951,
+        lng=16.6068,
+        city="Brno",
+        address="Opravená 9",
+        result_type="street_address",
+    )
+
+    with patch("pubs.api.views.resolve_user_added_pub_location", return_value=resolved):
+        resp = client.patch(
+            f"/v1/pubs/{_CLIENT_ID}",
+            data={"address": "Opravená 9", "city": "Brno", "lat": _LAT, "lng": _LNG},
+            format="json",
+            **_auth(token),
+        )
+
+    assert resp.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert resp.json()["code"] == "location_mismatch"
+    pub = UserAddedPub.objects.get()
+    assert pub.lat == _LAT
+    assert pub.lng == _LNG
+    assert pub.address == "Testovací 12"
+
+
+@pytest.mark.django_db
+def test_foreign_location_correction_is_hidden_and_does_not_geocode(client):
+    owner_token = _register(client)
+    foreign_token = _register(client, "11111111-2222-3333-4444-555555555555")
+    client.post("/v1/pubs", data=_payload(), format="json", **_auth(owner_token))
+
+    with patch("pubs.api.views.resolve_user_added_pub_location") as resolver:
+        resp = client.patch(
+            f"/v1/pubs/{_CLIENT_ID}",
+            data={"address": "Cizí 1", "city": "Brno", "lat": 49.2, "lng": 16.6},
+            format="json",
+            **_auth(foreign_token),
+        )
+
+    assert resp.status_code == status.HTTP_404_NOT_FOUND
+    resolver.assert_not_called()
+    assert UserAddedPub.objects.get().address == "Testovací 12"
+
+
+@pytest.mark.django_db
 def test_add_pub_validation(client):
     token = _register(client)
 
-    bad_name = client.post(
-        "/v1/pubs", data=_payload(name="   "), format="json", **_auth(token)
-    )
-    bad_lat = client.post(
-        "/v1/pubs", data=_payload(lat=999), format="json", **_auth(token)
-    )
+    bad_name = client.post("/v1/pubs", data=_payload(name="   "), format="json", **_auth(token))
+    bad_lat = client.post("/v1/pubs", data=_payload(lat=999), format="json", **_auth(token))
     incomplete_location = _payload()
     incomplete_location.pop("lat")
     incomplete_location.pop("lng")

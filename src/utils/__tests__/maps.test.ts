@@ -1,4 +1,4 @@
-import { buildMapsUrl } from '../maps';
+import { buildMapsUrl, buildNavigationUrl } from '../maps';
 
 const simplePub = { name: 'U Fleků', lat: 50.0808, lng: 14.4178 };
 const czechPub = { name: 'U Zlatého Tygra', lat: 50.0857, lng: 14.4148 };
@@ -47,5 +47,21 @@ describe('buildMapsUrl', () => {
     });
     expect(url).toContain('query=50.0857%2C14.4148');
     expect(url).toContain('query_place_id=ChIJl-inTnyUC0cRw4Y0F76_uUE');
+  });
+});
+
+describe('buildNavigationUrl', () => {
+  it('passes only a destination to Google Maps', () => {
+    const url = buildNavigationUrl({ lat: 50.08, lng: 14.42 }, 'google');
+    expect(url).toBe('https://www.google.com/maps/dir/?api=1&destination=50.08%2C14.42&travelmode=walking');
+    expect(url).not.toContain('origin');
+  });
+
+  it('uses longitude-latitude order for Mapy.com routing', () => {
+    const url = buildNavigationUrl({ lat: 50.08, lng: 14.42 }, 'mapy');
+    expect(url).toContain('https://mapy.com/fnc/v1/route?');
+    expect(url).toContain('end=14.42%2C50.08');
+    expect(url).toContain('routeType=foot_fast');
+    expect(url).not.toContain('start=');
   });
 });

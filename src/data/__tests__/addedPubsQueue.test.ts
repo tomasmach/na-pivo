@@ -1,227 +1,299 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { enqueueAddedPub, flushAddedPubsQueue, restoreQueuedAddedPubs } from '../addedPubsQueue';
-import { submitAddedPub, type AddedPubEntry } from '../addedPubsClient';
-import { clearPubsSnapshot, removeLocalPub, upsertLocalPub } from '../pubs';
+
+import {
+  enqueueAddedPubEdit,
+  enqueueAddedPub,
+  flushAddedPubsQueue,
+  loadAddedPubSubmissions,
+  retryAddedPub,
+  syncOwnAddedPubs,
+} from '../addedPubsQueue';
+import { fetchOwnAddedPubs, submitAddedPub, submitAddedPubEdit } from '../addedPubsClient';
+import { removeLocalPub, upsertLocalPub } from '../pubs';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
 
 jest.mock('../addedPubsClient', () => ({
-  submitAddedPub: jest.fn(async () => 'retry'),
-  buildAddedPubEntry: jest.requireActual('../addedPubsClient').buildAddedPubEntry,
+  submitAddedPub: jest.fn(),
+  submitAddedPubEdit: jest.fn(),
+  fetchOwnAddedPubs: jest.fn(async () => null),
 }));
 
 jest.mock('../pubs', () => ({
   clearPubsSnapshot: jest.fn(async () => undefined),
-  pubIdForCoords: (lat: number, lng: number) => `mapy:${lat.toFixed(5)},${lng.toFixed(5)}`,
+  pubIdForCoords: jest.fn((lat: number, lng: number) => `local:${lat}:${lng}`),
   removeLocalPub: jest.fn(),
   upsertLocalPub: jest.fn(),
 }));
 
-const STORAGE_KEY = 'na-pivo-added-pubs-queue';
-
-// Two distinct pubs whose coordinates fall in the SAME geohash-8 cell
-// (~38 m × 19 m). The old dedup keyed on the cell, so the second submit
-// silently overwrote the first; dedup must key on client_id instead.
-const PUB_A: AddedPubEntry = {
-  client_id: 'client-a',
-  name: 'Hospoda U Testu',
+const ENTRY = {
+  client_id: '9a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d',
+  name: 'Hospoda U Fronty',
   lat: 50.0812,
   lng: 14.4182,
   city: 'Praha',
   address: 'Testovací 12',
 };
 
-const PUB_B: AddedPubEntry = {
-  client_id: 'client-b',
-  name: 'Pivnice Za Rohem',
-  lat: 50.08121,
-  lng: 14.41821,
-  city: 'Praha',
-  address: 'Testovací 14',
-};
-
-async function readQueue(): Promise<AddedPubEntry[]> {
-  const raw = await AsyncStorage.getItem(STORAGE_KEY);
-  return raw ? JSON.parse(raw) : [];
-}
-
 beforeEach(async () => {
   jest.clearAllMocks();
   await AsyncStorage.clear();
 });
 
-describe('enqueueAddedPub', () => {
-  it('sends the pub and leaves the queue empty on success', async () => {
-    (submitAddedPub as jest.Mock).mockResolvedValue({ cacheKey: 'k', name: PUB_A.name, lat: PUB_A.lat, lng: PUB_A.lng });
+describe('added pub state registry', () => {
+  it('keeps a retryable submit visible as pending and syncs after connectivity returns', async () => {
+    (submitAddedPub as jest.Mock).mockResolvedValueOnce('retry');
 
-    await expect(enqueueAddedPub(PUB_A)).resolves.toBe(true);
-
-    expect(submitAddedPub).toHaveBeenCalledWith(PUB_A);
-    expect(upsertLocalPub).toHaveBeenCalledWith(
+    await expect(enqueueAddedPub(ENTRY)).resolves.toBe('pending');
+    await expect(loadAddedPubSubmissions()).resolves.toEqual([
       expect.objectContaining({
-        id: 'mapy:50.08120,14.41820',
-        name: PUB_A.name,
-        lat: PUB_A.lat,
-        lng: PUB_A.lng,
-        venueKind: 'pub',
+        client_id: ENTRY.client_id,
+        syncState: 'pending',
+        pendingOperation: 'create',
       }),
-    );
-    expect(clearPubsSnapshot).toHaveBeenCalled();
-    await expect(readQueue()).resolves.toEqual([]);
-  });
+    ]);
 
-  it('keeps a failed submit queued instead of dropping it', async () => {
-    (submitAddedPub as jest.Mock).mockResolvedValue('retry');
-
-    await expect(enqueueAddedPub(PUB_A)).resolves.toBe(false);
-
-    await expect(readQueue()).resolves.toEqual([PUB_A]);
-  });
-
-  it('drops a permanently rejected submit and removes the optimistic local pub', async () => {
-    (submitAddedPub as jest.Mock).mockResolvedValue('permanent-error');
-
-    await expect(enqueueAddedPub(PUB_A)).resolves.toBe(true);
-
-    expect(removeLocalPub).toHaveBeenCalledWith('mapy:50.08120,14.41820');
-    expect(clearPubsSnapshot).not.toHaveBeenCalled();
-    await expect(readQueue()).resolves.toEqual([]);
-  });
-
-  it('keeps two different pubs in the same geohash cell (regression: dedup by client_id, not cell)', async () => {
-    (submitAddedPub as jest.Mock).mockResolvedValue('retry');
-
-    await enqueueAddedPub(PUB_A);
-    await enqueueAddedPub(PUB_B);
-
-    const queue = await readQueue();
-    expect(queue).toHaveLength(2);
-    expect(queue.map((e) => e.client_id)).toEqual(['client-a', 'client-b']);
-  });
-
-  it('dedupes a retry of the same client_id (idempotent re-enqueue)', async () => {
-    (submitAddedPub as jest.Mock).mockResolvedValue('retry');
-
-    await enqueueAddedPub(PUB_A);
-    await enqueueAddedPub({ ...PUB_A, name: 'Hospoda U Testu (edit)' });
-
-    const queue = await readQueue();
-    expect(queue).toHaveLength(1);
-    expect(queue[0].client_id).toBe('client-a');
-    expect(queue[0].name).toBe('Hospoda U Testu (edit)');
-  });
-
-  it('trims the queue to the maximum length, keeping the newest entries', async () => {
-    (submitAddedPub as jest.Mock).mockResolvedValue('retry');
-
-    for (let i = 0; i < 35; i += 1) {
-      await enqueueAddedPub({ ...PUB_A, client_id: `client-${i}`, lat: 50.0812 + i * 0.01 });
-    }
-
-    const queue = await readQueue();
-    expect(queue).toHaveLength(30);
-    expect(queue[0].client_id).toBe('client-5');
-    expect(queue[queue.length - 1].client_id).toBe('client-34');
-  });
-});
-
-describe('flushAddedPubsQueue', () => {
-  it('re-sends queued pubs once the backend recovers and clears the queue', async () => {
-    (submitAddedPub as jest.Mock).mockResolvedValue('retry');
-    await enqueueAddedPub(PUB_A);
-    await enqueueAddedPub(PUB_B);
-    expect(await readQueue()).toHaveLength(2);
-
-    (submitAddedPub as jest.Mock).mockResolvedValue({ cacheKey: 'k', name: 'x', lat: 1, lng: 1 });
+    (submitAddedPub as jest.Mock).mockResolvedValueOnce({
+      clientId: ENTRY.client_id,
+      cacheKey: 'u2fkbnvy',
+      name: ENTRY.name,
+      lat: ENTRY.lat,
+      lng: ENTRY.lng,
+      city: ENTRY.city,
+      address: ENTRY.address,
+    });
     await flushAddedPubsQueue();
 
-    expect(submitAddedPub).toHaveBeenCalledWith(PUB_A);
-    expect(submitAddedPub).toHaveBeenCalledWith(PUB_B);
-    await expect(readQueue()).resolves.toEqual([]);
+    await expect(loadAddedPubSubmissions()).resolves.toEqual([
+      expect.objectContaining({ syncState: 'synced', pendingOperation: null }),
+    ]);
   });
 
-  it('keeps only the pubs that failed again', async () => {
-    (submitAddedPub as jest.Mock).mockResolvedValue('retry');
-    await enqueueAddedPub(PUB_A);
-    await enqueueAddedPub(PUB_B);
+  it('keeps a permanent rejection as failed and lets the user retry it', async () => {
+    (submitAddedPub as jest.Mock).mockResolvedValueOnce('permanent-error');
 
-    (submitAddedPub as jest.Mock).mockImplementation(
-      async (entry: AddedPubEntry) =>
-        entry.client_id === PUB_A.client_id ? { cacheKey: 'k', name: 'x', lat: 1, lng: 1 } : 'retry',
-    );
-    await flushAddedPubsQueue();
+    await expect(enqueueAddedPub(ENTRY)).resolves.toBe('failed');
+    await expect(loadAddedPubSubmissions()).resolves.toEqual([
+      expect.objectContaining({ syncState: 'failed', pendingOperation: 'create' }),
+    ]);
 
-    await expect(readQueue()).resolves.toEqual([PUB_B]);
+    (submitAddedPub as jest.Mock).mockResolvedValueOnce({
+      clientId: ENTRY.client_id,
+      cacheKey: 'u2fkbnvy',
+      name: ENTRY.name,
+      lat: ENTRY.lat,
+      lng: ENTRY.lng,
+      city: ENTRY.city,
+      address: ENTRY.address,
+    });
+    await expect(retryAddedPub(ENTRY.client_id)).resolves.toBe('synced');
   });
 
-  it('replaces the optimistic local position when the backend geocodes a better address', async () => {
+  it('migrates the legacy queue array into pending submissions', async () => {
+    await AsyncStorage.setItem('na-pivo-added-pubs-queue', JSON.stringify([ENTRY]));
+
+    await expect(loadAddedPubSubmissions()).resolves.toEqual([
+      expect.objectContaining({ syncState: 'pending', pendingOperation: 'create' }),
+    ]);
+  });
+
+  it('keeps two different additions instead of deduping by coordinates', async () => {
     (submitAddedPub as jest.Mock).mockResolvedValue('retry');
-    await enqueueAddedPub(PUB_A);
-    (submitAddedPub as jest.Mock).mockResolvedValue({
-      cacheKey: 'server-key',
-      name: PUB_A.name,
+    await enqueueAddedPub(ENTRY);
+    await enqueueAddedPub({ ...ENTRY, client_id: 'second-client', name: 'Hospoda vedle' });
+
+    const rows = await loadAddedPubSubmissions();
+    expect(rows.map((row) => row.client_id)).toEqual([ENTRY.client_id, 'second-client']);
+  });
+
+  it('restores the last confirmed point when an edit is permanently rejected', async () => {
+    (submitAddedPub as jest.Mock).mockResolvedValueOnce({
+      clientId: ENTRY.client_id,
+      cacheKey: 'u2fkbnvy',
+      name: ENTRY.name,
+      lat: ENTRY.lat,
+      lng: ENTRY.lng,
+      city: ENTRY.city,
+      address: ENTRY.address,
+    });
+    await enqueueAddedPub(ENTRY);
+    jest.clearAllMocks();
+    (submitAddedPubEdit as jest.Mock).mockResolvedValueOnce('permanent-error');
+
+    await expect(enqueueAddedPubEdit({
+      client_id: ENTRY.client_id,
+      name: ENTRY.name,
       lat: 50.09,
       lng: 14.43,
       city: 'Praha',
-      address: 'Přesná 1',
+      address: 'Špatná 99',
+    })).resolves.toBe('failed');
+
+    expect(removeLocalPub).toHaveBeenCalledWith('local:50.09:14.43');
+    expect(upsertLocalPub).toHaveBeenLastCalledWith(expect.objectContaining({
+      lat: ENTRY.lat,
+      lng: ENTRY.lng,
+      address: ENTRY.address,
+    }));
+  });
+
+  it('does not let an older GET response erase a pending offline edit', async () => {
+    (submitAddedPub as jest.Mock).mockResolvedValueOnce({
+      clientId: ENTRY.client_id,
+      cacheKey: 'u2fkbnvy',
+      name: ENTRY.name,
+      lat: ENTRY.lat,
+      lng: ENTRY.lng,
+      city: ENTRY.city,
+      address: ENTRY.address,
     });
+    await enqueueAddedPub(ENTRY);
+    (submitAddedPubEdit as jest.Mock).mockResolvedValueOnce('retry');
+    await enqueueAddedPubEdit({
+      client_id: ENTRY.client_id,
+      name: ENTRY.name,
+      lat: 50.09,
+      lng: 14.43,
+      city: 'Praha',
+      address: 'Nová 9',
+    });
+    (fetchOwnAddedPubs as jest.Mock).mockResolvedValueOnce([{
+      clientId: ENTRY.client_id,
+      cacheKey: 'u2fkbnvy',
+      name: ENTRY.name,
+      lat: ENTRY.lat,
+      lng: ENTRY.lng,
+      city: ENTRY.city,
+      address: ENTRY.address,
+    }]);
 
-    await flushAddedPubsQueue();
+    await syncOwnAddedPubs();
 
-    expect(removeLocalPub).toHaveBeenCalledWith('mapy:50.08120,14.41820');
-    expect(upsertLocalPub).toHaveBeenLastCalledWith(
+    await expect(loadAddedPubSubmissions()).resolves.toEqual([
       expect.objectContaining({
-        id: 'mapy:50.09000,14.43000',
-        name: PUB_A.name,
+        syncState: 'pending',
+        pendingOperation: 'edit',
         lat: 50.09,
-        lng: 14.43,
-        city: 'Praha',
-        address: 'Přesná 1',
-        venueKind: 'pub',
+        address: 'Nová 9',
       }),
+    ]);
+  });
+
+  it('never evicts unsettled creates when the history limit is exceeded', async () => {
+    (submitAddedPub as jest.Mock).mockResolvedValue('retry');
+
+    for (let index = 0; index < 31; index += 1) {
+      await enqueueAddedPub({
+        ...ENTRY,
+        client_id: `pending-${index}`,
+        name: `Hospoda ${index}`,
+      });
+    }
+
+    const rows = await loadAddedPubSubmissions();
+    expect(rows).toHaveLength(31);
+    expect(rows.every((row) => row.syncState === 'pending')).toBe(true);
+    expect(rows.map((row) => row.client_id)).toContain('pending-0');
+  });
+
+  it('keeps a pending edit while syncing a full page of server history', async () => {
+    await AsyncStorage.setItem('na-pivo-added-pubs-queue', JSON.stringify([{
+      ...ENTRY,
+      syncState: 'pending',
+      pendingOperation: 'edit',
+      pendingEdit: { client_id: ENTRY.client_id, name: 'Nový název' },
+      updatedAt: '2026-07-21T10:00:00.000Z',
+    }]));
+    (fetchOwnAddedPubs as jest.Mock).mockResolvedValueOnce(
+      Array.from({ length: 30 }, (_, index) => ({
+        clientId: `remote-${index}`,
+        cacheKey: `cache-${index}`,
+        name: `Server ${index}`,
+        lat: ENTRY.lat + index / 1000,
+        lng: ENTRY.lng,
+      })),
+    );
+
+    await syncOwnAddedPubs();
+
+    const rows = await loadAddedPubSubmissions();
+    expect(rows).toHaveLength(31);
+    expect(rows).toContainEqual(expect.objectContaining({
+      client_id: ENTRY.client_id,
+      syncState: 'pending',
+      pendingEdit: expect.objectContaining({ name: 'Nový název' }),
+    }));
+  });
+
+  it('keeps the newest server rows when trimming synced history', async () => {
+    (fetchOwnAddedPubs as jest.Mock).mockResolvedValueOnce(
+      Array.from({ length: 35 }, (_, index) => ({
+        clientId: `remote-${index}`,
+        cacheKey: `cache-${index}`,
+        name: `Server ${index}`,
+        lat: ENTRY.lat + index / 1000,
+        lng: ENTRY.lng,
+      })),
+    );
+
+    await syncOwnAddedPubs();
+
+    const rows = await loadAddedPubSubmissions();
+    expect(rows).toHaveLength(30);
+    expect(rows.map((row) => row.client_id)).toEqual(
+      Array.from({ length: 30 }, (_, index) => `remote-${index}`),
     );
   });
 
-  it('does nothing on an empty queue', async () => {
-    await flushAddedPubsQueue();
-    expect(submitAddedPub).not.toHaveBeenCalled();
-  });
-
-  it('drops corrupted storage entries instead of submitting them', async () => {
+  it('uses insertion order to break equal history timestamps in favor of newer rows', async () => {
     await AsyncStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify([{ client_id: 'broken' }, PUB_A]),
+      'na-pivo-added-pubs-queue',
+      JSON.stringify(Array.from({ length: 31 }, (_, index) => ({
+        ...ENTRY,
+        client_id: `synced-${index}`,
+        syncState: 'synced',
+        pendingOperation: null,
+        updatedAt: '2026-07-21T10:00:00.000Z',
+      }))),
     );
-    (submitAddedPub as jest.Mock).mockResolvedValue({ cacheKey: 'k', name: 'x', lat: 1, lng: 1 });
+    (fetchOwnAddedPubs as jest.Mock).mockResolvedValueOnce([]);
 
-    await flushAddedPubsQueue();
+    await syncOwnAddedPubs();
 
-    expect(submitAddedPub).toHaveBeenCalledTimes(1);
-    expect(submitAddedPub).toHaveBeenCalledWith(PUB_A);
+    const rows = await loadAddedPubSubmissions();
+    expect(rows).toHaveLength(30);
+    expect(rows.map((row) => row.client_id)).not.toContain('synced-0');
+    expect(rows.map((row) => row.client_id)).toContain('synced-30');
   });
 
-  it('survives non-JSON storage contents', async () => {
-    await AsyncStorage.setItem(STORAGE_KEY, '{not json');
-    await expect(flushAddedPubsQueue()).resolves.toBeUndefined();
-    expect(submitAddedPub).not.toHaveBeenCalled();
-  });
-});
+  it('retries a rename as a name-only PATCH', async () => {
+    (submitAddedPub as jest.Mock).mockResolvedValueOnce({
+      clientId: ENTRY.client_id,
+      cacheKey: 'u2fkbnvy',
+      name: ENTRY.name,
+      lat: ENTRY.lat,
+      lng: ENTRY.lng,
+      city: ENTRY.city,
+      address: ENTRY.address,
+    });
+    await enqueueAddedPub(ENTRY);
+    (submitAddedPubEdit as jest.Mock).mockResolvedValueOnce('retry');
 
-describe('restoreQueuedAddedPubs', () => {
-  it('restores queued pubs into the local compass index without submitting them', async () => {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([PUB_A, PUB_B]));
+    await enqueueAddedPubEdit({ client_id: ENTRY.client_id, name: 'U Krátkého patche' });
 
-    await expect(restoreQueuedAddedPubs()).resolves.toBe(2);
-
-    expect(submitAddedPub).not.toHaveBeenCalled();
-    expect(upsertLocalPub).toHaveBeenCalledTimes(2);
-    expect(upsertLocalPub).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'mapy:50.08120,14.41820', name: PUB_A.name }),
-    );
-    expect(upsertLocalPub).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'mapy:50.08121,14.41821', name: PUB_B.name }),
-    );
+    expect(submitAddedPubEdit).toHaveBeenCalledWith({
+      client_id: ENTRY.client_id,
+      name: 'U Krátkého patche',
+    });
+    await expect(loadAddedPubSubmissions()).resolves.toEqual([
+      expect.objectContaining({
+        name: 'U Krátkého patche',
+        lat: ENTRY.lat,
+        lng: ENTRY.lng,
+        pendingEdit: { client_id: ENTRY.client_id, name: 'U Krátkého patche' },
+      }),
+    ]);
   });
 });

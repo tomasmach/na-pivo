@@ -18,6 +18,10 @@ export interface BeerBrandFilterValue {
 export interface PubSearchFilters {
   beerBrand: BeerBrandFilterValue | null;
   amenityKeys: AmenityKey[];
+  /** Opt-in broadening for reviewed seasonal stands, campsites and sports venues
+   * with an explicit tap/beer/bar/pub signal. Default false keeps the compass
+   * catalogue identical to released versions. */
+  includeOtherPlaces?: boolean;
   /**
    * Reference beer price range in CZK. A null boundary is open. Unlike
    * beerBrand/amenityKeys this filter is applied CLIENT-SIDE over the prices
@@ -30,6 +34,7 @@ export interface PubSearchFilters {
 export const EMPTY_PUB_SEARCH_FILTERS: PubSearchFilters = {
   beerBrand: null,
   amenityKeys: [],
+  includeOtherPlaces: false,
   priceMinCzk: null,
   priceMaxCzk: null,
 };
@@ -70,6 +75,7 @@ export function normalizePubSearchFilters(filters: PubSearchFilters): PubSearchF
   return {
     beerBrand: beerKey && beerLabel ? { key: beerKey, label: beerLabel } : null,
     amenityKeys: normalizeAmenityFilterKeys(filters.amenityKeys),
+    includeOtherPlaces: filters.includeOtherPlaces === true,
     priceMinCzk,
     priceMaxCzk,
   };
@@ -77,7 +83,7 @@ export function normalizePubSearchFilters(filters: PubSearchFilters): PubSearchF
 
 export function pubSearchFilterKey(filters: PubSearchFilters): string {
   const normalized = normalizePubSearchFilters(filters);
-  return `${normalized.beerBrand?.key ?? ''}|${normalized.amenityKeys.join(',')}|${normalized.priceMinCzk ?? ''}:${normalized.priceMaxCzk ?? ''}`;
+  return `${normalized.beerBrand?.key ?? ''}|${normalized.amenityKeys.join(',')}|${normalized.includeOtherPlaces ? 'other' : ''}|${normalized.priceMinCzk ?? ''}:${normalized.priceMaxCzk ?? ''}`;
 }
 
 /**
@@ -94,6 +100,7 @@ export function activePubSearchFilterCount(filters: PubSearchFilters): number {
   return (
     normalized.amenityKeys.length +
     (normalized.beerBrand ? 1 : 0) +
+    (normalized.includeOtherPlaces ? 1 : 0) +
     (normalized.priceMinCzk !== null || normalized.priceMaxCzk !== null ? 1 : 0)
   );
 }

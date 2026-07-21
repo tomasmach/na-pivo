@@ -89,13 +89,26 @@ FIXES: tuple[MissingPubFix, ...] = (
         source_url="https://en.firmy.cz/company/13117331-herba-cafe-praha-zizkov.html",
         source_note="Identified as the venue opposite Woodoo music pub; Firmy.cz/Mapy classify it as café/bar.",
     ),
+    MissingPubFix(
+        issue="PIV-71",
+        name="Kurnik Šopa Hospoda",
+        lat=49.8388742,
+        lng=18.1629726,
+        city="Ostrava-Poruba",
+        address="Pavlouskova 4457/24, 708 00 Ostrava-Poruba",
+        source_url="https://www.kurniksopahospoda.cz/",
+        source_note=(
+            "The venue's official website and current Firmy.cz listing confirm "
+            "the Poruba pub, address, and map position."
+        ),
+    ),
 )
 
 
 class Command(BaseCommand):
     help = (
         "Apply audited missing-pub production data fixes for PIV-4/PIV-8/PIV-9/"
-        "PIV-12/PIV-16. Defaults to dry-run; pass --apply to write."
+        "PIV-12/PIV-16/PIV-71. Defaults to dry-run; pass --apply to write."
     )
 
     def add_arguments(self, parser):

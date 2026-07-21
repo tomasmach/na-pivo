@@ -47,7 +47,7 @@ import { usePubStore } from '@/stores/pubStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { shortestRotationTarget } from '@/compass/rotation';
 import { isHeadingAccuracyLow } from '@/compass/headingAccuracy';
-import { openPubInMaps } from '@/utils/maps';
+import { openHomeInMaps, openPubInMaps } from '@/utils/maps';
 import { formatPrice, type PriceCurrency } from '@/utils/currency';
 
 import { CompassContainer } from '@/components/compass/CompassContainer';
@@ -75,6 +75,7 @@ import {
   ChevronLeftIcon,
   XIcon,
   ListFilterIcon,
+  HouseIcon,
 } from '@/components/shared/IconGlyph';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
 import { ReportPubModal } from '@/components/compass/ReportPubModal';
@@ -864,11 +865,13 @@ function HeaderMapTools({
   onOpenFilter,
   onClearFilter,
   onShowMap,
+  onNavigateHome,
 }: {
   count: number;
   onOpenFilter: () => void;
   onClearFilter: () => void;
   onShowMap: () => void;
+  onNavigateHome?: () => void;
 }) {
   return (
     <View style={styles.headerMapTools}>
@@ -896,6 +899,18 @@ function HeaderMapTools({
           <MapIcon size={16} color={Colors.foamMuted} />
         </Pressable>
       </View>
+      {onNavigateHome ? (
+        <Pressable
+          onPress={onNavigateHome}
+          hitSlop={4}
+          style={({ pressed }) => [styles.homeNavigationButton, pressed && styles.headerViewSegmentPressed]}
+          accessibilityRole="button"
+          accessibilityLabel="Navigovat domů"
+          accessibilityHint="Otevře pěší trasu ve zvolené navigaci"
+        >
+          <HouseIcon size={16} color={Colors.foamMuted} />
+        </Pressable>
+      ) : null}
       <PubFilterButton count={count} onOpen={onOpenFilter} onClear={onClearFilter} />
     </View>
   );
@@ -1103,9 +1118,11 @@ export default function CompassScreen() {
     pubFilters.priceMinCzk,
     pubFilters.priceMaxCzk,
     !mapOpen,
+    pubFilters.includeOtherPlaces === true,
   );
   const activeFilterCount = activePubSearchFilterCount(pubFilters);
   const hidePubNames = useSettingsStore((s) => s.hidePubNames);
+  const homePoint = useSettingsStore((s) => s.homePoint);
   const showPubDetails = !hidePubNames || revealed;
   const handleModeChange = useCallback(
     (next: 'nearest' | 'surprise') => {
@@ -1212,6 +1229,9 @@ export default function CompassScreen() {
   const handleOpenMaps = useCallback(() => {
     if (pub) openPubInMaps(pub);
   }, [pub]);
+  const handleNavigateHome = useCallback(() => {
+    if (homePoint) void openHomeInMaps(homePoint);
+  }, [homePoint]);
 
   const handleContribute = useCallback(() => {
     if (!pub) return;
@@ -1331,6 +1351,7 @@ export default function CompassScreen() {
               onOpenFilter={handleOpenFilter}
               onClearFilter={handleClearFilter}
               onShowMap={handleShowMap}
+              onNavigateHome={homePoint ? handleNavigateHome : undefined}
             />
           }
         />
@@ -1375,6 +1396,7 @@ export default function CompassScreen() {
             onOpenFilter={handleOpenFilter}
             onClearFilter={handleClearFilter}
             onShowMap={handleShowMap}
+            onNavigateHome={homePoint ? handleNavigateHome : undefined}
           />
         }
       />
@@ -1784,6 +1806,16 @@ const styles = StyleSheet.create({
     padding: 2,
     borderRadius: Radius.pill,
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.14),
+    backgroundColor: withAlpha(Colors.stout, 0.9),
+  },
+  homeNavigationButton: {
+    width: 34,
+    height: 34,
+    borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,

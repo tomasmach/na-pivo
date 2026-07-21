@@ -33,6 +33,7 @@ jest.mock('@/components/shared/IconGlyph', () => {
     CircleDotIcon: icon,
     CreditCardIcon: icon,
     MicIcon: icon,
+    MapPinnedIcon: icon,
     RadioIcon: icon,
     SearchIcon: icon,
     SoccerBallIcon: icon,
@@ -81,6 +82,21 @@ function renderSheet(onApply = jest.fn(), onClose = jest.fn(), nearbyPrices: num
 }
 
 describe('PubFilterSheet', () => {
+  it('keeps other tap places off by default and applies the explicit opt-in', () => {
+    const { renderer, onApply } = renderSheet();
+
+    act(() => {
+      renderer.root.findByProps({ accessibilityLabel: cs.a11y.toggleOtherTapPlaces }).props.onPress();
+    });
+    act(() => {
+      renderer.root.findByProps({ accessibilityLabel: cs.a11y.applyPubFilters }).props.onPress();
+    });
+
+    expect(onApply).toHaveBeenCalledWith(
+      expect.objectContaining({ includeOtherPlaces: true }),
+    );
+  });
+
   it('keeps choices as a draft until the user applies them', () => {
     const { renderer, onApply, onClose } = renderSheet();
 
@@ -106,6 +122,7 @@ describe('PubFilterSheet', () => {
       amenityKeys: ['payment_card', 'game_foosball'],
       priceMinCzk: null,
       priceMaxCzk: null,
+      includeOtherPlaces: false,
     });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -132,6 +149,7 @@ describe('PubFilterSheet', () => {
       amenityKeys: ['game_darts'],
       priceMinCzk: null,
       priceMaxCzk: null,
+      includeOtherPlaces: false,
     });
   });
 
@@ -170,6 +188,7 @@ describe('PubFilterSheet', () => {
       amenityKeys: [],
       priceMinCzk: 35,
       priceMaxCzk: 70,
+      includeOtherPlaces: false,
     });
   });
 });

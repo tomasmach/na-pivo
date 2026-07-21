@@ -16,10 +16,16 @@ from pubs.models import (
     Account,
     AuthIdentity,
     BeerCheckIn,
+    CommunityEvent,
+    CommunityEventMembership,
     ContentReport,
     DrinkLog,
     EmailCredential,
     Friendship,
+    PartyEvening,
+    PartyEveningDrink,
+    PartyEveningMember,
+    PubEvent,
     PushDevice,
 )
 
@@ -272,6 +278,99 @@ def test_account_export_includes_diary_data_and_excludes_secrets(client):
     assert "password" not in serialized
     assert token not in serialized
     assert "ExponentPushToken[exportDevice]" not in serialized
+
+
+@pytest.mark.django_db
+def test_account_export_includes_party_and_community_data(client):
+    token, account_id = _bootstrap(client)
+    account = Account.objects.get(public_id=account_id)
+    now = timezone.now().replace(microsecond=0)
+    party = PartyEvening.objects.create(
+        host=account,
+        client_id=uuid.uuid4(),
+        join_code="EXPORT1",
+        pub_name="U Exportu",
+        pub_city="Praha",
+        started_at=now,
+    )
+    PartyEveningMember.objects.create(evening=party, account=account, joined_at=now)
+    party_drink = PartyEveningDrink.objects.create(
+        evening=party,
+        account=account,
+        client_id=uuid.uuid4(),
+        beer_name="Exportní ležák",
+        quantity=2,
+        shared_at=now,
+    )
+    suggestion = PubEvent.objects.create(
+        account=account,
+        client_id=uuid.uuid4(),
+        cache_key="u2fkbn12",
+        name="U Exportu",
+        lat=50.08,
+        lng=14.45,
+        city="Praha",
+        title="Exportní akce",
+        details="Detaily od uživatele",
+        starts_at=now + timezone.timedelta(days=1),
+        ends_at=now + timezone.timedelta(days=2),
+    )
+    hosted_event = CommunityEvent.objects.create(
+        host=account,
+        client_id=uuid.uuid4(),
+        title="Doma na jedno",
+        description="Soukromý popis",
+        city="Praha",
+        area_label="Vinohrady",
+        exact_address="Soukromá 12, zvonek Export",
+        lat=50.0755,
+        lng=14.4378,
+        starts_at=now + timezone.timedelta(days=3),
+        ends_at=now + timezone.timedelta(days=3, hours=4),
+        capacity=4,
+    )
+    other = Account.objects.create(device_id=str(uuid.uuid4()), nickname="other")
+    joined_event = CommunityEvent.objects.create(
+        host=other,
+        client_id=uuid.uuid4(),
+        title="Cizí setkání",
+        city="Brno",
+        exact_address="Cizí soukromá adresa",
+        lat=49.1951,
+        lng=16.6068,
+        starts_at=now + timezone.timedelta(days=4),
+        ends_at=now + timezone.timedelta(days=4, hours=3),
+        capacity=4,
+    )
+    membership = CommunityEventMembership.objects.create(
+        event=joined_event,
+        account=account,
+        message="Moje soukromá zpráva",
+    )
+
+    response = client.get("/v1/account/export", **_auth(token))
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["party_evenings"]["hosted"][0]["id"] == str(party.public_id)
+    assert body["party_evenings"]["memberships"][0]["evening_id"] == str(party.public_id)
+    assert body["party_evenings"]["drinks"][0] == {
+        "evening_id": str(party.public_id),
+        "client_id": str(party_drink.client_id),
+        "beer_name": "Exportní ležák",
+        "quantity": 2,
+        "shared_at": now.isoformat(),
+    }
+    assert body["pub_event_suggestions"][0]["id"] == str(suggestion.id)
+    assert body["pub_event_suggestions"][0]["lat"] == 50.08
+    assert body["community_events"]["hosted"][0]["id"] == str(hosted_event.id)
+    assert (
+        body["community_events"]["hosted"][0]["exact_address"]
+        == "Soukromá 12, zvonek Export"
+    )
+    assert body["community_events"]["memberships"][0]["event_id"] == str(joined_event.id)
+    assert body["community_events"]["memberships"][0]["message"] == membership.message
+    assert "Cizí soukromá adresa" not in str(body)
 
 
 @pytest.mark.django_db

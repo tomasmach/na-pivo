@@ -10,6 +10,11 @@ import {
 } from '@/utils/currency';
 
 export type Mode = 'nearest' | 'surprise';
+export type NavigationProvider = 'google' | 'mapy';
+export interface HomePoint {
+  lat: number;
+  lng: number;
+}
 
 export const BEER_COUNT_REMINDER_INTERVAL_OPTIONS = [15, 20, 30, 45] as const;
 export type BeerCountReminderIntervalMinutes =
@@ -17,6 +22,8 @@ export type BeerCountReminderIntervalMinutes =
 
 interface SettingsState {
   mode: Mode;
+  homePoint: HomePoint | null;
+  navigationProvider: NavigationProvider;
   maxDistanceKm: number | null;
   priceCurrency: PriceCurrency;
   priceCurrencyRate: number;
@@ -47,6 +54,8 @@ interface SettingsState {
   surpriseSeed: number;
   lastSeenPartyStreak: number;
   setMode: (m: Mode) => void;
+  setHomePoint: (point: HomePoint | null) => void;
+  setNavigationProvider: (provider: NavigationProvider) => void;
   setMaxDistanceKm: (km: number | null) => void;
   setPriceCurrency: (currency: PriceCurrency, rateCzkPerUnit?: number) => void;
   setHapticEnabled: (v: boolean) => void;
@@ -71,6 +80,8 @@ export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
       mode: 'nearest',
+      homePoint: null,
+      navigationProvider: 'google',
       maxDistanceKm: null,
       priceCurrency: DEFAULT_PRICE_CURRENCY,
       priceCurrencyRate: 1,
@@ -84,7 +95,9 @@ export const useSettingsStore = create<SettingsState>()(
       pubReminderEnabled: false,
       beerCountReminderEnabled: true,
       beerCountReminderIntervalMinutes: 20,
-      waterNudgeEnabled: true,
+      // Explicit opt-in: a responsible-drinking nudge must never appear as an
+      // unexpected judgment during an evening.
+      waterNudgeEnabled: false,
       friendPushEnabled: false,
       friendPushPrompted: false,
       friendPushOptedOut: false,
@@ -92,6 +105,8 @@ export const useSettingsStore = create<SettingsState>()(
       lastSeenPartyStreak: 0,
 
       setMode: (m) => set({ mode: m }),
+      setHomePoint: (point) => set({ homePoint: point }),
+      setNavigationProvider: (provider) => set({ navigationProvider: provider }),
       setMaxDistanceKm: (km) => set({ maxDistanceKm: km }),
       setPriceCurrency: (currency, rateCzkPerUnit) => {
         const rate = rateCzkPerUnit ?? getCurrencyRate(currency) ?? 1;
@@ -122,6 +137,8 @@ export const useSettingsStore = create<SettingsState>()(
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         mode: state.mode,
+        homePoint: state.homePoint,
+        navigationProvider: state.navigationProvider,
         maxDistanceKm: state.maxDistanceKm,
         priceCurrency: state.priceCurrency,
         priceCurrencyRate: state.priceCurrencyRate,
@@ -146,6 +163,18 @@ export const useSettingsStore = create<SettingsState>()(
         if (state?.priceCurrency && state.priceCurrencyRate > 0) {
           setCurrencyRate(state.priceCurrency, state.priceCurrencyRate);
         }
+      },
+      version: 1,
+      migrate: (persistedState, version) => {
+        const state = persistedState as Partial<SettingsState>;
+        if (version < 1) {
+          return {
+            ...state,
+            // The old value was an implicit default, not recorded consent.
+            waterNudgeEnabled: false,
+          } as SettingsState;
+        }
+        return persistedState as SettingsState;
       },
     }
   )

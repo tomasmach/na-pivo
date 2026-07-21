@@ -26,6 +26,7 @@ import {
   CircleDotIcon,
   CreditCardIcon,
   MicIcon,
+  MapPinnedIcon,
   RadioIcon,
   SearchIcon,
   SoccerBallIcon,
@@ -196,7 +197,13 @@ export function PubFilterSheet({
   }, [draft]);
 
   const clear = useCallback(() => {
-    setDraft({ beerBrand: null, amenityKeys: [], priceMinCzk: null, priceMaxCzk: null });
+    setDraft({
+      beerBrand: null,
+      amenityKeys: [],
+      includeOtherPlaces: false,
+      priceMinCzk: null,
+      priceMaxCzk: null,
+    });
     setQuery('');
     setSuggestions([]);
     setSuggestionsQuery('');
@@ -215,6 +222,7 @@ export function PubFilterSheet({
   const hasDraftFilters =
     draft.beerBrand !== null ||
     draft.amenityKeys.length > 0 ||
+    draft.includeOtherPlaces === true ||
     draft.priceMinCzk !== null ||
     draft.priceMaxCzk !== null;
 
@@ -264,7 +272,7 @@ export function PubFilterSheet({
           <KeyboardAwareScrollView
             style={styles.content}
             contentContainerStyle={{
-              paddingBottom: 50 + Math.max(insets.bottom, Spacing.md) + Spacing.xl,
+              paddingBottom: Spacing.lg,
             }}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
@@ -353,6 +361,27 @@ export function PubFilterSheet({
               onChange={setPriceRange}
             />
 
+            <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.compass.otherPlacesSection}
+            </Text>
+            <View style={styles.chipsWrap}>
+              <FilterChip
+                label={cs.compass.otherPlacesFilter}
+                active={draft.includeOtherPlaces === true}
+                icon={MapPinnedIcon}
+                onPress={() =>
+                  setDraft((current) => ({
+                    ...current,
+                    includeOtherPlaces: current.includeOtherPlaces !== true,
+                  }))
+                }
+                accessibilityLabel={cs.a11y.toggleOtherTapPlaces}
+              />
+            </View>
+            <Text style={styles.otherPlacesHint} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.compass.otherPlacesHint}
+            </Text>
+
             {groupedAmenities.map(({ section, items }) => (
               <View key={section}>
                 <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -385,7 +414,7 @@ export function PubFilterSheet({
           <View
             style={[
               styles.actions,
-              { bottom: Math.max(insets.bottom, Spacing.md) },
+              { paddingBottom: Math.max(insets.bottom, Spacing.md) },
             ]}
           >
             {hasDraftFilters ? (
@@ -741,7 +770,7 @@ function AmenityChip({
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: withAlpha(Colors.black, 0.64), justifyContent: 'flex-end' },
   card: {
-    maxHeight: '88%',
+    height: '88%',
     backgroundColor: Colors.stout2,
     borderTopLeftRadius: Radius.cardLarge,
     borderTopRightRadius: Radius.cardLarge,
@@ -758,8 +787,16 @@ const styles = StyleSheet.create({
   titleTextWrap: { flex: 1 },
   title: { fontFamily: Fonts.display.extrabold, fontSize: 24, color: Colors.foam },
   subtitle: { marginTop: 2, fontFamily: Fonts.ui.regular, fontSize: 13, lineHeight: 18, color: Colors.mutedText },
+  otherPlacesHint: {
+    marginTop: Spacing.xs,
+    marginBottom: Spacing.sm,
+    fontFamily: Fonts.ui.regular,
+    fontSize: 12,
+    lineHeight: 17,
+    color: Colors.mutedText,
+  },
   closeBtn: { width: HitArea.min, height: HitArea.min, alignItems: 'center', justifyContent: 'center', marginTop: -Spacing.xs },
-  content: { marginTop: Spacing.sm },
+  content: { flex: 1, marginTop: Spacing.sm },
   sectionLabel: {
     marginTop: Spacing.md, marginBottom: Spacing.sm, fontFamily: Fonts.ui.semibold,
     fontSize: 11, letterSpacing: 1.1, color: Colors.mutedText,
@@ -824,8 +861,7 @@ const styles = StyleSheet.create({
   matchHint: { marginTop: Spacing.lg, marginBottom: Spacing.md, fontFamily: Fonts.ui.regular, fontSize: 12, lineHeight: 17, color: Colors.mutedText },
   limitHint: { color: Colors.amberLight },
   actions: {
-    position: 'absolute', left: Spacing.lg, right: Spacing.lg,
-    zIndex: 1, flexDirection: 'row', gap: Spacing.sm,
+    flexDirection: 'row', gap: Spacing.sm, paddingTop: Spacing.sm,
   },
   secondaryButton: { minHeight: 50, paddingHorizontal: Spacing.md, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.medium, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.stout2 },
   secondaryButtonText: { fontFamily: Fonts.ui.semibold, fontSize: 14, color: Colors.foamMuted },

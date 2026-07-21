@@ -25,6 +25,7 @@ import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { usePubStore } from '@/stores/pubStore';
 import { useTallyStore } from '@/stores/tallyStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 const PRIVATE_STORAGE_KEYS = [
   'na-pivo-tally',
@@ -33,12 +34,32 @@ const PRIVATE_STORAGE_KEYS = [
   'na-pivo-visits-seeded',
   'na-pivo-community',
   'na-pivo-pub',
+  'na-pivo-added-pubs-queue',
   'na-pivo-party-groups',
   'na-pivo-beer-photos',
   // Note: the Parta social-graph snapshot ('na-pivo-friends-dashboard') is cleared
   // via clearFriendsDashboardSnapshot() below — that path also bumps the snapshot
   // generation so an in-flight dashboard fetch can't re-persist it after the clear.
 ];
+
+const SETTINGS_STORAGE_KEY = 'na-pivo-settings';
+
+async function clearPersistedHomePoint(): Promise<void> {
+  useSettingsStore.setState({ homePoint: null });
+  const raw = await AsyncStorage.getItem(SETTINGS_STORAGE_KEY);
+  if (!raw) return;
+
+  try {
+    const persisted = JSON.parse(raw) as { state?: { homePoint?: unknown } };
+    if (!persisted.state || typeof persisted.state !== 'object') return;
+    persisted.state.homePoint = null;
+    await AsyncStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(persisted));
+  } catch {
+    // A malformed settings payload cannot be trusted not to contain the old
+    // location. Removing it is safer than carrying it across accounts.
+    await AsyncStorage.removeItem(SETTINGS_STORAGE_KEY);
+  }
+}
 
 /**
  * Remove device-local private account data without contacting the backend.
@@ -89,4 +110,5 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
     clearPubAmenitiesQueue(),
   ]);
   await Promise.all(PRIVATE_STORAGE_KEYS.map((key) => AsyncStorage.removeItem(key)));
+  await clearPersistedHomePoint();
 }

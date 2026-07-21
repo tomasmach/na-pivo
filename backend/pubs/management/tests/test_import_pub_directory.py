@@ -54,6 +54,20 @@ def test_empty_import_and_rerun_are_idempotent(tmp_path):
 
 
 @pytest.mark.django_db
+def test_import_preserves_reviewed_secondary_discovery_metadata(tmp_path):
+    _run(
+        _export(
+            tmp_path,
+            _row(discovery_kind="campsite", has_beer_signal=True),
+        )
+    )
+
+    directory = PubDirectory.objects.get()
+    assert directory.discovery_kind == PubDirectory.DiscoveryKind.CAMPSITE
+    assert directory.has_beer_signal is True
+
+
+@pytest.mark.django_db
 def test_existing_hours_are_protected_field_by_field(tmp_path):
     existing = PubHours.objects.create(
         cache_key=KEY, name="Original", lat=1, lng=2, city="Original city",

@@ -89,10 +89,12 @@ jest.mock('@/components/shared/IconGlyph', () => ({
   TreePineIcon: jest.fn(() => null),
   XIcon: jest.fn(() => null),
   ListFilterIcon: jest.fn(() => null),
+  HouseIcon: jest.fn(() => null),
 }));
 
 jest.mock('@/utils/maps', () => ({
   openPubInMaps: jest.fn(),
+  openHomeInMaps: jest.fn(),
 }));
 
 jest.mock('@/theme/fonts', () => ({
@@ -166,7 +168,7 @@ describe('CompassScreen', () => {
     jest.clearAllMocks();
     mockedUseRouter.mockReturnValue({ push: jest.fn() });
     act(() => {
-      useSettingsStore.setState({ hidePubNames: false });
+      useSettingsStore.setState({ hidePubNames: false, homePoint: null });
     });
   });
 
@@ -332,6 +334,23 @@ describe('CompassScreen', () => {
     );
   });
 
+  it('offers destination-only navigation home when a home point is set', () => {
+    const { openHomeInMaps } = require('@/utils/maps') as { openHomeInMaps: jest.Mock };
+    useCompass.mockReturnValue(baseCompassState());
+    act(() => {
+      useSettingsStore.setState({ homePoint: { lat: 50.08, lng: 14.42 } });
+    });
+
+    let renderer: any;
+    act(() => {
+      renderer = TestRenderer.create(React.createElement(CompassScreen));
+    });
+
+    const homeButton = renderer.root.findByProps({ accessibilityLabel: 'Navigovat domů' });
+    act(() => homeButton.props.onPress());
+    expect(openHomeInMaps).toHaveBeenCalledWith({ lat: 50.08, lng: 14.42 });
+  });
+
   it('opens the map without location permission and pauses compass sensors', () => {
     const BeerMapScreenMock = BeerMapScreen as jest.Mock;
     useCompass.mockReturnValue({ ...baseCompassState(), permissionState: 'denied' });
@@ -348,7 +367,7 @@ describe('CompassScreen', () => {
       expect.objectContaining({ initialPub: expect.objectContaining({ name: 'U Testu' }) }),
       undefined,
     );
-    expect(useCompass).toHaveBeenLastCalledWith(null, [], null, null, false);
+    expect(useCompass).toHaveBeenLastCalledWith(null, [], null, null, false, false);
   });
 
   it('reserves revealed-card height before the pub is revealed', () => {

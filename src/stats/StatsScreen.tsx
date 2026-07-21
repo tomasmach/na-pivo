@@ -10,7 +10,7 @@
  * reinstall — while the "last performance" hero always stays local (its timing
  * detail lives only on the device).
  *
- * Deliberately restrained: no yearly/monthly recap here. That's Pivní Wrapped.
+ * The timeline is a practical trend view, not the narrative Pivní Wrapped.
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
@@ -20,7 +20,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { amberGlow } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
 import { beerCountLabel, beerNoun } from '@/i18n/plural';
 import { deriveReconciledDiaryStats } from '@/data/diarySync';
@@ -42,6 +41,7 @@ import { useTallyStore, allSessionsNewestFirst } from '@/stores/tallyStore';
 import {
   computeLastPerformance,
   computeLifetime,
+  computePeriodStats,
   computeRecords,
   computeTopPubs,
   plausibleFastestBeerMs,
@@ -49,6 +49,7 @@ import {
   type LifetimeStats,
   type PersonalRecords,
   type PubTally,
+  type PeriodStat,
 } from '@/stats/statsModel';
 import { useMyStats } from '@/stats/useMyStats';
 import type { PriceCurrency } from '@/utils/currency';
@@ -83,7 +84,7 @@ function PerformanceHero({
   const showPace = perf.avgGapMs != null && perf.fastestGapMs != null;
 
   return (
-    <View style={[styles.heroCard, amberGlow(12)]}>
+    <View style={styles.heroCard}>
       <View style={styles.heroEyebrowRow}>
         <SparklesIcon size={13} color={Colors.amber} />
         <Text style={styles.heroEyebrow} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -303,6 +304,135 @@ function StatTile({
   );
 }
 
+// ─── Months and years ──────────────────────────────────────────────────────
+
+const MONTH_SHORT = ['led', 'úno', 'bře', 'dub', 'kvě', 'čer', 'čvc', 'srp', 'zář', 'říj', 'lis', 'pro'];
+const MONTH_LONG = [
+  'Leden',
+  'Únor',
+  'Březen',
+  'Duben',
+  'Květen',
+  'Červen',
+  'Červenec',
+  'Srpen',
+  'Září',
+  'Říjen',
+  'Listopad',
+  'Prosinec',
+];
+
+function monthParts(period: string): { year: number; month: number } | null {
+  const match = /^(\d{4})-(\d{2})$/.exec(period);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  return month >= 1 && month <= 12 ? { year, month } : null;
+}
+
+function recentMonths(periods: PeriodStat[], now: Date, count = 12): PeriodStat[] {
+  const byPeriod = new Map(periods.map((period) => [period.period, period]));
+  const drinkingNow = new Date(now.getTime() - 4 * 60 * 60 * 1000);
+  const anchor = new Date(drinkingNow.getFullYear(), drinkingNow.getMonth(), 1, 12);
+  const result: PeriodStat[] = [];
+  for (let offset = count - 1; offset >= 0; offset -= 1) {
+    const date = new Date(anchor.getFullYear(), anchor.getMonth() - offset, 1, 12);
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    result.push(
+      byPeriod.get(key) ?? {
+        period: key,
+        beers: 0,
+        evenings: 0,
+        spentCzk: 0,
+        averageBeersPerEvening: 0,
+      },
+    );
+  }
+  return result;
+}
+
+function PeriodOverview({ months, years, now }: { months: PeriodStat[]; years: PeriodStat[]; now: Date }) {
+  const chartMonths = recentMonths(months, now);
+  const current = chartMonths[chartMonths.length - 1];
+  const currentParts = monthParts(current.period);
+  const maxBeers = Math.max(1, ...chartMonths.map((period) => period.beers));
+  const visibleYears = [...years].sort((a, b) => b.period.localeCompare(a.period));
+
+  return (
+    <View style={styles.periodCard}>
+      <View style={styles.periodCurrentRow}>
+        <View style={styles.flex}>
+          <Text style={styles.periodTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+            {currentParts ? `${MONTH_LONG[currentParts.month - 1]} ${currentParts.year}` : current.period}
+          </Text>
+          <Text style={styles.periodMeta} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.stats.periodEvenings(current.evenings)}
+          </Text>
+        </View>
+        <View style={styles.periodCurrentValueWrap}>
+          <Text style={styles.periodCurrentValue} maxFontSizeMultiplier={FontScaleCap.display}>
+            {current.beers}
+          </Text>
+          <Text style={styles.periodCurrentUnit} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.stats.periodBeers}
+          </Text>
+        </View>
+      </View>
+      <Text style={styles.periodAverage} maxFontSizeMultiplier={FontScaleCap.body}>
+        {cs.stats.periodAverage(current.averageBeersPerEvening)}
+      </Text>
+
+      <View style={styles.chartDivider} />
+      <Text style={styles.chartTitle} maxFontSizeMultiplier={FontScaleCap.body}>
+        {cs.stats.monthsHeader}
+      </Text>
+      <View style={styles.monthChart} accessibilityLabel={cs.stats.monthsA11y}>
+        {chartMonths.map((period) => {
+          const parts = monthParts(period.period);
+          const height = period.beers === 0 ? 3 : Math.max(8, Math.round((period.beers / maxBeers) * 68));
+          return (
+            <View
+              key={period.period}
+              style={styles.monthColumn}
+              accessible
+              accessibilityLabel={cs.stats.monthA11y(period.period, period.beers)}
+            >
+              <Text style={styles.monthValue} maxFontSizeMultiplier={FontScaleCap.body}>
+                {period.beers > 0 ? period.beers : ''}
+              </Text>
+              <View style={styles.monthBarTrack}>
+                <View style={[styles.monthBar, period.beers === 0 && styles.monthBarEmpty, { height }]} />
+              </View>
+              <Text style={styles.monthLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                {parts ? MONTH_SHORT[parts.month - 1] : ''}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+
+      {visibleYears.length > 0 && (
+        <>
+          <View style={styles.chartDivider} />
+          <Text style={styles.chartTitle} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.stats.yearsHeader}
+          </Text>
+          {visibleYears.map((year, index) => (
+            <View key={year.period} style={[styles.yearRow, index > 0 && styles.yearRowBorder]}>
+              <Text style={styles.yearLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {year.period}
+              </Text>
+              <Text style={styles.yearMeta} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.stats.yearSummary(year.beers, year.averageBeersPerEvening)}
+              </Text>
+            </View>
+          ))}
+        </>
+      )}
+    </View>
+  );
+}
+
 // ─── Top pubs ───────────────────────────────────────────────────────────────
 
 function TopPubsCard({ pubs }: { pubs: PubTally[] }) {
@@ -364,6 +494,7 @@ export default function StatsScreen({ embedded = false }: { embedded?: boolean }
   const localLifetime = useMemo(() => computeLifetime(sessions), [sessions]);
   const localRecords = useMemo(() => computeRecords(sessions), [sessions]);
   const localTopPubs = useMemo(() => computeTopPubs(sessions), [sessions]);
+  const localPeriods = useMemo(() => computePeriodStats(sessions), [sessions]);
   const reconciled = useMemo(
     () => (diarySnapshot ? deriveReconciledDiaryStats(diarySnapshot, sessions) : null),
     [diarySnapshot, sessions],
@@ -416,6 +547,10 @@ export default function StatsScreen({ embedded = false }: { embedded?: boolean }
           lastAt: p.lastDrankAt,
         }))
       : localTopPubs;
+  const periodMonths: PeriodStat[] =
+    useRemote && remote!.periods.months.length > 0 ? remote!.periods.months : localPeriods.months;
+  const periodYears: PeriodStat[] =
+    useRemote && remote!.periods.years.length > 0 ? remote!.periods.years : localPeriods.years;
 
   const isEmpty = lifetime.totalBeers === 0 && last == null;
 
@@ -431,7 +566,7 @@ export default function StatsScreen({ embedded = false }: { embedded?: boolean }
 
       {isEmpty ? (
         <View style={styles.empty}>
-          <View style={[styles.emptyIcon, amberGlow(14)]}>
+          <View style={styles.emptyIcon}>
             <TrophyIcon size={52} color={Colors.amber} />
           </View>
           <Text style={styles.emptyTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
@@ -454,6 +589,9 @@ export default function StatsScreen({ embedded = false }: { embedded?: boolean }
 
           <SectionLabel>{cs.stats.totalsHeader}</SectionLabel>
           <TotalsCard lifetime={lifetime} priceCurrency={priceCurrency} />
+
+          <SectionLabel>{cs.stats.periodsHeader}</SectionLabel>
+          <PeriodOverview months={periodMonths} years={periodYears} now={now} />
 
           {topPubs.length > 0 && (
             <>
@@ -593,16 +731,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   recordLabel: {
-    flex: 1,
+    width: 112,
+    flexShrink: 0,
     fontFamily: Fonts.ui.semibold,
     fontSize: 14,
     color: Colors.foamMuted,
   },
   recordValue: {
+    flex: 1,
+    minWidth: 0,
     fontFamily: Fonts.display.bold,
     fontSize: 15,
     color: Colors.amber,
-    flexShrink: 1,
     textAlign: 'right',
   },
 
@@ -678,6 +818,59 @@ const styles = StyleSheet.create({
     color: Colors.mutedText,
   },
 
+  // — Monthly and yearly overview —
+  periodCard: {
+    backgroundColor: Colors.stout2,
+    borderRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+  },
+  periodCurrentRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+  periodTitle: { fontFamily: Fonts.display.bold, fontSize: 18, color: Colors.foam },
+  periodMeta: { fontFamily: Fonts.ui.regular, fontSize: 12, color: Colors.mutedText, marginTop: 3 },
+  periodCurrentValueWrap: { alignItems: 'flex-end' },
+  periodCurrentValue: {
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 32,
+    lineHeight: 38,
+    color: Colors.amber,
+    fontVariant: ['tabular-nums'],
+  },
+  periodCurrentUnit: { fontFamily: Fonts.ui.bold, fontSize: 10, color: Colors.mutedText },
+  periodAverage: { fontFamily: Fonts.ui.semibold, fontSize: 13, color: Colors.foamMuted, marginTop: 8 },
+  chartDivider: { height: 1, backgroundColor: Colors.border, marginVertical: Spacing.md },
+  chartTitle: { fontFamily: Fonts.ui.bold, fontSize: 11, color: Colors.mutedText, marginBottom: 10 },
+  monthChart: { height: 112, flexDirection: 'row', alignItems: 'flex-end', gap: 3 },
+  monthColumn: { flex: 1, alignItems: 'center', height: 112 },
+  monthValue: {
+    height: 18,
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 9,
+    color: Colors.foamMuted,
+    fontVariant: ['tabular-nums'],
+  },
+  monthBarTrack: { flex: 1, width: '70%', justifyContent: 'flex-end' },
+  monthBar: { width: '100%', backgroundColor: Colors.amber, borderRadius: 3 },
+  monthBarEmpty: { backgroundColor: Colors.border },
+  monthLabel: { fontFamily: Fonts.ui.semibold, fontSize: 9, color: Colors.mutedText, marginTop: 5 },
+  yearRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
+  yearRowBorder: { borderTopWidth: 1, borderTopColor: Colors.border },
+  yearLabel: {
+    fontFamily: Fonts.display.bold,
+    fontSize: 17,
+    color: Colors.foam,
+    fontVariant: ['tabular-nums'],
+  },
+  yearMeta: {
+    flex: 1,
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 12,
+    color: Colors.foamMuted,
+    textAlign: 'right',
+  },
+
   // — Top pubs —
   pubsHeaderRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
   pubsSubtitle: {
@@ -730,7 +923,17 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
     paddingBottom: 60,
   },
-  emptyIcon: { marginBottom: 4 },
+  emptyIcon: {
+    width: 82,
+    height: 82,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.35),
+    backgroundColor: Colors.stout2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
   emptyTitle: {
     fontFamily: Fonts.display.extrabold,
     fontSize: 24,

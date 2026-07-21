@@ -316,6 +316,7 @@ describe('useCompass', () => {
       beerBrandKey: null,
       amenityKeys: [],
       force: true,
+      includeOtherPlaces: false,
       radiusKm: 100,
     });
   });
@@ -422,6 +423,7 @@ describe('useCompass', () => {
         beerBrandKey: null,
         amenityKeys: [],
         force: false,
+        includeOtherPlaces: false,
         radiusKm: 20,
       });
     });
@@ -445,6 +447,7 @@ describe('useCompass', () => {
         beerBrandKey: null,
         amenityKeys: [],
         force: false,
+        includeOtherPlaces: false,
         radiusKm: 100,
       });
     });

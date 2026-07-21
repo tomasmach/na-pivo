@@ -23,6 +23,8 @@ export type SocialAuthErrorCode =
   | 'cancelled'
   | 'unsupported'
   | 'unavailable'
+  | 'play_services'
+  | 'account_picker'
   | 'misconfigured'
   | 'failed';
 
@@ -117,7 +119,12 @@ export async function getGoogleIdToken(): Promise<string> {
   const { GoogleSignin } = mod;
   ensureGoogleConfigured();
   try {
-    await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+    const available = await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+    if (!available) throw new Error('Google Play Services unavailable');
+  } catch {
+    throw new SocialAuthError('play_services');
+  }
+  try {
     const response = await GoogleSignin.signIn();
     // google-signin v13+ returns { type: 'success', data: { idToken } }; older
     // versions returned the userInfo object directly. Support both shapes.
@@ -138,7 +145,9 @@ export async function getGoogleIdToken(): Promise<string> {
         'Google Sign-In release certificate is not configured.',
       );
     }
-    throw new SocialAuthError('failed', (err as Error)?.message);
+    // Never pass native provider messages to UI or telemetry: they can contain
+    // account-picker details that are irrelevant to an actionable next step.
+    throw new SocialAuthError('account_picker');
   }
 }
 

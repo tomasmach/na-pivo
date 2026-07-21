@@ -95,6 +95,7 @@ export function useBeerMap(filters: PubSearchFilters): BeerMapData {
   const filtersKey = backendPubSearchFilterKey(filters);
   const beerBrandKey = filters.beerBrand?.key ?? null;
   const amenityKeys = filters.amenityKeys;
+  const includeOtherPlaces = filters.includeOtherPlaces === true;
   const priceMinCzk = filters.priceMinCzk;
   const priceMaxCzk = filters.priceMaxCzk;
   const hasFilters = Boolean(beerBrandKey || amenityKeys.length > 0);
@@ -247,11 +248,20 @@ export function useBeerMap(filters: PubSearchFilters): BeerMapData {
         coverageKm: Math.min(viewportCoverageKm(requestedRegion), radiusKm),
         beerBrandKey,
         amenityKeys,
+        includeOtherPlaces,
       })
         .then(() => {
           if (serial !== requestSerial.current) return;
           const loaded = getAllLoadedPubs();
-          setPubs((previous) => hasFilters ? loaded : mergePubs(previous, loaded));
+          setPubs((previous) => {
+            if (hasFilters) return loaded;
+            const compatiblePrevious = includeOtherPlaces
+              ? previous
+              : previous.filter(
+                  (pub) => pub.discoveryKind === undefined || pub.discoveryKind === 'pub',
+                );
+            return mergePubs(compatiblePrevious, loaded);
+          });
           setLoadedFiltersKey(filtersKey);
         })
         .catch(() => {
@@ -266,7 +276,16 @@ export function useBeerMap(filters: PubSearchFilters): BeerMapData {
       controller.abort();
       requestSerial.current += 1;
     };
-  }, [amenityKeys, beerBrandKey, filtersKey, focused, hasFilters, requestedRegion, refreshNonce]);
+  }, [
+    amenityKeys,
+    beerBrandKey,
+    filtersKey,
+    focused,
+    hasFilters,
+    includeOtherPlaces,
+    requestedRegion,
+    refreshNonce,
+  ]);
 
   const sessions = useMemo(
     () => allSessionsNewestFirst(current, history),

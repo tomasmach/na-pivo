@@ -17,7 +17,18 @@ from pubs.identity import normalize_pub_name
 from pubs.models import PubDirectory, PubHours
 
 BATCH_SIZE = 1_000
-DIRECTORY_FIELDS = ("name", "lat", "lng", "city", "country", "venue_kind", "source", "refreshed_at")
+DIRECTORY_FIELDS = (
+    "name",
+    "lat",
+    "lng",
+    "city",
+    "country",
+    "venue_kind",
+    "discovery_kind",
+    "has_beer_signal",
+    "source",
+    "refreshed_at",
+)
 HOURS_FILL_FIELDS = (
     "opening_hours_raw", "status", "source_ref", "confidence", "rating_value",
     "rating_count", "rating_label", "venue_kind", "fetched_at",
@@ -50,8 +61,13 @@ def _load_lines(path: Path) -> list[dict]:
                 try:
                     row = json.loads(raw_line)
                     row["name_key"] = normalize_pub_name(row["name"])
+                    discovery_kind = row.get("discovery_kind") or PubDirectory.DiscoveryKind.PUB
+                    if discovery_kind not in PubDirectory.DiscoveryKind.values:
+                        raise ValueError(f"unsupported discovery_kind {discovery_kind!r}")
+                    row["discovery_kind"] = discovery_kind
+                    row["has_beer_signal"] = bool(row.get("has_beer_signal", False))
                     rows.append(row)
-                except (json.JSONDecodeError, KeyError, TypeError) as exc:
+                except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
                     raise CommandError(f"Invalid export line {line_number}: {exc}") from exc
     except OSError as exc:
         raise CommandError(f"Cannot read export: {exc}") from exc
@@ -115,6 +131,8 @@ class Command(BaseCommand):
                 "name": row["name"], "lat": row["lat"], "lng": row["lng"],
                 "city": row.get("city") or "", "country": row["country"],
                 "venue_kind": row["venue_kind"], "source": "bulk_scrape",
+                "discovery_kind": row["discovery_kind"],
+                "has_beer_signal": row["has_beer_signal"],
                 "refreshed_at": refreshed_at,
             }
             item = existing.get(identity)

@@ -95,6 +95,8 @@ def _directory_pub(
     city: str = "Praha",
     country: str = "cz",
     venue_kind: str = "pub",
+    discovery_kind: str = PubDirectory.DiscoveryKind.PUB,
+    has_beer_signal: bool = False,
     active: bool = True,
 ) -> PubDirectory:
     return PubDirectory.objects.create(
@@ -104,6 +106,8 @@ def _directory_pub(
         city=city,
         country=country,
         venue_kind=venue_kind,
+        discovery_kind=discovery_kind,
+        has_beer_signal=has_beer_signal,
         source="test",
         active=active,
         refreshed_at=dj_tz.now(),
@@ -365,6 +369,90 @@ def test_local_first_cap_keeps_nearest_rows(client, settings):
         "Hospoda 1",
         "Hospoda 2",
     ]
+
+
+@pytest.mark.django_db
+def test_local_directory_prefers_confirmed_pub_at_similar_distance(client):
+    _directory_pub(
+        "Nejasná restaurace",
+        lat=_LAT + 0.0004,
+        venue_kind=PubHours.VenueKind.MAYBE,
+    )
+    _directory_pub(
+        "Potvrzená hospoda",
+        lat=_LAT + 0.0008,
+        venue_kind=PubHours.VenueKind.PUB,
+    )
+
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 1})
+
+    assert [item["name"] for item in resp.json()["items"]] == [
+        "Potvrzená hospoda",
+        "Nejasná restaurace",
+    ]
+
+
+@pytest.mark.django_db
+def test_local_directory_keeps_distance_authoritative_across_relevance_bands(client):
+    _directory_pub(
+        "Blízká restaurace",
+        lat=_LAT + 0.0004,
+        venue_kind=PubHours.VenueKind.MAYBE,
+    )
+    _directory_pub(
+        "Vzdálenější hospoda",
+        lat=_LAT + 0.003,
+        venue_kind=PubHours.VenueKind.PUB,
+    )
+
+    resp = client.get("/v1/pubs/near", data={"lat": _LAT, "lng": _LNG, "radius_km": 1})
+
+    assert [item["name"] for item in resp.json()["items"]] == [
+        "Blízká restaurace",
+        "Vzdálenější hospoda",
+    ]
+
+
+@pytest.mark.django_db
+def test_other_tap_places_are_opt_in_signal_gated_and_ranked_after_pubs(client):
+    _directory_pub(
+        "Potvrzená hospoda",
+        lat=_LAT + 0.003,
+    )
+    _directory_pub(
+        "Kemp s výčepem",
+        lat=_LAT + 0.0002,
+        discovery_kind=PubDirectory.DiscoveryKind.CAMPSITE,
+        has_beer_signal=True,
+    )
+    _directory_pub(
+        "Kemp bez piva",
+        lat=_LAT + 0.0001,
+        discovery_kind=PubDirectory.DiscoveryKind.CAMPSITE,
+        has_beer_signal=False,
+    )
+
+    default = client.get(
+        "/v1/pubs/near",
+        data={"lat": _LAT, "lng": _LNG, "radius_km": 1},
+    )
+    opted_in = client.get(
+        "/v1/pubs/near",
+        data={
+            "lat": _LAT,
+            "lng": _LNG,
+            "radius_km": 1,
+            "include_other_places": "true",
+        },
+    )
+
+    assert [item["name"] for item in default.json()["items"]] == ["Potvrzená hospoda"]
+    assert [item["name"] for item in opted_in.json()["items"]] == [
+        "Potvrzená hospoda",
+        "Kemp s výčepem",
+    ]
+    assert opted_in.json()["items"][1]["discoveryKind"] == "campsite"
+    assert opted_in.json()["applied_filters"]["include_other_places"] is True
 
 
 @pytest.mark.django_db

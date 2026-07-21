@@ -242,6 +242,9 @@ export const cs = {
     pubFilterLimit: (count: number) => `Vyber nejvýš ${count} vlastností, ať má kompas kde hledat.`,
     pubFilterClear: 'Zrušit',
     pubFilterApply: 'Ukázat hospody',
+    otherPlacesSection: 'MÍSTA',
+    otherPlacesFilter: 'Další místa s výčepem',
+    otherPlacesHint: 'Stánky, kempy a sportovní areály jen s potvrzeným pivním signálem.',
     // Price filter (histogram + two-thumb range slider) copy
     priceFilterLabel: 'CENA PIVA',
     priceFilterSubtitle: 'Velké pivo · sloupce po 5 Kč. Ceny do roka, starší ber orientačně.',
@@ -382,7 +385,7 @@ export const cs = {
     },
     waterNudge: {
       title: 'Připomenout vodu',
-      subtitle: 'Po pár pivech v tahu ti šeptnu, ať dáš i jednu vodu',
+      subtitle: 'Volitelně po čtyřech pivech, jen v telefonu. Neodhaduje střízlivost.',
     },
     hideClosed: {
       title: 'Skrýt zavřené hospody',
@@ -575,12 +578,19 @@ export const cs = {
 
   addPub: {
     title: 'Přidat hospodu',
+    editTitle: 'Opravit hospodu',
     intro:
       'Vyplň název, město a adresu podniku a potvrď jeho polohu. Po odeslání se bude zobrazovat i ostatním.',
+    editIntro:
+      'Název můžeš opravit hned. Pro změnu adresy potvrď nový bod přímo u hospody.',
     locationHeader: 'Poloha',
     locationBody: 'Přidej hospodu tam, kde právě stojíš. Uložíme jen tento bod, žádnou trasu ani historii polohy.',
+    editLocationHeader: 'Změna polohy (nepovinná)',
+    editLocationBody: 'Původní bod zůstane beze změny. Novou adresu a polohu potvrď jen tehdy, když opravdu nesedí.',
     useCurrentLocation: 'Použít moji aktuální polohu',
     useCurrentLocationHint: 'Nejlépe funguje přímo v hospodě nebo před ní.',
+    editUseCurrentLocation: 'Opravit adresu a polohu',
+    editUseCurrentLocationHint: 'Zapni přímo u hospody, pak uprav město a adresu.',
     locating: 'Zjišťuju polohu…',
     nameLabel: 'Název',
     namePlaceholder: 'Např. Hospoda U Komunity',
@@ -594,8 +604,25 @@ export const cs = {
     locationPermissionDenied: 'Bez povolení polohy hospodu neumístím. Povol ji v Nastavení a zkus to znovu.',
     locationUnavailable: 'Polohu se teď nepodařilo zjistit. Zkus to ještě jednou venku nebo blíž k oknu.',
     save: 'Přidat hospodu',
+    editSave: 'Uložit opravu',
     saving: 'Ukládám…',
     savedToast: 'Mám ji, díky!',
+    queuedToast: 'Hospoda čeká na připojení. Uložil jsem ji v telefonu.',
+    failedToast: 'Hospodu se nepodařilo ověřit. Oprav údaje nebo to zkus znovu.',
+    editQueuedToast: 'Opravu mám v telefonu a pošlu ji, až budeš online.',
+    editSavedToast: 'Oprava je uložená.',
+    myPubsTitle: 'Moje přidané hospody',
+    myPubsSubtitle: 'Tady vidíš, co už je venku a co ještě čeká.',
+    myPubsEmpty: 'Zatím jsi žádnou chybějící hospodu nepřidal.',
+    statusPending: 'Čeká na odeslání',
+    statusSynced: 'Je v kompasu',
+    statusFailed: 'Potřebuje opravit',
+    retry: 'Zkusit znovu',
+    retrying: 'Zkouším…',
+    edit: 'Opravit hospodu',
+    editFromDetailHint: 'Jen u hospody, kterou jsi přidal ty',
+    openMyPubs: 'Moje přidané hospody',
+    openMyPubsHint: 'Stav odeslání, opravy a opakování',
   },
 
   account: {
@@ -730,6 +757,7 @@ export const cs = {
     sheetTitle: 'Zapsat pivo',
     beerLabel: 'Pivo',
     beerPlaceholder: 'Co máš ve skle?',
+    useSuggestion: (name: string) => `Použít existující pivo ${name}`,
     breweryLabel: 'Pivovar',
     styleLabel: 'Styl',
     optionalPlaceholder: 'Nepovinné',
@@ -787,6 +815,120 @@ export const cs = {
     // Beer-detail relationship hero — "Piješ ho od června".
     detailSinceMonth: (month: string) => `Piješ ho od ${month}`,
     detailMyTagsLabel: 'Můj verdikt',
+  },
+
+  partyEvening: {
+    title: 'Společný večer',
+    kicker: 'JEDEN STŮL, JEDEN VEČER',
+    intro: 'Založ stůl pro partu, nebo se přidej k večeru kámoše.',
+    privacy: 'Do večera jde jen to, co sem sám pošleš. Soukromý deníček zůstává soukromý.',
+    pubName: 'Hospoda',
+    pubNamePlaceholder: 'Třeba U Zlatého tygra',
+    pubCity: 'Město',
+    pubCityPlaceholder: 'Praha',
+    create: 'Založit večer',
+    joinLabel: 'Kód od kámoše',
+    joinPlaceholder: 'ABC234',
+    join: 'Jdu',
+    activeKicker: 'PRÁVĚ SE SEDÍ',
+    hostedBy: (name: string) => `Stůl drží ${name}`,
+    memberCount: (count: number) =>
+      count === 1 ? '1 člověk u stolu' : count >= 2 && count <= 4 ? `${count} lidi u stolu` : `${count} lidí u stolu`,
+    codeLabel: 'Kód večera',
+    copyCode: 'Kopírovat kód',
+    copied: 'Kód máš ve schránce.',
+    pending: 'Čeká na signál. Večer pošlu, jakmile se síť chytí.',
+    actionQueued: 'Beru. Dotáhnu to, až se chytí signál.',
+    reload: 'Obnovit večer',
+    feed: 'U STOLU',
+    joined: (name: string) => `${name} dorazil ke stolu`,
+    drank: (name: string, beer: string, quantity: number) =>
+      `${name} poslal ${quantity > 1 ? `${quantity}× ` : ''}${beer}`,
+    emptyFeed: 'Zatím jen cinkly půllitry. První sdílené pivo může být tvoje.',
+    drinkLabel: 'Poslat pivo ke stolu',
+    drinkPlaceholder: 'Co právě piješ?',
+    drinkPrivacy: 'Uvidí ho jen členové tohoto večera. Do deníčku se nic nekopíruje.',
+    shareDrink: 'Poslat ke stolu',
+    shared: 'Pivo je u stolu.',
+    leave: 'Odejít od stolu',
+    end: 'Zabalit večer',
+    ended: 'Večer je dopitý.',
+    left: 'Od stolu jsi odešel.',
+    ghost: 'V neviditelném režimu se ke společnému stolu nepřipojíš. Vypni ho v nastavení Party.',
+    notFriends: 'K tomuhle stolu pouští pořadatel jen svoje kámoše.',
+    notFound: 'Tenhle večer už neběží, nebo máš špatný kód.',
+    error: 'Večer se teď nepodařilo načíst. Zkus to znovu.',
+    back: 'Zpět do Party',
+    open: 'Společný večer',
+    openHint: 'Svolej jeden stůl bez míchání soukromých návštěv.',
+  },
+
+  communityEvents: {
+    title: 'Pivo u někoho',
+    kicker: 'KOMORNÍ SETKÁNÍ 18+',
+    intro: 'Malé domácí posezení v okolí. Adresu dostaneš až po schválení pořadatelem.',
+    safety: 'Jdeš k někomu domů. Řekni blízkému, kam jdeš, doraz střízlivý a kdykoli odejdi, když ti něco nesedí.',
+    nearby: 'V okolí',
+    mine: 'Moje',
+    create: 'Založit setkání',
+    locate: 'Najít setkání v okolí',
+    locating: 'Hledám tvoje okolí…',
+    noNearby: 'V okolí teď nikdo stůl neotevřel.',
+    noMine: 'Zatím žádné vlastní ani domluvené setkání.',
+    distance: {
+      under_1_km: 'do 1 km',
+      '1_3_km': '1–3 km',
+      '3_8_km': '3–8 km',
+      '8_15_km': '8–15 km',
+    },
+    spots: (count: number) => count === 1 ? 'poslední místo' : `${count} volná místa`,
+    host: (name: string) => `Pořádá ${name}`,
+    addressHidden: 'Přesná adresa až po schválení',
+    addressApproved: 'Adresa pro schválené',
+    join: 'Požádat o místo',
+    joinSent: 'Žádost letí pořadateli.',
+    pending: 'Čeká na schválení',
+    approved: 'Máš místo',
+    leave: 'Odejít ze setkání',
+    cancelRequest: 'Stáhnout žádost',
+    report: 'Nahlásit setkání',
+    reportTitle: 'Nahlásit setkání?',
+    reported: 'Díky. Mrkneme na to.',
+    cancelEvent: 'Zrušit setkání',
+    cancelled: 'Setkání je zrušené.',
+    approve: 'Schválit',
+    reject: 'Odmítnout',
+    requestMessage: 'Vzkaz pro pořadatele',
+    requestPlaceholder: 'Kdo jsi a proč chceš dorazit? (nepovinné)',
+    requests: 'ŽÁDOSTI O MÍSTO',
+    formTitle: 'Název setkání',
+    formTitlePlaceholder: 'Pivo, deskovky a klid',
+    description: 'Co se bude dít',
+    descriptionPlaceholder: 'Krátce popiš večer. Přesnou adresu sem nepiš.',
+    city: 'Město',
+    cityPlaceholder: 'Praha',
+    area: 'Čtvrť nebo část města',
+    areaPlaceholder: 'Vinohrady',
+    exactAddress: 'Přesná adresa',
+    exactAddressPlaceholder: 'Ulice, číslo a případně zvonek',
+    exactAddressHint: 'Ve veřejném přehledu ji nikdy neukážeme. Dostanou ji jen lidé, které schválíš.',
+    useLocation: 'Použít polohu tohoto místa',
+    locationReady: 'Poloha uložená jen k tomuto setkání',
+    start: 'Začátek',
+    today: 'Dnes',
+    tomorrow: 'Zítra',
+    duration: 'Délka',
+    durationHours: (hours: number) => `${hours} h`,
+    capacity: 'Kapacita včetně tebe',
+    adultsConfirm: 'Je mi 18+ a setkání je jen pro dospělé.',
+    publish: 'Otevřít stůl',
+    created: 'Stůl je otevřený. Přesná adresa zůstává skrytá.',
+    privacyError: 'Bez potvrzené polohy a přesné adresy nejde setkání bezpečně založit.',
+    authError: 'Pro domácí setkání se nejdřív přihlas.',
+    loadError: 'Setkání se teď nepodařilo načíst.',
+    retry: 'Zkusit znovu',
+    open: 'Pivo u někoho',
+    openHint: 'Objev malé domácí posezení poblíž. Adresa až po schválení.',
   },
 
   photoDiary: {
@@ -1655,14 +1797,13 @@ export const cs = {
     rapidDrinkBody: (lastDrinkText: string) =>
       `${lastDrinkText}. Fakt chceš přidat další?`,
     rapidDrinkConfirm: 'Přidat další',
-    // — Water nudge — a light, self-aware poke every few beers in a row. It's a
-    // mate at the table, not a health app: never moralizing. `count` is the beer
-    // that tripped it (4, 8, 12…); the line rotates so it doesn't get old.
+    // A local, optional hydration nudge. It makes no health, sobriety, BAC, or
+    // driving claim. `count` is the beer that triggered it (4, 8, 12...).
     waterNudge: (count: number) => {
       const lines = [
-        'Čtvrtý v tahu. Co takhle prohodit jedno s vodou? 💧',
-        'Osmý padá. Sklenka vody mezi tím a ráno ti poděkuje. 💧',
-        'Jedeš jak parní stroj. Voda taky teče, dej jednu. 💧',
+        'Jestli chceš, dej si teď i sklenici vody.',
+        'Jen malá připomínka: voda může přijít vhod.',
+        'Co takhle krátká pauza a sklenice vody?',
       ];
       const index = Math.max(0, Math.round(count / 4) - 1) % lines.length;
       return lines[index];
@@ -1872,13 +2013,12 @@ export const cs = {
     notePlaceholder: 'Co si chceš zapamatovat? Třeba „výčep super, účet už míň".',
   },
 
-  // "Výkon" — the personal beer-stats segment in the "Štamgast" tab. Restrained
-  // on purpose: last night's performance, personal records, lifetime totals and
-  // per-pub counts. The big yearly/monthly recap is saved for Pivní Wrapped.
+  // "Výkon" includes practical monthly/yearly trends. Pivní Wrapped remains a
+  // separate narrative recap.
   stats: {
     // — Empty state —
     emptyTitle: 'Zatím není co měřit',
-    emptyBody: 'Začni počítat piva a ráno tu najdeš svůj výkon — kolik jich padlo, jak rychle a kde.',
+    emptyBody: 'Začni počítat piva a ráno tu najdeš svůj výkon: kolik jich padlo, jak rychle a kde.',
 
     // — Hero: last performance ("ráno koukni na výkon") —
     heroToday: 'DNEŠNÍ VÝKON',
@@ -1904,7 +2044,7 @@ export const cs = {
     // "9 piv · U Zlatého tygra" (pub optional).
     recordMostBeersValue: (beersLabel: string, pub: string | null) =>
       pub ? `${beersLabel} · ${pub}` : beersLabel,
-    recordEmpty: '—',
+    recordEmpty: 'Zatím nic',
 
     // — Lifetime totals —
     totalsHeader: 'CELKEM',
@@ -1912,6 +2052,20 @@ export const cs = {
     totalEvenings: 'VEČERŮ',
     totalPubs: 'HOSPOD SE ZÁPISEM',
     totalSpent: 'UTRACENO',
+
+    // — Monthly and yearly trend —
+    periodsHeader: 'PIVNÍ TEMPO',
+    monthsHeader: 'POSLEDNÍCH 12 MĚSÍCŮ',
+    yearsHeader: 'ROKY',
+    periodBeers: 'PIV TENTO MĚSÍC',
+    periodEvenings: (count: number) =>
+      count === 1 ? '1 pivní večer' : count >= 2 && count <= 4 ? `${count} pivní večery` : `${count} pivních večerů`,
+    periodAverage: (average: number) =>
+      average > 0 ? `Průměrně ${average.toLocaleString('cs-CZ')} piva na večer` : 'Tenhle měsíc zatím na suchu',
+    yearSummary: (beers: number, average: number) =>
+      `${beers} piv, průměr ${average.toLocaleString('cs-CZ')} na večer`,
+    monthsA11y: 'Počet piv za posledních dvanáct měsíců',
+    monthA11y: (period: string, beers: number) => `${period}: ${beerCountLabel(beers)}`,
 
     // — Top pubs ("kolik jsem kde vypil") —
     pubsHeader: 'TVOJE HOSPODY',
@@ -2024,6 +2178,7 @@ export const cs = {
     beerBrandFilterInput: 'Filtrovat hospody podle značky piva ze záznamů',
     beerBrandFilterSuggestion: (name: string) => `Vybrat značku ${name}`,
     clearBeerBrandFilter: 'Zrušit filtr značky piva',
+    toggleOtherTapPlaces: 'Zahrnout další místa s výčepem',
     openBeerBrandFilter: 'Otevřít filtr značky piva',
     beerBrandFilterActive: (name: string) => `Filtr piva: ${name}. Klepni pro změnu`,
     selectBeerBrand: (name: string) => `Filtrovat na ${name}`,

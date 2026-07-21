@@ -26,6 +26,8 @@ export interface PubInfoContext {
   lat: number;
   lng: number;
   city?: string;
+  address?: string;
+  userAddedClientId?: string;
   /** Structured community hours from the enrichment, if any (prefill source). */
   prefillHours?: WeeklyHours | null;
   /** Raw OSM opening_hours string fallback (still proves hours exist). */
@@ -46,6 +48,8 @@ export function pubInfoFromPub(pub: Pub): PubInfoContext {
     lat: pub.lat,
     lng: pub.lng,
     city: pub.city,
+    address: pub.address,
+    userAddedClientId: pub.userAddedClientId,
     prefillHours: pub.communityHours ?? null,
     openingHours: pub.openingHours ?? null,
     prefillBeers: pub.beers ?? null,
