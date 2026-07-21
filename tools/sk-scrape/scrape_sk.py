@@ -721,6 +721,37 @@ def read_feature_ids(path: Path) -> list[str]:
     return feature_ids
 
 
+def load_pub_feature_ids(base_dir: Path) -> set[str] | None:
+    """Lowercased feature ids classified pub/maybe/unknown (i.e. not not_pub).
+
+    Merges the deterministic category labels (sk_venue_kind.jsonl) with the LLM
+    verdicts (sk_llm_verdicts.jsonl), the latter winning. Returns None if the
+    category file is absent, so hours mode falls back to visiting everything.
+    """
+    kinds_path = base_dir / "sk_venue_kind.jsonl"
+    verdicts_path = base_dir / "sk_llm_verdicts.jsonl"
+    if not kinds_path.exists():
+        LOG.warning("--pubs-only set but %s missing; visiting all places", kinds_path.name)
+        return None
+    kind: dict[str, str] = {}
+    with kinds_path.open(encoding="utf-8") as handle:
+        for line in handle:
+            if line.strip():
+                item = json.loads(line)
+                fid = item.get("feature_id")
+                if isinstance(fid, str):
+                    kind[fid.lower()] = item.get("venue_kind") or "unknown"
+    if verdicts_path.exists():
+        with verdicts_path.open(encoding="utf-8") as handle:
+            for line in handle:
+                if line.strip():
+                    item = json.loads(line)
+                    fid = item.get("feature_id")
+                    if isinstance(fid, str) and item.get("verdict") in ("pub", "not_pub"):
+                        kind[fid.lower()] = item["verdict"]
+    return {fid for fid, k in kind.items() if k != "not_pub"}
+
+
 def read_completed_hours(path: Path, target_date: date) -> set[tuple[str, int, str]]:
     completed: set[tuple[str, int, str]] = set()
     if not path.exists():
@@ -1000,6 +1031,15 @@ async def run_hours(args: argparse.Namespace) -> int:
     target_date = local_today()
     weekday = target_date.weekday()
     feature_ids = read_feature_ids(args.output)
+    if args.pubs_only:
+        allowed = load_pub_feature_ids(args.output.parent)
+        if allowed is not None:
+            before = len(feature_ids)
+            feature_ids = [f for f in feature_ids if f in allowed]
+            LOG.info(
+                "pubs-only: kept %d/%d places classified pub/maybe",
+                len(feature_ids), before,
+            )
     completed = read_completed_hours(args.hours_output, target_date)
     pending_all = [
         feature_id
@@ -1134,6 +1174,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-scrolls", type=int, default=35)
     parser.add_argument("--limit-tasks", type=int, default=0)
     parser.add_argument("--limit-places", type=int, default=0)
+    parser.add_argument(
+        "--pubs-only",
+        action="store_true",
+        help="Hours mode: only visit places classified pub/maybe "
+        "(reads sk_venue_kind.jsonl + sk_llm_verdicts.jsonl), skipping not_pub.",
+    )
     parser.add_argument("--delay-min", type=float, default=2.5)
     parser.add_argument("--delay-max", type=float, default=5.5)
     parser.add_argument("--block-backoff", type=float, default=30.0)

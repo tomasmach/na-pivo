@@ -51,7 +51,9 @@ KEYWORDS='krčma,hostinec,piváreň,pivnica,pub,bar,reštaurácia,pivo'
 if [ "$MODE" = "discover" ]; then
     set -- --mode discover --full-country --keywords "$KEYWORDS"
 else
-    set -- --mode hours
+    # Only visit real pubs (pub/maybe). Requires classify_sk.py (and optionally
+    # llm_classify_sk.py) to have run first; falls back to all places if not.
+    set -- --mode hours --pubs-only
 fi
 
 echo "Running '$MODE'. Log: ${SCRIPT_DIR}/${LOG_PATH}"

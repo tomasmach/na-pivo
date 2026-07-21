@@ -267,8 +267,32 @@ def load_weekly_hours(raw_path: Path, hours_path: Path) -> dict[str, dict[int, s
     return weekly
 
 
+def load_venue_kinds(kinds_path: Path, verdicts_path: Path) -> dict[str, str]:
+    """feature_id -> venue_kind, LLM verdict (pub/not_pub) overriding the category."""
+    kinds: dict[str, str] = {}
+    if kinds_path.exists():
+        with kinds_path.open(encoding="utf-8") as handle:
+            for line in handle:
+                if line.strip():
+                    item = json.loads(line)
+                    fid = item.get("feature_id")
+                    if fid:
+                        kinds[fid] = item.get("venue_kind") or "unknown"
+    if verdicts_path.exists():
+        with verdicts_path.open(encoding="utf-8") as handle:
+            for line in handle:
+                if line.strip():
+                    item = json.loads(line)
+                    fid = item.get("feature_id")
+                    if fid and item.get("verdict") in ("pub", "not_pub"):
+                        kinds[fid] = item["verdict"]
+    return kinds
+
+
 def normalize_record(
-    record: dict[str, Any], weekly_hours: dict[int, str] | None = None
+    record: dict[str, Any],
+    weekly_hours: dict[int, str] | None = None,
+    venue_kind: str = "unknown",
 ) -> dict[str, Any]:
     output: dict[str, Any] = {
         "name": record["name"],
@@ -277,7 +301,7 @@ def normalize_record(
         "cache_key": geohash8(record["lat"], record["lng"]),
         "city": record.get("city") or city_from_address(record.get("address") or ""),
         "country": "sk",
-        "venue_kind": "unknown",
+        "venue_kind": venue_kind,
     }
     hours = merge_days(weekly_hours or {})
     if hours:
@@ -299,12 +323,26 @@ def main() -> int:
     parser.add_argument("--input", type=Path, default=RAW_PATH)
     parser.add_argument("--hours-input", type=Path, default=HOURS_PATH)
     parser.add_argument("--output", type=Path, default=IMPORT_PATH)
+    parser.add_argument("--kinds-input", type=Path, default=BASE / "sk_venue_kind.jsonl")
+    parser.add_argument("--verdicts-input", type=Path, default=BASE / "sk_llm_verdicts.jsonl")
+    parser.add_argument(
+        "--keep-not-pub", action="store_true",
+        help="Also emit places classified not_pub (default: drop them).",
+    )
     args = parser.parse_args()
     records = load_and_deduplicate(args.input)
     weekly_hours = load_weekly_hours(args.input, args.hours_input)
+    venue_kinds = load_venue_kinds(args.kinds_input, args.verdicts_input)
+
+    written = 0
+    dropped = 0
     with args.output.open("w", encoding="utf-8") as handle:
         for record in records.values():
             feature_id = record.get("feature_id")
+            kind = venue_kinds.get(feature_id, "unknown") if isinstance(feature_id, str) else "unknown"
+            if kind == "not_pub" and not args.keep_not_pub:
+                dropped += 1
+                continue
             handle.write(
                 json.dumps(
                     normalize_record(
@@ -312,13 +350,15 @@ def main() -> int:
                         weekly_hours.get(feature_id.lower(), {})
                         if isinstance(feature_id, str)
                         else {},
+                        kind,
                     ),
                     ensure_ascii=False,
                     separators=(",", ":"),
                 )
                 + "\n"
             )
-    print(f"normalized {len(records)} unique identities -> {args.output}")
+            written += 1
+    print(f"normalized {written} pub/maybe identities -> {args.output} (dropped {dropped} not_pub)")
     return 0
 
 

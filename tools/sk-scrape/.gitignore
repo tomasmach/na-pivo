@@ -7,3 +7,4 @@ smoke_*.json
 .venv/
 __pycache__/
 .ruff_cache/
+llm_work/
