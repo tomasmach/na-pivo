@@ -7,6 +7,7 @@ import {
   background,
   buttonBorderShape,
   buttonStyle,
+  clipShape,
   contentTransition,
   controlSize,
   font,
@@ -17,6 +18,7 @@ import {
   monospacedDigit,
   padding,
   privacySensitive,
+  resizable,
   shapes,
   tint,
 } from '@expo/ui/swift-ui/modifiers';
@@ -38,6 +40,8 @@ export interface BeerEveningLiveActivityProps {
   totalPrice: string;
   /** Most recently counted beer; empty when the name is unavailable. */
   latestBeerName: string;
+  /** `file://` URI of the staged app icon in the app-group container. */
+  iconUri?: string;
 }
 
 const BeerEveningLiveActivity = (
@@ -105,21 +109,32 @@ const BeerEveningLiveActivity = (
           spacing={12}
           modifiers={[frame({ maxWidth: 1000 })]}
         >
-          <Image
-            systemName="mug.fill"
-            size={20}
-            modifiers={[
-              foregroundStyle(countStyle),
-              frame({ width: 42, height: 42 }),
-              background(
-                raisedSurface,
-                shapes.roundedRectangle({
-                  cornerRadius: 13,
-                  roundedCornerStyle: 'continuous',
-                }),
-              ),
-            ]}
-          />
+          {props.iconUri && !isDimmed ? (
+            <Image
+              uiImage={props.iconUri}
+              modifiers={[
+                resizable(),
+                frame({ width: 42, height: 42 }),
+                clipShape('roundedRectangle', 13),
+              ]}
+            />
+          ) : (
+            <Image
+              systemName="mug.fill"
+              size={20}
+              modifiers={[
+                foregroundStyle(countStyle),
+                frame({ width: 42, height: 42 }),
+                background(
+                  raisedSurface,
+                  shapes.roundedRectangle({
+                    cornerRadius: 13,
+                    roundedCornerStyle: 'continuous',
+                  }),
+                ),
+              ]}
+            />
+          )}
           <VStack
             alignment="leading"
             spacing={3}

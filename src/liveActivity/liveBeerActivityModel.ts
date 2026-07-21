@@ -9,6 +9,8 @@ export interface BeerEveningLiveActivityProps {
   beerCount: number;
   totalPrice: string;
   latestBeerName: string;
+  /** iOS only: `file://` URI of the staged app icon in the app-group container. */
+  iconUri?: string;
 }
 
 export function shouldRequestAndroidNotificationPermission(

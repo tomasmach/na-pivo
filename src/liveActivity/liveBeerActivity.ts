@@ -22,6 +22,7 @@ import {
   type TallyDrink,
   type TallySession,
 } from '@/stores/tallyStore';
+import { ensureLiveActivityIconUri } from '@/liveActivity/liveActivityIcon';
 import {
   buildBeerEveningLiveActivityProps,
   shouldRequestAndroidNotificationPermission,
@@ -80,6 +81,11 @@ function loadIosFactory(): IosLiveActivityFactory | null {
 async function syncIos(props: BeerEveningLiveActivityProps | null): Promise<void> {
   const factory = loadIosFactory();
   if (!factory) return;
+
+  if (props) {
+    const iconUri = await ensureLiveActivityIconUri();
+    if (iconUri) props = { ...props, iconUri };
+  }
 
   const instances = factory.getInstances();
   if (!props) {
