@@ -35,6 +35,7 @@ jest.mock('@/components/shared/IconGlyph', () => {
     MicIcon: icon,
     MapPinnedIcon: icon,
     RadioIcon: icon,
+    RefreshCwIcon: icon,
     SearchIcon: icon,
     SoccerBallIcon: icon,
     SquareParkingIcon: icon,
@@ -151,6 +152,19 @@ describe('PubFilterSheet', () => {
       priceMaxCzk: null,
       includeOtherPlaces: false,
     });
+  });
+
+  it('warns that a beer-filter match can have rotating taps', () => {
+    const { renderer } = renderSheet();
+
+    act(() => {
+      renderer.root.findByProps({
+        accessibilityLabel: cs.a11y.selectBeerBrand('Pilsner Urquell'),
+      }).props.onPress();
+    });
+
+    const text = renderer.root.findAllByType('Text').map((node: any) => node.props.children);
+    expect(text).toContain(cs.compass.beerFilterRotatingHint);
   });
 
   it('renders only amenities marked as map-filterable', () => {

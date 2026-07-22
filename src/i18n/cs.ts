@@ -118,6 +118,8 @@ export const cs = {
     factBeersWithPrice: (n: number, price: string) =>
       n === 1 ? `1 pivo · ${price}` : n >= 2 && n <= 4 ? `${n} piva · ${price}` : `${n} piv · ${price}`,
     factReferencePrice: (price: string) => `Velké pivo · ${price}`,
+    factBeersRotating: (detail: string | null) =>
+      detail ? `Rotuje · ${detail}` : 'Rotující nabídka · uprav',
     factEditA11y: (label: string, filled: boolean) =>
       filled ? `Upravit: ${label}` : `Doplnit: ${label}`,
 
@@ -286,6 +288,8 @@ export const cs = {
     beerFilterSearchPlaceholder: 'Hledat jinou značku…',
     beerFilterNoResults: 'Nic takového v záznamech není.',
     beerFilterSearching: 'Hledám…',
+    beerFilterRotatingHint:
+      'Filtr bere poslední potvrzenou nabídku. U rotujících výčepů se může změnit.',
     pubFilterButton: 'Filtry',
     pubFilterButtonActive: (count: number) => `Filtry · ${count}`,
     pubFilterTitle: 'Kam dneska?',
@@ -687,6 +691,11 @@ export const cs = {
     beersEmpty: 'Zatím nevím, co tady točí.',
     beersLifecycleHint: 'Nech tu jen to, co se čepuje teď. Smazaná piva zůstanou v historii.',
     beersLifecycleHintShort: 'Nech tu jen to, co se čepuje teď.',
+    beerMenuTypeLabel: 'Jak to tu s čepy chodí?',
+    beerMenuFixed: 'Stálá nabídka',
+    beerMenuFixedHint: 'Většina piv zůstává na čepu dlouhodobě.',
+    beerMenuRotating: 'Rotující nabídka',
+    beerMenuRotatingHint: 'Piva se tu pravidelně střídají. Seznam ber jako aktuální momentku.',
     historicalBeersHeader: 'Dříve tu bylo',
     historicalBeersHint: 'Vrátilo se na čep? Klepnutím ho přidej zpátky.',
     historicalBeersDoor: (count: number) =>
@@ -2268,6 +2277,8 @@ export const cs = {
 
     // Caption of the pub's community menu inside the pick sheet.
     menuHeader: 'Co tu mají',
+    rotatingMenuBadge: 'Rotující čepy',
+    rotatingMenuHint: 'Piva se tu střídají. Tohle je poslední potvrzená nabídka.',
     scanDrinks: 'Vyfotit nápojový lístek',
     scanDrinksLoading: 'Čtu nápoják…',
     scanDrinksTitle: 'Co si dáváš?',
@@ -2720,6 +2731,7 @@ export const cs = {
     contributeRemoveInterval: (day: string) => `${day}: odebrat čas`,
     contributeCopyToAll: 'Zkopírovat časy z pondělí do všech dnů',
     contributeAddBeer: 'Přidat pivo',
+    contributeBeerMenuType: (label: string) => `Typ nabídky piv: ${label}`,
     contributeRemoveBeer: 'Odebrat pivo',
     contributeRestoreHistoricalBeer: (name: string) => `Vrátit ${name} na aktuální nabídku`,
     contributeSaveButton: 'Uložit doplněné údaje',

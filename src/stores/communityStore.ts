@@ -22,6 +22,7 @@ export interface CommunityOverride {
   hours?: WeeklyHours;
   beers?: CommunityBeer[];
   historicalBeers?: CommunityBeer[];
+  beerMenuRotates?: boolean;
   /** Epoch ms when the override was written — newest write wins on merge. */
   updatedAt: number;
 }
@@ -36,7 +37,12 @@ interface CommunityState {
    */
   setOverride: (
     cell: string,
-    patch: { hours?: WeeklyHours; beers?: CommunityBeer[]; historicalBeers?: CommunityBeer[] },
+    patch: {
+      hours?: WeeklyHours;
+      beers?: CommunityBeer[];
+      historicalBeers?: CommunityBeer[];
+      beerMenuRotates?: boolean;
+    },
   ) => void;
 }
 
@@ -52,6 +58,7 @@ export const useCommunityStore = create<CommunityState>()(
             hours: patch.hours ?? prev?.hours,
             beers: patch.beers ?? prev?.beers,
             historicalBeers: patch.historicalBeers ?? prev?.historicalBeers,
+            beerMenuRotates: patch.beerMenuRotates ?? prev?.beerMenuRotates,
             updatedAt: Date.now(),
           };
           return { overrides: { ...state.overrides, [cell]: next } };

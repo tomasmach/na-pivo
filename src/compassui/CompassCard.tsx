@@ -39,7 +39,7 @@ import React, { useCallback, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 
 import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
-import { ChevronRightIcon } from '@/components/shared/IconGlyph';
+import { ChevronRightIcon, RefreshCwIcon } from '@/components/shared/IconGlyph';
 import { cs } from '@/i18n/cs';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -109,6 +109,8 @@ export interface CompassCardProps {
   hoursTone: 'open' | 'closed' | 'unknown';
   /** The quiet line under the hours: "Pilsner Urquell · 95 Kč", or null. */
   beerLine: string | null;
+  /** The displayed tap list changes regularly and is only a current snapshot. */
+  beerMenuRotates: boolean;
   /** Hidden-pub-names mode: the footer teases instead of telling. */
   hidden: boolean;
   /** Show the amber chevron door beside the pub name. */
@@ -127,6 +129,7 @@ export function CompassCard({
   hoursLabel,
   hoursTone,
   beerLine,
+  beerMenuRotates,
   hidden,
   showDetailLink,
   onPressFooter,
@@ -259,13 +262,29 @@ export function CompassCard({
                     </View>
                   ) : null}
                   {beerLine !== null ? (
-                    <Text
-                      style={styles.meta}
-                      numberOfLines={1}
-                      maxFontSizeMultiplier={FontScaleCap.body}
-                    >
-                      {beerLine}
-                    </Text>
+                    <View style={styles.beerRow}>
+                      {beerMenuRotates ? (
+                        <RefreshCwIcon size={12} color={Colors.amber} />
+                      ) : null}
+                      <Text
+                        style={[styles.meta, beerMenuRotates && styles.rotatingMeta]}
+                        numberOfLines={1}
+                        maxFontSizeMultiplier={FontScaleCap.body}
+                      >
+                        {beerMenuRotates ? `${cs.counter.rotatingMenuBadge} · ${beerLine}` : beerLine}
+                      </Text>
+                    </View>
+                  ) : beerMenuRotates ? (
+                    <View style={styles.beerRow}>
+                      <RefreshCwIcon size={12} color={Colors.amber} />
+                      <Text
+                        style={[styles.meta, styles.rotatingMeta]}
+                        numberOfLines={1}
+                        maxFontSizeMultiplier={FontScaleCap.body}
+                      >
+                        {cs.counter.rotatingMenuBadge}
+                      </Text>
+                    </View>
                   ) : null}
                 </View>
               </View>
@@ -391,11 +410,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
     includeFontPadding: false,
   },
+  beerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
   meta: {
+    flexShrink: 1,
     fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
+  },
+  rotatingMeta: {
+    color: Colors.amber,
   },
   revealHint: {
     flex: 1,

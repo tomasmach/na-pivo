@@ -129,6 +129,7 @@ interface MapyGeocodeItem {
     ratingLabel?: string | null;
     hasGarden?: boolean | null;
     venueKind?: string | null;
+    beer_menu_rotates?: boolean;
     /** Reference large-beer price; only attached when observed within a year. */
     price?: {
       czk?: number | null;
@@ -627,6 +628,7 @@ function itemToPub(
     if (['pub', 'maybe', 'not_pub', 'unknown'].includes(details.venueKind ?? '')) {
       pub.venueKind = details.venueKind as VenueKind;
     }
+    pub.beerMenuRotates = details.beer_menu_rotates === true;
     const price = details.price;
     pub.price =
       price &&

@@ -217,6 +217,7 @@ describe('searchPubsNear — backend proxy only', () => {
             ratingCount: 128,
             ratingLabel: 'Výborné',
             venueKind: 'pub',
+            beer_menu_rotates: true,
           },
         }],
       }),
@@ -233,6 +234,7 @@ describe('searchPubsNear — backend proxy only', () => {
       ratingCount: 128,
       ratingLabel: 'Výborné',
       venueKind: 'pub',
+      beerMenuRotates: true,
     }));
   });
 

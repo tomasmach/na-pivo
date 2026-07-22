@@ -527,10 +527,13 @@ export function MapPubSheet({
           ...(info.historicalBeers && info.historicalBeers.length > 0
             ? { historicalBeers: JSON.stringify(info.historicalBeers) }
             : {}),
+          ...(focus === 'beers' && facts
+            ? { beerMenuRotates: facts.beerMenuRotates ? '1' : '0' }
+            : {}),
         },
       });
     },
-    [info, router],
+    [facts, info, router],
   );
 
   // ── Rename: local in-memory rename + queued public correction ──
@@ -723,7 +726,13 @@ export function MapPubSheet({
                     weekly={null}
                     value={
                       facts.hasBeers
-                        ? cs.mapPub.tileBeersValue(facts.beerCount, tilePriceAmount)
+                        ? facts.beerMenuRotates
+                          ? cs.mapPub.factBeersRotating(
+                              facts.beerCount > 0
+                                ? cs.mapPub.tileBeersValue(facts.beerCount, tilePriceAmount)
+                                : null,
+                            )
+                          : cs.mapPub.tileBeersValue(facts.beerCount, tilePriceAmount)
                         : null
                     }
                     recency={beersMappedAge ? cs.mapPub.tileMapped(beersMappedAge) : null}

@@ -36,6 +36,8 @@ export interface PubInfoContext {
   prefillBeers?: CommunityBeer[] | null;
   /** Removed rows kept as lightweight menu history and restore suggestions. */
   historicalBeers?: CommunityBeer[] | null;
+  /** Whether the current list is a snapshot of intentionally rotating taps. */
+  beerMenuRotates?: boolean;
   /** Fresh reference price attached by nearby discovery, including its age. */
   price?: PubPrice | null;
   /** ISO timestamps of the community's latest hours / beers contribution — the
@@ -58,6 +60,7 @@ export function pubInfoFromPub(pub: Pub): PubInfoContext {
     openingHours: pub.openingHours ?? null,
     prefillBeers: pub.beers ?? null,
     historicalBeers: pub.historicalBeers ?? null,
+    beerMenuRotates: pub.beerMenuRotates ?? false,
     price: pub.price ?? null,
     hoursUpdatedAt: pub.hoursUpdatedAt ?? null,
     beersUpdatedAt: pub.beersUpdatedAt ?? null,
@@ -69,6 +72,7 @@ export interface PubInfoFactsView {
   hasBeers: boolean;
   /** Beers on tap count (override wins over enrichment). */
   beerCount: number;
+  beerMenuRotates: boolean;
 }
 
 function hoursHaveAnyInterval(hours: WeeklyHours | null | undefined): boolean {
@@ -93,6 +97,12 @@ export function usePubInfoFacts(info: PubInfoContext | undefined): PubInfoFactsV
       hoursHaveAnyInterval(info.prefillHours) ||
       Boolean(info.openingHours);
     const beerCount = override?.beers?.length ?? info.prefillBeers?.length ?? 0;
-    return { hasHours, hasBeers: beerCount > 0 || Boolean(info.price), beerCount };
+    const beerMenuRotates = override?.beerMenuRotates ?? info.beerMenuRotates ?? false;
+    return {
+      hasHours,
+      hasBeers: beerMenuRotates || beerCount > 0 || Boolean(info.price),
+      beerCount,
+      beerMenuRotates,
+    };
   }, [info, override]);
 }

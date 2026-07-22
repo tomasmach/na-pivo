@@ -378,6 +378,7 @@ function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }:
     pubId: string;
     beers: CommunityBeer[];
     historicalBeers: CommunityBeer[];
+    beerMenuRotates: boolean;
   } | null>(null);
   const [scanningDrinks, setScanningDrinks] = useState(false);
   const [scannedDrinks, setScannedDrinks] = useState<ScannedDrink[]>([]);
@@ -426,6 +427,7 @@ function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }:
         pubId,
         beers: result?.beers ?? [],
         historicalBeers: result?.historicalBeers ?? [],
+        beerMenuRotates: result?.beerMenuRotates ?? false,
       });
     });
 
@@ -528,6 +530,13 @@ function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }:
     }
     return pub.historicalBeers ?? [];
   }, [backendMenu, pub]);
+
+  const beerMenuRotates = pub
+    ? override?.beerMenuRotates ??
+      (backendMenu?.pubId === pub.id ? backendMenu.beerMenuRotates : undefined) ??
+      pub.beerMenuRotates ??
+      false
+    : false;
 
   /** Every beer identity from the menu, flattened, small → large per name. */
   const menuBeers = useMemo(
@@ -1066,9 +1075,10 @@ function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }:
         ...(pub.city ? { city: pub.city } : {}),
         ...(menu.length > 0 ? { beers: JSON.stringify(menu) } : {}),
         ...(historicalBeers.length > 0 ? { historicalBeers: JSON.stringify(historicalBeers) } : {}),
+        beerMenuRotates: beerMenuRotates ? '1' : '0',
       },
     });
-  }, [historicalBeers, menu, pub, router]);
+  }, [beerMenuRotates, historicalBeers, menu, pub, router]);
 
   const runDrinkScan = useCallback(async (source: MenuPhotoSource) => {
     setScanSourceVisible(false);
@@ -1402,6 +1412,7 @@ function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }:
       <DrinkPickSheet
         visible={pickOpen}
         isPub={!!pub}
+        beerMenuRotates={beerMenuRotates}
         tonightRows={tonightRows}
         menuRows={menuRows}
         onCountRow={handlePickRow}
