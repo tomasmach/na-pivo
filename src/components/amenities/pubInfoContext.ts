@@ -21,7 +21,7 @@ import {
   type CommunityBeer,
   type WeeklyHours,
 } from '@/data/communityHours';
-import { useCommunityStore } from '@/stores/communityStore';
+import { isBeerOverrideCurrent, useCommunityStore } from '@/stores/communityStore';
 
 export interface PubInfoContext {
   /** Source external id (for the contribute payload), when known. */
@@ -40,6 +40,8 @@ export interface PubInfoContext {
   prefillBeers?: CommunityBeer[] | null;
   /** Removed rows kept as lightweight menu history and restore suggestions. */
   historicalBeers?: CommunityBeer[] | null;
+  /** Server timestamp used to reconcile persisted optimistic beer edits. */
+  beersUpdatedAt?: string | null;
   /** Whether the current list is a snapshot of intentionally rotating taps. */
   beerMenuRotates?: boolean;
   /** Fresh reference price attached by nearby discovery, including its age. */
@@ -60,6 +62,7 @@ export function pubInfoFromPub(pub: Pub): PubInfoContext {
     openingHours: pub.openingHours ?? null,
     prefillBeers: pub.beers ?? null,
     historicalBeers: pub.historicalBeers ?? null,
+    beersUpdatedAt: pub.beersUpdatedAt ?? null,
     beerMenuRotates: pub.beerMenuRotates ?? false,
     price: pub.price ?? null,
   };
@@ -69,6 +72,7 @@ export function pubInfoFromPub(pub: Pub): PubInfoContext {
 export function contributeParamsFromPubInfo(
   info: PubInfoContext,
   focus: 'hours' | 'beers',
+  resolvedBeerMenuRotates: boolean | undefined = info.beerMenuRotates,
 ): Record<string, string> {
   const prefillHours =
     info.prefillHours ?? parseOsmOpeningHoursToWeeklyHours(info.openingHours);
@@ -85,8 +89,8 @@ export function contributeParamsFromPubInfo(
     ...(info.historicalBeers?.length
       ? { historicalBeers: JSON.stringify(info.historicalBeers) }
       : {}),
-    ...(typeof info.beerMenuRotates === 'boolean'
-      ? { beerMenuRotates: info.beerMenuRotates ? '1' : '0' }
+    ...(typeof resolvedBeerMenuRotates === 'boolean'
+      ? { beerMenuRotates: resolvedBeerMenuRotates ? '1' : '0' }
       : {}),
   };
 }
@@ -120,8 +124,12 @@ export function usePubInfoFacts(info: PubInfoContext | undefined): PubInfoFactsV
       hoursHaveAnyInterval(override?.hours) ||
       hoursHaveAnyInterval(info.prefillHours) ||
       Boolean(info.openingHours);
-    const beerCount = override?.beers?.length ?? info.prefillBeers?.length ?? 0;
-    const beerMenuRotates = override?.beerMenuRotates ?? info.beerMenuRotates ?? false;
+    const currentOverride = isBeerOverrideCurrent(override, info.beersUpdatedAt)
+      ? override
+      : undefined;
+    const beerCount = currentOverride?.beers?.length ?? info.prefillBeers?.length ?? 0;
+    const beerMenuRotates =
+      currentOverride?.beerMenuRotates ?? info.beerMenuRotates ?? false;
     return {
       hasHours,
       hasBeers: beerMenuRotates || beerCount > 0 || Boolean(info.price),

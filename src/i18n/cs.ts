@@ -109,7 +109,8 @@ export const cs = {
     factBeersWithPrice: (n: number, price: string) =>
       n === 1 ? `1 pivo · ${price}` : n >= 2 && n <= 4 ? `${n} piva · ${price}` : `${n} piv · ${price}`,
     factReferencePrice: (price: string) => `Velké pivo · ${price}`,
-    factBeersRotating: 'Rotující nabídka · uprav',
+    factBeersRotating: (detail: string | null) =>
+      detail ? `Rotuje · ${detail}` : 'Rotující nabídka · uprav',
     factEditA11y: (label: string, filled: boolean) =>
       filled ? `Upravit: ${label}` : `Doplnit: ${label}`,
 

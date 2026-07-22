@@ -506,10 +506,10 @@ export function MapPubSheet({
       if (!info) return;
       router.push({
         pathname: '/contribute',
-        params: contributeParamsFromPubInfo(info, focus),
+        params: contributeParamsFromPubInfo(info, focus, facts?.beerMenuRotates),
       });
     },
-    [info, router],
+    [facts?.beerMenuRotates, info, router],
   );
 
   // ── Rename: local in-memory rename + queued public correction ──
@@ -669,17 +669,19 @@ export function MapPubSheet({
                   <InfoFactRow
                     icon={<BeerIcon size={24} color={facts.hasBeers ? Colors.amber : Colors.mutedText} />}
                     label={cs.mapPub.factBeersLabel}
-                    value={
-                      facts.beerMenuRotates
-                        ? cs.mapPub.factBeersRotating
-                        : referencePrice
+                    value={(() => {
+                      const menuDetail = referencePrice
                         ? facts.beerCount > 0
                           ? cs.mapPub.factBeersWithPrice(facts.beerCount, referencePrice)
                           : cs.mapPub.factReferencePrice(referencePrice)
-                        : facts.hasBeers
+                        : facts.beerCount > 0
                           ? cs.mapPub.factBeersCount(facts.beerCount)
-                          : cs.mapPub.factBeersMissing
-                    }
+                          : null;
+                      if (facts.beerMenuRotates) {
+                        return cs.mapPub.factBeersRotating(menuDetail);
+                      }
+                      return menuDetail ?? cs.mapPub.factBeersMissing;
+                    })()}
                     filled={facts.hasBeers}
                     onPress={() => openContribute('beers')}
                   />
