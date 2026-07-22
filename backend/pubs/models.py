@@ -1411,6 +1411,100 @@ class BeerCheckInReaction(models.Model):
         return f"BeerCheckInReaction({self.account_id} -> {self.checkin_id}: {self.kind})"
 
 
+class PublishedNight(models.Model):
+    """One explicitly published, finished night in the public/friends feed.
+
+    The mobile client owns ``client_id`` and ``updated_at``. Together they make
+    offline retries idempotent and let the API apply last-write-wins updates
+    without storing any GPS trail, prices, or other implicit location history.
+    """
+
+    class Visibility(models.TextChoices):
+        FRIENDS = "friends", "Friends"
+        PUBLIC = "public", "Public"
+
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name="published_nights",
+    )
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
+    client_id = models.CharField(
+        max_length=128,
+        help_text="Client-generated idempotency key.",
+    )
+    drinking_day = models.DateField()
+    started_at = models.DateTimeField()
+    ended_at = models.DateTimeField()
+    beer_count = models.PositiveSmallIntegerField()
+    wine_count = models.PositiveSmallIntegerField()
+    soft_drink_count = models.PositiveSmallIntegerField()
+    shot_count = models.PositiveSmallIntegerField()
+    pub_names = models.JSONField(default=list, blank=True)
+    city = models.CharField(max_length=120, blank=True, default="")
+    duration_minutes = models.PositiveIntegerField(null=True, blank=True)
+    visibility = models.CharField(max_length=16, choices=Visibility.choices, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(
+        help_text="Client timestamp used as the last-write-wins conflict key."
+    )
+    is_removed = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name = "Published night"
+        verbose_name_plural = "Published nights"
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "client_id"],
+                name="unique_published_night_per_account_client_id",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["visibility", "-created_at"],
+                name="pubs_night_vis_created_idx",
+            ),
+            models.Index(
+                fields=["account", "drinking_day"],
+                name="pubs_night_account_day_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"PublishedNight({self.account_id}: {self.drinking_day})"
+
+
+class NightRound(models.Model):
+    """One account's symbolic round reaction on a published night."""
+
+    night = models.ForeignKey(
+        "pubs.PublishedNight",
+        on_delete=models.CASCADE,
+        related_name="rounds",
+    )
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name="night_rounds",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Night round"
+        verbose_name_plural = "Night rounds"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["night", "account"],
+                name="unique_night_round_per_account",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"NightRound({self.account_id} -> {self.night_id})"
+
+
 def beer_photo_path(instance, filename: str) -> str:
     """Storage path for one beer diary photo.
 

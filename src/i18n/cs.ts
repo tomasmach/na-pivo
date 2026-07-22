@@ -1911,6 +1911,91 @@ export const cs = {
     level: (n: number, title: string) => `Úroveň ${n} · ${title}`,
   },
 
+  // "Výčep" — the public feed of finished nights (the beer-diary take on a
+  // Strava feed). A night shows up here only when its owner explicitly hangs
+  // it up; the copy keeps repeating what is shown (counts, pubs, date, length)
+  // and what never leaves the diary (money, location, individual beers). The
+  // one-tap reaction is a "runda" — a symbolic round bought for the author.
+  vycep: {
+    title: 'Výčep',
+    scopeParta: 'Parta',
+    scopeWorld: 'Svět',
+
+    // Parta-tab teaser strip.
+    teaserSubtitle: 'Vyvěšené noci tvé party i zbytku světa.',
+
+    // — Feed —
+    emptyPartaTitle: 'Ve Výčepu je zatím prázdno',
+    emptyPartaBody: 'Až někdo z party vyvěsí svou noc, uvidíš ji tady. Klidně začni ty.',
+    emptyWorldTitle: 'Svět zatím mlčí',
+    emptyWorldBody: 'Nikdo teď nemá vyvěšenou noc. Vyvěs tu svoji a rozjeď to.',
+    loadError: 'Výčep se nepovedlo načíst. Zkus to znovu.',
+    retry: 'Zkusit znovu',
+    anonymousAuthor: 'Pivař',
+    myNightChip: 'Tvoje noc',
+    visibilityChipFriends: 'Jen parta',
+    visibilityChipWorld: 'Celý svět',
+    // "3 h 20 min" pub-to-pub span of the night.
+    nightDuration: (hours: number, minutes: number) =>
+      hours > 0 ? (minutes > 0 ? `${hours} h ${minutes} min` : `${hours} h`) : `${minutes} min`,
+    outsidePub: 'Mimo hospodu',
+
+    // — Runda (the reaction) —
+    round: 'Runda',
+    roundCount: (n: number) =>
+      czechPlural(n, { one: '1 runda', few: `${n} rundy`, many: `${n} rund` }),
+    roundSentToast: 'Runda poslaná. Dobrej tah.',
+    roundUndoneToast: 'Runda vrácená zpátky na tácek.',
+    roundQueuedToast: 'Rundu pošlu, až chytím signál.',
+    roundErrorToast: 'Runda nedošla. Zkus to za chvíli.',
+
+    // — Publish sheet —
+    publishTitle: 'Vyvěsit noc na Výčep',
+    publishBody:
+      'Vyvěsí se počet piv, hospody, datum a délka noci. Útrata, poloha ani jednotlivá piva se nikam neposílají.',
+    visibilityLabel: 'KDO TO UVIDÍ',
+    visibilityFriendsHint: 'Noc uvidí jen tvoje parta.',
+    visibilityWorldHint: 'Noc uvidí každý, kdo otevře Výčep. I mimo tvoji partu.',
+    publishCta: 'Vyvěsit',
+    updateCta: 'Vyvěsit znovu',
+    publishedToast: 'Noc visí ve Výčepu.',
+    publishQueuedToast: 'Vyvěsím ji, až budeš online.',
+    unpublishCta: 'Stáhnout z Výčepu',
+    unpublishedToast: 'Noc už ve Výčepu nevisí.',
+    nicknameNeededTitle: 'Chybí ti přezdívka',
+    nicknameNeededBody:
+      'Aby noc mohl vidět celý svět, potřebuješ přezdívku. Nastavíš ji v profilu za minutku.',
+    nothingToPublish: 'Prázdnou noc nevyvěsíš. Nejdřív musí něco padnout.',
+
+    // — Story share —
+    storyModalTitle: 'Tvoje noc jako story',
+    storyShareCta: 'Sdílet',
+    storyShareHint: 'Instagram, zprávy, kam chceš.',
+    storyShareError: 'Obrázek se nepovedlo připravit. Zkus to znovu.',
+    shareNightCta: 'Sdílet noc',
+    // Small always-true footer line on the story image itself.
+    storyBrand: 'NA PIVO',
+    storyStatBeers: (n: number) => czechPlural(n, { one: 'pivo', few: 'piva', many: 'piv' }),
+    storyStatPubs: (n: number) =>
+      czechPlural(n, { one: 'hospoda', few: 'hospody', many: 'hospod' }),
+    storyStatHours: (n: number) =>
+      czechPlural(n, { one: 'hodina', few: 'hodiny', many: 'hodin' }),
+
+    // — Evening detail entry —
+    sectionHeader: 'VÝČEP',
+    publishEntryTitle: 'Vyvěsit na Výčep',
+    publishEntryBody: 'Pochlub se partě nebo celému světu, jak šla noc.',
+    publishedState: (visibility: string) => `Visí ve Výčepu · ${visibility}`,
+
+    // — Reporting a public night —
+    reportNight: 'Nahlásit noc',
+    reportTitle: 'Nahlásit tuhle noc?',
+    reportBody: 'Nahlášení pošleš anonymně nám. Mrkneme na to.',
+    reportConfirm: 'Nahlásit',
+    reportSentToast: 'Díky, máme to. Mrkneme na to.',
+    reportErrorToast: 'Nahlášení nedošlo. Zkus to znovu.',
+  },
+
   myBeers: {
     // Tab label + screen title.
     title: 'Moje piva',
@@ -2131,6 +2216,15 @@ export const cs = {
   },
 
   a11y: {
+    // — Výčep —
+    vycepLink: 'Otevřít Výčep, feed vyvěšených nocí',
+    vycepBack: 'Zpět',
+    roundButton: (owner: string) => `Poslat rundu: ${owner}`,
+    nightCard: (owner: string) => `Noc pivaře ${owner}`,
+    shareNightButton: 'Sdílet noc jako obrázek',
+    publishNightButton: 'Vyvěsit noc na Výčep',
+    nightMenu: 'Možnosti noci',
+
     pubPillHidden: 'Skrytá hospoda, ťukni pro odhalení',
     pubPillRevealed: (pubName: string) => `${pubName}, ťukni pro otevření v mapách`,
     openStatus: (status: string) => `Stav otevírací doby: ${status}`,

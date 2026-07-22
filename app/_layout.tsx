@@ -32,6 +32,7 @@ import {
   stashPendingInviteCode,
 } from '@/data/friendInviteLink';
 import { flushBeerCheckinsQueue } from '@/data/beerCheckinsQueue';
+import { flushNightsQueue } from '@/data/nightsQueue';
 import { flushBeerPhotosQueue } from '@/data/beerPhotosQueue';
 import { seedVisitsFromHistory } from '@/data/visitsSync';
 import {
@@ -307,6 +308,8 @@ export default function RootLayout() {
     void flushFriendsQueue();
     void flushBeerCheckinsQueue();
     void flushBeerPhotosQueue();
+    // Výčep: retry queued night publishes/unpublishes and round reactions.
+    void flushNightsQueue();
     void ensureFriendPushRegisteredIfGranted();
     // Close an evening left idle past the timeout while the app was away, so the
     // counter reopens clean (the evening stays resumable for the same day/pub).
@@ -460,6 +463,13 @@ export default function RootLayout() {
           />
           <Stack.Screen
             name="beer-detail"
+            options={{
+              animation: 'slide_from_right',
+              gestureEnabled: true,
+            }}
+          />
+          <Stack.Screen
+            name="vycep"
             options={{
               animation: 'slide_from_right',
               gestureEnabled: true,

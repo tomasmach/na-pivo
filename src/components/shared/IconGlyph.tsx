@@ -82,6 +82,8 @@ import {
   House,
   Milk,
   CupSoda,
+  HandPlatter,
+  Share2,
   LucideProps,
 } from 'lucide-react-native';
 
@@ -150,6 +152,8 @@ export const TreePineIcon = wrap(TreePine, 'TreePineIcon');
 export const HouseIcon = wrap(House, 'HouseIcon');
 export const MilkIcon = wrap(Milk, 'MilkIcon');
 export const CupSodaIcon = wrap(CupSoda, 'CupSodaIcon');
+export const HandPlatterIcon = wrap(HandPlatter, 'HandPlatterIcon');
+export const Share2Icon = wrap(Share2, 'Share2Icon');
 export const SearchIcon = wrap(Search, 'SearchIcon');
 export const ListFilterIcon = wrap(ListFilter, 'ListFilterIcon');
 // "Zmapuj hospodu" amenity + Mapér glyphs.

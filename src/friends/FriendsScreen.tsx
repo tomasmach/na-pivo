@@ -111,6 +111,7 @@ import SectionHeader from './SectionHeader';
 import StreakBadge from './StreakBadge';
 import { RankTeaser } from '@/leaderboards/RankTeaser';
 import { ContestTeaser } from '@/photos/ContestTeaser';
+import { VycepTeaser } from '@/vycep/VycepTeaser';
 
 /** Notification kinds whose feed row opens the actor's friend profile (§F3). */
 const PROFILE_FEED_KINDS = new Set(['friend_accepted', 'friend_cheers']);
@@ -1056,6 +1057,12 @@ export default function FriendsScreen() {
                 nudge; the Profile entry alone buried it. */}
             <View style={styles.contestTeaserWrap}>
               <ContestTeaser />
+            </View>
+
+            {/* Výčep teaser — the published-nights feed entry, same strip
+                language as the rows above so the hero stays one calm column. */}
+            <View style={styles.contestTeaserWrap}>
+              <VycepTeaser />
             </View>
 
             <Pressable

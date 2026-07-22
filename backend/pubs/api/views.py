@@ -19,6 +19,8 @@ GET    /v1/health      → HealthView
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import json
 import logging
@@ -123,6 +125,7 @@ from pubs.models import (
     FriendPubActivity,
     FriendPubActivityRecipient,
     Friendship,
+    NightRound,
     PartyEvening,
     PartyEveningDrink,
     PartyEveningMember,
@@ -141,6 +144,7 @@ from pubs.models import (
     PubEvent,
     PubGooglePlace,
     PubHours,
+    PublishedNight,
     PubNameCorrection,
     PubPriceIndex,
     PubRating,
@@ -212,6 +216,9 @@ from .serializers import (
     PubCommunityResponseSerializer,
     PubHoursRequestSerializer,
     PubHoursResponseSerializer,
+    PublishedNightFeedQuerySerializer,
+    PublishedNightRequestSerializer,
+    PublishedNightSerializer,
     PubLocationLookupQuerySerializer,
     PubNameCorrectionRequestSerializer,
     PubNameCorrectionSerializer,
@@ -585,6 +592,46 @@ def _beer_checkin_reactions_prefetch() -> Prefetch:
 def _beer_checkin_queryset():
     return BeerCheckIn.objects.select_related("account", "beer_product__brand").prefetch_related(
         _beer_checkin_reactions_prefetch()
+    )
+
+
+def _published_night_context(request: Request) -> dict:
+    return {"request": request, "account": request.user}
+
+
+def _published_night_queryset(viewer: Account):
+    """Night rows with author, reaction count, and viewer state in one query."""
+
+    viewer_round = NightRound.objects.filter(night_id=OuterRef("pk"), account=viewer)
+    return PublishedNight.objects.select_related("account").annotate(
+        rounds_count=Count("rounds"),
+        viewer_has_round=Exists(viewer_round),
+    )
+
+
+def _published_night_visible_to(night: PublishedNight, viewer: Account) -> bool:
+    """Apply the union of the global and friends feed visibility rules."""
+
+    if night.is_removed or night.account.status != Account.Status.ACTIVE:
+        return False
+    if night.account_id == viewer.pk:
+        return True
+    if night.account_id in _blocked_account_ids(viewer):
+        return False
+
+    # A public night is explicit item-level consent. Global discovery therefore
+    # does not depend on profile visibility or ghost mode, but—like the global
+    # leaderboard—it does require a nickname so the author has a usable identity.
+    if night.visibility == PublishedNight.Visibility.PUBLIC and night.account.nickname:
+        return True
+
+    # The friends surface mirrors BeerCheckIn: accepted relationship and no
+    # ghost mode. Both friends/public night visibility values are allowed there.
+    return (
+        not night.account.ghost_mode
+        and night.account_id in _accepted_friend_ids(viewer)
+        and night.visibility
+        in (PublishedNight.Visibility.FRIENDS, PublishedNight.Visibility.PUBLIC)
     )
 
 
@@ -2450,13 +2497,35 @@ class ContentReportView(APIView):
             if not photo_visible:
                 return _photo_not_found()
 
+        # Additive (Výčep): a report can target the exact published night the
+        # reporter saw. Ownership and feed visibility are checked together so
+        # the field cannot be used to probe removed or otherwise hidden nights.
+        night = None
+        if data.get("night_id") is not None:
+            night = (
+                PublishedNight.objects.select_related("account")
+                .filter(public_id=data["night_id"])
+                .first()
+            )
+            night_visible = (
+                night is not None
+                and target is not None
+                and night.account_id == target.pk
+                and _published_night_visible_to(night, request.user)
+            )
+            if not night_visible:
+                return Response(
+                    {"detail": "Night not found.", "code": "night_not_found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
         # A profile the reporter can actually see can be reported: a public
         # profile, or a non-public one they share a friendship with. "Share a
         # friendship" includes a still-pending request in either direction, not
         # just accepted ones: the friends dashboard shows the requester's profile
         # in its incoming/outgoing request lists, so an abusive private account
         # that has only sent a request must stay reportable.
-        can_report = photo is not None or (
+        can_report = photo is not None or night is not None or (
             target is not None
             and (
                 target.is_public
@@ -2495,6 +2564,24 @@ class ContentReportView(APIView):
             snapshot["photo_id"] = str(photo.public_id)
             snapshot["photo_url"] = photo_url
             snapshot["photo_caption"] = photo.caption
+        if night is not None:
+            # Keep enough immutable context for moderation if the author later
+            # unpublishes or edits the night. No raw location or price data is
+            # present on PublishedNight in the first place.
+            snapshot["night_id"] = str(night.public_id)
+            snapshot["night"] = {
+                "drinking_day": night.drinking_day.isoformat(),
+                "started_at": night.started_at.isoformat(),
+                "ended_at": night.ended_at.isoformat(),
+                "beer_count": night.beer_count,
+                "wine_count": night.wine_count,
+                "soft_drink_count": night.soft_drink_count,
+                "shot_count": night.shot_count,
+                "pub_names": night.pub_names,
+                "city": night.city,
+                "duration_minutes": night.duration_minutes,
+                "visibility": night.visibility,
+            }
         report = ContentReport.objects.create(
             reporter=request.user,
             target_account=target,
@@ -4787,6 +4874,230 @@ class BeerCheckInReactView(APIView):
         return Response({"removed": deleted > 0}, status=status.HTTP_200_OK)
 
 
+def _encode_nights_cursor(night: PublishedNight) -> str:
+    payload = json.dumps(
+        {"created_at": night.created_at.isoformat(), "id": night.pk},
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _decode_nights_cursor(value: str) -> tuple[datetime, int]:
+    try:
+        padded = value + "=" * (-len(value) % 4)
+        decoded = base64.urlsafe_b64decode(padded.encode("ascii"))
+        payload = json.loads(decoded.decode("utf-8"))
+        created_at = datetime.fromisoformat(payload["created_at"])
+        row_id = payload["id"]
+        if dj_timezone.is_naive(created_at) or type(row_id) is not int or row_id < 1:
+            raise ValueError
+    except (ValueError, TypeError, KeyError, json.JSONDecodeError, UnicodeError, binascii.Error) as exc:
+        raise ValueError("Invalid nights cursor.") from exc
+    return created_at, row_id
+
+
+class PublishedNightView(APIView):
+    """POST/DELETE /v1/nights — publish or unpublish one finished night."""
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends"
+
+    def post(self, request: Request) -> Response:
+        serializer = PublishedNightRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        defaults = {
+            "drinking_day": data["drinking_day"],
+            "started_at": data["started_at"],
+            "ended_at": data["ended_at"],
+            "beer_count": data["beer_count"],
+            "wine_count": data["wine_count"],
+            "soft_drink_count": data["soft_drink_count"],
+            "shot_count": data["shot_count"],
+            "pub_names": data["pub_names"],
+            "city": data.get("city") or "",
+            "duration_minutes": data.get("duration_minutes"),
+            "visibility": data["visibility"],
+            "updated_at": data["updated_at"],
+        }
+
+        try:
+            with transaction.atomic():
+                existing = (
+                    PublishedNight.objects.select_for_update()
+                    .filter(account=request.user, client_id=data["client_id"])
+                    .first()
+                )
+                if existing is not None and existing.updated_at > data["updated_at"]:
+                    night = existing
+                    created = False
+                else:
+                    night, created = PublishedNight.objects.update_or_create(
+                        account=request.user,
+                        client_id=data["client_id"],
+                        defaults=defaults,
+                    )
+        except Exception as exc:  # noqa: BLE001
+            logger.error("nights: upsert failed: %s", exc, exc_info=True)
+            return _internal_error()
+
+        fresh = _published_night_queryset(request.user).get(pk=night.pk)
+        return Response(
+            {
+                "night": PublishedNightSerializer(
+                    fresh,
+                    context=_published_night_context(request),
+                ).data
+            },
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+    def delete(self, request: Request, client_id) -> Response:
+        return _idempotent_delete(
+            PublishedNight.objects.filter(account=request.user, client_id=client_id),
+            scope="nights",
+            key_label="client_id",
+            key_value=client_id,
+        )
+
+
+class PublishedNightFeedView(APIView):
+    """GET /v1/nights/feed — cursor-paginated friends or global Výčep."""
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends_dashboard"
+
+    def get(self, request: Request) -> Response:
+        serializer = PublishedNightFeedQuerySerializer(data=request.query_params)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        data = serializer.validated_data
+
+        blocked_ids = _blocked_account_ids(request.user)
+        rows = _published_night_queryset(request.user).filter(
+            account__status=Account.Status.ACTIVE,
+            is_removed=False,
+        )
+        if blocked_ids:
+            rows = rows.exclude(account_id__in=blocked_ids)
+
+        if data["scope"] == "friends":
+            friend_ids = set(_accepted_friend_ids(request.user))
+            friend_ids.difference_update(blocked_ids)
+            rows = rows.filter(
+                Q(account=request.user)
+                | Q(
+                    account_id__in=friend_ids,
+                    account__ghost_mode=False,
+                    visibility__in=(
+                        PublishedNight.Visibility.FRIENDS,
+                        PublishedNight.Visibility.PUBLIC,
+                    ),
+                )
+            )
+        else:
+            rows = rows.filter(visibility=PublishedNight.Visibility.PUBLIC).exclude(
+                Q(account__nickname__isnull=True) | Q(account__nickname="")
+            )
+
+        cursor = data.get("cursor") or ""
+        if cursor:
+            try:
+                cursor_created_at, cursor_id = _decode_nights_cursor(cursor)
+            except ValueError:
+                return Response(
+                    {"cursor": ["Invalid cursor."]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            rows = rows.filter(
+                Q(created_at__lt=cursor_created_at)
+                | Q(created_at=cursor_created_at, id__lt=cursor_id)
+            )
+
+        limit = data["limit"]
+        fetched = list(rows.order_by("-created_at", "-id")[: limit + 1])
+        page = fetched[:limit]
+        next_cursor = _encode_nights_cursor(page[-1]) if len(fetched) > limit else None
+        return Response(
+            {
+                "nights": PublishedNightSerializer(
+                    page,
+                    many=True,
+                    context=_published_night_context(request),
+                ).data,
+                "next_cursor": next_cursor,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class PublishedNightReactView(APIView):
+    """POST/DELETE /v1/nights/<public_id>/react — buy a symbolic round."""
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends"
+
+    def _load_visible_night(self, request: Request, night_id) -> PublishedNight | None:
+        night = (
+            PublishedNight.objects.select_related("account")
+            .filter(
+                public_id=night_id,
+                account__status=Account.Status.ACTIVE,
+                is_removed=False,
+            )
+            .first()
+        )
+        if night is None or not _published_night_visible_to(night, request.user):
+            return None
+        return night
+
+    def _validate_target(self, request: Request, night_id) -> tuple[PublishedNight | None, Response | None]:
+        night = self._load_visible_night(request, night_id)
+        if night is None:
+            return None, Response(
+                {"detail": "Tenhle večer nevidím.", "code": "night_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if night.account_id == request.user.pk:
+            return None, Response(
+                {"detail": "Vlastní rundu si kupovat nemusíš.", "code": "self_reaction"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return night, None
+
+    def _response(self, night: PublishedNight, *, my_round: bool) -> Response:
+        return Response(
+            {"rounds": NightRound.objects.filter(night=night).count(), "my_round": my_round},
+            status=status.HTTP_200_OK,
+        )
+
+    def post(self, request: Request, night_id) -> Response:
+        night, error = self._validate_target(request, night_id)
+        if error is not None:
+            return error
+        try:
+            NightRound.objects.update_or_create(night=night, account=request.user)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("nights: round reaction failed: %s", exc, exc_info=True)
+            return _internal_error()
+        return self._response(night, my_round=True)
+
+    def delete(self, request: Request, night_id) -> Response:
+        night, error = self._validate_target(request, night_id)
+        if error is not None:
+            return error
+        NightRound.objects.filter(night=night, account=request.user).delete()
+        return self._response(night, my_round=False)
+
+
 class BeerMemoryView(APIView):
     """GET /v1/beers/memory — caller-only lightweight beer memory."""
 
@@ -6817,6 +7128,11 @@ def _load_export_account(account: Account) -> Account:
                 "beer_checkin_reactions",
                 queryset=BeerCheckInReaction.objects.select_related("checkin"),
             ),
+            "published_nights",
+            Prefetch(
+                "night_rounds",
+                queryset=NightRound.objects.select_related("night"),
+            ),
             "pub_visits",
             "pub_ratings",
             "contribution_logs",
@@ -7013,6 +7329,27 @@ def _export_account_data(account: Account) -> dict:
             }
             for checkin in account.beer_checkins.all()
         ],
+        "published_nights": [
+            {
+                "id": str(night.public_id),
+                "client_id": str(night.client_id),
+                "drinking_day": night.drinking_day.isoformat(),
+                "started_at": _iso(night.started_at),
+                "ended_at": _iso(night.ended_at),
+                "beer_count": night.beer_count,
+                "wine_count": night.wine_count,
+                "soft_drink_count": night.soft_drink_count,
+                "shot_count": night.shot_count,
+                "pub_names": night.pub_names,
+                "city": night.city,
+                "duration_minutes": night.duration_minutes,
+                "visibility": night.visibility,
+                "is_removed": night.is_removed,
+                "created_at": _iso(night.created_at),
+                "updated_at": _iso(night.updated_at),
+            }
+            for night in account.published_nights.all()
+        ],
         "social": {
             "friendships": [
                 {
@@ -7073,6 +7410,15 @@ def _export_account_data(account: Account) -> dict:
                     "updated_at": _iso(row.updated_at),
                 }
                 for row in account.beer_checkin_reactions.all()
+            ]
+            + [
+                {
+                    "target": "published_night",
+                    "night_id": str(row.night.public_id),
+                    "kind": "round",
+                    "created_at": _iso(row.created_at),
+                }
+                for row in account.night_rounds.all()
             ],
             "notifications": [
                 {

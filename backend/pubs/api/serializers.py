@@ -75,6 +75,7 @@ from pubs.models import (
     PhotoContest,
     PhotoContestEntry,
     PubAmenityVote,
+    PublishedNight,
     PubNameCorrection,
     PubRating,
     PubReport,
@@ -366,6 +367,14 @@ class ContentReportRequestSerializer(serializers.Serializer):
     # view verifies the reporter can actually SEE that photo and snapshots its
     # URL + caption for moderation.
     photo_id = serializers.UUIDField(required=False, allow_null=True)
+    # Additive (Výčep): pin a report to one explicitly published night. The
+    # view verifies both ownership and visibility before snapshotting it.
+    night_id = serializers.UUIDField(required=False, allow_null=True)
+
+    def validate(self, attrs: dict) -> dict:
+        if attrs.get("photo_id") is not None and attrs.get("night_id") is not None:
+            raise serializers.ValidationError("Report either a photo or a night, not both.")
+        return attrs
 
 
 class RestorePurchasesRequestSerializer(serializers.Serializer):
@@ -940,6 +949,113 @@ class BeerCheckInSerializer(serializers.ModelSerializer):
             if row.account_id == account_id:
                 return row.kind
         return None
+
+
+class PublishedNightRequestSerializer(serializers.Serializer):
+    """Request body for POST /v1/nights."""
+
+    client_id = serializers.CharField(max_length=128, trim_whitespace=True)
+    drinking_day = serializers.DateField()
+    started_at = serializers.DateTimeField()
+    ended_at = serializers.DateTimeField()
+    beer_count = serializers.IntegerField(min_value=0, max_value=99)
+    wine_count = serializers.IntegerField(min_value=0, max_value=99)
+    soft_drink_count = serializers.IntegerField(min_value=0, max_value=99)
+    shot_count = serializers.IntegerField(min_value=0, max_value=99)
+    pub_names = serializers.ListField(
+        child=serializers.CharField(max_length=80, trim_whitespace=True, allow_blank=False),
+        max_length=5,
+    )
+    city = serializers.CharField(
+        max_length=120,
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        default="",
+        trim_whitespace=True,
+    )
+    duration_minutes = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        min_value=1,
+    )
+    visibility = serializers.ChoiceField(choices=PublishedNight.Visibility.choices)
+    updated_at = serializers.DateTimeField()
+
+    def validate(self, attrs: dict) -> dict:
+        if attrs["ended_at"] < attrs["started_at"]:
+            raise serializers.ValidationError(
+                {"ended_at": "ended_at must be greater than or equal to started_at."}
+            )
+        count_fields = ("beer_count", "wine_count", "soft_drink_count", "shot_count")
+        if not any(attrs[field] for field in count_fields):
+            raise serializers.ValidationError(
+                {"non_field_errors": ["A published night must contain at least one drink."]}
+            )
+        attrs["city"] = attrs.get("city") or ""
+        return attrs
+
+
+class PublishedNightFeedQuerySerializer(serializers.Serializer):
+    """Query parameters for GET /v1/nights/feed."""
+
+    scope = serializers.ChoiceField(choices=("friends", "global"), default="global")
+    cursor = serializers.CharField(required=False, allow_blank=True, default="")
+    limit = serializers.IntegerField(required=False, min_value=1, max_value=30, default=30)
+
+
+class PublishedNightSerializer(serializers.ModelSerializer):
+    """Published-night wire shape with viewer-specific reaction state."""
+
+    id = serializers.UUIDField(source="public_id", read_only=True)
+    author = FriendProfileSerializer(source="account", read_only=True)
+    rounds = serializers.SerializerMethodField()
+    my_round = serializers.SerializerMethodField()
+    is_mine = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PublishedNight
+        fields = [
+            "id",
+            "client_id",
+            "author",
+            "drinking_day",
+            "started_at",
+            "ended_at",
+            "beer_count",
+            "wine_count",
+            "soft_drink_count",
+            "shot_count",
+            "pub_names",
+            "city",
+            "duration_minutes",
+            "visibility",
+            "created_at",
+            "rounds",
+            "my_round",
+            "is_mine",
+        ]
+        read_only_fields = fields
+
+    def _is_mine(self, obj: PublishedNight) -> bool:
+        account = self.context.get("account")
+        return account is not None and obj.account_id == getattr(account, "pk", None)
+
+    def get_rounds(self, obj: PublishedNight) -> int:
+        annotated = getattr(obj, "rounds_count", None)
+        return int(annotated) if annotated is not None else obj.rounds.count()
+
+    def get_my_round(self, obj: PublishedNight) -> bool:
+        return bool(getattr(obj, "viewer_has_round", False))
+
+    def get_is_mine(self, obj: PublishedNight) -> bool:
+        return self._is_mine(obj)
+
+    def to_representation(self, instance: PublishedNight) -> dict:
+        representation = super().to_representation(instance)
+        if not self._is_mine(instance):
+            representation.pop("client_id", None)
+        return representation
 
 
 def _photo_image_url(image_field, request) -> str | None:

@@ -900,6 +900,11 @@ export async function reportProfileContent(params: {
    * `photo_id`, additive). Only meaningful with reason 'inappropriate_photo'.
    */
   photoId?: string;
+  /**
+   * Výčep: pin the report to one published night (backend field `night_id`,
+   * additive). Older backends ignore the extra field.
+   */
+  nightId?: string;
 }): Promise<AuthActionResult> {
   const res = await authFetch('/v1/content-reports', {
     method: 'POST',
@@ -909,6 +914,7 @@ export async function reportProfileContent(params: {
       reason: params.reason,
       comment: params.comment ?? '',
       ...(params.photoId ? { photo_id: params.photoId } : {}),
+      ...(params.nightId ? { night_id: params.nightId } : {}),
     },
   });
   return resolveActionResult(res);

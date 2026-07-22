@@ -21,6 +21,7 @@ from .models import (
     PubContributionLog,
     PubExternalBeerMenu,
     PubHours,
+    PublishedNight,
     PubNameCorrection,
     PubRating,
     PubReport,
@@ -208,6 +209,49 @@ class ContentReportAdmin(admin.ModelAdmin):
             report.status = ContentReport.Status.ACTIONED
             report.actioned_at = now
             report.save(update_fields=["status", "actioned_at", "updated_at"])
+
+
+@admin.register(PublishedNight)
+class PublishedNightAdmin(admin.ModelAdmin):
+    """Moderation surface: published content is immutable except its kill switch."""
+
+    list_display = (
+        "created_at",
+        "account",
+        "drinking_day",
+        "visibility",
+        "beer_count",
+        "is_removed",
+    )
+    list_select_related = ("account",)
+    list_filter = ("visibility", "is_removed", "created_at")
+    list_editable = ("is_removed",)
+    search_fields = (
+        "public_id",
+        "client_id",
+        "account__public_id",
+        "account__nickname",
+        "city",
+    )
+    readonly_fields = (
+        "account",
+        "public_id",
+        "client_id",
+        "drinking_day",
+        "started_at",
+        "ended_at",
+        "beer_count",
+        "wine_count",
+        "soft_drink_count",
+        "shot_count",
+        "pub_names",
+        "city",
+        "duration_minutes",
+        "visibility",
+        "created_at",
+        "updated_at",
+    )
+    ordering = ("-created_at", "-id")
 
 
 @admin.register(PubReport)
