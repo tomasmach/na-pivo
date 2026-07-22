@@ -67,7 +67,11 @@ import { trackCounterTabOpened } from '@/data/counterTelemetry';
 import { BeerPhotoCaptureFlow } from '@/photos/BeerPhotoCaptureFlow';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { fireSuccessHaptic, fireLightImpactHaptic } from '@/utils/haptics';
-import { isBeerOverrideCurrent, useCommunityStore } from '@/stores/communityStore';
+import {
+  isBeerListOverrideCurrent,
+  isBeerMenuTypeOverrideCurrent,
+  useCommunityStore,
+} from '@/stores/communityStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { formatPrice, pricePlaceholder, type PriceCurrency } from '@/utils/currency';
@@ -646,9 +650,16 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
   // A fresh/offline edit wins optimistically. A newer confirmed backend menu
   // replaces the persisted override after sync or another mapper correction.
   const currentBackendMenu = backendMenu?.pubId === pub?.id ? backendMenu : null;
-  const currentOverride = isBeerOverrideCurrent(
+  const backendBeersUpdatedAt = currentBackendMenu?.beersUpdatedAt ?? pub?.beersUpdatedAt;
+  const currentBeerListOverride = isBeerListOverrideCurrent(
     override,
-    currentBackendMenu?.beersUpdatedAt ?? pub?.beersUpdatedAt,
+    backendBeersUpdatedAt,
+  )
+    ? override
+    : undefined;
+  const currentMenuTypeOverride = isBeerMenuTypeOverrideCurrent(
+    override,
+    backendBeersUpdatedAt,
   )
     ? override
     : undefined;
@@ -670,13 +681,13 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
       }
       return [...seen.values()];
     }
-    if (currentOverride?.beers) return currentOverride.beers;
+    if (currentBeerListOverride?.beers) return currentBeerListOverride.beers;
     if (currentBackendMenu?.beers.length) return currentBackendMenu.beers;
     return pub.beers ?? [];
-  }, [currentBackendMenu, currentOverride, pub, sessionDrinks]);
+  }, [currentBackendMenu, currentBeerListOverride, pub, sessionDrinks]);
   const menuGroups = useMemo(() => groupMenuBeers(menu), [menu]);
   const beerMenuRotates = pub
-    ? currentOverride?.beerMenuRotates ??
+    ? currentMenuTypeOverride?.beerMenuRotates ??
       currentBackendMenu?.beerMenuRotates ??
       pub.beerMenuRotates ??
       false
@@ -684,10 +695,12 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
 
   const historicalBeers = useMemo<CommunityBeer[]>(() => {
     if (!pub) return [];
-    if (currentOverride?.historicalBeers) return currentOverride.historicalBeers;
+    if (currentBeerListOverride?.historicalBeers) {
+      return currentBeerListOverride.historicalBeers;
+    }
     if (currentBackendMenu?.historicalBeers.length) return currentBackendMenu.historicalBeers;
     return pub.historicalBeers ?? [];
-  }, [currentBackendMenu, currentOverride, pub]);
+  }, [currentBackendMenu, currentBeerListOverride, pub]);
 
   // — Count one beer (writes tally + queue + menu override) —
   // `atOverride` backdates the drink (PIV-25). When the backdated timestamp

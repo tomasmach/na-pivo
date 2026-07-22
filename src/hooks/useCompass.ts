@@ -31,7 +31,11 @@ import { computeOpenState } from '@/data/communityHours';
 import { recordWalkingSample } from '@/data/walkingTelemetry';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { usePubStore } from '@/stores/pubStore';
-import { isBeerOverrideCurrent, useCommunityStore } from '@/stores/communityStore';
+import {
+  isBeerListOverrideCurrent,
+  isBeerMenuTypeOverrideCurrent,
+  useCommunityStore,
+} from '@/stores/communityStore';
 import { useFocusedPubStore, type FocusedPub } from '@/stores/focusedPubStore';
 import { useDevicePosition } from '@/compass/useDevicePosition';
 import { useDeviceHeading } from '@/compass/useDeviceHeading';
@@ -764,20 +768,25 @@ export function useCompass(
     // — Beers —
     // A fresh/offline edit wins optimistically. Once the server exposes a newer
     // confirmed snapshot, it replaces the persisted override.
-    const beerOverrideCurrent = isBeerOverrideCurrent(
+    const backendBeersUpdatedAt = hoursForCurrent?.beersUpdatedAt ?? currentPub.beersUpdatedAt;
+    const beerListOverrideCurrent = isBeerListOverrideCurrent(
       overrideForCurrent,
-      hoursForCurrent?.beersUpdatedAt ?? currentPub.beersUpdatedAt,
+      backendBeersUpdatedAt,
     );
     let beers = hoursForCurrent?.beers;
-    if (beerOverrideCurrent && overrideForCurrent?.beers) {
+    if (beerListOverrideCurrent && overrideForCurrent?.beers) {
       beers = overrideForCurrent.beers;
     }
     let historicalBeers = hoursForCurrent?.historicalBeers;
-    if (beerOverrideCurrent && overrideForCurrent?.historicalBeers) {
+    if (beerListOverrideCurrent && overrideForCurrent?.historicalBeers) {
       historicalBeers = overrideForCurrent.historicalBeers;
     }
+    const beerMenuTypeOverrideCurrent = isBeerMenuTypeOverrideCurrent(
+      overrideForCurrent,
+      backendBeersUpdatedAt,
+    );
     const beerMenuRotates =
-      (beerOverrideCurrent ? overrideForCurrent?.beerMenuRotates : undefined) ??
+      (beerMenuTypeOverrideCurrent ? overrideForCurrent?.beerMenuRotates : undefined) ??
       hoursForCurrent?.beerMenuRotates ??
       currentPub.beerMenuRotates ??
       false;

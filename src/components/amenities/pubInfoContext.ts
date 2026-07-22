@@ -21,7 +21,11 @@ import {
   type CommunityBeer,
   type WeeklyHours,
 } from '@/data/communityHours';
-import { isBeerOverrideCurrent, useCommunityStore } from '@/stores/communityStore';
+import {
+  isBeerListOverrideCurrent,
+  isBeerMenuTypeOverrideCurrent,
+  useCommunityStore,
+} from '@/stores/communityStore';
 
 export interface PubInfoContext {
   /** Source external id (for the contribute payload), when known. */
@@ -124,12 +128,18 @@ export function usePubInfoFacts(info: PubInfoContext | undefined): PubInfoFactsV
       hoursHaveAnyInterval(override?.hours) ||
       hoursHaveAnyInterval(info.prefillHours) ||
       Boolean(info.openingHours);
-    const currentOverride = isBeerOverrideCurrent(override, info.beersUpdatedAt)
+    const currentBeerListOverride = isBeerListOverrideCurrent(override, info.beersUpdatedAt)
       ? override
       : undefined;
-    const beerCount = currentOverride?.beers?.length ?? info.prefillBeers?.length ?? 0;
+    const currentMenuTypeOverride = isBeerMenuTypeOverrideCurrent(
+      override,
+      info.beersUpdatedAt,
+    )
+      ? override
+      : undefined;
+    const beerCount = currentBeerListOverride?.beers?.length ?? info.prefillBeers?.length ?? 0;
     const beerMenuRotates =
-      currentOverride?.beerMenuRotates ?? info.beerMenuRotates ?? false;
+      currentMenuTypeOverride?.beerMenuRotates ?? info.beerMenuRotates ?? false;
     return {
       hasHours,
       hasBeers: beerMenuRotates || beerCount > 0 || Boolean(info.price),
