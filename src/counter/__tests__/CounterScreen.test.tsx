@@ -323,6 +323,9 @@ describe('CounterScreen counting', () => {
             source: 'firmy',
             communityHours: null,
             beers: [{ name: 'Plzeň', priceCzk: 62, volumeMl: 500 }],
+            historicalBeers: [],
+            beersUpdatedAt: null,
+            beerMenuRotates: false,
             rating: null,
             ratingCount: null,
             ratingLabel: null,
@@ -349,6 +352,44 @@ describe('CounterScreen counting', () => {
     )[0];
     expect(card).toBeTruthy();
     expect(fetchPubHours).toHaveBeenCalledWith([PUB], expect.any(AbortSignal));
+  });
+
+  it('labels a rotating tap list as the latest confirmed offer', async () => {
+    fetchPubHours.mockResolvedValueOnce(
+      new Map([
+        [
+          PUB.id,
+          {
+            openingHours: null,
+            isOpenNow: null,
+            nextChange: null,
+            status: 'ok',
+            source: 'community',
+            communityHours: null,
+            beers: [{ name: 'Dnešní speciál', priceCzk: 62, volumeMl: 500 }],
+            historicalBeers: [],
+            beersUpdatedAt: '2026-07-22T10:00:00Z',
+            beerMenuRotates: true,
+            rating: null,
+            ratingCount: null,
+            ratingLabel: null,
+            hasGarden: null,
+            venueKind: 'pub',
+          },
+        ],
+      ]),
+    );
+    useNearbyPub.mockReturnValue(nearbyState());
+
+    let renderer: any;
+    await act(async () => {
+      renderer = TestRenderer.create(React.createElement(CounterScreen));
+      await Promise.resolve();
+    });
+
+    const texts = renderer.root.findAllByType('Text').map((node: any) => node.props.children);
+    expect(texts).toContain(copy.counter.rotatingMenuBadge);
+    expect(texts).toContain(copy.counter.rotatingMenuHint);
   });
 
   it('counts a priced beer on tap → updates tally, queue, and menu override', async () => {

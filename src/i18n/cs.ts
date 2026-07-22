@@ -109,6 +109,7 @@ export const cs = {
     factBeersWithPrice: (n: number, price: string) =>
       n === 1 ? `1 pivo · ${price}` : n >= 2 && n <= 4 ? `${n} piva · ${price}` : `${n} piv · ${price}`,
     factReferencePrice: (price: string) => `Velké pivo · ${price}`,
+    factBeersRotating: 'Rotující nabídka · uprav',
     factEditA11y: (label: string, filled: boolean) =>
       filled ? `Upravit: ${label}` : `Doplnit: ${label}`,
 
@@ -234,6 +235,8 @@ export const cs = {
     beerFilterSearchPlaceholder: 'Hledat jinou značku…',
     beerFilterNoResults: 'Nic takového v záznamech není.',
     beerFilterSearching: 'Hledám…',
+    beerFilterRotatingHint:
+      'Filtr bere poslední potvrzenou nabídku. U rotujících výčepů se může změnit.',
     pubFilterButton: 'Filtry',
     pubFilterButtonActive: (count: number) => `Filtry · ${count}`,
     pubFilterTitle: 'Kam dneska?',
@@ -537,6 +540,11 @@ export const cs = {
     },
     beersHeader: 'Piva na čepu',
     beersLifecycleHint: 'Nech tu jen to, co se čepuje teď. Smazaná piva zůstanou v historii.',
+    beerMenuTypeLabel: 'Jak to tu s čepy chodí?',
+    beerMenuFixed: 'Stálá nabídka',
+    beerMenuFixedHint: 'Většina piv zůstává na čepu dlouhodobě.',
+    beerMenuRotating: 'Rotující nabídka',
+    beerMenuRotatingHint: 'Piva se tu pravidelně střídají. Seznam ber jako aktuální momentku.',
     historicalBeersHeader: 'Dříve tu bylo',
     historicalBeersHint: 'Vrátilo se na čep? Klepnutím ho přidej zpátky.',
     beerNamePlaceholder: 'Název piva, např. Pilsner Urquell 12°',
@@ -1816,6 +1824,8 @@ export const cs = {
 
     // — Menu —
     menuHeader: 'Co tu mají',
+    rotatingMenuBadge: 'Rotující čepy',
+    rotatingMenuHint: 'Piva se tu střídají. Tohle je poslední potvrzená nabídka.',
     addBeer: 'Přidat pivo',
     addOtherDrink: 'Zapsat nealko nebo panáka',
     scanDrinks: 'Vyfotit nápojový lístek',
@@ -2159,6 +2169,7 @@ export const cs = {
     contributeAddBeer: 'Přidat pivo',
     contributeRemoveBeer: 'Odebrat pivo',
     contributeRestoreHistoricalBeer: (name: string) => `Vrátit ${name} na aktuální nabídku`,
+    contributeBeerMenuType: (label: string) => `Typ nabídky: ${label}`,
     contributeSaveButton: 'Uložit doplněné údaje',
     addPubButton: 'Přidat chybějící hospodu',
     addPubNameInput: 'Název hospody',

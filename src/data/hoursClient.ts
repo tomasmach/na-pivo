@@ -34,6 +34,8 @@ export interface PubHoursResult {
   historicalBeers: CommunityBeer[];
   /** ISO timestamp of the latest confirmed current-menu replacement/update. */
   beersUpdatedAt: string | null;
+  /** True when the listed beers are the latest snapshot of intentionally changing taps. */
+  beerMenuRotates: boolean;
   /** Public star rating from the backend source, on a 0-5 scale. */
   rating: number | null;
   /** Number of user ratings behind `rating`, when known. */
@@ -84,6 +86,7 @@ interface BackendResult {
   /** Additive lifecycle fields; absent on older backends. */
   historical_beers?: WireBeer[];
   beers_updated_at?: string | null;
+  beer_menu_rotates?: boolean;
   /** Public star rating (may be absent on older backends). */
   rating?: number | null;
   /** Number of public ratings (may be absent on older backends). */
@@ -150,6 +153,7 @@ function toResult(entry: BackendResult | undefined): PubHoursResult {
       beers: [],
       historicalBeers: [],
       beersUpdatedAt: null,
+      beerMenuRotates: false,
       rating: null,
       ratingCount: null,
       ratingLabel: null,
@@ -177,6 +181,7 @@ function toResult(entry: BackendResult | undefined): PubHoursResult {
     beers,
     historicalBeers,
     beersUpdatedAt: typeof entry.beers_updated_at === 'string' ? entry.beers_updated_at : null,
+    beerMenuRotates: entry.beer_menu_rotates === true,
     rating: typeof entry.rating === 'number' && Number.isFinite(entry.rating) ? entry.rating : null,
     ratingCount:
       typeof entry.ratingCount === 'number' && Number.isFinite(entry.ratingCount)

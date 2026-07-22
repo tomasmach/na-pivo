@@ -84,6 +84,8 @@ export type Pub = {
   historicalBeers?: CommunityBeer[];
   /** Latest server-confirmed update of the current tap list. */
   beersUpdatedAt?: string | null;
+  /** The listed beers are a latest snapshot because this pub intentionally rotates its taps. */
+  beerMenuRotates?: boolean;
   /** Public star rating from the enrichment source, on a 0-5 scale. */
   rating?: number | null;
   /** Number of user ratings behind `rating`, when known. */

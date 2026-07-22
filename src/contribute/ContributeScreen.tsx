@@ -42,6 +42,7 @@ import {
   InfoIcon,
   ClockIcon,
   HistoryIcon,
+  RefreshCwIcon,
 } from '@/components/shared/IconGlyph';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
@@ -238,10 +239,18 @@ export default function ContributeScreen() {
     [],
   );
 
+  const initialBeerMenuRotates = useMemo(() => {
+    const fromParam = parseStringParam(params.beerMenuRotates);
+    return fromParam ? fromParam === '1' : storedOverride?.beerMenuRotates === true;
+    // The form owns this value after mount, like the beer rows above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [hours, setHours] = useState<WeeklyHours>(prefillHours);
   const [beers, setBeers] = useState<BeerRow[]>(prefillBeers);
   const [hoursTouched, setHoursTouched] = useState(false);
   const [beersTouched, setBeersTouched] = useState(false);
+  const [beerMenuRotates, setBeerMenuRotates] = useState(initialBeerMenuRotates);
   const [activeBeerId, setActiveBeerId] = useState<string | null>(null);
   const [beerSuggestions, setBeerSuggestions] = useState<BeerBrandSuggestion[]>([]);
   const [beerSuggestionsLoading, setBeerSuggestionsLoading] = useState(false);
@@ -406,6 +415,11 @@ export default function ContributeScreen() {
     },
     [priceCurrency],
   );
+
+  const chooseBeerMenuType = useCallback((rotates: boolean) => {
+    setBeerMenuRotates(rotates);
+    setBeersTouched(true);
+  }, []);
 
   // ── Scan menu (AI OCR prefill) ───────────────────────────────────────────--
   // Pick/snap a menu photo, upload it to the OCR helper, then MERGE the extracted
@@ -612,6 +626,7 @@ export default function ContributeScreen() {
         city: pub.city,
         hours: submittedHours,
         beers: sendBeers ? cleanedBeers : undefined,
+        beerMenuRotates: sendBeers ? beerMenuRotates : undefined,
       },
       generateUuidV4(),
     );
@@ -627,6 +642,7 @@ export default function ContributeScreen() {
             historicalBeers,
           )
         : undefined,
+      beerMenuRotates: sendBeers ? beerMenuRotates : undefined,
     });
 
     // Fire-and-forget: the queue persists before the first send and retries. Its
@@ -662,6 +678,7 @@ export default function ContributeScreen() {
     router.back();
   }, [
     beersTouched,
+    beerMenuRotates,
     cell,
     cleanedBeers,
     hoursTouched,
@@ -776,6 +793,56 @@ export default function ContributeScreen() {
               <Text style={styles.beersLifecycleHint} maxFontSizeMultiplier={FontScaleCap.body}>
                 {cs.contribute.beersLifecycleHint}
               </Text>
+
+              <View style={styles.menuTypeCard}>
+                <View style={styles.menuTypeTitleRow}>
+                  <RefreshCwIcon
+                    size={16}
+                    color={beerMenuRotates ? Colors.amber : Colors.foamMuted}
+                  />
+                  <Text style={styles.menuTypeLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {cs.contribute.beerMenuTypeLabel}
+                  </Text>
+                </View>
+                <View style={styles.menuTypeSegment}>
+                  {([false, true] as const).map((rotates) => {
+                    const selected = beerMenuRotates === rotates;
+                    const label = rotates
+                      ? cs.contribute.beerMenuRotating
+                      : cs.contribute.beerMenuFixed;
+                    return (
+                      <Pressable
+                        key={String(rotates)}
+                        onPress={() => chooseBeerMenuType(rotates)}
+                        style={[
+                          styles.menuTypeOption,
+                          rotates && styles.menuTypeOptionRight,
+                          selected && styles.menuTypeOptionSelected,
+                        ]}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                        accessibilityLabel={cs.a11y.contributeBeerMenuType(label)}
+                      >
+                        <Text
+                          style={[
+                            styles.menuTypeOptionText,
+                            selected && styles.menuTypeOptionTextSelected,
+                          ]}
+                          numberOfLines={1}
+                          maxFontSizeMultiplier={FontScaleCap.body}
+                        >
+                          {label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <Text style={styles.menuTypeHint} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {beerMenuRotates
+                    ? cs.contribute.beerMenuRotatingHint
+                    : cs.contribute.beerMenuFixedHint}
+                </Text>
+              </View>
 
               <ScanMenuButton scanning={scanning} onPress={handleScanMenu} />
 
@@ -1402,6 +1469,62 @@ const styles = StyleSheet.create({
     color: Colors.foamMuted,
     marginTop: -4,
     marginBottom: 12,
+  },
+  menuTypeCard: {
+    marginBottom: Spacing.md,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.24),
+    borderRadius: Radius.medium,
+    backgroundColor: Colors.stout3,
+  },
+  menuTypeTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    marginBottom: 10,
+  },
+  menuTypeLabel: {
+    fontFamily: Fonts.ui.bold,
+    fontSize: 14,
+    color: Colors.foam,
+  },
+  menuTypeSegment: {
+    flexDirection: 'row',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout2,
+  },
+  menuTypeOption: {
+    flex: 1,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  menuTypeOptionRight: {
+    borderLeftWidth: 1,
+    borderLeftColor: Colors.border,
+  },
+  menuTypeOptionSelected: {
+    backgroundColor: Colors.amber,
+  },
+  menuTypeOptionText: {
+    fontFamily: Fonts.ui.bold,
+    fontSize: 13,
+    color: Colors.foamMuted,
+  },
+  menuTypeOptionTextSelected: {
+    color: Colors.stout,
+  },
+  menuTypeHint: {
+    marginTop: 9,
+    fontFamily: Fonts.ui.regular,
+    fontSize: 12,
+    lineHeight: 17,
+    color: Colors.foamMuted,
   },
   beerRow: {
     backgroundColor: Colors.stout3,

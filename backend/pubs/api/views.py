@@ -1506,6 +1506,8 @@ class PubCommunityView(APIView):
                 )
                 defaults["beers"] = data["beers"]
                 defaults["beers_updated_at"] = now
+                if "beer_menu_rotates" in data:
+                    defaults["beer_menu_rotates"] = data["beer_menu_rotates"]
 
             record, _ = PubCommunityData.objects.update_or_create(
                 cache_key=cache_key,
@@ -1588,6 +1590,7 @@ class PubCommunityView(APIView):
                 "beers": record.beers or [],
                 "historical_beers": record.historical_beers or [],
                 "beers_updated_at": record.beers_updated_at,
+                "beer_menu_rotates": record.beer_menu_rotates,
                 "xp_awarded": xp_awarded,
                 "mapper": mapper,
             }
@@ -6446,6 +6449,7 @@ class PubsNearView(APIView):
                             "ratingLabel",
                             "hasGarden",
                             "venueKind",
+                            "beer_menu_rotates",
                         )
                     }
 

@@ -122,6 +122,7 @@ function pubWithDetails(pub: Pub, details: PubHoursResult | undefined): Pub {
     beers: details.beers,
     historicalBeers: details.historicalBeers,
     beersUpdatedAt: details.beersUpdatedAt,
+    beerMenuRotates: details.beerMenuRotates,
     rating: details.rating,
     ratingCount: details.ratingCount,
     ratingLabel: details.ratingLabel,

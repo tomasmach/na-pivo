@@ -34,6 +34,8 @@ export interface CommunityInput {
   hours?: WeeklyHours;
   /** Present only when the user edited the beer list (full replacement). */
   beers?: CommunityBeer[];
+  /** Present with a beer-list edit when the pub intentionally rotates its taps. */
+  beerMenuRotates?: boolean;
 }
 
 /** The byte-stable payload persisted in the queue and POSTed on every retry. */
@@ -46,6 +48,7 @@ export interface CommunityEntry {
   external_id: string | null;
   hours?: WeeklyHours;
   beers?: WireBeer[];
+  beer_menu_rotates?: boolean;
 }
 
 /** Backend response for a successful submission. */
@@ -55,6 +58,7 @@ export interface CommunityResponse {
   beers: CommunityBeer[];
   historicalBeers: CommunityBeer[];
   beersUpdatedAt: string | null;
+  beerMenuRotates: boolean;
   /** Mapér XP this submission paid (0 when the pub's facts were already
    *  contributed by this account). Additive field — 0 on older backends. */
   xpAwarded: number;
@@ -68,6 +72,7 @@ interface WireResponse {
   beers?: WireBeer[];
   historical_beers?: WireBeer[];
   beers_updated_at?: string | null;
+  beer_menu_rotates?: boolean;
   xp_awarded?: number;
   mapper?: WireMapperSnapshot | null;
 }
@@ -91,6 +96,9 @@ export function buildCommunityEntry(input: CommunityInput, clientId: string): Co
   if (city) entry.city = city;
   if (input.hours) entry.hours = input.hours;
   if (input.beers) entry.beers = input.beers.map(beerToWire);
+  if (typeof input.beerMenuRotates === 'boolean') {
+    entry.beer_menu_rotates = input.beerMenuRotates;
+  }
   return entry;
 }
 
@@ -135,6 +143,7 @@ export async function submitPubCommunity(
         ? data.historical_beers.map(beerFromWire)
         : [],
       beersUpdatedAt: typeof data.beers_updated_at === 'string' ? data.beers_updated_at : null,
+      beerMenuRotates: data.beer_menu_rotates === true,
       xpAwarded: typeof data.xp_awarded === 'number' ? data.xp_awarded : 0,
       mapper: data.mapper ?? null,
     };

@@ -70,6 +70,7 @@ type PubHoursState = {
   /** Previously confirmed beers no longer on the current tap list. */
   historicalBeers?: CommunityBeer[];
   beersUpdatedAt?: string | null;
+  beerMenuRotates?: boolean;
   /** Public star rating from the enrichment source, on a 0-5 scale. */
   rating?: number | null;
   /** Number of user ratings behind `rating`, when known. */
@@ -97,6 +98,7 @@ function hoursStateFromResult(result: PubHoursResult, status: HoursStatus): PubH
     beers: result.beers,
     historicalBeers: result.historicalBeers,
     beersUpdatedAt: result.beersUpdatedAt,
+    beerMenuRotates: result.beerMenuRotates,
     rating: result.rating,
     ratingCount: result.ratingCount,
     ratingLabel: result.ratingLabel,
@@ -772,6 +774,11 @@ export function useCompass(
     ) {
       historicalBeers = overrideForCurrent.historicalBeers;
     }
+    const beerMenuRotates =
+      overrideForCurrent?.beerMenuRotates ??
+      hoursForCurrent?.beerMenuRotates ??
+      currentPub.beerMenuRotates ??
+      false;
 
     // Nothing to merge → return the bare pub for referential stability.
     if (!hoursForCurrent && !overrideForCurrent) return currentPub;
@@ -787,6 +794,7 @@ export function useCompass(
       beers: beers && beers.length > 0 ? beers : undefined,
       historicalBeers: historicalBeers && historicalBeers.length > 0 ? historicalBeers : undefined,
       beersUpdatedAt: hoursForCurrent?.beersUpdatedAt ?? currentPub.beersUpdatedAt ?? null,
+      beerMenuRotates,
       rating: hoursForCurrent?.rating ?? currentPub.rating ?? null,
       ratingCount: hoursForCurrent?.ratingCount ?? currentPub.ratingCount ?? null,
       ratingLabel: hoursForCurrent?.ratingLabel ?? currentPub.ratingLabel ?? null,

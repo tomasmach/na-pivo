@@ -540,6 +540,7 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
     pubId: string;
     beers: CommunityBeer[];
     historicalBeers: CommunityBeer[];
+    beerMenuRotates: boolean;
   } | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [sharingWithFriends, setSharingWithFriends] = useState(false);
@@ -581,11 +582,16 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
     fetchPubHours([pub], controller.signal).then((resultMap) => {
       if (controller.signal.aborted) return;
       const result = resultMap.get(pubId);
-      setBackendMenu({
-        pubId,
-        beers: result?.beers ?? [],
-        historicalBeers: result?.historicalBeers ?? [],
-      });
+      setBackendMenu(
+        result
+          ? {
+              pubId,
+              beers: result.beers ?? [],
+              historicalBeers: result.historicalBeers ?? [],
+              beerMenuRotates: result.beerMenuRotates ?? false,
+            }
+          : null,
+      );
     });
 
     return () => controller.abort();
@@ -663,6 +669,12 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
     return pub.beers ?? [];
   }, [backendMenu, override, pub, sessionDrinks]);
   const menuGroups = useMemo(() => groupMenuBeers(menu), [menu]);
+  const beerMenuRotates = pub
+    ? override?.beerMenuRotates ??
+      (backendMenu?.pubId === pub.id ? backendMenu.beerMenuRotates : undefined) ??
+      pub.beerMenuRotates ??
+      false
+    : false;
 
   const historicalBeers = useMemo<CommunityBeer[]>(() => {
     if (!pub) return [];
@@ -922,9 +934,10 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
         ...(historicalBeers.length > 0
           ? { historicalBeers: JSON.stringify(historicalBeers) }
           : {}),
+        beerMenuRotates: beerMenuRotates ? '1' : '0',
       },
     });
-  }, [historicalBeers, menu, pub, router]);
+  }, [beerMenuRotates, historicalBeers, menu, pub, router]);
 
   const runDrinkScan = useCallback(
     async (source: MenuPhotoSource) => {
@@ -1289,9 +1302,24 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
         {/* Menu */}
         {hasMenu ? (
           <>
-            <Text style={styles.menuHeader} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {pub ? cs.counter.menuHeader : cs.counter.outsideMenuHeader}
-            </Text>
+            <View style={styles.menuHeaderRow}>
+              <Text style={styles.menuHeader} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {pub ? cs.counter.menuHeader : cs.counter.outsideMenuHeader}
+              </Text>
+              {beerMenuRotates ? (
+                <View style={styles.rotatingMenuBadge}>
+                  <RefreshCwIcon size={12} color={Colors.amber} />
+                  <Text style={styles.rotatingMenuBadgeText} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {cs.counter.rotatingMenuBadge}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+            {beerMenuRotates ? (
+              <Text style={styles.rotatingMenuHint} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.counter.rotatingMenuHint}
+              </Text>
+            ) : null}
             <View style={styles.menuList}>
               {menuGroups.map((group) => (
                 <MenuCard
@@ -1338,10 +1366,18 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
         ) : (
           <View style={styles.emptyMenu}>
             <Text style={styles.emptyMenuTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {pub ? cs.counter.emptyMenuTitle : cs.counter.outsideEmptyTitle}
+              {pub && beerMenuRotates
+                ? cs.counter.rotatingMenuBadge
+                : pub
+                  ? cs.counter.emptyMenuTitle
+                  : cs.counter.outsideEmptyTitle}
             </Text>
             <Text style={styles.emptyMenuBody} maxFontSizeMultiplier={FontScaleCap.body}>
-              {pub ? cs.counter.emptyMenuBody : cs.counter.outsideEmptyBody}
+              {pub && beerMenuRotates
+                ? cs.counter.rotatingMenuHint
+                : pub
+                  ? cs.counter.emptyMenuBody
+                  : cs.counter.outsideEmptyBody}
             </Text>
             <View style={styles.emptyMenuButton}>
               <GlowButton
@@ -1945,8 +1981,38 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.display.extrabold,
     fontSize: 18,
     color: Colors.foam,
+  },
+  menuHeaderRow: {
     marginTop: 12,
     marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  rotatingMenuBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.32),
+    backgroundColor: withAlpha(Colors.amber, 0.08),
+  },
+  rotatingMenuBadgeText: {
+    fontFamily: Fonts.ui.bold,
+    fontSize: 11,
+    color: Colors.amber,
+  },
+  rotatingMenuHint: {
+    marginTop: -2,
+    marginBottom: 10,
+    fontFamily: Fonts.ui.regular,
+    fontSize: 12,
+    lineHeight: 17,
+    color: Colors.foamMuted,
   },
   menuList: {
     gap: 10,

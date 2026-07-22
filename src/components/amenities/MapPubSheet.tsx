@@ -518,6 +518,9 @@ export function MapPubSheet({
           ...(info.historicalBeers && info.historicalBeers.length > 0
             ? { historicalBeers: JSON.stringify(info.historicalBeers) }
             : {}),
+          ...(typeof info.beerMenuRotates === 'boolean'
+            ? { beerMenuRotates: info.beerMenuRotates ? '1' : '0' }
+            : {}),
         },
       });
     },
@@ -682,7 +685,9 @@ export function MapPubSheet({
                     icon={<BeerIcon size={24} color={facts.hasBeers ? Colors.amber : Colors.mutedText} />}
                     label={cs.mapPub.factBeersLabel}
                     value={
-                      referencePrice
+                      facts.beerMenuRotates
+                        ? cs.mapPub.factBeersRotating
+                        : referencePrice
                         ? facts.beerCount > 0
                           ? cs.mapPub.factBeersWithPrice(facts.beerCount, referencePrice)
                           : cs.mapPub.factReferencePrice(referencePrice)

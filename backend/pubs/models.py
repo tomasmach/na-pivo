@@ -2433,6 +2433,13 @@ class PubCommunityData(models.Model):
             "current menu."
         ),
     )
+    beer_menu_rotates = models.BooleanField(
+        default=False,
+        help_text=(
+            "Whether the pub intentionally changes its taps instead of keeping a "
+            "regular beer menu. The stored beers remain the latest confirmed snapshot."
+        ),
+    )
 
     # ---------- contributor / timestamps ----------
     account = models.ForeignKey(

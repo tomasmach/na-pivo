@@ -527,6 +527,7 @@ interface RevealedPubPillProps {
   rating?: number | null;
   ratingCount?: number | null;
   hasGarden?: boolean | null;
+  beerMenuRotates?: boolean;
 }
 
 /** A compact one-liner for the cheapest/first beer, with "a další" when more.
@@ -609,6 +610,7 @@ function RevealedPubPill({
   rating,
   ratingCount,
   hasGarden,
+  beerMenuRotates,
 }: RevealedPubPillProps) {
   const [mapOpen, setMapOpen] = useState(false);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
@@ -642,6 +644,7 @@ function RevealedPubPill({
   if (statusWord) accessibilityParts.push(cs.a11y.openStatus(statusWord));
   if (ratingValue) accessibilityParts.push(cs.a11y.pubRating(ratingValue, ratingCountText ?? undefined));
   if (hasGarden === true) accessibilityParts.push(cs.a11y.pubGarden);
+  if (beerMenuRotates) accessibilityParts.push(cs.counter.rotatingMenuBadge);
   const accessibilityLabel = accessibilityParts.join('. ');
 
   const beerLine =
@@ -721,6 +724,18 @@ function RevealedPubPill({
               {beerLine}
             </Text>
           </Pressable>
+        )}
+        {beerMenuRotates && (
+          <View style={styles.rotatingMenuRow}>
+            <RefreshCwIcon size={13} color={Colors.amber} />
+            <Text
+              style={styles.rotatingMenuText}
+              numberOfLines={1}
+              maxFontSizeMultiplier={FontScaleCap.body}
+            >
+              {cs.counter.rotatingMenuBadge}
+            </Text>
+          </View>
         )}
       </Pressable>
 
@@ -1253,6 +1268,9 @@ export default function CompassScreen() {
         ...(pub.historicalBeers && pub.historicalBeers.length > 0
           ? { historicalBeers: JSON.stringify(pub.historicalBeers) }
           : {}),
+        ...(typeof pub.beerMenuRotates === 'boolean'
+          ? { beerMenuRotates: pub.beerMenuRotates ? '1' : '0' }
+          : {}),
       },
     });
   }, [pub, router]);
@@ -1455,6 +1473,7 @@ export default function CompassScreen() {
             rating={pub.rating}
             ratingCount={pub.ratingCount}
             hasGarden={pub.hasGarden}
+            beerMenuRotates={pub.beerMenuRotates}
           />
         ) : (
           <HiddenPubPill onReveal={reveal} />
@@ -2080,6 +2099,19 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
     // Shrink past the fixed icon so numberOfLines={1} can ellipsize the text.
     flexShrink: 1,
+  },
+  rotatingMenuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    minHeight: 18,
+  },
+  rotatingMenuText: {
+    fontFamily: Fonts.ui.bold,
+    fontSize: 12,
+    color: Colors.amber,
+    letterSpacing: 0.2,
   },
   ratingRow: {
     flexDirection: 'row',
