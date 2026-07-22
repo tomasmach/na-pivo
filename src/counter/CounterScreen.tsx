@@ -645,6 +645,7 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
   // community override (the authoritative local copy). The override already
   // folds in every beer counted this session (we setOverride on each count), so
   // it is the single source of truth for the visible menu.
+  const currentBackendMenu = backendMenu?.pubId === pub?.id ? backendMenu : null;
   const menu = useMemo<CommunityBeer[]>(() => {
     if (!pub) {
       // Outside a pub there is no community menu. The list holds what you've
@@ -663,26 +664,23 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
       }
       return [...seen.values()];
     }
-    const backendBeers = backendMenu?.pubId === pub.id ? backendMenu.beers : [];
     if (override?.beers && override.beers.length > 0) return override.beers;
-    if (backendBeers.length > 0) return backendBeers;
+    if (currentBackendMenu?.beers.length) return currentBackendMenu.beers;
     return pub.beers ?? [];
-  }, [backendMenu, override, pub, sessionDrinks]);
+  }, [currentBackendMenu, override, pub, sessionDrinks]);
   const menuGroups = useMemo(() => groupMenuBeers(menu), [menu]);
   const beerMenuRotates = pub
     ? override?.beerMenuRotates ??
-      (backendMenu?.pubId === pub.id ? backendMenu.beerMenuRotates : undefined) ??
+      currentBackendMenu?.beerMenuRotates ??
       pub.beerMenuRotates ??
       false
     : false;
 
   const historicalBeers = useMemo<CommunityBeer[]>(() => {
     if (!pub) return [];
-    if (backendMenu?.pubId === pub.id && backendMenu.historicalBeers.length > 0) {
-      return backendMenu.historicalBeers;
-    }
+    if (currentBackendMenu?.historicalBeers.length) return currentBackendMenu.historicalBeers;
     return pub.historicalBeers ?? [];
-  }, [backendMenu, pub]);
+  }, [currentBackendMenu, pub]);
 
   // — Count one beer (writes tally + queue + menu override) —
   // `atOverride` backdates the drink (PIV-25). When the backdated timestamp

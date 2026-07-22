@@ -33,7 +33,6 @@ import type { HoursStatus, PubPrice } from '@/data/pubs';
 import { getAllLoadedPubs } from '@/data/pubs';
 import { isPriceApproximate, isPriceFresh, priceAgeLabel } from '@/utils/priceAge';
 import type { CommunityBeer } from '@/data/communityClient';
-import { parseOsmOpeningHoursToWeeklyHours } from '@/data/communityHours';
 import type { PubReportReason } from '@/data/pubReportsClient';
 import { updateAccountPreferences } from '@/data/account';
 import { PubFilterSheet } from '@/components/compass/PubFilterSheet';
@@ -79,7 +78,11 @@ import {
 } from '@/components/shared/IconGlyph';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
 import { ReportPubModal } from '@/components/compass/ReportPubModal';
-import { pubInfoFromPub, type PubInfoContext } from '@/components/amenities/pubInfoContext';
+import {
+  contributeParamsFromPubInfo,
+  pubInfoFromPub,
+  type PubInfoContext,
+} from '@/components/amenities/pubInfoContext';
 import { geohash8 } from '@/data/geohash';
 import { useToastStore } from '@/stores/toastStore';
 import BeerMapScreen from '@/map/BeerMapScreen';
@@ -1250,28 +1253,9 @@ export default function CompassScreen() {
 
   const handleContribute = useCallback(() => {
     if (!pub) return;
-    const prefillHours =
-      pub.communityHours ?? parseOsmOpeningHoursToWeeklyHours(pub.openingHours);
-    // Params are strings; JSON-encode the structured prefill fields so the
-    // contribute screen can hydrate the form from the current enrichment.
     router.push({
       pathname: '/contribute',
-      params: {
-        focus: 'beers',
-        id: pub.id,
-        name: pub.name,
-        lat: String(pub.lat),
-        lng: String(pub.lng),
-        ...(pub.city ? { city: pub.city } : {}),
-        ...(prefillHours ? { hours: JSON.stringify(prefillHours) } : {}),
-        ...(pub.beers && pub.beers.length > 0 ? { beers: JSON.stringify(pub.beers) } : {}),
-        ...(pub.historicalBeers && pub.historicalBeers.length > 0
-          ? { historicalBeers: JSON.stringify(pub.historicalBeers) }
-          : {}),
-        ...(typeof pub.beerMenuRotates === 'boolean'
-          ? { beerMenuRotates: pub.beerMenuRotates ? '1' : '0' }
-          : {}),
-      },
+      params: contributeParamsFromPubInfo(pubInfoFromPub(pub), 'beers'),
     });
   }, [pub, router]);
 
