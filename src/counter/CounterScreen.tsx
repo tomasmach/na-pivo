@@ -69,7 +69,11 @@ import { ShareNightModal } from '@/vycep/ShareNightModal';
 import type { NightSummary } from '@/vycep/nightModel';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { fireSuccessHaptic, fireLightImpactHaptic } from '@/utils/haptics';
-import { isBeerOverrideCurrent, useCommunityStore } from '@/stores/communityStore';
+import {
+  isBeerListOverrideCurrent,
+  isBeerMenuTypeOverrideCurrent,
+  useCommunityStore,
+} from '@/stores/communityStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { formatPrice, pricePlaceholder } from '@/utils/currency';
@@ -516,9 +520,16 @@ function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }:
   // A fresh/offline edit wins optimistically. A newer confirmed backend menu
   // replaces the persisted override after sync or another mapper correction.
   const currentBackendMenu = backendMenu?.pubId === pub?.id ? backendMenu : null;
-  const currentOverride = isBeerOverrideCurrent(
+  const backendBeersUpdatedAt = currentBackendMenu?.beersUpdatedAt ?? pub?.beersUpdatedAt;
+  const currentBeerListOverride = isBeerListOverrideCurrent(
     override,
-    currentBackendMenu?.beersUpdatedAt ?? pub?.beersUpdatedAt,
+    backendBeersUpdatedAt,
+  )
+    ? override
+    : undefined;
+  const currentMenuTypeOverride = isBeerMenuTypeOverrideCurrent(
+    override,
+    backendBeersUpdatedAt,
   )
     ? override
     : undefined;
@@ -526,22 +537,24 @@ function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }:
   const menu = useMemo<CommunityBeer[]>(() => {
     if (!place) return [];
     if (!pub) return [];
-    if (currentOverride?.beers) return currentOverride.beers;
+    if (currentBeerListOverride?.beers) return currentBeerListOverride.beers;
     if (currentBackendMenu?.beers.length) return currentBackendMenu.beers;
     return pub.beers ?? [];
-  }, [currentBackendMenu, currentOverride, place, pub]);
+  }, [currentBackendMenu, currentBeerListOverride, place, pub]);
 
   const historicalBeers = useMemo<CommunityBeer[]>(() => {
     if (!pub) return [];
-    if (currentOverride?.historicalBeers) return currentOverride.historicalBeers;
+    if (currentBeerListOverride?.historicalBeers) {
+      return currentBeerListOverride.historicalBeers;
+    }
     if (currentBackendMenu?.historicalBeers.length) {
       return currentBackendMenu.historicalBeers;
     }
     return pub.historicalBeers ?? [];
-  }, [currentBackendMenu, currentOverride, pub]);
+  }, [currentBackendMenu, currentBeerListOverride, pub]);
 
   const beerMenuRotates = pub
-    ? currentOverride?.beerMenuRotates ??
+    ? currentMenuTypeOverride?.beerMenuRotates ??
       currentBackendMenu?.beerMenuRotates ??
       pub.beerMenuRotates ??
       false
