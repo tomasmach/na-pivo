@@ -31,7 +31,7 @@ import { computeOpenState } from '@/data/communityHours';
 import { recordWalkingSample } from '@/data/walkingTelemetry';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { usePubStore } from '@/stores/pubStore';
-import { useCommunityStore } from '@/stores/communityStore';
+import { isBeerOverrideCurrent, useCommunityStore } from '@/stores/communityStore';
 import { useFocusedPubStore, type FocusedPub } from '@/stores/focusedPubStore';
 import { useDevicePosition } from '@/compass/useDevicePosition';
 import { useDeviceHeading } from '@/compass/useDeviceHeading';
@@ -764,20 +764,22 @@ export function useCompass(
     }
 
     // — Beers —
-    // Backend community beers win; otherwise the local override's beers show.
+    // A fresh/offline edit wins optimistically. Once the server exposes a newer
+    // confirmed snapshot, it replaces the persisted override.
+    const beerOverrideCurrent = isBeerOverrideCurrent(
+      overrideForCurrent,
+      hoursForCurrent?.beersUpdatedAt ?? currentPub.beersUpdatedAt,
+    );
     let beers = hoursForCurrent?.beers;
-    if (overrideForCurrent?.beers && !(backendIsCommunity && (hoursForCurrent?.beers?.length ?? 0) > 0)) {
+    if (beerOverrideCurrent && overrideForCurrent?.beers) {
       beers = overrideForCurrent.beers;
     }
     let historicalBeers = hoursForCurrent?.historicalBeers;
-    if (
-      overrideForCurrent?.historicalBeers &&
-      !(backendIsCommunity && (hoursForCurrent?.historicalBeers?.length ?? 0) > 0)
-    ) {
+    if (beerOverrideCurrent && overrideForCurrent?.historicalBeers) {
       historicalBeers = overrideForCurrent.historicalBeers;
     }
     const beerMenuRotates =
-      overrideForCurrent?.beerMenuRotates ??
+      (beerOverrideCurrent ? overrideForCurrent?.beerMenuRotates : undefined) ??
       hoursForCurrent?.beerMenuRotates ??
       currentPub.beerMenuRotates ??
       false;

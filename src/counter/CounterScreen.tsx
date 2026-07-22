@@ -69,7 +69,7 @@ import { ShareNightModal } from '@/vycep/ShareNightModal';
 import type { NightSummary } from '@/vycep/nightModel';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { fireSuccessHaptic, fireLightImpactHaptic } from '@/utils/haptics';
-import { useCommunityStore } from '@/stores/communityStore';
+import { isBeerOverrideCurrent, useCommunityStore } from '@/stores/communityStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { formatPrice, pricePlaceholder } from '@/utils/currency';
@@ -378,6 +378,7 @@ function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }:
     pubId: string;
     beers: CommunityBeer[];
     historicalBeers: CommunityBeer[];
+    beersUpdatedAt: string | null;
     beerMenuRotates: boolean;
   } | null>(null);
   const [scanningDrinks, setScanningDrinks] = useState(false);
@@ -427,6 +428,7 @@ function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }:
         pubId,
         beers: result?.beers ?? [],
         historicalBeers: result?.historicalBeers ?? [],
+        beersUpdatedAt: result?.beersUpdatedAt ?? null,
         beerMenuRotates: result?.beerMenuRotates ?? false,
       });
     });
@@ -511,29 +513,36 @@ function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }:
     [cell, count, current, history],
   );
 
-  // The menu shown: at a pub the local community override wins over the backend
-  // fetch, which wins over whatever the pub object carried. Outside a pub there
-  // is no community menu — the list is what you've logged tonight.
+  // A fresh/offline edit wins optimistically. A newer confirmed backend menu
+  // replaces the persisted override after sync or another mapper correction.
+  const currentBackendMenu = backendMenu?.pubId === pub?.id ? backendMenu : null;
+  const currentOverride = isBeerOverrideCurrent(
+    override,
+    currentBackendMenu?.beersUpdatedAt ?? pub?.beersUpdatedAt,
+  )
+    ? override
+    : undefined;
+
   const menu = useMemo<CommunityBeer[]>(() => {
     if (!place) return [];
     if (!pub) return [];
-    const backendBeers = backendMenu?.pubId === pub.id ? backendMenu.beers : [];
-    if (override?.beers && override.beers.length > 0) return override.beers;
-    if (backendBeers.length > 0) return backendBeers;
+    if (currentOverride?.beers) return currentOverride.beers;
+    if (currentBackendMenu?.beers.length) return currentBackendMenu.beers;
     return pub.beers ?? [];
-  }, [backendMenu, override, place, pub]);
+  }, [currentBackendMenu, currentOverride, place, pub]);
 
   const historicalBeers = useMemo<CommunityBeer[]>(() => {
     if (!pub) return [];
-    if (backendMenu?.pubId === pub.id && backendMenu.historicalBeers.length > 0) {
-      return backendMenu.historicalBeers;
+    if (currentOverride?.historicalBeers) return currentOverride.historicalBeers;
+    if (currentBackendMenu?.historicalBeers.length) {
+      return currentBackendMenu.historicalBeers;
     }
     return pub.historicalBeers ?? [];
-  }, [backendMenu, pub]);
+  }, [currentBackendMenu, currentOverride, pub]);
 
   const beerMenuRotates = pub
-    ? override?.beerMenuRotates ??
-      (backendMenu?.pubId === pub.id ? backendMenu.beerMenuRotates : undefined) ??
+    ? currentOverride?.beerMenuRotates ??
+      currentBackendMenu?.beerMenuRotates ??
       pub.beerMenuRotates ??
       false
     : false;

@@ -21,7 +21,7 @@ import {
   type CommunityBeer,
   type WeeklyHours,
 } from '@/data/communityHours';
-import { useCommunityStore } from '@/stores/communityStore';
+import { isBeerOverrideCurrent, useCommunityStore } from '@/stores/communityStore';
 
 export interface PubInfoContext {
   /** Source external id (for the contribute payload), when known. */
@@ -75,6 +75,7 @@ export function pubInfoFromPub(pub: Pub): PubInfoContext {
 export function contributeParamsFromPubInfo(
   info: PubInfoContext,
   focus: 'hours' | 'beers',
+  resolvedBeerMenuRotates: boolean | undefined = info.beerMenuRotates,
 ): Record<string, string> {
   const prefillHours =
     info.prefillHours ?? parseOsmOpeningHoursToWeeklyHours(info.openingHours);
@@ -91,8 +92,8 @@ export function contributeParamsFromPubInfo(
     ...(info.historicalBeers?.length
       ? { historicalBeers: JSON.stringify(info.historicalBeers) }
       : {}),
-    ...(typeof info.beerMenuRotates === 'boolean'
-      ? { beerMenuRotates: info.beerMenuRotates ? '1' : '0' }
+    ...(typeof resolvedBeerMenuRotates === 'boolean'
+      ? { beerMenuRotates: resolvedBeerMenuRotates ? '1' : '0' }
       : {}),
   };
 }
@@ -126,8 +127,12 @@ export function usePubInfoFacts(info: PubInfoContext | undefined): PubInfoFactsV
       hoursHaveAnyInterval(override?.hours) ||
       hoursHaveAnyInterval(info.prefillHours) ||
       Boolean(info.openingHours);
-    const beerCount = override?.beers?.length ?? info.prefillBeers?.length ?? 0;
-    const beerMenuRotates = override?.beerMenuRotates ?? info.beerMenuRotates ?? false;
+    const currentOverride = isBeerOverrideCurrent(override, info.beersUpdatedAt)
+      ? override
+      : undefined;
+    const beerCount = currentOverride?.beers?.length ?? info.prefillBeers?.length ?? 0;
+    const beerMenuRotates =
+      currentOverride?.beerMenuRotates ?? info.beerMenuRotates ?? false;
     return {
       hasHours,
       hasBeers: beerMenuRotates || beerCount > 0 || Boolean(info.price),

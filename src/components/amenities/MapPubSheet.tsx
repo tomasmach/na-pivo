@@ -519,7 +519,7 @@ export function MapPubSheet({
         params: contributeParamsFromPubInfo(info, focus, facts?.beerMenuRotates),
       });
     },
-    [facts, info, router],
+    [facts?.beerMenuRotates, info, router],
   );
 
   // ── Rename: local in-memory rename + queued public correction ──

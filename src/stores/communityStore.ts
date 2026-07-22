@@ -29,6 +29,20 @@ export interface CommunityOverride {
 
 type CommunityOverridePatch = Omit<CommunityOverride, 'updatedAt'>;
 
+/**
+ * Keep a fresh/offline beer edit optimistic, but let a newer server snapshot
+ * replace a persisted override after sync or a later mapper correction.
+ */
+export function isBeerOverrideCurrent(
+  override: CommunityOverride | undefined,
+  backendUpdatedAt: string | null | undefined,
+): boolean {
+  if (!override) return false;
+  if (!backendUpdatedAt) return true;
+  const backendUpdatedAtMs = Date.parse(backendUpdatedAt);
+  return !Number.isFinite(backendUpdatedAtMs) || override.updatedAt > backendUpdatedAtMs;
+}
+
 interface CommunityState {
   /** geohash-8 cell → the user's latest local override for that pub. */
   overrides: Record<string, CommunityOverride>;
