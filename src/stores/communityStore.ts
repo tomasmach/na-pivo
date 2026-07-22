@@ -27,6 +27,8 @@ export interface CommunityOverride {
   updatedAt: number;
 }
 
+type CommunityOverridePatch = Omit<CommunityOverride, 'updatedAt'>;
+
 interface CommunityState {
   /** geohash-8 cell → the user's latest local override for that pub. */
   overrides: Record<string, CommunityOverride>;
@@ -35,15 +37,7 @@ interface CommunityState {
    * the stored ones (hours / beers are edited independently), so submitting just
    * beers does not wipe a previously-submitted hours override.
    */
-  setOverride: (
-    cell: string,
-    patch: {
-      hours?: WeeklyHours;
-      beers?: CommunityBeer[];
-      historicalBeers?: CommunityBeer[];
-      beerMenuRotates?: boolean;
-    },
-  ) => void;
+  setOverride: (cell: string, patch: CommunityOverridePatch) => void;
 }
 
 export const useCommunityStore = create<CommunityState>()(

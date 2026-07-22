@@ -16,7 +16,11 @@ import { useMemo } from 'react';
 
 import { geohash8 } from '@/data/geohash';
 import type { Pub, PubPrice } from '@/data/pubs';
-import type { CommunityBeer, WeeklyHours } from '@/data/communityHours';
+import {
+  parseOsmOpeningHoursToWeeklyHours,
+  type CommunityBeer,
+  type WeeklyHours,
+} from '@/data/communityHours';
 import { useCommunityStore } from '@/stores/communityStore';
 
 export interface PubInfoContext {
@@ -64,6 +68,32 @@ export function pubInfoFromPub(pub: Pub): PubInfoContext {
     price: pub.price ?? null,
     hoursUpdatedAt: pub.hoursUpdatedAt ?? null,
     beersUpdatedAt: pub.beersUpdatedAt ?? null,
+  };
+}
+
+/** Serialize the shared pub-info context for the contribution editor route. */
+export function contributeParamsFromPubInfo(
+  info: PubInfoContext,
+  focus: 'hours' | 'beers',
+): Record<string, string> {
+  const prefillHours =
+    info.prefillHours ?? parseOsmOpeningHoursToWeeklyHours(info.openingHours);
+
+  return {
+    focus,
+    ...(info.externalId ? { id: info.externalId } : {}),
+    name: info.name,
+    lat: String(info.lat),
+    lng: String(info.lng),
+    ...(info.city ? { city: info.city } : {}),
+    ...(prefillHours ? { hours: JSON.stringify(prefillHours) } : {}),
+    ...(info.prefillBeers?.length ? { beers: JSON.stringify(info.prefillBeers) } : {}),
+    ...(info.historicalBeers?.length
+      ? { historicalBeers: JSON.stringify(info.historicalBeers) }
+      : {}),
+    ...(typeof info.beerMenuRotates === 'boolean'
+      ? { beerMenuRotates: info.beerMenuRotates ? '1' : '0' }
+      : {}),
   };
 }
 

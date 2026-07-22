@@ -74,7 +74,11 @@ import {
   selectPubInfoCompleteness,
   type AmenityRow,
 } from '@/data/pubAmenitiesView';
-import { usePubInfoFacts, type PubInfoContext } from '@/components/amenities/pubInfoContext';
+import {
+  contributeParamsFromPubInfo,
+  usePubInfoFacts,
+  type PubInfoContext,
+} from '@/components/amenities/pubInfoContext';
 import {
   parseOsmOpeningHoursToWeeklyHours,
   DAY_KEYS,
@@ -510,27 +514,9 @@ export function MapPubSheet({
   const openContribute = useCallback(
     (focus: 'hours' | 'beers') => {
       if (!info) return;
-      const prefillHours = info.prefillHours ?? parseOsmOpeningHoursToWeeklyHours(info.openingHours);
       router.push({
         pathname: '/contribute',
-        params: {
-          focus,
-          ...(info.externalId ? { id: info.externalId } : {}),
-          name: info.name,
-          lat: String(info.lat),
-          lng: String(info.lng),
-          ...(info.city ? { city: info.city } : {}),
-          ...(prefillHours ? { hours: JSON.stringify(prefillHours) } : {}),
-          ...(info.prefillBeers && info.prefillBeers.length > 0
-            ? { beers: JSON.stringify(info.prefillBeers) }
-            : {}),
-          ...(info.historicalBeers && info.historicalBeers.length > 0
-            ? { historicalBeers: JSON.stringify(info.historicalBeers) }
-            : {}),
-          ...(focus === 'beers' && facts
-            ? { beerMenuRotates: facts.beerMenuRotates ? '1' : '0' }
-            : {}),
-        },
+        params: contributeParamsFromPubInfo(info, focus, facts?.beerMenuRotates),
       });
     },
     [facts, info, router],
