@@ -13,13 +13,16 @@ import {
   font,
   foregroundStyle,
   frame,
+  kerning,
   lineLimit,
   minimumScaleFactor,
   monospacedDigit,
   padding,
   privacySensitive,
   resizable,
+  shadow,
   shapes,
+  textCase,
   tint,
 } from '@expo/ui/swift-ui/modifiers';
 import { createLiveActivity, type LiveActivityEnvironment } from 'expo-widgets';
@@ -97,9 +100,9 @@ const BeerEveningLiveActivity = (
     banner: (
       <VStack
         alignment="leading"
-        spacing={12}
+        spacing={11}
         modifiers={[
-          padding({ horizontal: 16, vertical: 14 }),
+          padding({ horizontal: 14, top: 14, bottom: 12 }),
           frame({ maxWidth: 1000, alignment: 'leading' }),
           foregroundStyle(primaryText),
           activityBackgroundTint(activityBackground),
@@ -165,13 +168,18 @@ const BeerEveningLiveActivity = (
             ) : null}
           </VStack>
           <Spacer />
-          <VStack alignment="trailing" spacing={0}>
+          <VStack alignment="trailing" spacing={-2}>
             <Text
               modifiers={[
                 font({ size: 40, weight: 'heavy', design: 'rounded' }),
                 foregroundStyle(countStyle),
                 monospacedDigit(),
                 contentTransition('numericText'),
+                // Soft golden glow so the tally reads like backlit taproom
+                // signage; skipped on the dimmed Always-On display.
+                ...(isDimmed
+                  ? []
+                  : [shadow({ radius: 10, y: 1, color: '#FFB84D55' })]),
                 accessibilityLabel(`${props.beerCount} ${beerWord}`),
               ]}
             >
@@ -179,8 +187,10 @@ const BeerEveningLiveActivity = (
             </Text>
             <Text
               modifiers={[
-                font({ size: 11, weight: 'semibold', design: 'rounded' }),
+                font({ size: 10, weight: 'bold', design: 'rounded' }),
                 foregroundStyle(secondaryText),
+                textCase('uppercase'),
+                kerning(1.4),
               ]}
             >
               {beerWord}
@@ -191,7 +201,17 @@ const BeerEveningLiveActivity = (
         <HStack
           alignment="center"
           spacing={12}
-          modifiers={[frame({ maxWidth: 1000 })]}
+          modifiers={[
+            padding({ leading: 14, trailing: 8, vertical: 8 }),
+            frame({ maxWidth: 1000 }),
+            background(
+              raisedSurface,
+              shapes.roundedRectangle({
+                cornerRadius: 18,
+                roundedCornerStyle: 'continuous',
+              }),
+            ),
+          ]}
         >
           <VStack
             alignment="leading"
@@ -326,8 +346,10 @@ const BeerEveningLiveActivity = (
         </Text>
         <Text
           modifiers={[
-            font({ size: 9, weight: 'semibold', design: 'rounded' }),
+            font({ size: 8, weight: 'bold', design: 'rounded' }),
             foregroundStyle(secondaryText),
+            textCase('uppercase'),
+            kerning(1.2),
           ]}
         >
           {beerWord}
