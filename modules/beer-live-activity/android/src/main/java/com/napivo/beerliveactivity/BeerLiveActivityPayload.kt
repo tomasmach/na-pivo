@@ -18,4 +18,16 @@ internal class BeerLiveActivityPayload : Record {
 
   @Field
   var latestBeerName: String = ""
+
+  @Field
+  var repeatBeerName: String = ""
+
+  @Field
+  var repeatBeerPriceCzk: Double? = null
+
+  @Field
+  var repeatBeerVolumeMl: Int? = null
+
+  @Field
+  var repeatBeerServingType: String? = null
 }

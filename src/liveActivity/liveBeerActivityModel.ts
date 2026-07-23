@@ -1,4 +1,4 @@
-import { normalizeDrinkType } from '@/drinks/drinkTypes';
+import { normalizeDrinkType, type ServingType } from '@/drinks/drinkTypes';
 import type { TallySession } from '@/stores/tallyStore';
 import { sessionCount, sessionTotalCzk } from '@/stores/tallyStore';
 import { formatPrice, type PriceCurrency } from '@/utils/currency';
@@ -11,6 +11,13 @@ export interface BeerEveningLiveActivityProps {
   latestBeerName: string;
   /** Localized wall-clock time such as "21:47" of the latest counted beer. */
   latestBeerAt: string;
+  /** Exact metadata repeated by a native `+ pivo` action. Not rendered. */
+  repeatBeerName: string;
+  repeatBeerPriceCzk?: number;
+  repeatBeerVolumeMl?: number;
+  repeatBeerServingType?: ServingType;
+  /** iOS only: AppIntent buttons require iOS 17; older versions deep-link. */
+  supportsInteractiveAdd?: boolean;
   /** iOS only: `file://` URI of the staged app icon in the app-group container. */
   iconUri?: string;
 }
@@ -65,7 +72,7 @@ export function buildBeerEveningLiveActivityProps(
     .find((drink) => normalizeDrinkType(drink.drinkType) === 'beer');
   const hasKnownPrice = session.drinks.some((drink) => typeof drink.priceCzk === 'number');
 
-  return {
+  const props: BeerEveningLiveActivityProps = {
     sessionId: session.clientId,
     pubName: preferences.hidePubNames
       ? 'Pivní večer'
@@ -76,5 +83,10 @@ export function buildBeerEveningLiveActivityProps(
       : '',
     latestBeerName: latestBeer ? compactLabel(latestBeer.beerName, 'Pivo') : '',
     latestBeerAt: formatWallClock(latestBeer?.at),
+    repeatBeerName: latestBeer?.beerName.trim().slice(0, 120) || 'Pivo',
   };
+  if (typeof latestBeer?.priceCzk === 'number') props.repeatBeerPriceCzk = latestBeer.priceCzk;
+  if (typeof latestBeer?.volumeMl === 'number') props.repeatBeerVolumeMl = latestBeer.volumeMl;
+  if (latestBeer?.servingType) props.repeatBeerServingType = latestBeer.servingType;
+  return props;
 }

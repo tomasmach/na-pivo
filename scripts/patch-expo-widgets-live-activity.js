@@ -65,11 +65,23 @@ private actor BeerLiveActivityInteractionCoordinator {
     }
 
     let eventId = UUID().uuidString.lowercased()
-    let event: [String: Any] = [
+    var event: [String: Any] = [
       "id": eventId,
       "sessionId": sessionId,
       "createdAt": Int64(Date().timeIntervalSince1970 * 1000)
     ]
+    if let beerName = props["repeatBeerName"] as? String, !beerName.isEmpty {
+      event["beerName"] = beerName
+    }
+    if let priceCzk = props["repeatBeerPriceCzk"] as? NSNumber {
+      event["priceCzk"] = priceCzk.doubleValue
+    }
+    if let volumeMl = props["repeatBeerVolumeMl"] as? NSNumber {
+      event["volumeMl"] = volumeMl.intValue
+    }
+    if let servingType = props["repeatBeerServingType"] as? String, !servingType.isEmpty {
+      event["servingType"] = servingType
+    }
 
     do {
       try persist(event: event, id: eventId)
@@ -81,10 +93,13 @@ private actor BeerLiveActivityInteractionCoordinator {
 
     let currentCount = (props["beerCount"] as? NSNumber)?.intValue ?? 0
     props["beerCount"] = currentCount + 1
-    // The isolated intent intentionally does not carry price/volume metadata.
-    // Hide the now-stale total until JS repeats the full last drink and sends a
-    // newly formatted payload.
+    // The isolated intent cannot recalculate the aggregate total. Hide the stale
+    // value until JS commits the repeated drink and sends a formatted payload.
     props["totalPrice"] = ""
+    let timeFormatter = DateFormatter()
+    timeFormatter.locale = Locale(identifier: "cs_CZ")
+    timeFormatter.dateFormat = "H:mm"
+    props["latestBeerAt"] = timeFormatter.string(from: Date())
 
     if let updatedData = try? JSONSerialization.data(withJSONObject: props),
        let updatedProps = String(data: updatedData, encoding: .utf8) {
@@ -174,6 +189,32 @@ let source = fs.readFileSync(appIntentFile, 'utf8');
 if (source.includes('BeerLiveActivityInteractionCoordinator')) {
   const countUpdate = `    props["beerCount"] = currentCount + 1`;
   const totalPriceReset = `    props["totalPrice"] = ""`;
+  const snapshotAnchor = `    let event: [String: Any] = [
+      "id": eventId,
+      "sessionId": sessionId,
+      "createdAt": Int64(Date().timeIntervalSince1970 * 1000)
+    ]`;
+  const snapshotBlock = `    var event: [String: Any] = [
+      "id": eventId,
+      "sessionId": sessionId,
+      "createdAt": Int64(Date().timeIntervalSince1970 * 1000)
+    ]
+    if let beerName = props["repeatBeerName"] as? String, !beerName.isEmpty {
+      event["beerName"] = beerName
+    }
+    if let priceCzk = props["repeatBeerPriceCzk"] as? NSNumber {
+      event["priceCzk"] = priceCzk.doubleValue
+    }
+    if let volumeMl = props["repeatBeerVolumeMl"] as? NSNumber {
+      event["volumeMl"] = volumeMl.intValue
+    }
+    if let servingType = props["repeatBeerServingType"] as? String, !servingType.isEmpty {
+      event["servingType"] = servingType
+    }`;
+  const latestTimeUpdate = `    let timeFormatter = DateFormatter()
+    timeFormatter.locale = Locale(identifier: "cs_CZ")
+    timeFormatter.dateFormat = "H:mm"
+    props["latestBeerAt"] = timeFormatter.string(from: Date())`;
   const priceResetBlock = `${countUpdate}
     // Hide the stale total until JS commits the repeated drink and re-syncs.
 ${totalPriceReset}`;
@@ -182,9 +223,6 @@ ${totalPriceReset}`;
 +${totalPriceReset}`;
   if (source.includes(malformedPriceResetBlock)) {
     source = source.replace(malformedPriceResetBlock, priceResetBlock);
-    fs.writeFileSync(appIntentFile, source);
-    console.log('[patch-expo-widgets-live-activity] repaired optimistic total-price reset');
-    process.exit(0);
   }
   if (!source.includes(totalPriceReset)) {
     if (!source.includes(countUpdate)) {
@@ -192,11 +230,20 @@ ${totalPriceReset}`;
       process.exit(1);
     }
     source = source.replace(countUpdate, priceResetBlock);
-    fs.writeFileSync(appIntentFile, source);
-    console.log('[patch-expo-widgets-live-activity] added optimistic total-price reset');
-    process.exit(0);
   }
-  console.log('[patch-expo-widgets-live-activity] durable add-beer intent already applied');
+  if (!source.includes('event["beerName"] = beerName')) {
+    if (!source.includes(snapshotAnchor)) {
+      console.error('[patch-expo-widgets-live-activity] pending event shape changed');
+      process.exit(1);
+    }
+    source = source.replace(snapshotAnchor, snapshotBlock);
+  }
+  if (!source.includes('props["latestBeerAt"] = timeFormatter.string(from: Date())')) {
+    source = source.replace(totalPriceReset, `${totalPriceReset}
+${latestTimeUpdate}`);
+  }
+  fs.writeFileSync(appIntentFile, source);
+  console.log('[patch-expo-widgets-live-activity] durable add-beer intent is current');
   process.exit(0);
 }
 

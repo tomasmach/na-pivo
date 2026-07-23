@@ -10,7 +10,7 @@ import {
 import { decodeGeohash8 } from '@/data/geohash';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { syncVisit } from '@/data/visitsSync';
-import { isContextPubKey, normalizeDrinkType } from '@/drinks/drinkTypes';
+import { isContextPubKey, isServingType, normalizeDrinkType } from '@/drinks/drinkTypes';
 import {
   ensureNotificationPermissionForBeerFeatures,
   refreshBeerCountReminderAfterBeer,
@@ -83,6 +83,11 @@ async function syncIos(props: BeerEveningLiveActivityProps | null): Promise<void
   if (!factory) return;
 
   if (props) {
+    const iosMajorVersion = Number.parseInt(String(Platform.Version).split('.')[0] ?? '', 10);
+    props = {
+      ...props,
+      supportsInteractiveAdd: Number.isFinite(iosMajorVersion) && iosMajorVersion >= 17,
+    };
     const iconUri = await ensureLiveActivityIconUri();
     if (iconUri) props = { ...props, iconUri };
   }
@@ -188,6 +193,33 @@ function latestBeer(session: TallySession): TallyDrink | null {
       .reverse()
       .find((drink) => normalizeDrinkType(drink.drinkType) === 'beer') ?? null
   );
+}
+
+function repeatedBeer(event: BeerLiveActivityPendingAdd, fallback: TallyDrink): TallyDrink {
+  const beerName =
+    typeof event.beerName === 'string' && event.beerName.trim() && event.beerName.length <= 120
+      ? event.beerName.trim()
+      : fallback.beerName;
+  return {
+    id: event.id,
+    beerName,
+    at: eventTimestamp(event),
+    ...(typeof event.priceCzk === 'number' && Number.isFinite(event.priceCzk)
+      ? { priceCzk: event.priceCzk }
+      : typeof fallback.priceCzk === 'number'
+        ? { priceCzk: fallback.priceCzk }
+        : {}),
+    ...(typeof event.volumeMl === 'number' && Number.isFinite(event.volumeMl)
+      ? { volumeMl: event.volumeMl }
+      : typeof fallback.volumeMl === 'number'
+        ? { volumeMl: fallback.volumeMl }
+        : {}),
+    ...(isServingType(event.servingType)
+      ? { servingType: event.servingType }
+      : fallback.servingType
+        ? { servingType: fallback.servingType }
+        : {}),
+  };
 }
 
 function buildRepeatedDrinkEntry(
@@ -307,11 +339,12 @@ async function reconcilePendingLiveBeerAddsInternal(): Promise<void> {
       continue;
     }
 
-    const sourceBeer = latestBeer(current);
-    if (!sourceBeer) {
+    const latest = latestBeer(current);
+    if (!latest) {
       acknowledge.add(event.id);
       continue;
     }
+    const sourceBeer = repeatedBeer(event, latest);
 
     try {
       const entry = buildRepeatedDrinkEntry(current, sourceBeer, event);
@@ -325,7 +358,7 @@ async function reconcilePendingLiveBeerAddsInternal(): Promise<void> {
           priceCzk: sourceBeer.priceCzk,
           volumeMl: sourceBeer.volumeMl,
           servingType: sourceBeer.servingType,
-          at: eventTimestamp(event),
+          at: sourceBeer.at,
         });
         void trackClientEvent({
           event: 'drink_added',
@@ -373,6 +406,19 @@ export function reconcilePendingLiveBeerAdds(): Promise<void> {
 }
 
 /**
+ * Hydrates the tally, commits native actions, and only then applies the idle
+ * cutoff. Every lifecycle/UI sweep uses this ordering so a fresh lock-screen
+ * tap can never be archived as stale before it reaches the diary.
+ */
+export async function reconcileLiveBeerActivityAndAutoArchive(): Promise<void> {
+  await waitForTallyHydration();
+  if (Platform.OS === 'ios' || Platform.OS === 'android') {
+    await reconcilePendingLiveBeerAdds();
+  }
+  useTallyStore.getState().maybeAutoArchive();
+}
+
+/**
  * Installs one process-wide bridge from the persisted tally to the system
  * surfaces. Native failures stay best-effort and can never block counting.
  */
@@ -383,11 +429,7 @@ export async function initializeLiveBeerActivity(): Promise<void> {
   await Promise.all([waitForTallyHydration(), waitForSettingsHydration()]);
 
   const isNativeActivityPlatform = Platform.OS === 'ios' || Platform.OS === 'android';
-  if (isNativeActivityPlatform) await reconcilePendingLiveBeerAdds();
-
-  // Apply the same idle rule before restoring a stale system surface after a
-  // cold launch. The store call is a no-op for a genuinely active evening.
-  useTallyStore.getState().maybeAutoArchive();
+  await reconcileLiveBeerActivityAndAutoArchive();
 
   if (!isNativeActivityPlatform) return;
 

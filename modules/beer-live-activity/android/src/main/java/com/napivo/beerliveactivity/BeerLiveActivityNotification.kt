@@ -30,6 +30,10 @@ internal object BeerLiveActivityNotification {
   private const val PUB_NAME_KEY = "pubName"
   private const val TOTAL_PRICE_KEY = "totalPrice"
   private const val LATEST_BEER_NAME_KEY = "latestBeerName"
+  private const val REPEAT_BEER_NAME_KEY = "repeatBeerName"
+  private const val REPEAT_BEER_PRICE_CZK_KEY = "repeatBeerPriceCzk"
+  private const val REPEAT_BEER_VOLUME_ML_KEY = "repeatBeerVolumeMl"
+  private const val REPEAT_BEER_SERVING_TYPE_KEY = "repeatBeerServingType"
   private const val PENDING_ADDS_KEY = "pendingAdds"
   private const val FLAG_PROMOTED_ONGOING = 0x00040000
   private const val AMBER = 0xFFFFB84D.toInt()
@@ -65,7 +69,11 @@ internal object BeerLiveActivityNotification {
       pubName = payload.pubName,
       beerCount = if (preserveNativeCount) storedCount else payload.beerCount,
       totalPrice = if (preserveNativeCount) "" else payload.totalPrice,
-      latestBeerName = payload.latestBeerName
+      latestBeerName = payload.latestBeerName,
+      repeatBeerName = payload.repeatBeerName,
+      repeatBeerPriceCzk = payload.repeatBeerPriceCzk,
+      repeatBeerVolumeMl = payload.repeatBeerVolumeMl,
+      repeatBeerServingType = payload.repeatBeerServingType
     )
     persistState(context, state)
     notificationManager.notify(NOTIFICATION_ID, buildNotification(context, state))
@@ -82,6 +90,10 @@ internal object BeerLiveActivityNotification {
       .remove(PUB_NAME_KEY)
       .remove(TOTAL_PRICE_KEY)
       .remove(LATEST_BEER_NAME_KEY)
+      .remove(REPEAT_BEER_NAME_KEY)
+      .remove(REPEAT_BEER_PRICE_CZK_KEY)
+      .remove(REPEAT_BEER_VOLUME_ML_KEY)
+      .remove(REPEAT_BEER_SERVING_TYPE_KEY)
       .apply()
     return getStatus(context)
   }
@@ -109,7 +121,11 @@ internal object BeerLiveActivityNotification {
     pendingAdds += PendingAdd(
       id = UUID.randomUUID().toString(),
       sessionId = sessionId,
-      createdAt = System.currentTimeMillis()
+      createdAt = System.currentTimeMillis(),
+      beerName = state.repeatBeerName,
+      priceCzk = state.repeatBeerPriceCzk,
+      volumeMl = state.repeatBeerVolumeMl,
+      servingType = state.repeatBeerServingType
     )
     val updatedState = state.copy(
       beerCount = state.beerCount + 1,
@@ -134,11 +150,15 @@ internal object BeerLiveActivityNotification {
   @Synchronized
   fun getPendingAdds(context: Context): List<Map<String, Any>> =
     readPendingAdds(context).map { pendingAdd ->
-      mapOf(
-        "id" to pendingAdd.id,
-        "sessionId" to pendingAdd.sessionId,
-        "createdAt" to pendingAdd.createdAt
-      )
+      buildMap {
+        put("id", pendingAdd.id)
+        put("sessionId", pendingAdd.sessionId)
+        put("createdAt", pendingAdd.createdAt)
+        pendingAdd.beerName?.let { put("beerName", it) }
+        pendingAdd.priceCzk?.let { put("priceCzk", it) }
+        pendingAdd.volumeMl?.let { put("volumeMl", it) }
+        pendingAdd.servingType?.let { put("servingType", it) }
+      }
     }
 
   @Synchronized
@@ -301,13 +321,23 @@ internal object BeerLiveActivityNotification {
   }
 
   private fun persistState(context: Context, state: NotificationState) {
-    val stored = preferences(context).edit()
+    val editor = preferences(context).edit()
       .putString(ACTIVE_SESSION_KEY, state.sessionId)
       .putInt(BEER_COUNT_KEY, state.beerCount)
       .putString(PUB_NAME_KEY, state.pubName)
       .putString(TOTAL_PRICE_KEY, state.totalPrice)
       .putString(LATEST_BEER_NAME_KEY, state.latestBeerName)
-      .commit()
+      .putString(REPEAT_BEER_NAME_KEY, state.repeatBeerName)
+    state.repeatBeerPriceCzk?.let {
+      editor.putLong(REPEAT_BEER_PRICE_CZK_KEY, java.lang.Double.doubleToRawLongBits(it))
+    } ?: editor.remove(REPEAT_BEER_PRICE_CZK_KEY)
+    state.repeatBeerVolumeMl?.let {
+      editor.putInt(REPEAT_BEER_VOLUME_ML_KEY, it)
+    } ?: editor.remove(REPEAT_BEER_VOLUME_ML_KEY)
+    state.repeatBeerServingType?.let {
+      editor.putString(REPEAT_BEER_SERVING_TYPE_KEY, it)
+    } ?: editor.remove(REPEAT_BEER_SERVING_TYPE_KEY)
+    val stored = editor.commit()
     check(stored) { "Could not persist beer live activity state" }
   }
 
@@ -321,7 +351,21 @@ internal object BeerLiveActivityNotification {
       pubName = preferences.getString(PUB_NAME_KEY, "").orEmpty(),
       beerCount = preferences.getInt(BEER_COUNT_KEY, 0),
       totalPrice = preferences.getString(TOTAL_PRICE_KEY, "").orEmpty(),
-      latestBeerName = preferences.getString(LATEST_BEER_NAME_KEY, "").orEmpty()
+      latestBeerName = preferences.getString(LATEST_BEER_NAME_KEY, "").orEmpty(),
+      repeatBeerName = preferences.getString(REPEAT_BEER_NAME_KEY, "").orEmpty(),
+      repeatBeerPriceCzk =
+        if (preferences.contains(REPEAT_BEER_PRICE_CZK_KEY)) {
+          java.lang.Double.longBitsToDouble(preferences.getLong(REPEAT_BEER_PRICE_CZK_KEY, 0L))
+        } else {
+          null
+        },
+      repeatBeerVolumeMl =
+        if (preferences.contains(REPEAT_BEER_VOLUME_ML_KEY)) {
+          preferences.getInt(REPEAT_BEER_VOLUME_ML_KEY, 0)
+        } else {
+          null
+        },
+      repeatBeerServingType = preferences.getString(REPEAT_BEER_SERVING_TYPE_KEY, null)
     )
   }
 
@@ -335,7 +379,13 @@ internal object BeerLiveActivityNotification {
           val id = item.optString("id").takeIf { it.isNotBlank() } ?: continue
           val sessionId = item.optString("sessionId").takeIf { it.isNotBlank() } ?: continue
           val createdAt = item.optLong("createdAt", 0L).takeIf { it > 0L } ?: continue
-          add(PendingAdd(id, sessionId, createdAt))
+          val beerName = item.optString("beerName").takeIf { it.isNotBlank() }
+          val priceCzk =
+            if (item.has("priceCzk") && !item.isNull("priceCzk")) item.optDouble("priceCzk") else null
+          val volumeMl =
+            if (item.has("volumeMl") && !item.isNull("volumeMl")) item.optInt("volumeMl") else null
+          val servingType = item.optString("servingType").takeIf { it.isNotBlank() }
+          add(PendingAdd(id, sessionId, createdAt, beerName, priceCzk, volumeMl, servingType))
         }
       }
     } catch (_: Exception) {
@@ -351,6 +401,12 @@ internal object BeerLiveActivityNotification {
           .put("id", pendingAdd.id)
           .put("sessionId", pendingAdd.sessionId)
           .put("createdAt", pendingAdd.createdAt)
+          .apply {
+            pendingAdd.beerName?.let { put("beerName", it) }
+            pendingAdd.priceCzk?.let { put("priceCzk", it) }
+            pendingAdd.volumeMl?.let { put("volumeMl", it) }
+            pendingAdd.servingType?.let { put("servingType", it) }
+          }
       )
     }
     return json.toString()
@@ -380,12 +436,20 @@ internal object BeerLiveActivityNotification {
     val pubName: String,
     val beerCount: Int,
     val totalPrice: String,
-    val latestBeerName: String
+    val latestBeerName: String,
+    val repeatBeerName: String,
+    val repeatBeerPriceCzk: Double?,
+    val repeatBeerVolumeMl: Int?,
+    val repeatBeerServingType: String?
   )
 
   private data class PendingAdd(
     val id: String,
     val sessionId: String,
-    val createdAt: Long
+    val createdAt: Long,
+    val beerName: String? = null,
+    val priceCzk: Double? = null,
+    val volumeMl: Int? = null,
+    val servingType: String? = null
   )
 }

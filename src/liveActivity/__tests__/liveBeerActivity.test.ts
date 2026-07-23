@@ -1,6 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { reconcilePendingLiveBeerAdds } from '@/liveActivity/liveBeerActivity';
+import {
+  reconcileLiveBeerActivityAndAutoArchive,
+  reconcilePendingLiveBeerAdds,
+} from '@/liveActivity/liveBeerActivity';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
 import {
   ackPendingAdds,
@@ -136,5 +139,75 @@ describe('reconcilePendingLiveBeerAdds', () => {
 
     expect(useTallyStore.getState().current?.drinks).toHaveLength(2);
     expect(ackPendingAdds).toHaveBeenCalledWith([repeated.id]);
+  });
+
+  it('repeats the beer snapshotted when the native action was tapped', async () => {
+    await seedTally(
+      liveSession([
+        {
+          id: 'newer-in-app-beer',
+          beerName: 'Kozel 11°',
+          priceCzk: 49,
+          volumeMl: 400,
+          servingType: 'draft',
+          at: '2026-07-21T18:30:00.000Z',
+        },
+      ]),
+    );
+    (getPendingAdds as jest.Mock).mockResolvedValue([
+      {
+        id: 'ec293932-bcf1-4864-902d-30d50c1707e5',
+        sessionId: 'session-live',
+        createdAt: Date.now(),
+        beerName: 'Bernard 11°',
+        priceCzk: 65,
+        volumeMl: 500,
+        servingType: 'bottle',
+      },
+    ]);
+
+    await reconcilePendingLiveBeerAdds();
+
+    expect(useTallyStore.getState().current?.drinks.at(-1)).toMatchObject({
+      beerName: 'Bernard 11°',
+      priceCzk: 65,
+      volumeMl: 500,
+      servingType: 'bottle',
+    });
+    expect(ensureDrinkQueued).toHaveBeenCalledWith(
+      expect.objectContaining({
+        client_id: 'ec293932-bcf1-4864-902d-30d50c1707e5',
+        beer: expect.objectContaining({
+          name: 'Bernard 11°',
+          price_czk: 65,
+          volume_ml: 500,
+          serving_type: 'bottle',
+        }),
+      }),
+    );
+  });
+
+  it('commits a fresh native tap before applying the idle cutoff', async () => {
+    const stale = liveSession();
+    stale.drinks[0] = {
+      ...stale.drinks[0],
+      at: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
+    };
+    await seedTally(stale);
+    (getPendingAdds as jest.Mock).mockResolvedValue([
+      {
+        id: '947bd43c-d4d1-42e9-b59c-99b1b9414e31',
+        sessionId: 'session-live',
+        createdAt: Date.now(),
+        beerName: 'Bernard 11°',
+        volumeMl: 500,
+        servingType: 'bottle',
+      },
+    ]);
+
+    await reconcileLiveBeerActivityAndAutoArchive();
+
+    expect(useTallyStore.getState().current?.drinks).toHaveLength(2);
+    expect(useTallyStore.getState().history).toHaveLength(0);
   });
 });

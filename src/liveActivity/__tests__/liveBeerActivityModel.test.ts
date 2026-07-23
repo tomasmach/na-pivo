@@ -40,6 +40,8 @@ describe('buildBeerEveningLiveActivityProps', () => {
         hour: 'numeric',
         minute: '2-digit',
       }),
+      repeatBeerName: 'Plzeň 12°',
+      repeatBeerPriceCzk: 65,
     });
   });
 
@@ -77,6 +79,7 @@ describe('buildBeerEveningLiveActivityProps', () => {
       pubName: 'Pivní večer',
       totalPrice: '',
       latestBeerName: 'Domácí ležák',
+      repeatBeerName: 'Domácí ležák',
     });
   });
 

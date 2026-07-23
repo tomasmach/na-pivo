@@ -10,6 +10,10 @@ export type BeerLiveActivityPayload = {
   totalPrice: string;
   /** An empty string falls back to the app name. */
   latestBeerName: string;
+  repeatBeerName: string;
+  repeatBeerPriceCzk?: number;
+  repeatBeerVolumeMl?: number;
+  repeatBeerServingType?: string;
 };
 
 export type BeerLiveActivityPresentation = 'live-update' | 'notification' | 'none';
@@ -31,6 +35,10 @@ export type BeerLiveActivityPendingAdd = {
   id: string;
   sessionId: string;
   createdAt: number;
+  beerName?: string;
+  priceCzk?: number;
+  volumeMl?: number;
+  servingType?: string;
 };
 
 type BeerLiveActivityNativeModule = {

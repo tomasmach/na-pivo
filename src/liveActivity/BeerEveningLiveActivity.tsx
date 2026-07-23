@@ -1,4 +1,4 @@
-import { Button, HStack, Image, Spacer, Text, VStack } from '@expo/ui/swift-ui';
+import { Button, HStack, Image, Link, Spacer, Text, VStack } from '@expo/ui/swift-ui';
 // The isolated widget runtime exposes modifier globals by their exported names.
 // Keep these imports unaliased so the serialized layout can resolve them.
 import {
@@ -45,6 +45,13 @@ export interface BeerEveningLiveActivityProps {
   latestBeerName: string;
   /** Localized wall-clock time such as "21:47" of the latest counted beer. */
   latestBeerAt: string;
+  /** Exact metadata repeated by the native action; intentionally not rendered. */
+  repeatBeerName: string;
+  repeatBeerPriceCzk?: number;
+  repeatBeerVolumeMl?: number;
+  repeatBeerServingType?: string;
+  /** AppIntent buttons work on iOS 17+; iOS 16 gets a deep-link fallback. */
+  supportsInteractiveAdd?: boolean;
   /** `file://` URI of the staged app icon in the app-group container. */
   iconUri?: string;
 }
@@ -65,6 +72,7 @@ const BeerEveningLiveActivity = (
   const activityBackground = isDimmed ? '#080604' : '#150D06';
   const raisedSurface = isDimmed ? '#17120C' : '#2E1C0D';
   const buttonText = '#241404';
+  const counterDeepLink = 'napivo://beer';
   // Poured-beer gold gradient for the hero number; flat on the dimmed display.
   const countStyle:
     | string
@@ -240,20 +248,36 @@ const BeerEveningLiveActivity = (
             </Text>
           </VStack>
           <Spacer />
-          <Button
-            label="Přidat další"
-            systemImage="plus"
-            target="add-beer"
-            modifiers={[
-              font({ size: 15, weight: 'semibold', design: 'rounded' }),
-              buttonStyle('borderedProminent'),
-              buttonBorderShape('capsule'),
-              controlSize('regular'),
-              tint(accent),
-              foregroundStyle(buttonText),
-              accessibilityLabel('Přidat stejné pivo'),
-            ]}
-          />
+          {props.supportsInteractiveAdd === true ? (
+            <Button
+              label="Přidat další"
+              systemImage="plus"
+              target="add-beer"
+              modifiers={[
+                font({ size: 15, weight: 'semibold', design: 'rounded' }),
+                buttonStyle('borderedProminent'),
+                buttonBorderShape('capsule'),
+                controlSize('regular'),
+                tint(accent),
+                foregroundStyle(buttonText),
+                accessibilityLabel('Přidat stejné pivo'),
+              ]}
+            />
+          ) : (
+            <Link
+              label="Otevřít počítadlo"
+              destination={counterDeepLink}
+              modifiers={[
+                font({ size: 15, weight: 'semibold', design: 'rounded' }),
+                buttonStyle('borderedProminent'),
+                buttonBorderShape('capsule'),
+                controlSize('regular'),
+                tint(accent),
+                foregroundStyle(buttonText),
+                accessibilityLabel('Otevřít počítadlo'),
+              ]}
+            />
+          )}
         </HStack>
       </VStack>
     ),
@@ -407,20 +431,36 @@ const BeerEveningLiveActivity = (
           </Text>
         </VStack>
         <Spacer />
-        <Button
-          label="Přidat další"
-          systemImage="plus"
-          target="add-beer"
-          modifiers={[
-            font({ size: 14, weight: 'semibold', design: 'rounded' }),
-            buttonStyle('borderedProminent'),
-            buttonBorderShape('capsule'),
-            controlSize('small'),
-            tint(accent),
-            foregroundStyle(buttonText),
-            accessibilityLabel('Přidat stejné pivo'),
-          ]}
-        />
+        {props.supportsInteractiveAdd === true ? (
+          <Button
+            label="Přidat další"
+            systemImage="plus"
+            target="add-beer"
+            modifiers={[
+              font({ size: 14, weight: 'semibold', design: 'rounded' }),
+              buttonStyle('borderedProminent'),
+              buttonBorderShape('capsule'),
+              controlSize('small'),
+              tint(accent),
+              foregroundStyle(buttonText),
+              accessibilityLabel('Přidat stejné pivo'),
+            ]}
+          />
+        ) : (
+          <Link
+            label="Otevřít počítadlo"
+            destination={counterDeepLink}
+            modifiers={[
+              font({ size: 14, weight: 'semibold', design: 'rounded' }),
+              buttonStyle('borderedProminent'),
+              buttonBorderShape('capsule'),
+              controlSize('small'),
+              tint(accent),
+              foregroundStyle(buttonText),
+              accessibilityLabel('Otevřít počítadlo'),
+            ]}
+          />
+        )}
       </HStack>
     ),
   };

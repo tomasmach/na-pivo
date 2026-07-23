@@ -2,7 +2,7 @@ import { Stack, useRouter, usePathname, type Href } from 'expo-router';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { AppState, Linking } from 'react-native';
+import { AppState, Linking, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useEffect, useRef } from 'react';
@@ -72,7 +72,7 @@ import {
 } from '@/notifications/beerCountReminder';
 import {
   initializeLiveBeerActivity,
-  reconcilePendingLiveBeerAdds,
+  reconcileLiveBeerActivityAndAutoArchive,
 } from '@/liveActivity/liveBeerActivity';
 
 /**
@@ -313,8 +313,8 @@ export default function RootLayout() {
     void flushBeerCheckinsQueue();
     void flushBeerPhotosQueue();
     void ensureFriendPushRegisteredIfGranted();
-    // Live Activity initialization reconciles lock-screen additions and then
-    // applies the tally's idle cutoff once both persisted stores are hydrated.
+    // Live Activity initialization and every foreground/focus sweep reconcile
+    // lock-screen additions before applying the tally's idle cutoff.
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         // Rehydrate credentials that were temporarily unavailable, then validate
@@ -327,9 +327,7 @@ export default function RootLayout() {
         void trackClientEvent({ event: 'app_foreground', severity: 'info' });
         // Commit any lock-screen `+ pivo` taps before applying the idle cutoff;
         // the native action's timestamp may be the latest activity tonight.
-        void reconcilePendingLiveBeerAdds().finally(() => {
-          useTallyStore.getState().maybeAutoArchive();
-        });
+        void reconcileLiveBeerActivityAndAutoArchive();
         void flushPubReportQueue();
         void flushPubNameCorrectionsQueue();
         void flushFeedbackQueue();
@@ -355,9 +353,19 @@ export default function RootLayout() {
         flushWalkingDistance();
       }
     });
+    // Pulling down Android's notification drawer does not change AppState; it
+    // emits blur/focus instead. Reconcile the native action as soon as the user
+    // returns so its counter and selected beer cannot drift from the diary.
+    const focusSubscription =
+      Platform.OS === 'android'
+        ? AppState.addEventListener('focus', () => {
+            void reconcileLiveBeerActivityAndAutoArchive();
+          })
+        : null;
     return () => {
       flushWalkingDistance();
       subscription.remove();
+      focusSubscription?.remove();
     };
   }, [router]);
 

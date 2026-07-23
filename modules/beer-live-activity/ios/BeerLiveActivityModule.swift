@@ -8,6 +8,10 @@ private struct PendingBeerAdd: Codable {
   let id: String
   let sessionId: String
   let createdAt: Int64
+  let beerName: String?
+  let priceCzk: Double?
+  let volumeMl: Int?
+  let servingType: String?
 }
 
 private enum PendingBeerAddStore {
@@ -28,11 +32,16 @@ private enum PendingBeerAddStore {
       .map { url in
         let data = try Data(contentsOf: url)
         let event = try JSONDecoder().decode(PendingBeerAdd.self, from: data)
-        return [
+        var result = [
           "id": event.id,
           "sessionId": event.sessionId,
           "createdAt": event.createdAt,
         ] as [String: Any]
+        if let beerName = event.beerName { result["beerName"] = beerName }
+        if let priceCzk = event.priceCzk { result["priceCzk"] = priceCzk }
+        if let volumeMl = event.volumeMl { result["volumeMl"] = volumeMl }
+        if let servingType = event.servingType { result["servingType"] = servingType }
+        return result
       }
       .sorted {
         ($0["createdAt"] as? Int64 ?? 0) < ($1["createdAt"] as? Int64 ?? 0)
