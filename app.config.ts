@@ -215,6 +215,19 @@ export default ({ config }: ConfigContext): ExpoConfig => {
           },
         },
       ],
+      // Generates the WidgetKit extension used by the beer-counter Live
+      // Activity, adds NSSupportsLiveActivities and configures its shared app
+      // group. Counting updates are local, so APNs/frequent-update capability
+      // is intentionally not enabled.
+      [
+        'expo-widgets',
+        {
+          bundleIdentifier: 'com.tomasmach.na-pivo.widgets',
+          groupIdentifier: 'group.com.tomasmach.na-pivo',
+          enablePushNotifications: false,
+          frequentUpdates: false,
+        },
+      ],
     ],
     experiments: {
       typedRoutes: true,

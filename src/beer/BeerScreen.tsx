@@ -21,7 +21,7 @@ import { Radius, Spacing, HitArea } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { useTallyStore } from '@/stores/tallyStore';
+import { reconcileLiveBeerActivityAndAutoArchive } from '@/liveActivity/liveBeerActivity';
 import CounterScreen from '@/counter/CounterScreen';
 import MyBeersScreen from '@/myBeers/MyBeersScreen';
 import StatsScreen from '@/stats/StatsScreen';
@@ -78,13 +78,12 @@ const Segmented = memo(function Segmented({ tab, onChange }: SegmentedProps) {
 export default function BeerScreen() {
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<BeerTab>('count');
-  const maybeAutoArchive = useTallyStore((s) => s.maybeAutoArchive);
 
   useEffect(() => {
-    // Opening the tab is a natural sweep point: an evening left idle past the
-    // timeout drops to history (becoming resumable) instead of lingering live.
-    maybeAutoArchive();
-  }, [maybeAutoArchive]);
+    // A deep link can mount this child before RootLayout's async initialization.
+    // Hydrate and commit native additions before deciding that an evening is idle.
+    void reconcileLiveBeerActivityAndAutoArchive();
+  }, []);
 
   return (
     <View style={styles.root}>

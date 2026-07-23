@@ -35,6 +35,7 @@ function loadNotifications(): NotificationsModule | null {
 const Notifications = loadNotifications();
 let tallySubscriptionInstalled = false;
 let operationQueue: Promise<void> = Promise.resolve();
+let permissionRequest: Promise<BeerCountReminderEnableResult> | null = null;
 const handledTapIds = new Set<string>();
 
 function serialize<T>(operation: () => Promise<T>): Promise<T> {
@@ -100,7 +101,7 @@ async function setAndroidChannel(): Promise<void> {
   }
 }
 
-async function ensurePermission(): Promise<BeerCountReminderEnableResult> {
+async function ensurePermissionInternal(): Promise<BeerCountReminderEnableResult> {
   if (!Notifications) return { ok: false, reason: 'unavailable' };
   try {
     await setAndroidChannel();
@@ -122,6 +123,17 @@ async function ensurePermission(): Promise<BeerCountReminderEnableResult> {
   } catch {
     return { ok: false, reason: 'unavailable' };
   }
+}
+
+/** Share one OS permission request across the reminder and Android Live Update. */
+export function ensureNotificationPermissionForBeerFeatures(): Promise<
+  BeerCountReminderEnableResult
+> {
+  if (permissionRequest) return permissionRequest;
+  permissionRequest = ensurePermissionInternal().finally(() => {
+    permissionRequest = null;
+  });
+  return permissionRequest;
 }
 
 async function cancelInternal(expectedSessionId?: string): Promise<void> {
@@ -153,7 +165,7 @@ async function scheduleInternal(
   }
   if (existing) await cancelInternal();
 
-  const permission = await ensurePermission();
+  const permission = await ensureNotificationPermissionForBeerFeatures();
   if (!permission.ok) {
     useSettingsStore.getState().setBeerCountReminderEnabled(false);
     return permission;
@@ -201,7 +213,7 @@ export function refreshBeerCountReminderAfterBeer(
 export function enableBeerCountReminderNotifications(): Promise<BeerCountReminderEnableResult> {
   return serialize(async () => {
     useSettingsStore.getState().setBeerCountReminderEnabled(true);
-    const permission = await ensurePermission();
+    const permission = await ensureNotificationPermissionForBeerFeatures();
     if (!permission.ok) {
       useSettingsStore.getState().setBeerCountReminderEnabled(false);
       return permission;

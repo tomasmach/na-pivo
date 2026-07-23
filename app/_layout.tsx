@@ -2,7 +2,7 @@ import { Stack, useRouter, usePathname, type Href } from 'expo-router';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { AppState, Linking } from 'react-native';
+import { AppState, Linking, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useEffect, useRef } from 'react';
@@ -70,6 +70,10 @@ import {
   initializeBeerCountReminderNotifications,
   subscribeBeerCountReminderTap,
 } from '@/notifications/beerCountReminder';
+import {
+  initializeLiveBeerActivity,
+  reconcileLiveBeerActivityAndAutoArchive,
+} from '@/liveActivity/liveBeerActivity';
 
 /**
  * One-time gate: when the onboarding store resolves 'show' (fresh install or
@@ -166,6 +170,7 @@ export default function RootLayout() {
     installClientTelemetry();
     void initializePubReminderNotifications();
     void initializeBeerCountReminderNotifications();
+    void initializeLiveBeerActivity();
     void refreshCurrencyFromLastKnownLocation();
   }, []);
 
@@ -308,9 +313,8 @@ export default function RootLayout() {
     void flushBeerCheckinsQueue();
     void flushBeerPhotosQueue();
     void ensureFriendPushRegisteredIfGranted();
-    // Close an evening left idle past the timeout while the app was away, so the
-    // counter reopens clean (the evening stays resumable for the same day/pub).
-    useTallyStore.getState().maybeAutoArchive();
+    // Live Activity initialization and every foreground/focus sweep reconcile
+    // lock-screen additions before applying the tally's idle cutoff.
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         // Rehydrate credentials that were temporarily unavailable, then validate
@@ -321,7 +325,9 @@ export default function RootLayout() {
           if (!pathnameRef.current.startsWith('/auth')) router.push('/auth' as Href);
         });
         void trackClientEvent({ event: 'app_foreground', severity: 'info' });
-        useTallyStore.getState().maybeAutoArchive();
+        // Commit any lock-screen `+ pivo` taps before applying the idle cutoff;
+        // the native action's timestamp may be the latest activity tonight.
+        void reconcileLiveBeerActivityAndAutoArchive();
         void flushPubReportQueue();
         void flushPubNameCorrectionsQueue();
         void flushFeedbackQueue();
@@ -347,9 +353,19 @@ export default function RootLayout() {
         flushWalkingDistance();
       }
     });
+    // Pulling down Android's notification drawer does not change AppState; it
+    // emits blur/focus instead. Reconcile the native action as soon as the user
+    // returns so its counter and selected beer cannot drift from the diary.
+    const focusSubscription =
+      Platform.OS === 'android'
+        ? AppState.addEventListener('focus', () => {
+            void reconcileLiveBeerActivityAndAutoArchive();
+          })
+        : null;
     return () => {
       flushWalkingDistance();
       subscription.remove();
+      focusSubscription?.remove();
     };
   }, [router]);
 

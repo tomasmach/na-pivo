@@ -1,0 +1,11 @@
+{
+  "name": "beer-live-activity",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.ts",
+  "sideEffects": false,
+  "peerDependencies": {
+    "expo": "*",
+    "react-native": "*"
+  }
+}

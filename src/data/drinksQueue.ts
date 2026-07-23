@@ -131,6 +131,21 @@ export async function enqueueDrink(entry: DrinkEntry, options?: { deliver?: bool
 }
 
 /**
+ * Crash-safe enqueue for a drink whose client_id comes from a durable external
+ * interaction (for example a lock-screen Live Activity button). Replaying the
+ * same interaction must not create duplicate queue rows. The caller flushes
+ * only after its matching local tally write is durable.
+ */
+export function ensureDrinkQueued(entry: DrinkEntry): Promise<void> {
+  return runMutation(async () => {
+    const queue = await loadQueue();
+    if (queue.some((queued) => queued.client_id === entry.client_id)) return;
+    queue.push(entry);
+    await saveQueue(queue.slice(-MAX_QUEUE_LENGTH));
+  });
+}
+
+/**
  * True when a drink with this client_id is still waiting in the queue. Lets a
  * caller that deferred delivery learn, after a flush, whether THIS drink was
  * actually delivered (queued → still pending; not queued → delivered/dropped).
