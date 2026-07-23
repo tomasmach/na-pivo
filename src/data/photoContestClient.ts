@@ -335,10 +335,12 @@ export async function fetchPhotoContest(
  */
 export async function enterPhotoContest(
   photoId: string,
+  signal?: AbortSignal,
 ): Promise<{ ok: true; entry: PhotoContestEntry } | FriendActionError> {
   const res = await requestJson('/v1/photo-contest/entries', {
     method: 'POST',
     body: { photo_id: photoId },
+    signal,
   });
   if (!res.ok) return res.result;
   return { ok: true, entry: parsePhotoContestEntry((res.data.entry ?? {}) as RawEntry) };

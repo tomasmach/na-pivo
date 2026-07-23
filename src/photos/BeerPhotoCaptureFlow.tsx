@@ -10,7 +10,7 @@
  * feel native: the photo lands tagged with tonight's pub.
  */
 
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { CameraIcon, InfoIcon } from '@/components/shared/IconGlyph';
@@ -20,6 +20,7 @@ import { cs } from '@/i18n/cs';
 import { BeerPhotoComposeSheet } from '@/photos/BeerPhotoComposeSheet';
 import { BeerPhotoSourceSheet } from '@/photos/BeerPhotoSourceSheet';
 import { useToastStore } from '@/stores/toastStore';
+import { useBeerPhotosStore } from '@/stores/beerPhotosStore';
 import { Colors } from '@/theme/colors';
 
 interface BeerPhotoCaptureFlowProps {
@@ -29,9 +30,22 @@ interface BeerPhotoCaptureFlowProps {
   onClose: () => void;
   /** Optional extra hook after a photo is saved to the diary. */
   onSaved?: () => void;
+  /** Launch this source immediately instead of showing the source sheet. */
+  directSource?: BeerPhotoSource;
+  /** Preselect the FotoPivař opt-in in the compose sheet. */
+  initialContestEntry?: boolean;
+  /** Fires after an online contest entry has landed. */
+  onContestEntered?: () => void;
 }
 
-export function BeerPhotoCaptureFlow({ open, onClose, onSaved }: BeerPhotoCaptureFlowProps) {
+export function BeerPhotoCaptureFlow({
+  open,
+  onClose,
+  onSaved,
+  directSource,
+  initialContestEntry = false,
+  onContestEntered,
+}: BeerPhotoCaptureFlowProps) {
   const showToast = useToastStore((s) => s.show);
   const [composeUri, setComposeUri] = useState<string | null>(null);
   // Synchronous double-fire guard — the sheet rows stay tappable through the
@@ -79,10 +93,16 @@ export function BeerPhotoCaptureFlow({ open, onClose, onSaved }: BeerPhotoCaptur
     [showToast],
   );
 
+  useEffect(() => {
+    if (!open || !directSource) return;
+    onClose();
+    void handlePick(directSource);
+  }, [open, directSource, handlePick, onClose]);
+
   return (
     <>
       <BeerPhotoSourceSheet
-        visible={open}
+        visible={open && !directSource}
         onClose={onClose}
         onPick={(source) => {
           onClose();
@@ -93,13 +113,33 @@ export function BeerPhotoCaptureFlow({ open, onClose, onSaved }: BeerPhotoCaptur
       {composeUri ? (
         <BeerPhotoComposeSheet
           pickedUri={composeUri}
+          initialContestEntry={initialContestEntry}
           onClose={() => setComposeUri(null)}
-          onSaved={() => {
+          onSaved={({ clientId, contestRequested, completion }) => {
             setComposeUri(null);
-            showToast(cs.photoDiary.saved, {
+            showToast(
+              contestRequested ? cs.photoDiary.savedForContest : cs.photoDiary.saved,
+              {
               icon: <CameraIcon size={18} color={Colors.amber} />,
-            });
+              },
+            );
             onSaved?.();
+            if (!contestRequested) return;
+            void completion.then(() => {
+              const photo = useBeerPhotosStore
+                .getState()
+                .photos.find((item) => item.clientId === clientId);
+              if (photo?.inContest) {
+                showToast(cs.photoContest.enteredToast, {
+                  icon: <CameraIcon size={18} color={Colors.amber} />,
+                });
+                onContestEntered?.();
+              } else if (photo?.syncState === 'synced') {
+                showToast(cs.photoDiary.contestEntryFailed, {
+                  icon: <InfoIcon size={18} color={Colors.foamMuted} />,
+                });
+              }
+            });
           }}
         />
       ) : null}

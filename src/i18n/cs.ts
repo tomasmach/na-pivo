@@ -960,8 +960,13 @@ export const cs = {
     visibilityLabel: 'Viditelnost',
     visibilityPrivate: 'Jen pro mě',
     visibilityFriends: 'Parta',
+    addToContest: 'Poslat rovnou do FotoPivaře',
+    addToContestHint: 'V soutěži ji uvidí každý. V deníčku ti zůstane.',
     save: 'Uložit do deníčku',
+    saveAndEnterContest: 'Uložit a přihlásit',
     saved: 'Fotka je v albu. Na zdraví.',
+    savedForContest: 'Fotka je v deníčku a míří do soutěže.',
+    contestEntryFailed: 'Fotka je uložená, ale do soutěže se nepřihlásila. Zkus to z jejího detailu.',
     errorPick: 'Fotku se nepodařilo načíst. Zkus to znovu.',
 
     // — Sync states on a diary tile —
@@ -996,8 +1001,8 @@ export const cs = {
     errorInvalid: 'Tohle mi jako fotka piva nejde načíst. Zkus jinou.',
 
     // — Permissions (mirrors profile.setup wording) —
-    permissionCameraBody: 'Pro focení piva potřebuju přístup k foťáku. Povol ho v Nastavení.',
-    permissionLibraryBody: 'Pro výběr fotky potřebuju přístup ke knihovně fotek. Povol ho v Nastavení.',
+    permissionCameraBody: 'Foťák jsem nedostal. Zkus to znovu a povol focení.',
+    permissionLibraryBody: 'K fotkám jsem se nedostal. Zkus to znovu a povol galerii.',
     permissionBlockedBody: 'Přístup je zakázaný. Povol ho v systémovém Nastavení a zkus to znovu.',
     openSettings: 'Otevřít Nastavení',
 
@@ -1031,9 +1036,11 @@ export const cs = {
     myEntryHeader: 'TVOJE FOTKA V KOLE',
     entriesHeader: 'KDO SOUTĚŽÍ',
     enterCta: 'Přihlásit fotku',
-    enterCardTitle: 'Přihlas svou fotku',
-    enterCardHint: 'Vyber fotku z deníčku a pošli ji do boje o FotoPivaře.',
-    enterNoPhotos: 'V deníčku zatím nemáš žádnou nahranou fotku. Nejdřív nějakou cvakni.',
+    enterCardTitle: 'Cvakni nebo vyber fotku',
+    enterCardHint: 'Novou vyfotíš rovnou tady. Uloží se i do tvého deníčku.',
+    takePhotoCta: 'Vyfotit soutěžní fotku',
+    pickFromDiary: 'NEBO VYBER Z DENÍČKU',
+    enterNoPhotos: 'V deníčku zatím žádná nahraná fotka není.',
     goToDiary: 'Do deníčku',
     enterConfirmTitle: 'Přihlásit tuhle fotku?',
     enterConfirmBody: 'Uvidí ji každý, kdo do soutěže nakoukne. Jedna fotka na kolo.',
@@ -2316,6 +2323,7 @@ export const cs = {
     photoPickPub: 'Označit hospodu',
     photoClearPub: 'Zrušit označenou hospodu',
     photoVisibility: (label: string) => `Viditelnost fotky: ${label}`,
+    photoContestToggle: 'Poslat fotku rovnou do soutěže FotoPivař',
     photoDelete: 'Smazat fotku',
     photoRetry: 'Zkusit nahrát fotku znovu',
     contestVote: (name: string) => `Dát hlas fotce od ${name}`,

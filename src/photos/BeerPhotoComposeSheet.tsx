@@ -32,6 +32,7 @@ import { GlowButton } from '@/components/shared/GlowButton';
 import {
   EyeOffIcon,
   MapPinIcon,
+  TrophyIcon,
   UsersIcon,
   XIcon,
 } from '@/components/shared/IconGlyph';
@@ -66,9 +67,18 @@ interface PhotoPubTag {
 interface BeerPhotoComposeSheetProps {
   /** Downscaled JPEG from the picker (cache uri — persisted durably on save). */
   pickedUri: string;
+  /** Preselect FotoPivař when the capture started from the contest screen. */
+  initialContestEntry?: boolean;
   onClose: () => void;
   /** Fired after the photo is queued (sheet already closable). */
-  onSaved: () => void;
+  onSaved: (result: BeerPhotoSaveResult) => void;
+}
+
+export interface BeerPhotoSaveResult {
+  clientId: string;
+  contestRequested: boolean;
+  /** Settles after the immediate upload attempt (the queue may still retry). */
+  completion: Promise<void>;
 }
 
 /** An active counter session pins its pub as the initial tag suggestion. */
@@ -80,7 +90,12 @@ function tallyPubSuggestion(): PhotoPubTag | null {
   return { pubKey: current.pubKey, name: current.pubName, city: '' };
 }
 
-export function BeerPhotoComposeSheet({ pickedUri, onClose, onSaved }: BeerPhotoComposeSheetProps) {
+export function BeerPhotoComposeSheet({
+  pickedUri,
+  initialContestEntry = false,
+  onClose,
+  onSaved,
+}: BeerPhotoComposeSheetProps) {
   const insets = useSafeAreaInsets();
   const keyboardHeight = useKeyboardHeight();
   const showToast = useToastStore((s) => s.show);
@@ -90,6 +105,7 @@ export function BeerPhotoComposeSheet({ pickedUri, onClose, onSaved }: BeerPhoto
   // Once the user clears the tag, no auto-suggestion may sneak back in.
   const [pubCleared, setPubCleared] = useState(false);
   const [visibility, setVisibility] = useState<BeerPhotoVisibility>('friends');
+  const [enterContest, setEnterContest] = useState(initialContestEntry);
   const [pickerVisible, setPickerVisible] = useState(false);
   const savingRef = useRef(false);
 
@@ -149,7 +165,7 @@ export function BeerPhotoComposeSheet({ pickedUri, onClose, onSaved }: BeerPhoto
     const durableUri = await persistBeerPhotoLocally(pickedUri, clientId);
     // Fire-and-forget: enqueue inserts the optimistic store entry synchronously
     // and retries the upload in the background — never block the sheet on it.
-    void enqueueBeerPhoto({
+    const completion = enqueueBeerPhoto({
       clientId,
       localUri: durableUri,
       caption: caption.trim(),
@@ -158,10 +174,11 @@ export function BeerPhotoComposeSheet({ pickedUri, onClose, onSaved }: BeerPhoto
       pubCity: pub?.city,
       visibility,
       takenAt: new Date().toISOString(),
+      enterContest,
     });
     if (useSettingsStore.getState().hapticEnabled) fireSuccessHaptic();
-    onSaved();
-  }, [pickedUri, caption, pub, visibility, onSaved]);
+    onSaved({ clientId, contestRequested: enterContest, completion });
+  }, [pickedUri, caption, pub, visibility, enterContest, onSaved]);
 
   return (
     <Modal visible transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
@@ -295,9 +312,38 @@ export function BeerPhotoComposeSheet({ pickedUri, onClose, onSaved }: BeerPhoto
               </Pressable>
             </View>
 
+            {/* FotoPivař is an explicit public opt-in, independent of the diary
+                visibility above. The full row is tappable for pub-table use. */}
+            <Pressable
+              onPress={() => setEnterContest((value) => !value)}
+              style={({ pressed }) => [
+                styles.contestToggle,
+                enterContest && styles.contestToggleActive,
+                pressed && styles.pressed,
+              ]}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: enterContest }}
+              accessibilityLabel={cs.a11y.photoContestToggle}
+            >
+              <View style={[styles.contestIconWell, enterContest && styles.contestIconWellActive]}>
+                <TrophyIcon size={19} color={enterContest ? Colors.stout : Colors.amber} />
+              </View>
+              <View style={styles.contestToggleCopy}>
+                <Text style={styles.contestToggleTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+                  {cs.photoDiary.addToContest}
+                </Text>
+                <Text style={styles.contestToggleHint} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {cs.photoDiary.addToContestHint}
+                </Text>
+              </View>
+              <View style={[styles.toggleTrack, enterContest && styles.toggleTrackActive]}>
+                <View style={[styles.toggleThumb, enterContest && styles.toggleThumbActive]} />
+              </View>
+            </Pressable>
+
             <View style={styles.saveWrap}>
               <GlowButton
-                label={cs.photoDiary.save}
+                label={enterContest ? cs.photoDiary.saveAndEnterContest : cs.photoDiary.save}
                 onPress={() => void handleSave()}
                 glow="soft"
                 height={56}
@@ -456,6 +502,72 @@ const styles = StyleSheet.create({
   },
   segmentTextActive: {
     color: Colors.stout,
+  },
+  contestToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    minHeight: 76,
+    marginTop: Spacing.lg,
+    padding: Spacing.sm + 2,
+    borderRadius: Radius.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.stout3,
+  },
+  contestToggleActive: {
+    borderColor: withAlpha(Colors.amber, 0.58),
+    backgroundColor: withAlpha(Colors.amber, 0.09),
+  },
+  contestIconWell: {
+    width: 42,
+    height: 42,
+    borderRadius: Radius.medium,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.amber, 0.13),
+  },
+  contestIconWellActive: {
+    backgroundColor: Colors.amber,
+  },
+  contestToggleCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  contestToggleTitle: {
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 15,
+    color: Colors.foam,
+  },
+  contestToggleHint: {
+    marginTop: 2,
+    fontFamily: Fonts.ui.regular,
+    fontSize: 12,
+    lineHeight: 17,
+    color: Colors.mutedText,
+  },
+  toggleTrack: {
+    width: 46,
+    height: 28,
+    borderRadius: Radius.pill,
+    padding: 3,
+    backgroundColor: Colors.stout,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  toggleTrackActive: {
+    backgroundColor: Colors.amber,
+    borderColor: Colors.amber,
+  },
+  toggleThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.foamMuted,
+  },
+  toggleThumbActive: {
+    transform: [{ translateX: 18 }],
+    backgroundColor: Colors.stout,
   },
   saveWrap: {
     marginTop: Spacing.lg,

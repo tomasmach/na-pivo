@@ -64,6 +64,7 @@ import {
 } from '@/data/photoContestClient';
 import SkeletonBlock from '@/friends/SkeletonBlock';
 import { cs } from '@/i18n/cs';
+import { BeerPhotoCaptureFlow } from '@/photos/BeerPhotoCaptureFlow';
 import { contestCountdownLabel } from '@/photos/contestCountdown';
 import { ScalePressable } from '@/photos/ScalePressable';
 import { Avatar } from '@/profile/Avatar';
@@ -332,6 +333,7 @@ export default function PhotoContestScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [snapshot, setSnapshot] = useState<PhotoContestSnapshot | null>(null);
   const [viewerEntry, setViewerEntry] = useState<PhotoContestEntry | null>(null);
+  const [captureOpen, setCaptureOpen] = useState(false);
   // Optimistic working copy of the entries (votes flip here before the server).
   const [entries, setEntries] = useState<PhotoContestEntry[]>([]);
   // Bumped whenever a fresh server snapshot replaces `entries`; a vote revert
@@ -801,11 +803,25 @@ export default function PhotoContestScreen() {
                       {cs.photoContest.enterCardTitle}
                     </Text>
                   </View>
+                  <Text style={styles.enterHint} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {cs.photoContest.enterCardHint}
+                  </Text>
+                  <GlowButton
+                    label={cs.photoContest.takePhotoCta}
+                    onPress={() => setCaptureOpen(true)}
+                    glow="soft"
+                    height={52}
+                    icon={<CameraIcon size={18} color={Colors.stout} />}
+                  />
                   {enterablePhotos.length > 0 ? (
                     <>
-                      <Text style={styles.enterHint} maxFontSizeMultiplier={FontScaleCap.body}>
-                        {cs.photoContest.enterCardHint}
-                      </Text>
+                      <View style={styles.enterDivider}>
+                        <View style={styles.enterDividerLine} />
+                        <Text style={styles.enterDividerText} allowFontScaling={false}>
+                          {cs.photoContest.pickFromDiary}
+                        </Text>
+                        <View style={styles.enterDividerLine} />
+                      </View>
                       <ScrollView
                         horizontal
                         showsHorizontalScrollIndicator={false}
@@ -832,19 +848,9 @@ export default function PhotoContestScreen() {
                       </ScrollView>
                     </>
                   ) : (
-                    <>
-                      <Text style={styles.enterHint} maxFontSizeMultiplier={FontScaleCap.body}>
-                        {cs.photoContest.enterNoPhotos}
-                      </Text>
-                      <GlowButton
-                        label={cs.photoContest.goToDiary}
-                        onPress={() => router.replace('/profile' as Href)}
-                        variant="secondary"
-                        glow="none"
-                        height={48}
-                        icon={<CameraIcon size={17} color={Colors.foam} />}
-                      />
-                    </>
+                    <Text style={styles.enterEmptyHint} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {cs.photoContest.enterNoPhotos}
+                    </Text>
                   )}
                 </View>
               )}
@@ -984,6 +990,16 @@ export default function PhotoContestScreen() {
           ) : null}
         </View>
       </Modal>
+      <BeerPhotoCaptureFlow
+        open={captureOpen}
+        onClose={() => setCaptureOpen(false)}
+        directSource="camera"
+        initialContestEntry
+        onContestEntered={() => {
+          void load();
+          void loadBeerPhotos();
+        }}
+      />
       <AppDialogHost />
     </View>
   );
@@ -1205,6 +1221,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     color: Colors.mutedText,
+  },
+  enterDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.xs,
+  },
+  enterDividerLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: Colors.border,
+  },
+  enterDividerText: {
+    fontFamily: Fonts.ui.bold,
+    fontSize: 9,
+    letterSpacing: 1,
+    color: Colors.mutedText,
+  },
+  enterEmptyHint: {
+    fontFamily: Fonts.ui.medium,
+    fontSize: 12,
+    lineHeight: 17,
+    color: Colors.foamMuted,
+    textAlign: 'center',
   },
   enterStrip: {
     gap: Spacing.sm,

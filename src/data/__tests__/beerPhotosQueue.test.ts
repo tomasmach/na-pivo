@@ -25,6 +25,13 @@ jest.mock('../beerPhotosClient', () => ({
   uploadBeerPhoto: (...args: unknown[]) => uploadBeerPhoto(...(args as [])),
 }));
 
+const enterPhotoContest: jest.Mock<Promise<Record<string, unknown>>, unknown[]> = jest.fn(
+  async () => ({ ok: true, entry: {} }),
+);
+jest.mock('../photoContestClient', () => ({
+  enterPhotoContest: (...args: unknown[]) => enterPhotoContest(...args),
+}));
+
 const addPendingPhoto = jest.fn();
 const markSynced = jest.fn(() => {
   events.push('markSynced');
@@ -144,6 +151,7 @@ beforeEach(async () => {
   events.length = 0;
   mockStorePhotos = [];
   uploadBeerPhoto.mockResolvedValue({ status: 'ok', photo: serverPhoto('c1') });
+  enterPhotoContest.mockResolvedValue({ ok: true, entry: {} });
   await AsyncStorage.clear();
 });
 
@@ -240,6 +248,48 @@ describe('flush keep/drop contract', () => {
 
     uploadBeerPhoto.mockResolvedValue({ status: 'ok', photo: serverPhoto('c1') });
     await flushBeerPhotosQueue();
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('enters FotoPivař after upload and marks the synced photo as entered', async () => {
+    const photo = serverPhoto('c1');
+    uploadBeerPhoto.mockResolvedValue({ status: 'ok', photo });
+
+    await enqueueBeerPhoto(op('c1', { enterContest: true }));
+
+    expect(enterPhotoContest).toHaveBeenCalledWith(photo.id, expect.anything());
+    expect(markSynced).toHaveBeenCalledWith('c1', { ...photo, inContest: true });
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('keeps the durable contest intent when entry fails transiently', async () => {
+    uploadBeerPhoto.mockResolvedValue({ status: 'ok', photo: serverPhoto('c1') });
+    enterPhotoContest.mockResolvedValue({
+      ok: false,
+      code: 'network',
+      detail: 'Bez sítě.',
+    });
+
+    await enqueueBeerPhoto(op('c1', { enterContest: true }));
+
+    expect(markSynced).not.toHaveBeenCalled();
+    expect(fileDelete).not.toHaveBeenCalled();
+    expect(await readQueue()).toEqual([op('c1', { enterContest: true })]);
+  });
+
+  it('keeps the diary photo when contest entry is permanently rejected', async () => {
+    const photo = serverPhoto('c1');
+    uploadBeerPhoto.mockResolvedValue({ status: 'ok', photo });
+    enterPhotoContest.mockResolvedValue({
+      ok: false,
+      code: 'nickname_required',
+      detail: 'Chybí přezdívka.',
+    });
+
+    await enqueueBeerPhoto(op('c1', { enterContest: true }));
+
+    expect(markSynced).toHaveBeenCalledWith('c1', photo);
+    expect(fileDelete).toHaveBeenCalledTimes(1);
     expect(await readQueue()).toEqual([]);
   });
 
