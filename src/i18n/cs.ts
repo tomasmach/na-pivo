@@ -1568,8 +1568,67 @@ export const cs = {
   // personal history; the two screens below it are unchanged.
   beer: {
     segmentCount: 'Počítat',
+    segmentDiary: 'Deník',
+    // Kept so older references keep compiling; the tab now has two segments.
     segmentStats: 'Výkon',
     segmentHistory: 'Historie',
+  },
+
+  // "Deník" — the merged trail + numbers surface. One card for the last night,
+  // a quiet chronology under it, one amber button, and every lifetime number a
+  // tap away in the "Kolik jich už bylo?" sheet.
+  diary: {
+    // — Hero card —
+    running: 'pořád běží',
+    // Shown small under the big numeral when the night had no drink at all.
+    emptyNoun: 'ZATÍM NIC',
+    breakdownLink: 'Rozpis',
+    noPub: 'Bez hospody',
+
+    // — Chronology under the card —
+    olderHeader: 'Starší večery',
+    pending: 'čeká na odeslání',
+    // "12. 6. · 5 piv · 320 Kč"
+    nightMeta: (parts: string[]) => parts.filter(Boolean).join(' · '),
+    nightSheetTitle: 'Co teklo',
+
+    // — Nudge slot —
+    loadFailed: 'Deníček se mi nepovedlo načíst.',
+    retry: 'Zkusit znovu',
+    queued: (count: number) =>
+      count === 1
+        ? '1 zápis čeká na odeslání'
+        : count < 5
+          ? `${count} zápisy čekají na odeslání`
+          : `${count} zápisů čeká na odeslání`,
+
+    // — The one button —
+    cta: 'Dopiš večer',
+    ctaSub: 'Piva, hospodu, čas i cenu.',
+
+    // — Empty state —
+    emptyTitle: 'Zatím prázdná stopa',
+    emptyBody: 'Ťukni pivo v Počítadle, nebo dopiš večer, na který si vzpomeneš.',
+
+    // — "Kolik jich už bylo?" sheet: every lifetime number, one tap deep —
+    statsTitle: 'Kolik jich už bylo?',
+    statsTotalCaption: 'PIV CELKEM',
+    statsEvenings: 'Večerů',
+    statsPubs: 'Hospod',
+    statsSpent: 'Utraceno',
+    statsThisMonth: 'Tenhle měsíc',
+    statsMonthAvg: (avg: string) => `průměr ${avg} na večer`,
+    statsRecordsCaption: 'REKORDY',
+    statsRecordMost: 'Nejvíc za večer',
+    statsRecordFastest: 'Nejrychlejší pivo',
+    statsRecordLongest: 'Nejdelší večer',
+    statsEmptyValue: 'Zatím nic',
+    statsPubsCaption: 'NEJVÍC JSI VYPIL',
+    statsYearsCaption: 'ROKY',
+    // "210 piv · průměr 3,4 na večer"
+    statsYearValue: (beers: string, avg: string) => `${beers} · průměr ${avg} na večer`,
+    statsFooter:
+      'Počítám jen piva, útrata je za všechno. Bez účtu si pamatuju posledních 50 večerů.',
   },
 
   profile: {
@@ -2144,11 +2203,12 @@ export const cs = {
     // Noun shown small next to the big numeral, e.g. "5  piv".
     heroBeersNoun: (beers: number) => beerNoun(beers),
     // One-liner reacting to last night's tally, picked by PerformanceTone.
-    toneStart: 'Jedno na zahřátí. 🍺',
+    // No emoji: the design system bans them in UI chrome (§12).
+    toneStart: 'Jedno na zahřátí.',
     toneWarmup: 'Slušnej základ.',
-    toneSolid: 'Pěknej večer. 👌',
-    toneBig: 'Tohle byla jízda! 🍻',
-    toneHuge: 'Legendární nářez. Klobouk dolů. 👑',
+    toneSolid: 'Pěknej večer.',
+    toneBig: 'Tohle byla jízda!',
+    toneHuge: 'Legendární nářez. Klobouk dolů.',
     // Micro-stat captions under the hero (only with 2+ beers).
     heroDuration: 'DÉLKA VEČERA',
     heroAvg: 'PRŮMĚR NA PIVO',
@@ -2408,6 +2468,17 @@ export const cs = {
     ratingDislike: (pub: string) => `Hodnotit ${pub} jako slabou`,
     ratingNote: (note: string) => `Štítek: ${note}`,
     ratingNoteInput: (pub: string) => `Vlastní poznámka k hospodě ${pub}`,
+
+    // — Deník —
+    diarySegment: 'Přepnout na deník večerů',
+    diaryCard: (count: string, pub: string, when: string) =>
+      `Poslední večer: ${count} v hospodě ${pub}, ${when}. Ťukni pro rozpis.`,
+    diaryCardEmpty: 'Zatím žádný zapsaný večer',
+    diaryBreakdown: 'Otevřít rozpis večera',
+    diaryNight: (pub: string, meta: string) => `Večer ${pub}, ${meta}. Ťukni pro detail.`,
+    diaryStats: 'Ukázat čísla za celou dobu',
+    diaryStatsClose: 'Zavřít čísla',
+    diaryRetry: 'Načíst deníček znovu',
 
     // — Účet / přihlášení —
     accountRow: 'Otevřít účet',

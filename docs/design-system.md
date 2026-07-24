@@ -507,8 +507,14 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.black, 0.6),
     justifyContent: 'flex-end',
   },
-  cardWrap: { width: '100%' },
+  // Výškové meze patří SEM, ne na kartu — viz §7.5.
+  cardWrap: {
+    width: '100%',
+    minHeight: '56%',
+    maxHeight: '92%',
+  },
   card: {
+    flex: 1,
     backgroundColor: Colors.stout2,
     borderTopLeftRadius: Radius.cardLarge,
     borderTopRightRadius: Radius.cardLarge,
@@ -516,8 +522,6 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     paddingTop: Spacing.sm,
     paddingHorizontal: Spacing.lg,
-    minHeight: '56%',
-    maxHeight: '92%',
     ...softDrop(),
   },
   grabber: {
@@ -615,6 +619,48 @@ Timer vždycky uklízej v `useEffect` cleanupu.
 > karty. Funguje to, protože jde o krátký neskrolující seznam bez patky. **Pro nové sheety použij
 > kanonickou variantu výše.** Kdykoli sheet obsahuje `ScrollView` nebo pevnou patku, je varianta
 > s rodičovským backdropem chyba.
+
+### 7.5 Výškové meze patří na `cardWrap`, ne na kartu
+
+Tohle je nejzákeřnější chyba v celém receptu, protože **nikde nespadne a nic nenahlásí** — jen
+zmizí obsah.
+
+Procentní `minHeight` / `maxHeight` se v Yoze počítají vůči **výšce rodiče**. Když je napíšeš na
+`card`, jejím rodičem je `cardWrap`, který má výšku `auto` — tedy neurčitou. Procento se nemá o co
+opřít a Yoga ho **potichu zahodí**. Karta pak roste podle obsahu klidně přes celou obrazovku,
+`ScrollView` uvnitř nikdy nedostane ohraničený box, takže **nescrolluje** — a všechno pod ohybem je
+nedostupné. Testy projdou, typecheck projde, na screenshotu chybí půlka sheetu.
+
+Projeví se to až u dlouhého obsahu. `DrinkPickSheet` to nikdy neodhalil, protože jeho seznam je
+krátký; první to shodilo na `DiaryStatsSheet`, kde byly sekce REKORDY, NEJVÍC JSI VYPIL a ROKY
+prostě uříznuté a nešlo se k nim doscrollovat.
+
+Správně:
+
+```ts
+// backdrop má flex: 1 → má určitou výšku → procento se má o co opřít
+cardWrap: { width: '100%', minHeight: '56%', maxHeight: '92%' },
+card:     { flex: 1, /* vyplní, na co byl cardWrap oříznutý — a tím ohraničí scroll */ },
+```
+
+**Jak to ověřit, když nemáš prst.** V simulátoru ovládaném přes computer use scroll gesto většinou
+neprojde — myší tahy se na RN `ScrollView` nepřenesou, takže „nescrolluje to“ nic nedokazuje.
+Nespoléhej na gesto, **změř to**:
+
+```tsx
+<ScrollView
+  onLayout={(e) => setBox(Math.round(e.nativeEvent.layout.height))}
+  onContentSizeChange={(_w, h) => setContent(Math.round(h))}
+  …
+/>
+// a dočasně vypiš `box ${box} / content ${content}` třeba do patky
+```
+
+- `box < content` → scroll je ohraničený a funkční, jen na něj nedosáhneš myší. V pořádku.
+- `box === content` → **tohle je ta chyba**. `ScrollView` se roztáhl na celý obsah, nikdy nescrolluje
+  a všechno pod hranou karty je nedostupné.
+
+Na `DiaryStatsSheet` to vyšlo `box 451 / content 707` — potvrzeno funkční. Diagnostiku pak zase ukliď.
 
 ---
 

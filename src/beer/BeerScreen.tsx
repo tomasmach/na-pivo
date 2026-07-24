@@ -1,10 +1,14 @@
 /**
- * "Pivo" — the merged tab hosting both the beer counter (Počítadlo) and the
- * personal evening history (Moje piva) behind a single segmented control. They
- * already share one data source (tallyStore), so combining them frees a slot in
- * the bottom tab bar without any data migration: this screen owns the top
- * safe-area inset + the segment, and renders the chosen child in `embedded`
- * mode (each child then drops its own top chrome).
+ * "Štamgast" — the tab hosting the beer counter (Počítat) and the personal
+ * trail (Deník) behind a single segmented control.
+ *
+ * It used to have three segments; "Výkon" and "Historie" turned out to be the
+ * same screen wearing two hats — both opened on the last evening, both listed
+ * what came before — so they merged into "Deník", which now also holds every
+ * lifetime number one tap deep. Two segments, one data source (tallyStore), no
+ * data migration: this screen owns the top safe-area inset + the segment, and
+ * renders the chosen child in `embedded` mode (each child drops its own top
+ * chrome).
  *
  * Switching segments unmounts the inactive child — the counter's geolocation
  * subscription and history's minute-tick only run for the visible half — while
@@ -23,10 +27,9 @@ import { fireLightImpactHaptic } from '@/utils/haptics';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import CounterScreen from '@/counter/CounterScreen';
-import MyBeersScreen from '@/myBeers/MyBeersScreen';
-import StatsScreen from '@/stats/StatsScreen';
+import DiaryScreen from '@/diary/DiaryScreen';
 
-type BeerTab = 'count' | 'stats' | 'history';
+type BeerTab = 'count' | 'diary';
 
 interface SegmentedProps {
   tab: BeerTab;
@@ -44,8 +47,7 @@ const Segmented = memo(function Segmented({ tab, onChange }: SegmentedProps) {
 
   const segments: { key: BeerTab; label: string; a11y: string }[] = [
     { key: 'count', label: cs.beer.segmentCount, a11y: cs.a11y.beerSegmentCount },
-    { key: 'stats', label: cs.beer.segmentStats, a11y: cs.a11y.beerSegmentStats },
-    { key: 'history', label: cs.beer.segmentHistory, a11y: cs.a11y.beerSegmentHistory },
+    { key: 'diary', label: cs.beer.segmentDiary, a11y: cs.a11y.diarySegment },
   ];
 
   return (
@@ -92,13 +94,7 @@ export default function BeerScreen() {
         <Segmented tab={tab} onChange={setTab} />
       </View>
       <View style={styles.body}>
-        {tab === 'count' ? (
-          <CounterScreen embedded />
-        ) : tab === 'stats' ? (
-          <StatsScreen embedded />
-        ) : (
-          <MyBeersScreen embedded />
-        )}
+        {tab === 'count' ? <CounterScreen embedded /> : <DiaryScreen embedded />}
       </View>
     </View>
   );
