@@ -6,15 +6,21 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
 import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.IconCompat
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 internal object BeerLiveActivityNotification {
   const val ACTION_DISMISSED = "com.napivo.beerliveactivity.DISMISSED"
@@ -36,7 +42,15 @@ internal object BeerLiveActivityNotification {
   private const val REPEAT_BEER_SERVING_TYPE_KEY = "repeatBeerServingType"
   private const val PENDING_ADDS_KEY = "pendingAdds"
   private const val FLAG_PROMOTED_ONGOING = 0x00040000
+  // Warm taproom palette mirrored from the iOS Live Activity: a glowing amber
+  // tally on a dark, toasted-malt surface.
   private const val AMBER = 0xFFFFB84D.toInt()
+  private const val AMBER_TRACK = 0x30FFB84D
+  private const val TILE_SURFACE = 0xFF2E1C0D.toInt()
+  // The progress track fills like a glass over the course of an evening. A full
+  // bar reads as "a proper night out" rather than a hard limit on counting.
+  private const val PROGRESS_TOTAL = 100
+  private const val PROGRESS_BEER_CAP = 10
 
   @Synchronized
   fun startOrUpdate(context: Context, payload: BeerLiveActivityPayload): Map<String, Any?> {
@@ -206,25 +220,35 @@ internal object BeerLiveActivityNotification {
     state: NotificationState
   ): Notification {
     val detail = notificationDetail(state)
+    val mugIcon = IconCompat.createWithResource(context, R.drawable.beer_live_activity_notification)
+    // A golden glass that fills as the evening goes on. The mug tracker rides the
+    // filled edge, so every added beer visibly nudges it further along the bar.
+    val filled = progressFill(state.beerCount)
     val progressStyle = NotificationCompat.ProgressStyle()
-      .setProgressIndeterminate(true)
-      .setProgressTrackerIcon(
-        IconCompat.createWithResource(context, R.drawable.beer_live_activity_notification)
-      )
+      .setProgress(filled)
+      .setProgressTrackerIcon(mugIcon)
       .addProgressSegment(
-        NotificationCompat.ProgressStyle.Segment(100).setColor(AMBER)
+        NotificationCompat.ProgressStyle.Segment(filled).setColor(AMBER)
       )
+    if (filled < PROGRESS_TOTAL) {
+      progressStyle.addProgressSegment(
+        NotificationCompat.ProgressStyle.Segment(PROGRESS_TOTAL - filled).setColor(AMBER_TRACK)
+      )
+    }
 
     return NotificationCompat.Builder(context, CHANNEL_ID)
       .setSmallIcon(R.drawable.beer_live_activity_notification)
       .setColor(AMBER)
+      .setLargeIcon(buildLargeIcon(context))
       .setContentTitle(
         state.pubName.trim().takeIf { it.isNotEmpty() }?.take(80)
           ?: beerCountLabel(state.beerCount)
       )
       .setContentText(detail)
       .setSubText(
-        state.totalPrice.trim().takeIf { it.isNotEmpty() }?.take(40) ?: "Večer běží"
+        state.totalPrice.trim().takeIf { it.isNotEmpty() }
+          ?.let { "Celkem ${it.take(34)}" }
+          ?: "Večer běží"
       )
       .setCategory(NotificationCompat.CATEGORY_PROGRESS)
       .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -318,6 +342,37 @@ internal object BeerLiveActivityNotification {
     val countLabel = beerCountLabel(state.beerCount)
     val latestBeer = state.latestBeerName.trim().takeIf { it.isNotEmpty() }?.take(80)
     return listOfNotNull(countLabel, latestBeer).joinToString(" · ")
+  }
+
+  /**
+   * Maps the beer count onto the progress track. Clamped to a soft cap so the
+   * bar keeps a visible fill from the very first beer and tops out gracefully on
+   * a big night instead of implying a hard limit.
+   */
+  private fun progressFill(beerCount: Int): Int {
+    val capped = min(max(beerCount, 1), PROGRESS_BEER_CAP).toFloat() / PROGRESS_BEER_CAP
+    return (capped * PROGRESS_TOTAL).roundToInt().coerceIn(8, PROGRESS_TOTAL)
+  }
+
+  /**
+   * Renders the branded icon tile shown as the notification's large icon: a warm
+   * toasted-malt square with a glowing amber mug, echoing the iOS Live Activity's
+   * fallback badge so both platforms read as the same product.
+   */
+  private fun buildLargeIcon(context: Context): Bitmap {
+    val size = (context.resources.displayMetrics.density * 56f).roundToInt().coerceAtLeast(96)
+    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val radius = size * 0.28f
+    val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = TILE_SURFACE }
+    canvas.drawRoundRect(0f, 0f, size.toFloat(), size.toFloat(), radius, radius, backgroundPaint)
+    ContextCompat.getDrawable(context, R.drawable.beer_live_activity_notification)?.mutate()?.apply {
+      setTint(AMBER)
+      val inset = (size * 0.27f).roundToInt()
+      setBounds(inset, inset, size - inset, size - inset)
+      draw(canvas)
+    }
+    return bitmap
   }
 
   private fun persistState(context: Context, state: NotificationState) {
