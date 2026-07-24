@@ -1,18 +1,20 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
+  RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { showAppDialog } from '@/components/shared/AppDialog';
+import { ChevronLeftIcon } from '@/components/shared/IconGlyph';
+import { CounterCta, CounterSecondary } from '@/counter/CounterCta';
+import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import { generateUuidV4 } from '@/data/account';
 import {
   createPartyEvening,
@@ -25,19 +27,14 @@ import {
   type FriendProfile,
   type PartyEvening,
 } from '@/data/friendsClient';
-import {
-  enqueueFriendOp,
-  isRetriableFriendError,
-} from '@/data/friendsQueue';
-import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
-import {
-  BeerIcon,
-  ChevronLeftIcon,
-  CopyIcon,
-  MapPinIcon,
-  UsersIcon,
-} from '@/components/shared/IconGlyph';
+import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
+import { PartyDrinkSheet } from '@/friends/PartyDrinkSheet';
+import { PartyEveningCard } from '@/friends/PartyEveningCard';
+import { PartyJoinSheet } from '@/friends/PartyJoinSheet';
+import { PartyStartSheet } from '@/friends/PartyStartSheet';
+import { PartyTable } from '@/friends/PartyTable';
 import { cs } from '@/i18n/cs';
+import { useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -49,6 +46,10 @@ function param(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value[0] ?? '' : value ?? '';
 }
 
+function sanitizeCode(value: string): string {
+  return value.toUpperCase().replace(/[^A-Z2-9]/g, '').slice(0, 6);
+}
+
 function makeJoinCode(): string {
   const hex = generateUuidV4().replace(/-/g, '');
   return Array.from({ length: 6 }, (_, index) => {
@@ -58,13 +59,18 @@ function makeJoinCode(): string {
 }
 
 function profileName(profile: FriendProfile): string {
-  return profile.nickname ? `@${profile.nickname}` : profile.displayName || 'Kamarád';
+  return profile.nickname
+    ? `@${profile.nickname}`
+    : profile.displayName || cs.partyEvening.friendFallback;
 }
 
 function timeLabel(iso: string): string {
   const parsed = Date.parse(iso);
   if (!Number.isFinite(parsed)) return '';
-  return new Date(parsed).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
+  return new Date(parsed).toLocaleTimeString('cs-CZ', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 function errorCopy(error: FriendActionError): string {
@@ -76,52 +82,26 @@ function errorCopy(error: FriendActionError): string {
   return error.detail || cs.partyEvening.error;
 }
 
-function ActionButton({
-  label,
-  onPress,
-  disabled = false,
-  secondary = false,
-  icon,
-}: {
-  label: string;
-  onPress: () => void;
-  disabled?: boolean;
-  secondary?: boolean;
-  icon?: ReactNode;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={({ pressed }) => [
-        styles.action,
-        secondary && styles.actionSecondary,
-        (pressed || disabled) && styles.pressed,
-      ]}
-    >
-      {icon}
-      <Text style={[styles.actionLabel, secondary && styles.actionLabelSecondary]}>{label}</Text>
-    </Pressable>
-  );
-}
-
 export default function PartyEveningScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ code?: string }>();
   const insets = useSafeAreaInsets();
   const showToast = useToastStore((state) => state.show);
-  const routeCode = useMemo(() => param(params.code).toUpperCase().slice(0, 6), [params.code]);
+  const accountId = useAccountStore((state) => state.session?.accountId ?? null);
+  const routeCode = useMemo(() => sanitizeCode(param(params.code)), [params.code]);
 
   const [evening, setEvening] = useState<PartyEvening | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [pubName, setPubName] = useState('');
   const [pubCity, setPubCity] = useState('');
   const [joinCode, setJoinCode] = useState(routeCode);
   const [beerName, setBeerName] = useState('');
+  const [startOpen, setStartOpen] = useState(false);
+  const [joinOpen, setJoinOpen] = useState(routeCode.length > 0);
+  const [drinkOpen, setDrinkOpen] = useState(false);
   const [pendingCreate, setPendingCreate] = useState<{
     code: string;
     pubName: string;
@@ -145,6 +125,12 @@ export default function PartyEveningScreen() {
     return () => clearTimeout(kickoff);
   }, [load]);
 
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }, [load]);
+
   const handleCreate = useCallback(async () => {
     const trimmedName = pubName.trim();
     if (!trimmedName || busy) return;
@@ -161,6 +147,8 @@ export default function PartyEveningScreen() {
     });
     if (result.ok) {
       setEvening(result.evening);
+      setPendingCreate(null);
+      setStartOpen(false);
     } else if (isRetriableFriendError(result)) {
       setPendingCreate({ code, pubName: trimmedName, pubCity: pubCity.trim() });
       await enqueueFriendOp({
@@ -171,6 +159,7 @@ export default function PartyEveningScreen() {
         pubCity: pubCity.trim(),
         startedAt,
       });
+      setStartOpen(false);
       showToast(cs.partyEvening.actionQueued);
     } else {
       showToast(errorCopy(result));
@@ -179,14 +168,17 @@ export default function PartyEveningScreen() {
   }, [busy, pubCity, pubName, showToast]);
 
   const handleJoin = useCallback(async () => {
-    const code = joinCode.trim().toUpperCase();
+    const code = sanitizeCode(joinCode.trim());
     if (code.length !== 6 || busy) return;
     setBusy(true);
     const result = await joinPartyEvening(code);
     if (result.ok) {
       setEvening(result.evening);
+      setPendingCreate(null);
+      setJoinOpen(false);
     } else if (isRetriableFriendError(result)) {
       await enqueueFriendOp({ op: 'party-join', code });
+      setJoinOpen(false);
       showToast(cs.partyEvening.actionQueued);
     } else {
       showToast(errorCopy(result));
@@ -194,40 +186,45 @@ export default function PartyEveningScreen() {
     setBusy(false);
   }, [busy, joinCode, showToast]);
 
-  const handleShareDrink = useCallback(async () => {
-    const trimmedBeer = beerName.trim();
-    const code = evening?.joinCode ?? pendingCreate?.code;
-    if (!code || !trimmedBeer || busy) return;
-    setBusy(true);
-    const clientId = generateUuidV4();
-    const sharedAt = new Date().toISOString();
-    const result = await sharePartyEveningDrink(code, {
-      clientId,
-      beerName: trimmedBeer,
-      sharedAt,
-    });
-    if (result.ok) {
-      setBeerName('');
-      showToast(cs.partyEvening.shared);
-      await load();
-    } else if (isRetriableFriendError(result)) {
-      await enqueueFriendOp({
-        op: 'party-drink',
-        code,
+  const handleShareDrink = useCallback(
+    async (requestedBeer?: string) => {
+      const trimmedBeer = (requestedBeer ?? beerName).trim();
+      const code = evening?.joinCode ?? pendingCreate?.code;
+      if (!code || !trimmedBeer || busy) return;
+      setBusy(true);
+      const clientId = generateUuidV4();
+      const sharedAt = new Date().toISOString();
+      const result = await sharePartyEveningDrink(code, {
         clientId,
         beerName: trimmedBeer,
-        quantity: 1,
         sharedAt,
       });
-      setBeerName('');
-      showToast(cs.partyEvening.actionQueued);
-    } else {
-      showToast(errorCopy(result));
-    }
-    setBusy(false);
-  }, [beerName, busy, evening, load, pendingCreate?.code, showToast]);
+      if (result.ok) {
+        setBeerName('');
+        setDrinkOpen(false);
+        showToast(cs.partyEvening.shared);
+        await load();
+      } else if (isRetriableFriendError(result)) {
+        await enqueueFriendOp({
+          op: 'party-drink',
+          code,
+          clientId,
+          beerName: trimmedBeer,
+          quantity: 1,
+          sharedAt,
+        });
+        setBeerName('');
+        setDrinkOpen(false);
+        showToast(cs.partyEvening.actionQueued);
+      } else {
+        showToast(errorCopy(result));
+      }
+      setBusy(false);
+    },
+    [beerName, busy, evening?.joinCode, load, pendingCreate?.code, showToast],
+  );
 
-  const handleLeaveOrEnd = useCallback(async () => {
+  const performLeaveOrEnd = useCallback(async () => {
     if (!evening || busy) return;
     setBusy(true);
     const result = evening.isHost
@@ -251,425 +248,393 @@ export default function PartyEveningScreen() {
     router.back();
   }, [busy, evening, router, showToast]);
 
-  const copyCode = useCallback(async (code: string) => {
-    await Clipboard.setStringAsync(code);
-    showToast(cs.partyEvening.copied);
-  }, [showToast]);
+  const handleLeaveOrEnd = useCallback(() => {
+    if (!evening || busy) return;
+    if (!evening.isHost) {
+      void performLeaveOrEnd();
+      return;
+    }
+    showAppDialog({
+      title: cs.partyEvening.endConfirmTitle,
+      message: cs.partyEvening.endConfirmBody,
+      buttons: [
+        { text: cs.partyEvening.endConfirmBack, style: 'cancel' },
+        {
+          text: cs.partyEvening.endConfirmAction,
+          style: 'destructive',
+          onPress: () => void performLeaveOrEnd(),
+        },
+      ],
+    });
+  }, [busy, evening, performLeaveOrEnd]);
 
-  const activeCode = evening?.joinCode ?? pendingCreate?.code ?? '';
-  const activePubName = evening?.pubName ?? pendingCreate?.pubName ?? '';
-  const activePubCity = evening?.pubCity ?? pendingCreate?.pubCity ?? '';
+  const copyCode = useCallback(
+    async (code: string) => {
+      await Clipboard.setStringAsync(code);
+      showToast(cs.partyEvening.copied);
+    },
+    [showToast],
+  );
+
+  const activeEvening = evening?.active ? evening : null;
+  const hasTable = activeEvening !== null || pendingCreate !== null;
+  const activeCode = activeEvening?.joinCode ?? pendingCreate?.code ?? '';
+  const activePubName = activeEvening?.pubName ?? pendingCreate?.pubName ?? '';
+  const activePubCity = activeEvening?.pubCity ?? pendingCreate?.pubCity ?? '';
+  const memberCount = activeEvening?.members.length ?? (pendingCreate ? 1 : 0);
+  const hostLabel = activeEvening
+    ? cs.partyEvening.hostedBy(profileName(activeEvening.host))
+    : cs.partyEvening.pendingShort;
+  const events = activeEvening?.events ?? [];
+
+  const lastBeerName = useMemo(() => {
+    if (!activeEvening || !accountId) return null;
+    for (let index = activeEvening.events.length - 1; index >= 0; index -= 1) {
+      const event = activeEvening.events[index];
+      if (event.kind === 'drink' && event.account.id === accountId && event.beerName.trim()) {
+        return event.beerName;
+      }
+    }
+    return null;
+  }, [accountId, activeEvening]);
+
+  const nudge = useMemo<Nudge | null>(() => {
+    if (loadError) {
+      return {
+        kind: 'counted',
+        text: cs.partyEvening.error,
+        undoLabel: cs.partyEvening.retry,
+        onUndo: () => void load(),
+      };
+    }
+    if (pendingCreate) {
+      return {
+        kind: 'counted',
+        text: cs.partyEvening.pendingNudge,
+        undoLabel: cs.partyEvening.refresh,
+        onUndo: () => void load(),
+      };
+    }
+    if (evening && !evening.active) {
+      return {
+        kind: 'dopito',
+        label: cs.partyEvening.ended,
+        onPress: () => router.back(),
+      };
+    }
+    return null;
+  }, [evening, load, loadError, pendingCreate, router]);
 
   return (
-    <View style={styles.root}>
-      <KeyboardAvoidingView
-        style={styles.root}
-        behavior="padding"
-        enabled={Platform.OS === 'android'}
-      >
-        <KeyboardAwareScrollView
-          contentContainerStyle={[
-            styles.content,
-            { paddingTop: insets.top + Spacing.sm, paddingBottom: insets.bottom + Spacing.xl },
-          ]}
-          keyboardShouldPersistTaps="handled"
+    <View
+      style={[
+        styles.root,
+        {
+          paddingTop: insets.top + 8,
+          paddingBottom: Math.max(insets.bottom, Spacing.sm),
+        },
+      ]}
+    >
+      <View style={styles.header}>
+        <Pressable
+          onPress={() => router.back()}
+          accessibilityRole="button"
+          accessibilityLabel={cs.a11y.backButton}
+          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+        >
+          <ChevronLeftIcon size={24} color={Colors.foam} />
+        </Pressable>
+        <Text
+          style={styles.headerTitle}
+          numberOfLines={1}
+          maxFontSizeMultiplier={FontScaleCap.heading}
+        >
+          {cs.partyEvening.title}
+        </Text>
+        <View style={styles.headerSpacer} />
+      </View>
+
+      {loading ? (
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.header}>
-            <Pressable
-              onPress={() => router.back()}
-              accessibilityRole="button"
-              accessibilityLabel={cs.a11y.backButton}
-              style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
-            >
-              <ChevronLeftIcon size={24} color={Colors.foam} />
-            </Pressable>
-            <View style={styles.headerText}>
-              <Text style={styles.kicker}>{cs.partyEvening.kicker}</Text>
-              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {cs.partyEvening.title}
-              </Text>
-            </View>
+          <View style={styles.cardGrow}>
+            <PartyEveningCard
+              count={0}
+              pubName=""
+              pubCity=""
+              code=""
+              hostLabel=""
+              pending={false}
+              loading
+              onCopyCode={() => undefined}
+            />
+          </View>
+        </ScrollView>
+      ) : hasTable ? (
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => void handleRefresh()}
+              tintColor={Colors.amber}
+            />
+          }
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={events.length === 0 ? styles.cardGrow : undefined}>
+            <PartyEveningCard
+              count={memberCount}
+              pubName={activePubName}
+              pubCity={activePubCity}
+              code={activeCode}
+              hostLabel={hostLabel}
+              pending={pendingCreate !== null}
+              onCopyCode={() => void copyCode(activeCode)}
+            />
           </View>
 
-          {loading ? (
-            <ActivityIndicator color={Colors.amber} style={styles.loader} />
-          ) : evening || pendingCreate ? (
-            <>
-              <View style={styles.heroPanel}>
-                <Text style={styles.sectionLabel}>{cs.partyEvening.activeKicker}</Text>
-                <Text style={styles.pubTitle}>{activePubName}</Text>
-                {activePubCity ? (
-                  <View style={styles.inlineMeta}>
-                    <MapPinIcon size={15} color={Colors.mutedText} />
-                    <Text style={styles.metaText}>{activePubCity}</Text>
-                  </View>
-                ) : null}
-                {evening ? (
-                  <>
-                    <Text style={styles.hostText}>
-                      {cs.partyEvening.hostedBy(profileName(evening.host))}
+          <Text style={styles.feedHeader} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.partyEvening.feed}
+          </Text>
+
+          {events.length > 0 ? (
+            <View style={styles.rowsCard}>
+              {events.map((event, index) => {
+                const name = profileName(event.account);
+                return (
+                  <View
+                    key={event.id}
+                    style={[styles.eventRow, index > 0 && styles.eventRowDivider]}
+                  >
+                    <Text
+                      style={styles.eventText}
+                      numberOfLines={2}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {event.kind === 'drink'
+                        ? cs.partyEvening.drank(name, event.beerName, event.quantity)
+                        : cs.partyEvening.joined(name)}
                     </Text>
-                    <View style={styles.inlineMeta}>
-                      <UsersIcon size={16} color={Colors.amber} />
-                      <Text style={styles.memberText}>
-                        {cs.partyEvening.memberCount(evening.members.length)}
-                      </Text>
-                    </View>
-                  </>
-                ) : (
-                  <Text style={styles.pendingText}>{cs.partyEvening.pending}</Text>
-                )}
-              </View>
-
-              <View style={styles.codeRow}>
-                <View>
-                  <Text style={styles.inputLabel}>{cs.partyEvening.codeLabel}</Text>
-                  <Text style={styles.code}>{activeCode}</Text>
-                </View>
-                <Pressable
-                  onPress={() => void copyCode(activeCode)}
-                  accessibilityRole="button"
-                  accessibilityLabel={cs.partyEvening.copyCode}
-                  style={({ pressed }) => [styles.copyButton, pressed && styles.pressed]}
-                >
-                  <CopyIcon size={18} color={Colors.amber} />
-                </Pressable>
-              </View>
-
-              {evening?.active ? (
-                <>
-                  <View style={styles.section}>
-                    <Text style={styles.sectionLabel}>{cs.partyEvening.feed}</Text>
-                    {evening.events.length > 0 ? (
-                      evening.events.map((event) => {
-                        const name = profileName(event.account);
-                        return (
-                          <View key={event.id} style={styles.eventRow}>
-                            <View style={styles.eventIcon}>
-                              {event.kind === 'drink' ? (
-                                <BeerIcon size={16} color={Colors.amber} />
-                              ) : (
-                                <UsersIcon size={16} color={Colors.amber} />
-                              )}
-                            </View>
-                            <Text style={styles.eventText}>
-                              {event.kind === 'drink'
-                                ? cs.partyEvening.drank(name, event.beerName, event.quantity)
-                                : cs.partyEvening.joined(name)}
-                            </Text>
-                            <Text style={styles.eventTime}>{timeLabel(event.at)}</Text>
-                          </View>
-                        );
-                      })
-                    ) : (
-                      <Text style={styles.emptyText}>{cs.partyEvening.emptyFeed}</Text>
-                    )}
+                    <Text
+                      style={styles.eventTime}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {timeLabel(event.at)}
+                    </Text>
                   </View>
-
-                  <View style={styles.section}>
-                    <Text style={styles.sectionLabel}>{cs.partyEvening.drinkLabel}</Text>
-                    <TextInput
-                      value={beerName}
-                      onChangeText={setBeerName}
-                      placeholder={cs.partyEvening.drinkPlaceholder}
-                      placeholderTextColor={Colors.mutedText}
-                      style={styles.input}
-                      maxLength={120}
-                      returnKeyType="send"
-                      onSubmitEditing={() => void handleShareDrink()}
-                    />
-                    <Text style={styles.privacyText}>{cs.partyEvening.drinkPrivacy}</Text>
-                    <ActionButton
-                      label={cs.partyEvening.shareDrink}
-                      onPress={() => void handleShareDrink()}
-                      disabled={!beerName.trim() || busy}
-                      icon={<BeerIcon size={18} color={Colors.stout} />}
-                    />
-                  </View>
-
-                  <ActionButton
-                    label={evening.isHost ? cs.partyEvening.end : cs.partyEvening.leave}
-                    onPress={() => void handleLeaveOrEnd()}
-                    disabled={busy}
-                    secondary
-                  />
-                </>
-              ) : pendingCreate ? (
-                <>
-                  <View style={styles.section}>
-                    <Text style={styles.sectionLabel}>{cs.partyEvening.drinkLabel}</Text>
-                    <TextInput
-                      value={beerName}
-                      onChangeText={setBeerName}
-                      placeholder={cs.partyEvening.drinkPlaceholder}
-                      placeholderTextColor={Colors.mutedText}
-                      style={styles.input}
-                      maxLength={120}
-                      returnKeyType="send"
-                      onSubmitEditing={() => void handleShareDrink()}
-                    />
-                    <Text style={styles.privacyText}>{cs.partyEvening.drinkPrivacy}</Text>
-                    <ActionButton
-                      label={cs.partyEvening.shareDrink}
-                      onPress={() => void handleShareDrink()}
-                      disabled={!beerName.trim() || busy}
-                      icon={<BeerIcon size={18} color={Colors.stout} />}
-                    />
-                  </View>
-                  <ActionButton label={cs.partyEvening.reload} onPress={() => void load()} secondary />
-                </>
-              ) : (
-                <Text style={styles.emptyText}>{cs.partyEvening.ended}</Text>
-              )}
-            </>
+                );
+              })}
+            </View>
           ) : (
-            <>
-              <Text style={styles.intro}>{cs.partyEvening.intro}</Text>
-              <Text style={styles.privacyText}>{cs.partyEvening.privacy}</Text>
-              {loadError ? (
-                <Pressable onPress={() => void load()} style={styles.errorStrip}>
-                  <Text style={styles.errorText}>{cs.partyEvening.error}</Text>
-                </Pressable>
-              ) : null}
-
-              <View style={styles.section}>
-                <Text style={styles.sectionLabel}>{cs.partyEvening.create}</Text>
-                <Text style={styles.inputLabel}>{cs.partyEvening.pubName}</Text>
-                <TextInput
-                  value={pubName}
-                  onChangeText={setPubName}
-                  placeholder={cs.partyEvening.pubNamePlaceholder}
-                  placeholderTextColor={Colors.mutedText}
-                  style={styles.input}
-                  maxLength={200}
-                />
-                <Text style={styles.inputLabel}>{cs.partyEvening.pubCity}</Text>
-                <TextInput
-                  value={pubCity}
-                  onChangeText={setPubCity}
-                  placeholder={cs.partyEvening.pubCityPlaceholder}
-                  placeholderTextColor={Colors.mutedText}
-                  style={styles.input}
-                  maxLength={120}
-                  onSubmitEditing={() => void handleCreate()}
-                />
-                <ActionButton
-                  label={cs.partyEvening.create}
-                  onPress={() => void handleCreate()}
-                  disabled={!pubName.trim() || busy}
-                  icon={<UsersIcon size={18} color={Colors.stout} />}
-                />
-              </View>
-
-              <View style={styles.dividerRow}>
-                <View style={styles.divider} />
-                <Text style={styles.dividerText}>NEBO</Text>
-                <View style={styles.divider} />
-              </View>
-
-              <View style={styles.joinSection}>
-                <Text style={styles.sectionLabel}>{cs.partyEvening.joinLabel}</Text>
-                <TextInput
-                  value={joinCode}
-                  onChangeText={(value) => setJoinCode(value.toUpperCase().replace(/[^A-Z2-9]/g, '').slice(0, 6))}
-                  placeholder={cs.partyEvening.joinPlaceholder}
-                  placeholderTextColor={Colors.mutedText}
-                  style={[styles.input, styles.codeInput]}
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  maxLength={6}
-                  returnKeyType="go"
-                  onSubmitEditing={() => void handleJoin()}
-                />
-                <ActionButton
-                  label={cs.partyEvening.join}
-                  onPress={() => void handleJoin()}
-                  disabled={joinCode.length !== 6 || busy}
-                  secondary
-                />
-              </View>
-            </>
+            <Text style={styles.emptyFeed} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.partyEvening.emptyFeed}
+            </Text>
           )}
-        </KeyboardAwareScrollView>
-      </KeyboardAvoidingView>
+        </ScrollView>
+      ) : (
+        <View style={styles.empty}>
+          <PartyTable going={0} maybe={0} mine={false} width={120} />
+          <Text style={styles.emptyTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+            {cs.partyEvening.emptyTitle}
+          </Text>
+          <Text style={styles.emptyBody} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.partyEvening.emptyBody}
+          </Text>
+          <Text style={styles.emptyPrivacy} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.partyEvening.privacy}
+          </Text>
+        </View>
+      )}
+
+      <NudgeSlot nudge={nudge} />
+
+      <CounterCta
+        label={hasTable ? cs.partyEvening.shareDrinkCta : cs.partyEvening.createCta}
+        subLabel={null}
+        onPress={() => {
+          if (hasTable) setDrinkOpen(true);
+          else setStartOpen(true);
+        }}
+        accessibilityLabel={
+          hasTable ? cs.partyEvening.shareDrinkCta : cs.partyEvening.createCta
+        }
+        disabled={loading || busy}
+      />
+
+      {!loading && activeEvening ? (
+        <CounterSecondary
+          label={activeEvening.isHost ? cs.partyEvening.end : cs.partyEvening.leave}
+          onPress={handleLeaveOrEnd}
+        />
+      ) : !loading && !hasTable ? (
+        <CounterSecondary
+          label={cs.partyEvening.joinCta}
+          onPress={() => setJoinOpen(true)}
+        />
+      ) : null}
+
+      <PartyStartSheet
+        visible={startOpen}
+        pubName={pubName}
+        pubCity={pubCity}
+        busy={busy}
+        onChangePubName={setPubName}
+        onChangePubCity={setPubCity}
+        onSubmit={() => void handleCreate()}
+        onClose={() => setStartOpen(false)}
+      />
+      <PartyJoinSheet
+        visible={joinOpen}
+        code={joinCode}
+        busy={busy}
+        onChangeCode={setJoinCode}
+        onSubmit={() => void handleJoin()}
+        onClose={() => setJoinOpen(false)}
+      />
+      <PartyDrinkSheet
+        visible={drinkOpen}
+        beerName={beerName}
+        lastBeerName={lastBeerName}
+        busy={busy}
+        onChangeBeerName={setBeerName}
+        onRepeatLast={() => {
+          if (lastBeerName) void handleShareDrink(lastBeerName);
+        }}
+        onSubmit={() => void handleShareDrink()}
+        onClose={() => setDrinkOpen(false)}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: Colors.stout },
-  content: { paddingHorizontal: Spacing.lg, gap: Spacing.lg },
-  header: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  root: {
+    flex: 1,
+    backgroundColor: Colors.stout,
+    paddingHorizontal: 24,
+    gap: 12,
+  },
+  header: {
+    minHeight: 44,
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   backButton: {
     width: HitArea.min,
     height: HitArea.min,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: -Spacing.sm,
+    marginLeft: -8,
   },
-  headerText: { flex: 1 },
-  kicker: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 10,
-    letterSpacing: 1.4,
-    color: Colors.amber,
-  },
-  title: {
-    marginTop: 2,
+  headerTitle: {
+    flexShrink: 1,
     fontFamily: Fonts.display.extrabold,
-    fontSize: 30,
-    lineHeight: 34,
+    fontSize: 18,
     color: Colors.foam,
+    includeFontPadding: false,
   },
-  loader: { marginTop: Spacing.xxl },
-  intro: {
-    fontFamily: Fonts.display.bold,
-    fontSize: 21,
-    lineHeight: 27,
+  headerSpacer: {
+    flex: 1,
+    minWidth: Spacing.sm,
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 12,
+  },
+  cardGrow: {
+    flex: 1,
+  },
+  feedHeader: {
+    marginTop: 24,
+    marginBottom: 8,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
+    color: Colors.mutedText,
+    includeFontPadding: false,
+  },
+  rowsCard: {
+    overflow: 'hidden',
+    backgroundColor: Colors.stout2,
+    borderRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.07),
+    paddingVertical: 4,
+  },
+  eventRow: {
+    minHeight: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+  },
+  eventRowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.foam, 0.1),
+  },
+  eventText: {
+    flex: 1,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 14,
+    color: Colors.foamMuted,
+    includeFontPadding: false,
+  },
+  eventTime: {
+    flexShrink: 0,
+    fontFamily: Fonts.ui.regular,
+    fontSize: 12,
+    color: Colors.mutedText,
+    includeFontPadding: false,
+    fontVariant: ['tabular-nums'],
+  },
+  emptyFeed: {
+    fontFamily: Fonts.ui.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    color: Colors.mutedText,
+    includeFontPadding: false,
+  },
+  empty: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.md,
+    paddingHorizontal: 12,
+  },
+  emptyTitle: {
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 24,
     color: Colors.foam,
+    textAlign: 'center',
+    includeFontPadding: false,
   },
-  privacyText: {
+  emptyBody: {
+    fontFamily: Fonts.ui.regular,
+    fontSize: 15,
+    lineHeight: 22,
+    color: Colors.mutedText,
+    textAlign: 'center',
+    includeFontPadding: false,
+  },
+  emptyPrivacy: {
     fontFamily: Fonts.ui.regular,
     fontSize: 13,
     lineHeight: 19,
     color: Colors.mutedText,
+    textAlign: 'center',
+    includeFontPadding: false,
   },
-  heroPanel: {
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: Colors.border,
-    paddingVertical: Spacing.lg,
+  pressed: {
+    opacity: 0.7,
   },
-  section: { gap: Spacing.sm },
-  joinSection: { gap: Spacing.sm, paddingBottom: Spacing.lg },
-  sectionLabel: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 11,
-    letterSpacing: 1.35,
-    color: Colors.amber,
-  },
-  pubTitle: {
-    marginTop: Spacing.xs,
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 28,
-    lineHeight: 33,
-    color: Colors.foam,
-  },
-  hostText: {
-    marginTop: Spacing.md,
-    fontFamily: Fonts.ui.medium,
-    fontSize: 15,
-    color: Colors.foamMuted,
-  },
-  inlineMeta: { marginTop: Spacing.xs, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  metaText: { fontFamily: Fonts.ui.regular, fontSize: 14, color: Colors.mutedText },
-  memberText: { fontFamily: Fonts.ui.medium, fontSize: 14, color: Colors.foamMuted },
-  pendingText: {
-    marginTop: Spacing.md,
-    fontFamily: Fonts.ui.regular,
-    fontSize: 14,
-    lineHeight: 20,
-    color: Colors.amberLight,
-  },
-  codeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingBottom: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  code: {
-    marginTop: 4,
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 24,
-    letterSpacing: 5,
-    color: Colors.foam,
-  },
-  copyButton: {
-    width: HitArea.min,
-    height: HitArea.min,
-    borderRadius: Radius.pill,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  inputLabel: {
-    marginTop: Spacing.xs,
-    fontFamily: Fonts.ui.medium,
-    fontSize: 13,
-    color: Colors.foamMuted,
-  },
-  input: {
-    minHeight: 50,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: Radius.medium,
-    backgroundColor: Colors.stout2,
-    paddingHorizontal: Spacing.md,
-    fontFamily: Fonts.ui.medium,
-    fontSize: 16,
-    color: Colors.foam,
-  },
-  codeInput: { fontFamily: Fonts.display.bold, letterSpacing: 4, textAlign: 'center' },
-  action: {
-    minHeight: 50,
-    marginTop: Spacing.sm,
-    borderRadius: Radius.medium,
-    backgroundColor: Colors.amber,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-  },
-  actionSecondary: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  actionLabel: { fontFamily: Fonts.ui.bold, fontSize: 15, color: Colors.stout },
-  actionLabelSecondary: { color: Colors.foam },
-  pressed: { opacity: 0.55 },
-  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  divider: { flex: 1, height: 1, backgroundColor: Colors.border },
-  dividerText: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 10,
-    letterSpacing: 1.2,
-    color: Colors.mutedText,
-  },
-  eventRow: {
-    minHeight: 52,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: withAlpha(Colors.border, 0.7),
-  },
-  eventIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.1),
-  },
-  eventText: { flex: 1, fontFamily: Fonts.ui.medium, fontSize: 14, color: Colors.foamMuted },
-  eventTime: { fontFamily: Fonts.ui.regular, fontSize: 12, color: Colors.mutedText },
-  emptyText: {
-    fontFamily: Fonts.ui.regular,
-    fontSize: 14,
-    lineHeight: 20,
-    color: Colors.mutedText,
-  },
-  errorStrip: {
-    borderLeftWidth: 2,
-    borderLeftColor: Colors.amber,
-    paddingVertical: Spacing.sm,
-    paddingLeft: Spacing.md,
-  },
-  errorText: { fontFamily: Fonts.ui.medium, fontSize: 14, color: Colors.amberLight },
 });

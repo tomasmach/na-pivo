@@ -1,10 +1,8 @@
 /**
  * GlobalBoardRow — one row of the global leaderboards. Follows the party
- * leaderboard idiom (hairline rows on bare stout, crown for #1, amber tint on
- * my own row) with a generic score column: the big numeral is the category
- * score and the quiet caption underneath names its unit (piv / hospod / XP).
- * Friends get a quiet "v partě" subtitle so a familiar face pops out of the
- * countrywide list.
+ * leaderboard idiom (crown for #1, amber tint on my own row) inside the
+ * screen's shared rows card. The category unit lives once in the hero footer,
+ * while the complete score + unit stays in the accessibility label.
  */
 
 import React, { memo } from 'react';
@@ -22,6 +20,8 @@ interface GlobalBoardRowProps {
   entry: BoardEntry;
   /** Unit caption under the score numeral, already declined for the count. */
   unit: string;
+  /** Draws the card's upper hairline from the second row onward. */
+  divided?: boolean;
   /** Opens the public profile. Omitted for my own row (nothing to navigate to). */
   onPress?: () => void;
 }
@@ -38,6 +38,7 @@ function resolveName(entry: BoardEntry): string {
 export const GlobalBoardRow = memo(function GlobalBoardRow({
   entry,
   unit,
+  divided = false,
   onPress,
 }: GlobalBoardRowProps) {
   const { rank, score, isMe, isFriend, account } = entry;
@@ -83,13 +84,10 @@ export const GlobalBoardRow = memo(function GlobalBoardRow({
       <View style={styles.metricCol}>
         <Text
           style={[styles.score, isMe && styles.scoreMe]}
-          allowFontScaling={false}
+          numberOfLines={1}
           maxFontSizeMultiplier={FontScaleCap.display}
         >
           {score}
-        </Text>
-        <Text style={styles.scoreCaption} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {unit}
         </Text>
       </View>
     </>
@@ -101,14 +99,24 @@ export const GlobalBoardRow = memo(function GlobalBoardRow({
         onPress={onPress}
         accessibilityRole="button"
         accessibilityLabel={a11yLabel}
-        style={({ pressed }) => [styles.row, isMe && styles.rowMe, pressed && styles.rowPressed]}
+        style={({ pressed }) => [
+          styles.row,
+          divided && styles.rowDivider,
+          isMe && styles.rowMe,
+          pressed && styles.rowPressed,
+        ]}
       >
         {rowContent}
       </Pressable>
     );
   }
   return (
-    <View accessible accessibilityLabel={a11yLabel} style={[styles.row, isMe && styles.rowMe]}>
+    <View
+      accessible
+      accessibilityRole="text"
+      accessibilityLabel={a11yLabel}
+      style={[styles.row, divided && styles.rowDivider, isMe && styles.rowMe]}
+    >
       {rowContent}
     </View>
   );
@@ -118,12 +126,13 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.md,
+    gap: 12,
     minHeight: 56,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: withAlpha(Colors.border, 0.4),
+    paddingHorizontal: 24,
+  },
+  rowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.foam, 0.1),
   },
   rowMe: {
     backgroundColor: withAlpha(Colors.amber, 0.08),
@@ -148,17 +157,23 @@ const styles = StyleSheet.create({
   rankMedal: {
     fontFamily: Fonts.display.extrabold,
     fontSize: 16,
+    lineHeight: 16 * 1.24,
     color: Colors.foamMuted,
     includeFontPadding: false,
+    fontVariant: ['tabular-nums'],
   },
   rankPlain: {
     fontFamily: Fonts.display.semibold,
     fontSize: 15,
+    lineHeight: 15 * 1.24,
     color: Colors.mutedText,
     includeFontPadding: false,
+    fontVariant: ['tabular-nums'],
   },
   nameCol: {
+    flex: 1,
     flexShrink: 1,
+    minWidth: 0,
   },
   name: {
     fontFamily: Fonts.ui.bold,
@@ -172,22 +187,18 @@ const styles = StyleSheet.create({
     color: Colors.mutedText,
   },
   metricCol: {
-    marginLeft: 'auto',
     alignItems: 'flex-end',
+    flexShrink: 0,
   },
   score: {
     fontFamily: Fonts.display.extrabold,
     fontSize: 18,
+    lineHeight: 18 * 1.24,
     color: Colors.foam,
     includeFontPadding: false,
+    fontVariant: ['tabular-nums'],
   },
   scoreMe: {
     color: Colors.amber,
-  },
-  scoreCaption: {
-    marginTop: 2,
-    fontFamily: Fonts.ui.medium,
-    fontSize: 11,
-    color: Colors.mutedText,
   },
 });

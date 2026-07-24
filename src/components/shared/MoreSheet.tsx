@@ -20,7 +20,15 @@
  */
 
 import React from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type AccessibilityRole,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CheckIcon, XIcon } from '@/components/shared/IconGlyph';
@@ -42,6 +50,7 @@ export interface MoreRow {
   disabled?: boolean;
   onPress: () => void;
   accessibilityLabel?: string;
+  accessibilityRole?: AccessibilityRole;
 }
 
 export interface MoreSheetProps {
@@ -119,10 +128,14 @@ export function MoreSheet({ visible, title, rows, onClose }: MoreSheetProps) {
                       index > 0 && styles.rowDivider,
                       pressed && styles.rowPressed,
                     ]}
-                    accessibilityRole="button"
+                    accessibilityRole={row.accessibilityRole ?? 'button'}
                     accessibilityLabel={row.accessibilityLabel ?? row.label}
                     accessibilityState={{
-                      ...(row.selected != null ? { selected: row.selected } : {}),
+                      ...(row.selected != null && row.accessibilityRole === 'radio'
+                        ? { checked: row.selected }
+                        : row.selected != null
+                          ? { selected: row.selected }
+                          : {}),
                       ...(row.disabled != null ? { disabled: row.disabled } : {}),
                     }}
                   >

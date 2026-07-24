@@ -2,59 +2,91 @@
  * Global leaderboards — pushed route `/leaderboards` (Žebříčky).
  *
  * Three countrywide boards (Pivaři · Objevitelé · Mapéři) over three windows
- * (Týden · Rok · Celkem; Mapér is all-time only). Only public profiles are
- * listed — a private user still sees their own would-be rank plus the "ukaž
- * se" nudge, which is the screen's quiet conversion lever. Rows push the
- * public profile at `/parta/<id>`, where a stranger can be added to the party.
- *
- * The week window resets every Monday, which is the retention loop: a fresh,
- * winnable race each week instead of one frozen all-time podium.
+ * (week · year · all-time; Mapér is all-time only). The data client remains
+ * responsible for per-board caching and force refreshes; this screen only
+ * composes that data in the app's Tácek language.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
-
-import { GlowButton } from '@/components/shared/GlowButton';
 import {
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type LayoutChangeEvent,
+} from 'react-native';
+import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import {
+  BeerIcon,
   ChevronLeftIcon,
-  EyeOffIcon,
-  TrophyIcon,
+  EllipsisIcon,
+  MapPinIcon,
+  PencilIcon,
 } from '@/components/shared/IconGlyph';
+import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
+import { CounterCta } from '@/counter/CounterCta';
+import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import {
   fetchLeaderboard,
-  type BoardEntry,
   type Leaderboard,
   type LeaderboardCategory,
   type LeaderboardPeriod,
 } from '@/data/leaderboardsClient';
 import { trackClientEvent } from '@/data/telemetryClient';
 import SkeletonBlock from '@/friends/SkeletonBlock';
-import { GlobalBoardRow } from '@/leaderboards/GlobalBoardRow';
-import BoardSegmented from '@/leaderboards/BoardSegmented';
-import PeriodChips from '@/leaderboards/PeriodChips';
 import { cs } from '@/i18n/cs';
+import { GlobalBoardRow } from '@/leaderboards/GlobalBoardRow';
+import { PodiumMats } from '@/leaderboards/PodiumMats';
 import { useAccountStore } from '@/stores/accountStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
-import { HitArea, Radius, Spacing } from '@/theme/layout';
+import { Radius, Spacing } from '@/theme/layout';
+import { fireLightImpactHaptic } from '@/utils/haptics';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 
 type LoadState = 'loading' | 'loaded' | 'error';
 
-const CATEGORIES: readonly LeaderboardCategory[] = ['beers', 'pubs', 'mapper'];
-const PERIODS: readonly { key: LeaderboardPeriod; label: string }[] = [
-  { key: 'week', label: cs.leaderboards.periodWeek },
-  { key: 'year', label: cs.leaderboards.periodYear },
-  { key: 'all', label: cs.leaderboards.periodAll },
+interface BoardOption {
+  key: string;
+  category: LeaderboardCategory;
+  period: LeaderboardPeriod;
+  icon: MoreRow['icon'];
+}
+
+const BOARD_OPTIONS: readonly BoardOption[] = [
+  { key: 'beers-week', category: 'beers', period: 'week', icon: BeerIcon },
+  { key: 'beers-year', category: 'beers', period: 'year', icon: BeerIcon },
+  { key: 'beers-all', category: 'beers', period: 'all', icon: BeerIcon },
+  { key: 'pubs-week', category: 'pubs', period: 'week', icon: MapPinIcon },
+  { key: 'pubs-year', category: 'pubs', period: 'year', icon: MapPinIcon },
+  { key: 'pubs-all', category: 'pubs', period: 'all', icon: MapPinIcon },
+  { key: 'mapper-all', category: 'mapper', period: 'all', icon: PencilIcon },
 ];
 
-/** Unit caption for a score, declined for the count where the unit is a noun. */
 function unitFor(category: LeaderboardCategory, score: number): string {
   if (category === 'beers') return cs.leaderboards.unitBeers(score);
   if (category === 'pubs') return cs.leaderboards.unitPubs(score);
   return cs.leaderboards.unitXp;
+}
+
+function rankFontSize(rank: number | null): number {
+  if (rank == null || rank < 100) return 88;
+  if (rank < 1000) return 72;
+  return 56;
+}
+
+function sameBoard(
+  board: Leaderboard | null,
+  category: LeaderboardCategory,
+  period: LeaderboardPeriod,
+): board is Leaderboard {
+  if (!board || board.category !== category) return false;
+  return board.period === (category === 'mapper' ? 'all' : period);
 }
 
 export default function LeaderboardsScreen() {
@@ -62,6 +94,7 @@ export default function LeaderboardsScreen() {
   const router = useRouter();
   const reduceMotion = useReduceMotion();
   const profile = useAccountStore((s) => s.profile);
+  const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
   const { source } = useLocalSearchParams<{ source?: string }>();
 
   const [category, setCategory] = useState<LeaderboardCategory>('beers');
@@ -69,6 +102,8 @@ export default function LeaderboardsScreen() {
   const [state, setState] = useState<LoadState>('loading');
   const [board, setBoard] = useState<Leaderboard | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [heroBodyHeight, setHeroBodyHeight] = useState(0);
 
   const mountedRef = useRef(true);
   useEffect(
@@ -79,17 +114,15 @@ export default function LeaderboardsScreen() {
   );
 
   useEffect(() => {
-    // Which entry point converts (teaser vs counter chip vs profile row).
     void trackClientEvent({
       event: 'leaderboards_opened',
       context: { source: typeof source === 'string' && source ? source : 'unknown' },
     });
-    // Fire once per screen instance — the param can't change under a push.
+    // The source param cannot change under this pushed screen.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Remember the requested pair so a stale response can never win the race
-  // against a quick category/period flip.
+  // A later board choice always outranks an older response.
   const requestRef = useRef(0);
   const load = useCallback(
     async (force = false) => {
@@ -105,17 +138,6 @@ export default function LeaderboardsScreen() {
   useEffect(() => {
     void load();
   }, [load]);
-
-  const switchCategory = useCallback((index: number) => {
-    const next = CATEGORIES[index] ?? 'beers';
-    setCategory(next);
-    setState('loading');
-  }, []);
-
-  const switchPeriod = useCallback((next: LeaderboardPeriod) => {
-    setPeriod(next);
-    setState('loading');
-  }, []);
 
   const retry = useCallback(() => {
     setState('loading');
@@ -142,36 +164,29 @@ export default function LeaderboardsScreen() {
     [router],
   );
 
-  const hasNickname = Boolean(profile?.nickname);
   const openVisibility = useCallback(() => {
     router.push('/profile/edit' as Href);
   }, [router]);
 
-  const categoryIndex = CATEGORIES.indexOf(category);
-  const showPeriods = category !== 'mapper';
-  const subtitle = cs.leaderboards.subtitle(category, category === 'mapper' ? 'all' : period);
+  const chooseBoard = useCallback(
+    (option: BoardOption) => {
+      setMoreOpen(false);
+      if (option.category === category && option.period === period) return;
+      if (hapticEnabled) fireLightImpactHaptic();
+      setCategory(option.category);
+      setPeriod(option.period);
+      setState('loading');
+    },
+    [category, hapticEnabled, period],
+  );
 
-  const entries = useMemo(() => board?.entries ?? [], [board]);
-  const me = board?.me ?? null;
+  const tableTitle = cs.leaderboards.tableTitle(category, period);
+  const visibleBoard = state === 'loaded' && sameBoard(board, category, period) ? board : null;
+  const entries = useMemo(() => visibleBoard?.entries ?? [], [visibleBoard]);
+  const me = visibleBoard?.me ?? null;
+  const hasNickname = Boolean(profile?.nickname);
 
-  // My pinned row under the list when I'm ranked but outside the visible top.
-  const pinnedMe: BoardEntry | null = useMemo(() => {
-    if (!me || me.listed || me.rank == null) return null;
-    return {
-      rank: me.rank,
-      score: me.score,
-      isMe: true,
-      isFriend: false,
-      account: {
-        id: profile?.id ?? '',
-        nickname: profile?.nickname ?? null,
-        displayName: profile?.displayName ?? '',
-        avatarUrl: profile?.avatarUrl ?? null,
-      },
-    };
-  }, [me, profile]);
-
-  // "Do top žebříčku ti chybí X" — only when the board is full and I trail it.
+  // Only full boards can produce a meaningful gap to their last visible row.
   const chaseGap = useMemo(() => {
     if (!me || me.listed || me.rank == null || entries.length === 0) return 0;
     const lastVisible = entries[entries.length - 1];
@@ -179,158 +194,257 @@ export default function LeaderboardsScreen() {
     return gap > 0 ? gap : 0;
   }, [entries, me]);
 
+  const moreRows = useMemo<MoreRow[]>(
+    () =>
+      BOARD_OPTIONS.map((option) => {
+        const label = cs.leaderboards.tableTitle(option.category, option.period);
+        const selected = option.category === category && option.period === period;
+        return {
+          key: option.key,
+          label,
+          icon: option.icon,
+          selected,
+          onPress: () => chooseBoard(option),
+          accessibilityLabel: cs.leaderboards.selectTable(label, selected),
+        };
+      }),
+    [category, chooseBoard, period],
+  );
+
+  const nudge = useMemo<Nudge | null>(() => {
+    if (state === 'error') {
+      return {
+        kind: 'counted',
+        text: cs.leaderboards.error,
+        undoLabel: cs.leaderboards.retry,
+        onUndo: retry,
+        actionAccessibilityLabel: cs.leaderboards.retry,
+      };
+    }
+    if (chaseGap > 0) {
+      return {
+        kind: 'dopito',
+        label: cs.leaderboards.chase(category, chaseGap),
+        onPress: () => undefined,
+      };
+    }
+    return null;
+  }, [category, chaseGap, retry, state]);
+
+  const cta = useMemo(() => {
+    if (state === 'error') {
+      return {
+        label: cs.leaderboards.retry,
+        subLabel: cs.leaderboards.retrySub,
+        onPress: retry,
+      };
+    }
+    if (me && !me.eligible) {
+      return {
+        label: hasNickname ? cs.leaderboards.ghostCta : cs.leaderboards.ghostAnonCta,
+        subLabel: cs.leaderboards.ghostCtaSub,
+        onPress: openVisibility,
+      };
+    }
+    if (category === 'beers') {
+      return {
+        label: cs.leaderboards.ctaBeers,
+        subLabel: cs.leaderboards.ctaBeersSub,
+        onPress: () => router.replace('/(tabs)/beer' as Href),
+      };
+    }
+    if (category === 'pubs') {
+      return {
+        label: cs.leaderboards.ctaPubs,
+        subLabel: cs.leaderboards.ctaPubsSub,
+        onPress: () => router.replace('/(tabs)' as Href),
+      };
+    }
+    return {
+      label: cs.leaderboards.ctaMapper,
+      subLabel: cs.leaderboards.ctaMapperSub,
+      onPress: () => router.replace('/(tabs)' as Href),
+    };
+  }, [category, hasNickname, me, openVisibility, retry, router, state]);
+
+  const handleHeroBodyLayout = useCallback((event: LayoutChangeEvent) => {
+    const height = event.nativeEvent.layout.height;
+    setHeroBodyHeight((previous) => (Math.abs(previous - height) > 0.5 ? height : previous));
+  }, []);
+
+  const rank = me?.rank ?? null;
+  const rankLabel = rank == null ? cs.leaderboards.noRank : rank.toLocaleString('cs-CZ');
+  const numeralSize = rankFontSize(rank);
+  const podiumWidth =
+    heroBodyHeight > 0 ? Math.max(64, Math.min(112, (heroBodyHeight - 16) * 0.66)) : 88;
+  const scoreLabel =
+    me && me.score > 0
+      ? cs.leaderboards.score(category, me.score.toLocaleString('cs-CZ'), me.score)
+      : cs.leaderboards.noScore;
+  const totalLabel = cs.leaderboards.totalInBoard(
+    visibleBoard ? visibleBoard.totalRanked.toLocaleString('cs-CZ') : null,
+  );
+
   return (
-    <View style={[styles.root, { paddingTop: insets.top + Spacing.sm }]}>
-      {/* Header — back · centred title · spacer */}
+    <View
+      style={[
+        styles.root,
+        {
+          paddingTop: insets.top + 8,
+          paddingBottom: Math.max(insets.bottom, Spacing.sm),
+        },
+      ]}
+    >
       <View style={styles.header}>
         <Pressable
           onPress={goBack}
           hitSlop={10}
           accessibilityRole="button"
-          accessibilityLabel={cs.friends.claimBack}
-          style={({ pressed }) => [styles.headerBtn, pressed && styles.dim]}
+          accessibilityLabel={cs.leaderboards.back}
+          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
         >
           <ChevronLeftIcon size={26} color={Colors.foam} />
         </Pressable>
-        <Text style={styles.headerTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {cs.leaderboards.title}
-        </Text>
-        <View style={styles.headerBtn} />
-      </View>
 
-      <View style={styles.controls}>
-        <BoardSegmented
-          options={[
-            cs.leaderboards.categoryBeers,
-            cs.leaderboards.categoryPubs,
-            cs.leaderboards.categoryMapper,
-          ]}
-          value={categoryIndex < 0 ? 0 : categoryIndex}
-          onChange={switchCategory}
-          accessibilityLabel={cs.a11y.leaderboardCategory}
-        />
-        {showPeriods ? (
-          <PeriodChips
-            options={PERIODS}
-            value={period}
-            onChange={switchPeriod}
-            accessibilityLabel={cs.a11y.leaderboardPeriod}
-          />
-        ) : (
-          <Text style={styles.mapperWindowNote} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.leaderboards.mapperAllTimeNote}
-          </Text>
-        )}
-        <Text style={styles.subtitle} maxFontSizeMultiplier={FontScaleCap.body}>
-          {subtitle}
-        </Text>
-      </View>
-
-      {state === 'error' ? (
-        <View style={styles.centerBlock}>
-          <Text style={styles.errorText} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.leaderboards.error}
-          </Text>
-          <View style={styles.errorCta}>
-            <GlowButton
-              label={cs.friends.retry}
-              onPress={retry}
-              variant="secondary"
-              glow="none"
-              height={50}
-            />
-          </View>
-        </View>
-      ) : state === 'loading' ? (
-        <View style={styles.loadingWrap}>
-          {[0, 1, 2, 3, 4, 5].map((i) => (
-            <SkeletonBlock key={i} width="100%" height={52} reduceMotion={reduceMotion} />
-          ))}
-        </View>
-      ) : (
-        <ScrollView
-          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + Spacing.xl }]}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.amber} />
-          }
+        <Text
+          style={styles.headerTitle}
+          numberOfLines={1}
+          maxFontSizeMultiplier={FontScaleCap.heading}
+          accessibilityLabel={cs.leaderboards.tablePickerLabel(category, period)}
         >
-          {entries.length === 0 ? (
-            <View style={styles.emptyBlock}>
-              <TrophyIcon size={32} color={Colors.mutedText} />
-              <Text style={styles.emptyText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.leaderboards.empty(category)}
-              </Text>
-            </View>
-          ) : (
-            <View>
-              {entries.map((entry) => (
-                <GlobalBoardRow
-                  key={entry.account.id}
-                  entry={entry}
-                  unit={unitFor(category, entry.score)}
-                  onPress={
-                    entry.isMe || !entry.account.id
-                      ? undefined
-                      : () => openProfile(entry.account.id)
-                  }
-                />
-              ))}
+          {tableTitle}
+        </Text>
 
-              {pinnedMe ? (
-                <>
-                  <Text
-                    style={styles.dividerDots}
-                    allowFontScaling={false}
-                    accessibilityElementsHidden
-                    importantForAccessibility="no"
-                  >
-                    …
-                  </Text>
-                  <GlobalBoardRow entry={pinnedMe} unit={unitFor(category, pinnedMe.score)} />
-                  {chaseGap > 0 ? (
-                    <Text style={styles.chaseLine} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {cs.leaderboards.chase(category, chaseGap)}
-                    </Text>
-                  ) : null}
-                </>
-              ) : me && !me.listed && me.rank == null ? (
-                <Text style={styles.noScoreLine} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.leaderboards.meNoScore(category)}
-                </Text>
-              ) : null}
-            </View>
+        <Pressable
+          onPress={() => setMoreOpen(true)}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={cs.leaderboards.openTablePicker}
+          style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}
+        >
+          <EllipsisIcon size={20} color={Colors.mutedText} />
+        </Pressable>
+      </View>
+
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.amber} />
+        }
+      >
+        <Pressable
+          disabled
+          accessibilityRole="text"
+          accessibilityLabel={cs.leaderboards.heroA11y(
+            tableTitle,
+            rankLabel,
+            scoreLabel,
+            visibleBoard?.totalRanked ?? null,
           )}
+          style={styles.heroCard}
+        >
+          <Text
+            style={styles.eyebrow}
+            numberOfLines={2}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
+            {cs.leaderboards.subtitle(category, category === 'mapper' ? 'all' : period)}
+          </Text>
 
-          {/* Ghost nudge — private profiles race invisibly. */}
-          {me && !me.eligible ? (
-            <View style={styles.ghostCard}>
-              <View style={styles.ghostHeadRow}>
-                <EyeOffIcon size={18} color={Colors.amber} />
-                <Text style={styles.ghostTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-                  {cs.leaderboards.ghostTitle}
-                </Text>
-              </View>
-              <Text style={styles.ghostBody} maxFontSizeMultiplier={FontScaleCap.body}>
-                {hasNickname ? cs.leaderboards.ghostBody : cs.leaderboards.ghostAnonBody}
+          <View style={styles.heroBody} onLayout={handleHeroBodyLayout}>
+            <View style={styles.rankColumn}>
+              <Text
+                style={[styles.rank, { fontSize: numeralSize, lineHeight: numeralSize * 1.24 }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.8}
+                maxFontSizeMultiplier={FontScaleCap.display}
+              >
+                {rankLabel}
               </Text>
-              <GlowButton
-                label={hasNickname ? cs.leaderboards.ghostCta : cs.leaderboards.ghostAnonCta}
-                onPress={openVisibility}
-                variant="secondary"
-                glow="none"
-                height={46}
-              />
+              <Text
+                style={styles.rankNoun}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {cs.leaderboards.rankNoun}
+              </Text>
             </View>
-          ) : null}
 
-          {board && board.totalRanked > 0 ? (
-            <Text style={styles.footerLine} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.leaderboards.totalRanked(board.totalRanked)}
+            <PodiumMats rank={rank} width={podiumWidth} />
+          </View>
+
+          <View style={styles.heroFooter}>
+            <Text
+              style={styles.scoreFact}
+              numberOfLines={1}
+              maxFontSizeMultiplier={FontScaleCap.body}
+            >
+              {scoreLabel}
             </Text>
-          ) : null}
-        </ScrollView>
-      )}
+            <Text
+              style={styles.totalFact}
+              numberOfLines={1}
+              maxFontSizeMultiplier={FontScaleCap.body}
+            >
+              {totalLabel}
+            </Text>
+          </View>
+        </Pressable>
+
+        <Text style={styles.listLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+          {cs.leaderboards.listLabel}
+        </Text>
+
+        {state === 'loading' ? (
+          <View style={styles.rowsCard}>
+            {[0, 1, 2].map((item) => (
+              <SkeletonBlock
+                key={item}
+                width="100%"
+                height={56}
+                reduceMotion={reduceMotion}
+              />
+            ))}
+          </View>
+        ) : state === 'loaded' && entries.length === 0 ? (
+          <Text style={styles.emptyText} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.leaderboards.empty(category)}
+          </Text>
+        ) : entries.length > 0 ? (
+          <View style={styles.rowsCard}>
+            {entries.map((entry, index) => (
+              <GlobalBoardRow
+                key={entry.account.id}
+                entry={entry}
+                divided={index > 0}
+                unit={unitFor(category, entry.score)}
+                onPress={
+                  entry.isMe || !entry.account.id ? undefined : () => openProfile(entry.account.id)
+                }
+              />
+            ))}
+          </View>
+        ) : null}
+      </ScrollView>
+
+      <NudgeSlot nudge={nudge} />
+
+      <CounterCta
+        label={cta.label}
+        subLabel={cta.subLabel}
+        onPress={cta.onPress}
+        accessibilityLabel={cta.label}
+      />
+
+      <MoreSheet
+        visible={moreOpen}
+        title={cs.leaderboards.sheetTitle}
+        rows={moreRows}
+        onClose={() => setMoreOpen(false)}
+      />
     </View>
   );
 }
@@ -339,151 +453,145 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: Colors.stout,
-    paddingHorizontal: Spacing.lg,
+    paddingHorizontal: 24,
+    gap: 12,
   },
   header: {
+    minHeight: 44,
+    marginBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.sm,
+    gap: 12,
   },
-  headerBtn: {
-    width: HitArea.min,
-    height: HitArea.min,
+  backButton: {
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerTitle: {
     flex: 1,
-    textAlign: 'center',
+    minWidth: 0,
     fontFamily: Fonts.display.extrabold,
     fontSize: 18,
     color: Colors.foam,
+    textAlign: 'center',
+    includeFontPadding: false,
   },
-  dim: {
+  moreButton: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pressed: {
     opacity: 0.6,
   },
 
-  controls: {
-    marginTop: Spacing.sm,
-    gap: Spacing.md,
-  },
-  mapperWindowNote: {
-    textAlign: 'center',
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 13,
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-    color: Colors.mutedText,
-  },
-  subtitle: {
-    textAlign: 'center',
-    fontFamily: Fonts.ui.medium,
-    fontSize: 13,
-    lineHeight: 18,
-    color: Colors.mutedText,
-  },
-
-  content: {
-    paddingTop: Spacing.md,
-  },
-
-  // — Loading / error —
-  loadingWrap: {
-    gap: Spacing.sm,
-    paddingTop: Spacing.lg,
-  },
-  centerBlock: {
+  scroll: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.md,
-    paddingBottom: Spacing.xxl,
   },
-  errorText: {
-    fontFamily: Fonts.ui.medium,
-    fontSize: 15,
-    lineHeight: 21,
-    color: Colors.mutedText,
-    textAlign: 'center',
-  },
-  errorCta: {
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.xl,
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 12,
   },
 
-  // — Empty board —
-  emptyBlock: {
+  heroCard: {
+    overflow: 'hidden',
+    backgroundColor: Colors.stout2,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.07),
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 8,
+  },
+  eyebrow: {
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
+    color: Colors.mutedText,
+    includeFontPadding: false,
+  },
+  heroBody: {
+    flex: 1,
+    minHeight: 132,
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.md,
-    paddingVertical: Spacing.xxl,
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+  rankColumn: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  rank: {
+    fontFamily: Fonts.display.extrabold,
+    color: Colors.amber,
+    includeFontPadding: false,
+    fontVariant: ['tabular-nums'],
+  },
+  rankNoun: {
+    marginTop: -8,
+    fontFamily: Fonts.display.bold,
+    fontSize: 13,
+    letterSpacing: 3,
+    color: Colors.foamMuted,
+    includeFontPadding: false,
+  },
+  heroFooter: {
+    marginTop: 20,
+    paddingTop: 12,
+    paddingBottom: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.foam, 0.1),
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  scoreFact: {
+    flexShrink: 1,
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 15,
+    color: Colors.foam,
+    includeFontPadding: false,
+    fontVariant: ['tabular-nums'],
+  },
+  totalFact: {
+    flexShrink: 1,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
+    color: Colors.mutedText,
+    includeFontPadding: false,
+    textAlign: 'right',
+    fontVariant: ['tabular-nums'],
+  },
+
+  listLabel: {
+    marginTop: 24,
+    marginBottom: 8,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
+    color: Colors.mutedText,
+    includeFontPadding: false,
+  },
+  rowsCard: {
+    backgroundColor: Colors.stout2,
+    borderRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.07),
+    paddingVertical: 4,
+    overflow: 'hidden',
   },
   emptyText: {
+    paddingHorizontal: 12,
+    paddingVertical: 24,
     fontFamily: Fonts.ui.medium,
     fontSize: 14,
     lineHeight: 20,
     color: Colors.mutedText,
     textAlign: 'center',
-    paddingHorizontal: Spacing.lg,
-  },
-
-  // — My pinned row + chase line —
-  dividerDots: {
-    textAlign: 'center',
-    fontFamily: Fonts.display.bold,
-    fontSize: 14,
-    color: Colors.mutedText,
-    paddingVertical: 2,
-  },
-  chaseLine: {
-    marginTop: Spacing.sm,
-    textAlign: 'center',
-    fontFamily: Fonts.ui.medium,
-    fontSize: 13,
-    color: Colors.foamMuted,
-  },
-  noScoreLine: {
-    marginTop: Spacing.md,
-    textAlign: 'center',
-    fontFamily: Fonts.ui.medium,
-    fontStyle: 'italic',
-    fontSize: 13,
-    lineHeight: 19,
-    color: Colors.mutedText,
-  },
-
-  // — Ghost (private profile) nudge —
-  ghostCard: {
-    marginTop: Spacing.xl,
-    padding: Spacing.lg,
-    gap: Spacing.md,
-    borderRadius: Radius.medium,
-    backgroundColor: Colors.stout2,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.border, 0.7),
-  },
-  ghostHeadRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  ghostTitle: {
-    fontFamily: Fonts.display.bold,
-    fontSize: 16,
-    color: Colors.foam,
-  },
-  ghostBody: {
-    fontFamily: Fonts.ui.medium,
-    fontSize: 13,
-    lineHeight: 19,
-    color: Colors.foamMuted,
-  },
-
-  footerLine: {
-    marginTop: Spacing.xl,
-    textAlign: 'center',
-    fontFamily: Fonts.ui.medium,
-    fontSize: 12,
-    color: Colors.mutedText,
+    includeFontPadding: false,
   },
 });

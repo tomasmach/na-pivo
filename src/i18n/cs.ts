@@ -369,6 +369,9 @@ export const cs = {
 
   settings: {
     title: 'Nastavení',
+    compassSection: 'Co ti kompas najde',
+    notificationsSection: 'Kdy se ozvu',
+    locationPrivacy: 'Domov i trasu nechávám v telefonu. Historii polohy neukládám.',
     // Section group labels — one clear meaning per group.
     sections: {
       search: 'HLEDÁNÍ',
@@ -381,6 +384,9 @@ export const cs = {
     accountCard: {
       header: 'ÚČET',
       verified: 'E-mail ověřen',
+      verifiedInline: 'e-mail ověřen',
+      ctaSignedIn: 'Můj účet',
+      ctaSignedOutSubtitle: 'Piva, odznaky i partu ti přenesu na každý telefon',
       signedOutTitle: 'Přihlásit se',
       signedOutSubtitle: 'Sync piv, hodnocení a odznaků na všech zařízeních',
     },
@@ -388,9 +394,13 @@ export const cs = {
       header: 'MAXIMÁLNÍ VZDÁLENOST',
       helper: 'Hledám hospody jen v této vzdálenosti od tebe.',
       unlimited: 'Bez limitu',
+      unlimitedUnit: 'BEZ LIMITU',
       kmShort: 'km',
       rangeMin: '500 m',
       rangeMax: '∞',
+      accessibilityLabel: 'Maximální dosah hledání',
+      increase: 'Zvětšit dosah',
+      decrease: 'Zmenšit dosah',
     },
     haptics: {
       title: 'Vibrace u cíle',
@@ -424,6 +434,7 @@ export const cs = {
       subtitle: 'Po každém pivu posunu jednu upomínku. Sama se neopakuje.',
       intervalLabel: 'Za',
       intervalOption: (minutes: number) => `Připomenout za ${minutes} minut`,
+      intervalShort: (minutes: number) => `${minutes} min`,
     },
     sound: {
       title: 'Zvuk cinknutí',
@@ -454,6 +465,8 @@ export const cs = {
       subtitle: 'Automaticky podle země, kde zrovna jsi',
       czk: 'Kč',
       eur: '€',
+      footer: (currency: string) =>
+        `Ceny počítám v ${currency === 'EUR' ? '€' : 'Kč'}, podle země, kde zrovna jsi.`,
     },
     marketingEmails: {
       title: 'Novinky e-mailem',
@@ -467,6 +480,16 @@ export const cs = {
     addPub: 'Přidat chybějící hospodu',
     addPubCtaSubtitle: 'Nevidíš svůj podnik? Přidej ho mezi ostatní.',
     privacy: 'Soukromí',
+    more: {
+      title: 'Co ještě?',
+      accessibilityLabel: 'Další možnosti nastavení',
+      homePoint: 'Domovský bod',
+      configured: 'Nastavený',
+      notConfigured: 'Nenastavený',
+      navigateGoogle: 'Navigovat přes Google',
+      navigateMapy: 'Navigovat přes Mapy.com',
+      myAddedPubs: 'Moje přidané hospody',
+    },
     discord: {
       title: 'Přidej se na komunitní Discord',
       subtitle: 'Pivo, hospody a řeči kolem. Stav se na jedno.',
@@ -780,18 +803,27 @@ export const cs = {
     accountTitle: 'Účet',
     emailVerified: 'E-mail ověřen',
     emailUnverified: 'E-mail není ověřen',
-    verifyEmailCta: 'Ověřit e-mail',
+    emailMissing: 'E-mail není nastaven',
     verifyEmailRequestedToast: 'Ověřovací e-mail je na cestě.',
     anonymousName: 'Tvůj účet',
+    ctaMethods: 'Jak se přihlašuješ',
+    moreTitle: 'Co ještě?',
+    nudgeVerify: 'E-mail ještě není ověřený.',
+    nudgeVerifyCta: 'Poslat znovu',
+    nudgeSingleMethod: (provider: string) => `Přihlásíš se jen přes ${provider}.`,
+    exportRunning: 'Posílám tvoje data…',
 
-    // — Sign-in methods card —
-    methodsHeader: 'ZPŮSOBY PŘIHLÁŠENÍ',
+    // — Sign-in methods sheet —
     methodEmail: 'E-mail a heslo',
     methodGoogle: 'Google',
     methodApple: 'Apple',
     linkCta: 'Propojit',
     unlinkCta: 'Odpojit',
     linkedLabel: 'Propojeno',
+    methodNotLinked: 'Není propojeno',
+    methodOnly: 'Jediné přihlášení, odpojit nejde',
+    unlinkConfirmTitle: (provider: string) => `Odpojit ${provider}?`,
+    unlinkConfirmBody: 'Přihlásíš se pak jen zbývajícími způsoby.',
     linkedGoogleToast: 'Google propojen.',
     linkedAppleToast: 'Apple propojen.',
     unlinkedToast: 'Odpojeno.',
@@ -801,12 +833,8 @@ export const cs = {
     setPasswordToast: 'Heslo nastaveno.',
 
     // — Data export —
-    dataHeader: 'DATA',
     exportData: 'Poslat moje data e-mailem',
-    exportDataSubtitle: 'JSON export profilu, deníku a hodnocení pošlu na tvůj e-mail',
     exportDataToast: 'Export dat je na cestě.',
-    exportDataSentTitle: 'Export odeslán',
-    exportDataSentBody: 'Data jsem poslal na e-mail připojený k tvému účtu.',
     subscriptionTitle: 'Na Pivo+',
     subscriptionFree: 'Free',
     subscriptionPlus: 'Plus',
@@ -824,7 +852,6 @@ export const cs = {
     logout: 'Odhlásit se',
 
     // — Danger zone —
-    dangerHeader: 'NEBEZPEČNÁ ZÓNA',
     deleteAccount: 'Smazat účet',
     deleteConfirmTitle: 'Smazat účet?',
     deleteConfirmBody:
@@ -934,45 +961,66 @@ export const cs = {
 
   partyEvening: {
     title: 'Společný večer',
-    kicker: 'JEDEN STŮL, JEDEN VEČER',
-    intro: 'Založ stůl pro partu, nebo se přidej k večeru kámoše.',
-    privacy: 'Do večera jde jen to, co sem sám pošleš. Soukromý deníček zůstává soukromý.',
+    loading: 'Načítám společný večer',
+    tableCountLabel: 'U STOLU',
+    cardA11y: (count: number, pub: string, code: string) =>
+      `${
+        count === 1
+          ? '1 člověk u stolu'
+          : count >= 2 && count <= 4
+            ? `${count} lidi u stolu`
+            : `${count} lidí u stolu`
+      }. ${pub}. Kód večera ${code}.`,
+    friendFallback: 'Kamarád',
+    emptyTitle: 'Zatím u žádného stolu nesedíš',
+    emptyBody: 'Založ stůl pro partu, nebo přijď s kódem od kámoše.',
+    privacy: 'Do večera jde jen to, co sem sám pošleš. Deníček zůstává tvůj.',
     pubName: 'Hospoda',
     pubNamePlaceholder: 'Třeba U Zlatého tygra',
     pubCity: 'Město',
     pubCityPlaceholder: 'Praha',
-    create: 'Založit večer',
-    joinLabel: 'Kód od kámoše',
+    startSheetTitle: 'Kde sedíte?',
+    createTable: 'Založit stůl',
+    createCta: 'Založ stůl',
+    joinSheetTitle: 'Máš kód?',
+    joinCodeA11y: 'Šestimístný kód od kámoše',
     joinPlaceholder: 'ABC234',
     join: 'Jdu',
-    activeKicker: 'PRÁVĚ SE SEDÍ',
+    joinCta: 'Mám kód od kámoše',
     hostedBy: (name: string) => `Stůl drží ${name}`,
-    memberCount: (count: number) =>
-      count === 1 ? '1 člověk u stolu' : count >= 2 && count <= 4 ? `${count} lidi u stolu` : `${count} lidí u stolu`,
-    codeLabel: 'Kód večera',
     copyCode: 'Kopírovat kód',
+    copyCodeA11y: (code: string) => `Kopírovat kód večera. Kód ${code}.`,
     copied: 'Kód máš ve schránce.',
-    pending: 'Čeká na signál. Večer pošlu, jakmile se síť chytí.',
+    pendingShort: 'Čeká na signál',
+    pendingNudge: 'Čeká na signál. Pošlu, jak se chytí.',
     actionQueued: 'Beru. Dotáhnu to, až se chytí signál.',
-    reload: 'Obnovit večer',
-    feed: 'U STOLU',
+    refresh: 'Obnovit',
+    feed: 'U stolu',
     joined: (name: string) => `${name} dorazil ke stolu`,
     drank: (name: string, beer: string, quantity: number) =>
       `${name} poslal ${quantity > 1 ? `${quantity}× ` : ''}${beer}`,
     emptyFeed: 'Zatím jen cinkly půllitry. První sdílené pivo může být tvoje.',
-    drinkLabel: 'Poslat pivo ke stolu',
+    drinkSheetTitle: 'Co piješ?',
     drinkPlaceholder: 'Co právě piješ?',
-    drinkPrivacy: 'Uvidí ho jen členové tohoto večera. Do deníčku se nic nekopíruje.',
-    shareDrink: 'Poslat ke stolu',
+    drinkPrivacy: 'Uvidí ho jen lidi u tohohle stolu. Do deníčku se nic nekopíruje.',
+    lastDrink: 'naposled',
+    repeatLastA11y: (beer: string) => `Poslat znovu ${beer} ke stolu`,
+    shareDrink: 'Pošli ke stolu',
+    shareDrinkCta: 'Pošli pivo ke stolu',
     shared: 'Pivo je u stolu.',
     leave: 'Odejít od stolu',
     end: 'Zabalit večer',
+    endConfirmTitle: 'Zabalit večer?',
+    endConfirmBody: 'Stůl se zavře všem, co u něj sedí.',
+    endConfirmBack: 'Zpátky',
+    endConfirmAction: 'Zabalit',
     ended: 'Večer je dopitý.',
     left: 'Od stolu jsi odešel.',
     ghost: 'V neviditelném režimu se ke společnému stolu nepřipojíš. Vypni ho v nastavení Party.',
     notFriends: 'K tomuhle stolu pouští pořadatel jen svoje kámoše.',
     notFound: 'Tenhle večer už neběží, nebo máš špatný kód.',
-    error: 'Večer se teď nepodařilo načíst. Zkus to znovu.',
+    error: 'Večer se teď nenačetl.',
+    retry: 'Zkusit znovu',
     back: 'Zpět do Party',
     open: 'Společný večer',
     openHint: 'Svolej jeden stůl bez míchání soukromých návštěv.',
@@ -2774,6 +2822,10 @@ export const cs = {
     accountUnlinkProvider: (provider: string) => `Odpojit ${provider}`,
     accountSetPassword: 'Nastavit heslo',
     accountExportData: 'Stáhnout moje data',
+    accountMethods: 'Otevřít způsoby přihlášení',
+    accountMore: 'Otevřít další možnosti účtu',
+    accountIdentity: (name: string, email: string, methods: string) =>
+      `${name}. ${email || 'E-mail není nastaven'}. Přihlášení: ${methods}.`,
     accountRestorePurchases: 'Obnovit nákupy',
     accountReportProfile: 'Nahlásit profil',
     accountLogout: 'Odhlásit se',
