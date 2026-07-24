@@ -24,6 +24,7 @@ import {
   Shield,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Heart,
   Flag,
   MessageSquare,
@@ -117,6 +118,7 @@ export const InfoIcon = wrap(Info, 'InfoIcon');
 export const ShieldIcon = wrap(Shield, 'ShieldIcon');
 export const ChevronLeftIcon = wrap(ChevronLeft, 'ChevronLeftIcon');
 export const ChevronRightIcon = wrap(ChevronRight, 'ChevronRightIcon');
+export const ChevronDownIcon = wrap(ChevronDown, 'ChevronDownIcon');
 export const HeartIcon = wrap(Heart, 'HeartIcon');
 export const FlagIcon = wrap(Flag, 'FlagIcon');
 export const MessageSquareIcon = wrap(MessageSquare, 'MessageSquareIcon');

@@ -15,7 +15,7 @@ import React, { memo, useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Colors } from '@/theme/colors';
+import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, HitArea } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
@@ -112,12 +112,15 @@ const styles = StyleSheet.create({
   },
   body: { flex: 1 },
 
+  // Deliberately unlit: amber belongs to the count and the one button on the
+  // counter below. A filled amber segment up here made three yellow blocks
+  // compete on the same screen.
   segment: {
     flexDirection: 'row',
-    backgroundColor: Colors.stout2,
+    backgroundColor: withAlpha(Colors.foam, 0.04),
     borderRadius: Radius.pill,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: withAlpha(Colors.foam, 0.08),
     padding: 4,
     gap: 4,
   },
@@ -130,15 +133,16 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
   },
   segmentItemActive: {
-    backgroundColor: Colors.amber,
+    backgroundColor: withAlpha(Colors.foam, 0.1),
   },
   segmentLabel: {
     fontFamily: Fonts.display.bold,
     fontSize: 14,
     letterSpacing: 0.2,
+    includeFontPadding: false,
   },
   segmentLabelActive: {
-    color: Colors.stout,
+    color: Colors.foam,
   },
   segmentLabelMuted: {
     color: Colors.mutedText,

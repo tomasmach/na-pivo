@@ -24,13 +24,18 @@ const createComponent = (name: string) => {
 const Svg = createComponent('Svg');
 
 export const Circle = createComponent('Circle');
+export const ClipPath = createComponent('ClipPath');
 export const Defs = createComponent('Defs');
+export const Line = createComponent('Line');
 export const Ellipse = createComponent('Ellipse');
+export const G = createComponent('G');
+export const LinearGradient = createComponent('LinearGradient');
 export const Path = createComponent('Path');
 export const RadialGradient = createComponent('RadialGradient');
 export const Rect = createComponent('Rect');
 export const Stop = createComponent('Stop');
 export const Text = createComponent('SvgText');
+export const TextPath = createComponent('TextPath');
 export const SvgXml = createComponent('SvgXml');
 
 export default Svg;

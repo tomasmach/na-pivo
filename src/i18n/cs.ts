@@ -1744,19 +1744,12 @@ export const cs = {
     permCta: 'Povolit polohu',
     permOpenSettings: 'Otevřít Nastavení',
 
-    // — Detecting / empty —
+    // — Place chip / picker —
+    // There is no "detecting" or "no pub nearby" screen any more: both are just
+    // states of the place chip, and the picker is where you resolve them.
     detecting: 'Hledám, kde sedíš…',
-    noPubTitle: 'Žádná hospoda nablízku',
-    noPubBody: 'Nenašel jsem hospodu ve tvém okolí. Zkus to znovu.',
-    // Pubs exist nearby, but none close enough to say "you're sitting in it" —
-    // instead of guessing we let the user pick (or log outside a pub).
-    noPubChooseBody: 'Přímo u tebe žádnou hospodu nevidím, ale pár jich je kousek. Vyber, kde jsi.',
-    noPubChooseCta: 'Vybrat hospodu',
     retry: 'Zkusit znovu',
     noPubAddPub: 'Přidat hospodu',
-
-    // — Active header —
-    changePub: 'Změnit',
     pickerTitle: 'Kde sedíš?',
 
     // — Mimo hospodu (logging outside a pub) —
@@ -1765,38 +1758,15 @@ export const cs = {
     pickerOutsideHeader: 'Mimo hospodu',
     outsideLabel: (context: OutsidePlaceContext) =>
       ({ private: 'Doma / na chatě', outdoors: 'Venku', other: 'Mimo hospodu' })[context],
-    // Entry from the "no pub nearby" screen and the permission gate.
-    outsideNoPubCta: 'Piju mimo hospodu',
+    // Entry from the permission gate — counting is never blocked by GPS.
     outsideNoLocationCta: 'Zapsat pivo bez polohy',
-    // Header of the session-beers list (outside there is no pub menu; the list
-    // holds what you've logged tonight so the next one is a single tap).
+    // Caption of the session-drinks group in the pick sheet (outside a pub there
+    // is no community menu; the list holds what you've logged tonight).
     outsideMenuHeader: 'Dnes piješ',
-    // Empty outside counter — no community framing, it's just your evening.
-    outsideEmptyTitle: 'Zapiš si, co piješ',
-    outsideEmptyBody: 'Lahváč, plechovka, cokoliv.\nPočítá se to jako každé jiné pivo.',
-    outsideEmptyCta: 'Zapsat první pivo',
 
-    // — Hero —
-    totalSpent: (price: string) => `Utraceno ${price}`,
-    heroEmptyTitle: 'Ťukni na pivo a začni počítat',
-    lastDrinkJustNow: 'Poslední pivo před chvilkou',
-    lastDrinkMinutesAgo: (minutes: number) =>
-      `Poslední pivo před ${minutes} ${czechPlural(minutes, {
-        one: 'minutou',
-        few: 'minutami',
-        many: 'minutami',
-      })}`,
-    lastAlcoholJustNow: 'Poslední alkohol před chvilkou',
-    lastAlcoholMinutesAgo: (minutes: number) =>
-      `Poslední alkohol před ${minutes} ${czechPlural(minutes, {
-        one: 'minutou',
-        few: 'minutami',
-        many: 'minutami',
-      })}`,
-    rapidDrinkTitle: 'Pivo už máš přidané',
-    rapidDrinkBody: (lastDrinkText: string) =>
-      `${lastDrinkText}. Fakt chceš přidat další?`,
-    rapidDrinkConfirm: 'Přidat další',
+    // — Coaster meta ("3 piva · 186 Kč · před 12 min") —
+    lastDrinkShortJustNow: 'právě teď',
+    lastDrinkShortMinutesAgo: (minutes: number) => `před ${minutes} min`,
     // A local, optional hydration nudge. It makes no health, sobriety, BAC, or
     // driving claim. `count` is the beer that triggered it (4, 8, 12...).
     waterNudge: (count: number) => {
@@ -1814,10 +1784,62 @@ export const cs = {
     // the entry stays in the local diary only, so no data is lost — just not synced.
     drinkLimitedToast: 'Dneska už toho bylo na server moc, tenhle zápis zůstává jen v tvém deníčku.',
 
-    // — Menu —
+    // ── "Tácek" surface ──────────────────────────────────────────────────────
+    // The counter is four blocks: place chip, coaster (čárky), one nudge slot,
+    // one button. The button's label always says exactly what one tap does.
+
+    // Coaster, nothing counted yet — the only line of prose on the screen.
+    coasterEmpty: 'Čistej tácek.',
+    // The one button, in each of its states.
+    ctaPick: 'Co si dáš?',
+    ctaFirstBeer: 'Zapiš první pivo',
+    ctaLogBeer: 'Zapiš pivo',
+    repeatCta: 'Ještě jedno',
+    // The quiet twin under the CTA — a different beer, a shot, a Kofola. Always
+    // on screen while "Ještě jedno" is showing.
+    repeatOther: 'Něco jiného',
+    resumeSub: (summary: string) => `Posledně tady: ${summary}.`,
+    // Place chip when GPS found nothing close enough to say "you sit here".
+    placeUnknown: 'Kde sedíš?',
+
+    // Nudge slot — one occupant at a time, never stacked.
+    // Ordinal, so it stays genderless ("3. pivo", not "dal jsi třetí").
+    countedStrip: (n: number) => `Máš to tam. ${n}. pivo.`,
+    countedStripOther: 'Máš to tam.',
+    undo: 'Vrátit',
+    // The rapid-drink guard is inline now: the tap does NOT count until this is
+    // confirmed, and letting it time out means "no".
+    rapidInline: (minutes: number) => `Poslední pivo před ${minutes} min. Ještě jedno?`,
+    rapidInlineJustNow: 'Pivo máš zapsané před chvilkou. Ještě jedno?',
+    rapidInlineConfirm: 'Jo, dej to tam',
+    checkinNudge: 'Stálo za to?',
+    checkinNudgeCta: 'Ohodnotit',
+    dopitoNudge: 'Dopito?',
+    // One-shot toast after the very first count, ever. The only teaching copy.
+    undoHint: 'Ťukni na Účet, když chceš něco vrátit.',
+
+    // "Tvůj účet" sheet — the one place that removes and closes.
+    receiptTitle: 'Tvůj účet',
+    receiptChip: 'Účet',
+    receiptStarted: (time: string) => `Načato v ${time}`,
+    receiptTotal: 'Celkem',
+    receiptClose: 'Dopito, zavřít účet',
+
+    // "Co si dáš?" sheet — the one place that adds.
+    pickTitle: 'Co si dáš?',
+    pickAddBeer: 'Přidat jiné pivo',
+    pickNonBeer: 'Nealko, panák nebo víno',
+    pickEmptyPub: 'Tady ještě nikdo nic nezapsal.',
+    pickEmptyOutside: 'Lahváč, plechovka, cokoliv.',
+    pickFirstBeer: 'Zapsat první pivo',
+
+    // — "Víc" sheet — everything that isn't counting sits one tap deeper.
+    moreTitle: 'Co ještě?',
+    moreStory: 'Nálepka na story',
+    moreMapPub: 'Zmapovat hospodu',
+
+    // Caption of the pub's community menu inside the pick sheet.
     menuHeader: 'Co tu mají',
-    addBeer: 'Přidat pivo',
-    addOtherDrink: 'Zapsat nealko nebo panáka',
     scanDrinks: 'Vyfotit nápojový lístek',
     scanDrinksLoading: 'Čtu nápoják…',
     scanDrinksTitle: 'Co si dáváš?',
@@ -1830,13 +1852,6 @@ export const cs = {
     backdateTwoHoursAgo: 'Před dvěma hodinami',
     backdateYesterdayEvening: 'Včera večer',
     perBeerCount: (n: number) => `${n}×`,
-    // Empty-menu hero — the community-sourcing nudge.
-    emptyMenuTitle: 'Tady ještě nikdo nepřidal pivo',
-    emptyMenuBody: 'Doplň, co mají na čepu.\nPomůžeš ostatním.',
-    emptyMenuCta: 'Přidat první pivo',
-
-    // — Undo —
-    undoLast: 'Vrátit poslední',
 
     // — Closing / resuming an evening —
     // Explicit "I'm done" — archives the session to history.
@@ -1846,7 +1861,6 @@ export const cs = {
     doneConfirm: 'Dopito',
     // Offered when a recent evening at this pub auto-completed and can continue.
     resumeEvening: 'Pokračovat ve večeru',
-    resumeHint: (summary: string) => `Posledně tu padlo ${summary}. Naváž, nebo začni ťuknutím nový.`,
 
     // — Beer / price modal —
     priceModalTitle: 'Kolik stojí?',
@@ -1967,19 +1981,38 @@ export const cs = {
       'Aby noc mohl vidět celý svět, potřebuješ přezdívku. Nastavíš ji v profilu za minutku.',
     nothingToPublish: 'Prázdnou noc nevyvěsíš. Nejdřív musí něco padnout.',
 
-    // — Story share —
-    storyModalTitle: 'Tvoje noc jako story',
-    storyShareCta: 'Sdílet',
-    storyShareHint: 'Instagram, zprávy, kam chceš.',
-    storyShareError: 'Obrázek se nepovedlo připravit. Zkus to znovu.',
+    // — Story share (transparent sticker pasted over the user's own photo) —
+    // Live variant: shared from the counter while still at the pub, as an
+    // invite ("come join me") rather than a recap of the finished night.
+    storyLiveEntryCta: 'Nálepka na story',
+    // Short label for the compact action card right under the counter hero.
+    storyEntryShort: 'Nálepka',
+    storyLiveTopArc: 'PRÁVĚ TEĎ',
+    storyLiveHero: 'NA PIVU',
+    storyLiveCta: 'Stav se!',
+    storyModalTitle: 'Nálepka na story',
+    storyStickerHint: 'Vyfoť si vlastní story a tuhle nálepku na ni nalep.',
+    storyShareCta: 'Sdílet jinam',
+    storyCopyCta: 'Kopírovat nálepku',
+    storyCopied: 'Zkopírováno. Otevři Instagram a vlož do story.',
+    storyShareError: 'Nálepku se nepovedlo připravit. Zkus to znovu.',
     shareNightCta: 'Sdílet noc',
     // Small always-true footer line on the story image itself.
     storyBrand: 'NA PIVO',
     storyStatBeers: (n: number) => czechPlural(n, { one: 'pivo', few: 'piva', many: 'piv' }),
-    storyStatPubs: (n: number) =>
-      czechPlural(n, { one: 'hospoda', few: 'hospody', many: 'hospod' }),
-    storyStatHours: (n: number) =>
-      czechPlural(n, { one: 'hodina', few: 'hodiny', many: 'hodin' }),
+    // Compact "and also" line under the hero for non-beer drinks. Empty when
+    // the night was beer-only, so the card stays clean.
+    storySecondaryLine: (wine: number, shots: number, soft: number): string => {
+      const parts: string[] = [];
+      if (wine > 0)
+        parts.push(`${wine} ${czechPlural(wine, { one: 'víno', few: 'vína', many: 'vín' })}`);
+      if (shots > 0)
+        parts.push(
+          `${shots} ${czechPlural(shots, { one: 'panák', few: 'panáky', many: 'panáků' })}`,
+        );
+      if (soft > 0) parts.push(`${soft}× nealko`);
+      return parts.length > 0 ? `k tomu ${parts.join(' · ')}` : '';
+    },
 
     // — Evening detail entry —
     sectionHeader: 'VÝČEP',
@@ -2338,7 +2371,6 @@ export const cs = {
     tabProfile: 'Záložka Profil',
 
     // — Counter —
-    counterChangePub: 'Změnit hospodu',
     counterCloseModal: 'Zavřít',
     counterPickPub: (name: string, distance: string) =>
       `${name}, ${distance}. Ťukni pro výběr.`,
@@ -2349,10 +2381,20 @@ export const cs = {
     counterEditBeer: (name: string) => `Upravit cenu u ${name}`,
     counterRemoveBeer: (name: string) => `Odebrat poslední ${name}`,
     counterAddBeer: 'Přidat nové pivo',
-    counterTotal: (count: string, price: string) =>
-      `Napočítáno ${count}, utraceno ${price}`,
     counterRequestLocation: 'Povolit polohu',
     counterRetry: 'Hledat hospodu znovu',
+    counterRepeat: (name: string) => `Připsat další ${name}`,
+    counterMore: 'Další možnosti k tomuhle večeru',
+    // — Tácek surface —
+    counterCoaster: (countLabel: string, spent?: string) =>
+      `${countLabel}${spent ? `, utraceno ${spent}` : ''}. Otevře tvůj účet.`,
+    counterCoasterEmpty: 'Čistej tácek, zatím nic nepadlo',
+    counterPlaceChip: (place: string) => `Změnit místo. Teď ${place}.`,
+    counterUndoStrip: 'Vrátit poslední pivo',
+    counterRapidConfirm: 'Jo, připsat další pivo',
+    counterCheckinDismiss: 'Zavřít nabídku hodnocení',
+    counterReceiptChip: 'Otevřít tvůj účet',
+    counterRemoveIdentity: (name: string) => `Odebrat poslední ${name} z účtu`,
 
     // — Moje piva —
     myBeersEvening: (pub: string, summary: string) =>
@@ -2422,7 +2464,6 @@ export const cs = {
       `Přihlásit fotku${label ? ` ${label}` : ''} do soutěže`,
     friendPhotoTile: (name: string) => `Fotka od ${name}. Ťukni pro zvětšení.`,
     partaPhotoTile: (name: string) => `Fotka od ${name}. Ťukni pro zvětšení.`,
-    counterPhotoCta: 'Cvaknout fotku piva do deníčku',
     photoViewerClose: 'Zavřít fotku',
   },
 } as const;

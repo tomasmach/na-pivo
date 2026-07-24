@@ -1,49 +1,49 @@
 /**
- * Počítadlo — the beer-counter tab.
+ * Počítadlo — the "Tácek" surface.
  *
- * Once the user is at a pub (auto-detected from GPS, or picked manually) they
- * count beers with a single tap. Every count records WHICH beer and its PRICE,
- * which is how the app community-sources each pub's menu + prices:
- *   • tap a menu beer that already has a price  → instant +1,
- *   • tap one without a price                   → price prompt, then +1,
- *   • "Přidat pivo"                             → add a new beer (you are
- *                                                  drinking it) → counts it +1.
+ * The screen is four blocks and nothing else:
+ *   1. place chip (tap = change place) + a "…" overflow button,
+ *   2. the coaster: čárky for tonight's beers + one meta line + the "Účet" door,
+ *   3. one nudge slot — never two nudges at once, fixed height so nothing jumps,
+ *   4. ONE amber button in the thumb arc whose label always states exactly what
+ *      a tap will do ("Co si dáš?" / "Ještě jedno" / "Zapiš první pivo" / …).
  *
- * Each count: writes to the local tally store, enqueues a /v1/drinks POST
- * (best-effort + retry queue), and merges the beer into the local community
- * menu override so the price shows instantly everywhere (compass card included).
- * When the backend is dormant, everything still works locally.
+ * Everything else is a named sheet one tap deep: "Co si dáš?" only adds,
+ * "Tvůj účet" only removes and closes, "Co ještě?" holds the rest. That split is
+ * the whole design: at any moment there is exactly one obvious thing to press,
+ * and adding a beer exists exactly once on the surface.
+ *
+ * The data rules are unchanged from the old counter: every count writes to the
+ * local tally store, enqueues a /v1/drinks POST (held back for the undo window,
+ * then flushed), merges the beer into the local community menu so the price
+ * shows everywhere instantly, and refreshes the evening's visit record. Nothing
+ * here awaits the network — the whole flow works offline.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, Linking } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, Pressable, StyleSheet, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useReducedMotion } from 'react-native-reanimated';
 
-import { Colors, withAlpha } from '@/theme/colors';
+import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { amberGlow, amberGlowStrong } from '@/theme/shadows';
 import { cs, formatVolume } from '@/i18n/cs';
-import { beerCountLabel, shotCountLabel, softDrinkCountLabel, wineCountLabel } from '@/i18n/plural';
+import {
+  beerCountLabel,
+  beerNoun,
+  shotCountLabel,
+  softDrinkCountLabel,
+  wineCountLabel,
+} from '@/i18n/plural';
 import { GlowButton } from '@/components/shared/GlowButton';
-import { SoftGlow } from '@/components/celebration/SoftGlow';
 import {
   BeerIcon,
-  MapPinIcon,
-  PlusIcon,
-  MinusIcon,
-  RefreshCwIcon,
-  CheckIcon,
-  Undo2Icon,
-  BellRingIcon,
-  GlassWaterIcon,
-  HistoryIcon,
   HouseIcon,
-  TreePineIcon,
+  EllipsisIcon,
   CameraIcon,
   InfoIcon,
+  GlassWaterIcon,
 } from '@/components/shared/IconGlyph';
 
 import { geohash8 } from '@/data/geohash';
@@ -65,20 +65,22 @@ import { shareFriendPubActivity } from '@/data/friendsClient';
 import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
 import { trackCounterTabOpened } from '@/data/counterTelemetry';
 import { BeerPhotoCaptureFlow } from '@/photos/BeerPhotoCaptureFlow';
+import { ShareNightModal } from '@/vycep/ShareNightModal';
+import type { NightSummary } from '@/vycep/nightModel';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { fireSuccessHaptic, fireLightImpactHaptic } from '@/utils/haptics';
 import { useCommunityStore } from '@/stores/communityStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
-import { formatPrice, pricePlaceholder, type PriceCurrency } from '@/utils/currency';
+import { formatPrice, pricePlaceholder } from '@/utils/currency';
 import {
   useTallyStore,
   sessionCount,
   sessionTotalCzk,
-  sessionBeerCounts,
   sessionDrinkTypeCounts,
   resumableSession,
   isPastEveningBackdate,
+  type TallyDrink,
   type TallySession,
 } from '@/stores/tallyStore';
 import {
@@ -97,330 +99,65 @@ import { PubPickerModal } from '@/counter/PubPickerModal';
 import { BeerFormModal, type BeerFormMode, type BeerFormResult } from '@/counter/BeerFormModal';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { BeerCheckInSheet } from '@/counter/BeerCheckInSheet';
-import { MapPubEntry } from '@/components/amenities/MapPubEntry';
+import { MapPubSheet } from '@/components/amenities/MapPubSheet';
 import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
 import { ScanMenuSheet } from '@/components/contribute/ScanMenuSheet';
 import { ScannedDrinkPicker } from '@/counter/ScannedDrinkPicker';
+import { CounterMoreSheet } from '@/counter/CounterMoreSheet';
+import { PlaceChip, type PlaceChipKind } from '@/counter/PlaceChip';
+import { CoasterCard } from '@/counter/CoasterCard';
+import { CounterCta, CounterSecondary } from '@/counter/CounterCta';
+import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
+import { DrinkPickSheet, type DrinkPickRow } from '@/counter/DrinkPickSheet';
+import { ReceiptSheet, type ReceiptItem } from '@/counter/ReceiptSheet';
 import { WeeklyRankChip } from '@/leaderboards/WeeklyRankChip';
 import { refreshBeerCountReminderAfterBeer } from '@/notifications/beerCountReminder';
 
-// ─── Gate states (permission / detecting / no pub) ─────────────────────────────
+// ─── Timings ──────────────────────────────────────────────────────────────────
 
-/** Full-screen centered wrapper shared by the gate states. Owns the safe-area
- *  inset the parent hasn't already padded (none when embedded in the "Pivo" tab). */
-function CenteredScreen({ embedded, children }: { embedded: boolean; children: React.ReactNode }) {
-  const insets = useSafeAreaInsets();
-  return (
-    <View style={[styles.root, styles.centered, { paddingTop: embedded ? 0 : insets.top, paddingBottom: insets.bottom }]}>
-      {children}
-    </View>
-  );
+/** How long a freshly-counted drink stays undoable before we deliver it. We
+ *  defer the backend send by this window so the queued payload remains
+ *  retractable (removeQueuedDrink only works pre-delivery) — otherwise a fast
+ *  POST marks the drink 'sent' within a fraction of a second and the undo strip
+ *  would offer something we can no longer pull. The launch/foreground flush
+ *  still delivers anything left waiting, so a deferred drink is never stranded. */
+export const UNDO_WINDOW_MS = 6000;
+
+/** How long we let a sheet slide away before running the action a row picked —
+ *  iOS refuses to present a modal while another is still dismissing. */
+const SHEET_DISMISS_MS = 260;
+
+/** How long the inline "už jsi pil před chvílí" confirmation waits. Letting it
+ *  time out means NO: a tap that trips the guard never writes a drink. */
+const RAPID_DECISION_MS = 5000;
+
+/** Idle time after which the surface quietly asks whether the evening is over. */
+const DOPITO_IDLE_MS = 90 * 60 * 1000;
+
+// ─── Pure helpers (exported for tests) ────────────────────────────────────────
+
+export function minutesSinceDrink(at: string, nowMs: number = Date.now()): number | null {
+  const atMs = Date.parse(at);
+  if (!Number.isFinite(atMs)) return null;
+  return Math.max(0, Math.floor((nowMs - atMs) / 60000));
 }
 
-function PermissionScreen({
-  permissionState,
-  requestPermission,
-  onLogOutside,
-  embedded,
-}: {
-  permissionState: 'denied' | 'undetermined';
-  requestPermission: () => Promise<void>;
-  /** "Zapsat pivo bez polohy" — the counter no longer hard-requires GPS. */
-  onLogOutside: () => void;
-  embedded: boolean;
-}) {
-  return (
-    <CenteredScreen embedded={embedded}>
-      <View style={styles.permIconWrap}>
-        <BeerIcon size={56} color={Colors.amber} />
-      </View>
-      <Text style={styles.bigTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-        {cs.counter.permTitle}
-      </Text>
-      <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
-        {cs.counter.permBody}
-      </Text>
-      <View style={styles.permButtonWrap}>
-        <GlowButton
-          label={cs.counter.permCta}
-          onPress={requestPermission}
-          glow="soft"
-          accessibilityLabel={cs.a11y.counterRequestLocation}
-        />
-      </View>
-      {permissionState === 'denied' && (
-        <View style={styles.permSecondaryWrap}>
-          <GlowButton
-            label={cs.counter.permOpenSettings}
-            onPress={() => Linking.openSettings()}
-            variant="secondary"
-            glow="none"
-            height={50}
-          />
-        </View>
-      )}
-      <Pressable
-        onPress={onLogOutside}
-        style={styles.noPubAddLink}
-        hitSlop={8}
-        accessibilityRole="button"
-        accessibilityLabel={cs.counter.outsideNoLocationCta}
-      >
-        <HouseIcon size={16} color={Colors.mutedText} />
-        <Text style={styles.noPubAddLinkText} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.counter.outsideNoLocationCta}
-        </Text>
-      </Pressable>
-    </CenteredScreen>
-  );
+export function shouldWarnRapidDrink(lastDrinkAt: string | undefined, nowMs: number = Date.now()): boolean {
+  if (!lastDrinkAt) return false;
+  const atMs = Date.parse(lastDrinkAt);
+  if (!Number.isFinite(atMs)) return false;
+  const elapsedMs = nowMs - atMs;
+  return elapsedMs >= 0 && elapsedMs < MIN_PLAUSIBLE_BEER_GAP_MS;
 }
 
-// ─── Detecting + empty ────────────────────────────────────────────────────────
-
-function DetectingScreen({ embedded }: { embedded: boolean }) {
-  return (
-    <CenteredScreen embedded={embedded}>
-      <View style={[styles.permIconWrap, amberGlow(16)]}>
-        <MapPinIcon size={48} color={Colors.amber} />
-      </View>
-      <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
-        {cs.counter.detecting}
-      </Text>
-    </CenteredScreen>
-  );
-}
-
-function NoPubScreen({
-  candidatesCount,
-  onPickPlace,
-  onLogOutside,
-  onRetry,
-  embedded,
-}: {
-  /** Nearby pubs found but none close enough to auto-pick. */
-  candidatesCount: number;
-  /** Opens the "Kde sedíš?" picker (nearby pubs + Mimo hospodu). */
-  onPickPlace: () => void;
-  /** Starts a generic outside-pub evening without routing through pub choices. */
-  onLogOutside: () => void;
-  onRetry: () => void;
-  embedded: boolean;
-}) {
-  const router = useRouter();
-  // With candidates in range we never silently guess a pub (the old behaviour
-  // attributed home drinks to a pub up to 3 km away) — the user picks instead.
-  const hasCandidates = candidatesCount > 0;
-  return (
-    <CenteredScreen embedded={embedded}>
-      <View style={styles.permIconWrap}>
-        <BeerIcon size={56} color={Colors.amber} />
-      </View>
-      <Text style={styles.bigTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-        {hasCandidates ? cs.counter.pickerTitle : cs.counter.noPubTitle}
-      </Text>
-      <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
-        {hasCandidates ? cs.counter.noPubChooseBody : cs.counter.noPubBody}
-      </Text>
-      <View style={styles.permButtonWrap}>
-        {hasCandidates ? (
-          <GlowButton
-            label={cs.counter.noPubChooseCta}
-            onPress={onPickPlace}
-            glow="soft"
-            icon={<MapPinIcon size={20} color={Colors.stout} />}
-            accessibilityLabel={cs.counter.noPubChooseCta}
-          />
-        ) : (
-          <GlowButton
-            label={cs.counter.retry}
-            onPress={onRetry}
-            glow="soft"
-            icon={<RefreshCwIcon size={20} color={Colors.stout} />}
-            accessibilityLabel={cs.a11y.counterRetry}
-          />
-        )}
-      </View>
-      <Pressable
-        onPress={onLogOutside}
-        style={styles.noPubAddLink}
-        hitSlop={8}
-        accessibilityRole="button"
-        accessibilityLabel={cs.counter.outsideNoPubCta}
-      >
-        <HouseIcon size={16} color={Colors.mutedText} />
-        <Text style={styles.noPubAddLinkText} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.counter.outsideNoPubCta}
-        </Text>
-      </Pressable>
-      {hasCandidates ? (
-        <Pressable
-          onPress={onRetry}
-          style={styles.noPubAddLink}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel={cs.a11y.counterRetry}
-        >
-          <RefreshCwIcon size={16} color={Colors.mutedText} />
-          <Text style={styles.noPubAddLinkText} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.counter.retry}
-          </Text>
-        </Pressable>
-      ) : null}
-      {/* Parity with the compass empty state: if it's not on the map yet, add it. */}
-      <Pressable
-        onPress={() => router.push('/add-pub')}
-        style={styles.noPubAddLink}
-        hitSlop={8}
-        accessibilityRole="button"
-        accessibilityLabel={cs.counter.noPubAddPub}
-      >
-        <MapPinIcon size={16} color={Colors.mutedText} />
-        <Text style={styles.noPubAddLinkText} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.counter.noPubAddPub}
-        </Text>
-      </Pressable>
-    </CenteredScreen>
-  );
-}
-
-// ─── Menu card ────────────────────────────────────────────────────────────────
-
-interface MenuCardVariant {
-  beer: CommunityBeer;
-  count: number;
-  onCount: () => void;
-  onDecrement: () => void;
-  onEdit: () => void;
-}
-
-interface MenuCardProps {
-  name: string;
-  variants: MenuCardVariant[];
-  priceCurrency: PriceCurrency;
-}
-
-function MenuCard({ name, variants, priceCurrency }: MenuCardProps) {
-  const hasCount = variants.some((variant) => variant.count > 0);
-
-  return (
-    <View style={[styles.menuCard, hasCount && styles.menuCardCounted]}>
-      <Text style={styles.menuCardName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-        {name}
-      </Text>
-
-      <View style={styles.menuVariants}>
-        {variants.map(({ beer, count, onCount, onDecrement, onEdit }, index) => {
-          const hasPrice = typeof beer.priceCzk === 'number';
-          const price = hasPrice
-            ? formatPrice(beer.priceCzk as number, priceCurrency)
-            : pricePlaceholder(priceCurrency);
-          const volume = beer.volumeMl ? formatVolume(beer.volumeMl) : null;
-          const baseCountLabel = hasPrice
-            ? cs.a11y.counterCountBeer(beer.name, price)
-            : cs.a11y.counterCountBeerNoPrice(beer.name);
-          const countA11yLabel = variants.length > 1 && volume
-            ? `${baseCountLabel}, ${volume}`
-            : baseCountLabel;
-          const removeA11yLabel = variants.length > 1 && volume
-            ? `${cs.a11y.counterRemoveBeer(beer.name)}, ${volume}`
-            : cs.a11y.counterRemoveBeer(beer.name);
-
-          return (
-            <View
-              key={beerKey(beer)}
-              style={[styles.menuVariantRow, index > 0 && styles.menuVariantRowDivided]}
-            >
-              {/* Each serving keeps its own edit target and stepper while the
-                  shared beer name appears only once for the whole card. */}
-              <Pressable
-                onLongPress={onEdit}
-                delayLongPress={300}
-                style={({ pressed }) => [styles.menuVariantMeta, pressed && styles.menuCardPressed]}
-                accessibilityRole="button"
-                accessibilityLabel={[beer.name, volume, price].filter(Boolean).join(', ')}
-                accessibilityHint={cs.a11y.counterEditBeer(beer.name)}
-              >
-                {volume ? (
-                  <View style={styles.menuVariantVolumeChip}>
-                    <Text style={styles.menuVariantVolume} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {volume}
-                    </Text>
-                  </View>
-                ) : null}
-                <Text
-                  style={[styles.menuVariantPrice, !hasPrice && styles.menuCardMetaMissing]}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {price}
-                </Text>
-              </Pressable>
-
-              <View style={styles.stepper}>
-                {count > 0 && (
-                  <>
-                    <Pressable
-                      onPress={onDecrement}
-                      style={({ pressed }) => [styles.stepButton, styles.stepButtonMinus, pressed && styles.stepButtonPressed]}
-                      hitSlop={6}
-                      accessibilityRole="button"
-                      accessibilityLabel={removeA11yLabel}
-                    >
-                      <MinusIcon size={18} color={Colors.mutedText} />
-                    </Pressable>
-                    <View style={styles.countBadge}>
-                      <Text style={styles.countBadgeText} maxFontSizeMultiplier={FontScaleCap.body}>
-                        {cs.counter.perBeerCount(count)}
-                      </Text>
-                    </View>
-                  </>
-                )}
-                <Pressable
-                  onPress={onCount}
-                  style={({ pressed }) => [styles.stepButton, styles.stepButtonPlus, pressed && styles.stepButtonPressed]}
-                  hitSlop={6}
-                  accessibilityRole="button"
-                  accessibilityLabel={countA11yLabel}
-                >
-                  <PlusIcon size={20} color={Colors.amber} />
-                </Pressable>
-              </View>
-            </View>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
-
-// ─── Active counter ───────────────────────────────────────────────────────────
-
-/** Where the counter is counting: a real pub, or one of the "Mimo hospodu"
- *  contexts (home / outdoors / elsewhere) with no pub identity at all. */
-export type CounterPlace =
-  | { kind: 'pub'; pub: Pub }
-  | { kind: 'outside'; context: OutsidePlaceContext };
-
-interface ActiveCounterProps {
-  place: CounterPlace;
-  onChangePlace: () => void;
-  /** The user renamed the active pub from the mapping hub — the owner of the
-   *  selected Pub updates it so the header doesn't keep the old name. */
-  onPubRenamed: (newName: string) => void;
-  /** Hosted inside the merged "Pivo" tab: the parent owns the top safe-area
-   *  inset and the segment header, so the counter drops its own top padding. */
-  embedded: boolean;
-}
-
-const OUTSIDE_HEADER_ICONS: Record<OutsidePlaceContext, typeof HouseIcon> = {
-  private: HouseIcon,
-  outdoors: TreePineIcon,
-  other: MapPinIcon,
-};
-
-/** A stable identity key for a menu beer (normalized name + volume). */
-function beerKey(beer: CommunityBeer): string {
+/** A stable identity key for a beer (normalized name + volume). Drinks and menu
+ *  rows are matched on it everywhere: counts, the receipt, undo targeting. */
+function beerKey(beer: { name: string; volumeMl?: number }): string {
   return `${beer.name.trim().toLowerCase()}|${beer.volumeMl ?? ''}`;
+}
+
+function drinkKey(drink: TallyDrink): string {
+  return `${drink.beerName.trim().toLowerCase()}|${drink.volumeMl ?? ''}`;
 }
 
 interface MenuBeerGroup {
@@ -429,9 +166,8 @@ interface MenuBeerGroup {
   beers: CommunityBeer[];
 }
 
-/** Keep one visual card per beer name while preserving each serving as an
- * independent count/edit target. Groups retain menu order; serving sizes run
- * from small to large so the choice is scannable at a glance. */
+/** Keep one group per beer name, servings sorted small → large, menu order
+ *  otherwise. The pick sheet flattens these back into rows. */
 export function groupMenuBeers(menu: CommunityBeer[]): MenuBeerGroup[] {
   const groups = new Map<string, MenuBeerGroup>();
 
@@ -453,68 +189,148 @@ export function groupMenuBeers(menu: CommunityBeer[]): MenuBeerGroup[] {
   }));
 }
 
-/** How long a freshly-counted drink stays undoable before we deliver it. We
- *  defer the backend send by this window so the queued payload remains
- *  retractable (removeQueuedDrink only works pre-delivery) — otherwise a fast
- *  POST marks the drink 'sent' within a fraction of a second and the undo row
- *  vanishes before the user can reach it. The launch/foreground flush still
- *  delivers anything left waiting, so a deferred drink is never stranded. */
-const UNDO_WINDOW_MS = 6000;
-
-export function minutesSinceDrink(at: string, nowMs: number = Date.now()): number | null {
-  const atMs = Date.parse(at);
-  if (!Number.isFinite(atMs)) return null;
-  return Math.max(0, Math.floor((nowMs - atMs) / 60000));
+/** "Pilsner Urquell · 0,5 l" — the CTA's sub-line and the receipt's meta. */
+function beerLine(beer: { name: string; volumeMl?: number; servingType?: ServingType }): string {
+  const serving =
+    beer.servingType && beer.servingType !== 'unknown' && beer.servingType !== 'draft'
+      ? cs.counter.servingTypeLabel(beer.servingType).toLowerCase()
+      : null;
+  return [beer.name, serving, beer.volumeMl ? formatVolume(beer.volumeMl) : null]
+    .filter(Boolean)
+    .join(' · ');
 }
 
-function lastDrinkAgoText(at: string, nowMs: number): string | null {
-  const minutes = minutesSinceDrink(at, nowMs);
-  if (minutes === null) return null;
-  return minutes === 0 ? cs.counter.lastDrinkJustNow : cs.counter.lastDrinkMinutesAgo(minutes);
-}
+// ─── Permission gate ──────────────────────────────────────────────────────────
 
-function lastAlcoholAgoText(at: string, nowMs: number): string | null {
-  const minutes = minutesSinceDrink(at, nowMs);
-  if (minutes === null) return null;
-  return minutes === 0 ? cs.counter.lastAlcoholJustNow : cs.counter.lastAlcoholMinutesAgo(minutes);
-}
-
-export function shouldWarnRapidDrink(lastDrinkAt: string | undefined, nowMs: number = Date.now()): boolean {
-  if (!lastDrinkAt) return false;
-  const atMs = Date.parse(lastDrinkAt);
-  if (!Number.isFinite(atMs)) return false;
-  const elapsedMs = nowMs - atMs;
-  return elapsedMs >= 0 && elapsedMs < MIN_PLAUSIBLE_BEER_GAP_MS;
-}
-
-function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveCounterProps) {
-  const router = useRouter();
+/** The only full-screen state left. It fires once per install, and it always
+ *  offers a way past it — counting must never be blocked by a permission. */
+function PermissionGate({
+  permissionState,
+  requestPermission,
+  onLogOutside,
+  embedded,
+}: {
+  permissionState: 'denied' | 'undetermined';
+  requestPermission: () => Promise<void>;
+  onLogOutside: () => void;
+  embedded: boolean;
+}) {
   const insets = useSafeAreaInsets();
-  const reducedMotion = useReducedMotion();
+  return (
+    <View
+      style={[
+        styles.root,
+        styles.gate,
+        { paddingTop: embedded ? 0 : insets.top, paddingBottom: insets.bottom },
+      ]}
+    >
+      <View style={styles.gateIcon}>
+        <BeerIcon size={48} color={Colors.amber} />
+      </View>
+      <Text style={styles.gateTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+        {cs.counter.permTitle}
+      </Text>
+      <Text style={styles.gateBody} maxFontSizeMultiplier={FontScaleCap.body}>
+        {cs.counter.permBody}
+      </Text>
+      <View style={styles.gateButton}>
+        <GlowButton
+          label={cs.counter.permCta}
+          onPress={requestPermission}
+          glow="soft"
+          accessibilityLabel={cs.a11y.counterRequestLocation}
+        />
+      </View>
+      {permissionState === 'denied' && (
+        <View style={styles.gateButtonSecondary}>
+          <GlowButton
+            label={cs.counter.permOpenSettings}
+            onPress={() => Linking.openSettings()}
+            variant="secondary"
+            glow="none"
+            height={50}
+          />
+        </View>
+      )}
+      <Pressable
+        onPress={onLogOutside}
+        style={styles.gateLink}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel={cs.counter.outsideNoLocationCta}
+      >
+        <HouseIcon size={16} color={Colors.mutedText} />
+        <Text style={styles.gateLinkText} maxFontSizeMultiplier={FontScaleCap.body}>
+          {cs.counter.outsideNoLocationCta}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+// ─── Surface ──────────────────────────────────────────────────────────────────
+
+/** Where the counter counts: a real pub, or one of the "Mimo hospodu" contexts
+ *  (home / outdoors / elsewhere) with no pub identity at all. */
+export type CounterPlace =
+  | { kind: 'pub'; pub: Pub }
+  | { kind: 'outside'; context: OutsidePlaceContext };
+
+const OUTSIDE_CHIP_KIND: Record<OutsidePlaceContext, PlaceChipKind> = {
+  private: 'private',
+  outdoors: 'outdoors',
+  other: 'other',
+};
+
+/** A beer the surface can count: menu row, repeat target or form result. */
+type CountableBeer = CommunityBeer & {
+  priceCzk?: number;
+  drinkType?: DrinkType;
+  servingType?: ServingType;
+};
+
+interface TacekProps {
+  /** null while GPS is still deciding, or when nothing is close enough. */
+  place: CounterPlace | null;
+  /** How the place chip should read when `place` is null. */
+  unresolvedKind: 'detecting' | 'unknown';
+  onChangePlace: () => void;
+  onPubRenamed: (newName: string) => void;
+  /** Hosted inside the "Štamgast" tab: the parent owns the top inset + segment. */
+  embedded: boolean;
+}
+
+function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }: TacekProps) {
+  const insets = useSafeAreaInsets();
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
   const waterNudgeEnabled = useSettingsStore((s) => s.waterNudgeEnabled);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const showToast = useToastStore((s) => s.show);
-  // The top edge the parent has NOT already padded: 0 when embedded (the "Pivo"
-  // tab owns the inset + segment), the safe-area inset when standalone.
   const topInset = embedded ? 0 : insets.top;
 
-  // Null outside a pub — every pub-only affordance (menu, mapping, check-in,
-  // visit sync, community merge, share-here) keys off this.
-  const pub = place.kind === 'pub' ? place.pub : null;
-  const outsideContext = place.kind === 'outside' ? place.context : null;
-  const placeLabel = pub ? pub.name : cs.counter.outsideLabel(outsideContext as OutsidePlaceContext);
+  const pub = place?.kind === 'pub' ? place.pub : null;
+  const outsideContext = place?.kind === 'outside' ? place.context : null;
+  const placeLabel = place
+    ? pub
+      ? pub.name
+      : cs.counter.outsideLabel(outsideContext as OutsidePlaceContext)
+    : unresolvedKind === 'detecting'
+      ? cs.counter.detecting
+      : cs.counter.placeUnknown;
+  const chipKind: PlaceChipKind = place
+    ? pub
+      ? 'pub'
+      : OUTSIDE_CHIP_KIND[outsideContext as OutsidePlaceContext]
+    : unresolvedKind;
 
-  const cell = useMemo(
-    () =>
-      place.kind === 'pub'
-        ? geohash8(place.pub.lat, place.pub.lng)
-        : contextPubKey(place.context),
-    [place],
-  );
+  /** The tally identity of this place — null until a place is resolved. */
+  const cell = useMemo(() => {
+    if (!place) return null;
+    return place.kind === 'pub' ? geohash8(place.pub.lat, place.pub.lng) : contextPubKey(place.context);
+  }, [place]);
 
   const setOverride = useCommunityStore((s) => s.setOverride);
-  const override = useCommunityStore((s) => s.overrides[cell]);
+  const override = useCommunityStore((s) => (cell ? s.overrides[cell] : undefined));
 
   const current = useTallyStore((s) => s.current);
   const history = useTallyStore((s) => s.history);
@@ -525,60 +341,84 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
   const archiveCurrent = useTallyStore((s) => s.archiveCurrent);
   const resumeLast = useTallyStore((s) => s.resumeLast);
 
+  // — Sheets and modals —
+  const [pickOpen, setPickOpen] = useState(false);
+  const [receiptOpen, setReceiptOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [mapPubOpen, setMapPubOpen] = useState(false);
+  const [scanSourceVisible, setScanSourceVisible] = useState(false);
+  const [photoCaptureOpen, setPhotoCaptureOpen] = useState(false);
+  const [stickerOpen, setStickerOpen] = useState(false);
+  const [checkInSheetOpen, setCheckInSheetOpen] = useState(false);
+
+  // — Beer form —
   const [formMode, setFormMode] = useState<BeerFormMode | null>(null);
   const [formBeer, setFormBeer] = useState<CommunityBeer | null>(null);
   const [formDrinkType, setFormDrinkType] = useState<DrinkType>('beer');
-  // Outside a pub: the serving the user last picked ("Jak je podané?"), seeding
-  // the next add form so the second lahváč is a single confirm.
-  const [lastServingType, setLastServingType] = useState<ServingType>('bottle');
-  // Set when the add form was opened via "zapsat zpětně": the ISO timestamp the
-  // next added beer is counted at. Cleared on submit/cancel.
-  const [backdateAt, setBackdateAt] = useState<string | null>(null);
-  // Bumped on each open so the form body remounts with fresh, prop-seeded state.
   const [formNonce, setFormNonce] = useState(0);
+  /** Outside a pub: the serving the user last picked, seeding the next form. */
+  const [lastServingType, setLastServingType] = useState<ServingType>('bottle');
+  /** Set when the form was opened via "zapsat zpětně" — the ISO timestamp the
+   *  next added drink is counted at. Cleared on submit AND on cancel. */
+  const [backdateAt, setBackdateAt] = useState<string | null>(null);
+
+  // — Nudge slot occupants —
+  /** A tap that tripped the rapid guard, waiting for an explicit yes. Nothing
+   *  has been written; a timeout is a no. */
+  const [pendingRapid, setPendingRapid] = useState<{ beer: CountableBeer; minutes: number | null } | null>(null);
+  /** The drink counted within the last UNDO_WINDOW_MS, undoable from the strip. */
+  const [lastCounted, setLastCounted] = useState<{ id: string; ordinal: number; isBeer: boolean } | null>(null);
+  const [checkInBeerName, setCheckInBeerName] = useState<string | null>(null);
+  /** Session clientId whose "Dopito?" nudge was already shown and answered. */
+  const [dopitoNudgedFor, setDopitoNudgedFor] = useState<string | null>(null);
+
+  // — Menu / scan —
   const [backendMenu, setBackendMenu] = useState<{
     pubId: string;
     beers: CommunityBeer[];
     historicalBeers: CommunityBeer[];
   } | null>(null);
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  const [sharingWithFriends, setSharingWithFriends] = useState(false);
-  // The pub cell I've broadcast to; once it matches the active pub the button
-  // flips to a calm "already live" state so the verb never doubles up (rich
-  // compose lives on Parta). Derived, so switching pubs resets it for free.
-  const [broadcastCell, setBroadcastCell] = useState<string | null>(null);
-  const [checkInBeerName, setCheckInBeerName] = useState<string | null>(null);
-  const [checkInSheetOpen, setCheckInSheetOpen] = useState(false);
-  const [scanSourceVisible, setScanSourceVisible] = useState(false);
-  const [photoCaptureOpen, setPhotoCaptureOpen] = useState(false);
   const [scanningDrinks, setScanningDrinks] = useState(false);
   const [scannedDrinks, setScannedDrinks] = useState<ScannedDrink[]>([]);
+
+  // — Friends broadcast —
+  const [sharingWithFriends, setSharingWithFriends] = useState(false);
+  const [broadcastCell, setBroadcastCell] = useState<string | null>(null);
+  const broadcasted = cell !== null && broadcastCell === cell;
+
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
   // Deferred-send timers per drink id; a count schedules delivery for the end of
   // the undo window, and undo cancels its drink's timer before it fires.
-  const sendTimers = React.useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-  // The `${clientId}:${count}` key we last fired the water nudge at. Keyed by
-  // session identity (not just count) so rapid taps sharing a threshold don't
-  // double-fire, yet a fresh evening reaching the same count in the same mounted
-  // counter still nudges.
-  const waterNudgeKeyRef = React.useRef('');
+  const sendTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  /** The single slot a sheet row hands its action to while the sheet closes. */
+  const sheetActionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rapidTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** `${clientId}:${count}` of the last water nudge, so rapid taps sharing a
+   *  threshold can't double-fire while a fresh evening still nudges. */
+  const waterNudgeKeyRef = useRef('');
 
   useEffect(() => {
     const timers = sendTimers.current;
+    const sheetTimer = sheetActionTimer;
+    const rapid = rapidTimer;
     return () => {
-      // Leaving the screen ends the undo window: cancel the pending timers and
-      // hand off to a single flush so nothing held for undo is left undelivered.
+      // Leaving the screen ends the undo window: cancel pending timers and hand
+      // off to a single flush so nothing held for undo is left undelivered.
       timers.forEach((timer) => clearTimeout(timer));
       timers.clear();
+      if (sheetTimer.current) clearTimeout(sheetTimer.current);
+      if (rapid.current) clearTimeout(rapid.current);
       void flushDrinksQueue();
     };
   }, []);
 
   useEffect(() => {
-    if (!pub) return;
+    if (!pub) return undefined;
     const controller = new AbortController();
     const pubId = pub.id;
 
-    fetchPubHours([pub], controller.signal).then((resultMap) => {
+    void fetchPubHours([pub], controller.signal).then((resultMap) => {
       if (controller.signal.aborted) return;
       const result = resultMap.get(pubId);
       setBackendMenu({
@@ -591,40 +431,54 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
     return () => controller.abort();
   }, [pub]);
 
-  const broadcasted = broadcastCell === cell;
+  // Changing place ends the moment the nudges belong to. Without this the undo
+  // strip from a beer counted at the pub would still be sitting there after
+  // switching to "Doma", and pressing "Vrátit" would empty that pub's evening
+  // while skipping the visit reconciliation (which keys off the CURRENT place).
+  // Done during render (not in an effect) so the stale strip never paints.
+  const [nudgeCell, setNudgeCell] = useState(cell);
+  if (nudgeCell !== cell) {
+    setNudgeCell(cell);
+    setLastCounted(null);
+    setCheckInBeerName(null);
+    setCheckInSheetOpen(false);
+    setPendingRapid(null);
+  }
 
-  // Session totals — only count drinks for THIS pub's session.
-  const isThisPubSession = current?.pubKey === cell;
-  const count = isThisPubSession ? sessionCount(current) : 0;
-  const totalCzk = isThisPubSession ? sessionTotalCzk(current) : 0;
+  /** Close the overflow sheet, then run the row's action. */
+  const runAfterSheetClose = useCallback((action: () => void) => {
+    setMoreOpen(false);
+    setPickOpen(false);
+    setReceiptOpen(false);
+    if (sheetActionTimer.current) clearTimeout(sheetActionTimer.current);
+    sheetActionTimer.current = setTimeout(() => {
+      sheetActionTimer.current = null;
+      action();
+    }, SHEET_DISMISS_MS);
+  }, []);
+
+  // ── Session state ───────────────────────────────────────────────────────────
+
+  const isThisSession = cell !== null && current?.pubKey === cell;
+  const count = isThisSession ? sessionCount(current) : 0;
+  const totalCzk = isThisSession ? sessionTotalCzk(current) : 0;
   const sessionDrinks = useMemo(
-    () => (isThisPubSession ? current?.drinks ?? [] : []),
-    [isThisPubSession, current],
+    () => (isThisSession ? current?.drinks ?? [] : []),
+    [isThisSession, current],
   );
-  const latestBeer = [...sessionDrinks].reverse().find((drink) => normalizeDrinkType(drink.drinkType) === 'beer');
-  const latestAlcohol = [...sessionDrinks].reverse().find((drink) => normalizeDrinkType(drink.drinkType) !== 'soft_drink');
+  const latestBeer = useMemo(
+    () => [...sessionDrinks].reverse().find((drink) => normalizeDrinkType(drink.drinkType) === 'beer'),
+    [sessionDrinks],
+  );
+  const latestAlcohol = useMemo(
+    () => [...sessionDrinks].reverse().find((drink) => normalizeDrinkType(drink.drinkType) !== 'soft_drink'),
+    [sessionDrinks],
+  );
   const latestDrinkAt = latestAlcohol?.at;
-  const latestDrinkText = latestBeer ? lastDrinkAgoText(latestBeer.at, nowMs) : null;
-  const latestAlcoholText = latestAlcohol ? lastAlcoholAgoText(latestAlcohol.at, nowMs) : null;
-  const drinkTypeCounts = useMemo(() => sessionDrinkTypeCounts(isThisPubSession ? current : null), [isThisPubSession, current]);
-  const otherDrinkSummary = [
-    drinkTypeCounts.wine > 0 ? wineCountLabel(drinkTypeCounts.wine) : null,
-    drinkTypeCounts.soft_drink > 0 ? softDrinkCountLabel(drinkTypeCounts.soft_drink) : null,
-    drinkTypeCounts.shot > 0 ? shotCountLabel(drinkTypeCounts.shot) : null,
-  ].filter((part): part is string => part !== null).join(' · ');
-  const beerCounts = useMemo(
-    () => (isThisPubSession ? sessionBeerCounts(current) : new Map<string, number>()),
-    [isThisPubSession, current],
+  const drinkTypeCounts = useMemo(
+    () => sessionDrinkTypeCounts(isThisSession ? current : null),
+    [isThisSession, current],
   );
-
-  // A recently auto-completed evening at THIS pub that the user can pick back up
-  // instead of starting a fresh count. Only surfaced when this pub has no live
-  // count (count === 0); recomputed when the session/history change.
-  const resumable = useMemo(
-    () => (count === 0 ? resumableSession(current, history, cell) : null),
-    [count, current, history, cell],
-  );
-  const resumeSummary = resumable ? beerCountLabel(sessionCount(resumable)) : null;
 
   useEffect(() => {
     if (!latestDrinkAt) return undefined;
@@ -635,34 +489,36 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
     return () => clearInterval(timer);
   }, [latestDrinkAt]);
 
-  // The menu shown = pub.beers (backend/enriched) merged with the local
-  // community override (the authoritative local copy). The override already
-  // folds in every beer counted this session (we setOverride on each count), so
-  // it is the single source of truth for the visible menu.
+  /** The beer "Ještě jedno" repeats — the same pour, same serving, same price. */
+  const repeatBeer = useMemo<CountableBeer | null>(() => {
+    if (!latestBeer) return null;
+    return {
+      name: latestBeer.beerName,
+      ...(typeof latestBeer.priceCzk === 'number' ? { priceCzk: latestBeer.priceCzk } : {}),
+      ...(typeof latestBeer.volumeMl === 'number' ? { volumeMl: latestBeer.volumeMl } : {}),
+      ...(latestBeer.servingType ? { servingType: latestBeer.servingType } : {}),
+      drinkType: 'beer',
+    };
+  }, [latestBeer]);
+
+  // A recently auto-completed evening HERE that can be picked back up instead of
+  // starting a fresh count. Only offered while this place has no live count.
+  const resumable = useMemo(
+    () => (cell && count === 0 ? resumableSession(current, history, cell) : null),
+    [cell, count, current, history],
+  );
+
+  // The menu shown: at a pub the local community override wins over the backend
+  // fetch, which wins over whatever the pub object carried. Outside a pub there
+  // is no community menu — the list is what you've logged tonight.
   const menu = useMemo<CommunityBeer[]>(() => {
-    if (!pub) {
-      // Outside a pub there is no community menu. The list holds what you've
-      // logged tonight (one row per beer identity, latest first) so the next
-      // one of the same beer is a single tap.
-      const seen = new Map<string, CommunityBeer>();
-      for (const drink of sessionDrinks) {
-        if (normalizeDrinkType(drink.drinkType) !== 'beer') continue;
-        const key = `${drink.beerName.trim().toLowerCase()}|${drink.volumeMl ?? ''}`;
-        if (seen.has(key)) continue;
-        seen.set(key, {
-          name: drink.beerName,
-          ...(typeof drink.priceCzk === 'number' ? { priceCzk: drink.priceCzk } : {}),
-          ...(typeof drink.volumeMl === 'number' ? { volumeMl: drink.volumeMl } : {}),
-        });
-      }
-      return [...seen.values()];
-    }
+    if (!place) return [];
+    if (!pub) return [];
     const backendBeers = backendMenu?.pubId === pub.id ? backendMenu.beers : [];
     if (override?.beers && override.beers.length > 0) return override.beers;
     if (backendBeers.length > 0) return backendBeers;
     return pub.beers ?? [];
-  }, [backendMenu, override, pub, sessionDrinks]);
-  const menuGroups = useMemo(() => groupMenuBeers(menu), [menu]);
+  }, [backendMenu, override, place, pub]);
 
   const historicalBeers = useMemo<CommunityBeer[]>(() => {
     if (!pub) return [];
@@ -672,29 +528,147 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
     return pub.historicalBeers ?? [];
   }, [backendMenu, pub]);
 
-  // — Count one beer (writes tally + queue + menu override) —
-  // `atOverride` backdates the drink (PIV-25). When the backdated timestamp
-  // would roll over and archive the LIVE evening (different drinking day / pub),
-  // we file it into a past evening via addBackdatedDrink so `current` is never
-  // clobbered; otherwise it appends to the active session like a normal count.
-  // Backdated drinks skip the "now"-relative touches (nowMs sync, rapid-drink
-  // warning, check-in prompt, water nudge).
+  /** Every beer identity from the menu, flattened, small → large per name. */
+  const menuBeers = useMemo(
+    () => groupMenuBeers(menu).flatMap((group) => group.beers),
+    [menu],
+  );
+
+  /** Tonight's drinks folded to one row per identity, latest first. */
+  const tonightBeers = useMemo(() => {
+    const seen = new Map<string, { beer: CommunityBeer & { servingType?: ServingType }; count: number }>();
+    for (const drink of sessionDrinks) {
+      const key = drinkKey(drink);
+      const entry = seen.get(key);
+      if (entry) {
+        entry.count += 1;
+        continue;
+      }
+      seen.set(key, {
+        beer: {
+          name: drink.beerName,
+          ...(typeof drink.priceCzk === 'number' ? { priceCzk: drink.priceCzk } : {}),
+          ...(typeof drink.volumeMl === 'number' ? { volumeMl: drink.volumeMl } : {}),
+          ...(drink.servingType ? { servingType: drink.servingType } : {}),
+        },
+        count: 1,
+      });
+    }
+    // Insertion order follows the session; reverse so the last pour leads.
+    return [...seen.entries()].reverse().map(([key, value]) => ({ key, ...value }));
+  }, [sessionDrinks]);
+
+  /** Identity → the beer object a pick-sheet row counts. */
+  const rowBeers = useMemo(() => {
+    const map = new Map<string, CommunityBeer & { servingType?: ServingType }>();
+    for (const entry of tonightBeers) map.set(entry.key, entry.beer);
+    for (const beer of menuBeers) if (!map.has(beerKey(beer))) map.set(beerKey(beer), beer);
+    return map;
+  }, [menuBeers, tonightBeers]);
+
+  const priceMeta = useCallback(
+    (beer: CommunityBeer) => {
+      const price =
+        typeof beer.priceCzk === 'number'
+          ? formatPrice(beer.priceCzk, priceCurrency)
+          : pricePlaceholder(priceCurrency);
+      return beer.volumeMl ? `${formatVolume(beer.volumeMl)} · ${price}` : price;
+    },
+    [priceCurrency],
+  );
+
+  const tonightRows = useMemo<DrinkPickRow[]>(
+    () =>
+      tonightBeers.map((entry) => ({
+        key: entry.key,
+        name: entry.beer.name,
+        meta: priceMeta(entry.beer),
+        count: entry.count,
+        hasPrice: typeof entry.beer.priceCzk === 'number',
+      })),
+    [priceMeta, tonightBeers],
+  );
+
+  const tonightKeys = useMemo(() => new Set(tonightBeers.map((entry) => entry.key)), [tonightBeers]);
+
+  const menuRows = useMemo<DrinkPickRow[]>(
+    () =>
+      menuBeers
+        .filter((beer) => !tonightKeys.has(beerKey(beer)))
+        .map((beer) => ({
+          key: beerKey(beer),
+          name: beer.name,
+          meta: priceMeta(beer),
+          count: 0,
+          hasPrice: typeof beer.priceCzk === 'number',
+        })),
+    [menuBeers, priceMeta, tonightKeys],
+  );
+
+  const hasSomethingToPick = tonightRows.length > 0 || menuRows.length > 0;
+
+  // ── Coaster meta ────────────────────────────────────────────────────────────
+
+  const otherDrinkSummary = [
+    drinkTypeCounts.wine > 0 ? wineCountLabel(drinkTypeCounts.wine) : null,
+    drinkTypeCounts.soft_drink > 0 ? softDrinkCountLabel(drinkTypeCounts.soft_drink) : null,
+    drinkTypeCounts.shot > 0 ? shotCountLabel(drinkTypeCounts.shot) : null,
+  ]
+    .filter((part): part is string => part !== null)
+    .join(' · ');
+
+  // Outside a pub the price is optional; a "0 Kč" line would claim knowledge we
+  // don't have — unknown stays unknown.
+  const showSpent = !outsideContext || totalCzk > 0;
+  const spentLabel = showSpent && count > 0 ? formatPrice(totalCzk, priceCurrency) : null;
+  const sinceLastBeer = latestBeer ? minutesSinceDrink(latestBeer.at, nowMs) : null;
+  // The numeral says how many; the card's footer carries money, any non-beer
+  // drinks and how long ago — never a repeat of the count.
+  const sinceLabel =
+    sinceLastBeer === null
+      ? null
+      : [
+          sinceLastBeer === 0
+            ? cs.counter.lastDrinkShortJustNow
+            : cs.counter.lastDrinkShortMinutesAgo(sinceLastBeer),
+          otherDrinkSummary || null,
+        ]
+          .filter((part): part is string => !!part)
+          .join(' · ');
+
+  // Live story sticker ("come join me"): tonight's tally so far at THIS pub.
+  const liveNight = useMemo<NightSummary | null>(() => {
+    if (!pub) return null;
+    const startedAt = isThisSession && current ? current.startedAt : new Date().toISOString();
+    return {
+      clientKey: 'live-sticker',
+      drinkingDay: '',
+      startedAt,
+      endedAt: startedAt,
+      beerCount: drinkTypeCounts.beer,
+      wineCount: drinkTypeCounts.wine,
+      softDrinkCount: drinkTypeCounts.soft_drink,
+      shotCount: drinkTypeCounts.shot,
+      pubNames: [pub.name],
+      ...(pub.city ? { city: pub.city } : {}),
+    };
+  }, [current, drinkTypeCounts, isThisSession, pub]);
+
+  // ── Counting ────────────────────────────────────────────────────────────────
+
   const countBeer = useCallback(
-    (
-      beer: CommunityBeer & { priceCzk?: number; drinkType?: DrinkType; servingType?: ServingType },
-      atOverride?: string,
-    ) => {
+    (beer: CountableBeer, atOverride?: string) => {
+      if (!place || !cell) return;
       const id = generateUuidV4();
       const at = atOverride ?? new Date().toISOString();
       const drinkType = beer.drinkType ?? 'beer';
-      const startsSession = !isThisPubSession || (current?.drinks.length ?? 0) === 0;
+      const startsSession = !isThisSession || (current?.drinks.length ?? 0) === 0;
       setNowMs(atOverride ? Date.now() : Date.parse(at));
 
-      // The tally place identity: a pub, or the synthetic outside context whose
-      // display label doubles as the "pub name" everywhere the diary shows one.
+      const label = pub ? pub.name : cs.counter.outsideLabel(outsideContext as OutsidePlaceContext);
       const tallyPlace = pub
         ? { pubKey: cell, pubName: pub.name, pubCity: pub.city, pubExternalId: pub.id }
-        : { pubKey: cell, pubName: placeLabel, placeContext: outsideContext as OutsidePlaceContext };
+        : { pubKey: cell, pubName: label, placeContext: outsideContext as OutsidePlaceContext };
       const tallyBeer = {
         id,
         beerName: beer.name,
@@ -706,28 +680,21 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
       };
 
       // A backdate to an earlier drinking day is a past evening: file it into
-      // history so it never becomes/clobbers the live session — regardless of
-      // whether a `current` session exists. Same-day backdates count normally.
+      // history so it never becomes/clobbers the live session.
       const backdateToPast = !!atOverride && isPastEveningBackdate(at);
 
       let landedSession: TallySession | null;
       if (backdateToPast) {
-        // Files into a past evening, leaving the live session untouched.
         landedSession = addBackdatedDrink(tallyPlace, tallyBeer);
       } else {
         addDrink(tallyPlace, tallyBeer);
         landedSession = useTallyStore.getState().current;
       }
-      // Every real-time beer moves the evening's single reminder forward. It
-      // never repeats by itself; only a new beer or a notification tap re-arms
-      // it. The session id keeps the whole chain scoped to this one evening.
+
       if (!atOverride && drinkType === 'beer' && landedSession) {
         void refreshBeerCountReminderAfterBeer(landedSession.clientId);
       }
-      // Push/refresh the visit ("evening") record for the session the drink
-      // actually landed in. addDrink/addBackdatedDrink write synchronously, so
-      // the freshest session is on the store now; the POST is idempotent on the
-      // session clientId. An outside evening is NOT a pub visit — skip.
+      // An outside evening is NOT a pub visit — skip the visit record there.
       if (pub) syncVisit(landedSession);
       if (!atOverride && startsSession) {
         void trackClientEvent({ event: 'counter_session_started' });
@@ -743,27 +710,18 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
       });
 
       // Merge into the local community menu so the price shows instantly across
-      // the app (same rule as the backend merge). Pub only — an outside beer
-      // must never enter any pub's community data.
+      // the app. Pub only — an outside beer must never enter community data.
       if (pub && drinkType === 'beer' && typeof beer.priceCzk === 'number') {
-        const mergedMenu = mergeBeerIntoMenu(menu, { ...beer, priceCzk: beer.priceCzk });
-        setOverride(cell, { beers: mergedMenu });
+        setOverride(cell, { beers: mergeBeerIntoMenu(menu, { ...beer, priceCzk: beer.priceCzk }) });
       }
-      // The check-in prompt ("I'm drinking this now") is now-semantic and
-      // pub-bound — skip it for a backdated or outside log.
+      // The check-in prompt is now-semantic and pub-bound — skip it for a
+      // backdated or outside log.
       if (pub && !atOverride && drinkType === 'beer') setCheckInBeerName(beer.name);
 
-      // Persist + best-effort deliver the drink.
       const entry = buildDrinkEntry(
         {
           ...(pub
-            ? {
-                externalId: pub.id || null,
-                name: pub.name,
-                lat: pub.lat,
-                lng: pub.lng,
-                city: pub.city,
-              }
+            ? { externalId: pub.id || null, name: pub.name, lat: pub.lat, lng: pub.lng, city: pub.city }
             : { placeContext: outsideContext as OutsidePlaceContext }),
           drinkType,
           beer: {
@@ -776,11 +734,12 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
         },
         id,
       );
-      // Persist now (crash-safe) but hold the actual send for the undo window so
-      // the queued payload stays retractable; deliver + mark synced when it ends.
+      // Persist now (crash-safe) but hold the send for the undo window so the
+      // queued payload stays retractable; deliver + mark synced when it ends.
       void enqueueDrink(entry, { deliver: false });
       const timer = setTimeout(() => {
         sendTimers.current.delete(id);
+        setLastCounted((prev) => (prev?.id === id ? null : prev));
         void flushDrinksQueue()
           .then(() => isDrinkQueued(id))
           .then((stillQueued) => {
@@ -789,16 +748,16 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
       }, UNDO_WINDOW_MS);
       sendTimers.current.set(id, timer);
 
-      if (hapticEnabled) {
-        fireSuccessHaptic();
+      // The undo strip owns the nudge slot for the whole window. A backdated
+      // drink is not "the beer you just had", so it gets no strip.
+      if (!atOverride) {
+        const liveCountAfter = sessionCount(useTallyStore.getState().current);
+        setLastCounted({ id, ordinal: liveCountAfter, isBeer: drinkType === 'beer' });
       }
 
-      // Gentle water nudge every 4th beer in a row (4, 8, 12…). Local-only, no
-      // notifications — just a mate at the table reminding you to hydrate.
-      // Backdated drinks aren't part of the "now" streak, so they never nudge.
-      // Read the count from the store (not the rendered closure) and guard by
-      // session identity + count so rapid taps sharing a threshold can't
-      // double-fire, while a fresh evening reaching 4 still nudges.
+      if (hapticEnabled) fireSuccessHaptic();
+
+      // Gentle water nudge every 4th beer in a row (4, 8, 12…). Local-only.
       const liveSession = useTallyStore.getState().current;
       const liveCount = sessionCount(liveSession);
       const nudgeKey = liveSession ? `${liveSession.clientId}:${liveCount}` : '';
@@ -816,77 +775,183 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
         });
       }
     },
-    [addDrink, addBackdatedDrink, cell, current, hapticEnabled, isThisPubSession, markDrinkSynced, menu, outsideContext, placeLabel, pub, setOverride, showToast, waterNudgeEnabled],
+    [
+      addBackdatedDrink,
+      addDrink,
+      cell,
+      current,
+      hapticEnabled,
+      isThisSession,
+      markDrinkSynced,
+      menu,
+      outsideContext,
+      place,
+      pub,
+      setOverride,
+      showToast,
+      waterNudgeEnabled,
+    ],
   );
 
+  // The pending confirmation never outlives its place: when `cell` changes the
+  // state above drops it, and this effect cancels the timer that would have
+  // fired for it.
+  useEffect(() => {
+    if (pendingRapid) return undefined;
+    if (rapidTimer.current) {
+      clearTimeout(rapidTimer.current);
+      rapidTimer.current = null;
+    }
+    return undefined;
+  }, [pendingRapid]);
+
+  const clearRapid = useCallback(() => {
+    if (rapidTimer.current) {
+      clearTimeout(rapidTimer.current);
+      rapidTimer.current = null;
+    }
+    setPendingRapid(null);
+  }, []);
+
+  /** The ONLY count path. A tap that lands suspiciously soon after the last one
+   *  does not write anything — it asks first, inline, and a timeout means no. */
   const requestCountBeer = useCallback(
-    (
-      beer: CommunityBeer & { priceCzk?: number; drinkType?: DrinkType; servingType?: ServingType },
-      atOverride?: string,
-    ) => {
-      // A backdated beer can't be "too fast right now" — count it straight away.
+    (beer: CountableBeer, atOverride?: string) => {
       if (atOverride || beer.drinkType === 'soft_drink' || !shouldWarnRapidDrink(latestDrinkAt)) {
+        clearRapid();
         countBeer(beer, atOverride);
         return;
       }
-
-      const body = cs.counter.rapidDrinkBody(latestAlcoholText ?? cs.counter.lastAlcoholJustNow);
-      showAppDialog({
-        title: cs.counter.rapidDrinkTitle,
-        message: body,
-        buttons: [
-          { text: cs.counter.cancel, style: 'cancel' },
-          { text: cs.counter.rapidDrinkConfirm, onPress: () => countBeer(beer) },
-        ],
-      });
+      if (rapidTimer.current) clearTimeout(rapidTimer.current);
+      setPendingRapid({ beer, minutes: latestDrinkAt ? minutesSinceDrink(latestDrinkAt) : null });
+      rapidTimer.current = setTimeout(() => {
+        rapidTimer.current = null;
+        setPendingRapid(null);
+      }, RAPID_DECISION_MS);
     },
-    [countBeer, latestAlcoholText, latestDrinkAt],
+    [clearRapid, countBeer, latestDrinkAt],
   );
 
-  // Tap a menu card: priced → instant +1; unpriced → ask price first.
-  const openForm = useCallback((mode: BeerFormMode, beer: CommunityBeer | null, drinkType: DrinkType = 'beer') => {
-    setFormBeer(beer);
-    setFormDrinkType(drinkType);
-    setFormMode(mode);
-    setFormNonce((n) => n + 1);
-    void trackClientEvent({
-      event: 'beer_form_opened',
-      context: { mode },
-    });
-  }, []);
+  const confirmRapid = useCallback(() => {
+    const pending = pendingRapid;
+    clearRapid();
+    if (pending) countBeer(pending.beer);
+  }, [clearRapid, countBeer, pendingRapid]);
 
-  const handleTapBeer = useCallback(
-    (beer: CommunityBeer) => {
-      if (!pub) {
-        // Outside a pub a repeat tap counts straight away — price optional, no
-        // price prompt. Reuse the serving of the last logged drink of this beer.
-        const key = `${beer.name.trim().toLowerCase()}|${beer.volumeMl ?? ''}`;
-        const previous = [...sessionDrinks]
-          .reverse()
-          .find(
-            (drink) => `${drink.beerName.trim().toLowerCase()}|${drink.volumeMl ?? ''}` === key,
-          );
-        requestCountBeer({
-          ...beer,
-          drinkType: 'beer',
-          servingType: previous?.servingType ?? lastServingType,
+  // ── Removing ────────────────────────────────────────────────────────────────
+
+  /** Drop one drink from the tally and reconcile delivery: pull the payload if
+   *  it is still queued, otherwise enqueue a durable backend DELETE. */
+  const removeDrinkById = useCallback(
+    (targetId: string) => {
+      const timer = sendTimers.current.get(targetId);
+      if (timer) {
+        clearTimeout(timer);
+        sendTimers.current.delete(targetId);
+      }
+      setLastCounted((prev) => (prev?.id === targetId ? null : prev));
+
+      const visitUpdatedAt = new Date().toISOString();
+      const currentVisitClientId = current?.clientId;
+      removeDrink(targetId);
+
+      // Outside evenings never had a visit record, so there's none to touch.
+      if (pub) {
+        const nextSession = useTallyStore.getState().current;
+        if (nextSession && nextSession.drinks.length > 0) {
+          syncVisit(nextSession, visitUpdatedAt);
+        } else if (currentVisitClientId) {
+          deleteVisitByClientId(currentVisitClientId);
+        }
+      }
+
+      void removeQueuedDrink(targetId).then((pulledFromQueue) => {
+        void trackClientEvent({
+          event: 'drink_removed',
+          context: { delivery_state: pulledFromQueue ? 'queued' : 'delivered' },
         });
-        return;
-      }
-      if (typeof beer.priceCzk === 'number') {
-        requestCountBeer({ ...beer, priceCzk: beer.priceCzk, drinkType: 'beer' });
-      } else {
-        openForm('price', beer);
-      }
+        if (!pulledFromQueue) {
+          void flushDrinksQueue()
+            .then(() => enqueueDelete(targetId))
+            .catch(() => undefined);
+        }
+      });
+
+      if (hapticEnabled) fireLightImpactHaptic();
     },
-    [lastServingType, openForm, pub, requestCountBeer, sessionDrinks],
+    [current, hapticEnabled, pub, removeDrink],
   );
 
-  const handleEditBeer = useCallback(
-    (beer: CommunityBeer) => {
-      openForm('edit', beer);
+  /** Receipt minus: drop the most recent drink of that identity. */
+  const removeIdentity = useCallback(
+    (key: string) => {
+      for (let i = sessionDrinks.length - 1; i >= 0; i--) {
+        if (drinkKey(sessionDrinks[i]) === key) {
+          removeDrinkById(sessionDrinks[i].id);
+          return;
+        }
+      }
     },
-    [openForm],
+    [removeDrinkById, sessionDrinks],
+  );
+
+  // ── Receipt ─────────────────────────────────────────────────────────────────
+
+  const receipt = useMemo(() => {
+    const beers = new Map<string, ReceiptItem & { czk: number; known: boolean }>();
+    const others = new Map<string, ReceiptItem & { czk: number; known: boolean }>();
+    for (const drink of sessionDrinks) {
+      const isBeer = normalizeDrinkType(drink.drinkType) === 'beer';
+      const bucket = isBeer ? beers : others;
+      const key = drinkKey(drink);
+      const priced = typeof drink.priceCzk === 'number';
+      const existing = bucket.get(key);
+      if (existing) {
+        existing.count += 1;
+        existing.czk += priced ? (drink.priceCzk as number) : 0;
+        existing.known = existing.known && priced;
+      } else {
+        bucket.set(key, {
+          key,
+          name: drink.beerName,
+          meta: drink.volumeMl ? formatVolume(drink.volumeMl) : null,
+          count: 1,
+          czk: priced ? (drink.priceCzk as number) : 0,
+          known: priced,
+          totalLabel: null,
+        });
+      }
+    }
+    const finish = (bucket: Map<string, ReceiptItem & { czk: number; known: boolean }>) =>
+      [...bucket.values()].map((item) => ({
+        key: item.key,
+        name: item.name,
+        meta: item.meta,
+        count: item.count,
+        totalLabel: item.known ? formatPrice(item.czk, priceCurrency) : null,
+      }));
+    return { beerItems: finish(beers), otherItems: finish(others) };
+  }, [priceCurrency, sessionDrinks]);
+
+  const startedAtLabel = useMemo(() => {
+    if (!isThisSession || !current) return null;
+    const started = new Date(current.startedAt);
+    if (Number.isNaN(started.getTime())) return null;
+    const time = `${started.getHours()}:${String(started.getMinutes()).padStart(2, '0')}`;
+    return cs.counter.receiptStarted(time);
+  }, [current, isThisSession]);
+
+  // ── Beer form ───────────────────────────────────────────────────────────────
+
+  const openForm = useCallback(
+    (mode: BeerFormMode, beer: CommunityBeer | null, drinkType: DrinkType = 'beer') => {
+      setFormBeer(beer);
+      setFormDrinkType(drinkType);
+      setFormMode(mode);
+      setFormNonce((n) => n + 1);
+      void trackClientEvent({ event: 'beer_form_opened', context: { mode } });
+    },
+    [],
   );
 
   const handleAddBeer = useCallback(() => {
@@ -899,9 +964,89 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
     openForm('add', null, 'soft_drink');
   }, [openForm]);
 
-  // "Vyfoť celý lístek" inside the add form: hand over to the contribute
-  // editor's AI scan with the current menu prefilled. The scanned beers land
-  // back here through the community override the editor writes on save.
+  const handleFormSubmit = useCallback(
+    (result: BeerFormResult) => {
+      const mode = formMode;
+      // Capture the row being edited BEFORE clearing form state — identity is
+      // name+volume, so a volume edit must replace this exact row in place.
+      const editedBeer = formBeer;
+      const at = backdateAt ?? undefined;
+      setFormMode(null);
+      setFormBeer(null);
+      setBackdateAt(null);
+      const beer: CountableBeer = {
+        name: result.name,
+        priceCzk: result.priceCzk,
+        volumeMl: result.volumeMl,
+        drinkType: result.drinkType,
+        servingType: result.servingType,
+      };
+      if (result.servingType) setLastServingType(result.servingType);
+      if (result.drinkType === 'beer' && typeof result.priceCzk === 'number' && pub) {
+        void trackClientEvent({ event: 'beer_price_added', context: { mode: mode ?? 'unknown' } });
+      }
+      if (mode === 'edit') {
+        // Community-menu edit is a pub concept; outside rows are session-derived.
+        if (!pub || !cell) return;
+        // Replace the edited row in place: mergeBeerIntoMenu matches on
+        // name+volume, so a volume change would otherwise append a NEW row and
+        // orphan the original (PIV-33).
+        const nextMenu = editedBeer
+          ? menu
+              .map((b) => (isSameBeerIdentity(b, editedBeer) ? beer : b))
+              .filter((b) => b === beer || !isSameBeerIdentity(b, beer))
+          : mergeBeerIntoMenu(menu, beer);
+        setOverride(cell, { beers: nextMenu });
+      } else {
+        requestCountBeer(beer, at);
+      }
+    },
+    [backdateAt, cell, formBeer, formMode, menu, pub, requestCountBeer, setOverride],
+  );
+
+  // ── Pick sheet ──────────────────────────────────────────────────────────────
+
+  const handlePickRow = useCallback(
+    (row: DrinkPickRow) => {
+      const beer = rowBeers.get(row.key);
+      if (!beer) return;
+      setPickOpen(false);
+      if (!pub) {
+        // Outside a pub a repeat tap counts straight away — price optional, no
+        // price prompt. Reuse the serving of the last logged drink of this beer.
+        requestCountBeer({
+          ...beer,
+          drinkType: 'beer',
+          servingType: beer.servingType ?? lastServingType,
+        });
+        return;
+      }
+      if (typeof beer.priceCzk === 'number') {
+        requestCountBeer({ ...beer, priceCzk: beer.priceCzk, drinkType: 'beer' });
+        return;
+      }
+      // Unpriced menu beer: ask the price first — that answer is what fills the
+      // pub's community menu for everyone else.
+      runAfterSheetClose(() => openForm('price', beer));
+    },
+    [lastServingType, openForm, pub, requestCountBeer, rowBeers, runAfterSheetClose],
+  );
+
+  const handleEditRow = useCallback(
+    (row: DrinkPickRow) => {
+      const beer = rowBeers.get(row.key);
+      if (!beer || !pub) return;
+      runAfterSheetClose(() => openForm('edit', beer));
+    },
+    [openForm, pub, rowBeers, runAfterSheetClose],
+  );
+
+  // ── Menu scan ───────────────────────────────────────────────────────────────
+
+  const router = useRouter();
+
+  /** "Vyfoť celý lístek" inside the add form: hand over to the contribute
+   *  editor's AI scan with the current menu prefilled. */
   const handleScanMenu = useCallback(() => {
     if (!pub) return;
     setFormMode(null);
@@ -919,57 +1064,54 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
         lng: String(pub.lng),
         ...(pub.city ? { city: pub.city } : {}),
         ...(menu.length > 0 ? { beers: JSON.stringify(menu) } : {}),
-        ...(historicalBeers.length > 0
-          ? { historicalBeers: JSON.stringify(historicalBeers) }
-          : {}),
+        ...(historicalBeers.length > 0 ? { historicalBeers: JSON.stringify(historicalBeers) } : {}),
       },
     });
   }, [historicalBeers, menu, pub, router]);
 
-  const runDrinkScan = useCallback(
-    async (source: MenuPhotoSource) => {
-      setScanSourceVisible(false);
-      setScanningDrinks(true);
-      const toast = useToastStore.getState().show;
-      try {
-        const { pickAndPrepareMenuPhoto } = await import('@/data/menuPhotoPicker');
-        const picked = await pickAndPrepareMenuPhoto(source);
-        if (picked.status === 'cancelled') return;
-        if (picked.status === 'denied' || picked.status === 'denied-permanent') {
-          toast(cs.contribute.scanMenu.permissionDenied, { icon: <CameraIcon size={18} color={Colors.amber} /> });
-          return;
-        }
-        if (picked.status === 'error') {
-          toast(cs.contribute.scanMenu.errorToast, { icon: <InfoIcon size={18} color={Colors.foamMuted} /> });
-          return;
-        }
-        const result = await scanMenuPhoto(picked.uri);
-        if (result.status === 'ok') {
-          setScannedDrinks(result.drinks);
-          if (result.drinks.length > 0) {
-            fireSuccessHaptic();
-            return;
-          }
-        }
-        const message =
-          result.status === 'daily-cap'
-            ? cs.contribute.scanMenu.dailyCapToast
-            : result.status === 'rate-limited'
-              ? cs.contribute.scanMenu.rateLimitedToast
-              : result.status === 'unavailable'
-                ? cs.contribute.scanMenu.unavailableToast
-                : result.status === 'bad-image'
-                  ? cs.contribute.scanMenu.badImageToast
-                  : result.status === 'empty'
-                    ? cs.counter.scanDrinksEmpty
-                    : cs.contribute.scanMenu.errorToast;
-        toast(message, { icon: <InfoIcon size={18} color={Colors.foamMuted} /> });
-      } finally {
-        setScanningDrinks(false);
+  const runDrinkScan = useCallback(async (source: MenuPhotoSource) => {
+    setScanSourceVisible(false);
+    setScanningDrinks(true);
+    const toast = useToastStore.getState().show;
+    try {
+      const { pickAndPrepareMenuPhoto } = await import('@/data/menuPhotoPicker');
+      const picked = await pickAndPrepareMenuPhoto(source);
+      if (picked.status === 'cancelled') return;
+      if (picked.status === 'denied' || picked.status === 'denied-permanent') {
+        toast(cs.contribute.scanMenu.permissionDenied, {
+          icon: <CameraIcon size={18} color={Colors.amber} />,
+        });
+        return;
       }
-    },
-    [],
-  );
+      if (picked.status === 'error') {
+        toast(cs.contribute.scanMenu.errorToast, { icon: <InfoIcon size={18} color={Colors.foamMuted} /> });
+        return;
+      }
+      const result = await scanMenuPhoto(picked.uri);
+      if (result.status === 'ok') {
+        setScannedDrinks(result.drinks);
+        if (result.drinks.length > 0) {
+          fireSuccessHaptic();
+          return;
+        }
+      }
+      const message =
+        result.status === 'daily-cap'
+          ? cs.contribute.scanMenu.dailyCapToast
+          : result.status === 'rate-limited'
+            ? cs.contribute.scanMenu.rateLimitedToast
+            : result.status === 'unavailable'
+              ? cs.contribute.scanMenu.unavailableToast
+              : result.status === 'bad-image'
+                ? cs.contribute.scanMenu.badImageToast
+                : result.status === 'empty'
+                  ? cs.counter.scanDrinksEmpty
+                  : cs.contribute.scanMenu.errorToast;
+      toast(message, { icon: <InfoIcon size={18} color={Colors.foamMuted} /> });
+    } finally {
+      setScanningDrinks(false);
+    }
+  }, []);
 
   const handleSelectScannedDrink = useCallback(
     (drink: ScannedDrink) => {
@@ -979,9 +1121,8 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
     [openForm],
   );
 
-  // "Zapsat zpětně" — pick a past time from quick chips, then the normal add
-  // form. The chosen ISO timestamp rides `backdateAt` into the count so the
-  // session-rollover logic files it into the right evening (PIV-25).
+  // ── Backdating ──────────────────────────────────────────────────────────────
+
   const openBackdateForm = useCallback(
     (at: string) => {
       setBackdateAt(at);
@@ -993,10 +1134,7 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
   const handleBackdatePress = useCallback(() => {
     const now = Date.now();
     const CAP_MS = 48 * 60 * 60 * 1000;
-    // Clamp every option to the 48h cap so a chip can never file a drink older
-    // than we allow.
     const clamp = (ms: number) => new Date(Math.max(ms, now - CAP_MS)).toISOString();
-    // Yesterday at 20:00 local — a sensible "the evening I forgot to log" anchor.
     const yesterdayEvening = new Date(now);
     yesterdayEvening.setDate(yesterdayEvening.getDate() - 1);
     yesterdayEvening.setHours(20, 0, 0, 0);
@@ -1005,7 +1143,10 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
       title: cs.counter.backdateTitle,
       buttons: [
         { text: cs.counter.backdateHourAgo, onPress: () => openBackdateForm(clamp(now - 60 * 60 * 1000)) },
-        { text: cs.counter.backdateTwoHoursAgo, onPress: () => openBackdateForm(clamp(now - 2 * 60 * 60 * 1000)) },
+        {
+          text: cs.counter.backdateTwoHoursAgo,
+          onPress: () => openBackdateForm(clamp(now - 2 * 60 * 60 * 1000)),
+        },
         {
           text: cs.counter.backdateYesterdayEvening,
           onPress: () => openBackdateForm(clamp(yesterdayEvening.getTime())),
@@ -1015,413 +1156,265 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
     });
   }, [openBackdateForm]);
 
-  const handleFormSubmit = useCallback(
-    (result: BeerFormResult) => {
-      const mode = formMode;
-      // Capture the row being edited BEFORE clearing form state — identity is
-      // name+volume, so a volume edit must replace this exact row in place.
-      const editedBeer = formBeer;
-      // Consume any pending backdate (set by the "zapsat zpětně" flow).
-      const at = backdateAt ?? undefined;
-      setFormMode(null);
-      setFormBeer(null);
-      setBackdateAt(null);
-      const beer = {
-        name: result.name,
-        priceCzk: result.priceCzk,
-        volumeMl: result.volumeMl,
-        drinkType: result.drinkType,
-        servingType: result.servingType,
-      };
-      if (result.servingType) setLastServingType(result.servingType);
-      if (result.drinkType === 'beer' && typeof result.priceCzk === 'number' && pub) {
-        void trackClientEvent({
-          event: 'beer_price_added',
-          context: { mode: mode ?? 'unknown' },
-        });
-      }
-      if (mode === 'edit') {
-        // Community-menu edit is a pub concept; outside rows are session-derived
-        // and never editable (the long-press target is disabled there).
-        if (!pub) return;
-        // Replace the edited row in place. mergeBeerIntoMenu matches on
-        // name+volume, so a volume change would otherwise append a NEW row and
-        // orphan the original — the PIV-33 bug. Editing the pre-change identity
-        // keeps exactly one row per beer.
-        const nextMenu = editedBeer
-          ? menu
-              .map((b) => (isSameBeerIdentity(b, editedBeer) ? beer : b))
-              // A volume/name edit can collide with another existing row; drop
-              // the duplicate so the menu keeps one row per identity.
-              .filter((b) => b === beer || !isSameBeerIdentity(b, beer))
-          : mergeBeerIntoMenu(menu, beer);
-        setOverride(cell, { beers: nextMenu });
-      } else {
-        // 'add' and 'price' both count the beer immediately (or at `at` when the
-        // add form was opened via the backdate flow).
-        requestCountBeer(beer, at);
-      }
-    },
-    [backdateAt, cell, formBeer, formMode, menu, pub, requestCountBeer, setOverride],
-  );
+  // ── Closing / resuming the evening ──────────────────────────────────────────
 
-  // Remove the most recently counted drink OF THIS BEER. Optimistically drops it
-  // from the local tally, then reconciles delivery: if the payload is still
-  // queued (caught inside the undo window, or just offline) we pull it before it
-  // ever sends; if it already reached the backend we enqueue a durable DELETE so
-  // the server drops the row too. The community menu/price is left untouched.
-  const decrementBeer = useCallback(
-    (beer: CommunityBeer) => {
-      const key = beerKey(beer);
-      const drinks = current?.pubKey === cell ? current.drinks : [];
-      let targetId: string | null = null;
-      for (let i = drinks.length - 1; i >= 0; i--) {
-        const drinkKey = `${drinks[i].beerName.trim().toLowerCase()}|${drinks[i].volumeMl ?? ''}`;
-        if (drinkKey === key) {
-          targetId = drinks[i].id;
-          break;
-        }
-      }
-      if (!targetId) return;
-
-      // Cancel the deferred send so a not-yet-delivered drink never goes out.
-      const timer = sendTimers.current.get(targetId);
-      if (timer) {
-        clearTimeout(timer);
-        sendTimers.current.delete(targetId);
-      }
-
-      const visitUpdatedAt = new Date().toISOString();
-      const currentVisitClientId = current?.clientId;
-      removeDrink(targetId);
-      // Outside evenings never had a visit record, so there's none to touch.
-      if (pub) {
-        const nextSession = useTallyStore.getState().current;
-        if (nextSession && nextSession.drinks.length > 0) {
-          syncVisit(nextSession, visitUpdatedAt);
-        } else if (currentVisitClientId) {
-          deleteVisitByClientId(currentVisitClientId);
-        }
-      }
-      const removedId = targetId;
-      void removeQueuedDrink(removedId).then((pulledFromQueue) => {
-        void trackClientEvent({
-          event: 'drink_removed',
-          context: { delivery_state: pulledFromQueue ? 'queued' : 'delivered' },
-        });
-        if (!pulledFromQueue) {
-          void flushDrinksQueue()
-            .then(() => enqueueDelete(removedId))
-            .catch(() => undefined);
-        }
-      });
-
-      if (hapticEnabled) {
-        fireLightImpactHaptic();
-      }
-    },
-    [cell, current, hapticEnabled, pub, removeDrink],
-  );
-
-  // "Dopito" — confirm, then archive the evening into history. The deferred
-  // sends already in flight still deliver; we only close the local session.
   const handleDone = useCallback(() => {
+    const clientId = current?.clientId ?? null;
     showAppDialog({
       title: cs.counter.doneTitle,
       message: cs.counter.doneBody,
       buttons: [
-        { text: cs.counter.cancel, style: 'cancel' },
+        { text: cs.counter.cancel, style: 'cancel', onPress: () => setDopitoNudgedFor(clientId) },
         {
           text: cs.counter.doneConfirm,
           onPress: () => {
             archiveCurrent('manual');
+            setDopitoNudgedFor(clientId);
+            setLastCounted(null);
+            setCheckInBeerName(null);
             void trackClientEvent({ event: 'counter_session_closed', context: { reason: 'manual' } });
             if (hapticEnabled) fireLightImpactHaptic();
           },
         },
       ],
     });
-  }, [archiveCurrent, hapticEnabled]);
+  }, [archiveCurrent, current, hapticEnabled]);
 
-  // "Pokračovat ve večeru" — pop the auto-completed evening back to live so the
-  // next count continues the same session (same backend visit).
   const handleResume = useCallback(() => {
-    const ok = resumeLast(cell);
-    if (ok) {
+    if (!cell) return;
+    if (resumeLast(cell)) {
       void trackClientEvent({ event: 'counter_session_resumed' });
       if (hapticEnabled) fireLightImpactHaptic();
     }
   }, [cell, hapticEnabled, resumeLast]);
 
+  // ── Friends ─────────────────────────────────────────────────────────────────
+
   const handleShareWithFriends = useCallback(async () => {
-    if (!pub || sharingWithFriends || broadcasted) return;
+    if (!pub || !cell || sharingWithFriends || broadcasted) return;
     setSharingWithFriends(true);
-    const shareClientId = isThisPubSession && current?.clientId ? current.clientId : generateUuidV4();
-    // One-tap quick broadcast: empty message (the rich compose with a message
-    // lives on Parta). The "already live" flip keeps the verb from doubling up.
+    const shareClientId = isThisSession && current?.clientId ? current.clientId : generateUuidV4();
     const result = await shareFriendPubActivity(pub, '', shareClientId);
     setSharingWithFriends(false);
     if (result.ok) {
       setBroadcastCell(cell);
-      showToast(cs.friends.shareSuccess, { icon: <BellRingIcon size={20} color={Colors.amber} /> });
+      showToast(cs.friends.shareSuccess);
       if (hapticEnabled) fireLightImpactHaptic();
     } else if (isRetriableFriendError(result)) {
       await enqueueFriendOp({ op: 'activity', clientId: shareClientId, payload: { pub, message: '' } });
       setBroadcastCell(cell);
-      showToast(cs.friends.composeQueued, { icon: <BellRingIcon size={20} color={Colors.amber} /> });
+      showToast(cs.friends.composeQueued);
     } else {
-      showToast(result.detail || cs.friends.shareError, { icon: <BellRingIcon size={20} color={Colors.amber} /> });
+      showToast(result.detail || cs.friends.shareError);
     }
-  }, [broadcasted, cell, current, hapticEnabled, isThisPubSession, pub, sharingWithFriends, showToast]);
+  }, [broadcasted, cell, current, hapticEnabled, isThisSession, pub, sharingWithFriends, showToast]);
 
-  const hasMenu = menu.length > 0;
+  // ── The one button ──────────────────────────────────────────────────────────
+
+  const cta = useMemo(() => {
+    // No place yet: the button is how you say where you are. It never guesses a
+    // beer and it never counts.
+    if (!place) {
+      return {
+        label: cs.counter.ctaLogBeer,
+        subLabel: null as string | null,
+        a11y: cs.counter.ctaLogBeer,
+        onPress: onChangePlace,
+      };
+    }
+    if (resumable) {
+      return {
+        label: cs.counter.resumeEvening,
+        subLabel: cs.counter.resumeSub(beerCountLabel(sessionCount(resumable))),
+        a11y: cs.a11y.counterResume,
+        onPress: handleResume,
+      };
+    }
+    if (repeatBeer) {
+      return {
+        label: cs.counter.repeatCta,
+        subLabel: beerLine(repeatBeer),
+        a11y: cs.a11y.counterRepeat(repeatBeer.name),
+        onPress: () => requestCountBeer(repeatBeer),
+      };
+    }
+    if (hasSomethingToPick) {
+      return {
+        label: cs.counter.ctaPick,
+        subLabel: null as string | null,
+        a11y: cs.counter.ctaPick,
+        onPress: () => setPickOpen(true),
+      };
+    }
+    return {
+      label: cs.counter.ctaFirstBeer,
+      subLabel: null as string | null,
+      a11y: cs.a11y.counterAddBeer,
+      onPress: handleAddBeer,
+    };
+  }, [
+    handleAddBeer,
+    handleResume,
+    hasSomethingToPick,
+    onChangePlace,
+    place,
+    repeatBeer,
+    requestCountBeer,
+    resumable,
+  ]);
+
+  // The secondary button only makes sense while the CTA repeats a beer — in
+  // every other state the CTA already leads to the pick sheet or the form.
+  const showSecondary = !!place && !resumable && !!repeatBeer;
+
+  // ── The one nudge ───────────────────────────────────────────────────────────
+
+  const dopitoVisible =
+    count > 0 &&
+    !!latestDrinkAt &&
+    nowMs - Date.parse(latestDrinkAt) > DOPITO_IDLE_MS &&
+    dopitoNudgedFor !== (current?.clientId ?? null);
+
+  const nudge = useMemo<Nudge | null>(() => {
+    if (pendingRapid) {
+      return {
+        kind: 'rapid',
+        text:
+          pendingRapid.minutes === null || pendingRapid.minutes === 0
+            ? cs.counter.rapidInlineJustNow
+            : cs.counter.rapidInline(pendingRapid.minutes),
+        confirmLabel: cs.counter.rapidInlineConfirm,
+        onConfirm: confirmRapid,
+      };
+    }
+    if (lastCounted) {
+      return {
+        kind: 'counted',
+        text: lastCounted.isBeer
+          ? cs.counter.countedStrip(lastCounted.ordinal)
+          : cs.counter.countedStripOther,
+        undoLabel: cs.counter.undo,
+        onUndo: () => removeDrinkById(lastCounted.id),
+      };
+    }
+    if (dopitoVisible) {
+      return { kind: 'dopito', label: cs.counter.dopitoNudge, onPress: handleDone };
+    }
+    if (checkInBeerName && pub) {
+      return {
+        kind: 'checkin',
+        text: cs.counter.checkinNudge,
+        ctaLabel: cs.counter.checkinNudgeCta,
+        onPress: () => setCheckInSheetOpen(true),
+        onDismiss: () => setCheckInBeerName(null),
+      };
+    }
+    if (count > 0) {
+      return { kind: 'rank', node: <WeeklyRankChip sessionBeerCount={count} /> };
+    }
+    return null;
+  }, [
+    checkInBeerName,
+    confirmRapid,
+    count,
+    dopitoVisible,
+    handleDone,
+    lastCounted,
+    pendingRapid,
+    pub,
+    removeDrinkById,
+  ]);
+
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <View style={[styles.root, { paddingTop: topInset + 8 }]}>
-      {/* Header: pub name + session actions. "Změnit" (when several candidates)
-          and "Dopito" live here as compact chips — both act on the SESSION, sit
-          above the scroll so they're always discoverable, and stay subordinate
-          to the big amber +/- counting in the body. */}
+    <View
+      style={[
+        styles.root,
+        styles.surface,
+        { paddingTop: topInset + 8, paddingBottom: Math.max(insets.bottom, Spacing.sm) },
+      ]}
+    >
       <View style={styles.header}>
-        {outsideContext ? (
-          (() => {
-            const HeaderIcon = OUTSIDE_HEADER_ICONS[outsideContext];
-            return <HeaderIcon size={18} color={Colors.amber} />;
-          })()
-        ) : (
-          <MapPinIcon size={18} color={Colors.amber} />
-        )}
-        <Text style={styles.headerPub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {placeLabel}
-        </Text>
-        {/* Always available: with the "Mimo hospodu" section the picker is
-            meaningful even when GPS found a single (or no) candidate. */}
+        <PlaceChip kind={chipKind} label={placeLabel} onPress={onChangePlace} />
+        <View style={styles.headerSpacer} />
         <Pressable
-          onPress={onChangePlace}
-          style={styles.changeButton}
+          onPress={() => setMoreOpen(true)}
+          style={({ pressed }) => [styles.moreButton, pressed && styles.pressedSoft]}
           hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel={cs.a11y.counterChangePub}
+          accessibilityLabel={cs.a11y.counterMore}
         >
-          <Text style={styles.changeButtonText} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.counter.changePub}
-          </Text>
+          <EllipsisIcon size={20} color={Colors.mutedText} />
         </Pressable>
-        {count > 0 && (
-          <Pressable
-            onPress={handleDone}
-            style={({ pressed }) => [styles.doneButton, pressed && styles.doneButtonPressed]}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={cs.a11y.counterDone}
-          >
-            <CheckIcon size={15} color={Colors.amber} />
-            <Text style={styles.doneButtonText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.counter.doneDrinking}
-            </Text>
-          </Pressable>
-        )}
       </View>
 
-      <ScrollView
-        style={styles.flex}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom + 16, 28) }]}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Keep the public mapping prompt in the motivation zone, but as one
-            compact strip so it doesn't push the beer stepper below the fold.
-            Pub only — there is nothing to map about a living room. */}
-        {pub ? (
-          <View style={styles.mapPubTop}>
-            <MapPubEntry
-              pubKey={cell}
-              pubName={pub.name}
-              info={pubInfoFromPub(pub)}
-              onRenamed={onPubRenamed}
-            />
-          </View>
-        ) : null}
+      <CoasterCard
+        count={count}
+        nounLabel={beerNoun(count)}
+        spentLabel={spentLabel}
+        sinceLabel={sinceLabel}
+        showReceipt={sessionDrinks.length > 0}
+        onOpenReceipt={() => setReceiptOpen(true)}
+        accessibilityLabel={
+          count > 0
+            ? cs.a11y.counterCoaster(beerCountLabel(count), spentLabel ?? undefined)
+            : cs.a11y.counterCoasterEmpty
+        }
+      />
 
-        {/* Hero */}
-        <Hero
-          count={count}
-          hasSessionDrinks={sessionDrinks.length > 0}
-          otherDrinkSummary={otherDrinkSummary}
-          totalCzk={totalCzk}
-          // Outside a pub the price is optional; a wallet line of "0 Kč" would
-          // claim knowledge we don't have — unknown stays unknown.
-          showSpent={!outsideContext || totalCzk > 0}
-          latestDrinkText={latestDrinkText}
-          reducedMotion={reducedMotion}
-          priceCurrency={priceCurrency}
-          onResume={resumable ? handleResume : undefined}
-          resumeSummary={resumeSummary}
-        />
+      <NudgeSlot nudge={nudge} />
 
-        {/* Weekly-race tie-in: projected countrywide rank + the post-log
-            "posun v žebříčku" toast. Renders nothing until a beer is counted. */}
-        <WeeklyRankChip sessionBeerCount={count} />
+      <CounterCta
+        label={cta.label}
+        subLabel={cta.subLabel}
+        onPress={cta.onPress}
+        accessibilityLabel={cta.a11y}
+      />
 
-        {checkInBeerName ? (
-          <View style={styles.checkInPrompt}>
-            <Pressable
-              onPress={() => setCheckInSheetOpen(true)}
-              style={({ pressed }) => [styles.checkInCta, pressed && styles.friendShareButtonPressed]}
-              accessibilityRole="button"
-            >
-              <BeerIcon size={17} color={Colors.stout} />
-              <Text style={styles.checkInCtaText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.beerCheckins.quickCta}
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setCheckInBeerName(null)}
-              style={({ pressed }) => [styles.checkInDismiss, pressed && styles.friendShareButtonPressed]}
-              accessibilityRole="button"
-            >
-              <Text style={styles.checkInDismissText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.beerCheckins.quickDismiss}
-              </Text>
-            </Pressable>
-          </View>
-        ) : null}
+      {/* "Ještě jedno" must never be the only visible way to log a drink: a
+          different beer, a shot or a Kofola is always one tap away, right here,
+          not hidden behind the overflow. */}
+      {showSecondary ? (
+        <CounterSecondary label={cs.counter.repeatOther} onPress={() => setPickOpen(true)} />
+      ) : null}
 
-        {/* Menu */}
-        {hasMenu ? (
-          <>
-            <Text style={styles.menuHeader} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {pub ? cs.counter.menuHeader : cs.counter.outsideMenuHeader}
-            </Text>
-            <View style={styles.menuList}>
-              {menuGroups.map((group) => (
-                <MenuCard
-                  key={group.key}
-                  name={group.name}
-                  variants={group.beers.map((beer) => ({
-                    beer,
-                    count: beerCounts.get(beerKey(beer)) ?? 0,
-                    onCount: () => handleTapBeer(beer),
-                    onDecrement: () => decrementBeer(beer),
-                    // Long-press edit rewrites the pub's community menu; the
-                    // outside list is session-derived, nothing to edit.
-                    onEdit: pub ? () => handleEditBeer(beer) : () => undefined,
-                  }))}
-                  priceCurrency={priceCurrency}
-                />
-              ))}
-            </View>
-            <Pressable
-              onPress={handleAddBeer}
-              style={styles.addBeerCard}
-              hitSlop={6}
-              accessibilityRole="button"
-              accessibilityLabel={cs.a11y.counterAddBeer}
-            >
-              <PlusIcon size={18} color={Colors.amber} />
-              <Text style={styles.addBeerText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.counter.addBeer}
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={handleBackdatePress}
-              style={({ pressed }) => [styles.backdateLink, pressed && styles.friendShareButtonPressed]}
-              hitSlop={6}
-              accessibilityRole="button"
-              accessibilityLabel={cs.counter.backdateTitle}
-            >
-              <HistoryIcon size={15} color={Colors.mutedText} />
-              <Text style={styles.backdateLinkText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.counter.backdateLink}
-              </Text>
-            </Pressable>
-          </>
-        ) : (
-          <View style={styles.emptyMenu}>
-            <Text style={styles.emptyMenuTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {pub ? cs.counter.emptyMenuTitle : cs.counter.outsideEmptyTitle}
-            </Text>
-            <Text style={styles.emptyMenuBody} maxFontSizeMultiplier={FontScaleCap.body}>
-              {pub ? cs.counter.emptyMenuBody : cs.counter.outsideEmptyBody}
-            </Text>
-            <View style={styles.emptyMenuButton}>
-              <GlowButton
-                label={pub ? cs.counter.emptyMenuCta : cs.counter.outsideEmptyCta}
-                onPress={handleAddBeer}
-                glow="soft"
-                icon={<PlusIcon size={20} color={Colors.stout} />}
-                accessibilityLabel={cs.a11y.counterAddBeer}
-              />
-            </View>
-          </View>
-        )}
+      <DrinkPickSheet
+        visible={pickOpen}
+        isPub={!!pub}
+        tonightRows={tonightRows}
+        menuRows={menuRows}
+        onCountRow={handlePickRow}
+        onEditRow={handleEditRow}
+        onAddBeer={() => runAfterSheetClose(handleAddBeer)}
+        onAddOther={() => runAfterSheetClose(handleAddOtherDrink)}
+        onClose={() => setPickOpen(false)}
+      />
 
-        <View style={styles.secondaryDrinkActions}>
-          <Pressable
-            onPress={handleAddOtherDrink}
-            style={({ pressed }) => [styles.secondaryDrinkButton, pressed && styles.friendShareButtonPressed]}
-            accessibilityRole="button"
-            accessibilityLabel={cs.counter.addOtherDrink}
-          >
-            <GlassWaterIcon size={17} color={Colors.foamMuted} />
-            <Text style={styles.secondaryDrinkText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.counter.addOtherDrink}
-            </Text>
-          </Pressable>
-          {pub ? (
-            <Pressable
-              onPress={() => setScanSourceVisible(true)}
-              disabled={scanningDrinks}
-              style={({ pressed }) => [styles.secondaryDrinkButton, (pressed || scanningDrinks) && styles.friendShareButtonPressed]}
-              accessibilityRole="button"
-              accessibilityLabel={cs.counter.scanDrinks}
-            >
-              <CameraIcon size={17} color={Colors.foamMuted} />
-              <Text style={styles.secondaryDrinkText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {scanningDrinks ? cs.counter.scanDrinksLoading : cs.counter.scanDrinks}
-              </Text>
-            </Pressable>
-          ) : null}
-        </View>
+      <ReceiptSheet
+        visible={receiptOpen}
+        startedAtLabel={startedAtLabel}
+        beerItems={receipt.beerItems}
+        otherItems={receipt.otherItems}
+        totalLabel={showSpent && totalCzk > 0 ? formatPrice(totalCzk, priceCurrency) : null}
+        onRemove={(item) => removeIdentity(item.key)}
+        onDone={() => runAfterSheetClose(handleDone)}
+        onClose={() => setReceiptOpen(false)}
+      />
 
-        {/* Secondary social actions. Mapping already lives near the top; these
-            remain lower so the first screen is not a stack of chores. The photo
-            pill drops into the diary capture flow with tonight's pub pre-tagged
-            from this session. */}
-        <View style={styles.pubActions}>
-          <Pressable
-            onPress={() => setPhotoCaptureOpen(true)}
-            style={({ pressed }) => [styles.friendShareButton, pressed && styles.friendShareButtonPressed]}
-            accessibilityRole="button"
-            accessibilityLabel={cs.a11y.counterPhotoCta}
-          >
-            <CameraIcon size={18} color={Colors.amber} />
-            <Text style={styles.friendShareText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.photoDiary.counterCta}
-            </Text>
-          </Pressable>
-          {pub ? (
-            <Pressable
-              onPress={() => void handleShareWithFriends()}
-              disabled={sharingWithFriends || broadcasted}
-              style={({ pressed }) => [
-                styles.friendShareButton,
-                (pressed || sharingWithFriends || broadcasted) && styles.friendShareButtonPressed,
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel={broadcasted ? cs.friends.counterAlreadyLive : cs.friends.shareHereShort}
-            >
-              {broadcasted ? (
-                <CheckIcon size={18} color={Colors.amber} />
-              ) : (
-                <BellRingIcon size={18} color={Colors.amber} />
-              )}
-              <Text style={styles.friendShareText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                {broadcasted ? cs.friends.counterAlreadyLive : cs.friends.shareHereShort}
-              </Text>
-            </Pressable>
-          ) : null}
-        </View>
-      </ScrollView>
+      <CounterMoreSheet
+        visible={moreOpen}
+        onClose={() => setMoreOpen(false)}
+        onDone={count > 0 ? () => runAfterSheetClose(handleDone) : undefined}
+        onPhoto={() => runAfterSheetClose(() => setPhotoCaptureOpen(true))}
+        onSticker={liveNight ? () => runAfterSheetClose(() => setStickerOpen(true)) : undefined}
+        onPingFriends={pub ? () => runAfterSheetClose(() => void handleShareWithFriends()) : undefined}
+        broadcasted={broadcasted}
+        onBackdate={() => runAfterSheetClose(handleBackdatePress)}
+        onScanMenu={pub ? () => runAfterSheetClose(() => setScanSourceVisible(true)) : undefined}
+        scanning={scanningDrinks}
+        onMapPub={pub ? () => runAfterSheetClose(() => setMapPubOpen(true)) : undefined}
+      />
 
       <BeerFormModal
         visible={formMode !== null}
@@ -1438,16 +1431,16 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
         }}
         onSubmit={handleFormSubmit}
         // Hidden in the backdate flow (the scan hands over to the contribute
-        // editor, which would silently drop the picked past timestamp) and
-        // outside a pub (there is no pub menu to fill).
+        // editor, which would drop the picked past timestamp) and outside a pub
+        // (there is no pub menu to fill).
         onScanMenu={backdateAt || !pub ? undefined : handleScanMenu}
       />
+
       <ScanMenuSheet
         visible={scanSourceVisible}
         onClose={() => setScanSourceVisible(false)}
         onPick={(source) => void runDrinkScan(source)}
       />
-      <BeerPhotoCaptureFlow open={photoCaptureOpen} onClose={() => setPhotoCaptureOpen(false)} />
       <ScannedDrinkPicker
         visible={scannedDrinks.length > 0}
         drinks={scannedDrinks}
@@ -1455,14 +1448,33 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
         onClose={() => setScannedDrinks([])}
         onSelect={handleSelectScannedDrink}
       />
-      {pub && checkInBeerName && checkInSheetOpen ? (
+      <BeerPhotoCaptureFlow open={photoCaptureOpen} onClose={() => setPhotoCaptureOpen(false)} />
+      {liveNight ? (
+        <ShareNightModal
+          visible={stickerOpen}
+          night={liveNight}
+          mode="live"
+          onClose={() => setStickerOpen(false)}
+        />
+      ) : null}
+      {pub ? (
+        <MapPubSheet
+          visible={mapPubOpen}
+          pubKey={cell ?? ''}
+          pubName={pub.name}
+          info={pubInfoFromPub(pub)}
+          onClose={() => setMapPubOpen(false)}
+          onRenamed={onPubRenamed}
+        />
+      ) : null}
+      {pub && cell && checkInBeerName && checkInSheetOpen ? (
         <BeerCheckInSheet
           visible={checkInSheetOpen}
           key={checkInBeerName}
           beerName={checkInBeerName}
           pub={pub}
           pubKey={cell}
-          visitClientId={isThisPubSession ? current?.clientId : null}
+          visitClientId={isThisSession ? current?.clientId : null}
           onClose={() => setCheckInSheetOpen(false)}
           onSubmitted={() => setCheckInBeerName(null)}
         />
@@ -1471,130 +1483,29 @@ function ActiveCounter({ place, onChangePlace, onPubRenamed, embedded }: ActiveC
   );
 }
 
-// ─── Hero ─────────────────────────────────────────────────────────────────────
-
-function Hero({
-  count,
-  hasSessionDrinks,
-  otherDrinkSummary,
-  totalCzk,
-  latestDrinkText,
-  reducedMotion,
-  priceCurrency,
-  showSpent = true,
-  onResume,
-  resumeSummary,
-}: {
-  count: number;
-  hasSessionDrinks: boolean;
-  otherDrinkSummary: string;
-  totalCzk: number;
-  latestDrinkText: string | null;
-  reducedMotion: boolean;
-  priceCurrency: PriceCurrency;
-  /** Hide the "Utraceno" pill when the total is genuinely unknown (outside a
-   *  pub with no prices entered) — unknown must not read as 0 Kč. */
-  showSpent?: boolean;
-  /** Resume a recent auto-completed evening — only shown when count === 0. */
-  onResume?: () => void;
-  /** Short "3 piva" recap of the resumable evening, for the hint line. */
-  resumeSummary?: string | null;
-}) {
-  if (count === 0 && !hasSessionDrinks) {
-    return (
-      <View style={styles.hero}>
-        <View style={[styles.heroEmptyIcon, amberGlow(14)]}>
-          <BeerIcon size={64} color={Colors.amber} />
-        </View>
-        <Text style={styles.heroEmptyTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {cs.counter.heroEmptyTitle}
-        </Text>
-        {onResume && (
-          <View style={styles.resumeWrap}>
-            <GlowButton
-              label={cs.counter.resumeEvening}
-              onPress={onResume}
-              glow="soft"
-              icon={<Undo2Icon size={20} color={Colors.stout} />}
-              accessibilityLabel={cs.a11y.counterResume}
-            />
-            {resumeSummary && (
-              <Text style={styles.resumeHint} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.counter.resumeHint(resumeSummary)}
-              </Text>
-            )}
-          </View>
-        )}
-      </View>
-    );
-  }
-
-  return (
-    <View
-      style={styles.hero}
-      accessible
-      accessibilityRole="text"
-      accessibilityLabel={cs.a11y.counterTotal(beerCountLabel(count), formatPrice(totalCzk, priceCurrency))}
-    >
-      <View style={styles.heroMetricFrame}>
-        <View style={styles.heroGlowBlob} pointerEvents="none">
-          <SoftGlow size={340} color={Colors.glow} opacity={0.42} />
-        </View>
-        <View style={[styles.heroCountGlow, amberGlowStrong(28)]}>
-          <Text style={styles.heroCount} maxFontSizeMultiplier={FontScaleCap.display}>
-            {count}
-          </Text>
-        </View>
-      </View>
-      <Text style={styles.heroNoun} maxFontSizeMultiplier={FontScaleCap.heading}>
-        {beerCountLabel(count).split(' ')[1]}
-      </Text>
-      {showSpent ? (
-        <View style={styles.spentPill}>
-          <Text style={styles.spentPillText} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.counter.totalSpent(formatPrice(totalCzk, priceCurrency))}
-          </Text>
-        </View>
-      ) : null}
-      {otherDrinkSummary ? (
-        <Text style={styles.otherDrinkSummary} maxFontSizeMultiplier={FontScaleCap.body}>
-          {otherDrinkSummary}
-        </Text>
-      ) : null}
-      {latestDrinkText && (
-        <Text style={styles.heroLastDrink} maxFontSizeMultiplier={FontScaleCap.body}>
-          {latestDrinkText}
-        </Text>
-      )}
-    </View>
-  );
-}
-
 // ─── Screen root ──────────────────────────────────────────────────────────────
 
 export default function CounterScreen({ embedded = false }: { embedded?: boolean } = {}) {
+  const router = useRouter();
   const { candidates, selected, selectPub, permissionState, requestPermission, loading, retry } =
     useNearbyPub();
   const [pickerOpen, setPickerOpen] = useState(false);
-  // "Mimo hospodu" mode. Restored from a live outside session so returning to
+  // "Mimo hospodu" mode, restored from a live outside session so returning to
   // the tab mid-evening lands back in it (useNearbyPub ignores ctx sessions).
   const [outsideContext, setOutsideContext] = useState<OutsidePlaceContext | null>(() => {
     const current = useTallyStore.getState().current;
     if (!current || current.drinks.length === 0) return null;
     return contextFromPubKey(current.pubKey);
   });
-  const hadActiveSessionOnOpen = React.useRef(
-    (useTallyStore.getState().current?.drinks.length ?? 0) > 0,
-  );
+  const hadActiveSessionOnOpen = useRef((useTallyStore.getState().current?.drinks.length ?? 0) > 0);
 
   useEffect(() => {
     void trackCounterTabOpened(hadActiveSessionOnOpen.current);
   }, []);
 
   // Active pub: ONLY an explicit selection (auto-pick within 120 m, a pinned
-  // session, or a manual pick). The old `?? candidates[0]` fallback silently
-  // attributed drinks to a pub up to 3 km away — when nothing is close enough,
-  // the user picks a place instead (NoPubScreen → picker).
+  // session, or a manual pick). We never silently attribute drinks to a pub the
+  // user might not be sitting in — the place chip asks instead.
   const activePub = outsideContext ? null : selected;
   const place: CounterPlace | null = useMemo(() => {
     if (outsideContext) return { kind: 'outside', context: outsideContext };
@@ -1607,537 +1518,136 @@ export default function CounterScreen({ embedded = false }: { embedded?: boolean
       ? geohash8(activePub.lat, activePub.lng)
       : null;
 
-  // One picker for every entry point: gates open it too (with no candidates it
-  // is just the "Mimo hospodu" sheet).
-  const picker = (
-    <PubPickerModal
-      visible={pickerOpen}
-      candidates={candidates}
-      selectedKey={activeKey}
-      onSelect={(pub) => {
-        setOutsideContext(null);
-        selectPub(pub);
-        setPickerOpen(false);
-      }}
-      onSelectOutside={(context) => {
-        setOutsideContext(context);
-        setPickerOpen(false);
-      }}
-      onClose={() => setPickerOpen(false)}
-    />
-  );
-
-  if (!place) {
-    if (permissionState !== 'granted') {
-      return (
-        <>
-          <PermissionScreen
-            permissionState={permissionState}
-            requestPermission={requestPermission}
-            onLogOutside={() => setOutsideContext('other')}
-            embedded={embedded}
-          />
-          {picker}
-        </>
-      );
-    }
-
-    if (loading) {
-      return <DetectingScreen embedded={embedded} />;
-    }
-
+  if (permissionState !== 'granted' && !outsideContext) {
     return (
       <>
-        <NoPubScreen
-          candidatesCount={candidates.length}
-          onPickPlace={() => setPickerOpen(true)}
+        <PermissionGate
+          permissionState={permissionState}
+          requestPermission={requestPermission}
           onLogOutside={() => setOutsideContext('other')}
-          onRetry={retry}
           embedded={embedded}
         />
-        {picker}
+        <PubPickerModal
+          visible={pickerOpen}
+          candidates={candidates}
+          selectedKey={activeKey}
+          onSelect={(pub) => {
+            setOutsideContext(null);
+            selectPub(pub);
+            setPickerOpen(false);
+          }}
+          onSelectOutside={(context) => {
+            setOutsideContext(context);
+            setPickerOpen(false);
+          }}
+          onClose={() => setPickerOpen(false)}
+        />
       </>
     );
   }
 
   return (
     <>
-      <ActiveCounter
+      <Tacek
         place={place}
+        unresolvedKind={loading ? 'detecting' : 'unknown'}
         onChangePlace={() => setPickerOpen(true)}
         onPubRenamed={(name) => {
           if (!activePub) return;
-          // Re-pin the renamed Pub so the header updates now, and keep the live
+          // Re-pin the renamed Pub so the chip updates now, and keep the live
           // evening's display name in step with it.
           selectPub({ ...activePub, name });
           useTallyStore.getState().renameCurrentPub(geohash8(activePub.lat, activePub.lng), name);
         }}
         embedded={embedded}
       />
-      {picker}
+      <PubPickerModal
+        visible={pickerOpen}
+        candidates={candidates}
+        selectedKey={activeKey}
+        onSelect={(pub) => {
+          setOutsideContext(null);
+          selectPub(pub);
+          setPickerOpen(false);
+        }}
+        onSelectOutside={(context) => {
+          setOutsideContext(context);
+          setPickerOpen(false);
+        }}
+        onRetry={retry}
+        onAddPub={() => {
+          setPickerOpen(false);
+          router.push('/add-pub');
+        }}
+        onClose={() => setPickerOpen(false)}
+      />
     </>
   );
 }
 
-// ─── Styles ─────────────────────────────────────────────────────────────────
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.stout },
-  flex: { flex: 1 },
-  centered: {
+  // The surface never scrolls: it is a fixed composition of four blocks, and the
+  // button must stay exactly where the thumb left it. Spacing runs on the
+  // 8-point grid: 12 between the button pair, 24 around the header.
+  surface: {
+    paddingHorizontal: 24,
+    gap: 12,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 44,
+    marginBottom: 8,
+  },
+  headerSpacer: { flex: 1, minWidth: Spacing.sm },
+  // Quiet on purpose: an outlined circle next to an outlined chip next to an
+  // amber button is three competing frames. This one is just a glyph.
+  moreButton: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pressedSoft: { opacity: 0.6 },
+
+  // — Permission gate —
+  gate: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 36,
     gap: Spacing.md,
   },
-
-  permIconWrap: { marginBottom: 4 },
-  bigTitle: {
+  gateIcon: { marginBottom: 4 },
+  gateTitle: {
     fontFamily: Fonts.display.extrabold,
     fontSize: 26,
     color: Colors.foam,
     textAlign: 'center',
     lineHeight: 32,
   },
-  body: {
+  gateBody: {
     fontFamily: Fonts.ui.regular,
     fontSize: 15,
     color: Colors.mutedText,
     textAlign: 'center',
     lineHeight: 22,
   },
-  permButtonWrap: { alignSelf: 'stretch', marginTop: Spacing.sm },
-  permSecondaryWrap: { alignSelf: 'stretch', marginTop: -Spacing.xs },
-  noPubAddLink: {
+  gateButton: { alignSelf: 'stretch', marginTop: Spacing.sm },
+  gateButtonSecondary: { alignSelf: 'stretch', marginTop: -Spacing.xs },
+  gateLink: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     marginTop: Spacing.xs,
-  },
-  noPubAddLinkText: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 14,
-    color: Colors.mutedText,
-  },
-  // — Header —
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: Spacing.lg,
-    paddingBottom: 6,
-  },
-  headerPub: {
-    flex: 1,
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 20,
-    color: Colors.foam,
-  },
-  changeButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout2,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  changeButtonText: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 13,
-    color: Colors.amber,
-  },
-
-  pubActions: {
-    marginTop: Spacing.lg,
-    gap: Spacing.sm,
-  },
-  mapPubTop: {
-    marginBottom: 6,
-  },
-  friendShareButton: {
-    minHeight: 46,
-    borderRadius: Radius.pill,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.stout2,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-  },
-  friendShareButtonPressed: {
-    opacity: 0.78,
-    transform: [{ scale: 0.99 }],
-  },
-  friendShareText: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 14,
-    color: Colors.foam,
-  },
-
-  scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: Spacing.lg,
-    paddingTop: 2,
-  },
-  // — Hero —
-  hero: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 238,
-    paddingTop: 8,
-    paddingBottom: 8,
-  },
-  heroEmptyIcon: {
-    marginBottom: Spacing.md,
-  },
-  heroEmptyTitle: {
-    fontFamily: Fonts.display.bold,
-    fontSize: 20,
-    color: Colors.foamMuted,
-    textAlign: 'center',
-    paddingHorizontal: Spacing.lg,
-  },
-  // Sized to the digit; the glow is an absolutely-centered sibling behind it so
-  // the halo stays symmetric around the number on every count.
-  heroMetricFrame: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'visible',
-  },
-  heroGlowBlob: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroCountGlow: {
-    paddingHorizontal: 14,
-    paddingTop: 6,
-    paddingBottom: 2,
-    overflow: 'visible',
-  },
-  heroCount: {
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 96,
-    // Keep the line box tall enough that the extrabold digit never clips at the
-    // top; the gap to "piv" is closed by the noun's negative margin instead, so
-    // we don't trade a bottom gap for a top crop.
-    lineHeight: 112,
-    color: Colors.amber,
-    includeFontPadding: false,
-  },
-  heroNoun: {
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 24,
-    color: Colors.foam,
-    // Pull up into the digit's empty descender/leading space (which has no
-    // glyph for a number) to tighten the number↔word gap without clipping.
-    marginTop: -22,
-  },
-  // The spent total lives in a contained pill so it reads as a deliberate
-  // stat chip rather than text floating under the hero.
-  spentPill: {
-    marginTop: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 7,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout2,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  spentPillText: {
-    fontFamily: Fonts.ui.bold,
-    fontSize: 16,
-    color: Colors.foamMuted,
-  },
-  heroLastDrink: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 13,
-    color: Colors.mutedText,
-    marginTop: 6,
-  },
-  otherDrinkSummary: {
-    marginTop: 7,
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 13,
-    color: Colors.foamMuted,
-  },
-  // "Dopito" — a compact session chip in the header. Same outline treatment as
-  // "Změnit" (stout2 fill + border + amber label) so the two read as a matched
-  // pair of secondary actions, never competing with the body's counting.
-  doneButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout2,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  doneButtonPressed: {
-    opacity: 0.7,
-  },
-  doneButtonText: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 13,
-    color: Colors.amber,
-  },
-  // Resume CTA under the empty-state title when a recent evening can continue.
-  resumeWrap: {
-    alignSelf: 'stretch',
-    marginTop: Spacing.lg,
-    paddingHorizontal: Spacing.lg,
-    gap: Spacing.sm,
-  },
-  resumeHint: {
-    fontFamily: Fonts.ui.regular,
-    fontSize: 13,
-    color: Colors.mutedText,
-    textAlign: 'center',
-    lineHeight: 19,
-  },
-  checkInPrompt: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    marginTop: Spacing.md,
-  },
-  checkInCta: {
-    flex: 1,
-    minHeight: 46,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.xs,
-    paddingHorizontal: Spacing.md,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.amber,
-  },
-  checkInCtaText: {
-    fontFamily: Fonts.display.bold,
-    fontSize: 14,
-    color: Colors.stout,
-  },
-  checkInDismiss: {
-    minHeight: 46,
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.md,
-    borderRadius: Radius.pill,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.stout2,
-  },
-  checkInDismissText: {
-    fontFamily: Fonts.display.bold,
-    fontSize: 13,
-    color: Colors.foamMuted,
-  },
-
-  // — Menu —
-  menuHeader: {
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 18,
-    color: Colors.foam,
-    marginTop: 12,
-    marginBottom: 8,
-  },
-  menuList: {
-    gap: 10,
-  },
-  menuCard: {
-    backgroundColor: Colors.stout2,
-    borderRadius: Radius.card,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 8,
-  },
-  menuCardCounted: {
-    borderColor: Colors.amber,
-  },
-  menuCardPressed: {
-    opacity: 0.85,
-  },
-  menuCardName: {
-    fontFamily: Fonts.display.bold,
-    fontSize: 17,
-    color: Colors.foam,
-  },
-  menuVariants: {
-    marginTop: 4,
-  },
-  menuVariantRow: {
-    minHeight: 48,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  menuVariantRowDivided: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(Colors.border, 0.55),
-  },
-  menuVariantMeta: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 6,
-  },
-  // Serving size as a small amber tag so the 0,3/0,5 choice pops before the
-  // price when both pours sit on one card.
-  menuVariantVolumeChip: {
-    minWidth: 48,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout3,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.35),
-    alignItems: 'center',
-  },
-  menuVariantVolume: {
-    fontFamily: Fonts.display.bold,
-    fontSize: 13,
-    color: Colors.amber,
-  },
-  menuVariantPrice: {
-    flexShrink: 1,
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 15,
-    color: Colors.foamMuted,
-  },
-  menuCardMetaMissing: {
-    color: Colors.mutedText,
-    fontStyle: 'italic',
-  },
-  // — Per-beer stepper (− value +) —
-  stepper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  countBadge: {
-    minWidth: 40,
-    height: 40,
-    paddingHorizontal: 10,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.amber,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  countBadgeText: {
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 18,
-    color: Colors.stout,
-  },
-  stepButton: {
-    width: 40,
-    height: 40,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout3,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // The plus carries an amber outline so it reads as the primary "+1" action;
-  // the muted minus sits quietly beside the count so removing never feels like
-  // the headline gesture.
-  stepButtonPlus: {
-    borderColor: Colors.amber,
-    backgroundColor: withAlpha(Colors.amber, 0.14),
-  },
-  stepButtonMinus: {
-    borderColor: Colors.border,
-  },
-  stepButtonPressed: {
-    opacity: 0.7,
-  },
-  addBeerCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 16,
-    marginTop: 10,
-    borderRadius: Radius.card,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderStyle: 'dashed',
-  },
-  addBeerText: {
-    fontFamily: Fonts.ui.bold,
-    fontSize: 15,
-    color: Colors.amber,
-  },
-  backdateLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: 10,
-    paddingVertical: 8,
-  },
-  backdateLinkText: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 13,
-    color: Colors.mutedText,
-  },
-  secondaryDrinkActions: {
-    marginTop: Spacing.lg,
-    gap: 4,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Colors.border,
-    paddingTop: Spacing.sm,
-  },
-  secondaryDrinkButton: {
     minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: Spacing.md,
   },
-  secondaryDrinkText: {
+  gateLinkText: {
     fontFamily: Fonts.ui.semibold,
     fontSize: 14,
-    color: Colors.foamMuted,
-  },
-
-  // — Empty menu —
-  emptyMenu: {
-    alignItems: 'center',
-    gap: Spacing.md,
-    paddingTop: Spacing.md,
-    paddingHorizontal: Spacing.sm,
-  },
-  emptyMenuTitle: {
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 22,
-    color: Colors.foam,
-    textAlign: 'center',
-    lineHeight: 28,
-    alignSelf: 'stretch',
-  },
-  emptyMenuBody: {
-    fontFamily: Fonts.ui.regular,
-    fontSize: 15,
     color: Colors.mutedText,
-    textAlign: 'center',
-    lineHeight: 23,
-    alignSelf: 'center',
-    maxWidth: 320,
-  },
-  emptyMenuButton: {
-    alignSelf: 'stretch',
-    marginTop: Spacing.sm,
   },
 });
