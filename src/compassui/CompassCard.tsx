@@ -23,7 +23,7 @@
  * and whether pub names are hidden.
  */
 
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 
 import { ChevronRightIcon } from '@/components/shared/IconGlyph';
@@ -32,9 +32,25 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea } from '@/theme/layout';
 
-/** Vertical room the readout (numeral + unit caption) needs under the dial. */
-const READOUT_RESERVE = 96;
-const DIAL_MIN = 180;
+/**
+ * How much of the card's body the distance readout gets. A share, not a fixed
+ * number: a fixed 96 left the dial 40pt too tall and clipped its top off on an
+ * iPhone SE, and a fixed 140 then dropped "METRŮ" on top of the pub name. The
+ * dial takes what is left, so the pair always fits whatever card it is in.
+ */
+function readoutReserve(bodyHeight: number): number {
+  return Math.max(64, Math.min(140, Math.round(bodyHeight * 0.38)));
+}
+
+/** Room inside the reserve for the letterspaced unit caption under the numeral. */
+const CAPTION_ROOM = 20;
+
+/**
+ * A floor, not a target. It must stay well under what a short phone can give,
+ * or the clamp itself becomes the overflow: `Math.max` happily hands back a
+ * size the card has no room for.
+ */
+const DIAL_MIN = 110;
 const DIAL_MAX = 300;
 
 /** The numeral shrinks with its digit count so "1000" never crowds the card. */
@@ -94,11 +110,14 @@ export function CompassCard({
   // Last size handed to the parent. A ref, not state: re-reporting the same
   // number would bounce layout -> setState -> layout forever.
   const lastDialSizeRef = useRef(0);
+  // The body's measured height also drives the numeral, so it has to be state.
+  const [bodyHeight, setBodyHeight] = useState(0);
 
   const handleBodyLayout = useCallback(
     (event: LayoutChangeEvent) => {
       const { width, height } = event.nativeEvent.layout;
-      const available = Math.min(width, height - READOUT_RESERVE);
+      setBodyHeight(height);
+      const available = Math.min(width, height - readoutReserve(height));
       const next = Math.round(Math.max(DIAL_MIN, Math.min(DIAL_MAX, available)));
       if (next === lastDialSizeRef.current) return;
       lastDialSizeRef.current = next;
@@ -107,7 +126,19 @@ export function CompassCard({
     [onDialSize],
   );
 
-  const numeralSize = distanceValue !== null ? distanceFontSize(distanceValue) : 0;
+  // Both the dial and the numeral are sized FROM the card (§5.3). Fixed sizes
+  // were what pushed "METRŮ" on top of the pub name on an iPhone SE: the dial
+  // and an 88pt numeral together simply do not fit a 667pt screen, so the
+  // readout takes a share of the card and the numeral fits that share.
+  const numeralSize =
+    distanceValue === null
+      ? 0
+      : bodyHeight > 0
+        ? Math.min(
+            distanceFontSize(distanceValue),
+            Math.max(32, Math.floor((readoutReserve(bodyHeight) - CAPTION_ROOM) / 1.24)),
+          )
+        : distanceFontSize(distanceValue);
   const hasFooter = pubName !== null || hidden;
 
   return (

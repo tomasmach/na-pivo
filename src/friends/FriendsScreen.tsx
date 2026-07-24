@@ -1,21 +1,14 @@
 /**
- * FriendsScreen — the "Parta 3.0" surface (UX spec §2–§5).
+ * "Parta" in the Tácek composition.
  *
- * One living table you watch fill. The section order forks on the graph state,
- * computed once from the dashboard:
- *   - Cold start (0 friends, 0 incoming requests): the consumer sections are
- *     suppressed and the growth block ("SEŽEŇ PARTU") + a "CO TĚ ČEKÁ" teaser
- *     are elevated — the whole screen is the add-your-first-friends hook.
- *   - Active (≥1 friend OR an incoming request): hero → OfflineBanner →
- *     Compose CTA → MyActivityCard → PLÁN NA DNES → TEĎ NA PIVU → ČEKAJÍ NA
- *     TEBE → ŽEBŘÍČEK → KÁMOŠI → CINKLO V PARTĚ → PŘIDAT DO PARTY.
- *   - Offline: hydrate the last dashboard snapshot on mount so an offline cold
- *     start shows the cached graph behind the OfflineBanner instead of a blank
- *     tab; a failed live fetch keeps the last-known dashboard rendered.
+ * The social graph, offline snapshot, queues, focus refresh, push hand-off and
+ * bounded live poll are the same as before. This file only changes where their
+ * existing surfaces live:
  *
- * The screen is a single ScrollView with an amber RefreshControl; every top-level
- * group is wrapped in <Reveal> for a mount-driven staggered entrance, numbered by
- * a per-render counter so absent sections don't leave gaps.
+ *   1. a quiet party chip and the single overflow door,
+ *   2. one table card and one chronological stream,
+ *   3. one fixed nudge slot,
+ *   4. one amber action (plus the quiet add-friend twin for an existing party).
  */
 
 import {
@@ -29,9 +22,7 @@ import {
 import {
   ActivityIndicator,
   AppState,
-  KeyboardAvoidingView,
-  Linking,
-  Platform,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -42,93 +33,132 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter, type Href } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { showAppDialog } from '@/components/shared/AppDialog';
+import { BeerTagChips } from '@/components/shared/BeerTagChips';
 import {
-  DEFAULT_FRIEND_SOCIAL_SETTINGS,
-  fetchFriendsDashboard,
-  fetchFriendsLive,
-  markFriendNotificationsRead,
-  respondFriendRequest,
-  type FriendNotification,
-  type FriendsDashboard,
-} from '@/data/friendsClient';
+  BellRingIcon,
+  BeerIcon,
+  CameraIcon,
+  CheckIcon,
+  EllipsisIcon,
+  HouseIcon,
+  QrCodeIcon,
+  SettingsIcon,
+  TrophyIcon,
+  Undo2Icon,
+  UsersIcon,
+  XIcon,
+} from '@/components/shared/IconGlyph';
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
+import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
+import { CounterCta, CounterSecondary } from '@/counter/CounterCta';
+import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import {
   fetchBeerCheckInFeed,
   type BeerCheckIn,
 } from '@/data/beerCheckinsClient';
+import {
+  DEFAULT_FRIEND_SOCIAL_SETTINGS,
+  endFriendPubActivity,
+  fetchFriendsDashboard,
+  fetchFriendsLive,
+  markFriendNotificationsRead,
+  respondFriendRequest,
+  respondToActivity,
+  type FriendNotification,
+  type FriendProfile,
+  type FriendPubActivity,
+  type FriendsDashboard,
+  type Friendship,
+} from '@/data/friendsClient';
+import {
+  enqueueFriendOp,
+  isRetriableFriendError,
+} from '@/data/friendsQueue';
 import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
-import { PartaPhotoStrip } from '@/photos/PartaPhotoStrip';
-import { BeerTagChips } from '@/components/shared/BeerTagChips';
-import { GlowButton } from '@/components/shared/GlowButton';
-import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import {
-  BellRingIcon,
-  BeerIcon,
-  CheckIcon,
-  ChevronRightIcon,
-  EyeOffIcon,
-  FlameIcon,
-  SettingsIcon,
-  TrophyIcon,
-  UsersIcon,
-  XIcon,
-} from '@/components/shared/IconGlyph';
+  fetchLeaderboard,
+  type Leaderboard,
+} from '@/data/leaderboardsClient';
+import {
+  fetchPhotoContestTeaser,
+  type PhotoContestSnapshot,
+} from '@/data/photoContestClient';
 import { cs } from '@/i18n/cs';
+import { PartaPhotoStrip } from '@/photos/PartaPhotoStrip';
 import {
+  selectIsSignedIn,
   selectNeedsNickname,
   selectNickname,
   useAccountStore,
 } from '@/stores/accountStore';
+import { useContestResultsStore } from '@/stores/contestResultsStore';
 import { usePartaSignalStore } from '@/stores/partaSignalStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { registerFriendPush, ensureFriendPushRegisteredIfGranted } from '@/notifications/friendPush';
+import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
-import { useToastStore } from '@/stores/toastStore';
 import { formatPrice } from '@/utils/currency';
+import {
+  ensureFriendPushRegisteredIfGranted,
+  registerFriendPush,
+} from '@/notifications/friendPush';
 
 import { AddFriendTools } from './AddFriendTools';
 import CheersPill from './CheersPill';
 import CodeSheet from './CodeSheet';
 import ComposeSheet from './ComposeSheet';
 import FriendActiveCard from './FriendActiveCard';
+import { FriendListRow } from './FriendListRow';
 import { FriendMini, friendDisplayName } from './FriendMini';
 import FriendSettingsSheet from './FriendSettingsSheet';
-import FriendsSkeleton from './FriendsSkeleton';
+import { GoingRoster } from './GoingRoster';
 import HairlineRow from './HairlineRow';
-import { LeaderboardRow } from './LeaderboardRow';
-import LiveDot from './LiveDot';
 import MyActivityCard from './MyActivityCard';
-import OfflineBanner from './OfflineBanner';
+import { PartyCard } from './PartyCard';
 import PlanCard from './PlanCard';
-import PushOptInStrip from './PushOptInStrip';
-import Reveal from './Reveal';
-import SectionHeader from './SectionHeader';
-import StreakBadge from './StreakBadge';
-import { RankTeaser } from '@/leaderboards/RankTeaser';
-import { ContestTeaser } from '@/photos/ContestTeaser';
-import { VycepTeaser } from '@/vycep/VycepTeaser';
+import { useFriendSafety } from './friendSafety';
 
-/** Notification kinds whose feed row opens the actor's friend profile (§F3). */
-const PROFILE_FEED_KINDS = new Set(['friend_accepted', 'friend_cheers']);
-/** Bounded poll cadence while Parta is focused AND something is live (§D2). */
 const LIVE_POLL_MS = 35000;
-
-/** Leaderboard rows shown before the "+N dalších" cut (my row is always pinned). */
-const LEADERBOARD_CAP = 8;
+const SHEET_DISMISS_MS = 260;
 const ROUND_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
-/** Notification kinds that point at an activity worth a one-tap cheer (§C3). */
+const PROFILE_FEED_KINDS = new Set(['friend_accepted', 'friend_cheers']);
 const REACTABLE_FEED_KINDS = new Set(['friend_at_pub', 'friend_rsvp']);
 
-/** Short cs-CZ "29. 6. 23:45" stamp for the notification feed. */
+interface BeerFeedItem {
+  key: string;
+  checkIns: BeerCheckIn[];
+}
+
+type StreamItem =
+  | { key: string; kind: 'plan'; at: number; activity: FriendPubActivity; mine: boolean }
+  | { key: string; kind: 'live'; at: number; activity: FriendPubActivity }
+  | { key: string; kind: 'beer'; at: number; item: BeerFeedItem }
+  | { key: string; kind: 'notification'; at: number; notification: FriendNotification }
+  | { key: string; kind: 'request'; at: number; request: Friendship }
+  | {
+      key: string;
+      kind: 'friend';
+      at: number;
+      friend: FriendProfile;
+      stats: FriendsDashboard['friendStats'][string];
+    };
+
+function timestamp(value: string | null | undefined): number {
+  if (!value) return 0;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function timeLabel(iso: string): string {
-  const ms = Date.parse(iso);
-  if (!Number.isFinite(ms)) return '';
-  return new Date(ms).toLocaleString('cs-CZ', {
+  const parsed = timestamp(iso);
+  if (parsed === 0) return '';
+  return new Date(parsed).toLocaleString('cs-CZ', {
     day: 'numeric',
     month: 'numeric',
     hour: '2-digit',
@@ -136,9 +166,13 @@ function timeLabel(iso: string): string {
   });
 }
 
-interface BeerFeedItem {
-  key: string;
-  checkIns: BeerCheckIn[];
+function planTimeLabel(iso: string): string {
+  const parsed = timestamp(iso);
+  if (parsed === 0) return '';
+  return new Date(parsed).toLocaleTimeString('cs-CZ', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 function groupBeerFeed(checkIns: BeerCheckIn[]): BeerFeedItem[] {
@@ -157,11 +191,6 @@ function groupBeerFeed(checkIns: BeerCheckIn[]): BeerFeedItem[] {
   return order.map((key) => ({ key, checkIns: groups.get(key) ?? [] }));
 }
 
-/**
- * Icon-only tap target shared by the accept / decline / add / remove / ghost
- * actions: ROUND_HIT_SLOP, button role, and the opacity dip on press all live
- * here so the press feedback stays consistent in one place.
- */
 function IconButton({
   onPress,
   accessibilityLabel,
@@ -189,320 +218,316 @@ function IconButton({
   );
 }
 
-/** Crafted empty strip: icon + one organic line on bare stout, zero amber. */
-function EmptyStrip({ icon, text }: { icon: ReactNode; text: string }) {
-  return (
-    <View style={styles.emptyStrip}>
-      <View
-        importantForAccessibility="no"
-        accessibilityElementsHidden
-        pointerEvents="none"
-      >
-        {icon}
-      </View>
-      <Text
-        style={styles.emptyStripText}
-        numberOfLines={3}
-        maxFontSizeMultiplier={FontScaleCap.body}
-      >
-        {text}
-      </Text>
-    </View>
-  );
-}
-
-/** One line of the cold-start "CO TĚ ČEKÁ" teaser (icon + muted line). */
-function TeaserLine({ icon, text }: { icon: ReactNode; text: string }) {
-  return (
-    <View style={styles.teaserLine}>
-      <View importantForAccessibility="no" accessibilityElementsHidden pointerEvents="none">
-        {icon}
-      </View>
-      <Text style={styles.teaserText} maxFontSizeMultiplier={FontScaleCap.body}>
-        {text}
-      </Text>
-    </View>
-  );
-}
-
-type PartyPulseTone = 'quiet' | 'live' | 'mine';
-
-function PartyPulsePanel({
-  tone,
-  label,
+function SheetScaffold({
+  visible,
   title,
-  body,
-  friendCount,
-  streakLabel,
-  onCompose,
+  onClose,
+  children,
+  keyboardAware = false,
 }: {
-  tone: PartyPulseTone;
-  label: string;
+  visible: boolean;
   title: string;
-  body: string;
-  friendCount: number;
-  streakLabel: string;
-  onCompose?: () => void;
+  onClose: () => void;
+  children: ReactNode;
+  keyboardAware?: boolean;
 }) {
-  const isLive = tone === 'live';
-  const isMine = tone === 'mine';
-  const canCompose = onCompose != null;
+  const insets = useSafeAreaInsets();
+  const content = keyboardAware ? (
+    <KeyboardAwareScrollView
+      style={styles.sheetList}
+      contentContainerStyle={styles.sheetListContent}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+    >
+      {children}
+    </KeyboardAwareScrollView>
+  ) : (
+    <ScrollView
+      style={styles.sheetList}
+      contentContainerStyle={styles.sheetListContent}
+      showsVerticalScrollIndicator={false}
+    >
+      {children}
+    </ScrollView>
+  );
 
   return (
-    <View
-      style={[
-        styles.pulseCard,
-        isLive && styles.pulseCardLive,
-        isMine && styles.pulseCardMine,
-      ]}
+    <Modal
+      visible={visible}
+      transparent
+      statusBarTranslucent
+      presentationStyle="overFullScreen"
+      animationType="fade"
+      onRequestClose={onClose}
     >
-      <View style={styles.pulseTopRow}>
-        <View
-          style={[
-            styles.pulseIconDisk,
-            (isLive || isMine) && styles.pulseIconDiskHot,
-          ]}
-          importantForAccessibility="no"
+      <View style={styles.sheetBackdrop}>
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
           accessibilityElementsHidden
-          pointerEvents="none"
-        >
-          {isLive || isMine ? (
-            <BeerIcon size={20} color={Colors.stout} />
-          ) : (
-            <BellRingIcon size={20} color={Colors.amberLight} />
-          )}
-        </View>
-        <Text
-          style={[
-            styles.pulseLabel,
-            (isLive || isMine) && styles.pulseLabelHot,
-          ]}
-          numberOfLines={1}
-          maxFontSizeMultiplier={FontScaleCap.body}
-        >
-          {label}
-        </Text>
-        {isLive || isMine ? <LiveDot size={7} /> : null}
-        <View
-          style={styles.pulseSignal}
           importantForAccessibility="no"
-          accessibilityElementsHidden
-          pointerEvents="none"
-        >
-          <View
-            style={[
-              styles.pulseSignalBar,
-              (isLive || isMine) && styles.pulseSignalBarHot,
-            ]}
-          />
-          <View
-            style={[
-              styles.pulseSignalBar,
-              styles.pulseSignalBarMid,
-              (isLive || isMine) && styles.pulseSignalBarHot,
-            ]}
-          />
-          <View
-            style={[
-              styles.pulseSignalBar,
-              styles.pulseSignalBarTall,
-              (isLive || isMine) && styles.pulseSignalBarHot,
-            ]}
-          />
+        />
+        <View style={[styles.sheetCardWrap, { marginBottom: -insets.bottom }]}>
+          <Pressable
+            style={[styles.sheetCard, { paddingBottom: insets.bottom + Spacing.lg }]}
+            onPress={() => undefined}
+          >
+            <View style={styles.sheetGrabber} />
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {title}
+              </Text>
+              <Pressable
+                onPress={onClose}
+                style={({ pressed }) => [styles.sheetClose, pressed && styles.dim]}
+                accessibilityRole="button"
+                accessibilityLabel={cs.a11y.counterCloseModal}
+              >
+                <XIcon size={20} color={Colors.foamMuted} />
+              </Pressable>
+            </View>
+            {content}
+          </Pressable>
         </View>
       </View>
+    </Modal>
+  );
+}
 
-      <Text
-        style={styles.pulseTitle}
-        numberOfLines={2}
-        maxFontSizeMultiplier={FontScaleCap.heading}
-      >
-        {title}
+function AddFriendSheet({
+  visible,
+  hasIdentity,
+  needsNickname,
+  onOpenCode,
+  onChanged,
+  onClose,
+}: {
+  visible: boolean;
+  hasIdentity: boolean;
+  needsNickname: boolean;
+  onOpenCode: () => void;
+  onChanged: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <SheetScaffold
+      visible={visible}
+      title={cs.friends.growthHeader}
+      onClose={onClose}
+      keyboardAware
+    >
+      <AddFriendTools
+        hasIdentity={hasIdentity}
+        needsNickname={needsNickname}
+        onOpenCode={onOpenCode}
+        onChanged={onChanged}
+        showSearch
+      />
+    </SheetScaffold>
+  );
+}
+
+function RosterBlock({ activity, mine }: { activity: FriendPubActivity; mine: boolean }) {
+  const ownerIncluded = mine ? 0 : 1;
+  const profiles = mine
+    ? activity.responses.goingProfiles
+    : [activity.account, ...activity.responses.goingProfiles.filter((p) => p.id !== activity.account.id)];
+
+  return (
+    <View style={styles.rosterBlock}>
+      <Text style={styles.rosterPub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
+        {activity.name}
       </Text>
-      <Text
-        style={styles.pulseBody}
-        numberOfLines={2}
-        maxFontSizeMultiplier={FontScaleCap.body}
-      >
-        {body}
-      </Text>
-
-      <View style={styles.pulseFooter}>
-        <View style={styles.pulseMetrics}>
-          <View style={styles.pulseMetric}>
-            <UsersIcon size={14} color={Colors.mutedText} />
-            <Text style={styles.pulseMetricText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.friends.pulseFriendCount(friendCount)}
-            </Text>
-          </View>
-          <View style={styles.pulseMetric}>
-            <FlameIcon
-              size={14}
-              color={streakLabel === cs.friends.streakEmpty ? Colors.mutedText : Colors.amber}
-            />
-            <Text style={styles.pulseMetricText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {streakLabel}
-            </Text>
-          </View>
-        </View>
-
-        {canCompose ? (
-          <View style={styles.pulseCta}>
-            <GlowButton
-              label={isLive ? cs.friends.pulseJoinCta : cs.friends.composeOpen}
-              onPress={onCompose}
-              variant={isLive ? 'secondary' : 'primary'}
-              glow={isLive ? 'none' : 'soft'}
-              height={52}
-              icon={<BellRingIcon size={18} color={isLive ? Colors.amber : Colors.stout} />}
-            />
-          </View>
-        ) : null}
-      </View>
+      <GoingRoster
+        profiles={profiles}
+        goingCount={activity.responses.going + ownerIncluded}
+        maybeCount={activity.responses.maybe}
+        cantCount={activity.responses.cant}
+        size="standard"
+        surfaceColor={Colors.stout2}
+        iAmGoing={mine || activity.myResponse === 'going'}
+        isMyCard={mine}
+      />
     </View>
   );
 }
 
-function SectionPanel({
-  children,
-  hot = false,
+function RosterSheet({
+  visible,
+  dashboard,
+  stale,
+  onReload,
+  onClose,
 }: {
-  children: ReactNode;
-  hot?: boolean;
+  visible: boolean;
+  dashboard: FriendsDashboard | null;
+  stale: boolean;
+  onReload: () => void;
+  onClose: () => void;
 }) {
-  return <View style={[styles.sectionPanel, hot && styles.sectionPanelHot]}>{children}</View>;
+  const activities = dashboard
+    ? [
+        ...(dashboard.myPlan ? [{ activity: dashboard.myPlan, mine: true }] : []),
+        ...dashboard.activeFriends.map((activity) => ({ activity, mine: false })),
+        ...dashboard.plans.map((activity) => ({ activity, mine: false })),
+      ]
+    : [];
+
+  return (
+    <SheetScaffold visible={visible} title={cs.friends.ctaWhoIsComing} onClose={onClose}>
+      {dashboard?.myActiveActivity ? (
+        <MyActivityCard
+          activity={dashboard.myActiveActivity}
+          stale={stale}
+          onEnded={() => {
+            onReload();
+            onClose();
+          }}
+        />
+      ) : null}
+      {activities.map(({ activity, mine }) => (
+        <RosterBlock key={`${mine ? 'mine' : 'friend'}:${activity.id}`} activity={activity} mine={mine} />
+      ))}
+      {!dashboard?.myActiveActivity && activities.length === 0 ? (
+        <Text style={styles.sheetEmpty} maxFontSizeMultiplier={FontScaleCap.body}>
+          {cs.friends.rosterEmpty}
+        </Text>
+      ) : null}
+    </SheetScaffold>
+  );
 }
 
 export default function FriendsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const showToast = useToastStore((s) => s.show);
+  const showToast = useToastStore((state) => state.show);
 
   const [dashboard, setDashboard] = useState<FriendsDashboard | null>(null);
   const [beerFeed, setBeerFeed] = useState<BeerCheckIn[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  // Distinct from `dashboard`: a failed fetch must never read as "no friends".
   const [loadError, setLoadError] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [codeVisible, setCodeVisible] = useState(false);
   const [composeVisible, setComposeVisible] = useState(false);
-  const [showAllBoard, setShowAllBoard] = useState(false);
-  // Push opt-in strip: a system-denied enable collapses it to the settings hint.
-  const [pushDenied, setPushDenied] = useState(false);
-  // Focus gate for the bounded live poll (Parta is a persistent tab).
+  const [addFriendVisible, setAddFriendVisible] = useState(false);
+  const [rosterVisible, setRosterVisible] = useState(false);
+  const [moreVisible, setMoreVisible] = useState(false);
   const [focused, setFocused] = useState(false);
-  // Bumped per dashboard load so the photo strip refetches in lockstep.
   const [photoFeedKey, setPhotoFeedKey] = useState(0);
+  const [weeklyBoard, setWeeklyBoard] = useState<Leaderboard | null>(null);
+  const [contestSnapshot, setContestSnapshot] = useState<PhotoContestSnapshot | null>(null);
   const [respondingRequestActions, setRespondingRequestActions] = useState<
     Record<string, 'accept' | 'decline'>
   >({});
 
-  // Identity: the growth block needs a nickname before a QR/code makes sense.
   const nickname = useAccountStore(selectNickname);
   const needsNickname = useAccountStore(selectNeedsNickname);
+  const isSignedIn = useAccountStore(selectIsSignedIn);
   const hasIdentity = nickname != null;
 
-  const friendPushEnabled = useSettingsStore((s) => s.friendPushEnabled);
-  const friendPushPrompted = useSettingsStore((s) => s.friendPushPrompted);
-  const setFriendPushPrompted = useSettingsStore((s) => s.setFriendPushPrompted);
-  const priceCurrency = useSettingsStore((s) => s.priceCurrency);
+  const friendPushEnabled = useSettingsStore((state) => state.friendPushEnabled);
+  const friendPushPrompted = useSettingsStore((state) => state.friendPushPrompted);
+  const setFriendPushPrompted = useSettingsStore((state) => state.setFriendPushPrompted);
+  const priceCurrency = useSettingsStore((state) => state.priceCurrency);
+
+  const lastSeenResultsId = useContestResultsStore(
+    (state) => state.lastSeenResultsContestId,
+  );
+  const ingestContestSnapshot = useContestResultsStore((state) => state.ingestSnapshot);
+  const markContestResultsSeen = useContestResultsStore((state) => state.markResultsSeen);
 
   const mountedRef = useRef(true);
+  const loadGenRef = useRef(0);
+  const loadAbortRef = useRef<AbortController | null>(null);
+  const settingsOverrideRef = useRef<FriendsDashboard['settings'] | null>(null);
+  const sheetActionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const requestsYRef = useRef(0);
+  const activeYRef = useRef(0);
+  const quickRsvpRef = useRef(false);
+  const endingBroadcastRef = useRef(false);
+
   useEffect(
     () => () => {
       mountedRef.current = false;
+      loadAbortRef.current?.abort();
+      if (sheetActionTimerRef.current) clearTimeout(sheetActionTimerRef.current);
     },
     [],
   );
 
-  const settingsOverrideRef = useRef<FriendsDashboard['settings'] | null>(null);
-  // Race guard: an out-of-order reload must never clobber a fresher one. Each
-  // load bumps the generation and aborts the previous in-flight fetch (§D2).
-  const loadGenRef = useRef(0);
-  const loadAbortRef = useRef<AbortController | null>(null);
-
-  // Scroll-to-target plumbing for push-tap / feed-row routing (§F3).
-  const scrollRef = useRef<ScrollView>(null);
-  const requestsYRef = useRef(0);
-  const activeYRef = useRef(0);
   const scrollToOffset = useCallback((y: number) => {
     scrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
   }, []);
 
   const load = useCallback(
     async (mode: 'initial' | 'refresh' | 'silent' = 'silent') => {
-      const gen = ++loadGenRef.current;
+      const generation = ++loadGenRef.current;
       loadAbortRef.current?.abort();
       const controller = new AbortController();
       loadAbortRef.current = controller;
+
       if (mode === 'refresh') setRefreshing(true);
       setPhotoFeedKey((key) => key + 1);
+
       const beerFeedPromise = fetchBeerCheckInFeed(controller.signal);
       const next = await fetchFriendsDashboard(controller.signal);
       if (!mountedRef.current) return;
-      // A newer load superseded this one → skip the (now stale) dashboard/badge
-      // writes, but ALWAYS clear the spinner/skeleton this load owns below —
-      // otherwise a superseded pull-to-refresh or initial load spins forever.
-      if (gen === loadGenRef.current) {
+
+      if (generation === loadGenRef.current) {
         if (next) {
           const override = settingsOverrideRef.current;
           setDashboard(override ? { ...next, settings: override } : next);
           setLoadError(false);
+
           const willMarkRead =
             next.notifications.length > 0 && (mode === 'initial' || mode === 'refresh');
           if (willMarkRead) {
-            void markFriendNotificationsRead(next.notifications.map((n) => n.id));
+            void markFriendNotificationsRead(next.notifications.map((item) => item.id));
           }
-          // Feed the ambient tab badge from the freshest server truth. Marking read
-          // now means the unread dot clears in lockstep (no badge desync/blink).
           usePartaSignalStore.getState().setSignal({
             pendingRequests: next.incomingRequests.length,
             unread: willMarkRead ? 0 : next.unreadCount,
             liveNow: next.activeFriends.length > 0 || next.myActiveActivity != null,
           });
         } else {
-          // Keep the last-known dashboard rendered; only flip the error flag.
           setLoadError(true);
         }
       }
+
       if (mode === 'initial') setLoading(false);
       if (mode === 'refresh') setRefreshing(false);
       if (!next) return;
+
       const nextBeerFeed = await beerFeedPromise;
-      if (!mountedRef.current || gen !== loadGenRef.current || !nextBeerFeed) return;
+      if (!mountedRef.current || generation !== loadGenRef.current || !nextBeerFeed) return;
       setBeerFeed(nextBeerFeed);
     },
     [],
   );
 
-  // Cheap live poll (§D2): the bounded interval hits GET /v1/friends/live — just
-  // the live/plan surfaces + badge counts — instead of the heavy full dashboard
-  // (365-day shared-stats scan + leaderboard). Merges the light slice onto the
-  // current dashboard WITHOUT clobbering the heavy sections (friends, leaderboard,
-  // streak, requests, feed); the full dashboard still loads on focus/refresh/
-  // mutations. Shares the load generation + abort so newest-wins ordering holds.
   const pollLive = useCallback(async () => {
-    const gen = ++loadGenRef.current;
+    const generation = ++loadGenRef.current;
     loadAbortRef.current?.abort();
     const controller = new AbortController();
     loadAbortRef.current = controller;
     const slice = await fetchFriendsLive(controller.signal);
-    if (!mountedRef.current || gen !== loadGenRef.current) return;
+    if (!mountedRef.current || generation !== loadGenRef.current) return;
     if (!slice) {
       setLoadError(true);
       return;
     }
-    setDashboard((prev) =>
-      prev
+    setDashboard((current) =>
+      current
         ? {
-            ...prev,
+            ...current,
             activeFriends: slice.activeFriends,
             myActiveActivity: slice.myActiveActivity,
             plans: slice.plans,
             myPlan: slice.myPlan,
           }
-        : prev,
+        : current,
     );
     setLoadError(false);
     usePartaSignalStore.getState().setSignal({
@@ -512,14 +537,11 @@ export default function FriendsScreen() {
     });
   }, []);
 
-  // Hydrate the persisted snapshot before the network resolves so an offline
-  // cold start shows the cached graph (behind the OfflineBanner) instead of a
-  // blank tab (§2C / §H2). The network result replaces it.
   useEffect(() => {
     let alive = true;
-    void loadFriendsDashboardSnapshot().then((snap) => {
-      if (!alive || !snap) return;
-      setDashboard((prev) => prev ?? snap.dashboard);
+    void loadFriendsDashboardSnapshot().then((snapshot) => {
+      if (!alive || !snapshot) return;
+      setDashboard((current) => current ?? snapshot.dashboard);
       setLoading(false);
     });
     return () => {
@@ -532,15 +554,10 @@ export default function FriendsScreen() {
     return () => clearTimeout(kickoff);
   }, [load]);
 
-  /** Stable "reload the dashboard" used by every mutating child. */
   const reload = useCallback(() => {
     void load();
   }, [load]);
 
-  // On focus: silently refresh so a push that landed while away is reflected, and
-  // opportunistically light up push for existing grantees. A push tap / claim set
-  // a pending-refresh flag — consume it to force a full refresh and scroll to the
-  // named row (§D2/§F3). Also drives the focus gate for the bounded poll.
   useFocusEffect(
     useCallback(() => {
       setFocused(true);
@@ -555,8 +572,19 @@ export default function FriendsScreen() {
     }, [load, scrollToOffset]),
   );
 
-  // A foreground friend push can arrive while this persistent tab is already
-  // focused, so no focus transition would otherwise reload the visible rows.
+  useFocusEffect(
+    useCallback(() => {
+      void fetchLeaderboard('beers', 'week').then((board) => {
+        if (mountedRef.current && board) setWeeklyBoard(board);
+      });
+      void fetchPhotoContestTeaser().then((snapshot) => {
+        if (!snapshot) return;
+        if (mountedRef.current) setContestSnapshot(snapshot);
+        void ingestContestSnapshot(snapshot);
+      });
+    }, [ingestContestSnapshot]),
+  );
+
   useEffect(() => {
     if (!focused) return;
     return usePartaSignalStore.subscribe((state, previous) => {
@@ -570,57 +598,34 @@ export default function FriendsScreen() {
     });
   }, [focused, load, scrollToOffset]);
 
-  // Foreground: silently refresh whenever the app returns to the foreground (a
-  // stale tab left open across a night out).
   useEffect(() => {
-    const sub = AppState.addEventListener('change', (state) => {
+    const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') void load('silent');
     });
-    return () => sub.remove();
+    return () => subscription.remove();
   }, [load]);
 
-  // Bounded poll: only while Parta is focused AND something is actually live/
-  // planned (cost per AGENTS.md — it stops the moment nothing is happening). The
-  // effect re-arms on each dashboard change, so a poll's own result resets the
-  // timer rather than stacking intervals.
   const liveOrPlanned =
     dashboard != null &&
     (dashboard.activeFriends.length > 0 ||
       dashboard.myActiveActivity != null ||
       dashboard.myPlan != null ||
       dashboard.plans.length > 0);
+
   useEffect(() => {
     if (!focused || !liveOrPlanned) return;
-    const id = setInterval(() => void pollLive(), LIVE_POLL_MS);
-    return () => clearInterval(id);
+    const timer = setInterval(() => void pollLive(), LIVE_POLL_MS);
+    return () => clearInterval(timer);
   }, [focused, liveOrPlanned, pollLive]);
 
-  // — Profile navigation (§F) —
   const openFriendProfile = useCallback(
     (accountId: string) => {
       if (accountId) router.push(`/parta/${accountId}` as Href);
     },
     [router],
   );
+  const openFriendSafety = useFriendSafety(reload);
 
-  // — Push opt-in strip (§E2) —
-  const handleEnablePush = useCallback(() => {
-    void registerFriendPush().then((result) => {
-      if (!mountedRef.current) return;
-      if (result.ok) {
-        showToast(cs.friends.pushEnabledToast, {
-          icon: <BellRingIcon size={20} color={Colors.amber} />,
-        });
-      } else if (result.reason === 'denied') {
-        setPushDenied(true);
-      }
-    });
-  }, [showToast]);
-  const dismissPush = useCallback(() => setFriendPushPrompted(true), [setFriendPushPrompted]);
-  const openPushSettings = useCallback(() => void Linking.openSettings(), []);
-
-  // Feed-row routing by kind (§F3): a request scrolls to ČEKAJÍ, a live/rsvp row
-  // scrolls to TEĎ NA PIVU, an accepted/cheers row opens the actor's profile.
   const handleFeedPress = useCallback(
     (notification: FriendNotification) => {
       if (notification.kind === 'friend_request') {
@@ -668,9 +673,87 @@ export default function FriendsScreen() {
     [load, respondingRequestActions, showToast],
   );
 
+  const respondGoing = useCallback(
+    (activity: FriendPubActivity) => {
+      if (quickRsvpRef.current) return;
+      quickRsvpRef.current = true;
+      void respondToActivity(activity.id, 'going').then((result) => {
+        quickRsvpRef.current = false;
+        if (result.ok) {
+          reload();
+          return;
+        }
+        if (isRetriableFriendError(result)) {
+          void enqueueFriendOp({ op: 'rsvp', activityId: activity.id, response: 'going' });
+          showToast(cs.friends.rsvpQueued);
+          reload();
+          return;
+        }
+        showToast(cs.friends.rsvpError);
+      });
+    },
+    [reload, showToast],
+  );
+
+  const handleEndBroadcast = useCallback(() => {
+    const activity = dashboard?.myActiveActivity;
+    if (!activity || endingBroadcastRef.current) return;
+    showAppDialog({
+      title: cs.friends.endActivityConfirmTitle,
+      message: cs.friends.endActivityConfirmBody,
+      buttons: [
+        { text: cs.common.cancel, style: 'cancel' },
+        {
+          text: cs.friends.endActivityConfirmConfirm,
+          style: 'destructive',
+          onPress: () => {
+            endingBroadcastRef.current = true;
+            void endFriendPubActivity(activity.id).then((result) => {
+              endingBroadcastRef.current = false;
+              if (result.ok) {
+                showToast(cs.friends.endedToast, {
+                  icon: <Undo2Icon size={20} color={Colors.amber} />,
+                });
+                reload();
+                return;
+              }
+              if (isRetriableFriendError(result)) {
+                void enqueueFriendOp({
+                  op: 'end',
+                  clientId: activity.id,
+                  activityId: activity.id,
+                });
+                showToast(cs.friends.endQueued, {
+                  icon: <Undo2Icon size={20} color={Colors.amber} />,
+                });
+                reload();
+                return;
+              }
+              showToast(result.detail);
+            });
+          },
+        },
+      ],
+    });
+  }, [dashboard?.myActiveActivity, reload, showToast]);
+
+  const handleEnablePush = useCallback(() => {
+    void registerFriendPush().then((result) => {
+      if (!mountedRef.current) return;
+      if (result.ok) {
+        showToast(cs.friends.pushEnabledToast);
+      }
+    });
+  }, [showToast]);
+
+  const dismissPush = useCallback(
+    () => setFriendPushPrompted(true),
+    [setFriendPushPrompted],
+  );
+
   const handleSettingsSaved = useCallback((next: FriendsDashboard['settings']) => {
     settingsOverrideRef.current = next;
-    setDashboard((prev) => (prev ? { ...prev, settings: next } : prev));
+    setDashboard((current) => (current ? { ...current, settings: next } : current));
   }, []);
 
   const closeSettings = useCallback(() => {
@@ -678,282 +761,665 @@ export default function FriendsScreen() {
     void load();
   }, [load]);
 
-  // Dynamic hero sub-line (compact hero folds live proof + streak urgency).
-  const heroSub = useMemo<{ text: string; color: string }>(() => {
-    if (!dashboard) return { text: '', color: Colors.mutedText };
-    const myGoing = dashboard.myActiveActivity
-      ? dashboard.myActiveActivity.responses.going
-      : 0;
-    const friendsLive = dashboard.activeFriends.length;
-    const iAmLive = dashboard.myActiveActivity != null;
+  const runAfterMoreClose = useCallback((action: () => void) => {
+    setMoreVisible(false);
+    if (sheetActionTimerRef.current) clearTimeout(sheetActionTimerRef.current);
+    sheetActionTimerRef.current = setTimeout(() => {
+      sheetActionTimerRef.current = null;
+      action();
+    }, SHEET_DISMISS_MS);
+  }, []);
 
-    if (iAmLive && myGoing > 0) {
-      return { text: cs.friends.heroLiveMine(myGoing), color: Colors.foam };
-    }
-    if (iAmLive) {
-      // I already broadcast tonight — "someone must cink first" would lie.
-      return { text: cs.friends.heroLiveSolo, color: Colors.foam };
-    }
-    if (
-      dashboard.streak.currentWeeks > 0 &&
-      !dashboard.streak.thisWeekLit &&
-      friendsLive === 0 &&
-      !iAmLive
-    ) {
-      return { text: cs.friends.heroStreakRisk, color: Colors.amberLight };
-    }
-    if (friendsLive >= 1) {
-      return friendsLive === 1
-        ? {
-            text: cs.friends.heroFriendLive(friendDisplayName(dashboard.activeFriends[0].account)),
-            color: Colors.foamMuted,
-          }
-        : { text: cs.friends.heroManyLive(friendsLive), color: Colors.foamMuted };
-    }
-    return { text: cs.friends.heroQuiet, color: Colors.mutedText };
-  }, [dashboard]);
+  const openCodeFromAdd = useCallback(() => {
+    setAddFriendVisible(false);
+    if (sheetActionTimerRef.current) clearTimeout(sheetActionTimerRef.current);
+    sheetActionTimerRef.current = setTimeout(() => {
+      sheetActionTimerRef.current = null;
+      setCodeVisible(true);
+    }, SHEET_DISMISS_MS);
+  }, []);
 
-  const liveNow =
-    dashboard != null &&
-    (dashboard.activeFriends.length > 0 || dashboard.myActiveActivity != null);
-  const beerFeedItems = useMemo(() => groupBeerFeed(beerFeed), [beerFeed]);
-
-  if (loading) {
-    return (
-      <View style={[styles.root, { paddingTop: insets.top + 8 }]}>
-        <FriendsSkeleton />
-      </View>
-    );
-  }
+  const moreRows = useMemo<MoreRow[]>(
+    () => [
+      {
+        key: 'settings',
+        label: cs.friends.moreSettings,
+        icon: SettingsIcon,
+        onPress: () => runAfterMoreClose(() => setSettingsVisible(true)),
+      },
+      {
+        key: 'code',
+        label: cs.friends.moreMyCode,
+        icon: QrCodeIcon,
+        onPress: () => runAfterMoreClose(() => setCodeVisible(true)),
+      },
+      {
+        key: 'party',
+        label: cs.friends.moreWholeParty,
+        icon: UsersIcon,
+        onPress: () =>
+          runAfterMoreClose(() => router.push('/profile/parta' as Href)),
+      },
+      {
+        key: 'leaderboards',
+        label: cs.friends.moreLeaderboards,
+        icon: TrophyIcon,
+        onPress: () =>
+          runAfterMoreClose(() =>
+            router.push({ pathname: '/leaderboards', params: { source: 'parta' } } as Href),
+          ),
+      },
+      {
+        key: 'photo-contest',
+        label: cs.friends.morePhotoContest,
+        icon: CameraIcon,
+        onPress: () =>
+          runAfterMoreClose(() => router.push('/photo-contest' as Href)),
+      },
+      {
+        key: 'vycep',
+        label: cs.friends.moreVycep,
+        icon: BeerIcon,
+        onPress: () => runAfterMoreClose(() => router.push('/vycep' as Href)),
+      },
+      {
+        key: 'party-evening',
+        label: cs.friends.morePartyEvening,
+        icon: UsersIcon,
+        onPress: () => runAfterMoreClose(() => router.push('/party' as Href)),
+      },
+      {
+        key: 'home-party',
+        label: cs.friends.moreHomeParty,
+        icon: HouseIcon,
+        onPress: () =>
+          runAfterMoreClose(() => router.push('/community-events' as Href)),
+      },
+    ],
+    [router, runAfterMoreClose],
+  );
 
   const d = dashboard;
-  const friendsLive = d ? d.activeFriends.length : 0;
-  // The live section earns its caption only when it has live friend cards. Quiet
-  // and mine-only states are carried by the hero pulse instead of another block.
-  const showActiveSection = !!d && friendsLive > 0;
-  // Cold start: no friends AND no incoming requests (a null dashboard — offline
-  // first run with no snapshot — also reads as cold start).
-  const isColdStart = !d || (d.friends.length === 0 && d.incomingRequests.length === 0);
-  const hasPlans = !!(d && (d.myPlan || d.plans.length > 0));
-  const pulseTone: PartyPulseTone | null =
-    !d || isColdStart
-      ? null
-      : d.myActiveActivity
-        ? 'mine'
-        : friendsLive > 0
-          ? 'live'
-          : 'quiet';
-  const pulseLabel =
-    pulseTone === 'mine'
-      ? cs.friends.pulseMineLabel
-      : pulseTone === 'live'
-        ? cs.friends.pulseLiveLabel
-        : cs.friends.pulseQuietLabel;
-  const pulseTitle = pulseTone === 'quiet' ? cs.friends.pulseQuietTitle : heroSub.text;
-  const pulseBody =
-    pulseTone === 'mine'
-      ? cs.friends.pulseMineBody
-      : pulseTone === 'live'
-        ? cs.friends.pulseLiveBody
-        : cs.friends.pulseQuietBody;
-  const pulseStreakLabel = d
-    ? d.streak.currentWeeks > 0
-      ? cs.friends.streakWeeks(d.streak.currentWeeks)
-      : cs.friends.streakEmpty
-    : '';
+  const friendCount = d?.friends.length ?? 0;
+  const beerFeedItems = useMemo(() => groupBeerFeed(beerFeed), [beerFeed]);
 
-  // Leaderboard slicing: top rows + a tappable "+N dalších" expand, but ALWAYS
-  // pin my row while collapsed (expanding shows everyone, me included).
-  const leaderboard = d?.leaderboard ?? [];
-  const maxVisits = leaderboard.reduce((m, e) => Math.max(m, e.visits30d), 0);
-  const visibleBoard = leaderboard.slice(0, LEADERBOARD_CAP);
-  const hiddenCount = leaderboard.length - visibleBoard.length;
-  const boardToShow = showAllBoard ? leaderboard : visibleBoard;
-  const myIndex = leaderboard.findIndex((e) => e.isMe);
-  const myPinned = !showAllBoard && hiddenCount > 0 && myIndex >= LEADERBOARD_CAP;
+  const streamItems = useMemo<StreamItem[]>(() => {
+    if (!d) return [];
+    const items: StreamItem[] = [];
 
-  // Push opt-in strip (§E2): only once there is something to notify about, and
-  // never after the user enabled or dismissed it (a system-denial collapses it
-  // to the settings one-liner).
-  const pushAudience = !!d && (d.friends.length > 0 || d.incomingRequests.length > 0);
-  const showPushStrip =
-    !friendPushEnabled && (pushDenied || (!friendPushPrompted && pushAudience));
+    if (d.myPlan) {
+      items.push({
+        key: `plan:mine:${d.myPlan.id}`,
+        kind: 'plan',
+        at: timestamp(d.myPlan.scheduledFor ?? d.myPlan.createdAt),
+        activity: d.myPlan,
+        mine: true,
+      });
+    }
+    for (const plan of d.plans) {
+      items.push({
+        key: `plan:${plan.id}`,
+        kind: 'plan',
+        at: timestamp(plan.scheduledFor ?? plan.createdAt),
+        activity: plan,
+        mine: false,
+      });
+    }
+    for (const activity of d.activeFriends) {
+      items.push({
+        key: `live:${activity.id}`,
+        kind: 'live',
+        at: timestamp(activity.updatedAt || activity.startedAt),
+        activity,
+      });
+    }
+    for (const item of beerFeedItems.slice(0, 6)) {
+      const first = item.checkIns[0];
+      if (!first) continue;
+      items.push({
+        key: `beer:${item.key}`,
+        kind: 'beer',
+        at: timestamp(first.checkedInAt),
+        item,
+      });
+    }
+    for (const notification of d.notifications.slice(0, 6)) {
+      items.push({
+        key: `notification:${notification.id}`,
+        kind: 'notification',
+        at: timestamp(notification.createdAt),
+        notification,
+      });
+    }
+    for (const request of d.incomingRequests) {
+      items.push({
+        key: `request:${request.id}`,
+        kind: 'request',
+        at: timestamp(request.requestedAt),
+        request,
+      });
+    }
+    for (const friend of d.friends) {
+      const stats = d.friendStats[friend.id];
+      if (!stats?.lastSharedAt) continue;
+      items.push({
+        key: `friend:${friend.id}`,
+        kind: 'friend',
+        at: timestamp(stats.lastSharedAt),
+        friend,
+        stats,
+      });
+    }
 
-  const revealCounter = { next: 0 };
-  const nextReveal = () => revealCounter.next++;
+    return items.sort((a, b) => b.at - a.at);
+  }, [beerFeedItems, d]);
+  const firstLiveStreamKey = streamItems.find((item) => item.kind === 'live')?.key;
+  const firstRequestStreamKey = streamItems.find((item) => item.kind === 'request')?.key;
 
-  const onRequestsLayout = (e: LayoutChangeEvent) => {
-    requestsYRef.current = e.nativeEvent.layout.y;
-  };
-  const onActiveLayout = (e: LayoutChangeEvent) => {
-    activeYRef.current = e.nativeEvent.layout.y;
-  };
+  const partyNumbers = useMemo(() => {
+    const goingIds = new Set<string>();
+    if (d) {
+      for (const activity of d.activeFriends) {
+        if (activity.account.id) goingIds.add(activity.account.id);
+      }
+      for (const plan of d.plans) {
+        if (plan.account.id) goingIds.add(plan.account.id);
+      }
+      const activities = [
+        ...d.activeFriends,
+        ...d.plans,
+        ...(d.myActiveActivity ? [d.myActiveActivity] : []),
+        ...(d.myPlan ? [d.myPlan] : []),
+      ];
+      for (const activity of activities) {
+        for (const profile of activity.responses.goingProfiles) {
+          if (profile.id) goingIds.add(profile.id);
+        }
+      }
+    }
+    const mine = d?.myActiveActivity != null;
+    const going = goingIds.size + (mine ? 1 : 0);
+    const maybe = d
+      ? [
+          ...d.activeFriends,
+          ...d.plans,
+          ...(d.myActiveActivity ? [d.myActiveActivity] : []),
+          ...(d.myPlan ? [d.myPlan] : []),
+        ].reduce((sum, activity) => sum + activity.responses.maybe, 0)
+      : 0;
+    return { count: going, going, maybe, mine };
+  }, [d]);
 
-  const renderFeedRow = (notification: FriendNotification, first: boolean) => {
-    const when = timeLabel(notification.createdAt);
-    const canReact =
-      !!notification.activityId && REACTABLE_FEED_KINDS.has(notification.kind);
-    const canRoute =
-      notification.kind === 'friend_request' ||
-      notification.kind === 'friend_at_pub' ||
-      notification.kind === 'friend_rsvp' ||
-      (PROFILE_FEED_KINDS.has(notification.kind) && !!notification.actor?.id);
-    return (
-      <HairlineRow
-        key={notification.id}
-        first={first}
-        onPress={canRoute ? () => handleFeedPress(notification) : undefined}
-      >
-        <View style={styles.feedRow}>
-          <View
-            style={[
-              styles.feedIconDisk,
-              !notification.readAt && styles.feedIconDiskUnread,
-            ]}
-            importantForAccessibility="no"
-            accessibilityElementsHidden
-            pointerEvents="none"
-          >
-            <BellRingIcon
-              size={16}
-              color={notification.readAt ? Colors.mutedText : Colors.amber}
-            />
+  const freshestLive = useMemo(() => {
+    if (!d || d.activeFriends.length === 0) return null;
+    return [...d.activeFriends].sort(
+      (a, b) => timestamp(b.updatedAt || b.startedAt) - timestamp(a.updatedAt || a.startedAt),
+    )[0];
+  }, [d]);
+
+  const freshestPlan = useMemo(() => {
+    if (!d) return null;
+    const plans = [...(d.myPlan ? [d.myPlan] : []), ...d.plans];
+    if (plans.length === 0) return null;
+    return plans.sort(
+      (a, b) =>
+        timestamp(b.scheduledFor ?? b.createdAt) -
+        timestamp(a.scheduledFor ?? a.createdAt),
+    )[0];
+  }, [d]);
+
+  const headline = useMemo(() => {
+    if (freshestLive) {
+      return cs.friends.nudgeLive(
+        friendDisplayName(freshestLive.account),
+        freshestLive.name,
+      );
+    }
+    if (freshestPlan) {
+      const time = planTimeLabel(freshestPlan.scheduledFor ?? freshestPlan.startedAt);
+      return time
+        ? `${cs.friends.planAt(time)} · ${freshestPlan.name}`
+        : freshestPlan.name;
+    }
+    if (d?.myActiveActivity) return cs.friends.pulseMineBody;
+    return cs.friends.emptyActive;
+  }, [d?.myActiveActivity, freshestLive, freshestPlan]);
+
+  const rankLine = useMemo(() => {
+    if (d?.settings.ghostMode) return cs.friends.hiddenRank;
+    const rank = weeklyBoard?.me.rank;
+    if (rank == null) return null;
+    return `${cs.leaderboards.teaserTitleBefore}${cs.leaderboards.teaserTitleRank(rank)}${cs.leaderboards.teaserTitleAfter}`;
+  }, [d?.settings.ghostMode, weeklyBoard?.me.rank]);
+
+  const unansweredLive = useMemo(
+    () => d?.activeFriends.find((activity) => activity.myResponse == null) ?? null,
+    [d?.activeFriends],
+  );
+
+  const lastResults = contestSnapshot?.lastResults ?? null;
+  const contestResultsUnseen =
+    lastResults != null && lastResults.contest.id !== lastSeenResultsId;
+  const pushAudience = friendCount > 0 || (d?.incomingRequests.length ?? 0) > 0;
+  const streakAtRisk =
+    (d?.streak.currentWeeks ?? 0) > 0 && d?.streak.thisWeekLit === false;
+
+  const nudge = useMemo<Nudge | null>(() => {
+    const request = d?.incomingRequests[0];
+    if (request) {
+      return {
+        kind: 'rapid',
+        text: cs.friends.nudgeRequest(friendDisplayName(request.requester)),
+        confirmLabel: cs.friends.nudgeRequestAccept,
+        onConfirm: () => void respond(request.id, 'accept'),
+      };
+    }
+    if (loadError) {
+      return {
+        kind: 'counted',
+        text: cs.friends.nudgeOffline,
+        undoLabel: cs.friends.nudgeOfflineRetry,
+        onUndo: () => void load('refresh'),
+      };
+    }
+    if (unansweredLive) {
+      return {
+        kind: 'rapid',
+        text: cs.friends.nudgeLive(
+          friendDisplayName(unansweredLive.account),
+          unansweredLive.name,
+        ),
+        confirmLabel: cs.friends.nudgeLiveJoin,
+        onConfirm: () => respondGoing(unansweredLive),
+      };
+    }
+    if (d?.myActiveActivity) {
+      return {
+        kind: 'counted',
+        text: cs.friends.nudgeBroadcasting,
+        undoLabel: cs.friends.nudgeBroadcastEnd,
+        onUndo: handleEndBroadcast,
+      };
+    }
+    if (!friendPushEnabled && !friendPushPrompted && pushAudience) {
+      return {
+        kind: 'checkin',
+        text: cs.friends.nudgePush,
+        ctaLabel: cs.friends.nudgePushEnable,
+        onPress: handleEnablePush,
+        onDismiss: dismissPush,
+      };
+    }
+    if (contestResultsUnseen && lastResults) {
+      return {
+        kind: 'checkin',
+        text: cs.friends.nudgeContest,
+        ctaLabel: cs.friends.nudgeContestOpen,
+        onPress: () => router.push('/photo-contest' as Href),
+        onDismiss: () => markContestResultsSeen(lastResults.contest.id),
+      };
+    }
+    if (streakAtRisk) {
+      return {
+        kind: 'dopito',
+        label: cs.friends.nudgeStreakRisk,
+        onPress: () => setComposeVisible(true),
+      };
+    }
+    return null;
+  }, [
+    contestResultsUnseen,
+    d?.incomingRequests,
+    d?.myActiveActivity,
+    dismissPush,
+    friendPushEnabled,
+    friendPushPrompted,
+    handleEnablePush,
+    handleEndBroadcast,
+    lastResults,
+    load,
+    loadError,
+    markContestResultsSeen,
+    pushAudience,
+    respond,
+    respondGoing,
+    router,
+    streakAtRisk,
+    unansweredLive,
+  ]);
+
+  const cta = useMemo(() => {
+    if (!isSignedIn) {
+      return {
+        label: cs.friends.ctaSignIn,
+        subLabel: null as string | null,
+        onPress: () => router.push('/auth' as Href),
+      };
+    }
+    if (nickname == null) {
+      return {
+        label: cs.friends.ctaNickname,
+        subLabel: null as string | null,
+        onPress: () => router.push('/profile/edit' as Href),
+      };
+    }
+    if (friendCount === 0) {
+      return {
+        label: cs.friends.ctaAddFriend,
+        subLabel: cs.friends.ctaAddFriendSub,
+        onPress: () => setAddFriendVisible(true),
+      };
+    }
+    if (d?.myActiveActivity) {
+      return {
+        label: cs.friends.ctaWhoIsComing,
+        subLabel: null as string | null,
+        onPress: () => setRosterVisible(true),
+      };
+    }
+    if ((d?.activeFriends.length ?? 0) > 0) {
+      return {
+        label: cs.friends.ctaPingToo,
+        subLabel: null as string | null,
+        onPress: () => setComposeVisible(true),
+      };
+    }
+    return {
+      label: cs.friends.ctaPing,
+      subLabel: cs.friends.ctaPingSub,
+      onPress: () => setComposeVisible(true),
+    };
+  }, [d?.activeFriends.length, d?.myActiveActivity, friendCount, isSignedIn, nickname, router]);
+
+  const onRequestsLayout = useCallback((event: LayoutChangeEvent) => {
+    requestsYRef.current = event.nativeEvent.layout.y;
+  }, []);
+  const onActiveLayout = useCallback((event: LayoutChangeEvent) => {
+    activeYRef.current = event.nativeEvent.layout.y;
+  }, []);
+
+  const renderNotificationRow = useCallback(
+    (notification: FriendNotification) => {
+      const when = timeLabel(notification.createdAt);
+      const canReact =
+        !!notification.activityId && REACTABLE_FEED_KINDS.has(notification.kind);
+      const canRoute =
+        notification.kind === 'friend_request' ||
+        notification.kind === 'friend_at_pub' ||
+        notification.kind === 'friend_rsvp' ||
+        (PROFILE_FEED_KINDS.has(notification.kind) && !!notification.actor?.id);
+      return (
+        <HairlineRow
+          first
+          onPress={canRoute ? () => handleFeedPress(notification) : undefined}
+        >
+          <View style={styles.feedRow}>
+            <View
+              style={[
+                styles.feedIconDisk,
+                !notification.readAt && styles.feedIconDiskUnread,
+              ]}
+              importantForAccessibility="no"
+              accessibilityElementsHidden
+              pointerEvents="none"
+            >
+              <BellRingIcon
+                size={16}
+                color={notification.readAt ? Colors.mutedText : Colors.amber}
+              />
+            </View>
+            <View style={styles.feedText}>
+              <View style={styles.feedTitleRow}>
+                <Text
+                  style={styles.feedTitle}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {notification.title}
+                </Text>
+                {when ? (
+                  <Text style={styles.feedTime} numberOfLines={1} allowFontScaling={false}>
+                    {when}
+                  </Text>
+                ) : null}
+              </View>
+              <Text
+                style={styles.feedBody}
+                numberOfLines={2}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {notification.body}
+              </Text>
+            </View>
+            {canReact ? (
+              <CheersPill
+                activityId={notification.activityId as string}
+                count={0}
+                mine={false}
+                compact
+                ownerName={friendDisplayName(notification.actor)}
+                onChanged={reload}
+              />
+            ) : null}
           </View>
-          <View style={styles.feedText}>
-            <View style={styles.feedTitleRow}>
+        </HairlineRow>
+      );
+    },
+    [handleFeedPress, reload],
+  );
+
+  const renderBeerFeedRow = useCallback(
+    (item: BeerFeedItem) => {
+      const checkIn = item.checkIns[0];
+      if (!checkIn) return null;
+      const when = timeLabel(checkIn.checkedInAt);
+      const ownerName = friendDisplayName(checkIn.account);
+      const totalQuantity = item.checkIns.reduce(
+        (sum, row) => sum + Math.max(1, Math.floor(row.quantity || 1)),
+        0,
+      );
+      const totalPrice = item.checkIns.reduce(
+        (sum, row) =>
+          sum +
+          (row.priceCzk != null
+            ? row.priceCzk * Math.max(1, Math.floor(row.quantity || 1))
+            : 0),
+        0,
+      );
+      const hasAnyPrice = item.checkIns.some((row) => row.priceCzk != null);
+      const beerNames = item.checkIns
+        .map((row) => {
+          const quantity = Math.max(1, Math.floor(row.quantity || 1));
+          return quantity > 1 ? `${quantity}× ${row.beerName}` : row.beerName;
+        })
+        .join(', ');
+      const amount = [
+        totalQuantity > 1 ? `${totalQuantity}×` : '',
+        hasAnyPrice ? formatPrice(totalPrice, priceCurrency) : '',
+      ]
+        .filter(Boolean)
+        .join(' · ');
+      const meta = [
+        amount,
+        item.checkIns.length === 1 && checkIn.rating != null
+          ? `${checkIn.rating.toFixed(1)} / 5`
+          : '',
+        checkIn.pubName,
+        when,
+      ]
+        .filter(Boolean)
+        .join(' · ');
+
+      return (
+        <HairlineRow
+          first
+          onPress={() =>
+            router.push({
+              pathname: '/beer-detail',
+              params: { beer: checkIn.beerName, brewery: checkIn.breweryName },
+            } as Href)
+          }
+        >
+          <View style={styles.feedRow}>
+            <View style={styles.feedIconDisk}>
+              <BeerIcon size={16} color={Colors.amber} />
+            </View>
+            <View style={styles.feedText}>
               <Text
                 style={styles.feedTitle}
                 numberOfLines={1}
                 maxFontSizeMultiplier={FontScaleCap.body}
               >
-                {notification.title}
+                {item.checkIns.length > 1
+                  ? `${ownerName} zapsal ${totalQuantity} piv`
+                  : `${ownerName} pije ${checkIn.beerName}`}
               </Text>
-              {when ? (
-                <Text style={styles.feedTime} numberOfLines={1} allowFontScaling={false}>
-                  {when}
+              {item.checkIns.length > 1 ? (
+                <Text
+                  style={styles.feedBody}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {beerNames}
                 </Text>
               ) : null}
+              {meta ? (
+                <Text
+                  style={styles.feedBody}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {meta}
+                </Text>
+              ) : null}
+              {checkIn.note ? (
+                <Text
+                  style={styles.feedNote}
+                  numberOfLines={2}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {checkIn.note}
+                </Text>
+              ) : null}
+              {item.checkIns.length === 1 && checkIn.tags.length > 0 ? (
+                <View style={styles.feedTags}>
+                  <BeerTagChips tags={checkIn.tags} />
+                </View>
+              ) : null}
             </View>
-            <Text
-              style={styles.feedBody}
-              numberOfLines={2}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            >
-              {notification.body}
-            </Text>
-          </View>
-          {canReact ? (
             <CheersPill
-              activityId={notification.activityId as string}
-              count={0}
-              mine={false}
+              activityId={checkIn.id}
+              target="beerCheckIn"
+              count={checkIn.reactions.cheers}
+              mine={checkIn.myReaction === 'cheers'}
               compact
-              ownerName={friendDisplayName(notification.actor)}
+              ownerName={ownerName}
               onChanged={reload}
             />
-          ) : null}
-        </View>
-      </HairlineRow>
-    );
-  };
+          </View>
+        </HairlineRow>
+      );
+    },
+    [priceCurrency, reload, router],
+  );
 
-  const renderBeerFeedRow = (item: BeerFeedItem, first: boolean) => {
-    const checkIn = item.checkIns[0];
-    if (!checkIn) return null;
-    const when = timeLabel(checkIn.checkedInAt);
-    const ownerName = friendDisplayName(checkIn.account);
-    const totalQuantity = item.checkIns.reduce(
-      (sum, row) => sum + Math.max(1, Math.floor(row.quantity || 1)),
-      0,
-    );
-    const totalPrice = item.checkIns.reduce(
-      (sum, row) => sum + (row.priceCzk != null ? row.priceCzk * Math.max(1, Math.floor(row.quantity || 1)) : 0),
-      0,
-    );
-    const hasAnyPrice = item.checkIns.some((row) => row.priceCzk != null);
-    const beerNames = item.checkIns
-      .map((row) => {
-        const quantity = Math.max(1, Math.floor(row.quantity || 1));
-        return quantity > 1 ? `${quantity}× ${row.beerName}` : row.beerName;
-      })
-      .join(', ');
-    const amount = [
-      totalQuantity > 1 ? `${totalQuantity}×` : '',
-      hasAnyPrice ? formatPrice(totalPrice, priceCurrency) : '',
-    ].filter(Boolean).join(' · ');
-    const meta = [
-      amount,
-      item.checkIns.length === 1 && checkIn.rating != null ? `${checkIn.rating.toFixed(1)} / 5` : '',
-      checkIn.pubName,
-      when,
-    ].filter(Boolean).join(' · ');
-    return (
-      <HairlineRow
-        key={item.key}
-        first={first}
-        onPress={() =>
-          router.push({
-            pathname: '/beer-detail',
-            params: { beer: checkIn.beerName, brewery: checkIn.breweryName },
-          } as Href)
-        }
-      >
-        <View style={styles.feedRow}>
-          <View style={styles.feedIconDisk}>
-            <BeerIcon size={16} color={Colors.amber} />
+  const renderRequestRow = useCallback(
+    (request: Friendship) => (
+      <HairlineRow first>
+        <View style={styles.requestRow}>
+          <FriendMini profile={request.requester} />
+          <View style={styles.requestActions}>
+            <IconButton
+              onPress={() => void respond(request.id, 'decline')}
+              disabled={respondingRequestActions[request.id] != null}
+              accessibilityLabel={cs.friends.decline}
+              style={styles.declineBtn}
+            >
+              {respondingRequestActions[request.id] === 'decline' ? (
+                <ActivityIndicator color={Colors.foam} size="small" />
+              ) : (
+                <XIcon size={18} color={Colors.foam} />
+              )}
+            </IconButton>
+            <IconButton
+              onPress={() => void respond(request.id, 'accept')}
+              disabled={respondingRequestActions[request.id] != null}
+              accessibilityLabel={cs.friends.accept}
+              style={styles.acceptBtn}
+            >
+              {respondingRequestActions[request.id] === 'accept' ? (
+                <ActivityIndicator color={Colors.stout} size="small" />
+              ) : (
+                <CheckIcon size={18} color={Colors.stout} />
+              )}
+            </IconButton>
           </View>
-          <View style={styles.feedText}>
-            <View style={styles.feedTitleRow}>
-              <Text style={styles.feedTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                {item.checkIns.length > 1 ? `${ownerName} zapsal ${totalQuantity} piv` : `${ownerName} pije ${checkIn.beerName}`}
-              </Text>
-            </View>
-            {item.checkIns.length > 1 ? (
-              <Text style={styles.feedBody} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                {beerNames}
-              </Text>
-            ) : null}
-            {meta ? (
-              <Text style={styles.feedBody} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                {meta}
-              </Text>
-            ) : null}
-            {checkIn.note ? (
-              <Text style={styles.feedNote} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
-                {checkIn.note}
-              </Text>
-            ) : null}
-            {item.checkIns.length === 1 && checkIn.tags.length > 0 ? (
-              <View style={styles.feedTags}>
-                <BeerTagChips tags={checkIn.tags} />
-              </View>
-            ) : null}
-          </View>
-          <CheersPill
-            activityId={checkIn.id}
-            target="beerCheckIn"
-            count={checkIn.reactions.cheers}
-            mine={checkIn.myReaction === 'cheers'}
-            compact
-            ownerName={ownerName}
-            onChanged={reload}
-          />
         </View>
       </HairlineRow>
-    );
-  };
+    ),
+    [respond, respondingRequestActions],
+  );
 
   return (
-    <View style={styles.root}>
-      {/* Android is edge-to-edge, so `adjustResize` no longer pushes content
-          above the keyboard — pad it here (iOS pads via keyboard insets). */}
-      <KeyboardAvoidingView style={styles.root} behavior="padding" enabled={Platform.OS === 'android'}>
-      <KeyboardAwareScrollView
+    <View
+      style={[
+        styles.root,
+        {
+          paddingTop: insets.top + 8,
+          paddingBottom: Math.max(insets.bottom, Spacing.sm),
+        },
+      ]}
+    >
+      <View style={styles.header}>
+        {friendCount > 0 ? (
+          <Pressable
+            onPress={() => router.push('/profile/parta' as Href)}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={cs.a11y.partaChip(cs.friends.pulseFriendCount(friendCount))}
+            style={({ pressed }) => [styles.partyChip, pressed && styles.dim]}
+          >
+            <UsersIcon size={16} color={Colors.amber} />
+            <Text
+              style={styles.partyChipLabel}
+              numberOfLines={1}
+              maxFontSizeMultiplier={FontScaleCap.heading}
+            >
+              {cs.friends.pulseFriendCount(friendCount)}
+            </Text>
+          </Pressable>
+        ) : (
+          <View
+            style={styles.partyChip}
+            accessibilityRole="text"
+            accessibilityLabel={cs.friends.soloChip}
+          >
+            <UsersIcon size={16} color={Colors.amber} />
+            <Text
+              style={styles.partyChipLabel}
+              numberOfLines={1}
+              maxFontSizeMultiplier={FontScaleCap.heading}
+            >
+              {cs.friends.soloChip}
+            </Text>
+          </View>
+        )}
+        <View style={styles.headerSpacer} />
+        <Pressable
+          onPress={() => setMoreVisible(true)}
+          style={({ pressed }) => [styles.moreButton, pressed && styles.dim]}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={cs.a11y.partaMore}
+        >
+          <EllipsisIcon size={20} color={Colors.mutedText} />
+        </Pressable>
+      </View>
+
+      <ScrollView
         ref={scrollRef}
-        contentContainerStyle={[
-          styles.content,
-          { paddingBottom: Math.max(insets.bottom + 18, 32) },
-        ]}
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -962,459 +1428,140 @@ export default function FriendsScreen() {
           />
         }
         showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
       >
-        {/* §2 — Hero */}
-        <Reveal index={nextReveal()}>
-          <View style={[styles.hero, { paddingTop: insets.top + 8 }]}>
-            <View style={styles.heroRow1}>
-              <View style={styles.heroTitleWrap}>
-                <Text
-                  style={styles.heroTitle}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={FontScaleCap.heading}
-                >
-                  {cs.friends.title}
-                </Text>
-                {liveNow ? (
-                  // Lift the dot to the title's cap-height optical center — the
-                  // 34px line box carries descender space, so a box-centered dot
-                  // reads as a stray full stop.
-                  <View style={styles.liveDotNudge}>
-                    <LiveDot size={9} />
-                  </View>
-                ) : null}
-              </View>
+        <View style={streamItems.length === 0 ? styles.cardGrow : undefined}>
+          <PartyCard
+            count={partyNumbers.count}
+            countLabel={
+              partyNumbers.count > 0
+                ? cs.friends.tableCaption
+                : cs.friends.tableCaptionQuiet
+            }
+            headline={headline}
+            factStrong={
+              (d?.streak.currentWeeks ?? 0) > 0
+                ? cs.friends.streakWeeks(d?.streak.currentWeeks ?? 0)
+                : cs.friends.noStreak
+            }
+            factMuted={rankLine}
+            linkLabel={
+              partyNumbers.count > 0 || partyNumbers.maybe > 0
+                ? cs.friends.tableLink
+                : null
+            }
+            going={partyNumbers.going}
+            maybe={partyNumbers.maybe}
+            mine={partyNumbers.mine}
+            onPress={
+              partyNumbers.count > 0 || partyNumbers.maybe > 0
+                ? () => setRosterVisible(true)
+                : null
+            }
+            accessibilityLabel={cs.a11y.partaCard(String(partyNumbers.count), headline)}
+          />
+        </View>
 
-              <View style={styles.heroRight}>
-                {d && !isColdStart ? <StreakBadge streak={d.streak} /> : null}
-                {d?.settings.ghostMode ? (
-                  // Pure status chip, not a control: the gear is the single entry
-                  // to settings, so ghost mode reads as a labelled state here
-                  // (icon alone was mistaken for a second, redundant button).
+        <Text style={styles.streamHeader} maxFontSizeMultiplier={FontScaleCap.body}>
+          {cs.friends.streamHeader}
+        </Text>
+
+        <PartaPhotoStrip refreshKey={photoFeedKey} style={styles.photoStreamItem} />
+
+        {streamItems.length > 0 ? (
+          <View style={styles.stream}>
+            {streamItems.map((item) => {
+              if (item.kind === 'plan') {
+                return (
+                  <PlanCard
+                    key={item.key}
+                    activity={item.activity}
+                    mine={item.mine}
+                    onResponded={reload}
+                    onCanceled={reload}
+                  />
+                );
+              }
+              if (item.kind === 'live') {
+                return (
                   <View
-                    style={styles.ghostChip}
-                    accessibilityRole="text"
-                    accessibilityLabel={cs.friends.ghostActive}
+                    key={item.key}
+                    onLayout={item.key === firstLiveStreamKey ? onActiveLayout : undefined}
                   >
-                    <EyeOffIcon size={15} color={Colors.amberLight} />
-                    <Text style={styles.ghostChipLabel} allowFontScaling={false}>
-                      {cs.friends.ghostChip}
-                    </Text>
+                    <FriendActiveCard
+                      activity={item.activity}
+                      onResponded={reload}
+                      stale={loadError}
+                    />
                   </View>
-                ) : null}
-                <Pressable
-                  onPress={() => setSettingsVisible(true)}
-                  accessibilityRole="button"
-                  accessibilityLabel={cs.friends.settingsOpen}
-                  style={({ pressed }) => [styles.gear, pressed && styles.dim]}
-                >
-                  <SettingsIcon size={22} color={Colors.mutedText} />
-                </Pressable>
-              </View>
-            </View>
-
-            {isColdStart ? (
-              <>
-                <Text
-                  style={styles.heroColdTitle}
-                  maxFontSizeMultiplier={FontScaleCap.heading}
-                >
-                  {cs.friends.heroTitle}
-                </Text>
-                <Text
-                  style={styles.heroColdBody}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {cs.friends.heroBody}
-                </Text>
-                {loadError && !d ? (
-                  <Text style={styles.firstRunOffline} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {cs.friends.firstRunOffline}
-                  </Text>
-                ) : null}
-              </>
-            ) : d && pulseTone ? (
-              <PartyPulsePanel
-                tone={pulseTone}
-                label={pulseLabel}
-                title={pulseTitle}
-                body={pulseBody}
-                friendCount={d.friends.length}
-                streakLabel={pulseStreakLabel}
-                onCompose={!d.myActiveActivity ? () => setComposeVisible(true) : undefined}
-              />
-            ) : null}
-
-            {/* Countrywide race teaser — the data-bearing leaderboards entry,
-                above the fold every session (works pre-parta too). */}
-            <View style={styles.rankTeaserWrap}>
-              <RankTeaser />
-            </View>
-
-            {/* FotoPivař teaser — the biweekly photo round with the voting
-                nudge; the Profile entry alone buried it. */}
-            <View style={styles.contestTeaserWrap}>
-              <ContestTeaser />
-            </View>
-
-            {/* Výčep teaser — the published-nights feed entry, same strip
-                language as the rows above so the hero stays one calm column. */}
-            <View style={styles.contestTeaserWrap}>
-              <VycepTeaser />
-            </View>
-
-            <Pressable
-              onPress={() => router.push('/party' as Href)}
-              accessibilityRole="button"
-              accessibilityLabel={cs.partyEvening.open}
-              style={({ pressed }) => [styles.eveningLink, pressed && styles.dim]}
-            >
-              <View style={styles.eveningLinkIcon}>
-                <UsersIcon size={18} color={Colors.amber} />
-              </View>
-              <View style={styles.eveningLinkText}>
-                <Text style={styles.eveningLinkTitle}>{cs.partyEvening.open}</Text>
-                <Text style={styles.eveningLinkHint} numberOfLines={2}>
-                  {cs.partyEvening.openHint}
-                </Text>
-              </View>
-              <ChevronRightIcon size={17} color={Colors.mutedText} />
-            </Pressable>
-
-            <Pressable
-              onPress={() => router.push('/community-events' as Href)}
-              accessibilityRole="button"
-              accessibilityLabel={cs.communityEvents.open}
-              style={({ pressed }) => [styles.eveningLink, pressed && styles.dim]}
-            >
-              <View style={styles.eveningLinkIcon}>
-                <UsersIcon size={18} color={Colors.amber} />
-              </View>
-              <View style={styles.eveningLinkText}>
-                <Text style={styles.eveningLinkTitle}>{cs.communityEvents.open}</Text>
-                <Text style={styles.eveningLinkHint} numberOfLines={2}>
-                  {cs.communityEvents.openHint}
-                </Text>
-              </View>
-              <ChevronRightIcon size={17} color={Colors.mutedText} />
-            </Pressable>
-
-            {isColdStart ? <View style={styles.heroRule} /> : null}
+                );
+              }
+              if (item.kind === 'beer') {
+                return (
+                  <View key={item.key} style={styles.streamRowCard}>
+                    {renderBeerFeedRow(item.item)}
+                  </View>
+                );
+              }
+              if (item.kind === 'notification') {
+                return (
+                  <View key={item.key} style={styles.streamRowCard}>
+                    {renderNotificationRow(item.notification)}
+                  </View>
+                );
+              }
+              if (item.kind === 'request') {
+                return (
+                  <View
+                    key={item.key}
+                    style={styles.streamRowCard}
+                    onLayout={item.key === firstRequestStreamKey ? onRequestsLayout : undefined}
+                  >
+                    {renderRequestRow(item.request)}
+                  </View>
+                );
+              }
+              return (
+                <View key={item.key} style={styles.streamRowCard}>
+                  <FriendListRow
+                    friend={item.friend}
+                    stats={item.stats}
+                    first
+                    onOpenProfile={openFriendProfile}
+                    onLongPress={openFriendSafety}
+                  />
+                </View>
+              );
+            })}
           </View>
-        </Reveal>
-
-        {/* §11 — OfflineBanner (data stays below; snapshot-aware copy) */}
-        {loadError && !(isColdStart && !d) ? (
-          <Reveal index={nextReveal()}>
-            <View style={styles.section}>
-              <OfflineBanner onRetry={() => void load('refresh')} />
-            </View>
-          </Reveal>
-        ) : null}
-
-        {isColdStart ? (
-          <>
-            {/* §3 — SEŽEŇ PARTU: the cold-start growth hook (add stays inline
-                here so a 0-friend user at the table isn't kicked to another screen) */}
-            <Reveal index={nextReveal()}>
-              <View style={styles.section}>
-                <SectionPanel>
-                  <SectionHeader label={cs.friends.growthHeader} />
-                  <AddFriendTools
-                    hasIdentity={hasIdentity}
-                    needsNickname={needsNickname}
-                    onOpenCode={() => setCodeVisible(true)}
-                    onChanged={reload}
-                    showSearch
-                  />
-                </SectionPanel>
-              </View>
-            </Reveal>
-
-            {/* §J — CO TĚ ČEKÁ: a calm 3-line preview of the loop */}
-            <Reveal index={nextReveal()}>
-              <View style={styles.section}>
-                <SectionPanel>
-                  <SectionHeader label={cs.friends.whatIsPartaHeader} />
-                  <View style={styles.teaser}>
-                    <TeaserLine
-                      icon={<BellRingIcon size={18} color={Colors.mutedText} />}
-                      text={cs.friends.whatIsParta1}
-                    />
-                    <TeaserLine
-                      icon={<UsersIcon size={18} color={Colors.mutedText} />}
-                      text={cs.friends.whatIsParta2}
-                    />
-                    <TeaserLine
-                      icon={<FlameIcon size={18} color={Colors.mutedText} />}
-                      text={cs.friends.whatIsParta3}
-                    />
-                  </View>
-                </SectionPanel>
-              </View>
-            </Reveal>
-          </>
-        ) : (
-          <>
-            {/* §E — Push opt-in strip (warm, high, dismissable) */}
-            {showPushStrip ? (
-              <Reveal index={nextReveal()}>
-                <View style={styles.section}>
-                  <PushOptInStrip
-                    mode={pushDenied ? 'denied' : 'prompt'}
-                    onEnable={handleEnablePush}
-                    onDismiss={dismissPush}
-                    onOpenSettings={openPushSettings}
-                  />
-                </View>
-              </Reveal>
-            ) : null}
-
-            {/* §3 — MyActivityCard: my own live broadcast, the one card with a glow */}
-            {d?.myActiveActivity ? (
-              <Reveal index={nextReveal()}>
-                <View style={styles.section}>
-                  <MyActivityCard activity={d.myActiveActivity} onEnded={reload} stale={loadError} />
-                </View>
-              </Reveal>
-            ) : null}
-
-            {/* §B3 — PLÁN NA DNES: today's upcoming plans (mine first) */}
-            {hasPlans && d ? (
-              <Reveal index={nextReveal()}>
-                <View style={styles.section}>
-                  <SectionHeader label={cs.friends.plansHeader} />
-                  <View style={styles.stack}>
-                    {d.myPlan ? (
-                      <PlanCard
-                        key={d.myPlan.id}
-                        activity={d.myPlan}
-                        mine
-                        onResponded={reload}
-                        onCanceled={reload}
-                      />
-                    ) : null}
-                    {d.plans.map((plan) => (
-                      <PlanCard
-                        key={plan.id}
-                        activity={plan}
-                        mine={false}
-                        onResponded={reload}
-                        onCanceled={reload}
-                      />
-                    ))}
-                  </View>
-                </View>
-              </Reveal>
-            ) : null}
-
-            {/* §4 — TEĎ NA PIVU: the decision surface (friends' live cards). */}
-            {showActiveSection && d ? (
-              <Reveal index={nextReveal()} onLayout={onActiveLayout}>
-                <View style={styles.section}>
-                  <SectionHeader
-                    label={cs.friends.activeHeader}
-                    live
-                    stale={loadError}
-                  />
-                  {loadError && friendsLive > 0 ? (
-                    <Text style={styles.staleNote} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {cs.friends.staleNote}
-                    </Text>
-                  ) : null}
-                  <View style={styles.stack}>
-                    {d.activeFriends.map((activity) => (
-                      <FriendActiveCard
-                        key={activity.id}
-                        activity={activity}
-                        onResponded={reload}
-                        stale={loadError}
-                      />
-                    ))}
-                  </View>
-                </View>
-              </Reveal>
-            ) : null}
-
-            {/* §5 — ČEKAJÍ NA TEBE: incoming requests */}
-            {d && d.incomingRequests.length > 0 ? (
-              <Reveal index={nextReveal()} onLayout={onRequestsLayout}>
-                <View style={styles.section}>
-                  <SectionPanel hot>
-                    <SectionHeader label={cs.friends.requestsHeader} />
-                    <View>
-                      {d.incomingRequests.map((request, i) => (
-                        <HairlineRow key={request.id} first={i === 0}>
-                          <View style={styles.requestRow}>
-                            <FriendMini profile={request.requester} />
-                            <View style={styles.requestActions}>
-                              <IconButton
-                                onPress={() => void respond(request.id, 'decline')}
-                                disabled={respondingRequestActions[request.id] != null}
-                                accessibilityLabel={cs.friends.decline}
-                                style={styles.declineBtn}
-                              >
-                                {respondingRequestActions[request.id] === 'decline' ? (
-                                  <ActivityIndicator color={Colors.foam} size="small" />
-                                ) : (
-                                  <XIcon size={18} color={Colors.foam} />
-                                )}
-                              </IconButton>
-                              <IconButton
-                                onPress={() => void respond(request.id, 'accept')}
-                                disabled={respondingRequestActions[request.id] != null}
-                                accessibilityLabel={cs.friends.accept}
-                                style={styles.acceptBtn}
-                              >
-                                {respondingRequestActions[request.id] === 'accept' ? (
-                                  <ActivityIndicator color={Colors.stout} size="small" />
-                                ) : (
-                                  <CheckIcon size={18} color={Colors.stout} />
-                                )}
-                              </IconButton>
-                            </View>
-                          </View>
-                        </HairlineRow>
-                      ))}
-                    </View>
-                  </SectionPanel>
-                </View>
-              </Reveal>
-            ) : null}
-
-            {/* §6 — ČERSTVĚ CVAKNUTO: fresh parta photos (hides when empty) */}
-            {d ? (
-              <Reveal index={nextReveal()}>
-                <PartaPhotoStrip refreshKey={photoFeedKey} style={styles.section} />
-              </Reveal>
-            ) : null}
-
-            {/* §8 — ŽEBŘÍČEK PARTY */}
-            {d ? (
-              <Reveal index={nextReveal()}>
-                <View style={styles.section}>
-                  <SectionPanel>
-                    <SectionHeader label={cs.friends.leaderboardHeader} />
-                    {leaderboard.length <= 1 ? (
-                      <EmptyStrip
-                        icon={<TrophyIcon size={28} color={Colors.mutedText} />}
-                        text={cs.friends.leaderboardEmpty}
-                      />
-                    ) : (
-                      <View style={styles.panelList}>
-                        {boardToShow.map((entry, i) => (
-                          <LeaderboardRow
-                            key={entry.account.id || `rank-${i}`}
-                            entry={entry}
-                            rank={i + 1}
-                            maxVisits={maxVisits}
-                            onPress={
-                              entry.isMe || !entry.account.id
-                                ? undefined
-                                : () => openFriendProfile(entry.account.id)
-                            }
-                          />
-                        ))}
-                        {!showAllBoard && hiddenCount > 0 ? (
-                          <Pressable
-                            onPress={() => setShowAllBoard(true)}
-                            accessibilityRole="button"
-                            accessibilityLabel={cs.friends.leaderboardMore(hiddenCount)}
-                            style={({ pressed }) => [styles.moreRow, pressed && styles.dim]}
-                          >
-                            <Text style={styles.moreLine} maxFontSizeMultiplier={FontScaleCap.body}>
-                              {cs.friends.leaderboardMore(hiddenCount)}
-                            </Text>
-                          </Pressable>
-                        ) : null}
-                        {myPinned && myIndex >= 0 ? (
-                          <>
-                            <Text
-                              style={styles.dividerDots}
-                              allowFontScaling={false}
-                              accessibilityElementsHidden
-                              importantForAccessibility="no"
-                            >
-                              …
-                            </Text>
-                            <LeaderboardRow
-                              key="me-pinned"
-                              entry={leaderboard[myIndex]}
-                              rank={myIndex + 1}
-                              maxVisits={maxVisits}
-                            />
-                          </>
-                        ) : null}
-                      </View>
-                    )}
-                  </SectionPanel>
-                </View>
-              </Reveal>
-            ) : null}
-
-            {d && beerFeedItems.length > 0 ? (
-              <Reveal index={nextReveal()}>
-                <View style={styles.section}>
-                  <SectionPanel>
-                    <SectionHeader label={cs.beerCheckins.feedHeader} />
-                    <View>
-                      {beerFeedItems.slice(0, 6).map((item, i) => renderBeerFeedRow(item, i === 0))}
-                    </View>
-                  </SectionPanel>
-                </View>
-              </Reveal>
-            ) : null}
-
-            {/* §9 — CINKLO V PARTĚ: ambient notification feed + one-tap reactions */}
-            {d && d.notifications.length > 0 ? (
-              <Reveal index={nextReveal()}>
-                <View style={styles.section}>
-                  <SectionPanel>
-                    <SectionHeader label={cs.friends.feedHeader} />
-                    <View>
-                      {d.notifications
-                        .slice(0, 6)
-                        .map((notification, i) => renderFeedRow(notification, i === 0))}
-                    </View>
-                  </SectionPanel>
-                </View>
-              </Reveal>
-            ) : null}
-
-            {/* Footer cross-link into Správa party — the full friends list, add
-                tools and outgoing invites now live there. Navigation, not an
-                action (amber icon, foam text, chevron), so no GlowButton. */}
-            {d ? (
-              <Reveal index={nextReveal()}>
-                <View style={styles.section}>
-                  <Pressable
-                    onPress={() => router.push('/profile/parta' as Href)}
-                    accessibilityRole="button"
-                    accessibilityLabel={cs.friends.manageLink}
-                    style={({ pressed }) => [styles.manageLink, pressed && styles.dim]}
-                  >
-                    <View
-                      style={styles.manageIconDisk}
-                      importantForAccessibility="no"
-                      accessibilityElementsHidden
-                      pointerEvents="none"
-                    >
-                      <UsersIcon size={18} color={Colors.amber} />
-                    </View>
-                    <Text style={styles.manageLinkText} maxFontSizeMultiplier={FontScaleCap.body}>
-                      {cs.friends.manageLink}
-                    </Text>
-                    <ChevronRightIcon size={16} color={Colors.mutedText} />
-                  </Pressable>
-                </View>
-              </Reveal>
-            ) : null}
-          </>
+        ) : loading && !d ? null : (
+          <Text style={styles.streamEmpty} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.friends.streamEmpty}
+          </Text>
         )}
-      </KeyboardAwareScrollView>
-      </KeyboardAvoidingView>
+      </ScrollView>
+
+      <NudgeSlot nudge={nudge} />
+
+      <CounterCta
+        label={cta.label}
+        subLabel={cta.subLabel}
+        onPress={cta.onPress}
+        accessibilityLabel={cta.label}
+      />
+
+      {friendCount > 0 ? (
+        <CounterSecondary
+          label={cs.friends.secondaryAddFriend}
+          onPress={() => setAddFriendVisible(true)}
+        />
+      ) : null}
+
+      <MoreSheet
+        visible={moreVisible}
+        title={cs.friends.moreTitle}
+        rows={moreRows}
+        onClose={() => setMoreVisible(false)}
+      />
 
       <FriendSettingsSheet
         visible={settingsVisible}
@@ -1424,13 +1571,31 @@ export default function FriendsScreen() {
       />
 
       {codeVisible ? <CodeSheet onClose={() => setCodeVisible(false)} /> : null}
+
       {composeVisible ? (
         <ComposeSheet
-          friends={dashboard?.friends ?? []}
+          friends={d?.friends ?? []}
           onSubmitted={reload}
           onClose={() => setComposeVisible(false)}
         />
       ) : null}
+
+      <AddFriendSheet
+        visible={addFriendVisible}
+        hasIdentity={hasIdentity}
+        needsNickname={needsNickname}
+        onOpenCode={openCodeFromAdd}
+        onChanged={reload}
+        onClose={() => setAddFriendVisible(false)}
+      />
+
+      <RosterSheet
+        visible={rosterVisible}
+        dashboard={d}
+        stale={loadError}
+        onReload={reload}
+        onClose={() => setRosterVisible(false)}
+      />
     </View>
   );
 }
@@ -1439,324 +1604,82 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: Colors.stout,
+    paddingHorizontal: 24,
+    gap: 12,
   },
-  content: {
-    paddingHorizontal: Spacing.lg,
-  },
-
-  // — Hero —
-  hero: {
-    paddingBottom: Spacing.md,
-  },
-  heroRow1: {
-    minHeight: 46,
+  header: {
+    minHeight: 44,
+    marginBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.sm,
   },
-  heroTitleWrap: {
-    flexShrink: 1,
-    minWidth: 0,
+  partyChip: {
+    minHeight: HitArea.min,
+    maxWidth: '80%',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
+    gap: 8,
   },
-  heroTitle: {
+  partyChipLabel: {
     flexShrink: 1,
     fontFamily: Fonts.display.extrabold,
-    fontSize: 30,
-    lineHeight: 34,
-    letterSpacing: -0.5,
+    fontSize: 18,
     color: Colors.foam,
+    includeFontPadding: false,
   },
-  heroRight: {
-    flexShrink: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
+  headerSpacer: {
+    flex: 1,
+    minWidth: Spacing.sm,
   },
-  gear: {
-    width: HitArea.min,
-    height: HitArea.min,
-    alignItems: 'center',
-    justifyContent: 'center',
-    // Collapse the invisible hit-area padding (44 box − 22 glyph = 11/side) so
-    // the glyph keeps an optical gap to the ghost chip and sits flush with the
-    // content's right edge.
-    marginLeft: -11,
-    marginRight: -11,
-  },
-  // Matches the StreakBadge amber chip so the header reads as one row.
-  ghostChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    height: 32,
-    paddingHorizontal: Spacing.md,
+  moreButton: {
+    width: 40,
+    height: 40,
     borderRadius: Radius.pill,
-    borderWidth: 1,
-    backgroundColor: withAlpha(Colors.amber, 0.12),
-    borderColor: withAlpha(Colors.amber, 0.32),
-  },
-  ghostChipLabel: {
-    fontFamily: Fonts.display.semibold,
-    fontSize: 13,
-    color: Colors.amberLight,
-  },
-  liveDotNudge: {
-    transform: [{ translateY: -5 }],
-  },
-  heroColdTitle: {
-    marginTop: Spacing.md,
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 22,
-    lineHeight: 27,
-    color: Colors.foam,
-  },
-  heroColdBody: {
-    marginTop: Spacing.sm,
-    fontFamily: Fonts.ui.medium,
-    fontSize: 15,
-    lineHeight: 21,
-    color: Colors.foamMuted,
-  },
-  eveningLink: {
-    minHeight: 64,
-    marginTop: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: Colors.border,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  eveningLinkIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.1),
-  },
-  eveningLinkText: { flex: 1, minWidth: 0 },
-  eveningLinkTitle: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 15,
-    color: Colors.foam,
-  },
-  eveningLinkHint: {
-    marginTop: 2,
-    fontFamily: Fonts.ui.regular,
-    fontSize: 12,
-    lineHeight: 16,
-    color: Colors.mutedText,
-  },
-  pulseCard: {
-    position: 'relative',
-    overflow: 'hidden',
-    marginTop: Spacing.md,
-    padding: Spacing.lg,
-    borderRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.border, 0.72),
-    backgroundColor: Colors.stout2,
-    ...softDrop(),
-  },
-  pulseCardLive: {
-    borderColor: withAlpha(Colors.amber, 0.38),
-    backgroundColor: Colors.stout3,
-  },
-  pulseCardMine: {
-    borderColor: withAlpha(Colors.amber, 0.5),
-  },
-  pulseTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  pulseIconDisk: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.25),
-    backgroundColor: withAlpha(Colors.amber, 0.1),
-  },
-  pulseIconDiskHot: {
-    borderColor: withAlpha(Colors.amber, 0.8),
-    backgroundColor: Colors.amber,
-  },
-  pulseLabel: {
-    flexShrink: 1,
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 12,
-    letterSpacing: 1.1,
-    textTransform: 'uppercase',
-    color: Colors.mutedText,
-  },
-  pulseLabelHot: {
-    color: Colors.amberLight,
-  },
-  pulseSignal: {
-    marginLeft: 'auto',
-    height: 18,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 3,
-  },
-  pulseSignalBar: {
-    width: 3,
-    height: 7,
-    borderRadius: 2,
-    backgroundColor: withAlpha(Colors.mutedText, 0.38),
-  },
-  pulseSignalBarMid: {
-    height: 11,
-  },
-  pulseSignalBarTall: {
-    height: 15,
-  },
-  pulseSignalBarHot: {
-    backgroundColor: withAlpha(Colors.amber, 0.86),
-  },
-  pulseTitle: {
-    marginTop: Spacing.md,
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 25,
-    lineHeight: 29,
-    letterSpacing: -0.3,
-    color: Colors.foam,
-  },
-  pulseBody: {
-    marginTop: Spacing.xs,
-    fontFamily: Fonts.ui.medium,
-    fontSize: 14,
-    lineHeight: 20,
-    color: Colors.foamMuted,
-  },
-  pulseFooter: {
-    marginTop: Spacing.lg,
-    gap: Spacing.md,
-  },
-  pulseMetrics: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
-  },
-  pulseMetric: {
-    minHeight: 32,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    paddingHorizontal: Spacing.sm,
-    borderRadius: Radius.small,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.07),
-    backgroundColor: withAlpha(Colors.foam, 0.045),
-  },
-  pulseMetricText: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 12,
-    color: Colors.foamMuted,
-  },
-  pulseCta: {
-    alignSelf: 'stretch',
-  },
-  firstRunOffline: {
-    marginTop: Spacing.sm,
-    fontFamily: Fonts.ui.medium,
-    fontSize: 13,
-    color: Colors.mutedText,
-  },
-  heroRule: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: withAlpha(Colors.border, 0.6),
-    marginTop: Spacing.md,
-    marginHorizontal: -Spacing.lg,
-  },
-  rankTeaserWrap: {
-    marginTop: Spacing.md,
-  },
-  contestTeaserWrap: {
-    marginTop: Spacing.sm,
-  },
-
-  // — Section rhythm —
-  section: {
-    marginTop: Spacing.xl,
-  },
-  sectionPanel: {
-    padding: Spacing.lg,
-    borderRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.border, 0.55),
-    backgroundColor: withAlpha(Colors.stout2, 0.88),
-    ...softDrop(),
-  },
-  sectionPanelHot: {
-    borderColor: withAlpha(Colors.amber, 0.32),
-    backgroundColor: withAlpha(Colors.stout3, 0.9),
-  },
-  panelList: {
-    marginHorizontal: -10,
-  },
-  stack: {
-    gap: Spacing.sm,
   },
   dim: {
     opacity: 0.6,
   },
-  // — Footer cross-link into Správa party —
-  manageLink: {
-    minHeight: 62,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-    paddingHorizontal: Spacing.lg,
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 12,
+  },
+  cardGrow: {
+    flex: 1,
+  },
+  streamHeader: {
+    marginTop: 24,
+    marginBottom: 8,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
+    color: Colors.mutedText,
+    includeFontPadding: false,
+  },
+  stream: {
+    gap: 12,
+  },
+  streamEmpty: {
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
+    lineHeight: 20,
+    color: Colors.mutedText,
+    includeFontPadding: false,
+  },
+  photoStreamItem: {
+    marginBottom: 12,
+  },
+  streamRowCard: {
+    overflow: 'hidden',
+    backgroundColor: Colors.stout2,
     borderRadius: Radius.card,
     borderWidth: 1,
-    borderColor: withAlpha(Colors.border, 0.55),
-    backgroundColor: withAlpha(Colors.stout2, 0.76),
+    borderColor: withAlpha(Colors.foam, 0.07),
+    paddingHorizontal: 16,
   },
-  manageLinkText: {
-    flex: 1,
-    fontFamily: Fonts.display.semibold,
-    fontSize: 15,
-    color: Colors.foam,
-  },
-  manageIconDisk: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.28),
-    backgroundColor: withAlpha(Colors.amber, 0.1),
-  },
-
-  // — CO TĚ ČEKÁ teaser —
-  teaser: {
-    gap: Spacing.md,
-  },
-  teaserLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-  },
-  teaserText: {
-    flex: 1,
-    fontFamily: Fonts.ui.medium,
-    fontSize: 14,
-    lineHeight: 19,
-    color: Colors.mutedText,
-  },
-
-  // — Requests —
   requestRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1772,7 +1695,7 @@ const styles = StyleSheet.create({
   acceptBtn: {
     width: HitArea.min,
     height: HitArea.min,
-    borderRadius: HitArea.min / 2,
+    borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.amber,
@@ -1780,54 +1703,11 @@ const styles = StyleSheet.create({
   declineBtn: {
     width: HitArea.min,
     height: HitArea.min,
-    borderRadius: HitArea.min / 2,
+    borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: withAlpha(Colors.foam, 0.08),
   },
-
-  // — Empty strips —
-  emptyStrip: {
-    alignItems: 'center',
-    paddingVertical: Spacing.lg,
-    gap: Spacing.sm,
-  },
-  emptyStripText: {
-    fontFamily: Fonts.ui.medium,
-    fontSize: 14,
-    lineHeight: 19,
-    color: Colors.mutedText,
-    textAlign: 'center',
-  },
-
-  // — Leaderboard —
-  moreRow: {
-    minHeight: HitArea.min,
-    justifyContent: 'center',
-  },
-  moreLine: {
-    marginTop: Spacing.sm,
-    paddingHorizontal: 10,
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 13,
-    color: Colors.amber,
-  },
-  staleNote: {
-    marginBottom: Spacing.sm,
-    fontFamily: Fonts.ui.medium,
-    fontStyle: 'italic',
-    fontSize: 12,
-    color: Colors.mutedText,
-  },
-  dividerDots: {
-    marginTop: Spacing.xs,
-    textAlign: 'center',
-    fontFamily: Fonts.display.semibold,
-    fontSize: 16,
-    color: Colors.mutedText,
-  },
-
-  // — Notification feed —
   feedRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1836,7 +1716,7 @@ const styles = StyleSheet.create({
   feedIconDisk: {
     width: 34,
     height: 34,
-    borderRadius: 17,
+    borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -1862,12 +1742,14 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.bold,
     color: Colors.foam,
     fontSize: 14,
+    includeFontPadding: false,
   },
   feedTime: {
     flexShrink: 0,
     fontFamily: Fonts.ui.medium,
     color: Colors.mutedText,
     fontSize: 11,
+    includeFontPadding: false,
   },
   feedBody: {
     marginTop: 2,
@@ -1875,6 +1757,7 @@ const styles = StyleSheet.create({
     color: Colors.foamMuted,
     fontSize: 13,
     lineHeight: 18,
+    includeFontPadding: false,
   },
   feedNote: {
     marginTop: 4,
@@ -1882,8 +1765,90 @@ const styles = StyleSheet.create({
     color: Colors.foam,
     fontSize: 13,
     lineHeight: 18,
+    includeFontPadding: false,
   },
   feedTags: {
-    marginTop: 6,
+    marginTop: 8,
+  },
+  sheetBackdrop: {
+    flex: 1,
+    backgroundColor: withAlpha(Colors.black, 0.6),
+    justifyContent: 'flex-end',
+  },
+  sheetCardWrap: {
+    width: '100%',
+    minHeight: '56%',
+    maxHeight: '92%',
+  },
+  sheetCard: {
+    flex: 1,
+    backgroundColor: Colors.stout2,
+    borderTopLeftRadius: Radius.cardLarge,
+    borderTopRightRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingTop: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    ...softDrop(),
+  },
+  sheetGrabber: {
+    width: 40,
+    height: 4,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.border,
+    alignSelf: 'center',
+    marginBottom: Spacing.md,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  sheetTitle: {
+    flexShrink: 1,
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 22,
+    color: Colors.foam,
+    includeFontPadding: false,
+  },
+  sheetClose: {
+    width: HitArea.min,
+    height: HitArea.min,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout3,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetList: {
+    flex: 1,
+    marginTop: Spacing.sm,
+  },
+  sheetListContent: {
+    gap: 12,
+    paddingBottom: Spacing.sm,
+  },
+  sheetEmpty: {
+    paddingVertical: 24,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 15,
+    color: Colors.mutedText,
+    textAlign: 'center',
+    includeFontPadding: false,
+  },
+  rosterBlock: {
+    gap: 12,
+    paddingVertical: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.foam, 0.1),
+  },
+  rosterPub: {
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 18,
+    color: Colors.foam,
+    includeFontPadding: false,
   },
 });

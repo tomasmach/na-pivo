@@ -1771,7 +1771,9 @@ export const cs = {
     nudgePhotoRetry: 'Zkusit',
     nudgeNickname: 'Bez přezdívky tě parta nepozná.',
     nudgeNicknameFix: 'Doplnit',
-    nudgeLastNight: (pub: string, beers: string) => `Naposledy ${pub} · ${beers}`,
+    // Count first: the strip truncates from the right, and losing the pub name
+    // costs less than losing the number the line exists to show.
+    nudgeLastNight: (pub: string, beers: string) => `${beers} · ${pub}`,
     nudgeLastNightOpen: 'Otevřít',
     nudgeEmpty: 'Zatím čistej štos. Zapiš první pivo.',
     nudgeEmptyCta: 'Na tácek',

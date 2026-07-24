@@ -76,7 +76,7 @@ export function PartyCard({
   // The table is sized from the card, not the other way round: on a short phone
   // it shrinks instead of spilling over the card's edge.
   const [bodyHeight, setBodyHeight] = useState(0);
-  const tableWidth = bodyHeight > 0 ? Math.max(72, Math.min(128, (bodyHeight - 16) * 0.72)) : 96;
+  const tableWidth = bodyHeight > 0 ? Math.max(72, Math.min(140, (bodyHeight - 16) * 0.72)) : 96;
 
   const hasFooter = factStrong !== null || factMuted !== null || linkLabel !== null;
   const numeralSize = countFontSize(count);
@@ -170,11 +170,13 @@ export function PartyCard({
 }
 
 const styles = StyleSheet.create({
-  // Like NightCard this one sits at the top of a scroll, not in a fixed
-  // composition — so its height comes from its content and a deliberate body
-  // minimum, not from `flex: 1` (which collapses inside a ScrollView's content
-  // container). It still clips itself: the table is sized from the card.
+  // `flex: 1` fills whatever box the screen hands over. When the stream below
+  // is empty the host wraps this card in a growing container, and without the
+  // flex the card would sit short with a hole of stout under it (§14.1). Inside
+  // a plain scroll the flex simply has nothing to divide and `body`'s minHeight
+  // takes over, which is exactly the NightCard behaviour.
   card: {
+    flex: 1,
     overflow: 'hidden',
     backgroundColor: Colors.stout2,
     borderRadius: 28,
