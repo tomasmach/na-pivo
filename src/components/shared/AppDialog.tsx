@@ -13,7 +13,7 @@ import { cs } from '@/i18n/cs';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { amberGlow, softDrop } from '@/theme/shadows';
+import { softDrop } from '@/theme/shadows';
 
 export type AppDialogButtonStyle = 'default' | 'cancel' | 'destructive';
 
@@ -246,7 +246,6 @@ export function AppDialogHost() {
             styles.card,
             isActionMenu && styles.menuCard,
             softDrop(),
-            !isActionMenu && amberGlow(22),
             cardAnim,
             { marginBottom: isActionMenu ? Math.max(insets.bottom, Spacing.lg) : 0 },
           ]}
@@ -282,7 +281,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     borderRadius: Radius.cardLarge,
     borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.42),
+    borderColor: withAlpha(Colors.foam, 0.1),
     backgroundColor: Colors.stout2,
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.xl,

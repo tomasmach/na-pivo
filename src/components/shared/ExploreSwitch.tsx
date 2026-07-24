@@ -71,7 +71,7 @@ function Segment({
       accessibilityState={{ selected: active, disabled: active }}
       accessibilityLabel={accessibilityLabel}
     >
-      <Icon size={15} color={active ? Colors.stout : Colors.foamMuted} />
+      <Icon size={15} color={active ? Colors.foam : Colors.mutedText} />
       <Text
         style={[styles.label, active && styles.labelActive]}
         numberOfLines={1}
@@ -108,8 +108,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
   },
+  // Unlit on purpose: this switch floats over the map, which already carries
+  // one amber button. A filled amber segment made two amber surfaces compete
+  // — §14.2, the same mistake the three-segment beer tab once had.
   segmentActive: {
-    backgroundColor: Colors.amber,
+    backgroundColor: withAlpha(Colors.foam, 0.1),
   },
   label: {
     fontFamily: Fonts.ui.bold,
@@ -117,7 +120,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   labelActive: {
-    color: Colors.stout,
+    color: Colors.foam,
   },
   pressed: {
     opacity: 0.76,
