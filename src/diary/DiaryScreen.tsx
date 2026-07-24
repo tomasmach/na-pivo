@@ -77,6 +77,15 @@ import { useMyStats } from '@/stats/useMyStats';
 import { normalizeDrinkType } from '@/drinks/drinkTypes';
 import type { PriceCurrency } from '@/utils/currency';
 
+/** "4,2 km" — the walked-distance figure inherited from the profile's old grid. */
+function formatWalkedKm(metres: number): string {
+  const km = metres / 1000;
+  const text = km
+    .toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 1 })
+    .replace(/ /g, ' ');
+  return `${text} ${cs.profile.kmShort}`;
+}
+
 /** Beers only — the count that gets the big numeral, exactly as on the counter. */
 function beerCount(session: TallySession): number {
   return session.drinks.filter((d) => normalizeDrinkType(d.drinkType) === 'beer').length;
@@ -183,6 +192,9 @@ export default function DiaryScreen({ embedded = false }: { embedded?: boolean }
   const history = useTallyStore((s) => s.history);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const remote = useMyStats();
+  // Inherited from the profile's stats grid, which the rebuild removed.
+  const ratingsCount = usePubRatingsStore((s) => Object.keys(s.ratings).length);
+  const walkedM = useAccountStore((s) => s.profile?.usage?.walkedDistanceM ?? null);
   const diarySnapshot = useAccountStore((state) => {
     const snapshot = state.diarySnapshot;
     if (!snapshot || snapshot.accountId !== state.session?.accountId) return null;
@@ -310,8 +322,16 @@ export default function DiaryScreen({ embedded = false }: { embedded?: boolean }
             : null,
       });
     }
+    // These two used to live in the profile's stats grid. Numbers have exactly
+    // one home now, and this is it.
+    if (ratingsCount > 0) {
+      rows.push({ key: 'ratings', label: cs.diary.statsRatings, value: String(ratingsCount) });
+    }
+    if (walkedM != null) {
+      rows.push({ key: 'walked', label: cs.diary.statsWalked, value: formatWalkedKm(walkedM) });
+    }
     return rows;
-  }, [lifetime, priceCurrency, thisMonth]);
+  }, [lifetime, priceCurrency, ratingsCount, thisMonth, walkedM]);
 
   const recordRows: StatRow[] = useMemo(() => {
     const fastest = plausibleFastestBeerMs(records.fastestBeerMs);

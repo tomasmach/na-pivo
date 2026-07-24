@@ -1293,6 +1293,62 @@ export const cs = {
           ? `${n} kámoši`
           : `${n} kámošů`,
 
+    // — Tácek rebuild: one table card, one amber button, the rest behind "…" —
+
+    /** Header chip when you have nobody yet. */
+    soloChip: 'Zatím solo',
+    /** Wide caption under the big numeral on the table card. */
+    tableCaption: 'DNESKA NA PIVU',
+    tableCaptionQuiet: 'KLID V LOKÁLE',
+    /** Amber door in the card footer. */
+    tableLink: 'Kdo jde',
+    /** Quiet fact when no streak is running. */
+    noStreak: 'Bez série',
+    /** Quiet fact while the invisible mode hides you from the leaderboard. */
+    hiddenRank: 'Skrytě, v žebříčku tě nevidí',
+
+    // — The one button, by state —
+    ctaPing: 'Cinknout partě',
+    ctaPingSub: 'Vyber hospodu a čas.',
+    ctaPingToo: 'Cinknout taky',
+    ctaWhoIsComing: 'Kdo dorazí?',
+    ctaAddFriend: 'Přidej kámoše',
+    ctaAddFriendSub: 'Kódem nebo pozvánkou.',
+    ctaSignIn: 'Přihlásit se',
+    ctaNickname: 'Doplnit přezdívku',
+    /** Quiet outline twin under the amber button. */
+    secondaryAddFriend: 'Přidat kámoše',
+
+    // — "Co ještě?" rows —
+    moreTitle: 'Co ještě?',
+    moreSettings: 'Nastavení party',
+    moreMyCode: 'Můj kód',
+    moreWholeParty: 'Celá parta',
+    moreLeaderboards: 'Žebříčky',
+    morePhotoContest: 'FotoPivař',
+    moreVycep: 'Výčep',
+    morePartyEvening: 'Společný večer',
+    moreHomeParty: 'Pivo u někoho',
+
+    // — Nudge slot: at most one —
+    nudgeRequest: (name: string) => `${name} chce do party`,
+    nudgeRequestAccept: 'Přijmout',
+    nudgeOffline: 'Ukazuju poslední, co vím.',
+    nudgeOfflineRetry: 'Zkusit znovu',
+    nudgeLive: (name: string, pub: string) => `${name} drží stůl ${pub}`,
+    nudgeLiveJoin: 'Jdu',
+    nudgeBroadcasting: 'Cinknutí je venku.',
+    nudgeBroadcastEnd: 'Zabalit',
+    nudgePush: 'Cinknu ti, když někdo sedne.',
+    nudgePushEnable: 'Zapnout',
+    nudgeContest: 'Výsledky kola jsou venku.',
+    nudgeContestOpen: 'Mrknout',
+    nudgeStreakRisk: 'Série visí na vlásku. Zapal ji dneska.',
+
+    // — The one feed under the card —
+    streamHeader: 'Co se děje',
+    streamEmpty: 'Zatím ticho. Cinkni partě a rozjeď to.',
+
     // ── Parta 3.0 ──────────────────────────────────────────────────────────
 
     // — "CO TĚ ČEKÁ" cold-start teaser (§J) —
@@ -1657,6 +1713,9 @@ export const cs = {
     statsPubs: 'Hospod',
     statsSpent: 'Utraceno',
     statsThisMonth: 'Tenhle měsíc',
+    // Moved here from the profile's stats grid — numbers have one home now.
+    statsRatings: 'Hodnocení',
+    statsWalked: 'Nachozeno',
     statsMonthAvg: (avg: string) => `průměr ${avg} na večer`,
     statsRecordsCaption: 'REKORDY',
     statsRecordMost: 'Nejvíc za večer',
@@ -1674,6 +1733,48 @@ export const cs = {
   profile: {
     // — Tab header —
     title: 'Profil',
+
+    // — Tácek rebuild: one card, one amber button, the rest behind "…" —
+
+    /** Identity row when there is no account yet. */
+    noAccountNick: 'Zatím bez účtu',
+    noAccountCaption: 'Piva ti počítám i tak.',
+    /** Wide caption under the big lifetime numeral. */
+    lifetimeCaption: 'PIV ZA ŽIVOT',
+    lifetimeCaptionEmpty: 'ČISTEJ ŠTOS',
+    /** Amber door in the card footer. */
+    badgesLink: 'Odznaky',
+    /** Footer facts. */
+    levelLine: (level: number, title: string) => `Úroveň ${level} · ${title}`,
+    levelToNext: (xp: number) => `ještě ${xp} XP do dalšího levelu`,
+    levelMaxed: 'Máš všechno, jsi legenda.',
+    levelNoAccount: 'Level ti naskočí s účtem.',
+
+    // — The one button —
+    ctaCode: 'Ukaž svůj kód',
+    ctaCodeSub: 'Kámoš tě naskenuje a jste parta.',
+    ctaSignUp: 'Založ si profil',
+    ctaSignUpSub: 'Ať o piva nepřijdeš při výměně mobilu.',
+    secondaryPhotos: 'Pivní fotky',
+
+    // — "Co ještě?" rows —
+    moreTitle: 'Co ještě?',
+    moreSettings: 'Nastavení',
+    moreLeaderboards: 'Žebříčky',
+    moreParta: 'Parta',
+    morePartaCount: (friends: string) => friends,
+    morePartaEmpty: 'Sežeň si partu',
+    moreFollow: 'Sleduj Na pivo',
+
+    // — Nudge slot: at most one —
+    nudgePhotoFailed: 'Fotka se nenahrála.',
+    nudgePhotoRetry: 'Zkusit',
+    nudgeNickname: 'Bez přezdívky tě parta nepozná.',
+    nudgeNicknameFix: 'Doplnit',
+    nudgeLastNight: (pub: string, beers: string) => `Naposledy ${pub} · ${beers}`,
+    nudgeLastNightOpen: 'Otevřít',
+    nudgeEmpty: 'Zatím čistej štos. Zapiš první pivo.',
+    nudgeEmptyCta: 'Na tácek',
 
     // — Identity —
     editProfile: 'Upravit profil',
@@ -2508,6 +2609,20 @@ export const cs = {
     ratingDislike: (pub: string) => `Hodnotit ${pub} jako slabou`,
     ratingNote: (note: string) => `Štítek: ${note}`,
     ratingNoteInput: (pub: string) => `Vlastní poznámka k hospodě ${pub}`,
+
+    // — Profil —
+    profileMore: 'Co ještě? Nastavení, žebříčky a další',
+    profileCard: (beers: string, level: string) =>
+      `${beers} za život. ${level}. Ťukni pro odznaky.`,
+    profileBadges: 'Otevřít odznaky',
+    profileIdentity: 'Upravit profil',
+
+    // — Parta —
+    partaMore: 'Co ještě? Nastavení, žebříčky a další',
+    partaChip: (friends: string) => `Tvoje parta, ${friends}. Ťukni pro celou partu.`,
+    partaCard: (count: string, headline: string) =>
+      `${count} z party dneska na pivu. ${headline} Ťukni pro seznam.`,
+    partaTable: 'Kdo dneska jde',
 
     // — Kompas —
     compassMore: 'Co ještě? Mapa, filtry a další',
