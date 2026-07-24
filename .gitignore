@@ -14,6 +14,8 @@ expo-env.d.ts.bak
 # Native
 /ios/
 /android/
+# Gradle build output of local Expo native modules (e.g. beer-live-activity).
+modules/*/android/build/
 *.xcworkspace
 *.xcodeproj
 *.jks
