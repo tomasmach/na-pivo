@@ -9,6 +9,9 @@ module.exports = defineConfig([
   {
     ignores: ["dist/*"],
     settings: {
+      // expo-widgets is resolved by Metro and TypeScript, but eslint-plugin-import
+      // can lose it while traversing @expo/ui's platform-specific source graph.
+      "import/core-modules": ["expo-widgets"],
       // Prefer TypeScript's resolver for typed ESM packages whose conditional
       // exports are valid for Metro/tsc but not understood by the Node resolver.
       "import/resolver": {
