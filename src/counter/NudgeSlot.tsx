@@ -18,7 +18,13 @@ import { BeerIcon, CheckIcon, XIcon } from '@/components/shared/IconGlyph';
 
 export type Nudge =
   | { kind: 'rapid'; text: string; confirmLabel: string; onConfirm: () => void }
-  | { kind: 'counted'; text: string; undoLabel: string; onUndo: () => void }
+  | {
+      kind: 'counted';
+      text: string;
+      undoLabel: string;
+      onUndo: () => void;
+      actionAccessibilityLabel?: string;
+    }
   | { kind: 'dopito'; label: string; onPress: () => void }
   | { kind: 'checkin'; text: string; ctaLabel: string; onPress: () => void; onDismiss: () => void }
   | { kind: 'rank'; node: React.ReactNode };
@@ -47,7 +53,7 @@ function CountedStrip({ nudge }: { nudge: Extract<Nudge, { kind: 'counted' }> })
         onPress={nudge.onUndo}
         style={({ pressed }) => [styles.ghostPill, pressed && styles.pressed]}
         accessibilityRole="button"
-        accessibilityLabel={cs.a11y.counterUndoStrip}
+        accessibilityLabel={nudge.actionAccessibilityLabel ?? cs.a11y.counterUndoStrip}
         hitSlop={Spacing.xs}
       >
         <Text

@@ -25,8 +25,8 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: jest.fn(() => ({ top: 0, right: 0, bottom: 0, left: 0 })),
 }));
 
-jest.mock('@/components/shared/GlowButton', () => ({
-  GlowButton: jest.fn(() => null),
+jest.mock('@/counter/CounterCta', () => ({
+  CounterCta: jest.fn(() => null),
 }));
 
 jest.mock('@/theme/fonts', () => ({
@@ -41,7 +41,7 @@ jest.mock('@/data/telemetryClient', () => ({
   trackClientEvent: jest.fn(),
 }));
 
-import { GlowButton } from '@/components/shared/GlowButton';
+import { CounterCta } from '@/counter/CounterCta';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { useOnboardingStore } from '@/stores/onboardingStore';
 import OnboardingScreen from '../onboarding';
@@ -49,11 +49,11 @@ import OnboardingScreen from '../onboarding';
 const TestRenderer = require('react-test-renderer');
 const { act } = TestRenderer;
 
-const mockGlowButton = GlowButton as unknown as jest.Mock;
+const mockCounterCta = CounterCta as unknown as jest.Mock;
 const mockTrack = trackClientEvent as jest.MockedFunction<typeof trackClientEvent>;
 
-function lastGlowButtonProps(): { label: string; onPress: () => void } {
-  const calls = mockGlowButton.mock.calls;
+function lastCounterCtaProps(): { label: string; onPress: () => void } {
+  const calls = mockCounterCta.mock.calls;
   return calls[calls.length - 1][0];
 }
 
@@ -102,17 +102,17 @@ describe('OnboardingScreen', () => {
     await render();
 
     expect(mockTrack).toHaveBeenCalledWith({ event: 'onboarding_started' });
-    expect(lastGlowButtonProps().label).toBe('Pokračovat');
+    expect(lastCounterCtaProps().label).toBe('Co dál?');
   });
 
   it('swaps to the account CTA on the last slide and opens auth over the tabs', async () => {
     await render();
-    await focusSlide(4);
+    await focusSlide(2);
 
-    expect(lastGlowButtonProps().label).toBe('Založit účet');
+    expect(lastCounterCtaProps().label).toBe('Založit účet');
 
     await act(async () => {
-      lastGlowButtonProps().onPress();
+      lastCounterCtaProps().onPress();
       await Promise.resolve();
     });
 
@@ -122,14 +122,14 @@ describe('OnboardingScreen', () => {
     expect(mockPush).toHaveBeenCalledWith('/auth');
     expect(mockTrack).toHaveBeenCalledWith({
       event: 'onboarding_completed',
-      context: { slide: 5 },
+      context: { slide: 3 },
     });
     expect(mockTrack).toHaveBeenCalledWith({ event: 'onboarding_auth_opened' });
   });
 
   it('"Zatím bez účtu" finishes into the tabs without opening auth', async () => {
     await render();
-    await focusSlide(4);
+    await focusSlide(2);
 
     const later = renderer!.root.findAll(
       (node: { props: Record<string, unknown> }) =>
@@ -146,7 +146,7 @@ describe('OnboardingScreen', () => {
     expect(mockPush).not.toHaveBeenCalled();
     expect(mockTrack).toHaveBeenCalledWith({
       event: 'onboarding_completed',
-      context: { slide: 5 },
+      context: { slide: 3 },
     });
   });
 
@@ -172,10 +172,10 @@ describe('OnboardingScreen', () => {
 
   it('a double tap on the last-slide CTA navigates only once', async () => {
     await render();
-    await focusSlide(4);
+    await focusSlide(2);
 
     await act(async () => {
-      const { onPress } = lastGlowButtonProps();
+      const { onPress } = lastCounterCtaProps();
       onPress();
       onPress();
       await Promise.resolve();

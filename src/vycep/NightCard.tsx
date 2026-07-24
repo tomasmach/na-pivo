@@ -10,12 +10,7 @@ import { memo, useCallback, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { showAppDialog } from '@/components/shared/AppDialog';
-import {
-  ClockIcon,
-  EllipsisIcon,
-  HandPlatterIcon,
-  MapPinIcon,
-} from '@/components/shared/IconGlyph';
+import { EllipsisIcon } from '@/components/shared/IconGlyph';
 import { reportProfileContent } from '@/data/auth';
 import {
   isRetriableNightError,
@@ -54,25 +49,33 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
   const markUnpublished = useVycepStore((s) => s.markUnpublished);
   const now = useMemo(() => new Date(), []);
 
-  const extras = useMemo(
+  const metaLine = useMemo(
     () =>
       [
+        night.pubNames.length > 0 ? night.pubNames.slice(0, 5).join(' → ') : null,
+        night.durationMinutes != null && night.durationMinutes > 0
+          ? cs.vycep.nightDuration(
+              Math.floor(night.durationMinutes / 60),
+              night.durationMinutes % 60,
+            )
+          : null,
         night.wineCount > 0 ? wineCountLabel(night.wineCount) : null,
         night.shotCount > 0 ? shotCountLabel(night.shotCount) : null,
         night.beerCount === 0 && night.softDrinkCount > 0
           ? softDrinkCountLabel(night.softDrinkCount)
           : null,
-      ].filter((part): part is string => part !== null),
-    [night.beerCount, night.shotCount, night.softDrinkCount, night.wineCount],
+      ]
+        .filter((part): part is string => part !== null)
+        .join(' · '),
+    [
+      night.beerCount,
+      night.durationMinutes,
+      night.pubNames,
+      night.shotCount,
+      night.softDrinkCount,
+      night.wineCount,
+    ],
   );
-
-  const duration = useMemo(() => {
-    if (night.durationMinutes == null || night.durationMinutes <= 0) return null;
-    return cs.vycep.nightDuration(
-      Math.floor(night.durationMinutes / 60),
-      night.durationMinutes % 60,
-    );
-  }, [night.durationMinutes]);
 
   const handleUnpublish = useCallback(() => {
     showAppDialog({
@@ -136,10 +139,23 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
   }, [handleReport, handleUnpublish, night.isMine]);
 
   const owner = authorLabel(night);
+  const dateCaption = [
+    formatEveningDate(night.startedAt, now),
+    night.isMine
+      ? (
+          night.visibility === 'public'
+            ? cs.vycep.visibilityChipWorld
+            : cs.vycep.visibilityChipFriends
+        ).toLocaleLowerCase('cs-CZ')
+      : null,
+  ]
+    .filter((part): part is string => part !== null)
+    .join(' · ');
 
   return (
     <View
       style={styles.card}
+      accessibilityRole="text"
       accessibilityLabel={cs.a11y.nightCard(owner)}
     >
       <View style={styles.header}>
@@ -154,18 +170,9 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
             {owner}
           </Text>
           <Text style={styles.date} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-            {formatEveningDate(night.startedAt, now)}
+            {dateCaption}
           </Text>
         </View>
-        {night.isMine ? (
-          <View style={styles.mineChip}>
-            <Text style={styles.mineChipText} allowFontScaling={false}>
-              {night.visibility === 'public'
-                ? cs.vycep.visibilityChipWorld
-                : cs.vycep.visibilityChipFriends}
-            </Text>
-          </View>
-        ) : null}
         <Pressable
           onPress={openMenu}
           hitSlop={8}
@@ -177,42 +184,25 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
         </Pressable>
       </View>
 
-      {night.beerCount > 0 ? (
-        <View style={styles.tallyBlock}>
-          <TallyMarks count={night.beerCount} color={Colors.amber} markHeight={24} />
-          <Text style={styles.tallyLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {beerCountLabel(night.beerCount)}
-          </Text>
-        </View>
-      ) : null}
+      <View style={styles.tallyBlock}>
+        <TallyMarks count={night.beerCount} color={Colors.amber} markHeight={24} />
+        <Text style={styles.tallyLabel} maxFontSizeMultiplier={FontScaleCap.heading}>
+          {beerCountLabel(night.beerCount)}
+        </Text>
+      </View>
 
-      {night.pubNames.length > 0 ? (
-        <View style={styles.metaRow}>
-          <MapPinIcon size={14} color={Colors.mutedText} />
-          <Text style={styles.metaText} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
-            {night.pubNames.join('  →  ')}
-          </Text>
-        </View>
-      ) : null}
-
-      {duration || extras.length > 0 ? (
-        <View style={styles.metaRow}>
-          <ClockIcon size={14} color={Colors.mutedText} />
-          <Text style={styles.metaText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-            {[duration, ...extras].filter(Boolean).join(' · ')}
-          </Text>
-        </View>
+      {metaLine ? (
+        <Text style={styles.metaText} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
+          {metaLine}
+        </Text>
       ) : null}
 
       <View style={styles.footer}>
         {night.isMine ? (
           night.rounds > 0 ? (
-            <View style={styles.mineRounds}>
-              <HandPlatterIcon size={16} color={Colors.amber} />
-              <Text style={styles.mineRoundsText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.vycep.roundCount(night.rounds)}
-              </Text>
-            </View>
+            <Text style={styles.mineRoundsText} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.vycep.roundCount(night.rounds)}
+            </Text>
           ) : (
             <View />
           )
@@ -235,9 +225,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout2,
     borderRadius: Radius.card,
     borderWidth: 1,
-    borderColor: Colors.border,
-    padding: Spacing.lg,
-    gap: Spacing.md,
+    borderColor: withAlpha(Colors.foam, 0.07),
+    padding: 20,
+    gap: 12,
   },
   header: {
     flexDirection: 'row',
@@ -252,23 +242,14 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.display.bold,
     fontSize: 15,
     color: Colors.foam,
+    includeFontPadding: false,
   },
   date: {
     marginTop: 1,
     fontFamily: Fonts.ui.medium,
     fontSize: 12,
     color: Colors.mutedText,
-  },
-  mineChip: {
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 3,
-    borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.amber, 0.12),
-  },
-  mineChipText: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 11,
-    color: Colors.amber,
+    includeFontPadding: false,
   },
   menuButton: {
     width: 32,
@@ -281,38 +262,30 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   tallyBlock: {
-    gap: Spacing.xs,
+    gap: 4,
   },
   tallyLabel: {
     fontFamily: Fonts.display.extrabold,
     fontSize: 22,
     color: Colors.foam,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs + 2,
+    includeFontPadding: false,
   },
   metaText: {
-    flex: 1,
     fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.foamMuted,
+    includeFontPadding: false,
   },
   footer: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     alignItems: 'center',
   },
-  mineRounds: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
   mineRoundsText: {
     fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.amber,
+    includeFontPadding: false,
   },
 });
 

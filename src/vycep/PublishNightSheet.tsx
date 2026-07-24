@@ -37,11 +37,17 @@ interface PublishNightSheetProps {
   visible: boolean;
   night: NightSummary;
   onClose: () => void;
+  onPublished?: () => void;
 }
 
 const VISIBILITIES: readonly [NightVisibility, NightVisibility] = ['friends', 'public'];
 
-function PublishNightSheetBase({ visible, night, onClose }: PublishNightSheetProps) {
+function PublishNightSheetBase({
+  visible,
+  night,
+  onClose,
+  onPublished,
+}: PublishNightSheetProps) {
   const showToast = useToastStore((s) => s.show);
   const profile = useAccountStore((s) => s.profile);
   const publishedRecord = useVycepStore((s) => s.published[night.clientKey]);
@@ -100,6 +106,7 @@ function PublishNightSheetBase({ visible, night, onClose }: PublishNightSheetPro
         showToast(cs.vycep.publishedToast, {
           icon: <HandPlatterIcon size={20} color={Colors.amber} />,
         });
+        onPublished?.();
         onClose();
         return;
       }
@@ -111,12 +118,22 @@ function PublishNightSheetBase({ visible, night, onClose }: PublishNightSheetPro
         showToast(cs.vycep.publishQueuedToast, {
           icon: <HandPlatterIcon size={20} color={Colors.amber} />,
         });
+        onPublished?.();
         onClose();
         return;
       }
       showToast(res.detail);
     });
-  }, [busy, markPublished, night, onClose, profile?.nickname, showToast, visibility]);
+  }, [
+    busy,
+    markPublished,
+    night,
+    onClose,
+    onPublished,
+    profile?.nickname,
+    showToast,
+    visibility,
+  ]);
 
   return (
     <Modal

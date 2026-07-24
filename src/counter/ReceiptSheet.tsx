@@ -186,10 +186,19 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.black, 0.6),
     justifyContent: 'flex-end',
   },
+  // The height bounds live HERE, not on the card: a percentage resolves
+  // against the parent's height, and the card's parent (this) is auto-height,
+  // so bounds written on the card are silently dropped — the card then grows
+  // past the screen and the ScrollView inside never scrolls. `backdrop` is
+  // flex: 1, so percentages resolve properly one level up. See §7.5.
   cardWrap: {
     width: '100%',
+    minHeight: '44%',
+    maxHeight: '92%',
   },
   card: {
+    // Fills whatever cardWrap was clamped to — that is what bounds the scroll.
+    flex: 1,
     backgroundColor: Colors.stout2,
     borderTopLeftRadius: Radius.cardLarge,
     borderTopRightRadius: Radius.cardLarge,
@@ -197,8 +206,6 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     paddingTop: Spacing.sm,
     paddingHorizontal: Spacing.lg,
-    minHeight: '44%',
-    maxHeight: '92%',
     ...softDrop(),
   },
   grabber: {

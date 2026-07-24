@@ -3,8 +3,8 @@
  * install or once to an existing signed-out install (OnboardingGate in
  * app/_layout.tsx redirects here when onboardingStore decides 'show').
  *
- * Five slides in a horizontally paged Animated.FlatList: welcome → compass →
- * beer diary → parta → account nudge. No permission prompts here on purpose:
+ * Three slides in a horizontally paged FlatList: welcome + compass → beer
+ * diary + parta → account nudge. No permission prompts here on purpose:
  * the compass has its own location priming screen, and asking twice in a row
  * is worse than asking once in context. The account slide nudges toward
  * sign-in but never forces it (the product is local-first and an anonymous
@@ -16,7 +16,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Animated,
+  FlatList,
   Image,
   Pressable,
   Platform,
@@ -24,7 +24,7 @@ import {
   Text,
   View,
   useWindowDimensions,
-  type FlatList,
+  type LayoutChangeEvent,
   type ListRenderItemInfo,
   type ViewToken,
 } from 'react-native';
@@ -33,9 +33,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
-import { HitArea, Radius, Spacing } from '@/theme/layout';
+import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
-import { GlowButton } from '@/components/shared/GlowButton';
+import { CounterCta } from '@/counter/CounterCta';
 import { useOnboardingStore } from '@/stores/onboardingStore';
 import { trackClientEvent } from '@/data/telemetryClient';
 
@@ -50,38 +50,59 @@ interface Slide {
 
 const SLIDES: Slide[] = [
   {
-    key: 'welcome',
+    key: 'compass',
     title: cs.onboarding.slide1Title,
     body: cs.onboarding.slide1Body,
-    image: require('../assets/images/onboarding/slide-welcome.png'),
-  },
-  {
-    key: 'compass',
-    title: cs.onboarding.slide2Title,
-    body: cs.onboarding.slide2Body,
     image: require('../assets/images/onboarding/slide-compass.png'),
   },
   {
     key: 'diary',
-    title: cs.onboarding.slide3Title,
-    body: cs.onboarding.slide3Body,
+    title: cs.onboarding.slide2Title,
+    body: cs.onboarding.slide2Body,
     image: require('../assets/images/onboarding/slide-diary.png'),
   },
   {
-    key: 'parta',
-    title: cs.onboarding.slide4Title,
-    body: cs.onboarding.slide4Body,
-    image: require('../assets/images/onboarding/slide-parta.png'),
-  },
-  {
     key: 'account',
-    title: cs.onboarding.slide5Title,
-    body: cs.onboarding.slide5Body,
+    title: cs.onboarding.slide3Title,
+    body: cs.onboarding.slide3Body,
     image: require('../assets/images/onboarding/slide-account.png'),
   },
 ];
 
 const LAST_INDEX = SLIDES.length - 1;
+
+function OnboardingSlide({ item, width }: { item: Slide; width: number }) {
+  const [artHeight, setArtHeight] = useState(0);
+  const illustrationSide =
+    artHeight > 0
+      ? Math.max(160, Math.min(320, Math.min(width * 0.78, artHeight - 24)))
+      : 240;
+
+  const handleArtLayout = useCallback((event: LayoutChangeEvent) => {
+    setArtHeight(event.nativeEvent.layout.height);
+  }, []);
+
+  return (
+    <View style={[styles.slide, { width }]}>
+      <View style={styles.illustrationArea} onLayout={handleArtLayout}>
+        <Image
+          source={item.image}
+          style={{ width: illustrationSide, height: illustrationSide }}
+          resizeMode="contain"
+          accessibilityIgnoresInvertColors
+        />
+      </View>
+      <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+        {item.title}
+      </Text>
+      <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
+        {item.key === 'account' && Platform.OS === 'android'
+          ? cs.onboarding.slide3BodyAndroid
+          : item.body}
+      </Text>
+    </View>
+  );
+}
 
 export default function OnboardingScreen() {
   const router = useRouter();
@@ -89,9 +110,6 @@ export default function OnboardingScreen() {
   const { width } = useWindowDimensions();
 
   const listRef = useRef<FlatList<Slide>>(null);
-  // Animated driver + stable viewability callbacks live in state initializers
-  // (not refs) so render never touches a ref (react-hooks/refs).
-  const [scrollX] = useState(() => new Animated.Value(0));
   const [index, setIndex] = useState(0);
   const indexRef = useRef(0);
   const finishedRef = useRef(false);
@@ -146,49 +164,8 @@ export default function OnboardingScreen() {
   );
 
   const renderSlide = useCallback(
-    ({ item, index: slideIndex }: ListRenderItemInfo<Slide>) => {
-      // Subtle focus animation: the settling slide's glyph scales up and fades
-      // in as it reaches the center (native-driver interpolation).
-      const inputRange = [(slideIndex - 1) * width, slideIndex * width, (slideIndex + 1) * width];
-      const scale = scrollX.interpolate({
-        inputRange,
-        outputRange: [0.72, 1, 0.72],
-        extrapolate: 'clamp',
-      });
-      const opacity = scrollX.interpolate({
-        inputRange,
-        outputRange: [0.25, 1, 0.25],
-        extrapolate: 'clamp',
-      });
-
-      const illustrationSide = Math.min(width * 0.84, 380);
-
-      return (
-        <View style={[styles.slide, { width }]}>
-          <View style={styles.illustrationArea}>
-            <Animated.View style={{ transform: [{ scale }], opacity }}>
-              <Image
-                source={item.image}
-                style={{ width: illustrationSide, height: illustrationSide }}
-                resizeMode="contain"
-                accessibilityIgnoresInvertColors
-              />
-            </Animated.View>
-          </View>
-          <Animated.View style={{ opacity }}>
-            <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {item.title}
-            </Text>
-            <Text style={styles.body} maxFontSizeMultiplier={FontScaleCap.body}>
-              {item.key === 'account' && Platform.OS === 'android'
-                ? 'Účet je volitelný a drží deník v bezpečí napříč telefony. Věk může ověřit Google Play; Na pivo nevidí datum narození ani doklady.'
-                : item.body}
-            </Text>
-          </Animated.View>
-        </View>
-      );
-    },
-    [scrollX, width],
+    ({ item }: ListRenderItemInfo<Slide>) => <OnboardingSlide item={item} width={width} />,
+    [width],
   );
 
   const isLast = index === LAST_INDEX;
@@ -197,28 +174,31 @@ export default function OnboardingScreen() {
     <View
       style={[
         styles.root,
-        { paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, Spacing.lg) },
+        {
+          paddingTop: insets.top + Spacing.sm,
+          paddingBottom: Math.max(insets.bottom, Spacing.sm),
+        },
       ]}
     >
-      {/* Skip — top right, gone on the last slide (its CTA is the exit). */}
-      <View style={styles.skipRow}>
-        {!isLast && (
-          <Pressable
-            onPress={() => finish('onboarding_skipped')}
-            style={({ pressed }) => [styles.skipButton, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel={cs.onboarding.skip}
-            hitSlop={8}
-          >
-            <Text style={styles.skipText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.onboarding.skip}
-            </Text>
-          </Pressable>
-        )}
+      <View style={styles.header}>
+        <View style={styles.headerSpacer} />
+        <View
+          style={styles.dots}
+          accessibilityRole="text"
+          accessibilityLabel={cs.a11y.onboardingStep(index + 1, SLIDES.length)}
+        >
+          {SLIDES.map((slide, i) => (
+            <View
+              key={slide.key}
+              style={[styles.dot, i === index && styles.dotActive, i < index && styles.dotDone]}
+            />
+          ))}
+        </View>
       </View>
 
-      <Animated.FlatList
+      <FlatList
         ref={listRef}
+        style={styles.pager}
         data={SLIDES}
         keyExtractor={(item) => item.key}
         renderItem={renderSlide}
@@ -226,57 +206,31 @@ export default function OnboardingScreen() {
         pagingEnabled
         bounces={false}
         showsHorizontalScrollIndicator={false}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], {
-          useNativeDriver: true,
-        })}
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
         getItemLayout={(_, i) => ({ length: width, offset: width * i, index: i })}
       />
 
-      {/* Progress dots — compact progress without a step counter. */}
-      <View style={styles.dots}>
-        {SLIDES.map((slide, i) => (
-          <View
-            key={slide.key}
-            style={[styles.dot, i === index && styles.dotActive, i < index && styles.dotDone]}
-          />
-        ))}
+      <View style={styles.ctaWrap}>
+        <CounterCta
+          label={isLast ? cs.onboarding.slide3Cta : cs.onboarding.next}
+          onPress={isLast ? handleOpenAuth : handleNext}
+          accessibilityLabel={isLast ? cs.onboarding.slide3Cta : cs.onboarding.next}
+        />
       </View>
 
-      <View style={styles.ctaBlock}>
-        {isLast ? (
-          <GlowButton
-            label={cs.onboarding.slide5Cta}
-            onPress={handleOpenAuth}
-            glow="strong"
-            accessibilityLabel={cs.onboarding.slide5Cta}
-          />
-        ) : (
-          <GlowButton
-            label={cs.onboarding.next}
-            onPress={handleNext}
-            glow="soft"
-            accessibilityLabel={cs.onboarding.next}
-          />
-        )}
-
-        {/* Reserve this row on every slide so the primary CTA never jumps
-            when the account opt-out appears on the final page. */}
-        <View style={styles.secondaryCtaSlot} testID="onboarding-secondary-cta-slot">
-          {isLast && (
-            <Pressable
-              onPress={() => finish('onboarding_completed')}
-              style={({ pressed }) => [styles.laterButton, pressed && styles.pressed]}
-              accessibilityRole="button"
-              accessibilityLabel={cs.onboarding.slide5Later}
-            >
-              <Text style={styles.laterText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.onboarding.slide5Later}
-              </Text>
-            </Pressable>
-          )}
-        </View>
+      <View style={styles.secondaryCtaSlot} testID="onboarding-secondary-cta-slot">
+        <Pressable
+          onPress={() => finish(isLast ? 'onboarding_completed' : 'onboarding_skipped')}
+          style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel={isLast ? cs.onboarding.slide3Later : cs.onboarding.skip}
+          hitSlop={8}
+        >
+          <Text style={styles.secondaryText} maxFontSizeMultiplier={FontScaleCap.body}>
+            {isLast ? cs.onboarding.slide3Later : cs.onboarding.skip}
+          </Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -286,32 +240,26 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: Colors.stout,
+    gap: 12,
   },
 
-  // ── Skip ──
-  skipRow: {
+  // ── Header ──
+  header: {
     height: 44,
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    paddingHorizontal: Spacing.lg,
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    marginBottom: Spacing.sm,
   },
-  skipButton: {
-    minHeight: 44,
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.sm,
-  },
-  skipText: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 14,
-    color: Colors.mutedText,
-  },
+  headerSpacer: { flex: 1 },
 
   // ── Slide ──
+  pager: { flex: 1 },
   slide: {
     flex: 1,
     paddingHorizontal: Spacing.xl,
-    justifyContent: 'flex-end',
-    paddingBottom: Spacing.xl,
+    paddingBottom: Spacing.sm,
   },
   illustrationArea: {
     flex: 1,
@@ -320,30 +268,30 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: Fonts.display.extrabold,
-    fontSize: 30,
-    lineHeight: 37,
+    fontSize: 28,
+    lineHeight: 36,
     color: Colors.foam,
     textAlign: 'center',
+    includeFontPadding: false,
   },
   body: {
     fontFamily: Fonts.ui.regular,
-    fontSize: 15.5,
-    lineHeight: 23,
+    fontSize: 15,
+    lineHeight: 22,
     color: Colors.foamMuted,
     textAlign: 'center',
     marginTop: Spacing.sm,
+    includeFontPadding: false,
   },
 
   // ── Dots ──
   dots: {
     flexDirection: 'row',
-    gap: 8,
-    justifyContent: 'center',
-    marginBottom: Spacing.lg,
+    gap: 6,
   },
   dot: {
-    width: 28,
-    height: 6,
+    width: 20,
+    height: 4,
     borderRadius: Radius.pill,
     backgroundColor: Colors.stout3,
   },
@@ -355,23 +303,22 @@ const styles = StyleSheet.create({
   },
 
   // ── CTAs ──
-  ctaBlock: {
-    paddingHorizontal: Spacing.lg,
-    gap: Spacing.sm,
-  },
+  ctaWrap: { paddingHorizontal: 24 },
   secondaryCtaSlot: {
-    minHeight: HitArea.min,
+    height: 48,
+    paddingHorizontal: 24,
   },
-  laterButton: {
-    minHeight: HitArea.min,
-    paddingHorizontal: Spacing.lg,
+  secondaryButton: {
+    width: '100%',
+    minHeight: 48,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  laterText: {
+  secondaryText: {
     fontFamily: Fonts.ui.semibold,
-    fontSize: 14,
+    fontSize: 15,
     color: Colors.mutedText,
+    includeFontPadding: false,
   },
   pressed: {
     opacity: 0.7,

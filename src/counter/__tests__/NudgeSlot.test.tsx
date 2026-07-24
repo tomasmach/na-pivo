@@ -256,6 +256,28 @@ describe('CounterCta — rendering', () => {
       expect(texts).toEqual(['Zapiš pivo']);
     }
   });
+
+  it('uses a real disabled state and never forwards a disabled press', () => {
+    const onPress = jest.fn();
+    const renderer = render(
+      React.createElement(CounterCta, {
+        label: 'Uložit',
+        subLabel: 'Uvidí to ostatní pivaři',
+        onPress,
+        accessibilityLabel: 'Uložit doplněné údaje',
+        disabled: true,
+      }),
+    );
+    const cta = pressableWithLabel(
+      renderer,
+      'Uložit doplněné údaje',
+    );
+
+    expect(cta.props.disabled).toBe(true);
+    expect(cta.props.accessibilityState).toEqual({ disabled: true });
+    act(() => cta.props.onPress());
+    expect(onPress).not.toHaveBeenCalled();
+  });
 });
 
 describe('CounterCta — press debounce', () => {

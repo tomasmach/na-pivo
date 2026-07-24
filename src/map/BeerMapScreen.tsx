@@ -5,7 +5,6 @@ import {
   Image,
   Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   useColorScheme,
@@ -22,32 +21,32 @@ import { useRouter } from 'expo-router';
 
 import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
-import { OpenStatusChip } from '@/components/compass/OpenStatusChip';
 import { PubFilterSheet } from '@/components/compass/PubFilterSheet';
 import { ReportPubModal } from '@/components/compass/ReportPubModal';
 import {
   BeerIcon,
   ChevronRightIcon,
-  CompassIcon,
+  EllipsisIcon,
   ExternalLinkIcon,
   FlagIcon,
-  ListIcon,
-  LocateFixedIcon,
   ListFilterIcon,
+  MapIcon,
   MapPinnedIcon,
   RefreshCwIcon,
-  StarIcon,
   UsersIcon,
   XIcon,
 } from '@/components/shared/IconGlyph';
 import { ExploreSwitch } from '@/components/shared/ExploreSwitch';
-import { PubCardActions } from '@/components/shared/PubCardActions';
+import { GlowButton } from '@/components/shared/GlowButton';
+import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
+import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import type { Pub } from '@/data/pubs';
 import { enqueuePubReport } from '@/data/pubReportQueue';
 import type { PubReportReason } from '@/data/pubReportsClient';
 import { usePubStore } from '@/stores/pubStore';
 import { fetchPubHours, type PubHoursResult } from '@/data/hoursClient';
 import {
+  EMPTY_PUB_SEARCH_FILTERS,
   activePubSearchFilterCount,
   type PubSearchFilters,
 } from '@/data/pubSearchFilters';
@@ -60,7 +59,8 @@ import { useAccountStore } from '@/stores/accountStore';
 import { openPubInMaps } from '@/utils/maps';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
-import { HitArea, Radius } from '@/theme/layout';
+import { HitArea, Radius, Spacing } from '@/theme/layout';
+import { softDrop } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
 import {
   buildMapPubPoints,
@@ -79,6 +79,10 @@ const DEFAULT_REGION: Region = {
 };
 
 const PUB_DETAIL_LOADING_TIMEOUT_MS = 3_000;
+const SHEET_DISMISS_MS = 260;
+// The old 0.16 offset was tuned for the shorter dock. The 128 + 12 + 62 stack
+// needs roughly another 50 pt of clearance on the 667 pt baseline phone.
+const SELECTED_MARKER_LATITUDE_OFFSET = 0.24;
 
 type Layer = 'all' | 'visited' | 'friends';
 type MapSelection =
@@ -109,6 +113,140 @@ function formatRating(value: number): string {
   });
 }
 
+function localTimeFromIso(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const tIndex = iso.indexOf('T');
+  if (tIndex === -1) return null;
+  const hhmm = iso.slice(tIndex + 1, tIndex + 6);
+  return /^\d{2}:\d{2}$/.test(hhmm) ? hhmm : null;
+}
+
+type MetaTone = 'open' | 'closed' | 'neutral';
+
+function openingMeta(
+  pub: Pub,
+  status: Pub['hoursStatus'] | 'loading' | undefined,
+): { text: string; tone: MetaTone } {
+  if ((status === 'loading' || status === 'pending') && pub.isOpenNow == null) {
+    return { text: cs.compass.detailsLoading, tone: 'neutral' };
+  }
+
+  const time = localTimeFromIso(pub.nextChange);
+  if (pub.isOpenNow === true) {
+    return {
+      text: time ? cs.compass.openUntil(time) : cs.compass.openNow,
+      tone: 'open',
+    };
+  }
+  if (pub.isOpenNow === false) {
+    return {
+      text: time ? cs.compass.closedUntil(time) : cs.compass.closedNow,
+      tone: 'closed',
+    };
+  }
+  return { text: cs.compass.hoursUnknown, tone: 'neutral' };
+}
+
+function metaToneColor(tone: MetaTone): string {
+  if (tone === 'open') return Colors.open;
+  if (tone === 'closed') return Colors.closed;
+  return Colors.mutedText;
+}
+
+interface PlaceCardProps {
+  title: string;
+  meta: string;
+  metaTone: MetaTone;
+  fact: string;
+  titlePress?: {
+    onPress: () => void;
+    accessibilityLabel: string;
+  };
+  door?: {
+    label: string;
+    onPress: () => void;
+    accessibilityLabel: string;
+  };
+}
+
+function PlaceCard({
+  title,
+  meta,
+  metaTone,
+  fact,
+  titlePress,
+  door,
+}: PlaceCardProps) {
+  const titleContent = (
+    <>
+      <Text
+        style={styles.placeTitle}
+        numberOfLines={1}
+        maxFontSizeMultiplier={FontScaleCap.heading}
+      >
+        {title}
+      </Text>
+      {titlePress ? <ExternalLinkIcon size={15} color={Colors.amber} /> : null}
+    </>
+  );
+
+  return (
+    <View style={styles.placeCard}>
+      {titlePress ? (
+        <Pressable
+          onPress={titlePress.onPress}
+          hitSlop={12}
+          style={({ pressed }) => [styles.placeTitleRow, pressed && styles.pressedSoft]}
+          accessibilityRole="button"
+          accessibilityLabel={titlePress.accessibilityLabel}
+        >
+          {titleContent}
+        </Pressable>
+      ) : (
+        <View style={styles.placeTitleRow}>{titleContent}</View>
+      )}
+
+      <View style={styles.placeMetaSlot}>
+        <Text
+          style={[styles.placeMeta, { color: metaToneColor(metaTone) }]}
+          numberOfLines={1}
+          maxFontSizeMultiplier={FontScaleCap.body}
+        >
+          {meta}
+        </Text>
+      </View>
+
+      <View style={styles.placeFooter}>
+        <Text
+          style={styles.placeFact}
+          numberOfLines={1}
+          maxFontSizeMultiplier={FontScaleCap.body}
+        >
+          {fact}
+        </Text>
+        {door ? (
+          <Pressable
+            onPress={door.onPress}
+            hitSlop={8}
+            style={({ pressed }) => [styles.placeDoor, pressed && styles.pressedSoft]}
+            accessibilityRole="button"
+            accessibilityLabel={door.accessibilityLabel}
+          >
+            <Text
+              style={styles.placeDoorLabel}
+              numberOfLines={1}
+              maxFontSizeMultiplier={FontScaleCap.body}
+            >
+              {door.label}
+            </Text>
+            <ChevronRightIcon size={15} color={Colors.amber} />
+          </Pressable>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
 function pubWithDetails(pub: Pub, details: PubHoursResult | undefined): Pub {
   if (!details) return pub;
   return {
@@ -128,32 +266,6 @@ function pubWithDetails(pub: Pub, details: PubHoursResult | undefined): Pub {
     hasGarden: details.hasGarden,
     venueKind: details.venueKind,
   };
-}
-
-function LayerButton({
-  active,
-  label,
-  onPress,
-}: {
-  active: boolean;
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.layerButton,
-        active && styles.layerButtonActive,
-        pressed && styles.pressed,
-      ]}
-      accessibilityRole="tab"
-      accessibilityState={{ selected: active }}
-      accessibilityLabel={label}
-    >
-      <Text style={[styles.layerButtonText, active && styles.layerButtonTextActive]}>{label}</Text>
-    </Pressable>
-  );
 }
 
 function PubMarker({ visited, selected }: { visited: boolean; selected: boolean }) {
@@ -184,7 +296,14 @@ function ClusterMarker({ count, visited }: { count: number; visited: boolean }) 
           visited && styles.clusterPinVisited,
         ]}
       >
-        <Text style={[styles.clusterText, { fontSize }, visited && styles.clusterTextVisited]}>
+        <Text
+          style={[
+            styles.clusterText,
+            { fontSize },
+            visited && styles.clusterTextVisited,
+          ]}
+          maxFontSizeMultiplier={FontScaleCap.display}
+        >
           {count}
         </Text>
       </View>
@@ -210,13 +329,21 @@ function LiveMarker({ live, selected }: { live: LivePubSummary; selected: boolea
             testID="live-map-avatar"
           />
         ) : (
-          <Text style={styles.liveInitial}>
+          <Text
+            style={styles.liveInitial}
+            maxFontSizeMultiplier={FontScaleCap.heading}
+          >
             {friendName(live).charAt(0).toLocaleUpperCase('cs-CZ')}
           </Text>
         )}
       </View>
       <View style={styles.liveCount}>
-        <Text style={styles.liveCountText}>{live.activities.length}</Text>
+        <Text
+          style={styles.liveCountText}
+          maxFontSizeMultiplier={FontScaleCap.display}
+        >
+          {live.activities.length}
+        </Text>
       </View>
     </View>
   );
@@ -270,10 +397,19 @@ export default function BeerMapScreen({
   const [reportOpen, setReportOpen] = useState(false);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [listOpen, setListOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [detailsByPubKey, setDetailsByPubKey] = useState<Record<string, PubHoursResult>>({});
   const [loadingDetailKey, setLoadingDetailKey] = useState<string | null>(null);
   const [timedOutDetailKey, setTimedOutDetailKey] = useState<string | null>(null);
   const didAutoLocate = useRef(Boolean(initialPub || rememberedRegion));
+  const sheetActionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (sheetActionTimer.current) clearTimeout(sheetActionTimer.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     loadRegion(initialRegion);
@@ -382,7 +518,7 @@ export default function BeerMapScreen({
       : null;
   const selectedRatingLine = selectedRating
     ? selectedRatingCount
-      ? `${selectedRating} · ${selectedRatingCount}`
+      ? `${selectedRating} (${selectedRatingCount})`
       : selectedRating
     : null;
 
@@ -487,7 +623,13 @@ export default function BeerMapScreen({
       setSelection(next);
       void AccessibilityInfo.announceForAccessibility(point.pub.name);
       mapRef.current?.animateCamera(
-        { center: { latitude: point.lat - region.latitudeDelta * 0.16, longitude: point.lng } },
+        {
+          center: {
+            latitude:
+              point.lat - region.latitudeDelta * SELECTED_MARKER_LATITUDE_OFFSET,
+            longitude: point.lng,
+          },
+        },
         { duration: reduceMotion ? 0 : 220 },
       );
     },
@@ -504,7 +646,13 @@ export default function BeerMapScreen({
         cs.a11y.mapLive(friendName(live), live.name),
       );
       mapRef.current?.animateCamera(
-        { center: { latitude: live.lat - region.latitudeDelta * 0.16, longitude: live.lng } },
+        {
+          center: {
+            latitude:
+              live.lat - region.latitudeDelta * SELECTED_MARKER_LATITUDE_OFFSET,
+            longitude: live.lng,
+          },
+        },
         { duration: reduceMotion ? 0 : 220 },
       );
     },
@@ -570,12 +718,258 @@ export default function BeerMapScreen({
     [clearSelection, handleRegionChange, reduceMotion],
   );
 
-  const layerDescription =
-    region.latitudeDelta > 1.5 && layer !== 'friends'
-      ? cs.map.zoomForPubs
-      : layer === 'friends'
+  const activeLayerLabel =
+    layer === 'friends'
+      ? cs.map.layerFriends
+      : layer === 'visited'
+        ? cs.map.layerVisited
+        : cs.map.layerAll;
+  const viewportDescription =
+    layer === 'friends'
       ? cs.map.liveCount(visibleLivePubs.length)
-      : cs.map.nearbyCount(visiblePoints.length, visiblePoints.filter((point) => point.visit).length);
+      : cs.map.nearbyCount(
+          visiblePoints.length,
+          visiblePoints.filter((point) => point.visit).length,
+        );
+
+  const cardState = useMemo(() => {
+    if (selectedPub) {
+      const hours = openingMeta(selectedDetailPub ?? selectedPub.pub, selectedHoursStatus);
+      return {
+        kind: 'pub' as const,
+        title: selectedPub.pub.name,
+        meta: [hours.text, selectedRatingLine].filter(Boolean).join(' · '),
+        metaTone: hours.tone,
+        fact: selectedPub.visit
+          ? selectedPub.pub.city || cs.map.visited
+          : cs.map.notVisited,
+      };
+    }
+    if (selectedLive) {
+      return {
+        kind: 'live' as const,
+        title: selectedLive.name,
+        meta:
+          selectedLive.activities.length === 1
+            ? cs.map.friendIsHere(friendName(selectedLive))
+            : cs.map.friendsAreHere(
+                friendName(selectedLive),
+                selectedLive.activities.length - 1,
+              ),
+        metaTone: 'neutral' as const,
+        fact: activeLayerLabel,
+      };
+    }
+    if (selectedCity) {
+      return {
+        kind: 'city' as const,
+        title: selectedCity.name,
+        meta: cs.map.citySummary(selectedCity.visitCount, selectedCity.pubCount),
+        metaTone: 'neutral' as const,
+        fact: activeLayerLabel,
+      };
+    }
+    return {
+      kind: 'idle' as const,
+      title: layer === 'friends' ? cs.map.friendsOverviewTitle : cs.map.beerTrail,
+      meta: viewportDescription,
+      metaTone: 'neutral' as const,
+      fact: activeLayerLabel,
+    };
+  }, [
+    activeLayerLabel,
+    layer,
+    selectedCity,
+    selectedDetailPub,
+    selectedHoursStatus,
+    selectedLive,
+    selectedPub,
+    selectedRatingLine,
+    viewportDescription,
+  ]);
+
+  const nudge = useMemo<Nudge | null>(() => {
+    if (stale) {
+      return {
+        kind: 'counted',
+        text: cs.map.offline,
+        undoLabel: cs.map.retry,
+        onUndo: refresh,
+      };
+    }
+    if (activeFilterCount > 0) {
+      return {
+        kind: 'rapid',
+        text: cs.compass.nudgeFilters(activeFilterCount),
+        confirmLabel: cs.compass.nudgeFiltersClear,
+        onConfirm: () => onApplyFilters(EMPTY_PUB_SEARCH_FILTERS),
+      };
+    }
+    if (loadingPubs) {
+      return {
+        kind: 'dopito',
+        label: cs.map.loading,
+        onPress: () => undefined,
+      };
+    }
+    if (region.latitudeDelta > 1.5 && layer !== 'friends') {
+      return {
+        kind: 'dopito',
+        label: cs.map.zoomForPubs,
+        onPress: () => undefined,
+      };
+    }
+    return null;
+  }, [
+    activeFilterCount,
+    layer,
+    loadingPubs,
+    onApplyFilters,
+    refresh,
+    region.latitudeDelta,
+    stale,
+  ]);
+
+  const primaryAction = useMemo(() => {
+    if (cardState.kind === 'pub' && selectedPub) {
+      return {
+        label: cs.map.aimCompass,
+        subLabel: null as string | null,
+        accessibilityLabel: cs.map.aimCompass,
+        onPress: () =>
+          aimCompass({
+            lat: selectedPub.pub.lat,
+            lng: selectedPub.pub.lng,
+            name: selectedPub.pub.name,
+            cacheKey: selectedPub.key,
+          }),
+      };
+    }
+    if (cardState.kind === 'live' && selectedLive) {
+      return {
+        label: cs.map.aimCompass,
+        subLabel: null as string | null,
+        accessibilityLabel: cs.map.aimCompass,
+        onPress: () =>
+          aimCompass({
+            lat: selectedLive.lat,
+            lng: selectedLive.lng,
+            name: selectedLive.name,
+            cacheKey: selectedLive.cacheKey,
+          }),
+      };
+    }
+    if (cardState.kind === 'city' && selectedCity) {
+      return {
+        label: cs.map.showMyPubs,
+        subLabel: null as string | null,
+        accessibilityLabel: cs.map.showMyPubs,
+        onPress: () => focusCity(selectedCity),
+      };
+    }
+    return {
+      label: cs.map.findMe,
+      subLabel:
+        permissionState === 'granted' ? null : cs.map.locationRequired,
+      accessibilityLabel: cs.a11y.mapLocate,
+      onPress: locate,
+    };
+  }, [
+    aimCompass,
+    cardState.kind,
+    focusCity,
+    locate,
+    permissionState,
+    selectedCity,
+    selectedLive,
+    selectedPub,
+  ]);
+
+  const runAfterMoreClose = useCallback((action: () => void) => {
+    setMoreOpen(false);
+    if (sheetActionTimer.current) clearTimeout(sheetActionTimer.current);
+    sheetActionTimer.current = setTimeout(() => {
+      sheetActionTimer.current = null;
+      action();
+    }, SHEET_DISMISS_MS);
+  }, []);
+
+  const moreRows = useMemo<MoreRow[]>(() => {
+    const rows: MoreRow[] = [
+      {
+        key: 'filters',
+        label: cs.compass.moreFilters,
+        value:
+          activeFilterCount > 0
+            ? cs.compass.moreFiltersActive(activeFilterCount)
+            : null,
+        icon: ListFilterIcon,
+        onPress: () => runAfterMoreClose(() => setFilterSheetOpen(true)),
+      },
+      {
+        key: 'layer-all',
+        label: cs.map.layerAll,
+        icon: MapIcon,
+        selected: layer === 'all',
+        onPress: () => {
+          setMoreOpen(false);
+          selectLayer('all');
+        },
+      },
+      {
+        key: 'layer-visited',
+        label: cs.map.layerVisited,
+        icon: MapPinnedIcon,
+        selected: layer === 'visited',
+        onPress: () => {
+          setMoreOpen(false);
+          selectLayer('visited');
+        },
+      },
+      {
+        key: 'layer-friends',
+        label: cs.map.layerFriends,
+        value: visibleLivePubs.length.toLocaleString('cs-CZ'),
+        icon: UsersIcon,
+        selected: layer === 'friends',
+        onPress: () => {
+          setMoreOpen(false);
+          selectLayer('friends');
+        },
+      },
+      {
+        key: 'refresh',
+        label: cs.map.refresh,
+        icon: RefreshCwIcon,
+        onPress: () => {
+          setMoreOpen(false);
+          refresh();
+        },
+        accessibilityLabel: cs.a11y.mapRefresh,
+      },
+    ];
+    return selectedPub
+      ? [
+          ...rows,
+          {
+            key: 'report',
+            label: cs.compass.moreReport,
+            icon: FlagIcon,
+            onPress: () => runAfterMoreClose(openSelectedPubReport),
+            accessibilityLabel: cs.a11y.mapReportClosed(selectedPub.pub.name),
+          },
+        ]
+      : rows;
+  }, [
+    activeFilterCount,
+    layer,
+    openSelectedPubReport,
+    refresh,
+    runAfterMoreClose,
+    selectLayer,
+    selectedPub,
+    visibleLivePubs.length,
+  ]);
 
   return (
     <View style={styles.root}>
@@ -616,8 +1010,19 @@ export default function BeerMapScreen({
               >
                 <View style={styles.cityMarker}>
                   <MapPinnedIcon size={17} color={Colors.stout} />
-                  <Text style={styles.cityMarkerText} numberOfLines={1}>{city.name}</Text>
-                  <Text style={styles.cityMarkerCount}>{city.visitCount}</Text>
+                  <Text
+                    style={styles.cityMarkerText}
+                    numberOfLines={1}
+                    maxFontSizeMultiplier={FontScaleCap.heading}
+                  >
+                    {city.name}
+                  </Text>
+                  <Text
+                    style={styles.cityMarkerCount}
+                    maxFontSizeMultiplier={FontScaleCap.display}
+                  >
+                    {city.visitCount}
+                  </Text>
                 </View>
               </Marker>
             ))
@@ -674,238 +1079,90 @@ export default function BeerMapScreen({
         )) : null}
       </MapView>
 
-      <View style={[styles.topChrome, { paddingTop: insets.top + 8 }]} pointerEvents="box-none">
-        <ExploreSwitch
-          activeView="map"
-          onSelectCompass={onShowCompass}
-          onSelectMap={() => undefined}
-        />
-        <Pressable
-          onPress={() => setFilterSheetOpen(true)}
-          style={({ pressed }) => [
-            styles.topFilterButton,
-            { top: insets.top + 8 },
-            activeFilterCount > 0 && styles.topFilterButtonActive,
-            pressed && styles.pressed,
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel={
-            activeFilterCount > 0
-              ? cs.a11y.pubFiltersActive(activeFilterCount)
-              : cs.a11y.openPubFilters
-          }
-        >
-          <ListFilterIcon
-            size={19}
-            color={activeFilterCount > 0 ? Colors.stout : Colors.foam}
+      <View
+        style={[styles.topStack, { paddingTop: insets.top + 8 }]}
+        pointerEvents="box-none"
+      >
+        <View style={styles.header}>
+          <ExploreSwitch
+            activeView="map"
+            onSelectCompass={onShowCompass}
+            onSelectMap={() => undefined}
           />
-          {activeFilterCount > 0 ? (
-            <View style={styles.topFilterCount}>
-              <Text style={styles.topFilterCountText}>{activeFilterCount}</Text>
-            </View>
-          ) : null}
-        </Pressable>
-        <View style={styles.layerRow} accessibilityRole="tablist">
-          <LayerButton active={layer === 'all'} label={cs.map.layerAll} onPress={() => selectLayer('all')} />
-          <LayerButton
-            active={layer === 'visited'}
-            label={cs.map.layerVisited}
-            onPress={() => selectLayer('visited')}
-          />
-          <LayerButton
-            active={layer === 'friends'}
-            label={cs.map.layerFriends}
-            onPress={() => selectLayer('friends')}
-          />
+          <View style={styles.headerSpacer} />
+          <Pressable
+            onPress={() => setMoreOpen(true)}
+            style={({ pressed }) => [
+              styles.moreButton,
+              pressed && styles.pressedSoft,
+            ]}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={cs.a11y.compassMore}
+          >
+            <EllipsisIcon size={20} color={Colors.foamMuted} />
+          </Pressable>
+        </View>
+        <View style={styles.nudgeWrap}>
+          <NudgeSlot nudge={nudge} />
         </View>
       </View>
 
-      {!selectedPub && !selectedLive && !selectedCity ? (
-        // Below both chrome rows (2×44 + gaps), tucked to the right edge so the
-        // middle of the map stays clear for pins.
-        <View style={[styles.mapRail, { top: insets.top + 117 }]}>
-          <Pressable
-            onPress={locate}
-            style={({ pressed }) => [styles.railButton, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel={cs.a11y.mapLocate}
-          >
-            <LocateFixedIcon size={20} color={position ? Colors.amber : Colors.foamMuted} />
-          </Pressable>
-          <Pressable
-            onPress={() => setListOpen(true)}
-            style={({ pressed }) => [styles.railButton, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel={cs.a11y.mapList}
-          >
-            <ListIcon size={20} color={Colors.foamMuted} />
-          </Pressable>
-          <Pressable
-            onPress={refresh}
-            style={({ pressed }) => [styles.railButton, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel={cs.a11y.mapRefresh}
-          >
-            <RefreshCwIcon size={19} color={loadingPubs ? Colors.amber : Colors.foamMuted} />
-          </Pressable>
-        </View>
-      ) : null}
-
       <View
         style={[
-          styles.bottomDock,
-          selectedPub && styles.bottomDockSelected,
+          styles.bottomStack,
+          { paddingBottom: Math.max(insets.bottom, Spacing.sm) },
         ]}
+        pointerEvents="box-none"
       >
-        {stale ? <Text style={styles.offlineText} numberOfLines={2}>{cs.map.offline}</Text> : null}
-
-        {selectedCity ? (
-          <ScrollView style={styles.dockScroll} contentContainerStyle={styles.dockContent} showsVerticalScrollIndicator={false}>
-            <Text style={styles.dockTitle} maxFontSizeMultiplier={FontScaleCap.heading}>{selectedCity.name}</Text>
-            <Text style={styles.dockBody} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.map.citySummary(selectedCity.visitCount, selectedCity.pubCount)}
-            </Text>
-            <Pressable
-              onPress={() => focusCity(selectedCity)}
-              style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
-              accessibilityRole="button"
-            >
-              <Text style={styles.primaryButtonText} maxFontSizeMultiplier={FontScaleCap.heading}>{cs.map.showMyPubs}</Text>
-            </Pressable>
-          </ScrollView>
-        ) : selectedLive ? (
-          <ScrollView style={styles.dockScroll} contentContainerStyle={styles.dockContent} showsVerticalScrollIndicator={false}>
-            <View style={styles.liveEyebrow}>
-              <View style={styles.liveDot} />
-              <Text style={styles.liveEyebrowText}>{cs.map.liveNow}</Text>
-            </View>
-            <Text style={styles.dockTitle} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.heading}>{selectedLive.name}</Text>
-            <Text style={styles.dockBody} maxFontSizeMultiplier={FontScaleCap.body}>
-              {selectedLive.activities.length === 1
-                ? cs.map.friendIsHere(friendName(selectedLive))
-                : cs.map.friendsAreHere(friendName(selectedLive), selectedLive.activities.length - 1)}
-            </Text>
-            <Pressable
-              onPress={() =>
-                aimCompass({
-                  lat: selectedLive.lat,
-                  lng: selectedLive.lng,
-                  name: selectedLive.name,
-                  cacheKey: selectedLive.cacheKey,
-                })
-              }
-              style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
-              accessibilityRole="button"
-            >
-              <CompassIcon size={18} color={Colors.stout} />
-              <Text style={styles.primaryButtonText} maxFontSizeMultiplier={FontScaleCap.heading}>{cs.map.aimCompass}</Text>
-            </Pressable>
-          </ScrollView>
-        ) : selectedPub ? (
-          <View style={styles.selectedPubContent}>
-            <Pressable
-              onPress={() => void openPubInMaps(selectedDetailPub ?? selectedPub.pub)}
-              style={({ pressed }) => [styles.selectedPubTapArea, pressed && styles.pressed]}
-              accessibilityRole="button"
-              accessibilityLabel={cs.a11y.pubPillRevealed(selectedPub.pub.name)}
-            >
-              <View style={styles.selectedPubNameRow}>
-                <BeerIcon size={18} color={Colors.amber} />
-                <Text
-                  style={styles.selectedPubName}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={FontScaleCap.heading}
-                >
-                  {selectedPub.pub.name}
-                </Text>
-                <ExternalLinkIcon size={16} color={Colors.amber} />
-              </View>
-              <View style={styles.selectedPubMetaRow}>
-                <View style={styles.selectedPubStatus}>
-                  <OpenStatusChip
-                    isOpenNow={selectedDetailPub?.isOpenNow ?? null}
-                    status={selectedHoursStatus}
-                    nextChange={selectedDetailPub?.nextChange}
-                  />
-                </View>
-                {selectedRatingLine ? (
-                  <View
-                    style={styles.selectedPubRating}
-                    accessibilityLabel={cs.a11y.pubRating(
-                      selectedRating ?? '',
-                      selectedRatingCount ?? undefined,
-                    )}
-                  >
-                    <StarIcon size={13} color={Colors.amber} />
-                    <Text style={styles.selectedPubRatingText} numberOfLines={1}>
-                      {selectedRatingLine}
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-            </Pressable>
-
-            <PubCardActions
-              primary={{
-                label: cs.map.aimCompass,
-                icon: <CompassIcon size={15} color={Colors.stout} />,
-                onPress: () =>
-                  aimCompass({
-                    lat: selectedPub.pub.lat,
-                    lng: selectedPub.pub.lng,
-                    name: selectedPub.pub.name,
-                    cacheKey: selectedPub.key,
-                  }),
-              }}
-              secondary={{
-                label: cs.map.pubDetail,
-                icon: <MapPinnedIcon size={15} color={Colors.foamMuted} />,
-                onPress: () => setDetailOpen(true),
-              }}
-              tertiary={{
-                label: cs.a11y.mapReportClosed(selectedPub.pub.name),
-                icon: <FlagIcon size={15} color={Colors.foamMuted} />,
-                onPress: openSelectedPubReport,
-              }}
-            />
-          </View>
-        ) : (
-          <View style={styles.overviewContent}>
-            <View style={styles.overviewRow}>
-              <View style={styles.overviewIcon}>
-                {layer === 'friends' ? (
-                  <UsersIcon size={18} color={Colors.amber} />
-                ) : (
-                  <BeerIcon size={18} color={Colors.amber} />
-                )}
-              </View>
-              <View style={styles.overviewCopy}>
-                <Text style={styles.overviewTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-                  {layer === 'friends' ? cs.map.friendsOverviewTitle : cs.map.beerTrail}
-                </Text>
-                <Text style={styles.overviewMeta} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {layerDescription}
-                </Text>
-              </View>
-            </View>
-            {permissionState !== 'granted' ? (
-              <Pressable
-                onPress={() => void requestPermission()}
-                style={({ pressed }) => [styles.permissionButton, pressed && styles.pressed]}
-                accessibilityRole="button"
-              >
-                <LocateFixedIcon size={16} color={Colors.amber} />
-                <Text style={styles.permissionButtonText} maxFontSizeMultiplier={FontScaleCap.body}>{cs.map.permissionHint}</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        )}
+        <PlaceCard
+          title={cardState.title}
+          meta={cardState.meta}
+          metaTone={cardState.metaTone}
+          fact={cardState.fact}
+          titlePress={
+            cardState.kind === 'pub' && selectedPub
+              ? {
+                  onPress: () =>
+                    void openPubInMaps(selectedDetailPub ?? selectedPub.pub),
+                  accessibilityLabel: cs.a11y.pubPillRevealed(
+                    selectedPub.pub.name,
+                  ),
+                }
+              : undefined
+          }
+          door={
+            cardState.kind === 'pub'
+              ? {
+                  label: cs.compass.mapPubLink,
+                  onPress: () => setDetailOpen(true),
+                  accessibilityLabel: cs.compass.mapPubLink,
+                }
+              : cardState.kind === 'idle'
+                ? {
+                    label: cs.map.listLink,
+                    onPress: () => setListOpen(true),
+                    accessibilityLabel: cs.a11y.mapList,
+                  }
+                : undefined
+          }
+        />
+        <GlowButton
+          label={primaryAction.label}
+          subLabel={primaryAction.subLabel}
+          onPress={primaryAction.onPress}
+          variant="primary"
+          glow="soft"
+          height={62}
+          accessibilityLabel={primaryAction.accessibilityLabel}
+        />
       </View>
 
       <Modal
         visible={listOpen}
         transparent
         statusBarTranslucent
+        presentationStyle="overFullScreen"
         animationType="fade"
         onRequestClose={() => setListOpen(false)}
       >
@@ -913,101 +1170,178 @@ export default function BeerMapScreen({
           <Pressable
             style={StyleSheet.absoluteFill}
             onPress={() => setListOpen(false)}
-            accessibilityLabel={cs.map.closeList}
-            accessibilityRole="button"
+            accessibilityElementsHidden
+            importantForAccessibility="no"
           />
-          <View style={[styles.listSheet, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-            <View style={styles.sheetHandle} />
-            <View style={styles.listHeader}>
-              <View style={styles.listHeaderCopy}>
-                <Text style={styles.listTitle}>{cs.map.listTitle}</Text>
-                <Text style={styles.listSubtitle} numberOfLines={2}>{layerDescription}</Text>
+          <View
+            style={[styles.listCardWrap, { marginBottom: -insets.bottom }]}
+          >
+            <Pressable
+              style={[
+                styles.listCard,
+                { paddingBottom: insets.bottom + Spacing.lg },
+              ]}
+              onPress={() => undefined}
+            >
+              <View style={styles.listGrabber} />
+              <View style={styles.listHeader}>
+                <Text
+                  style={styles.listTitle}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.heading}
+                >
+                  {layer === 'friends' ? cs.map.layerFriends : cs.map.listTitle}
+                </Text>
+                <Pressable
+                  onPress={() => setListOpen(false)}
+                  style={({ pressed }) => [
+                    styles.closeButton,
+                    pressed && styles.pressedSoft,
+                  ]}
+                  accessibilityLabel={cs.map.closeList}
+                  accessibilityRole="button"
+                >
+                  <XIcon size={20} color={Colors.foamMuted} />
+                </Pressable>
               </View>
-              <Pressable
-                onPress={() => setListOpen(false)}
-                style={styles.closeButton}
-                accessibilityLabel={cs.common.cancel}
-                accessibilityRole="button"
-              >
-                <XIcon size={21} color={Colors.foam} />
-              </Pressable>
-            </View>
-            {layer === 'friends' ? (
-              <FlatList
-                style={styles.list}
-                data={visibleLivePubs}
-                keyExtractor={(item) => item.cacheKey}
-                contentContainerStyle={styles.listContent}
-                renderItem={({ item }) => (
-                <Pressable
-                  onPress={() => {
-                    setListOpen(false);
-                    selectLive(item);
-                    const next = {
-                      latitude: item.lat,
-                      longitude: item.lng,
-                      latitudeDelta: 0.025,
-                      longitudeDelta: 0.025,
-                    };
-                    mapRef.current?.animateToRegion(next, reduceMotion ? 0 : 300);
-                    handleRegionChange(next);
-                  }}
-                  style={({ pressed }) => [styles.listRow, pressed && styles.pressed]}
-                  accessibilityLabel={cs.a11y.mapLive(friendName(item), item.name)}
-                  accessibilityRole="button"
-                >
-                  <LiveMarker live={item} selected={false} />
-                  <View style={styles.listRowCopy}>
-                    <Text style={styles.listRowTitle} numberOfLines={1}>{item.name}</Text>
-                    <Text style={styles.listRowMeta} numberOfLines={1}>
-                      {cs.map.friendIsHere(friendName(item))}
+              {layer === 'friends' ? (
+                <FlatList
+                  style={styles.list}
+                  data={visibleLivePubs}
+                  keyExtractor={(item) => item.cacheKey}
+                  contentContainerStyle={styles.listContent}
+                  showsVerticalScrollIndicator={false}
+                  renderItem={({ item, index }) => (
+                    <Pressable
+                      onPress={() => {
+                        setListOpen(false);
+                        selectLive(item);
+                        const next = {
+                          latitude: item.lat,
+                          longitude: item.lng,
+                          latitudeDelta: 0.025,
+                          longitudeDelta: 0.025,
+                        };
+                        mapRef.current?.animateToRegion(
+                          next,
+                          reduceMotion ? 0 : 300,
+                        );
+                        handleRegionChange(next);
+                      }}
+                      style={({ pressed }) => [
+                        styles.listRow,
+                        index > 0 && styles.listRowDivider,
+                        pressed && styles.pressedSoft,
+                      ]}
+                      accessibilityLabel={cs.a11y.mapLive(
+                        friendName(item),
+                        item.name,
+                      )}
+                      accessibilityRole="button"
+                    >
+                      <View style={styles.listRowCopy}>
+                        <Text
+                          style={styles.listRowTitle}
+                          numberOfLines={1}
+                          maxFontSizeMultiplier={FontScaleCap.body}
+                        >
+                          {item.name}
+                        </Text>
+                        <Text
+                          style={styles.listRowMeta}
+                          numberOfLines={1}
+                          maxFontSizeMultiplier={FontScaleCap.body}
+                        >
+                          {cs.map.friendIsHere(friendName(item))}
+                        </Text>
+                      </View>
+                      <ChevronRightIcon size={18} color={Colors.mutedText} />
+                    </Pressable>
+                  )}
+                  ListEmptyComponent={
+                    <Text
+                      style={styles.emptyList}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {cs.map.emptyList}
                     </Text>
-                  </View>
-                  <ChevronRightIcon size={18} color={Colors.mutedText} />
-                </Pressable>
-                )}
-                ListEmptyComponent={<Text style={styles.emptyList}>{cs.map.emptyList}</Text>}
-              />
-            ) : (
-              <FlatList
-                style={styles.list}
-                data={visiblePoints}
-                keyExtractor={(item) => item.key}
-                contentContainerStyle={styles.listContent}
-                renderItem={({ item }) => (
-                <Pressable
-                  onPress={() => {
-                    setListOpen(false);
-                    selectPub(item);
-                    const next = {
-                      latitude: item.lat,
-                      longitude: item.lng,
-                      latitudeDelta: 0.025,
-                      longitudeDelta: 0.025,
-                    };
-                    mapRef.current?.animateToRegion(next, reduceMotion ? 0 : 300);
-                    handleRegionChange(next);
-                  }}
-                  style={({ pressed }) => [styles.listRow, pressed && styles.pressed]}
-                  accessibilityLabel={cs.a11y.mapPub(item.pub.name, item.visit?.visitCount ?? 0)}
-                  accessibilityRole="button"
-                >
-                  <PubMarker visited={Boolean(item.visit)} selected={false} />
-                  <View style={styles.listRowCopy}>
-                    <Text style={styles.listRowTitle} numberOfLines={1}>{item.pub.name}</Text>
-                    <Text style={styles.listRowMeta} numberOfLines={1}>
-                      {item.pub.city || (item.visit ? cs.map.visited : cs.map.notVisited)}
+                  }
+                />
+              ) : (
+                <FlatList
+                  style={styles.list}
+                  data={visiblePoints}
+                  keyExtractor={(item) => item.key}
+                  contentContainerStyle={styles.listContent}
+                  showsVerticalScrollIndicator={false}
+                  renderItem={({ item, index }) => (
+                    <Pressable
+                      onPress={() => {
+                        setListOpen(false);
+                        selectPub(item);
+                        const next = {
+                          latitude: item.lat,
+                          longitude: item.lng,
+                          latitudeDelta: 0.025,
+                          longitudeDelta: 0.025,
+                        };
+                        mapRef.current?.animateToRegion(
+                          next,
+                          reduceMotion ? 0 : 300,
+                        );
+                        handleRegionChange(next);
+                      }}
+                      style={({ pressed }) => [
+                        styles.listRow,
+                        index > 0 && styles.listRowDivider,
+                        pressed && styles.pressedSoft,
+                      ]}
+                      accessibilityLabel={cs.a11y.mapPub(
+                        item.pub.name,
+                        item.visit?.visitCount ?? 0,
+                      )}
+                      accessibilityRole="button"
+                    >
+                      <View style={styles.listRowCopy}>
+                        <Text
+                          style={styles.listRowTitle}
+                          numberOfLines={1}
+                          maxFontSizeMultiplier={FontScaleCap.body}
+                        >
+                          {item.pub.name}
+                        </Text>
+                        <Text
+                          style={styles.listRowMeta}
+                          numberOfLines={1}
+                          maxFontSizeMultiplier={FontScaleCap.body}
+                        >
+                          {item.pub.city ||
+                            (item.visit ? cs.map.visited : cs.map.notVisited)}
+                        </Text>
+                      </View>
+                      <ChevronRightIcon size={18} color={Colors.mutedText} />
+                    </Pressable>
+                  )}
+                  ListEmptyComponent={
+                    <Text
+                      style={styles.emptyList}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {cs.map.emptyList}
                     </Text>
-                  </View>
-                  <ChevronRightIcon size={18} color={Colors.mutedText} />
-                </Pressable>
-                )}
-                ListEmptyComponent={<Text style={styles.emptyList}>{cs.map.emptyList}</Text>}
-              />
-            )}
+                  }
+                />
+              )}
+            </Pressable>
           </View>
         </View>
       </Modal>
+
+      <MoreSheet
+        visible={moreOpen}
+        rows={moreRows}
+        onClose={() => setMoreOpen(false)}
+      />
 
       {filterSheetOpen ? (
         <PubFilterSheet
@@ -1049,60 +1383,42 @@ export default function BeerMapScreen({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.stout },
-  pressed: { opacity: 0.76, transform: [{ scale: 0.98 }] },
-  topChrome: { position: 'absolute', top: 0, left: 0, right: 0, alignItems: 'center', gap: 9 },
-  topFilterButton: {
+  pressedSoft: { opacity: 0.6 },
+
+  topStack: {
     position: 'absolute',
-    right: 12,
-    width: HitArea.min,
-    height: HitArea.min,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.stout, 0.94),
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.16),
+    top: 0,
+    left: 0,
+    right: 0,
   },
-  topFilterButtonActive: { backgroundColor: Colors.amber, borderColor: Colors.amber },
-  topFilterCount: {
-    position: 'absolute',
-    right: -3,
-    top: -3,
-    minWidth: 18,
-    height: 18,
-    paddingHorizontal: 4,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.foam,
-    borderWidth: 1,
-    borderColor: Colors.stout,
-  },
-  topFilterCountText: { fontFamily: Fonts.ui.bold, fontSize: 10, color: Colors.stout },
-  layerRow: {
-    height: 44,
-    padding: 3,
+  header: {
+    minHeight: 44,
+    paddingHorizontal: 24,
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.stout, 0.94),
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.16),
-    shadowColor: Colors.black,
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
   },
-  layerButton: {
-    height: 36,
-    paddingHorizontal: 13,
+  headerSpacer: {
+    flex: 1,
+    minWidth: Spacing.sm,
+  },
+  // The only place in the app where the overflow glyph needs a surface under
+  // it: everywhere else it sits on stout, here it floats over a light map and
+  // a bare muted glyph simply disappears into the streets. Same dark pill as
+  // the Kompas/Mapa switch beside it, so the header reads as one row.
+  moreButton: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: Radius.pill,
+    backgroundColor: withAlpha(Colors.stout, 0.86),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.12),
   },
-  layerButtonActive: { backgroundColor: Colors.foam },
-  layerButtonText: { fontFamily: Fonts.ui.semibold, fontSize: 13, color: Colors.foamMuted },
-  layerButtonTextActive: { color: Colors.stout },
+  nudgeWrap: {
+    paddingHorizontal: 24,
+  },
+
   pinHit: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   pinHitSelected: { transform: [{ scale: 1.12 }] },
   pubPin: {
@@ -1142,7 +1458,12 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.foamMuted, 0.55),
   },
   clusterPinVisited: { borderColor: Colors.amber, borderWidth: 2.5 },
-  clusterText: { fontFamily: Fonts.display.extrabold, color: Colors.foam },
+  clusterText: {
+    fontFamily: Fonts.display.extrabold,
+    color: Colors.foam,
+    includeFontPadding: false,
+    fontVariant: ['tabular-nums'],
+  },
   clusterTextVisited: { color: Colors.amberLight },
   liveMarkerHit: {
     width: 57,
@@ -1163,7 +1484,12 @@ const styles = StyleSheet.create({
   },
   livePinSelected: { transform: [{ scale: 1.14 }], borderColor: Colors.neon },
   liveAvatar: { width: '100%', height: '100%' },
-  liveInitial: { fontFamily: Fonts.display.extrabold, fontSize: 19, color: Colors.stout },
+  liveInitial: {
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 19,
+    color: Colors.stout,
+    includeFontPadding: false,
+  },
   liveCount: {
     position: 'absolute',
     right: 0,
@@ -1178,7 +1504,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  liveCountText: { fontFamily: Fonts.ui.bold, fontSize: 10, color: Colors.stout },
+  liveCountText: {
+    fontFamily: Fonts.ui.bold,
+    fontSize: 10,
+    color: Colors.stout,
+    includeFontPadding: false,
+    fontVariant: ['tabular-nums'],
+  },
   cityMarker: {
     maxWidth: 190,
     minHeight: 44,
@@ -1191,171 +1523,191 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: Colors.foam,
   },
-  cityMarkerText: { flexShrink: 1, fontFamily: Fonts.display.extrabold, fontSize: 15, color: Colors.stout },
-  cityMarkerCount: { fontFamily: Fonts.ui.bold, fontSize: 12, color: withAlpha(Colors.stout, 0.72) },
-  mapRail: { position: 'absolute', right: 12, gap: 9 },
-  railButton: {
-    width: HitArea.min,
-    height: HitArea.min,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.stout2, 0.96),
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.16),
+  cityMarkerText: {
+    flexShrink: 1,
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 15,
+    color: Colors.stout,
+    includeFontPadding: false,
   },
-  bottomDock: {
+  cityMarkerCount: {
+    fontFamily: Fonts.ui.bold,
+    fontSize: 12,
+    color: withAlpha(Colors.stout, 0.72),
+    includeFontPadding: false,
+    fontVariant: ['tabular-nums'],
+  },
+
+  bottomStack: {
     position: 'absolute',
-    left: 10,
-    right: 10,
-    bottom: 8,
-    paddingBottom: 12,
-    maxHeight: '48%',
-    borderRadius: Radius.cardLarge,
-    backgroundColor: withAlpha(Colors.stout2, 0.97),
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.28),
-    shadowColor: Colors.black,
-    shadowOpacity: 0.42,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 24,
+    gap: 12,
   },
-  bottomDockSelected: {
-    borderRadius: Radius.card,
+  placeCard: {
+    height: 128,
+    overflow: 'hidden',
     backgroundColor: Colors.stout2,
-    borderColor: Colors.amber,
+    borderRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.07),
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 4,
+    ...softDrop(),
   },
-  dockContent: { paddingHorizontal: 18, paddingTop: 15, paddingBottom: 8, gap: 4 },
-  dockScroll: { flexGrow: 0 },
-  dockTitle: { fontFamily: Fonts.display.extrabold, fontSize: 25, lineHeight: 29, color: Colors.foam },
-  dockBody: { fontFamily: Fonts.ui.regular, fontSize: 14, lineHeight: 20, color: Colors.foamMuted },
-  selectedPubContent: { paddingHorizontal: 18, paddingTop: 14, paddingBottom: 4, gap: 8 },
-  selectedPubTapArea: { alignSelf: 'stretch', alignItems: 'center', gap: 8 },
-  selectedPubNameRow: {
-    height: 38,
-    alignSelf: 'stretch',
+  placeTitleRow: {
+    minWidth: 0,
+    minHeight: 22,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
   },
-  selectedPubName: {
-    flex: 1,
+  placeTitle: {
+    flexShrink: 1,
+    minWidth: 0,
     fontFamily: Fonts.display.extrabold,
-    fontSize: 24,
+    fontSize: 18,
     color: Colors.foam,
+    includeFontPadding: false,
   },
-  selectedPubMetaRow: {
-    minHeight: 18,
-    alignSelf: 'stretch',
+  placeMetaSlot: {
+    height: 18,
+    minWidth: 0,
+    justifyContent: 'center',
+  },
+  placeMeta: {
+    flexShrink: 1,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
+    includeFontPadding: false,
+    fontVariant: ['tabular-nums'],
+  },
+  placeFooter: {
+    minHeight: 44,
+    marginTop: 20,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.foam, 0.1),
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 10,
+    gap: 12,
   },
-  selectedPubStatus: { flexShrink: 1, minWidth: 0 },
-  selectedPubRating: {
-    minHeight: 18,
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  selectedPubRatingText: { fontFamily: Fonts.ui.semibold, fontSize: 13, color: Colors.foam },
-  offlineText: {
-    position: 'absolute',
-    top: -28,
-    left: 16,
-    right: 16,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: Radius.pill,
-    overflow: 'hidden',
-    backgroundColor: withAlpha(Colors.stout, 0.94),
+  placeFact: {
+    flex: 1,
+    minWidth: 0,
     fontFamily: Fonts.ui.medium,
-    fontSize: 12,
-    color: Colors.foamMuted,
+    fontSize: 13,
+    color: Colors.mutedText,
+    includeFontPadding: false,
   },
-  liveEyebrow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.success },
-  liveEyebrowText: { fontFamily: Fonts.ui.bold, fontSize: 11, letterSpacing: 0.8, color: Colors.success },
-  primaryButton: {
-    minHeight: 46,
-    borderRadius: Radius.pill,
-    paddingHorizontal: 18,
+  placeDoor: {
+    minHeight: HitArea.min,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: Colors.amber,
-    marginTop: 8,
+    gap: 4,
   },
-  primaryButtonText: { fontFamily: Fonts.display.extrabold, fontSize: 15, color: Colors.stout },
-  overviewContent: { paddingHorizontal: 16, paddingTop: 11 },
-  overviewRow: { flexDirection: 'row', alignItems: 'center', gap: 11 },
-  overviewIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.12),
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.28),
+  placeDoorLabel: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 15,
+    color: Colors.amber,
+    includeFontPadding: false,
   },
-  overviewCopy: { flex: 1, minWidth: 0 },
-  overviewTitle: { fontFamily: Fonts.display.extrabold, fontSize: 16, lineHeight: 20, color: Colors.foam },
-  overviewMeta: { fontFamily: Fonts.ui.regular, fontSize: 13, lineHeight: 17, color: Colors.foamMuted },
-  permissionButton: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 8, minHeight: 34 },
-  permissionButtonText: { flex: 1, fontFamily: Fonts.ui.medium, fontSize: 13, color: Colors.foamMuted },
+
   listBackdrop: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: withAlpha(Colors.black, 0.58),
+    backgroundColor: withAlpha(Colors.black, 0.6),
   },
-  listSheet: {
-    maxHeight: '88%',
-    flexShrink: 1,
-    overflow: 'hidden',
+  listCardWrap: {
+    width: '100%',
+    minHeight: '56%',
+    maxHeight: '92%',
+  },
+  listCard: {
+    flex: 1,
     borderTopLeftRadius: Radius.cardLarge,
     borderTopRightRadius: Radius.cardLarge,
-    backgroundColor: Colors.stout,
+    backgroundColor: Colors.stout2,
     borderWidth: 1,
-    borderBottomWidth: 0,
-    borderColor: withAlpha(Colors.foam, 0.14),
+    borderColor: Colors.border,
+    paddingTop: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    ...softDrop(),
   },
-  sheetHandle: {
+  listGrabber: {
     alignSelf: 'center',
-    width: 38,
+    width: 40,
     height: 4,
-    marginTop: 9,
-    borderRadius: 2,
-    backgroundColor: withAlpha(Colors.foam, 0.28),
+    marginBottom: Spacing.md,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.border,
   },
   listHeader: {
-    minHeight: 74,
-    paddingHorizontal: 20,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
   },
-  listHeaderCopy: { flex: 1, minWidth: 0, paddingRight: 12 },
-  listTitle: { fontFamily: Fonts.display.extrabold, fontSize: 28, color: Colors.foam },
-  listSubtitle: { fontFamily: Fonts.ui.regular, fontSize: 13, color: Colors.mutedText },
-  closeButton: { width: HitArea.min, height: HitArea.min, alignItems: 'center', justifyContent: 'center' },
-  list: { flexGrow: 0, flexShrink: 1 },
-  listContent: { flexGrow: 0, paddingHorizontal: 14, paddingBottom: 10 },
+  listTitle: {
+    flexShrink: 1,
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 22,
+    color: Colors.foam,
+    includeFontPadding: false,
+  },
+  closeButton: {
+    width: HitArea.min,
+    height: HitArea.min,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout3,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  list: {
+    flex: 1,
+    marginTop: Spacing.sm,
+  },
+  listContent: {
+    paddingBottom: Spacing.sm,
+  },
   listRow: {
-    minHeight: 66,
+    minHeight: 64,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.border,
+    gap: 12,
+    paddingVertical: Spacing.sm,
+  },
+  listRowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.border, 0.4),
   },
   listRowCopy: { flex: 1, minWidth: 0 },
-  listRowTitle: { fontFamily: Fonts.display.bold, fontSize: 17, color: Colors.foam },
-  listRowMeta: { fontFamily: Fonts.ui.regular, fontSize: 13, color: Colors.mutedText },
-  emptyList: { padding: 40, textAlign: 'center', fontFamily: Fonts.ui.regular, color: Colors.mutedText },
+  listRowTitle: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 15,
+    color: Colors.foam,
+    includeFontPadding: false,
+  },
+  listRowMeta: {
+    marginTop: 2,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
+    color: Colors.mutedText,
+    includeFontPadding: false,
+  },
+  emptyList: {
+    paddingVertical: 40,
+    textAlign: 'center',
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
+    color: Colors.mutedText,
+    includeFontPadding: false,
+  },
 });

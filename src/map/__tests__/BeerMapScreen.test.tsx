@@ -108,8 +108,10 @@ jest.mock('@/components/shared/IconGlyph', () => {
   const MockIcon = () => null;
   return {
     BeerIcon: MockIcon,
+    CheckIcon: MockIcon,
     ChevronRightIcon: MockIcon,
     CompassIcon: MockIcon,
+    EllipsisIcon: MockIcon,
     ExternalLinkIcon: MockIcon,
     FlagIcon: MockIcon,
     MapPinPlusIcon: MockIcon,
@@ -118,6 +120,7 @@ jest.mock('@/components/shared/IconGlyph', () => {
     ListIcon: MockIcon,
     LocateFixedIcon: MockIcon,
     ListFilterIcon: MockIcon,
+    MapIcon: MockIcon,
     MapPinnedIcon: MockIcon,
     RefreshCwIcon: MockIcon,
     StarIcon: MockIcon,
@@ -314,7 +317,7 @@ describe('BeerMapScreen opening-hours loading', () => {
     expect(screen.UNSAFE_queryAllByType(ScrollView)).toHaveLength(0);
   });
 
-  it('asks for confirmation before reporting a pub from the selected-pub card', () => {
+  it('asks for confirmation before reporting a pub from the overflow sheet', () => {
     const screen = render(
       <BeerMapScreen
         filters={EMPTY_PUB_SEARCH_FILTERS}
@@ -324,7 +327,11 @@ describe('BeerMapScreen opening-hours loading', () => {
     );
 
     fireEvent.press(screen.getByLabelText(cs.a11y.mapPub('U Testu', 0)));
+    fireEvent.press(screen.getByLabelText(cs.a11y.compassMore));
     fireEvent.press(screen.getByLabelText(cs.a11y.mapReportClosed('U Testu')));
+    act(() => {
+      jest.advanceTimersByTime(260);
+    });
 
     expect(mockedEnqueuePubReport).not.toHaveBeenCalled();
 

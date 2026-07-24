@@ -21,6 +21,7 @@ export interface CounterCtaProps {
   subLabel?: string | null;
   onPress: () => void;
   accessibilityLabel: string;
+  disabled?: boolean;
 }
 
 export interface CounterSecondaryProps {
@@ -57,6 +58,7 @@ export const CounterCta = memo(function CounterCta({
   subLabel,
   onPress,
   accessibilityLabel,
+  disabled = false,
 }: CounterCtaProps) {
   // Debounce ref: timestamp of the last accepted press. No state — swallowed
   // presses produce no visual change at all.
@@ -68,25 +70,32 @@ export const CounterCta = memo(function CounterCta({
   }, [label]);
 
   const handlePress = useCallback(() => {
+    if (disabled) return;
     const now = Date.now();
     if (now - lastPressAtRef.current < PRESS_SWALLOW_MS) return;
     lastPressAtRef.current = now;
     onPress();
-  }, [onPress]);
+  }, [disabled, onPress]);
 
   return (
     <View style={styles.wrapper}>
       <Pressable
         onPress={handlePress}
-        style={({ pressed }) => [styles.button, amberGlowStrong(22), pressed && styles.pressed]}
+        disabled={disabled}
+        style={({ pressed }) => [
+          styles.button,
+          disabled ? styles.buttonDisabled : amberGlowStrong(22),
+          pressed && !disabled && styles.pressed,
+        ]}
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel}
+        accessibilityState={{ disabled }}
       >
         {/* A single hairline of light along the top edge: enough to make the
             button read as a lit physical surface instead of a flat swatch. */}
-        <View style={styles.topLight} pointerEvents="none" />
+        {!disabled ? <View style={styles.topLight} pointerEvents="none" /> : null}
         <Text
-          style={styles.label}
+          style={[styles.label, disabled && styles.labelDisabled]}
           numberOfLines={1}
           adjustsFontSizeToFit
           minimumFontScale={0.8}
@@ -96,7 +105,7 @@ export const CounterCta = memo(function CounterCta({
         </Text>
         {subLabel != null && subLabel !== '' && (
           <Text
-            style={styles.subLabel}
+            style={[styles.subLabel, disabled && styles.subLabelDisabled]}
             numberOfLines={1}
             maxFontSizeMultiplier={FontScaleCap.body}
           >
@@ -122,6 +131,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28,
     overflow: 'hidden',
   },
+  buttonDisabled: {
+    backgroundColor: withAlpha(Colors.amber, 0.3),
+  },
   topLight: {
     position: 'absolute',
     top: 0,
@@ -141,12 +153,18 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     includeFontPadding: false,
   },
+  labelDisabled: {
+    color: withAlpha(Colors.stout, 0.55),
+  },
   subLabel: {
     fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: withAlpha(Colors.stout, 0.72),
     marginTop: 2,
     includeFontPadding: false,
+  },
+  subLabelDisabled: {
+    color: withAlpha(Colors.stout, 0.55),
   },
   // The secondary carries the accent at 5-6%: enough to read as part of the
   // same family, nowhere near enough to compete with the filled button above.
