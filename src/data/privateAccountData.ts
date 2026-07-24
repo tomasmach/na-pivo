@@ -5,6 +5,11 @@ import { clearBeerPhotoLocalFiles, clearBeerPhotosQueue } from './beerPhotosQueu
 import { clearCommunityQueue } from './communityQueue';
 import { clearDeleteDrinksQueue } from './deleteDrinksQueue';
 import { clearDrinksQueue } from './drinksQueue';
+import {
+  cancelDrinksHistorySeed,
+  DRINKS_HISTORY_PROGRESS_KEY,
+  DRINKS_HISTORY_SEEDED_KEY,
+} from './drinksHistorySync';
 import { clearUpdateDrinksQueue } from './updateDrinksQueue';
 import { clearBeerCheckinsQueue } from './beerCheckinsQueue';
 import { clearFeedbackQueue } from './feedbackQueue';
@@ -32,6 +37,8 @@ const PRIVATE_STORAGE_KEYS = [
   'na-pivo-pub-ratings',
   'na-pivo-pub-amenities',
   'na-pivo-visits-seeded',
+  DRINKS_HISTORY_SEEDED_KEY,
+  DRINKS_HISTORY_PROGRESS_KEY,
   'na-pivo-community',
   'na-pivo-pub',
   'na-pivo-added-pubs-queue',
@@ -70,6 +77,9 @@ async function clearPersistedHomePoint(): Promise<void> {
  * cleared before the session boundary moves.
  */
 export async function clearLocalPrivateAccountData(): Promise<void> {
+  // Invalidate a captured pre-logout history snapshot before any async queue
+  // clear can yield, so it cannot be enqueued under the replacement account.
+  cancelDrinksHistorySeed();
   useTallyStore.setState({ current: null, history: [] });
   runWithoutPubRatingsSync(() => {
     usePubRatingsStore.setState({ ratings: {} });

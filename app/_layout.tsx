@@ -33,6 +33,7 @@ import {
 } from '@/data/friendInviteLink';
 import { flushBeerCheckinsQueue } from '@/data/beerCheckinsQueue';
 import { flushBeerPhotosQueue } from '@/data/beerPhotosQueue';
+import { seedDrinksFromHistory } from '@/data/drinksHistorySync';
 import { seedVisitsFromHistory } from '@/data/visitsSync';
 import {
   installClientTelemetry,
@@ -258,6 +259,10 @@ export default function RootLayout() {
         void consumeAndClaimPendingInviteCode();
         // Light up the Parta tab badge without waiting for the first Parta visit.
         seedPartaBadge();
+        // Existing installs may hold local diary drinks from before /v1/drinks
+        // sync existed. Seed only after account initialization has settled so
+        // the private history cannot race a session rotation.
+        void seedDrinksFromHistory();
       });
   }, []);
 
@@ -322,8 +327,12 @@ export default function RootLayout() {
         // a signed-in session. Only a real 401 opens the recovery screen; an
         // offline/server failure keeps the previous state intact.
         void useAccountStore.getState().resumeSession().then((result) => {
-          if (result !== 'invalid') return;
-          if (!pathnameRef.current.startsWith('/auth')) router.push('/auth' as Href);
+          if (result === 'invalid') {
+            if (!pathnameRef.current.startsWith('/auth')) router.push('/auth' as Href);
+            return;
+          }
+          // Retry a deferred history seed only after resume has settled.
+          void seedDrinksFromHistory();
         });
         void trackClientEvent({ event: 'app_foreground', severity: 'info' });
         // Commit any lock-screen `+ pivo` taps before applying the idle cutoff;

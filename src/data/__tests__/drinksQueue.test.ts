@@ -3,7 +3,10 @@ import {
   clearDrinksQueue,
   enqueueDrink,
   ensureDrinkQueued,
+  ensureHistoricalDrinkBatchQueued,
   flushDrinksQueue,
+  getDrinksQueueBoundaryGeneration,
+  releaseHistoricalDrinkBatch,
   removeQueuedDrink,
   updateQueuedDrinkBeerName,
 } from '../drinksQueue';
@@ -163,7 +166,10 @@ describe('flushDrinksQueue', () => {
 
     const flushing = flushDrinksQueue();
     await flushMicrotasks();
-    expect(submitDrink).toHaveBeenCalledWith(expect.objectContaining({ client_id: 'a' }));
+    expect(submitDrink).toHaveBeenCalledWith(
+      expect.objectContaining({ client_id: 'a' }),
+      expect.anything(),
+    );
 
     const enqueueing = enqueueDrink(entry({ client_id: 'b' }), { deliver: false });
     await flushMicrotasks();
@@ -190,7 +196,10 @@ describe('flushDrinksQueue', () => {
     await flushMicrotasks();
 
     expect(submitDrink).toHaveBeenCalledTimes(1);
-    expect(submitDrink).toHaveBeenCalledWith(expect.objectContaining({ client_id: 'a' }));
+    expect(submitDrink).toHaveBeenCalledWith(
+      expect.objectContaining({ client_id: 'a' }),
+      expect.anything(),
+    );
 
     resolveSubmit('ok');
     await Promise.all([firstFlush, secondFlush]);
@@ -221,7 +230,10 @@ describe('flushDrinksQueue', () => {
     await expect(enqueueing).resolves.toBe(true);
     await flushing;
 
-    expect(submitDrink).toHaveBeenCalledWith(expect.objectContaining({ client_id: 'b' }));
+    expect(submitDrink).toHaveBeenCalledWith(
+      expect.objectContaining({ client_id: 'b' }),
+      expect.anything(),
+    );
     expect(await readQueue()).toEqual([]);
   });
 
@@ -262,6 +274,91 @@ describe('flushDrinksQueue', () => {
     await AsyncStorage.setItem(STORAGE_KEY, '{not json');
     await expect(flushDrinksQueue()).resolves.toBeUndefined();
     expect(submitDrink).not.toHaveBeenCalled();
+  });
+});
+
+describe('ensureHistoricalDrinkBatchQueued', () => {
+  it('fills only free capacity without evicting an existing offline drink', async () => {
+    const existing = Array.from({ length: 199 }, (_, index) =>
+      entry({ client_id: `existing-${index}` }),
+    );
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(existing));
+    const generation = getDrinksQueueBoundaryGeneration();
+
+    const result = await ensureHistoricalDrinkBatchQueued(
+      [
+        entry({ client_id: 'history-a' }),
+        entry({ client_id: 'history-b' }),
+      ],
+      generation,
+    );
+
+    expect(result).toMatchObject({
+      acceptedClientIds: ['history-a'],
+      boundaryMatches: true,
+      persisted: true,
+    });
+    const queue = await readQueue();
+    expect(queue).toHaveLength(200);
+    expect(queue[0].client_id).toBe('existing-0');
+    expect(queue[199].client_id).toBe('history-a');
+    releaseHistoricalDrinkBatch(result.acceptedClientIds);
+  });
+
+  it('does not evict an accepted seed ID if a normal count lands before its flush check', async () => {
+    const existing = Array.from({ length: 199 }, (_, index) =>
+      entry({ client_id: `existing-${index}` }),
+    );
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(existing));
+    const generation = getDrinksQueueBoundaryGeneration();
+    const result = await ensureHistoricalDrinkBatchQueued(
+      [entry({ client_id: 'history-protected' })],
+      generation,
+    );
+
+    await enqueueDrink(entry({ client_id: 'new-count' }), { deliver: false });
+
+    const ids = (await readQueue()).map((queued) => queued.client_id);
+    expect(ids).toHaveLength(200);
+    expect(ids).toContain('history-protected');
+    expect(ids).toContain('new-count');
+    expect(ids).not.toContain('existing-0');
+    releaseHistoricalDrinkBatch(result.acceptedClientIds);
+  });
+
+  it('rejects a captured batch after an account-boundary clear', async () => {
+    const generation = getDrinksQueueBoundaryGeneration();
+    await clearDrinksQueue();
+
+    await expect(
+      ensureHistoricalDrinkBatchQueued(
+        [entry({ client_id: 'old-account-history' })],
+        generation,
+      ),
+    ).resolves.toEqual({
+      acceptedClientIds: [],
+      boundaryMatches: false,
+      persisted: false,
+    });
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('does not claim a newly added ID when AsyncStorage persistence fails', async () => {
+    const generation = getDrinksQueueBoundaryGeneration();
+    (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(
+      new Error('storage unavailable'),
+    );
+
+    const result = await ensureHistoricalDrinkBatchQueued(
+      [entry({ client_id: 'not-durable' })],
+      generation,
+    );
+
+    expect(result).toEqual({
+      acceptedClientIds: [],
+      boundaryMatches: true,
+      persisted: false,
+    });
   });
 });
 

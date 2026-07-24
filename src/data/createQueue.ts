@@ -19,8 +19,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export interface QueueStorage<T> {
   /** Load the persisted queue, dropping anything that fails `isValid`. Never throws. */
   load(): Promise<T[]>;
-  /** Persist the queue (removes the key entirely when empty). Never throws. */
-  save(queue: T[]): Promise<void>;
+  /**
+   * Persist the queue (removes the key entirely when empty). Never throws.
+   * Existing queues may ignore the result; migration/backfill callers use it to
+   * avoid marking a seed complete after an AsyncStorage write failed.
+   */
+  save(queue: T[]): Promise<boolean>;
 }
 
 /**
@@ -46,15 +50,17 @@ export function createQueueStorage<T>(
         return [];
       }
     },
-    save: async (queue: T[]): Promise<void> => {
+    save: async (queue: T[]): Promise<boolean> => {
       try {
         if (queue.length === 0) {
           await AsyncStorage.removeItem(storageKey);
         } else {
           await AsyncStorage.setItem(storageKey, JSON.stringify(queue));
         }
+        return true;
       } catch {
         // Storage failure leaves the previous snapshot in place.
+        return false;
       }
     },
   };

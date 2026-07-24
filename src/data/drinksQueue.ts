@@ -28,6 +28,25 @@ const STORAGE_KEY = 'na-pivo-drinks-queue';
 const MAX_QUEUE_LENGTH = 200;
 export type QueuedDrinkUpdateResult = 'queued' | 'in-flight' | 'missing';
 const deliveringIds = new Set<string>();
+const protectedHistoricalIds = new Set<string>();
+let accountBoundaryGeneration = 0;
+
+function capQueue(queue: DrinkEntry[]): DrinkEntry[] {
+  if (queue.length <= MAX_QUEUE_LENGTH) return queue;
+  if (protectedHistoricalIds.size === 0) return queue.slice(-MAX_QUEUE_LENGTH);
+
+  const protectedEntries = queue.filter((entry) =>
+    protectedHistoricalIds.has(entry.client_id),
+  );
+  const unprotectedEntries = queue.filter(
+    (entry) => !protectedHistoricalIds.has(entry.client_id),
+  );
+  const unprotectedCapacity = Math.max(0, MAX_QUEUE_LENGTH - protectedEntries.length);
+  return [
+    ...protectedEntries.slice(-MAX_QUEUE_LENGTH),
+    ...(unprotectedCapacity > 0 ? unprotectedEntries.slice(-unprotectedCapacity) : []),
+  ];
+}
 
 function isDrinkEntry(entry: unknown): entry is DrinkEntry {
   const e = entry as DrinkEntry;
@@ -86,7 +105,7 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
     if (signal.aborted) break;
     deliveringIds.add(entry.client_id);
     try {
-      const result = await submitDrink(entry);
+      const result = await submitDrink(entry, signal);
       if (result !== 'retry') deliveredOrDropped.add(entry.client_id);
     } finally {
       deliveringIds.delete(entry.client_id);
@@ -121,7 +140,7 @@ export async function enqueueDrink(entry: DrinkEntry, options?: { deliver?: bool
   await runMutation(async () => {
     const queue = await loadQueue();
     queue.push(entry);
-    await saveQueue(queue.slice(-MAX_QUEUE_LENGTH));
+    await saveQueue(capQueue(queue));
   });
 
   if (!deliver) return false;
@@ -141,7 +160,100 @@ export function ensureDrinkQueued(entry: DrinkEntry): Promise<void> {
     const queue = await loadQueue();
     if (queue.some((queued) => queued.client_id === entry.client_id)) return;
     queue.push(entry);
-    await saveQueue(queue.slice(-MAX_QUEUE_LENGTH));
+    await saveQueue(capQueue(queue));
+  });
+}
+
+export interface HistoricalDrinkBatchResult {
+  /** IDs already present or newly persisted without evicting another drink. */
+  acceptedClientIds: string[];
+  /** False when an account clear began while this batch was waiting for the lock. */
+  boundaryMatches: boolean;
+  /** False when AsyncStorage rejected the attempted write. */
+  persisted: boolean;
+}
+
+/** Capture the current private-account generation before preparing a seed. */
+export function getDrinksQueueBoundaryGeneration(): number {
+  return accountBoundaryGeneration;
+}
+
+/**
+ * Durably add as much of a historical seed batch as fits without applying the
+ * normal queue's "drop oldest" cap policy. A backfill must never evict a newer
+ * offline drink just to make room, nor claim IDs whose storage write failed.
+ *
+ * The account generation is checked inside the same mutation lock as the write:
+ * a seed snapshot captured before logout cannot enqueue after clearDrinksQueue.
+ */
+export function ensureHistoricalDrinkBatchQueued(
+  entries: DrinkEntry[],
+  expectedBoundaryGeneration: number,
+): Promise<HistoricalDrinkBatchResult> {
+  return runMutation(async () => {
+    if (expectedBoundaryGeneration !== accountBoundaryGeneration) {
+      return { acceptedClientIds: [], boundaryMatches: false, persisted: false };
+    }
+
+    const queue = await loadQueue();
+    if (expectedBoundaryGeneration !== accountBoundaryGeneration) {
+      return { acceptedClientIds: [], boundaryMatches: false, persisted: false };
+    }
+    const existingIds = new Set(queue.map((entry) => entry.client_id));
+    const acceptedClientIds: string[] = [];
+    const additions: DrinkEntry[] = [];
+    const batchIds = new Set<string>();
+    let available = Math.max(0, MAX_QUEUE_LENGTH - queue.length);
+
+    for (const entry of entries) {
+      if (batchIds.has(entry.client_id)) continue;
+      batchIds.add(entry.client_id);
+      if (existingIds.has(entry.client_id)) {
+        acceptedClientIds.push(entry.client_id);
+      } else if (available > 0) {
+        additions.push(entry);
+        acceptedClientIds.push(entry.client_id);
+        existingIds.add(entry.client_id);
+        available -= 1;
+      }
+    }
+
+    if (additions.length === 0) {
+      acceptedClientIds.forEach((clientId) => protectedHistoricalIds.add(clientId));
+      return { acceptedClientIds, boundaryMatches: true, persisted: true };
+    }
+    const persisted = await saveQueue([...queue, ...additions]);
+    const boundaryMatches =
+      expectedBoundaryGeneration === accountBoundaryGeneration;
+    if (!boundaryMatches) {
+      return { acceptedClientIds: [], boundaryMatches: false, persisted: false };
+    }
+    const durableClientIds = persisted
+      ? acceptedClientIds
+      : acceptedClientIds.filter((clientId) =>
+          queue.some((entry) => entry.client_id === clientId),
+        );
+    durableClientIds.forEach((clientId) => protectedHistoricalIds.add(clientId));
+    return {
+      acceptedClientIds: durableClientIds,
+      boundaryMatches: true,
+      persisted,
+    };
+  });
+}
+
+/** Release temporary cap protection after the seed has checked delivery state. */
+export function releaseHistoricalDrinkBatch(clientIds: readonly string[]): void {
+  for (const clientId of clientIds) protectedHistoricalIds.delete(clientId);
+}
+
+/** Return which requested IDs remain pending after a historical batch flush. */
+export function getQueuedDrinkIds(clientIds: readonly string[]): Promise<string[]> {
+  return runMutation(async () => {
+    const wanted = new Set(clientIds);
+    return (await loadQueue())
+      .map((entry) => entry.client_id)
+      .filter((clientId) => wanted.has(clientId));
   });
 }
 
@@ -203,6 +315,10 @@ const { flush: _flush, abortInFlight } = createCoalescingFlush(flushUnlocked);
 
 /** Drop all pending private drink uploads without attempting delivery. */
 export function clearDrinksQueue(): Promise<void> {
+  // Synchronous invalidation closes the check→lock race for history backfills:
+  // any seed waiting to mutate storage sees a different generation.
+  accountBoundaryGeneration += 1;
+  protectedHistoricalIds.clear();
   // Cancel any in-flight flush first: its network loop runs outside runMutation,
   // so without this it could keep POSTing the previous account's drinks under the
   // session that replaces this one.
