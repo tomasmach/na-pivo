@@ -33,7 +33,6 @@ import { trackClientEvent } from '@/data/telemetryClient';
 import SkeletonBlock from '@/friends/SkeletonBlock';
 import { GlobalBoardRow } from '@/leaderboards/GlobalBoardRow';
 import BoardSegmented from '@/leaderboards/BoardSegmented';
-import { resolveInitialLeaderboardPeriod } from '@/leaderboards/navigation';
 import PeriodChips from '@/leaderboards/PeriodChips';
 import { cs } from '@/i18n/cs';
 import { useAccountStore } from '@/stores/accountStore';
@@ -63,15 +62,10 @@ export default function LeaderboardsScreen() {
   const router = useRouter();
   const reduceMotion = useReduceMotion();
   const profile = useAccountStore((s) => s.profile);
-  const { source, period: requestedPeriod } = useLocalSearchParams<{
-    source?: string | string[];
-    period?: string | string[];
-  }>();
+  const { source } = useLocalSearchParams<{ source?: string }>();
 
   const [category, setCategory] = useState<LeaderboardCategory>('beers');
-  const [period, setPeriod] = useState<LeaderboardPeriod>(() =>
-    resolveInitialLeaderboardPeriod(requestedPeriod, source),
-  );
+  const [period, setPeriod] = useState<LeaderboardPeriod>('week');
   const [state, setState] = useState<LoadState>('loading');
   const [board, setBoard] = useState<Leaderboard | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -88,14 +82,7 @@ export default function LeaderboardsScreen() {
     // Which entry point converts (teaser vs counter chip vs profile row).
     void trackClientEvent({
       event: 'leaderboards_opened',
-      context: {
-        source:
-          typeof source === 'string' && source
-            ? source
-            : Array.isArray(source) && source[0]
-              ? source[0]
-              : 'unknown',
-      },
+      context: { source: typeof source === 'string' && source ? source : 'unknown' },
     });
     // Fire once per screen instance — the param can't change under a push.
     // eslint-disable-next-line react-hooks/exhaustive-deps

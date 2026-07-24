@@ -659,10 +659,7 @@ export default function ProfileScreen() {
         {/* Cross-link: where do these numbers put me countrywide? */}
         <Pressable
           onPress={() =>
-            router.push({
-              pathname: '/leaderboards',
-              params: { source: 'profile', period: 'all' },
-            } as Href)
+            router.push({ pathname: '/leaderboards', params: { source: 'profile' } } as Href)
           }
           style={({ pressed }) => [styles.boardsLink, pressed && styles.pressed]}
           accessibilityRole="button"

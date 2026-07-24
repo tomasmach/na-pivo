@@ -63,10 +63,7 @@ export function RankTeaser() {
   }
 
   const open = useCallback(() => {
-    router.push({
-      pathname: '/leaderboards',
-      params: { source: 'parta', period: 'week' },
-    } as Href);
+    router.push({ pathname: '/leaderboards', params: { source: 'parta' } } as Href);
   }, [router]);
 
   return (
