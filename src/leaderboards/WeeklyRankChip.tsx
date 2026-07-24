@@ -71,7 +71,12 @@ export function WeeklyRankChip({ sessionBeerCount }: { sessionBeerCount: number 
 
   return (
     <Pressable
-      onPress={() => router.push({ pathname: '/leaderboards', params: { source: 'counter' } } as Href)}
+      onPress={() =>
+        router.push({
+          pathname: '/leaderboards',
+          params: { source: 'counter', period: 'week' },
+        } as Href)
+      }
       accessibilityRole="button"
       accessibilityLabel={cs.a11y.leaderboardsOpen}
       style={({ pressed }) => [styles.chip, pressed && styles.pressed]}
