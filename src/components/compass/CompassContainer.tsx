@@ -1,6 +1,17 @@
+/**
+ * The compass: static dial, rotating needle, static hub on top.
+ *
+ * There used to be a radial amber halo bleeding 40 % of the dial's size in every
+ * direction behind this. It is gone: a blurred glow on the background is the
+ * design system's §14.3 antipattern, and the one glow on a screen belongs under
+ * the primary button. What made the dial feel like an object was never the
+ * halo — it is the card it now sits in (`stout2` + a foam hairline) and the
+ * pale paper disc inside the dial itself.
+ */
+
 import React, { memo } from 'react';
 import { View, StyleSheet } from 'react-native';
-import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
+import Svg, { Circle } from 'react-native-svg';
 import { SharedValue } from 'react-native-reanimated';
 import { CompassDial } from './CompassDial';
 import { CompassArrow } from './CompassArrow';
@@ -12,42 +23,12 @@ interface CompassContainerProps {
   size?: number;
 }
 
-// Glow extends this fraction of `size` beyond the dial on each side.
-const GLOW_OVERFLOW_RATIO = 0.4;
-
 export const CompassContainer = memo(function CompassContainer({
   rotation,
   size = CompassSize,
 }: CompassContainerProps) {
-  const glowOverflow = size * GLOW_OVERFLOW_RATIO;
-  const glowSize = size + glowOverflow * 2;
-
   return (
     <View style={{ width: size, height: size }}>
-      {/* Outer glow halo — overflows container so it spreads beyond the dial */}
-      <View
-        pointerEvents="none"
-        style={{
-          position: 'absolute',
-          top: -glowOverflow,
-          left: -glowOverflow,
-          width: glowSize,
-          height: glowSize,
-        }}
-      >
-        <Svg width={glowSize} height={glowSize} viewBox={`0 0 ${glowSize} ${glowSize}`}>
-          <Defs>
-            <RadialGradient id="compassGlow" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
-              <Stop offset="0%" stopColor={Colors.glow} stopOpacity={0.55} />
-              <Stop offset="35%" stopColor={Colors.glow} stopOpacity={0.32} />
-              <Stop offset="70%" stopColor={Colors.glow} stopOpacity={0.08} />
-              <Stop offset="100%" stopColor={Colors.glow} stopOpacity={0} />
-            </RadialGradient>
-          </Defs>
-          <Circle cx={glowSize / 2} cy={glowSize / 2} r={glowSize / 2} fill="url(#compassGlow)" />
-        </Svg>
-      </View>
-
       {/* Static dial (rings, ticks, cardinals, hub) */}
       <CompassDial size={size} />
 

@@ -1,0 +1,302 @@
+/**
+ * CompassCard — the hero of the "Kompas" screen: the dial, the distance and
+ * the pub, in one card.
+ *
+ * It is the direct sibling of `CoasterCard` and `NightCard`: same card recipe
+ * (stout2 surface, 28 radius, 7% foam hairline border, 24/24/8 padding), same
+ * four-step type scale, same hairline footer with one amber text door.
+ *
+ * The rule this file enforces: the distance numeral is the only lit thing here.
+ * No amber frame, no glow, no halo — the screen's one glow belongs to its one
+ * button. The numeral keeps a 1.24x line box because Baloo 2 ExtraBold
+ * overshoots and iOS otherwise shaves the tops off the digits, and the unit
+ * caption is pulled back up into that headroom so the pair reads as one object.
+ *
+ * The card also owns the dial's SIZE but not the dial itself: the parent hands
+ * in a ready-made node (it owns the sensors and the animation) and gets the
+ * size back through `onDialSize`, measured from the card. Contents are always
+ * dimensioned from the card, never the other way round — on an iPhone SE the
+ * dial shrinks instead of spilling over the rounded corner.
+ *
+ * Purely presentational: props in, callbacks out. The parent has already
+ * formatted the distance, declined the unit, decided what the meta line says
+ * and whether pub names are hidden.
+ */
+
+import React, { useCallback, useRef } from 'react';
+import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
+
+import { ChevronRightIcon } from '@/components/shared/IconGlyph';
+import { cs } from '@/i18n/cs';
+import { Colors, withAlpha } from '@/theme/colors';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { HitArea } from '@/theme/layout';
+
+/** Vertical room the readout (numeral + unit caption) needs under the dial. */
+const READOUT_RESERVE = 96;
+const DIAL_MIN = 180;
+const DIAL_MAX = 300;
+
+/** The numeral shrinks with its digit count so "1000" never crowds the card. */
+function distanceFontSize(value: string): number {
+  if (value.length <= 2) return 88;
+  if (value.length <= 3) return 72;
+  return 56;
+}
+
+/** Opening-hours tone. Never red — we don't shout at people about a closed pub. */
+function metaColor(tone: CompassCardProps['metaTone']): string {
+  if (tone === 'open') return Colors.open;
+  if (tone === 'closed') return Colors.closed;
+  return Colors.mutedText;
+}
+
+export interface CompassCardProps {
+  /**
+   * The ready-made dial. The parent owns the sensor stream and the rotation, so
+   * this card only places it and tells the parent how big it may be.
+   */
+  dial: React.ReactNode;
+  /** Fires when the measured dial size changes — never on every layout pass. */
+  onDialSize: (size: number) => void;
+  /** The bare formatted number ("80", "1,2"), or null when the distance is unknown. */
+  distanceValue: string | null;
+  /** Already declined and uppercased by the parent ("METRŮ" / "KILOMETRŮ"). */
+  distanceUnit: string;
+  /** The target pub, or null when there is none to point at. */
+  pubName: string | null;
+  /** One line: "Otevřeno do 23:00 · Pilsner Urquell 95 Kč", or null. */
+  metaLine: string | null;
+  /** Colors the whole meta line. */
+  metaTone: 'open' | 'closed' | 'neutral';
+  /** Hidden-pub-names mode: the footer teases instead of telling. */
+  hidden: boolean;
+  /** Show the amber "Zmapuj ›" door on the right of the footer. */
+  showMapLink: boolean;
+  /** Footer tap: opens the pub info, or reveals the name while hidden. */
+  onPressFooter: () => void;
+  accessibilityLabel: string;
+}
+
+export function CompassCard({
+  dial,
+  onDialSize,
+  distanceValue,
+  distanceUnit,
+  pubName,
+  metaLine,
+  metaTone,
+  hidden,
+  showMapLink,
+  onPressFooter,
+  accessibilityLabel,
+}: CompassCardProps) {
+  // Last size handed to the parent. A ref, not state: re-reporting the same
+  // number would bounce layout -> setState -> layout forever.
+  const lastDialSizeRef = useRef(0);
+
+  const handleBodyLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      const { width, height } = event.nativeEvent.layout;
+      const available = Math.min(width, height - READOUT_RESERVE);
+      const next = Math.round(Math.max(DIAL_MIN, Math.min(DIAL_MAX, available)));
+      if (next === lastDialSizeRef.current) return;
+      lastDialSizeRef.current = next;
+      onDialSize(next);
+    },
+    [onDialSize],
+  );
+
+  const numeralSize = distanceValue !== null ? distanceFontSize(distanceValue) : 0;
+  const hasFooter = pubName !== null || hidden;
+
+  return (
+    <View style={styles.card}>
+      <View style={styles.body} onLayout={handleBodyLayout}>
+        {dial}
+
+        {distanceValue !== null ? (
+          <View style={styles.readout}>
+            <Text
+              style={[
+                styles.distance,
+                // The line box must clear the extrabold glyph's overshoot, or
+                // iOS shaves the top off the digits. 1.24 leaves real headroom;
+                // the unit's negative margin closes the gap it creates below.
+                { fontSize: numeralSize, lineHeight: numeralSize * 1.24 },
+              ]}
+              numberOfLines={1}
+              maxFontSizeMultiplier={FontScaleCap.display}
+            >
+              {distanceValue}
+            </Text>
+            <Text
+              style={styles.unit}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
+              maxFontSizeMultiplier={FontScaleCap.body}
+            >
+              {distanceUnit}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+
+      {hasFooter ? (
+        <Pressable
+          onPress={onPressFooter}
+          accessibilityRole="button"
+          accessibilityLabel={accessibilityLabel}
+          style={({ pressed }) => [styles.footer, pressed && styles.pressed]}
+        >
+          {hidden ? (
+            <Text
+              style={styles.revealHint}
+              numberOfLines={1}
+              maxFontSizeMultiplier={FontScaleCap.body}
+            >
+              {cs.compass.revealHint}
+            </Text>
+          ) : (
+            <>
+              {/* Without minWidth/flexShrink a long name pushes the door off the
+                  card instead of truncating. Test case: "Restaurace U Zlatého
+                  Tygra na Starém Městě". */}
+              <View style={styles.footerText}>
+                <Text
+                  style={styles.pubName}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.heading}
+                >
+                  {pubName}
+                </Text>
+                {/* Fixed-height slot: the footer must not jump when the pub has
+                    no hours and no price to show. */}
+                <View style={styles.metaSlot}>
+                  {metaLine !== null ? (
+                    <Text
+                      style={[styles.meta, { color: metaColor(metaTone) }]}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {metaLine}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+
+              {showMapLink ? (
+                <View style={styles.mapLink}>
+                  <Text style={styles.mapLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {cs.compass.mapPubLink}
+                  </Text>
+                  <ChevronRightIcon size={15} color={Colors.amber} />
+                </View>
+              ) : null}
+            </>
+          )}
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  // The card eats the space between the header and the button, so the screen
+  // has no dead middle and the dial gets room to be the hero. It clips its own
+  // contents: the dial is sized from the card, never the other way.
+  card: {
+    flex: 1,
+    overflow: 'hidden',
+    backgroundColor: Colors.stout2,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.07),
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 8,
+  },
+  pressed: {
+    opacity: 0.85,
+  },
+  body: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Stretched so the centered unit caption can shrink against the card's real
+  // width instead of against its own content box.
+  readout: {
+    alignSelf: 'stretch',
+    marginTop: 12,
+  },
+  distance: {
+    fontFamily: Fonts.display.extrabold,
+    color: Colors.amber,
+    includeFontPadding: false,
+    textAlign: 'center',
+    // Tabular figures so the number never shifts sideways as you walk.
+    fontVariant: ['tabular-nums'],
+  },
+  // Small, wide, unlit: a caption for the numeral, not a headline of its own.
+  // Pulled up into the numeral's line-box headroom so the pair reads as one
+  // object instead of two stacked labels.
+  unit: {
+    marginTop: -8,
+    fontFamily: Fonts.display.bold,
+    fontSize: 13,
+    letterSpacing: 3,
+    color: Colors.foamMuted,
+    includeFontPadding: false,
+    textAlign: 'center',
+  },
+  footer: {
+    marginTop: 20,
+    paddingTop: 12,
+    paddingBottom: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.foam, 0.1),
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    minHeight: HitArea.min,
+  },
+  footerText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  pubName: {
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 18,
+    color: Colors.foam,
+    includeFontPadding: false,
+  },
+  metaSlot: {
+    minHeight: 18,
+    justifyContent: 'center',
+  },
+  meta: {
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
+    includeFontPadding: false,
+  },
+  revealHint: {
+    flex: 1,
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 15,
+    color: Colors.amber,
+    includeFontPadding: false,
+  },
+  mapLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  mapLabel: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 15,
+    color: Colors.amber,
+    includeFontPadding: false,
+  },
+});

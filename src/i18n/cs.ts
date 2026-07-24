@@ -265,6 +265,46 @@ export const cs = {
     priceAgeMonths: (n: number) => (n === 1 ? 'před měsícem' : `před ${n} měsíci`),
     /** Prefix for prices older than ~6 months — visibly approximate. */
     priceApprox: (price: string) => `≈ ${price}`,
+
+    // — Tácek rebuild: one card, one amber button, everything else behind "…" —
+
+    /** The one glowing button. Its label says exactly what the tap does. */
+    navigateCta: 'Doveď mě tam',
+    navigateCtaSub: 'otevřu ti navigaci',
+    /** The quiet outline twin: reroll in "Překvap mě", skip in "Nejbližší". */
+    anotherPub: 'Dej mi jinou',
+    /** Same slot while you're aiming at a friend's pub. */
+    backToNearest: 'Zpět na nejbližší',
+    /** Amber text door in the card footer — the twin of "Účet →" on the counter. */
+    mapPubLink: 'Zmapuj',
+    /** Footer copy while pub names are hidden in settings. */
+    revealHint: 'Ťukni a prozradím kam',
+    /** Declined unit under the big distance numeral, e.g. "80 / METRŮ". */
+    distanceUnitMeters: 'METRŮ',
+    distanceUnitKm: (value: number) => (value === 1 ? 'KILOMETRU' : 'KILOMETRŮ'),
+
+    // — "Co ještě?" overflow sheet —
+    moreTitle: 'Co ještě?',
+    moreMap: 'Pivní mapa',
+    moreFilters: 'Filtry',
+    moreFiltersActive: (count: number) =>
+      count === 1 ? '1 aktivní' : count >= 2 && count <= 4 ? `${count} aktivní` : `${count} aktivních`,
+    moreHome: 'Navigovat domů',
+    moreModeNearest: 'Hledej nejbližší',
+    moreModeSurprise: 'Překvap mě',
+    moreReport: 'Hospoda chybí nebo nesedí',
+    moreSearchSettings: 'Nastavení hledání',
+    moreRetry: 'Zkusit znovu',
+
+    // — Nudge slot: at most one of these, ever —
+    nudgeFilters: (count: number) =>
+      count === 1 ? 'Filtruju jednu věc' : count >= 2 && count <= 4 ? `Filtruju ${count} věci` : `Filtruju ${count} věcí`,
+    nudgeFiltersClear: 'Zrušit',
+    nudgeFocused: 'Mířím za partou',
+    nudgeSurprise: 'Losuju náhodně',
+    nudgeSurpriseOff: 'Nejbližší',
+    nudgeNoMagnetometer: 'Tvůj telefon nemá kompas, šipka se točit nebude.',
+    nudgeCalibrate: 'Otoč telefonem do osmičky, ať se kompas srovná.',
   },
 
   permissions: {
@@ -2468,6 +2508,16 @@ export const cs = {
     ratingDislike: (pub: string) => `Hodnotit ${pub} jako slabou`,
     ratingNote: (note: string) => `Štítek: ${note}`,
     ratingNoteInput: (pub: string) => `Vlastní poznámka k hospodě ${pub}`,
+
+    // — Kompas —
+    compassMore: 'Co ještě? Mapa, filtry a další',
+    compassCard: (pub: string, distance: string, status: string) =>
+      `${pub}, ${distance}${status ? `, ${status}` : ''}. Ťukni pro info o hospodě.`,
+    compassCardHidden: 'Hospoda je schovaná. Ťukni a prozradím kam.',
+    compassNavigate: (pub: string) => `Doveď mě do hospody ${pub}, otevře navigaci`,
+    compassAnother: 'Vyber mi jinou hospodu',
+    compassBackToNearest: 'Zpět na nejbližší hospodu',
+    compassClearFilters: 'Zrušit všechny filtry',
 
     // — Deník —
     diarySegment: 'Přepnout na deník večerů',
