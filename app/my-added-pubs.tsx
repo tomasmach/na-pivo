@@ -172,27 +172,27 @@ export default function MyAddedPubsScreen() {
 
   const sheetRows = useMemo<MoreRow[]>(() => {
     if (selectedSubmission === null) return [];
-    const rows: MoreRow[] = [
+    const editRow: MoreRow = {
+      key: 'edit',
+      label: cs.addPub.edit,
+      icon: PencilIcon,
+      onPress: () => runAfterSheetClose(() => handleEdit(selectedSubmission)),
+    };
+    if (selectedSubmission.syncState === 'synced') return [editRow];
+    return [
+      editRow,
       {
-        key: 'edit',
-        label: cs.addPub.edit,
-        icon: PencilIcon,
-        onPress: () => runAfterSheetClose(() => handleEdit(selectedSubmission)),
-      },
-    ];
-    if (selectedSubmission.syncState !== 'synced') {
-      rows.push({
         key: 'retry',
         label: retryingId === null ? cs.addPub.retry : cs.addPub.retrying,
         icon: RefreshCwIcon,
+        disabled: retryingId !== null,
         onPress: () => {
           if (retryingId === null) {
             runAfterSheetClose(() => void handleRetry(selectedSubmission.client_id));
           }
         },
-      });
-    }
-    return rows;
+      },
+    ];
   }, [handleEdit, handleRetry, retryingId, runAfterSheetClose, selectedSubmission]);
 
   const nudge = useMemo<Nudge | null>(() => {

@@ -694,17 +694,50 @@ export const cs = {
     editQueuedToast: 'Opravu mám v telefonu a pošlu ji, až budeš online.',
     editSavedToast: 'Oprava je uložená.',
     myPubsTitle: 'Moje přidané hospody',
-    myPubsSubtitle: 'Tady vidíš, co už je venku a co ještě čeká.',
-    myPubsEmpty: 'Zatím jsi žádnou chybějící hospodu nepřidal.',
-    statusPending: 'Čeká na odeslání',
-    statusSynced: 'Je v kompasu',
-    statusFailed: 'Potřebuje opravit',
+    emptyTitle: 'Zatím tu žádná není.',
+    emptyBody: 'Když v kompasu chybí hospoda, doplň ji. Přidám ji do mapy i ostatním.',
+    syncedCaption: 'V KOMPASU',
+    noneSyncedCaption: 'ZATÍM NIC',
+    latestPub: (name: string) => `Naposled: ${name}`,
+    allSynced: 'Všechno je venku.',
+    listLabel: 'Tvoje hospody',
+    statusPending: 'Čeká',
+    statusSynced: 'V kompasu',
+    statusFailed: 'Neprošla',
+    pendingCount: (count: number) =>
+      count === 1
+        ? 'Jedna hospoda čeká na odeslání'
+        : count < 5
+          ? `${count} hospody čekají na odeslání`
+          : `${count} hospod čeká na odeslání`,
+    failedCount: (count: number) =>
+      count === 1
+        ? 'Jedna hospoda neprošla'
+        : count < 5
+          ? `${count} hospody neprošly`
+          : `${count} hospod neprošlo`,
+    needsFixCount: (count: number) =>
+      count === 1
+        ? '1 potřebuje opravit'
+        : count < 5
+          ? `${count} potřebují opravit`
+          : `${count} potřebuje opravit`,
+    totalCount: (count: number) =>
+      count === 1 ? 'Celkem 1 hospoda' : count < 5 ? `Celkem ${count} hospody` : `Celkem ${count} hospod`,
+    retryingAll: 'Zkouším to poslat…',
+    loadFailed: 'Teď se mi je nepodařilo načíst.',
+    retryAll: 'Znovu poslat neúspěšné hospody',
+    retryLoad: 'Znovu načíst přidané hospody',
     retry: 'Zkusit znovu',
     retrying: 'Zkouším…',
     edit: 'Opravit hospodu',
+    openPubActions: (name: string) => `Otevřít akce hospody ${name}`,
+    addFirstCta: 'Přidej první hospodu',
+    addCta: 'Přidej hospodu',
+    addCtaHint: 'Chybí v kompasu? Doplním ji do mapy i ostatním.',
     editFromDetailHint: 'Jen u hospody, kterou jsi přidal ty',
     openMyPubs: 'Moje přidané hospody',
-    openMyPubsHint: 'Stav odeslání, opravy a opakování',
+    openMyPubsHint: 'Přidej hospodu, sleduj stav, oprav údaje',
   },
 
   account: {
@@ -1581,21 +1614,39 @@ export const cs = {
   // logged beers, discovered pubs, and Mapér XP. Copy measures diary activity
   // (zapsaná piva, objevené hospody), never litres — no chug-contest energy.
   leaderboards: {
-    title: 'Žebříčky',
+    back: 'Zpět',
+    sheetTitle: 'Jaký žebříček?',
+    openTablePicker: 'Vybrat žebříček',
+    tableTitle: (
+      category: 'beers' | 'pubs' | 'mapper',
+      period: 'week' | 'year' | 'all',
+    ) => {
+      if (category === 'mapper') return 'Mapéři · odjakživa';
+      const categoryLabel = category === 'beers' ? 'Pivaři' : 'Objevitelé';
+      const periodLabel =
+        period === 'week' ? 'tenhle týden' : period === 'year' ? 'letos' : 'celkem';
+      return `${categoryLabel} · ${periodLabel}`;
+    },
+    tablePickerLabel: (
+      category: 'beers' | 'pubs' | 'mapper',
+      period: 'week' | 'year' | 'all',
+    ) => {
+      const categoryLabel =
+        category === 'beers' ? 'Pivaři' : category === 'pubs' ? 'Objevitelé' : 'Mapéři';
+      const periodLabel =
+        category === 'mapper'
+          ? 'odjakživa'
+          : period === 'week'
+            ? 'tenhle týden'
+            : period === 'year'
+              ? 'letos'
+              : 'celkem';
+      return `Vybrat žebříček. Teď ${categoryLabel}, ${periodLabel}.`;
+    },
+    selectTable: (label: string, selected: boolean) =>
+      selected ? `${label}, vybráno` : `Vybrat ${label}`,
 
-    // — Category switch —
-    categoryBeers: 'Pivaři',
-    categoryPubs: 'Objevitelé',
-    categoryMapper: 'Mapéři',
-
-    // — Period chips —
-    periodWeek: 'Týden',
-    periodYear: 'Rok',
-    periodAll: 'Celkem',
-    // Shown instead of the chips on the Mapér board (single all-time window).
-    mapperAllTimeNote: 'Odjakživa',
-
-    // One quiet line under the controls naming what the board measures.
+    // Quiet eyebrow inside the hero card names what the board measures.
     subtitle: (category: 'beers' | 'pubs' | 'mapper', period: 'week' | 'year' | 'all') => {
       if (category === 'beers') {
         return period === 'week'
@@ -1618,6 +1669,22 @@ export const cs = {
     unitBeers: (n: number) => (n === 1 ? 'pivo' : n >= 2 && n <= 4 ? 'piva' : 'piv'),
     unitPubs: (n: number) => (n === 1 ? 'hospoda' : n >= 2 && n <= 4 ? 'hospody' : 'hospod'),
     unitXp: 'XP',
+    score: (category: 'beers' | 'pubs' | 'mapper', label: string, n: number) => {
+      if (category === 'mapper') return `${label} XP`;
+      const unit =
+        category === 'beers'
+          ? n === 1
+            ? 'pivo'
+            : n >= 2 && n <= 4
+              ? 'piva'
+              : 'piv'
+          : n === 1
+            ? 'hospoda'
+            : n >= 2 && n <= 4
+              ? 'hospody'
+              : 'hospod';
+      return `${label} ${unit}`;
+    },
 
     // — Rows —
     rowMe: 'Ty',
@@ -1632,13 +1699,14 @@ export const cs = {
           ? 'Zatím žádní objevitelé. Zapiš pivo v nové hospodě a tabulka je tvoje.'
           : 'Zatím nikdo nic nezmapoval. Doplň, co o své hospodě víš, a vedeš.',
 
-    // — My standing under the list —
-    meNoScore: (category: 'beers' | 'pubs' | 'mapper') =>
-      category === 'beers'
-        ? 'Ty zatím bez čárky. První zapsané pivo tě dostane do hry.'
-        : category === 'pubs'
-          ? 'Zatím žádná hospoda. Jedno zapsané pivo venku a jsi ve hře.'
-          : 'Zatím 0 XP. Zmapuj svoji hospodu a naskoč do tabulky.',
+    // — My standing —
+    noRank: '—',
+    rankNoun: 'MÍSTO',
+    noScore: 'Zatím bez čárky',
+    totalInBoard: (count: string | null) => `z ${count ?? '—'} v tabulce`,
+    listLabel: 'Kdo vede',
+    heroA11y: (table: string, rank: string, score: string, total: number | null) =>
+      `${table}. Pořadí podle skóre ${rank}. ${score}. V tabulce je ${total ?? 0}.`,
     chase: (category: 'beers' | 'pubs' | 'mapper', gap: number) => {
       const unit =
         category === 'beers'
@@ -1657,24 +1725,19 @@ export const cs = {
       return `Do tabulky ti chybí ${gap} ${unit}.`;
     },
 
-    // — Ghost nudge (private profile races invisibly) —
-    ghostTitle: 'Hraješ jako duch',
-    ghostBody:
-      'Máš soukromý profil, takže tě v žebříčku nikdo nevidí. Čárky sbíráš dál — jen sláva ti utíká.',
+    // — Primary CTA —
     ghostCta: 'Ukázat se',
-    // Anonymous variant — the missing piece is a nickname, not visibility.
-    ghostAnonBody:
-      'Bez přezdívky tě v žebříčku nikdo nevidí. Založ si ji a hraj naplno.',
     ghostAnonCta: 'Založit přezdívku',
-
-    // — Footer + error —
-    totalRanked: (n: number) =>
-      n === 1
-        ? 'V tabulce je zatím 1 pivař.'
-        : n >= 2 && n <= 4
-          ? `V tabulce jsou zatím ${n} pivaři.`
-          : `V tabulce je zatím ${n} pivařů.`,
-    error: 'Žebříčky se nepovedlo načíst. Server možná zrovna točí.',
+    ghostCtaSub: 'Bez přezdívky tě v žebříčku nikdo nevidí.',
+    ctaBeers: 'Přidej si čárku',
+    ctaBeersSub: 'Nahoru se leze pivem.',
+    ctaPubs: 'Objev novou hospodu',
+    ctaPubsSub: 'Kompas ti jednu najde.',
+    ctaMapper: 'Zmapuj hospodu',
+    ctaMapperSub: 'Za doplněné info je XP.',
+    retry: 'Zkusit znovu',
+    retrySub: 'Server možná zrovna točí.',
+    error: 'Žebříčky se nepovedlo načíst.',
 
     // — Entry points —
     entryProfileTitle: 'Žebříčky',

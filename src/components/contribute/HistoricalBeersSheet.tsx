@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PlusIcon, XIcon } from '@/components/shared/IconGlyph';
 import type { CommunityBeer } from '@/data/communityClient';
+import { normalizeBeerName } from '@/data/communityHours';
 import { cs, formatVolume } from '@/i18n/cs';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -87,7 +88,7 @@ export function HistoricalBeersSheet({
                   .join(' · ');
                 return (
                   <Pressable
-                    key={`${beer.name}:${beer.volumeMl ?? ''}`}
+                    key={`${normalizeBeerName(beer.name)}:${beer.volumeMl ?? ''}`}
                     onPress={() => onRestore(beer)}
                     disabled={!canRestore}
                     style={({ pressed }) => [

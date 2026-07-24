@@ -1,8 +1,9 @@
 /**
- * One modal used for three counter flows:
+ * One modal used for the app's beer-entry flows:
  *   • add a brand-new beer (name + price + volume),
  *   • prompt for a missing price on a menu beer (price + volume; name locked),
- *   • edit the price of a menu beer (price + volume; name locked).
+ *   • edit the price of a menu beer (price + volume; name locked),
+ *   • add or edit a pub-menu row from ContributeScreen (name unlocked, price optional).
  *
  * Mirrors the ContributeScreen beer-entry precedent: name max 80, number-pad
  * price digits-only 1..1000, volume pills 0,3 l / 0,4 l / 0,5 l / Jiné (custom ml).
@@ -34,8 +35,9 @@ import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScroll
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, HitArea } from '@/theme/layout';
+import { softDrop } from '@/theme/shadows';
 import { GlowButton } from '@/components/shared/GlowButton';
-import { CameraIcon } from '@/components/shared/IconGlyph';
+import { CameraIcon, PlusIcon, Trash2Icon, XIcon } from '@/components/shared/IconGlyph';
 import { BetaBadge } from '@/components/shared/BetaBadge';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { cs, formatVolume } from '@/i18n/cs';
@@ -93,7 +95,7 @@ function parseCustomMl(text: string, drinkType: DrinkType): number | undefined {
   return n;
 }
 
-export type BeerFormMode = 'add' | 'price' | 'edit';
+export type BeerFormMode = 'add' | 'price' | 'edit' | 'menu';
 
 export interface BeerFormResult {
   drinkType: DrinkType;
@@ -125,6 +127,11 @@ interface BeerFormModalProps {
   submitLabelOverride?: string;
   /** 'add' mode only: shows the "vyfoť celý lístek" shortcut into the AI menu scan. */
   onScanMenu?: () => void;
+  /** Menu mode only: remove the current row from the pub's draft menu. */
+  onRemove?: () => void;
+  /** Menu mode only: add a 0,3 l sibling directly below this row. */
+  onAddSmallVariant?: () => void;
+  canAddSmallVariant?: boolean;
 }
 
 /**
@@ -145,9 +152,19 @@ export function BeerFormModal({
   titleOverride,
   submitLabelOverride,
   onScanMenu,
+  onRemove,
+  onAddSmallVariant,
+  canAddSmallVariant = false,
 }: BeerFormModalProps) {
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onCancel}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      presentationStyle="overFullScreen"
+      onRequestClose={onCancel}
+    >
       {visible ? (
         <BeerFormBody
           key={formKey ?? 0}
@@ -161,6 +178,9 @@ export function BeerFormModal({
           titleOverride={titleOverride}
           submitLabelOverride={submitLabelOverride}
           onScanMenu={onScanMenu}
+          onRemove={onRemove}
+          onAddSmallVariant={onAddSmallVariant}
+          canAddSmallVariant={canAddSmallVariant}
         />
       ) : null}
     </Modal>
@@ -178,6 +198,9 @@ interface BeerFormBodyProps {
   titleOverride?: string;
   submitLabelOverride?: string;
   onScanMenu?: () => void;
+  onRemove?: () => void;
+  onAddSmallVariant?: () => void;
+  canAddSmallVariant: boolean;
 }
 
 function BeerFormBody({
@@ -191,11 +214,15 @@ function BeerFormBody({
   titleOverride,
   submitLabelOverride,
   onScanMenu,
+  onRemove,
+  onAddSmallVariant,
+  canAddSmallVariant,
 }: BeerFormBodyProps) {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const keyboardHeight = useKeyboardHeight();
-  const nameLocked = mode !== 'add';
+  const menuMode = mode === 'menu';
+  const nameLocked = mode === 'price' || mode === 'edit';
   const outside = placeContext !== 'pub';
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const [drinkType, setDrinkType] = useState<DrinkType>(initialDrinkType);
@@ -208,6 +235,7 @@ function BeerFormBody({
 
   // Beer-name autocomplete (only in 'add' mode; 'price'/'edit' lock the name).
   const [suggestions, setSuggestions] = useState<BeerBrandSuggestion[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   // After picking a suggestion we keep the list dismissed until the user edits
   // the field again — otherwise the effect would instantly re-fetch the pick.
   const pickedNameRef = useRef<string | null>(null);
@@ -221,6 +249,7 @@ function BeerFormBody({
     pickedNameRef.current = suggestion.name;
     setName(suggestion.name);
     setSuggestions([]);
+    setSuggestionsLoading(false);
     Keyboard.dismiss();
   };
 
@@ -229,11 +258,15 @@ function BeerFormBody({
   );
 
   // Volume: either a preset pill (300/400/500) or a free-typed custom ml ("Jiné").
-  const initialPresets = volumePresets(initialDrinkType, outside);
+  const initialPresets = menuMode
+    ? [VOLUME_SMALL, VOLUME_DEFAULT]
+    : volumePresets(initialDrinkType, outside);
   const seedVolume = beer?.volumeMl ?? (mode === 'add' ? defaultVolume(initialDrinkType) : undefined);
   const seedIsPreset = typeof seedVolume === 'number' && initialPresets.includes(seedVolume);
   const [selectedPreset, setSelectedPreset] = useState<number | undefined>(seedIsPreset ? seedVolume : undefined);
-  const [customActive, setCustomActive] = useState<boolean>(typeof seedVolume === 'number' && !seedIsPreset);
+  const [customActive, setCustomActive] = useState<boolean>(
+    (menuMode && seedVolume == null) || (typeof seedVolume === 'number' && !seedIsPreset),
+  );
   const [customMl, setCustomMl] = useState<string>(
     typeof seedVolume === 'number' && !seedIsPreset ? String(seedVolume) : '',
   );
@@ -242,10 +275,15 @@ function BeerFormBody({
   const priceCzk = parsePriceInputToCzk(priceText, priceCurrency);
   // Outside a pub the price is optional: an empty field is fine (unknown stays
   // unknown), a non-empty one must still parse.
-  const priceValid = outside ? priceText.trim() === '' || priceCzk !== null : priceCzk !== null;
+  const priceValid =
+    outside || menuMode ? priceText.trim() === '' || priceCzk !== null : priceCzk !== null;
   const nameValid = nameLocked || trimmedName.length > 0;
   const canSubmit = priceValid && nameValid;
-  const placeholder = outside ? cs.counter.outsidePricePlaceholder : pricePlaceholder(priceCurrency);
+  const placeholder = menuMode
+    ? cs.contribute.beerPriceOptional
+    : outside
+      ? cs.counter.outsidePricePlaceholder
+      : pricePlaceholder(priceCurrency);
 
   // Debounced beer-name suggestions: fetch once the name is 2+ chars and was
   // typed (not just picked). Falls back to a local brand list when offline.
@@ -253,14 +291,22 @@ function BeerFormBody({
     if (nameLocked || drinkType !== 'beer') return;
     const query = trimmedName;
     if (query.length < 2 || pickedNameRef.current === name) {
-      setSuggestions([]);
-      return;
+      const reset = setTimeout(() => {
+        setSuggestions([]);
+        setSuggestionsLoading(false);
+      }, 0);
+      return () => clearTimeout(reset);
     }
     const controller = new AbortController();
     const timeout = setTimeout(() => {
-      suggestBeerBrands(query, controller.signal, 6).then((items) => {
-        if (!controller.signal.aborted) setSuggestions(items);
-      });
+      if (!controller.signal.aborted) setSuggestionsLoading(true);
+      suggestBeerBrands(query, controller.signal, 6)
+        .then((items) => {
+          if (!controller.signal.aborted) setSuggestions(items);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setSuggestionsLoading(false);
+        });
     }, 220);
     return () => {
       controller.abort();
@@ -270,7 +316,11 @@ function BeerFormBody({
 
   // The effective volume: custom ml when "Jiné" is active, otherwise the pill.
   // Volume stays optional — an empty/invalid custom field simply omits it.
-  const volumeMl = customActive ? parseCustomMl(customMl, drinkType) : selectedPreset;
+  const volumeMl = customActive
+    ? menuMode
+      ? undefined
+      : parseCustomMl(customMl, drinkType)
+    : selectedPreset;
 
   const title =
     titleOverride ??
@@ -278,11 +328,19 @@ function BeerFormBody({
       ? cs.counter.addDrinkModalTitle(drinkType)
       : mode === 'edit'
         ? cs.counter.editModalTitle
-        : cs.counter.priceModalTitle);
+        : mode === 'menu'
+          ? beer
+            ? cs.contribute.editBeerSheetTitle
+            : cs.contribute.addBeerSheetTitle
+          : cs.counter.priceModalTitle);
 
   const submitLabel =
     submitLabelOverride ??
-    (mode === 'edit' ? cs.counter.confirmSave : cs.counter.confirmDrink(drinkType));
+    (mode === 'edit'
+      ? cs.counter.confirmSave
+      : mode === 'menu'
+        ? cs.contribute.done
+        : cs.counter.confirmDrink(drinkType));
 
   const selectPreset = (value: number) => {
     setSelectedPreset(value);
@@ -317,233 +375,331 @@ function BeerFormBody({
   // Lift the whole sheet above the keyboard; keep bottom padding for safe-area
   // comfort only. Padding the card by the keyboard height grows the hidden part
   // of the sheet instead of moving inputs into view inside a modal UIWindow.
-  const sheetBottomOffset = keyboardHeight > 0 ? keyboardHeight : 0;
+  const sheetBottomOffset = keyboardHeight > 0 ? keyboardHeight : -insets.bottom;
   // Behind the keyboard there is no home-indicator to clear, so the safe-area
   // bottom padding would just be a dead brown strip sitting on the keyboard.
-  const bottomPad = keyboardHeight > 0 ? Spacing.sm : Math.max(insets.bottom, Spacing.lg);
-  const maxHeight = windowHeight - insets.top - sheetBottomOffset - Spacing.lg;
+  const bottomPad = keyboardHeight > 0 ? Spacing.lg : insets.bottom + Spacing.lg;
+  const maxHeight =
+    windowHeight - insets.top - Math.max(keyboardHeight, 0) - Spacing.lg;
 
   return (
     <View style={styles.backdrop}>
-      <Pressable style={StyleSheet.absoluteFill} onPress={onCancel} accessibilityRole="button" accessibilityLabel={cs.counter.cancel} />
-      <View style={[styles.card, { marginBottom: sheetBottomOffset, paddingBottom: bottomPad, maxHeight }]}>
-        <KeyboardAwareScrollView
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.cardContent}
-          bounces={false}
+      <Pressable
+        style={StyleSheet.absoluteFill}
+        onPress={onCancel}
+        accessibilityElementsHidden
+        importantForAccessibility="no"
+      />
+      <View style={[styles.cardWrap, { marginBottom: sheetBottomOffset, maxHeight }]}>
+        <Pressable
+          style={[styles.card, { paddingBottom: bottomPad }]}
+          onPress={() => undefined}
         >
-          <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {title}
-          </Text>
-
-          {!nameLocked ? (
-            <View style={styles.typeGroup}>
-              {(['beer', 'wine', 'soft_drink', 'shot'] as const).map((type) => {
-                const selected = drinkType === type;
-                return (
-                  <Pressable
-                    key={type}
-                    onPress={() => selectDrinkType(type)}
-                    style={[styles.typePill, selected && styles.typePillSelected]}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                    accessibilityLabel={cs.counter.drinkTypeLabel(type)}
-                  >
-                    <Text style={[styles.typePillText, selected && styles.typePillTextSelected]}>
-                      {cs.counter.drinkTypeLabel(type)}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          ) : null}
-
-          {nameLocked && beer?.name ? (
-            <Text style={styles.lockedName} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {beer.name}
-            </Text>
-          ) : (
-            <TextInput
-              style={styles.nameInput}
-              value={name}
-              onChangeText={onChangeName}
-              placeholder={cs.counter.drinkNamePlaceholder(drinkType)}
-              placeholderTextColor={Colors.mutedText}
-              maxLength={80}
-              autoFocus
-              accessibilityLabel={cs.counter.drinkNamePlaceholder(drinkType)}
-            />
-          )}
-
-          {!nameLocked && suggestions.length > 0 ? (
-            <View style={styles.suggestionsBox}>
-              {suggestions.map((suggestion, index) => (
-                <Pressable
-                  key={suggestion.slug}
-                  onPress={() => selectSuggestion(suggestion)}
-                  style={[styles.suggestionRow, index > 0 && styles.suggestionRowDivider]}
-                  accessibilityRole="button"
-                  accessibilityLabel={suggestion.name}
-                >
-                  <Text style={styles.suggestionText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {suggestion.name}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
-
-          {!nameLocked && drinkType === 'beer' && onScanMenu ? (
-            <Pressable
-              onPress={() => {
-                fireLightImpactHaptic();
-                Keyboard.dismiss();
-                onScanMenu();
-              }}
-              style={({ pressed }) => [styles.scanShortcut, pressed && styles.scanShortcutPressed]}
-              accessibilityRole="button"
-              accessibilityLabel={cs.counter.scanMenuShortcut}
+          <View style={styles.grabber} />
+          <View style={styles.header}>
+            <Text
+              style={styles.title}
+              numberOfLines={2}
+              maxFontSizeMultiplier={FontScaleCap.heading}
             >
-              <CameraIcon size={16} color={Colors.amber} />
-              <Text style={styles.scanShortcutText} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.counter.scanMenuShortcut}
-              </Text>
-              <BetaBadge tone="muted" />
+              {title}
+            </Text>
+            <Pressable
+              onPress={onCancel}
+              style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={cs.counter.cancel}
+            >
+              <XIcon size={20} color={Colors.foamMuted} />
             </Pressable>
-          ) : null}
+          </View>
 
-          {outside && drinkType === 'beer' ? (
-            <>
-              <Text style={styles.volumeLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.counter.servingLabel}
-              </Text>
-              <View style={styles.volumeGroup}>
-                {OUTSIDE_SERVING_TYPES.map((value) => {
-                  const isSelected = servingType === value;
+          <KeyboardAwareScrollView
+            style={styles.list}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.cardContent}
+            bounces={false}
+          >
+            {mode === 'add' ? (
+              <View style={styles.typeGroup}>
+                {(['beer', 'wine', 'soft_drink', 'shot'] as const).map((type) => {
+                  const selected = drinkType === type;
                   return (
                     <Pressable
-                      key={value}
-                      onPress={() => setServingType(value)}
-                      style={[styles.volumePill, isSelected && styles.volumePillSelected]}
-                      hitSlop={4}
+                      key={type}
+                      onPress={() => selectDrinkType(type)}
+                      style={[styles.typePill, selected && styles.typePillSelected]}
                       accessibilityRole="button"
-                      accessibilityState={{ selected: isSelected }}
-                      accessibilityLabel={cs.counter.servingTypeLabel(value)}
+                      accessibilityState={{ selected }}
+                      accessibilityLabel={cs.counter.drinkTypeLabel(type)}
                     >
                       <Text
-                        style={[styles.volumePillText, isSelected && styles.volumePillTextSelected]}
+                        style={[styles.typePillText, selected && styles.typePillTextSelected]}
                         maxFontSizeMultiplier={FontScaleCap.body}
                       >
-                        {cs.counter.servingTypeLabel(value)}
+                        {cs.counter.drinkTypeLabel(type)}
                       </Text>
                     </Pressable>
                   );
                 })}
               </View>
-            </>
-          ) : null}
+            ) : null}
 
-          <View style={styles.priceRow}>
-            <TextInput
-              style={styles.priceInput}
-              value={priceText}
-              onChangeText={(v) => setPriceText(sanitizePriceInput(v, priceCurrency))}
-              placeholder={placeholder}
-              placeholderTextColor={Colors.mutedText}
-              keyboardType={currencyFractionDigits(priceCurrency) > 0 ? 'decimal-pad' : 'number-pad'}
-              maxLength={currencyFractionDigits(priceCurrency) > 0 ? 10 : 7}
-              autoFocus={nameLocked}
-              accessibilityLabel={placeholder}
-            />
-            <Text style={styles.priceSuffix} maxFontSizeMultiplier={FontScaleCap.heading}>
-              {currencySuffix(priceCurrency)}
-            </Text>
-          </View>
-
-          <Text style={styles.volumeLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.counter.priceLabel}
-          </Text>
-          <View style={styles.volumeGroup}>
-            {volumePresets(drinkType, outside).map((value) => {
-              const isSelected = !customActive && selectedPreset === value;
-              return (
-                <Pressable
-                  key={value}
-                  onPress={() => selectPreset(value)}
-                  style={[styles.volumePill, isSelected && styles.volumePillSelected]}
-                  hitSlop={4}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: isSelected }}
-                  accessibilityLabel={formatVolume(value)}
-                >
-                  <Text
-                    style={[styles.volumePillText, isSelected && styles.volumePillTextSelected]}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
-                    {formatVolume(value)}
-                  </Text>
-                </Pressable>
-              );
-            })}
-            <Pressable
-              onPress={selectCustom}
-              style={[styles.volumePill, customActive && styles.volumePillSelected]}
-              hitSlop={4}
-              accessibilityRole="button"
-              accessibilityState={{ selected: customActive }}
-              accessibilityLabel={cs.counter.volumeOther}
-            >
+            {nameLocked && beer?.name ? (
               <Text
-                style={[styles.volumePillText, customActive && styles.volumePillTextSelected]}
-                maxFontSizeMultiplier={FontScaleCap.body}
+                style={styles.lockedName}
+                numberOfLines={2}
+                maxFontSizeMultiplier={FontScaleCap.heading}
               >
-                {cs.counter.volumeOther}
+                {beer.name}
+              </Text>
+            ) : (
+              <TextInput
+                style={styles.nameInput}
+                value={name}
+                onChangeText={onChangeName}
+                placeholder={cs.counter.drinkNamePlaceholder(drinkType)}
+                placeholderTextColor={Colors.mutedText}
+                maxLength={80}
+                autoFocus
+                accessibilityLabel={cs.counter.drinkNamePlaceholder(drinkType)}
+              />
+            )}
+
+            {!nameLocked && (suggestions.length > 0 || suggestionsLoading) ? (
+              <View style={styles.suggestionsBox}>
+                {suggestions.map((suggestion, index) => (
+                  <Pressable
+                    key={suggestion.slug}
+                    onPress={() => selectSuggestion(suggestion)}
+                    style={[styles.suggestionRow, index > 0 && styles.suggestionRowDivider]}
+                    accessibilityRole="button"
+                    accessibilityLabel={suggestion.name}
+                  >
+                    <Text
+                      style={styles.suggestionText}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {suggestion.name}
+                    </Text>
+                  </Pressable>
+                ))}
+                {suggestionsLoading && suggestions.length === 0 ? (
+                  <Text style={styles.suggestionsLoading} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {cs.contribute.beerSuggestionsLoading}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+
+            {!nameLocked && drinkType === 'beer' && onScanMenu ? (
+              <Pressable
+                onPress={() => {
+                  fireLightImpactHaptic();
+                  Keyboard.dismiss();
+                  onScanMenu();
+                }}
+                style={({ pressed }) => [
+                  styles.scanShortcut,
+                  pressed && styles.scanShortcutPressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={cs.counter.scanMenuShortcut}
+              >
+                <CameraIcon size={16} color={Colors.amber} />
+                <Text style={styles.scanShortcutText} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {cs.counter.scanMenuShortcut}
+                </Text>
+                <BetaBadge tone="muted" />
+              </Pressable>
+            ) : null}
+
+            {outside && drinkType === 'beer' ? (
+              <>
+                <Text style={styles.volumeLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {cs.counter.servingLabel}
+                </Text>
+                <View style={styles.volumeGroup}>
+                  {OUTSIDE_SERVING_TYPES.map((value) => {
+                    const isSelected = servingType === value;
+                    return (
+                      <Pressable
+                        key={value}
+                        onPress={() => setServingType(value)}
+                        style={[styles.volumePill, isSelected && styles.volumePillSelected]}
+                        hitSlop={4}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: isSelected }}
+                        accessibilityLabel={cs.counter.servingTypeLabel(value)}
+                      >
+                        <Text
+                          style={[
+                            styles.volumePillText,
+                            isSelected && styles.volumePillTextSelected,
+                          ]}
+                          maxFontSizeMultiplier={FontScaleCap.body}
+                        >
+                          {cs.counter.servingTypeLabel(value)}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </>
+            ) : null}
+
+            <View style={styles.priceRow}>
+              <TextInput
+                style={styles.priceInput}
+                value={priceText}
+                onChangeText={(value) =>
+                  setPriceText(sanitizePriceInput(value, priceCurrency))
+                }
+                placeholder={placeholder}
+                placeholderTextColor={Colors.mutedText}
+                keyboardType={
+                  currencyFractionDigits(priceCurrency) > 0 ? 'decimal-pad' : 'number-pad'
+                }
+                maxLength={currencyFractionDigits(priceCurrency) > 0 ? 10 : 7}
+                autoFocus={nameLocked}
+                accessibilityLabel={placeholder}
+              />
+              <Text style={styles.priceSuffix} maxFontSizeMultiplier={FontScaleCap.heading}>
+                {currencySuffix(priceCurrency)}
+              </Text>
+            </View>
+
+            <Text style={styles.volumeLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.counter.priceLabel}
+            </Text>
+            <View style={styles.volumeGroup}>
+              {initialPresets.map((value) => {
+                const isSelected = !customActive && selectedPreset === value;
+                return (
+                  <Pressable
+                    key={value}
+                    onPress={() => selectPreset(value)}
+                    style={[styles.volumePill, isSelected && styles.volumePillSelected]}
+                    hitSlop={4}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isSelected }}
+                    accessibilityLabel={formatVolume(value)}
+                  >
+                    <Text
+                      style={[
+                        styles.volumePillText,
+                        isSelected && styles.volumePillTextSelected,
+                      ]}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {formatVolume(value)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+              <Pressable
+                onPress={selectCustom}
+                style={[styles.volumePill, customActive && styles.volumePillSelected]}
+                hitSlop={4}
+                accessibilityRole="button"
+                accessibilityState={{ selected: customActive }}
+                accessibilityLabel={cs.counter.volumeOther}
+              >
+                <Text
+                  style={[
+                    styles.volumePillText,
+                    customActive && styles.volumePillTextSelected,
+                  ]}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {cs.counter.volumeOther}
+                </Text>
+              </Pressable>
+            </View>
+
+            {customActive && !menuMode ? (
+              <View style={styles.customRow}>
+                <TextInput
+                  style={styles.customInput}
+                  value={customMl}
+                  onChangeText={(value) =>
+                    setCustomMl(value.replace(/[^0-9]/g, '').slice(0, 4))
+                  }
+                  placeholder={cs.counter.volumeCustomPlaceholder}
+                  placeholderTextColor={Colors.mutedText}
+                  keyboardType="number-pad"
+                  maxLength={4}
+                  autoFocus
+                  accessibilityLabel={cs.counter.volumeCustomPlaceholder}
+                />
+                <Text style={styles.customSuffix} maxFontSizeMultiplier={FontScaleCap.heading}>
+                  {cs.counter.volumeUnitMl}
+                </Text>
+              </View>
+            ) : null}
+          </KeyboardAwareScrollView>
+
+          <View style={styles.actions}>
+            <View style={styles.submitWrap}>
+              <GlowButton
+                label={submitLabel}
+                onPress={handleSubmit}
+                glow={canSubmit ? 'soft' : 'none'}
+                accessibilityLabel={submitLabel}
+              />
+              {!canSubmit ? (
+                <View style={styles.submitDisabledOverlay} pointerEvents="auto" />
+              ) : null}
+            </View>
+
+            {menuMode && (canAddSmallVariant || onRemove) ? (
+              <View style={styles.menuActions}>
+                {canAddSmallVariant && onAddSmallVariant ? (
+                  <Pressable
+                    onPress={onAddSmallVariant}
+                    style={({ pressed }) => [styles.menuAction, pressed && styles.pressed]}
+                    accessibilityRole="button"
+                    accessibilityLabel={cs.contribute.addSmallBeer}
+                  >
+                    <PlusIcon size={16} color={Colors.amber} />
+                    <Text style={styles.menuActionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                      {cs.contribute.addSmallBeer}
+                    </Text>
+                  </Pressable>
+                ) : null}
+                {onRemove ? (
+                  <Pressable
+                    onPress={onRemove}
+                    style={({ pressed }) => [styles.menuAction, pressed && styles.pressed]}
+                    accessibilityRole="button"
+                    accessibilityLabel={cs.a11y.contributeRemoveBeer}
+                  >
+                    <Trash2Icon size={16} color={Colors.mutedText} />
+                    <Text
+                      style={styles.menuActionMuted}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {cs.contribute.removeBeer}
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            ) : null}
+
+            <Pressable
+              onPress={onCancel}
+              style={({ pressed }) => [styles.cancelButton, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={cs.counter.cancel}
+            >
+              <Text style={styles.cancelText} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.counter.cancel}
               </Text>
             </Pressable>
           </View>
-
-          {customActive && (
-            <View style={styles.customRow}>
-              <TextInput
-                style={styles.customInput}
-                value={customMl}
-                onChangeText={(v) => setCustomMl(v.replace(/[^0-9]/g, '').slice(0, 4))}
-                placeholder={cs.counter.volumeCustomPlaceholder}
-                placeholderTextColor={Colors.mutedText}
-                keyboardType="number-pad"
-                maxLength={4}
-                autoFocus
-                accessibilityLabel={cs.counter.volumeCustomPlaceholder}
-              />
-              <Text style={styles.customSuffix} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {cs.counter.volumeUnitMl}
-              </Text>
-            </View>
-          )}
-
-          <View style={styles.submitWrap}>
-            <GlowButton
-              label={submitLabel}
-              onPress={handleSubmit}
-              glow={canSubmit ? 'soft' : 'none'}
-              accessibilityLabel={submitLabel}
-            />
-            {!canSubmit && <View style={styles.submitDisabledOverlay} pointerEvents="none" />}
-          </View>
-
-          <Pressable
-            onPress={onCancel}
-            style={styles.cancelButton}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={cs.counter.cancel}
-          >
-            <Text style={styles.cancelText} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.counter.cancel}
-            </Text>
-          </Pressable>
-        </KeyboardAwareScrollView>
+        </Pressable>
       </View>
     </View>
   );
@@ -555,22 +711,61 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.black, 0.7),
     justifyContent: 'flex-end',
   },
+  cardWrap: {
+    width: '100%',
+    minHeight: '56%',
+    maxHeight: '92%',
+  },
   card: {
+    flex: 1,
     backgroundColor: Colors.stout2,
     borderTopLeftRadius: Radius.cardLarge,
     borderTopRightRadius: Radius.cardLarge,
     borderWidth: 1,
     borderColor: Colors.border,
-    paddingTop: Spacing.xl,
+    paddingTop: Spacing.sm,
     paddingHorizontal: Spacing.lg,
+    ...softDrop(),
+  },
+  grabber: {
+    width: 40,
+    height: 4,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.border,
+    alignSelf: 'center',
+    marginBottom: Spacing.md,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: Spacing.sm,
+  },
+  closeButton: {
+    width: HitArea.min,
+    height: HitArea.min,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout3,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  list: {
+    flex: 1,
+    marginTop: Spacing.sm,
   },
   cardContent: {
     gap: Spacing.md,
+    paddingBottom: Spacing.sm,
   },
   title: {
+    flex: 1,
+    minWidth: 0,
     fontFamily: Fonts.display.extrabold,
-    fontSize: 24,
+    fontSize: 22,
     color: Colors.foam,
+    includeFontPadding: false,
   },
   typeGroup: {
     flexDirection: 'row',
@@ -580,7 +775,9 @@ const styles = StyleSheet.create({
   },
   typePill: {
     flex: 1,
+    minHeight: HitArea.min,
     alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 9,
     borderRadius: Radius.pill,
   },
@@ -591,6 +788,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.mutedText,
+    includeFontPadding: false,
   },
   typePillTextSelected: {
     color: Colors.amber,
@@ -599,6 +797,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.display.bold,
     fontSize: 17,
     color: Colors.amber,
+    includeFontPadding: false,
   },
   nameInput: {
     backgroundColor: Colors.stout3,
@@ -620,6 +819,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   suggestionRow: {
+    minHeight: HitArea.min,
+    justifyContent: 'center',
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
@@ -631,6 +832,15 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.foam,
+    includeFontPadding: false,
+  },
+  suggestionsLoading: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
+    color: Colors.mutedText,
+    includeFontPadding: false,
   },
   scanShortcut: {
     flexDirection: 'row',
@@ -654,6 +864,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.semibold,
     fontSize: 14,
     color: Colors.amber,
+    includeFontPadding: false,
   },
   priceRow: {
     flexDirection: 'row',
@@ -669,6 +880,8 @@ const styles = StyleSheet.create({
     color: Colors.foam,
     fontFamily: Fonts.display.bold,
     fontSize: 22,
+    lineHeight: 22 * 1.24,
+    fontVariant: ['tabular-nums'],
     paddingHorizontal: 14,
     paddingVertical: Platform.OS === 'ios' ? 14 : 10,
     textAlign: 'center',
@@ -677,12 +890,14 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.display.bold,
     fontSize: 22,
     color: Colors.foamMuted,
+    includeFontPadding: false,
   },
   volumeLabel: {
     fontFamily: Fonts.ui.semibold,
     fontSize: 13,
     color: Colors.mutedText,
     marginBottom: -6,
+    includeFontPadding: false,
   },
   volumeGroup: {
     flexDirection: 'row',
@@ -705,6 +920,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.semibold,
     fontSize: 14,
     color: Colors.foamMuted,
+    includeFontPadding: false,
   },
   volumePillTextSelected: {
     color: Colors.stout,
@@ -723,6 +939,8 @@ const styles = StyleSheet.create({
     color: Colors.foam,
     fontFamily: Fonts.display.bold,
     fontSize: 20,
+    lineHeight: 20 * 1.24,
+    fontVariant: ['tabular-nums'],
     paddingHorizontal: 14,
     paddingVertical: Platform.OS === 'ios' ? 12 : 8,
     textAlign: 'center',
@@ -731,24 +949,61 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.display.bold,
     fontSize: 20,
     color: Colors.foamMuted,
+    includeFontPadding: false,
+  },
+  actions: {
+    gap: 4,
+    paddingTop: Spacing.md,
+    marginTop: Spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.foam, 0.1),
   },
   submitWrap: {
     position: 'relative',
-    marginTop: Spacing.xs,
   },
   submitDisabledOverlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: Colors.stout,
-    opacity: 0.5,
+    backgroundColor: withAlpha(Colors.stout, 0.5),
     borderRadius: Radius.pill,
+  },
+  menuActions: {
+    minHeight: HitArea.min,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  menuAction: {
+    minHeight: HitArea.min,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  menuActionLabel: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 14,
+    color: Colors.amber,
+    includeFontPadding: false,
+  },
+  menuActionMuted: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 14,
+    color: Colors.mutedText,
+    includeFontPadding: false,
   },
   cancelButton: {
     alignSelf: 'center',
-    paddingVertical: Spacing.sm,
+    minHeight: HitArea.min,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.lg,
   },
   cancelText: {
     fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.mutedText,
+    includeFontPadding: false,
+  },
+  pressed: {
+    opacity: 0.6,
   },
 });

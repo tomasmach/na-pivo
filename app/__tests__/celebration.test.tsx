@@ -1,4 +1,9 @@
 import React from 'react';
+import TestRenderer, {
+  act,
+  type ReactTestInstance,
+  type ReactTestRenderer,
+} from 'react-test-renderer';
 
 import { BeerGlass } from '@/counter/BeerGlass';
 import { CounterCta } from '@/counter/CounterCta';
@@ -14,6 +19,7 @@ import CelebrationScreen from '../celebration';
 const mockRouterBack = jest.fn();
 
 jest.mock('@react-native-async-storage/async-storage', () =>
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
 );
 
@@ -65,9 +71,6 @@ jest.mock('@/theme/fonts', () => ({
   FontScaleCap: { display: 1.1, heading: 1.2, body: 1.3 },
 }));
 
-const TestRenderer = require('react-test-renderer');
-const { act } = TestRenderer;
-
 const revealedPub = {
   id: 'pub-1',
   name: 'Restaurace U Zlatého Tygra na Starém Městě',
@@ -76,16 +79,7 @@ const revealedPub = {
 };
 
 describe('CelebrationScreen', () => {
-  let renderer:
-    | {
-        root: {
-          findAll: (predicate: (node: { props: Record<string, unknown> }) => boolean) => Array<{
-            props: Record<string, unknown>;
-          }>;
-        };
-        unmount: () => void;
-      }
-    | undefined;
+  let renderer: ReactTestRenderer | undefined;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -129,7 +123,7 @@ describe('CelebrationScreen', () => {
     await renderScreen();
 
     const layoutNode = renderer?.root.findAll(
-      (node) => typeof node.props.onLayout === 'function'
+      (node: ReactTestInstance) => typeof node.props.onLayout === 'function'
     )[0];
 
     act(() => {
@@ -144,6 +138,19 @@ describe('CelebrationScreen', () => {
       expect.objectContaining({ count: 10, width: 125 }),
       undefined
     );
+
+    act(() => {
+      (layoutNode?.props.onLayout as (event: {
+        nativeEvent: { layout: { height: number } };
+      }) => void)({
+        nativeEvent: { layout: { height: 260 } },
+      });
+    });
+
+    expect(BeerGlass).toHaveBeenLastCalledWith(
+      expect.objectContaining({ count: 10, width: 80 }),
+      undefined
+    );
   });
 
   it('opens the revealed pub in maps from the card footer', async () => {
@@ -152,7 +159,7 @@ describe('CelebrationScreen', () => {
     await renderScreen();
 
     const mapButton = renderer?.root.findAll(
-      (node) =>
+      (node: ReactTestInstance) =>
         node.props.accessibilityLabel ===
         cs.a11y.celebrationOpenMaps(revealedPub.name)
     )[0];

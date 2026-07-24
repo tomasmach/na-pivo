@@ -39,6 +39,7 @@ export interface MoreRow {
   icon: React.ComponentType<{ size?: number; color: string }>;
   /** Ticked mode (Nejbližší / Překvap mě). */
   selected?: boolean;
+  disabled?: boolean;
   onPress: () => void;
   accessibilityLabel?: string;
 }
@@ -84,7 +85,11 @@ export function MoreSheet({ visible, title, rows, onClose }: MoreSheetProps) {
             <View style={styles.grabber} />
 
             <View style={styles.header}>
-              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+              <Text
+                style={styles.title}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.heading}
+              >
                 {title ?? cs.compass.moreTitle}
               </Text>
               <Pressable
@@ -108,6 +113,7 @@ export function MoreSheet({ visible, title, rows, onClose }: MoreSheetProps) {
                   <Pressable
                     key={row.key}
                     onPress={row.onPress}
+                    disabled={row.disabled}
                     style={({ pressed }) => [
                       styles.row,
                       index > 0 && styles.rowDivider,
@@ -115,7 +121,10 @@ export function MoreSheet({ visible, title, rows, onClose }: MoreSheetProps) {
                     ]}
                     accessibilityRole="button"
                     accessibilityLabel={row.accessibilityLabel ?? row.label}
-                    accessibilityState={row.selected != null ? { selected: row.selected } : undefined}
+                    accessibilityState={{
+                      ...(row.selected != null ? { selected: row.selected } : {}),
+                      ...(row.disabled != null ? { disabled: row.disabled } : {}),
+                    }}
                   >
                     <View style={styles.rowIcon}>
                       <Icon size={18} color={Colors.amber} />
