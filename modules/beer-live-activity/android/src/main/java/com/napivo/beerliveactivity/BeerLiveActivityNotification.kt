@@ -14,7 +14,6 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import androidx.core.graphics.drawable.IconCompat
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -220,13 +219,12 @@ internal object BeerLiveActivityNotification {
     state: NotificationState
   ): Notification {
     val detail = notificationDetail(state)
-    val mugIcon = IconCompat.createWithResource(context, R.drawable.beer_live_activity_notification)
-    // A golden glass that fills as the evening goes on. The mug tracker rides the
-    // filled edge, so every added beer visibly nudges it further along the bar.
+    // A golden glass that fills as the evening goes on: a solid amber run over a
+    // faint amber remainder, so every added beer visibly extends the fill. No
+    // tracker icon — a small white mug badge reads as a stray square at this size.
     val filled = progressFill(state.beerCount)
     val progressStyle = NotificationCompat.ProgressStyle()
       .setProgress(filled)
-      .setProgressTrackerIcon(mugIcon)
       .addProgressSegment(
         NotificationCompat.ProgressStyle.Segment(filled).setColor(AMBER)
       )
