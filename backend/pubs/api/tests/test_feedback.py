@@ -14,7 +14,7 @@ from PIL import Image
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from pubs.models import Account, FeedbackReport
+from pubs.models import Account, EmailCredential, FeedbackReport
 
 _DEVICE_ID = "3f8b1c2e-4d5a-6789-0abc-def012345678"
 _CLIENT_ID = "9a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d"
@@ -300,9 +300,9 @@ def test_create_feedback_validation(client):
 # ---------------------------------------------------------------------------
 
 
-def _make_feedback() -> FeedbackReport:
+def _make_feedback(*, account: Account | None = None) -> FeedbackReport:
     return FeedbackReport.objects.create(
-        account=None,
+        account=account,
         client_id=_CLIENT_ID,
         category=FeedbackReport.Category.BUG,
         message="Crash on launch",
@@ -317,7 +317,18 @@ def _make_feedback() -> FeedbackReport:
 def test_sync_feedback_linear_creates_issue(settings):
     settings.LINEAR_API_KEY = "lin_api_key"
     settings.LINEAR_TEAM_ID = "team-123"
-    report = _make_feedback()
+    account = Account.objects.create(
+        device_id=_DEVICE_ID,
+        nickname="pivni_tester",
+        display_name="Pivní Tester",
+    )
+    EmailCredential.objects.create(
+        account=account,
+        email="tester@example.com",
+        password="unused-test-hash",
+        email_verified=True,
+    )
+    report = _make_feedback(account=account)
 
     fake_resp = mock.Mock()
     fake_resp.raise_for_status.return_value = None
@@ -340,10 +351,48 @@ def test_sync_feedback_linear_creates_issue(settings):
     assert mocked.called
     description = mocked.call_args.kwargs["json"]["variables"]["input"]["description"]
     assert "Kontakt: instagram @pivni_kompas" in description
+    assert "- Účet: přihlášený" in description
+    assert f"- Veřejné ID účtu: {account.public_id}" in description
+    assert f"- Interní ID účtu: {account.pk}" in description
+    assert "- Přezdívka: @pivni_tester" in description
+    assert "- Jméno: Pivní Tester" in description
+    assert "- E-mail účtu: tester@example.com" in description
     report.refresh_from_db()
     assert report.linear_issue_id == "ABC-123"
     assert report.linear_issue_url == "https://linear.app/team/issue/ABC-123"
     assert report.linear_synced_at is not None
+
+
+@pytest.mark.django_db
+def test_sync_feedback_linear_marks_unclaimed_account_as_anonymous(settings):
+    settings.LINEAR_API_KEY = "lin_api_key"
+    settings.LINEAR_TEAM_ID = "team-123"
+    account = Account.objects.create(device_id=_DEVICE_ID)
+    _make_feedback(account=account)
+
+    fake_resp = mock.Mock()
+    fake_resp.raise_for_status.return_value = None
+    fake_resp.json.return_value = {
+        "data": {
+            "issueCreate": {
+                "success": True,
+                "issue": {
+                    "id": "uuid-1",
+                    "identifier": "ABC-123",
+                    "url": "https://linear.app/team/issue/ABC-123",
+                },
+            }
+        }
+    }
+
+    with mock.patch("requests.post", return_value=fake_resp) as mocked:
+        call_command("sync_feedback_linear")
+
+    description = mocked.call_args.kwargs["json"]["variables"]["input"]["description"]
+    assert "- Účet: anonymní zařízení" in description
+    assert f"- Veřejné ID účtu: {account.public_id}" in description
+    assert "- Přezdívka:" not in description
+    assert "- E-mail účtu:" not in description
 
 
 @pytest.mark.django_db

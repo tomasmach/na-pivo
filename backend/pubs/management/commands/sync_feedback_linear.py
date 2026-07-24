@@ -62,8 +62,32 @@ def _format_contact(report: FeedbackReport) -> str:
     return report.contact
 
 
+def _format_account(report: FeedbackReport) -> list[str]:
+    """Describe the authenticated reporter without trusting client input."""
+    account = report.account
+    if account is None:
+        return ["- Účet: —"]
+
+    is_claimed = account.is_claimed
+    lines = [
+        f"- Účet: {'přihlášený' if is_claimed else 'anonymní zařízení'}",
+        f"- Veřejné ID účtu: {account.public_id}",
+        f"- Interní ID účtu: {account.pk}",
+    ]
+    if not is_claimed:
+        return lines
+
+    lines.extend(
+        [
+            f"- Přezdívka: {f'@{account.nickname}' if account.nickname else '—'}",
+            f"- Jméno: {account.display_name or '—'}",
+            f"- E-mail účtu: {account.primary_email or '—'}",
+        ]
+    )
+    return lines
+
+
 def _build_description(report: FeedbackReport) -> str:
-    account_id = report.account_id if report.account_id is not None else "—"
     lines = [
         report.message or "",
         "",
@@ -78,7 +102,7 @@ def _build_description(report: FeedbackReport) -> str:
         f"- os_version: {report.os_version or '—'}",
         f"- Kontakt: {_format_contact(report)}",
         f"- created_at: {report.created_at.isoformat()}",
-        f"- account id: {account_id}",
+        *_format_account(report),
     ]
     return "\n".join(lines)
 
