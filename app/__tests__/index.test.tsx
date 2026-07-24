@@ -5,7 +5,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
 import { ReportPubModal } from '@/components/compass/ReportPubModal';
 import { CompassCard } from '@/compassui/CompassCard';
-import { CompassMoreSheet } from '@/compassui/CompassMoreSheet';
+import { MoreSheet } from '@/components/shared/MoreSheet';
 import BeerMapScreen from '@/map/BeerMapScreen';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -67,8 +67,8 @@ jest.mock('@/compassui/CompassCard', () => ({
   CompassCard: jest.fn(() => null),
 }));
 
-jest.mock('@/compassui/CompassMoreSheet', () => ({
-  CompassMoreSheet: jest.fn(() => null),
+jest.mock('@/components/shared/MoreSheet', () => ({
+  MoreSheet: jest.fn(() => null),
 }));
 
 jest.mock('@/counter/NudgeSlot', () => ({
@@ -156,7 +156,7 @@ const { updateAccountPreferences } = require('@/data/account') as {
 };
 const mockedUseRouter = useRouter as jest.Mock;
 const CompassCardMock = CompassCard as jest.Mock;
-const CompassMoreSheetMock = CompassMoreSheet as jest.Mock;
+const MoreSheetMock = MoreSheet as jest.Mock;
 const MapPubSheetMock = MapPubSheet as jest.Mock;
 const ReportPubModalMock = ReportPubModal as jest.Mock;
 
@@ -176,7 +176,7 @@ function openMoreSheet(renderer: any) {
     moreButton.props.onPress();
   });
 
-  const props = latestProps(CompassMoreSheetMock);
+  const props = latestProps(MoreSheetMock);
   expect(props.visible).toBe(true);
   return props;
 }

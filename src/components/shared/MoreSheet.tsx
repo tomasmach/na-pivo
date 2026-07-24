@@ -1,11 +1,13 @@
 /**
- * "Co ještě?" — the compass's overflow sheet.
+ * "Co ještě?" — the app's one overflow sheet.
  *
- * The design rule this file enforces: the compass screen shows one card and one
- * amber button, and every remaining door — the map, the filters, home, the
- * search mode, reporting a pub, settings, retry — lives exactly one tap deeper
- * in a single flat list. One intent per sheet (§8): this one only takes you
- * somewhere else or changes what you're looking for. It never counts, never
+ * Every rebuilt screen shows one card and one amber button, and every remaining
+ * door lives exactly one tap deeper in a single flat list. There is one
+ * component for that on purpose: three screens with three near-identical
+ * overflow sheets was the same "three ways to do one thing" habit the rebuild
+ * exists to kill. The host passes the rows and, if it needs one, a title.
+ *
+ * One intent per sheet (§8): this one only takes you somewhere else or changes what you're looking for. It never counts, never
  * navigates on its own and carries no filled amber surface and no glow, so the
  * screen's one lit element stays the navigate button underneath it.
  *
@@ -41,14 +43,16 @@ export interface MoreRow {
   accessibilityLabel?: string;
 }
 
-export interface CompassMoreSheetProps {
+export interface MoreSheetProps {
   visible: boolean;
+  /** Sheet heading. Defaults to the app-wide "Co ještě?" overflow title. */
+  title?: string;
   /** The parent owns which rows exist and in what order. */
   rows: MoreRow[];
   onClose: () => void;
 }
 
-export function CompassMoreSheet({ visible, rows, onClose }: CompassMoreSheetProps) {
+export function MoreSheet({ visible, title, rows, onClose }: MoreSheetProps) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -81,7 +85,7 @@ export function CompassMoreSheet({ visible, rows, onClose }: CompassMoreSheetPro
 
             <View style={styles.header}>
               <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                {cs.compass.moreTitle}
+                {title ?? cs.compass.moreTitle}
               </Text>
               <Pressable
                 onPress={onClose}

@@ -1,0 +1,2 @@
+int drawable beer_live_activity_add 0x0
+int drawable beer_live_activity_notification 0x0

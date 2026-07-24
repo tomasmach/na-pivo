@@ -69,7 +69,7 @@ import {
 } from '@/components/shared/IconGlyph';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
 import { CompassCard } from '@/compassui/CompassCard';
-import { CompassMoreSheet, type MoreRow } from '@/compassui/CompassMoreSheet';
+import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
 import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import { CounterCta, CounterSecondary } from '@/counter/CounterCta';
 import { ReportPubModal } from '@/components/compass/ReportPubModal';
@@ -959,7 +959,7 @@ export default function CompassScreen() {
         />
       )}
 
-      <CompassMoreSheet visible={moreOpen} rows={moreRows} onClose={() => setMoreOpen(false)} />
+      <MoreSheet visible={moreOpen} rows={moreRows} onClose={() => setMoreOpen(false)} />
 
       {filterSheetOpen ? (
         <PubFilterSheet

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8" />
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@700;800&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#111;display:flex;gap:40px;padding:40px;justify-content:center}
+  .story{position:relative;width:360px;height:640px;border-radius:24px;overflow:hidden;background-size:cover;background-position:center}
+  .s1{background-image:url('https://picsum.photos/seed/dark-pub-beer-table/720/1280')}
+  .s2{background-image:url('https://picsum.photos/seed/friends-night-street/720/1280')}
+  .stack{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-2deg);filter:drop-shadow(0 6px 10px rgba(0,0,0,.45))}
+  text{font-family:'Baloo 2'}
+</style>
+</head>
+<body>
+<!-- Variant A: 7 piv, Praha, 3 hospody, extras -->
+<div class="story s1">
+<svg class="stack" width="340" height="470" viewBox="0 0 340 470">
+  <defs>
+    <path id="arcTop" d="M 24 58 Q 170 30 316 58" fill="none"/>
+    <path id="arcBot" d="M 24 430 Q 170 458 316 430" fill="none"/>
+  </defs>
+  <text font-size="19" font-weight="800" letter-spacing="3" fill="none" stroke="#FBF3E0" stroke-width="7" stroke-linejoin="round"><textPath href="#arcTop" startOffset="50%" text-anchor="middle">PRAHA · 24. 7.</textPath></text>
+  <text font-size="19" font-weight="800" letter-spacing="3" fill="#1F1308"><textPath href="#arcTop" startOffset="50%" text-anchor="middle">PRAHA · 24. 7.</textPath></text>
+  <text x="170" y="205" text-anchor="middle" font-size="150" font-weight="800" fill="none" stroke="#FBF3E0" stroke-width="16" stroke-linejoin="round">7</text>
+  <text x="170" y="205" text-anchor="middle" font-size="150" font-weight="800" fill="#E8A317">7</text>
+  <text x="170" y="252" text-anchor="middle" font-size="46" font-weight="800" letter-spacing="6" fill="none" stroke="#FBF3E0" stroke-width="10" stroke-linejoin="round">PIV</text>
+  <text x="170" y="252" text-anchor="middle" font-size="46" font-weight="800" letter-spacing="6" fill="#1F1308">PIV</text>
+  <text x="170" y="288" text-anchor="middle" font-size="17" font-weight="700" fill="none" stroke="#FBF3E0" stroke-width="6" stroke-linejoin="round">k tomu 2 vína · 1 panák</text>
+  <text x="170" y="288" text-anchor="middle" font-size="17" font-weight="700" fill="#1F1308">k tomu 2 vína · 1 panák</text>
+  <text x="170" y="330" text-anchor="middle" font-size="21" font-weight="700" fill="none" stroke="#FBF3E0" stroke-width="7" stroke-linejoin="round">Restaurace Staromáček</text>
+  <text x="170" y="330" text-anchor="middle" font-size="21" font-weight="700" fill="#1F1308">Restaurace Staromáček</text>
+  <text x="170" y="362" text-anchor="middle" font-size="21" font-weight="700" fill="none" stroke="#FBF3E0" stroke-width="7" stroke-linejoin="round">→ U Zlatého tygra</text>
+  <text x="170" y="362" text-anchor="middle" font-size="21" font-weight="700" fill="#1F1308">→ U Zlatého tygra</text>
+  <text x="170" y="394" text-anchor="middle" font-size="21" font-weight="700" fill="none" stroke="#FBF3E0" stroke-width="7" stroke-linejoin="round">→ Lokál U Bílé kuželky</text>
+  <text x="170" y="394" text-anchor="middle" font-size="21" font-weight="700" fill="#1F1308">→ Lokál U Bílé kuželky</text>
+  <text font-size="20" font-weight="800" letter-spacing="5" fill="none" stroke="#FBF3E0" stroke-width="8" stroke-linejoin="round"><textPath href="#arcBot" startOffset="50%" text-anchor="middle">NA PIVO</textPath></text>
+  <text font-size="20" font-weight="800" letter-spacing="5" fill="#E8A317"><textPath href="#arcBot" startOffset="50%" text-anchor="middle">NA PIVO</textPath></text>
+</svg>
+</div>
+<!-- Variant B: 1 pivo, 1 hospoda -->
+<div class="story s2">
+<svg class="stack" width="340" height="400" viewBox="0 0 340 400">
+  <defs>
+    <path id="arcTop2" d="M 24 58 Q 170 30 316 58" fill="none"/>
+    <path id="arcBot2" d="M 24 360 Q 170 388 316 360" fill="none"/>
+  </defs>
+  <text font-size="19" font-weight="800" letter-spacing="3" fill="none" stroke="#FBF3E0" stroke-width="7" stroke-linejoin="round"><textPath href="#arcTop2" startOffset="50%" text-anchor="middle">24. 7.</textPath></text>
+  <text font-size="19" font-weight="800" letter-spacing="3" fill="#1F1308"><textPath href="#arcTop2" startOffset="50%" text-anchor="middle">24. 7.</textPath></text>
+  <text x="170" y="205" text-anchor="middle" font-size="150" font-weight="800" fill="none" stroke="#FBF3E0" stroke-width="16" stroke-linejoin="round">1</text>
+  <text x="170" y="205" text-anchor="middle" font-size="150" font-weight="800" fill="#E8A317">1</text>
+  <text x="170" y="252" text-anchor="middle" font-size="46" font-weight="800" letter-spacing="6" fill="none" stroke="#FBF3E0" stroke-width="10" stroke-linejoin="round">PIVO</text>
+  <text x="170" y="252" text-anchor="middle" font-size="46" font-weight="800" letter-spacing="6" fill="#1F1308">PIVO</text>
+  <text x="170" y="300" text-anchor="middle" font-size="21" font-weight="700" fill="none" stroke="#FBF3E0" stroke-width="7" stroke-linejoin="round">Restaurace Staromáček</text>
+  <text x="170" y="300" text-anchor="middle" font-size="21" font-weight="700" fill="#1F1308">Restaurace Staromáček</text>
+  <text font-size="20" font-weight="800" letter-spacing="5" fill="none" stroke="#FBF3E0" stroke-width="8" stroke-linejoin="round"><textPath href="#arcBot2" startOffset="50%" text-anchor="middle">NA PIVO</textPath></text>
+  <text font-size="20" font-weight="800" letter-spacing="5" fill="#E8A317"><textPath href="#arcBot2" startOffset="50%" text-anchor="middle">NA PIVO</textPath></text>
+</svg>
+</div>
+<!-- Variant C: LIVE invite — 3 piva so far, come join -->
+<div class="story s1">
+<svg class="stack" width="340" height="440" viewBox="0 0 340 440">
+  <defs>
+    <path id="arcTop3" d="M 24 58 Q 170 30 316 58" fill="none"/>
+    <path id="arcBot3" d="M 24 400 Q 170 428 316 400" fill="none"/>
+  </defs>
+  <text font-size="19" font-weight="800" letter-spacing="3" fill="none" stroke="#FBF3E0" stroke-width="7" stroke-linejoin="round"><textPath href="#arcTop3" startOffset="50%" text-anchor="middle">PRÁVĚ TEĎ</textPath></text>
+  <text font-size="19" font-weight="800" letter-spacing="3" fill="#1F1308"><textPath href="#arcTop3" startOffset="50%" text-anchor="middle">PRÁVĚ TEĎ</textPath></text>
+  <text x="170" y="205" text-anchor="middle" font-size="150" font-weight="800" fill="none" stroke="#FBF3E0" stroke-width="16" stroke-linejoin="round">3</text>
+  <text x="170" y="205" text-anchor="middle" font-size="150" font-weight="800" fill="#E8A317">3</text>
+  <text x="170" y="252" text-anchor="middle" font-size="46" font-weight="800" letter-spacing="6" fill="none" stroke="#FBF3E0" stroke-width="10" stroke-linejoin="round">PIVA</text>
+  <text x="170" y="252" text-anchor="middle" font-size="46" font-weight="800" letter-spacing="6" fill="#1F1308">PIVA</text>
+  <text x="170" y="300" text-anchor="middle" font-size="21" font-weight="700" fill="none" stroke="#FBF3E0" stroke-width="7" stroke-linejoin="round">Restaurace Staromáček</text>
+  <text x="170" y="300" text-anchor="middle" font-size="21" font-weight="700" fill="#1F1308">Restaurace Staromáček</text>
+  <text x="170" y="344" text-anchor="middle" font-size="30" font-weight="800" letter-spacing="1" fill="none" stroke="#FBF3E0" stroke-width="9" stroke-linejoin="round">Stav se!</text>
+  <text x="170" y="344" text-anchor="middle" font-size="30" font-weight="800" letter-spacing="1" fill="#E8A317">Stav se!</text>
+  <text font-size="20" font-weight="800" letter-spacing="5" fill="none" stroke="#FBF3E0" stroke-width="8" stroke-linejoin="round"><textPath href="#arcBot3" startOffset="50%" text-anchor="middle">NA PIVO</textPath></text>
+  <text font-size="20" font-weight="800" letter-spacing="5" fill="#E8A317"><textPath href="#arcBot3" startOffset="50%" text-anchor="middle">NA PIVO</textPath></text>
+</svg>
+</div>
+</body>
+</html>

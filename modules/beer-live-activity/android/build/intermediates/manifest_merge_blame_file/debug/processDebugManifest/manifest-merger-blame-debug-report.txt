@@ -1,0 +1,26 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.napivo.beerliveactivity" >
+4
+5    <uses-sdk android:minSdkVersion="24" />
+6    <!--
+7       Normal/app-op permission: no runtime dialog. POST_NOTIFICATIONS is still
+8       required separately on Android 13+, and is already declared by the app.
+9    -->
+10    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
+10-->/Users/tomasmach/Code/na-pivo/modules/beer-live-activity/android/src/main/AndroidManifest.xml:4:3-84
+10-->/Users/tomasmach/Code/na-pivo/modules/beer-live-activity/android/src/main/AndroidManifest.xml:4:20-81
+11
+12    <application>
+12-->/Users/tomasmach/Code/na-pivo/modules/beer-live-activity/android/src/main/AndroidManifest.xml:6:3-11:17
+13        <receiver
+13-->/Users/tomasmach/Code/na-pivo/modules/beer-live-activity/android/src/main/AndroidManifest.xml:7:5-10:34
+14            android:name="com.napivo.beerliveactivity.BeerLiveActivityActionReceiver"
+14-->/Users/tomasmach/Code/na-pivo/modules/beer-live-activity/android/src/main/AndroidManifest.xml:8:7-53
+15            android:enabled="true"
+15-->/Users/tomasmach/Code/na-pivo/modules/beer-live-activity/android/src/main/AndroidManifest.xml:9:7-29
+16            android:exported="false" />
+16-->/Users/tomasmach/Code/na-pivo/modules/beer-live-activity/android/src/main/AndroidManifest.xml:10:7-31
+17    </application>
+18
+19</manifest>
