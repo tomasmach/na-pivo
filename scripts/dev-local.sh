@@ -59,7 +59,9 @@ fi
 
 echo "==> Syncing native iOS configuration"
 cd "$REPO_ROOT"
-npx expo prebuild --platform ios --no-install
+# The native project is generated and gitignored. Regenerate it from scratch so
+# targets from config plugins on another branch cannot survive a branch switch.
+npx expo prebuild --clean --platform ios --no-install
 (cd "$REPO_ROOT/ios" && pod install)
 
 echo "==> Building and launching the iOS app"
