@@ -51,6 +51,7 @@
     "expo-secure-store": "~56.0.4",
     "expo-splash-screen": "~56.0.13",
     "expo-status-bar": "~56.0.4",
+    "expo-store-review": "~56.0.3",
     "expo-system-ui": "~56.0.5",
     "expo-task-manager": "~56.0.22",
     "expo-updates": "~56.0.22",
