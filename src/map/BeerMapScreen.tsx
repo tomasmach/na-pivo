@@ -780,12 +780,22 @@ export default function BeerMapScreen({
     const next = {
       latitude: position.lat,
       longitude: position.lng,
-      latitudeDelta: 0.04,
-      longitudeDelta: 0.04,
+      // Recentring must not silently change the zoom. Cluster membership follows
+      // the zoom level, so forcing a new delta here made unchanged pub markers
+      // regroup whenever the user tapped the location button.
+      latitudeDelta: region.latitudeDelta,
+      longitudeDelta: region.longitudeDelta,
     };
     mapRef.current?.animateToRegion(next, reduceMotion ? 0 : 360);
     handleRegionChange(next);
-  }, [handleRegionChange, position, reduceMotion, requestPermission]);
+  }, [
+    handleRegionChange,
+    position,
+    reduceMotion,
+    region.latitudeDelta,
+    region.longitudeDelta,
+    requestPermission,
+  ]);
 
   const openCluster = useCallback(
     (lat: number, lng: number) => {

@@ -11,6 +11,7 @@ import { enqueuePubReport } from '@/data/pubReportQueue';
 import { useBeerMap } from '../useBeerMap';
 
 let mockColorScheme: 'light' | 'dark' | null = 'dark';
+const mockAnimateToRegion = jest.fn();
 
 jest.mock('react-native', () => {
   const RN = jest.requireActual('react-native');
@@ -40,7 +41,7 @@ jest.mock('react-native-maps', () => ({
   ) {
     useImperativeHandle(ref, () => ({
       animateCamera: jest.fn(),
-      animateToRegion: jest.fn(),
+      animateToRegion: mockAnimateToRegion,
     }));
     return (
       <View
@@ -246,6 +247,51 @@ describe('BeerMapScreen opening-hours loading', () => {
     screen.rerender(<BeerMapScreen {...props} />);
 
     expect(screen.getByLabelText(cs.a11y.beerMap).props.accessibilityValue.text).toBe('light');
+  });
+
+  it('recenters on the user without changing zoom or regrouping pub markers', () => {
+    mockedUseBeerMap.mockReturnValue({
+      pubs: [{ id: 'pub-1', name: 'U Testu', lat: 50.0876, lng: 14.4214 }],
+      nearbyPrices: [],
+      visitedPubs: [],
+      visitedCities: [],
+      livePubs: [],
+      position: { lat: 50.0821, lng: 14.4213, accuracyMeters: 12 },
+      permissionState: 'granted',
+      loadingPubs: false,
+      stale: false,
+      requestPermission: jest.fn(async () => undefined),
+      loadRegion: jest.fn(),
+      refresh: jest.fn(),
+    });
+    const screen = render(
+      <BeerMapScreen
+        filters={EMPTY_PUB_SEARCH_FILTERS}
+        onApplyFilters={jest.fn()}
+        onShowCompass={jest.fn()}
+      />,
+    );
+
+    // The first location fix establishes the map's initial city-level zoom.
+    expect(mockAnimateToRegion).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        latitudeDelta: 0.055,
+        longitudeDelta: 0.055,
+      }),
+      0,
+    );
+
+    fireEvent.press(screen.getByLabelText(cs.a11y.mapLocate));
+
+    expect(mockAnimateToRegion).toHaveBeenLastCalledWith(
+      {
+        latitude: 50.0821,
+        longitude: 14.4213,
+        latitudeDelta: 0.055,
+        longitudeDelta: 0.055,
+      },
+      0,
+    );
   });
 
   it('shows a friend avatar in the live map marker', () => {
