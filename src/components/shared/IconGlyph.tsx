@@ -85,6 +85,8 @@ import {
   CupSoda,
   HandPlatter,
   Share2,
+  Globe,
+  TriangleAlert,
   LucideProps,
 } from 'lucide-react-native';
 
@@ -204,3 +206,5 @@ export const MoonIcon = wrap(Moon, 'MoonIcon');
 export const QrCodeIcon = wrap(QrCode, 'QrCodeIcon');
 // Parta 3.0 — friend-profile overflow "…" menu glyph.
 export const EllipsisIcon = wrap(Ellipsis, 'EllipsisIcon');
+export const GlobeIcon = wrap(Globe, 'GlobeIcon');
+export const TriangleAlertIcon = wrap(TriangleAlert, 'TriangleAlertIcon');

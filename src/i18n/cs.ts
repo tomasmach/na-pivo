@@ -3,7 +3,7 @@
  * Structured by screen/component so adding a second locale later is trivial.
  */
 
-import { beerCountLabel, beerNoun, czechPlural } from './plural';
+import { beerCountLabel, beerNoun, czechPlural, peopleCountLabel } from './plural';
 import type { DrinkType, OutsidePlaceContext, ServingType } from '@/drinks/drinkTypes';
 
 /** Format a serving volume in ml as a Czech litre string with a decimal comma:
@@ -142,6 +142,49 @@ export const cs = {
     yesA11y: (amenity: string) => `${amenity}: ano`,
     noA11y: (amenity: string) => `${amenity}: ne`,
     clearHint: 'Ťukni znovu pro zrušení',
+
+    // Confidence signal — how many people confirmed the fact, not a yes/no poll.
+    // "Má to" is amber + count, "nemají" is a calm muted count, "sporné" flags a
+    // recent conflict, "first" celebrates the first mapper.
+    confHas: (n: number) =>
+      n <= 1
+        ? 'jen 1 potvrzení'
+        : czechPlural(n, {
+            one: `potvrdil ${n} člověk`,
+            few: `potvrdili ${n} lidé`,
+            many: `potvrdilo ${n} lidí`,
+          }),
+    confNo: (n: number) => `nemají · ${peopleCountLabel(n)}`,
+    confDisputed: 'sporné · ověř to',
+    confFirst: 'zmapoval jsi první',
+    confA11y: (label: string, detail: string) => `${label}: ${detail}`,
+
+    // Amenities section header + the one public-data chip that replaced the
+    // four-line mapping intro.
+    amenitiesSection: 'CO TU JE',
+    publicChip: 'veřejné',
+    offlineChip: 'offline · uloží se',
+
+    // Fact tiles (otevíračka + piva) — the two editable info groups.
+    tileHours: 'Otevíračka',
+    tileHoursEmpty: 'doplň otevíračku',
+    tileBeers: 'Piva',
+    tileBeersEmpty: 'doplň, co točí',
+    tileBeersValue: (count: number, price: string | null) => {
+      const head = count > 0 ? `${count} na čepu` : null;
+      if (head && price) return `${head} · od ${price}`;
+      if (head) return head;
+      if (price) return `od ${price}`;
+      return '';
+    },
+    tileBeersRecency: (age: string) => `cena ${age}`,
+    tileHoursOpenDays: (n: number) =>
+      czechPlural(n, { one: 'otevřeno 1 den', few: `otevřeno ${n} dny`, many: `otevřeno ${n} dní` }),
+    tileA11y: (label: string, detail: string) => `${label}, ${detail}. Uprav.`,
+
+    // Overflow — edge actions (rename / report) tucked behind one "···" row.
+    moreLabel: 'Přejmenovat · nahlásit',
+    moreA11y: 'Další možnosti: přejmenovat hospodu nebo ji nahlásit',
 
     // Amenity labels / chips (mirror the catalogue in src/data/amenities.ts)
     amenities: {
@@ -290,7 +333,13 @@ export const cs = {
     revealHint: 'Ťukni a prozradím kam',
     /** Declined unit under the big distance numeral, e.g. "80 / METRŮ". */
     distanceUnitMeters: 'METRŮ',
-    distanceUnitKm: (value: number) => (value === 1 ? 'KILOMETRU' : 'KILOMETRŮ'),
+    // Whole km decline nominatively (1 KILOMETR / 2–4 KILOMETRY / 5+ KILOMETRŮ);
+    // a decimal distance ("2,5 km") takes the genitive singular ("KILOMETRU").
+    distanceUnitKm: (value: number) => {
+      if (!Number.isInteger(value)) return 'KILOMETRU';
+      if (value === 1) return 'KILOMETR';
+      return czechPlural(value, { one: 'KILOMETR', few: 'KILOMETRY', many: 'KILOMETRŮ' });
+    },
 
     // — "Co ještě?" overflow sheet —
     moreTitle: 'Co ještě?',
@@ -590,6 +639,7 @@ export const cs = {
     closedToggle: 'Zavřeno',
     addInterval: 'Přidat čas',
     copyCurrentDayToAll: 'Použít i pro ostatní dny',
+    copyWeek: 'Stejně celý týden',
     daySheetTitle: (day: string) => `Kdy má ${day} otevřeno?`,
     editDayA11y: (day: string, hours: string) =>
       `${day}, ${hours}. Upravit otevírací dobu.`,

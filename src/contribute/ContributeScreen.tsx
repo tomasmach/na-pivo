@@ -11,7 +11,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   InteractionManager,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -19,8 +18,9 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { DayHoursSheet } from '@/components/contribute/DayHoursSheet';
 import { HistoricalBeersSheet } from '@/components/contribute/HistoricalBeersSheet';
+import { SplitTimeInput } from '@/components/contribute/SplitTimeInput';
+import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { MenuBeerSheet } from '@/components/contribute/MenuBeerSheet';
 import {
   ScanMenuSheet,
@@ -33,10 +33,12 @@ import {
   ChevronRightIcon,
   ClockIcon,
   CompassIcon,
+  CopyIcon,
   InfoIcon,
   PlusIcon,
   SearchIcon,
   SparklesIcon,
+  Trash2Icon,
 } from '@/components/shared/IconGlyph';
 import {
   CounterCta,
@@ -84,6 +86,8 @@ import { fireSuccessHaptic } from '@/utils/haptics';
 
 const VOLUME_SMALL = 300;
 const MAX_BEERS = 12;
+const MAX_INTERVALS = 3;
+const DEFAULT_INTERVAL: HoursInterval = ['11:00', '23:00'];
 let beerRowIdSequence = 0;
 
 type Section = 'hours' | 'beers';
@@ -181,11 +185,6 @@ function decodeJsonParam<T>(
   }
 }
 
-function formatDayIntervals(intervals: HoursInterval[]): string {
-  if (intervals.length === 0) return cs.contribute.closedToggle;
-  return intervals.map(([from, to]) => `${from}–${to}`).join(' · ');
-}
-
 function nextChangeTime(nextChange: string | null): string | null {
   if (!nextChange) return null;
   const date = new Date(nextChange);
@@ -208,6 +207,115 @@ function beerMeta(
   if (volume) return `${volume} · ${cs.contribute.priceMissing}`;
   if (price) return `${cs.contribute.volumeMissing} · ${price}`;
   return cs.contribute.volumeMissing;
+}
+
+// ─── Inline day row (opening hours) ──────────────────────────────────────────
+
+interface HoursDayRowProps {
+  day: DayKey;
+  intervals: HoursInterval[];
+  divider: boolean;
+  onToggleClosed: () => void;
+  onAddInterval: () => void;
+  onRemoveInterval: (index: number) => void;
+  onChangeTime: (index: number, which: 0 | 1, value: string) => void;
+}
+
+/** One tight row per day. Closed → a quiet "Zavřeno" that opens the day in one
+ *  tap. Open → compact HH:MM chips on the day's own line; a second interval wraps
+ *  to a right-aligned sub-line. The trash removes an interval (removing the last
+ *  one closes the day); a small "+" on the last interval adds another. */
+function HoursDayRow({
+  day,
+  intervals,
+  divider,
+  onToggleClosed,
+  onAddInterval,
+  onRemoveInterval,
+  onChangeTime,
+}: HoursDayRowProps) {
+  const dayName = cs.contribute.days[day];
+  const isClosed = intervals.length === 0;
+  const canAdd = intervals.length < MAX_INTERVALS;
+
+  return (
+    <View style={[styles.dayRow, divider && styles.rowDivider]}>
+      <View
+        style={[
+          styles.dayDot,
+          { backgroundColor: isClosed ? Colors.closed : Colors.open },
+        ]}
+      />
+      <Text
+        style={styles.dayName}
+        numberOfLines={1}
+        maxFontSizeMultiplier={FontScaleCap.body}
+      >
+        {dayName}
+      </Text>
+
+      {isClosed ? (
+        <Pressable
+          onPress={onToggleClosed}
+          hitSlop={8}
+          style={({ pressed }) => [styles.closedLabelWrap, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityState={{ selected: true }}
+          accessibilityLabel={cs.a11y.contributeDayClosedToggle(dayName)}
+        >
+          <Text style={styles.closedLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.contribute.closedToggle}
+          </Text>
+        </Pressable>
+      ) : (
+        intervals.map((interval, index) => {
+          const isLast = index === intervals.length - 1;
+          return (
+            <View
+              key={index}
+              style={index === 0 ? styles.intervalInline : styles.intervalSubline}
+            >
+              <SplitTimeInput
+                value={interval[0]}
+                onChange={(value) => onChangeTime(index, 0, value)}
+                accessibilityLabel={`${dayName} ${cs.contribute.from}`}
+              />
+              <Text style={styles.timeDash} maxFontSizeMultiplier={FontScaleCap.body}>
+                –
+              </Text>
+              <SplitTimeInput
+                value={interval[1]}
+                onChange={(value) => onChangeTime(index, 1, value)}
+                accessibilityLabel={`${dayName} ${cs.contribute.to}`}
+              />
+              <Pressable
+                onPress={() => onRemoveInterval(index)}
+                hitSlop={6}
+                style={({ pressed }) => [styles.timeIcon, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel={cs.a11y.contributeRemoveInterval(dayName)}
+              >
+                <Trash2Icon size={15} color={Colors.mutedText} />
+              </Pressable>
+              {isLast && canAdd ? (
+                <Pressable
+                  onPress={onAddInterval}
+                  hitSlop={6}
+                  style={({ pressed }) => [styles.timeIcon, pressed && styles.pressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel={cs.a11y.contributeAddInterval(dayName)}
+                >
+                  <PlusIcon size={16} color={Colors.amber} />
+                </Pressable>
+              ) : (
+                <View style={styles.timeIcon} />
+              )}
+            </View>
+          );
+        })
+      )}
+    </View>
+  );
 }
 
 export default function ContributeScreen() {
@@ -293,7 +401,6 @@ export default function ContributeScreen() {
   const [beers, setBeers] = useState<BeerRow[]>(prefillBeers);
   const [hoursTouched, setHoursTouched] = useState(false);
   const [beersTouched, setBeersTouched] = useState(false);
-  const [activeDay, setActiveDay] = useState<DayKey | null>(null);
   const [beerEditorOpen, setBeerEditorOpen] = useState(false);
   const [editingBeerId, setEditingBeerId] = useState<string | null>(
     null,
@@ -331,10 +438,44 @@ export default function ContributeScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const updateDay = useCallback(
-    (day: DayKey, intervals: HoursInterval[]) => {
+  const toggleClosed = useCallback((day: DayKey) => {
+    setHoursTouched(true);
+    setHours((previous) => ({
+      ...previous,
+      // One tap flips the whole day: closed → a default 11–23, open → closed.
+      [day]: previous[day].length === 0 ? [[...DEFAULT_INTERVAL]] : [],
+    }));
+  }, []);
+
+  const addInterval = useCallback((day: DayKey) => {
+    setHoursTouched(true);
+    setHours((previous) =>
+      previous[day].length >= MAX_INTERVALS
+        ? previous
+        : { ...previous, [day]: [...previous[day], [...DEFAULT_INTERVAL]] },
+    );
+  }, []);
+
+  const removeInterval = useCallback((day: DayKey, index: number) => {
+    setHoursTouched(true);
+    setHours((previous) => ({
+      ...previous,
+      [day]: previous[day].filter((_, i) => i !== index),
+    }));
+  }, []);
+
+  const setIntervalValue = useCallback(
+    (day: DayKey, index: number, which: 0 | 1, value: string) => {
       setHoursTouched(true);
-      setHours((previous) => ({ ...previous, [day]: intervals }));
+      setHours((previous) => ({
+        ...previous,
+        [day]: previous[day].map((interval, i) => {
+          if (i !== index) return interval;
+          const next: HoursInterval = [interval[0], interval[1]];
+          next[which] = value;
+          return next;
+        }),
+      }));
     },
     [],
   );
@@ -763,6 +904,12 @@ export default function ContributeScreen() {
       ? cs.contribute.hoursClosedNow(openStateTime)
       : cs.contribute.hoursClosedNoChange;
 
+  // "Stejně celý týden" copies the first day that has hours onto every day.
+  const firstOpenDay = useMemo<DayKey | null>(
+    () => DAY_KEYS.find((day) => hours[day].length > 0) ?? null,
+    [hours],
+  );
+
   const nudge = useMemo<Nudge | null>(() => {
     if (hoursTouched && invalidDay) {
       return {
@@ -774,7 +921,6 @@ export default function ContributeScreen() {
         actionAccessibilityLabel: cs.contribute.fixHoursA11y,
         onUndo: () => {
           setSection('hours');
-          setActiveDay(invalidDay);
         },
       };
     }
@@ -876,63 +1022,28 @@ export default function ContributeScreen() {
         >
           {pub.name || cs.contribute.unknownPub}
         </Text>
-        <Text
-          style={styles.eyebrow}
-          numberOfLines={1}
-          maxFontSizeMultiplier={FontScaleCap.body}
-        >
-          {section === 'hours'
-            ? cs.contribute.hoursHeader
-            : cs.contribute.beersHeader}
-        </Text>
 
-        <ScrollView
+        <KeyboardAwareScrollView
           style={styles.cardScroll}
           contentContainerStyle={styles.cardScrollContent}
+          keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
           {section === 'hours'
-            ? DAY_KEYS.map((day, index) => {
-                const summary = formatDayIntervals(hours[day]);
-                const closed = hours[day].length === 0;
-                const multiple = hours[day].length > 1;
-                return (
-                  <Pressable
-                    key={day}
-                    onPress={() => setActiveDay(day)}
-                    style={({ pressed }) => [
-                      styles.hoursRow,
-                      index > 0 && styles.rowDivider,
-                      pressed && styles.pressed,
-                    ]}
-                    accessibilityRole="button"
-                    accessibilityLabel={cs.contribute.editDayA11y(
-                      cs.contribute.days[day],
-                      summary,
-                    )}
-                  >
-                    <Text
-                      style={styles.dayName}
-                      numberOfLines={1}
-                      maxFontSizeMultiplier={FontScaleCap.body}
-                    >
-                      {cs.contribute.days[day]}
-                    </Text>
-                    <Text
-                      style={[
-                        multiple
-                          ? styles.hoursValueMultiple
-                          : styles.hoursValue,
-                        closed && styles.hoursValueClosed,
-                      ]}
-                      numberOfLines={1}
-                      maxFontSizeMultiplier={FontScaleCap.body}
-                    >
-                      {summary}
-                    </Text>
-                  </Pressable>
-                );
-              })
+            ? DAY_KEYS.map((day, index) => (
+                <HoursDayRow
+                  key={day}
+                  day={day}
+                  intervals={hours[day]}
+                  divider={index > 0}
+                  onToggleClosed={() => toggleClosed(day)}
+                  onAddInterval={() => addInterval(day)}
+                  onRemoveInterval={(i) => removeInterval(day, i)}
+                  onChangeTime={(i, which, value) =>
+                    setIntervalValue(day, i, which, value)
+                  }
+                />
+              ))
             : (
               <>
                 {beers.length === 0 ? (
@@ -1004,24 +1115,42 @@ export default function ContributeScreen() {
                 ) : null}
               </>
             )}
-        </ScrollView>
+        </KeyboardAwareScrollView>
 
         <View style={styles.cardFooter}>
           {section === 'hours' ? (
-            <Text
-              style={[
-                styles.footerFact,
-                {
-                  color: openState.isOpenNow
-                    ? Colors.open
-                    : Colors.closed,
-                },
-              ]}
-              numberOfLines={1}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            >
-              {hoursFooter}
-            </Text>
+            <View style={styles.hoursFooterRow}>
+              <Text
+                style={[
+                  styles.footerFact,
+                  {
+                    color: openState.isOpenNow ? Colors.open : Colors.closed,
+                  },
+                ]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {hoursFooter}
+              </Text>
+              {firstOpenDay ? (
+                <Pressable
+                  onPress={() => copyDayToAll(firstOpenDay)}
+                  hitSlop={8}
+                  style={({ pressed }) => [styles.copyWeek, pressed && styles.pressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel={cs.a11y.contributeCopyToAll}
+                >
+                  <CopyIcon size={14} color={Colors.mutedText} />
+                  <Text
+                    style={styles.copyWeekLabel}
+                    numberOfLines={1}
+                    maxFontSizeMultiplier={FontScaleCap.body}
+                  >
+                    {cs.contribute.copyWeek}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
           ) : availableHistoricalBeers.length > 0 ? (
             <Pressable
               onPress={() => setHistoryOpen(true)}
@@ -1086,17 +1215,6 @@ export default function ContributeScreen() {
           accessibilityLabel={cs.contribute.scanMenuSecondary}
         />
       ) : null}
-
-      <DayHoursSheet
-        visible={activeDay !== null}
-        day={activeDay ?? 'mo'}
-        intervals={hours[activeDay ?? 'mo']}
-        onChange={(intervals) =>
-          updateDay(activeDay ?? 'mo', intervals)
-        }
-        onCopyToAll={() => copyDayToAll(activeDay ?? 'mo')}
-        onClose={() => setActiveDay(null)}
-      />
 
       <MenuBeerSheet
         visible={beerEditorOpen}
@@ -1214,13 +1332,6 @@ const styles = StyleSheet.create({
     color: Colors.foam,
     includeFontPadding: false,
   },
-  eyebrow: {
-    marginTop: 2,
-    fontFamily: Fonts.ui.medium,
-    fontSize: 13,
-    color: Colors.mutedText,
-    includeFontPadding: false,
-  },
   cardScroll: {
     flex: 1,
     marginTop: 16,
@@ -1228,41 +1339,63 @@ const styles = StyleSheet.create({
   cardScrollContent: {
     paddingBottom: Spacing.sm,
   },
-  hoursRow: {
-    minHeight: 48,
+  dayRow: {
+    minHeight: 46,
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
+    paddingVertical: 5,
+  },
+  dayDot: {
+    width: 8,
+    height: 8,
+    borderRadius: Radius.pill,
   },
   dayName: {
-    flexShrink: 1,
+    flex: 1,
+    minWidth: 0,
     fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
   },
-  hoursValue: {
-    flex: 1,
-    minWidth: 0,
-    textAlign: 'right',
-    fontFamily: Fonts.ui.medium,
-    fontSize: 15,
-    color: Colors.foam,
-    includeFontPadding: false,
-    fontVariant: ['tabular-nums'],
+  closedLabelWrap: {
+    minHeight: 34,
+    justifyContent: 'center',
+    paddingHorizontal: 4,
   },
-  hoursValueMultiple: {
-    flex: 1,
-    minWidth: 0,
-    textAlign: 'right',
-    fontFamily: Fonts.ui.medium,
-    fontSize: 13,
-    color: Colors.foam,
+  closedLabel: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 14,
+    color: Colors.mutedText,
     includeFontPadding: false,
-    fontVariant: ['tabular-nums'],
   },
-  hoursValueClosed: {
-    color: Colors.closed,
+  intervalInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  intervalSubline: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 6,
+    marginTop: 6,
+  },
+  timeDash: {
+    fontFamily: Fonts.ui.regular,
+    fontSize: 14,
+    color: Colors.foamMuted,
+    includeFontPadding: false,
+    marginHorizontal: -1,
+  },
+  timeIcon: {
+    width: 28,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   rowDivider: {
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -1321,12 +1454,30 @@ const styles = StyleSheet.create({
     borderTopColor: withAlpha(Colors.foam, 0.1),
     justifyContent: 'center',
   },
+  hoursFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
   footerFact: {
     flexShrink: 1,
     fontFamily: Fonts.ui.medium,
     fontSize: 13,
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
+  },
+  copyWeek: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 4,
+  },
+  copyWeekLabel: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 12.5,
+    color: Colors.mutedText,
+    includeFontPadding: false,
   },
   historyDoor: {
     minHeight: 44,
