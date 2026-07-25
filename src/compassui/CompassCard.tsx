@@ -64,11 +64,18 @@ const DIAL_MAX = 380;
  */
 const DIAL_BLEED = 320 / 303;
 
-/** The numeral shrinks with its digit count so "1000" never crowds the card. */
+/**
+ * The numeral shrinks with its digit count so "1000" never crowds the card.
+ *
+ * These are deliberately far below the 88pt this used to be. Every point here is
+ * a point the dial does not get, and measured on an iPhone 17 the old readout ate
+ * 130pt of a 298pt card body — half the hero's room for four glyphs. "2" at 44pt
+ * is still by far the largest thing on the screen.
+ */
 function distanceFontSize(value: string): number {
-  if (value.length <= 2) return 62;
-  if (value.length <= 3) return 54;
-  return 44;
+  if (value.length <= 2) return 44;
+  if (value.length <= 3) return 40;
+  return 34;
 }
 
 /** Opening-hours tone. Never red — we don't shout at people about a closed pub. */
@@ -170,9 +177,9 @@ export function CompassCard({
               style={[
                 styles.distance,
                 // The line box must clear the extrabold glyph's overshoot, or
-                // iOS shaves the top off the digits. 1.24 leaves real headroom;
-                // the unit's negative margin closes the gap it creates below.
-                { fontSize: numeralSize, lineHeight: numeralSize * 1.24 },
+                // iOS shaves the top off the digits. 1.14 is the least that still
+                // does at this size; the unit's negative margin closes the rest.
+                { fontSize: numeralSize, lineHeight: numeralSize * 1.14 },
               ]}
               numberOfLines={1}
               maxFontSizeMultiplier={FontScaleCap.display}
@@ -305,9 +312,11 @@ const styles = StyleSheet.create({
   },
   // Stretched so the centered unit caption can shrink against the card's real
   // width instead of against its own content box.
+  // The dial's ring now reaches the edge of its slot, so the numeral needs a
+  // real gap under it — at marginTop 2 the "2" sat on the ring's tick dots.
   readout: {
     alignSelf: 'stretch',
-    marginTop: 6,
+    marginTop: 10,
   },
   distance: {
     fontFamily: Fonts.display.extrabold,
@@ -321,10 +330,10 @@ const styles = StyleSheet.create({
   // Pulled up into the numeral's line-box headroom so the pair reads as one
   // object instead of two stacked labels.
   unit: {
-    marginTop: -8,
+    marginTop: -2,
     fontFamily: Fonts.display.bold,
-    fontSize: 13,
-    letterSpacing: 3,
+    fontSize: 14,
+    letterSpacing: 3.2,
     color: Colors.foamMuted,
     includeFontPadding: false,
     textAlign: 'center',
