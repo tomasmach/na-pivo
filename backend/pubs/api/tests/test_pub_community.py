@@ -5,6 +5,9 @@ precedence in the pub-hours read path (POST /v1/pub-hours).
 
 from __future__ import annotations
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 import pytest
 from django.core.cache import cache
 from django.db import connection
@@ -622,8 +625,16 @@ def _make_community(**kwargs) -> PubCommunityData:
 def test_read_community_hours_override_firmy(client):
     from pubs.api.tests.test_views import _make_fresh_row
 
+    hours_updated_at = datetime(
+        2026, 7, 20, 12, 34, 56, tzinfo=ZoneInfo("Europe/Prague")
+    )
     _make_fresh_row()  # firmy PubHours for the same key
-    _make_community(historical_beers=[{"name": "Gambrinus 10", "price_czk": 48, "volume_ml": 500}])
+    _make_community(
+        historical_beers=[
+            {"name": "Gambrinus 10", "price_czk": 48, "volume_ml": 500}
+        ],
+        hours_updated_at=hours_updated_at,
+    )
 
     resp = client.post(
         "/v1/pub-hours",
@@ -641,6 +652,7 @@ def test_read_community_hours_override_firmy(client):
     assert r["historical_beers"] == [
         {"name": "Gambrinus 10", "price_czk": 48, "volume_ml": 500}
     ]
+    assert datetime.fromisoformat(r["hours_updated_at"]) == hours_updated_at
     assert r["rating"] == pytest.approx(4.1)
     assert r["ratingCount"] == 364
     assert r["ratingLabel"] == "Velmi dobré"
@@ -702,6 +714,7 @@ def test_read_no_community_data_keeps_firmy_and_empty_beers(client):
     r = resp.json()["results"][0]
     assert r["source"] == "firmy"
     assert r["beers"] == []
+    assert r["hours_updated_at"] is None
     assert r["hours_json"] is None
 
 

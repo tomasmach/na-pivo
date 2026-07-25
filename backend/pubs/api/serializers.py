@@ -1991,6 +1991,7 @@ class PubHoursResultSerializer(serializers.Serializer):
     # current menu and safely ignore these fields.
     historical_beers = serializers.ListField(child=serializers.DictField(), default=list)
     beers_updated_at = serializers.DateTimeField(allow_null=True, required=False)
+    hours_updated_at = serializers.DateTimeField(allow_null=True, required=False)
     beers_source = serializers.CharField(allow_null=True, required=False)
     beers_source_url = serializers.URLField(allow_null=True, required=False)
     hours_json = serializers.JSONField(allow_null=True, required=False)
@@ -2004,6 +2005,7 @@ class PubCommunityResponseSerializer(serializers.Serializer):
     beers = serializers.ListField(child=serializers.DictField())
     historical_beers = serializers.ListField(child=serializers.DictField(), default=list)
     beers_updated_at = serializers.DateTimeField(allow_null=True, required=False)
+    hours_updated_at = serializers.DateTimeField(allow_null=True, required=False)
     # Additive Mapér fields (older clients ignore them). `mapper` mirrors the
     # vote-PUT snapshot; null when XP awarding was skipped/failed.
     xp_awarded = serializers.IntegerField(required=False, default=0)

@@ -1635,6 +1635,7 @@ class PubCommunityView(APIView):
                 "beers": record.beers or [],
                 "historical_beers": record.historical_beers or [],
                 "beers_updated_at": record.beers_updated_at,
+                "hours_updated_at": record.hours_updated_at,
                 "xp_awarded": xp_awarded,
                 "mapper": mapper,
             }
