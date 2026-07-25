@@ -455,6 +455,7 @@ function BeerFormBody({
               maxLength={currencyFractionDigits(priceCurrency) > 0 ? 10 : 7}
               autoFocus={nameLocked}
               accessibilityLabel={placeholder}
+              maxFontSizeMultiplier={FontScaleCap.heading}
             />
             <Text style={styles.priceSuffix} maxFontSizeMultiplier={FontScaleCap.heading}>
               {currencySuffix(priceCurrency)}
@@ -515,6 +516,7 @@ function BeerFormBody({
                 maxLength={4}
                 autoFocus
                 accessibilityLabel={cs.counter.volumeCustomPlaceholder}
+                maxFontSizeMultiplier={FontScaleCap.heading}
               />
               <Text style={styles.customSuffix} maxFontSizeMultiplier={FontScaleCap.heading}>
                 {cs.counter.volumeUnitMl}
@@ -669,9 +671,14 @@ const styles = StyleSheet.create({
     color: Colors.foam,
     fontFamily: Fonts.display.bold,
     fontSize: 22,
+    lineHeight: 30,
+    minHeight: 56,
     paddingHorizontal: 14,
-    paddingVertical: Platform.OS === 'ios' ? 14 : 10,
+    // UIKit already centres a single-line UITextField. Vertical padding shifts
+    // Baloo's tall line box upwards and clips the tops of its numerals on iOS.
+    paddingVertical: Platform.OS === 'ios' ? 0 : 10,
     textAlign: 'center',
+    textAlignVertical: 'center',
   },
   priceSuffix: {
     fontFamily: Fonts.display.bold,
@@ -723,9 +730,12 @@ const styles = StyleSheet.create({
     color: Colors.foam,
     fontFamily: Fonts.display.bold,
     fontSize: 20,
+    lineHeight: 28,
+    minHeight: 52,
     paddingHorizontal: 14,
-    paddingVertical: Platform.OS === 'ios' ? 12 : 8,
+    paddingVertical: Platform.OS === 'ios' ? 0 : 8,
     textAlign: 'center',
+    textAlignVertical: 'center',
   },
   customSuffix: {
     fontFamily: Fonts.display.bold,
