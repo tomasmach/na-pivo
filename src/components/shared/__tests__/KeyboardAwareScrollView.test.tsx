@@ -142,6 +142,38 @@ describe('KeyboardAwareScrollView', () => {
     expect(mockedScrollTo).toHaveBeenCalledWith({ y: 220, animated: true });
   });
 
+  it('does not inject another keyboard inset when the parent already avoids it', () => {
+    mockedCurrentlyFocusedInput.mockReturnValue(focusedInput);
+    mockedMeasureLayout.mockImplementation((_target, _relativeTo, _onFail, onSuccess) => {
+      onSuccess(0, 350, 100, 50);
+    });
+    const screen = render(
+      <KeyboardAwareScrollView testID="scroll-view" keyboardAvoidedExternally>
+        <TextInput testID="field" />
+      </KeyboardAwareScrollView>,
+    );
+
+    const scrollView = screen.getByTestId('scroll-view');
+    expect(scrollView.props.automaticallyAdjustKeyboardInsets).toBe(false);
+    expect(scrollView.props.contentContainerStyle).toEqual([undefined, null]);
+
+    fireEvent(scrollView, 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 400 } },
+    });
+    fireEvent(scrollView, 'contentSizeChange', 300, 500);
+    fireEvent(screen.getByTestId('field'), 'focus', {
+      target: 22,
+      nativeEvent: { target: 22 },
+    });
+    act(() => {
+      jest.advanceTimersByTime(16);
+    });
+
+    // The reduced viewport already ends above the keyboard, so only the
+    // regular field margin is needed.
+    expect(mockedScrollTo).toHaveBeenCalledWith({ y: 20, animated: true });
+  });
+
   it('retries after the native keyboard animation so late layout changes are handled', () => {
     mockedCurrentlyFocusedInput.mockReturnValue(focusedInput);
     mockedMeasureLayout.mockImplementation((_target, _relativeTo, _onFail, onSuccess) => {

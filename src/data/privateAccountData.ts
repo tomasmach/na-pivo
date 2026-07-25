@@ -15,6 +15,7 @@ import { clearBeerCheckinsQueue } from './beerCheckinsQueue';
 import { clearFeedbackQueue } from './feedbackQueue';
 import { clearFriendsQueue } from './friendsQueue';
 import { clearFriendsDashboardSnapshot } from './friendsSnapshot';
+import { clearNightsQueue } from './nightsQueue';
 import { clearPubNameCorrectionsQueue } from './pubNameCorrectionsQueue';
 import { clearPubReportQueue } from './pubReportQueue';
 import { clearPubAmenitiesQueue } from './pubAmenitiesQueue';
@@ -30,6 +31,7 @@ import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { usePubStore } from '@/stores/pubStore';
 import { useTallyStore } from '@/stores/tallyStore';
+import { useVycepStore } from '@/stores/vycepStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 
 const PRIVATE_STORAGE_KEYS = [
@@ -44,6 +46,7 @@ const PRIVATE_STORAGE_KEYS = [
   'na-pivo-added-pubs-queue',
   'na-pivo-party-groups',
   'na-pivo-beer-photos',
+  'na-pivo-vycep',
   // Note: the Parta social-graph snapshot ('na-pivo-friends-dashboard') is cleared
   // via clearFriendsDashboardSnapshot() below — that path also bumps the snapshot
   // generation so an in-flight dashboard fetch can't re-persist it after the clear.
@@ -95,6 +98,8 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   useBeerPhotosStore.setState({ photos: [] });
   clearBeerPhotoLocalFiles();
   usePartyGroupsStore.setState({ groups: [] });
+  // Výčep publication ledger is tied to the outgoing account's nights.
+  useVycepStore.setState({ published: {} });
   usePubStore.setState({
     revealedPub: null,
     reportedPubIds: [],
@@ -116,6 +121,7 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
     clearVisitsSnapshot(),
     clearFriendsQueue(),
     clearFriendsDashboardSnapshot(),
+    clearNightsQueue(),
     clearPubRatingsQueue(),
     clearPubAmenitiesQueue(),
   ]);

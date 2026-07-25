@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Na pivo — redesign mapování hospody</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --stout:#1F1308; --stout2:#2B1A0E; --stout3:#3A2515;
+    --border:#5A3A20; --amber:#E8A317; --amberLight:#F5B642; --glow:#FF7A1A;
+    --foam:#FBF3E0; --foamMuted:#E8DCC0; --muted:#A8896A;
+    --success:#7DD66B; --open:#F0BE5C; --closed:#A8896A;
+    --disp:#C98B4B;
+    --display:'Baloo 2',system-ui,sans-serif; --ui:'Inter',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:#140b04;
+    color:var(--foam); font-family:var(--ui); min-height:100vh;
+    padding:56px 24px 90px; -webkit-font-smoothing:antialiased;
+  }
+  .page-head{max-width:1180px;margin:0 auto 40px}
+  .page-head h1{font-family:var(--display);font-weight:800;font-size:30px;color:var(--foam);letter-spacing:-.2px}
+  .page-head p{margin-top:10px;color:var(--muted);font-size:15px;max-width:720px;line-height:1.55}
+  .tag{display:inline-block;margin-top:16px;padding:6px 12px;border-radius:999px;font-size:12px;font-weight:600;
+    color:var(--amberLight);background:rgba(232,163,23,.08);border:1px solid rgba(232,163,23,.22)}
+
+  .frames{max-width:1180px;margin:0 auto;display:flex;gap:56px;flex-wrap:wrap;justify-content:center;align-items:flex-start}
+  .col{display:flex;flex-direction:column;align-items:center;gap:16px}
+  .col-cap{font-family:var(--display);font-weight:700;font-size:15px;color:var(--foamMuted)}
+  .col-sub{font-size:12.5px;color:var(--muted);margin-top:-8px;text-align:center;max-width:340px;line-height:1.5}
+
+  /* phone */
+  .phone{width:390px;border-radius:44px;padding:12px;background:linear-gradient(180deg,#3a2716,#241407);
+    box-shadow:0 40px 80px -30px rgba(0,0,0,.85), inset 0 1px 0 rgba(255,255,255,.05);}
+  .screen{border-radius:34px;overflow:hidden;background:var(--stout);height:812px;position:relative;display:flex;flex-direction:column}
+  .notch{position:absolute;top:10px;left:50%;transform:translateX(-50%);width:120px;height:26px;background:#0c0803;border-radius:999px;z-index:40}
+
+  /* ---------- HUB SHEET ---------- */
+  .backdrop{position:absolute;inset:0;background:rgba(0,0,0,.6)}
+  .sheet{position:absolute;left:0;right:0;bottom:0;background:var(--stout2);
+    border-top-left-radius:28px;border-top-right-radius:28px;border:1px solid var(--border);border-bottom:none;
+    padding:8px 20px 26px;max-height:94%;display:flex;flex-direction:column;
+    box-shadow:0 -18px 40px -20px rgba(0,0,0,.7)}
+  .grabber{width:40px;height:4px;border-radius:999px;background:var(--border);align-self:center;margin:0 auto 16px}
+
+  .hub-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding-right:8px}
+  .hub-title{font-family:var(--display);font-weight:800;font-size:23px;color:var(--foam);line-height:1.12;letter-spacing:-.2px}
+  .hours-row{display:flex;align-items:center;gap:7px;margin-top:7px}
+  .dot{width:7px;height:7px;border-radius:999px}
+  .hours-row .txt{font-family:var(--ui);font-weight:600;font-size:13px}
+  .beer-line{display:flex;align-items:center;gap:6px;margin-top:6px;color:var(--foamMuted);font-size:13px;font-weight:500}
+  .beer-line svg{opacity:.85}
+
+  /* ring */
+  .ring-wrap{display:flex;flex-direction:column;align-items:center;flex-shrink:0}
+  .ring{position:relative;width:64px;height:64px}
+  .ring svg{transform:rotate(-90deg)}
+  .ring .pct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-family:var(--display);font-weight:700;font-size:16px;color:var(--foam)}
+  .ring-cap{margin-top:5px;font-size:10.5px;color:var(--muted);font-weight:500;letter-spacing:.3px}
+
+  .body{margin-top:18px;overflow:auto;flex:1;padding-bottom:6px}
+  .body::-webkit-scrollbar{display:none}
+
+  /* fact tiles */
+  .tiles{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .tile{background:var(--stout3);border:1px solid var(--border);border-radius:18px;padding:15px 15px 14px;position:relative;cursor:pointer}
+  .tile .ic{width:40px;height:40px;border-radius:999px;display:flex;align-items:center;justify-content:center;
+    background:rgba(232,163,23,.12);margin-bottom:12px}
+  .tile.empty .ic{background:rgba(168,137,106,.14)}
+  .tile .lbl{font-family:var(--display);font-weight:700;font-size:15px;color:var(--foam)}
+  .tile .val{margin-top:3px;font-size:12.5px;color:var(--foamMuted);font-weight:500;display:flex;align-items:center;gap:5px}
+  .tile.empty .val{color:var(--muted)}
+  .tile .rec{margin-top:9px;font-size:11px;color:var(--muted);font-weight:500;display:flex;align-items:center;gap:5px}
+  .tile .rec svg{opacity:.8}
+  .tile .plus{position:absolute;top:14px;right:14px;width:22px;height:22px;border-radius:999px;
+    display:flex;align-items:center;justify-content:center;background:rgba(232,163,23,.14);color:var(--amber);font-weight:700;font-size:15px}
+  .tile .check{position:absolute;top:16px;right:15px;color:var(--success)}
+  .mini-week{display:flex;gap:3px;margin-top:11px}
+  .mini-week i{flex:1;height:4px;border-radius:2px;background:rgba(232,163,23,.55)}
+  .mini-week i.off{background:rgba(168,137,106,.28)}
+
+  /* section header row */
+  .sec{display:flex;align-items:center;justify-content:space-between;margin:22px 0 6px}
+  .sec-l{font-family:var(--ui);font-weight:600;font-size:11.5px;letter-spacing:1.2px;color:var(--muted)}
+  .globe{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--amberLight);
+    background:rgba(245,182,66,.09);padding:4px 9px;border-radius:999px}
+
+  /* amenity row */
+  .am{display:flex;align-items:center;gap:13px;min-height:52px;padding:8px 0;border-bottom:1px solid rgba(90,58,32,.5)}
+  .am .aic{color:var(--muted);flex-shrink:0}
+  .am.voted .aic{color:var(--amber)}
+  .am .mid{flex:1;min-width:0}
+  .am .name{font-family:var(--ui);font-weight:600;font-size:14.5px;color:var(--foam)}
+  /* confidence = kolik lidí fakt potvrdilo (ne poměr hlasů) */
+  .conf{display:flex;align-items:center;gap:7px;margin-top:6px}
+  .bars{display:flex;gap:2px;align-items:flex-end;height:11px}
+  .bars i{width:3px;border-radius:1px;background:rgba(168,137,106,.32)}
+  .bars i:nth-child(1){height:5px}
+  .bars i:nth-child(2){height:8px}
+  .bars i:nth-child(3){height:11px}
+  .bars i.on{background:var(--amber)}
+  .conf .n{font-size:10.5px;color:var(--muted);font-weight:600;letter-spacing:.2px}
+  .conf.low .n{color:var(--muted)}
+  .conf.first .n{color:var(--amberLight)}
+  /* "nemají" — potvrzená absence: šedé dílky, klidný tón, nikdy červená */
+  .conf.no i.on{background:#8a6f52}
+  .conf.no .n{color:var(--muted)}
+  /* "sporné" — lidé si poslední dobou odporují */
+  .conf.disp .n{color:var(--disp)}
+  .conf.disp svg{color:var(--disp)}
+
+  /* ANO|NE segmented */
+  .seg{display:flex;border:1px solid var(--border);border-radius:999px;background:var(--stout);overflow:hidden;flex-shrink:0}
+  .seg button{border:none;background:none;font-family:var(--ui);font-weight:700;font-size:12.5px;color:var(--foamMuted);
+    min-width:46px;height:38px;cursor:pointer}
+  .seg button.no{border-left:1px solid var(--border)}
+  .seg button.on{background:var(--amber);color:var(--stout)}
+
+  .overflow{display:flex;align-items:center;justify-content:center;gap:8px;margin:20px auto 2px;
+    color:var(--muted);font-size:13px;font-weight:600;padding:12px;cursor:pointer}
+  .overflow .d{letter-spacing:2px}
+
+  /* ---------- EDITOR SCREEN ---------- */
+  .edroot{flex:1;display:flex;flex-direction:column;padding:56px 24px 20px;gap:12px}
+  .edhead{display:flex;flex-direction:column;gap:8px}
+  .edtoprow{min-height:44px;display:flex;align-items:center}
+  .back{width:40px;height:40px;display:flex;align-items:center;justify-content:center;color:var(--foam)}
+  .edtitle{flex:1;text-align:center;font-family:var(--display);font-weight:800;font-size:18px;color:var(--foam)}
+  .spacer{width:40px}
+  .segtabs{height:40px;display:flex;padding:2px;border-radius:999px;background:rgba(251,243,224,.04);border:1px solid rgba(251,243,224,.08)}
+  .segtabs button{flex:1;border:none;background:none;border-radius:999px;font-family:var(--display);font-weight:700;font-size:14px;color:var(--muted);cursor:pointer}
+  .segtabs button.on{background:rgba(251,243,224,.1);color:var(--foam)}
+
+  .card{flex:1;overflow:hidden;background:var(--stout2);border-radius:28px;border:1px solid rgba(251,243,224,.07);
+    padding:22px 22px 8px;display:flex;flex-direction:column;position:relative}
+  .card::before{content:"";position:absolute;top:0;left:14%;right:14%;height:1px;background:rgba(251,243,224,.22)}
+  .card-name{font-family:var(--display);font-weight:800;font-size:18px;color:var(--foam)}
+  .cardscroll{flex:1;margin-top:16px;overflow:auto}
+  .cardscroll::-webkit-scrollbar{display:none}
+
+  .drow{min-height:50px;display:flex;align-items:center;gap:12px;border-top:1px solid rgba(90,58,32,.4)}
+  .drow:first-child{border-top:none}
+  .drow .dd{width:8px;height:8px;border-radius:999px;flex-shrink:0}
+  .drow .dname{font-family:var(--ui);font-weight:600;font-size:15px;color:var(--foam);flex:1}
+  .drow .dval{font-family:var(--ui);font-weight:500;font-size:15px;color:var(--foam);font-variant-numeric:tabular-nums}
+  .drow .dval.closed{color:var(--closed);font-size:14px}
+
+  .brow{min-height:56px;display:flex;align-items:center;gap:12px;padding:8px 0;border-top:1px solid rgba(90,58,32,.4)}
+  .brow:first-child{border-top:none}
+  .brow .bwrap{flex:1}
+  .brow .bname{font-family:var(--ui);font-weight:600;font-size:15px;color:var(--foam)}
+  .brow .bmeta{margin-top:2px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .addrow{min-height:56px;display:flex;align-items:center;gap:8px;color:var(--amber);font-weight:600;font-size:15px;border-top:1px solid rgba(90,58,32,.4)}
+
+  .cardfoot{min-height:44px;margin-top:18px;padding-top:12px;border-top:1px solid rgba(251,243,224,.1);display:flex;align-items:center}
+  .cardfoot .ff{font-size:13px;font-weight:500;font-variant-numeric:tabular-nums}
+
+  .cta{height:76px;border-radius:999px;background:var(--amber);display:flex;flex-direction:column;align-items:center;justify-content:center;
+    position:relative;box-shadow:0 14px 30px -18px rgba(0,0,0,.7);margin-top:4px}
+  .cta::before{content:"";position:absolute;top:0;left:12%;right:12%;height:1px;background:rgba(251,243,224,.55)}
+  .cta .l{font-family:var(--display);font-weight:800;font-size:20px;color:var(--stout)}
+  .cta .s{font-size:12.5px;font-weight:600;color:rgba(31,19,8,.72);margin-top:1px}
+  .secbtn{height:48px;margin-top:8px;border-radius:999px;border:1px solid rgba(232,163,23,.18);background:rgba(232,163,23,.06);
+    display:flex;align-items:center;justify-content:center;gap:8px;color:var(--foamMuted);font-weight:600;font-size:15px}
+
+  .legend{max-width:1180px;margin:52px auto 0;display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+  .legend h3{font-family:var(--display);font-weight:700;font-size:16px;color:var(--foam);margin-bottom:14px;grid-column:1/-1}
+  .lc{background:rgba(43,26,14,.6);border:1px solid var(--border);border-radius:16px;padding:16px 18px}
+  .lc .t{font-weight:700;font-size:13.5px;color:var(--amberLight);margin-bottom:6px}
+  .lc .b{font-size:13px;color:var(--foamMuted);line-height:1.55}
+  .lc .b s{color:var(--muted)}
+</style>
+</head>
+<body>
+  <div class="page-head">
+    <h1>Mapování hospody — redesign</h1>
+    <p>Cíl podle <b>design-system.md §0 (Zákon zjednodušení)</b>: míň textu naráz, jedna cesta k věci, UI mluví za sebe. Hub přestal být seznam vět a stal se z něj tácek: nahoře <b>co hospoda je</b> (jméno, otevřeno, pivo, prstenec hotovosti), pod tím <b>dvě dlaždice faktů</b> s datem posledního zmapování, a dole <b>vybavení</b>, kde místo hlasování ano/ne nese každý fakt <b>confidence — kolik lidí ho potvrdilo</b> (12 lidí vs. 1 člověk).</p>
+    <span class="tag">Vizuální návrh · tokeny a fonty z ostrého design systému · zatím se needituje RN kód</span>
+  </div>
+
+  <div class="frames">
+    <!-- ============ FRAME 1: HUB ============ -->
+    <div class="col">
+      <div class="col-cap">1 · „Zmapuj hospodu“ (hub)</div>
+      <div class="phone"><div class="screen">
+        <div class="notch"></div>
+        <div class="backdrop"></div>
+        <div class="sheet">
+          <div class="grabber"></div>
+
+          <div class="hub-head">
+            <div>
+              <div class="hub-title">U Zlatého tygra</div>
+              <div class="hours-row">
+                <span class="dot" style="background:var(--open)"></span>
+                <span class="txt" style="color:var(--open)">Otevřeno do 23:00</span>
+              </div>
+              <div class="beer-line">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 11h1a3 3 0 010 6h-1"/><path d="M9 12v6M13 12v6"/><path d="M14 7.5c-1 0-1.44.5-3 .5s-2-.5-3-.5-1.72.5-2.5.5a2.5 2.5 0 010-5c.78 0 1.57.5 2.5.5S9.44 3 11 3s2 .5 3 .5 1.72-.5 2.5-.5a2.5 2.5 0 010 5c-.78 0-1.5-.5-2.5-.5z"/><path d="M5 8v10a2 2 0 002 2h6a2 2 0 002-2V8"/></svg>
+                Pilsner Urquell · 52 Kč
+              </div>
+            </div>
+            <div class="ring-wrap">
+              <div class="ring">
+                <svg width="64" height="64">
+                  <circle cx="32" cy="32" r="29.5" stroke="var(--stout3)" stroke-width="5" fill="none"/>
+                  <circle cx="32" cy="32" r="29.5" stroke="var(--amber)" stroke-width="5" fill="none" stroke-linecap="round"
+                    stroke-dasharray="185.4" stroke-dashoffset="55.6"/>
+                </svg>
+                <div class="pct">70%</div>
+              </div>
+              <div class="ring-cap">zmapováno</div>
+            </div>
+          </div>
+
+          <div class="body">
+            <!-- fact tiles -->
+            <div class="tiles">
+              <div class="tile">
+                <span class="check"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>
+                <div class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+                <div class="lbl">Otevíračka</div>
+                <div class="mini-week"><i></i><i></i><i></i><i></i><i></i><i class="off"></i><i class="off"></i></div>
+                <div class="rec"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 109-9 9 9 0 00-9 9z" opacity="0"/><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>zmapováno 12. 7.</div>
+              </div>
+              <div class="tile">
+                <span class="check"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>
+                <div class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 11h1a3 3 0 010 6h-1"/><path d="M9 12v6M13 12v6"/><path d="M5 8v10a2 2 0 002 2h6a2 2 0 002-2V8"/><path d="M14 7.5c-1 0-1.44.5-3 .5s-2-.5-3-.5-1.72.5-2.5.5a2.5 2.5 0 010-5c.78 0 1.57.5 2.5.5S9.44 3 11 3s2 .5 3 .5 1.72-.5 2.5-.5a2.5 2.5 0 010 5c-.78 0-1.5-.5-2.5-.5z"/></svg></div>
+                <div class="lbl">Piva</div>
+                <div class="val">3 na čepu · od 46 Kč</div>
+                <div class="rec"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>cena z 12. 7.</div>
+              </div>
+            </div>
+
+            <!-- amenities -->
+            <div class="sec">
+              <span class="sec-l">CO TU JE</span>
+              <span class="globe">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 010 18M12 3a15 15 0 000 18"/></svg>
+                veřejné
+              </span>
+            </div>
+
+            <!-- voted YES -->
+            <div class="am voted">
+              <span class="aic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 22a8 8 0 0116 0"/><path d="M10 9V2M10 2l6 2-6 2"/><circle cx="10" cy="12" r="2.4"/></svg></span>
+              <div class="mid">
+                <div class="name">Zahrádka</div>
+                <div class="conf"><span class="bars"><i class="on"></i><i class="on"></i><i class="on"></i></span><span class="n">potvrdilo 12 lidí</span></div>
+              </div>
+              <div class="seg"><button class="on">Ano</button><button class="no">Ne</button></div>
+            </div>
+
+            <!-- known, no vote -->
+            <div class="am">
+              <span class="aic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg></span>
+              <div class="mid">
+                <div class="name">Platba kartou</div>
+                <div class="conf disp"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3L2 20h20L12 3z"/><path d="M12 10v4M12 17v.01"/></svg><span class="n">sporné · ověř to</span></div>
+              </div>
+              <div class="seg"><button>Ano</button><button class="no">Ne</button></div>
+            </div>
+
+            <!-- low confidence: jen jeden člověk -->
+            <div class="am">
+              <span class="aic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M5.6 5.6l2.1 2.1M3 12h3M18 12h3M16.3 7.7l2.1-2.1"/><path d="M8 21h8l-1.5-7h-5L8 21z"/></svg></span>
+              <div class="mid">
+                <div class="name">Živá hudba</div>
+                <div class="conf low"><span class="bars"><i class="on"></i><i></i><i></i></span><span class="n">jen 1 potvrzení</span></div>
+              </div>
+              <div class="seg"><button>Ano</button><button class="no">Ne</button></div>
+            </div>
+
+            <!-- community says NO: potvrzená absence, klidně ztlumené -->
+            <div class="am">
+              <span class="aic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span>
+              <div class="mid">
+                <div class="name">Sport v TV</div>
+                <div class="conf no"><span class="bars"><i class="on"></i><i class="on"></i><i class="on"></i></span><span class="n">nemají · 9 lidí</span></div>
+              </div>
+              <div class="seg"><button>Ano</button><button class="no on">Ne</button></div>
+            </div>
+
+            <!-- unmapped + first-mapper glow on my vote -->
+            <div class="am voted">
+              <span class="aic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6M9 4l3-2 3 2"/><circle cx="12" cy="15" r="6"/><path d="M12 12v3l2 1"/></svg></span>
+              <div class="mid">
+                <div class="name">Šipky</div>
+                <div class="conf first"><span class="bars"><i class="on"></i><i></i><i></i></span><span class="n">zmapoval jsi první</span></div>
+              </div>
+              <div class="seg"><button class="on">Ano</button><button class="no">Ne</button></div>
+            </div>
+
+            <div class="am">
+              <span class="aic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13a7 7 0 0114 0"/><path d="M12 13l4-2M9 20h6"/></svg></span>
+              <div class="mid"><div class="name">Wi-Fi</div></div>
+              <div class="seg"><button>Ano</button><button class="no">Ne</button></div>
+            </div>
+
+            <div class="overflow"><span class="d">···</span> Přejmenovat · nahlásit</div>
+          </div>
+        </div>
+      </div></div>
+      <div class="col-sub">Prstenec = jeden pohled na hotovost. Vybavení: konsenzus nese proužek, ne věta. Přejmenování a nahlášení spadlo do „···“.</div>
+    </div>
+
+    <!-- ============ FRAME 2: HOURS EDITOR ============ -->
+    <div class="col">
+      <div class="col-cap">2 · Editor — Otevíračka</div>
+      <div class="phone"><div class="screen">
+        <div class="notch"></div>
+        <div class="edroot">
+          <div class="edhead">
+            <div class="edtoprow">
+              <div class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+              <div class="edtitle">Doplnit info</div>
+              <div class="spacer"></div>
+            </div>
+            <div class="segtabs"><button class="on">Otevíračka</button><button>Piva</button></div>
+          </div>
+
+          <div class="card">
+            <div class="card-name">U Zlatého tygra</div>
+            <div class="cardscroll">
+              <div class="drow"><span class="dd" style="background:var(--open)"></span><span class="dname">Pondělí</span><span class="dval">11:00–23:00</span></div>
+              <div class="drow"><span class="dd" style="background:var(--open)"></span><span class="dname">Úterý</span><span class="dval">11:00–23:00</span></div>
+              <div class="drow"><span class="dd" style="background:var(--open)"></span><span class="dname">Středa</span><span class="dval">11:00–23:00</span></div>
+              <div class="drow"><span class="dd" style="background:var(--open)"></span><span class="dname">Čtvrtek</span><span class="dval">11:00–23:00</span></div>
+              <div class="drow"><span class="dd" style="background:var(--open)"></span><span class="dname">Pátek</span><span class="dval">11:00–01:00</span></div>
+              <div class="drow"><span class="dd" style="background:var(--closed)"></span><span class="dname">Sobota</span><span class="dval closed">Zavřeno</span></div>
+              <div class="drow"><span class="dd" style="background:var(--closed)"></span><span class="dname">Neděle</span><span class="dval closed">Zavřeno</span></div>
+            </div>
+            <div class="cardfoot"><span class="ff" style="color:var(--open)">Teď otevřeno · do 23:00</span></div>
+          </div>
+
+          <div class="cta"><span class="l">Uložit</span><span class="s">Uvidí to ostatní pivaři</span></div>
+        </div>
+      </div></div>
+      <div class="col-sub">Každý den má tečku otevřeno/zavřeno — stav se čte barvou, ne slovem. Zmizel nadbytečný podnadpis, co jen opakoval záložku.</div>
+    </div>
+
+    <!-- ============ FRAME 3: BEERS EDITOR ============ -->
+    <div class="col">
+      <div class="col-cap">3 · Editor — Piva</div>
+      <div class="phone"><div class="screen">
+        <div class="notch"></div>
+        <div class="edroot">
+          <div class="edhead">
+            <div class="edtoprow">
+              <div class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+              <div class="edtitle">Doplnit info</div>
+              <div class="spacer"></div>
+            </div>
+            <div class="segtabs"><button>Otevíračka</button><button class="on">Piva</button></div>
+          </div>
+
+          <div class="card">
+            <div class="card-name">U Zlatého tygra</div>
+            <div class="cardscroll">
+              <div class="brow"><div class="bwrap"><div class="bname">Pilsner Urquell</div><div class="bmeta">0,5 l · 52 Kč</div></div><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></div>
+              <div class="brow"><div class="bwrap"><div class="bname">Kozel černý</div><div class="bmeta">0,5 l · 46 Kč</div></div><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></div>
+              <div class="brow"><div class="bwrap"><div class="bname">Pilsner Urquell</div><div class="bmeta">0,3 l · cena chybí</div></div><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></div>
+              <div class="addrow"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Přidat pivo</div>
+            </div>
+            <div class="cardfoot"><span class="ff" style="color:var(--amber);font-weight:600">Dřív tu byla 2 piva ›</span></div>
+          </div>
+
+          <div class="cta"><span class="l">Uložit</span><span class="s">Uvidí to ostatní pivaři</span></div>
+          <div class="secbtn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L8 6H4a2 2 0 00-2 2v10a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2h-4l-1.5-2z"/><circle cx="12" cy="13" r="3.5"/></svg>Vyfoť lístek</div>
+        </div>
+      </div></div>
+      <div class="col-sub">Beze změny struktury — jen zmizel podnadpis a „Vyfoť lístek“ zůstává jediná sekundární akce.</div>
+    </div>
+  </div>
+
+  <!-- legend / changelog -->
+  <div class="legend">
+    <h3>Co se změnilo a proč (mapa na design-system.md)</h3>
+    <div class="lc"><div class="t">Zabil jsem 4řádkový blok „mapIntro“</div><div class="b"><s>„Zmapuj hospodu / Jde ti to! / Zmapováno 5 z 11 / Veřejné. Uvidí to ostatní pivaři.“</s> → prstenec už procento ukazuje, „Jde ti to!“ je vata. Zbyl jeden řádek sekce + malý chip <b>veřejné</b>. (§0.5, §14.1)</div></div>
+    <div class="lc"><div class="t">Vybavení: confidence, ne hlasování</div><div class="b"><s>„3× ano · 1× ne“ / „lidi se neshodnou“</s> — fotbálek buď je, nebo není, poměr hlasů nedává smysl. Čtyři stavy: <b>má to</b> („potvrdilo 12 lidí“), <b>nemají</b> (šedé dílky, „nemají · 9 lidí“, nikdy červená), <b>sporné · ověř to</b> (poslední dobou si lidé odporují), <b>nezmapováno</b> (nic). ANO|NE zůstává jen tvůj vklad.</div></div>
+    <div class="lc"><div class="t">Otevíračka + piva: čerstvost datem</div><div class="b">Dvě dlaždice místo tří upovídaných řádků. Navíc <b>datum posledního zmapování</b> („zmapováno 12. 7.“, „cena z 12. 7.“) — otevíračka i cena stárnou, tak ať je vidět, jak jsou staré.</div></div>
+    <div class="lc"><div class="t">Přejmenovat / nahlásit → „···“</div><div class="b">Okrajové akce zmizely z hlavního scrollu do jednoho overflow řádku. (§0.4: okrajové akce do jednoho sheetu)</div></div>
+    <div class="lc"><div class="t">Editor: pryč s duplicitním podnadpisem</div><div class="b"><s>eyebrow „Otevírací doba“ / „Piva na čepu“</s> jen opakoval aktivní záložku. Den dostal tečku otevřeno/zavřeno — stav barvou.</div></div>
+    <div class="lc"><div class="t">Bez glow (tvůj pokyn)</div><div class="b">Sundán jantarový glow z CTA i pozadí — jen tónovaný tmavý stín a světelná hrana. Vědomá odchylka od §6.1, patří doplnit do design-system.md.</div></div>
+    <div class="lc"><div class="t">Drženo z etalonu</div><div class="b">Stout pozadí, tácková karta se světelnou hranou, Baloo/Inter, jedno jantarové CTA, ANO|NE zůstává explicitní (ne slepý 3-stavový cyklus). Žádné nové patterny.</div></div>
+  </div>
+</body>
+</html>

@@ -20,6 +20,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
+import { BeerIcon } from '@/components/shared/IconGlyph';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
@@ -86,13 +87,12 @@ export function Toast() {
         style={[styles.toast, softDrop()]}
         accessibilityRole="button"
       >
-        {/* Leading visual: a caller-supplied IconGlyph (e.g. Mapér events) or
-            the default 🍺. The emoji stays for every legacy caller. */}
-        {icon != null ? (
-          <View style={styles.iconSlot}>{icon}</View>
-        ) : (
-          <Text style={styles.emoji}>🍺</Text>
-        )}
+        {/* Leading visual: a caller-supplied IconGlyph, or a drawn beer glyph.
+            It used to fall back to a 🍺 emoji — emoji are banned in UI chrome
+            (§12), and a toast is chrome. */}
+        <View style={styles.iconSlot}>
+          {icon ?? <BeerIcon size={18} color={Colors.amber} />}
+        </View>
         <Text
           style={styles.text}
           numberOfLines={2}
@@ -121,13 +121,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout2,
     borderRadius: Radius.pill,
     borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.45),
+    borderColor: withAlpha(Colors.foam, 0.1),
     paddingVertical: Spacing.sm,
     paddingHorizontal: Spacing.lg,
-  },
-  emoji: {
-    fontSize: 18,
-    lineHeight: 22,
   },
   iconSlot: {
     width: 22,

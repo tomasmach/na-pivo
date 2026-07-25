@@ -1,113 +1,109 @@
 /**
- * Screen 05 — Settings (Nastavení)
- * Presented as a bottom-sheet modal from the compass screen.
+ * Nastavení in the Tácek composition.
  *
- * Sections:
- *  1. Header row  (back button + centered title)
- *  2. Distance card  (custom discrete slider)
- *  3. Preferences card  (haptics + sound toggles)
- *  4. About card  (about + privacy rows)
- *  5. Footer
+ * The screen has two quiet cards and one amber account door. Search radius,
+ * filters and notification preferences stay directly editable; one-off doors
+ * live in the shared "Co ještě?" sheet. Store writes, server preference sync
+ * and notification permission flows are unchanged.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  View,
-  Text,
-  ScrollView,
   Pressable,
+  ScrollView,
   StyleSheet,
-  LayoutChangeEvent,
+  Text,
+  View,
+  type AccessibilityActionEvent,
+  type LayoutChangeEvent,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, type Href } from 'expo-router';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
   runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
 } from 'react-native-reanimated';
-import {
-  Gesture,
-  GestureDetector,
-} from 'react-native-gesture-handler';
+import { useRouter, type Href } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
-import { softDrop } from '@/theme/shadows';
-import { cs } from '@/i18n/cs';
 import {
-  BEER_COUNT_REMINDER_INTERVAL_OPTIONS,
-  useSettingsStore,
-  type BeerCountReminderIntervalMinutes,
-} from '@/stores/settingsStore';
-import { updateAccountPreferences } from '@/data/account';
-import { getAppVersionLabel } from '@/utils/appVersion';
-import {
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  RadiusIcon,
-  BellRingIcon,
-  Volume2Icon,
-  GlassWaterIcon,
-  BeerOffIcon,
-  EyeOffIcon,
-  CoinsIcon,
-  InfoIcon,
-  ShieldIcon,
-  MailIcon,
-  MessageSquareIcon,
-  MapPinIcon,
+  EllipsisIcon,
   HouseIcon,
+  InfoIcon,
+  MapIcon,
+  MapPinIcon,
+  MessageSquareIcon,
+  PlusIcon,
+  ShieldIcon,
   StarIcon,
-  CheckIcon,
+  ChevronLeftIcon,
 } from '@/components/shared/IconGlyph';
-import { Avatar } from '@/profile/Avatar';
-import {
-  useAccountStore,
-  selectIsSignedIn,
-  selectNickname,
-  selectAvatarUrl,
-} from '@/stores/accountStore';
-import type { PriceCurrency } from '@/utils/currency';
-import {
-  disablePubReminderNotifications,
-  enablePubReminderNotifications,
-} from '@/notifications/pubReminderNotifications';
-import { showPubReminderEnableFailure } from '@/notifications/pubReminderEnableFailure';
+import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
+import { CounterCta } from '@/counter/CounterCta';
+import { updateAccountPreferences } from '@/data/account';
+import { cs } from '@/i18n/cs';
 import {
   disableBeerCountReminderNotifications,
   enableBeerCountReminderNotifications,
   reschedulePendingBeerCountReminder,
 } from '@/notifications/beerCountReminder';
+import { showPubReminderEnableFailure } from '@/notifications/pubReminderEnableFailure';
+import {
+  disablePubReminderNotifications,
+  enablePubReminderNotifications,
+} from '@/notifications/pubReminderNotifications';
+import {
+  selectIsSignedIn,
+  selectNickname,
+  useAccountStore,
+} from '@/stores/accountStore';
+import {
+  BEER_COUNT_REMINDER_INTERVAL_OPTIONS,
+  useSettingsStore,
+  type BeerCountReminderIntervalMinutes,
+} from '@/stores/settingsStore';
+import { Colors, withAlpha } from '@/theme/colors';
+import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { Radius, Spacing } from '@/theme/layout';
+import { softDrop } from '@/theme/shadows';
+import { getAppVersionLabel } from '@/utils/appVersion';
 
-// ---------------------------------------------------------------------------
-// Discrete slider positions
-// ---------------------------------------------------------------------------
-
-// Ordered low → high reach. `null` ("Bez limitu") sits at the far RIGHT so the
-// thumb travels left→right as the search radius grows, and the fill bar is full
-// at unlimited — matching the user's mental model of "maximum reach".
 const SLIDER_POSITIONS: (number | null)[] = [0.5, 1, 1.5, 2, 2.5, 5, 10, null];
-const SLIDER_STEPS = SLIDER_POSITIONS.length - 1; // 7
+const SLIDER_STEPS = SLIDER_POSITIONS.length - 1;
+const TRACK_HEIGHT = 14;
+const THUMB_SIZE = 28;
 
 function positionIndexForKm(km: number | null): number {
   if (km === null) return SLIDER_POSITIONS.length - 1;
-  const idx = SLIDER_POSITIONS.indexOf(km);
-  return idx === -1 ? SLIDER_POSITIONS.length - 1 : idx;
+  const index = SLIDER_POSITIONS.indexOf(km);
+  return index === -1 ? SLIDER_POSITIONS.length - 1 : index;
 }
 
 function formatCzKm(km: number): string {
-  // Format number Czech-style: decimal point → comma, strip trailing ,0
-  let s = km.toString().replace('.', ',');
-  if (s.endsWith(',0')) s = s.slice(0, -2);
-  return s;
+  return km.toString().replace('.', ',').replace(/,0$/, '');
 }
 
-// ---------------------------------------------------------------------------
-// Toggle component
-// ---------------------------------------------------------------------------
+function distanceReadout(km: number | null): { value: string; unit: string } {
+  if (km === null) {
+    return { value: '∞', unit: cs.settings.distance.unlimitedUnit };
+  }
+  if (km === 0.5) {
+    return { value: '500', unit: cs.compass.distanceUnitMeters };
+  }
+  const singularForm = km === 1 || km === 1.5 || km === 2.5;
+  return {
+    value: formatCzKm(km),
+    unit: cs.compass.distanceUnitKm(singularForm ? 1 : km),
+  };
+}
+
+function numeralFontSize(value: string): number {
+  const digits = value.match(/\d/g)?.length ?? 1;
+  if (digits <= 1) return 88;
+  if (digits === 2) return 72;
+  return 56;
+}
 
 interface ToggleProps {
   value: boolean;
@@ -119,18 +115,12 @@ function Toggle({ value, onToggle, accessibilityLabel }: ToggleProps) {
   const offset = useSharedValue(value ? 24 : 2);
 
   useEffect(() => {
-    // Keep the thumb in sync when an async toggle rejects and the controlled
-    // value stays where it was.
     offset.value = withSpring(value ? 24 : 2, {
       mass: 0.6,
       damping: 14,
       stiffness: 200,
     });
-  }, [value, offset]);
-
-  const handlePress = useCallback(() => {
-    onToggle();
-  }, [onToggle]);
+  }, [offset, value]);
 
   const thumbStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: offset.value }],
@@ -138,34 +128,34 @@ function Toggle({ value, onToggle, accessibilityLabel }: ToggleProps) {
 
   return (
     <Pressable
-      onPress={handlePress}
+      onPress={onToggle}
       style={[styles.toggle, value ? styles.toggleOn : styles.toggleOff]}
       accessibilityRole="switch"
       accessibilityState={{ checked: value }}
       accessibilityLabel={accessibilityLabel}
-      hitSlop={8}
+      hitSlop={{ top: 7, bottom: 7, left: 4, right: 4 }}
     >
-      <Animated.View style={[styles.toggleThumb, softDrop(), thumbStyle]} />
+      <Animated.View
+        style={[
+          styles.toggleThumb,
+          value ? styles.toggleThumbOn : styles.toggleThumbOff,
+          softDrop(),
+          thumbStyle,
+        ]}
+      />
     </Pressable>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Distance slider
-// ---------------------------------------------------------------------------
-
-interface SliderProps {
+interface DistanceSliderProps {
   positionIndex: number;
+  valueLabel: string;
   onSnap: (index: number) => void;
 }
 
-function DistanceSlider({ positionIndex, onSnap }: SliderProps) {
+function DistanceSlider({ positionIndex, valueLabel, onSnap }: DistanceSliderProps) {
   const [trackWidth, setTrackWidth] = useState(0);
   const snapIndex = useSharedValue(positionIndex);
-
-  const onTrackLayout = useCallback((e: LayoutChangeEvent) => {
-    setTrackWidth(e.nativeEvent.layout.width);
-  }, []);
 
   const commitSnap = useCallback(
     (index: number) => {
@@ -174,92 +164,141 @@ function DistanceSlider({ positionIndex, onSnap }: SliderProps) {
     [onSnap],
   );
 
+  const snapFromX = useCallback(
+    (x: number) => {
+      if (trackWidth === 0) return;
+      const fraction = Math.max(0, Math.min(1, x / trackWidth));
+      commitSnap(Math.round(fraction * SLIDER_STEPS));
+    },
+    [commitSnap, trackWidth],
+  );
+
   const pan = Gesture.Pan()
-    .onUpdate((e) => {
+    .onUpdate((event) => {
       if (trackWidth === 0) return;
-      const rawFraction = e.x / trackWidth;
-      const clamped = Math.max(0, Math.min(1, rawFraction));
-      const snapped = Math.round(clamped * SLIDER_STEPS);
-      if (snapped !== snapIndex.value) {
-        snapIndex.value = snapped;
-        runOnJS(commitSnap)(snapped);
-      }
+      const fraction = Math.max(0, Math.min(1, event.x / trackWidth));
+      const next = Math.round(fraction * SLIDER_STEPS);
+      if (next === snapIndex.value) return;
+      snapIndex.value = next;
+      runOnJS(commitSnap)(next);
     })
-    .onEnd((e) => {
+    .onEnd((event) => {
       if (trackWidth === 0) return;
-      const rawFraction = e.x / trackWidth;
-      const clamped = Math.max(0, Math.min(1, rawFraction));
-      const snapped = Math.round(clamped * SLIDER_STEPS);
-      snapIndex.value = snapped;
-      runOnJS(commitSnap)(snapped);
+      const fraction = Math.max(0, Math.min(1, event.x / trackWidth));
+      const next = Math.round(fraction * SLIDER_STEPS);
+      snapIndex.value = next;
+      runOnJS(commitSnap)(next);
     });
 
   const fillStyle = useAnimatedStyle(() => {
-    const frac = SLIDER_STEPS > 0 ? snapIndex.value / SLIDER_STEPS : 0;
-    // Fill reaches the thumb's centre so the bar lines up with the ball.
-    const center = frac * (trackWidth - THUMB_SIZE) + THUMB_SIZE / 2;
-    return { width: center };
+    const fraction = SLIDER_STEPS > 0 ? snapIndex.value / SLIDER_STEPS : 0;
+    return { width: fraction * (trackWidth - THUMB_SIZE) + THUMB_SIZE / 2 };
   });
 
   const thumbStyle = useAnimatedStyle(() => {
-    const frac = SLIDER_STEPS > 0 ? snapIndex.value / SLIDER_STEPS : 0;
-    // Travel within the track so the thumb stays fully inside at both ends.
-    const x = frac * (trackWidth - THUMB_SIZE);
-    return { transform: [{ translateX: x }] };
+    const fraction = SLIDER_STEPS > 0 ? snapIndex.value / SLIDER_STEPS : 0;
+    return { transform: [{ translateX: fraction * (trackWidth - THUMB_SIZE) }] };
   });
 
-  // Keep shared value in sync when parent updates
-  React.useEffect(() => {
+  useEffect(() => {
     snapIndex.value = positionIndex;
   }, [positionIndex, snapIndex]);
+
+  const handleAccessibilityAction = useCallback(
+    (event: AccessibilityActionEvent) => {
+      const delta = event.nativeEvent.actionName === 'increment' ? 1 : -1;
+      const next = Math.max(0, Math.min(SLIDER_STEPS, positionIndex + delta));
+      if (next !== positionIndex) commitSnap(next);
+    },
+    [commitSnap, positionIndex],
+  );
+
+  const handleLayout = useCallback((event: LayoutChangeEvent) => {
+    setTrackWidth(event.nativeEvent.layout.width);
+  }, []);
 
   return (
     <View style={styles.sliderWrapper}>
       <GestureDetector gesture={pan}>
-        <View style={styles.trackOuter} onLayout={onTrackLayout}>
-          {/* Fill bar */}
-          <Animated.View style={[styles.trackFill, fillStyle]} />
-          {/* Thumb — absolutely positioned */}
-          <Animated.View style={[styles.thumb, thumbStyle]} />
+        <View
+          style={styles.sliderTouchArea}
+          onLayout={handleLayout}
+          accessibilityRole="adjustable"
+          accessibilityLabel={cs.settings.distance.accessibilityLabel}
+          accessibilityValue={{
+            min: 0,
+            max: SLIDER_STEPS,
+            now: positionIndex,
+            text: valueLabel,
+          }}
+          accessibilityActions={[
+            { name: 'increment', label: cs.settings.distance.increase },
+            { name: 'decrement', label: cs.settings.distance.decrease },
+          ]}
+          onAccessibilityAction={handleAccessibilityAction}
+          onTouchEnd={(event) => snapFromX(event.nativeEvent.locationX)}
+        >
+          <View style={styles.track}>
+            <Animated.View style={[styles.trackFill, fillStyle]} />
+            <Animated.View style={[styles.thumb, softDrop(), thumbStyle]} />
+          </View>
         </View>
       </GestureDetector>
-
-      {/* Range labels */}
       <View style={styles.rangeLabels}>
-        <Text style={styles.rangeLabel}>{cs.settings.distance.rangeMin}</Text>
-        <Text style={styles.rangeLabel}>{cs.settings.distance.rangeMax}</Text>
+        <Text style={styles.rangeLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+          {cs.settings.distance.rangeMin}
+        </Text>
+        <Text style={styles.rangeLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+          {cs.settings.distance.rangeMax}
+        </Text>
       </View>
     </View>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Preference row
-// ---------------------------------------------------------------------------
-
-interface PrefRowProps {
-  icon: React.ReactNode;
+interface PreferenceRowProps {
   title: string;
   subtitle: string;
   value: boolean;
   onToggle: () => void;
   toggleLabel: string;
-  borderTop?: boolean;
+  divider?: boolean;
+  edgeToEdge?: boolean;
 }
 
-function PrefRow({ icon, title, subtitle, value, onToggle, toggleLabel, borderTop }: PrefRowProps) {
+function PreferenceRow({
+  title,
+  subtitle,
+  value,
+  onToggle,
+  toggleLabel,
+  divider = false,
+  edgeToEdge = true,
+}: PreferenceRowProps) {
   return (
-    <View style={[styles.prefRow, borderTop && styles.prefRowBorderTop]}>
-      {/* Icon well */}
-      <View style={styles.iconWell}>{icon}</View>
-
-      {/* Text stack */}
-      <View style={styles.prefText}>
-        <Text style={styles.prefTitle}>{title}</Text>
-        <Text style={styles.prefSubtitle}>{subtitle}</Text>
+    <View
+      style={[
+        styles.preferenceRow,
+        edgeToEdge && styles.preferenceRowEdge,
+        divider && styles.rowDivider,
+      ]}
+    >
+      <View style={styles.preferenceText}>
+        <Text
+          style={styles.preferenceTitle}
+          numberOfLines={1}
+          maxFontSizeMultiplier={FontScaleCap.body}
+        >
+          {title}
+        </Text>
+        <Text
+          style={styles.preferenceSubtitle}
+          numberOfLines={2}
+          maxFontSizeMultiplier={FontScaleCap.body}
+        >
+          {subtitle}
+        </Text>
       </View>
-
-      {/* Toggle */}
       <Toggle value={value} onToggle={onToggle} accessibilityLabel={toggleLabel} />
     </View>
   );
@@ -277,18 +316,21 @@ function BeerCountReminderRow({
   onIntervalChange: (minutes: BeerCountReminderIntervalMinutes) => void;
 }) {
   return (
-    <View style={styles.prefRowBorderTop}>
-      <PrefRow
-        icon={<BellRingIcon size={18} color={Colors.foamMuted} />}
+    <View style={[styles.beerCountReminder, styles.rowDivider]}>
+      <PreferenceRow
         title={cs.settings.beerCountReminder.title}
         subtitle={cs.settings.beerCountReminder.subtitle}
         value={enabled}
         onToggle={onToggle}
         toggleLabel={`${cs.settings.beerCountReminder.title}: ${enabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+        edgeToEdge={false}
       />
       {enabled ? (
         <View style={styles.reminderIntervalRow}>
-          <Text style={styles.reminderIntervalLabel}>
+          <Text
+            style={styles.reminderIntervalLabel}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
             {cs.settings.beerCountReminder.intervalLabel}
           </Text>
           <View style={styles.reminderIntervalOptions}>
@@ -302,6 +344,7 @@ function BeerCountReminderRow({
                     styles.reminderIntervalOption,
                     selected && styles.reminderIntervalOptionSelected,
                   ]}
+                  hitSlop={{ top: 8, bottom: 8 }}
                   accessibilityRole="radio"
                   accessibilityState={{ selected }}
                   accessibilityLabel={cs.settings.beerCountReminder.intervalOption(minutes)}
@@ -311,8 +354,10 @@ function BeerCountReminderRow({
                       styles.reminderIntervalOptionText,
                       selected && styles.reminderIntervalOptionTextSelected,
                     ]}
+                    numberOfLines={1}
+                    maxFontSizeMultiplier={FontScaleCap.body}
                   >
-                    {minutes} min
+                    {cs.settings.beerCountReminder.intervalShort(minutes)}
                   </Text>
                 </Pressable>
               );
@@ -324,200 +369,65 @@ function BeerCountReminderRow({
   );
 }
 
-function CurrencyRow({ value, borderTop }: { value: PriceCurrency; borderTop?: boolean }) {
+function SectionLabel({ children, spaced = false }: { children: string; spaced?: boolean }) {
   return (
-    <View style={[styles.prefRow, borderTop && styles.prefRowBorderTop]}>
-      <View style={styles.iconWell}>
-        <CoinsIcon size={18} color={Colors.foamMuted} />
-      </View>
-      <View style={styles.prefText}>
-        <Text style={styles.prefTitle}>{cs.settings.currency.title}</Text>
-        <Text style={styles.prefSubtitle}>{cs.settings.currency.subtitle}</Text>
-      </View>
-      <View style={[styles.currencySegment, styles.currencyOptionSelected]}>
-        <Text style={[styles.currencyOptionText, styles.currencyOptionTextSelected]}>{value}</Text>
-      </View>
-    </View>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// About / nav row
-// ---------------------------------------------------------------------------
-
-interface AboutRowProps {
-  icon: React.ReactNode;
-  title: string;
-  rightLabel?: string;
-  onPress: () => void;
-  borderTop?: boolean;
-}
-
-function AboutRow({ icon, title, rightLabel, onPress, borderTop }: AboutRowProps) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.aboutRow,
-        borderTop && styles.prefRowBorderTop,
-        pressed && styles.rowPressed,
-      ]}
-      accessibilityRole="button"
+    <Text
+      style={[styles.sectionLabel, spaced && styles.sectionLabelSpaced]}
+      maxFontSizeMultiplier={FontScaleCap.body}
     >
-      <View style={styles.iconWell}>{icon}</View>
-      <Text style={styles.aboutTitle}>{title}</Text>
-      <View style={styles.aboutRight}>
-        {rightLabel != null && (
-          <Text style={styles.aboutVersion}>{rightLabel}</Text>
-        )}
-        <ChevronRightIcon size={16} color={Colors.mutedText} />
-      </View>
-    </Pressable>
+      {children}
+    </Text>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Action CTA — a discreet amber call-to-action, surfaced near the top so the
-// contribution actions ("add a missing pub", "report a problem") are visible
-// without scrolling (they used to be buried as rows of the About card).
-// ---------------------------------------------------------------------------
-
-interface ActionCtaProps {
-  icon: React.ReactNode;
-  title: string;
-  subtitle: string;
-  onPress: () => void;
-}
-
-function ActionCta({ icon, title, subtitle, onPress }: ActionCtaProps) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [styles.ctaCard, pressed && styles.rowPressed]}
-      accessibilityRole="button"
-      accessibilityLabel={title}
-    >
-      <View style={styles.ctaIconWell}>{icon}</View>
-      <View style={styles.ctaText}>
-        <Text style={styles.ctaTitle}>{title}</Text>
-        <Text style={styles.ctaSubtitle}>{subtitle}</Text>
-      </View>
-      <ChevronRightIcon size={18} color={Colors.amber} />
-    </Pressable>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Section header — uppercase amber micro-label grouping the cards below it.
-// ---------------------------------------------------------------------------
-
-function SectionHeader({ label }: { label: string }) {
-  return <Text style={styles.sectionHeader}>{label}</Text>;
-}
-
-// ---------------------------------------------------------------------------
-// Account hub card — the single entry into account management. Drills into
-// /account when signed in, into /auth when signed out. Editing the profile
-// itself stays on the Profile tab so there is exactly one edit entry point.
-// ---------------------------------------------------------------------------
-
-function AccountCard() {
-  const router = useRouter();
-  const isSignedIn = useAccountStore(selectIsSignedIn);
-  const profile = useAccountStore((s) => s.profile);
-  const nickname = useAccountStore(selectNickname);
-  const avatarUrl = useAccountStore(selectAvatarUrl);
-
-  const displayName = profile?.displayName?.trim() || '';
-  const title = isSignedIn
-    ? nickname
-      ? `@${nickname}`
-      : displayName || cs.settings.accountCard.signedOutTitle
-    : cs.settings.accountCard.signedOutTitle;
-  const verified = isSignedIn && !!profile?.email && profile.emailVerified;
-
-  return (
-    <Pressable
-      onPress={() => router.push((isSignedIn ? '/account' : '/auth') as Href)}
-      style={({ pressed }) => [styles.accountCard, pressed && styles.rowPressed]}
-      accessibilityRole="button"
-      accessibilityLabel={isSignedIn ? cs.a11y.profileManageAccount : cs.a11y.profileSignUp}
-    >
-      <Avatar
-        uri={isSignedIn ? avatarUrl : undefined}
-        nickname={nickname}
-        displayName={displayName}
-        size={52}
-      />
-      <View style={styles.accountText}>
-        <Text style={styles.accountTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {title}
-        </Text>
-        {isSignedIn ? (
-          <View style={styles.accountSubRow}>
-            {verified && <CheckIcon size={13} color={Colors.success} />}
-            <Text
-              style={[styles.accountSubtitle, verified && styles.accountSubtitleVerified]}
-              numberOfLines={1}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            >
-              {verified
-                ? cs.settings.accountCard.verified
-                : profile?.email || cs.profile.manageAccount}
-            </Text>
-          </View>
-        ) : (
-          <Text style={styles.accountSubtitle} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.settings.accountCard.signedOutSubtitle}
-          </Text>
-        )}
-      </View>
-      <ChevronRightIcon size={18} color={Colors.mutedText} />
-    </Pressable>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Main screen
-// ---------------------------------------------------------------------------
 
 export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const maxDistanceKm = useSettingsStore((s) => s.maxDistanceKm);
-  const homePoint = useSettingsStore((s) => s.homePoint);
-  const navigationProvider = useSettingsStore((s) => s.navigationProvider);
-  const priceCurrency = useSettingsStore((s) => s.priceCurrency);
-  const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
-  const soundEnabled = useSettingsStore((s) => s.soundEnabled);
-  const waterNudgeEnabled = useSettingsStore((s) => s.waterNudgeEnabled);
-  const hideClosedPubs = useSettingsStore((s) => s.hideClosedPubs);
-  const preferRatedPubs = useSettingsStore((s) => s.preferRatedPubs);
-  const hidePubNames = useSettingsStore((s) => s.hidePubNames);
-  const marketingEmailsEnabled = useSettingsStore((s) => s.marketingEmailsEnabled);
-  const pubReminderEnabled = useSettingsStore((s) => s.pubReminderEnabled);
-  const beerCountReminderEnabled = useSettingsStore((s) => s.beerCountReminderEnabled);
+  const maxDistanceKm = useSettingsStore((state) => state.maxDistanceKm);
+  const homePoint = useSettingsStore((state) => state.homePoint);
+  const navigationProvider = useSettingsStore((state) => state.navigationProvider);
+  const priceCurrency = useSettingsStore((state) => state.priceCurrency);
+  const hapticEnabled = useSettingsStore((state) => state.hapticEnabled);
+  const soundEnabled = useSettingsStore((state) => state.soundEnabled);
+  const waterNudgeEnabled = useSettingsStore((state) => state.waterNudgeEnabled);
+  const hideClosedPubs = useSettingsStore((state) => state.hideClosedPubs);
+  const preferRatedPubs = useSettingsStore((state) => state.preferRatedPubs);
+  const hidePubNames = useSettingsStore((state) => state.hidePubNames);
+  const marketingEmailsEnabled = useSettingsStore((state) => state.marketingEmailsEnabled);
+  const pubReminderEnabled = useSettingsStore((state) => state.pubReminderEnabled);
+  const beerCountReminderEnabled = useSettingsStore((state) => state.beerCountReminderEnabled);
   const beerCountReminderIntervalMinutes = useSettingsStore(
-    (s) => s.beerCountReminderIntervalMinutes,
+    (state) => state.beerCountReminderIntervalMinutes,
   );
-  const setMaxDistanceKm = useSettingsStore((s) => s.setMaxDistanceKm);
-  const setNavigationProvider = useSettingsStore((s) => s.setNavigationProvider);
-  const setHapticEnabled = useSettingsStore((s) => s.setHapticEnabled);
-  const setSoundEnabled = useSettingsStore((s) => s.setSoundEnabled);
-  const setWaterNudgeEnabled = useSettingsStore((s) => s.setWaterNudgeEnabled);
-  const setHideClosedPubs = useSettingsStore((s) => s.setHideClosedPubs);
-  const setPreferRatedPubs = useSettingsStore((s) => s.setPreferRatedPubs);
-  const setHidePubNames = useSettingsStore((s) => s.setHidePubNames);
-  const setMarketingEmailsEnabled = useSettingsStore((s) => s.setMarketingEmailsEnabled);
-  const setPubReminderEnabled = useSettingsStore((s) => s.setPubReminderEnabled);
+
+  const setMaxDistanceKm = useSettingsStore((state) => state.setMaxDistanceKm);
+  const setNavigationProvider = useSettingsStore((state) => state.setNavigationProvider);
+  const setHapticEnabled = useSettingsStore((state) => state.setHapticEnabled);
+  const setSoundEnabled = useSettingsStore((state) => state.setSoundEnabled);
+  const setWaterNudgeEnabled = useSettingsStore((state) => state.setWaterNudgeEnabled);
+  const setHideClosedPubs = useSettingsStore((state) => state.setHideClosedPubs);
+  const setPreferRatedPubs = useSettingsStore((state) => state.setPreferRatedPubs);
+  const setHidePubNames = useSettingsStore((state) => state.setHidePubNames);
+  const setMarketingEmailsEnabled = useSettingsStore(
+    (state) => state.setMarketingEmailsEnabled,
+  );
+  const setPubReminderEnabled = useSettingsStore((state) => state.setPubReminderEnabled);
   const setBeerCountReminderIntervalMinutes = useSettingsStore(
-    (s) => s.setBeerCountReminderIntervalMinutes,
+    (state) => state.setBeerCountReminderIntervalMinutes,
   );
+
+  const isSignedIn = useAccountStore(selectIsSignedIn);
+  const nickname = useAccountStore(selectNickname);
+  const profile = useAccountStore((state) => state.profile);
+
+  const [moreOpen, setMoreOpen] = useState(false);
   const [pubReminderBusy, setPubReminderBusy] = useState(false);
   const [beerCountReminderBusy, setBeerCountReminderBusy] = useState(false);
 
   const sliderIndex = positionIndexForKm(maxDistanceKm);
+  const readout = distanceReadout(maxDistanceKm);
+  const numeralSize = numeralFontSize(readout.value);
   const appVersionLabel = getAppVersionLabel();
 
   const handleSliderSnap = useCallback(
@@ -539,12 +449,11 @@ export default function SettingsScreen() {
     const next = !soundEnabled;
     setSoundEnabled(next);
     void updateAccountPreferences({ soundEnabled: next });
-  }, [soundEnabled, setSoundEnabled]);
+  }, [setSoundEnabled, soundEnabled]);
 
   const toggleWaterNudge = useCallback(() => {
-    // Local-only preference (no server round-trip): the nudge is client-side.
     setWaterNudgeEnabled(!waterNudgeEnabled);
-  }, [waterNudgeEnabled, setWaterNudgeEnabled]);
+  }, [setWaterNudgeEnabled, waterNudgeEnabled]);
 
   const toggleHideClosed = useCallback(() => {
     const next = !hideClosedPubs;
@@ -615,149 +524,191 @@ export default function SettingsScreen() {
     [setBeerCountReminderIntervalMinutes],
   );
 
+  const openFromMore = useCallback(
+    (href: Href) => {
+      setMoreOpen(false);
+      router.push(href);
+    },
+    [router],
+  );
 
-  // Distance display
-  const distanceDisplay =
-    maxDistanceKm === null ? (
-      <Text style={styles.distanceUnlimited}>{cs.settings.distance.unlimited}</Text>
-    ) : (
-      <View style={styles.distanceValueRow}>
-        <Text style={styles.distanceNumber}>{formatCzKm(maxDistanceKm)}</Text>
-        <Text style={styles.distanceUnit}>{cs.settings.distance.kmShort}</Text>
-      </View>
-    );
+  const moreRows = useMemo<MoreRow[]>(
+    () => [
+      {
+        key: 'home',
+        label: cs.settings.more.homePoint,
+        value: homePoint ? cs.settings.more.configured : cs.settings.more.notConfigured,
+        icon: HouseIcon,
+        onPress: () => openFromMore('/home-point' as Href),
+      },
+      {
+        key: 'google',
+        label: cs.settings.more.navigateGoogle,
+        icon: MapPinIcon,
+        selected: navigationProvider === 'google',
+        accessibilityRole: 'radio',
+        onPress: () => {
+          setNavigationProvider('google');
+          setMoreOpen(false);
+        },
+      },
+      {
+        key: 'mapy',
+        label: cs.settings.more.navigateMapy,
+        icon: MapIcon,
+        selected: navigationProvider === 'mapy',
+        accessibilityRole: 'radio',
+        onPress: () => {
+          setNavigationProvider('mapy');
+          setMoreOpen(false);
+        },
+      },
+      {
+        key: 'add-pub',
+        label: cs.settings.addPub,
+        icon: PlusIcon,
+        onPress: () => openFromMore('/add-pub' as Href),
+      },
+      {
+        key: 'my-pubs',
+        label: cs.settings.more.myAddedPubs,
+        icon: StarIcon,
+        onPress: () => openFromMore('/my-added-pubs' as Href),
+      },
+      {
+        key: 'feedback',
+        label: cs.settings.feedback,
+        icon: MessageSquareIcon,
+        onPress: () => openFromMore('/report' as Href),
+      },
+      {
+        key: 'about',
+        label: cs.settings.about.title,
+        value: appVersionLabel || null,
+        icon: InfoIcon,
+        onPress: () => openFromMore('/about' as Href),
+      },
+      {
+        key: 'privacy',
+        label: cs.settings.privacy,
+        icon: ShieldIcon,
+        onPress: () => openFromMore('/privacy' as Href),
+      },
+    ],
+    [
+      appVersionLabel,
+      homePoint,
+      navigationProvider,
+      openFromMore,
+      setNavigationProvider,
+    ],
+  );
+
+  const displayName = profile?.displayName?.trim() || '';
+  const email = profile?.email?.trim() || '';
+  const accountSubLabel = isSignedIn
+    ? nickname
+      ? `@${nickname}${profile?.emailVerified ? ` · ${cs.settings.accountCard.verifiedInline}` : ''}`
+      : email || displayName || cs.profile.manageAccount
+    : cs.settings.accountCard.ctaSignedOutSubtitle;
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={[]}>
-      {/* ── Header ── */}
+    <View
+      style={[
+        styles.root,
+        { paddingBottom: Math.max(insets.bottom, Spacing.sm) },
+      ]}
+    >
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Pressable
           onPress={() => router.back()}
-          style={styles.backButton}
+          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
           accessibilityRole="button"
           accessibilityLabel={cs.a11y.backButton}
-          hitSlop={4}
         >
           <ChevronLeftIcon size={22} color={Colors.foam} />
         </Pressable>
-
-        <Text style={styles.headerTitle}>{cs.settings.title}</Text>
-
-        {/* Invisible spacer keeps title centered */}
-        <View style={styles.headerSpacer} />
+        <Text
+          style={styles.headerTitle}
+          numberOfLines={1}
+          maxFontSizeMultiplier={FontScaleCap.heading}
+        >
+          {cs.settings.title}
+        </Text>
+        <Pressable
+          onPress={() => setMoreOpen(true)}
+          style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={cs.settings.more.accessibilityLabel}
+        >
+          <EllipsisIcon size={20} color={Colors.mutedText} />
+        </Pressable>
       </View>
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[
-          styles.scrollContent,
-          // Push the home-indicator inset INTO the scrollable content instead of
-          // reserving it as a fixed brown band below the list — the background now
-          // runs cleanly to the screen edge with no empty bar at the bottom.
-          { paddingBottom: insets.bottom + Spacing.sm },
-        ]}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        <SectionLabel>{cs.settings.compassSection}</SectionLabel>
+        <View style={styles.distanceCard}>
+          <Text
+            style={[
+              styles.distanceNumber,
+              { fontSize: numeralSize, lineHeight: numeralSize * 1.24 },
+            ]}
+            numberOfLines={1}
+            maxFontSizeMultiplier={FontScaleCap.display}
+          >
+            {readout.value}
+          </Text>
+          <Text
+            style={styles.distanceUnit}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
+            {readout.unit}
+          </Text>
 
-        {/* ── Account hub ── */}
-        <SectionHeader label={cs.settings.accountCard.header} />
-        <AccountCard />
-
-        {/* ── Search (compass) ── */}
-        <SectionHeader label={cs.settings.sections.search} />
-        <View style={styles.card}>
-          {/* Section header */}
-          <View style={styles.cardSectionHeader}>
-            <RadiusIcon size={14} color={Colors.amber} />
-            <Text style={styles.cardSectionHeaderText}>
-              {cs.settings.distance.header}
-            </Text>
-          </View>
-
-          {/* Big distance display */}
-          <View style={styles.distanceDisplay}>{distanceDisplay}</View>
-
-          {/* Custom slider */}
           <DistanceSlider
             positionIndex={sliderIndex}
+            valueLabel={`${readout.value} ${readout.unit.toLocaleLowerCase('cs-CZ')}`}
             onSnap={handleSliderSnap}
           />
 
-          {/* Helper text */}
-          <Text style={styles.distanceHelper}>{cs.settings.distance.helper}</Text>
-        </View>
-
-        {/* Search filters — what shows up on the compass. */}
-        <View style={[styles.card, styles.cardNoPaddingV]}>
-          <PrefRow
-            icon={<BeerOffIcon size={18} color={Colors.foamMuted} />}
-            title={cs.settings.hideClosed.title}
-            subtitle={cs.settings.hideClosed.subtitle}
-            value={hideClosedPubs}
-            onToggle={toggleHideClosed}
-            toggleLabel={`${cs.settings.hideClosed.title}: ${hideClosedPubs ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
-          />
-          <PrefRow
-            icon={<StarIcon size={18} color={Colors.foamMuted} />}
-            title={cs.settings.preferRated.title}
-            subtitle={cs.settings.preferRated.subtitle}
-            value={preferRatedPubs}
-            onToggle={togglePreferRated}
-            toggleLabel={`${cs.settings.preferRated.title}: ${preferRatedPubs ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
-            borderTop
-          />
-          <PrefRow
-            icon={<EyeOffIcon size={18} color={Colors.foamMuted} />}
-            title={cs.settings.hidePubNames.title}
-            subtitle={cs.settings.hidePubNames.subtitle}
-            value={hidePubNames}
-            onToggle={toggleHidePubNames}
-            toggleLabel={`${cs.settings.hidePubNames.title}: ${hidePubNames ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
-            borderTop
-          />
-        </View>
-
-        <View style={[styles.card, styles.cardNoPaddingV]}>
-          <AboutRow
-            icon={<HouseIcon size={18} color={Colors.foamMuted} />}
-            title="Domovský bod"
-            rightLabel={homePoint ? 'Nastavený' : 'Nenastavený'}
-            onPress={() => router.push('/home-point' as Href)}
-          />
-          <View style={[styles.navigationRow, styles.prefRowBorderTop]}>
-            <View style={styles.iconWell}><MapPinIcon size={18} color={Colors.foamMuted} /></View>
-            <View style={styles.navigationText}>
-              <Text style={styles.prefTitle}>Navigace</Text>
-              <Text style={styles.prefSubtitle}>Kam se otevře cesta k hospodě i domů</Text>
-            </View>
-            <View style={styles.navigationSegment}>
-              {(['google', 'mapy'] as const).map((provider) => {
-                const selected = navigationProvider === provider;
-                return (
-                  <Pressable
-                    key={provider}
-                    onPress={() => setNavigationProvider(provider)}
-                    style={[styles.navigationOption, selected && styles.navigationOptionSelected]}
-                    accessibilityRole="radio"
-                    accessibilityState={{ checked: selected }}
-                    accessibilityLabel={provider === 'google' ? 'Google Maps' : 'Mapy.com'}
-                  >
-                    <Text style={[styles.navigationOptionText, selected && styles.navigationOptionTextSelected]}>
-                      {provider === 'google' ? 'Google' : 'Mapy'}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+          <View style={styles.distancePreferences}>
+            <PreferenceRow
+              title={cs.settings.hideClosed.title}
+              subtitle={cs.settings.hideClosed.subtitle}
+              value={hideClosedPubs}
+              onToggle={toggleHideClosed}
+              toggleLabel={`${cs.settings.hideClosed.title}: ${hideClosedPubs ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+            />
+            <PreferenceRow
+              title={cs.settings.preferRated.title}
+              subtitle={cs.settings.preferRated.subtitle}
+              value={preferRatedPubs}
+              onToggle={togglePreferRated}
+              toggleLabel={`${cs.settings.preferRated.title}: ${preferRatedPubs ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+              divider
+            />
+            <PreferenceRow
+              title={cs.settings.hidePubNames.title}
+              subtitle={cs.settings.hidePubNames.subtitle}
+              value={hidePubNames}
+              onToggle={toggleHidePubNames}
+              toggleLabel={`${cs.settings.hidePubNames.title}: ${hidePubNames ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
+              divider
+            />
           </View>
-          <Text style={styles.locationPrivacy}>Domov zůstává jen v telefonu. Trasy ani historii polohy aplikace neukládá.</Text>
         </View>
 
-        {/* ── App preferences ── */}
-        <SectionHeader label={cs.settings.sections.app} />
-        <View style={[styles.card, styles.cardNoPaddingV]}>
-          <PrefRow
-            icon={<BellRingIcon size={18} color={Colors.foamMuted} />}
+        <SectionLabel spaced>{cs.settings.notificationsSection}</SectionLabel>
+        <View style={styles.notificationsCard}>
+          <PreferenceRow
             title={cs.settings.pubReminders.title}
             subtitle={cs.settings.pubReminders.subtitle}
             value={pubReminderEnabled}
@@ -770,114 +721,88 @@ export default function SettingsScreen() {
             onToggle={() => void toggleBeerCountReminder()}
             onIntervalChange={changeBeerCountReminderInterval}
           />
-          <PrefRow
-            icon={<BellRingIcon size={18} color={Colors.foamMuted} />}
+          <PreferenceRow
             title={cs.settings.haptics.title}
             subtitle={cs.settings.haptics.subtitle}
             value={hapticEnabled}
             onToggle={toggleHaptic}
             toggleLabel={`${cs.settings.haptics.title}: ${hapticEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
-            borderTop
+            divider
           />
-          <PrefRow
-            icon={<Volume2Icon size={18} color={Colors.foamMuted} />}
+          <PreferenceRow
             title={cs.settings.sound.title}
             subtitle={cs.settings.sound.subtitle}
             value={soundEnabled}
             onToggle={toggleSound}
             toggleLabel={`${cs.settings.sound.title}: ${soundEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
-            borderTop
+            divider
           />
-          <PrefRow
-            icon={<GlassWaterIcon size={18} color={Colors.foamMuted} />}
+          <PreferenceRow
             title={cs.settings.waterNudge.title}
             subtitle={cs.settings.waterNudge.subtitle}
             value={waterNudgeEnabled}
             onToggle={toggleWaterNudge}
             toggleLabel={`${cs.settings.waterNudge.title}: ${waterNudgeEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
-            borderTop
+            divider
           />
-          <CurrencyRow
-            value={priceCurrency}
-            borderTop
-          />
-          <PrefRow
-            icon={<MailIcon size={18} color={Colors.foamMuted} />}
+          <PreferenceRow
             title={cs.settings.marketingEmails.title}
             subtitle={cs.settings.marketingEmails.subtitle}
             value={marketingEmailsEnabled}
             onToggle={toggleMarketingEmails}
             toggleLabel={`${cs.settings.marketingEmails.title}: ${marketingEmailsEnabled ? cs.a11y.toggleOn : cs.a11y.toggleOff}`}
-            borderTop
+            divider
           />
         </View>
 
-        {/* ── Contribution ── */}
-        <SectionHeader label={cs.settings.sections.contribute} />
-        <ActionCta
-          icon={<MapPinIcon size={20} color={Colors.amber} />}
-          title={cs.settings.addPub}
-          subtitle={cs.settings.addPubCtaSubtitle}
-          onPress={() => router.push('/add-pub' as Href)}
-        />
-        <ActionCta
-          icon={<StarIcon size={20} color={Colors.amber} />}
-          title={cs.addPub.openMyPubs}
-          subtitle={cs.addPub.openMyPubsHint}
-          onPress={() => router.push('/my-added-pubs' as Href)}
-        />
-        <ActionCta
-          icon={<MessageSquareIcon size={20} color={Colors.amber} />}
-          title={cs.settings.feedback}
-          subtitle={cs.settings.feedbackCtaSubtitle}
-          onPress={() => router.push('/report')}
-        />
-
-        {/* ── About card ── */}
-        <SectionHeader label={cs.settings.sections.about} />
-        <View style={[styles.card, styles.cardNoPaddingV]}>
-          <AboutRow
-            icon={<InfoIcon size={18} color={Colors.foamMuted} />}
-            title={cs.settings.about.title}
-            rightLabel={appVersionLabel || undefined}
-            onPress={() => router.push('/about')}
-          />
-          <AboutRow
-            icon={<ShieldIcon size={18} color={Colors.foamMuted} />}
-            title={cs.settings.privacy}
-            onPress={() => router.push('/privacy')}
-            borderTop
-          />
-        </View>
-
-        {/* ── Footer ── */}
         <View style={styles.footer}>
-          <Text style={styles.footerText}>{cs.settings.footer}</Text>
+          <Text style={styles.footerPromise} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.settings.locationPrivacy}
+          </Text>
+          <Text style={styles.footerPromise} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.settings.currency.footer(priceCurrency)}
+          </Text>
+          <Text style={styles.footerTagline} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.settings.footer}
+          </Text>
         </View>
       </ScrollView>
-    </SafeAreaView>
+
+      <CounterCta
+        label={
+          isSignedIn
+            ? cs.settings.accountCard.ctaSignedIn
+            : cs.settings.accountCard.signedOutTitle
+        }
+        subLabel={accountSubLabel}
+        onPress={() => router.push((isSignedIn ? '/account' : '/auth') as Href)}
+        accessibilityLabel={
+          isSignedIn ? cs.a11y.profileManageAccount : cs.a11y.profileSignUp
+        }
+      />
+
+      <MoreSheet
+        visible={moreOpen}
+        title={cs.settings.more.title}
+        rows={moreRows}
+        onClose={() => setMoreOpen(false)}
+      />
+    </View>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
-
-const TRACK_HEIGHT = 14;
-const THUMB_SIZE = 28;
-
 const styles = StyleSheet.create({
-  safeArea: {
+  root: {
     flex: 1,
     backgroundColor: Colors.stout,
+    paddingHorizontal: 24,
+    gap: 12,
   },
-
-  // ── Header ──
   header: {
+    minHeight: 44,
+    marginBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingBottom: 12,
-    paddingHorizontal: 20,
   },
   backButton: {
     width: 44,
@@ -895,132 +820,59 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.display.extrabold,
     fontSize: 24,
     color: Colors.foam,
+    includeFontPadding: false,
   },
-  headerSpacer: {
+  moreButton: {
     width: 44,
     height: 44,
-  },
-
-  // ── ScrollView ──
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: Spacing.lg,
-    gap: Spacing.sm + 2,
-  },
-
-  // ── Section header (group label above cards) ──
-  sectionHeader: {
-    fontFamily: Fonts.ui.bold,
-    fontSize: 11,
-    letterSpacing: 1.5,
-    color: Colors.amber,
-    marginTop: Spacing.sm,
-    marginLeft: Spacing.xs,
-  },
-
-  // ── Account hub card ──
-  accountCard: {
-    flexDirection: 'row',
+    borderRadius: Radius.pill,
     alignItems: 'center',
-    gap: 14,
-    backgroundColor: Colors.stout2,
-    borderRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    minHeight: 76,
+    justifyContent: 'center',
   },
-  accountText: {
-    flex: 1,
-    gap: 3,
-  },
-  accountTitle: {
-    fontFamily: Fonts.display.bold,
-    fontSize: 17,
-    color: Colors.foam,
-  },
-  accountSubRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  accountSubtitle: {
-    fontFamily: Fonts.ui.regular,
+  pressed: { opacity: 0.6 },
+  scroll: { flex: 1 },
+  scrollContent: { paddingBottom: 12 },
+  sectionLabel: {
+    marginBottom: 8,
+    fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
+    includeFontPadding: false,
   },
-  accountSubtitleVerified: {
-    color: Colors.success,
-  },
-
-  // ── Cards ──
-  card: {
+  sectionLabelSpaced: { marginTop: 24 },
+  distanceCard: {
+    overflow: 'hidden',
     backgroundColor: Colors.stout2,
     borderRadius: Radius.cardLarge,
     borderWidth: 1,
-    borderColor: Colors.border,
-    padding: 18,
-    paddingBottom: 18,
-  },
-  cardNoPaddingV: {
-    padding: 0,
-    paddingBottom: 0,
-    paddingHorizontal: 0,
-    paddingVertical: 6,
-    overflow: 'hidden',
-  },
-
-  // ── Distance card internals ──
-  cardSectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 18,
-  },
-  cardSectionHeaderText: {
-    fontFamily: Fonts.ui.bold,
-    fontSize: 11,
-    letterSpacing: 1.5,
-    color: Colors.amber,
-  },
-  distanceDisplay: {
-    height: 70,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 0,
-    marginBottom: 20,
-  },
-  distanceUnlimited: {
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 44,
-    color: Colors.foam,
-    lineHeight: 56,
-  },
-  distanceValueRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 6,
+    borderColor: withAlpha(Colors.foam, 0.07),
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 4,
   },
   distanceNumber: {
+    alignSelf: 'stretch',
     fontFamily: Fonts.display.extrabold,
-    fontSize: 56,
-    color: Colors.foam,
-    lineHeight: 70,
+    color: Colors.amber,
+    includeFontPadding: false,
+    fontVariant: ['tabular-nums'],
+    textAlign: 'center',
   },
   distanceUnit: {
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 28,
-    color: Colors.amber,
+    marginTop: -8,
+    fontFamily: Fonts.display.bold,
+    fontSize: 13,
+    letterSpacing: 3,
+    color: Colors.mutedText,
+    includeFontPadding: false,
+    textAlign: 'center',
   },
-
-  // ── Slider ──
-  sliderWrapper: {
-    gap: 8,
+  sliderWrapper: { marginTop: 20 },
+  sliderTouchArea: {
+    height: 44,
+    justifyContent: 'center',
   },
-  trackOuter: {
+  track: {
     height: TRACK_HEIGHT,
     borderRadius: Radius.pill,
     backgroundColor: Colors.stout3,
@@ -1050,271 +902,146 @@ const styles = StyleSheet.create({
     borderColor: Colors.amber,
   },
   rangeLabels: {
+    marginTop: 8,
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
   rangeLabel: {
-    fontFamily: Fonts.ui.regular,
+    fontFamily: Fonts.ui.medium,
     fontSize: 12,
     color: Colors.mutedText,
+    includeFontPadding: false,
   },
-  distanceHelper: {
-    fontFamily: Fonts.ui.regular,
-    fontSize: 12,
-    color: Colors.mutedText,
-    lineHeight: 17,
-    marginTop: 8,
+  distancePreferences: {
+    marginTop: 20,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.foam, 0.1),
   },
-
-  // ── Preference rows ──
-  prefRow: {
+  notificationsCard: {
+    overflow: 'hidden',
+    backgroundColor: Colors.stout2,
+    borderRadius: Radius.cardLarge,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.07),
+    paddingHorizontal: 24,
+    paddingVertical: 4,
+  },
+  preferenceRow: {
+    minHeight: 58,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    minHeight: 58,
     gap: 12,
   },
-  prefRowBorderTop: {
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
+  preferenceRowEdge: { marginHorizontal: -24 },
+  beerCountReminder: { marginHorizontal: -24 },
+  rowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.foam, 0.1),
   },
-  iconWell: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: Colors.stout3,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  prefText: {
+  preferenceText: {
     flex: 1,
+    minWidth: 0,
   },
-  prefTitle: {
+  preferenceTitle: {
     fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.foam,
-    marginBottom: 2,
+    includeFontPadding: false,
   },
-  prefSubtitle: {
+  preferenceSubtitle: {
+    marginTop: 2,
     fontFamily: Fonts.ui.regular,
     fontSize: 12,
     color: Colors.mutedText,
+    includeFontPadding: false,
   },
-  reminderIntervalRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 18,
-    paddingLeft: 66,
-    paddingBottom: 12,
-  },
-  reminderIntervalLabel: {
-    fontFamily: Fonts.ui.medium,
-    fontSize: 11,
-    color: Colors.mutedText,
-  },
-  reminderIntervalOptions: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 5,
-  },
-  reminderIntervalOption: {
-    minWidth: 45,
-    height: 28,
-    borderRadius: Radius.pill,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.stout3,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 7,
-  },
-  reminderIntervalOptionSelected: {
-    borderColor: Colors.amber,
-    backgroundColor: Colors.amber,
-  },
-  reminderIntervalOptionText: {
-    fontFamily: Fonts.ui.bold,
-    fontSize: 11,
-    color: Colors.mutedText,
-  },
-  reminderIntervalOptionTextSelected: {
-    color: Colors.stout,
-  },
-  currencySegment: {
-    flexDirection: 'row',
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout3,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: 3,
-    gap: 3,
-  },
-  currencyOption: {
-    minWidth: 42,
-    height: 30,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 10,
-  },
-  currencyOptionSelected: {
-    backgroundColor: Colors.amber,
-  },
-  currencyOptionText: {
-    fontFamily: Fonts.ui.bold,
-    fontSize: 13,
-    color: Colors.mutedText,
-  },
-  currencyOptionTextSelected: {
-    color: Colors.stout,
-  },
-
-  // ── Toggle ──
   toggle: {
-    width: 52,
+    width: 50,
     height: 30,
     borderRadius: Radius.pill,
+    borderWidth: 1,
     justifyContent: 'center',
   },
   toggleOn: {
-    backgroundColor: Colors.amber,
+    backgroundColor: withAlpha(Colors.amber, 0.32),
+    borderColor: withAlpha(Colors.amber, 0.45),
   },
   toggleOff: {
     backgroundColor: Colors.stout3,
+    borderColor: withAlpha(Colors.foam, 0.08),
   },
   toggleThumb: {
     width: 24,
     height: 24,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.foam,
   },
-
-  // ── Local navigation ──
-  navigationRow: {
-    minHeight: 70,
+  toggleThumbOn: { backgroundColor: Colors.foam },
+  toggleThumbOff: { backgroundColor: Colors.mutedText },
+  reminderIntervalRow: {
+    minHeight: 44,
+    paddingLeft: 24,
+    paddingRight: 24,
+    paddingBottom: 12,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
   },
-  navigationText: {
+  reminderIntervalLabel: {
+    fontFamily: Fonts.ui.medium,
+    fontSize: 11,
+    color: Colors.mutedText,
+    includeFontPadding: false,
+  },
+  reminderIntervalOptions: {
     flex: 1,
-  },
-  navigationSegment: {
     flexDirection: 'row',
-    padding: 3,
+    justifyContent: 'flex-end',
+    gap: 4,
+  },
+  reminderIntervalOption: {
+    minWidth: 45,
+    height: 28,
+    paddingHorizontal: 7,
     borderRadius: Radius.pill,
     borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.stout3,
-  },
-  navigationOption: {
-    minHeight: 30,
-    minWidth: 54,
-    paddingHorizontal: 8,
-    borderRadius: Radius.pill,
+    borderColor: withAlpha(Colors.foam, 0.08),
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  navigationOptionSelected: {
-    backgroundColor: Colors.amber,
+  reminderIntervalOptionSelected: {
+    backgroundColor: withAlpha(Colors.foam, 0.1),
+    borderColor: withAlpha(Colors.foam, 0.18),
   },
-  navigationOptionText: {
-    fontFamily: Fonts.ui.bold,
-    fontSize: 12,
+  reminderIntervalOptionText: {
+    fontFamily: Fonts.ui.medium,
+    fontSize: 11,
     color: Colors.mutedText,
+    includeFontPadding: false,
   },
-  navigationOptionTextSelected: {
-    color: Colors.stout,
-  },
-  locationPrivacy: {
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    fontFamily: Fonts.ui.regular,
-    fontSize: 12.5,
-    lineHeight: 18,
-    color: Colors.mutedText,
-  },
-
-  // ── About rows ──
-  aboutRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    minHeight: 56,
-    gap: 12,
-  },
-  aboutTitle: {
-    flex: 1,
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 15,
-    color: Colors.foam,
-  },
-  aboutRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  aboutVersion: {
-    fontFamily: Fonts.ui.regular,
-    fontSize: 13,
-    color: Colors.mutedText,
-  },
-  rowPressed: {
-    opacity: 0.65,
-  },
-
-  // ── Add-pub CTA ──
-  ctaCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    backgroundColor: Colors.stout2,
-    borderRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: 'rgba(232, 163, 23, 0.35)', // soft amber — noticeable but calm
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-  },
-  ctaIconWell: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: 'rgba(232, 163, 23, 0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ctaText: {
-    flex: 1,
-  },
-  ctaTitle: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 15,
-    color: Colors.foam,
-    marginBottom: 2,
-  },
-  ctaSubtitle: {
-    fontFamily: Fonts.ui.regular,
-    fontSize: 12,
-    color: Colors.mutedText,
-  },
-
-  // ── Footer ──
+  reminderIntervalOptionTextSelected: { color: Colors.foam },
   footer: {
     alignItems: 'center',
+    marginTop: 24,
     gap: 4,
-    marginTop: Spacing.sm,
   },
-  footerText: {
+  footerPromise: {
+    fontFamily: Fonts.ui.medium,
+    fontSize: 12,
+    lineHeight: 17,
+    color: Colors.mutedText,
+    textAlign: 'center',
+    includeFontPadding: false,
+  },
+  footerTagline: {
     fontFamily: Fonts.ui.medium,
     fontSize: 11,
     letterSpacing: 0.5,
     color: Colors.mutedText,
     textAlign: 'center',
+    includeFontPadding: false,
   },
 });

@@ -11,6 +11,8 @@ import { enqueuePubReport } from '@/data/pubReportQueue';
 import { useBeerMap } from '../useBeerMap';
 
 let mockColorScheme: 'light' | 'dark' | null = 'dark';
+const mockAnimateCamera = jest.fn();
+const mockAnimateToRegion = jest.fn();
 
 jest.mock('react-native', () => {
   const RN = jest.requireActual('react-native');
@@ -39,8 +41,8 @@ jest.mock('react-native-maps', () => ({
     ref,
   ) {
     useImperativeHandle(ref, () => ({
-      animateCamera: jest.fn(),
-      animateToRegion: jest.fn(),
+      animateCamera: mockAnimateCamera,
+      animateToRegion: mockAnimateToRegion,
     }));
     return (
       <View
@@ -108,8 +110,10 @@ jest.mock('@/components/shared/IconGlyph', () => {
   const MockIcon = () => null;
   return {
     BeerIcon: MockIcon,
+    CheckIcon: MockIcon,
     ChevronRightIcon: MockIcon,
     CompassIcon: MockIcon,
+    EllipsisIcon: MockIcon,
     ExternalLinkIcon: MockIcon,
     FlagIcon: MockIcon,
     MapPinPlusIcon: MockIcon,
@@ -118,6 +122,7 @@ jest.mock('@/components/shared/IconGlyph', () => {
     ListIcon: MockIcon,
     LocateFixedIcon: MockIcon,
     ListFilterIcon: MockIcon,
+    MapIcon: MockIcon,
     MapPinnedIcon: MockIcon,
     RefreshCwIcon: MockIcon,
     StarIcon: MockIcon,
@@ -216,6 +221,7 @@ describe('BeerMapScreen opening-hours loading', () => {
         beers: [],
         historicalBeers: [],
         beersUpdatedAt: null,
+        hoursUpdatedAt: null,
         rating: null,
         ratingCount: null,
         ratingLabel: null,
@@ -243,6 +249,73 @@ describe('BeerMapScreen opening-hours loading', () => {
     screen.rerender(<BeerMapScreen {...props} />);
 
     expect(screen.getByLabelText(cs.a11y.beerMap).props.accessibilityValue.text).toBe('light');
+  });
+
+  it('recenters on the user without changing zoom or regrouping pub markers', () => {
+    mockedUseBeerMap.mockReturnValue({
+      pubs: [{ id: 'pub-1', name: 'U Testu', lat: 50.0876, lng: 14.4214 }],
+      nearbyPrices: [],
+      visitedPubs: [],
+      visitedCities: [],
+      livePubs: [],
+      position: { lat: 50.0821, lng: 14.4213, accuracyMeters: 12 },
+      permissionState: 'granted',
+      loadingPubs: false,
+      stale: false,
+      requestPermission: jest.fn(async () => undefined),
+      loadRegion: jest.fn(),
+      refresh: jest.fn(),
+    });
+    const screen = render(
+      <BeerMapScreen
+        filters={EMPTY_PUB_SEARCH_FILTERS}
+        onApplyFilters={jest.fn()}
+        onShowCompass={jest.fn()}
+      />,
+    );
+
+    // The first location fix establishes the map's initial city-level zoom.
+    expect(mockAnimateToRegion).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        latitudeDelta: 0.055,
+        longitudeDelta: 0.055,
+      }),
+      0,
+    );
+
+    fireEvent.press(screen.getByLabelText(cs.a11y.mapLocate));
+
+    expect(mockAnimateToRegion).toHaveBeenLastCalledWith(
+      {
+        latitude: 50.0821,
+        longitude: 14.4213,
+        latitudeDelta: 0.055,
+        longitudeDelta: 0.055,
+      },
+      0,
+    );
+  });
+
+  it('centers a selected pub in the map viewport', () => {
+    const screen = render(
+      <BeerMapScreen
+        filters={EMPTY_PUB_SEARCH_FILTERS}
+        onApplyFilters={jest.fn()}
+        onShowCompass={jest.fn()}
+      />,
+    );
+
+    fireEvent.press(screen.getByLabelText(cs.a11y.mapPub('U Testu', 0)));
+
+    expect(mockAnimateCamera).toHaveBeenLastCalledWith(
+      {
+        center: {
+          latitude: 50.0876,
+          longitude: 14.4214,
+        },
+      },
+      { duration: 0 },
+    );
   });
 
   it('shows a friend avatar in the live map marker', () => {
@@ -314,7 +387,36 @@ describe('BeerMapScreen opening-hours loading', () => {
     expect(screen.UNSAFE_queryAllByType(ScrollView)).toHaveLength(0);
   });
 
-  it('asks for confirmation before reporting a pub from the selected-pub card', () => {
+  it('switches layers from the card, and only from the card', () => {
+    const screen = render(
+      <BeerMapScreen
+        filters={EMPTY_PUB_SEARCH_FILTERS}
+        onApplyFilters={jest.fn()}
+        onShowCompass={jest.fn()}
+      />,
+    );
+
+    // The switch is on the surface, all three slices at once.
+    expect(screen.getByLabelText(cs.map.layerAll)).toBeTruthy();
+    expect(screen.getByLabelText(cs.map.layerVisited)).toBeTruthy();
+    expect(screen.getByLabelText(cs.map.layerFriends)).toBeTruthy();
+
+    // And the overflow sheet no longer offers the same three as rows.
+    fireEvent.press(screen.getByLabelText(cs.a11y.compassMore));
+    expect(screen.queryAllByLabelText(cs.map.layerVisited)).toHaveLength(1);
+
+    fireEvent.press(screen.getByLabelText(cs.map.layerVisited));
+    // "Moje stopy" is now the selected tab; the previous one became pressable.
+    expect(
+      screen.getByLabelText(cs.map.layerVisited).props.accessibilityState,
+    ).toMatchObject({ selected: true });
+
+    // The chosen layer is remembered across mounts, so put it back — otherwise
+    // the next test starts on a slice where the fixture pub isn't drawn.
+    fireEvent.press(screen.getByLabelText(cs.map.layerAll));
+  });
+
+  it('asks for confirmation before reporting a pub from the overflow sheet', () => {
     const screen = render(
       <BeerMapScreen
         filters={EMPTY_PUB_SEARCH_FILTERS}
@@ -324,7 +426,11 @@ describe('BeerMapScreen opening-hours loading', () => {
     );
 
     fireEvent.press(screen.getByLabelText(cs.a11y.mapPub('U Testu', 0)));
+    fireEvent.press(screen.getByLabelText(cs.a11y.compassMore));
     fireEvent.press(screen.getByLabelText(cs.a11y.mapReportClosed('U Testu')));
+    act(() => {
+      jest.advanceTimersByTime(260);
+    });
 
     expect(mockedEnqueuePubReport).not.toHaveBeenCalled();
 

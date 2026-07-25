@@ -29,11 +29,9 @@ import {
 } from 'react-native-reanimated';
 
 import { useCompass } from '@/hooks/useCompass';
-import type { HoursStatus, PubPrice } from '@/data/pubs';
-import { getAllLoadedPubs } from '@/data/pubs';
+import { getAllLoadedPubs, type Pub, type PubPrice } from '@/data/pubs';
 import { isPriceApproximate, isPriceFresh, priceAgeLabel } from '@/utils/priceAge';
 import type { CommunityBeer } from '@/data/communityClient';
-import { parseOsmOpeningHoursToWeeklyHours } from '@/data/communityHours';
 import type { PubReportReason } from '@/data/pubReportsClient';
 import { updateAccountPreferences } from '@/data/account';
 import { PubFilterSheet } from '@/components/compass/PubFilterSheet';
@@ -51,42 +49,40 @@ import { openHomeInMaps, openPubInMaps } from '@/utils/maps';
 import { formatPrice, type PriceCurrency } from '@/utils/currency';
 
 import { CompassContainer } from '@/components/compass/CompassContainer';
-import { OpenStatusChip } from '@/components/compass/OpenStatusChip';
-import { TitleBar } from '@/components/shared/TitleBar';
+import { ExploreSwitch } from '@/components/shared/ExploreSwitch';
 import { GlowButton } from '@/components/shared/GlowButton';
-import { PubCardActions } from '@/components/shared/PubCardActions';
 import {
   BeerIcon,
   BeerOffIcon,
-  CompassIcon,
-  LockKeyholeIcon,
-  EyeIcon,
-  ExternalLinkIcon,
   RefreshCwIcon,
   SettingsIcon,
-  MapPinnedIcon,
-  MapPinPlusIcon,
   PencilIcon,
-  StarIcon,
   MapPinIcon,
+  MapPinPlusIcon,
   MapIcon,
-  TreePineIcon,
-  UsersIcon,
-  ChevronLeftIcon,
   XIcon,
   ListFilterIcon,
   HouseIcon,
+  EllipsisIcon,
+  FlagIcon,
+  TargetIcon,
+  SparklesIcon,
 } from '@/components/shared/IconGlyph';
 import { MapPubSheet } from '@/components/amenities/MapPubSheet';
+import { CompassCard } from '@/compassui/CompassCard';
+import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
+import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
+import { CounterCta, CounterSecondary } from '@/counter/CounterCta';
 import { ReportPubModal } from '@/components/compass/ReportPubModal';
-import { pubInfoFromPub, type PubInfoContext } from '@/components/amenities/pubInfoContext';
+import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
 import { geohash8 } from '@/data/geohash';
+import type { FocusedPub } from '@/stores/focusedPubStore';
 import { useToastStore } from '@/stores/toastStore';
 import BeerMapScreen from '@/map/BeerMapScreen';
 
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
-import { HitArea, Radius, Spacing, CompassSize } from '@/theme/layout';
+import { Radius, Spacing, CompassSize } from '@/theme/layout';
 import { amberGlowStrong } from '@/theme/shadows';
 import { cs, formatVolume } from '@/i18n/cs';
 
@@ -101,12 +97,6 @@ const ARROW_SPRING_CONFIG = {
   mass: 1,
   overshootClamping: true,
 } as const;
-
-// Keep the hidden and revealed pub cards occupying the same slot. Without this,
-// revealing the pub makes the card taller and pushes the bottom controls into
-// the Android navigation area on shorter devices.
-const PUB_PILL_MIN_HEIGHT = 166;
-const ACTIVE_CHROME_HEIGHT = 430;
 
 interface RenamePubModalProps {
   visible: boolean;
@@ -407,128 +397,6 @@ function EmptyScreen({
 
 // ─── Hidden pub pill ─────────────────────────────────────────────────────────
 
-interface HiddenPubPillProps {
-  onReveal: () => void;
-}
-
-// Pencil design uses fixed pixel widths for the skeleton bars
-const SKELETON_BAR_WIDTHS = [26, 46, 16, 36, 52] as const;
-
-type ActiveCompassLayout = {
-  bottomControlsPaddingBottom: number;
-  bottomControlsPaddingTop: number;
-  compassMarginTop: number;
-  compassSize: number;
-  distanceNumberFontSize: number;
-  distanceNumberLineHeight: number;
-  distancePaddingBottom: number;
-  distancePaddingTop: number;
-  distanceUnitFontSize: number;
-  distanceUnitLineHeight: number;
-  pubPillPaddingBottom: number;
-};
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-// The compass takes whatever vertical room is left after the surrounding chrome
-// (title bar, distance block, pub pill, bottom controls, minimum spacers), but
-// never exceeds the design size or the screen width. Everything else scales in
-// proportion to how much the compass shrank, so layouts degrade smoothly on
-// small screens / iPhone-compatibility windows instead of jumping between
-// hard-coded buckets. On every normal phone there is enough room for the full
-// 320pt compass (t === 1), so the layout matches the original design.
-function getActiveCompassLayout(
-  width: number,
-  height: number,
-  topInset: number,
-  bottomInset: number,
-  fontScale: number,
-  extraChromeHeight = 0,
-): ActiveCompassLayout {
-  const usableHeight = height - topInset - bottomInset;
-
-  // The chrome reserve is mostly text, which the OS multiplies by its font
-  // scale. Texts on this screen cap their growth via FontScaleCap (≤ 1.3), so
-  // the reserve grows by the same capped factor — without this, large system
-  // font sizes (Samsung goes up to ~2.0) push the bottom controls off-screen.
-  const effectiveFontScale = clamp(fontScale, 1, FontScaleCap.body);
-  const VERTICAL_CHROME = Math.round((ACTIVE_CHROME_HEIGHT + extraChromeHeight) * effectiveFontScale);
-  const widthBudget = width - 48; // 24pt side padding on each edge
-  const heightBudget = usableHeight - VERTICAL_CHROME;
-
-  const compassSize = Math.round(
-    clamp(Math.min(widthBudget, heightBudget), 200, CompassSize),
-  );
-
-  const t = compassSize / CompassSize; // 0.625 .. 1
-
-  return {
-    bottomControlsPaddingBottom: 12,
-    bottomControlsPaddingTop: Math.round(12 * t),
-    compassMarginTop: 0,
-    compassSize,
-    distanceNumberFontSize: Math.round(64 * t),
-    distanceNumberLineHeight: Math.round(78 * t),
-    distancePaddingBottom: 0,
-    distancePaddingTop: Math.round(20 * t),
-    distanceUnitFontSize: Math.round(28 * t),
-    distanceUnitLineHeight: Math.round(36 * t),
-    pubPillPaddingBottom: 12,
-  };
-}
-
-function HiddenPubPill({ onReveal }: HiddenPubPillProps) {
-  return (
-    <Pressable
-      onPress={onReveal}
-      hitSlop={8}
-      style={({ pressed }) => [styles.pubPill, styles.pubPillHidden, pressed && { opacity: 0.8 }]}
-      accessibilityLabel={cs.a11y.pubPillHidden}
-      accessibilityRole="button"
-    >
-      {/* Top row: lock icon + skeleton bars */}
-      <View style={styles.pubPillRow}>
-        <LockKeyholeIcon size={22} color={Colors.amber} />
-        <View style={styles.skeletonGroup}>
-          {SKELETON_BAR_WIDTHS.map((w, i) => (
-            <View key={i} style={[styles.skeletonBar, { width: w }]} />
-          ))}
-        </View>
-      </View>
-
-      {/* Bottom row: reveal hint */}
-      <View style={styles.pubPillHintRow}>
-        <EyeIcon size={14} color={Colors.amber} />
-        <Text style={styles.pubPillHint} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.compass.hiddenPubHint}
-        </Text>
-      </View>
-    </Pressable>
-  );
-}
-
-// ─── Revealed pub pill ────────────────────────────────────────────────────────
-
-interface RevealedPubPillProps {
-  pubName: string;
-  pubKey: string;
-  mapInfo: PubInfoContext;
-  onOpenMaps: () => void;
-  onReport: () => void;
-  onContribute: () => void;
-  isOpenNow: boolean | null;
-  hoursStatus?: HoursStatus;
-  nextChange?: string | null;
-  beers?: CommunityBeer[];
-  beersUpdatedAt?: string | null;
-  price?: PubPrice | null;
-  rating?: number | null;
-  ratingCount?: number | null;
-  hasGarden?: boolean | null;
-}
-
 /** A compact one-liner for the cheapest/first beer, with "a další" when more.
  *  A priced line carries the observation age ("· před 3 týdny"); observations
  *  older than ~6 months render as approximate ("≈ 42 Kč") so a stale price
@@ -538,6 +406,13 @@ function formatBeerLine(
   priceCurrency: PriceCurrency,
   referencePrice?: PubPrice | null,
   beersUpdatedAt?: string | null,
+  /**
+   * Card-footer mode: name and price only. The volume, the freshness label and
+   * "a další" are real information, but on a single-line footer that shares its
+   * row with the opening hours they push the sentence past the edge — and they
+   * all live one tap away in the pub hub anyway.
+   */
+  compact = false,
 ): string | null {
   if (beers.length === 0) return null;
   const freshReference =
@@ -570,7 +445,7 @@ function formatBeerLine(
   if (typeof displayedPrice === 'number' && observedAt) {
     const formatted = formatPrice(displayedPrice, priceCurrency);
     const volume =
-      displayedVolume != null && displayedVolume !== 500
+      !compact && displayedVolume != null && displayedVolume !== 500
         ? ` / ${formatVolume(displayedVolume)}`
         : '';
     const approx = isPriceApproximate(observedAt);
@@ -578,498 +453,66 @@ function formatBeerLine(
       freshReference && !matchingReference ? cs.compass.referenceBeer : lead.name,
       `${approx ? cs.compass.priceApprox(formatted) : formatted}${volume}`,
     );
-    const age = priceAgeLabel(observedAt);
+    const age = compact ? null : priceAgeLabel(observedAt);
     if (age) base = `${base} · ${age}`;
   } else {
     base = cs.compass.beerNoPrice(lead.name);
   }
+  if (compact) return base;
   return beers.length > 1 ? `${base} · ${cs.compass.beerAndMore}` : base;
 }
 
-function formatRatingValue(rating: number): string {
-  return rating.toLocaleString('cs-CZ', {
-    minimumFractionDigits: Number.isInteger(rating) ? 0 : 1,
-    maximumFractionDigits: 1,
-  });
-}
+// ─── Tácek helpers ────────────────────────────────────────────────────────────
 
-function RevealedPubPill({
-  pubName,
-  pubKey,
-  mapInfo,
-  onOpenMaps,
-  onReport,
-  onContribute,
-  isOpenNow,
-  hoursStatus,
-  nextChange,
-  beers,
-  beersUpdatedAt,
-  price,
-  rating,
-  ratingCount,
-  hasGarden,
-}: RevealedPubPillProps) {
-  const [mapOpen, setMapOpen] = useState(false);
-  const priceCurrency = useSettingsStore((s) => s.priceCurrency);
-  const hasRating = typeof rating === 'number' && Number.isFinite(rating);
-  const ratingValue = hasRating ? formatRatingValue(rating) : null;
-  const ratingCountText =
-    typeof ratingCount === 'number' && Number.isFinite(ratingCount) && ratingCount > 0
-      ? ratingCount.toLocaleString('cs-CZ')
-      : null;
-  // Compact form for the meta row: the star icon already reads as "rating", so
-  // the "/ 5" and "hodnocení" words are dropped to fit beside the open-status.
-  // The verbose version still goes to the accessibility label below.
-  const ratingLine =
-    ratingValue === null
-      ? null
-      : ratingCountText
-        ? `${ratingValue} · ${ratingCountText}`
-        : ratingValue;
-  // Fold the open/closed status into the pill's OWN a11y label: the Pressable
-  // collapses its children into a single VoiceOver element, so the chip's label
-  // would otherwise never be announced. Stay silent while the lookup is in flight.
-  const statusWord =
-    isOpenNow === true
-      ? cs.compass.openNow
-      : isOpenNow === false
-        ? cs.compass.closedNow
-        : hoursStatus === 'loading' || hoursStatus === 'pending'
-          ? null
-          : cs.compass.hoursUnknown;
-  const accessibilityParts = [cs.a11y.pubPillRevealed(pubName)];
-  if (statusWord) accessibilityParts.push(cs.a11y.openStatus(statusWord));
-  if (ratingValue) accessibilityParts.push(cs.a11y.pubRating(ratingValue, ratingCountText ?? undefined));
-  if (hasGarden === true) accessibilityParts.push(cs.a11y.pubGarden);
-  const accessibilityLabel = accessibilityParts.join('. ');
-
-  const beerLine =
-    beers && beers.length > 0
-      ? formatBeerLine(beers, priceCurrency, price, beersUpdatedAt)
-      : null;
-
-  return (
-    <View style={[styles.pubPill, styles.pubPillRevealed]}>
-      <Pressable
-        onPress={onOpenMaps}
-        hitSlop={8}
-        style={({ pressed }) => [styles.pubPillTapArea, pressed && { opacity: 0.85 }]}
-        accessibilityLabel={accessibilityLabel}
-        accessibilityRole="button"
-      >
-        {/* Name row — the trailing ↗ is the maps cue; the whole tap area below
-            opens maps, so there's no separate "Otevřít v mapách" line anymore. */}
-        <View style={styles.revealedNameRow}>
-          <BeerIcon size={18} color={Colors.amber} />
-          <Text style={styles.pubName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {pubName}
-          </Text>
-          <ExternalLinkIcon size={16} color={Colors.amber} />
-        </View>
-
-        {/* Meta row — open-status on the left, rating on the right. Pairing the
-            two shortest facts on one line is what reclaims the vertical space.
-            The status shrinks/ellipsizes first so the rating stays pinned right;
-            the chip renders nothing while hours are still loading. */}
-        <View style={styles.metaRow}>
-          <View style={styles.metaStatus}>
-            <OpenStatusChip isOpenNow={isOpenNow} status={hoursStatus} nextChange={nextChange} />
-          </View>
-          {ratingLine && (
-            <View style={styles.ratingRow}>
-              <StarIcon size={13} color={Colors.amber} />
-              <Text
-                style={styles.ratingText}
-                numberOfLines={1}
-                maxFontSizeMultiplier={FontScaleCap.body}
-              >
-                {ratingLine}
-              </Text>
-            </View>
-          )}
-          {hasGarden === true && (
-            <View style={styles.gardenBadge}>
-              <TreePineIcon size={13} color={Colors.success} />
-              <Text
-                style={styles.gardenBadgeText}
-                numberOfLines={1}
-                maxFontSizeMultiplier={FontScaleCap.body}
-              >
-                {cs.compass.gardenBadge}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* Beers on tap — a compact line for the cheapest/first beer. Tapping it
-            opens the contribute screen (where the full list lives + is editable). */}
-        {beerLine && (
-          <Pressable
-            onPress={onContribute}
-            hitSlop={6}
-            style={({ pressed }) => [styles.beerLineRow, pressed && { opacity: 0.75 }]}
-            accessibilityRole="button"
-            accessibilityLabel={cs.a11y.contributeBeersLine(beerLine)}
-          >
-            <BeerIcon size={14} color={Colors.mutedText} />
-            <Text
-              style={styles.beerLineText}
-              numberOfLines={1}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            >
-              {beerLine}
-            </Text>
-          </Pressable>
-        )}
-      </Pressable>
-
-      {/* Two clear choices keep the card calm: map public facts, or handle a
-          missing/wrong pub from a focused sheet. */}
-      <PubCardActions
-        primary={{
-          label: cs.mapPub.triggerDefault,
-          icon: <MapPinnedIcon size={15} color={Colors.stout} />,
-          onPress: () => setMapOpen(true),
-        }}
-        secondary={{
-          label: cs.compass.pubFixShort,
-          accessibilityLabel: cs.a11y.pubFixButton,
-          icon: <MapPinPlusIcon size={15} color={Colors.foamMuted} />,
-          onPress: onReport,
-        }}
-      />
-
-      <MapPubSheet
-        visible={mapOpen}
-        pubKey={pubKey}
-        pubName={pubName}
-        info={mapInfo}
-        onClose={() => setMapOpen(false)}
-      />
-    </View>
-  );
-}
-
-// ─── Mode toggle ──────────────────────────────────────────────────────────────
-
-interface ModeToggleProps {
-  mode: 'nearest' | 'surprise';
-  onNearest: () => void;
-  onSurprise: () => void;
-}
-
-function ModeToggle({ mode, onNearest, onSurprise }: ModeToggleProps) {
-  return (
-    <View style={styles.modeTogglePill}>
-      {/* Nejbližší segment */}
-      <Pressable
-        onPress={onNearest}
-        style={[
-          styles.modeSegment,
-          mode === 'nearest' && styles.modeSegmentActive,
-        ]}
-        accessibilityLabel={cs.a11y.modeNearestButton}
-        accessibilityRole="button"
-      >
-        <Text
-          style={[
-            styles.modeSegmentText,
-            mode === 'nearest' ? styles.modeSegmentTextActive : styles.modeSegmentTextInactive,
-          ]}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.82}
-          maxFontSizeMultiplier={FontScaleCap.heading}
-        >
-          {cs.compass.modeNearest}
-        </Text>
-      </Pressable>
-
-      {/* Překvap mě segment */}
-      <Pressable
-        onPress={onSurprise}
-        style={[
-          styles.modeSegment,
-          mode === 'surprise' && styles.modeSegmentActive,
-        ]}
-        accessibilityLabel={cs.a11y.modeSurpriseButton}
-        accessibilityRole="button"
-      >
-        <Text
-          style={[
-            styles.modeSegmentText,
-            mode === 'surprise' ? styles.modeSegmentTextActive : styles.modeSegmentTextInactive,
-          ]}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.82}
-          maxFontSizeMultiplier={FontScaleCap.heading}
-        >
-          {cs.compass.modeSurprise}
-        </Text>
-      </Pressable>
-    </View>
-  );
-}
-
-interface PubFilterButtonProps {
-  count: number;
-  onOpen: () => void;
-  onClear: () => void;
-}
-
-// Compact control in the header's otherwise empty right side. The count keeps
-// mixed beer + amenity filters legible without trying to squeeze their labels
-// into the compass chrome; the sheet owns the full editing flow.
-function PubFilterButton({ count, onOpen, onClear }: PubFilterButtonProps) {
-  const active = count > 0;
-  return (
-    <Pressable
-      onPress={onOpen}
-      style={({ pressed }) => [
-        styles.filterButton,
-        active && styles.filterButtonActive,
-        pressed && { opacity: 0.8 },
-      ]}
-      accessibilityRole="button"
-      accessibilityLabel={
-        active ? cs.a11y.pubFiltersActive(count) : cs.a11y.openPubFilters
-      }
-    >
-      <ListFilterIcon size={15} color={active ? Colors.amber : Colors.foamMuted} />
-      <Text
-        style={[styles.filterButtonText, active && styles.filterButtonTextActive]}
-        numberOfLines={1}
-        maxFontSizeMultiplier={FontScaleCap.body}
-      >
-        {active ? cs.compass.pubFilterButtonActive(count) : cs.compass.pubFilterButton}
-      </Text>
-      {active && (
-        <Pressable
-          onPress={onClear}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel={cs.a11y.clearPubFilters}
-          style={({ pressed }) => [styles.filterButtonClear, pressed && { opacity: 0.6 }]}
-        >
-          <XIcon size={14} color={Colors.amberLight} />
-        </Pressable>
-      )}
-    </Pressable>
-  );
-}
-
-function HeaderMapTools({
-  count,
-  onOpenFilter,
-  onClearFilter,
-  onShowMap,
-  onNavigateHome,
-}: {
-  count: number;
-  onOpenFilter: () => void;
-  onClearFilter: () => void;
-  onShowMap: () => void;
-  onNavigateHome?: () => void;
-}) {
-  return (
-    <View style={styles.headerMapTools}>
-      <View style={styles.headerViewSwitch} accessibilityRole="tablist">
-        <Pressable
-          disabled
-          style={[styles.headerViewSegment, styles.headerViewSegmentActive]}
-          accessibilityRole="tab"
-          accessibilityState={{ selected: true, disabled: true }}
-          accessibilityLabel={cs.a11y.mapSwitchCompassSelected}
-        >
-          <CompassIcon size={16} color={Colors.stout} />
-        </Pressable>
-        <Pressable
-          onPress={onShowMap}
-          hitSlop={4}
-          style={({ pressed }) => [
-            styles.headerViewSegment,
-            pressed && styles.headerViewSegmentPressed,
-          ]}
-          accessibilityRole="tab"
-          accessibilityState={{ selected: false }}
-          accessibilityLabel={cs.a11y.mapSwitchToMap}
-        >
-          <MapIcon size={16} color={Colors.foamMuted} />
-        </Pressable>
-      </View>
-      {onNavigateHome ? (
-        <Pressable
-          onPress={onNavigateHome}
-          hitSlop={4}
-          style={({ pressed }) => [styles.homeNavigationButton, pressed && styles.headerViewSegmentPressed]}
-          accessibilityRole="button"
-          accessibilityLabel="Navigovat domů"
-          accessibilityHint="Otevře pěší trasu ve zvolené navigaci"
-        >
-          <HouseIcon size={16} color={Colors.foamMuted} />
-        </Pressable>
-      ) : null}
-      <PubFilterButton count={count} onOpen={onOpenFilter} onClear={onClearFilter} />
-    </View>
-  );
-}
-
-// ─── Distance display ─────────────────────────────────────────────────────────
-
-interface DistanceDisplayProps {
-  distanceFormatted: string | null;
-  mode: 'nearest' | 'surprise';
-  layout: ActiveCompassLayout;
-}
-
-function DistanceDisplay({ distanceFormatted, mode, layout }: DistanceDisplayProps) {
-  // Split "320 m" or "2,5 km" into number and unit parts
-  let numberPart = '—';
-  let unitPart = '';
-
-  if (distanceFormatted) {
-    const spaceIdx = distanceFormatted.lastIndexOf(' ');
-    if (spaceIdx !== -1) {
-      numberPart = distanceFormatted.slice(0, spaceIdx);
-      unitPart = distanceFormatted.slice(spaceIdx + 1);
-    } else {
-      numberPart = distanceFormatted;
-    }
+/**
+ * Split "320 m" / "2,5 km" into the big numeral and its declined uppercase unit.
+ * The unit used to hang beside the number as a separate amber glyph; it is now
+ * the wide caption underneath, exactly like "PIV" under the counter's tally.
+ */
+function splitDistance(formatted: string | null): { value: string; unit: string } | null {
+  if (!formatted) return null;
+  const spaceIdx = formatted.lastIndexOf(' ');
+  if (spaceIdx === -1) return { value: formatted, unit: cs.compass.distanceUnitMeters };
+  const value = formatted.slice(0, spaceIdx);
+  const rawUnit = formatted.slice(spaceIdx + 1);
+  if (rawUnit === 'km') {
+    const numeric = Number(value.replace(',', '.'));
+    return { value, unit: cs.compass.distanceUnitKm(numeric) };
   }
-
-  const caption =
-    mode === 'nearest' ? cs.compass.distanceCaption.nearest : cs.compass.distanceCaption.surprise;
-
-  return (
-    <View
-      style={[
-        styles.distanceWrap,
-        {
-          paddingTop: layout.distancePaddingTop,
-          paddingBottom: layout.distancePaddingBottom,
-        },
-      ]}
-    >
-      <View style={styles.distanceRow}>
-        <Text
-          style={[
-            styles.distanceNumber,
-            {
-              fontSize: layout.distanceNumberFontSize,
-              lineHeight: layout.distanceNumberLineHeight,
-            },
-          ]}
-          maxFontSizeMultiplier={FontScaleCap.display}
-        >
-          {numberPart}
-        </Text>
-        {unitPart !== '' && (
-          <Text
-            style={[
-              styles.distanceUnit,
-              {
-                fontSize: layout.distanceUnitFontSize,
-                lineHeight: layout.distanceUnitLineHeight,
-              },
-            ]}
-            maxFontSizeMultiplier={FontScaleCap.display}
-          >
-            {unitPart}
-          </Text>
-        )}
-      </View>
-      <Text style={styles.distanceCaption} maxFontSizeMultiplier={FontScaleCap.body}>
-        {caption}
-      </Text>
-    </View>
-  );
-}
-
-// ─── Focused compass (friend handoff, §F2) ───────────────────────────────────
-
-interface FocusedCompassViewProps {
-  rotation: ReturnType<typeof useSharedValue<number>>;
-  pubName: string;
-  distanceFormatted: string | null;
-  compassSize: number;
-  onBack: () => void;
-  onShowMap: () => void;
+  return { value, unit: cs.compass.distanceUnitMeters };
 }
 
 /**
- * The compass in "Ukaž na kompasu" mode: the needle already points at the
- * friend's coarse pub (the bearing target was swapped inside useCompass). A slim
- * banner names who/where and a single escape hatch drops back to the nearest pub.
+ * The opening hours for the card footer, as their own line.
+ *
+ * They used to be the first clause of a single sentence that also carried the
+ * beer and its price, which meant the one thing you want while standing on the
+ * street was the thing that got truncated first. Now: hours on their own line
+ * with their own tone, beer underneath. While the lookup is in flight the line
+ * is empty — nobody reads "Načítám" — but once it comes back empty we say so,
+ * because "neznám" is an invitation to map it, and the door is right there.
  */
-function FocusedCompassView({
-  rotation,
-  pubName,
-  distanceFormatted,
-  compassSize,
-  onBack,
-  onShowMap,
-}: FocusedCompassViewProps) {
-  const insets = useSafeAreaInsets();
-  return (
-    <View style={[styles.root, { paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, 16) }]}>
-      <View style={styles.focusHeader}>
-        <Pressable
-          onPress={onBack}
-          hitSlop={10}
-          style={({ pressed }) => [styles.focusBackButton, pressed && { opacity: 0.7 }]}
-          accessibilityRole="button"
-          accessibilityLabel={cs.friends.friendCompassBack}
-        >
-          <ChevronLeftIcon size={24} color={Colors.foam} />
-        </Pressable>
-        <View style={styles.focusKickerWrap}>
-          <UsersIcon size={14} color={Colors.amber} />
-          <Text style={styles.focusKicker} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.friends.friendCompassKicker}
-          </Text>
-        </View>
-        <Pressable
-          onPress={onShowMap}
-          hitSlop={8}
-          style={({ pressed }) => [styles.focusBackButton, pressed && { opacity: 0.7 }]}
-          accessibilityRole="button"
-          accessibilityLabel={cs.a11y.openBeerMap}
-        >
-          <MapIcon size={20} color={Colors.amber} />
-        </Pressable>
-      </View>
+function pubHoursLine(pub: Pub): { label: string | null; tone: 'open' | 'closed' | 'unknown' } {
+  const loading = pub.hoursStatus === 'loading' || pub.hoursStatus === 'pending';
+  if (loading && pub.isOpenNow == null) return { label: null, tone: 'unknown' };
 
-      <View style={styles.focusCompassArea}>
-        <CompassContainer rotation={rotation} size={compassSize} />
-      </View>
+  const time = hoursTimeFromIso(pub.nextChange);
+  if (pub.isOpenNow === true) {
+    return { label: time ? cs.compass.openUntil(time) : cs.compass.openNow, tone: 'open' };
+  }
+  if (pub.isOpenNow === false) {
+    return { label: time ? cs.compass.closedUntil(time) : cs.compass.closedNow, tone: 'closed' };
+  }
+  return { label: cs.compass.hoursUnknown, tone: 'unknown' };
+}
 
-      <View style={styles.focusInfo}>
-        <Text style={styles.focusPubName} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.heading}>
-          {pubName}
-        </Text>
-        {distanceFormatted ? (
-          <Text style={styles.focusDistance} maxFontSizeMultiplier={FontScaleCap.display}>
-            {distanceFormatted}
-          </Text>
-        ) : null}
-      </View>
-
-      <View style={styles.flexSpacer} />
-
-      <View style={styles.focusBackWrap}>
-        <GlowButton
-          label={cs.friends.friendCompassBack}
-          onPress={onBack}
-          variant="secondary"
-          glow="none"
-          height={52}
-          icon={<RefreshCwIcon size={18} color={Colors.foam} />}
-        />
-      </View>
-    </View>
-  );
+/** `HH:MM` straight out of a Europe/Prague ISO stamp — no `Intl`, see OpenStatusChip. */
+function hoursTimeFromIso(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const tIndex = iso.indexOf('T');
+  if (tIndex === -1) return null;
+  const hhmm = iso.slice(tIndex + 1, tIndex + 6);
+  return /^\d{2}:\d{2}$/.test(hhmm) ? hhmm : null;
 }
 
 // ─── Main CompassScreen ───────────────────────────────────────────────────────
@@ -1077,8 +520,8 @@ function FocusedCompassView({
 export default function CompassScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { width: screenWidth, height: screenHeight, fontScale } = useWindowDimensions();
-  const [sceneSize, setSceneSize] = useState<{ width: number; height: number } | null>(null);
+  useWindowDimensions();
+  const [, setSceneSize] = useState<{ width: number; height: number } | null>(null);
   const [pubFilters, setPubFilters] = useState<PubSearchFilters>(EMPTY_PUB_SEARCH_FILTERS);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
@@ -1086,6 +529,10 @@ export default function CompassScreen() {
   const [renameDraft, setRenameDraft] = useState('');
   const [renameSubmitting, setRenameSubmitting] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [mapPubOpen, setMapPubOpen] = useState(false);
+  // The dial is sized from the card, never the other way round (§5.3).
+  const [dialSize, setDialSize] = useState(260);
   const showToast = useToastStore((s) => s.show);
 
   const {
@@ -1123,6 +570,7 @@ export default function CompassScreen() {
   const activeFilterCount = activePubSearchFilterCount(pubFilters);
   const hidePubNames = useSettingsStore((s) => s.hidePubNames);
   const homePoint = useSettingsStore((s) => s.homePoint);
+  const priceCurrency = useSettingsStore((s) => s.priceCurrency);
   const showPubDetails = !hidePubNames || revealed;
   const handleModeChange = useCallback(
     (next: 'nearest' | 'surprise') => {
@@ -1131,14 +579,6 @@ export default function CompassScreen() {
     },
     [setMode],
   );
-  const activeLayout = getActiveCompassLayout(
-    sceneSize?.width ?? screenWidth,
-    sceneSize?.height ?? screenHeight,
-    insets.top,
-    Math.max(insets.bottom, 16),
-    fontScale,
-  );
-
   const handleSceneLayout = useCallback((event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout;
     const next = { width: Math.round(width), height: Math.round(height) };
@@ -1233,30 +673,6 @@ export default function CompassScreen() {
     if (homePoint) void openHomeInMaps(homePoint);
   }, [homePoint]);
 
-  const handleContribute = useCallback(() => {
-    if (!pub) return;
-    const prefillHours =
-      pub.communityHours ?? parseOsmOpeningHoursToWeeklyHours(pub.openingHours);
-    // Params are strings; JSON-encode the structured prefill fields so the
-    // contribute screen can hydrate the form from the current enrichment.
-    router.push({
-      pathname: '/contribute',
-      params: {
-        focus: 'beers',
-        id: pub.id,
-        name: pub.name,
-        lat: String(pub.lat),
-        lng: String(pub.lng),
-        ...(pub.city ? { city: pub.city } : {}),
-        ...(prefillHours ? { hours: JSON.stringify(prefillHours) } : {}),
-        ...(pub.beers && pub.beers.length > 0 ? { beers: JSON.stringify(pub.beers) } : {}),
-        ...(pub.historicalBeers && pub.historicalBeers.length > 0
-          ? { historicalBeers: JSON.stringify(pub.historicalBeers) }
-          : {}),
-      },
-    });
-  }, [pub, router]);
-
   const handleReportReason = useCallback((reason: PubReportReason) => {
     reportCurrentPub(reason).catch(() => undefined);
   }, [reportCurrentPub]);
@@ -1295,6 +711,119 @@ export default function CompassScreen() {
     setReportOpen(true);
   }, [pub]);
 
+
+  // ── Tácek composition state ───────────────────────────────────────────────
+  // The pub the needle is actually aimed at: a friend's handoff wins over the
+  // local search, which is why the focused mode no longer needs its own screen.
+  // A friend's handoff wins over the local search. It carries only a name and a
+  // coarse cell, so anything that needs real pub data keys off `pub` instead.
+  const targetPub: Pub | FocusedPub | null = focusedPub ?? pub;
+  const distanceParts = splitDistance(distanceFormatted);
+  // A friend's handoff carries only a name and a coarse cell, so it has neither
+  // hours nor a tap list to show.
+  const hours =
+    !focusedPub && pub ? pubHoursLine(pub) : { label: null, tone: 'unknown' as const };
+  const beerLine =
+    !focusedPub && pub
+      ? formatBeerLine(pub.beers ?? [], priceCurrency, pub.price, pub.beersUpdatedAt, true)
+      : null;
+  // The sheet has the width the card's footer does not, so it gets the full
+  // sentence: volume, price age and "a další".
+  const sheetBeerLine =
+    !focusedPub && pub
+      ? formatBeerLine(pub.beers ?? [], priceCurrency, pub.price, pub.beersUpdatedAt)
+      : null;
+
+  // Tapping the card footer opens what you'd want next: the pub hub when the
+  // name is visible, the reveal when it isn't.
+  const handleCardFooterPress = useCallback(() => {
+    if (!showPubDetails) {
+      reveal();
+      return;
+    }
+    if (focusedPub) return; // a coarse friend target has nothing to map
+    setMapPubOpen(true);
+  }, [focusedPub, reveal, showPubDetails]);
+
+  // One nudge, one priority, never two — the slot is 52 pt whether it speaks or
+  // not, so the button below it never moves under the thumb.
+  const compassNudge: Nudge | null = useMemo(() => {
+    if (isHeadingAccuracyLow(headingAccuracy, Platform.OS)) {
+      return { kind: 'dopito', label: cs.compass.nudgeCalibrate, onPress: () => undefined };
+    }
+    if (activeFilterCount > 0) {
+      return {
+        kind: 'rapid',
+        text: cs.compass.nudgeFilters(activeFilterCount),
+        confirmLabel: cs.compass.nudgeFiltersClear,
+        onConfirm: () => setPubFilters(EMPTY_PUB_SEARCH_FILTERS),
+      };
+    }
+    if (focusedPub) {
+      return { kind: 'dopito', label: cs.compass.nudgeFocused, onPress: () => undefined };
+    }
+    // Surprise mode speaks for itself through "Dej mi jinou" in the thumb arc,
+    // so it gets no strip of its own; the way back is the overflow sheet.
+    if (hasMagnetometer === false) {
+      return { kind: 'dopito', label: cs.compass.nudgeNoMagnetometer, onPress: () => undefined };
+    }
+    return null;
+  }, [activeFilterCount, focusedPub, hasMagnetometer, headingAccuracy]);
+
+  // Everything that used to live in the header and the bottom bar — minus the
+  // map, which is now a visible half of the header. One door per place.
+  const moreRows: MoreRow[] = useMemo(() => {
+    const rows: MoreRow[] = [
+      {
+        key: 'filters',
+        label: cs.compass.moreFilters,
+        value: activeFilterCount > 0 ? cs.compass.moreFiltersActive(activeFilterCount) : null,
+        icon: ListFilterIcon,
+        onPress: () => { setMoreOpen(false); handleOpenFilter(); },
+      },
+    ];
+    if (homePoint) {
+      rows.push({ key: 'home', label: cs.compass.moreHome, icon: HouseIcon, onPress: () => { setMoreOpen(false); handleNavigateHome(); } });
+    }
+    rows.push(
+      {
+        key: 'nearest',
+        label: cs.compass.moreModeNearest,
+        icon: TargetIcon,
+        selected: mode === 'nearest',
+        onPress: () => { setMoreOpen(false); handleModeChange('nearest'); },
+      },
+      {
+        key: 'surprise',
+        label: cs.compass.moreModeSurprise,
+        icon: SparklesIcon,
+        selected: mode === 'surprise',
+        onPress: () => { setMoreOpen(false); handleModeChange('surprise'); },
+      },
+    );
+    rows.push({
+      key: 'add-pub',
+      label: cs.compass.moreAddPub,
+      icon: MapPinPlusIcon,
+      onPress: () => { setMoreOpen(false); handleAddPub(); },
+    });
+    if (targetPub && !focusedPub) {
+      rows.push({ key: 'report', label: cs.compass.moreReport, icon: FlagIcon, onPress: () => { setMoreOpen(false); handleReport(); } });
+    }
+    return rows;
+  }, [
+    activeFilterCount,
+    focusedPub,
+    handleAddPub,
+    handleModeChange,
+    handleNavigateHome,
+    handleOpenFilter,
+    handleReport,
+    homePoint,
+    mode,
+    targetPub,
+  ]);
+
   if (mapOpen) {
     return (
       <BeerMapScreen
@@ -1322,39 +851,23 @@ export default function CompassScreen() {
     return <LoadingScreen rotation={rotation} />;
   }
 
-  // ── State F: pointing at a friend's pub (§F2) ─────────────────────────────
-  // Takes precedence over the nearby/empty states — a handoff should always
-  // show the needle to the friend even where the local search found nothing.
-  if (focusedPub) {
-    return (
-      <FocusedCompassView
-        rotation={rotation}
-        pubName={focusedPub.name}
-        distanceFormatted={distanceFormatted}
-        compassSize={activeLayout.compassSize}
-        onBack={clearFocusedPub}
-        onShowMap={handleShowMap}
-      />
-    );
-  }
-
   // ── State D: nothing nearby / pub lookup failed ───────────────────────────
-  if (pub === null) {
+  // Aiming at a friend's pub used to be its own screen (State F). It is now a
+  // state of the one composition below: a strip in the nudge slot and a quiet
+  // "Zpět na nejbližší" in the thumb arc.
+  if (pub === null && !focusedPub) {
     return (
       <View style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-        <TitleBar
-          align="left"
-          showGear={false}
-          filterSlot={
-            <HeaderMapTools
-              count={activeFilterCount}
-              onOpenFilter={handleOpenFilter}
-              onClearFilter={handleClearFilter}
-              onShowMap={handleShowMap}
-              onNavigateHome={homePoint ? handleNavigateHome : undefined}
-            />
-          }
-        />
+        {/* Nothing within reach is exactly when the map earns its place, so the
+            switch stays in the header here too. */}
+        <View style={[styles.headerRow, styles.headerRowEmpty]}>
+          <ExploreSwitch
+            activeView="compass"
+            variant="flat"
+            onSelectCompass={() => undefined}
+            onSelectMap={handleShowMap}
+          />
+        </View>
         <EmptyScreen
           onSettings={handleSettings}
           onRetry={retrySearch}
@@ -1378,117 +891,89 @@ export default function CompassScreen() {
   }
 
   // ── State C: active compass ───────────────────────────────────────────────
+  // Four blocks and nothing else: header, one card, one nudge slot, one amber
+  // button. Everything the header and the bottom bar used to carry — the map,
+  // the filters, walking home, the search mode, reporting a wrong pub — is one
+  // tap away behind "…".
   return (
     <View
       onLayout={handleSceneLayout}
-      style={[styles.root, { paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, 16) }]}
+      style={[
+        styles.root,
+        styles.surface,
+        { paddingTop: insets.top + 8, paddingBottom: Math.max(insets.bottom, Spacing.sm) },
+      ]}
     >
-      {/* Header — settings now lives in the Profile tab; the gear is gone so the
-          filter pill sits right-aligned, mirroring the logo on the left. Dev
-          arrival shortcut moved to the logo. */}
-      <TitleBar
-        align="left"
-        showGear={false}
-        onLogoLongPress={handleDevArrival}
-        filterSlot={
-          <HeaderMapTools
-            count={activeFilterCount}
-            onOpenFilter={handleOpenFilter}
-            onClearFilter={handleClearFilter}
-            onShowMap={handleShowMap}
-            onNavigateHome={homePoint ? handleNavigateHome : undefined}
-          />
+      {/* The map is not a menu item. It is the compass's twin, so it lives where
+          you cannot miss it: half of the screen's title. */}
+      <View style={styles.headerRow}>
+        <ExploreSwitch
+          activeView="compass"
+          variant="flat"
+          onSelectCompass={() => undefined}
+          onSelectMap={handleShowMap}
+        />
+        <View style={styles.headerSpacer} />
+        <Pressable
+          onPress={() => setMoreOpen(true)}
+          onLongPress={handleDevArrival}
+          delayLongPress={800}
+          style={({ pressed }) => [styles.moreButton, pressed && styles.pressedSoft]}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={cs.a11y.compassMore}
+        >
+          <EllipsisIcon size={20} color={Colors.mutedText} />
+        </Pressable>
+      </View>
+
+      <CompassCard
+        dial={<CompassContainer rotation={rotation} size={dialSize} />}
+        onDialSize={setDialSize}
+        distanceValue={distanceParts?.value ?? null}
+        distanceUnit={distanceParts?.unit ?? ''}
+        pubName={showPubDetails ? (targetPub?.name ?? null) : null}
+        hoursLabel={showPubDetails ? hours.label : null}
+        hoursTone={hours.tone}
+        beerLine={showPubDetails ? beerLine : null}
+        hidden={!showPubDetails}
+        showDetailLink={showPubDetails && !focusedPub && targetPub !== null}
+        onPressFooter={handleCardFooterPress}
+        accessibilityLabel={
+          showPubDetails
+            ? cs.a11y.compassCard(
+                targetPub?.name ?? '',
+                distanceFormatted ?? '',
+                [hours.label, beerLine].filter(Boolean).join(' · '),
+              )
+            : cs.a11y.compassCardHidden
         }
       />
 
-      {/* Calibration hint (optional, subtle) */}
-      {isHeadingAccuracyLow(headingAccuracy, Platform.OS) && (
-        <View style={styles.calibrationRow}>
-          <Text style={styles.calibrationText} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.compass.calibrationHint}
-          </Text>
-        </View>
-      )}
+      <NudgeSlot nudge={compassNudge} />
 
-      {/* Compass area */}
-      <View
-        style={[
-          styles.compassArea,
-          {
-            height: activeLayout.compassSize,
-            marginTop: activeLayout.compassMarginTop,
-          },
-        ]}
-      >
-        <CompassContainer rotation={rotation} size={activeLayout.compassSize} />
-      </View>
+      <CounterCta
+        label={cs.compass.navigateCta}
+        subLabel={cs.compass.navigateCtaSub}
+        onPress={handleOpenMaps}
+        accessibilityLabel={cs.a11y.compassNavigate(targetPub?.name ?? '')}
+      />
 
-      {/* Distance */}
-      <DistanceDisplay distanceFormatted={distanceFormatted} mode={mode} layout={activeLayout} />
-
-      {/* No magnetometer note */}
-      {hasMagnetometer === false && (
-        <Text style={styles.noMagText} maxFontSizeMultiplier={FontScaleCap.body}>
-          Tvůj telefon nemá kompas, šipka se nebude otáčet.
-        </Text>
-      )}
-
-      {/* Flex spacer — mirrors the iBYAN spacer in the Pencil design */}
-      <View style={styles.flexSpacer} />
-
-      {/* Pub pill */}
-      <View style={[styles.pubPillWrap, { paddingBottom: activeLayout.pubPillPaddingBottom }]}>
-        {showPubDetails && pub !== null ? (
-          <RevealedPubPill
-            pubName={pub.name}
-            pubKey={geohash8(pub.lat, pub.lng)}
-            mapInfo={pubInfoFromPub(pub)}
-            onOpenMaps={handleOpenMaps}
-            onReport={handleReport}
-            onContribute={handleContribute}
-            isOpenNow={pub.isOpenNow ?? null}
-            hoursStatus={pub.hoursStatus}
-            nextChange={pub.nextChange}
-            beers={pub.beers}
-            beersUpdatedAt={pub.beersUpdatedAt}
-            price={pub.price}
-            rating={pub.rating}
-            ratingCount={pub.ratingCount}
-            hasGarden={pub.hasGarden}
-          />
-        ) : (
-          <HiddenPubPill onReveal={reveal} />
-        )}
-      </View>
-
-      {/* Bottom controls: mode toggle pill + reroll button, side by side */}
-      <View
-        style={[
-          styles.bottomControls,
-          {
-            paddingTop: activeLayout.bottomControlsPaddingTop,
-            paddingBottom: activeLayout.bottomControlsPaddingBottom,
-          },
-        ]}
-      >
-        <View style={styles.modeToggleFlex}>
-          <ModeToggle
-            mode={mode}
-            onNearest={() => handleModeChange('nearest')}
-            onSurprise={() => handleModeChange('surprise')}
-          />
-        </View>
-        <Pressable
+      {focusedPub ? (
+        <CounterSecondary
+          label={cs.compass.backToNearest}
+          onPress={clearFocusedPub}
+          accessibilityLabel={cs.a11y.compassBackToNearest}
+        />
+      ) : (
+        <CounterSecondary
+          label={cs.compass.anotherPub}
           onPress={mode === 'surprise' ? reroll : skip}
-          style={styles.rerollButton}
-          hitSlop={12}
-          accessibilityLabel={mode === 'surprise' ? cs.a11y.rerollButton : cs.a11y.skipButton}
-          accessibilityHint={mode === 'surprise' ? undefined : cs.a11y.skipButtonHint}
-          accessibilityRole="button"
-        >
-          <RefreshCwIcon size={18} color={Colors.foamMuted} />
-        </Pressable>
-      </View>
+          accessibilityLabel={cs.a11y.compassAnother}
+        />
+      )}
+
+      <MoreSheet visible={moreOpen} rows={moreRows} onClose={() => setMoreOpen(false)} />
 
       {filterSheetOpen ? (
         <PubFilterSheet
@@ -1499,23 +984,39 @@ export default function CompassScreen() {
           onApply={setPubFilters}
         />
       ) : null}
-      <ReportPubModal
-        visible={reportOpen}
-        pubName={pub.name}
-        onClose={handleReportClose}
-        onAddPub={handleAddPub}
-        onRename={handleRenamePress}
-        onReportReason={handleReportReason}
-      />
-      <RenamePubModal
-        visible={renameOpen}
-        currentName={pub.name}
-        value={renameDraft}
-        submitting={renameSubmitting}
-        onChange={setRenameDraft}
-        onCancel={handleRenameCancel}
-        onSubmit={handleRenameSubmit}
-      />
+      {pub ? (
+        <MapPubSheet
+          visible={mapPubOpen}
+          pubKey={geohash8(pub.lat, pub.lng)}
+          pubName={pub.name}
+          info={pubInfoFromPub(pub)}
+          hoursLabel={hours.label}
+          hoursTone={hours.tone}
+          beerLine={sheetBeerLine}
+          onClose={() => setMapPubOpen(false)}
+        />
+      ) : null}
+      {pub ? (
+        <ReportPubModal
+          visible={reportOpen}
+          pubName={pub.name}
+          onClose={handleReportClose}
+          onAddPub={handleAddPub}
+          onRename={handleRenamePress}
+          onReportReason={handleReportReason}
+        />
+      ) : null}
+      {pub ? (
+        <RenamePubModal
+          visible={renameOpen}
+          currentName={pub.name}
+          value={renameDraft}
+          submitting={renameSubmitting}
+          onChange={setRenameDraft}
+          onCancel={handleRenameCancel}
+          onSubmit={handleRenameSubmit}
+        />
+      ) : null}
     </View>
   );
 }
@@ -1527,114 +1028,34 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.stout,
   },
-  reportOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  reportScrim: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: withAlpha(Colors.black, 0.68),
-  },
-  reportPanel: {
-    marginHorizontal: 14,
-    marginBottom: 18,
-    borderRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.34),
-    backgroundColor: Colors.stout2,
-    padding: 18,
-    gap: 16,
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.36,
-    shadowRadius: 24,
-    elevation: 16,
-  },
-  reportHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+
+  // — Tácek surface: four fixed blocks, never scrolls, 8-point spacing —
+  surface: {
+    paddingHorizontal: 24,
     gap: 12,
   },
-  reportIconWell: {
-    width: 42,
-    height: 42,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.12),
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.28),
-  },
-  reportTitleWrap: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2,
-  },
-  reportTitle: {
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 25,
-    lineHeight: 30,
-    color: Colors.foam,
-  },
-  reportBody: {
-    fontFamily: Fonts.ui.regular,
-    fontSize: 14,
-    lineHeight: 20,
-    color: Colors.foamMuted,
-  },
-  reportActions: {
-    gap: 10,
-  },
-  reportAction: {
-    minHeight: 54,
-    borderRadius: Radius.pill,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.28),
-    backgroundColor: Colors.stout3,
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    gap: 10,
+    minHeight: 44,
+    marginBottom: 8,
   },
-  reportActionMuted: {
-    borderColor: Colors.border,
-    backgroundColor: withAlpha(Colors.stout3, 0.86),
+  // The empty state owns its own horizontal padding, so the header borrows the
+  // surface's gutter instead of the surface's whole style.
+  headerRowEmpty: {
+    paddingHorizontal: 24,
   },
-  reportActionDanger: {
-    borderColor: withAlpha(Colors.amber, 0.42),
-    backgroundColor: withAlpha(Colors.glow, 0.13),
-  },
-  reportActionGhost: {
-    borderColor: Colors.border,
-    backgroundColor: withAlpha(Colors.stout, 0.45),
-  },
-  reportActionPressed: {
-    opacity: 0.82,
-    transform: [{ scale: 0.985 }],
-  },
-  reportActionIcon: {
-    width: 24,
+  headerSpacer: { flex: 1, minWidth: Spacing.sm },
+  // Quiet on purpose: an outlined circle beside an amber button is two frames
+  // competing. This one is just a glyph.
+  moreButton: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  reportActionIconSpacer: {
-    width: 24,
-  },
-  reportActionText: {
-    flex: 1,
-    minWidth: 0,
-    textAlign: 'center',
-    fontFamily: Fonts.ui.bold,
-    fontSize: 16,
-    color: Colors.foam,
-  },
-  reportActionTextDanger: {
-    color: Colors.amberLight,
-  },
-  reportActionTextGhost: {
-    color: Colors.foamMuted,
-  },
+  pressedSoft: { opacity: 0.6 },
   renameOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
@@ -1781,392 +1202,22 @@ const styles = StyleSheet.create({
   },
 
   // ── Compass area (State C) ──
-  filterButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    minHeight: 32,
-    maxWidth: 200,
-    paddingLeft: 12,
-    paddingRight: 12,
-    borderRadius: Radius.pill,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.stout2,
-  },
-  headerMapTools: {
-    maxWidth: 210,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 6,
-  },
-  headerViewSwitch: {
-    height: 34,
-    padding: 2,
-    borderRadius: Radius.pill,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.14),
-    backgroundColor: withAlpha(Colors.stout, 0.9),
-  },
-  homeNavigationButton: {
-    width: 34,
-    height: 34,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.14),
-    backgroundColor: withAlpha(Colors.stout, 0.9),
-  },
-  headerViewSegment: {
-    width: 28,
-    height: 28,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerViewSegmentActive: {
-    backgroundColor: Colors.amber,
-  },
-  headerViewSegmentPressed: {
-    opacity: 0.7,
-    transform: [{ scale: 0.96 }],
-  },
-  filterButtonActive: {
-    borderColor: Colors.amber,
-    backgroundColor: withAlpha(Colors.amber, 0.12),
-    paddingRight: 4,
-  },
-  filterButtonText: {
-    flexShrink: 1,
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 13,
-    color: Colors.foamMuted,
-  },
-  filterButtonTextActive: {
-    color: Colors.amberLight,
-  },
-  filterButtonClear: {
-    width: 24,
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  calibrationRow: {
-    paddingHorizontal: Spacing.xl,
-    paddingBottom: Spacing.xs,
-    alignItems: 'center',
-  },
-  calibrationText: {
-    fontFamily: Fonts.ui.medium,
-    fontSize: 12,
-    color: Colors.mutedText,
-    textAlign: 'center',
-    lineHeight: 16,
-  },
-  compassArea: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  flexSpacer: {
-    flex: 1,
-    minHeight: Spacing.xs,
-  },
 
   // ── Focused compass (friend handoff) ──
-  focusHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-  },
-  focusBackButton: {
-    width: HitArea.min,
-    height: HitArea.min,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  focusKickerWrap: {
-    flexShrink: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  focusKicker: {
-    flexShrink: 1,
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 12,
-    letterSpacing: 1.5,
-    color: Colors.amber,
-  },
-  focusCompassArea: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: Spacing.lg,
-  },
-  focusInfo: {
-    alignItems: 'center',
-    paddingHorizontal: Spacing.xl,
-    marginTop: Spacing.xl,
-    gap: Spacing.sm,
-  },
-  focusPubName: {
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 26,
-    lineHeight: 32,
-    color: Colors.foam,
-    textAlign: 'center',
-  },
-  focusDistance: {
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 40,
-    lineHeight: 46,
-    color: Colors.amber,
-  },
-  focusBackWrap: {
-    paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.md,
-  },
 
   // ── Distance ──
-  distanceWrap: {
-    alignItems: 'center',
-    paddingHorizontal: Spacing.xl,
-  },
-  distanceRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 6,
-  },
-  distanceNumber: {
-    fontFamily: Fonts.display.extrabold,
-    color: Colors.foam,
-    includeFontPadding: false,
-  },
-  distanceUnit: {
-    fontFamily: Fonts.display.extrabold,
-    color: Colors.amber,
-    includeFontPadding: false,
-  },
-  distanceCaption: {
-    fontFamily: Fonts.ui.bold,
-    fontStyle: 'italic',
-    fontSize: 14,
-    color: Colors.mutedText,
-    // The big numeral's line box leaves slack beneath the baseline; pull the
-    // caption up into it so it reads as one tight unit with the distance.
-    marginTop: -8,
-    textAlign: 'center',
-  },
 
   // ── No magnetometer ──
-  noMagText: {
-    fontFamily: Fonts.ui.regular,
-    fontSize: 12,
-    color: Colors.mutedText,
-    textAlign: 'center',
-    paddingHorizontal: Spacing.xl,
-    marginBottom: Spacing.xs,
-  },
 
   // ── Pub pill (shared) ──
-  pubPillWrap: {
-    paddingHorizontal: 24,
-  },
-  pubPill: {
-    minHeight: PUB_PILL_MIN_HEIGHT,
-    borderRadius: Radius.card,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    gap: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pubPillHidden: {
-    backgroundColor: Colors.stout2,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  pubPillRevealed: {
-    backgroundColor: Colors.stout2,
-    borderWidth: 1,
-    borderColor: Colors.amber,
-  },
-  pubPillRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'stretch',
-    justifyContent: 'center',
-    gap: 10,
-    height: 38,
-  },
-  pubPillHintRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
 
   // ── Hidden pill internals ──
-  skeletonGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  skeletonBar: {
-    height: 14,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.foamMuted,
-    opacity: 0.6,
-  },
-  pubPillHint: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 13,
-    color: Colors.amber,
-  },
 
   // ── Revealed pill internals ──
-  pubName: {
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 24,
-    color: Colors.foam,
-    flex: 1,
-  },
-  pubPillTapArea: {
-    alignSelf: 'stretch',
-    alignItems: 'center',
-    gap: 8,
-  },
-  revealedNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'stretch',
-    gap: 10,
-    height: 38,
-  },
   // Open-status (shrinks first) on the left, rating pinned to the right.
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'stretch',
-    justifyContent: 'space-between',
-    gap: 10,
-    minHeight: 18,
-  },
-  metaStatus: {
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  beerLineRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    alignSelf: 'flex-start',
-    // Bound the row to the card width so a long "Pilsner Urquell 12° · 50 Kč ·
-    // a další" line ellipsizes instead of overflowing. A pub with several beers
-    // collapses to one lead-beer line via formatBeerLine, but that single line
-    // itself can be long, so the cap matters even though the row never wraps.
-    maxWidth: '100%',
-  },
-  beerLineText: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 13,
-    color: Colors.foamMuted,
-    letterSpacing: 0.2,
-    // Shrink past the fixed icon so numberOfLines={1} can ellipsize the text.
-    flexShrink: 1,
-  },
-  ratingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: 5,
-    minHeight: 18,
-  },
-  ratingText: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 13,
-    color: Colors.foam,
-  },
-  gardenBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: 5,
-    minHeight: 18,
-  },
-  gardenBadgeText: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 13,
-    color: Colors.foamMuted,
-  },
   // ── Mode toggle ──
-  bottomControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    gap: 10,
-  },
-  modeToggleFlex: {
-    flex: 1,
-    minWidth: 0,
-  },
-  modeTogglePill: {
-    flexDirection: 'row',
-    backgroundColor: Colors.stout3,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: Radius.pill,
-    padding: 5,
-    gap: 4,
-  },
-  modeSegment: {
-    flex: 1,
-    borderRadius: Radius.pill,
-    paddingVertical: 10,
-    // Keep horizontal padding small: the segments already split the pill 50/50
-    // via flex, and a larger value leaves "Překvap mě" too little room at big
-    // system font sizes, wrapping it onto two lines.
-    paddingHorizontal: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modeSegmentActive: {
-    backgroundColor: Colors.amber,
-  },
-  modeSegmentText: {
-    fontFamily: Fonts.ui.bold,
-    fontSize: 14,
-    letterSpacing: 0.1,
-    includeFontPadding: false,
-    textAlign: 'center',
-  },
-  modeSegmentTextActive: {
-    color: Colors.stout,
-    fontFamily: Fonts.ui.bold,
-  },
-  modeSegmentTextInactive: {
-    color: Colors.foamMuted,
-    fontFamily: Fonts.ui.semibold,
-    opacity: 0.7,
-  },
 
   // ── Reroll button ──
-  rerollButton: {
-    width: 44,
-    height: 44,
-    borderRadius: Radius.pill,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.stout3,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 
   // ── Empty state (State D) ──
   emptyContainer: {

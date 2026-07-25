@@ -13,8 +13,6 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
-  withDelay,
-  withRepeat,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
@@ -43,37 +41,21 @@ import { useReleaseStore } from '@/stores/releaseStore';
 import { useSettingsStore, waitForSettingsHydration } from '@/stores/settingsStore';
 
 function PourVisual() {
-  const float = useSharedValue(0);
-  const bell = useSharedValue(0);
-
-  useEffect(() => {
-    float.value = withRepeat(withTiming(1, { duration: 2400 }), -1, true);
-    bell.value = withDelay(450, withRepeat(withTiming(1, { duration: 1600 }), -1, true));
-  }, [bell, float]);
-
-  const foamAnim = useAnimatedStyle(() => ({
-    opacity: 0.38 + float.value * 0.28,
-    transform: [{ translateY: -3 + float.value * 6 }],
-  }));
-
-  const bellAnim = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: -2 + bell.value * 4 },
-      { rotate: `${-5 + bell.value * 10}deg` },
-    ],
-  }));
+  // Static. This used to run two endless loops — a breathing foam cap and a
+  // swinging bell — which is the decorative ambient motion §10 bans outright
+  // (the same habit that got the bubbles thrown out of the counter).
 
   return (
     <View style={styles.visual} accessibilityElementsHidden>
       <View style={styles.visualRail} />
       <View style={styles.pint}>
-        <Animated.View style={[styles.foamCap, foamAnim]} />
+        <View style={styles.foamCap} />
         <View style={styles.beerFill} />
         <View style={styles.pintShine} />
       </View>
-      <Animated.View style={[styles.bellBubble, bellAnim]}>
-        <BellRingIcon size={26} color={Colors.stout} />
-      </Animated.View>
+      <View style={styles.bellBubble}>
+        <BellRingIcon size={26} color={Colors.amber} />
+      </View>
       <View style={styles.locationBubble}>
         <MapPinIcon size={22} color={Colors.amberLight} />
       </View>
@@ -484,7 +466,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.amberLight,
+    backgroundColor: withAlpha(Colors.amber, 0.12),
     borderWidth: 1,
     borderColor: withAlpha(Colors.foam, 0.5),
   },

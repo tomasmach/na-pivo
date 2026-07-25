@@ -47,36 +47,40 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, HitArea } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
-import { cs, formatVolume } from '@/i18n/cs';
+import { cs } from '@/i18n/cs';
 import {
   XIcon,
   CompassIcon,
   SproutIcon,
   ClockIcon,
   BeerIcon,
-  Trash2Icon,
   ChevronRightIcon,
   PencilIcon,
   MapPinIcon,
+  GlobeIcon,
+  TriangleAlertIcon,
+  EllipsisIcon,
+  CheckIcon,
+  PlusIcon,
+  FlagIcon,
 } from '@/components/shared/IconGlyph';
 import { CompletenessRing } from '@/components/amenities/CompletenessRing';
 import { Toast } from '@/components/shared/Toast';
 import { renderAmenityIcon } from '@/components/amenities/amenityIcons';
-import {
-  AMENITY_DISPLAY_SECTIONS,
-  sectionForGroup,
-  type AmenitySection,
-  type AmenityKey,
-} from '@/data/amenities';
+import { type AmenityKey } from '@/data/amenities';
 import {
   buildAmenityRows,
   selectCompleteness,
-  selectPersonalProgress,
   selectPubInfoCompleteness,
   type AmenityRow,
 } from '@/data/pubAmenitiesView';
 import { usePubInfoFacts, type PubInfoContext } from '@/components/amenities/pubInfoContext';
-import { parseOsmOpeningHoursToWeeklyHours } from '@/data/communityHours';
+import {
+  parseOsmOpeningHoursToWeeklyHours,
+  DAY_KEYS,
+  type WeeklyHours,
+} from '@/data/communityHours';
+import { geohash8 } from '@/data/geohash';
 import { renameLocalPub, clearPubsSnapshot, type Pub } from '@/data/pubs';
 import { buildPubNameCorrectionEntry } from '@/data/pubNameCorrectionsClient';
 import { enqueuePubNameCorrection } from '@/data/pubNameCorrectionsQueue';
@@ -100,24 +104,26 @@ import { fetchPubAmenities } from '@/data/pubAmenitiesClient';
 import { getBackendEndpoint } from '@/data/backendConfig';
 import { useToastStore } from '@/stores/toastStore';
 import { usePubStore } from '@/stores/pubStore';
+import { useCommunityStore } from '@/stores/communityStore';
 import { useAccountStore } from '@/stores/accountStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 import { FALLBACK_XP_RULES } from '@/data/mapperXp';
 import { pubIdentityKey } from '@/data/pubIdentity';
-import { formatPrice, type PriceCurrency } from '@/utils/currency';
-import { isPriceApproximate, isPriceFresh, priceAgeLabel } from '@/utils/priceAge';
+import { formatPrice } from '@/utils/currency';
+import { isPriceFresh, priceAgeLabel } from '@/utils/priceAge';
 import { PubEventsSection } from '@/pubEvents/PubEventsSection';
-
-const SECTION_LABEL: Record<AmenitySection, string> = {
-  seating: cs.mapPub.sectionSeating,
-  fun: cs.mapPub.sectionFun,
-  practical: cs.mapPub.sectionPractical,
-};
 
 /** How long after the last tap the coalesced XP summary toast fires (spec §3.5). */
 const XP_COALESCE_MS = 600;
+
+/** Confidence tier (1..3 filled bars) from how many people confirmed the fact. */
+function confidenceTier(count: number): number {
+  if (count >= 5) return 3;
+  if (count >= 2) return 2;
+  return 1;
+}
 
 interface MapPubSheetProps {
   visible: boolean;
@@ -132,27 +138,25 @@ interface MapPubSheetProps {
   onRenamed?: (newName: string) => void;
   /** When set, the sheet also offers the shared pub-report flow. */
   onReport?: (reason: PubReportReason) => void;
+  /**
+   * What the pub IS, for the header: today's hours and the beer on tap, already
+   * formatted by the host (it owns the live open/closed lookup). Optional — a
+   * host that has neither gets the bare name, exactly as before.
+   */
+  hoursLabel?: string | null;
+  hoursTone?: 'open' | 'closed' | 'unknown';
+  beerLine?: string | null;
+}
+
+/** Same tones as the compass card. Never red — a closed pub is not an error. */
+function hoursColor(tone: 'open' | 'closed' | 'unknown'): string {
+  if (tone === 'open') return Colors.open;
+  if (tone === 'closed') return Colors.closed;
+  return Colors.mutedText;
 }
 
 function haptic() {
   if (useSettingsStore.getState().hapticEnabled) fireLightImpactHaptic();
-}
-
-function formatReferencePrice(
-  price: NonNullable<PubInfoContext['price']>,
-  currency: PriceCurrency,
-): string | null {
-  if (!isPriceFresh(price.observedAt)) return null;
-  const amount = formatPrice(price.czk, currency);
-  const approximateAmount = isPriceApproximate(price.observedAt)
-    ? cs.compass.priceApprox(amount)
-    : amount;
-  const volume =
-    price.volumeMl != null && price.volumeMl !== 500
-      ? ` / ${formatVolume(price.volumeMl)}`
-      : '';
-  const age = priceAgeLabel(price.observedAt);
-  return age ? `${approximateAmount}${volume} · ${age}` : null;
 }
 
 export function MapPubSheet({
@@ -163,15 +167,15 @@ export function MapPubSheet({
   info,
   onRenamed,
   onReport,
+  hoursLabel,
+  hoursTone = 'unknown',
+  beerLine,
 }: MapPubSheetProps) {
   const insets = useSafeAreaInsets();
   const reduceMotion = useReduceMotion();
   const router = useRouter();
   const facts = usePubInfoFacts(info);
   const priceCurrency = useSettingsStore((s) => s.priceCurrency);
-  const referencePrice = info?.price
-    ? formatReferencePrice(info.price, priceCurrency)
-    : null;
 
   // The sheet is an RN Modal (a native window above everything), so opening the
   // contribute editor needs it to step aside — otherwise it would cover the
@@ -292,24 +296,32 @@ export function MapPubSheet({
       ? selectPubInfoCompleteness(rows, facts, snap)
       : selectCompleteness(rows, snap);
   }, [rows, serverCompleteness, facts]);
-  const personal = useMemo(() => selectPersonalProgress(rows), [rows]);
-
   const aggregatesResolved = aggregates !== undefined;
 
-  // Header progress mirrors the ring so they can never disagree: with a pub-info
-  // context it spans all three groups (otevíračka + piva + vybavení), so it can't
-  // claim "máš to celé" while hours are still missing. Without it, it's the
-  // amenities-only personal progress.
-  const headerProgress = facts
-    ? { answered: completeness.mappedCount, total: completeness.totalKinds }
-    : { answered: personal.answered, total: personal.total };
+  // Fact-tile data. The mini-week reads the freshest weekly hours (local override
+  // wins, then enrichment, then the OSM fallback); the beers tile shows how fresh
+  // the reference price is so a stale number reads as stale.
+  const cell = info ? geohash8(info.lat, info.lng) : '';
+  const overrideHours = useCommunityStore((s) => (info ? s.overrides[cell]?.hours : undefined));
+  const weeklyHours = useMemo<WeeklyHours | null>(() => {
+    if (!info) return null;
+    return (
+      overrideHours ??
+      info.prefillHours ??
+      parseOsmOpeningHoursToWeeklyHours(info.openingHours) ??
+      null
+    );
+  }, [info, overrideHours]);
 
-  const subtitle =
-    headerProgress.answered === 0
-      ? cs.mapPub.subtitleEmpty
-      : headerProgress.answered >= headerProgress.total
-        ? cs.mapPub.subtitleDone
-        : cs.mapPub.subtitleSome;
+  const priceObservedAt =
+    info?.price && isPriceFresh(info.price.observedAt) ? info.price.observedAt : null;
+  const tilePriceAmount =
+    priceObservedAt && info?.price ? formatPrice(info.price.czk, priceCurrency) : null;
+  // "naposledy zmapováno" recency for each tile, from the community contribution
+  // timestamps. Hours recency needs the additive backend field, so it stays null
+  // until that ships; beers recency flows today.
+  const hoursMappedAge = info?.hoursUpdatedAt ? priceAgeLabel(info.hoursUpdatedAt) : null;
+  const beersMappedAge = info?.beersUpdatedAt ? priceAgeLabel(info.beersUpdatedAt) : null;
 
   // ── XP coalescing (spec §3.5) ──
   const xpAccum = useRef({ count: 0, xp: 0 });
@@ -490,9 +502,6 @@ export function MapPubSheet({
     transform: [{ translateY: (1 - progress.value) * 48 }],
   }));
 
-  // Group rows by section for rendering, preserving catalogue order.
-  const grouped = useMemo(() => groupRows(rows), [rows]);
-
   // ── Otevíračka / piva: deep-link into the contribute editor ──
   // Don't close the sheet — focus-gated visibility (showSheet) hides the Modal
   // while the editor is up and restores it on return, so the user comes back to
@@ -631,12 +640,33 @@ export function MapPubSheet({
                 >
                   {displayName}
                 </Text>
-                <Text style={styles.subtitle} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {subtitle}
-                </Text>
-                <Text style={styles.personal} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.mapPub.personal(headerProgress.answered, headerProgress.total)}
-                </Text>
+                {/* The header answers "what is this pub?", not "fill it in":
+                    you open this from two kilometres away, where today's hours
+                    and what they pour are the only facts that matter. The
+                    mapping pitch moved down to the mapping section. */}
+                {hoursLabel ? (
+                  <View style={styles.hoursRow}>
+                    <View
+                      style={[styles.hoursDot, { backgroundColor: hoursColor(hoursTone) }]}
+                    />
+                    <Text
+                      style={[styles.hours, { color: hoursColor(hoursTone) }]}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {hoursLabel}
+                    </Text>
+                  </View>
+                ) : null}
+                {beerLine ? (
+                  <Text
+                    style={styles.subtitle}
+                    numberOfLines={2}
+                    maxFontSizeMultiplier={FontScaleCap.body}
+                  >
+                    {beerLine}
+                  </Text>
+                ) : null}
               </View>
               <CompletenessRing pct={completeness.pct} reduceMotion={reduceMotion} />
             </View>
@@ -651,11 +681,6 @@ export function MapPubSheet({
               <XIcon size={18} color={Colors.foamMuted} />
             </Pressable>
 
-            {/* Public-data note — makes the public/community nature explicit. */}
-            <Text style={styles.publicNote} maxFontSizeMultiplier={FontScaleCap.body}>
-              {!backendConfigured ? cs.mapPub.offline : cs.mapPub.publicNote}
-            </Text>
-
             <ScrollView
               ref={bodyRef}
               style={styles.body}
@@ -666,49 +691,45 @@ export function MapPubSheet({
               automaticallyAdjustContentInsets={false}
               contentInsetAdjustmentBehavior="never"
             >
+              {/* Two editable facts as tiles: state is read from the icon
+                  (amber + check when filled, muted + plus when empty) and the
+                  mini-week / recency line, not from a sentence. */}
               {facts && (
-                <View>
-                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {cs.mapPub.infoSection}
-                  </Text>
-                  <InfoFactRow
-                    icon={<ClockIcon size={24} color={facts.hasHours ? Colors.amber : Colors.mutedText} />}
-                    label={cs.mapPub.factHoursLabel}
-                    value={facts.hasHours ? cs.mapPub.factHoursFilled : cs.mapPub.factHoursMissing}
+                <View style={styles.tiles}>
+                  <FactTile
+                    icon={
+                      <ClockIcon
+                        size={22}
+                        color={facts.hasHours ? Colors.amber : Colors.mutedText}
+                      />
+                    }
+                    label={cs.mapPub.tileHours}
                     filled={facts.hasHours}
+                    weekly={weeklyHours}
+                    value={null}
+                    recency={hoursMappedAge ? cs.mapPub.tileMapped(hoursMappedAge) : null}
+                    emptyLabel={cs.mapPub.tileHoursEmpty}
                     onPress={() => openContribute('hours')}
                   />
-                  <InfoFactRow
-                    icon={<BeerIcon size={24} color={facts.hasBeers ? Colors.amber : Colors.mutedText} />}
-                    label={cs.mapPub.factBeersLabel}
-                    value={
-                      referencePrice
-                        ? facts.beerCount > 0
-                          ? cs.mapPub.factBeersWithPrice(facts.beerCount, referencePrice)
-                          : cs.mapPub.factReferencePrice(referencePrice)
-                        : facts.hasBeers
-                          ? cs.mapPub.factBeersCount(facts.beerCount)
-                          : cs.mapPub.factBeersMissing
+                  <FactTile
+                    icon={
+                      <BeerIcon
+                        size={22}
+                        color={facts.hasBeers ? Colors.amber : Colors.mutedText}
+                      />
                     }
+                    label={cs.mapPub.tileBeers}
                     filled={facts.hasBeers}
+                    weekly={null}
+                    value={
+                      facts.hasBeers
+                        ? cs.mapPub.tileBeersValue(facts.beerCount, tilePriceAmount)
+                        : null
+                    }
+                    recency={beersMappedAge ? cs.mapPub.tileMapped(beersMappedAge) : null}
+                    emptyLabel={cs.mapPub.tileBeersEmpty}
                     onPress={() => openContribute('beers')}
                   />
-                  <InfoFactRow
-                    icon={<PencilIcon size={24} color={Colors.mutedText} />}
-                    label={cs.mapPub.renameRowLabel}
-                    value={cs.mapPub.renameRowHint}
-                    filled
-                    onPress={handleRenamePress}
-                  />
-                  {info?.userAddedClientId && (
-                    <InfoFactRow
-                      icon={<MapPinIcon size={24} color={Colors.amber} />}
-                      label={cs.addPub.edit}
-                      value={cs.addPub.editFromDetailHint}
-                      filled
-                      onPress={handleEditAddedPub}
-                    />
-                  )}
                 </View>
               )}
 
@@ -719,38 +740,43 @@ export function MapPubSheet({
                 info={info}
               />
 
-              {grouped.map(({ section, items }) => (
-                <View key={section}>
-                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {SECTION_LABEL[section]}
+              {/* Amenities: one flat list under a single header. The four-line
+                  mapping intro collapsed into the ring (progress) + one public
+                  chip; each row carries its own confidence, not a poll ratio. */}
+              <View style={styles.sectionHead}>
+                <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {cs.mapPub.amenitiesSection}
+                </Text>
+                <View style={styles.publicPill}>
+                  <GlobeIcon size={12} color={Colors.amberLight} />
+                  <Text
+                    style={styles.publicPillText}
+                    maxFontSizeMultiplier={FontScaleCap.body}
+                  >
+                    {backendConfigured ? cs.mapPub.publicChip : cs.mapPub.offlineChip}
                   </Text>
-                  {items.map((row) => (
-                    <AmenityRowView
-                      key={row.amenityKey}
-                      row={row}
-                      aggregatesResolved={aggregatesResolved}
-                      onVote={onVote}
-                    />
-                  ))}
                 </View>
+              </View>
+
+              {rows.map((row) => (
+                <AmenityRowView
+                  key={row.amenityKey}
+                  row={row}
+                  aggregatesResolved={aggregatesResolved}
+                  onVote={onVote}
+                />
               ))}
 
-              {onReport && (
-                <View>
-                  <Text style={styles.sectionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {cs.compass.reportTitle}
-                  </Text>
-                  <ReportRow
-                    icon={<Trash2Icon size={24} color={Colors.amberLight} />}
-                    label={cs.compass.reportRemove}
-                    onPress={() => onReport('not_pub')}
-                  />
-                </View>
+              {(info || onReport) && (
+                <MoreActions
+                  showRename={Boolean(info)}
+                  showEditAdded={Boolean(info?.userAddedClientId)}
+                  showReport={Boolean(onReport)}
+                  onRename={handleRenamePress}
+                  onEditAdded={handleEditAddedPub}
+                  onReport={() => onReport?.('not_pub')}
+                />
               )}
-
-              <Text style={styles.footerHint} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.mapPub.footerHint}
-              </Text>
             </ScrollView>
           </Animated.View>
 
@@ -855,16 +881,40 @@ const AmenityRowView = React.memo(function AmenityRowView({
         <Text style={styles.rowLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
           {row.label}
         </Text>
-        <CommunitySignal row={row} aggregatesResolved={aggregatesResolved} />
+        <ConfidenceMeter row={row} aggregatesResolved={aggregatesResolved} />
       </View>
       <SegmentedVote row={row} onVote={onVote} isYes={isYes} isNo={isNo} />
     </View>
   );
 });
 
-/** The live community signal: loading (no badge) / known counts / unmapped /
- *  first-mapper / disputed (spec §3.3). */
-function CommunitySignal({
+/** Three tiny bars that fill by confidence tier. Amber = the crowd says it's
+ *  here; muted-brown = the crowd says it isn't (never red — a missing amenity is
+ *  not an error). */
+function ConfidenceBars({ tier, tone }: { tier: number; tone: 'has' | 'no' }) {
+  const onColor = tone === 'has' ? Colors.amber : Colors.mutedText;
+  return (
+    <View style={styles.bars}>
+      {[0, 1, 2].map((i) => (
+        <View
+          key={i}
+          style={[
+            styles.bar,
+            i === 0 && styles.bar1,
+            i === 1 && styles.bar2,
+            i === 2 && styles.bar3,
+            i < tier && { backgroundColor: onColor },
+          ]}
+        />
+      ))}
+    </View>
+  );
+}
+
+/** The community signal as CONFIDENCE, not a poll. How many people confirmed the
+ *  fact drives the bar tier + count; a recent conflict reads "sporné · ověř to";
+ *  an unmapped amenity shows nothing (the empty control already says "ask me"). */
+function ConfidenceMeter({
   row,
   aggregatesResolved,
 }: {
@@ -874,30 +924,49 @@ function CommunitySignal({
   // First-mapper celebration: both counts were zero and the user just voted.
   const isFirstMapper =
     aggregatesResolved && row.yesCount === 0 && row.noCount === 0 && row.myValue != null;
-
   if (isFirstMapper) {
     return (
-      <Text style={[styles.signal, styles.signalFirst]} maxFontSizeMultiplier={FontScaleCap.body}>
-        {cs.mapPub.firstMapped}
-      </Text>
+      <View style={styles.conf}>
+        <ConfidenceBars tier={1} tone="has" />
+        <Text
+          style={[styles.confText, styles.confFirst]}
+          numberOfLines={1}
+          maxFontSizeMultiplier={FontScaleCap.body}
+        >
+          {cs.mapPub.confFirst}
+        </Text>
+      </View>
     );
   }
-  if (row.signalState === 'loading') {
-    return null;
-  }
-  if (row.signalState === 'unmapped') {
+
+  // Loading or genuinely unmapped: no line at all.
+  if (row.signalState !== 'known') return null;
+
+  if (row.status === 'disputed') {
     return (
-      <Text style={[styles.signal, styles.signalMuted]} maxFontSizeMultiplier={FontScaleCap.body}>
-        {cs.mapPub.unmapped}
-      </Text>
+      <View style={styles.conf}>
+        <TriangleAlertIcon size={12} color={Colors.amberLight} />
+        <Text
+          style={[styles.confText, styles.confDisputed]}
+          numberOfLines={1}
+          maxFontSizeMultiplier={FontScaleCap.body}
+        >
+          {cs.mapPub.confDisputed}
+        </Text>
+      </View>
     );
   }
-  // known
-  const text = row.status === 'disputed' ? cs.mapPub.disputed : cs.mapPub.signal(row.yesCount, row.noCount);
+
+  // "no" wins only when the crowd genuinely leans absent; otherwise show "has".
+  const isNo = row.status === 'no' || (row.status === 'unknown' && row.noCount > row.yesCount);
+  const count = isNo ? row.noCount : row.yesCount;
   return (
-    <Text style={styles.signal} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-      {text}
-    </Text>
+    <View style={styles.conf}>
+      <ConfidenceBars tier={confidenceTier(count)} tone={isNo ? 'no' : 'has'} />
+      <Text style={styles.confText} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+        {isNo ? cs.mapPub.confNo(count) : cs.mapPub.confHas(count)}
+      </Text>
+    </View>
   );
 }
 
@@ -985,53 +1054,159 @@ function VoteHalf({
   );
 }
 
-// ─── Info fact row (otevíračka / piva) ───────────────────────────────────────
+// ─── Fact tiles (otevíračka / piva) ──────────────────────────────────────────
 
-/** A navigation row for the two non-amenity info groups. Unlike an amenity row
- *  it has no ANO|NE control — tapping it routes to the contribute editor. */
-function InfoFactRow({
+/** Seven bars for the week; the open days light amber, closed days stay muted.
+ *  A glance says "how much of the week is filled" without reading any hours. */
+function MiniWeek({ weekly }: { weekly: WeeklyHours | null }) {
+  return (
+    <View style={styles.miniWeek}>
+      {DAY_KEYS.map((day) => {
+        const open = (weekly?.[day]?.length ?? 0) > 0;
+        return <View key={day} style={[styles.miniDay, open && styles.miniDayOpen]} />;
+      })}
+    </View>
+  );
+}
+
+/** One editable info group as a tile. Filled state is carried by the amber icon
+ *  + a check badge (or a plus when empty), plus the mini-week / value / recency
+ *  line — never a "Vyplněno · uprav" sentence. Tapping routes to the editor. */
+function FactTile({
   icon,
   label,
-  value,
   filled,
+  weekly,
+  value,
+  recency,
+  emptyLabel,
   onPress,
 }: {
   icon: React.ReactNode;
   label: string;
-  value: string;
   filled: boolean;
+  weekly: WeeklyHours | null;
+  value: string | null;
+  recency: string | null;
+  emptyLabel: string;
   onPress: () => void;
 }) {
+  const detail = filled ? (value ?? '') : emptyLabel;
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [styles.row, pressed && { opacity: 0.7 }]}
+      style={({ pressed }) => [styles.tile, pressed && { opacity: 0.7 }]}
       accessibilityRole="button"
-      accessibilityLabel={`${cs.mapPub.factEditA11y(label, filled)}. ${value}`}
+      accessibilityLabel={cs.mapPub.tileA11y(label, detail || label)}
     >
-      {icon}
-      <View style={styles.rowTextWrap}>
-        <Text style={styles.rowLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {label}
-        </Text>
+      <View style={styles.tileTop}>
+        <View style={[styles.tileIcon, !filled && styles.tileIconEmpty]}>{icon}</View>
+        {filled ? (
+          <CheckIcon size={16} color={Colors.success} />
+        ) : (
+          <PlusIcon size={16} color={Colors.amber} />
+        )}
+      </View>
+      <Text style={styles.tileLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.heading}>
+        {label}
+      </Text>
+      {weekly ? (
+        <MiniWeek weekly={weekly} />
+      ) : value ? (
         <Text
-          style={[styles.signal, !filled && styles.signalMuted, filled && styles.signalFilled]}
+          style={styles.tileValue}
           numberOfLines={1}
           maxFontSizeMultiplier={FontScaleCap.body}
         >
           {value}
         </Text>
-      </View>
-      <ChevronRightIcon size={20} color={Colors.mutedText} />
+      ) : (
+        <Text
+          style={[styles.tileValue, styles.tileValueEmpty]}
+          numberOfLines={1}
+          maxFontSizeMultiplier={FontScaleCap.body}
+        >
+          {emptyLabel}
+        </Text>
+      )}
+      {recency ? (
+        <Text
+          style={styles.tileRecency}
+          numberOfLines={1}
+          maxFontSizeMultiplier={FontScaleCap.body}
+        >
+          {recency}
+        </Text>
+      ) : null}
     </Pressable>
   );
 }
 
-// ─── Report row (map detail only) ────────────────────────────────────────────
+// ─── Overflow (rename / report) ──────────────────────────────────────────────
 
-/** One report action. A plain action row —
- *  no chevron, it doesn't navigate; the host hides the pub + queues the report. */
-function ReportRow({
+/** Edge actions tucked behind one quiet "···" row. Tapping reveals rename /
+ *  edit-added-pub / report inline — none of them earns a permanent row in the
+ *  main scroll (§0.4). */
+function MoreActions({
+  showRename,
+  showEditAdded,
+  showReport,
+  onRename,
+  onEditAdded,
+  onReport,
+}: {
+  showRename: boolean;
+  showEditAdded: boolean;
+  showReport: boolean;
+  onRename: () => void;
+  onEditAdded: () => void;
+  onReport: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <View style={styles.more}>
+      <Pressable
+        onPress={() => setOpen((v) => !v)}
+        style={({ pressed }) => [styles.moreToggle, pressed && { opacity: 0.6 }]}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        accessibilityLabel={cs.mapPub.moreA11y}
+      >
+        <EllipsisIcon size={18} color={Colors.mutedText} />
+        <Text style={styles.moreLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+          {cs.mapPub.moreLabel}
+        </Text>
+      </Pressable>
+      {open ? (
+        <View style={styles.moreList}>
+          {showRename ? (
+            <MoreRow
+              icon={<PencilIcon size={20} color={Colors.foamMuted} />}
+              label={cs.mapPub.renameRowLabel}
+              onPress={onRename}
+            />
+          ) : null}
+          {showEditAdded ? (
+            <MoreRow
+              icon={<MapPinIcon size={20} color={Colors.amber} />}
+              label={cs.addPub.edit}
+              onPress={onEditAdded}
+            />
+          ) : null}
+          {showReport ? (
+            <MoreRow
+              icon={<FlagIcon size={20} color={Colors.mutedText} />}
+              label={cs.compass.reportRemove}
+              onPress={onReport}
+            />
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function MoreRow({
   icon,
   label,
   onPress,
@@ -1043,29 +1218,20 @@ function ReportRow({
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [styles.row, pressed && { opacity: 0.7 }]}
+      style={({ pressed }) => [styles.moreRow, pressed && { opacity: 0.6 }]}
       accessibilityRole="button"
       accessibilityLabel={label}
     >
       {icon}
-      <View style={styles.rowTextWrap}>
-        <Text style={styles.rowLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {label}
-        </Text>
-      </View>
+      <Text style={styles.moreRowLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+        {label}
+      </Text>
+      <ChevronRightIcon size={18} color={Colors.mutedText} />
     </Pressable>
   );
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
-
-function groupRows(rows: AmenityRow[]): { section: AmenitySection; items: AmenityRow[] }[] {
-  return AMENITY_DISPLAY_SECTIONS.map((section) => ({
-    section,
-    // rows keep catalogue order, so within "fun" games precede atmosphere.
-    items: rows.filter((r) => sectionForGroup(r.group) === section),
-  })).filter((g) => g.items.length > 0);
-}
 
 /** Replace one amenity's aggregate in the cached array (recomputed by the PUT). */
 function mergeAggregate(
@@ -1119,17 +1285,27 @@ const styles = StyleSheet.create({
     fontSize: 22,
     color: Colors.foam,
   },
+  hoursRow: {
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  hoursDot: {
+    width: 6,
+    height: 6,
+    borderRadius: Radius.pill,
+  },
+  hours: {
+    flexShrink: 1,
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 13,
+  },
   subtitle: {
     marginTop: 2,
     fontFamily: Fonts.ui.regular,
     fontSize: 13,
     lineHeight: 18,
-    color: Colors.mutedText,
-  },
-  personal: {
-    marginTop: 2,
-    fontFamily: Fonts.ui.medium,
-    fontSize: 12,
     color: Colors.mutedText,
   },
   closeBtn: {
@@ -1141,24 +1317,110 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  publicNote: {
-    marginTop: Spacing.sm,
-    fontFamily: Fonts.ui.medium,
-    fontSize: 12,
-    color: withAlpha(Colors.amberLight, 0.85),
-  },
   body: {
     flexShrink: 1,
     marginTop: Spacing.xs,
   },
-  sectionLabel: {
+  sectionHead: {
     marginTop: Spacing.lg,
     marginBottom: Spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sectionLabel: {
     fontFamily: Fonts.ui.semibold,
     fontSize: 12,
     letterSpacing: 1,
     textTransform: 'uppercase',
     color: Colors.mutedText,
+  },
+  publicPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: Radius.pill,
+    backgroundColor: withAlpha(Colors.amberLight, 0.09),
+  },
+  publicPillText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 11,
+    color: Colors.amberLight,
+  },
+
+  // ── Fact tiles (otevíračka / piva) ──
+  tiles: {
+    marginTop: Spacing.md,
+    flexDirection: 'row',
+    gap: 12,
+  },
+  tile: {
+    flex: 1,
+    minWidth: 0,
+    backgroundColor: Colors.stout3,
+    borderRadius: Radius.medium,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: 15,
+    paddingTop: 14,
+    paddingBottom: 14,
+  },
+  tileTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  tileIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.amber, 0.12),
+  },
+  tileIconEmpty: {
+    backgroundColor: withAlpha(Colors.mutedText, 0.14),
+  },
+  tileLabel: {
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 15,
+    color: Colors.foam,
+    includeFontPadding: false,
+  },
+  tileValue: {
+    marginTop: 3,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 12.5,
+    color: Colors.foamMuted,
+    includeFontPadding: false,
+    fontVariant: ['tabular-nums'],
+  },
+  tileValueEmpty: {
+    color: Colors.mutedText,
+  },
+  tileRecency: {
+    marginTop: 9,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 11,
+    color: Colors.mutedText,
+    includeFontPadding: false,
+  },
+  miniWeek: {
+    marginTop: 11,
+    flexDirection: 'row',
+    gap: 3,
+  },
+  miniDay: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: withAlpha(Colors.mutedText, 0.28),
+  },
+  miniDayOpen: {
+    backgroundColor: withAlpha(Colors.amber, 0.55),
   },
   row: {
     flexDirection: 'row',
@@ -1178,20 +1440,75 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.foam,
   },
-  signal: {
-    marginTop: 2,
+  // ── Confidence meter (how many confirmed, not a poll) ──
+  conf: {
+    marginTop: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  confText: {
+    flexShrink: 1,
     fontFamily: Fonts.ui.medium,
-    fontSize: 12,
+    fontSize: 11.5,
     color: Colors.mutedText,
   },
-  signalMuted: {
-    fontStyle: 'italic',
+  confFirst: {
+    color: Colors.amberLight,
+    fontFamily: Fonts.ui.semibold,
   },
-  signalFirst: {
+  confDisputed: {
     color: Colors.amberLight,
   },
-  signalFilled: {
-    color: Colors.foamMuted,
+  bars: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 2,
+    height: 11,
+  },
+  bar: {
+    width: 3,
+    borderRadius: 1,
+    backgroundColor: withAlpha(Colors.mutedText, 0.32),
+  },
+  bar1: { height: 5 },
+  bar2: { height: 8 },
+  bar3: { height: 11 },
+
+  // ── Overflow (rename / report) ──
+  more: {
+    marginTop: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  moreToggle: {
+    minHeight: HitArea.min,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  moreLabel: {
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
+    color: Colors.mutedText,
+  },
+  moreList: {
+    marginTop: Spacing.xs,
+  },
+  moreRow: {
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.border, 0.4),
+  },
+  moreRowLabel: {
+    flex: 1,
+    minWidth: 0,
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 15,
+    color: Colors.foam,
   },
   // ── Segmented ANO|NE control ──
   // ONE bordered pill with a single inner divider. Two separately-bordered halves

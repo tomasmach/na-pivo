@@ -1,10 +1,14 @@
 /**
- * "Pivo" — the merged tab hosting both the beer counter (Počítadlo) and the
- * personal evening history (Moje piva) behind a single segmented control. They
- * already share one data source (tallyStore), so combining them frees a slot in
- * the bottom tab bar without any data migration: this screen owns the top
- * safe-area inset + the segment, and renders the chosen child in `embedded`
- * mode (each child then drops its own top chrome).
+ * "Štamgast" — the tab hosting the beer counter (Počítat) and the personal
+ * trail (Deník) behind a single segmented control.
+ *
+ * It used to have three segments; "Výkon" and "Historie" turned out to be the
+ * same screen wearing two hats — both opened on the last evening, both listed
+ * what came before — so they merged into "Deník", which now also holds every
+ * lifetime number one tap deep. Two segments, one data source (tallyStore), no
+ * data migration: this screen owns the top safe-area inset + the segment, and
+ * renders the chosen child in `embedded` mode (each child drops its own top
+ * chrome).
  *
  * Switching segments unmounts the inactive child — the counter's geolocation
  * subscription and history's minute-tick only run for the visible half — while
@@ -15,7 +19,7 @@ import React, { memo, useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Colors } from '@/theme/colors';
+import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, HitArea } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
@@ -23,10 +27,9 @@ import { fireLightImpactHaptic } from '@/utils/haptics';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { reconcileLiveBeerActivityAndAutoArchive } from '@/liveActivity/liveBeerActivity';
 import CounterScreen from '@/counter/CounterScreen';
-import MyBeersScreen from '@/myBeers/MyBeersScreen';
-import StatsScreen from '@/stats/StatsScreen';
+import DiaryScreen from '@/diary/DiaryScreen';
 
-type BeerTab = 'count' | 'stats' | 'history';
+type BeerTab = 'count' | 'diary';
 
 interface SegmentedProps {
   tab: BeerTab;
@@ -44,8 +47,7 @@ const Segmented = memo(function Segmented({ tab, onChange }: SegmentedProps) {
 
   const segments: { key: BeerTab; label: string; a11y: string }[] = [
     { key: 'count', label: cs.beer.segmentCount, a11y: cs.a11y.beerSegmentCount },
-    { key: 'stats', label: cs.beer.segmentStats, a11y: cs.a11y.beerSegmentStats },
-    { key: 'history', label: cs.beer.segmentHistory, a11y: cs.a11y.beerSegmentHistory },
+    { key: 'diary', label: cs.beer.segmentDiary, a11y: cs.a11y.diarySegment },
   ];
 
   return (
@@ -91,13 +93,7 @@ export default function BeerScreen() {
         <Segmented tab={tab} onChange={setTab} />
       </View>
       <View style={styles.body}>
-        {tab === 'count' ? (
-          <CounterScreen embedded />
-        ) : tab === 'stats' ? (
-          <StatsScreen embedded />
-        ) : (
-          <MyBeersScreen embedded />
-        )}
+        {tab === 'count' ? <CounterScreen embedded /> : <DiaryScreen embedded />}
       </View>
     </View>
   );
@@ -111,12 +107,15 @@ const styles = StyleSheet.create({
   },
   body: { flex: 1 },
 
+  // Deliberately unlit: amber belongs to the count and the one button on the
+  // counter below. A filled amber segment up here made three yellow blocks
+  // compete on the same screen.
   segment: {
     flexDirection: 'row',
-    backgroundColor: Colors.stout2,
+    backgroundColor: withAlpha(Colors.foam, 0.04),
     borderRadius: Radius.pill,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: withAlpha(Colors.foam, 0.08),
     padding: 4,
     gap: 4,
   },
@@ -129,15 +128,16 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
   },
   segmentItemActive: {
-    backgroundColor: Colors.amber,
+    backgroundColor: withAlpha(Colors.foam, 0.1),
   },
   segmentLabel: {
     fontFamily: Fonts.display.bold,
     fontSize: 14,
     letterSpacing: 0.2,
+    includeFontPadding: false,
   },
   segmentLabelActive: {
-    color: Colors.stout,
+    color: Colors.foam,
   },
   segmentLabelMuted: {
     color: Colors.mutedText,

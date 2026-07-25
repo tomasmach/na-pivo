@@ -36,6 +36,11 @@ export function beerCountLabel(count: number): string {
   return `${count} ${beerNoun(count)}`;
 }
 
+/** "1 člověk" / "3 lidi" / "5 lidí" — counted people, for community confidence. */
+export function peopleCountLabel(count: number): string {
+  return `${count} ${czechPlural(count, { one: 'člověk', few: 'lidi', many: 'lidí' })}`;
+}
+
 export function softDrinkCountLabel(count: number): string {
   return `${count} nealko`;
 }

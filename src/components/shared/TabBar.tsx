@@ -6,8 +6,10 @@
  *
  * The Parta item carries an amber signal badge fed by `usePartaSignalStore`
  * (Parta 3.0 §D1): a numeric pill when friend requests wait, else an ambient dot
- * when the feed has unread items or a friend is live now (the dot breathes only
- * while someone is actually live, honouring "amber = alive").
+ * when the feed has unread items or a friend is live now. The dot is static:
+ * this bar sits on every screen, so any looping motion here would be ambient
+ * animation across the whole app (§10), and the active tab carries no glow —
+ * the one glow on a screen belongs to its one amber button (§6.1).
  *
  * Driven by expo-router's <Tabs> via `tabBar={(props) => <TabBar {...props} />}`.
  */
@@ -26,9 +28,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea } from '@/theme/layout';
-import { amberGlow } from '@/theme/shadows';
 import { CompassIcon, BeerIcon, UserIcon, UsersIcon } from '@/components/shared/IconGlyph';
-import LiveDot from '@/friends/LiveDot';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { usePartaSignalStore } from '@/stores/partaSignalStore';
@@ -75,7 +75,7 @@ interface TabBadgeState {
   count: number;
   /** Ambient dot (unread feed or a friend live now) when no numeric pill. */
   dot: boolean;
-  /** A friend is live now → the dot breathes. */
+  /** A friend is live now. Kept for callers; the dot no longer animates. */
   live: boolean;
 }
 
@@ -112,11 +112,10 @@ const TabBadge = memo(function TabBadge({ count, dot, live }: TabBadgeState) {
   if (!dot) return null;
   return (
     <Animated.View style={[styles.badgeDotWrap, appearStyle]} pointerEvents="none">
-      {live ? (
-        <LiveDot size={9} />
-      ) : (
-        <View style={styles.badgeDotStatic} />
-      )}
+      {/* Static, never breathing: this badge rides the tab bar, so a looping
+          dot would put permanent ambient motion on every rebuilt screen (§10).
+          A dot versus a numbered pill is already signal enough. */}
+      <View style={styles.badgeDotStatic} />
     </Animated.View>
   );
 });
@@ -149,7 +148,10 @@ const TabItem = memo(function TabItem({ routeName, focused, onPress, badge }: Ta
       accessibilityState={{ selected: focused }}
       accessibilityLabel={accessibilityLabel}
     >
-      <View style={[styles.iconWrap, focused && amberGlow(10)]}>
+      {/* No glow here. The tab bar is on every screen, so a lit active icon
+          would be a second permanent glow next to each screen's one amber
+          button (§6.1). Amber on the icon and the label already says "active". */}
+      <View style={styles.iconWrap}>
         <Icon size={24} color={color} />
         {badge ? <TabBadge count={badge.count} dot={badge.dot} live={badge.live} /> : null}
       </View>

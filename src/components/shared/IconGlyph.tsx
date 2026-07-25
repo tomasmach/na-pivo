@@ -24,6 +24,7 @@ import {
   Shield,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Heart,
   Flag,
   MessageSquare,
@@ -82,10 +83,14 @@ import {
   House,
   Milk,
   CupSoda,
+  HandPlatter,
+  Share2,
+  Globe,
+  TriangleAlert,
   LucideProps,
 } from 'lucide-react-native';
 
-interface IconProps {
+export interface IconProps {
   size?: number;
   color: string;
 }
@@ -115,6 +120,7 @@ export const InfoIcon = wrap(Info, 'InfoIcon');
 export const ShieldIcon = wrap(Shield, 'ShieldIcon');
 export const ChevronLeftIcon = wrap(ChevronLeft, 'ChevronLeftIcon');
 export const ChevronRightIcon = wrap(ChevronRight, 'ChevronRightIcon');
+export const ChevronDownIcon = wrap(ChevronDown, 'ChevronDownIcon');
 export const HeartIcon = wrap(Heart, 'HeartIcon');
 export const FlagIcon = wrap(Flag, 'FlagIcon');
 export const MessageSquareIcon = wrap(MessageSquare, 'MessageSquareIcon');
@@ -150,6 +156,8 @@ export const TreePineIcon = wrap(TreePine, 'TreePineIcon');
 export const HouseIcon = wrap(House, 'HouseIcon');
 export const MilkIcon = wrap(Milk, 'MilkIcon');
 export const CupSodaIcon = wrap(CupSoda, 'CupSodaIcon');
+export const HandPlatterIcon = wrap(HandPlatter, 'HandPlatterIcon');
+export const Share2Icon = wrap(Share2, 'Share2Icon');
 export const SearchIcon = wrap(Search, 'SearchIcon');
 export const ListFilterIcon = wrap(ListFilter, 'ListFilterIcon');
 // "Zmapuj hospodu" amenity + Mapér glyphs.
@@ -198,3 +206,5 @@ export const MoonIcon = wrap(Moon, 'MoonIcon');
 export const QrCodeIcon = wrap(QrCode, 'QrCodeIcon');
 // Parta 3.0 — friend-profile overflow "…" menu glyph.
 export const EllipsisIcon = wrap(Ellipsis, 'EllipsisIcon');
+export const GlobeIcon = wrap(Globe, 'GlobeIcon');
+export const TriangleAlertIcon = wrap(TriangleAlert, 'TriangleAlertIcon');

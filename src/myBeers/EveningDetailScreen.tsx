@@ -36,11 +36,13 @@ import { deleteVisitByClientId, syncVisit } from '@/data/visitsSync';
 import {
   BeerIcon,
   ChevronLeftIcon,
+  HandPlatterIcon,
   HouseIcon,
   MapPinIcon,
   MinusIcon,
   PencilIcon,
   PlusIcon,
+  Share2Icon,
   TreePineIcon,
   XIcon,
 } from '@/components/shared/IconGlyph';
@@ -55,9 +57,14 @@ import {
   useTallyStore,
   findSessionByStart,
   sessionTotalCzk,
+  drinkingDayKey,
   type TallyDrink,
   type TallySession,
 } from '@/stores/tallyStore';
+import { useVycepStore } from '@/stores/vycepStore';
+import { buildNightSummary, sessionsOfNight } from '@/vycep/nightModel';
+import { PublishNightSheet } from '@/vycep/PublishNightSheet';
+import { ShareNightModal } from '@/vycep/ShareNightModal';
 import {
   sessionBreakdown,
   sessionDrinkActionGroups,
@@ -108,6 +115,8 @@ export default function EveningDetailScreen() {
   const [editingGroup, setEditingGroup] = useState<DrinkActionGroup | null>(null);
   const [addingDrink, setAddingDrink] = useState(false);
   const [addDrinkFormNonce, setAddDrinkFormNonce] = useState(0);
+  const [publishSheetVisible, setPublishSheetVisible] = useState(false);
+  const [shareModalVisible, setShareModalVisible] = useState(false);
 
   const session = useMemo(
     () => findSessionByStart(current, history, startedAt),
@@ -115,6 +124,16 @@ export default function EveningDetailScreen() {
   );
 
   const breakdown = useMemo(() => sessionBreakdown(session), [session]);
+  // The Výčep publishes the whole drinking day (a pub crawl is one night), so
+  // the summary re-groups every session sharing this evening's drinking day.
+  const nightSummary = useMemo(() => {
+    if (!session) return null;
+    const dayKey = drinkingDayKey(new Date(session.startedAt));
+    return buildNightSummary(sessionsOfNight(current, history, dayKey));
+  }, [session, current, history]);
+  const publishedRecord = useVycepStore((s) =>
+    nightSummary ? s.published[nightSummary.clientKey] : undefined,
+  );
   const drinkActionGroups = useMemo(() => sessionDrinkActionGroups(session), [session]);
   const addDrinkSeed = useMemo(() => {
     if (!session?.drinks.length) return null;
@@ -396,6 +415,52 @@ export default function EveningDetailScreen() {
             ))}
           </View>
 
+          {/* Výčep — hang the night on the feed and/or share it as a story.
+              Only a night with something on it qualifies. */}
+          {nightSummary ? (
+            <View style={styles.card}>
+              <View style={styles.cardSectionHeader}>
+                <Text style={styles.cardSectionHeaderText}>{cs.vycep.sectionHeader}</Text>
+              </View>
+              <Text style={styles.vycepBody} maxFontSizeMultiplier={FontScaleCap.body}>
+                {cs.vycep.publishEntryBody}
+              </Text>
+              {publishedRecord ? (
+                <Text style={styles.vycepState} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {cs.vycep.publishedState(
+                    publishedRecord.visibility === 'public'
+                      ? cs.vycep.visibilityChipWorld
+                      : cs.vycep.visibilityChipFriends,
+                  )}
+                </Text>
+              ) : null}
+              <View style={styles.vycepActions}>
+                <Pressable
+                  onPress={() => setPublishSheetVisible(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel={cs.a11y.publishNightButton}
+                  style={({ pressed }) => [styles.vycepPrimary, pressed && styles.iconButtonPressed]}
+                >
+                  <HandPlatterIcon size={16} color={Colors.stout} />
+                  <Text style={styles.vycepPrimaryText} maxFontSizeMultiplier={FontScaleCap.heading}>
+                    {publishedRecord ? cs.vycep.updateCta : cs.vycep.publishEntryTitle}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setShareModalVisible(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel={cs.a11y.shareNightButton}
+                  style={({ pressed }) => [styles.vycepGhost, pressed && styles.iconButtonPressed]}
+                >
+                  <Share2Icon size={16} color={Colors.foamMuted} />
+                  <Text style={styles.vycepGhostText} maxFontSizeMultiplier={FontScaleCap.heading}>
+                    {cs.vycep.shareNightCta}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+
           {/* Rating + public mapping are pub concepts — an outside evening
               ("Doma / na chatě") has nothing to rate or map. */}
           {!isContextPubKey(session.pubKey) ? (
@@ -416,6 +481,20 @@ export default function EveningDetailScreen() {
           <View style={{ height: Spacing.lg }} />
         </KeyboardAwareScrollView>
       )}
+      {nightSummary ? (
+        <>
+          <PublishNightSheet
+            visible={publishSheetVisible}
+            night={nightSummary}
+            onClose={() => setPublishSheetVisible(false)}
+          />
+          <ShareNightModal
+            visible={shareModalVisible}
+            night={nightSummary}
+            onClose={() => setShareModalVisible(false)}
+          />
+        </>
+      ) : null}
       <EditDrinkNameModal
         group={editingGroup}
         onCancel={() => setEditingGroup(null)}
@@ -657,6 +736,55 @@ const styles = StyleSheet.create({
   },
   iconButtonPressed: {
     opacity: 0.75,
+  },
+
+  vycepBody: {
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
+    lineHeight: 19,
+    color: Colors.foamMuted,
+  },
+  vycepState: {
+    marginTop: 6,
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 12.5,
+    color: Colors.amber,
+  },
+  vycepActions: {
+    marginTop: 12,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  vycepPrimary: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.amber,
+    paddingHorizontal: 16,
+  },
+  vycepPrimaryText: {
+    fontFamily: Fonts.display.bold,
+    fontSize: 14,
+    color: Colors.stout,
+  },
+  vycepGhost: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: 16,
+  },
+  vycepGhostText: {
+    fontFamily: Fonts.display.semibold,
+    fontSize: 14,
+    color: Colors.foamMuted,
   },
 
   modalBackdrop: {

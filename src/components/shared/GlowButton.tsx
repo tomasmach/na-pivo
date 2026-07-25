@@ -10,6 +10,7 @@ export type GlowButtonGlow = 'soft' | 'strong' | 'none';
 
 export interface GlowButtonProps {
   label: string;
+  subLabel?: string | null;
   onPress: () => void;
   icon?: ReactNode;
   variant?: GlowButtonVariant;
@@ -28,6 +29,7 @@ function resolveGlowStyle(glow: GlowButtonGlow): ViewStyle {
 
 export const GlowButton = memo(function GlowButton({
   label,
+  subLabel,
   onPress,
   icon,
   variant = 'primary',
@@ -66,18 +68,32 @@ export const GlowButton = memo(function GlowButton({
         accessibilityRole="button"
         accessibilityState={{ disabled: disabled || loading, busy: loading }}
       >
-        {loading ? (
-          <ActivityIndicator color={isPrimary ? Colors.stout : Colors.foam} size="small" />
-        ) : icon != null ? (
-          <View style={styles.iconSlot}>{icon}</View>
+        <View style={styles.labelRow}>
+          {loading ? (
+            <ActivityIndicator color={isPrimary ? Colors.stout : Colors.foam} size="small" />
+          ) : icon != null ? (
+            <View style={styles.iconSlot}>{icon}</View>
+          ) : null}
+          <Text
+            style={[styles.label, isPrimary ? styles.primaryText : styles.secondaryText]}
+            numberOfLines={1}
+            maxFontSizeMultiplier={FontScaleCap.heading}
+          >
+            {label}
+          </Text>
+        </View>
+        {subLabel ? (
+          <Text
+            style={[
+              styles.subLabel,
+              isPrimary ? styles.primarySubText : styles.secondaryText,
+            ]}
+            numberOfLines={1}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
+            {subLabel}
+          </Text>
         ) : null}
-        <Text
-          style={[styles.label, isPrimary ? styles.primaryText : styles.secondaryText]}
-          numberOfLines={1}
-          maxFontSizeMultiplier={FontScaleCap.heading}
-        >
-          {label}
-        </Text>
       </Pressable>
     </View>
   );
@@ -98,11 +114,9 @@ const styles = StyleSheet.create({
     opacity: 0.35,
   },
   base: {
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 28,
-    gap: 8,
   },
   primaryBg: {
     backgroundColor: Colors.amber,
@@ -122,6 +136,21 @@ const styles = StyleSheet.create({
   },
   secondaryText: {
     color: Colors.foam,
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  subLabel: {
+    marginTop: 2,
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 13,
+    includeFontPadding: false,
+  },
+  primarySubText: {
+    color: withAlpha(Colors.stout, 0.72),
   },
   iconSlot: {
     marginRight: 4,

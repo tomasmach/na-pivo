@@ -66,12 +66,14 @@ from pubs.models import (
     EmailCredential,
     FeedbackReport,
     FriendPubActivity,
+    NightRound,
     OneTimeToken,
     PubAmenity,
     PubAmenityVote,
     PubAmenityVoteTombstone,
     PubCommunityData,
     PubContributionLog,
+    PublishedNight,
     PubRating,
     PubReport,
     PubVisit,
@@ -736,6 +738,17 @@ def _merge_anonymous_account(source: Account | None, target: Account) -> None:
     _delete_or_move_account_rows(
         PubVisit, source=source, target=target, unique_fields=("client_id",)
     )
+    _delete_or_move_account_rows(
+        PublishedNight, source=source, target=target, unique_fields=("client_id",)
+    )
+    _delete_or_move_account_rows(
+        NightRound, source=source, target=target, unique_fields=("night_id",)
+    )
+    # Moving PublishedNight ownership can turn either direction of a cross-account
+    # reaction into a self-reaction. Keep the normal deduplicating move above so
+    # the (night, account) constraint stays safe, then remove rounds that violate
+    # the same invariant enforced by the reaction endpoint.
+    NightRound.objects.filter(account=target, night__account=target).delete()
     _delete_or_move_account_rows(
         UserAddedPub, source=source, target=target, unique_fields=("client_id",)
     )

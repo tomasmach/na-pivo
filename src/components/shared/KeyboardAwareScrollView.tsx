@@ -14,6 +14,15 @@ import {
 import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
 import { Spacing } from '@/theme/layout';
 
+interface KeyboardAwareScrollViewProps extends ScrollViewProps {
+  /**
+   * The parent already shrinks or lifts this scroll view above the keyboard.
+   * Focused fields still scroll into the reduced viewport, but no second
+   * keyboard inset is injected.
+   */
+  keyboardAvoidedExternally?: boolean;
+}
+
 function focusedTextInputHandle(): number | null {
   const input = TextInput.State.currentlyFocusedInput();
   if (!input) return null;
@@ -31,9 +40,11 @@ function focusedTextInputHandle(): number | null {
  * descendant focus events, adds a keyboard-sized trailing inset, and scrolls
  * the focused field above the keyboard after its animation finishes.
  */
-export const KeyboardAwareScrollView = forwardRef<ScrollView, ScrollViewProps>(function KeyboardAwareScrollView(
+export const KeyboardAwareScrollView = forwardRef<ScrollView, KeyboardAwareScrollViewProps>(function KeyboardAwareScrollView(
   {
+    automaticallyAdjustKeyboardInsets,
     contentContainerStyle,
+    keyboardAvoidedExternally = false,
     onContentSizeChange,
     onFocus,
     onLayout,
@@ -90,9 +101,12 @@ export const KeyboardAwareScrollView = forwardRef<ScrollView, ScrollViewProps>(f
             if (latestInputHandle !== target) return;
             const viewportHeight = viewportHeightRef.current;
             if (viewportHeight <= 0) return;
+            const effectiveKeyboardHeight = keyboardAvoidedExternally
+              ? 0
+              : keyboardHeightRef.current;
             const keyboardTop = Math.max(
               Spacing.lg,
-              viewportHeight - keyboardHeightRef.current - Spacing.lg,
+              viewportHeight - effectiveKeyboardHeight - Spacing.lg,
             );
             const fieldBottom = fieldY + fieldHeight;
             let deltaY = 0;
@@ -111,8 +125,8 @@ export const KeyboardAwareScrollView = forwardRef<ScrollView, ScrollViewProps>(f
             // the first focus during the keyboard animation could be clamped too
             // early and leave a low input hidden behind the keyboard.
             const keyboardAllowance =
-              keyboardHeightRef.current > 0
-                ? keyboardHeightRef.current + Spacing.lg
+              effectiveKeyboardHeight > 0
+                ? effectiveKeyboardHeight + Spacing.lg
                 : 0;
             const maxY =
               contentHeight > 0
@@ -135,7 +149,7 @@ export const KeyboardAwareScrollView = forwardRef<ScrollView, ScrollViewProps>(f
         scrollIntoView();
       }, 300);
     },
-    [cancelScheduledScroll, onFocus],
+    [cancelScheduledScroll, keyboardAvoidedExternally, onFocus],
   );
 
   const handleScroll = useCallback(
@@ -171,11 +185,15 @@ export const KeyboardAwareScrollView = forwardRef<ScrollView, ScrollViewProps>(f
       onLayout={handleLayout}
       onScroll={handleScroll}
       scrollEventThrottle={scrollEventThrottle}
-      automaticallyAdjustKeyboardInsets={props.automaticallyAdjustKeyboardInsets ?? true}
+      automaticallyAdjustKeyboardInsets={
+        automaticallyAdjustKeyboardInsets ?? !keyboardAvoidedExternally
+      }
       keyboardShouldPersistTaps={props.keyboardShouldPersistTaps ?? 'handled'}
       contentContainerStyle={[
         contentContainerStyle,
-        keyboardHeight > 0 ? { paddingBottom: keyboardHeight + Spacing.lg } : null,
+        keyboardHeight > 0 && !keyboardAvoidedExternally
+          ? { paddingBottom: keyboardHeight + Spacing.lg }
+          : null,
       ]}
     />
   );

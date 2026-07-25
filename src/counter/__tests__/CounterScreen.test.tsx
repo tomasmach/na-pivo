@@ -1,5 +1,19 @@
+/**
+ * CounterScreen — the "Tácek" surface.
+ *
+ * These tests exercise the four-block surface through its real leaf components
+ * (PlaceChip / CoasterCard / NudgeSlot / CounterCta / DrinkPickSheet /
+ * ReceiptSheet), so every assertion goes through an accessibility label a user
+ * would actually reach. Only the modals that drag untestable native deps are
+ * stubbed.
+ *
+ * The one thing the whole rebuild exists to guarantee: the CTA's label always
+ * states exactly what one tap does, and the FIRST tap of an evening never
+ * writes a guessed drink.
+ */
+
 import React from 'react';
-import { cs as copy } from '@/i18n/cs';
+import { cs as copy, formatVolume } from '@/i18n/cs';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -13,23 +27,29 @@ jest.mock('react-native-safe-area-context', () => ({
 
 jest.mock('react-native-reanimated', () => ({
   __esModule: true,
-  default: { View: 'AnimatedView', createAnimatedComponent: (c: unknown) => c },
+  default: {
+    View: 'AnimatedView',
+    Text: 'AnimatedText',
+    createAnimatedComponent: (c: unknown) => c,
+  },
   useSharedValue: jest.fn((value) => ({ value })),
   useAnimatedStyle: jest.fn((factory) => factory()),
   useAnimatedProps: jest.fn((factory) => factory()),
-  withSpring: jest.fn((value) => value),
-  withTiming: jest.fn((value) => value),
-  withSequence: jest.fn((value) => value),
   useReducedMotion: jest.fn(() => true),
+  withSpring: jest.fn((value) => value),
+  withSequence: jest.fn((value) => value),
+  withTiming: jest.fn((value) => value),
 }));
 
-// The public "Zmapuj hospodu" entry is its own feature (sheet/store/icons tested
+// The public "Zmapuj hospodu" sheet is its own feature (store/icons tested
 // elsewhere); stub it so these beer-counting tests stay isolated from its deps.
-jest.mock('@/components/amenities/MapPubEntry', () => ({ MapPubEntry: () => null }));
+jest.mock('@/components/amenities/MapPubSheet', () => ({ MapPubSheet: () => null }));
 
 jest.mock('expo-haptics', () => ({
   NotificationFeedbackType: { Success: 'success' },
+  ImpactFeedbackStyle: { Light: 'light' },
   notificationAsync: jest.fn(async () => undefined),
+  impactAsync: jest.fn(async () => undefined),
 }));
 
 jest.mock('@/theme/fonts', () => ({
@@ -47,7 +67,6 @@ jest.mock('@/theme/fonts', () => ({
   FontScaleCap: { display: 1.1, heading: 1.2, body: 1.3 },
 }));
 
-jest.mock('@/components/celebration/BeerBubbles', () => ({ BeerBubbles: jest.fn(() => null) }));
 jest.mock('@/components/shared/GlowButton', () => ({ GlowButton: jest.fn(() => null) }));
 jest.mock('@/components/shared/AppDialog', () => ({
   AppDialogHost: jest.fn(() => null),
@@ -59,30 +78,36 @@ jest.mock('@/counter/BeerFormModal', () => ({ BeerFormModal: jest.fn(() => null)
 jest.mock('@/counter/PubPickerModal', () => ({ PubPickerModal: jest.fn(() => null) }));
 jest.mock('@/components/contribute/ScanMenuSheet', () => ({ ScanMenuSheet: jest.fn(() => null) }));
 jest.mock('@/counter/ScannedDrinkPicker', () => ({ ScannedDrinkPicker: jest.fn(() => null) }));
+jest.mock('@/vycep/ShareNightModal', () => ({ ShareNightModal: jest.fn(() => null) }));
+// Photo capture flow — pure UI with its own coverage; it drags in
+// expo-location via compass/permissions, which this suite doesn't stub.
+jest.mock('@/photos/BeerPhotoCaptureFlow', () => ({ BeerPhotoCaptureFlow: () => null }));
 
 jest.mock('expo-router', () => ({
   useRouter: jest.fn(() => ({ push: jest.fn(), back: jest.fn() })),
 }));
 
-jest.mock('@/components/shared/IconGlyph', () => ({
-  BeerIcon: jest.fn(() => null),
-  MapPinIcon: jest.fn(() => null),
-  PlusIcon: jest.fn(() => null),
-  MinusIcon: jest.fn(() => null),
-  Undo2Icon: jest.fn(() => null),
-  RefreshCwIcon: jest.fn(() => null),
-  CheckIcon: jest.fn(() => null),
-  XIcon: jest.fn(() => null),
-  BellRingIcon: jest.fn(() => null),
-  GlassWaterIcon: jest.fn(() => null),
-  HistoryIcon: jest.fn(() => null),
-  CameraIcon: jest.fn(() => null),
-  InfoIcon: jest.fn(() => null),
-  SparklesIcon: jest.fn(() => null),
-  HouseIcon: jest.fn(() => null),
-  TreePineIcon: jest.fn(() => null),
-}));
-
+jest.mock('@/components/shared/IconGlyph', () => {
+  const names = [
+    'BeerIcon', 'BeerOffIcon', 'CompassIcon', 'Undo2Icon', 'LockKeyholeIcon', 'EyeIcon',
+    'EyeOffIcon', 'MapPinIcon', 'ExternalLinkIcon', 'RefreshCwIcon', 'SettingsIcon',
+    'BellRingIcon', 'Volume2Icon', 'InfoIcon', 'ShieldIcon', 'ChevronLeftIcon',
+    'ChevronRightIcon', 'ChevronDownIcon', 'HeartIcon', 'FlagIcon', 'MessageSquareIcon',
+    'RadiusIcon', 'WifiIcon', 'GlassWaterIcon', 'WineIcon', 'PencilIcon', 'PlusIcon',
+    'MinusIcon', 'Trash2Icon', 'CopyIcon', 'XIcon', 'CoinsIcon', 'StarIcon', 'ThumbsUpIcon',
+    'ThumbsDownIcon', 'HistoryIcon', 'ClockIcon', 'UserIcon', 'UsersIcon', 'UserPlusIcon',
+    'MailIcon', 'LinkIcon', 'CheckIcon', 'BadgeCheckIcon', 'KeyRoundIcon', 'CrownIcon',
+    'CameraIcon', 'ImagesIcon', 'SparklesIcon', 'TreePineIcon', 'HouseIcon', 'MilkIcon',
+    'CupSodaIcon', 'HandPlatterIcon', 'Share2Icon', 'SearchIcon', 'ListFilterIcon',
+    'CreditCardIcon', 'AccessibilityIcon', 'TargetIcon', 'CircleDotIcon', 'SoccerBallIcon',
+    'RadioIcon', 'MicIcon', 'TvIcon', 'SquareParkingIcon', 'MapPinnedIcon', 'MapPinPlusIcon',
+    'MapIcon', 'ListIcon', 'LocateFixedIcon', 'SlidersHorizontalIcon', 'SproutIcon',
+    'ClipboardListIcon', 'FlameIcon', 'TrophyIcon', 'MoonIcon', 'QrCodeIcon', 'EllipsisIcon',
+  ];
+  const glyphs: Record<string, unknown> = {};
+  for (const name of names) glyphs[name] = jest.fn(() => null);
+  return glyphs;
+});
 // Drinks delivery layer — assert calls without touching the network.
 const enqueueDrink = jest.fn((_entry: unknown, _options?: unknown) => Promise.resolve(true));
 const flushDrinksQueue = jest.fn(() => Promise.resolve(undefined));
@@ -106,8 +131,22 @@ jest.mock('@/data/friendsClient', () => ({ shareFriendPubActivity: mockShareFrie
 const fetchPubHours = jest.fn(async () => new Map());
 jest.mock('@/data/hoursClient', () => ({ fetchPubHours }));
 
+// The weekly-rank chip owns the nudge slot once a beer is counted. Keep its
+// board fetch pending forever so it stays inert (and never updates state after
+// a test ends).
+jest.mock('@/data/leaderboardsClient', () => ({
+  fetchLeaderboard: jest.fn(() => new Promise(() => undefined)),
+  clearLeaderboardsCache: jest.fn(),
+}));
+
+// Local notification scheduling is covered by its own suite and needs neither
+// AsyncStorage hydration nor expo-notifications here.
+const refreshBeerCountReminderAfterBeer = jest.fn(async () => undefined);
+jest.mock('@/notifications/beerCountReminder', () => ({ refreshBeerCountReminderAfterBeer }));
+
+let mockUuidCounter = 0;
 jest.mock('@/data/account', () => ({
-  generateUuidV4: jest.fn(() => 'uuid-fixed'),
+  generateUuidV4: jest.fn(() => `uuid-${++mockUuidCounter}`),
   setAnonymousSessionEvictionListener: jest.fn(),
 }));
 
@@ -120,23 +159,21 @@ jest.mock('@/data/visitsSync', () => ({ syncVisit, deleteVisitByClientId }));
 const useNearbyPub = jest.fn();
 jest.mock('@/counter/useNearbyPub', () => ({ useNearbyPub: () => useNearbyPub() }));
 
-// Photo capture flow — pure UI with its own coverage; it drags in
-// expo-location via compass/permissions, which this suite doesn't stub.
-jest.mock('@/photos/BeerPhotoCaptureFlow', () => ({ BeerPhotoCaptureFlow: () => null }));
-
-import { useTallyStore } from '@/stores/tallyStore';
+import { useTallyStore, type TallySession } from '@/stores/tallyStore';
 import { useCommunityStore } from '@/stores/communityStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { geohash8 } from '@/data/geohash';
-import { showAppDialog } from '@/components/shared/AppDialog';
+import { BeerFormModal } from '@/counter/BeerFormModal';
+import { PubPickerModal } from '@/counter/PubPickerModal';
 
-const { default: CounterScreen, groupMenuBeers } = require('../CounterScreen');
+const { default: CounterScreen, groupMenuBeers, UNDO_WINDOW_MS } = require('../CounterScreen');
 const TestRenderer = require('react-test-renderer');
 const { act } = TestRenderer;
 
 const PUB = { id: 'osm:1', name: 'U Zlatého tygra', lat: 50.0876, lng: 14.4214 };
 const CELL = geohash8(PUB.lat, PUB.lng);
+const MIN_PLAUSIBLE_BEER_GAP_MS = 5 * 60 * 1000;
 
 function nearbyState(over: Record<string, unknown> = {}) {
   return {
@@ -151,152 +188,233 @@ function nearbyState(over: Record<string, unknown> = {}) {
   };
 }
 
+/** Mounted trees, torn down after each test so a later `setState` can never
+ *  re-render a stale counter outside act(). */
+const mounted: any[] = [];
+
+function render(): any {
+  let renderer: any;
+  act(() => {
+    renderer = TestRenderer.create(React.createElement(CounterScreen));
+  });
+  mounted.push(renderer);
+  return renderer;
+}
+
+function insideModal(node: any): boolean {
+  let parent = node.parent;
+  while (parent) {
+    if (parent.type === 'Modal') return true;
+    parent = parent.parent;
+  }
+  return false;
+}
+
+/** A pressable on the surface itself (never one hidden inside a sheet — the
+ *  lean RN mock renders Modal children inline regardless of `visible`). */
+function surface(renderer: any, accessibilityLabel: string): any {
+  return renderer.root
+    .findAll(
+      (n: any) =>
+        n.props?.accessibilityLabel === accessibilityLabel && typeof n.props?.onPress === 'function',
+    )
+    .filter((n: any) => !insideModal(n))[0];
+}
+
+/** Every piece of text rendered on the surface (sheets excluded), joined. */
+function surfaceText(renderer: any): string {
+  return renderer.root
+    .findAll((n: any) => n.type === 'Text')
+    .filter((n: any) => !insideModal(n))
+    .map((n: any) => n.props.children)
+    .flat()
+    .filter((c: unknown) => typeof c === 'string')
+    .join(' ');
+}
+
+/** The <Modal> of the sheet whose header carries `title`. */
+function sheet(renderer: any, title: string): any {
+  return renderer.root
+    .findAll((n: any) => n.type === 'Modal')
+    .find(
+      (m: any) => m.findAll((n: any) => n.type === 'Text' && n.props.children === title).length > 0,
+    );
+}
+
+function sheetButton(renderer: any, title: string, accessibilityLabel: string): any {
+  return sheet(renderer, title).findAll(
+    (n: any) =>
+      n.props?.accessibilityLabel === accessibilityLabel && typeof n.props?.onPress === 'function',
+  )[0];
+}
+
+function lastProps(mock: unknown): any {
+  return (mock as jest.Mock).mock.calls.at(-1)?.[0];
+}
+
+function session(over: Partial<TallySession> = {}): TallySession {
+  return {
+    clientId: 'session-1',
+    pubKey: CELL,
+    pubName: PUB.name,
+    startedAt: new Date().toISOString(),
+    drinks: [],
+    ...over,
+  };
+}
+
+/** One beer logged `minutesAgo` minutes back — far enough that the rapid-drink
+ *  guard stays out of the way unless a test wants it. */
+function beerDrink(id: string, minutesAgo: number) {
+  return {
+    id,
+    beerName: 'Plzeň',
+    priceCzk: 62,
+    volumeMl: 500,
+    at: new Date(Date.now() - minutesAgo * 60 * 1000).toISOString(),
+  };
+}
+
+/** Fill in the add-beer form the CTA just opened. */
+async function submitForm(result: Record<string, unknown>) {
+  await act(async () => {
+    lastProps(BeerFormModal).onSubmit(result);
+    await Promise.resolve();
+  });
+}
+
 beforeEach(() => {
   // Fake timers so the counter's deferred-delivery setTimeout never auto-fires
   // mid-test (it would mark a drink synced after the test ends → act warnings).
   // Tests that exercise the undo window advance time explicitly.
   jest.useFakeTimers();
   jest.clearAllMocks();
-  fetchPubHours.mockImplementation(() => new Promise(() => undefined));
+  mockUuidCounter = 0;
+  fetchPubHours.mockImplementation(() => new Promise(() => undefined) as never);
   useTallyStore.setState({ current: null, history: [] });
   useCommunityStore.setState({ overrides: {} });
   useSettingsStore.setState({ priceCurrency: 'CZK', waterNudgeEnabled: false });
 });
 
 afterEach(() => {
+  act(() => {
+    while (mounted.length > 0) mounted.pop().unmount();
+  });
   jest.clearAllTimers();
   jest.useRealTimers();
 });
 
-describe('CounterScreen states', () => {
-  it('renders the permission gate when permission is not granted', () => {
-    useNearbyPub.mockReturnValue(nearbyState({ permissionState: 'undetermined', selected: null, candidates: [] }));
-    let renderer: any;
-    act(() => {
-      renderer = TestRenderer.create(React.createElement(CounterScreen));
-    });
-    const cs = require('@/i18n/cs').cs;
-    const texts = renderer.root.findAllByType('Text').map((t: any) => t.props.children);
-    expect(texts.flat().join(' ')).toContain(cs.counter.permTitle);
-  });
+// ─── 1. The CTA state machine ────────────────────────────────────────────────
 
-  it('renders the detecting state while loading', () => {
-    useNearbyPub.mockReturnValue(nearbyState({ loading: true, selected: null, candidates: [] }));
-    let renderer: any;
-    act(() => {
-      renderer = TestRenderer.create(React.createElement(CounterScreen));
-    });
-    const cs = require('@/i18n/cs').cs;
-    const texts = renderer.root.findAllByType('Text').map((t: any) => t.props.children);
-    expect(texts.flat().join(' ')).toContain(cs.counter.detecting);
-  });
-
-  it('renders the no-pub state when there is no active pub', () => {
+describe('CounterScreen CTA state machine', () => {
+  it('with no place resolved the CTA opens the pub picker and writes no drink', () => {
     useNearbyPub.mockReturnValue(nearbyState({ selected: null, candidates: [] }));
-    let renderer: any;
-    act(() => {
-      renderer = TestRenderer.create(React.createElement(CounterScreen));
-    });
-    const cs = require('@/i18n/cs').cs;
-    const texts = renderer.root.findAllByType('Text').map((t: any) => t.props.children);
-    expect(texts.flat().join(' ')).toContain(cs.counter.noPubTitle);
+    const renderer = render();
+
+    expect(surfaceText(renderer)).toContain(copy.counter.ctaLogBeer);
+    expect(surfaceText(renderer)).toContain(copy.counter.placeUnknown);
+    expect(lastProps(PubPickerModal).visible).toBe(false);
+
+    act(() => surface(renderer, copy.counter.ctaLogBeer).props.onPress());
+
+    expect(lastProps(PubPickerModal).visible).toBe(true);
+    expect(useTallyStore.getState().current).toBeNull();
+    expect(enqueueDrink).not.toHaveBeenCalled();
+    expect(lastProps(BeerFormModal).visible).toBe(false);
   });
 
-  it('starts an outside evening directly instead of opening the pub picker', () => {
-    useNearbyPub.mockReturnValue(nearbyState({ selected: null, candidates: [nearbyState().candidates[0]] }));
-    const PubPickerModal = require('@/counter/PubPickerModal').PubPickerModal as jest.Mock;
-    let renderer: any;
-    act(() => {
-      renderer = TestRenderer.create(React.createElement(CounterScreen));
-    });
+  it('still detecting the place, the CTA never counts either', () => {
+    useNearbyPub.mockReturnValue(nearbyState({ selected: null, candidates: [], loading: true }));
+    const renderer = render();
 
-    const outside = renderer.root.findAll(
-      (node: any) =>
-        node.props?.accessibilityLabel === copy.counter.outsideNoPubCta &&
-        typeof node.props?.onPress === 'function',
-    )[0];
-    act(() => outside.props.onPress());
+    expect(surfaceText(renderer)).toContain(copy.counter.detecting);
+    act(() => surface(renderer, copy.counter.ctaLogBeer).props.onPress());
 
-    const texts = renderer.root.findAllByType('Text').map((t: any) => t.props.children);
-    expect(texts.flat().join(' ')).toContain(copy.counter.outsideLabel('other'));
-    expect(PubPickerModal.mock.calls.at(-1)?.[0].visible).toBe(false);
+    expect(lastProps(PubPickerModal).visible).toBe(true);
+    expect(enqueueDrink).not.toHaveBeenCalled();
   });
 
-  it('offers outside counting from the change-place picker near a pub', () => {
-    useNearbyPub.mockReturnValue(nearbyState());
-    const PubPickerModal = require('@/counter/PubPickerModal').PubPickerModal as jest.Mock;
-    let renderer: any;
-    act(() => {
-      renderer = TestRenderer.create(React.createElement(CounterScreen));
-    });
-
-    const changePlace = renderer.root.findAll(
-      (node: any) =>
-        node.props?.accessibilityLabel === copy.a11y.counterChangePub &&
-        typeof node.props?.onPress === 'function',
-    )[0];
-    act(() => changePlace.props.onPress());
-
-    const pickerProps = PubPickerModal.mock.calls.at(-1)?.[0];
-    expect(pickerProps.visible).toBe(true);
-
-    act(() => pickerProps.onSelectOutside('other'));
-
-    const texts = renderer.root.findAllByType('Text').map((t: any) => t.props.children);
-    expect(texts.flat().join(' ')).toContain(copy.counter.outsideLabel('other'));
-  });
-});
-
-describe('CounterScreen counting', () => {
-  it('groups serving sizes under one beer card and keeps each size countable', async () => {
+  it('at a pub with a menu and nothing counted, the CTA opens "Co si dáš?"', () => {
     useCommunityStore.setState({
-      overrides: {
-        [CELL]: {
-          beers: [
-            { name: 'Pilsner Urquell', priceCzk: 155, volumeMl: 500 },
-            { name: 'Pilsner Urquell', priceCzk: 95, volumeMl: 300 },
-          ],
-          updatedAt: 1,
-        },
-      },
+      overrides: { [CELL]: { beers: [{ name: 'Plzeň', priceCzk: 62, volumeMl: 500 }], updatedAt: 1 } },
     });
     useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
 
-    let renderer: any;
-    act(() => {
-      renderer = TestRenderer.create(React.createElement(CounterScreen));
+    expect(surfaceText(renderer)).toContain(copy.counter.ctaPick);
+    expect(sheet(renderer, copy.counter.pickTitle).props.visible).toBe(false);
+
+    act(() => surface(renderer, copy.counter.ctaPick).props.onPress());
+
+    expect(sheet(renderer, copy.counter.pickTitle).props.visible).toBe(true);
+    expect(useTallyStore.getState().current).toBeNull();
+    expect(enqueueDrink).not.toHaveBeenCalled();
+  });
+
+  it('with nothing to pick at all, the CTA opens the add-beer form in "add" mode', () => {
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+
+    expect(surfaceText(renderer)).toContain(copy.counter.ctaFirstBeer);
+
+    act(() => surface(renderer, copy.a11y.counterAddBeer).props.onPress());
+
+    expect(lastProps(BeerFormModal)).toMatchObject({ visible: true, mode: 'add' });
+    expect(useTallyStore.getState().current).toBeNull();
+    expect(enqueueDrink).not.toHaveBeenCalled();
+    expect(mockTrackClientEvent).toHaveBeenCalledWith({
+      event: 'beer_form_opened',
+      context: { mode: 'add' },
     });
+  });
 
-    const beerNames = renderer.root.findAll(
-      (node: any) => node.type === 'Text' && node.props.children === 'Pilsner Urquell',
-    );
-    expect(beerNames).toHaveLength(1);
+  it('once something was drunk here the CTA repeats that exact beer', async () => {
+    useTallyStore.setState({
+      current: session({ clientId: 'session-repeat', drinks: [beerDrink('drink-1', 30)] }),
+      history: [],
+    });
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
 
-    const smallPlus = renderer.root.findAll(
-      (node: any) =>
-        node.props?.accessibilityLabel ===
-          `${copy.a11y.counterCountBeer('Pilsner Urquell', copy.counter.price(95))}, 0,3 l` &&
-        typeof node.props?.onPress === 'function',
-    )[0];
-    const largePlus = renderer.root.findAll(
-      (node: any) =>
-        node.props?.accessibilityLabel ===
-          `${copy.a11y.counterCountBeer('Pilsner Urquell', copy.counter.price(155))}, 0,5 l` &&
-        typeof node.props?.onPress === 'function',
-    )[0];
-    expect(smallPlus).toBeTruthy();
-    expect(largePlus).toBeTruthy();
+    const text = surfaceText(renderer);
+    expect(text).toContain(copy.counter.repeatCta);
+    expect(text).toContain('Plzeň · 0,5 l');
 
     await act(async () => {
-      smallPlus.props.onPress();
+      surface(renderer, copy.a11y.counterRepeat('Plzeň')).props.onPress();
       await Promise.resolve();
     });
 
-    expect(useTallyStore.getState().current?.drinks[0]).toMatchObject({
-      beerName: 'Pilsner Urquell',
-      priceCzk: 95,
-      volumeMl: 300,
+    const drinks = useTallyStore.getState().current?.drinks ?? [];
+    expect(drinks).toHaveLength(2);
+    expect(drinks[1]).toMatchObject({ beerName: 'Plzeň', priceCzk: 62, volumeMl: 500 });
+  });
+
+  it('a resumable evening here swaps the CTA to "Pokračovat ve večeru"', () => {
+    useTallyStore.setState({
+      current: null,
+      history: [
+        session({
+          clientId: 'session-timeout',
+          drinks: [beerDrink('drink-1', 90)],
+          archivedReason: 'timeout',
+        }),
+      ],
     });
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+
+    const text = surfaceText(renderer);
+    expect(text).toContain(copy.counter.resumeEvening);
+    expect(text).toContain(copy.counter.resumeSub('1 pivo'));
+
+    act(() => surface(renderer, copy.a11y.counterResume).props.onPress());
+
+    expect(useTallyStore.getState().current?.clientId).toBe('session-timeout');
+    expect(useTallyStore.getState().history).toHaveLength(0);
+    expect(mockTrackClientEvent).toHaveBeenCalledWith({ event: 'counter_session_resumed' });
+    // Resuming is not counting.
+    expect(enqueueDrink).not.toHaveBeenCalled();
   });
 
   it('orders grouped serving sizes from small to large', () => {
@@ -309,86 +427,45 @@ describe('CounterScreen counting', () => {
     expect(groups.map((group: any) => group.name)).toEqual(['Plzeň', 'Kozel']);
     expect(groups[0].beers.map((beer: any) => beer.volumeMl)).toEqual([300, 500]);
   });
+});
 
-  it('renders backend community beers fetched for the active pub', async () => {
-    fetchPubHours.mockResolvedValueOnce(
-      new Map([
-        [
-          PUB.id,
-          {
-            openingHours: null,
-            isOpenNow: null,
-            nextChange: null,
-            status: 'ok',
-            source: 'firmy',
-            communityHours: null,
-            beers: [{ name: 'Plzeň', priceCzk: 62, volumeMl: 500 }],
-            rating: null,
-            ratingCount: null,
-            ratingLabel: null,
-            hasGarden: null,
-            venueKind: 'pub',
-          },
-        ],
-      ]),
-    );
+// ─── 2. Counting through the CTA ─────────────────────────────────────────────
+
+describe('CounterScreen counting', () => {
+  it('the first beer of an evening lands in the tally with delivery deferred', async () => {
     useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
 
-    let renderer: any;
-    await act(async () => {
-      renderer = TestRenderer.create(React.createElement(CounterScreen));
-    });
-    await act(async () => {
-      await Promise.resolve();
-    });
+    act(() => surface(renderer, copy.a11y.counterAddBeer).props.onPress());
+    await submitForm({ drinkType: 'beer', name: 'Plzeň', priceCzk: 62, volumeMl: 500 });
 
-    const cs = require('@/i18n/cs').cs;
-    const wanted = cs.a11y.counterCountBeer('Plzeň', cs.counter.price(62));
-    const card = renderer.root.findAll(
-      (n: any) => n.props?.accessibilityLabel === wanted && typeof n.props?.onPress === 'function',
-    )[0];
-    expect(card).toBeTruthy();
-    expect(fetchPubHours).toHaveBeenCalledWith([PUB], expect.any(AbortSignal));
-  });
-
-  it('counts a priced beer on tap → updates tally, queue, and menu override', async () => {
-    useCommunityStore.setState({
-      overrides: { [CELL]: { beers: [{ name: 'Plzeň', priceCzk: 62, volumeMl: 500 }], updatedAt: 1 } },
-    });
-    useNearbyPub.mockReturnValue(nearbyState());
-
-    let renderer: any;
-    act(() => {
-      renderer = TestRenderer.create(React.createElement(CounterScreen));
-    });
-
-    // Find the menu card Pressable (its a11y label references the beer count).
-    const cs = require('@/i18n/cs').cs;
-    const wanted = cs.a11y.counterCountBeer('Plzeň', cs.counter.price(62));
-    const card = renderer.root.findAll(
-      (n: any) => n.props?.accessibilityLabel === wanted && typeof n.props?.onPress === 'function',
-    )[0];
-    expect(card).toBeTruthy();
-
-    await act(async () => {
-      card.props.onPress();
-      await Promise.resolve();
-    });
-
-    // Tally recorded.
     const current = useTallyStore.getState().current;
     expect(current?.pubKey).toBe(CELL);
     expect(current?.drinks).toHaveLength(1);
-    expect(current?.drinks[0].priceCzk).toBe(62);
+    expect(current?.drinks[0]).toMatchObject({
+      id: 'uuid-1',
+      beerName: 'Plzeň',
+      priceCzk: 62,
+      volumeMl: 500,
+    });
 
-    // Delivery is persisted immediately but deferred (deliver: false), so the
-    // queued payload stays retractable through the undo window — no flush yet.
+    // Persisted immediately but held back for the undo window, so the queued
+    // payload stays retractable — nothing is flushed yet.
     expect(enqueueDrink).toHaveBeenCalledTimes(1);
     expect(enqueueDrink.mock.calls[0][1]).toEqual({ deliver: false });
     expect(flushDrinksQueue).not.toHaveBeenCalled();
+
     const entry = enqueueDrink.mock.calls[0][0] as any;
-    expect(entry.client_id).toBe('uuid-fixed');
+    expect(entry.client_id).toBe('uuid-1');
     expect(entry.beer).toEqual({ name: 'Plzeň', price_czk: 62, volume_ml: 500 });
+    expect(entry.external_id).toBe(PUB.id);
+    expect(entry.name).toBe(PUB.name);
+    expect(entry.lat).toBe(PUB.lat);
+    expect(entry.lng).toBe(PUB.lng);
+    expect(entry.place_context).toBeUndefined();
+    expect(typeof entry.drank_at).toBe('string');
+
+    expect(syncVisit).toHaveBeenCalled();
     expect(mockTrackCounterTabOpened).toHaveBeenCalledWith(false);
     expect(mockTrackClientEvent).toHaveBeenCalledWith({ event: 'counter_session_started' });
     expect(mockTrackClientEvent).toHaveBeenCalledWith({
@@ -396,295 +473,258 @@ describe('CounterScreen counting', () => {
       context: { had_active_session: false, backdated: false },
     });
 
-    // Menu override still present (price unchanged → same single beer).
-    const override = useCommunityStore.getState().overrides[CELL];
-    expect(override?.beers).toHaveLength(1);
+    // The price the user just gave fills the pub's local community menu.
+    expect(useCommunityStore.getState().overrides[CELL]?.beers).toEqual([
+      expect.objectContaining({ name: 'Plzeň', priceCzk: 62, volumeMl: 500 }),
+    ]);
   });
 
-  it('renders priced beer labels in EUR when selected in settings', () => {
-    useSettingsStore.setState({ priceCurrency: 'EUR' });
-    useCommunityStore.setState({
-      overrides: { [CELL]: { beers: [{ name: 'Plzeň', priceCzk: 75, volumeMl: 500 }], updatedAt: 1 } },
-    });
-    useNearbyPub.mockReturnValue(nearbyState());
-
-    let renderer: any;
-    act(() => {
-      renderer = TestRenderer.create(React.createElement(CounterScreen));
-    });
-
-    const cs = require('@/i18n/cs').cs;
-    const wanted = cs.a11y.counterCountBeer('Plzeň', '3 €');
-    const card = renderer.root.findAll(
-      (n: any) => n.props?.accessibilityLabel === wanted && typeof n.props?.onPress === 'function',
-    )[0];
-    expect(card).toBeTruthy();
-  });
-
-  it('shows the last-drink time and asks for confirmation when counting again too quickly', async () => {
+  it('counts a menu row picked from "Co si dáš?" without re-asking the price', async () => {
     useCommunityStore.setState({
       overrides: { [CELL]: { beers: [{ name: 'Plzeň', priceCzk: 62, volumeMl: 500 }], updatedAt: 1 } },
     });
     useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
 
-    let renderer: any;
-    act(() => {
-      renderer = TestRenderer.create(React.createElement(CounterScreen));
-    });
+    act(() => surface(renderer, copy.counter.ctaPick).props.onPress());
 
-    const cs = require('@/i18n/cs').cs;
-    const wanted = cs.a11y.counterCountBeer('Plzeň', cs.counter.price(62));
-    const card = renderer.root.findAll(
-      (n: any) => n.props?.accessibilityLabel === wanted && typeof n.props?.onPress === 'function',
-    )[0];
+    const row = sheetButton(
+      renderer,
+      copy.counter.pickTitle,
+      copy.a11y.counterCountBeer('Plzeň', `${formatVolume(500)} · ${copy.counter.price(62)}`),
+    );
+    expect(row).toBeTruthy();
 
     await act(async () => {
-      card.props.onPress();
+      row.props.onPress();
       await Promise.resolve();
     });
 
-    const texts = renderer.root.findAllByType('Text').map((t: any) => t.props.children);
-    expect(texts.flat().join(' ')).toContain(cs.counter.lastDrinkJustNow);
-    expect(enqueueDrink).toHaveBeenCalledTimes(1);
-    expect(showAppDialog).not.toHaveBeenCalled();
-
-    await act(async () => {
-      card.props.onPress();
-      await Promise.resolve();
-    });
-
-    expect(showAppDialog).toHaveBeenCalledTimes(1);
-    expect(enqueueDrink).toHaveBeenCalledTimes(1);
     expect(useTallyStore.getState().current?.drinks).toHaveLength(1);
-
-    const buttons = (showAppDialog as jest.Mock).mock.calls[0][0].buttons;
-    await act(async () => {
-      buttons[1].onPress();
-      await Promise.resolve();
-    });
-
-    expect(enqueueDrink).toHaveBeenCalledTimes(2);
-    expect(useTallyStore.getState().current?.drinks).toHaveLength(2);
+    expect(lastProps(BeerFormModal).visible).toBe(false);
+    expect(sheet(renderer, copy.counter.pickTitle).props.visible).toBe(false);
   });
+});
 
-  // Counts the beer, returns the rendered "+" and "−" Pressables for it.
-  function countOnce(renderer: any, cs: any) {
-    const plusLabel = cs.a11y.counterCountBeer('Plzeň', cs.counter.price(62));
-    const plus = renderer.root.findAll(
-      (n: any) => n.props?.accessibilityLabel === plusLabel && typeof n.props?.onPress === 'function',
-    )[0];
-    act(() => {
-      plus.props.onPress();
-    });
-    const minus = renderer.root.findAll(
-      (n: any) => n.props?.accessibilityLabel === cs.a11y.counterRemoveBeer('Plzeň') && typeof n.props?.onPress === 'function',
-    )[0];
-    return { plus, minus };
+// ─── 3. Undo ─────────────────────────────────────────────────────────────────
+
+describe('CounterScreen undo', () => {
+  async function countFirstBeer(renderer: any) {
+    act(() => surface(renderer, copy.a11y.counterAddBeer).props.onPress());
+    await submitForm({ drinkType: 'beer', name: 'Plzeň', priceCzk: 62, volumeMl: 500 });
   }
 
-  it('the minus button removes the last count of that beer and pulls a still-queued payload', async () => {
-    useCommunityStore.setState({
-      overrides: { [CELL]: { beers: [{ name: 'Plzeň', priceCzk: 62, volumeMl: 500 }], updatedAt: 1 } },
-    });
+  it('the nudge slot offers undo, which pulls the still-queued payload', async () => {
     useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+    await countFirstBeer(renderer);
 
-    let renderer: any;
-    act(() => {
-      renderer = TestRenderer.create(React.createElement(CounterScreen));
-    });
+    const text = surfaceText(renderer);
+    expect(text).toContain(copy.counter.countedStrip(1));
+    expect(text).toContain(copy.counter.undo);
 
-    const { minus } = countOnce(renderer, copy);
-    expect(useTallyStore.getState().current?.drinks).toHaveLength(1);
-    expect(minus).toBeTruthy();
-
-    // Within the undo window the payload is still queued, so − pulls it back and
-    // never asks the backend to delete (it was never delivered).
     await act(async () => {
-      minus.props.onPress();
+      surface(renderer, copy.a11y.counterUndoStrip).props.onPress();
+      await Promise.resolve();
       await Promise.resolve();
     });
 
     expect(useTallyStore.getState().current?.drinks).toHaveLength(0);
-    expect(removeQueuedDrink).toHaveBeenCalledWith('uuid-fixed');
+    expect(removeQueuedDrink).toHaveBeenCalledWith('uuid-1');
+    expect(enqueueDelete).not.toHaveBeenCalled();
     expect(mockTrackClientEvent).toHaveBeenCalledWith({
       event: 'drink_removed',
       context: { delivery_state: 'queued' },
     });
-    expect(enqueueDelete).not.toHaveBeenCalled();
     expect(deleteVisitByClientId).toHaveBeenCalledWith(expect.any(String));
+    expect(surfaceText(renderer)).not.toContain(copy.counter.undo);
   });
 
-  it('the minus button enqueues a backend delete once the drink has been delivered', async () => {
-    useCommunityStore.setState({
-      overrides: { [CELL]: { beers: [{ name: 'Plzeň', priceCzk: 62, volumeMl: 500 }], updatedAt: 1 } },
-    });
+  it('after the undo window the strip is gone and the drink is marked synced', async () => {
     useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+    await countFirstBeer(renderer);
 
-    let renderer: any;
-    act(() => {
-      renderer = TestRenderer.create(React.createElement(CounterScreen));
-    });
+    expect(flushDrinksQueue).not.toHaveBeenCalled();
 
-    const cs = require('@/i18n/cs').cs;
-    countOnce(renderer, cs);
-
-    // Let the deferred send fire → the drink reaches the backend (marked synced).
     await act(async () => {
-      jest.advanceTimersByTime(6000);
+      jest.advanceTimersByTime(UNDO_WINDOW_MS);
       await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();
     });
+
     expect(flushDrinksQueue).toHaveBeenCalledTimes(1);
     expect(useTallyStore.getState().current?.drinks[0].syncStatus).toBe('sent');
+    expect(surfaceText(renderer)).not.toContain(copy.counter.undo);
+    expect(surface(renderer, copy.a11y.counterUndoStrip)).toBeUndefined();
+  });
 
-    // Now − can no longer pull it from the queue → it durably enqueues a DELETE.
-    removeQueuedDrink.mockResolvedValueOnce(false);
-    const minus = renderer.root.findAll(
-      (n: any) => n.props?.accessibilityLabel === cs.a11y.counterRemoveBeer('Plzeň') && typeof n.props?.onPress === 'function',
-    )[0];
+  it('a receipt minus after delivery enqueues a durable backend DELETE', async () => {
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+    await countFirstBeer(renderer);
+
     await act(async () => {
-      minus.props.onPress();
+      jest.advanceTimersByTime(UNDO_WINDOW_MS);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    flushDrinksQueue.mockClear();
+
+    act(() => surface(renderer, copy.a11y.counterReceiptChip).props.onPress());
+    expect(sheet(renderer, copy.counter.receiptTitle).props.visible).toBe(true);
+
+    // The payload is no longer pullable → the removal has to be delivered.
+    removeQueuedDrink.mockResolvedValueOnce(false);
+    await act(async () => {
+      sheetButton(
+        renderer,
+        copy.counter.receiptTitle,
+        copy.a11y.counterRemoveIdentity('Plzeň'),
+      ).props.onPress();
+      await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();
     });
 
     expect(useTallyStore.getState().current?.drinks).toHaveLength(0);
-    expect(enqueueDelete).toHaveBeenCalledWith('uuid-fixed');
-    expect(deleteVisitByClientId).toHaveBeenCalledWith(expect.any(String));
-  });
-
-  it('waits for an in-flight drink POST before enqueueing the backend delete', async () => {
-    useCommunityStore.setState({
-      overrides: { [CELL]: { beers: [{ name: 'Plzeň', priceCzk: 62, volumeMl: 500 }], updatedAt: 1 } },
+    expect(enqueueDelete).toHaveBeenCalledWith('uuid-1');
+    expect(mockTrackClientEvent).toHaveBeenCalledWith({
+      event: 'drink_removed',
+      context: { delivery_state: 'delivered' },
     });
-    useNearbyPub.mockReturnValue(nearbyState());
-    let resolveFlush!: () => void;
-    flushDrinksQueue.mockReturnValueOnce(
-      new Promise<undefined>((resolve) => {
-        resolveFlush = () => resolve(undefined);
-      }),
-    );
-    removeQueuedDrink.mockResolvedValueOnce(false);
-
-    let renderer: any;
-    act(() => {
-      renderer = TestRenderer.create(React.createElement(CounterScreen));
-    });
-
-    const cs = require('@/i18n/cs').cs;
-    const { minus } = countOnce(renderer, cs);
-    await act(async () => {
-      minus.props.onPress();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(flushDrinksQueue).toHaveBeenCalledTimes(1);
-    expect(enqueueDelete).not.toHaveBeenCalled();
-
-    await act(async () => {
-      resolveFlush();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(enqueueDelete).toHaveBeenCalledWith('uuid-fixed');
-  });
-
-  it('shares the active evening client id with friends', async () => {
-    const startedAt = new Date().toISOString();
-    useTallyStore.setState({
-      current: {
-        clientId: 'session-client-id',
-        pubKey: CELL,
-        pubName: PUB.name,
-        startedAt,
-        drinks: [
-          {
-            id: 'drink-id',
-            beerName: 'Plzeň',
-            priceCzk: 62,
-            at: startedAt,
-          },
-        ],
-      },
-      history: [],
-    });
-    useNearbyPub.mockReturnValue(nearbyState());
-
-    let renderer: any;
-    act(() => {
-      renderer = TestRenderer.create(React.createElement(CounterScreen));
-    });
-
-    const share = renderer.root.findAll(
-      (n: any) =>
-        n.props?.accessibilityLabel === copy.friends.shareHereShort &&
-        typeof n.props?.onPress === 'function',
-    )[0];
-    expect(share).toBeTruthy();
-
-    await act(async () => {
-      share.props.onPress();
-      await Promise.resolve();
-    });
-
-    // Parta 3.0 §B4: one-tap quick broadcast sends an empty message (the rich
-    // compose with a message lives on the Parta tab).
-    expect(mockShareFriendPubActivity).toHaveBeenCalledWith(
-      PUB,
-      '',
-      'session-client-id',
-    );
   });
 });
 
-describe('CounterScreen water nudge', () => {
-  // Seed a live evening with `drinkCount` beers logged well in the past (so the
-  // rapid-drink warning never intercepts the next tap), under a chosen clientId
-  // so we can prove the nudge guard is keyed by session identity.
-  function seedSession(clientId: string, drinkCount: number) {
-    const past = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-    const drinks = Array.from({ length: drinkCount }, (_, i) => ({
-      id: `seed-${clientId}-${i}`,
-      beerName: 'Plzeň',
-      priceCzk: 62,
-      volumeMl: 500,
-      at: past,
-    }));
+// ─── 4. The inline rapid-drink guard ─────────────────────────────────────────
+
+describe('CounterScreen rapid-drink guard', () => {
+  function seedFreshBeer() {
     useTallyStore.setState({
-      current: { clientId, pubKey: CELL, pubName: PUB.name, startedAt: past, drinks },
+      current: session({
+        clientId: 'session-rapid',
+        drinks: [{ id: 'drink-1', beerName: 'Plzeň', priceCzk: 62, volumeMl: 500, at: new Date().toISOString() }],
+      }),
       history: [],
     });
   }
 
-  function findBeerCard(renderer: any) {
-    const wanted = copy.a11y.counterCountBeer('Plzeň', copy.counter.price(62));
-    return renderer.root.findAll(
-      (n: any) => n.props?.accessibilityLabel === wanted && typeof n.props?.onPress === 'function',
-    )[0];
+  it('a too-soon repeat writes nothing and asks inline first', async () => {
+    seedFreshBeer();
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+
+    await act(async () => {
+      surface(renderer, copy.a11y.counterRepeat('Plzeň')).props.onPress();
+      await Promise.resolve();
+    });
+
+    // NOTHING was written.
+    expect(useTallyStore.getState().current?.drinks).toHaveLength(1);
+    expect(enqueueDrink).not.toHaveBeenCalled();
+
+    const text = surfaceText(renderer);
+    expect(text).toContain(copy.counter.rapidInlineJustNow);
+    expect(text).toContain(copy.counter.rapidInlineConfirm);
+
+    await act(async () => {
+      surface(renderer, copy.a11y.counterRapidConfirm).props.onPress();
+      await Promise.resolve();
+    });
+
+    expect(useTallyStore.getState().current?.drinks).toHaveLength(2);
+    expect(enqueueDrink).toHaveBeenCalledTimes(1);
+    expect(surfaceText(renderer)).not.toContain(copy.counter.rapidInlineConfirm);
+  });
+
+  it('letting the inline confirmation time out means no', async () => {
+    seedFreshBeer();
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+
+    await act(async () => {
+      surface(renderer, copy.a11y.counterRepeat('Plzeň')).props.onPress();
+      await Promise.resolve();
+    });
+    expect(surfaceText(renderer)).toContain(copy.counter.rapidInlineConfirm);
+
+    await act(async () => {
+      jest.advanceTimersByTime(5000);
+      await Promise.resolve();
+    });
+
+    expect(surfaceText(renderer)).not.toContain(copy.counter.rapidInlineConfirm);
+    expect(useTallyStore.getState().current?.drinks).toHaveLength(1);
+    expect(enqueueDrink).not.toHaveBeenCalled();
+  });
+
+  it('a repeat past the plausible gap counts straight away', async () => {
+    useTallyStore.setState({
+      current: session({
+        clientId: 'session-slow',
+        drinks: [
+          {
+            id: 'drink-1',
+            beerName: 'Plzeň',
+            priceCzk: 62,
+            volumeMl: 500,
+            at: new Date(Date.now() - MIN_PLAUSIBLE_BEER_GAP_MS - 1000).toISOString(),
+          },
+        ],
+      }),
+      history: [],
+    });
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+
+    await act(async () => {
+      surface(renderer, copy.a11y.counterRepeat('Plzeň')).props.onPress();
+      await Promise.resolve();
+    });
+
+    expect(useTallyStore.getState().current?.drinks).toHaveLength(2);
+    expect(surfaceText(renderer)).not.toContain(copy.counter.rapidInlineConfirm);
+  });
+});
+
+// ─── 5. Water nudge ──────────────────────────────────────────────────────────
+
+describe('CounterScreen water nudge', () => {
+  // Seed a live evening with `drinkCount` beers logged well in the past (so the
+  // rapid-drink guard never intercepts the next tap), under a chosen clientId
+  // so we can prove the nudge guard is keyed by session identity.
+  function seedSession(clientId: string, drinkCount: number) {
+    const past = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    useTallyStore.setState({
+      current: session({
+        clientId,
+        startedAt: past,
+        drinks: Array.from({ length: drinkCount }, (_, i) => ({
+          id: `seed-${clientId}-${i}`,
+          beerName: 'Plzeň',
+          priceCzk: 62,
+          volumeMl: 500,
+          at: past,
+        })),
+      }),
+      history: [],
+    });
   }
 
   it('fires once when a session hits its 4th beer, and again for a fresh session', async () => {
     useSettingsStore.setState({ waterNudgeEnabled: true });
     const showToast = jest.fn();
     useToastStore.setState({ show: showToast });
-    useCommunityStore.setState({
-      overrides: { [CELL]: { beers: [{ name: 'Plzeň', priceCzk: 62, volumeMl: 500 }], updatedAt: 1 } },
-    });
     useNearbyPub.mockReturnValue(nearbyState());
 
     // Session A already sits at 3 beers → the next tap is the 4th.
     seedSession('session-a', 3);
-
-    let renderer: any;
-    act(() => {
-      renderer = TestRenderer.create(React.createElement(CounterScreen));
-    });
+    const renderer = render();
 
     await act(async () => {
-      findBeerCard(renderer).props.onPress();
+      surface(renderer, copy.a11y.counterRepeat('Plzeň')).props.onPress();
       await Promise.resolve();
     });
 
@@ -702,7 +742,9 @@ describe('CounterScreen water nudge', () => {
       seedSession('session-b', 3);
     });
     await act(async () => {
-      findBeerCard(renderer).props.onPress();
+      // Past the CTA's double-tap swallow window.
+      jest.advanceTimersByTime(800);
+      surface(renderer, copy.a11y.counterRepeat('Plzeň')).props.onPress();
       await Promise.resolve();
     });
 
@@ -716,22 +758,112 @@ describe('CounterScreen water nudge', () => {
   it('stays quiet when the local opt-in is disabled', async () => {
     const showToast = jest.fn();
     useToastStore.setState({ show: showToast });
-    useCommunityStore.setState({
-      overrides: { [CELL]: { beers: [{ name: 'Plzeň', priceCzk: 62, volumeMl: 500 }], updatedAt: 1 } },
-    });
     useNearbyPub.mockReturnValue(nearbyState());
     seedSession('session-disabled', 3);
-
-    let renderer: any;
-    act(() => {
-      renderer = TestRenderer.create(React.createElement(CounterScreen));
-    });
+    const renderer = render();
 
     await act(async () => {
-      findBeerCard(renderer).props.onPress();
+      surface(renderer, copy.a11y.counterRepeat('Plzeň')).props.onPress();
       await Promise.resolve();
     });
 
     expect(showToast).not.toHaveBeenCalled();
+  });
+});
+
+// ─── 6. Mimo hospodu ─────────────────────────────────────────────────────────
+
+describe('CounterScreen outside a pub', () => {
+  it('switches the place chip and counts without a visit or a community override', async () => {
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+
+    act(() => surface(renderer, copy.a11y.counterPlaceChip(PUB.name)).props.onPress());
+    act(() => lastProps(PubPickerModal).onSelectOutside('other'));
+
+    const outsideLabel = copy.counter.outsideLabel('other');
+    expect(surfaceText(renderer)).toContain(outsideLabel);
+    expect(surface(renderer, copy.a11y.counterPlaceChip(outsideLabel))).toBeTruthy();
+
+    act(() => surface(renderer, copy.a11y.counterAddBeer).props.onPress());
+    await submitForm({
+      drinkType: 'beer',
+      name: 'Lahváč',
+      priceCzk: 45,
+      volumeMl: 500,
+      servingType: 'bottle',
+    });
+
+    const current = useTallyStore.getState().current;
+    expect(current?.pubKey).toBe('ctx:other');
+    expect(current?.placeContext).toBe('other');
+    expect(current?.drinks).toHaveLength(1);
+
+    // An outside evening is not a pub visit and never enters community data.
+    expect(syncVisit).not.toHaveBeenCalled();
+    expect(useCommunityStore.getState().overrides).toEqual({});
+
+    const entry = enqueueDrink.mock.calls[0][0] as any;
+    expect(entry.place_context).toBe('other');
+    expect(entry.lat).toBeUndefined();
+    expect(entry.lng).toBeUndefined();
+    expect(entry.external_id).toBeUndefined();
+    expect(entry.beer).toEqual({
+      name: 'Lahváč',
+      price_czk: 45,
+      volume_ml: 500,
+      serving_type: 'bottle',
+    });
+    expect(mockTrackClientEvent).toHaveBeenCalledWith({
+      event: 'drink_added',
+      context: { had_active_session: false, backdated: false, place_context: 'other' },
+    });
+  });
+});
+
+// ─── 7. Permission gate ──────────────────────────────────────────────────────
+
+describe('CounterScreen permission gate', () => {
+  it('renders the gate and still lets you start an outside evening', () => {
+    useNearbyPub.mockReturnValue(
+      nearbyState({ permissionState: 'undetermined', selected: null, candidates: [] }),
+    );
+    const renderer = render();
+
+    expect(surfaceText(renderer)).toContain(copy.counter.permTitle);
+
+    act(() => surface(renderer, copy.counter.outsideNoLocationCta).props.onPress());
+
+    const outsideLabel = copy.counter.outsideLabel('other');
+    expect(surfaceText(renderer)).not.toContain(copy.counter.permTitle);
+    expect(surface(renderer, copy.a11y.counterPlaceChip(outsideLabel))).toBeTruthy();
+  });
+});
+
+// ─── 8. Teardown ─────────────────────────────────────────────────────────────
+
+describe('CounterScreen teardown', () => {
+  it('flushes the drinks queue exactly once on unmount and cancels pending timers', async () => {
+    useNearbyPub.mockReturnValue(nearbyState());
+    const renderer = render();
+
+    act(() => surface(renderer, copy.a11y.counterAddBeer).props.onPress());
+    await submitForm({ drinkType: 'beer', name: 'Plzeň', priceCzk: 62, volumeMl: 500 });
+    expect(flushDrinksQueue).not.toHaveBeenCalled();
+
+    await act(async () => {
+      renderer.unmount();
+      await Promise.resolve();
+    });
+
+    expect(flushDrinksQueue).toHaveBeenCalledTimes(1);
+
+    // The deferred-delivery timer was cancelled, so nothing fires afterwards.
+    await act(async () => {
+      jest.advanceTimersByTime(UNDO_WINDOW_MS * 3);
+      await Promise.resolve();
+    });
+
+    expect(flushDrinksQueue).toHaveBeenCalledTimes(1);
   });
 });

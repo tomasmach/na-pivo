@@ -113,6 +113,7 @@ def _result_from_row(
         "beers": [],
         "historical_beers": [],
         "beers_updated_at": None,
+        "hours_updated_at": None,
         "beers_source": None,
         "beers_source_url": None,
         "hours_json": None,
@@ -142,6 +143,7 @@ def _empty_result(cache_key: str, name: str, status: str) -> dict[str, Any]:
         "beers": [],
         "historical_beers": [],
         "beers_updated_at": None,
+        "hours_updated_at": None,
         "beers_source": None,
         "beers_source_url": None,
         "hours_json": None,
@@ -222,6 +224,7 @@ def _community_result(
         "beers": row.beers or [],
         "historical_beers": row.historical_beers or [],
         "beers_updated_at": row.beers_updated_at,
+        "hours_updated_at": row.hours_updated_at,
         "beers_source": "community" if row.beers_updated_at is not None else None,
         "beers_source_url": None,
         "hours_json": row.hours_json,
@@ -499,6 +502,7 @@ def get_or_enrich(
         community_beers = comm.beers if comm_matches else None
         community_historical_beers = comm.historical_beers if comm_matches else None
         community_beers_updated_at = comm.beers_updated_at if comm_matches else None
+        community_hours_updated_at = comm.hours_updated_at if comm_matches else None
         community_has_menu = bool(community_beers) or community_beers_updated_at is not None
         _result_index = len(results)
 
@@ -514,6 +518,8 @@ def get_or_enrich(
             if community_beers_updated_at:
                 results[_result_index]["beers_updated_at"] = community_beers_updated_at
                 results[_result_index]["beers_source"] = "community"
+            if community_hours_updated_at:
+                results[_result_index]["hours_updated_at"] = community_hours_updated_at
             if not community_has_menu:
                 _attach_external_menu(results[_result_index], external_menu)
 
@@ -681,6 +687,8 @@ def get_cached_pub_details(
             if matching_community.beers_updated_at:
                 result["beers_updated_at"] = matching_community.beers_updated_at
                 result["beers_source"] = "community"
+            if matching_community.hours_updated_at:
+                result["hours_updated_at"] = matching_community.hours_updated_at
         if matching_community is None or (
             not matching_community.beers and matching_community.beers_updated_at is None
         ):

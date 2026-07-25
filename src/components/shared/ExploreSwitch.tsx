@@ -12,15 +12,26 @@ interface ExploreSwitchProps {
   activeView: ExploreView;
   onSelectCompass: () => void;
   onSelectMap: () => void;
+  /**
+   * `floating` (default) is the pill that hovers over the map: opaque, bordered,
+   * dropped. `flat` is the one that sits in the compass header — a plain
+   * segmented track on the stout background, because there is nothing under it
+   * that needs hiding and a shadowed pill in a header reads as a stray button.
+   */
+  variant?: 'floating' | 'flat';
 }
 
 export function ExploreSwitch({
   activeView,
   onSelectCompass,
   onSelectMap,
+  variant = 'floating',
 }: ExploreSwitchProps) {
   return (
-    <View style={styles.container} accessibilityRole="tablist">
+    <View
+      style={[styles.container, variant === 'flat' && styles.containerFlat]}
+      accessibilityRole="tablist"
+    >
       <Segment
         active={activeView === 'compass'}
         icon="compass"
@@ -71,7 +82,10 @@ function Segment({
       accessibilityState={{ selected: active, disabled: active }}
       accessibilityLabel={accessibilityLabel}
     >
-      <Icon size={15} color={active ? Colors.stout : Colors.foamMuted} />
+      {/* Icon and label share one tone per state. An amber glyph on the inactive
+          half pulled the eye, but next to the foam one it just read as two
+          different kinds of button. The active fill says which is which. */}
+      <Icon size={15} color={active ? Colors.foam : Colors.foamMuted} />
       <Text
         style={[styles.label, active && styles.labelActive]}
         numberOfLines={1}
@@ -98,6 +112,15 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
   },
+  // In a header there is nothing to hide behind the pill, so it stops being a
+  // pill: the neutral segmented track from §2.2, foam at 4 % with an 8 % edge.
+  containerFlat: {
+    backgroundColor: withAlpha(Colors.foam, 0.04),
+    borderColor: withAlpha(Colors.foam, 0.08),
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
+  },
   segment: {
     minWidth: 94,
     height: 36,
@@ -108,8 +131,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
   },
+  // Unlit on purpose: this switch floats over the map, which already carries
+  // one amber button. A filled amber segment made two amber surfaces compete
+  // — §14.2, the same mistake the three-segment beer tab once had.
   segmentActive: {
-    backgroundColor: Colors.amber,
+    backgroundColor: withAlpha(Colors.foam, 0.1),
   },
   label: {
     fontFamily: Fonts.ui.bold,
@@ -117,7 +143,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   labelActive: {
-    color: Colors.stout,
+    color: Colors.foam,
   },
   pressed: {
     opacity: 0.76,

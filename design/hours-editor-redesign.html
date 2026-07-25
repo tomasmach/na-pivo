@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Inline editor otevíračky — redesign</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --stout:#1F1308;--stout2:#2B1A0E;--stout3:#3A2515;--border:#5A3A20;
+    --amber:#E8A317;--amberLight:#F5B642;--foam:#FBF3E0;--foamMuted:#E8DCC0;--muted:#A8896A;
+    --open:#F0BE5C;--closed:#A8896A;
+    --display:'Baloo 2',sans-serif;--ui:'Inter',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#140b04;color:var(--foam);font-family:var(--ui);min-height:100vh;padding:48px 24px 80px}
+  .head{max-width:900px;margin:0 auto 36px}
+  h1{font-family:var(--display);font-weight:800;font-size:26px}
+  .head p{margin-top:10px;color:var(--muted);font-size:14px;line-height:1.55;max-width:640px}
+  .wrap{max-width:900px;margin:0 auto;display:flex;gap:44px;flex-wrap:wrap;align-items:flex-start}
+  .col{display:flex;flex-direction:column;gap:14px}
+  .cap{font-family:var(--display);font-weight:700;font-size:14px;color:var(--foamMuted)}
+  .sub{font-size:12px;color:var(--muted);max-width:340px;line-height:1.5}
+
+  .phone{width:390px;border-radius:44px;padding:12px;background:linear-gradient(180deg,#3a2716,#241407);
+    box-shadow:0 40px 80px -30px rgba(0,0,0,.85)}
+  .screen{border-radius:34px;overflow:hidden;background:var(--stout);height:760px;position:relative;display:flex;flex-direction:column;padding:52px 24px 22px}
+  .notch{position:absolute;top:10px;left:50%;transform:translateX(-50%);width:120px;height:26px;background:#0c0803;border-radius:999px;z-index:40}
+
+  .toprow{min-height:44px;display:flex;align-items:center;margin-bottom:8px}
+  .back{width:40px;height:40px;display:flex;align-items:center;justify-content:center;color:var(--foam)}
+  .title{flex:1;text-align:center;font-family:var(--display);font-weight:800;font-size:18px}
+  .spacer{width:40px}
+  .tabs{height:40px;display:flex;padding:2px;border-radius:999px;background:rgba(251,243,224,.04);border:1px solid rgba(251,243,224,.08);margin-bottom:12px}
+  .tabs button{flex:1;border:none;background:none;border-radius:999px;font-family:var(--display);font-weight:700;font-size:14px;color:var(--muted)}
+  .tabs button.on{background:rgba(251,243,224,.1);color:var(--foam)}
+
+  .card{flex:1;background:var(--stout2);border-radius:28px;border:1px solid rgba(251,243,224,.07);padding:20px 22px 8px;display:flex;flex-direction:column;position:relative;overflow:hidden}
+  .card::before{content:"";position:absolute;top:0;left:14%;right:14%;height:1px;background:rgba(251,243,224,.22)}
+  .pub{font-family:var(--display);font-weight:800;font-size:18px}
+  .list{margin-top:14px;flex:1}
+
+  /* one day = one tight row */
+  .day{min-height:46px;display:flex;align-items:center;gap:12px;border-top:1px solid rgba(90,58,32,.4);padding:5px 0;flex-wrap:wrap}
+  .day:first-child{border-top:none}
+  .dot{width:8px;height:8px;border-radius:999px;flex-shrink:0}
+  .dot.open{background:var(--open)}.dot.closed{background:var(--closed)}
+  .dname{font-family:var(--ui);font-weight:600;font-size:15px;color:var(--foam);flex:1;min-width:0}
+
+  /* closed: quiet tappable state on the right */
+  .closed-lbl{font-family:var(--ui);font-weight:600;font-size:14px;color:var(--muted);padding:6px 4px}
+
+  /* open: compact time chips on the right */
+  .times{display:flex;align-items:center;gap:6px}
+  .tchip{min-width:54px;height:34px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:var(--stout3);border:1px solid var(--border);font-family:var(--ui);font-weight:600;font-size:14.5px;color:var(--foam);font-variant-numeric:tabular-nums;letter-spacing:.3px}
+  .dash{color:var(--foamMuted);font-size:14px;margin:0 -1px}
+  .iconbtn{width:28px;height:34px;display:flex;align-items:center;justify-content:center;color:var(--muted)}
+  .iconbtn.amber{color:var(--amber)}
+
+  /* extra interval sits on its own tight sub-line, right-aligned under the times */
+  .subline{width:100%;display:flex;justify-content:flex-end;align-items:center;gap:6px;margin-top:6px}
+
+  .foot{min-height:44px;margin-top:14px;padding-top:12px;border-top:1px solid rgba(251,243,224,.1);display:flex;align-items:center;justify-content:space-between}
+  .foot .ff{font-size:13px;font-weight:500;color:var(--open);font-variant-numeric:tabular-nums}
+  .foot .copyall{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12.5px;font-weight:600}
+
+  .cta{height:76px;border-radius:999px;background:var(--amber);display:flex;flex-direction:column;align-items:center;justify-content:center;margin-top:12px;position:relative;box-shadow:0 14px 30px -18px rgba(0,0,0,.7)}
+  .cta::before{content:"";position:absolute;top:0;left:12%;right:12%;height:1px;background:rgba(251,243,224,.55)}
+  .cta .l{font-family:var(--display);font-weight:800;font-size:20px;color:var(--stout)}
+  .cta .s{font-size:12.5px;font-weight:600;color:rgba(31,19,8,.72);margin-top:1px}
+
+  .notes{max-width:900px;margin:44px auto 0;background:rgba(43,26,14,.6);border:1px solid var(--border);border-radius:16px;padding:18px 20px}
+  .notes h3{font-family:var(--display);font-weight:700;font-size:15px;margin-bottom:10px}
+  .notes li{color:var(--foamMuted);font-size:13.5px;line-height:1.7;margin-left:18px}
+  .notes s{color:var(--muted)}
+</style>
+</head>
+<body>
+  <div class="head">
+    <h1>Inline editor otevíračky — těsná verze</h1>
+    <p>Jeden řádek na den. Zavřený den = tichý „Zavřeno" vpravo (ťuk otevře). Otevřený den = malé kompaktní časové chipy „12:00–22:00" vpravo na stejném řádku, ne obří boxy pod sebou. Druhý interval a „+ čas" se skládají těsně pod časy. Žádný per-day sheet, žádné bojování s přepínačem.</p>
+  </div>
+
+  <div class="wrap">
+    <div class="col">
+      <div class="cap">Editor — Otevíračka</div>
+      <div class="phone"><div class="screen">
+        <div class="notch"></div>
+        <div class="toprow">
+          <div class="back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+          <div class="title">Doplnit info</div><div class="spacer"></div>
+        </div>
+        <div class="tabs"><button class="on">Otevíračka</button><button>Piva</button></div>
+
+        <div class="card">
+          <div class="pub">U Zlatého tygra</div>
+          <div class="list">
+            <div class="day"><span class="dot closed"></span><span class="dname">Pondělí</span><span class="closed-lbl">Zavřeno</span></div>
+
+            <div class="day">
+              <span class="dot open"></span><span class="dname">Úterý</span>
+              <div class="times">
+                <span class="tchip">12:00</span><span class="dash">–</span><span class="tchip">22:00</span>
+                <span class="iconbtn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></span>
+                <span class="iconbtn amber"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+              </div>
+            </div>
+
+            <div class="day">
+              <span class="dot open"></span><span class="dname">Středa</span>
+              <div class="times">
+                <span class="tchip">11:00</span><span class="dash">–</span><span class="tchip">23:00</span>
+                <span class="iconbtn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></span>
+                <span class="iconbtn amber"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+              </div>
+            </div>
+
+            <!-- two intervals: extra one on its own tight sub-line, + moves to the last -->
+            <div class="day">
+              <span class="dot open"></span><span class="dname">Čtvrtek</span>
+              <div class="times">
+                <span class="tchip">11:00</span><span class="dash">–</span><span class="tchip">14:00</span>
+                <span class="iconbtn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></span>
+                <span class="iconbtn" style="opacity:0"><svg width="16" height="16" viewBox="0 0 24 24"><path d="M0 0"/></svg></span>
+              </div>
+              <div class="subline">
+                <span class="tchip">17:00</span><span class="dash">–</span><span class="tchip">23:00</span>
+                <span class="iconbtn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></span>
+                <span class="iconbtn amber"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+              </div>
+            </div>
+
+            <div class="day">
+              <span class="dot open"></span><span class="dname">Pátek</span>
+              <div class="times">
+                <span class="tchip">11:00</span><span class="dash">–</span><span class="tchip">01:00</span>
+                <span class="iconbtn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></span>
+                <span class="iconbtn amber"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+              </div>
+            </div>
+
+            <div class="day"><span class="dot closed"></span><span class="dname">Sobota</span><span class="closed-lbl">Zavřeno</span></div>
+            <div class="day"><span class="dot closed"></span><span class="dname">Neděle</span><span class="closed-lbl">Zavřeno</span></div>
+          </div>
+
+          <div class="foot">
+            <span class="ff">Teď otevřeno · do 23:00</span>
+            <span class="copyall"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>Stejně celý týden</span>
+          </div>
+        </div>
+
+        <div class="cta"><span class="l">Uložit</span><span class="s">Uvidí to ostatní pivaři</span></div>
+      </div></div>
+      <div class="sub">Zavřený den: „Zavřeno" vpravo, ťuk otevře na 12:00–22:00. Otevřený: chipy + „+" (přidat interval). Koš u chipů zavře / smaže interval. „Stejně celý týden" v patce zkopíruje první otevřený den do všech.</div>
+    </div>
+
+    <div class="notes">
+      <h3>Proti staré (ošklivé) verzi</h3>
+      <ul>
+        <li><s>Obří oddělené boxy „12 : 00" s rozpáleným dvojtečkovým odsazením</s> → malý chip „12:00", výška 36, ne 44+.</li>
+        <li><s>Časy na samostatných řádcích pod dnem → každý den vysoký blok, viděls jen 3 dny</s> → časy vpravo na řádku dne, vejde se celý týden.</li>
+        <li><s>Velká „Zavřeno" pilulka + copy ikona na každém řádku</s> → tichý „Zavřeno" text; kopírování jednou v patce.</li>
+        <li>Interakce zůstává inline (co se ti líbilo): žádný per-day sheet, „Zavřeno" jedním ťukem.</li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>
