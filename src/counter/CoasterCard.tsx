@@ -83,7 +83,9 @@ export function CoasterCard({
   // The glass is sized from the card, not the other way round: on a short phone
   // it shrinks instead of spilling over the card's edge.
   const [bodyHeight, setBodyHeight] = useState(0);
-  const glassWidth = bodyHeight > 0 ? Math.max(64, Math.min(112, (bodyHeight - 16) * 0.66)) : 88;
+  // The mug is near-square once the handle is counted, so its width tracks the
+  // free height almost 1:1 — capped so it never crowds the numeral.
+  const glassWidth = bodyHeight > 0 ? Math.max(76, Math.min(132, (bodyHeight - 16) * 1.03)) : 112;
 
   const interactive = count > 0;
   const hasFooter = showReceipt && (spentLabel !== null || sinceLabel !== null || count > 0);
