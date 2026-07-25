@@ -1540,7 +1540,7 @@ export default function FriendsScreen() {
         )}
       </ScrollView>
 
-      <NudgeSlot nudge={nudge} />
+      <NudgeSlot nudge={nudge} collapseWhenEmpty />
 
       <CounterCta
         label={cta.label}
