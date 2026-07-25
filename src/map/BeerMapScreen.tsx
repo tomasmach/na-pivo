@@ -365,7 +365,8 @@ function pubWithDetails(pub: Pub, details: PubHoursResult | undefined): Pub {
 
 function PubMarker({ visited, selected }: { visited: boolean; selected: boolean }) {
   return (
-    <View style={[styles.pinHit, selected && styles.pinHitSelected]}>
+    <View style={styles.pinHit}>
+      {selected ? <View style={styles.pubPinRing} /> : null}
       <View style={[styles.pubPin, visited && styles.pubPinVisited, selected && styles.pubPinSelected]}>
         <BeerIcon size={selected ? 18 : 15} color={visited ? Colors.stout : Colors.foam} />
       </View>
@@ -1117,7 +1118,7 @@ export default function BeerMapScreen({
                 stopPropagation
                 coordinate={{ latitude: point.lat, longitude: point.lng }}
                 onPress={() => selectPub(point)}
-                tracksViewChanges={false}
+                tracksViewChanges={selected}
                 accessibilityLabel={cs.a11y.mapPub(
                   point.pub.name,
                   point.visit?.visitCount ?? 0,
@@ -1540,8 +1541,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
 
-  pinHit: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  pinHitSelected: { transform: [{ scale: 1.12 }] },
+  pinHit: { width: 56, height: 56, alignItems: 'center', justifyContent: 'center' },
   pubPin: {
     width: 31,
     height: 31,
@@ -1554,6 +1554,14 @@ const styles = StyleSheet.create({
   },
   pubPinVisited: { backgroundColor: Colors.amber, borderColor: Colors.stout, borderWidth: 3 },
   pubPinSelected: { width: 38, height: 38, borderRadius: 19, borderColor: Colors.foam },
+  pubPinRing: {
+    position: 'absolute',
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 2.5,
+    borderColor: Colors.amber,
+  },
   visitedNotch: {
     position: 'absolute',
     bottom: 2,
