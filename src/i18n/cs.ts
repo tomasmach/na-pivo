@@ -1492,16 +1492,23 @@ export const cs = {
     /** Behind the "…" door, because the footer holds one button only. */
     secondaryAddFriend: 'Přidat kámoše',
 
+    // — Doors in the card footer: three surfaces, always visible —
+    railVycep: 'Výčep',
+    railLeaderboards: 'Žebříčky',
+    railPhotoContest: 'FotoPivař',
+
+    // — "Co spolu podniknout": the two other evening formats, on the surface —
+    planHeader: 'Co spolu podniknout',
+    planPartyEveningTitle: 'Společný večer',
+    planPartyEveningBody: 'Jeden stůl, jeden kód, všichni u něj.',
+    planHomePartyTitle: 'Pivo u někoho',
+    planHomePartyBody: 'Malé domácí posezení v okolí.',
+
     // — "Co ještě?" rows —
     moreTitle: 'Co ještě?',
     moreSettings: 'Nastavení party',
     moreMyCode: 'Můj kód',
     moreWholeParty: 'Celá parta',
-    moreLeaderboards: 'Žebříčky',
-    morePhotoContest: 'FotoPivař',
-    moreVycep: 'Výčep',
-    morePartyEvening: 'Společný večer',
-    moreHomeParty: 'Pivo u někoho',
 
     // — Nudge slot: at most one —
     nudgeRequest: (name: string) => `${name} chce do party`,
@@ -2667,12 +2674,6 @@ export const cs = {
 
   // — Social rail in the evening card: three doors to the community half of the
   //   product, which was otherwise only reachable from an overflow sheet.
-  socialRail: {
-    parta: 'Parta',
-    pivari: 'Pivaři',
-    photoContest: 'FotoPivař',
-  },
-
   a11y: {
     onboardingStep: (step: number, total: number) => `Krok ${step} ze ${total}`,
     celebrationOpenMaps: (pub: string) => `Otevřít hospodu ${pub} v mapách`,
@@ -2917,8 +2918,7 @@ export const cs = {
     photoAddTile: 'Přidat fotku piva',
     photoTile: (label: string) => `Fotka piva${label ? `, ${label}` : ''}. Ťukni pro detail.`,
     photoContestLink: 'Otevřít soutěž FotoPivař',
-    socialRailParta: 'Otevřít partu',
-    socialRailPivari: 'Otevřít žebříček pivařů',
+    leaderboardsLink: 'Otevřít žebříček pivařů',
     photoCaptionInput: 'Popisek fotky',
     photoPickPub: 'Označit hospodu',
     photoClearPub: 'Zrušit označenou hospodu',

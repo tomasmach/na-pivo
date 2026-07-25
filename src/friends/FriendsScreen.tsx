@@ -40,14 +40,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { BeerTagChips } from '@/components/shared/BeerTagChips';
+import { DoorRail, type DoorRailTile } from '@/components/shared/DoorRail';
 import { GlowButton } from '@/components/shared/GlowButton';
 import {
   BellRingIcon,
   BeerIcon,
-  CameraIcon,
   CheckIcon,
   EllipsisIcon,
-  HouseIcon,
+  HandPlatterIcon,
+  ImagesIcon,
   QrCodeIcon,
   SettingsIcon,
   TrophyIcon,
@@ -124,6 +125,7 @@ import FriendSettingsSheet from './FriendSettingsSheet';
 import { GoingRoster } from './GoingRoster';
 import HairlineRow from './HairlineRow';
 import MyActivityCard from './MyActivityCard';
+import { PartaPlans } from './PartaPlans';
 import { PartyCard } from './PartyCard';
 import PlanCard from './PlanCard';
 import { useFriendSafety } from './friendSafety';
@@ -810,43 +812,39 @@ export default function FriendsScreen() {
         onPress: () =>
           runAfterMoreClose(() => router.push('/profile/parta' as Href)),
       },
+    ],
+    [router, runAfterMoreClose],
+  );
+
+  // Žebříčky, FotoPivař and Výčep are three whole features that used to be
+  // invisible behind the "…" glyph. They belong on the card, in the same rail
+  // idiom the counter uses (docs/design-system.md §5.5).
+  const railTiles = useMemo<DoorRailTile[]>(
+    () => [
+      {
+        key: 'vycep',
+        label: cs.friends.railVycep,
+        a11yLabel: cs.a11y.vycepLink,
+        Icon: HandPlatterIcon,
+        onPress: () => router.push('/vycep' as Href),
+      },
       {
         key: 'leaderboards',
-        label: cs.friends.moreLeaderboards,
-        icon: TrophyIcon,
+        label: cs.friends.railLeaderboards,
+        a11yLabel: cs.a11y.leaderboardsLink,
+        Icon: TrophyIcon,
         onPress: () =>
-          runAfterMoreClose(() =>
-            router.push({ pathname: '/leaderboards', params: { source: 'parta' } } as Href),
-          ),
+          router.push({ pathname: '/leaderboards', params: { source: 'parta' } } as Href),
       },
       {
         key: 'photo-contest',
-        label: cs.friends.morePhotoContest,
-        icon: CameraIcon,
-        onPress: () =>
-          runAfterMoreClose(() => router.push('/photo-contest' as Href)),
-      },
-      {
-        key: 'vycep',
-        label: cs.friends.moreVycep,
-        icon: BeerIcon,
-        onPress: () => runAfterMoreClose(() => router.push('/vycep' as Href)),
-      },
-      {
-        key: 'party-evening',
-        label: cs.friends.morePartyEvening,
-        icon: UsersIcon,
-        onPress: () => runAfterMoreClose(() => router.push('/party' as Href)),
-      },
-      {
-        key: 'home-party',
-        label: cs.friends.moreHomeParty,
-        icon: HouseIcon,
-        onPress: () =>
-          runAfterMoreClose(() => router.push('/community-events' as Href)),
+        label: cs.friends.railPhotoContest,
+        a11yLabel: cs.a11y.photoContestLink,
+        Icon: ImagesIcon,
+        onPress: () => router.push('/photo-contest' as Href),
       },
     ],
-    [router, runAfterMoreClose],
+    [router],
   );
 
   const d = dashboard;
@@ -1465,6 +1463,7 @@ export default function FriendsScreen() {
                   : null
               }
               accessibilityLabel={cs.a11y.partaCard(String(partyNumbers.count), headline)}
+              rail={<DoorRail tiles={railTiles} />}
             />
           </View>
 
@@ -1545,6 +1544,8 @@ export default function FriendsScreen() {
               {cs.friends.streamEmpty}
             </Text>
           )}
+
+          <PartaPlans />
         </ScrollView>
         <ScrollFade />
       </View>

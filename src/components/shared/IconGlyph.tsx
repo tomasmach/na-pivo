@@ -7,6 +7,7 @@
 import React, { memo, ComponentType } from 'react';
 import Svg, { Circle as SvgCircle, Path as SvgPath } from 'react-native-svg';
 import {
+  Armchair,
   Beer,
   BeerOff,
   Compass,
@@ -103,6 +104,7 @@ function wrap(Lucide: ComponentType<LucideProps>, displayName: string) {
   return Wrapped;
 }
 
+export const ArmchairIcon = wrap(Armchair, 'ArmchairIcon');
 export const BeerIcon = wrap(Beer, 'BeerIcon');
 export const BeerOffIcon = wrap(BeerOff, 'BeerOffIcon');
 export const CompassIcon = wrap(Compass, 'CompassIcon');

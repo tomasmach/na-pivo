@@ -4,7 +4,7 @@
 > Soubory: `src/counter/CounterScreen.tsx`, `CoasterCard.tsx`, `CounterCta.tsx`,
 > `CounterQuickActions.tsx`, `NudgeSlot.tsx`, `PlaceChip.tsx`, `DrinkPickSheet.tsx`,
 > `ReceiptSheet.tsx`, `CounterMoreSheet.tsx`, `src/components/shared/CardSurface.tsx`,
-> `src/components/shared/SocialRail.tsx`, `src/beer/BeerScreen.tsx`.
+> `src/components/shared/DoorRail.tsx`, `src/beer/BeerScreen.tsx`.
 >
 > Tenhle dokument je **závazný**. Když stavíš nebo přestavuješ obrazovku, hodnoty se neopisují
 > „přibližně“ — kopírují se. Když ti nějaké pravidlo brání, řekni to nahlas a navrhni změnu
@@ -342,14 +342,14 @@ Urquell 95 Kč"), takže údaj, kvůli kterému člověk kouká do telefonu na u
   hlasitá otevírací doba s tečkou, pod tím tichý řádek (hodnocení, „byl jsi tu"). Slot má pevných
   38, aby se karta nepřeměřovala, když dojdou hodiny nebo když vybereš pin.
 
-### 5.5 Řádky v kartě: rychlé akce a sociální lišta
+### 5.5 Řádky v kartě: rychlé akce a lišta dveří
 
-Karta počítadla drží pod velkým číslem dva řádky, a jsou to jediné dva povolené:
+Karta drží pod velkým číslem nanejvýš dva řádky, a jsou to jediné povolené:
 
 | Řádek | Co v něm je | Jak vypadá |
 |---|---|---|
 | `CounterQuickActions` | „Jiné pivo", „Zmapuj" | outline chipy, `height: 44`, jantar na 6 % / okraj 18 %, `flex: 1` každý |
-| `SocialRail` | Parta, Pivaři, FotoPivař | tři stejné sloupce, jantarový medailonek 34 pt, label 13 Baloo bold, svislý hairline mezi nimi |
+| `DoorRail` | Výčep, Žebříčky, FotoPivař (v kartě Party) | tři stejné sloupce, jantarový medailonek 34 pt, label 13 Baloo bold, svislý hairline mezi nimi |
 | `LayerSwitch` (karta na mapě) | V okolí, Moje stopy, Parta teď | segmentovaná dráha `foam 4 %` / okraj 8 %, aktivní `foam 10 %`, výška 38 |
 
 Pravidla, aby z toho nebyla mřížka tlačítek:
@@ -359,10 +359,13 @@ Pravidla, aby z toho nebyla mřížka tlačítek:
 - **Chip se zobrazí jen když jeho akce něco dělá jinak než CTA.** „Jiné pivo" existuje pouze ve
   chvíli, kdy tlačítko opakuje poslední pivo; jinak by to byly dvě dveře do jednoho sheetu (§14.4).
   „Zmapuj" existuje jen v hospodě.
-- **Lišta je navigace, ne akce.** Vede na povrch (Parta, žebříček, soutěž), nic nepočítá a nic
+- **Lišta je navigace, ne akce.** Vede na povrch (Výčep, žebříček, soutěž), nic nepočítá a nic
   nemaže. Proto neporušuje pravidlo jedné akce (§6.3) — to mluví o akcích, ne o dveřích.
-- **Jeden živý údaj, a jen když je zdarma.** Badge na Partě čte počet kamarádů v hospodě
-  z už uloženého snapshotu. Vymyšlené číslo je horší než žádné číslo.
+- **Jeden živý údaj, a jen když je zdarma.** Badge čte číslo z už uloženého snapshotu. Vymyšlené
+  číslo je horší než žádné číslo.
+- **Jedna obrazovka jedny dveře.** Lišta žila i v kartě počítadla (Parta / Pivaři / FotoPivař) a
+  vedla tam, kam vede tab bar a lišta na Partě. Tři dveře na totéž jsou šum: komunitní povrchy
+  vlastní tab Parta, Štamgast zůstal u vlastního pití (§0.4).
 - **Režim povrchu je ovládací prvek, ne popisek.** Vrstvy mapy byly tři řádky v `…` sheetu a karta
   jen tiskla jméno té aktivní. Teď jsou to segmenty v patce karty a ze sheetu zmizely — jedny dveře
   na jedno místo (§0.4).
@@ -762,7 +765,7 @@ Pravidlo tedy **není** „aspoň jeden kreslený prvek na obrazovku". Pravidlo 
 3. **Osobnost nese i chrome.** Baloo, tácková karta se světelnou hranou, jantar na 10 %, hospodský
    copy. Obrazovka bez kresby proto není „jen typografie na hnědém pozadí".
 4. **Uvolněné místo patří funkci, ne dekoraci.** Když ilustrace zmizí, na její místo jde něco, co
-   něco dělá — v kartě počítadla jsou to `CounterQuickActions` a `SocialRail` (§5.5).
+   něco dělá — v kartě počítadla je to `CounterQuickActions`, v kartě Party `DoorRail` (§5.5).
 
 Když už kreslíš: **vektor, ne bitmapa** (`react-native-svg`), **barvy z tokenů**, nikdy hardcoded
 hex uvnitř SVG, **reaguje na data, ne na čas**, komponenta je `memo`, pevný `viewBox`, výška
