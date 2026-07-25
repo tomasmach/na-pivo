@@ -33,6 +33,7 @@ import {
   LocateFixedIcon,
   MapPinnedIcon,
   RefreshCwIcon,
+  StarIcon,
   XIcon,
 } from '@/components/shared/IconGlyph';
 import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
@@ -169,8 +170,10 @@ interface PlaceCardProps {
   /** Opening hours, with the status dot. Null when the card is not about a pub. */
   meta: string | null;
   metaTone: MetaTone;
-  /** The quiet line under it (city, rating, "navštíveno"), or null. */
+  /** The quiet line under it (city, "navštíveno"), or null. */
   fact: string | null;
+  /** Star rating, rendered with a ★ glyph ahead of the fact text. */
+  rating?: { value: string; count: string | null } | null;
   titlePress?: {
     onPress: () => void;
     accessibilityLabel: string;
@@ -189,10 +192,16 @@ function PlaceCard({
   meta,
   metaTone,
   fact,
+  rating,
   titlePress,
   door,
   layers,
 }: PlaceCardProps) {
+  const ratingText = rating
+    ? rating.count
+      ? `${rating.value} (${rating.count})`
+      : rating.value
+    : null;
   const titleContent = (
     <>
       {/* Two lines, and the whole row to itself: "Charles Bridge Restau…" was the
@@ -262,14 +271,19 @@ function PlaceCard({
         </View>
       ) : null}
 
-      {fact ? (
-        <Text
-          style={styles.placeFact}
-          numberOfLines={1}
-          maxFontSizeMultiplier={FontScaleCap.body}
-        >
-          {fact}
-        </Text>
+      {ratingText || fact ? (
+        <View style={styles.placeFactRow}>
+          {ratingText ? <StarIcon size={13} color={Colors.amber} /> : null}
+          <Text
+            style={styles.placeFact}
+            numberOfLines={1}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
+            {ratingText ?? ''}
+            {ratingText && fact ? ' · ' : ''}
+            {fact ?? ''}
+          </Text>
+        </View>
       ) : null}
 
       <View style={styles.placeLayers}>{layers}</View>
@@ -612,12 +626,6 @@ export default function BeerMapScreen({
     typeof selectedDetailPub?.ratingCount === 'number' && selectedDetailPub.ratingCount > 0
       ? selectedDetailPub.ratingCount.toLocaleString('cs-CZ')
       : null;
-  const selectedRatingLine = selectedRating
-    ? selectedRatingCount
-      ? `${selectedRating} (${selectedRatingCount})`
-      : selectedRating
-    : null;
-
   const visiblePoints = useMemo(() => {
     const latMargin = region.latitudeDelta * 0.65;
     const lngMargin = region.longitudeDelta * 0.65;
@@ -846,12 +854,11 @@ export default function BeerMapScreen({
         // City, rating, and "been here" — but never "Tady ještě nemáš čárku":
         // an absent tally is already what the pin says, and as a second stacked
         // sentence under the hours it just made the card noisy.
+        rating: selectedRating
+          ? { value: selectedRating, count: selectedRatingCount }
+          : null,
         fact:
-          [
-            selectedPub.pub.city,
-            selectedRatingLine,
-            selectedPub.visit ? cs.map.visited : null,
-          ]
+          [selectedPub.pub.city, selectedPub.visit ? cs.map.visited : null]
             .filter(Boolean)
             .join(' · ') || null,
       };
@@ -895,7 +902,8 @@ export default function BeerMapScreen({
     selectedHoursStatus,
     selectedLive,
     selectedPub,
-    selectedRatingLine,
+    selectedRating,
+    selectedRatingCount,
     viewportDetail,
     viewportHeadline,
   ]);
@@ -1212,6 +1220,7 @@ export default function BeerMapScreen({
           meta={cardState.meta}
           metaTone={cardState.metaTone}
           fact={cardState.fact}
+          rating={'rating' in cardState ? cardState.rating : null}
           titlePress={
             cardState.kind === 'pub' && selectedPub
               ? {
@@ -1725,8 +1734,14 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
   },
-  placeFact: {
+  placeFactRow: {
     marginTop: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  placeFact: {
+    flexShrink: 1,
     fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
