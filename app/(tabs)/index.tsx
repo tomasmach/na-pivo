@@ -58,6 +58,7 @@ import {
   SettingsIcon,
   PencilIcon,
   MapPinIcon,
+  MapPinPlusIcon,
   MapIcon,
   XIcon,
   ListFilterIcon,
@@ -800,6 +801,12 @@ export default function CompassScreen() {
         onPress: () => { setMoreOpen(false); handleModeChange('surprise'); },
       },
     );
+    rows.push({
+      key: 'add-pub',
+      label: cs.compass.moreAddPub,
+      icon: MapPinPlusIcon,
+      onPress: () => { setMoreOpen(false); handleAddPub(); },
+    });
     if (targetPub && !focusedPub) {
       rows.push({ key: 'report', label: cs.compass.moreReport, icon: FlagIcon, onPress: () => { setMoreOpen(false); handleReport(); } });
     }
@@ -807,6 +814,7 @@ export default function CompassScreen() {
   }, [
     activeFilterCount,
     focusedPub,
+    handleAddPub,
     handleModeChange,
     handleNavigateHome,
     handleOpenFilter,

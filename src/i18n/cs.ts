@@ -300,6 +300,7 @@ export const cs = {
     moreHome: 'Navigovat domů',
     moreModeNearest: 'Hledej nejbližší',
     moreModeSurprise: 'Překvap mě',
+    moreAddPub: 'Přidat hospodu',
     moreReport: 'Hospoda chybí nebo nesedí',
     moreSearchSettings: 'Nastavení hledání',
     moreRetry: 'Zkusit znovu',

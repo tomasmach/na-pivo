@@ -181,13 +181,16 @@ const styles = StyleSheet.create({
   // The height bounds live here, not on the card (§7.5): the card's parent must
   // have a resolved height or Yoga drops the percentages and the list stops
   // scrolling without a single warning.
+  // No minHeight: `flex: 1` on the card resolves its flexBasis against this
+  // wrapper, so a minimum here became a maximum — the card sat at 44% and the
+  // rows past it were simply cut off. The card measures its own content now and
+  // this only caps it.
   cardWrap: {
     width: '100%',
-    minHeight: '44%',
     maxHeight: '92%',
   },
   card: {
-    flex: 1,
+    flexShrink: 1,
     backgroundColor: Colors.stout2,
     borderTopLeftRadius: Radius.cardLarge,
     borderTopRightRadius: Radius.cardLarge,
@@ -228,9 +231,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Bounded so a long list scrolls inside the card instead of growing past it.
+  // Grows with the rows up to the card's 92% cap, then shrinks and scrolls.
+  // `flex: 1` here pinned every sheet to the 44% minimum — a ScrollView never
+  // asks for more room than its parent offers, so a full list was stuck
+  // scrolling inside a short card with empty screen above it.
   list: {
-    flex: 1,
+    flexGrow: 0,
+    flexShrink: 1,
     marginTop: Spacing.sm,
   },
   listContent: {
