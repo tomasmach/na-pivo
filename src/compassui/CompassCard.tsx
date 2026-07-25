@@ -45,9 +45,12 @@ import { HitArea, Radius } from '@/theme/layout';
  * number: a fixed 96 left the dial 40pt too tall and clipped its top off on an
  * iPhone SE, and a fixed 140 then dropped "METRŮ" on top of the pub name. The
  * dial takes what is left, so the pair always fits whatever card it is in.
+ *
+ * The share is 0.30, not 0.38: the dial is the icon of the product and the
+ * numeral is its caption, so the readout gives back the room it does not need.
  */
 function readoutReserve(bodyHeight: number): number {
-  return Math.max(64, Math.min(140, Math.round(bodyHeight * 0.38)));
+  return Math.max(58, Math.min(112, Math.round(bodyHeight * 0.3)));
 }
 
 /** Room inside the reserve for the letterspaced unit caption under the numeral. */
@@ -59,13 +62,13 @@ const CAPTION_ROOM = 20;
  * size the card has no room for.
  */
 const DIAL_MIN = 110;
-const DIAL_MAX = 300;
+const DIAL_MAX = 340;
 
 /** The numeral shrinks with its digit count so "1000" never crowds the card. */
 function distanceFontSize(value: string): number {
-  if (value.length <= 2) return 88;
-  if (value.length <= 3) return 72;
-  return 56;
+  if (value.length <= 2) return 68;
+  if (value.length <= 3) return 58;
+  return 48;
 }
 
 /** Opening-hours tone. Never red — we don't shout at people about a closed pub. */
@@ -289,7 +292,7 @@ const styles = StyleSheet.create({
   // width instead of against its own content box.
   readout: {
     alignSelf: 'stretch',
-    marginTop: 12,
+    marginTop: 6,
   },
   distance: {
     fontFamily: Fonts.display.extrabold,
