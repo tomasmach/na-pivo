@@ -230,9 +230,9 @@ const styles = StyleSheet.create({
   // Pulled up into the numeral's line-box headroom so the pair reads as one
   // object instead of two stacked labels.
   noun: {
-    marginTop: -8,
+    marginTop: -18,
     fontFamily: Fonts.display.bold,
-    fontSize: 13,
+    fontSize: 16,
     letterSpacing: 3,
     color: Colors.foamMuted,
     includeFontPadding: false,
