@@ -11,6 +11,7 @@ import { enqueuePubReport } from '@/data/pubReportQueue';
 import { useBeerMap } from '../useBeerMap';
 
 let mockColorScheme: 'light' | 'dark' | null = 'dark';
+const mockAnimateCamera = jest.fn();
 const mockAnimateToRegion = jest.fn();
 
 jest.mock('react-native', () => {
@@ -40,7 +41,7 @@ jest.mock('react-native-maps', () => ({
     ref,
   ) {
     useImperativeHandle(ref, () => ({
-      animateCamera: jest.fn(),
+      animateCamera: mockAnimateCamera,
       animateToRegion: mockAnimateToRegion,
     }));
     return (
@@ -291,6 +292,28 @@ describe('BeerMapScreen opening-hours loading', () => {
         longitudeDelta: 0.055,
       },
       0,
+    );
+  });
+
+  it('centers a selected pub in the map viewport', () => {
+    const screen = render(
+      <BeerMapScreen
+        filters={EMPTY_PUB_SEARCH_FILTERS}
+        onApplyFilters={jest.fn()}
+        onShowCompass={jest.fn()}
+      />,
+    );
+
+    fireEvent.press(screen.getByLabelText(cs.a11y.mapPub('U Testu', 0)));
+
+    expect(mockAnimateCamera).toHaveBeenLastCalledWith(
+      {
+        center: {
+          latitude: 50.0876,
+          longitude: 14.4214,
+        },
+      },
+      { duration: 0 },
     );
   });
 

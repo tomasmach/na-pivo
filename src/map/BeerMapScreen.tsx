@@ -80,9 +80,6 @@ const DEFAULT_REGION: Region = {
 
 const PUB_DETAIL_LOADING_TIMEOUT_MS = 3_000;
 const SHEET_DISMISS_MS = 260;
-// The old 0.16 offset was tuned for the shorter dock. The 128 + 12 + 62 stack
-// needs roughly another 50 pt of clearance on the 667 pt baseline phone.
-const SELECTED_MARKER_LATITUDE_OFFSET = 0.24;
 
 type Layer = 'all' | 'visited' | 'friends';
 type MapSelection =
@@ -723,15 +720,14 @@ export default function BeerMapScreen({
       mapRef.current?.animateCamera(
         {
           center: {
-            latitude:
-              point.lat - region.latitudeDelta * SELECTED_MARKER_LATITUDE_OFFSET,
+            latitude: point.lat,
             longitude: point.lng,
           },
         },
         { duration: reduceMotion ? 0 : 220 },
       );
     },
-    [accountId, hapticEnabled, reduceMotion, region.latitudeDelta],
+    [accountId, hapticEnabled, reduceMotion],
   );
 
   const selectLive = useCallback(
@@ -746,15 +742,14 @@ export default function BeerMapScreen({
       mapRef.current?.animateCamera(
         {
           center: {
-            latitude:
-              live.lat - region.latitudeDelta * SELECTED_MARKER_LATITUDE_OFFSET,
+            latitude: live.lat,
             longitude: live.lng,
           },
         },
         { duration: reduceMotion ? 0 : 220 },
       );
     },
-    [accountId, hapticEnabled, reduceMotion, region.latitudeDelta],
+    [accountId, hapticEnabled, reduceMotion],
   );
 
   const selectLayer = useCallback((next: Layer) => {
