@@ -57,11 +57,12 @@ const DIAL_MIN = 110;
 const DIAL_MAX = 380;
 
 /**
- * The dial's SVG ring stops at r=150 inside a 320 box, so ~6 % of the measured
- * slot is transparent margin. Scaling up by that factor is what makes the dial
- * actually touch the room it was given instead of floating in it.
+ * The dial's SVG ring stops at r=151.5 (r=150 plus half its 3pt stroke) inside a
+ * 320 box, so ~5 % of the measured slot is transparent margin. Scaling up by that
+ * much lets the ring touch the edge of the room it was given instead of floating
+ * inside it — any more and the stroke gets shaved off.
  */
-const DIAL_BLEED = 320 / 300;
+const DIAL_BLEED = 320 / 303;
 
 /** The numeral shrinks with its digit count so "1000" never crowds the card. */
 function distanceFontSize(value: string): number {
@@ -152,8 +153,15 @@ export function CompassCard({
       <CardSheen />
 
       <View style={styles.body}>
+        {/* The dial hangs in an absolute layer inside the slot. In the flow it
+            would feed its own height back into the slot it was measured from:
+            slot -> bigger dial -> bigger slot -> bigger dial, until the clamp
+            stopped it with the ring hanging over the card's edge. Out of the
+            flow, the slot's height depends only on what is left over. */}
         <View style={styles.dialSlot} onLayout={handleDialSlotLayout}>
-          {dial}
+          <View style={styles.dialLayer} pointerEvents="none">
+            {dial}
+          </View>
         </View>
 
         {distanceValue !== null ? (
@@ -284,9 +292,16 @@ const styles = StyleSheet.create({
     flex: 1,
     alignSelf: 'stretch',
     minHeight: DIAL_MIN,
+    overflow: 'hidden',
+  },
+  dialLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
   },
   // Stretched so the centered unit caption can shrink against the card's real
   // width instead of against its own content box.
