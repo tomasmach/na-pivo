@@ -506,7 +506,9 @@ export default function DiaryScreen({ embedded = false }: { embedded?: boolean }
         </View>
       )}
 
-      <NudgeSlot nudge={nudge} />
+      {/* The scroll above absorbs this slot, so an empty one would only be a
+          brown band slicing the last row in half. */}
+      <NudgeSlot nudge={nudge} collapseWhenEmpty />
 
       <CounterCta
         label={cs.diary.cta}
@@ -562,7 +564,9 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   // flexGrow gives the content container a definite height, which is what lets
   // a lone card claim the leftover space instead of collapsing to its minimum.
-  scrollContent: { flexGrow: 1, paddingBottom: 12 },
+  // Enough room under the last row that it can scroll clear of the button
+  // instead of resting permanently cut in half.
+  scrollContent: { flexGrow: 1, paddingBottom: Spacing.lg },
   cardGrow: { flex: 1 },
 
   // Quiet, lower-case, no amber: a label for the list, not a headline of its own.

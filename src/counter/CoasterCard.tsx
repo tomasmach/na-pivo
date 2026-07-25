@@ -1,18 +1,24 @@
 /**
  * The evening card — the middle of the counter screen.
  *
- * One card holds the whole night: the count as a big amber numeral on the left,
- * the glass filling up on the right, and a footer of two quiet facts (money,
- * how long ago) with the door into "Tvůj účet". That composition is deliberate:
- * the previous version put the number alone on a bare background and the screen
- * read as a wireframe with a hole in the middle.
+ * Top to bottom: how many beers you've had tonight as the one big number, then
+ * whatever the screen hands in as `children` (the quick actions and the social
+ * rail), then a footer of two quiet facts (money, how long ago) beside the door
+ * into "Tvůj účet".
  *
- * Type scale on this screen is four steps: display numeral / 20 title /
- * 15 body / 13 caption. Spacing runs on the 8-point grid.
+ * There is deliberately no illustration. A drawn half-litre mug lived here and
+ * was a picture OF a beer where the screen wanted the count; pencil čárky beside
+ * the numeral then said the same thing twice. Both are gone, and the room they
+ * were taking went to things that do something: a beer that isn't the last one,
+ * mapping the pub, the parta, the boards.
+ *
+ * The numeral is sized from the measured card rather than from the fixed
+ * four-step scale, so the display step is a floor here, not a ceiling: it grows
+ * into whatever the rows below leave it, and never past `COUNT_MAX`.
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useReducedMotion,
@@ -21,17 +27,43 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
 import { ChevronRightIcon } from '@/components/shared/IconGlyph';
 import { cs } from '@/i18n/cs';
-import { Colors, withAlpha } from '@/theme/colors';
+import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
-import { BeerGlass } from '@/counter/BeerGlass';
 
-/** The numeral shrinks as the night grows so "12" never crowds the card. */
-function countFontSize(count: number): number {
-  if (count < 10) return 88;
-  if (count < 100) return 72;
-  return 56;
+/** Nothing on any screen is bigger than this. */
+const COUNT_MAX = 132;
+/** Below this it stops being a display numeral, so the card would rather clip. */
+const COUNT_MIN = 44;
+/** Fallback for the first frame, before the card has been measured. */
+const COUNT_FALLBACK = 88;
+/** Room the letterspaced noun needs under the numeral (its -8 overlap included). */
+const NOUN_ROOM = 14;
+/**
+ * Rough advance width of one Baloo 2 ExtraBold digit as a share of its size.
+ * Keeps "128" inside the card instead of trusting `adjustsFontSizeToFit`, which
+ * only kicks in once the glyphs have already been laid out — and a numeral that
+ * quietly auto-shrinks is a numeral whose size nobody controls.
+ */
+const DIGIT_ADVANCE = 0.62;
+
+/**
+ * Size the numeral from the card: as large as the measured body allows, never
+ * past `COUNT_MAX`, and never wider than the card whatever the digit count.
+ *
+ * Exported for the test that pins it — this is the one number on the screen, and
+ * "three digits overflow on an SE" is exactly the bug nothing else catches.
+ */
+export function countNumeralSize(count: number, width: number, height: number): number {
+  if (width <= 0 || height <= 0) return COUNT_FALLBACK;
+
+  const digits = Math.max(1, String(Math.max(0, Math.floor(count))).length);
+  const byHeight = (height - NOUN_ROOM) / 1.24;
+  const byWidth = width / (digits * DIGIT_ADVANCE);
+
+  return Math.round(Math.max(COUNT_MIN, Math.min(COUNT_MAX, byHeight, byWidth)));
 }
 
 export interface CoasterCardProps {
@@ -48,6 +80,11 @@ export interface CoasterCardProps {
   /** The whole card AND the footer open the receipt. */
   onOpenReceipt: () => void;
   accessibilityLabel: string;
+  /**
+   * Rows between the numeral and the footer: the quick actions and the social
+   * rail. The card owns their vertical rhythm and nothing else about them.
+   */
+  children?: React.ReactNode;
 }
 
 export function CoasterCard({
@@ -58,6 +95,7 @@ export function CoasterCard({
   showReceipt,
   onOpenReceipt,
   accessibilityLabel,
+  children,
 }: CoasterCardProps) {
   const reducedMotion = useReducedMotion();
   const countScale = useSharedValue(1);
@@ -80,12 +118,18 @@ export function CoasterCard({
     transform: [{ scale: countScale.value }],
   }));
 
-  // The glass is sized from the card, not the other way round: on a short phone
-  // it shrinks instead of spilling over the card's edge.
-  const [bodyHeight, setBodyHeight] = useState(0);
-  // The mug is near-square once the handle is counted, so its width tracks the
-  // free height almost 1:1 — capped so it never crowds the numeral.
-  const glassWidth = bodyHeight > 0 ? Math.max(76, Math.min(132, (bodyHeight - 16) * 1.03)) : 112;
+  // The numeral is sized from the card, never the other way round: on a short
+  // phone it shrinks instead of spilling over the rounded corner.
+  const [body, setBody] = useState({ width: 0, height: 0 });
+  const handleBodyLayout = (event: LayoutChangeEvent) => {
+    const { width, height } = event.nativeEvent.layout;
+    const next = { width: Math.round(width), height: Math.round(height) };
+    if (next.width <= 0 || next.height <= 0) return;
+    setBody((current) =>
+      current.width === next.width && current.height === next.height ? current : next,
+    );
+  };
+  const numeralSize = countNumeralSize(count, body.width, body.height);
 
   const interactive = count > 0;
   const hasFooter = showReceipt && (spentLabel !== null || sinceLabel !== null || count > 0);
@@ -98,32 +142,32 @@ export function CoasterCard({
       accessibilityLabel={accessibilityLabel}
       style={({ pressed }) => [styles.card, interactive && pressed && styles.pressed]}
     >
-      <View
-        style={styles.body}
-        onLayout={(event) => setBodyHeight(event.nativeEvent.layout.height)}
-      >
-        <View style={styles.countColumn}>
-          <Animated.View style={countAnimatedStyle}>
-            <Text
-              style={[
-                styles.count,
-                // The line box must clear the extrabold glyph's overshoot, or
-                // iOS shaves the top off the digits. 1.24 leaves real headroom;
-                // the noun's negative margin closes the gap it creates below.
-                { fontSize: countFontSize(count), lineHeight: countFontSize(count) * 1.24 },
-              ]}
-              numberOfLines={1}
-              maxFontSizeMultiplier={FontScaleCap.display}
-            >
-              {count}
-            </Text>
-          </Animated.View>
-          <Text style={styles.noun} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-            {count > 0 ? nounLabel.toUpperCase() : cs.counter.coasterEmpty}
+      <CardSheen />
+
+      <View style={styles.body} onLayout={handleBodyLayout}>
+        <Animated.View style={countAnimatedStyle}>
+          <Text
+            style={[
+              styles.count,
+              // The line box must clear the extrabold glyph's overshoot, or iOS
+              // shaves the top off the digits. 1.24 leaves real headroom; the
+              // noun's negative margin closes the gap it creates below.
+              { fontSize: numeralSize, lineHeight: numeralSize * 1.24 },
+            ]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.7}
+            maxFontSizeMultiplier={FontScaleCap.display}
+          >
+            {count}
           </Text>
-        </View>
-        <BeerGlass count={count} width={glassWidth} />
+        </Animated.View>
+        <Text style={styles.noun} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+          {(count > 0 ? nounLabel : cs.counter.coasterEmpty).toUpperCase()}
+        </Text>
       </View>
+
+      {children}
 
       {hasFooter ? (
         <View style={styles.footer}>
@@ -159,37 +203,26 @@ export function CoasterCard({
 
 const styles = StyleSheet.create({
   // The card takes the whole space between the header and the button, so the
-  // screen has no dead middle and the glass gets room to be the hero. It clips
-  // its own contents: the glass is sized from the card, never the other way.
+  // screen has no dead middle and the numeral has room to be the hero. It clips
+  // its own contents: the numeral is sized from the card, never the other way.
   card: {
+    ...CardSurface.card,
     flex: 1,
-    overflow: 'hidden',
-    backgroundColor: Colors.stout2,
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.07),
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 8,
   },
   pressed: {
     opacity: 0.85,
   },
+  // Number and noun are one object, centred in whatever height the card got.
   body: {
     flex: 1,
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 16,
-  },
-  countColumn: {
-    flexShrink: 1,
-    minWidth: 0,
+    justifyContent: 'center',
   },
   count: {
     fontFamily: Fonts.display.extrabold,
     color: Colors.amber,
     includeFontPadding: false,
+    textAlign: 'center',
     // Tabular figures so the digit never shifts sideways as the night grows.
     fontVariant: ['tabular-nums'],
   },
@@ -203,18 +236,9 @@ const styles = StyleSheet.create({
     letterSpacing: 3,
     color: Colors.foamMuted,
     includeFontPadding: false,
+    textAlign: 'center',
   },
-  footer: {
-    marginTop: 20,
-    paddingTop: 12,
-    paddingBottom: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(Colors.foam, 0.1),
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
+  footer: CardSurface.footer,
   facts: {
     flexDirection: 'row',
     alignItems: 'center',

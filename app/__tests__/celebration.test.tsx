@@ -1,11 +1,11 @@
 import React from 'react';
+import { StyleSheet, type TextStyle } from 'react-native';
 import TestRenderer, {
   act,
   type ReactTestInstance,
   type ReactTestRenderer,
 } from 'react-test-renderer';
 
-import { BeerGlass } from '@/counter/BeerGlass';
 import { CounterCta } from '@/counter/CounterCta';
 import { cs } from '@/i18n/cs';
 import { usePubStore } from '@/stores/pubStore';
@@ -43,10 +43,6 @@ jest.mock('react-native-safe-area-context', () => ({
 
 jest.mock('react-native-reanimated', () => ({
   useReducedMotion: jest.fn(() => true),
-}));
-
-jest.mock('@/counter/BeerGlass', () => ({
-  BeerGlass: jest.fn(() => null),
 }));
 
 jest.mock('@/counter/CounterCta', () => ({
@@ -118,39 +114,43 @@ describe('CelebrationScreen', () => {
     expect(fireSuccessHaptic).toHaveBeenCalledTimes(1);
   });
 
-  it('uses a full BeerGlass sized from the measured card body', async () => {
+  it('scales the headline from the measured card body, clamped both ways', async () => {
     useSettingsStore.setState({ hapticEnabled: false });
     await renderScreen();
 
+    // The card's sheen measures itself too, and it is hidden from screen
+    // readers — which is exactly what tells the two layout nodes apart.
     const layoutNode = renderer?.root.findAll(
-      (node: ReactTestInstance) => typeof node.props.onLayout === 'function'
+      (node: ReactTestInstance) =>
+        typeof node.props.onLayout === 'function' &&
+        node.props.accessibilityElementsHidden !== true
     )[0];
 
-    act(() => {
-      (layoutNode?.props.onLayout as (event: {
-        nativeEvent: { layout: { height: number } };
-      }) => void)({
-        nativeEvent: { layout: { height: 480 } },
+    const layout = (height: number) => {
+      act(() => {
+        (layoutNode?.props.onLayout as (event: {
+          nativeEvent: { layout: { height: number } };
+        }) => void)({
+          nativeEvent: { layout: { height } },
+        });
       });
-    });
+    };
 
-    expect(BeerGlass).toHaveBeenLastCalledWith(
-      expect.objectContaining({ count: 10, width: 125 }),
-      undefined
-    );
+    const headlineFontSize = () => {
+      const node = renderer?.root.findAll(
+        (candidate: ReactTestInstance) =>
+          candidate.props.children === cs.celebration.headlineLine1
+      )[0];
+      return StyleSheet.flatten<TextStyle>(node?.props.style as TextStyle).fontSize;
+    };
 
-    act(() => {
-      (layoutNode?.props.onLayout as (event: {
-        nativeEvent: { layout: { height: number } };
-      }) => void)({
-        nativeEvent: { layout: { height: 260 } },
-      });
-    });
+    // A tall card hits the upper clamp instead of scaling forever.
+    layout(480);
+    expect(headlineFontSize()).toBe(76);
 
-    expect(BeerGlass).toHaveBeenLastCalledWith(
-      expect.objectContaining({ count: 10, width: 80 }),
-      undefined
-    );
+    // An iPhone SE gets the smaller line, never below the floor.
+    layout(260);
+    expect(headlineFontSize()).toBe(52);
   });
 
   it('opens the revealed pub in maps from the card footer', async () => {

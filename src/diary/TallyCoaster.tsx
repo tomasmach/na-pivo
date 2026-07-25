@@ -3,8 +3,8 @@
  *
  * A paper beer mat with the night's tally chalked on it: four uprights and a
  * slash through them for every five beers, sitting on a short stack of the mats
- * that came before. It is the Deník counterpart of `BeerGlass` — the one piece
- * of personality on the screen, and the most Czech picture the app has.
+ * that came before. It is the one piece of personality on the Deník screen, and
+ * the most Czech picture the app has.
  *
  * Design rules this file enforces:
  * - Vector, not a bitmap, and every colour comes from a theme token.

@@ -49,7 +49,7 @@ import { openHomeInMaps, openPubInMaps } from '@/utils/maps';
 import { formatPrice, type PriceCurrency } from '@/utils/currency';
 
 import { CompassContainer } from '@/components/compass/CompassContainer';
-import { TitleBar } from '@/components/shared/TitleBar';
+import { ExploreSwitch } from '@/components/shared/ExploreSwitch';
 import { GlowButton } from '@/components/shared/GlowButton';
 import {
   BeerIcon,
@@ -482,34 +482,27 @@ function splitDistance(formatted: string | null): { value: string; unit: string 
 }
 
 /**
- * One meta line for the card footer: opening hours first, then the beer and its
- * price. Both used to be separate rows with their own icons and their own
- * spinner; here they are one sentence, and while the hours lookup is in flight
- * the line is simply empty — nobody reads "Načítám".
+ * The opening hours for the card footer, as their own line.
+ *
+ * They used to be the first clause of a single sentence that also carried the
+ * beer and its price, which meant the one thing you want while standing on the
+ * street was the thing that got truncated first. Now: hours on their own line
+ * with their own tone, beer underneath. While the lookup is in flight the line
+ * is empty — nobody reads "Načítám" — but once it comes back empty we say so,
+ * because "neznám" is an invitation to map it, and the door is right there.
  */
-function pubMetaLine(
-  pub: Pub,
-  priceCurrency: PriceCurrency,
-): { text: string | null; tone: 'open' | 'closed' | 'neutral' } {
-  const parts: string[] = [];
-  let tone: 'open' | 'closed' | 'neutral' = 'neutral';
-
+function pubHoursLine(pub: Pub): { label: string | null; tone: 'open' | 'closed' | 'unknown' } {
   const loading = pub.hoursStatus === 'loading' || pub.hoursStatus === 'pending';
-  if (!loading) {
-    const time = hoursTimeFromIso(pub.nextChange);
-    if (pub.isOpenNow === true) {
-      parts.push(time ? cs.compass.openUntil(time) : cs.compass.openNow);
-      tone = 'open';
-    } else if (pub.isOpenNow === false) {
-      parts.push(time ? cs.compass.closedUntil(time) : cs.compass.closedNow);
-      tone = 'closed';
-    }
+  if (loading && pub.isOpenNow == null) return { label: null, tone: 'unknown' };
+
+  const time = hoursTimeFromIso(pub.nextChange);
+  if (pub.isOpenNow === true) {
+    return { label: time ? cs.compass.openUntil(time) : cs.compass.openNow, tone: 'open' };
   }
-
-  const beerLine = formatBeerLine(pub.beers ?? [], priceCurrency, pub.price, pub.beersUpdatedAt, true);
-  if (beerLine) parts.push(beerLine);
-
-  return { text: parts.length > 0 ? parts.join(' · ') : null, tone };
+  if (pub.isOpenNow === false) {
+    return { label: time ? cs.compass.closedUntil(time) : cs.compass.closedNow, tone: 'closed' };
+  }
+  return { label: cs.compass.hoursUnknown, tone: 'unknown' };
 }
 
 /** `HH:MM` straight out of a Europe/Prague ISO stamp — no `Intl`, see OpenStatusChip. */
@@ -725,8 +718,14 @@ export default function CompassScreen() {
   // coarse cell, so anything that needs real pub data keys off `pub` instead.
   const targetPub: Pub | FocusedPub | null = focusedPub ?? pub;
   const distanceParts = splitDistance(distanceFormatted);
-  const meta =
-    !focusedPub && pub ? pubMetaLine(pub, priceCurrency) : { text: null, tone: 'neutral' as const };
+  // A friend's handoff carries only a name and a coarse cell, so it has neither
+  // hours nor a tap list to show.
+  const hours =
+    !focusedPub && pub ? pubHoursLine(pub) : { label: null, tone: 'unknown' as const };
+  const beerLine =
+    !focusedPub && pub
+      ? formatBeerLine(pub.beers ?? [], priceCurrency, pub.price, pub.beersUpdatedAt, true)
+      : null;
 
   // Tapping the card footer opens what you'd want next: the pub hub when the
   // name is visible, the reveal when it isn't.
@@ -770,10 +769,10 @@ export default function CompassScreen() {
     return null;
   }, [activeFilterCount, focusedPub, handleModeChange, hasMagnetometer, headingAccuracy, mode]);
 
-  // Everything that used to live in the header and the bottom bar.
+  // Everything that used to live in the header and the bottom bar — minus the
+  // map, which is now a visible half of the header. One door per place.
   const moreRows: MoreRow[] = useMemo(() => {
     const rows: MoreRow[] = [
-      { key: 'map', label: cs.compass.moreMap, icon: MapIcon, onPress: () => { setMoreOpen(false); handleShowMap(); } },
       {
         key: 'filters',
         label: cs.compass.moreFilters,
@@ -812,7 +811,6 @@ export default function CompassScreen() {
     handleNavigateHome,
     handleOpenFilter,
     handleReport,
-    handleShowMap,
     homePoint,
     mode,
     targetPub,
@@ -852,7 +850,16 @@ export default function CompassScreen() {
   if (pub === null && !focusedPub) {
     return (
       <View style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-        <TitleBar align="left" showGear={false} />
+        {/* Nothing within reach is exactly when the map earns its place, so the
+            switch stays in the header here too. */}
+        <View style={[styles.headerRow, styles.headerRowEmpty]}>
+          <ExploreSwitch
+            activeView="compass"
+            variant="flat"
+            onSelectCompass={() => undefined}
+            onSelectMap={handleShowMap}
+          />
+        </View>
         <EmptyScreen
           onSettings={handleSettings}
           onRetry={retrySearch}
@@ -889,22 +896,20 @@ export default function CompassScreen() {
         { paddingTop: insets.top + 8, paddingBottom: Math.max(insets.bottom, Spacing.sm) },
       ]}
     >
+      {/* The map is not a menu item. It is the compass's twin, so it lives where
+          you cannot miss it: half of the screen's title. */}
       <View style={styles.headerRow}>
-        <Pressable
-          onLongPress={handleDevArrival}
-          delayLongPress={800}
-          style={styles.brand}
-          accessibilityRole="header"
-          accessibilityLabel={cs.compass.headerTitle}
-        >
-          <BeerIcon size={18} color={Colors.amber} />
-          <Text style={styles.brandText} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {cs.compass.headerTitle}
-          </Text>
-        </Pressable>
+        <ExploreSwitch
+          activeView="compass"
+          variant="flat"
+          onSelectCompass={() => undefined}
+          onSelectMap={handleShowMap}
+        />
         <View style={styles.headerSpacer} />
         <Pressable
           onPress={() => setMoreOpen(true)}
+          onLongPress={handleDevArrival}
+          delayLongPress={800}
           style={({ pressed }) => [styles.moreButton, pressed && styles.pressedSoft]}
           hitSlop={8}
           accessibilityRole="button"
@@ -920,8 +925,9 @@ export default function CompassScreen() {
         distanceValue={distanceParts?.value ?? null}
         distanceUnit={distanceParts?.unit ?? ''}
         pubName={showPubDetails ? (targetPub?.name ?? null) : null}
-        metaLine={showPubDetails ? meta.text : null}
-        metaTone={meta.tone}
+        hoursLabel={showPubDetails ? hours.label : null}
+        hoursTone={hours.tone}
+        beerLine={showPubDetails ? beerLine : null}
         hidden={!showPubDetails}
         showMapLink={showPubDetails && !focusedPub && targetPub !== null}
         onPressFooter={handleCardFooterPress}
@@ -930,7 +936,7 @@ export default function CompassScreen() {
             ? cs.a11y.compassCard(
                 targetPub?.name ?? '',
                 distanceFormatted ?? '',
-                meta.text ?? '',
+                [hours.label, beerLine].filter(Boolean).join(' · '),
               )
             : cs.a11y.compassCardHidden
         }
@@ -1023,18 +1029,10 @@ const styles = StyleSheet.create({
     minHeight: 44,
     marginBottom: 8,
   },
-  // The wordmark IS the title: no frame, no fill, exactly `chipDefault`.
-  brand: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    flexShrink: 1,
-  },
-  brandText: {
-    fontFamily: Fonts.display.extrabold,
-    fontSize: 18,
-    color: Colors.foam,
-    includeFontPadding: false,
+  // The empty state owns its own horizontal padding, so the header borrows the
+  // surface's gutter instead of the surface's whole style.
+  headerRowEmpty: {
+    paddingHorizontal: 24,
   },
   headerSpacer: { flex: 1, minWidth: Spacing.sm },
   // Quiet on purpose: an outlined circle beside an amber button is two frames

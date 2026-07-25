@@ -26,6 +26,7 @@ import { enqueueBeerPhoto } from '@/data/beerPhotosQueue';
 import { deriveReconciledDiaryStats } from '@/data/diarySync';
 import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
 import CodeSheet from '@/friends/CodeSheet';
+import { isContextPubKey } from '@/drinks/drinkTypes';
 import { cs } from '@/i18n/cs';
 import { beerCountLabel } from '@/i18n/plural';
 import { Avatar } from '@/profile/Avatar';
@@ -38,15 +39,18 @@ import {
   useAccountStore,
 } from '@/stores/accountStore';
 import { loadBeerPhotos, useBeerPhotosStore } from '@/stores/beerPhotosStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import {
   allSessionsNewestFirst,
   sessionCount,
+  sessionTotalCzk,
   useTallyStore,
   type TallySession,
 } from '@/stores/tallyStore';
 import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
+import { formatPrice } from '@/utils/currency';
 
 function lifetimeBeerCount(sessions: TallySession[]): number {
   return sessions.reduce((total, session) => total + sessionCount(session), 0);
@@ -70,6 +74,7 @@ export default function ProfileScreen() {
   const current = useTallyStore((state) => state.current);
   const history = useTallyStore((state) => state.history);
   const photos = useBeerPhotosStore((state) => state.photos);
+  const priceCurrency = useSettingsStore((state) => state.priceCurrency);
 
   const [codeVisible, setCodeVisible] = useState(false);
   const [moreVisible, setMoreVisible] = useState(false);
@@ -110,13 +115,35 @@ export default function ProfileScreen() {
     beers = Math.max(profile.stats.totalBeers, localBeers);
   }
 
+  // The lifetime trio in the card. Local sessions are the floor; the reconciled
+  // account snapshot wins for pubs and money once it's there, because it also
+  // knows the evenings this phone never had.
+  const lifetime = useMemo(() => {
+    const evenings = sessions.filter((session) => session.drinks.length > 0).length;
+    const localPubs = new Set(
+      sessions
+        .filter((session) => session.drinks.length > 0 && !isContextPubKey(session.pubKey))
+        .map((session) => session.pubKey),
+    ).size;
+    const localSpent = sessions.reduce((total, session) => total + sessionTotalCzk(session), 0);
+    return {
+      evenings,
+      pubs: Math.max(reconciledStats?.distinctPubs ?? 0, localPubs),
+      spentCzk: Math.max(reconciledStats?.totalSpentCzk ?? 0, localSpent),
+    };
+  }, [reconciledStats, sessions]);
+
   const xpProgress = useMemo(
     () => accountXpProgress(profile?.mapper, profile?.pivar),
     [profile?.mapper, profile?.pivar],
   );
-  const levelLine =
-    isSignedIn && xpProgress
-      ? cs.profile.levelLine(xpProgress.level, xpProgress.title)
+  const level = isSignedIn && xpProgress ? xpProgress.level : null;
+  const levelTitle = isSignedIn && xpProgress ? xpProgress.title : cs.profile.levelRingCaption;
+  // Null = full ring: a maxed rung has nothing left to fill, and a rung with a
+  // zero-XP span cannot be divided.
+  const levelProgress =
+    isSignedIn && xpProgress && xpProgress.xpForNextLevel != null && xpProgress.xpForNextLevel > 0
+      ? xpProgress.xpIntoLevel / xpProgress.xpForNextLevel
       : null;
   const levelHint = !isSignedIn
     ? cs.profile.levelNoAccount
@@ -343,20 +370,40 @@ export default function ProfileScreen() {
       </View>
 
       <ProfileCard
-        beers={beers}
         beersLabel={beersLabel}
         caption={
           beers > 0
             ? cs.profile.lifetimeCaption
             : cs.profile.lifetimeCaptionEmpty
         }
-        levelLine={levelLine}
+        level={level}
+        levelTitle={levelTitle}
+        levelProgress={levelProgress}
         levelHint={levelHint}
+        stats={[
+          {
+            key: 'pubs',
+            value: lifetime.pubs.toLocaleString('cs-CZ'),
+            label: cs.profile.cardStatPubs,
+          },
+          {
+            key: 'evenings',
+            value: lifetime.evenings.toLocaleString('cs-CZ'),
+            label: cs.profile.cardStatEvenings,
+          },
+          {
+            key: 'spent',
+            value: formatPrice(lifetime.spentCzk, priceCurrency),
+            label: cs.profile.cardStatSpent,
+          },
+        ]}
         linkLabel={cs.profile.badgesLink}
         onPressLink={() => router.push('/profile/badges' as Href)}
         accessibilityLabel={cs.a11y.profileCard(
           beersLabel,
-          levelLine ?? levelHint ?? '',
+          level !== null && xpProgress
+            ? cs.profile.levelLine(level, xpProgress.title)
+            : levelHint ?? '',
         )}
       />
 

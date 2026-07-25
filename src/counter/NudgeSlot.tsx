@@ -2,7 +2,8 @@
  * NudgeSlot — block 3 of the Tácek counter layout: a fixed-height slot that
  * shows at most ONE nudge (undo strip, rapid confirm, dopito chip, check-in
  * offer, or weekly rank chip). The design rule it enforces: the slot is always
- * 52pt tall — occupied or empty — so the big CTA below it never jumps.
+ * 52pt tall — occupied or empty — so the big CTA below it never jumps. The one
+ * exception is `collapseWhenEmpty`, for screens that scroll (see below).
  * Presentational only: props in, callbacks out; appearance is instant, no
  * animation.
  */
@@ -145,7 +146,25 @@ function CheckinStrip({ nudge }: { nudge: Extract<Nudge, { kind: 'checkin' }> })
   );
 }
 
-export function NudgeSlot({ nudge }: { nudge: Nudge | null }) {
+export function NudgeSlot({
+  nudge,
+  collapseWhenEmpty = false,
+}: {
+  nudge: Nudge | null;
+  /**
+   * Render nothing at all when there is no nudge.
+   *
+   * Only for screens whose breathing element is a `ScrollView`: there the slot's
+   * appearance shortens the scroll instead of moving the button, so the fixed
+   * height buys nothing and an empty 52pt band reads as a brown hole that cuts
+   * the last row in half. On a screen whose breathing element is the hero card
+   * (counter, compass, profile) the height MUST stay fixed — otherwise the card,
+   * and with it the numeral or the dial, resizes every time a nudge shows up.
+   */
+  collapseWhenEmpty?: boolean;
+}) {
+  if (!nudge && collapseWhenEmpty) return null;
+
   return (
     <View style={styles.slot}>
       {nudge?.kind === 'counted' && <CountedStrip nudge={nudge} />}

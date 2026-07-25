@@ -19,6 +19,7 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
+import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
 import { ChevronRightIcon } from '@/components/shared/IconGlyph';
 import { TallyCoaster } from '@/diary/TallyCoaster';
 import { cs } from '@/i18n/cs';
@@ -79,6 +80,8 @@ export function NightCard({
       accessibilityLabel={accessibilityLabel}
       style={({ pressed }) => [styles.card, style, pressed && styles.pressed]}
     >
+      <CardSheen />
+
       {/* Where you were is the card's title, exactly as the place chip is the
           counter's — the date rides beside it as quiet context. */}
       <View style={styles.titleRow}>
@@ -149,16 +152,7 @@ const styles = StyleSheet.create({
   // from `flex: 1` (which collapses inside a ScrollView's content container and
   // would squash the numeral and the mat down to nothing). It still clips its
   // own contents: the coaster is sized from the card, never the other way.
-  card: {
-    overflow: 'hidden',
-    backgroundColor: Colors.stout2,
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.07),
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 8,
-  },
+  card: CardSurface.card,
   pressed: {
     opacity: 0.85,
   },

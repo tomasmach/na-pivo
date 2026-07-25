@@ -30,12 +30,12 @@ import {
   ExternalLinkIcon,
   FlagIcon,
   ListFilterIcon,
-  MapIcon,
+  LocateFixedIcon,
   MapPinnedIcon,
   RefreshCwIcon,
-  UsersIcon,
   XIcon,
 } from '@/components/shared/IconGlyph';
+import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
 import { ExploreSwitch } from '@/components/shared/ExploreSwitch';
 import { GlowButton } from '@/components/shared/GlowButton';
 import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
@@ -121,7 +121,7 @@ function localTimeFromIso(iso: string | null | undefined): string | null {
   return /^\d{2}:\d{2}$/.test(hhmm) ? hhmm : null;
 }
 
-type MetaTone = 'open' | 'closed' | 'neutral';
+type MetaTone = 'open' | 'closed' | 'unknown' | 'neutral';
 
 function openingMeta(
   pub: Pub,
@@ -144,7 +144,10 @@ function openingMeta(
       tone: 'closed',
     };
   }
-  return { text: cs.compass.hoursUnknown, tone: 'neutral' };
+  // 'unknown' still earns the dot: the line is about opening hours either way,
+  // and the compass card draws it the same. 'neutral' is for lines that are not
+  // hours at all (the viewport summary, a city, a friend).
+  return { text: cs.compass.hoursUnknown, tone: 'unknown' };
 }
 
 function metaToneColor(tone: MetaTone): string {
@@ -153,11 +156,24 @@ function metaToneColor(tone: MetaTone): string {
   return Colors.mutedText;
 }
 
+/** Only an hours line gets the status dot. */
+function showsStatusDot(tone: MetaTone): boolean {
+  return tone !== 'neutral';
+}
+
 interface PlaceCardProps {
+  /**
+   * The loud line: the pub's name when one is selected, otherwise what the
+   * viewport is showing. There is no separate section title — the layer switch
+   * in the footer already names the mode, and "Parta teď" printed directly above
+   * a highlighted "Parta teď" segment was the same word twice.
+   */
   title: string;
-  meta: string;
+  /** Opening hours, with the status dot. Null when the card is not about a pub. */
+  meta: string | null;
   metaTone: MetaTone;
-  fact: string;
+  /** The quiet line under it (city, rating, "navštíveno"), or null. */
+  fact: string | null;
   titlePress?: {
     onPress: () => void;
     accessibilityLabel: string;
@@ -167,6 +183,8 @@ interface PlaceCardProps {
     onPress: () => void;
     accessibilityLabel: string;
   };
+  /** The layer switch, rendered as the card's own footer. */
+  layers: React.ReactNode;
 }
 
 function PlaceCard({
@@ -176,12 +194,15 @@ function PlaceCard({
   fact,
   titlePress,
   door,
+  layers,
 }: PlaceCardProps) {
   const titleContent = (
     <>
+      {/* Two lines, and the whole row to itself: "Charles Bridge Restau…" was the
+          name losing a fight with a door it had no reason to share a row with. */}
       <Text
         style={styles.placeTitle}
-        numberOfLines={1}
+        numberOfLines={2}
         maxFontSizeMultiplier={FontScaleCap.heading}
       >
         {title}
@@ -192,38 +213,23 @@ function PlaceCard({
 
   return (
     <View style={styles.placeCard}>
-      {titlePress ? (
-        <Pressable
-          onPress={titlePress.onPress}
-          hitSlop={12}
-          style={({ pressed }) => [styles.placeTitleRow, pressed && styles.pressedSoft]}
-          accessibilityRole="button"
-          accessibilityLabel={titlePress.accessibilityLabel}
-        >
-          {titleContent}
-        </Pressable>
-      ) : (
-        <View style={styles.placeTitleRow}>{titleContent}</View>
-      )}
+      <CardSheen />
 
-      <View style={styles.placeMetaSlot}>
-        <Text
-          style={[styles.placeMeta, { color: metaToneColor(metaTone) }]}
-          numberOfLines={1}
-          maxFontSizeMultiplier={FontScaleCap.body}
-        >
-          {meta}
-        </Text>
-      </View>
+      <View style={styles.placeHeadRow}>
+        {titlePress ? (
+          <Pressable
+            onPress={titlePress.onPress}
+            hitSlop={12}
+            style={({ pressed }) => [styles.placeTitleRow, pressed && styles.pressedSoft]}
+            accessibilityRole="button"
+            accessibilityLabel={titlePress.accessibilityLabel}
+          >
+            {titleContent}
+          </Pressable>
+        ) : (
+          <View style={styles.placeTitleRow}>{titleContent}</View>
+        )}
 
-      <View style={styles.placeFooter}>
-        <Text
-          style={styles.placeFact}
-          numberOfLines={1}
-          maxFontSizeMultiplier={FontScaleCap.body}
-        >
-          {fact}
-        </Text>
         {door ? (
           <Pressable
             onPress={door.onPress}
@@ -243,6 +249,98 @@ function PlaceCard({
           </Pressable>
         ) : null}
       </View>
+
+      {meta ? (
+        <View style={styles.placeMetaRow}>
+          {showsStatusDot(metaTone) ? (
+            <View style={[styles.placeDot, { backgroundColor: metaToneColor(metaTone) }]} />
+          ) : null}
+          <Text
+            style={[styles.placeMeta, { color: metaToneColor(metaTone) }]}
+            numberOfLines={1}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
+            {meta}
+          </Text>
+        </View>
+      ) : null}
+
+      {fact ? (
+        <Text
+          style={styles.placeFact}
+          numberOfLines={1}
+          maxFontSizeMultiplier={FontScaleCap.body}
+        >
+          {fact}
+        </Text>
+      ) : null}
+
+      <View style={styles.placeLayers}>{layers}</View>
+    </View>
+  );
+}
+
+/**
+ * Which slice of the map you are looking at, as a control instead of a caption.
+ *
+ * It used to be three rows inside the "…" sheet, and the card only printed the
+ * name of the active one — so the map's main mode switch was two taps deep and
+ * looked like a label. Same segmented track as the Kompas/Mapa switch: neutral
+ * foam, never a second amber surface.
+ */
+function LayerSwitch({
+  layer,
+  liveCount,
+  onSelect,
+}: {
+  layer: Layer;
+  liveCount: number;
+  onSelect: (next: Layer) => void;
+}) {
+  const segments: { key: Layer; label: string; badge?: number }[] = [
+    { key: 'all', label: cs.map.layerAll },
+    { key: 'visited', label: cs.map.layerVisited },
+    { key: 'friends', label: cs.map.layerFriends, badge: liveCount },
+  ];
+
+  return (
+    <View style={styles.layerTrack} accessibilityRole="tablist">
+      {segments.map((segment) => {
+        const active = segment.key === layer;
+        return (
+          <Pressable
+            key={segment.key}
+            onPress={() => onSelect(segment.key)}
+            disabled={active}
+            style={({ pressed }) => [
+              styles.layerSegment,
+              active && styles.layerSegmentActive,
+              pressed && styles.pressedSoft,
+            ]}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: active, disabled: active }}
+            accessibilityLabel={segment.label}
+          >
+            <Text
+              style={[styles.layerLabel, active && styles.layerLabelActive]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.85}
+              maxFontSizeMultiplier={FontScaleCap.body}
+            >
+              {segment.label}
+            </Text>
+            {segment.badge ? (
+              <Text
+                style={[styles.layerBadge, active && styles.layerLabelActive]}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {segment.badge > 9 ? '9+' : segment.badge}
+              </Text>
+            ) : null}
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -718,19 +816,15 @@ export default function BeerMapScreen({
     [clearSelection, handleRegionChange, reduceMotion],
   );
 
-  const activeLayerLabel =
+  // Two parts, not one sentence: the count is the card's loud line and the rest
+  // is the quiet line under it.
+  const visitedInView = visiblePoints.filter((point) => point.visit).length;
+  const viewportHeadline =
     layer === 'friends'
-      ? cs.map.layerFriends
-      : layer === 'visited'
-        ? cs.map.layerVisited
-        : cs.map.layerAll;
-  const viewportDescription =
-    layer === 'friends'
-      ? cs.map.liveCount(visibleLivePubs.length)
-      : cs.map.nearbyCount(
-          visiblePoints.length,
-          visiblePoints.filter((point) => point.visit).length,
-        );
+      ? cs.map.liveShort(visibleLivePubs.length)
+      : cs.map.viewportPubs(visiblePoints.length);
+  const viewportDetail =
+    layer === 'friends' || visitedInView === 0 ? null : cs.map.viewportKnown(visitedInView);
 
   const cardState = useMemo(() => {
     if (selectedPub) {
@@ -738,54 +832,66 @@ export default function BeerMapScreen({
       return {
         kind: 'pub' as const,
         title: selectedPub.pub.name,
-        meta: [hours.text, selectedRatingLine].filter(Boolean).join(' · '),
+        // Hours alone on the loud line, with the status dot. Everything else is
+        // the quiet line under it — the old single sentence truncated the hours
+        // first, which is the one thing worth reading here.
+        meta: hours.text,
         metaTone: hours.tone,
-        fact: selectedPub.visit
-          ? selectedPub.pub.city || cs.map.visited
-          : cs.map.notVisited,
+        // City, rating, and "been here" — but never "Tady ještě nemáš čárku":
+        // an absent tally is already what the pin says, and as a second stacked
+        // sentence under the hours it just made the card noisy.
+        fact:
+          [
+            selectedPub.pub.city,
+            selectedRatingLine,
+            selectedPub.visit ? cs.map.visited : null,
+          ]
+            .filter(Boolean)
+            .join(' · ') || null,
       };
     }
     if (selectedLive) {
       return {
         kind: 'live' as const,
         title: selectedLive.name,
-        meta:
+        meta: null,
+        metaTone: 'neutral' as const,
+        fact:
           selectedLive.activities.length === 1
             ? cs.map.friendIsHere(friendName(selectedLive))
             : cs.map.friendsAreHere(
                 friendName(selectedLive),
                 selectedLive.activities.length - 1,
               ),
-        metaTone: 'neutral' as const,
-        fact: activeLayerLabel,
       };
     }
     if (selectedCity) {
       return {
         kind: 'city' as const,
         title: selectedCity.name,
-        meta: cs.map.citySummary(selectedCity.visitCount, selectedCity.pubCount),
+        meta: null,
         metaTone: 'neutral' as const,
-        fact: activeLayerLabel,
+        fact: cs.map.citySummary(selectedCity.visitCount, selectedCity.pubCount),
       };
     }
+    // Nothing selected: what the viewport holds is the whole message. The layer
+    // switch below says which slice it is, so there is no title above it.
     return {
       kind: 'idle' as const,
-      title: layer === 'friends' ? cs.map.friendsOverviewTitle : cs.map.beerTrail,
-      meta: viewportDescription,
+      title: viewportHeadline,
+      meta: null,
       metaTone: 'neutral' as const,
-      fact: activeLayerLabel,
+      fact: viewportDetail,
     };
   }, [
-    activeLayerLabel,
-    layer,
     selectedCity,
     selectedDetailPub,
     selectedHoursStatus,
     selectedLive,
     selectedPub,
     selectedRatingLine,
-    viewportDescription,
+    viewportDetail,
+    viewportHeadline,
   ]);
 
   const nudge = useMemo<Nudge | null>(() => {
@@ -819,12 +925,19 @@ export default function BeerMapScreen({
         onPress: () => undefined,
       };
     }
+    // Without the big "Najdi mě · potřebuju tvoji polohu" button, the permission
+    // ask needs a home. The strip offers it and the glyph fires it.
+    if (permissionState !== 'granted') {
+      return { kind: 'dopito', label: cs.map.permissionHint, onPress: locate };
+    }
     return null;
   }, [
     activeFilterCount,
     layer,
     loadingPubs,
+    locate,
     onApplyFilters,
+    permissionState,
     refresh,
     region.latitudeDelta,
     stale,
@@ -867,23 +980,18 @@ export default function BeerMapScreen({
         onPress: () => focusCity(selectedCity),
       };
     }
+    // Nothing selected, nothing to promise: locating yourself is the glyph in the
+    // header now, and the map gets the bottom of the screen back. The object is
+    // still returned so the value stays non-nullable — the render below gates on
+    // `cardState.kind`, because branching on this object itself makes the React
+    // Compiler rules treat its ref-capturing closures as a ref read in render.
     return {
       label: cs.map.findMe,
-      subLabel:
-        permissionState === 'granted' ? null : cs.map.locationRequired,
+      subLabel: null as string | null,
       accessibilityLabel: cs.a11y.mapLocate,
       onPress: locate,
     };
-  }, [
-    aimCompass,
-    cardState.kind,
-    focusCity,
-    locate,
-    permissionState,
-    selectedCity,
-    selectedLive,
-    selectedPub,
-  ]);
+  }, [aimCompass, cardState.kind, focusCity, locate, selectedCity, selectedLive, selectedPub]);
 
   const runAfterMoreClose = useCallback((action: () => void) => {
     setMoreOpen(false);
@@ -905,37 +1013,6 @@ export default function BeerMapScreen({
             : null,
         icon: ListFilterIcon,
         onPress: () => runAfterMoreClose(() => setFilterSheetOpen(true)),
-      },
-      {
-        key: 'layer-all',
-        label: cs.map.layerAll,
-        icon: MapIcon,
-        selected: layer === 'all',
-        onPress: () => {
-          setMoreOpen(false);
-          selectLayer('all');
-        },
-      },
-      {
-        key: 'layer-visited',
-        label: cs.map.layerVisited,
-        icon: MapPinnedIcon,
-        selected: layer === 'visited',
-        onPress: () => {
-          setMoreOpen(false);
-          selectLayer('visited');
-        },
-      },
-      {
-        key: 'layer-friends',
-        label: cs.map.layerFriends,
-        value: visibleLivePubs.length.toLocaleString('cs-CZ'),
-        icon: UsersIcon,
-        selected: layer === 'friends',
-        onPress: () => {
-          setMoreOpen(false);
-          selectLayer('friends');
-        },
       },
       {
         key: 'refresh',
@@ -962,13 +1039,10 @@ export default function BeerMapScreen({
       : rows;
   }, [
     activeFilterCount,
-    layer,
     openSelectedPubReport,
     refresh,
     runAfterMoreClose,
-    selectLayer,
     selectedPub,
-    visibleLivePubs.length,
   ]);
 
   return (
@@ -1090,6 +1164,18 @@ export default function BeerMapScreen({
             onSelectMap={() => undefined}
           />
           <View style={styles.headerSpacer} />
+          {/* Centring the map on yourself is the classic map glyph, not an 84pt
+              amber promise. It used to be the screen's primary button, which
+              spent the whole bottom of the map on the least interesting verb. */}
+          <Pressable
+            onPress={locate}
+            style={({ pressed }) => [styles.mapGlyphButton, pressed && styles.pressedSoft]}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={cs.a11y.mapLocate}
+          >
+            <LocateFixedIcon size={19} color={Colors.amber} />
+          </Pressable>
           <Pressable
             onPress={() => setMoreOpen(true)}
             style={({ pressed }) => [
@@ -1146,16 +1232,26 @@ export default function BeerMapScreen({
                   }
                 : undefined
           }
+          layers={
+            <LayerSwitch
+              layer={layer}
+              liveCount={visibleLivePubs.length}
+              onSelect={selectLayer}
+            />
+          }
         />
-        <GlowButton
-          label={primaryAction.label}
-          subLabel={primaryAction.subLabel}
-          onPress={primaryAction.onPress}
-          variant="primary"
-          glow="soft"
-          height={62}
-          accessibilityLabel={primaryAction.accessibilityLabel}
-        />
+        {/* Only a selection earns a button. */}
+        {cardState.kind !== 'idle' ? (
+          <GlowButton
+            label={primaryAction.label}
+            subLabel={primaryAction.subLabel}
+            onPress={primaryAction.onPress}
+            variant="primary"
+            glow="soft"
+            height={62}
+            accessibilityLabel={primaryAction.accessibilityLabel}
+          />
+        ) : null}
       </View>
 
       <Modal
@@ -1405,6 +1501,20 @@ const styles = StyleSheet.create({
   // it: everywhere else it sits on stout, here it floats over a light map and
   // a bare muted glyph simply disappears into the streets. Same dark pill as
   // the Kompas/Mapa switch beside it, so the header reads as one row.
+  // Round glyph target that has to stay legible over the map, so unlike the
+  // header buttons on the tácek screens it carries its own surface.
+  mapGlyphButton: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.stout, 0.94),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.16),
+    marginRight: Spacing.sm,
+    ...softDrop(),
+  },
   moreButton: {
     width: 40,
     height: 40,
@@ -1546,21 +1656,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     gap: 12,
   },
+  // Same surface as every hero card, only shorter and floating over the map.
+  // `minHeight`, not `height`: with the biggest system font the rows grow instead
+  // of getting shaved off, and the stack is anchored to the bottom anyway.
   placeCard: {
-    height: 128,
-    overflow: 'hidden',
-    backgroundColor: Colors.stout2,
-    borderRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.07),
-    paddingHorizontal: 24,
+    ...CardSurface.card,
     paddingTop: 16,
-    paddingBottom: 4,
-    ...softDrop(),
+    paddingBottom: 10,
+  },
+  placeHeadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 14,
   },
   placeTitleRow: {
+    flexShrink: 1,
     minWidth: 0,
-    minHeight: 22,
+    minHeight: 24,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -1573,36 +1686,39 @@ const styles = StyleSheet.create({
     color: Colors.foam,
     includeFontPadding: false,
   },
-  placeMetaSlot: {
-    height: 18,
-    minWidth: 0,
-    justifyContent: 'center',
+  placeMetaRow: {
+    marginTop: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  // The one dot allowed to be decoration-shaped, because it carries real state.
+  placeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: Radius.pill,
   },
   placeMeta: {
-    flexShrink: 1,
+    flex: 1,
+    minWidth: 0,
     fontFamily: Fonts.ui.medium,
     fontSize: 13,
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
   },
-  placeFooter: {
-    minHeight: 44,
-    marginTop: 20,
-    paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(Colors.foam, 0.1),
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
   placeFact: {
-    flex: 1,
-    minWidth: 0,
+    marginTop: 2,
     fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
+    fontVariant: ['tabular-nums'],
+  },
+  placeLayers: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.foam, 0.1),
   },
   placeDoor: {
     minHeight: HitArea.min,
@@ -1615,6 +1731,49 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.amber,
     includeFontPadding: false,
+  },
+
+  // — Layer switch (§2.2: neutral track, never a second amber surface) —
+  layerTrack: {
+    height: 38,
+    padding: 3,
+    borderRadius: Radius.pill,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: withAlpha(Colors.foam, 0.04),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.08),
+  },
+  layerSegment: {
+    flex: 1,
+    minWidth: 0,
+    height: 30,
+    borderRadius: Radius.pill,
+    paddingHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+  },
+  layerSegmentActive: {
+    backgroundColor: withAlpha(Colors.foam, 0.1),
+  },
+  layerLabel: {
+    flexShrink: 1,
+    fontFamily: Fonts.display.bold,
+    fontSize: 13,
+    color: Colors.foamMuted,
+    includeFontPadding: false,
+  },
+  layerLabelActive: {
+    color: Colors.foam,
+  },
+  layerBadge: {
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 12,
+    color: Colors.amber,
+    includeFontPadding: false,
+    fontVariant: ['tabular-nums'],
   },
 
   listBackdrop: {

@@ -2,15 +2,22 @@
  * CompassCard — the hero of the "Kompas" screen: the dial, the distance and
  * the pub, in one card.
  *
- * It is the direct sibling of `CoasterCard` and `NightCard`: same card recipe
- * (stout2 surface, 28 radius, 7% foam hairline border, 24/24/8 padding), same
- * four-step type scale, same hairline footer with one amber text door.
+ * It is the direct sibling of `CoasterCard` and `NightCard`: same card surface
+ * (`CardSurface.card`), same four-step type scale, same hairline footer with one
+ * amber text door.
  *
  * The rule this file enforces: the distance numeral is the only lit thing here.
  * No amber frame, no glow, no halo — the screen's one glow belongs to its one
  * button. The numeral keeps a 1.24x line box because Baloo 2 ExtraBold
  * overshoots and iOS otherwise shaves the tops off the digits, and the unit
  * caption is pulled back up into that headroom so the pair reads as one object.
+ *
+ * The footer carries the pub, then its opening hours on their own line with a
+ * status dot, then the beer and its price. The hours used to be the first clause
+ * of a single 13pt sentence that also held the beer, which meant the one fact
+ * you want while standing on the street ("is it even open?") was the thing that
+ * got truncated first. It now has its own line and its own colour, and when the
+ * lookup comes back empty it says so — with the "Zmapuj" door right beside it.
  *
  * The card also owns the dial's SIZE but not the dial itself: the parent hands
  * in a ready-made node (it owns the sensors and the animation) and gets the
@@ -26,11 +33,12 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 
+import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
 import { ChevronRightIcon } from '@/components/shared/IconGlyph';
 import { cs } from '@/i18n/cs';
-import { Colors, withAlpha } from '@/theme/colors';
+import { Colors } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
-import { HitArea } from '@/theme/layout';
+import { HitArea, Radius } from '@/theme/layout';
 
 /**
  * How much of the card's body the distance readout gets. A share, not a fixed
@@ -61,7 +69,7 @@ function distanceFontSize(value: string): number {
 }
 
 /** Opening-hours tone. Never red — we don't shout at people about a closed pub. */
-function metaColor(tone: CompassCardProps['metaTone']): string {
+function hoursColor(tone: CompassCardProps['hoursTone']): string {
   if (tone === 'open') return Colors.open;
   if (tone === 'closed') return Colors.closed;
   return Colors.mutedText;
@@ -81,10 +89,16 @@ export interface CompassCardProps {
   distanceUnit: string;
   /** The target pub, or null when there is none to point at. */
   pubName: string | null;
-  /** One line: "Otevřeno do 23:00 · Pilsner Urquell 95 Kč", or null. */
-  metaLine: string | null;
-  /** Colors the whole meta line. */
-  metaTone: 'open' | 'closed' | 'neutral';
+  /**
+   * The opening hours, on their own line with a status dot: "Otevřeno do 23:00",
+   * "Zavřeno · otevře v 11:00", "Otevírací dobu neznám". Null only while the
+   * lookup is still in flight — nobody reads "Načítám".
+   */
+  hoursLabel: string | null;
+  /** Colors the dot and the hours line. */
+  hoursTone: 'open' | 'closed' | 'unknown';
+  /** The quiet line under the hours: "Pilsner Urquell · 95 Kč", or null. */
+  beerLine: string | null;
   /** Hidden-pub-names mode: the footer teases instead of telling. */
   hidden: boolean;
   /** Show the amber "Zmapuj ›" door on the right of the footer. */
@@ -100,8 +114,9 @@ export function CompassCard({
   distanceValue,
   distanceUnit,
   pubName,
-  metaLine,
-  metaTone,
+  hoursLabel,
+  hoursTone,
+  beerLine,
   hidden,
   showMapLink,
   onPressFooter,
@@ -143,6 +158,8 @@ export function CompassCard({
 
   return (
     <View style={styles.card}>
+      <CardSheen />
+
       <View style={styles.body} onLayout={handleBodyLayout}>
         {dial}
 
@@ -202,16 +219,33 @@ export function CompassCard({
                 >
                   {pubName}
                 </Text>
-                {/* Fixed-height slot: the footer must not jump when the pub has
-                    no hours and no price to show. */}
+                {/* Fixed-height slot: the hours arrive from the network a moment
+                    after the name, and the dial must not resize when they land. */}
                 <View style={styles.metaSlot}>
-                  {metaLine !== null ? (
+                  {hoursLabel !== null ? (
+                    <View style={styles.hoursRow}>
+                      {/* The one dot in the app that is allowed to be decoration-
+                          shaped, because it carries real state: open, closed or
+                          unknown. */}
+                      <View
+                        style={[styles.hoursDot, { backgroundColor: hoursColor(hoursTone) }]}
+                      />
+                      <Text
+                        style={[styles.hours, { color: hoursColor(hoursTone) }]}
+                        numberOfLines={1}
+                        maxFontSizeMultiplier={FontScaleCap.body}
+                      >
+                        {hoursLabel}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {beerLine !== null ? (
                     <Text
-                      style={[styles.meta, { color: metaColor(metaTone) }]}
+                      style={styles.meta}
                       numberOfLines={1}
                       maxFontSizeMultiplier={FontScaleCap.body}
                     >
-                      {metaLine}
+                      {beerLine}
                     </Text>
                   ) : null}
                 </View>
@@ -238,15 +272,8 @@ const styles = StyleSheet.create({
   // has no dead middle and the dial gets room to be the hero. It clips its own
   // contents: the dial is sized from the card, never the other way.
   card: {
+    ...CardSurface.card,
     flex: 1,
-    overflow: 'hidden',
-    backgroundColor: Colors.stout2,
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.07),
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 8,
   },
   pressed: {
     opacity: 0.85,
@@ -283,14 +310,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   footer: {
-    marginTop: 20,
-    paddingTop: 12,
-    paddingBottom: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(Colors.foam, 0.1),
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+    ...CardSurface.footer,
     minHeight: HitArea.min,
   },
   footerText: {
@@ -303,13 +323,32 @@ const styles = StyleSheet.create({
     color: Colors.foam,
     includeFontPadding: false,
   },
+  // Holds both lines at a fixed height so the card never resizes around them.
   metaSlot: {
-    minHeight: 18,
+    minHeight: 38,
     justifyContent: 'center',
+    gap: 2,
+  },
+  hoursRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  hoursDot: {
+    width: 6,
+    height: 6,
+    borderRadius: Radius.pill,
+  },
+  hours: {
+    flexShrink: 1,
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 13,
+    includeFontPadding: false,
   },
   meta: {
     fontFamily: Fonts.ui.medium,
     fontSize: 13,
+    color: Colors.mutedText,
     includeFontPadding: false,
   },
   revealHint: {

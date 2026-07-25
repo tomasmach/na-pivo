@@ -291,7 +291,7 @@ describe('CompassScreen', () => {
     );
   });
 
-  it('renders the compass wordmark in the active header row', () => {
+  it('offers the map as half of the header, not as a menu row', () => {
     useCompass.mockReturnValue(baseCompassState());
 
     let renderer: any;
@@ -300,12 +300,22 @@ describe('CompassScreen', () => {
       renderer = TestRenderer.create(React.createElement(CompassScreen));
     });
 
+    // Visible switch, both halves present.
     expect(
-      renderer.root.findByProps({ accessibilityLabel: cs.compass.headerTitle }),
+      renderer.root.findByProps({ accessibilityLabel: cs.a11y.mapSwitchCompassSelected }),
     ).toBeTruthy();
+    expect(
+      renderer.root.findByProps({ accessibilityLabel: cs.a11y.mapSwitchToMap }),
+    ).toBeTruthy();
+
+    // And exactly one door to it: the overflow sheet no longer carries the map.
+    const sheet = openMoreSheet(renderer);
+    expect(
+      sheet.rows.some((row: { label: string }) => row.label === cs.compass.moreMap),
+    ).toBe(false);
   });
 
-  it('switches from the active compass to the map from the more sheet', () => {
+  it('switches from the active compass to the map through the header switch', () => {
     const BeerMapScreenMock = BeerMapScreen as jest.Mock;
     useCompass.mockReturnValue(baseCompassState());
     let renderer: any;
@@ -314,7 +324,12 @@ describe('CompassScreen', () => {
       renderer = TestRenderer.create(React.createElement(CompassScreen));
     });
 
-    pressMoreRow(renderer, cs.compass.moreMap);
+    const toMap = renderer.root.findByProps({
+      accessibilityLabel: cs.a11y.mapSwitchToMap,
+    });
+    act(() => {
+      toMap.props.onPress();
+    });
 
     expect(BeerMapScreenMock).toHaveBeenCalledWith(
       expect.objectContaining({ onShowCompass: expect.any(Function) }),

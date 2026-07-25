@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
 import { PinMat } from '@/addedPubs/PinMat';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -35,6 +36,8 @@ export function AddedPubsCard({
 
   return (
     <View style={styles.card} accessibilityRole="text">
+      <CardSheen />
+
       <View style={styles.body} onLayout={(event) => setBodyHeight(event.nativeEvent.layout.height)}>
         <View style={styles.countColumn}>
           <Text
@@ -88,15 +91,8 @@ export function AddedPubsCard({
 
 const styles = StyleSheet.create({
   card: {
+    ...CardSurface.card,
     flex: 1,
-    overflow: 'hidden',
-    backgroundColor: Colors.stout2,
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.07),
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 8,
   },
   body: {
     flex: 1,

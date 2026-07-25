@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
 import { CopyIcon } from '@/components/shared/IconGlyph';
 import { PartyTable } from '@/friends/PartyTable';
 import { cs } from '@/i18n/cs';
@@ -42,6 +43,8 @@ export function PartyEveningCard({
 
   return (
     <View style={styles.card}>
+      <CardSheen />
+
       <View
         style={styles.content}
         accessibilityRole="text"
@@ -132,15 +135,8 @@ export function PartyEveningCard({
 
 const styles = StyleSheet.create({
   card: {
+    ...CardSurface.card,
     flex: 1,
-    overflow: 'hidden',
-    backgroundColor: Colors.stout2,
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.07),
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 8,
   },
   content: {
     flex: 1,

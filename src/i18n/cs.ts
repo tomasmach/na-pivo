@@ -30,32 +30,34 @@ export const cs = {
     layerAll: 'V okolí',
     layerVisited: 'Moje stopy',
     layerFriends: 'Parta teď',
-    beerTrail: 'Tvoje pivní stopa',
-    friendsOverviewTitle: 'Parta teď',
     zoomForPubs: 'Přibliž město a ukážu ti podniky v jeho okolí.',
-    nearbyCount: (all: number, visited: number) =>
-      `Ve výřezu ${czechPlural(all, {
-        one: '1 podnik',
-        few: `${all} podniky`,
-        many: `${all} podniků`,
-      })} · ${visited} už znáš`,
-    liveCount: (count: number) =>
-      czechPlural(
-        count,
-        {
-          one: 'Parta je teď v jedné hospodě',
-          few: `Parta je teď ve ${count} hospodách`,
-          many:
-            count === 0
-              ? 'Z party teď nikdo nesedí v hospodě'
-              : `Parta je teď v ${count} hospodách`,
-        },
-      ),
+    // The map card's loud line is a short count and nothing else — a full
+    // sentence at 18pt wrapped mid-phrase ("Ve výřezu 243 podniků · 1 / už znáš").
+    // The detail goes on the quiet line under it.
+    viewportPubs: (n: number) =>
+      czechPlural(n, {
+        one: '1 podnik ve výřezu',
+        few: `${n} podniky ve výřezu`,
+        many: `${n} podniků ve výřezu`,
+      }),
+    viewportKnown: (n: number) =>
+      czechPlural(n, {
+        one: '1 už znáš',
+        few: `${n} už znáš`,
+        many: `${n} už znáš`,
+      }),
+    liveShort: (n: number) =>
+      n === 0
+        ? 'Nikdo z party není na pivu'
+        : czechPlural(n, {
+            one: '1 kamarád je na pivu',
+            few: `${n} kamarádi jsou na pivu`,
+            many: `${n} kamarádů je na pivu`,
+          }),
     citySummary: (visits: number, pubs: number) =>
       `${visits} večerů · ${pubs} ${pubs === 1 ? 'hospoda' : pubs < 5 ? 'hospody' : 'hospod'}`,
     showMyPubs: 'Ukázat moje hospody',
     findMe: 'Najdi mě',
-    locationRequired: 'potřebuju tvoji polohu',
     liveNow: 'TEĎ NA PIVU',
     friendFallback: 'Kamarád',
     friendIsHere: (name: string) => `${name} je tady teď`,
@@ -1902,6 +1904,13 @@ export const cs = {
     levelToNext: (xp: number) => `ještě ${xp} XP do dalšího levelu`,
     levelMaxed: 'Máš všechno, jsi legenda.',
     levelNoAccount: 'Level ti naskočí s účtem.',
+    /** Caption under the level ring while there is no account to have a rung. */
+    levelRingCaption: 'Úroveň',
+    // — Lifetime trio in the card. Shorter than the `stat*` labels of the old
+    //   stats grid, because each one only gets a third of a card. —
+    cardStatPubs: 'HOSPODY',
+    cardStatEvenings: 'VEČERY',
+    cardStatSpent: 'UTRACENO',
 
     // — The one button —
     ctaCode: 'Ukaž svůj kód',
@@ -2144,15 +2153,16 @@ export const cs = {
     // one button. The button's label always says exactly what one tap does.
 
     // Coaster, nothing counted yet — the only line of prose on the screen.
-    coasterEmpty: 'Čistej tácek.',
+    coasterEmpty: 'Čistej tácek',
     // The one button, in each of its states.
     ctaPick: 'Co si dáš?',
     ctaFirstBeer: 'Zapiš první pivo',
     ctaLogBeer: 'Zapiš pivo',
     repeatCta: 'Ještě jedno',
-    // The quiet twin under the CTA — a different beer, a shot, a Kofola. Always
-    // on screen while "Ještě jedno" is showing.
-    repeatOther: 'Něco jiného',
+    // The quiet twin of "Ještě jedno" — a different beer, a shot, a Kofola. Lives
+    // in the card as a chip, on screen the whole time the CTA is repeating.
+    quickOtherBeer: 'Jiné pivo',
+    quickMapPub: 'Zmapuj',
     resumeSub: (summary: string) => `Posledně tady: ${summary}.`,
     // Place chip when GPS found nothing close enough to say "you sit here".
     placeUnknown: 'Kde sedíš?',
@@ -2606,6 +2616,14 @@ export const cs = {
     contactEmail: 'tomades1@gmail.com',
   },
 
+  // — Social rail in the evening card: three doors to the community half of the
+  //   product, which was otherwise only reachable from an overflow sheet.
+  socialRail: {
+    parta: 'Parta',
+    pivari: 'Pivaři',
+    photoContest: 'FotoPivař',
+  },
+
   a11y: {
     onboardingStep: (step: number, total: number) => `Krok ${step} ze ${total}`,
     celebrationOpenMaps: (pub: string) => `Otevřít hospodu ${pub} v mapách`,
@@ -2755,6 +2773,8 @@ export const cs = {
     counterRapidConfirm: 'Jo, připsat další pivo',
     counterCheckinDismiss: 'Zavřít nabídku hodnocení',
     counterReceiptChip: 'Otevřít tvůj účet',
+    counterQuickOtherBeer: 'Vybrat jiné pivo nebo drink',
+    counterQuickMapPub: 'Doplnit informace o hospodě',
     counterRemoveIdentity: (name: string) => `Odebrat poslední ${name} z účtu`,
 
     // — Moje piva —
@@ -2848,6 +2868,8 @@ export const cs = {
     photoAddTile: 'Přidat fotku piva',
     photoTile: (label: string) => `Fotka piva${label ? `, ${label}` : ''}. Ťukni pro detail.`,
     photoContestLink: 'Otevřít soutěž FotoPivař',
+    socialRailParta: 'Otevřít partu',
+    socialRailPivari: 'Otevřít žebříček pivařů',
     photoCaptionInput: 'Popisek fotky',
     photoPickPub: 'Označit hospodu',
     photoClearPub: 'Zrušit označenou hospodu',

@@ -4,8 +4,8 @@ import { useRouter } from 'expo-router';
 import { useReducedMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
 import { BeerIcon, ChevronRightIcon } from '@/components/shared/IconGlyph';
-import { BeerGlass } from '@/counter/BeerGlass';
 import { CounterCta } from '@/counter/CounterCta';
 import { cs } from '@/i18n/cs';
 import { usePubStore } from '@/stores/pubStore';
@@ -16,8 +16,6 @@ import { HitArea, Spacing } from '@/theme/layout';
 import { fireSuccessHaptic } from '@/utils/haptics';
 import { openPubInMaps } from '@/utils/maps';
 
-const FULL_GLASS_COUNT = 10;
-
 export default function CelebrationScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -27,14 +25,13 @@ export default function CelebrationScreen() {
 
   const hapticFiredRef = useRef(false);
   const [bodyHeight, setBodyHeight] = useState(0);
-  const glassWidth =
-    bodyHeight > 0
-      ? Math.max(80, Math.min(132, Math.round(bodyHeight * 0.26)))
-      : 96;
+  // With the drawn mug gone the two words ARE the drawing, so they take the room
+  // it used to take. Still sized from the card: a 72pt line on an iPhone SE
+  // would push "Na zdraví!" onto two lines and shove the caption off the edge.
   const headlineSize =
     bodyHeight > 0
-      ? Math.max(44, Math.min(64, Math.round(bodyHeight * 0.15)))
-      : 56;
+      ? Math.max(48, Math.min(76, Math.round(bodyHeight * 0.2)))
+      : 60;
 
   useEffect(() => {
     if (hapticEnabled && !hapticFiredRef.current) {
@@ -65,12 +62,12 @@ export default function CelebrationScreen() {
       </View>
 
       <View style={styles.card}>
+        <CardSheen />
+
         <View
           style={styles.body}
           onLayout={(event) => setBodyHeight(event.nativeEvent.layout.height)}
         >
-          <BeerGlass count={FULL_GLASS_COUNT} width={glassWidth} />
-
           <View style={styles.headlineWrap}>
             <Text
               style={[
@@ -166,15 +163,8 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   card: {
+    ...CardSurface.card,
     flex: 1,
-    overflow: 'hidden',
-    backgroundColor: Colors.stout2,
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.07),
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 8,
   },
   body: {
     flex: 1,
@@ -206,14 +196,7 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   footer: {
-    marginTop: 20,
-    paddingTop: 12,
-    paddingBottom: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(Colors.foam, 0.1),
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+    ...CardSurface.footer,
     minHeight: HitArea.min,
   },
   pubNameWrap: {

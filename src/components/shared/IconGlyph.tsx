@@ -88,7 +88,7 @@ import {
   LucideProps,
 } from 'lucide-react-native';
 
-interface IconProps {
+export interface IconProps {
   size?: number;
   color: string;
 }

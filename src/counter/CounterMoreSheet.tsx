@@ -2,15 +2,19 @@
  * "Co ještě?" — the counter's overflow sheet.
  *
  * The counter screen itself holds exactly four things now: where you are, how
- * many you've had, one nudge, and one CTA. Everything else that used to sit on
- * that screen as a competing row of pills (photo, story sticker, parta ping,
- * backdating, menu scan, pub mapping) lives here, one tap deeper, as a plain
- * labelled list. One intent per sheet: adds live in "Co si dáš?", closing the
- * night in "Tvůj účet" — this sheet only carries the rest, plus a "Dopito"
- * shortcut pinned first because leaving is the one thing people hunt for.
+ * many you've had, one nudge, and one CTA — plus one glyph in the header for
+ * "cvakni pivo", which earned its way back out of this list because a camera two
+ * taps deep is a camera nobody uses. Everything else that used to sit on that
+ * screen as a competing row of pills (story sticker, parta ping, backdating,
+ * menu scan) lives here, one tap deeper, as a plain labelled list. Mapping the
+ * pub left too, for the same reason: it is a chip in the card now.
+ *
+ * One intent per sheet: adds live in "Co si dáš?", closing the night in "Tvůj
+ * účet" — this sheet only carries the rest, plus a "Dopito" shortcut pinned first
+ * because leaving is the one thing people hunt for.
  *
  * Rows are declarative: the host passes only the handlers that apply (outside a
- * pub there is no menu to scan and nothing to map), and a missing handler drops
+ * pub there is no menu to scan), and a missing handler drops
  * its row. Every row closes the sheet before running its action — several of
  * them open another modal, and iOS refuses to present one while a sheet is
  * still on screen, so the host defers via `runAfterSheetClose`.
@@ -32,7 +36,6 @@ import {
   ChevronRightIcon,
   ClipboardListIcon,
   HistoryIcon,
-  MapPinnedIcon,
   Share2Icon,
   XIcon,
 } from '@/components/shared/IconGlyph';
@@ -53,8 +56,6 @@ export interface CounterMoreSheetProps {
   onClose: () => void;
   /** "Dopito" — ends the night. Pinned first when present. */
   onDone?: () => void;
-  /** Photo diary capture — always available, in a pub or not. */
-  onPhoto: () => void;
   /** Story sticker; omitted outside a pub (there's no pub to invite anyone to). */
   onSticker?: () => void;
   /** One-tap "I'm here" broadcast to the parta. Pub only. */
@@ -65,22 +66,18 @@ export interface CounterMoreSheetProps {
   /** AI menu scan. Pub only. */
   onScanMenu?: () => void;
   scanning?: boolean;
-  /** Opens the community mapping hub. Pub only. */
-  onMapPub?: () => void;
 }
 
 export function CounterMoreSheet({
   visible,
   onClose,
   onDone,
-  onPhoto,
   onSticker,
   onPingFriends,
   broadcasted = false,
   onBackdate,
   onScanMenu,
   scanning = false,
-  onMapPub,
 }: CounterMoreSheetProps) {
   const insets = useSafeAreaInsets();
 
@@ -96,7 +93,6 @@ export function CounterMoreSheet({
           },
         ]
       : []),
-    { key: 'photo', label: cs.photoDiary.counterCta, Icon: CameraIcon, onPress: onPhoto },
     ...(onSticker
       ? [{ key: 'sticker', label: cs.counter.moreStory, Icon: Share2Icon, onPress: onSticker }]
       : []),
@@ -122,9 +118,6 @@ export function CounterMoreSheet({
             disabled: scanning,
           },
         ]
-      : []),
-    ...(onMapPub
-      ? [{ key: 'map-pub', label: cs.counter.moreMapPub, Icon: MapPinnedIcon, onPress: onMapPub }]
       : []),
   ];
 

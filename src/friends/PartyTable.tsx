@@ -4,7 +4,7 @@
  * A round pub table seen from above with a half-litre at every taken seat: a
  * full glass for everyone who said "Jdu", a bare outline for everyone who said
  * "Možná", and a thin ring of foam around my own glass when I am sitting there
- * too. It is the Parta counterpart of `BeerGlass` and `TallyCoaster` — the one
+ * too. It is the Parta counterpart of `TallyCoaster` — the one
  * piece of personality on the screen, and the thing that makes the party read
  * as a table instead of a feed.
  *

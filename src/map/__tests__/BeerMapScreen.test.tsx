@@ -317,6 +317,35 @@ describe('BeerMapScreen opening-hours loading', () => {
     expect(screen.UNSAFE_queryAllByType(ScrollView)).toHaveLength(0);
   });
 
+  it('switches layers from the card, and only from the card', () => {
+    const screen = render(
+      <BeerMapScreen
+        filters={EMPTY_PUB_SEARCH_FILTERS}
+        onApplyFilters={jest.fn()}
+        onShowCompass={jest.fn()}
+      />,
+    );
+
+    // The switch is on the surface, all three slices at once.
+    expect(screen.getByLabelText(cs.map.layerAll)).toBeTruthy();
+    expect(screen.getByLabelText(cs.map.layerVisited)).toBeTruthy();
+    expect(screen.getByLabelText(cs.map.layerFriends)).toBeTruthy();
+
+    // And the overflow sheet no longer offers the same three as rows.
+    fireEvent.press(screen.getByLabelText(cs.a11y.compassMore));
+    expect(screen.queryAllByLabelText(cs.map.layerVisited)).toHaveLength(1);
+
+    fireEvent.press(screen.getByLabelText(cs.map.layerVisited));
+    // "Moje stopy" is now the selected tab; the previous one became pressable.
+    expect(
+      screen.getByLabelText(cs.map.layerVisited).props.accessibilityState,
+    ).toMatchObject({ selected: true });
+
+    // The chosen layer is remembered across mounts, so put it back — otherwise
+    // the next test starts on a slice where the fixture pub isn't drawn.
+    fireEvent.press(screen.getByLabelText(cs.map.layerAll));
+  });
+
   it('asks for confirmation before reporting a pub from the overflow sheet', () => {
     const screen = render(
       <BeerMapScreen

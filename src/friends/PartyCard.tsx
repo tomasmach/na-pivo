@@ -23,6 +23,7 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
 import { ChevronRightIcon } from '@/components/shared/IconGlyph';
 import { PartyTable } from '@/friends/PartyTable';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -152,6 +153,7 @@ export function PartyCard({
   if (onPress === null) {
     return (
       <View style={styles.card} accessibilityRole="text" accessibilityLabel={accessibilityLabel}>
+        <CardSheen />
         {content}
       </View>
     );
@@ -164,6 +166,7 @@ export function PartyCard({
       accessibilityLabel={accessibilityLabel}
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
+      <CardSheen />
       {content}
     </Pressable>
   );
@@ -176,15 +179,8 @@ const styles = StyleSheet.create({
   // a plain scroll the flex simply has nothing to divide and `body`'s minHeight
   // takes over, which is exactly the NightCard behaviour.
   card: {
+    ...CardSurface.card,
     flex: 1,
-    overflow: 'hidden',
-    backgroundColor: Colors.stout2,
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.07),
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 8,
   },
   pressed: {
     opacity: 0.85,

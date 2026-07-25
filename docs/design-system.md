@@ -1,9 +1,10 @@
 # Na pivo — design system
 
-> **Etalon:** obrazovka Štamgast → Počítat (commit `84ee101`).
-> Soubory: `src/counter/CounterScreen.tsx`, `CoasterCard.tsx`, `BeerGlass.tsx`, `CounterCta.tsx`,
-> `NudgeSlot.tsx`, `PlaceChip.tsx`, `DrinkPickSheet.tsx`, `ReceiptSheet.tsx`, `CounterMoreSheet.tsx`,
-> `src/beer/BeerScreen.tsx`.
+> **Etalon:** obrazovka Štamgast → Počítat.
+> Soubory: `src/counter/CounterScreen.tsx`, `CoasterCard.tsx`, `CounterCta.tsx`,
+> `CounterQuickActions.tsx`, `NudgeSlot.tsx`, `PlaceChip.tsx`, `DrinkPickSheet.tsx`,
+> `ReceiptSheet.tsx`, `CounterMoreSheet.tsx`, `src/components/shared/CardSurface.tsx`,
+> `src/components/shared/SocialRail.tsx`, `src/beer/BeerScreen.tsx`.
 >
 > Tenhle dokument je **závazný**. Když stavíš nebo přestavuješ obrazovku, hodnoty se neopisují
 > „přibližně“ — kopírují se. Když ti nějaké pravidlo brání, řekni to nahlas a navrhni změnu
@@ -26,6 +27,9 @@ funkci, jen přestal ukazovat všechno naráz. Postup je vždycky stejný:
 3. **Jedna cesta k jedné věci.** Tři způsoby, jak udělat totéž, byly hlavní problém starého
    počítadla. Když najdeš duplicitní cestu, **zruš ji** — nezachovávej ji „pro jistotu“.
 4. **Okrajové akce do jednoho `…` sheetu.** Ne do headeru, ne do karty, ne do plovoucí pilulky.
+   **Rovnocenný povrch ale okrajová akce není.** Mapa je dvojče kompasu, ne položka menu — proto
+   sedí v headeru jako polovina titulku (`ExploreSwitch`, `variant="flat"`) a v `…` sheetu už
+   není. Když povrch pustíš do headeru, **musíš** jeho řádek ze sheetu smazat (§14.4).
 5. **Zruš dekoraci, která nic neříká.** Rozmazané záře na pozadí, jantarové kickery nad každou
    sekcí, rámečky kolem rámečků, emoji v chromu, ikona u každého řádku.
 6. **Slučuj sekce.** Dvě sekce, které uživatel čte jako jednu věc, mají být jedna karta.
@@ -75,7 +79,7 @@ Osobnost dodává jeden kreslený vektorový prvek, ne dekorace, ne animace a ro
 | `Colors.foamMuted` | `#E8DCC0` | Sekundární text, popisek pod číslem, ikona zavírání. |
 | `Colors.mutedText` | `#A8896A` | Terciární text, meta řádky, neaktivní stav, „…“ ikona. |
 | `Colors.success` | `#7DD66B` | Potvrzení. Používej střídmě; jantar většinou stačí. |
-| `Colors.open` | `#F0BE5C` | Otevřeno (otevírací doba). |
+| `Colors.open` | `#F0BE5C` | Otevřeno (otevírací doba) — text i stavová tečka. |
 | `Colors.closed` | `#A8896A` | Zavřeno. Nikdy červená — nemáme na uživatele křičet. |
 | `Colors.black` | `#000000` | Jen backdrop (`withAlpha(Colors.black, 0.6)`) a `softDrop()`. |
 | `Colors.white` | `#FFFFFF` | Nepoužívat na text. Text je `foam`. |
@@ -160,6 +164,12 @@ function countFontSize(count: number): number {
   return 56;
 }
 ```
+
+**Když je číslo jediný obsah karty, je 88 podlaha, ne strop.** Karta počítadla nemá ilustraci, takže
+se číslo měří z karty (`countNumeralSize` v `CoasterCard.tsx`): výška těla mínus místo na popisek,
+lomeno 1.24, zastropováno na 132 a navíc omezeno šířkou (`digits × 0.62 × fontSize ≤ šířka`), aby
+tříciferný večer nepřetekl na iPhonu SE. `adjustsFontSizeToFit` je pojistka, ne návrh — číslo, které
+si velikost tiše určí samo, je číslo, jehož velikost nikdo neřídí.
 
 ### 3.2 Povinná pravidla pro velká čísla
 
@@ -249,19 +259,25 @@ se pak čte jako seznam náhodných prvků.
 
 ### 5.1 Recept
 
+**Recept není v žádné obrazovce. Je v `src/components/shared/CardSurface.tsx`** a všechny hero
+karty (počítadlo, kompas, profil, deník, parta, příchod) ho jen rozbalí:
+
 ```ts
 card: {
+  ...CardSurface.card,     // stout2, radius 28, okraj foam 7 %, padding 24/24/8, softDrop
   flex: 1,                 // karta žere prostor mezi headerem a tlačítkem
-  overflow: 'hidden',      // obsah nikdy nepřeteče přes zaoblený roh
-  backgroundColor: Colors.stout2,
-  borderRadius: 28,        // === Radius.cardLarge
-  borderWidth: 1,
-  borderColor: withAlpha(Colors.foam, 0.07),
-  paddingHorizontal: 24,
-  paddingTop: 24,
-  paddingBottom: 8,
 },
 ```
+
+A jako **první dítě** karty jde `<CardSheen />`: jeden světelný hairline po horní hraně
+(`foam 22 %`, vsazený 14 % z každé strany) a jemný přeliv shora dolů (`foam 5 % → 0` na horních
+42 % karty). Bez toho je karta plochý hnědý obdélník; s tím čte jako nasvícený fyzický povrch.
+
+**Tohle není zakázaná záře.** `Colors.glow` v tom nevystupuje, nic se nerozmazává, nic nesvítí
+za obsahem a nic se nehýbe — je to pěna na 5–22 % na hraně panelu. Radiální halo za obsahem
+zůstává zakázané (§14.3).
+
+Karta si vlastní i patku: `CardSurface.footer` je ten hairline + `space-between` řádek.
 
 Vnořené prvky uvnitř karty jsou `Colors.stout3` s `Radius.medium` (16) nebo `Radius.pill`.
 Patka karty je hairline, ne plná linka:
@@ -294,19 +310,62 @@ Změř kartu a odvoď od ní velikost obsahu:
 
 ```tsx
 const [bodyHeight, setBodyHeight] = useState(0);
-// clamp: nikdy menší než 64, nikdy větší než 112
-const glassWidth = bodyHeight > 0
-  ? Math.max(64, Math.min(112, (bodyHeight - 16) * 0.66))
-  : 88;
+// clamp: nikdy menší než 72, nikdy větší než 108
+const ringSize = bodyHeight > 0
+  ? Math.max(72, Math.min(108, Math.round(bodyHeight * 0.52)))
+  : 92;
 
 <View style={styles.body} onLayout={(e) => setBodyHeight(e.nativeEvent.layout.height)}>
   …
-  <BeerGlass count={count} width={glassWidth} />
+  <LevelRing level={level} title={title} progress={progress} size={ringSize} />
 </View>
 ```
 
-Na iPhonu SE se sklenice zmenší; na iPhonu 16 Pro Max naroste na strop. Nikdy nepřeteče kartu.
-Vždycky měř s fallbackem (`bodyHeight > 0 ? … : 88`), aby první frame nebyl nulový.
+Na iPhonu SE se prstenec zmenší; na iPhonu 16 Pro Max naroste na strop. Nikdy nepřeteče kartu.
+Vždycky měř s fallbackem (`bodyHeight > 0 ? … : 92`), aby první frame nebyl nulový. Stejně se měří
+i velké číslo v kartě počítadla (§3.1) a ciferník kompasu.
+
+### 5.4 Otevírací doba má vlastní řádek
+
+V patce karty kompasu jde **nejdřív název hospody, pak otevírací doba na vlastním řádku se stavovou
+tečkou, a teprve pak pivo s cenou**. Dřív to byla jedna 13pt věta („Otevřeno do 23:00 · Pilsner
+Urquell 95 Kč"), takže údaj, kvůli kterému člověk kouká do telefonu na ulici, se ořezával první.
+
+- Tečka 6 × 6 pt, `Radius.pill`, barva `Colors.open` / `Colors.closed` / `Colors.mutedText`. Je to
+  jediná tečka v appce, která smí být ozdobného tvaru, protože nese skutečný stav.
+- Oba řádky sedí v jednom slotu s **pevnou výškou 38** — hodiny dojdou ze sítě chvíli po názvu a
+  ciferník se kvůli nim nesmí přeměřovat.
+- Když hledání dojede naprázdno, řekne se to („Otevírací doba neznámá") — a tečka zůstává, protože
+  ten řádek je pořád o otevírací době. Vedle toho stojí dveře „Zmapuj", takže z neznalosti rovnou
+  plyne úkol. Ticho drží jen po dobu, kdy dotaz běží — nikdo nečte „Načítám".
+- **Stejná anatomie platí pro kartu na mapě** (`PlaceCard`): název + dveře v jednom řádku, pod tím
+  hlasitá otevírací doba s tečkou, pod tím tichý řádek (hodnocení, „byl jsi tu"). Slot má pevných
+  38, aby se karta nepřeměřovala, když dojdou hodiny nebo když vybereš pin.
+
+### 5.5 Řádky v kartě: rychlé akce a sociální lišta
+
+Karta počítadla drží pod velkým číslem dva řádky, a jsou to jediné dva povolené:
+
+| Řádek | Co v něm je | Jak vypadá |
+|---|---|---|
+| `CounterQuickActions` | „Jiné pivo", „Zmapuj" | outline chipy, `height: 44`, jantar na 6 % / okraj 18 %, `flex: 1` každý |
+| `SocialRail` | Parta, Pivaři, FotoPivař | tři stejné sloupce, jantarový medailonek 34 pt, label 13 Baloo bold, svislý hairline mezi nimi |
+| `LayerSwitch` (karta na mapě) | V okolí, Moje stopy, Parta teď | segmentovaná dráha `foam 4 %` / okraj 8 %, aktivní `foam 10 %`, výška 38 |
+
+Pravidla, aby z toho nebyla mřížka tlačítek:
+
+- **Oddělují se světlem, ne rámečkem.** Hairline nad řádkem (`foam 10 %`) a mezi sloupci
+  (`foam 10 %`, výška 26–28). Tři ohraničené dlaždice v ohraničené kartě je rámeček na rámečku (§14.10).
+- **Chip se zobrazí jen když jeho akce něco dělá jinak než CTA.** „Jiné pivo" existuje pouze ve
+  chvíli, kdy tlačítko opakuje poslední pivo; jinak by to byly dvě dveře do jednoho sheetu (§14.4).
+  „Zmapuj" existuje jen v hospodě.
+- **Lišta je navigace, ne akce.** Vede na povrch (Parta, žebříček, soutěž), nic nepočítá a nic
+  nemaže. Proto neporušuje pravidlo jedné akce (§6.3) — to mluví o akcích, ne o dveřích.
+- **Jeden živý údaj, a jen když je zdarma.** Badge na Partě čte počet kamarádů v hospodě
+  z už uloženého snapshotu. Vymyšlené číslo je horší než žádné číslo.
+- **Režim povrchu je ovládací prvek, ne popisek.** Vrstvy mapy byly tři řádky v `…` sheetu a karta
+  jen tiskla jméno té aktivní. Teď jsou to segmenty v patce karty a ze sheetu zmizely — jedny dveře
+  na jedno místo (§0.4).
 
 ---
 
@@ -684,58 +743,31 @@ přidat akci opačného směru, **udělej místo toho druhý sheet**.
 
 ## 9. Ilustrace a osobnost
 
-- **Vektor, ne bitmapa.** `react-native-svg`, žádné PNG. Zůstane ostré v každé velikosti a přebarví
-  se s tokeny, místo aby se do bundlu přibalil asset.
-- **Barvy z tokenů**, nikdy hardcoded hex uvnitř SVG. `Colors.amber`, `Colors.amberLight`,
-  `withAlpha(Colors.foam, 0.05)`.
-- **Aspoň jeden kreslený prvek na hlavní obrazovku.** Bez něj je obrazovka jen typografie na hnědém
-  pozadí a produkt přestane být hospodský.
-- **Ilustrace reaguje na data, ne na čas.** Mění se, když se mění hodnota. Nemá vlastní život.
+**Kreslený prvek si musí zasloužit místo tím, že nese data.** Obrázek TOHO, co se počítá, data
+nenese — a přesně na tom umřely dvě ilustrace, které tu dřív byly povinné:
 
-Princip z `BeerGlass.tsx` — obrys je `ClipPath`, obsah je obdélník, jehož poloha se počítá z dat:
+| Zabito | Proč |
+|---|---|
+| `BeerGlass` (krýgl na počítadle) | Byl to obrázek piva na obrazovce, která chtěla ukázat počet piv. Vedle velkého čísla říkal totéž podruhé a hůř. |
+| `CoasterStack` (štos tácků na profilu) | Kódoval kariéru jako nečitelnou výšku hromádky, a level byl vedle toho stejně napsaný slovy v patce. |
+| čárky na tácku v kartě počítadla | Zkoušené jako náhrada krýglu. U jednoho piva je jedna čárka vedle velké „1" jen škrábanec. |
 
-```tsx
-const GLASS_PATH = 'M12 6 H76 L70 112 Q68.5 126 55 126 H33 Q19.5 126 18 112 Z';
-const FULL_AT = 10;
+Pravidlo tedy **není** „aspoň jeden kreslený prvek na obrazovku". Pravidlo je:
 
-const height = Math.round((width / 88) * 132);
-const ratio = Math.max(0, Math.min(1, count / FULL_AT));
-const top = 127 - ratio * 115;   // hladina
+1. **Kreslí se to, co se jinak přečíst nedá.** Směr (`CompassDial`), rozjezd levelu v rámci
+   stupně (`LevelRing`), noc na tácku ve sdíleném obrázku (`TallyCoaster`, `TallyMarks`),
+   stůl party (`PartyTable`), pódium (`PodiumMats`).
+2. **Když to jde říct číslem, řekne se to číslem.** Velké jantarové číslo je silnější než jakákoli
+   kresba téhož (§14.5 platí i obráceně).
+3. **Osobnost nese i chrome.** Baloo, tácková karta se světelnou hranou, jantar na 10 %, hospodský
+   copy. Obrazovka bez kresby proto není „jen typografie na hnědém pozadí".
+4. **Uvolněné místo patří funkci, ne dekoraci.** Když ilustrace zmizí, na její místo jde něco, co
+   něco dělá — v kartě počítadla jsou to `CounterQuickActions` a `SocialRail` (§5.5).
 
-<Svg width={width} height={height} viewBox="0 0 88 132">
-  <Defs>
-    <ClipPath id="glassClip"><Path d={GLASS_PATH} /></ClipPath>
-    <LinearGradient id="beerFill" x1="0" y1="0" x2="0" y2="1">
-      <Stop offset="0" stopColor={Colors.amberLight} stopOpacity={0.95} />
-      <Stop offset="1" stopColor={Colors.amber} stopOpacity={0.8} />
-    </LinearGradient>
-  </Defs>
-
-  {/* prázdná sklenice — čitelná i při nule */}
-  <Path d={GLASS_PATH} fill={withAlpha(Colors.foam, 0.05)} />
-
-  {ratio > 0 ? (
-    <G clipPath="url(#glassClip)">
-      <Rect x="0" y={top} width="88" height={132 - top} fill="url(#beerFill)" />
-      <Rect x="0" y={top - 8} width="88" height="10" rx="4" fill={Colors.foam} opacity={0.92} />
-    </G>
-  ) : null}
-
-  {/* jeden odlesk, aby tvar nečetl jako plochý sloupec */}
-  <G clipPath="url(#glassClip)">
-    <Rect x="25" y="16" width="6" height="94" rx="3" fill={Colors.foam} opacity={0.16} />
-  </G>
-
-  <Path d={GLASS_PATH} fill="none" strokeWidth={2.5} strokeLinejoin="round"
-        stroke={withAlpha(Colors.amber, ratio > 0 ? 0.55 : 0.32)} />
-</Svg>
-```
-
-Přenositelná pravidla: pevný `viewBox`, výška odvozená od šířky konstantním poměrem, `clipPath` drží
-obsah v obrysu, prázdný stav je vidět (`foam` na 5 %), obrys mírně zesílí, když je prvek „aktivní“,
-a komponenta je `memo`.
-
----
+Když už kreslíš: **vektor, ne bitmapa** (`react-native-svg`), **barvy z tokenů**, nikdy hardcoded
+hex uvnitř SVG, **reaguje na data, ne na čas**, komponenta je `memo`, pevný `viewBox`, výška
+odvozená od šířky konstantním poměrem, prázdný stav je vidět (`foam` na 4–8 %) a dekorativní
+kresba je pro čtečku skrytá (`accessibilityElementsHidden`).
 
 ## 10. Pohyb
 
@@ -876,8 +908,10 @@ Konkrétní věci, které už jednou byly a byly zabity. Nedělej je znovu.
    68 %“. Uživatel chce vidět, kolik piv vypil. Číslo, velké, jantarové, tabulární. Ilustrace ho
    doplňuje, nenahrazuje.
 6. **Řada soupeřících pilulek pod hlavním obsahem.** Foto, story, ping partě, zpětný zápis, sken —
-   pět outline chipů vedle sebe. Všechno tohle patří za „…“ do overflow sheetu jako prostý
-   pojmenovaný seznam.
+   pět outline chipů vedle sebe **volně na obrazovce**, každý jinak široký, mezi kartou a tlačítkem.
+   Tohle zůstává zabité. Povolený je jen strukturovaný řádek **uvnitř karty** podle §5.5: maximálně
+   dva chipy stejné šířky, nebo tři stejné sloupce oddělené hairlinem. Cokoliv dalšího patří za „…“
+   jako prostý pojmenovaný seznam.
 7. **Ozdobné smyčkové animace.** Bublinky ve skle, pulzování, shimmer skeleton, „dýchající“ ikona.
    Viz §10.
 8. **Skákající layout.** Podmíněně renderovaný pruh nad tlačítkem, který se objevuje a mizí, posouvá

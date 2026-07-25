@@ -106,10 +106,12 @@ import { ScannedDrinkPicker } from '@/counter/ScannedDrinkPicker';
 import { CounterMoreSheet } from '@/counter/CounterMoreSheet';
 import { PlaceChip, type PlaceChipKind } from '@/counter/PlaceChip';
 import { CoasterCard } from '@/counter/CoasterCard';
-import { CounterCta, CounterSecondary } from '@/counter/CounterCta';
+import { CounterQuickActions } from '@/counter/CounterQuickActions';
+import { CounterCta } from '@/counter/CounterCta';
 import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import { DrinkPickSheet, type DrinkPickRow } from '@/counter/DrinkPickSheet';
 import { ReceiptSheet, type ReceiptItem } from '@/counter/ReceiptSheet';
+import { SocialRail } from '@/components/shared/SocialRail';
 import { WeeklyRankChip } from '@/leaderboards/WeeklyRankChip';
 import { refreshBeerCountReminderAfterBeer } from '@/notifications/beerCountReminder';
 
@@ -1263,9 +1265,11 @@ function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }:
     resumable,
   ]);
 
-  // The secondary button only makes sense while the CTA repeats a beer — in
-  // every other state the CTA already leads to the pick sheet or the form.
-  const showSecondary = !!place && !resumable && !!repeatBeer;
+  // "Jiné pivo" only makes sense while the CTA repeats a beer — in every other
+  // state the CTA already leads to the pick sheet or the form. It used to be a
+  // separate outline button under the CTA; it now lives in the card, where it is
+  // visible without adding a fifth block to the screen.
+  const showQuickOtherBeer = !!place && !resumable && !!repeatBeer;
 
   // ── The one nudge ───────────────────────────────────────────────────────────
 
@@ -1338,6 +1342,18 @@ function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }:
       <View style={styles.header}>
         <PlaceChip kind={chipKind} label={placeLabel} onPress={onChangePlace} />
         <View style={styles.headerSpacer} />
+        {/* Cvakni pivo. It feeds the Parta strip and the photo contest, so it is
+            the one social action that earns a permanent glyph up here instead of
+            a row inside "…" that nobody opens with a beer in hand. */}
+        <Pressable
+          onPress={() => setPhotoCaptureOpen(true)}
+          style={({ pressed }) => [styles.moreButton, pressed && styles.pressedSoft]}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={cs.photoDiary.counterCta}
+        >
+          <CameraIcon size={20} color={Colors.amber} />
+        </Pressable>
         <Pressable
           onPress={() => setMoreOpen(true)}
           style={({ pressed }) => [styles.moreButton, pressed && styles.pressedSoft]}
@@ -1361,7 +1377,19 @@ function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }:
             ? cs.a11y.counterCoaster(beerCountLabel(count), spentLabel ?? undefined)
             : cs.a11y.counterCoasterEmpty
         }
-      />
+      >
+        {/* The room the drawn mug used to take, spent on things that do
+            something: the two shortcuts people reach for with a beer in hand,
+            then the three community surfaces that were invisible behind "…". */}
+        <CounterQuickActions
+          // Only while the button repeats the last beer. In every other state the
+          // CTA itself already leads to the pick sheet, and two doors to one
+          // sheet is the mistake the old counter was built out of.
+          onPickOther={showQuickOtherBeer ? () => setPickOpen(true) : undefined}
+          onMapPub={pub ? () => setMapPubOpen(true) : undefined}
+        />
+        <SocialRail />
+      </CoasterCard>
 
       <NudgeSlot nudge={nudge} />
 
@@ -1371,13 +1399,6 @@ function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }:
         onPress={cta.onPress}
         accessibilityLabel={cta.a11y}
       />
-
-      {/* "Ještě jedno" must never be the only visible way to log a drink: a
-          different beer, a shot or a Kofola is always one tap away, right here,
-          not hidden behind the overflow. */}
-      {showSecondary ? (
-        <CounterSecondary label={cs.counter.repeatOther} onPress={() => setPickOpen(true)} />
-      ) : null}
 
       <DrinkPickSheet
         visible={pickOpen}
@@ -1406,14 +1427,12 @@ function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }:
         visible={moreOpen}
         onClose={() => setMoreOpen(false)}
         onDone={count > 0 ? () => runAfterSheetClose(handleDone) : undefined}
-        onPhoto={() => runAfterSheetClose(() => setPhotoCaptureOpen(true))}
         onSticker={liveNight ? () => runAfterSheetClose(() => setStickerOpen(true)) : undefined}
         onPingFriends={pub ? () => runAfterSheetClose(() => void handleShareWithFriends()) : undefined}
         broadcasted={broadcasted}
         onBackdate={() => runAfterSheetClose(handleBackdatePress)}
         onScanMenu={pub ? () => runAfterSheetClose(() => setScanSourceVisible(true)) : undefined}
         scanning={scanningDrinks}
-        onMapPub={pub ? () => runAfterSheetClose(() => setMapPubOpen(true)) : undefined}
       />
 
       <BeerFormModal
