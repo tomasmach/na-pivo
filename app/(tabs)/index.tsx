@@ -727,6 +727,12 @@ export default function CompassScreen() {
     !focusedPub && pub
       ? formatBeerLine(pub.beers ?? [], priceCurrency, pub.price, pub.beersUpdatedAt, true)
       : null;
+  // The sheet has the width the card's footer does not, so it gets the full
+  // sentence: volume, price age and "a další".
+  const sheetBeerLine =
+    !focusedPub && pub
+      ? formatBeerLine(pub.beers ?? [], priceCurrency, pub.price, pub.beersUpdatedAt)
+      : null;
 
   // Tapping the card footer opens what you'd want next: the pub hub when the
   // name is visible, the reveal when it isn't.
@@ -756,19 +762,13 @@ export default function CompassScreen() {
     if (focusedPub) {
       return { kind: 'dopito', label: cs.compass.nudgeFocused, onPress: () => undefined };
     }
-    if (mode === 'surprise') {
-      return {
-        kind: 'counted',
-        text: cs.compass.nudgeSurprise,
-        undoLabel: cs.compass.nudgeSurpriseOff,
-        onUndo: () => handleModeChange('nearest'),
-      };
-    }
+    // Surprise mode speaks for itself through "Dej mi jinou" in the thumb arc,
+    // so it gets no strip of its own; the way back is the overflow sheet.
     if (hasMagnetometer === false) {
       return { kind: 'dopito', label: cs.compass.nudgeNoMagnetometer, onPress: () => undefined };
     }
     return null;
-  }, [activeFilterCount, focusedPub, handleModeChange, hasMagnetometer, headingAccuracy, mode]);
+  }, [activeFilterCount, focusedPub, hasMagnetometer, headingAccuracy]);
 
   // Everything that used to live in the header and the bottom bar — minus the
   // map, which is now a visible half of the header. One door per place.
@@ -937,7 +937,7 @@ export default function CompassScreen() {
         hoursTone={hours.tone}
         beerLine={showPubDetails ? beerLine : null}
         hidden={!showPubDetails}
-        showMapLink={showPubDetails && !focusedPub && targetPub !== null}
+        showDetailLink={showPubDetails && !focusedPub && targetPub !== null}
         onPressFooter={handleCardFooterPress}
         accessibilityLabel={
           showPubDetails
@@ -990,6 +990,9 @@ export default function CompassScreen() {
           pubKey={geohash8(pub.lat, pub.lng)}
           pubName={pub.name}
           info={pubInfoFromPub(pub)}
+          hoursLabel={hours.label}
+          hoursTone={hours.tone}
+          beerLine={sheetBeerLine}
           onClose={() => setMapPubOpen(false)}
         />
       ) : null}

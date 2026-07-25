@@ -132,6 +132,21 @@ interface MapPubSheetProps {
   onRenamed?: (newName: string) => void;
   /** When set, the sheet also offers the shared pub-report flow. */
   onReport?: (reason: PubReportReason) => void;
+  /**
+   * What the pub IS, for the header: today's hours and the beer on tap, already
+   * formatted by the host (it owns the live open/closed lookup). Optional — a
+   * host that has neither gets the bare name, exactly as before.
+   */
+  hoursLabel?: string | null;
+  hoursTone?: 'open' | 'closed' | 'unknown';
+  beerLine?: string | null;
+}
+
+/** Same tones as the compass card. Never red — a closed pub is not an error. */
+function hoursColor(tone: 'open' | 'closed' | 'unknown'): string {
+  if (tone === 'open') return Colors.open;
+  if (tone === 'closed') return Colors.closed;
+  return Colors.mutedText;
 }
 
 function haptic() {
@@ -163,6 +178,9 @@ export function MapPubSheet({
   info,
   onRenamed,
   onReport,
+  hoursLabel,
+  hoursTone = 'unknown',
+  beerLine,
 }: MapPubSheetProps) {
   const insets = useSafeAreaInsets();
   const reduceMotion = useReduceMotion();
@@ -631,12 +649,33 @@ export function MapPubSheet({
                 >
                   {displayName}
                 </Text>
-                <Text style={styles.subtitle} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {subtitle}
-                </Text>
-                <Text style={styles.personal} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {cs.mapPub.personal(headerProgress.answered, headerProgress.total)}
-                </Text>
+                {/* The header answers "what is this pub?", not "fill it in":
+                    you open this from two kilometres away, where today's hours
+                    and what they pour are the only facts that matter. The
+                    mapping pitch moved down to the mapping section. */}
+                {hoursLabel ? (
+                  <View style={styles.hoursRow}>
+                    <View
+                      style={[styles.hoursDot, { backgroundColor: hoursColor(hoursTone) }]}
+                    />
+                    <Text
+                      style={[styles.hours, { color: hoursColor(hoursTone) }]}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {hoursLabel}
+                    </Text>
+                  </View>
+                ) : null}
+                {beerLine ? (
+                  <Text
+                    style={styles.subtitle}
+                    numberOfLines={2}
+                    maxFontSizeMultiplier={FontScaleCap.body}
+                  >
+                    {beerLine}
+                  </Text>
+                ) : null}
               </View>
               <CompletenessRing pct={completeness.pct} reduceMotion={reduceMotion} />
             </View>
@@ -650,11 +689,6 @@ export function MapPubSheet({
             >
               <XIcon size={18} color={Colors.foamMuted} />
             </Pressable>
-
-            {/* Public-data note — makes the public/community nature explicit. */}
-            <Text style={styles.publicNote} maxFontSizeMultiplier={FontScaleCap.body}>
-              {!backendConfigured ? cs.mapPub.offline : cs.mapPub.publicNote}
-            </Text>
 
             <ScrollView
               ref={bodyRef}
@@ -718,6 +752,25 @@ export function MapPubSheet({
                 pubName={displayName}
                 info={info}
               />
+
+              {/* The mapping pitch lives with the mapping, not in the header:
+                  everything above this line tells you about the pub, everything
+                  below asks you to fill it in. */}
+              <View style={styles.mapIntro}>
+                <Text style={styles.mapIntroTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+                  {cs.mapPub.mapIntroTitle}
+                </Text>
+                <Text style={styles.subtitle} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {subtitle}
+                </Text>
+                <Text style={styles.personal} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {cs.mapPub.personal(headerProgress.answered, headerProgress.total)}
+                </Text>
+                {/* Public-data note — makes the public/community nature explicit. */}
+                <Text style={styles.publicNote} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {!backendConfigured ? cs.mapPub.offline : cs.mapPub.publicNote}
+                </Text>
+              </View>
 
               {grouped.map(({ section, items }) => (
                 <View key={section}>
@@ -1117,6 +1170,33 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: Fonts.display.extrabold,
     fontSize: 22,
+    color: Colors.foam,
+  },
+  hoursRow: {
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  hoursDot: {
+    width: 6,
+    height: 6,
+    borderRadius: Radius.pill,
+  },
+  hours: {
+    flexShrink: 1,
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 13,
+  },
+  mapIntro: {
+    marginTop: Spacing.lg,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: withAlpha(Colors.border, 0.5),
+  },
+  mapIntroTitle: {
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 17,
     color: Colors.foam,
   },
   subtitle: {

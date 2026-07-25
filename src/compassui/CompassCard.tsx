@@ -36,7 +36,7 @@ import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react
 import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
 import { ChevronRightIcon } from '@/components/shared/IconGlyph';
 import { cs } from '@/i18n/cs';
-import { Colors } from '@/theme/colors';
+import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius } from '@/theme/layout';
 
@@ -101,8 +101,8 @@ export interface CompassCardProps {
   beerLine: string | null;
   /** Hidden-pub-names mode: the footer teases instead of telling. */
   hidden: boolean;
-  /** Show the amber "Zmapuj ›" door on the right of the footer. */
-  showMapLink: boolean;
+  /** Show the amber chevron door beside the pub name. */
+  showDetailLink: boolean;
   /** Footer tap: opens the pub info, or reveals the name while hidden. */
   onPressFooter: () => void;
   accessibilityLabel: string;
@@ -118,7 +118,7 @@ export function CompassCard({
   hoursTone,
   beerLine,
   hidden,
-  showMapLink,
+  showDetailLink,
   onPressFooter,
   accessibilityLabel,
 }: CompassCardProps) {
@@ -208,17 +208,28 @@ export function CompassCard({
             </Text>
           ) : (
             <>
-              {/* Without minWidth/flexShrink a long name pushes the door off the
-                  card instead of truncating. Test case: "Restaurace U Zlatého
-                  Tygra na Starém Městě". */}
+              {/* The door shares a row with the NAME only, so the hours and the
+                  beer get the card's full width. They used to end at the door's
+                  left edge, which is what truncated "Velkopopovický Kozel Černý"
+                  with half the footer sitting empty beside it. Without
+                  minWidth/flexShrink a long name pushes the door off the card
+                  instead of truncating. Test case: "Restaurace U Zlatého Tygra
+                  na Starém Městě". */}
               <View style={styles.footerText}>
-                <Text
-                  style={styles.pubName}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={FontScaleCap.heading}
-                >
-                  {pubName}
-                </Text>
+                <View style={styles.nameRow}>
+                  <Text
+                    style={styles.pubName}
+                    numberOfLines={1}
+                    maxFontSizeMultiplier={FontScaleCap.heading}
+                  >
+                    {pubName}
+                  </Text>
+                  {showDetailLink ? (
+                    <View style={styles.detailDoor}>
+                      <ChevronRightIcon size={16} color={Colors.amber} />
+                    </View>
+                  ) : null}
+                </View>
                 {/* Fixed-height slot: the hours arrive from the network a moment
                     after the name, and the dial must not resize when they land. */}
                 <View style={styles.metaSlot}>
@@ -250,15 +261,6 @@ export function CompassCard({
                   ) : null}
                 </View>
               </View>
-
-              {showMapLink ? (
-                <View style={styles.mapLink}>
-                  <Text style={styles.mapLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {cs.compass.mapPubLink}
-                  </Text>
-                  <ChevronRightIcon size={15} color={Colors.amber} />
-                </View>
-              ) : null}
             </>
           )}
         </Pressable>
@@ -317,11 +319,28 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   pubName: {
+    flexShrink: 1,
     fontFamily: Fonts.display.extrabold,
     fontSize: 18,
     color: Colors.foam,
     includeFontPadding: false,
+  },
+  // A chevron, not a verb: the footer opens what the pub IS, and mapping it is
+  // one of the things you can do in there. "Zmapuj" as the default door asked
+  // people to fill in a pub they are still two kilometres away from.
+  detailDoor: {
+    width: 28,
+    height: 28,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.amber, 0.12),
   },
   // Holds both lines at a fixed height so the card never resizes around them.
   metaSlot: {
@@ -353,17 +372,6 @@ const styles = StyleSheet.create({
   },
   revealHint: {
     flex: 1,
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 15,
-    color: Colors.amber,
-    includeFontPadding: false,
-  },
-  mapLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  mapLabel: {
     fontFamily: Fonts.ui.semibold,
     fontSize: 15,
     color: Colors.amber,

@@ -1455,6 +1455,12 @@ export default function BeerMapScreen({
           pubKey={selectedPub.key}
           pubName={selectedPub.pub.name}
           info={pubInfoFromPub(selectedDetailPub ?? selectedPub.pub)}
+          hoursLabel={cardState.kind === 'pub' ? cardState.meta : null}
+          hoursTone={
+            cardState.metaTone === 'open' || cardState.metaTone === 'closed'
+              ? cardState.metaTone
+              : 'unknown'
+          }
           onClose={() => setDetailOpen(false)}
           onReport={() => {
             setDetailOpen(false);

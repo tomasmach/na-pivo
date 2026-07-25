@@ -90,6 +90,7 @@ export const cs = {
     triggerA11y: (pub: string, pct: number) => `Zmapuj hospodu ${pub}, zmapováno z ${pct} procent`,
 
     // Sheet header
+    mapIntroTitle: 'Zmapuj hospodu',
     subtitleEmpty: 'Co tady mají? Dej vědět.',
     subtitleSome: 'Jde ti to!',
     subtitleDone: 'Paráda, máš to celé!',
@@ -284,7 +285,7 @@ export const cs = {
     /** Same slot while you're aiming at a friend's pub. */
     backToNearest: 'Zpět na nejbližší',
     /** Amber text door in the card footer — the twin of "Účet →" on the counter. */
-    mapPubLink: 'Zmapuj',
+    mapPubLink: 'O hospodě',
     /** Footer copy while pub names are hidden in settings. */
     revealHint: 'Ťukni a prozradím kam',
     /** Declined unit under the big distance numeral, e.g. "80 / METRŮ". */
@@ -301,7 +302,7 @@ export const cs = {
     moreModeNearest: 'Hledej nejbližší',
     moreModeSurprise: 'Překvap mě',
     moreAddPub: 'Přidat hospodu',
-    moreReport: 'Hospoda chybí nebo nesedí',
+    moreReport: 'Nahlásit hospodu',
     moreSearchSettings: 'Nastavení hledání',
     moreRetry: 'Zkusit znovu',
 
@@ -310,8 +311,6 @@ export const cs = {
       count === 1 ? 'Filtruju jednu věc' : count >= 2 && count <= 4 ? `Filtruju ${count} věci` : `Filtruju ${count} věcí`,
     nudgeFiltersClear: 'Zrušit',
     nudgeFocused: 'Mířím za partou',
-    nudgeSurprise: 'Losuju náhodně',
-    nudgeSurpriseOff: 'Nejbližší',
     nudgeNoMagnetometer: 'Tvůj telefon nemá kompas, šipka se točit nebude.',
     nudgeCalibrate: 'Otoč telefonem do osmičky, ať se kompas srovná.',
   },
