@@ -38,6 +38,10 @@ export interface PubInfoContext {
   historicalBeers?: CommunityBeer[] | null;
   /** Fresh reference price attached by nearby discovery, including its age. */
   price?: PubPrice | null;
+  /** ISO timestamps of the community's latest hours / beers contribution — the
+   *  "naposledy zmapováno" recency shown on the hub's fact tiles. */
+  hoursUpdatedAt?: string | null;
+  beersUpdatedAt?: string | null;
 }
 
 /** Adapt the shared Pub shape into the hub's info context. */
@@ -55,6 +59,8 @@ export function pubInfoFromPub(pub: Pub): PubInfoContext {
     prefillBeers: pub.beers ?? null,
     historicalBeers: pub.historicalBeers ?? null,
     price: pub.price ?? null,
+    hoursUpdatedAt: pub.hoursUpdatedAt ?? null,
+    beersUpdatedAt: pub.beersUpdatedAt ?? null,
   };
 }
 

@@ -98,6 +98,7 @@ describe('fetchPubHours — happy path', () => {
       beers: [],
       historicalBeers: [],
       beersUpdatedAt: null,
+      hoursUpdatedAt: null,
       rating: null,
       ratingCount: null,
       ratingLabel: null,
@@ -114,6 +115,7 @@ describe('fetchPubHours — happy path', () => {
       beers: [],
       historicalBeers: [],
       beersUpdatedAt: null,
+      hoursUpdatedAt: null,
       rating: null,
       ratingCount: null,
       ratingLabel: null,
@@ -198,6 +200,7 @@ describe('fetchPubHours — happy path', () => {
       beers: [],
       historicalBeers: [],
       beersUpdatedAt: null,
+      hoursUpdatedAt: null,
       rating: null,
       ratingCount: null,
       ratingLabel: null,
@@ -232,6 +235,7 @@ describe('fetchPubHours — happy path', () => {
             ],
             historical_beers: [{ name: 'Gambrinus 10°', price_czk: 49, volume_ml: 500 }],
             beers_updated_at: '2026-07-13T10:15:00Z',
+            hours_updated_at: '2026-07-12T09:00:00Z',
           },
         ],
       }),
@@ -251,6 +255,7 @@ describe('fetchPubHours — happy path', () => {
       { name: 'Gambrinus 10°', priceCzk: 49, volumeMl: 500 },
     ]);
     expect(entry?.beersUpdatedAt).toBe('2026-07-13T10:15:00Z');
+    expect(entry?.hoursUpdatedAt).toBe('2026-07-12T09:00:00Z');
   });
 
   it('tolerates absent community fields (old backend) without breaking', async () => {

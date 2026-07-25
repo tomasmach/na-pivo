@@ -221,6 +221,7 @@ describe('BeerMapScreen opening-hours loading', () => {
         beers: [],
         historicalBeers: [],
         beersUpdatedAt: null,
+        hoursUpdatedAt: null,
         rating: null,
         ratingCount: null,
         ratingLabel: null,

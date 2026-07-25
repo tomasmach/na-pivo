@@ -317,7 +317,11 @@ export function MapPubSheet({
     info?.price && isPriceFresh(info.price.observedAt) ? info.price.observedAt : null;
   const tilePriceAmount =
     priceObservedAt && info?.price ? formatPrice(info.price.czk, priceCurrency) : null;
-  const tilePriceAge = priceObservedAt ? priceAgeLabel(priceObservedAt) : null;
+  // "naposledy zmapováno" recency for each tile, from the community contribution
+  // timestamps. Hours recency needs the additive backend field, so it stays null
+  // until that ships; beers recency flows today.
+  const hoursMappedAge = info?.hoursUpdatedAt ? priceAgeLabel(info.hoursUpdatedAt) : null;
+  const beersMappedAge = info?.beersUpdatedAt ? priceAgeLabel(info.beersUpdatedAt) : null;
 
   // ── XP coalescing (spec §3.5) ──
   const xpAccum = useRef({ count: 0, xp: 0 });
@@ -703,7 +707,7 @@ export function MapPubSheet({
                     filled={facts.hasHours}
                     weekly={weeklyHours}
                     value={null}
-                    recency={null}
+                    recency={hoursMappedAge ? cs.mapPub.tileMapped(hoursMappedAge) : null}
                     emptyLabel={cs.mapPub.tileHoursEmpty}
                     onPress={() => openContribute('hours')}
                   />
@@ -722,7 +726,7 @@ export function MapPubSheet({
                         ? cs.mapPub.tileBeersValue(facts.beerCount, tilePriceAmount)
                         : null
                     }
-                    recency={tilePriceAge ? cs.mapPub.tileBeersRecency(tilePriceAge) : null}
+                    recency={beersMappedAge ? cs.mapPub.tileMapped(beersMappedAge) : null}
                     emptyLabel={cs.mapPub.tileBeersEmpty}
                     onPress={() => openContribute('beers')}
                   />

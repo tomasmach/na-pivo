@@ -70,6 +70,7 @@ type PubHoursState = {
   /** Previously confirmed beers no longer on the current tap list. */
   historicalBeers?: CommunityBeer[];
   beersUpdatedAt?: string | null;
+  hoursUpdatedAt?: string | null;
   /** Public star rating from the enrichment source, on a 0-5 scale. */
   rating?: number | null;
   /** Number of user ratings behind `rating`, when known. */
@@ -97,6 +98,7 @@ function hoursStateFromResult(result: PubHoursResult, status: HoursStatus): PubH
     beers: result.beers,
     historicalBeers: result.historicalBeers,
     beersUpdatedAt: result.beersUpdatedAt,
+    hoursUpdatedAt: result.hoursUpdatedAt,
     rating: result.rating,
     ratingCount: result.ratingCount,
     ratingLabel: result.ratingLabel,
@@ -787,6 +789,7 @@ export function useCompass(
       beers: beers && beers.length > 0 ? beers : undefined,
       historicalBeers: historicalBeers && historicalBeers.length > 0 ? historicalBeers : undefined,
       beersUpdatedAt: hoursForCurrent?.beersUpdatedAt ?? currentPub.beersUpdatedAt ?? null,
+      hoursUpdatedAt: hoursForCurrent?.hoursUpdatedAt ?? currentPub.hoursUpdatedAt ?? null,
       rating: hoursForCurrent?.rating ?? currentPub.rating ?? null,
       ratingCount: hoursForCurrent?.ratingCount ?? currentPub.ratingCount ?? null,
       ratingLabel: hoursForCurrent?.ratingLabel ?? currentPub.ratingLabel ?? null,

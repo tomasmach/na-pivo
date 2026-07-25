@@ -177,7 +177,7 @@ export const cs = {
       if (price) return `od ${price}`;
       return '';
     },
-    tileBeersRecency: (age: string) => `cena ${age}`,
+    tileMapped: (age: string) => `zmapováno ${age}`,
     tileHoursOpenDays: (n: number) =>
       czechPlural(n, { one: 'otevřeno 1 den', few: `otevřeno ${n} dny`, many: `otevřeno ${n} dní` }),
     tileA11y: (label: string, detail: string) => `${label}, ${detail}. Uprav.`,

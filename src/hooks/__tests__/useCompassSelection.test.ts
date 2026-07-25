@@ -158,6 +158,7 @@ function hours(overrides: Partial<PubHoursResult> = {}): PubHoursResult {
     beers: [],
     historicalBeers: [],
     beersUpdatedAt: null,
+    hoursUpdatedAt: null,
     rating: null,
     ratingCount: null,
     ratingLabel: null,
