@@ -8,7 +8,9 @@
  *   1. a quiet party chip and the single overflow door,
  *   2. one table card and one chronological stream,
  *   3. one fixed nudge slot,
- *   4. one amber action (plus the quiet add-friend twin for an existing party).
+ *   4. one compact amber action; everything else, add-friend included, is a tap
+ *      deeper behind the "…" door, because this screen scrolls and the footer
+ *      may not eat the room the stream needs.
  */
 
 import {
@@ -38,6 +40,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { BeerTagChips } from '@/components/shared/BeerTagChips';
+import { GlowButton } from '@/components/shared/GlowButton';
 import {
   BellRingIcon,
   BeerIcon,
@@ -49,12 +52,13 @@ import {
   SettingsIcon,
   TrophyIcon,
   Undo2Icon,
+  UserPlusIcon,
   UsersIcon,
   XIcon,
 } from '@/components/shared/IconGlyph';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
-import { CounterCta, CounterSecondary } from '@/counter/CounterCta';
+import { ScrollFade } from '@/components/shared/ScrollFade';
 import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import {
   fetchBeerCheckInFeed,
@@ -782,6 +786,12 @@ export default function FriendsScreen() {
   const moreRows = useMemo<MoreRow[]>(
     () => [
       {
+        key: 'add-friend',
+        label: cs.friends.secondaryAddFriend,
+        icon: UserPlusIcon,
+        onPress: () => runAfterMoreClose(() => setAddFriendVisible(true)),
+      },
+      {
         key: 'settings',
         label: cs.friends.moreSettings,
         icon: SettingsIcon,
@@ -1092,41 +1102,35 @@ export default function FriendsScreen() {
     if (!isSignedIn) {
       return {
         label: cs.friends.ctaSignIn,
-        subLabel: null as string | null,
         onPress: () => router.push('/auth' as Href),
       };
     }
     if (nickname == null) {
       return {
         label: cs.friends.ctaNickname,
-        subLabel: null as string | null,
         onPress: () => router.push('/profile/edit' as Href),
       };
     }
     if (friendCount === 0) {
       return {
         label: cs.friends.ctaAddFriend,
-        subLabel: cs.friends.ctaAddFriendSub,
         onPress: () => setAddFriendVisible(true),
       };
     }
     if (d?.myActiveActivity) {
       return {
         label: cs.friends.ctaWhoIsComing,
-        subLabel: null as string | null,
         onPress: () => setRosterVisible(true),
       };
     }
     if ((d?.activeFriends.length ?? 0) > 0) {
       return {
         label: cs.friends.ctaPingToo,
-        subLabel: null as string | null,
         onPress: () => setComposeVisible(true),
       };
     }
     return {
       label: cs.friends.ctaPing,
-      subLabel: cs.friends.ctaPingSub,
       onPress: () => setComposeVisible(true),
     };
   }, [d?.activeFriends.length, d?.myActiveActivity, friendCount, isSignedIn, nickname, router]);
@@ -1416,145 +1420,149 @@ export default function FriendsScreen() {
         </Pressable>
       </View>
 
-      <ScrollView
-        ref={scrollRef}
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => void load('refresh')}
-            tintColor={Colors.amber}
-          />
-        }
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={streamItems.length === 0 ? styles.cardGrow : undefined}>
-          <PartyCard
-            count={partyNumbers.count}
-            countLabel={
-              partyNumbers.count > 0
-                ? cs.friends.tableCaption
-                : cs.friends.tableCaptionQuiet
-            }
-            headline={headline}
-            factStrong={
-              (d?.streak.currentWeeks ?? 0) > 0
-                ? cs.friends.streakWeeks(d?.streak.currentWeeks ?? 0)
-                : cs.friends.noStreak
-            }
-            factMuted={rankLine}
-            linkLabel={
-              partyNumbers.count > 0 || partyNumbers.maybe > 0
-                ? cs.friends.tableLink
-                : null
-            }
-            going={partyNumbers.going}
-            maybe={partyNumbers.maybe}
-            mine={partyNumbers.mine}
-            onPress={
-              partyNumbers.count > 0 || partyNumbers.maybe > 0
-                ? () => setRosterVisible(true)
-                : null
-            }
-            accessibilityLabel={cs.a11y.partaCard(String(partyNumbers.count), headline)}
-          />
-        </View>
-
-        <Text style={styles.streamHeader} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.friends.streamHeader}
-        </Text>
-
-        <PartaPhotoStrip refreshKey={photoFeedKey} style={styles.photoStreamItem} />
-
-        {streamItems.length > 0 ? (
-          <View style={styles.stream}>
-            {streamItems.map((item) => {
-              if (item.kind === 'plan') {
-                return (
-                  <PlanCard
-                    key={item.key}
-                    activity={item.activity}
-                    mine={item.mine}
-                    onResponded={reload}
-                    onCanceled={reload}
-                  />
-                );
+      {/* The stream and the fade that ends it share one box, so the fade is
+          never an out-of-bounds child (Android clips those). */}
+      <View style={styles.body}>
+        <ScrollView
+          ref={scrollRef}
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => void load('refresh')}
+              tintColor={Colors.amber}
+            />
+          }
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={streamItems.length === 0 ? styles.cardGrow : undefined}>
+            <PartyCard
+              count={partyNumbers.count}
+              countLabel={
+                partyNumbers.count > 0
+                  ? cs.friends.tableCaption
+                  : cs.friends.tableCaptionQuiet
               }
-              if (item.kind === 'live') {
-                return (
-                  <View
-                    key={item.key}
-                    onLayout={item.key === firstLiveStreamKey ? onActiveLayout : undefined}
-                  >
-                    <FriendActiveCard
+              headline={headline}
+              factStrong={
+                (d?.streak.currentWeeks ?? 0) > 0
+                  ? cs.friends.streakWeeks(d?.streak.currentWeeks ?? 0)
+                  : cs.friends.noStreak
+              }
+              factMuted={rankLine}
+              linkLabel={
+                partyNumbers.count > 0 || partyNumbers.maybe > 0
+                  ? cs.friends.tableLink
+                  : null
+              }
+              going={partyNumbers.going}
+              maybe={partyNumbers.maybe}
+              mine={partyNumbers.mine}
+              onPress={
+                partyNumbers.count > 0 || partyNumbers.maybe > 0
+                  ? () => setRosterVisible(true)
+                  : null
+              }
+              accessibilityLabel={cs.a11y.partaCard(String(partyNumbers.count), headline)}
+            />
+          </View>
+
+          <Text style={styles.streamHeader} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.friends.streamHeader}
+          </Text>
+
+          <PartaPhotoStrip refreshKey={photoFeedKey} style={styles.photoStreamItem} />
+
+          {streamItems.length > 0 ? (
+            <View style={styles.stream}>
+              {streamItems.map((item) => {
+                if (item.kind === 'plan') {
+                  return (
+                    <PlanCard
+                      key={item.key}
                       activity={item.activity}
+                      mine={item.mine}
                       onResponded={reload}
-                      stale={loadError}
+                      onCanceled={reload}
+                    />
+                  );
+                }
+                if (item.kind === 'live') {
+                  return (
+                    <View
+                      key={item.key}
+                      onLayout={item.key === firstLiveStreamKey ? onActiveLayout : undefined}
+                    >
+                      <FriendActiveCard
+                        activity={item.activity}
+                        onResponded={reload}
+                        stale={loadError}
+                      />
+                    </View>
+                  );
+                }
+                if (item.kind === 'beer') {
+                  return (
+                    <View key={item.key} style={styles.streamRowCard}>
+                      {renderBeerFeedRow(item.item)}
+                    </View>
+                  );
+                }
+                if (item.kind === 'notification') {
+                  return (
+                    <View key={item.key} style={styles.streamRowCard}>
+                      {renderNotificationRow(item.notification)}
+                    </View>
+                  );
+                }
+                if (item.kind === 'request') {
+                  return (
+                    <View
+                      key={item.key}
+                      style={styles.streamRowCard}
+                      onLayout={item.key === firstRequestStreamKey ? onRequestsLayout : undefined}
+                    >
+                      {renderRequestRow(item.request)}
+                    </View>
+                  );
+                }
+                return (
+                  <View key={item.key} style={styles.streamRowCard}>
+                    <FriendListRow
+                      friend={item.friend}
+                      stats={item.stats}
+                      first
+                      onOpenProfile={openFriendProfile}
+                      onLongPress={openFriendSafety}
                     />
                   </View>
                 );
-              }
-              if (item.kind === 'beer') {
-                return (
-                  <View key={item.key} style={styles.streamRowCard}>
-                    {renderBeerFeedRow(item.item)}
-                  </View>
-                );
-              }
-              if (item.kind === 'notification') {
-                return (
-                  <View key={item.key} style={styles.streamRowCard}>
-                    {renderNotificationRow(item.notification)}
-                  </View>
-                );
-              }
-              if (item.kind === 'request') {
-                return (
-                  <View
-                    key={item.key}
-                    style={styles.streamRowCard}
-                    onLayout={item.key === firstRequestStreamKey ? onRequestsLayout : undefined}
-                  >
-                    {renderRequestRow(item.request)}
-                  </View>
-                );
-              }
-              return (
-                <View key={item.key} style={styles.streamRowCard}>
-                  <FriendListRow
-                    friend={item.friend}
-                    stats={item.stats}
-                    first
-                    onOpenProfile={openFriendProfile}
-                    onLongPress={openFriendSafety}
-                  />
-                </View>
-              );
-            })}
-          </View>
-        ) : loading && !d ? null : (
-          <Text style={styles.streamEmpty} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.friends.streamEmpty}
-          </Text>
-        )}
-      </ScrollView>
+              })}
+            </View>
+          ) : loading && !d ? null : (
+            <Text style={styles.streamEmpty} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.friends.streamEmpty}
+            </Text>
+          )}
+        </ScrollView>
+        <ScrollFade />
+      </View>
 
-      <NudgeSlot nudge={nudge} collapseWhenEmpty />
+      {/* Parta scrolls, so it does not get the counter's 84pt hero button plus
+          an outline twin under it: that pair ate a third of the screen the
+          stream needs. One 62pt GlowButton (the design system's non-hero
+          variant), and "Přidat kámoše" lives behind the "…" door. */}
+      <View style={styles.footer}>
+        <NudgeSlot nudge={nudge} collapseWhenEmpty />
 
-      <CounterCta
-        label={cta.label}
-        subLabel={cta.subLabel}
-        onPress={cta.onPress}
-        accessibilityLabel={cta.label}
-      />
-
-      {friendCount > 0 ? (
-        <CounterSecondary
-          label={cs.friends.secondaryAddFriend}
-          onPress={() => setAddFriendVisible(true)}
+        <GlowButton
+          label={cta.label}
+          onPress={cta.onPress}
+          glow="soft"
+          accessibilityLabel={cta.label}
         />
-      ) : null}
+      </View>
 
       <MoreSheet
         visible={moreVisible}
@@ -1641,12 +1649,19 @@ const styles = StyleSheet.create({
   dim: {
     opacity: 0.6,
   },
+  body: {
+    flex: 1,
+  },
   scroll: {
     flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
-    paddingBottom: 12,
+    // Room for the last row to clear the fade instead of ending under it.
+    paddingBottom: Spacing.lg,
+  },
+  footer: {
+    gap: 12,
   },
   cardGrow: {
     flex: 1,

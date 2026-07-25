@@ -1484,14 +1484,12 @@ export const cs = {
 
     // — The one button, by state —
     ctaPing: 'Cinknout partě',
-    ctaPingSub: 'Vyber hospodu a čas.',
     ctaPingToo: 'Cinknout taky',
     ctaWhoIsComing: 'Kdo dorazí?',
     ctaAddFriend: 'Přidej kámoše',
-    ctaAddFriendSub: 'Kódem nebo pozvánkou.',
     ctaSignIn: 'Přihlásit se',
     ctaNickname: 'Doplnit přezdívku',
-    /** Quiet outline twin under the amber button. */
+    /** Behind the "…" door, because the footer holds one button only. */
     secondaryAddFriend: 'Přidat kámoše',
 
     // — "Co ještě?" rows —
