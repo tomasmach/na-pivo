@@ -1957,10 +1957,11 @@ export const cs = {
     /** Caption under the level ring while there is no account to have a rung. */
     levelRingCaption: 'Úroveň',
     // — Lifetime trio in the card. Shorter than the `stat*` labels of the old
-    //   stats grid, because each one only gets a third of a card. —
+    //   stats grid, because each one only gets a narrow share of the card. —
     cardStatPubs: 'HOSPODY',
     cardStatEvenings: 'VEČERY',
     cardStatSpent: 'UTRACENO',
+    cardStatDailyAverage: 'PIV DENNĚ',
 
     // — The one button —
     ctaCode: 'Ukaž svůj kód',
@@ -2004,9 +2005,9 @@ export const cs = {
     statBeers: 'PIV NAPOČÍTÁNO',
     statPubs: 'HOSPOD NAVŠTÍVENO',
     statRatings: 'HODNOCENÍ',
-    statWalked: 'NACHOZENO',
+    statDailyAverage: 'PIV DENNĚ',
     statSpent: 'UTRACENO',
-    // Walked distance: "4,2 km" / fallback "—" when the server hasn't reported it.
+    // Diary still formats its distance summary with these compatibility labels.
     kmShort: 'km',
     notAvailable: '—',
 

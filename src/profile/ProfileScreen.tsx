@@ -26,10 +26,15 @@ import { enqueueBeerPhoto } from '@/data/beerPhotosQueue';
 import { deriveReconciledDiaryStats } from '@/data/diarySync';
 import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
 import CodeSheet from '@/friends/CodeSheet';
-import { isContextPubKey } from '@/drinks/drinkTypes';
+import { isContextPubKey, normalizeDrinkType } from '@/drinks/drinkTypes';
 import { cs } from '@/i18n/cs';
 import { beerCountLabel } from '@/i18n/plural';
 import { Avatar } from '@/profile/Avatar';
+import {
+  dailyBeerAverage,
+  earliestTimestamp,
+  formatDailyBeerAverage,
+} from '@/profile/dailyBeerAverage';
 import { ProfileCard } from '@/profile/ProfileCard';
 import {
   selectAvatarUrl,
@@ -132,6 +137,28 @@ export default function ProfileScreen() {
       spentCzk: Math.max(reconciledStats?.totalSpentCzk ?? 0, localSpent),
     };
   }, [reconciledStats, sessions]);
+  const now = useMemo(() => new Date(), []);
+  const firstBeerAt = useMemo(
+    () =>
+      earliestTimestamp([
+        isSignedIn ? profile?.stats?.firstBeerAt : null,
+        ...(diarySnapshot?.drinks ?? [])
+          .filter(
+            (drink) =>
+              !drink.is_suspect && normalizeDrinkType(drink.drink_type) === 'beer',
+          )
+          .map((drink) => drink.drank_at),
+        ...sessions.flatMap((session) =>
+          session.drinks
+            .filter((drink) => normalizeDrinkType(drink.drinkType) === 'beer')
+            .map((drink) => drink.at),
+        ),
+      ]),
+    [diarySnapshot, isSignedIn, profile?.stats?.firstBeerAt, sessions],
+  );
+  const averageBeersPerDay = formatDailyBeerAverage(
+    dailyBeerAverage(beers, firstBeerAt, now),
+  );
 
   const xpProgress = useMemo(
     () => accountXpProgress(profile?.mapper, profile?.pivar),
@@ -395,6 +422,11 @@ export default function ProfileScreen() {
             key: 'spent',
             value: formatPrice(lifetime.spentCzk, priceCurrency),
             label: cs.profile.cardStatSpent,
+          },
+          {
+            key: 'daily-average',
+            value: averageBeersPerDay,
+            label: cs.profile.cardStatDailyAverage,
           },
         ]}
         linkLabel={cs.profile.badgesLink}

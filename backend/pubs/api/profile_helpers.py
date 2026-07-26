@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from zoneinfo import ZoneInfo
 
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Min, Q, Sum
 from django.utils import timezone
 
 from pubs.mapper import maper_progress
@@ -17,6 +17,7 @@ def derive_account_profile_stats(account: Account) -> dict:
     public_drinks = account.drinks.filter(is_suspect=False)
     drink_totals = public_drinks.aggregate(
         total_beers=Count("id", filter=Q(drink_type=DrinkLog.DrinkType.BEER)),
+        first_beer_at=Min("drank_at", filter=Q(drink_type=DrinkLog.DrinkType.BEER)),
         total_spent_czk=Sum("price_czk"),
         outside_drinks=Count(
             "id", filter=~Q(place_context=DrinkLog.PlaceContext.PUB)
@@ -78,6 +79,7 @@ def derive_account_profile_stats(account: Account) -> dict:
 
     return {
         "total_beers": int(drink_totals["total_beers"] or 0),
+        "first_beer_at": drink_totals["first_beer_at"],
         "distinct_pubs": len(pub_keys),
         "ratings_count": account.pub_ratings.count(),
         "total_spent_czk": int(drink_totals["total_spent_czk"] or 0),

@@ -61,10 +61,7 @@ export interface ProfileCardProps {
   levelProgress: number | null;
   /** The one footer fact ("ještě 40 XP do dalšího levelu"), or null. */
   levelHint: string | null;
-  /**
-   * The lifetime trio under the numeral: pubs, evenings, money. Pre-formatted and
-   * pre-uppercased by the parent. An empty list draws no row.
-   */
+  /** Compact lifetime stats under the numeral. An empty list draws no row. */
   stats: { key: string; value: string; label: string }[];
   /** The amber door on the right of the footer ("Odznaky"); null draws no link. */
   linkLabel: string | null;
@@ -127,8 +124,7 @@ export function ProfileCard({
         />
       </View>
 
-      {/* The lifetime trio. Separated by light, not by boxes: three framed tiles
-          inside a framed card would be frame-on-frame. */}
+      {/* Lifetime stats separated by light, not nested framed tiles. */}
       {stats.length > 0 ? (
         <View style={styles.stats}>
           {stats.map((stat, index) => (

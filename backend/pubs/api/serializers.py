@@ -2211,6 +2211,7 @@ class AccountStatsSerializer(serializers.Serializer):
     """Nested profile stats derived from account-owned drinks, visits and ratings."""
 
     total_beers = serializers.IntegerField(read_only=True)
+    first_beer_at = serializers.DateTimeField(read_only=True, allow_null=True)
     distinct_pubs = serializers.IntegerField(read_only=True)
     ratings_count = serializers.IntegerField(read_only=True)
     total_spent_czk = serializers.IntegerField(read_only=True)

@@ -193,6 +193,7 @@ describe('registerEmail', () => {
         },
         stats: {
           total_beers: 12,
+          first_beer_at: '2026-07-01T18:00:00Z',
           distinct_pubs: 4,
           ratings_count: 3,
           total_spent_czk: 720,
@@ -239,6 +240,7 @@ describe('registerEmail', () => {
       },
       stats: {
         totalBeers: 12,
+        firstBeerAt: '2026-07-01T18:00:00Z',
         distinctPubs: 4,
         ratingsCount: 3,
         totalSpentCzk: 720,
