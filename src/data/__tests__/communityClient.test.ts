@@ -82,6 +82,17 @@ describe('buildCommunityEntry', () => {
     expect(entry.beers).toEqual([{ name: 'Plzeň', price_czk: 60, volume_ml: 500 }]);
   });
 
+  it('maps the rotating-menu flag only when supplied', () => {
+    const rotating = buildCommunityEntry(
+      { ...base, beers: [{ name: 'Plzeň' }], beerMenuRotates: true },
+      'c',
+    );
+    const legacy = buildCommunityEntry({ ...base, beers: [{ name: 'Kozel' }] }, 'd');
+
+    expect(rotating.beer_menu_rotates).toBe(true);
+    expect(legacy.beer_menu_rotates).toBeUndefined();
+  });
+
   it('preserves a null external_id', () => {
     const entry = buildCommunityEntry(
       { ...base, externalId: null, beers: [{ name: 'X' }] },

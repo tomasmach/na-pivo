@@ -31,7 +31,11 @@ import { computeOpenState } from '@/data/communityHours';
 import { recordWalkingSample } from '@/data/walkingTelemetry';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { usePubStore } from '@/stores/pubStore';
-import { useCommunityStore } from '@/stores/communityStore';
+import {
+  isBeerListOverrideCurrent,
+  isBeerMenuTypeOverrideCurrent,
+  useCommunityStore,
+} from '@/stores/communityStore';
 import { useFocusedPubStore, type FocusedPub } from '@/stores/focusedPubStore';
 import { useDevicePosition } from '@/compass/useDevicePosition';
 import { useDeviceHeading } from '@/compass/useDeviceHeading';
@@ -70,6 +74,7 @@ type PubHoursState = {
   /** Previously confirmed beers no longer on the current tap list. */
   historicalBeers?: CommunityBeer[];
   beersUpdatedAt?: string | null;
+  beerMenuRotates?: boolean;
   hoursUpdatedAt?: string | null;
   /** Public star rating from the enrichment source, on a 0-5 scale. */
   rating?: number | null;
@@ -98,6 +103,7 @@ function hoursStateFromResult(result: PubHoursResult, status: HoursStatus): PubH
     beers: result.beers,
     historicalBeers: result.historicalBeers,
     beersUpdatedAt: result.beersUpdatedAt,
+    beerMenuRotates: result.beerMenuRotates,
     hoursUpdatedAt: result.hoursUpdatedAt,
     rating: result.rating,
     ratingCount: result.ratingCount,
@@ -762,18 +768,30 @@ export function useCompass(
     }
 
     // — Beers —
-    // Backend community beers win; otherwise the local override's beers show.
+    // A fresh/offline edit wins optimistically. Once the server exposes a newer
+    // confirmed snapshot, it replaces the persisted override.
+    const backendBeersUpdatedAt = hoursForCurrent?.beersUpdatedAt ?? currentPub.beersUpdatedAt;
+    const beerListOverrideCurrent = isBeerListOverrideCurrent(
+      overrideForCurrent,
+      backendBeersUpdatedAt,
+    );
     let beers = hoursForCurrent?.beers;
-    if (overrideForCurrent?.beers && !(backendIsCommunity && (hoursForCurrent?.beers?.length ?? 0) > 0)) {
+    if (beerListOverrideCurrent && overrideForCurrent?.beers) {
       beers = overrideForCurrent.beers;
     }
     let historicalBeers = hoursForCurrent?.historicalBeers;
-    if (
-      overrideForCurrent?.historicalBeers &&
-      !(backendIsCommunity && (hoursForCurrent?.historicalBeers?.length ?? 0) > 0)
-    ) {
+    if (beerListOverrideCurrent && overrideForCurrent?.historicalBeers) {
       historicalBeers = overrideForCurrent.historicalBeers;
     }
+    const beerMenuTypeOverrideCurrent = isBeerMenuTypeOverrideCurrent(
+      overrideForCurrent,
+      backendBeersUpdatedAt,
+    );
+    const beerMenuRotates =
+      (beerMenuTypeOverrideCurrent ? overrideForCurrent?.beerMenuRotates : undefined) ??
+      hoursForCurrent?.beerMenuRotates ??
+      currentPub.beerMenuRotates ??
+      false;
 
     // Nothing to merge → return the bare pub for referential stability.
     if (!hoursForCurrent && !overrideForCurrent) return currentPub;
@@ -789,6 +807,7 @@ export function useCompass(
       beers: beers && beers.length > 0 ? beers : undefined,
       historicalBeers: historicalBeers && historicalBeers.length > 0 ? historicalBeers : undefined,
       beersUpdatedAt: hoursForCurrent?.beersUpdatedAt ?? currentPub.beersUpdatedAt ?? null,
+      beerMenuRotates,
       hoursUpdatedAt: hoursForCurrent?.hoursUpdatedAt ?? currentPub.hoursUpdatedAt ?? null,
       rating: hoursForCurrent?.rating ?? currentPub.rating ?? null,
       ratingCount: hoursForCurrent?.ratingCount ?? currentPub.ratingCount ?? null,

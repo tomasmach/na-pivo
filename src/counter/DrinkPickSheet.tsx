@@ -17,7 +17,7 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
-import { CupSodaIcon, PlusIcon, XIcon } from '@/components/shared/IconGlyph';
+import { CupSodaIcon, PlusIcon, RefreshCwIcon, XIcon } from '@/components/shared/IconGlyph';
 
 export interface DrinkPickRow {
   /** Stable identity key. */
@@ -34,6 +34,7 @@ export interface DrinkPickRow {
 export function DrinkPickSheet({
   visible,
   isPub,
+  beerMenuRotates = false,
   tonightRows,
   menuRows,
   onCountRow,
@@ -44,6 +45,8 @@ export function DrinkPickSheet({
 }: {
   visible: boolean;
   isPub: boolean;
+  /** The pub intentionally changes its tap list; rows are the latest snapshot. */
+  beerMenuRotates?: boolean;
   /** What you've already had tonight, latest first. */
   tonightRows: DrinkPickRow[];
   /** The pub's community menu (empty outside a pub). */
@@ -164,6 +167,15 @@ export function DrinkPickSheet({
               </Pressable>
             </View>
 
+            {isPub && beerMenuRotates ? (
+              <View style={styles.rotatingHint}>
+                <RefreshCwIcon size={13} color={Colors.amber} />
+                <Text style={styles.rotatingHintText} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {cs.counter.rotatingMenuHint}
+                </Text>
+              </View>
+            ) : null}
+
             <ScrollView
               style={styles.list}
               contentContainerStyle={styles.listContent}
@@ -171,7 +183,11 @@ export function DrinkPickSheet({
             >
               {isEmpty ? (
                 <Text style={styles.emptyCopy} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {isPub ? cs.counter.pickEmptyPub : cs.counter.pickEmptyOutside}
+                  {isPub && beerMenuRotates
+                    ? cs.counter.rotatingMenuBadge
+                    : isPub
+                      ? cs.counter.pickEmptyPub
+                      : cs.counter.pickEmptyOutside}
                 </Text>
               ) : (
                 <>
@@ -259,6 +275,24 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.display.extrabold,
     fontSize: 22,
     color: Colors.foam,
+  },
+  rotatingHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: Radius.medium,
+    backgroundColor: withAlpha(Colors.amber, 0.08),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.24),
+  },
+  rotatingHintText: {
+    flex: 1,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 12,
+    lineHeight: 17,
+    color: Colors.amber,
   },
   closeButton: {
     width: 44,

@@ -21,6 +21,7 @@ from pubs.models import (
     BeerBrand,
     PubAmenity,
     PubBeerBrand,
+    PubCommunityData,
     PubDirectory,
     PubHours,
     PubNameCorrection,
@@ -1186,6 +1187,15 @@ def test_nearby_items_include_cached_pub_details_without_mutating_search_cache(c
         source="firmy",
         fetched_at=dj_tz.now(),
     )
+    PubCommunityData.objects.create(
+        cache_key=geohash8(_ITEM["position"]["lat"], _ITEM["position"]["lon"]),
+        name=_ITEM["name"],
+        lat=_ITEM["position"]["lat"],
+        lng=_ITEM["position"]["lon"],
+        beer_menu_rotates=True,
+        beers=[{"name": "Dnešní speciál", "price_czk": 59, "volume_ml": 500}],
+        beers_updated_at=dj_tz.now(),
+    )
 
     with patch("pubs.api.cache.next_change") as mocked_next_change:
         resp = client.get(
@@ -1200,6 +1210,7 @@ def test_nearby_items_include_cached_pub_details_without_mutating_search_cache(c
     assert details["nextChange"] is None
     assert details["rating"] == pytest.approx(4.6)
     assert details["ratingCount"] == 128
+    assert details["beer_menu_rotates"] is True
     mocked_next_change.assert_not_called()
     search_row.refresh_from_db()
     assert search_row.items == [_ITEM]

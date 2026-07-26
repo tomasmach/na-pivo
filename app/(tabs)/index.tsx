@@ -936,6 +936,7 @@ export default function CompassScreen() {
         hoursLabel={showPubDetails ? hours.label : null}
         hoursTone={hours.tone}
         beerLine={showPubDetails ? beerLine : null}
+        beerMenuRotates={showPubDetails && !focusedPub && pub?.beerMenuRotates === true}
         hidden={!showPubDetails}
         showDetailLink={showPubDetails && !focusedPub && targetPub !== null}
         onPressFooter={handleCardFooterPress}
@@ -944,7 +945,11 @@ export default function CompassScreen() {
             ? cs.a11y.compassCard(
                 targetPub?.name ?? '',
                 distanceFormatted ?? '',
-                [hours.label, beerLine].filter(Boolean).join(' · '),
+                [
+                  hours.label,
+                  pub?.beerMenuRotates ? cs.counter.rotatingMenuBadge : null,
+                  beerLine,
+                ].filter(Boolean).join(' · '),
               )
             : cs.a11y.compassCardHidden
         }

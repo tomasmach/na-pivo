@@ -167,6 +167,53 @@ def test_submit_hours_and_beers(client):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("rotates", [True, False])
+def test_submit_and_read_rotating_beer_menu(client, rotates):
+    token = _register(client)
+    payload = _payload(beer_menu_rotates=rotates)
+
+    submitted = client.post(
+        "/v1/pub-community", data=payload, format="json", **_auth(token)
+    )
+
+    assert submitted.status_code == status.HTTP_200_OK
+    assert submitted.json()["beer_menu_rotates"] is rotates
+    assert PubCommunityData.objects.get().beer_menu_rotates is rotates
+    assert PubContributionLog.objects.get(kind="beers").payload == {
+        "beers": _BEERS,
+        "beer_menu_rotates": rotates,
+    }
+
+    read = client.post(
+        "/v1/pub-hours",
+        data={"pubs": [{"name": _NAME, "lat": _LAT, "lng": _LNG}]},
+        format="json",
+    )
+    assert read.status_code == status.HTTP_200_OK
+    assert read.json()["results"][0]["beer_menu_rotates"] is rotates
+
+
+@pytest.mark.django_db
+def test_legacy_beer_update_preserves_rotating_menu(client):
+    token = _register(client)
+    first = _payload(beer_menu_rotates=True)
+    client.post("/v1/pub-community", data=first, format="json", **_auth(token))
+
+    legacy = _payload(client_id="aaaaaaaa-0000-0000-0000-000000000099")
+    legacy.pop("hours")
+    updated = client.post(
+        "/v1/pub-community", data=legacy, format="json", **_auth(token)
+    )
+
+    assert updated.status_code == status.HTTP_200_OK
+    assert updated.json()["beer_menu_rotates"] is True
+    assert PubCommunityData.objects.get().beer_menu_rotates is True
+    assert PubContributionLog.objects.get(
+        kind="beers", client_id="aaaaaaaa-0000-0000-0000-000000000099"
+    ).payload == _BEERS
+
+
+@pytest.mark.django_db
 def test_submit_hours_only(client):
     token = _register(client)
     payload = _payload()

@@ -2527,6 +2527,13 @@ class PubCommunityData(models.Model):
             "current menu."
         ),
     )
+    beer_menu_rotates = models.BooleanField(
+        default=False,
+        help_text=(
+            "Whether the pub intentionally changes its taps instead of keeping a "
+            "regular beer menu. The stored beers remain the latest confirmed snapshot."
+        ),
+    )
 
     # ---------- contributor / timestamps ----------
     account = models.ForeignKey(
@@ -3342,8 +3349,9 @@ class PubContributionLog(models.Model):
     One row per (account, client_id, kind): the client generates a UUID per
     submission and re-POSTs it verbatim on offline retries, so the unique
     constraint lets the endpoint get_or_create the same row instead of
-    duplicating it. ``payload`` stores exactly what was submitted for that kind
-    (the hours_json dict or the beers list).
+    duplicating it. ``payload`` stores exactly what was submitted for that kind:
+    the hours_json dict, the legacy beers list, or a beers/menu-type dict from
+    clients that support rotating tap offers.
     """
 
     class Kind(models.TextChoices):

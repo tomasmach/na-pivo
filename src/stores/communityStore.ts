@@ -22,8 +22,53 @@ export interface CommunityOverride {
   hours?: WeeklyHours;
   beers?: CommunityBeer[];
   historicalBeers?: CommunityBeer[];
+  beerMenuRotates?: boolean;
+  /** Epoch ms of the latest local beer-list/history edit. */
+  beersOverrideUpdatedAt?: number;
+  /** Epoch ms of the latest explicit fixed/rotating selection. */
+  beerMenuRotatesOverrideUpdatedAt?: number;
   /** Epoch ms when the override was written — newest write wins on merge. */
   updatedAt: number;
+}
+
+type CommunityOverridePatch = Omit<
+  CommunityOverride,
+  'updatedAt' | 'beersOverrideUpdatedAt' | 'beerMenuRotatesOverrideUpdatedAt'
+>;
+
+function isOverrideNewer(
+  overrideUpdatedAt: number,
+  backendUpdatedAt: string | null | undefined,
+): boolean {
+  if (!backendUpdatedAt) return true;
+  const backendUpdatedAtMs = Date.parse(backendUpdatedAt);
+  return !Number.isFinite(backendUpdatedAtMs) || overrideUpdatedAt > backendUpdatedAtMs;
+}
+
+/**
+ * Keep a fresh/offline beer edit optimistic, but let a newer server snapshot
+ * replace a persisted override after sync or a later mapper correction.
+ */
+export function isBeerListOverrideCurrent(
+  override: CommunityOverride | undefined,
+  backendUpdatedAt: string | null | undefined,
+): boolean {
+  if (!override) return false;
+  return isOverrideNewer(
+    override.beersOverrideUpdatedAt ?? override.updatedAt,
+    backendUpdatedAt,
+  );
+}
+
+export function isBeerMenuTypeOverrideCurrent(
+  override: CommunityOverride | undefined,
+  backendUpdatedAt: string | null | undefined,
+): boolean {
+  if (!override) return false;
+  return isOverrideNewer(
+    override.beerMenuRotatesOverrideUpdatedAt ?? override.updatedAt,
+    backendUpdatedAt,
+  );
 }
 
 interface CommunityState {
@@ -34,10 +79,7 @@ interface CommunityState {
    * the stored ones (hours / beers are edited independently), so submitting just
    * beers does not wipe a previously-submitted hours override.
    */
-  setOverride: (
-    cell: string,
-    patch: { hours?: WeeklyHours; beers?: CommunityBeer[]; historicalBeers?: CommunityBeer[] },
-  ) => void;
+  setOverride: (cell: string, patch: CommunityOverridePatch) => void;
 }
 
 export const useCommunityStore = create<CommunityState>()(
@@ -48,11 +90,27 @@ export const useCommunityStore = create<CommunityState>()(
       setOverride: (cell, patch) =>
         set((state) => {
           const prev = state.overrides[cell];
+          const now = Date.now();
+          const touchesBeerList = patch.beers !== undefined || patch.historicalBeers !== undefined;
+          const touchesMenuType = patch.beerMenuRotates !== undefined;
+          const previousBeerListUpdatedAt =
+            prev?.beersOverrideUpdatedAt ??
+            (prev?.beers !== undefined || prev?.historicalBeers !== undefined
+              ? prev.updatedAt
+              : undefined);
+          const previousMenuTypeUpdatedAt =
+            prev?.beerMenuRotatesOverrideUpdatedAt ??
+            (prev?.beerMenuRotates !== undefined ? prev.updatedAt : undefined);
           const next: CommunityOverride = {
             hours: patch.hours ?? prev?.hours,
             beers: patch.beers ?? prev?.beers,
             historicalBeers: patch.historicalBeers ?? prev?.historicalBeers,
-            updatedAt: Date.now(),
+            beerMenuRotates: patch.beerMenuRotates ?? prev?.beerMenuRotates,
+            beersOverrideUpdatedAt: touchesBeerList ? now : previousBeerListUpdatedAt,
+            beerMenuRotatesOverrideUpdatedAt: touchesMenuType
+              ? now
+              : previousMenuTypeUpdatedAt,
+            updatedAt: now,
           };
           return { overrides: { ...state.overrides, [cell]: next } };
         }),

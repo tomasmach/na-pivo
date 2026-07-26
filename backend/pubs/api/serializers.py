@@ -1592,6 +1592,8 @@ class PubCommunityRequestSerializer(PubInputSerializer):
     # serializer + count in validate_beers).
     hours = serializers.DictField(required=False, allow_null=True)
     beers = CommunityBeerSerializer(many=True, required=False)
+    # Optional for released clients: an old beer update must not reset this flag.
+    beer_menu_rotates = serializers.BooleanField(required=False)
 
     def validate_hours(self, value: dict | None) -> dict | None:
         if value is None:
@@ -1653,6 +1655,10 @@ class PubCommunityRequestSerializer(PubInputSerializer):
         if not has_hours and not has_beers:
             raise serializers.ValidationError(
                 "At least one of 'hours' or 'beers' must be provided."
+            )
+        if "beer_menu_rotates" in attrs and not has_beers:
+            raise serializers.ValidationError(
+                {"beer_menu_rotates": "This field may only be submitted with 'beers'."}
             )
         return attrs
 
@@ -1991,6 +1997,7 @@ class PubHoursResultSerializer(serializers.Serializer):
     # current menu and safely ignore these fields.
     historical_beers = serializers.ListField(child=serializers.DictField(), default=list)
     beers_updated_at = serializers.DateTimeField(allow_null=True, required=False)
+    beer_menu_rotates = serializers.BooleanField(required=False, default=False)
     hours_updated_at = serializers.DateTimeField(allow_null=True, required=False)
     beers_source = serializers.CharField(allow_null=True, required=False)
     beers_source_url = serializers.URLField(allow_null=True, required=False)
@@ -2005,6 +2012,7 @@ class PubCommunityResponseSerializer(serializers.Serializer):
     beers = serializers.ListField(child=serializers.DictField())
     historical_beers = serializers.ListField(child=serializers.DictField(), default=list)
     beers_updated_at = serializers.DateTimeField(allow_null=True, required=False)
+    beer_menu_rotates = serializers.BooleanField(required=False, default=False)
     hours_updated_at = serializers.DateTimeField(allow_null=True, required=False)
     # Additive Mapér fields (older clients ignore them). `mapper` mirrors the
     # vote-PUT snapshot; null when XP awarding was skipped/failed.

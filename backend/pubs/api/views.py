@@ -1553,6 +1553,8 @@ class PubCommunityView(APIView):
                 )
                 defaults["beers"] = data["beers"]
                 defaults["beers_updated_at"] = now
+                if "beer_menu_rotates" in data:
+                    defaults["beer_menu_rotates"] = data["beer_menu_rotates"]
 
             record, _ = PubCommunityData.objects.update_or_create(
                 cache_key=cache_key,
@@ -1574,6 +1576,12 @@ class PubCommunityView(APIView):
                     },
                 )
             if has_beers:
+                beer_log_payload = data["beers"]
+                if "beer_menu_rotates" in data:
+                    beer_log_payload = {
+                        "beers": data["beers"],
+                        "beer_menu_rotates": data["beer_menu_rotates"],
+                    }
                 PubContributionLog.objects.get_or_create(
                     account=request.user,
                     client_id=data["client_id"],
@@ -1583,7 +1591,7 @@ class PubCommunityView(APIView):
                         "name": data["name"],
                         "lat": data["lat"],
                         "lng": data["lng"],
-                        "payload": data["beers"],
+                        "payload": beer_log_payload,
                     },
                 )
                 sync_pub_beer_indexes_for_menu(
@@ -1635,6 +1643,7 @@ class PubCommunityView(APIView):
                 "beers": record.beers or [],
                 "historical_beers": record.historical_beers or [],
                 "beers_updated_at": record.beers_updated_at,
+                "beer_menu_rotates": record.beer_menu_rotates,
                 "hours_updated_at": record.hours_updated_at,
                 "xp_awarded": xp_awarded,
                 "mapper": mapper,
@@ -6758,6 +6767,7 @@ class PubsNearView(APIView):
                             "ratingLabel",
                             "hasGarden",
                             "venueKind",
+                            "beer_menu_rotates",
                         )
                     }
 

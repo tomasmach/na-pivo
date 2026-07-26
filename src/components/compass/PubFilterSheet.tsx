@@ -28,6 +28,7 @@ import {
   MicIcon,
   MapPinnedIcon,
   RadioIcon,
+  RefreshCwIcon,
   SearchIcon,
   SoccerBallIcon,
   SquareParkingIcon,
@@ -353,6 +354,15 @@ export function PubFilterSheet({
                 })}
               </View>
             )}
+
+            {draft.beerBrand ? (
+              <View style={styles.rotatingFilterHint}>
+                <RefreshCwIcon size={14} color={Colors.amber} />
+                <Text style={styles.rotatingFilterHintText} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {cs.compass.beerFilterRotatingHint}
+                </Text>
+              </View>
+            ) : null}
 
             <PriceFilterSection
               nearbyPrices={nearbyPrices}
@@ -813,6 +823,25 @@ const styles = StyleSheet.create({
   resultText: { flex: 1, fontFamily: Fonts.ui.semibold, fontSize: 15, color: Colors.foam },
   noResults: { paddingVertical: Spacing.md, textAlign: 'center', fontFamily: Fonts.ui.regular, fontSize: 14, color: Colors.mutedText },
   chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: Spacing.md },
+  rotatingFilterHint: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: Spacing.sm,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+    borderRadius: Radius.medium,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.24),
+    backgroundColor: withAlpha(Colors.amber, 0.07),
+  },
+  rotatingFilterHintText: {
+    flex: 1,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 12,
+    lineHeight: 17,
+    color: Colors.foamMuted,
+  },
   amenityGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
     flexDirection: 'row', alignItems: 'center', gap: 7, minHeight: HitArea.min,

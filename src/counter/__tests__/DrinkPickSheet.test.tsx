@@ -37,7 +37,7 @@ jest.mock('react-native-reanimated', () => {
 jest.mock('@/components/shared/IconGlyph', () => {
   const ReactModule = require('react');
   const icon = () => ReactModule.createElement('Icon');
-  return { CupSodaIcon: icon, PlusIcon: icon, XIcon: icon };
+  return { CupSodaIcon: icon, PlusIcon: icon, RefreshCwIcon: icon, XIcon: icon };
 });
 
 jest.mock('@/theme/fonts', () => ({
@@ -239,6 +239,20 @@ describe('DrinkPickSheet', () => {
     expect(rendered).toContain(cs.counter.pickEmptyOutside);
     expect(rendered).not.toContain(cs.counter.pickEmptyPub);
     expect(rendered).toContain(cs.counter.pickFirstBeer);
+  });
+
+  it('marks a rotating pub menu as the latest confirmed snapshot', () => {
+    const { renderer } = render({ beerMenuRotates: true });
+    const rendered = texts(renderer);
+
+    expect(rendered).toContain(cs.counter.rotatingMenuHint);
+
+    const empty = render({
+      beerMenuRotates: true,
+      tonightRows: [],
+      menuRows: [],
+    }).renderer;
+    expect(texts(empty)).toContain(cs.counter.rotatingMenuBadge);
   });
 
   it('closes on the close button', () => {

@@ -69,7 +69,11 @@ import { ShareNightModal } from '@/vycep/ShareNightModal';
 import type { NightSummary } from '@/vycep/nightModel';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { fireSuccessHaptic, fireLightImpactHaptic } from '@/utils/haptics';
-import { useCommunityStore } from '@/stores/communityStore';
+import {
+  isBeerListOverrideCurrent,
+  isBeerMenuTypeOverrideCurrent,
+  useCommunityStore,
+} from '@/stores/communityStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { formatPrice, pricePlaceholder } from '@/utils/currency';
@@ -378,6 +382,8 @@ function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }:
     pubId: string;
     beers: CommunityBeer[];
     historicalBeers: CommunityBeer[];
+    beersUpdatedAt: string | null;
+    beerMenuRotates: boolean;
   } | null>(null);
   const [scanningDrinks, setScanningDrinks] = useState(false);
   const [scannedDrinks, setScannedDrinks] = useState<ScannedDrink[]>([]);
@@ -426,6 +432,8 @@ function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }:
         pubId,
         beers: result?.beers ?? [],
         historicalBeers: result?.historicalBeers ?? [],
+        beersUpdatedAt: result?.beersUpdatedAt ?? null,
+        beerMenuRotates: result?.beerMenuRotates ?? false,
       });
     });
 
@@ -509,25 +517,48 @@ function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }:
     [cell, count, current, history],
   );
 
-  // The menu shown: at a pub the local community override wins over the backend
-  // fetch, which wins over whatever the pub object carried. Outside a pub there
-  // is no community menu — the list is what you've logged tonight.
+  // A fresh/offline edit wins optimistically. A newer confirmed backend menu
+  // replaces the persisted override after sync or another mapper correction.
+  const currentBackendMenu = backendMenu?.pubId === pub?.id ? backendMenu : null;
+  const backendBeersUpdatedAt = currentBackendMenu?.beersUpdatedAt ?? pub?.beersUpdatedAt;
+  const currentBeerListOverride = isBeerListOverrideCurrent(
+    override,
+    backendBeersUpdatedAt,
+  )
+    ? override
+    : undefined;
+  const currentMenuTypeOverride = isBeerMenuTypeOverrideCurrent(
+    override,
+    backendBeersUpdatedAt,
+  )
+    ? override
+    : undefined;
+
   const menu = useMemo<CommunityBeer[]>(() => {
     if (!place) return [];
     if (!pub) return [];
-    const backendBeers = backendMenu?.pubId === pub.id ? backendMenu.beers : [];
-    if (override?.beers && override.beers.length > 0) return override.beers;
-    if (backendBeers.length > 0) return backendBeers;
+    if (currentBeerListOverride?.beers) return currentBeerListOverride.beers;
+    if (currentBackendMenu?.beers.length) return currentBackendMenu.beers;
     return pub.beers ?? [];
-  }, [backendMenu, override, place, pub]);
+  }, [currentBackendMenu, currentBeerListOverride, place, pub]);
 
   const historicalBeers = useMemo<CommunityBeer[]>(() => {
     if (!pub) return [];
-    if (backendMenu?.pubId === pub.id && backendMenu.historicalBeers.length > 0) {
-      return backendMenu.historicalBeers;
+    if (currentBeerListOverride?.historicalBeers) {
+      return currentBeerListOverride.historicalBeers;
+    }
+    if (currentBackendMenu?.historicalBeers.length) {
+      return currentBackendMenu.historicalBeers;
     }
     return pub.historicalBeers ?? [];
-  }, [backendMenu, pub]);
+  }, [currentBackendMenu, currentBeerListOverride, pub]);
+
+  const beerMenuRotates = pub
+    ? currentMenuTypeOverride?.beerMenuRotates ??
+      currentBackendMenu?.beerMenuRotates ??
+      pub.beerMenuRotates ??
+      false
+    : false;
 
   /** Every beer identity from the menu, flattened, small → large per name. */
   const menuBeers = useMemo(
@@ -1066,9 +1097,10 @@ function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }:
         ...(pub.city ? { city: pub.city } : {}),
         ...(menu.length > 0 ? { beers: JSON.stringify(menu) } : {}),
         ...(historicalBeers.length > 0 ? { historicalBeers: JSON.stringify(historicalBeers) } : {}),
+        beerMenuRotates: beerMenuRotates ? '1' : '0',
       },
     });
-  }, [historicalBeers, menu, pub, router]);
+  }, [beerMenuRotates, historicalBeers, menu, pub, router]);
 
   const runDrinkScan = useCallback(async (source: MenuPhotoSource) => {
     setScanSourceVisible(false);
@@ -1402,6 +1434,7 @@ function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }:
       <DrinkPickSheet
         visible={pickOpen}
         isPub={!!pub}
+        beerMenuRotates={beerMenuRotates}
         tonightRows={tonightRows}
         menuRows={menuRows}
         onCountRow={handlePickRow}

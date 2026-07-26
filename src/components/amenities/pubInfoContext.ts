@@ -16,8 +16,16 @@ import { useMemo } from 'react';
 
 import { geohash8 } from '@/data/geohash';
 import type { Pub, PubPrice } from '@/data/pubs';
-import type { CommunityBeer, WeeklyHours } from '@/data/communityHours';
-import { useCommunityStore } from '@/stores/communityStore';
+import {
+  parseOsmOpeningHoursToWeeklyHours,
+  type CommunityBeer,
+  type WeeklyHours,
+} from '@/data/communityHours';
+import {
+  isBeerListOverrideCurrent,
+  isBeerMenuTypeOverrideCurrent,
+  useCommunityStore,
+} from '@/stores/communityStore';
 
 export interface PubInfoContext {
   /** Source external id (for the contribute payload), when known. */
@@ -36,6 +44,8 @@ export interface PubInfoContext {
   prefillBeers?: CommunityBeer[] | null;
   /** Removed rows kept as lightweight menu history and restore suggestions. */
   historicalBeers?: CommunityBeer[] | null;
+  /** Whether the current list is a snapshot of intentionally rotating taps. */
+  beerMenuRotates?: boolean;
   /** Fresh reference price attached by nearby discovery, including its age. */
   price?: PubPrice | null;
   /** ISO timestamps of the community's latest hours / beers contribution — the
@@ -58,9 +68,37 @@ export function pubInfoFromPub(pub: Pub): PubInfoContext {
     openingHours: pub.openingHours ?? null,
     prefillBeers: pub.beers ?? null,
     historicalBeers: pub.historicalBeers ?? null,
+    beerMenuRotates: pub.beerMenuRotates ?? false,
     price: pub.price ?? null,
     hoursUpdatedAt: pub.hoursUpdatedAt ?? null,
     beersUpdatedAt: pub.beersUpdatedAt ?? null,
+  };
+}
+
+/** Serialize the shared pub-info context for the contribution editor route. */
+export function contributeParamsFromPubInfo(
+  info: PubInfoContext,
+  focus: 'hours' | 'beers',
+  resolvedBeerMenuRotates: boolean | undefined = info.beerMenuRotates,
+): Record<string, string> {
+  const prefillHours =
+    info.prefillHours ?? parseOsmOpeningHoursToWeeklyHours(info.openingHours);
+
+  return {
+    focus,
+    ...(info.externalId ? { id: info.externalId } : {}),
+    name: info.name,
+    lat: String(info.lat),
+    lng: String(info.lng),
+    ...(info.city ? { city: info.city } : {}),
+    ...(prefillHours ? { hours: JSON.stringify(prefillHours) } : {}),
+    ...(info.prefillBeers?.length ? { beers: JSON.stringify(info.prefillBeers) } : {}),
+    ...(info.historicalBeers?.length
+      ? { historicalBeers: JSON.stringify(info.historicalBeers) }
+      : {}),
+    ...(typeof resolvedBeerMenuRotates === 'boolean'
+      ? { beerMenuRotates: resolvedBeerMenuRotates ? '1' : '0' }
+      : {}),
   };
 }
 
@@ -69,6 +107,7 @@ export interface PubInfoFactsView {
   hasBeers: boolean;
   /** Beers on tap count (override wins over enrichment). */
   beerCount: number;
+  beerMenuRotates: boolean;
 }
 
 function hoursHaveAnyInterval(hours: WeeklyHours | null | undefined): boolean {
@@ -92,7 +131,23 @@ export function usePubInfoFacts(info: PubInfoContext | undefined): PubInfoFactsV
       hoursHaveAnyInterval(override?.hours) ||
       hoursHaveAnyInterval(info.prefillHours) ||
       Boolean(info.openingHours);
-    const beerCount = override?.beers?.length ?? info.prefillBeers?.length ?? 0;
-    return { hasHours, hasBeers: beerCount > 0 || Boolean(info.price), beerCount };
+    const currentBeerListOverride = isBeerListOverrideCurrent(override, info.beersUpdatedAt)
+      ? override
+      : undefined;
+    const currentMenuTypeOverride = isBeerMenuTypeOverrideCurrent(
+      override,
+      info.beersUpdatedAt,
+    )
+      ? override
+      : undefined;
+    const beerCount = currentBeerListOverride?.beers?.length ?? info.prefillBeers?.length ?? 0;
+    const beerMenuRotates =
+      currentMenuTypeOverride?.beerMenuRotates ?? info.beerMenuRotates ?? false;
+    return {
+      hasHours,
+      hasBeers: beerMenuRotates || beerCount > 0 || Boolean(info.price),
+      beerCount,
+      beerMenuRotates,
+    };
   }, [info, override]);
 }

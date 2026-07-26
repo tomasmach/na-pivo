@@ -74,7 +74,11 @@ import {
   selectPubInfoCompleteness,
   type AmenityRow,
 } from '@/data/pubAmenitiesView';
-import { usePubInfoFacts, type PubInfoContext } from '@/components/amenities/pubInfoContext';
+import {
+  contributeParamsFromPubInfo,
+  usePubInfoFacts,
+  type PubInfoContext,
+} from '@/components/amenities/pubInfoContext';
 import {
   parseOsmOpeningHoursToWeeklyHours,
   DAY_KEYS,
@@ -510,27 +514,12 @@ export function MapPubSheet({
   const openContribute = useCallback(
     (focus: 'hours' | 'beers') => {
       if (!info) return;
-      const prefillHours = info.prefillHours ?? parseOsmOpeningHoursToWeeklyHours(info.openingHours);
       router.push({
         pathname: '/contribute',
-        params: {
-          focus,
-          ...(info.externalId ? { id: info.externalId } : {}),
-          name: info.name,
-          lat: String(info.lat),
-          lng: String(info.lng),
-          ...(info.city ? { city: info.city } : {}),
-          ...(prefillHours ? { hours: JSON.stringify(prefillHours) } : {}),
-          ...(info.prefillBeers && info.prefillBeers.length > 0
-            ? { beers: JSON.stringify(info.prefillBeers) }
-            : {}),
-          ...(info.historicalBeers && info.historicalBeers.length > 0
-            ? { historicalBeers: JSON.stringify(info.historicalBeers) }
-            : {}),
-        },
+        params: contributeParamsFromPubInfo(info, focus, facts?.beerMenuRotates),
       });
     },
-    [info, router],
+    [facts?.beerMenuRotates, info, router],
   );
 
   // ── Rename: local in-memory rename + queued public correction ──
@@ -723,7 +712,13 @@ export function MapPubSheet({
                     weekly={null}
                     value={
                       facts.hasBeers
-                        ? cs.mapPub.tileBeersValue(facts.beerCount, tilePriceAmount)
+                        ? facts.beerMenuRotates
+                          ? cs.mapPub.factBeersRotating(
+                              facts.beerCount > 0
+                                ? cs.mapPub.tileBeersValue(facts.beerCount, tilePriceAmount)
+                                : null,
+                            )
+                          : cs.mapPub.tileBeersValue(facts.beerCount, tilePriceAmount)
                         : null
                     }
                     recency={beersMappedAge ? cs.mapPub.tileMapped(beersMappedAge) : null}
