@@ -29,6 +29,7 @@ import { Directory, File, Paths } from 'expo-file-system';
 import { uploadBeerPhoto, type BeerPhotoVisibility } from './beerPhotosClient';
 import { createCoalescingFlush, createQueueLock, createQueueStorage } from './createQueue';
 import type { QueueSyncResult } from './apiFetch';
+import { enterPhotoContest } from './photoContestClient';
 import { useBeerPhotosStore } from '@/stores/beerPhotosStore';
 
 const STORAGE_KEY = 'na-pivo-beer-photos-queue';
@@ -49,6 +50,11 @@ export interface BeerPhotoUploadOp {
   visibility: BeerPhotoVisibility;
   /** ISO-8601 timestamp of when the photo was taken. */
   takenAt: string;
+  /**
+   * Durable intent to enter the photo in FotoPivař after upload. Keeping this
+   * on the upload op makes "save + enter" work offline and across app restarts.
+   */
+  enterContest?: boolean;
 }
 
 function isQueueItem(value: unknown): value is BeerPhotoUploadOp {
@@ -60,7 +66,8 @@ function isQueueItem(value: unknown): value is BeerPhotoUploadOp {
     typeof op.localUri === 'string' &&
     typeof op.caption === 'string' &&
     typeof op.takenAt === 'string' &&
-    (op.visibility === 'private' || op.visibility === 'friends')
+    (op.visibility === 'private' || op.visibility === 'friends') &&
+    (op.enterContest === undefined || typeof op.enterContest === 'boolean')
   );
 }
 
@@ -118,6 +125,18 @@ export function clearBeerPhotoLocalFiles(): void {
   }
 }
 
+function shouldRetryContestEntry(code: string): boolean {
+  return (
+    code === 'network' ||
+    code === 'offline' ||
+    code === 'account' ||
+    code === 'auth' ||
+    code === 'http_408' ||
+    code === 'http_429' ||
+    /^http_5\d\d$/.test(code)
+  );
+}
+
 async function deliver(op: BeerPhotoUploadOp, signal: AbortSignal): Promise<QueueSyncResult> {
   const result = await uploadBeerPhoto(
     op.localUri,
@@ -133,9 +152,24 @@ async function deliver(op: BeerPhotoUploadOp, signal: AbortSignal): Promise<Queu
     signal,
   );
   if (result.status === 'ok') {
+    let photo = result.photo;
+    if (op.enterContest && photo.id) {
+      const contestResult = await enterPhotoContest(photo.id, signal);
+      if (!contestResult.ok && shouldRetryContestEntry(contestResult.code)) {
+        // Keep both the durable file and queue op. Re-upload is idempotent, so
+        // the next foreground flush can retry the contest intent safely.
+        return 'retry';
+      }
+      if (contestResult.ok) {
+        photo = { ...photo, inContest: true };
+      }
+      // A hard contest rejection (most commonly a missing nickname) must not
+      // turn a successfully uploaded diary photo into a failed photo. Finalize
+      // the upload normally; the UI explains that contest entry did not land.
+    }
     // Store FIRST (the UI flips to the remote imageUrl), only then delete the
     // local file — never the other way around, or the diary shows a dead uri.
-    useBeerPhotosStore.getState().markSynced(op.clientId, result.photo);
+    useBeerPhotosStore.getState().markSynced(op.clientId, photo);
     deleteBeerPhotoLocalFile(op.clientId);
     return 'ok';
   }
