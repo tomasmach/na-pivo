@@ -4,6 +4,13 @@
 # it stops the backend it started and shuts down the simulator.
 set -euo pipefail
 
+# CocoaPods reads the Podfile path through Ruby's unicode_normalize, which raises
+# on an ASCII-8BIT locale — `pod install` then dies before the pods are even read.
+# A non-interactive shell (CI, an agent, `npm run dev` from a bare env) has no
+# LANG at all, so set one here rather than expecting every shell profile to.
+export LANG="${LANG:-en_US.UTF-8}"
+export LC_ALL="${LC_ALL:-$LANG}"
+
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BACKEND_DIR="$(cd "$REPO_ROOT/backend" 2>/dev/null && pwd || true)"
 # 8012 = the dvanactka of ports; 80xx range, but clear of 8000/8080/8081

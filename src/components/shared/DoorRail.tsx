@@ -1,30 +1,20 @@
 /**
- * SocialRail — the three social surfaces, permanently on the main screen.
+ * DoorRail — the "row of doors in a card footer" recipe, in one place.
  *
- * Parta, the Pivaři board and the FotoPivař contest all used to live behind a
- * "…" sheet, which meant the community half of the product was invisible unless
- * you went looking for it. This rail sits in the counter card, in the room the
- * drawn mug used to take: three equal doors, one amber medallion each, no second
- * filled amber surface competing with the screen's button.
+ * The counter card has had this rail since the community half of the product
+ * was buried in a "…" sheet (see SocialRail). The Parta screen needed the same
+ * treatment for the same reason, so the presentation lives here and each screen
+ * only decides which doors it shows.
  *
- * It carries exactly one live fact, and only because it costs nothing: the
- * friends dashboard snapshot is already on disk, so the badge on Parta can say
- * how many of them are sitting in a pub right now without a request. Everything
- * else is a label, because a made-up number is worse than no number.
+ * Rules it carries (docs/design-system.md §5.5): equal columns, one 34pt amber
+ * medallion each, separated by light and never by a frame, and it navigates —
+ * it never counts, mutates or competes with the screen's one amber button.
  */
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useRouter, type Href } from 'expo-router';
 
-import {
-  ImagesIcon,
-  TrophyIcon,
-  UsersIcon,
-  type IconProps,
-} from '@/components/shared/IconGlyph';
-import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
-import { cs } from '@/i18n/cs';
+import { type IconProps } from '@/components/shared/IconGlyph';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius } from '@/theme/layout';
@@ -32,57 +22,18 @@ import { HitArea, Radius } from '@/theme/layout';
 /** Above this the badge stops being a count and becomes "a lot". */
 const BADGE_CAP = 9;
 
-interface RailTile {
+export interface DoorRailTile {
   key: string;
   label: string;
   a11yLabel: string;
   Icon: React.ComponentType<IconProps>;
   onPress: () => void;
-  /** Live count shown on the medallion; 0 draws no badge. */
+  /** Live count shown on the medallion; 0 or undefined draws no badge. */
   badge?: number;
 }
 
-export function SocialRail() {
-  const router = useRouter();
-  // Friends currently sitting in a pub, straight from the cached dashboard.
-  const [liveFriends, setLiveFriends] = useState(0);
-
-  useEffect(() => {
-    let alive = true;
-    void loadFriendsDashboardSnapshot().then((snapshot) => {
-      if (!alive || !snapshot) return;
-      setLiveFriends(snapshot.dashboard.activeFriends.length);
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  const tiles: RailTile[] = [
-    {
-      key: 'parta',
-      label: cs.socialRail.parta,
-      a11yLabel: cs.a11y.socialRailParta,
-      Icon: UsersIcon,
-      onPress: () => router.navigate('/friends' as Href),
-      badge: liveFriends,
-    },
-    {
-      key: 'pivari',
-      label: cs.socialRail.pivari,
-      a11yLabel: cs.a11y.socialRailPivari,
-      Icon: TrophyIcon,
-      onPress: () =>
-        router.push({ pathname: '/leaderboards', params: { source: 'counter' } } as Href),
-    },
-    {
-      key: 'foto',
-      label: cs.socialRail.photoContest,
-      a11yLabel: cs.a11y.photoContestLink,
-      Icon: ImagesIcon,
-      onPress: () => router.push('/photo-contest' as Href),
-    },
-  ];
+export function DoorRail({ tiles }: { tiles: DoorRailTile[] }) {
+  if (tiles.length === 0) return null;
 
   return (
     <View style={styles.rail}>
@@ -125,7 +76,7 @@ export function SocialRail() {
 
 const styles = StyleSheet.create({
   // Hairline above, hairlines between: the rail is separated by light, not by a
-  // frame. Three boxes inside a card would be frame-on-frame (§14.10).
+  // frame. Boxed tiles inside a card would be frame-on-frame (§14.10).
   rail: {
     marginTop: 14,
     paddingTop: 10,

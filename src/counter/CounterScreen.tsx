@@ -111,7 +111,6 @@ import { CounterCta } from '@/counter/CounterCta';
 import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import { DrinkPickSheet, type DrinkPickRow } from '@/counter/DrinkPickSheet';
 import { ReceiptSheet, type ReceiptItem } from '@/counter/ReceiptSheet';
-import { SocialRail } from '@/components/shared/SocialRail';
 import { WeeklyRankChip } from '@/leaderboards/WeeklyRankChip';
 import { refreshBeerCountReminderAfterBeer } from '@/notifications/beerCountReminder';
 
@@ -1378,9 +1377,10 @@ function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }:
             : cs.a11y.counterCoasterEmpty
         }
       >
-        {/* The room the drawn mug used to take, spent on things that do
-            something: the two shortcuts people reach for with a beer in hand,
-            then the three community surfaces that were invisible behind "…". */}
+        {/* The room the drawn mug used to take, spent on the two shortcuts
+            people actually reach for with a beer in hand. The community doors
+            that used to sit here moved to the Parta tab, which owns them: three
+            doors to Parta from a screen about my own drinking was noise. */}
         <CounterQuickActions
           // Only while the button repeats the last beer. In every other state the
           // CTA itself already leads to the pick sheet, and two doors to one
@@ -1388,7 +1388,6 @@ function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }:
           onPickOther={showQuickOtherBeer ? () => setPickOpen(true) : undefined}
           onMapPub={pub ? () => setMapPubOpen(true) : undefined}
         />
-        <SocialRail />
       </CoasterCard>
 
       <NudgeSlot nudge={nudge} />

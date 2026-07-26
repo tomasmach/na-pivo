@@ -154,12 +154,16 @@ export function NudgeSlot({
   /**
    * Render nothing at all when there is no nudge.
    *
-   * Only for screens whose breathing element is a `ScrollView`: there the slot's
+   * Meant for screens whose breathing element is a `ScrollView`: there the slot's
    * appearance shortens the scroll instead of moving the button, so the fixed
    * height buys nothing and an empty 52pt band reads as a brown hole that cuts
-   * the last row in half. On a screen whose breathing element is the hero card
-   * (counter, compass, profile) the height MUST stay fixed — otherwise the card,
-   * and with it the numeral or the dial, resizes every time a nudge shows up.
+   * the last row in half.
+   *
+   * On a screen whose breathing element is the hero card the default (fixed) is
+   * usually right: the card, and with it the numeral, resizes every time a nudge
+   * shows up. The compass opts out anyway — its nudge is rare and its dial is the
+   * icon of the product, so 52pt of permanent empty stripe costs more than the
+   * occasional resize. Weigh it that way rather than assuming either answer.
    */
   collapseWhenEmpty?: boolean;
 }) {

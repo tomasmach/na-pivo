@@ -20,7 +20,7 @@
  * declined every noun, picked the headline and decided what the footer says.
  */
 
-import React, { useState } from 'react';
+import React, { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
@@ -59,6 +59,12 @@ export interface PartyCardProps {
   /** Both the whole card and the footer link open the party. Null = not pressable. */
   onPress: (() => void) | null;
   accessibilityLabel: string;
+  /**
+   * A `DoorRail` under the footer, in the counter card's idiom. Its own
+   * pressables take the touch, so tapping a door does not also open the party
+   * behind it.
+   */
+  rail?: ReactNode;
 }
 
 export function PartyCard({
@@ -73,6 +79,7 @@ export function PartyCard({
   mine,
   onPress,
   accessibilityLabel,
+  rail,
 }: PartyCardProps) {
   // The table is sized from the card, not the other way round: on a short phone
   // it shrinks instead of spilling over the card's edge.
@@ -145,6 +152,8 @@ export function PartyCard({
           ) : null}
         </View>
       ) : null}
+
+      {rail ?? null}
     </>
   );
 

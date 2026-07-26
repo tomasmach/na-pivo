@@ -950,7 +950,12 @@ export default function CompassScreen() {
         }
       />
 
-      <NudgeSlot nudge={compassNudge} />
+      {/* Collapsed when empty, unlike the counter's. The compass screen has no
+          nudge most of the time, and a permanent 52pt band under the card is
+          52pt the dial does not get — on an iPhone 17 that is a quarter of the
+          dial's diameter spent on an empty brown stripe. The dial does resize
+          when a nudge does arrive; that is the price, and it is worth it. */}
+      <NudgeSlot nudge={compassNudge} collapseWhenEmpty />
 
       <CounterCta
         label={cs.compass.navigateCta}

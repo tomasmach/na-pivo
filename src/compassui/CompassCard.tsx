@@ -25,12 +25,17 @@
  * dimensioned from the card, never the other way round — on an iPhone SE the
  * dial shrinks instead of spilling over the rounded corner.
  *
+ * The dial is the icon of the whole product, so it gets the leftovers, not a
+ * budget: the readout takes its own intrinsic height and the dial's slot flexes
+ * into everything else. Reserving a share of the card for the numeral first is
+ * what left the dial small with dead brown space under it.
+ *
  * Purely presentational: props in, callbacks out. The parent has already
  * formatted the distance, declined the unit, decided what the meta line says
  * and whether pub names are hidden.
  */
 
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 
 import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
@@ -41,31 +46,36 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius } from '@/theme/layout';
 
 /**
- * How much of the card's body the distance readout gets. A share, not a fixed
- * number: a fixed 96 left the dial 40pt too tall and clipped its top off on an
- * iPhone SE, and a fixed 140 then dropped "METRŮ" on top of the pub name. The
- * dial takes what is left, so the pair always fits whatever card it is in.
- */
-function readoutReserve(bodyHeight: number): number {
-  return Math.max(64, Math.min(140, Math.round(bodyHeight * 0.38)));
-}
-
-/** Room inside the reserve for the letterspaced unit caption under the numeral. */
-const CAPTION_ROOM = 20;
-
-/**
  * A floor, not a target. It must stay well under what a short phone can give,
  * or the clamp itself becomes the overflow: `Math.max` happily hands back a
  * size the card has no room for.
+ *
+ * The ceiling exists only so the dial cannot outgrow its 320pt design space on
+ * a tablet-sized card; on every phone the card's own width is the real limit.
  */
 const DIAL_MIN = 110;
-const DIAL_MAX = 300;
+const DIAL_MAX = 380;
 
-/** The numeral shrinks with its digit count so "1000" never crowds the card. */
+/**
+ * The dial's SVG ring stops at r=151.5 (r=150 plus half its 3pt stroke) inside a
+ * 320 box, so ~5 % of the measured slot is transparent margin. Scaling up by that
+ * much lets the ring touch the edge of the room it was given instead of floating
+ * inside it — any more and the stroke gets shaved off.
+ */
+const DIAL_BLEED = 320 / 303;
+
+/**
+ * The numeral shrinks with its digit count so "1000" never crowds the card.
+ *
+ * These are deliberately far below the 88pt this used to be. Every point here is
+ * a point the dial does not get, and measured on an iPhone 17 the old readout ate
+ * 130pt of a 298pt card body — half the hero's room for four glyphs. "2" at 44pt
+ * is still by far the largest thing on the screen.
+ */
 function distanceFontSize(value: string): number {
-  if (value.length <= 2) return 88;
-  if (value.length <= 3) return 72;
-  return 56;
+  if (value.length <= 2) return 44;
+  if (value.length <= 3) return 40;
+  return 34;
 }
 
 /** Opening-hours tone. Never red — we don't shout at people about a closed pub. */
@@ -125,14 +135,15 @@ export function CompassCard({
   // Last size handed to the parent. A ref, not state: re-reporting the same
   // number would bounce layout -> setState -> layout forever.
   const lastDialSizeRef = useRef(0);
-  // The body's measured height also drives the numeral, so it has to be state.
-  const [bodyHeight, setBodyHeight] = useState(0);
 
-  const handleBodyLayout = useCallback(
+  // The dial slot is measured, not budgeted. The readout below it takes its own
+  // intrinsic height (one numeral line plus the caption), the slot flexes into
+  // whatever is left, and the dial is simply as big as that square — no share,
+  // no reserve, no arithmetic that can leave the dial floating in dead space.
+  const handleDialSlotLayout = useCallback(
     (event: LayoutChangeEvent) => {
       const { width, height } = event.nativeEvent.layout;
-      setBodyHeight(height);
-      const available = Math.min(width, height - readoutReserve(height));
+      const available = Math.min(width, height) * DIAL_BLEED;
       const next = Math.round(Math.max(DIAL_MIN, Math.min(DIAL_MAX, available)));
       if (next === lastDialSizeRef.current) return;
       lastDialSizeRef.current = next;
@@ -141,27 +152,24 @@ export function CompassCard({
     [onDialSize],
   );
 
-  // Both the dial and the numeral are sized FROM the card (§5.3). Fixed sizes
-  // were what pushed "METRŮ" on top of the pub name on an iPhone SE: the dial
-  // and an 88pt numeral together simply do not fit a 667pt screen, so the
-  // readout takes a share of the card and the numeral fits that share.
-  const numeralSize =
-    distanceValue === null
-      ? 0
-      : bodyHeight > 0
-        ? Math.min(
-            distanceFontSize(distanceValue),
-            Math.max(32, Math.floor((readoutReserve(bodyHeight) - CAPTION_ROOM) / 1.24)),
-          )
-        : distanceFontSize(distanceValue);
+  const numeralSize = distanceValue === null ? 0 : distanceFontSize(distanceValue);
   const hasFooter = pubName !== null || hidden;
 
   return (
     <View style={styles.card}>
       <CardSheen />
 
-      <View style={styles.body} onLayout={handleBodyLayout}>
-        {dial}
+      <View style={styles.body}>
+        {/* The dial hangs in an absolute layer inside the slot. In the flow it
+            would feed its own height back into the slot it was measured from:
+            slot -> bigger dial -> bigger slot -> bigger dial, until the clamp
+            stopped it with the ring hanging over the card's edge. Out of the
+            flow, the slot's height depends only on what is left over. */}
+        <View style={styles.dialSlot} onLayout={handleDialSlotLayout}>
+          <View style={styles.dialLayer} pointerEvents="none">
+            {dial}
+          </View>
+        </View>
 
         {distanceValue !== null ? (
           <View style={styles.readout}>
@@ -169,9 +177,9 @@ export function CompassCard({
               style={[
                 styles.distance,
                 // The line box must clear the extrabold glyph's overshoot, or
-                // iOS shaves the top off the digits. 1.24 leaves real headroom;
-                // the unit's negative margin closes the gap it creates below.
-                { fontSize: numeralSize, lineHeight: numeralSize * 1.24 },
+                // iOS shaves the top off the digits. 1.14 is the least that still
+                // does at this size; the unit's negative margin closes the rest.
+                { fontSize: numeralSize, lineHeight: numeralSize * 1.14 },
               ]}
               numberOfLines={1}
               maxFontSizeMultiplier={FontScaleCap.display}
@@ -285,11 +293,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Eats everything the readout does not need. `overflow: hidden` keeps the one
+  // frame between the layout pass and the new dial size from spilling.
+  dialSlot: {
+    flex: 1,
+    alignSelf: 'stretch',
+    minHeight: DIAL_MIN,
+    overflow: 'hidden',
+  },
+  dialLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   // Stretched so the centered unit caption can shrink against the card's real
   // width instead of against its own content box.
+  // The dial's ring now reaches the edge of its slot, so the numeral needs a
+  // real gap under it — at marginTop 2 the "2" sat on the ring's tick dots.
   readout: {
     alignSelf: 'stretch',
-    marginTop: 12,
+    marginTop: 10,
   },
   distance: {
     fontFamily: Fonts.display.extrabold,
@@ -303,10 +330,10 @@ const styles = StyleSheet.create({
   // Pulled up into the numeral's line-box headroom so the pair reads as one
   // object instead of two stacked labels.
   unit: {
-    marginTop: -8,
+    marginTop: -2,
     fontFamily: Fonts.display.bold,
-    fontSize: 13,
-    letterSpacing: 3,
+    fontSize: 14,
+    letterSpacing: 3.2,
     color: Colors.foamMuted,
     includeFontPadding: false,
     textAlign: 'center',
