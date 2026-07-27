@@ -13,7 +13,10 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
 import { amberGlowStrong } from '@/theme/shadows';
 
-const CTA_HEIGHT = 84;
+// 62pt — the design system's non-hero button height, shared with GlowButton and
+// the diary's footer. The old 84pt hero, with an outline twin under it, ate a
+// third of the screen on every surface that also has to show content.
+const CTA_HEIGHT = 62;
 const PRESS_SWALLOW_MS = 700;
 
 export interface CounterCtaProps {

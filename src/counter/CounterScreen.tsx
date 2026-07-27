@@ -303,9 +303,21 @@ interface TacekProps {
   onPubRenamed: (newName: string) => void;
   /** Hosted inside the "Štamgast" tab: the parent owns the top inset + segment. */
   embedded: boolean;
+  /** Set when the host owns the "…" door (it sits in the segment row up there);
+   *  undefined keeps the glyph — and its state — on this screen. */
+  moreOpen?: boolean;
+  onMoreClose?: () => void;
 }
 
-function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }: TacekProps) {
+function Tacek({
+  place,
+  unresolvedKind,
+  onChangePlace,
+  onPubRenamed,
+  embedded,
+  moreOpen: moreOpenProp,
+  onMoreClose,
+}: TacekProps) {
   const insets = useSafeAreaInsets();
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
   const waterNudgeEnabled = useSettingsStore((s) => s.waterNudgeEnabled);
@@ -349,7 +361,7 @@ function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }:
   // — Sheets and modals —
   const [pickOpen, setPickOpen] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
+  const [ownMoreOpen, setOwnMoreOpen] = useState(false);
   const [mapPubOpen, setMapPubOpen] = useState(false);
   const [scanSourceVisible, setScanSourceVisible] = useState(false);
   const [photoCaptureOpen, setPhotoCaptureOpen] = useState(false);
@@ -454,17 +466,27 @@ function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }:
     setPendingRapid(null);
   }
 
+  const moreControlled = moreOpenProp !== undefined;
+  const moreVisible = moreControlled ? moreOpenProp : ownMoreOpen;
+  const closeMore = useCallback(() => {
+    if (moreControlled) onMoreClose?.();
+    else setOwnMoreOpen(false);
+  }, [moreControlled, onMoreClose]);
+
   /** Close the overflow sheet, then run the row's action. */
-  const runAfterSheetClose = useCallback((action: () => void) => {
-    setMoreOpen(false);
-    setPickOpen(false);
-    setReceiptOpen(false);
-    if (sheetActionTimer.current) clearTimeout(sheetActionTimer.current);
-    sheetActionTimer.current = setTimeout(() => {
-      sheetActionTimer.current = null;
-      action();
-    }, SHEET_DISMISS_MS);
-  }, []);
+  const runAfterSheetClose = useCallback(
+    (action: () => void) => {
+      closeMore();
+      setPickOpen(false);
+      setReceiptOpen(false);
+      if (sheetActionTimer.current) clearTimeout(sheetActionTimer.current);
+      sheetActionTimer.current = setTimeout(() => {
+        sheetActionTimer.current = null;
+        action();
+      }, SHEET_DISMISS_MS);
+    },
+    [closeMore],
+  );
 
   // ── Session state ───────────────────────────────────────────────────────────
 
@@ -1385,15 +1407,19 @@ function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }:
         >
           <CameraIcon size={20} color={Colors.amber} />
         </Pressable>
-        <Pressable
-          onPress={() => setMoreOpen(true)}
-          style={({ pressed }) => [styles.moreButton, pressed && styles.pressedSoft]}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel={cs.a11y.counterMore}
-        >
-          <MenuIcon size={20} color={Colors.mutedText} />
-        </Pressable>
+        {/* Hosted in the Štamgast tab the "…" door lives in the segment row, so
+            this header keeps only the place chip and the camera. */}
+        {moreControlled ? null : (
+          <Pressable
+            onPress={() => setOwnMoreOpen(true)}
+            style={({ pressed }) => [styles.moreButton, pressed && styles.pressedSoft]}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={cs.a11y.counterMore}
+          >
+            <MenuIcon size={20} color={Colors.mutedText} />
+          </Pressable>
+        )}
       </View>
 
       <CoasterCard
@@ -1456,8 +1482,8 @@ function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }:
       />
 
       <CounterMoreSheet
-        visible={moreOpen}
-        onClose={() => setMoreOpen(false)}
+        visible={moreVisible}
+        onClose={closeMore}
         onDone={count > 0 ? () => runAfterSheetClose(handleDone) : undefined}
         onSticker={liveNight ? () => runAfterSheetClose(() => setStickerOpen(true)) : undefined}
         onPingFriends={pub ? () => runAfterSheetClose(() => void handleShareWithFriends()) : undefined}
@@ -1536,7 +1562,22 @@ function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }:
 
 // ─── Screen root ──────────────────────────────────────────────────────────────
 
-export default function CounterScreen({ embedded = false }: { embedded?: boolean } = {}) {
+export interface CounterScreenProps {
+  embedded?: boolean;
+  /** Set by the host when the "…" door sits in its header row instead of ours. */
+  moreOpen?: boolean;
+  onMoreClose?: () => void;
+  /** Called with `false` while the permission gate is up: the counter has no
+   *  overflow sheet in that state, so a host-owned glyph would be a dead one. */
+  onMoreAvailability?: (available: boolean) => void;
+}
+
+export default function CounterScreen({
+  embedded = false,
+  moreOpen,
+  onMoreClose,
+  onMoreAvailability,
+}: CounterScreenProps = {}) {
   const router = useRouter();
   const { candidates, selected, selectPub, permissionState, requestPermission, loading, retry } =
     useNearbyPub();
@@ -1569,7 +1610,14 @@ export default function CounterScreen({ embedded = false }: { embedded?: boolean
       ? geohash8(activePub.lat, activePub.lng)
       : null;
 
-  if (permissionState !== 'granted' && !outsideContext) {
+  // The gate replaces the whole counter, sheets included — tell the host so its
+  // "…" glyph disappears with them instead of turning into a no-op.
+  const gated = permissionState !== 'granted' && !outsideContext;
+  useEffect(() => {
+    onMoreAvailability?.(!gated);
+  }, [gated, onMoreAvailability]);
+
+  if (gated) {
     return (
       <>
         <PermissionGate
@@ -1611,6 +1659,8 @@ export default function CounterScreen({ embedded = false }: { embedded?: boolean
           useTallyStore.getState().renameCurrentPub(geohash8(activePub.lat, activePub.lng), name);
         }}
         embedded={embedded}
+        moreOpen={moreOpen}
+        onMoreClose={onMoreClose}
       />
       <PubPickerModal
         visible={pickerOpen}

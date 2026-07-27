@@ -81,8 +81,12 @@ const Segmented = memo(function Segmented({ tab, onChange }: SegmentedProps) {
 export default function BeerScreen() {
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<BeerTab>('count');
-  // The diary's "…" door lives in this header now, so its open state does too.
+  // Both halves hand their "…" door to this header, so their open state lives
+  // here too. `counterMoreReady` goes false while the counter shows the location
+  // permission gate — no counter, no overflow sheet, so no glyph either.
   const [statsOpen, setStatsOpen] = useState(false);
+  const [counterMoreOpen, setCounterMoreOpen] = useState(false);
+  const [counterMoreReady, setCounterMoreReady] = useState(true);
 
   useEffect(() => {
     // A deep link can mount this child before RootLayout's async initialization.
@@ -94,17 +98,26 @@ export default function BeerScreen() {
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <View style={styles.segmentRow}>
-          <Segmented tab={tab} onChange={setTab} />
-          {/* The counter fills its own header row (place chip, camera, "…"), the
-              diary does not — a whole row for one glyph. So on that half the
-              door moves up here, next to the switch. */}
-          {tab === 'diary' ? (
+          <Segmented
+            tab={tab}
+            onChange={(next) => {
+              // The other half unmounts with it, sheets included: a door left
+              // open here would re-open on the way back.
+              setStatsOpen(false);
+              setCounterMoreOpen(false);
+              setTab(next);
+            }}
+          />
+          {/* One door for the whole tab, always in the same place: a row of its
+              own below the switch was pure dead space on the diary, and on the
+              counter it pushed the place chip around for one glyph. */}
+          {tab === 'diary' || counterMoreReady ? (
             <Pressable
-              onPress={() => setStatsOpen(true)}
+              onPress={() => (tab === 'diary' ? setStatsOpen(true) : setCounterMoreOpen(true))}
               style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel={cs.a11y.diaryStats}
+              accessibilityLabel={tab === 'diary' ? cs.a11y.diaryStats : cs.a11y.counterMore}
             >
               <MenuIcon size={20} color={Colors.mutedText} />
             </Pressable>
@@ -113,7 +126,12 @@ export default function BeerScreen() {
       </View>
       <View style={styles.body}>
         {tab === 'count' ? (
-          <CounterScreen embedded />
+          <CounterScreen
+            embedded
+            moreOpen={counterMoreOpen}
+            onMoreClose={() => setCounterMoreOpen(false)}
+            onMoreAvailability={setCounterMoreReady}
+          />
         ) : (
           <DiaryScreen embedded statsOpen={statsOpen} onStatsClose={() => setStatsOpen(false)} />
         )}
