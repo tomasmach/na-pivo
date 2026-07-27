@@ -26,7 +26,7 @@ import { ReportPubModal } from '@/components/compass/ReportPubModal';
 import {
   BeerIcon,
   ChevronRightIcon,
-  EllipsisIcon,
+  MenuIcon,
   ExternalLinkIcon,
   FlagIcon,
   ListFilterIcon,
@@ -1208,7 +1208,7 @@ export default function BeerMapScreen({
             accessibilityRole="button"
             accessibilityLabel={cs.a11y.compassMore}
           >
-            <EllipsisIcon size={20} color={Colors.foamMuted} />
+            <MenuIcon size={20} color={Colors.foamMuted} />
           </Pressable>
         </View>
         <View style={styles.nudgeWrap}>

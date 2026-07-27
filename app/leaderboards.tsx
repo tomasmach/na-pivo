@@ -23,7 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   BeerIcon,
   ChevronLeftIcon,
-  EllipsisIcon,
+  MenuIcon,
   MapPinIcon,
   PencilIcon,
 } from '@/components/shared/IconGlyph';
@@ -322,7 +322,7 @@ export default function LeaderboardsScreen() {
           accessibilityLabel={cs.leaderboards.openTablePicker}
           style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}
         >
-          <EllipsisIcon size={20} color={Colors.mutedText} />
+          <MenuIcon size={20} color={Colors.mutedText} />
         </Pressable>
       </View>
 

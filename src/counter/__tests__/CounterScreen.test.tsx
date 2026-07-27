@@ -102,7 +102,7 @@ jest.mock('@/components/shared/IconGlyph', () => {
     'CreditCardIcon', 'AccessibilityIcon', 'TargetIcon', 'CircleDotIcon', 'SoccerBallIcon',
     'RadioIcon', 'MicIcon', 'TvIcon', 'SquareParkingIcon', 'MapPinnedIcon', 'MapPinPlusIcon',
     'MapIcon', 'ListIcon', 'LocateFixedIcon', 'SlidersHorizontalIcon', 'SproutIcon',
-    'ClipboardListIcon', 'FlameIcon', 'TrophyIcon', 'MoonIcon', 'QrCodeIcon', 'EllipsisIcon',
+    'ClipboardListIcon', 'FlameIcon', 'TrophyIcon', 'MoonIcon', 'QrCodeIcon', 'MenuIcon',
   ];
   const glyphs: Record<string, unknown> = {};
   for (const name of names) glyphs[name] = jest.fn(() => null);

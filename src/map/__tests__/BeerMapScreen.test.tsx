@@ -113,7 +113,7 @@ jest.mock('@/components/shared/IconGlyph', () => {
     CheckIcon: MockIcon,
     ChevronRightIcon: MockIcon,
     CompassIcon: MockIcon,
-    EllipsisIcon: MockIcon,
+    MenuIcon: MockIcon,
     ExternalLinkIcon: MockIcon,
     FlagIcon: MockIcon,
     MapPinPlusIcon: MockIcon,

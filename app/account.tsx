@@ -23,7 +23,7 @@ import { PasswordSheet } from '@/account/PasswordSheet';
 import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
 import {
   ChevronLeftIcon,
-  EllipsisIcon,
+  MenuIcon,
   MailIcon,
   Trash2Icon,
 } from '@/components/shared/IconGlyph';
@@ -407,7 +407,7 @@ export default function AccountScreen() {
           accessibilityRole="button"
           accessibilityLabel={cs.a11y.accountMore}
         >
-          <EllipsisIcon size={20} color={Colors.mutedText} />
+          <MenuIcon size={20} color={Colors.mutedText} />
         </Pressable>
       ) : null}
     </View>

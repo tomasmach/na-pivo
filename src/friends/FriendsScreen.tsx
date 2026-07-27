@@ -46,7 +46,7 @@ import {
   BellRingIcon,
   BeerIcon,
   CheckIcon,
-  EllipsisIcon,
+  MenuIcon,
   HandPlatterIcon,
   ImagesIcon,
   QrCodeIcon,
@@ -1414,7 +1414,7 @@ export default function FriendsScreen() {
           accessibilityRole="button"
           accessibilityLabel={cs.a11y.partaMore}
         >
-          <EllipsisIcon size={20} color={Colors.mutedText} />
+          <MenuIcon size={20} color={Colors.mutedText} />
         </Pressable>
       </View>
 

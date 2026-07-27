@@ -21,7 +21,7 @@ import {
   ChevronLeftIcon,
   CompassIcon,
   BeerIcon,
-  EllipsisIcon,
+  MenuIcon,
   FlameIcon,
   MapPinIcon,
   XIcon,
@@ -311,7 +311,7 @@ export default function FriendProfileScreen() {
             accessibilityLabel={cs.friends.profileActionsA11y}
             style={({ pressed }) => [styles.headerBtn, pressed && styles.dim]}
           >
-            <EllipsisIcon size={22} color={Colors.foamMuted} />
+            <MenuIcon size={22} color={Colors.foamMuted} />
           </Pressable>
         ) : (
           <View style={styles.headerBtn} />

@@ -34,7 +34,7 @@ import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
 import { beerCountLabel, beerNoun, czechPlural } from '@/i18n/plural';
 import { formatPrice } from '@/utils/currency';
-import { ChevronRightIcon, EllipsisIcon } from '@/components/shared/IconGlyph';
+import { ChevronRightIcon, MenuIcon } from '@/components/shared/IconGlyph';
 
 import { NightCard } from '@/diary/NightCard';
 import { TallyCoaster } from '@/diary/TallyCoaster';
@@ -441,7 +441,7 @@ export default function DiaryScreen({ embedded = false }: { embedded?: boolean }
           accessibilityRole="button"
           accessibilityLabel={cs.a11y.diaryStats}
         >
-          <EllipsisIcon size={20} color={Colors.mutedText} />
+          <MenuIcon size={20} color={Colors.mutedText} />
         </Pressable>
       </View>
 

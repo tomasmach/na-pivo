@@ -114,7 +114,7 @@ jest.mock('@/components/shared/IconGlyph', () => ({
   XIcon: jest.fn(() => null),
   ListFilterIcon: jest.fn(() => null),
   HouseIcon: jest.fn(() => null),
-  EllipsisIcon: jest.fn(() => null),
+  MenuIcon: jest.fn(() => null),
   TargetIcon: jest.fn(() => null),
   SparklesIcon: jest.fn(() => null),
 }));

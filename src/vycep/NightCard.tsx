@@ -10,7 +10,7 @@ import { memo, useCallback, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { showAppDialog } from '@/components/shared/AppDialog';
-import { EllipsisIcon } from '@/components/shared/IconGlyph';
+import { MenuIcon } from '@/components/shared/IconGlyph';
 import { reportProfileContent } from '@/data/auth';
 import {
   isRetriableNightError,
@@ -180,7 +180,7 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
           accessibilityLabel={cs.a11y.nightMenu}
           style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]}
         >
-          <EllipsisIcon size={18} color={Colors.mutedText} />
+          <MenuIcon size={18} color={Colors.mutedText} />
         </Pressable>
       </View>
 

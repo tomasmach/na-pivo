@@ -59,7 +59,7 @@ import {
   MapPinIcon,
   GlobeIcon,
   TriangleAlertIcon,
-  EllipsisIcon,
+  MenuIcon,
   CheckIcon,
   PlusIcon,
   FlagIcon,
@@ -1167,7 +1167,7 @@ function MoreActions({
         accessibilityState={{ expanded: open }}
         accessibilityLabel={cs.mapPub.moreA11y}
       >
-        <EllipsisIcon size={18} color={Colors.mutedText} />
+        <MenuIcon size={18} color={Colors.mutedText} />
         <Text style={styles.moreLabel} maxFontSizeMultiplier={FontScaleCap.body}>
           {cs.mapPub.moreLabel}
         </Text>

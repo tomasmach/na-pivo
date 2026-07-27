@@ -45,7 +45,7 @@ import {
   BeerIcon,
   CameraIcon,
   ChevronLeftIcon,
-  EllipsisIcon,
+  MenuIcon,
   MapPinIcon,
   TrophyIcon,
   XIcon,
@@ -283,7 +283,7 @@ function EntryTile({
           importantForAccessibility="no-hide-descendants"
           style={styles.entryOverflow}
         >
-          <EllipsisIcon size={16} color={Colors.foam} />
+          <MenuIcon size={16} color={Colors.foam} />
         </View>
       )}
     </View>

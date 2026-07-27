@@ -28,7 +28,7 @@ import { useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
-  EllipsisIcon,
+  MenuIcon,
   HouseIcon,
   InfoIcon,
   MapIcon,
@@ -642,7 +642,7 @@ export default function SettingsScreen() {
           accessibilityRole="button"
           accessibilityLabel={cs.settings.more.accessibilityLabel}
         >
-          <EllipsisIcon size={20} color={Colors.mutedText} />
+          <MenuIcon size={20} color={Colors.mutedText} />
         </Pressable>
       </View>
 

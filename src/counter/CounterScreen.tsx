@@ -40,7 +40,7 @@ import { GlowButton } from '@/components/shared/GlowButton';
 import {
   BeerIcon,
   HouseIcon,
-  EllipsisIcon,
+  MenuIcon,
   CameraIcon,
   InfoIcon,
   GlassWaterIcon,
@@ -1392,7 +1392,7 @@ function Tacek({ place, unresolvedKind, onChangePlace, onPubRenamed, embedded }:
           accessibilityRole="button"
           accessibilityLabel={cs.a11y.counterMore}
         >
-          <EllipsisIcon size={20} color={Colors.mutedText} />
+          <MenuIcon size={20} color={Colors.mutedText} />
         </Pressable>
       </View>
 

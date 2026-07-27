@@ -77,7 +77,7 @@ import {
   Trophy,
   Moon,
   QrCode,
-  Ellipsis,
+  Menu,
   GlassWater,
   Wine,
   ListFilter,
@@ -206,7 +206,7 @@ export const TrophyIcon = wrap(Trophy, 'TrophyIcon');
 export const MoonIcon = wrap(Moon, 'MoonIcon');
 // Parta 3.0 — "Můj kód" QR growth glyph.
 export const QrCodeIcon = wrap(QrCode, 'QrCodeIcon');
-// Parta 3.0 — friend-profile overflow "…" menu glyph.
-export const EllipsisIcon = wrap(Ellipsis, 'EllipsisIcon');
+// Overflow menu glyph — three stacked lines, not a horizontal ellipsis.
+export const MenuIcon = wrap(Menu, 'MenuIcon');
 export const GlobeIcon = wrap(Globe, 'GlobeIcon');
 export const TriangleAlertIcon = wrap(TriangleAlert, 'TriangleAlertIcon');

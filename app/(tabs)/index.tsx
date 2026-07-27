@@ -63,7 +63,7 @@ import {
   XIcon,
   ListFilterIcon,
   HouseIcon,
-  EllipsisIcon,
+  MenuIcon,
   FlagIcon,
   TargetIcon,
   SparklesIcon,
@@ -923,7 +923,7 @@ export default function CompassScreen() {
           accessibilityRole="button"
           accessibilityLabel={cs.a11y.compassMore}
         >
-          <EllipsisIcon size={20} color={Colors.mutedText} />
+          <MenuIcon size={20} color={Colors.mutedText} />
         </Pressable>
       </View>
 

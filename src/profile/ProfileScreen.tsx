@@ -12,7 +12,7 @@ import { useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
-  EllipsisIcon,
+  MenuIcon,
   ExternalLinkIcon,
   SettingsIcon,
   TrophyIcon,
@@ -392,7 +392,7 @@ export default function ProfileScreen() {
           accessibilityRole="button"
           accessibilityLabel={cs.a11y.profileMore}
         >
-          <EllipsisIcon size={20} color={Colors.mutedText} />
+          <MenuIcon size={20} color={Colors.mutedText} />
         </Pressable>
       </View>
 
