@@ -1926,7 +1926,6 @@ export const cs = {
 
     // — The one button —
     cta: 'Dopiš večer',
-    ctaSub: 'Piva, hospodu, čas i cenu.',
 
     // — Empty state —
     emptyTitle: 'Zatím prázdná stopa',

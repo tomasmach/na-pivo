@@ -41,7 +41,8 @@ import { TallyCoaster } from '@/diary/TallyCoaster';
 import { DiaryStatsSheet, type StatRow } from '@/diary/DiaryStatsSheet';
 
 import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
-import { CounterCta } from '@/counter/CounterCta';
+import { GlowButton } from '@/components/shared/GlowButton';
+import { ScrollFade } from '@/components/shared/ScrollFade';
 
 import { fetchMyBeerCheckIns, type BeerCheckIn, type BeerCheckInInput } from '@/data/beerCheckinsClient';
 import { getPendingBeerCheckIns } from '@/data/beerCheckinsQueue';
@@ -172,7 +173,19 @@ function NightRow({
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
-export default function DiaryScreen({ embedded = false }: { embedded?: boolean } = {}) {
+export interface DiaryScreenProps {
+  embedded?: boolean;
+  /** Set by the host (BeerScreen) when the "…" door sits in its header row
+   *  instead of ours; leaving it undefined keeps the screen self-contained. */
+  statsOpen?: boolean;
+  onStatsClose?: () => void;
+}
+
+export default function DiaryScreen({
+  embedded = false,
+  statsOpen: statsOpenProp,
+  onStatsClose,
+}: DiaryScreenProps = {}) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -202,7 +215,13 @@ export default function DiaryScreen({ embedded = false }: { embedded?: boolean }
   });
 
   const [historicalOpen, setHistoricalOpen] = useState(false);
-  const [statsOpen, setStatsOpen] = useState(false);
+  const [ownStatsOpen, setOwnStatsOpen] = useState(false);
+  const statsControlled = statsOpenProp !== undefined;
+  const statsVisible = statsControlled ? statsOpenProp : ownStatsOpen;
+  const closeStats = useCallback(() => {
+    if (statsControlled) onStatsClose?.();
+    else setOwnStatsOpen(false);
+  }, [statsControlled, onStatsClose]);
   const [pendingCount, setPendingCount] = useState(0);
   const [loadFailed, setLoadFailed] = useState(false);
   const [diaryToken, setDiaryToken] = useState(0);
@@ -432,68 +451,77 @@ export default function DiaryScreen({ embedded = false }: { embedded?: boolean }
         { paddingTop: topInset + 8, paddingBottom: Math.max(insets.bottom, Spacing.sm) },
       ]}
     >
-      <View style={styles.header}>
-        <View style={styles.headerSpacer} />
-        <Pressable
-          onPress={() => setStatsOpen(true)}
-          style={({ pressed }) => [styles.moreButton, pressed && styles.pressedSoft]}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel={cs.a11y.diaryStats}
-        >
-          <MenuIcon size={20} color={Colors.mutedText} />
-        </Pressable>
-      </View>
+      {/* Embedded in the Štamgast tab the "…" door sits next to the segmented
+          control, so a whole 44pt row for one glyph would be dead space. */}
+      {statsControlled ? null : (
+        <View style={styles.header}>
+          <View style={styles.headerSpacer} />
+          <Pressable
+            onPress={() => setOwnStatsOpen(true)}
+            style={({ pressed }) => [styles.moreButton, pressed && styles.pressedSoft]}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={cs.a11y.diaryStats}
+          >
+            <MenuIcon size={20} color={Colors.mutedText} />
+          </Pressable>
+        </View>
+      )}
 
       {lastNight && lastNoun ? (
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          <NightCard
-            // With nothing under it the card takes the leftover height, exactly
-            // like the counter's coaster — a short card with 300pt of empty
-            // stout beneath it is the wireframe look, not airy design.
-            style={olderNights.length === 0 ? styles.cardGrow : undefined}
-            count={lastNoun.count}
-            nounLabel={lastNoun.noun}
-            whenLabel={
-              isRunning
-                ? `${eveningDateLabel(lastNight.startedAt, now)} · ${cs.diary.running}`
-                : eveningDateLabel(lastNight.startedAt, now)
-            }
-            placeLabel={lastNight.pubName || cs.diary.noPub}
-            spentLabel={lastSpentCzk > 0 ? formatPrice(lastSpentCzk, priceCurrency) : null}
-            nights={nights.length}
-            onPress={() => openEvening(lastNight)}
-            accessibilityLabel={cs.a11y.diaryCard(
-              beerCountLabel(lastNoun.count),
-              lastNight.pubName || cs.diary.noPub,
-              eveningDateLabel(lastNight.startedAt, now),
-            )}
-          />
+        // The trail and the fade that ends it share one box, exactly like Parta:
+        // an absolute child that overflows its parent gets clipped on Android.
+        <View style={styles.body}>
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <NightCard
+              // With nothing under it the card takes the leftover height, exactly
+              // like the counter's coaster — a short card with 300pt of empty
+              // stout beneath it is the wireframe look, not airy design.
+              style={olderNights.length === 0 ? styles.cardGrow : undefined}
+              count={lastNoun.count}
+              nounLabel={lastNoun.noun}
+              whenLabel={
+                isRunning
+                  ? `${eveningDateLabel(lastNight.startedAt, now)} · ${cs.diary.running}`
+                  : eveningDateLabel(lastNight.startedAt, now)
+              }
+              placeLabel={lastNight.pubName || cs.diary.noPub}
+              spentLabel={lastSpentCzk > 0 ? formatPrice(lastSpentCzk, priceCurrency) : null}
+              nights={nights.length}
+              onPress={() => openEvening(lastNight)}
+              accessibilityLabel={cs.a11y.diaryCard(
+                beerCountLabel(lastNoun.count),
+                lastNight.pubName || cs.diary.noPub,
+                eveningDateLabel(lastNight.startedAt, now),
+              )}
+            />
 
-          {olderNights.length > 0 ? (
-            <>
-              <Text style={styles.olderHeader} maxFontSizeMultiplier={FontScaleCap.body}>
-                {cs.diary.olderHeader}
-              </Text>
-              <View style={styles.rowsCard}>
-                {olderNights.map((session, index) => (
-                  <NightRow
-                    key={session.startedAt}
-                    session={session}
-                    priceCurrency={priceCurrency}
-                    now={now}
-                    isFirst={index === 0}
-                    onPress={() => openEvening(session)}
-                  />
-                ))}
-              </View>
-            </>
-          ) : null}
-        </ScrollView>
+            {olderNights.length > 0 ? (
+              <>
+                <Text style={styles.olderHeader} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {cs.diary.olderHeader}
+                </Text>
+                <View style={styles.rowsCard}>
+                  {olderNights.map((session, index) => (
+                    <NightRow
+                      key={session.startedAt}
+                      session={session}
+                      priceCurrency={priceCurrency}
+                      now={now}
+                      isFirst={index === 0}
+                      onPress={() => openEvening(session)}
+                    />
+                  ))}
+                </View>
+              </>
+            ) : null}
+          </ScrollView>
+          <ScrollFade />
+        </View>
       ) : (
         <View style={styles.empty}>
           <TallyCoaster marks={0} nights={0} width={96} />
@@ -506,25 +534,28 @@ export default function DiaryScreen({ embedded = false }: { embedded?: boolean }
         </View>
       )}
 
-      {/* The scroll above absorbs this slot, so an empty one would only be a
-          brown band slicing the last row in half. */}
-      <NudgeSlot nudge={nudge} collapseWhenEmpty />
+      {/* Like Parta: this screen scrolls, so it does not get the counter's 84pt
+          hero button with a second line under it — that pair ate a third of the
+          screen the trail needs. One 62pt GlowButton, the non-hero variant. */}
+      <View style={styles.footer}>
+        <NudgeSlot nudge={nudge} collapseWhenEmpty />
 
-      <CounterCta
-        label={cs.diary.cta}
-        subLabel={cs.diary.ctaSub}
-        onPress={() => setHistoricalOpen(true)}
-        accessibilityLabel={cs.a11y.myBeersAddHistorical}
-      />
+        <GlowButton
+          label={cs.diary.cta}
+          onPress={() => setHistoricalOpen(true)}
+          glow="soft"
+          accessibilityLabel={cs.a11y.myBeersAddHistorical}
+        />
+      </View>
 
       <DiaryStatsSheet
-        visible={statsOpen}
+        visible={statsVisible}
         totalBeers={lifetime.totalBeers.toLocaleString('cs-CZ')}
         rows={statRows}
         records={recordRows}
         topPubs={pubRows}
         years={yearRows}
-        onClose={() => setStatsOpen(false)}
+        onClose={closeStats}
       />
 
       <HistoricalBeerEntrySheet
@@ -561,6 +592,8 @@ const styles = StyleSheet.create({
   },
   pressedSoft: { opacity: 0.6 },
 
+  body: { flex: 1 },
+  footer: { gap: 12 },
   scroll: { flex: 1 },
   // flexGrow gives the content container a definite height, which is what lets
   // a lone card claim the leftover space instead of collapsing to its minimum.

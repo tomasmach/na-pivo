@@ -24,6 +24,7 @@ import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, HitArea } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
 import { fireLightImpactHaptic } from '@/utils/haptics';
+import { MenuIcon } from '@/components/shared/IconGlyph';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { reconcileLiveBeerActivityAndAutoArchive } from '@/liveActivity/liveBeerActivity';
 import CounterScreen from '@/counter/CounterScreen';
@@ -51,7 +52,7 @@ const Segmented = memo(function Segmented({ tab, onChange }: SegmentedProps) {
   ];
 
   return (
-    <View style={styles.segment}>
+    <View style={[styles.segment, styles.segmentGrow]}>
       {segments.map((seg) => {
         const active = seg.key === tab;
         return (
@@ -80,6 +81,8 @@ const Segmented = memo(function Segmented({ tab, onChange }: SegmentedProps) {
 export default function BeerScreen() {
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<BeerTab>('count');
+  // The diary's "…" door lives in this header now, so its open state does too.
+  const [statsOpen, setStatsOpen] = useState(false);
 
   useEffect(() => {
     // A deep link can mount this child before RootLayout's async initialization.
@@ -90,10 +93,30 @@ export default function BeerScreen() {
   return (
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <Segmented tab={tab} onChange={setTab} />
+        <View style={styles.segmentRow}>
+          <Segmented tab={tab} onChange={setTab} />
+          {/* The counter fills its own header row (place chip, camera, "…"), the
+              diary does not — a whole row for one glyph. So on that half the
+              door moves up here, next to the switch. */}
+          {tab === 'diary' ? (
+            <Pressable
+              onPress={() => setStatsOpen(true)}
+              style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={cs.a11y.diaryStats}
+            >
+              <MenuIcon size={20} color={Colors.mutedText} />
+            </Pressable>
+          ) : null}
+        </View>
       </View>
       <View style={styles.body}>
-        {tab === 'count' ? <CounterScreen embedded /> : <DiaryScreen embedded />}
+        {tab === 'count' ? (
+          <CounterScreen embedded />
+        ) : (
+          <DiaryScreen embedded statsOpen={statsOpen} onStatsClose={() => setStatsOpen(false)} />
+        )}
       </View>
     </View>
   );
@@ -106,6 +129,20 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.sm,
   },
   body: { flex: 1 },
+  segmentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  segmentGrow: { flex: 1 },
+  moreButton: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pressed: { opacity: 0.6 },
 
   // Deliberately unlit: amber belongs to the count and the one button on the
   // counter below. A filled amber segment up here made three yellow blocks
