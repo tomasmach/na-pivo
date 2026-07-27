@@ -170,7 +170,7 @@ interface PlaceCardProps {
   /** Opening hours, with the status dot. Null when the card is not about a pub. */
   meta: string | null;
   metaTone: MetaTone;
-  /** The quiet line under it (city, "navštíveno"), or null. */
+  /** The quiet tail of the same line (city, "navštíveno"), or null. */
   fact: string | null;
   /** Star rating, rendered with a ★ glyph ahead of the fact text. */
   rating?: { value: string; count: string | null } | null;
@@ -202,6 +202,9 @@ function PlaceCard({
       ? `${rating.value} (${rating.count})`
       : rating.value
     : null;
+  // Rating and city share the hours line. Two stacked half-empty lines next to a
+  // vertically centred door aligned with neither of them.
+  const detailText = [ratingText, fact].filter(Boolean).join(' · ');
   const titleContent = (
     <>
       {/* The name owns the full card width. The door used to sit beside it and
@@ -238,35 +241,29 @@ function PlaceCard({
       {/* The door rides next to the quiet lines instead of the name: that column
           is short, so the empty right half of the card pays for the button. */}
       <View style={styles.placeInfoRow}>
-        <View style={styles.placeInfoCol}>
-          {meta ? (
-            <View style={styles.placeMetaRow}>
-              {showsStatusDot(metaTone) ? (
-                <View style={[styles.placeDot, { backgroundColor: metaToneColor(metaTone) }]} />
-              ) : null}
-              <Text
-                style={[styles.placeMeta, { color: metaToneColor(metaTone) }]}
-                numberOfLines={1}
-                maxFontSizeMultiplier={FontScaleCap.body}
-              >
-                {meta}
-              </Text>
-            </View>
+        <View style={styles.placeMetaRow}>
+          {meta && showsStatusDot(metaTone) ? (
+            <View style={[styles.placeDot, { backgroundColor: metaToneColor(metaTone) }]} />
           ) : null}
-
-          {ratingText || fact ? (
-            <View style={styles.placeFactRow}>
-              {ratingText ? <StarIcon size={13} color={Colors.amber} /> : null}
-              <Text
-                style={styles.placeFact}
-                numberOfLines={1}
-                maxFontSizeMultiplier={FontScaleCap.body}
-              >
-                {ratingText ?? ''}
-                {ratingText && fact ? ' · ' : ''}
-                {fact ?? ''}
-              </Text>
-            </View>
+          {meta ? (
+            <Text
+              style={[styles.placeMeta, { color: metaToneColor(metaTone) }]}
+              numberOfLines={1}
+              maxFontSizeMultiplier={FontScaleCap.body}
+            >
+              {meta}
+            </Text>
+          ) : null}
+          {ratingText ? <StarIcon size={13} color={Colors.amber} /> : null}
+          {detailText ? (
+            <Text
+              style={styles.placeFact}
+              numberOfLines={1}
+              maxFontSizeMultiplier={FontScaleCap.body}
+            >
+              {meta && !ratingText ? '· ' : ''}
+              {detailText}
+            </Text>
           ) : null}
         </View>
 
@@ -1699,15 +1696,11 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
   },
   placeInfoRow: {
-    marginTop: 4,
+    marginTop: 2,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 14,
-  },
-  placeInfoCol: {
-    flexShrink: 1,
-    minWidth: 0,
+    gap: 12,
   },
   placeTitleRow: {
     flexShrink: 1,
@@ -1726,6 +1719,8 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   placeMetaRow: {
+    flexShrink: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
@@ -1744,14 +1739,9 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
   },
-  placeFactRow: {
-    marginTop: 2,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
+  // The city yields before the opening hours do when the line runs out of room.
   placeFact: {
-    flexShrink: 1,
+    flexShrink: 3,
     fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
