@@ -1541,7 +1541,7 @@ export const cs = {
     nudgePushEnable: 'Zapnout',
     nudgeContest: 'Výsledky kola jsou venku.',
     nudgeContestOpen: 'Mrknout',
-    nudgeStreakRisk: 'Série visí na vlásku. Zapal ji dneska.',
+    streakRiskFact: 'Tenhle týden ještě nezapálená',
 
     // — The one feed under the card —
     streamHeader: 'Co se děje',

@@ -18,9 +18,14 @@ import { Colors } from '@/theme/colors';
 
 const FADE_HEIGHT = 28;
 
-export function ScrollFade() {
+/**
+ * @param height Shorter fade for feeds, where 28pt of dissolve eats a readable
+ * line of the last row. Only go below the default when the footer under it is
+ * small enough that the cut edge is barely visible anyway.
+ */
+export function ScrollFade({ height = FADE_HEIGHT }: { height?: number } = {}) {
   return (
-    <View style={styles.fade} pointerEvents="none">
+    <View style={[styles.fade, { height }]} pointerEvents="none">
       <Svg width="100%" height="100%">
         <Defs>
           <LinearGradient id="scrollFade" x1="0" y1="0" x2="0" y2="1">
@@ -43,6 +48,5 @@ const styles = StyleSheet.create({
     left: -24,
     right: -24,
     bottom: 0,
-    height: FADE_HEIGHT,
   },
 });

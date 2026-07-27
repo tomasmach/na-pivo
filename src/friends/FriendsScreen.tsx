@@ -1080,13 +1080,10 @@ export default function FriendsScreen() {
         onDismiss: () => markContestResultsSeen(lastResults.contest.id),
       };
     }
-    if (streakAtRisk) {
-      return {
-        kind: 'dopito',
-        label: cs.friends.nudgeStreakRisk,
-        onPress: () => setComposeVisible(true),
-      };
-    }
+    // A streak at risk is deliberately NOT a nudge: its only action is the
+    // footer's own button, so a chip above it was a second button that said the
+    // same thing and stole 64pt from the stream. It lives in the card's footer
+    // fact instead, next to the streak it is about.
     return null;
   }, [
     contestResultsUnseen,
@@ -1105,7 +1102,6 @@ export default function FriendsScreen() {
     respond,
     respondGoing,
     router,
-    streakAtRisk,
     unansweredLive,
   ]);
 
@@ -1375,62 +1371,69 @@ export default function FriendsScreen() {
     [respond, respondingRequestActions],
   );
 
+  // The screen's chrome, but it lives in the card's top padding rather than in
+  // a band of its own above it — see PartyCard's `topRow`.
+  const chromeRow = (
+    <View style={styles.chromeRow}>
+      {friendCount > 0 ? (
+        <Pressable
+          onPress={() => router.push('/profile/parta' as Href)}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={cs.a11y.partaChip(cs.friends.pulseFriendCount(friendCount))}
+          style={({ pressed }) => [styles.partyChip, pressed && styles.dim]}
+        >
+          <UsersIcon size={16} color={Colors.amber} />
+          <Text
+            style={styles.partyChipLabel}
+            numberOfLines={1}
+            maxFontSizeMultiplier={FontScaleCap.heading}
+          >
+            {cs.friends.pulseFriendCount(friendCount)}
+          </Text>
+        </Pressable>
+      ) : (
+        <View
+          style={styles.partyChip}
+          accessibilityRole="text"
+          accessibilityLabel={cs.friends.soloChip}
+        >
+          <UsersIcon size={16} color={Colors.amber} />
+          <Text
+            style={styles.partyChipLabel}
+            numberOfLines={1}
+            maxFontSizeMultiplier={FontScaleCap.heading}
+          >
+            {cs.friends.soloChip}
+          </Text>
+        </View>
+      )}
+      <View style={styles.headerSpacer} />
+      <Pressable
+        onPress={() => setMoreVisible(true)}
+        style={({ pressed }) => [styles.moreButton, pressed && styles.dim]}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel={cs.a11y.partaMore}
+      >
+        <MenuIcon size={20} color={Colors.mutedText} />
+      </Pressable>
+    </View>
+  );
+
   return (
     <View
       style={[
         styles.root,
         {
-          paddingTop: insets.top + 8,
-          paddingBottom: Math.max(insets.bottom, Spacing.sm),
+          paddingTop: insets.top,
+          // The tab bar under this screen already pads for the home indicator,
+          // so `insets.bottom` here would be that gap charged twice — 26pt of
+          // stout between the pill and the bar. Just the block gap.
+          paddingBottom: Spacing.sm,
         },
       ]}
     >
-      <View style={styles.header}>
-        {friendCount > 0 ? (
-          <Pressable
-            onPress={() => router.push('/profile/parta' as Href)}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={cs.a11y.partaChip(cs.friends.pulseFriendCount(friendCount))}
-            style={({ pressed }) => [styles.partyChip, pressed && styles.dim]}
-          >
-            <UsersIcon size={16} color={Colors.amber} />
-            <Text
-              style={styles.partyChipLabel}
-              numberOfLines={1}
-              maxFontSizeMultiplier={FontScaleCap.heading}
-            >
-              {cs.friends.pulseFriendCount(friendCount)}
-            </Text>
-          </Pressable>
-        ) : (
-          <View
-            style={styles.partyChip}
-            accessibilityRole="text"
-            accessibilityLabel={cs.friends.soloChip}
-          >
-            <UsersIcon size={16} color={Colors.amber} />
-            <Text
-              style={styles.partyChipLabel}
-              numberOfLines={1}
-              maxFontSizeMultiplier={FontScaleCap.heading}
-            >
-              {cs.friends.soloChip}
-            </Text>
-          </View>
-        )}
-        <View style={styles.headerSpacer} />
-        <Pressable
-          onPress={() => setMoreVisible(true)}
-          style={({ pressed }) => [styles.moreButton, pressed && styles.dim]}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel={cs.a11y.partaMore}
-        >
-          <MenuIcon size={20} color={Colors.mutedText} />
-        </Pressable>
-      </View>
-
       {/* The stream and the fade that ends it share one box, so the fade is
           never an out-of-bounds child (Android clips those). */}
       <View style={styles.body}>
@@ -1461,7 +1464,8 @@ export default function FriendsScreen() {
                   ? cs.friends.streakWeeks(d?.streak.currentWeeks ?? 0)
                   : cs.friends.noStreak
               }
-              factMuted={rankLine}
+              // The risk outranks the rank: it expires this week, the rank does not.
+              factMuted={streakAtRisk ? cs.friends.streakRiskFact : rankLine}
               linkLabel={
                 partyNumbers.count > 0 || partyNumbers.maybe > 0
                   ? cs.friends.tableLink
@@ -1477,6 +1481,7 @@ export default function FriendsScreen() {
               }
               accessibilityLabel={cs.a11y.partaCard(String(partyNumbers.count), headline)}
               rail={<DoorRail tiles={railTiles} />}
+              topRow={chromeRow}
             />
           </View>
 
@@ -1560,22 +1565,36 @@ export default function FriendsScreen() {
 
           <PartaPlans />
         </ScrollView>
-        <ScrollFade />
+        <ScrollFade height={16} />
       </View>
 
       {/* Parta scrolls, so it does not get the counter's 84pt hero button plus
           an outline twin under it: that pair ate a third of the screen the
-          stream needs. One 62pt GlowButton (the design system's non-hero
-          variant), and "Přidat kámoše" lives behind the "…" door. */}
+          stream needs. "Přidat kámoše" lives behind the "…" door.
+
+          The pill is pinned but NOT full-bleed: on a feed a 62pt amber bar
+          across the whole width is a wall the stream has to end above, and it
+          is lit the whole time the user is only reading. Sized to its own label
+          at 52pt it keeps the label, the glow and the thumb zone, at roughly a
+          third of the mass. Hero screens (the counter) keep the full-width 84pt
+          button — there the button IS the screen.
+
+          Same rule upwards: the nudge slot only ever holds something the amber
+          pill cannot do itself (accept a request, retry offline, join a live
+          table, opt into push). A nudge whose action IS the button below it is
+          a second button in disguise — that belongs in the card, not here. */}
       <View style={styles.footer}>
         <NudgeSlot nudge={nudge} collapseWhenEmpty />
 
-        <GlowButton
-          label={cta.label}
-          onPress={cta.onPress}
-          glow="soft"
-          accessibilityLabel={cta.label}
-        />
+        <View style={styles.ctaRow}>
+          <GlowButton
+            label={cta.label}
+            onPress={cta.onPress}
+            glow="soft"
+            height={52}
+            accessibilityLabel={cta.label}
+          />
+        </View>
       </View>
 
       <MoreSheet
@@ -1629,9 +1648,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     gap: 12,
   },
-  header: {
-    minHeight: 44,
-    marginBottom: 8,
+  chromeRow: {
+    minHeight: 40,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -1675,7 +1693,12 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.lg,
   },
   footer: {
-    gap: 12,
+    gap: 10,
+  },
+  // Centring is what makes the pill size to its label instead of the screen:
+  // the button is a flex child, so `alignItems` here is its whole width rule.
+  ctaRow: {
+    alignItems: 'center',
   },
   cardGrow: {
     flex: 1,

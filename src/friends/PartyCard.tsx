@@ -65,6 +65,17 @@ export interface PartyCardProps {
    * behind it.
    */
   rail?: ReactNode;
+  /**
+   * The screen's own chrome — party chip left, overflow door right — rendered
+   * INSIDE the card's top padding instead of in a band above it.
+   *
+   * Parta is a feed under a status bar that already eats ~60pt: a separate
+   * header row there is a third strip of chrome holding two small controls, and
+   * it reads as an empty brown forehead. In the card the same two controls cost
+   * nothing extra — the card's 24pt top padding was already there. Its own
+   * pressables take the touch, like `rail`.
+   */
+  topRow?: ReactNode;
 }
 
 export function PartyCard({
@@ -80,6 +91,7 @@ export function PartyCard({
   onPress,
   accessibilityLabel,
   rail,
+  topRow,
 }: PartyCardProps) {
   // The table is sized from the card, not the other way round: on a short phone
   // it shrinks instead of spilling over the card's edge.
@@ -91,6 +103,8 @@ export function PartyCard({
 
   const content = (
     <>
+      {topRow !== undefined ? <View style={styles.topRow}>{topRow}</View> : null}
+
       <View style={styles.body} onLayout={(event) => setBodyHeight(event.nativeEvent.layout.height)}>
         <View style={styles.countColumn}>
           <Text
@@ -193,6 +207,11 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.85,
+  },
+  // Sits in the card's own top padding, so it costs the composition nothing:
+  // 12 under it is "same group" spacing — chip and numeral are one object.
+  topRow: {
+    marginBottom: 12,
   },
   // `flex: 1` lets the body absorb whatever height the card is given, so the
   // footer stays pinned to the bottom edge instead of floating mid-card; the
