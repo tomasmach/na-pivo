@@ -1498,7 +1498,7 @@ export const cs = {
     /** Quiet fact when no streak is running. */
     noStreak: 'Bez série',
     /** Quiet fact while the invisible mode hides you from the leaderboard. */
-    hiddenRank: 'Skrytě, v žebříčku tě nevidí',
+    hiddenRank: 'Jedeš v utajení',
 
     // — The one button, by state —
     ctaPing: 'Cinknout partě',

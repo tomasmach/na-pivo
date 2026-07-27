@@ -5,12 +5,14 @@
  * bounded live poll are the same as before. This file only changes where their
  * existing surfaces live:
  *
- *   1. a quiet party chip and the single overflow door,
+ *   1. a quiet party chip and the single overflow door, both inside the card,
  *   2. one table card and one chronological stream,
- *   3. one fixed nudge slot,
- *   4. one compact amber action; everything else, add-friend included, is a tap
- *      deeper behind the "…" door, because this screen scrolls and the footer
- *      may not eat the room the stream needs.
+ *   3. the screen's one action as the card's footer door,
+ *   4. a nudge slot above the tab bar that collapses when empty; everything
+ *      else, add-friend included, is a tap deeper behind the "…" door.
+ *
+ * Nothing is permanently pinned to the bottom. This is a feed: chrome that
+ * stays put is chrome the stream pays for on every screenful.
  */
 
 import {
@@ -41,7 +43,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { BeerTagChips } from '@/components/shared/BeerTagChips';
 import { DoorRail, type DoorRailTile } from '@/components/shared/DoorRail';
-import { GlowButton } from '@/components/shared/GlowButton';
 import {
   BellRingIcon,
   BeerIcon,
@@ -1466,11 +1467,11 @@ export default function FriendsScreen() {
               }
               // The risk outranks the rank: it expires this week, the rank does not.
               factMuted={streakAtRisk ? cs.friends.streakRiskFact : rankLine}
-              linkLabel={
-                partyNumbers.count > 0 || partyNumbers.maybe > 0
-                  ? cs.friends.tableLink
-                  : null
-              }
+              // The door is the screen's action, not a second way into the
+              // roster — the card itself already opens that when anyone is
+              // sitting, and the numeral plus the table say how many.
+              linkLabel={cta.label}
+              onLinkPress={cta.onPress}
               going={partyNumbers.going}
               maybe={partyNumbers.maybe}
               mine={partyNumbers.mine}
@@ -1568,34 +1569,17 @@ export default function FriendsScreen() {
         <ScrollFade height={16} />
       </View>
 
-      {/* Parta scrolls, so it does not get the counter's 84pt hero button plus
-          an outline twin under it: that pair ate a third of the screen the
-          stream needs. "Přidat kámoše" lives behind the "…" door.
+      {/* Nothing is pinned here but the nudge, and the nudge collapses when
+          there is none — which is most of the time. Parta is a feed: a button
+          parked above the tab bar is lit the whole time the user is only
+          reading, and every screen it stays on is a screen it shortens. The one
+          action lives in the card's footer door instead (see PartyCard), and
+          "Přidat kámoše" lives behind the "…" door.
 
-          The pill is pinned but NOT full-bleed: on a feed a 62pt amber bar
-          across the whole width is a wall the stream has to end above, and it
-          is lit the whole time the user is only reading. Sized to its own label
-          at 52pt it keeps the label, the glow and the thumb zone, at roughly a
-          third of the mass. Hero screens (the counter) keep the full-width 84pt
-          button — there the button IS the screen.
-
-          Same rule upwards: the nudge slot only ever holds something the amber
-          pill cannot do itself (accept a request, retry offline, join a live
-          table, opt into push). A nudge whose action IS the button below it is
-          a second button in disguise — that belongs in the card, not here. */}
-      <View style={styles.footer}>
-        <NudgeSlot nudge={nudge} collapseWhenEmpty />
-
-        <View style={styles.ctaRow}>
-          <GlowButton
-            label={cta.label}
-            onPress={cta.onPress}
-            glow="soft"
-            height={52}
-            accessibilityLabel={cta.label}
-          />
-        </View>
-      </View>
+          What is left here is only what the card's door cannot do: accept a
+          request, retry offline, join a live table, opt into push. If a nudge's
+          action IS the card's door, it does not belong in this slot. */}
+      <NudgeSlot nudge={nudge} collapseWhenEmpty />
 
       <MoreSheet
         visible={moreVisible}
@@ -1691,14 +1675,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     // Room for the last row to clear the fade instead of ending under it.
     paddingBottom: Spacing.lg,
-  },
-  footer: {
-    gap: 10,
-  },
-  // Centring is what makes the pill size to its label instead of the screen:
-  // the button is a flex child, so `alignItems` here is its whole width rule.
-  ctaRow: {
-    alignItems: 'center',
   },
   cardGrow: {
     flex: 1,

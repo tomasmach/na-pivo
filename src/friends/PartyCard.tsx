@@ -48,8 +48,15 @@ export interface PartyCardProps {
   factStrong: string | null;
   /** The quiet fact under it ("2. pivař v zemi"), or null. */
   factMuted: string | null;
-  /** The amber door on the right of the footer ("Kdo jde"); null draws no link. */
+  /**
+   * The amber door on the right of the footer. On Parta this is the screen's
+   * primary action ("Cinknout partě") rather than a second way into the roster:
+   * a feed does not get a pinned button above its tab bar, so the one action it
+   * has lives in the card that the action is about.
+   */
   linkLabel: string | null;
+  /** What the footer door does. Falls back to `onPress` (opens the party). */
+  onLinkPress?: (() => void) | null;
   /** Friends who said Jdu — drives the seats taken at the table. */
   going: number;
   /** Friends who said Možná — drives the half-lit seats. */
@@ -85,6 +92,7 @@ export function PartyCard({
   factStrong,
   factMuted,
   linkLabel,
+  onLinkPress,
   going,
   maybe,
   mine,
@@ -151,10 +159,10 @@ export function PartyCard({
 
           {linkLabel !== null ? (
             <Pressable
-              onPress={onPress ?? undefined}
-              disabled={onPress === null}
+              onPress={(onLinkPress ?? onPress) ?? undefined}
+              disabled={(onLinkPress ?? onPress) === null}
               hitSlop={10}
-              accessibilityRole={onPress !== null ? 'button' : 'text'}
+              accessibilityRole={(onLinkPress ?? onPress) !== null ? 'button' : 'text'}
               accessibilityLabel={linkLabel}
               style={({ pressed }) => [styles.link, pressed && styles.pressed]}
             >
@@ -291,9 +299,11 @@ const styles = StyleSheet.create({
     minHeight: HitArea.min,
     paddingLeft: 8,
   },
+  // A shade louder than a plain card door: on Parta this text IS the screen's
+  // primary action, and it has no glow behind it to help it get noticed.
   linkLabel: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 15,
+    fontFamily: Fonts.display.bold,
+    fontSize: 16,
     color: Colors.amber,
     includeFontPadding: false,
   },
