@@ -477,38 +477,51 @@ export default function FriendsScreen() {
       if (mode === 'refresh') setRefreshing(true);
       setPhotoFeedKey((key) => key + 1);
 
-      const beerFeedPromise = fetchBeerCheckInFeed(controller.signal);
-      const next = await fetchFriendsDashboard(controller.signal);
-      if (!mountedRef.current) return;
+      // Rejections must not skip the spinner teardown. A pull-to-refresh whose
+      // fetch is aborted by the next poll (or that simply throws) used to leave
+      // `refreshing` true forever, and the wheel sat wedged above the card until
+      // the screen was remounted. Hence try/finally, and a caught beer feed:
+      // its promise is created here but awaited after two early returns.
+      const beerFeedPromise = fetchBeerCheckInFeed(controller.signal).catch(() => null);
+      try {
+        const next = await fetchFriendsDashboard(controller.signal);
+        if (!mountedRef.current) return;
 
-      if (generation === loadGenRef.current) {
-        if (next) {
-          const override = settingsOverrideRef.current;
-          setDashboard(override ? { ...next, settings: override } : next);
-          setLoadError(false);
+        if (generation === loadGenRef.current) {
+          if (next) {
+            const override = settingsOverrideRef.current;
+            setDashboard(override ? { ...next, settings: override } : next);
+            setLoadError(false);
 
-          const willMarkRead =
-            next.notifications.length > 0 && (mode === 'initial' || mode === 'refresh');
-          if (willMarkRead) {
-            void markFriendNotificationsRead(next.notifications.map((item) => item.id));
+            const willMarkRead =
+              next.notifications.length > 0 && (mode === 'initial' || mode === 'refresh');
+            if (willMarkRead) {
+              void markFriendNotificationsRead(next.notifications.map((item) => item.id));
+            }
+            usePartaSignalStore.getState().setSignal({
+              pendingRequests: next.incomingRequests.length,
+              unread: willMarkRead ? 0 : next.unreadCount,
+              liveNow: next.activeFriends.length > 0 || next.myActiveActivity != null,
+            });
+          } else {
+            setLoadError(true);
           }
-          usePartaSignalStore.getState().setSignal({
-            pendingRequests: next.incomingRequests.length,
-            unread: willMarkRead ? 0 : next.unreadCount,
-            liveNow: next.activeFriends.length > 0 || next.myActiveActivity != null,
-          });
-        } else {
+        }
+
+        if (!next) return;
+
+        const nextBeerFeed = await beerFeedPromise;
+        if (!mountedRef.current || generation !== loadGenRef.current || !nextBeerFeed) return;
+        setBeerFeed(nextBeerFeed);
+      } catch {
+        // An aborted load is the newer one doing its job, not an outage.
+        if (!controller.signal.aborted && generation === loadGenRef.current) {
           setLoadError(true);
         }
+      } finally {
+        if (mode === 'initial') setLoading(false);
+        if (mode === 'refresh') setRefreshing(false);
       }
-
-      if (mode === 'initial') setLoading(false);
-      if (mode === 'refresh') setRefreshing(false);
-      if (!next) return;
-
-      const nextBeerFeed = await beerFeedPromise;
-      if (!mountedRef.current || generation !== loadGenRef.current || !nextBeerFeed) return;
-      setBeerFeed(nextBeerFeed);
     },
     [],
   );
