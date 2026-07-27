@@ -327,6 +327,8 @@ export const cs = {
     /** The one glowing button. Its label says exactly what the tap does. */
     navigateCta: 'Doveď mě tam',
     navigateCtaSub: 'otevřu ti navigaci',
+    /** Same button, dimmed, while the first search is still running. */
+    searchingCtaSub: 'hledám nejbližší hospodu',
     /** The quiet outline twin: reroll in "Překvap mě", skip in "Nejbližší". */
     anotherPub: 'Dej mi jinou',
     /** Same slot while you're aiming at a friend's pub. */
@@ -2877,6 +2879,7 @@ export const cs = {
     compassCard: (pub: string, distance: string, status: string) =>
       `${pub}, ${distance}${status ? `, ${status}` : ''}. Ťukni pro info o hospodě.`,
     compassCardHidden: 'Hospoda je schovaná. Ťukni a prozradím kam.',
+    compassLoading: 'Hledám nejbližší hospodu',
     compassNavigate: (pub: string) => `Doveď mě do hospody ${pub}, otevře navigaci`,
     compassAnother: 'Vyber mi jinou hospodu',
     compassBackToNearest: 'Zpět na nejbližší hospodu',

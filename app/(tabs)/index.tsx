@@ -248,18 +248,68 @@ function PermissionScreen({ permissionState, requestPermission, onShowMap }: Per
 
 interface LoadingScreenProps {
   rotation: ReturnType<typeof useSharedValue<number>>;
+  onShowMap: () => void;
 }
 
-function LoadingScreen({ rotation }: LoadingScreenProps) {
+/**
+ * The first frame of the app is the same composition as State C, just without
+ * the answers yet: header, card with the dial, the amber button (dimmed, with
+ * "hledám" as its sub-label). It used to be a bare dial floating on the root
+ * background with "Hledáme hospodu…" under it — the wireframe look the Tácek
+ * rebuild killed (design-system §14.1).
+ *
+ * No skeleton, no shimmer, no spinner (§10, §14.7): the dial already moves with
+ * the phone, and the footer stays silent while the lookup is in flight because
+ * nobody reads "Načítám" (§5.4). Every block sits where it will sit a second
+ * later, so nothing jumps when the pub lands.
+ */
+function LoadingScreen({ rotation, onShowMap }: LoadingScreenProps) {
   const insets = useSafeAreaInsets();
+  const [dialSize, setDialSize] = useState(CompassSize);
   return (
-    <View style={[styles.root, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-      <View style={styles.loadingCompassWrap}>
-        <CompassContainer rotation={rotation} size={CompassSize} />
+    <View
+      style={[
+        styles.root,
+        styles.surface,
+        { paddingTop: insets.top + 8, paddingBottom: Math.max(insets.bottom, Spacing.sm) },
+      ]}
+    >
+      <View style={styles.headerRow}>
+        <ExploreSwitch
+          activeView="compass"
+          variant="flat"
+          onSelectCompass={() => undefined}
+          onSelectMap={onShowMap}
+        />
       </View>
-      <Text style={styles.loadingText} maxFontSizeMultiplier={FontScaleCap.body}>
-        Hledáme hospodu…
-      </Text>
+
+      <CompassCard
+        dial={<CompassContainer rotation={rotation} size={dialSize} />}
+        onDialSize={setDialSize}
+        distanceValue={null}
+        distanceUnit=""
+        pubName={null}
+        hoursLabel={null}
+        hoursTone="unknown"
+        beerLine={null}
+        beerMenuRotates={false}
+        hidden={false}
+        showDetailLink={false}
+        reserveFooter
+        onPressFooter={() => undefined}
+        accessibilityLabel={cs.a11y.compassLoading}
+      />
+
+      <CounterCta
+        label={cs.compass.navigateCta}
+        subLabel={cs.compass.searchingCtaSub}
+        onPress={() => undefined}
+        disabled
+        accessibilityLabel={cs.a11y.compassLoading}
+      />
+      {/* Holds the quiet twin's room so the card does not resize the moment the
+          pub arrives and "Dej mi jinou" appears under the button. */}
+      <View style={styles.secondaryPlaceholder} />
     </View>
   );
 }
@@ -848,7 +898,7 @@ export default function CompassScreen() {
 
   // ── State B: loading ──────────────────────────────────────────────────────
   if (isLoading) {
-    return <LoadingScreen rotation={rotation} />;
+    return <LoadingScreen rotation={rotation} onShowMap={handleShowMap} />;
   }
 
   // ── State D: nothing nearby / pub lookup failed ───────────────────────────
@@ -1199,16 +1249,10 @@ const styles = StyleSheet.create({
   },
 
   // ── Loading ──
-  loadingCompassWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24,
-  },
-  loadingText: {
-    fontFamily: Fonts.ui.medium,
-    fontSize: 15,
-    color: Colors.mutedText,
-    textAlign: 'center',
+  // The quiet twin's 48pt, kept empty: reserving it here means the dial is
+  // measured against the final layout on the very first frame.
+  secondaryPlaceholder: {
+    height: 48,
   },
 
   // ── Compass area (State C) ──

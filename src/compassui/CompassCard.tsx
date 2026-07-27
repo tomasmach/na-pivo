@@ -115,6 +115,13 @@ export interface CompassCardProps {
   hidden: boolean;
   /** Show the amber chevron door beside the pub name. */
   showDetailLink: boolean;
+  /**
+   * Keep the footer's room while there is nothing to put in it (the first
+   * search). The slot stays silent — no ghost blocks, no "Načítám" — but the
+   * dial is measured against the final card, so it does not shrink the moment
+   * the pub lands.
+   */
+  reserveFooter?: boolean;
   /** Footer tap: opens the pub info, or reveals the name while hidden. */
   onPressFooter: () => void;
   accessibilityLabel: string;
@@ -132,6 +139,7 @@ export function CompassCard({
   beerMenuRotates,
   hidden,
   showDetailLink,
+  reserveFooter = false,
   onPressFooter,
   accessibilityLabel,
 }: CompassCardProps) {
@@ -291,6 +299,18 @@ export function CompassCard({
             </>
           )}
         </Pressable>
+      ) : reserveFooter ? (
+        <View
+          style={styles.footer}
+          pointerEvents="none"
+          accessible={false}
+          importantForAccessibility="no-hide-descendants"
+        >
+          <View style={styles.footerText}>
+            <View style={styles.namePlaceholder} />
+            <View style={styles.metaSlot} />
+          </View>
+        </View>
       ) : null}
     </View>
   );
@@ -387,6 +407,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: withAlpha(Colors.amber, 0.12),
+  },
+  // The 18pt Baloo name line's room, held empty while the first search runs.
+  namePlaceholder: {
+    height: 24,
   },
   // Holds both lines at a fixed height so the card never resizes around them.
   metaSlot: {
