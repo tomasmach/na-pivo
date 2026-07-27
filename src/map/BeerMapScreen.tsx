@@ -204,8 +204,8 @@ function PlaceCard({
     : null;
   const titleContent = (
     <>
-      {/* Two lines, and the whole row to itself: "Charles Bridge Restau…" was the
-          name losing a fight with a door it had no reason to share a row with. */}
+      {/* The name owns the full card width. The door used to sit beside it and
+          pushed two-word pub names onto a second line for no reason. */}
       <Text
         style={styles.placeTitle}
         numberOfLines={2}
@@ -221,20 +221,54 @@ function PlaceCard({
     <View style={styles.placeCard}>
       <CardSheen />
 
-      <View style={styles.placeHeadRow}>
-        {titlePress ? (
-          <Pressable
-            onPress={titlePress.onPress}
-            hitSlop={12}
-            style={({ pressed }) => [styles.placeTitleRow, pressed && styles.pressedSoft]}
-            accessibilityRole="button"
-            accessibilityLabel={titlePress.accessibilityLabel}
-          >
-            {titleContent}
-          </Pressable>
-        ) : (
-          <View style={styles.placeTitleRow}>{titleContent}</View>
-        )}
+      {titlePress ? (
+        <Pressable
+          onPress={titlePress.onPress}
+          hitSlop={12}
+          style={({ pressed }) => [styles.placeTitleRow, pressed && styles.pressedSoft]}
+          accessibilityRole="button"
+          accessibilityLabel={titlePress.accessibilityLabel}
+        >
+          {titleContent}
+        </Pressable>
+      ) : (
+        <View style={styles.placeTitleRow}>{titleContent}</View>
+      )}
+
+      {/* The door rides next to the quiet lines instead of the name: that column
+          is short, so the empty right half of the card pays for the button. */}
+      <View style={styles.placeInfoRow}>
+        <View style={styles.placeInfoCol}>
+          {meta ? (
+            <View style={styles.placeMetaRow}>
+              {showsStatusDot(metaTone) ? (
+                <View style={[styles.placeDot, { backgroundColor: metaToneColor(metaTone) }]} />
+              ) : null}
+              <Text
+                style={[styles.placeMeta, { color: metaToneColor(metaTone) }]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {meta}
+              </Text>
+            </View>
+          ) : null}
+
+          {ratingText || fact ? (
+            <View style={styles.placeFactRow}>
+              {ratingText ? <StarIcon size={13} color={Colors.amber} /> : null}
+              <Text
+                style={styles.placeFact}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {ratingText ?? ''}
+                {ratingText && fact ? ' · ' : ''}
+                {fact ?? ''}
+              </Text>
+            </View>
+          ) : null}
+        </View>
 
         {door ? (
           <Pressable
@@ -255,36 +289,6 @@ function PlaceCard({
           </Pressable>
         ) : null}
       </View>
-
-      {meta ? (
-        <View style={styles.placeMetaRow}>
-          {showsStatusDot(metaTone) ? (
-            <View style={[styles.placeDot, { backgroundColor: metaToneColor(metaTone) }]} />
-          ) : null}
-          <Text
-            style={[styles.placeMeta, { color: metaToneColor(metaTone) }]}
-            numberOfLines={1}
-            maxFontSizeMultiplier={FontScaleCap.body}
-          >
-            {meta}
-          </Text>
-        </View>
-      ) : null}
-
-      {ratingText || fact ? (
-        <View style={styles.placeFactRow}>
-          {ratingText ? <StarIcon size={13} color={Colors.amber} /> : null}
-          <Text
-            style={styles.placeFact}
-            numberOfLines={1}
-            maxFontSizeMultiplier={FontScaleCap.body}
-          >
-            {ratingText ?? ''}
-            {ratingText && fact ? ' · ' : ''}
-            {fact ?? ''}
-          </Text>
-        </View>
-      ) : null}
 
       <View style={styles.placeLayers}>{layers}</View>
     </View>
@@ -1694,11 +1698,16 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 10,
   },
-  placeHeadRow: {
+  placeInfoRow: {
+    marginTop: 4,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 14,
+  },
+  placeInfoCol: {
+    flexShrink: 1,
+    minWidth: 0,
   },
   placeTitleRow: {
     flexShrink: 1,
@@ -1717,7 +1726,6 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   placeMetaRow: {
-    marginTop: 6,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
@@ -1729,7 +1737,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
   },
   placeMeta: {
-    flex: 1,
+    flexShrink: 1,
     minWidth: 0,
     fontFamily: Fonts.ui.medium,
     fontSize: 13,
