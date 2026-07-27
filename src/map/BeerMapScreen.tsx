@@ -238,22 +238,28 @@ function PlaceCard({
         <View style={styles.placeTitleRow}>{titleContent}</View>
       )}
 
-      {/* The door rides next to the quiet lines instead of the name: that column
-          is short, so the empty right half of the card pays for the button. */}
-      <View style={styles.placeInfoRow}>
+      {/* §5.4: the hours keep a line of their own, full width — they are what the
+          person on the street came for and they must never truncate first. */}
+      {meta ? (
         <View style={styles.placeMetaRow}>
-          {meta && showsStatusDot(metaTone) ? (
+          {showsStatusDot(metaTone) ? (
             <View style={[styles.placeDot, { backgroundColor: metaToneColor(metaTone) }]} />
           ) : null}
-          {meta ? (
-            <Text
-              style={[styles.placeMeta, { color: metaToneColor(metaTone) }]}
-              numberOfLines={1}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            >
-              {meta}
-            </Text>
-          ) : null}
+          <Text
+            style={[styles.placeMeta, { color: metaToneColor(metaTone) }]}
+            numberOfLines={1}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
+            {meta}
+          </Text>
+        </View>
+      ) : null}
+
+      {/* The door sits on the quiet line, not beside the name and not centred
+          against the whole block: it is the shortest line, so it has the room,
+          and sharing one row means the two halves share one baseline. */}
+      <View style={styles.placeInfoRow}>
+        <View style={styles.placeFactRow}>
           {ratingText ? <StarIcon size={13} color={Colors.amber} /> : null}
           {detailText ? (
             <Text
@@ -261,7 +267,6 @@ function PlaceCard({
               numberOfLines={1}
               maxFontSizeMultiplier={FontScaleCap.body}
             >
-              {meta && !ratingText ? '· ' : ''}
               {detailText}
             </Text>
           ) : null}
@@ -270,7 +275,7 @@ function PlaceCard({
         {door ? (
           <Pressable
             onPress={door.onPress}
-            hitSlop={8}
+            hitSlop={12}
             style={({ pressed }) => [styles.placeDoor, pressed && styles.pressedSoft]}
             accessibilityRole="button"
             accessibilityLabel={door.accessibilityLabel}
@@ -1702,6 +1707,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
+  placeFactRow: {
+    flexShrink: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
   placeTitleRow: {
     flexShrink: 1,
     minWidth: 0,
@@ -1719,8 +1731,7 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   placeMetaRow: {
-    flexShrink: 1,
-    minWidth: 0,
+    marginTop: 6,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
@@ -1732,16 +1743,15 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
   },
   placeMeta: {
-    flexShrink: 1,
+    flex: 1,
     minWidth: 0,
     fontFamily: Fonts.ui.medium,
     fontSize: 13,
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
   },
-  // The city yields before the opening hours do when the line runs out of room.
   placeFact: {
-    flexShrink: 3,
+    flexShrink: 1,
     fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
@@ -1754,8 +1764,10 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(Colors.foam, 0.1),
   },
+  // Shorter than HitArea.min so the quiet line stays a line — the 12 pt hitSlop
+  // on the Pressable puts the real target back over the minimum.
   placeDoor: {
-    minHeight: HitArea.min,
+    minHeight: 34,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,

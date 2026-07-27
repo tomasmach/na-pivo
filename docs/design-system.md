@@ -338,9 +338,12 @@ Urquell 95 Kč"), takže údaj, kvůli kterému člověk kouká do telefonu na u
 - Když hledání dojede naprázdno, řekne se to („Otevírací doba neznámá") — a tečka zůstává, protože
   ten řádek je pořád o otevírací době. Vedle toho stojí dveře „Zmapuj", takže z neznalosti rovnou
   plyne úkol. Ticho drží jen po dobu, kdy dotaz běží — nikdo nečte „Načítám".
-- **Stejná anatomie platí pro kartu na mapě** (`PlaceCard`): název + dveře v jednom řádku, pod tím
-  hlasitá otevírací doba s tečkou, pod tím tichý řádek (hodnocení, „byl jsi tu"). Slot má pevných
-  38, aby se karta nepřeměřovala, když dojdou hodiny nebo když vybereš pin.
+- **Stejná anatomie platí pro kartu na mapě** (`PlaceCard`): název na vlastním řádku přes celou
+  šířku, pod tím hlasitá otevírací doba s tečkou, pod tím tichý řádek (hodnocení, město, „byl jsi
+  tu"). Slot má pevných 38, aby se karta nepřeměřovala, když dojdou hodiny nebo když vybereš pin.
+- **Dveře stojí na tichém řádku, ne vedle názvu.** Vedle názvu braly „Restauraci U Parlamentu"
+  půlku šířky a lámaly ji na dva řádky; vycentrované proti celému bloku zase nesedí na žádný
+  řádek. Tichý řádek je nejkratší, takže na dveře má místo a obě půlky sdílí jednu osu.
 
 ### 5.5 Řádky v kartě: rychlé akce a lišta dveří
 
