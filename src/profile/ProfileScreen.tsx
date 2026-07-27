@@ -366,7 +366,7 @@ export default function ProfileScreen() {
       style={[
         styles.root,
         {
-          paddingTop: insets.top + 8,
+          paddingTop: insets.top,
           paddingBottom: Math.max(insets.bottom, Spacing.sm),
         },
       ]}
@@ -478,8 +478,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   identityRow: {
-    minHeight: 44,
-    marginBottom: 8,
+    minHeight: 40,
+    marginBottom: 4,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,

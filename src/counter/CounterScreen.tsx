@@ -1389,7 +1389,7 @@ function Tacek({
       style={[
         styles.root,
         styles.surface,
-        { paddingTop: topInset + 8, paddingBottom: Math.max(insets.bottom, Spacing.sm) },
+        { paddingTop: topInset, paddingBottom: Math.max(insets.bottom, Spacing.sm) },
       ]}
     >
       <View style={styles.header}>
@@ -1700,8 +1700,8 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 44,
-    marginBottom: 8,
+    minHeight: 40,
+    marginBottom: 4,
   },
   headerSpacer: { flex: 1, minWidth: Spacing.sm },
   // Quiet on purpose: an outlined circle next to an outlined chip next to an

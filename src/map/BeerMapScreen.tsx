@@ -1176,7 +1176,7 @@ export default function BeerMapScreen({
       </MapView>
 
       <View
-        style={[styles.topStack, { paddingTop: insets.top + 8 }]}
+        style={[styles.topStack, { paddingTop: insets.top }]}
         pointerEvents="box-none"
       >
         <View style={styles.header}>
@@ -1517,7 +1517,7 @@ const styles = StyleSheet.create({
     right: 0,
   },
   header: {
-    minHeight: 44,
+    minHeight: 40,
     paddingHorizontal: 24,
     flexDirection: 'row',
     alignItems: 'center',

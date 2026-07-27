@@ -236,15 +236,19 @@ surface: {
   gap: 12,                 // mezera mezi hlavními bloky
 },
 header: {
-  minHeight: 44,           // header sám je dotykový cíl
-  marginBottom: 8,         // + gap 12 = 20 pod headerem
+  minHeight: 40,           // řádek headeru; dotykový cíl dělá hitSlop dětí
+  marginBottom: 4,         // + gap 12 = 16 pod headerem
 },
+// horní okap obrazovky: paddingTop: insets.top — bez přídavku
 ```
 
 - **Vnitřní padding karty: 24** vodorovně, 24 nahoře (dole 8, protože patka má vlastní `paddingTop`).
 - **Mezera mezi bloky: 12.** Jedna `gap` na kontejneru, ne marginy na dětech.
-- **Kolem headeru: 24 po stranách, 20 pod ním** (8 marginBottom + 12 gap). Header je vizuálně
+- **Kolem headeru: 24 po stranách, 16 pod ním** (4 marginBottom + 12 gap). Header je vizuálně
   oddělený, ale pořád patří k obsahu.
+- **Nad headerem nic navíc: `paddingTop: insets.top`.** Status bar je na telefonu s ostrovem sám o
+  sobě ~60 pt hnědého čela; každý přidaný bod se pak čte jako prázdné čelo, ne jako vzduch. Řádek
+  headeru je proto 40 a jeho tlačítka si 44pt dotykový cíl dodělávají `hitSlop`em, ne výškou řádku.
 - **Uvnitř sheetu:** `paddingHorizontal: Spacing.lg` (20), `paddingTop: Spacing.sm` (8).
 - **Spodní okap obrazovky:** `paddingBottom: Math.max(insets.bottom, Spacing.sm)`.
 
@@ -301,7 +305,7 @@ pevnou výšku nebo `flexShrink: 1`. Dva `flex: 1` sourozenci znamenají, že se
 bez ohledu na obsah, a na malém telefonu se oba useknou uprostřed.
 
 Etalon: `CoasterCard` má `flex: 1`, `NudgeSlot` má pevných 52, `CounterCta` pevných 84, header
-`minHeight: 44`. Přesně jeden dýchá.
+`minHeight: 40`. Přesně jeden dýchá.
 
 ### 5.3 Obsah se dimenzuje Z karty, ne naopak
 

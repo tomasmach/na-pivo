@@ -96,7 +96,7 @@ export default function BeerScreen() {
 
   return (
     <View style={styles.root}>
-      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+      <View style={[styles.header, { paddingTop: insets.top }]}>
         <View style={styles.segmentRow}>
           <Segmented
             tab={tab}
