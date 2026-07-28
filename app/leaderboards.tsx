@@ -7,7 +7,7 @@
  * composes that data in the app's Tácek language.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import {
   Pressable,
   RefreshControl,
@@ -23,12 +23,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   BeerIcon,
   ChevronLeftIcon,
-  MenuIcon,
   MapPinIcon,
   PencilIcon,
+  type IconProps,
 } from '@/components/shared/IconGlyph';
 import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
-import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
 import { CounterCta } from '@/counter/CounterCta';
 import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
 import {
@@ -38,8 +37,8 @@ import {
   type LeaderboardPeriod,
 } from '@/data/leaderboardsClient';
 import { trackClientEvent } from '@/data/telemetryClient';
-import SkeletonBlock from '@/friends/SkeletonBlock';
 import { cs } from '@/i18n/cs';
+import { HeroFooterSkeleton, HeroSkeleton, RowsSkeleton } from '@/leaderboards/BoardSkeleton';
 import { GlobalBoardRow } from '@/leaderboards/GlobalBoardRow';
 import { PodiumMats } from '@/leaderboards/PodiumMats';
 import { useAccountStore } from '@/stores/accountStore';
@@ -52,22 +51,16 @@ import { useReduceMotion } from '@/utils/useReduceMotion';
 
 type LoadState = 'loading' | 'loaded' | 'error';
 
-interface BoardOption {
-  key: string;
-  category: LeaderboardCategory;
-  period: LeaderboardPeriod;
-  icon: MoreRow['icon'];
-}
-
-const BOARD_OPTIONS: readonly BoardOption[] = [
-  { key: 'beers-week', category: 'beers', period: 'week', icon: BeerIcon },
-  { key: 'beers-year', category: 'beers', period: 'year', icon: BeerIcon },
-  { key: 'beers-all', category: 'beers', period: 'all', icon: BeerIcon },
-  { key: 'pubs-week', category: 'pubs', period: 'week', icon: MapPinIcon },
-  { key: 'pubs-year', category: 'pubs', period: 'year', icon: MapPinIcon },
-  { key: 'pubs-all', category: 'pubs', period: 'all', icon: MapPinIcon },
-  { key: 'mapper-all', category: 'mapper', period: 'all', icon: PencilIcon },
+// Which board and which window are two separate questions, so they are two
+// separate controls on the screen: a segmented track for the board (three
+// equal surfaces, §0.4) and a quiet text row for the window.
+const CATEGORIES: readonly { key: LeaderboardCategory; icon: ComponentType<IconProps> }[] = [
+  { key: 'beers', icon: BeerIcon },
+  { key: 'pubs', icon: MapPinIcon },
+  { key: 'mapper', icon: PencilIcon },
 ];
+
+const PERIODS: readonly LeaderboardPeriod[] = ['week', 'year', 'all'];
 
 function unitFor(category: LeaderboardCategory, score: number): string {
   if (category === 'beers') return cs.leaderboards.unitBeers(score);
@@ -103,8 +96,11 @@ export default function LeaderboardsScreen() {
   const [state, setState] = useState<LoadState>('loading');
   const [board, setBoard] = useState<Leaderboard | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
   const [heroBodyHeight, setHeroBodyHeight] = useState(0);
+
+  // Mapér XP has one window only. The picked window survives the detour, so
+  // switching to Mapéři and back does not silently reset it to „Týden“.
+  const effectivePeriod: LeaderboardPeriod = category === 'mapper' ? 'all' : period;
 
   const mountedRef = useRef(true);
   useEffect(
@@ -128,12 +124,12 @@ export default function LeaderboardsScreen() {
   const load = useCallback(
     async (force = false) => {
       const requestId = ++requestRef.current;
-      const result = await fetchLeaderboard(category, period, { force });
+      const result = await fetchLeaderboard(category, effectivePeriod, { force });
       if (!mountedRef.current || requestId !== requestRef.current) return;
       setBoard(result);
       setState(result ? 'loaded' : 'error');
     },
-    [category, period],
+    [category, effectivePeriod],
   );
 
   useEffect(() => {
@@ -169,20 +165,29 @@ export default function LeaderboardsScreen() {
     router.push('/profile/edit' as Href);
   }, [router]);
 
-  const chooseBoard = useCallback(
-    (option: BoardOption) => {
-      setMoreOpen(false);
-      if (option.category === category && option.period === period) return;
+  const chooseCategory = useCallback(
+    (next: LeaderboardCategory) => {
+      if (next === category) return;
       if (hapticEnabled) fireLightImpactHaptic();
-      setCategory(option.category);
-      setPeriod(option.period);
+      setCategory(next);
       setState('loading');
     },
-    [category, hapticEnabled, period],
+    [category, hapticEnabled],
   );
 
-  const tableTitle = cs.leaderboards.tableTitle(category, period);
-  const visibleBoard = state === 'loaded' && sameBoard(board, category, period) ? board : null;
+  const choosePeriod = useCallback(
+    (next: LeaderboardPeriod) => {
+      if (next === period) return;
+      if (hapticEnabled) fireLightImpactHaptic();
+      setPeriod(next);
+      setState('loading');
+    },
+    [hapticEnabled, period],
+  );
+
+  const tableTitle = cs.leaderboards.tableTitle(category, effectivePeriod);
+  const visibleBoard =
+    state === 'loaded' && sameBoard(board, category, effectivePeriod) ? board : null;
   const entries = useMemo(() => visibleBoard?.entries ?? [], [visibleBoard]);
   const me = visibleBoard?.me ?? null;
   const hasNickname = Boolean(profile?.nickname);
@@ -195,23 +200,6 @@ export default function LeaderboardsScreen() {
     const gap = lastVisible.score - me.score + 1;
     return gap > 0 ? gap : 0;
   }, [entries, me]);
-
-  const moreRows = useMemo<MoreRow[]>(
-    () =>
-      BOARD_OPTIONS.map((option) => {
-        const label = cs.leaderboards.tableTitle(option.category, option.period);
-        const selected = option.category === category && option.period === period;
-        return {
-          key: option.key,
-          label,
-          icon: option.icon,
-          selected,
-          onPress: () => chooseBoard(option),
-          accessibilityLabel: cs.leaderboards.selectTable(label, selected),
-        };
-      }),
-    [category, chooseBoard, period],
-  );
 
   const nudge = useMemo<Nudge | null>(() => {
     // The failure is stated by the card and undone by the button; a strip
@@ -300,7 +288,7 @@ export default function LeaderboardsScreen() {
   // With no rows under it the card is the whole screen, so it takes the space
   // the list would have used instead of leaving a brown hole above the button.
   const showList = state === 'loading' || entries.length > 0;
-  const showWeeklyReset = category !== 'mapper' && period === 'week';
+  const showWeeklyReset = effectivePeriod === 'week';
 
   // The footer carries at most two facts and never an empty slot: whatever is
   // known lands left first, so a lone fact is not stranded on the right edge.
@@ -339,20 +327,93 @@ export default function LeaderboardsScreen() {
           style={styles.headerTitle}
           numberOfLines={1}
           maxFontSizeMultiplier={FontScaleCap.heading}
-          accessibilityLabel={cs.leaderboards.tablePickerLabel(category, period)}
         >
-          {tableTitle}
+          {cs.leaderboards.screenTitle}
         </Text>
 
-        <Pressable
-          onPress={() => setMoreOpen(true)}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel={cs.leaderboards.openTablePicker}
-          style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}
-        >
-          <MenuIcon size={20} color={Colors.mutedText} />
-        </Pressable>
+        {/* The back chevron's twin, so the title stays optically centred. */}
+        <View style={styles.headerSpacer} />
+      </View>
+
+      {/* One filter block, two questions: which board (segmented track) and
+          which window (chips). They sit 8 pt apart and 16 pt above the card, so
+          they read as one control group, not two stray rows. */}
+      <View style={styles.filters}>
+        <View style={styles.categoryTrack} accessibilityRole="tablist">
+          {CATEGORIES.map(({ key, icon: Icon }) => {
+            const active = key === category;
+            const label = cs.leaderboards.categoryTab(key);
+            return (
+              <Pressable
+                key={key}
+                onPress={() => chooseCategory(key)}
+                disabled={active}
+                style={({ pressed }) => [
+                  styles.categorySegment,
+                  active && styles.categorySegmentActive,
+                  pressed && styles.pressedSoft,
+                ]}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: active, disabled: active }}
+                accessibilityLabel={cs.leaderboards.selectCategory(label, active)}
+              >
+                {/* One tone per state (icon + label together): foam when picked,
+                    muted when not. Amber stays on the CTA (§14.2). */}
+                <Icon size={16} color={active ? Colors.foam : Colors.mutedText} />
+                <Text
+                  style={[styles.categoryLabel, active && styles.categoryLabelActive]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.85}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {/* Chips, not a second bordered track — a frame under a frame is §14.10.
+            The picked window is amber text on an amber wash; the rest is plain
+            muted text with no edge at all. Fixed height, so switching to Mapéři
+            never shifts the card under it (§14.8). */}
+        <View style={styles.periodRow} accessibilityRole="tablist">
+          {category === 'mapper' ? (
+            <Text style={styles.periodNote} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.leaderboards.mapperPeriodNote}
+            </Text>
+          ) : (
+            PERIODS.map((item) => {
+              const active = item === period;
+              const label = cs.leaderboards.periodTab(item);
+              return (
+                <Pressable
+                  key={item}
+                  onPress={() => choosePeriod(item)}
+                  disabled={active}
+                  hitSlop={8}
+                  style={({ pressed }) => [
+                    styles.periodChip,
+                    active && styles.periodChipActive,
+                    pressed && styles.pressedSoft,
+                  ]}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: active, disabled: active }}
+                  accessibilityLabel={cs.leaderboards.selectPeriod(label, active)}
+                >
+                  <Text
+                    style={[styles.periodLabel, active && styles.periodLabelActive]}
+                    numberOfLines={1}
+                    maxFontSizeMultiplier={FontScaleCap.body}
+                  >
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            })
+          )}
+        </View>
       </View>
 
       <ScrollView
@@ -374,18 +435,12 @@ export default function LeaderboardsScreen() {
         >
           <CardSheen />
 
-          <Text
-            style={styles.eyebrow}
-            numberOfLines={2}
-            maxFontSizeMultiplier={FontScaleCap.body}
-          >
-            {cs.leaderboards.subtitle(category, category === 'mapper' ? 'all' : period)}
+          <Text style={styles.eyebrow} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.leaderboards.subtitle(category, effectivePeriod)}
           </Text>
 
           {state === 'loading' ? (
-            <View style={styles.heroBody}>
-              <SkeletonBlock width="52%" height={72} reduceMotion={reduceMotion} />
-            </View>
+            <HeroSkeleton reduceMotion={reduceMotion} />
           ) : rank != null ? (
             <View style={styles.heroBody} onLayout={handleHeroBodyLayout}>
               <View style={styles.rankColumn}>
@@ -425,21 +480,21 @@ export default function LeaderboardsScreen() {
                   <Text style={styles.rulesCaption} maxFontSizeMultiplier={FontScaleCap.body}>
                     {cs.leaderboards.rulesCaption}
                   </Text>
-                  {cs.leaderboards
-                    .rules(category, category === 'mapper' ? 'all' : period, hasNickname)
-                    .map((rule) => (
-                      <Text
-                        key={rule}
-                        style={styles.ruleText}
-                        maxFontSizeMultiplier={FontScaleCap.body}
-                      >
-                        {rule}
-                      </Text>
-                    ))}
+                  {cs.leaderboards.rules(category, effectivePeriod, hasNickname).map((rule) => (
+                    <Text
+                      key={rule}
+                      style={styles.ruleText}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {rule}
+                    </Text>
+                  ))}
                 </View>
               )}
             </View>
           )}
+
+          {state === 'loading' ? <HeroFooterSkeleton reduceMotion={reduceMotion} /> : null}
 
           {state !== 'loading' && footerLeft ? (
             <View style={styles.heroFooter}>
@@ -470,28 +525,23 @@ export default function LeaderboardsScreen() {
             </Text>
 
             <View style={styles.rowsCard}>
-              {state === 'loading'
-                ? [0, 1, 2].map((item) => (
-                    <SkeletonBlock
-                      key={item}
-                      width="100%"
-                      height={56}
-                      reduceMotion={reduceMotion}
-                    />
-                  ))
-                : entries.map((entry, index) => (
-                    <GlobalBoardRow
-                      key={entry.account.id}
-                      entry={entry}
-                      divided={index > 0}
-                      unit={unitFor(category, entry.score)}
-                      onPress={
-                        entry.isMe || !entry.account.id
-                          ? undefined
-                          : () => openProfile(entry.account.id)
-                      }
-                    />
-                  ))}
+              {state === 'loading' ? (
+                <RowsSkeleton reduceMotion={reduceMotion} />
+              ) : (
+                entries.map((entry, index) => (
+                  <GlobalBoardRow
+                    key={entry.account.id}
+                    entry={entry}
+                    divided={index > 0}
+                    unit={unitFor(category, entry.score)}
+                    onPress={
+                      entry.isMe || !entry.account.id
+                        ? undefined
+                        : () => openProfile(entry.account.id)
+                    }
+                  />
+                ))
+              )}
             </View>
           </>
         ) : null}
@@ -499,18 +549,7 @@ export default function LeaderboardsScreen() {
 
       <NudgeSlot nudge={nudge} collapseWhenEmpty />
 
-      <CounterCta
-        label={cta.label}
-        onPress={cta.onPress}
-        accessibilityLabel={cta.label}
-      />
-
-      <MoreSheet
-        visible={moreOpen}
-        title={cs.leaderboards.sheetTitle}
-        rows={moreRows}
-        onClose={() => setMoreOpen(false)}
-      />
+      <CounterCta label={cta.label} onPress={cta.onPress} accessibilityLabel={cta.label} />
     </View>
   );
 }
@@ -524,7 +563,6 @@ const styles = StyleSheet.create({
   },
   header: {
     minHeight: 44,
-    marginBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -544,15 +582,98 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     includeFontPadding: false,
   },
-  moreButton: {
-    width: 40,
-    height: 40,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
+  headerSpacer: {
+    width: 44,
+    height: 44,
   },
   pressed: {
     opacity: 0.6,
+  },
+  pressedSoft: {
+    opacity: 0.76,
+  },
+
+  // The filter group: track and chips 8 pt apart, 16 pt of air to the card.
+  // Related things sit close, unrelated things sit far.
+  filters: {
+    gap: 8,
+    marginBottom: 4,
+  },
+  // §2.2 neutral chrome: foam 4 % track, 8 % edge, 10 % active fill. No amber
+  // plane here — the CTA at the bottom is the screen's only lit surface (§14.2).
+  categoryTrack: {
+    height: 44,
+    padding: 4,
+    borderRadius: Radius.pill,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: withAlpha(Colors.foam, 0.04),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.08),
+  },
+  categorySegment: {
+    flex: 1,
+    minWidth: 0,
+    height: 36,
+    borderRadius: Radius.pill,
+    paddingHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  // The picked segment is a lifted tile: 10 % fill with a slightly brighter top
+  // edge, so at a glance it reads as raised rather than merely lighter.
+  categorySegmentActive: {
+    backgroundColor: withAlpha(Colors.foam, 0.1),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.12),
+  },
+  categoryLabel: {
+    flexShrink: 1,
+    fontFamily: Fonts.display.bold,
+    fontSize: 14,
+    color: Colors.mutedText,
+    includeFontPadding: false,
+  },
+  categoryLabelActive: {
+    color: Colors.foam,
+  },
+  periodRow: {
+    minHeight: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  periodChip: {
+    height: 32,
+    paddingHorizontal: 12,
+    borderRadius: Radius.pill,
+    justifyContent: 'center',
+  },
+  // Amber as a wash, not a plane: 12 % fill under amber text. Thin enough to
+  // stay under the CTA in the 60/30/10 split.
+  periodChipActive: {
+    backgroundColor: withAlpha(Colors.amber, 0.12),
+  },
+  periodLabel: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 13,
+    color: Colors.mutedText,
+    includeFontPadding: false,
+  },
+  periodLabelActive: {
+    fontFamily: Fonts.ui.bold,
+    color: Colors.amber,
+  },
+  // Mapéři has one window, so the row states it instead of offering a choice
+  // that does nothing. Aligned with the chips' text, same height.
+  periodNote: {
+    paddingHorizontal: 12,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
+    color: Colors.mutedText,
+    includeFontPadding: false,
   },
 
   scroll: {

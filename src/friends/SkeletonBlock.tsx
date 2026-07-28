@@ -25,6 +25,11 @@ type SkeletonBlockProps = {
   height: DimensionValue;
   radius?: number;
   reduceMotion: boolean;
+  /**
+   * `raised` doubles the wash for blocks that sit on a card surface (`stout2`).
+   * Foam at 6 % reads as a hole in the card there, not as content on its way.
+   */
+  tone?: 'default' | 'raised';
 };
 
 const SHIMMER_MS = 900;
@@ -32,12 +37,14 @@ const SHIMMER_LOW = 0.5;
 const SHIMMER_HIGH = 0.9;
 const STATIC_OPACITY = 0.7;
 const BLOCK_BG = withAlpha(Colors.foam, 0.06);
+const BLOCK_BG_RAISED = withAlpha(Colors.foam, 0.2);
 
 function SkeletonBlockComponent({
   width,
   height,
   radius = Radius.medium,
   reduceMotion,
+  tone = 'default',
 }: SkeletonBlockProps) {
   const opacity = useSharedValue(reduceMotion ? STATIC_OPACITY : SHIMMER_LOW);
 
@@ -51,11 +58,7 @@ function SkeletonBlockComponent({
 
     // 0.5 ↔ 0.9 ping-pong; reverse:true gives the symmetric breathe.
     opacity.value = SHIMMER_LOW;
-    opacity.value = withRepeat(
-      withTiming(SHIMMER_HIGH, { duration: SHIMMER_MS }),
-      -1,
-      true,
-    );
+    opacity.value = withRepeat(withTiming(SHIMMER_HIGH, { duration: SHIMMER_MS }), -1, true);
 
     return () => {
       cancelAnimation(opacity);
@@ -76,7 +79,7 @@ function SkeletonBlockComponent({
           width,
           height,
           borderRadius: radius,
-          backgroundColor: BLOCK_BG,
+          backgroundColor: tone === 'raised' ? BLOCK_BG_RAISED : BLOCK_BG,
         },
         animatedStyle,
       ]}

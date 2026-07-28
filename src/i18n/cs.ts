@@ -1738,8 +1738,21 @@ export const cs = {
   // (zapsaná piva, objevené hospody), never litres — no chug-contest energy.
   leaderboards: {
     back: 'Zpět',
-    sheetTitle: 'Jaký žebříček?',
-    openTablePicker: 'Vybrat žebříček',
+    // The screen owns three boards over three windows, so both switches sit on
+    // the screen: a segmented track for the board and a quiet text row for the
+    // window. Nothing here hides behind a „…“ sheet.
+    screenTitle: 'Žebříčky',
+    categoryTab: (category: 'beers' | 'pubs' | 'mapper') =>
+      category === 'beers' ? 'Pivaři' : category === 'pubs' ? 'Objevitelé' : 'Mapéři',
+    periodTab: (period: 'week' | 'year' | 'all') =>
+      period === 'week' ? 'Týden' : period === 'year' ? 'Letos' : 'Celkem',
+    // Mapér XP never resets, so the window row has nothing to switch — it says
+    // so instead of showing three chips where two would do nothing.
+    mapperPeriodNote: 'Sbírá se odjakživa',
+    selectCategory: (label: string, selected: boolean) =>
+      selected ? `${label}, vybráno` : `Přepnout na ${label}`,
+    selectPeriod: (label: string, selected: boolean) =>
+      selected ? `${label}, vybráno` : `Přepnout na ${label}`,
     tableTitle: (
       category: 'beers' | 'pubs' | 'mapper',
       period: 'week' | 'year' | 'all',
@@ -1750,25 +1763,6 @@ export const cs = {
         period === 'week' ? 'tenhle týden' : period === 'year' ? 'letos' : 'celkem';
       return `${categoryLabel} · ${periodLabel}`;
     },
-    tablePickerLabel: (
-      category: 'beers' | 'pubs' | 'mapper',
-      period: 'week' | 'year' | 'all',
-    ) => {
-      const categoryLabel =
-        category === 'beers' ? 'Pivaři' : category === 'pubs' ? 'Objevitelé' : 'Mapéři';
-      const periodLabel =
-        category === 'mapper'
-          ? 'odjakživa'
-          : period === 'week'
-            ? 'tenhle týden'
-            : period === 'year'
-              ? 'letos'
-              : 'celkem';
-      return `Vybrat žebříček. Teď ${categoryLabel}, ${periodLabel}.`;
-    },
-    selectTable: (label: string, selected: boolean) =>
-      selected ? `${label}, vybráno` : `Vybrat ${label}`,
-
     // Quiet eyebrow inside the hero card names what the board measures.
     subtitle: (category: 'beers' | 'pubs' | 'mapper', period: 'week' | 'year' | 'all') => {
       if (category === 'beers') {
