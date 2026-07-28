@@ -639,10 +639,13 @@ const styles = StyleSheet.create({
   categoryLabelActive: {
     color: Colors.foam,
   },
+  // Centred under the track, so the two controls share one optical axis with
+  // the header title instead of hanging off the left edge.
   periodRow: {
     minHeight: 32,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
   },
   periodChip: {
