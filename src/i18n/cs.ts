@@ -1814,16 +1814,53 @@ export const cs = {
     rowFriend: 'v partě',
     rowFallbackName: 'Pivař',
 
-    // — Empty board —
-    empty: (category: 'beers' | 'pubs' | 'mapper') =>
+    // — No standing yet —
+    // Without a rank there is no numeral and no podium to draw, so the card
+    // says what is missing instead of drawing a placeholder for it.
+    emptyBoardTitle: 'Tabulka je prázdná',
+    emptyBoardBody: (category: 'beers' | 'pubs' | 'mapper') =>
       category === 'beers'
-        ? 'Zatím tu je ticho jako před otvíračkou. První zapsané pivo to rozjede.'
+        ? 'Ticho jako před otvíračkou. První zapsané pivo tě posadí na první místo.'
         : category === 'pubs'
-          ? 'Zatím žádní objevitelé. Zapiš pivo v nové hospodě a tabulka je tvoje.'
-          : 'Zatím nikdo nic nezmapoval. Doplň, co o své hospodě víš, a vedeš.',
+          ? 'Ticho jako před otvíračkou. První nová hospoda tě posadí na první místo.'
+          : 'Ticho jako před otvíračkou. První doplněné info tě posadí na první místo.',
+    errorTitle: 'Tabulka se nenačetla',
+    errorBody: 'Server možná zrovna točí. Zkus to za chvilku znovu.',
+    notRankedTitle: 'Ještě nejsi v tabulce',
+    notRankedBody: (category: 'beers' | 'pubs' | 'mapper') =>
+      category === 'beers'
+        ? 'Zapiš pivo a naskočíš mezi ostatní.'
+        : category === 'pubs'
+          ? 'Zapiš pivo v nové hospodě a naskočíš mezi ostatní.'
+          : 'Doplň, co o své hospodě víš, a naskočíš mezi ostatní.',
+    weeklyReset: 'Nový závod v pondělí',
+    blankA11y: (table: string, title: string, body: string) => `${table}. ${title}. ${body}`,
+    // The rules of the race. They only show while the card has no rank to draw,
+    // where they turn empty space into the one thing a newcomer actually needs.
+    rulesCaption: 'JAK SE TO POČÍTÁ',
+    rules: (
+      category: 'beers' | 'pubs' | 'mapper',
+      period: 'week' | 'year' | 'all',
+      hasNickname: boolean,
+    ) => [
+      category === 'beers'
+        ? 'Každé zapsané pivo je čárka.'
+        : category === 'pubs'
+          ? 'Každá nová hospoda je bod.'
+          : 'Za každé doplněné info je XP.',
+      category === 'mapper'
+        ? 'Sbírá se odjakživa, nic se nemaže.'
+        : period === 'week'
+          ? 'V pondělí se tabulka maže a jede se nanovo.'
+          : period === 'year'
+            ? 'Počítá se všechno od Nového roku.'
+            : 'Síň slávy. Nic se nemaže.',
+      hasNickname
+        ? 'V tabulce jsi pod svojí přezdívkou.'
+        : 'Bez přezdívky tě v tabulce nikdo nevidí.',
+    ],
 
     // — My standing —
-    noRank: '—',
     rankNoun: 'MÍSTO',
     noScore: 'Zatím bez čárky',
     totalInBoard: (count: string | null) => `z ${count ?? '—'} v tabulce`,
@@ -1849,18 +1886,15 @@ export const cs = {
     },
 
     // — Primary CTA —
+    // No sub-labels here: the label already says what one tap does, and the
+    // second line only repeated it in a quieter voice.
     ghostCta: 'Ukázat se',
     ghostAnonCta: 'Založit přezdívku',
-    ghostCtaSub: 'Bez přezdívky tě v žebříčku nikdo nevidí.',
+    ghostNudge: 'Bez přezdívky tě nikdo nevidí',
     ctaBeers: 'Přidej si čárku',
-    ctaBeersSub: 'Nahoru se leze pivem.',
     ctaPubs: 'Objev novou hospodu',
-    ctaPubsSub: 'Kompas ti jednu najde.',
     ctaMapper: 'Zmapuj hospodu',
-    ctaMapperSub: 'Za doplněné info je XP.',
     retry: 'Zkusit znovu',
-    retrySub: 'Server možná zrovna točí.',
-    error: 'Žebříčky se nepovedlo načíst.',
 
     // — Entry points —
     entryProfileTitle: 'Žebříčky',

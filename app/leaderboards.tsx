@@ -27,6 +27,7 @@ import {
   MapPinIcon,
   PencilIcon,
 } from '@/components/shared/IconGlyph';
+import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
 import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
 import { CounterCta } from '@/counter/CounterCta';
 import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
@@ -185,6 +186,7 @@ export default function LeaderboardsScreen() {
   const entries = useMemo(() => visibleBoard?.entries ?? [], [visibleBoard]);
   const me = visibleBoard?.me ?? null;
   const hasNickname = Boolean(profile?.nickname);
+  const isGhost = Boolean(me && !me.eligible);
 
   // Only full boards can produce a meaningful gap to their last visible row.
   const chaseGap = useMemo(() => {
@@ -212,13 +214,16 @@ export default function LeaderboardsScreen() {
   );
 
   const nudge = useMemo<Nudge | null>(() => {
-    if (state === 'error') {
+    // The failure is stated by the card and undone by the button; a strip
+    // between them would be the same sentence a third time.
+    if (state === 'error') return null;
+    // The ghost's "why" used to hang under the button as a second line; it is a
+    // state note, not a description of the tap, so it belongs in the strip.
+    if (isGhost) {
       return {
-        kind: 'counted',
-        text: cs.leaderboards.error,
-        undoLabel: cs.leaderboards.retry,
-        onUndo: retry,
-        actionAccessibilityLabel: cs.leaderboards.retry,
+        kind: 'dopito',
+        label: cs.leaderboards.ghostNudge,
+        onPress: openVisibility,
       };
     }
     if (chaseGap > 0) {
@@ -229,43 +234,35 @@ export default function LeaderboardsScreen() {
       };
     }
     return null;
-  }, [category, chaseGap, retry, state]);
+  }, [category, chaseGap, isGhost, openVisibility, state]);
 
   const cta = useMemo(() => {
     if (state === 'error') {
-      return {
-        label: cs.leaderboards.retry,
-        subLabel: cs.leaderboards.retrySub,
-        onPress: retry,
-      };
+      return { label: cs.leaderboards.retry, onPress: retry };
     }
-    if (me && !me.eligible) {
+    if (isGhost) {
       return {
         label: hasNickname ? cs.leaderboards.ghostCta : cs.leaderboards.ghostAnonCta,
-        subLabel: cs.leaderboards.ghostCtaSub,
         onPress: openVisibility,
       };
     }
     if (category === 'beers') {
       return {
         label: cs.leaderboards.ctaBeers,
-        subLabel: cs.leaderboards.ctaBeersSub,
         onPress: () => router.replace('/(tabs)/beer' as Href),
       };
     }
     if (category === 'pubs') {
       return {
         label: cs.leaderboards.ctaPubs,
-        subLabel: cs.leaderboards.ctaPubsSub,
         onPress: () => router.replace('/(tabs)' as Href),
       };
     }
     return {
       label: cs.leaderboards.ctaMapper,
-      subLabel: cs.leaderboards.ctaMapperSub,
       onPress: () => router.replace('/(tabs)' as Href),
     };
-  }, [category, hasNickname, me, openVisibility, retry, router, state]);
+  }, [category, hasNickname, isGhost, openVisibility, retry, router, state]);
 
   const handleHeroBodyLayout = useCallback((event: LayoutChangeEvent) => {
     const height = event.nativeEvent.layout.height;
@@ -273,7 +270,7 @@ export default function LeaderboardsScreen() {
   }, []);
 
   const rank = me?.rank ?? null;
-  const rankLabel = rank == null ? cs.leaderboards.noRank : rank.toLocaleString('cs-CZ');
+  const rankLabel = rank == null ? '' : rank.toLocaleString('cs-CZ');
   const numeralSize = rankFontSize(rank);
   const podiumWidth =
     heroBodyHeight > 0 ? Math.max(64, Math.min(112, (heroBodyHeight - 16) * 0.66)) : 88;
@@ -281,9 +278,41 @@ export default function LeaderboardsScreen() {
     me && me.score > 0
       ? cs.leaderboards.score(category, me.score.toLocaleString('cs-CZ'), me.score)
       : cs.leaderboards.noScore;
-  const totalLabel = cs.leaderboards.totalInBoard(
-    visibleBoard ? visibleBoard.totalRanked.toLocaleString('cs-CZ') : null,
-  );
+  const totalRanked = visibleBoard?.totalRanked ?? null;
+  const totalLabel = cs.leaderboards.totalInBoard(totalRanked?.toLocaleString('cs-CZ') ?? null);
+
+  // A rank is what the hero draws: the numeral, the podium and the score fact
+  // all mean nothing without one. Without a rank the card carries copy instead
+  // of a dash rendered at 88pt and a podium with no lit mat.
+  const boardEmpty = state === 'loaded' && entries.length === 0;
+  const blankTitle =
+    state === 'error'
+      ? cs.leaderboards.errorTitle
+      : boardEmpty
+        ? cs.leaderboards.emptyBoardTitle
+        : cs.leaderboards.notRankedTitle;
+  const blankBody =
+    state === 'error'
+      ? cs.leaderboards.errorBody
+      : boardEmpty
+        ? cs.leaderboards.emptyBoardBody(category)
+        : cs.leaderboards.notRankedBody(category);
+  // With no rows under it the card is the whole screen, so it takes the space
+  // the list would have used instead of leaving a brown hole above the button.
+  const showList = state === 'loading' || entries.length > 0;
+  const showWeeklyReset = category !== 'mapper' && period === 'week';
+
+  // The footer carries at most two facts and never an empty slot: whatever is
+  // known lands left first, so a lone fact is not stranded on the right edge.
+  // The blank card that owns the whole screen states the reset in its rules, so
+  // repeating it in the footer would be the same fact twice.
+  const [footerLeft, footerRight] = (
+    rank != null
+      ? [scoreLabel, totalLabel]
+      : showList
+        ? [totalRanked ? totalLabel : null, showWeeklyReset ? cs.leaderboards.weeklyReset : null]
+        : []
+  ).filter(Boolean) as (string | undefined)[];
 
   return (
     <View
@@ -328,23 +357,23 @@ export default function LeaderboardsScreen() {
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, !showList && styles.scrollContentCentered]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.amber} />
         }
       >
-        <Pressable
-          disabled
+        <View
           accessibilityRole="text"
-          accessibilityLabel={cs.leaderboards.heroA11y(
-            tableTitle,
-            rankLabel,
-            scoreLabel,
-            visibleBoard?.totalRanked ?? null,
-          )}
+          accessibilityLabel={
+            rank != null
+              ? cs.leaderboards.heroA11y(tableTitle, rankLabel, scoreLabel, totalRanked)
+              : cs.leaderboards.blankA11y(tableTitle, blankTitle, blankBody)
+          }
           style={styles.heroCard}
         >
+          <CardSheen />
+
           <Text
             style={styles.eyebrow}
             numberOfLines={2}
@@ -353,88 +382,125 @@ export default function LeaderboardsScreen() {
             {cs.leaderboards.subtitle(category, category === 'mapper' ? 'all' : period)}
           </Text>
 
-          <View style={styles.heroBody} onLayout={handleHeroBodyLayout}>
-            <View style={styles.rankColumn}>
+          {state === 'loading' ? (
+            <View style={styles.heroBody}>
+              <SkeletonBlock width="52%" height={72} reduceMotion={reduceMotion} />
+            </View>
+          ) : rank != null ? (
+            <View style={styles.heroBody} onLayout={handleHeroBodyLayout}>
+              <View style={styles.rankColumn}>
+                <Text
+                  style={[styles.rank, { fontSize: numeralSize, lineHeight: numeralSize * 1.24 }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.8}
+                  maxFontSizeMultiplier={FontScaleCap.display}
+                >
+                  {rankLabel}
+                </Text>
+                <Text
+                  style={styles.rankNoun}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {cs.leaderboards.rankNoun}
+                </Text>
+              </View>
+
+              <PodiumMats rank={rank} width={podiumWidth} />
+            </View>
+          ) : (
+            <View style={styles.blankBody}>
+              <View style={styles.blankLead}>
+                <Text style={styles.blankTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+                  {blankTitle}
+                </Text>
+                <Text style={styles.blankText} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {blankBody}
+                </Text>
+              </View>
+
+              {showList || state === 'error' ? null : (
+                <View style={styles.rules}>
+                  <Text style={styles.rulesCaption} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {cs.leaderboards.rulesCaption}
+                  </Text>
+                  {cs.leaderboards
+                    .rules(category, category === 'mapper' ? 'all' : period, hasNickname)
+                    .map((rule) => (
+                      <Text
+                        key={rule}
+                        style={styles.ruleText}
+                        maxFontSizeMultiplier={FontScaleCap.body}
+                      >
+                        {rule}
+                      </Text>
+                    ))}
+                </View>
+              )}
+            </View>
+          )}
+
+          {state !== 'loading' && footerLeft ? (
+            <View style={styles.heroFooter}>
               <Text
-                style={[styles.rank, { fontSize: numeralSize, lineHeight: numeralSize * 1.24 }]}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.8}
-                maxFontSizeMultiplier={FontScaleCap.display}
-              >
-                {rankLabel}
-              </Text>
-              <Text
-                style={styles.rankNoun}
+                style={rank != null ? styles.scoreFact : styles.totalFact}
                 numberOfLines={1}
                 maxFontSizeMultiplier={FontScaleCap.body}
               >
-                {cs.leaderboards.rankNoun}
+                {footerLeft}
               </Text>
+              {footerRight ? (
+                <Text
+                  style={styles.totalFact}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {footerRight}
+                </Text>
+              ) : null}
             </View>
+          ) : null}
+        </View>
 
-            <PodiumMats rank={rank} width={podiumWidth} />
-          </View>
-
-          <View style={styles.heroFooter}>
-            <Text
-              style={styles.scoreFact}
-              numberOfLines={1}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            >
-              {scoreLabel}
+        {showList ? (
+          <>
+            <Text style={styles.listLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.leaderboards.listLabel}
             </Text>
-            <Text
-              style={styles.totalFact}
-              numberOfLines={1}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            >
-              {totalLabel}
-            </Text>
-          </View>
-        </Pressable>
 
-        <Text style={styles.listLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.leaderboards.listLabel}
-        </Text>
-
-        {state === 'loading' ? (
-          <View style={styles.rowsCard}>
-            {[0, 1, 2].map((item) => (
-              <SkeletonBlock
-                key={item}
-                width="100%"
-                height={56}
-                reduceMotion={reduceMotion}
-              />
-            ))}
-          </View>
-        ) : state === 'loaded' && entries.length === 0 ? (
-          <Text style={styles.emptyText} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.leaderboards.empty(category)}
-          </Text>
-        ) : entries.length > 0 ? (
-          <View style={styles.rowsCard}>
-            {entries.map((entry, index) => (
-              <GlobalBoardRow
-                key={entry.account.id}
-                entry={entry}
-                divided={index > 0}
-                unit={unitFor(category, entry.score)}
-                onPress={
-                  entry.isMe || !entry.account.id ? undefined : () => openProfile(entry.account.id)
-                }
-              />
-            ))}
-          </View>
+            <View style={styles.rowsCard}>
+              {state === 'loading'
+                ? [0, 1, 2].map((item) => (
+                    <SkeletonBlock
+                      key={item}
+                      width="100%"
+                      height={56}
+                      reduceMotion={reduceMotion}
+                    />
+                  ))
+                : entries.map((entry, index) => (
+                    <GlobalBoardRow
+                      key={entry.account.id}
+                      entry={entry}
+                      divided={index > 0}
+                      unit={unitFor(category, entry.score)}
+                      onPress={
+                        entry.isMe || !entry.account.id
+                          ? undefined
+                          : () => openProfile(entry.account.id)
+                      }
+                    />
+                  ))}
+            </View>
+          </>
         ) : null}
       </ScrollView>
 
-      <NudgeSlot nudge={nudge} />
+      <NudgeSlot nudge={nudge} collapseWhenEmpty />
 
       <CounterCta
         label={cta.label}
-        subLabel={cta.subLabel}
         onPress={cta.onPress}
         accessibilityLabel={cta.label}
       />
@@ -496,16 +562,15 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingBottom: 12,
   },
+  // With no rows the card is the only block on the screen. Stretching it to the
+  // full height would just make the hole inside it bigger, so it keeps its own
+  // size and sits in the middle instead.
+  scrollContentCentered: {
+    justifyContent: 'center',
+  },
 
   heroCard: {
-    overflow: 'hidden',
-    backgroundColor: Colors.stout2,
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.07),
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 8,
+    ...CardSurface.card,
   },
   eyebrow: {
     fontFamily: Fonts.ui.medium,
@@ -539,16 +604,60 @@ const styles = StyleSheet.create({
     color: Colors.foamMuted,
     includeFontPadding: false,
   },
-  heroFooter: {
-    marginTop: 20,
-    paddingTop: 12,
-    paddingBottom: 8,
+  // The card's own body when there is no rank to draw: one line that names the
+  // situation and one that says what changes it. No numeral, no podium — both
+  // would be placeholders for data that does not exist yet.
+  blankBody: {
+    flex: 1,
+    minHeight: 132,
+    justifyContent: 'space-between',
+    paddingTop: 20,
+    paddingBottom: 12,
+    gap: 24,
+  },
+  blankLead: {
+    gap: 8,
+  },
+  // What a newcomer is actually missing: the rules of the race, in the space
+  // the podium would have taken if there were anything to draw on it.
+  rules: {
+    gap: 6,
+    paddingTop: 16,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(Colors.foam, 0.1),
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
+  },
+  rulesCaption: {
+    marginBottom: 2,
+    fontFamily: Fonts.ui.bold,
+    fontSize: 11,
+    letterSpacing: 1.5,
+    color: Colors.amber,
+    includeFontPadding: false,
+  },
+  ruleText: {
+    fontFamily: Fonts.ui.medium,
+    fontSize: 14,
+    lineHeight: 20,
+    color: Colors.foamMuted,
+    includeFontPadding: false,
+  },
+  blankTitle: {
+    fontFamily: Fonts.display.extrabold,
+    fontSize: 28,
+    lineHeight: 34,
+    color: Colors.foam,
+    includeFontPadding: false,
+  },
+  blankText: {
+    maxWidth: 320,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 15,
+    lineHeight: 22,
+    color: Colors.mutedText,
+    includeFontPadding: false,
+  },
+  heroFooter: {
+    ...CardSurface.footer,
   },
   scoreFact: {
     flexShrink: 1,
@@ -583,15 +692,5 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.foam, 0.07),
     paddingVertical: 4,
     overflow: 'hidden',
-  },
-  emptyText: {
-    paddingHorizontal: 12,
-    paddingVertical: 24,
-    fontFamily: Fonts.ui.medium,
-    fontSize: 14,
-    lineHeight: 20,
-    color: Colors.mutedText,
-    textAlign: 'center',
-    includeFontPadding: false,
   },
 });
