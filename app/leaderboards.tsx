@@ -410,7 +410,7 @@ export default function LeaderboardsScreen() {
               <PodiumMats rank={rank} width={podiumWidth} />
             </View>
           ) : (
-            <View style={styles.blankBody}>
+            <View style={[styles.blankBody, showList && styles.blankBodyCompact]}>
               <View style={styles.blankLead}>
                 <Text style={styles.blankTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
                   {blankTitle}
@@ -614,6 +614,12 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 12,
     gap: 24,
+  },
+  // With the board under it the card is a caption, not the screen: it hugs its
+  // two lines instead of holding the height the numeral would have needed.
+  blankBodyCompact: {
+    minHeight: 0,
+    paddingBottom: 4,
   },
   blankLead: {
     gap: 8,
