@@ -21,9 +21,11 @@
  *
  * Two things left the surface entirely. The friend list is no longer
  * interleaved with the feed — it was the single most confusing thing on the
- * screen — and lives behind "…" → Celá parta. The notification log moved the
- * same way, into "…" → Cinklo v partě, because every notification it carried
- * was a duplicate of a row the feed above already shows.
+ * screen — and lives behind "…" → Celá parta. The notification log left the app
+ * altogether: every kind it held was either a row this screen already shows
+ * (request, presence, RSVP, plan) or a push that had already done its job in
+ * the moment it mattered. All that survives of it is the tab dot, which a push
+ * lights and opening this screen clears.
  *
  * Nothing is permanently pinned to the bottom. This is a feed: chrome that
  * stays put is chrome the stream pays for on every screenful.
@@ -57,7 +59,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { showAppDialog } from '@/components/shared/AppDialog';
 import { DoorRail, type DoorRailTile } from '@/components/shared/DoorRail';
 import {
-  BellRingIcon,
   CheckIcon,
   MenuIcon,
   HandPlatterIcon,
@@ -85,7 +86,6 @@ import {
   fetchFriendsLive,
   markFriendNotificationsRead,
   respondFriendRequest,
-  type FriendNotification,
   type FriendPubActivity,
   type FriendsDashboard,
   type Friendship,
@@ -126,7 +126,6 @@ import {
 } from '@/notifications/friendPush';
 
 import { AddFriendTools } from './AddFriendTools';
-import CheersPill from './CheersPill';
 import CodeSheet from './CodeSheet';
 import ComposeSheet from './ComposeSheet';
 import FriendActiveCard from './FriendActiveCard';
@@ -147,8 +146,6 @@ import { useFriendSafety } from './friendSafety';
 const LIVE_POLL_MS = 35000;
 const SHEET_DISMISS_MS = 260;
 const ROUND_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
-const PROFILE_FEED_KINDS = new Set(['friend_accepted', 'friend_cheers']);
-const REACTABLE_FEED_KINDS = new Set(['friend_at_pub', 'friend_rsvp']);
 /** How many evenings the screen holds before "Načíst starší" earns its place. */
 const FEED_PAGE = 20;
 
@@ -156,17 +153,6 @@ function timestamp(value: string | null | undefined): number {
   if (!value) return 0;
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function timeLabel(iso: string): string {
-  const parsed = timestamp(iso);
-  if (parsed === 0) return '';
-  return new Date(parsed).toLocaleString('cs-CZ', {
-    day: 'numeric',
-    month: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
 }
 
 function planTimeLabel(iso: string): string {
@@ -402,7 +388,6 @@ export default function FriendsScreen() {
   const [composeVisible, setComposeVisible] = useState(false);
   const [addFriendVisible, setAddFriendVisible] = useState(false);
   const [rosterVisible, setRosterVisible] = useState(false);
-  const [notificationsVisible, setNotificationsVisible] = useState(false);
   const [moreVisible, setMoreVisible] = useState(false);
   const [focused, setFocused] = useState(false);
   const [photoFeedKey, setPhotoFeedKey] = useState(0);
@@ -481,6 +466,11 @@ export default function FriendsScreen() {
             setDashboard(override ? { ...next, settings: override } : next);
             setLoadError(false);
 
+            // The notification log has no screen of its own any more — every
+            // kind it carries is either a row above (request, presence, RSVP,
+            // plan) or a push you already got. What is left of it is the tab
+            // dot: a push lights it, opening Parta clears it, because by then
+            // you have seen the thing itself.
             const willMarkRead =
               next.notifications.length > 0 && (mode === 'initial' || mode === 'refresh');
             if (willMarkRead) {
@@ -673,25 +663,6 @@ export default function FriendsScreen() {
     [openFriendSafety],
   );
 
-  const handleFeedPress = useCallback(
-    (notification: FriendNotification) => {
-      if (notification.kind === 'friend_request') {
-        setNotificationsVisible(false);
-        scrollToOffset(requestsYRef.current);
-      } else if (
-        notification.kind === 'friend_at_pub' ||
-        notification.kind === 'friend_rsvp'
-      ) {
-        setNotificationsVisible(false);
-        scrollToOffset(activeYRef.current);
-      } else if (PROFILE_FEED_KINDS.has(notification.kind) && notification.actor?.id) {
-        setNotificationsVisible(false);
-        openFriendProfile(notification.actor.id);
-      }
-    },
-    [openFriendProfile, scrollToOffset],
-  );
-
   const respond = useCallback(
     async (id: string, action: 'accept' | 'decline') => {
       if (respondingRequestActions[id]) return;
@@ -814,15 +785,6 @@ export default function FriendsScreen() {
         label: cs.friends.secondaryAddFriend,
         icon: UserPlusIcon,
         onPress: () => runAfterMoreClose(() => setAddFriendVisible(true)),
-      },
-      // The notification log used to run inline in the stream, where every row
-      // it held ("X je na pivu") duplicated a row the feed above already shows.
-      // It keeps its own door instead of its own share of the scroll.
-      {
-        key: 'notifications',
-        label: cs.friends.moreNotifications,
-        icon: BellRingIcon,
-        onPress: () => runAfterMoreClose(() => setNotificationsVisible(true)),
       },
       {
         key: 'party',
@@ -1121,77 +1083,6 @@ export default function FriendsScreen() {
     activeYRef.current = event.nativeEvent.layout.y;
   }, []);
 
-  const renderNotificationRow = useCallback(
-    (notification: FriendNotification, first: boolean) => {
-      const when = timeLabel(notification.createdAt);
-      const canReact =
-        !!notification.activityId && REACTABLE_FEED_KINDS.has(notification.kind);
-      const canRoute =
-        notification.kind === 'friend_request' ||
-        notification.kind === 'friend_at_pub' ||
-        notification.kind === 'friend_rsvp' ||
-        (PROFILE_FEED_KINDS.has(notification.kind) && !!notification.actor?.id);
-      return (
-        <HairlineRow
-          key={notification.id}
-          first={first}
-          onPress={canRoute ? () => handleFeedPress(notification) : undefined}
-        >
-          <View style={styles.feedRow}>
-            <View
-              style={[
-                styles.feedIconDisk,
-                !notification.readAt && styles.feedIconDiskUnread,
-              ]}
-              importantForAccessibility="no"
-              accessibilityElementsHidden
-              pointerEvents="none"
-            >
-              <BellRingIcon
-                size={16}
-                color={notification.readAt ? Colors.mutedText : Colors.amber}
-              />
-            </View>
-            <View style={styles.feedText}>
-              <View style={styles.feedTitleRow}>
-                <Text
-                  style={styles.feedTitle}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {notification.title}
-                </Text>
-                {when ? (
-                  <Text style={styles.feedTime} numberOfLines={1} allowFontScaling={false}>
-                    {when}
-                  </Text>
-                ) : null}
-              </View>
-              <Text
-                style={styles.feedBody}
-                numberOfLines={2}
-                maxFontSizeMultiplier={FontScaleCap.body}
-              >
-                {notification.body}
-              </Text>
-            </View>
-            {canReact ? (
-              <CheersPill
-                activityId={notification.activityId as string}
-                count={0}
-                mine={false}
-                compact
-                ownerName={friendDisplayName(notification.actor)}
-                onChanged={reload}
-              />
-            ) : null}
-          </View>
-        </HairlineRow>
-      );
-    },
-    [handleFeedPress, reload],
-  );
-
   const renderRequestRow = useCallback(
     (request: Friendship, first: boolean) => (
       <HairlineRow key={request.id} first={first}>
@@ -1475,22 +1366,6 @@ export default function FriendsScreen() {
         onClose={() => setMoreVisible(false)}
       />
 
-      <SheetScaffold
-        visible={notificationsVisible}
-        title={cs.friends.notificationsTitle}
-        onClose={() => setNotificationsVisible(false)}
-      >
-        {(d?.notifications ?? []).length > 0 ? (
-          (d?.notifications ?? []).map((notification, index) =>
-            renderNotificationRow(notification, index === 0),
-          )
-        ) : (
-          <Text style={styles.sheetEmpty} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.friends.notificationsEmpty}
-          </Text>
-        )}
-      </SheetScaffold>
-
       <FriendSettingsSheet
         visible={settingsVisible}
         onClose={closeSettings}
@@ -1660,57 +1535,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: withAlpha(Colors.foam, 0.08),
-  },
-  feedRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.sm,
-  },
-  feedIconDisk: {
-    width: 34,
-    height: 34,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.07),
-    backgroundColor: withAlpha(Colors.foam, 0.045),
-  },
-  feedIconDiskUnread: {
-    borderColor: withAlpha(Colors.amber, 0.3),
-    backgroundColor: withAlpha(Colors.amber, 0.1),
-  },
-  feedText: {
-    flex: 1,
-    minWidth: 0,
-  },
-  feedTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.sm,
-  },
-  feedTitle: {
-    flex: 1,
-    fontFamily: Fonts.ui.bold,
-    color: Colors.foam,
-    fontSize: 14,
-    includeFontPadding: false,
-  },
-  feedTime: {
-    flexShrink: 0,
-    fontFamily: Fonts.ui.medium,
-    color: Colors.mutedText,
-    fontSize: 11,
-    includeFontPadding: false,
-  },
-  feedBody: {
-    marginTop: 2,
-    fontFamily: Fonts.ui.medium,
-    color: Colors.foamMuted,
-    fontSize: 13,
-    lineHeight: 18,
-    includeFontPadding: false,
   },
   sheetBackdrop: {
     flex: 1,

@@ -1462,9 +1462,6 @@ export const cs = {
     moreSettings: 'Nastavení party',
     moreMyCode: 'Můj kód',
     moreWholeParty: 'Celá parta',
-    moreNotifications: 'Cinklo v partě',
-    notificationsTitle: 'Cinklo v partě',
-    notificationsEmpty: 'Zatím nic nezacinkalo.',
 
     // — Nudge slot: at most one —
     nudgeRequest: (name: string) => `${name} chce do party`,
