@@ -697,14 +697,17 @@ def test_account_me_no_breaking_change_to_existing_fields(client):
     for key in ("first_ten", "regular", "reviewer"):
         assert key in body["achievements"]
     # The original five stat fields are untouched (the mapper counters live in
-    # the mapper block, NOT the stats block).
-    assert set(body["stats"]) == {
+    # the mapper block, NOT the stats block). Later fields may be added on top —
+    # the contract is additive, so this is a superset check, not equality.
+    assert set(body["stats"]) >= {
         "total_beers",
         "distinct_pubs",
         "ratings_count",
         "total_spent_czk",
         "max_visits_to_one_pub",
     }
+    # ...but the mapper counters must still stay out of the stats block.
+    assert not {"mapped_pubs", "mapper_xp", "mapper_level"} & set(body["stats"])
 
 
 def _set_counters(device_id, **counters):
