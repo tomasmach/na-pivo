@@ -93,7 +93,11 @@ from pubs.feedback_attachments import (
     FeedbackAttachmentError,
     process_feedback_attachment,
 )
-from pubs.identity import normalize_pub_name
+from pubs.identity import (
+    normalize_pub_name,
+    resolve_pub_identities,
+    resolve_pub_identity,
+)
 from pubs.identity import pub_identity_key as _pub_identity_key
 from pubs.mapper import maper_snapshot
 from pubs.menu_scan import (
@@ -135,6 +139,7 @@ from pubs.models import (
     PhotoContest,
     PhotoContestEntry,
     PhotoContestVote,
+    PubAlias,
     PubAmenity,
     PubAmenityVote,
     PubAmenityVoteTombstone,
@@ -950,6 +955,19 @@ _friend_push_executor = ThreadPoolExecutor(
 )
 
 
+def _resolve_pub_input(data: dict):
+    """Resolve a client-selected pub while keeping the submitted diary text."""
+    cache_key = geohash8(data["lat"], data["lng"])
+    return resolve_pub_identity(
+        cache_key,
+        data.get("name") or "",
+        lat=data["lat"],
+        lng=data["lng"],
+        city=data.get("city") or "",
+        external_id=data.get("external_id") or "",
+    )
+
+
 def _run_friend_push(account_ids: list[int], title: str, body: str, data: dict) -> None:
     """Run push delivery outside the request thread with clean DB connections."""
 
@@ -1093,7 +1111,8 @@ class PubReportView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         data = serializer.validated_data
-        cache_key = geohash8(data["lat"], data["lng"])
+        identity = _resolve_pub_input(data)
+        cache_key = identity.cache_key
         external_id = data.get("external_id") or None
 
         try:
@@ -1146,7 +1165,8 @@ class PubNameCorrectionView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         data = serializer.validated_data
-        cache_key = geohash8(data["lat"], data["lng"])
+        identity = _resolve_pub_input(data)
+        cache_key = identity.cache_key
         external_id = data.get("external_id") or None
 
         try:
@@ -1292,6 +1312,14 @@ class UserAddedPubView(APIView):
             google_place_id = resolved.place_id
             location_synced_at = dj_timezone.now()
         cache_key = geohash8(lat, lng)
+        existing_identity = resolve_pub_identity(
+            cache_key,
+            data["name"],
+            lat=lat,
+            lng=lng,
+            city=city,
+            external_id=google_place_id,
+        )
 
         try:
             with transaction.atomic():
@@ -1319,7 +1347,9 @@ class UserAddedPubView(APIView):
                         "location_synced_at": location_synced_at,
                         "city": city,
                         "address": address,
-                        "active": True,
+                        # Keep an offline/late duplicate submission for audit,
+                        # but never let it re-open an alias hidden by a merge.
+                        "active": existing_identity.canonical_id is None,
                     },
                 )
         except Exception as exc:  # noqa: BLE001
@@ -1528,18 +1558,19 @@ class PubCommunityView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         data = serializer.validated_data
-        cache_key = geohash8(data["lat"], data["lng"])
+        identity = _resolve_pub_input(data)
+        cache_key = identity.cache_key
         has_hours = data.get("hours") is not None
         has_beers = "beers" in data
         now = dj_timezone.now()
 
         try:
             defaults = {
-                "name": data["name"],
-                "lat": data["lat"],
-                "lng": data["lng"],
-                "city": data.get("city") or None,
-                "external_id": data.get("external_id") or None,
+                "name": identity.name,
+                "lat": identity.lat,
+                "lng": identity.lng,
+                "city": identity.city or None,
+                "external_id": identity.external_id or None,
                 "account": request.user,
             }
             if has_hours:
@@ -1601,7 +1632,14 @@ class PubCommunityView(APIView):
                 )
                 sync_pub_beer_indexes_for_menu(
                     cache_key=cache_key,
-                    data=data,
+                    data={
+                        **data,
+                        "name": identity.name,
+                        "lat": identity.lat,
+                        "lng": identity.lng,
+                        "city": identity.city,
+                        "external_id": identity.external_id,
+                    },
                     beers=data["beers"],
                     source=PubBeerBrand.Source.COMMUNITY,
                     account=request.user,
@@ -1625,7 +1663,7 @@ class PubCommunityView(APIView):
         xp_awarded = 0
         mapper = None
         try:
-            pub_identity_key = _pub_identity_key(cache_key, data["name"])
+            pub_identity_key = _pub_identity_key(cache_key, identity.name)
             kinds: set[str] = set()
             if has_hours:
                 kinds.add(PubCommunityXpLedger.Kind.HOURS)
@@ -1924,7 +1962,8 @@ class DrinksView(APIView):
 
         data = serializer.validated_data
         is_pub = data["place_context"] == DrinkLog.PlaceContext.PUB
-        cache_key = geohash8(data["lat"], data["lng"]) if is_pub else None
+        identity = _resolve_pub_input(data) if is_pub else None
+        cache_key = identity.cache_key if identity is not None else None
         beer = data["beer"]
         drink_type = data["drink_type"]
         is_beer = drink_type == DrinkLog.DrinkType.BEER
@@ -2034,7 +2073,14 @@ class DrinksView(APIView):
                 if is_pub and is_beer:
                     menu_updated = self._merge_into_community(
                         cache_key,
-                        data,
+                        {
+                            **data,
+                            "name": identity.name,
+                            "lat": identity.lat,
+                            "lng": identity.lng,
+                            "city": identity.city,
+                            "external_id": identity.external_id,
+                        },
                         beer,
                         account=account,
                         match_cache=match_cache,
@@ -2661,7 +2707,8 @@ class PubRatingView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         data = serializer.validated_data
-        cache_key = geohash8(data["lat"], data["lng"])
+        identity = _resolve_pub_input(data)
+        cache_key = identity.cache_key
         # Normalise the optional signal fields to "" (the model's blank default).
         verdict = data.get("verdict") or ""
         tag = (data.get("tag") or "").strip()
@@ -2780,7 +2827,8 @@ class PubVisitView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         data = serializer.validated_data
-        cache_key = geohash8(data["lat"], data["lng"])
+        identity = _resolve_pub_input(data)
+        cache_key = identity.cache_key
 
         try:
             with transaction.atomic():
@@ -4608,7 +4656,8 @@ class FriendActivityView(APIView):
             if expires_at > max_expiry:
                 expires_at = max_expiry
 
-        cache_key = geohash8(data["lat"], data["lng"])
+        identity = _resolve_pub_input(data)
+        cache_key = identity.cache_key
         requested_recipient_ids = data.get("recipient_ids")
         blocked_ids = _blocked_account_ids(request.user)
         friend_ids = _accepted_friend_ids(request.user)
@@ -5109,6 +5158,11 @@ class BeerCheckInView(APIView):
         )
         product = catalog_match.product if catalog_match is not None else None
         brand = catalog_match.brand if product is not None else None
+        pub_identity = resolve_pub_identity(
+            data.get("pub_cache_key") or "",
+            data.get("pub_name") or "",
+            city=data.get("pub_city") or "",
+        )
         defaults = {
             "beer_name": data["beer_name"],
             "brewery_name": data.get("brewery_name") or "",
@@ -5120,7 +5174,7 @@ class BeerCheckInView(APIView):
             "rating": data.get("rating"),
             "tags": data.get("tags") or [],
             "note": data.get("note") or "",
-            "pub_cache_key": data.get("pub_cache_key") or "",
+            "pub_cache_key": pub_identity.cache_key,
             "pub_name": data.get("pub_name") or "",
             "pub_city": data.get("pub_city") or "",
             "visit_client_id": data.get("visit_client_id"),
@@ -5748,6 +5802,11 @@ class BeerPhotoView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         data = serializer.validated_data
         contest = current_photo_contest()
+        pub_identity = resolve_pub_identity(
+            data.get("pub_cache_key") or "",
+            data.get("pub_name") or "",
+            city=data.get("pub_city") or "",
+        )
 
         def _existing_response(photo_pk: int) -> Response:
             fresh = _beer_photo_queryset(contest).get(pk=photo_pk)
@@ -5795,7 +5854,7 @@ class BeerPhotoView(APIView):
             account=request.user,
             client_id=data["client_id"],
             caption=data.get("caption") or "",
-            pub_cache_key=data.get("pub_cache_key") or "",
+            pub_cache_key=pub_identity.cache_key,
             pub_name=data.get("pub_name") or "",
             pub_city=data.get("pub_city") or "",
             visibility=data.get("visibility") or BeerPhoto.Visibility.FRIENDS,
@@ -6926,6 +6985,57 @@ def _pub_near_dedupe_key(item: dict) -> str:
     return f"{round(pos.get('lat', 0.0), 5)},{round(pos.get('lon', 0.0), 5)}|{name}"
 
 
+def _with_canonical_pub_aliases(items: list[dict]) -> list[dict]:
+    """Project retained aliases to one display pub and remove duplicate cards."""
+    identities = [
+        (_item_cache_key(item), normalize_pub_name(str(item.get("name") or "")))
+        for item in items
+    ]
+    cache_keys = {cache_key for cache_key, _ in identities if cache_key}
+    aliases = {
+        (alias.cache_key, alias.name_key): alias.canonical_pub
+        for alias in PubAlias.objects.select_related("canonical_pub").filter(
+            cache_key__in=cache_keys,
+            active=True,
+            canonical_pub__active=True,
+        )
+    }
+    resolved_items: list[dict] = []
+    seen: set[str] = set()
+    for item, identity_key in zip(items, identities, strict=True):
+        canonical = aliases.get(identity_key)
+        if canonical is None:
+            dedupe_key = f"raw:{_pub_near_dedupe_key(item)}"
+            projected = item
+        else:
+            canonical_id = str(canonical.public_id)
+            dedupe_key = f"canonical:{canonical_id}"
+            projected = {
+                **item,
+                "name": canonical.name,
+                "position": {
+                    "lat": canonical.lat,
+                    "lon": canonical.lng,
+                },
+                "canonicalPubId": canonical_id,
+            }
+            if canonical.city:
+                projected["location"] = canonical.city
+                projected["regionalStructure"] = [
+                    {
+                        "name": canonical.city,
+                        "type": "regional.municipality",
+                    }
+                ]
+            if canonical.external_id:
+                projected["id"] = canonical.external_id
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        resolved_items.append(projected)
+    return resolved_items
+
+
 def _with_user_added_items(user_added_items: list[dict], mapy_items: list[dict]) -> list[dict]:
     """Prepend user-added pubs, dropping any Mapy item that duplicates one.
 
@@ -7265,7 +7375,9 @@ class PubsNearView(APIView):
             return _with_user_added_items(user_added_items, filtered_items)
 
         def final_items(items: list[dict]) -> list[dict]:
-            return _with_pub_name_corrections(apply_filters(items))
+            return _with_pub_name_corrections(
+                _with_canonical_pub_aliases(apply_filters(items))
+            )
 
         if coverage_country(data["lat"], data["lng"]):
             directory_items = _nearby_pub_directory_items(
@@ -9072,8 +9184,17 @@ class PubAmenityVoteView(APIView):
         are never logged or echoed.
         """
         amenity_key = data["amenity_key"]
-        cache_key = geohash8(data["lat"], data["lng"])
-        pub_identity_key = _pub_identity_key(cache_key, data.get("name") or "")
+        identity = _resolve_pub_input(data)
+        cache_key = identity.cache_key
+        data = {
+            **data,
+            "name": identity.name,
+            "lat": identity.lat,
+            "lng": identity.lng,
+            "city": identity.city,
+            "external_id": identity.external_id,
+        }
+        pub_identity_key = _pub_identity_key(cache_key, identity.name)
         client_updated_at = data["client_updated_at"]
         # The wire sends explicit null as a retraction.
         value = data.get("value")
@@ -9386,6 +9507,18 @@ class PubAmenityReadView(APIView):
         try:
             active_keys = _active_amenity_keys()
             total_kinds = len(active_keys)
+            resolved_identities = resolve_pub_identities(
+                [
+                    {
+                        "cache_key": cache_key,
+                        "name": request_name,
+                    }
+                    for cache_key in cache_keys
+                ]
+            )
+            resolved_by_requested_key = dict(
+                zip(cache_keys, resolved_identities, strict=True)
+            )
 
             # My own live votes for these cells, so my_value comes from ONE query.
             my_votes: dict[tuple[str, str], str] = {}
@@ -9418,6 +9551,97 @@ class PubAmenityReadView(APIView):
 
             pubs = []
             for cache_key in cache_keys:
+                identity = resolved_by_requested_key[cache_key]
+                if identity.canonical_id is not None:
+                    alias_identity_keys = [
+                        f"{alias_cache_key}::{alias_name_key}"
+                        for alias_cache_key, alias_name_key in identity.aliases
+                    ]
+                    latest: dict[tuple[int, str], tuple[object, bool, str | None]] = {}
+                    for vote in PubAmenityVote.objects.filter(
+                        pub_identity_key__in=alias_identity_keys,
+                        amenity_key__in=active_keys,
+                    ).only(
+                        "account_id",
+                        "amenity_key",
+                        "value",
+                        "client_updated_at",
+                    ):
+                        event_key = (vote.account_id, vote.amenity_key)
+                        candidate = (
+                            vote.client_updated_at,
+                            False,
+                            vote.value,
+                        )
+                        current = latest.get(event_key)
+                        if current is None or candidate[:2] > current[:2]:
+                            latest[event_key] = candidate
+                    for tombstone in PubAmenityVoteTombstone.objects.filter(
+                        pub_identity_key__in=alias_identity_keys,
+                        amenity_key__in=active_keys,
+                    ).only(
+                        "account_id",
+                        "amenity_key",
+                        "client_updated_at",
+                    ):
+                        event_key = (tombstone.account_id, tombstone.amenity_key)
+                        current = latest.get(event_key)
+                        candidate = (tombstone.client_updated_at, True, None)
+                        if current is None or candidate[:2] >= current[:2]:
+                            latest[event_key] = candidate
+
+                    amenities = []
+                    mapper_count = 0
+                    for amenity_key in sorted(active_keys):
+                        values = [
+                            value
+                            for (account_id, key), (_, _, value) in latest.items()
+                            if key == amenity_key and value is not None
+                        ]
+                        if not values:
+                            continue
+                        yes_count = values.count(PubAmenityVote.Value.YES)
+                        no_count = values.count(PubAmenityVote.Value.NO)
+                        distinct_voter_count = yes_count + no_count
+                        mapper_count = max(mapper_count, distinct_voter_count)
+                        amenity_status, confidence = _amenity_status(
+                            yes_count,
+                            no_count,
+                        )
+                        my_value = None
+                        if account is not None:
+                            my_event = latest.get((account.pk, amenity_key))
+                            my_value = my_event[2] if my_event is not None else None
+                        amenities.append(
+                            {
+                                "amenity_key": amenity_key,
+                                "yes_count": yes_count,
+                                "no_count": no_count,
+                                "distinct_voter_count": distinct_voter_count,
+                                "status": amenity_status,
+                                "confidence": round(confidence, 2),
+                                "my_value": my_value,
+                            }
+                        )
+                    mapped_count = sum(
+                        1
+                        for amenity in amenities
+                        if amenity["status"] != PubAmenity.Status.UNKNOWN
+                    )
+                    pct = (mapped_count / total_kinds) if total_kinds else 0.0
+                    pubs.append(
+                        {
+                            "cache_key": identity.cache_key,
+                            "mapper_count": mapper_count,
+                            "completeness": {
+                                "mapped_count": mapped_count,
+                                "total_kinds": total_kinds,
+                                "pct": round(max(0.0, min(1.0, pct)), 4),
+                            },
+                            "amenities": amenities,
+                        }
+                    )
+                    continue
                 rows = by_cache.get(cache_key, [])
                 mapper_count = (
                     max((r.distinct_voter_count for r in rows), default=0) if rows else 0

@@ -251,6 +251,120 @@ class PubGooglePlace(models.Model):
         return f"{self.name_key} [{self.cache_key}] -> {self.google_place_id}"
 
 
+class CanonicalPub(models.Model):
+    """One user-facing pub that can represent multiple retained source rows."""
+
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    cache_key = models.CharField(max_length=12, db_index=True)
+    name = models.CharField(max_length=255)
+    name_key = models.CharField(max_length=255)
+    lat = models.FloatField()
+    lng = models.FloatField()
+    city = models.CharField(max_length=128, blank=True, default="")
+    country = models.CharField(max_length=2, blank=True, default="", db_index=True)
+    external_id = models.CharField(max_length=256, blank=True, default="")
+    active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["cache_key", "name_key"],
+                name="unique_canonical_pub_identity",
+            )
+        ]
+        verbose_name = "Canonical Pub"
+        verbose_name_plural = "Canonical Pubs"
+
+    def save(self, *args, **kwargs) -> None:
+        self.name_key = normalize_pub_name(self.name)
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.name} [{self.cache_key}]"
+
+
+class PubAlias(models.Model):
+    """A retained historical pub identity routed to one canonical pub."""
+
+    canonical_pub = models.ForeignKey(
+        CanonicalPub,
+        on_delete=models.PROTECT,
+        related_name="aliases",
+    )
+    cache_key = models.CharField(max_length=12, db_index=True)
+    name = models.CharField(max_length=255)
+    name_key = models.CharField(max_length=255)
+    lat = models.FloatField()
+    lng = models.FloatField()
+    is_primary = models.BooleanField(default=False)
+    active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["cache_key", "name_key"],
+                name="unique_pub_alias_identity",
+            ),
+            models.UniqueConstraint(
+                fields=["canonical_pub"],
+                condition=Q(is_primary=True, active=True),
+                name="unique_active_primary_pub_alias",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["cache_key", "active"],
+                name="pubalias_cache_active_idx",
+            )
+        ]
+        verbose_name = "Pub Alias"
+        verbose_name_plural = "Pub Aliases"
+
+    def save(self, *args, **kwargs) -> None:
+        self.name_key = normalize_pub_name(self.name)
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.name} [{self.cache_key}] -> {self.canonical_pub}"
+
+
+class PubMergeAudit(models.Model):
+    """Append-only record of a reversible, non-destructive pub merge."""
+
+    canonical_pub = models.ForeignKey(
+        CanonicalPub,
+        on_delete=models.PROTECT,
+        related_name="merge_audits",
+    )
+    source_cache_key = models.CharField(max_length=12)
+    source_name = models.CharField(max_length=255)
+    target_cache_key = models.CharField(max_length=12)
+    target_name = models.CharField(max_length=255)
+    actor = models.CharField(max_length=128)
+    reason = models.TextField()
+    affected_rows = models.JSONField(default=dict)
+    deactivated_directory_ids = models.JSONField(default=list)
+    deactivated_user_added_ids = models.JSONField(default=list)
+    reverted_at = models.DateTimeField(null=True, blank=True)
+    reverted_by = models.CharField(max_length=128, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        verbose_name = "Pub Merge Audit"
+        verbose_name_plural = "Pub Merge Audits"
+
+    def __str__(self) -> str:
+        return (
+            f"{self.source_name} [{self.source_cache_key}] -> "
+            f"{self.target_name} [{self.target_cache_key}]"
+        )
+
+
 class EnrichTask(models.Model):
     """
     A queued enrichment job for a pub that could not be enriched synchronously.

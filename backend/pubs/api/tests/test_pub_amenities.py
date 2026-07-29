@@ -20,6 +20,7 @@ from __future__ import annotations
 import pytest
 from django.core.cache import cache
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework.throttling import ScopedRateThrottle
@@ -32,7 +33,9 @@ from pubs.models import (
     PubAmenity,
     PubAmenityVote,
     PubAmenityVoteTombstone,
+    PubDirectory,
 )
+from pubs.pub_merge import apply_pub_merge_plan, build_pub_merge_plan
 
 _DEVICE_ID = "3f8b1c2e-4d5a-6789-0abc-def012345678"
 _DEVICE_2 = "11112222-3333-4444-5555-666677778888"
@@ -703,6 +706,75 @@ def test_read_empty_for_unmapped_cell(client):
     assert pub["amenities"] == []
     assert pub["completeness"]["mapped_count"] == 0
     assert pub["completeness"]["total_kinds"] == 11
+
+
+@pytest.mark.django_db
+def test_canonical_read_uses_latest_vote_across_retained_aliases(client):
+    target = PubDirectory.objects.create(
+        name=_NAME,
+        lat=_LAT,
+        lng=_LNG,
+        city="Praha",
+        country="cz",
+        source="test",
+        refreshed_at=timezone.now(),
+    )
+    source = PubDirectory.objects.create(
+        name="Restaurace U Černého vola",
+        lat=_LAT + 0.0005,
+        lng=_LNG + 0.0005,
+        city="Praha",
+        country="cz",
+        source="test",
+        refreshed_at=timezone.now(),
+    )
+    token = _register(client)
+    _put(
+        client,
+        token,
+        _vote(
+            name=target.name,
+            lat=target.lat,
+            lng=target.lng,
+            value="no",
+            client_updated_at="2026-06-23T18:30:00+02:00",
+        ),
+    )
+    _put(
+        client,
+        token,
+        _vote(
+            name=source.name,
+            lat=source.lat,
+            lng=source.lng,
+            value="yes",
+            client_updated_at="2026-06-24T18:30:00+02:00",
+        ),
+    )
+    plan = build_pub_merge_plan(
+        source_cache_key=source.cache_key,
+        source_name=source.name,
+        target_cache_key=target.cache_key,
+        target_name=target.name,
+    )
+    apply_pub_merge_plan(plan, actor="test", reason="reviewed")
+
+    resp = client.get(
+        "/v1/pub-amenities",
+        {"cache_keys": target.cache_key, "name": target.name},
+        **_auth(token),
+    )
+
+    amenity = next(
+        row
+        for row in resp.json()["pubs"][0]["amenities"]
+        if row["amenity_key"] == "seating_garden"
+    )
+    assert amenity["yes_count"] == 1
+    assert amenity["no_count"] == 0
+    assert amenity["distinct_voter_count"] == 1
+    assert amenity["my_value"] == "yes"
+    assert PubAmenityVote.objects.count() == 2
 
 
 @pytest.mark.django_db

@@ -49,6 +49,7 @@ from pubs.enrichment import (
     names_match,
     next_change,
 )
+from pubs.identity import normalize_pub_name, resolve_pub_identities
 from pubs.models import EnrichTask, PubCommunityData, PubExternalBeerMenu, PubHours
 
 logger = logging.getLogger(__name__)
@@ -258,6 +259,185 @@ def _attach_external_menu(result: dict[str, Any], row: PubExternalBeerMenu | Non
     result["venueKind"] = PubHours.VenueKind.PUB
 
 
+def _canonical_entries(
+    pubs: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list]:
+    raw_entries = [
+        {
+            "cache_key": geohash8(pub["lat"], pub["lng"]),
+            "name": pub["name"],
+            "lat": pub["lat"],
+            "lng": pub["lng"],
+            "city": pub.get("city") or None,
+        }
+        for pub in pubs
+    ]
+    identities = resolve_pub_identities(raw_entries)
+    entries = [
+        {
+            "cache_key": identity.cache_key,
+            "name": identity.name,
+            "lat": identity.lat,
+            "lng": identity.lng,
+            "city": identity.city or None,
+        }
+        for identity in identities
+    ]
+    return entries, identities
+
+
+def _merge_unique_beers(*menus: list[dict]) -> list[dict]:
+    merged: list[dict] = []
+    seen: set[tuple[str, int | None]] = set()
+    for menu in menus:
+        for beer in menu or []:
+            identity = (
+                str(beer.get("name") or "").strip().casefold(),
+                beer.get("volume_ml"),
+            )
+            if not identity[0] or identity in seen:
+                continue
+            seen.add(identity)
+            merged.append(beer)
+    return merged
+
+
+def _attach_retained_alias_data(
+    results: list[dict[str, Any] | None],
+    identities: list,
+    *,
+    include_next_change: bool,
+) -> None:
+    """Merge read-only facts across aliases without changing their source rows."""
+    alias_keys = {
+        cache_key
+        for identity in identities
+        if identity.canonical_id is not None
+        for cache_key, _ in identity.aliases
+    }
+    if not alias_keys:
+        return
+    community_by_key = {
+        row.cache_key: row
+        for row in PubCommunityData.objects.filter(cache_key__in=alias_keys)
+    }
+    external_by_key = _external_by_key(list(alias_keys))
+
+    for index, (result, identity) in enumerate(
+        zip(results, identities, strict=True)
+    ):
+        if identity.canonical_id is None:
+            continue
+        names_by_key: dict[str, set[str]] = {}
+        for cache_key, name_key in identity.aliases:
+            names_by_key.setdefault(cache_key, set()).add(name_key)
+        community_rows = [
+            row
+            for cache_key, row in community_by_key.items()
+            if cache_key in names_by_key
+            and normalize_pub_name(row.name) in names_by_key[cache_key]
+        ]
+        has_retained_external = any(
+            normalize_pub_name(row.name) in names_by_key.get(cache_key, set())
+            for cache_key, rows in external_by_key.items()
+            for row in rows
+        )
+        if result is None:
+            if not community_rows and not has_retained_external:
+                continue
+            result = _unknown_result(identity.cache_key, identity.name)
+            results[index] = result
+        menu_rows = sorted(
+            community_rows,
+            key=lambda row: row.beers_updated_at or row.created_at,
+            reverse=True,
+        )
+        current_beers = _merge_unique_beers(*(row.beers for row in menu_rows))
+        historical_beers = _merge_unique_beers(
+            *(row.historical_beers for row in menu_rows)
+        )
+
+        matching_external = [
+            row
+            for cache_key, rows in external_by_key.items()
+            if cache_key in names_by_key
+            for row in rows
+            if normalize_pub_name(row.name) in names_by_key[cache_key]
+        ]
+        matching_external.sort(
+            key=lambda row: row.verified_at or row.fetched_at,
+            reverse=True,
+        )
+        has_community_menu = any(
+            row.beers or row.beers_updated_at is not None for row in menu_rows
+        )
+        if current_beers:
+            result["beers"] = current_beers
+            result["venueKind"] = PubHours.VenueKind.PUB
+        if menu_rows:
+            newest_menu = menu_rows[0]
+            result["beers_updated_at"] = newest_menu.beers_updated_at
+            result["beer_menu_rotates"] = any(
+                row.beer_menu_rotates for row in menu_rows
+            )
+            if has_community_menu:
+                result["beers_source"] = "community"
+        if has_community_menu:
+            # Imported snapshots never become the current menu when a user has
+            # confirmed one, but their distinct beers remain discoverable.
+            historical_beers = _merge_unique_beers(
+                historical_beers,
+                *(row.beers for row in matching_external),
+            )
+        elif matching_external:
+            _attach_external_menu(result, matching_external[0])
+        if historical_beers:
+            current_keys = {
+                (
+                    str(beer.get("name") or "").strip().casefold(),
+                    beer.get("volume_ml"),
+                )
+                for beer in result.get("beers") or []
+            }
+            result["historical_beers"] = [
+                beer
+                for beer in historical_beers
+                if (
+                    str(beer.get("name") or "").strip().casefold(),
+                    beer.get("volume_ml"),
+                )
+                not in current_keys
+            ]
+
+        hours_rows = [row for row in community_rows if row.hours_json is not None]
+        if hours_rows:
+            newest_hours = max(
+                hours_rows,
+                key=lambda row: row.hours_updated_at or row.created_at,
+            )
+            existing_hours_at = result.get("hours_updated_at")
+            if (
+                existing_hours_at is None
+                or newest_hours.hours_updated_at is None
+                or newest_hours.hours_updated_at >= existing_hours_at
+            ):
+                hours_result = _community_result(
+                    newest_hours,
+                    identity.name,
+                    include_next_change=include_next_change,
+                )
+                for field in (
+                    "opening_hours",
+                    "isOpenNow",
+                    "nextChange",
+                    "status",
+                    "source",
+                    "hours_updated_at",
+                    "hours_json",
+                ):
+                    result[field] = hours_result[field]
+
+
 def _upsert_enrich_task(
     cache_key: str, name: str, lat: float, lng: float, city: str | None
 ) -> None:
@@ -437,19 +617,9 @@ def get_or_enrich(
         getattr(settings, "FIRMY_ERROR_RETRY_COOLDOWN_MINUTES", 15)
     )
 
-    # Annotate each pub entry with its cache key
-    entries: list[dict[str, Any]] = []
-    for pub in pubs:
-        key = geohash8(pub["lat"], pub["lng"])
-        entries.append(
-            {
-                "cache_key": key,
-                "name": pub["name"],
-                "lat": pub["lat"],
-                "lng": pub["lng"],
-                "city": pub.get("city") or None,
-            }
-        )
+    # Resolve reviewed aliases before any cache read or write. Released clients
+    # may still send a hidden source identity from their offline queue.
+    entries, identities = _canonical_entries(pubs)
 
     # Bulk-load existing rows
     all_keys = [e["cache_key"] for e in entries]
@@ -609,6 +779,11 @@ def get_or_enrich(
 
         _attach_beers()
 
+    _attach_retained_alias_data(
+        results,
+        identities,
+        include_next_change=True,
+    )
     return results
 
 
@@ -624,13 +799,7 @@ def get_cached_pub_details(
     create ``EnrichTask`` records or spend Firmy.cz proxy traffic. Name matching
     preserves the same geohash-collision boundary as the detail endpoint.
     """
-    entries = [
-        {
-            "cache_key": geohash8(pub["lat"], pub["lng"]),
-            "name": pub["name"],
-        }
-        for pub in pubs
-    ]
+    entries, identities = _canonical_entries(pubs)
     keys = [entry["cache_key"] for entry in entries]
     hours_by_key = {
         row.cache_key: row
@@ -701,4 +870,9 @@ def get_cached_pub_details(
             _attach_external_menu(result, external_menu)
         results.append(result)
 
+    _attach_retained_alias_data(
+        results,
+        identities,
+        include_next_change=include_next_change,
+    )
     return results

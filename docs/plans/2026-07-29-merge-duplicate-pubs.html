@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Bezpečné sloučení duplicitních hospod</title>
+  <style>
+    :root{color-scheme:dark;--bg:#0d0d0b;--panel:#171713;--panel2:#202019;--text:#f2ecdc;--muted:#aaa28f;--line:#39372e;--amber:#f4aa18;--green:#62cf8a;--red:#ee796f;--blue:#78a9ff}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 system-ui,-apple-system,Segoe UI,sans-serif}
+    a{color:var(--amber)}button,input{font:inherit}.shell{display:grid;grid-template-columns:230px minmax(0,1fr);min-height:100vh}
+    nav{position:sticky;top:0;height:100vh;padding:28px 18px;border-right:1px solid var(--line);background:#11110e}
+    nav strong{display:block;margin-bottom:18px;color:var(--amber)}nav a{display:block;padding:7px 10px;border-left:2px solid transparent;color:var(--muted);text-decoration:none}
+    nav a.active{border-color:var(--amber);color:var(--text)}main{width:min(100%,1050px);padding:52px 54px 100px}.copy{max-width:72ch}
+    h1{font-size:clamp(34px,5vw,62px);line-height:1.02;letter-spacing:-.04em;margin:.15em 0 .35em}h2{margin-top:70px;font-size:28px;letter-spacing:-.02em}h3{margin-top:28px}
+    .eyebrow,.badge{font-size:12px;text-transform:uppercase;letter-spacing:.14em}.eyebrow{color:var(--amber)}.badge{display:inline-block;padding:5px 10px;border:1px solid #6b5322;border-radius:999px;color:var(--amber)}
+    .hero-row{display:flex;gap:14px;align-items:center;flex-wrap:wrap}.lead{font-size:18px;color:#d3cbb8}.muted{color:var(--muted)}.detail-only{display:block}body.overview .detail-only{display:none}
+    .toolbar{position:sticky;top:14px;z-index:3;display:flex;justify-content:space-between;gap:14px;margin:25px 0;padding:11px 14px;border:1px solid var(--line);border-radius:12px;background:rgba(23,23,19,.94);backdrop-filter:blur(8px)}
+    .toggle{display:flex;gap:6px}.toggle button,.copy-btn{border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--muted);padding:7px 10px;cursor:pointer}.toggle button.on{border-color:var(--amber);color:var(--text)}
+    .progress-track{height:8px;flex:1;max-width:350px;align-self:center;border-radius:99px;background:#292820;overflow:hidden}.progress-bar{height:100%;width:0;background:var(--green)}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.card{padding:20px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}.metric{font-size:34px;font-weight:750;color:var(--amber)}
+    .step{display:grid;grid-template-columns:38px 1fr;gap:14px;margin:14px 0;padding:20px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}.step input{width:21px;height:21px;margin-top:5px;accent-color:var(--green)}.step h3{margin:0 0 4px}.files{font-size:13px;color:var(--muted)}
+    .wide{overflow-x:auto}.compare{width:100%;border-collapse:collapse;min-width:700px}.compare th,.compare td{text-align:left;vertical-align:top;padding:12px;border-bottom:1px solid var(--line)}.recommended{color:var(--green)}
+    .tabs{display:flex;gap:6px;margin-top:16px}.tab{padding:9px 12px;border:1px solid var(--line);border-radius:8px 8px 0 0;background:var(--panel);color:var(--muted);cursor:pointer}.tab.active{border-color:var(--amber);color:var(--text)}
+    .tabpanel{display:none;padding:20px;border:1px solid var(--line);border-radius:0 12px 12px 12px;background:var(--panel)}.tabpanel.active{display:block}
+    pre{padding:16px;border:1px solid var(--line);border-radius:10px;background:#090907;color:#d9d3c3;overflow:auto}del{color:var(--red);text-decoration:none}ins{color:var(--green);text-decoration:none}
+    .cmd{position:relative}.cmd .copy-btn{position:absolute;top:9px;right:9px}.question{margin:16px 0;padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}label{display:block;margin:8px 0;color:#d5cebc}
+    details{margin:12px 0;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}summary{cursor:pointer;font-weight:650}
+    svg{width:100%;min-width:760px;height:auto;border:1px solid var(--line);border-radius:14px;background:var(--panel)}svg .node{cursor:pointer}svg rect{fill:#22221b;stroke:#555244}svg text{fill:var(--text);font:14px system-ui}svg path{stroke:#6f6b5c;stroke-width:2;fill:none}svg .hot rect{stroke:var(--amber)}svg .hot path{stroke:var(--amber)}
+    .risk{border-left:3px solid var(--red)}.decision{border-left:3px solid var(--green)}
+    @media(max-width:800px){.shell{display:block}nav{position:relative;width:auto;height:auto;border-right:0;border-bottom:1px solid var(--line)}nav a{display:inline-block}main{padding:34px 20px 80px}.grid{grid-template-columns:1fr}.toolbar{top:6px}.progress-track{display:none}}
+  </style>
+</head>
+<body>
+<div class="shell">
+  <nav>
+    <strong>Na pivo · plán</strong>
+    <a href="#souhrn">Souhrn</a>
+    <a href="#data">Datový invariant</a>
+    <a href="#varianty">Varianty</a>
+    <a href="#tok">Tok sloučení</a>
+    <a href="#kroky">Kroky</a>
+    <a href="#konflikty">Konflikty</a>
+    <a href="#rizika">Rizika</a>
+    <a href="#rozhodnuti">Rozhodnutí</a>
+    <a href="#prikazy">Ověření</a>
+  </nav>
+  <main>
+    <section id="souhrn">
+      <div class="hero-row"><span class="eyebrow">Produkční data</span><span class="badge">probíhá · 29. 7. 2026</span></div>
+      <h1>Jedna hospoda.<br>Všechna původní data.</h1>
+      <p class="lead copy">Zavedeme trvalé aliasy starých identit, transakční slučovací engine a konzervativní review frontu. Zdrojové katalogové řádky zůstanou pro audit, ale aplikace vrátí jedinou kanonickou hospodu. Historická piva, návštěvy a aktivity se nezahodí; konfliktní aktuální stav se sloučí podle existujících doménových pravidel.</p>
+      <div class="toolbar">
+        <div class="toggle"><button id="overviewBtn">Přehled</button><button id="detailBtn" class="on">Plný detail</button></div>
+        <div class="progress-track" title="Postup implementace"><div class="progress-bar" id="progressBar"></div></div>
+        <span id="progressText">0 / 6</span>
+      </div>
+      <div class="grid">
+        <div class="card"><div class="metric">0</div><strong>ztracených historických záznamů</strong><p class="muted">Tvrdý invariant merge enginu.</p></div>
+        <div class="card"><div class="metric">1</div><strong>aktivní hospoda po merge</strong><p class="muted">Staré identity dál fungují jako aliasy.</p></div>
+        <div class="card"><div class="metric">113</div><strong>silných CZ kandidátních skupin</strong><p class="muted">Snapshot produkce před implementací.</p></div>
+        <div class="card"><div class="metric">10</div><strong>skupin s daty na více klíčích</strong><p class="muted">Vyžadují skutečný datový merge.</p></div>
+      </div>
+    </section>
+
+    <section id="data">
+      <h2>Datový invariant</h2>
+      <div class="card decision copy">
+        <strong>Uživatel po merge nesmí poznat ztrátu.</strong>
+        <p>Počet jeho drink logů, návštěv a aktivit zůstane stejný. Žádný uživatelský řádek se nemaže ani nepřepisuje; při čtení aktuálního menu a vybavení se nad zachovanými vstupy použije deterministické pravidlo. Audit eviduje dotčené tabulky a přesně deaktivované katalogové řádky. Starý mobilní klient i opožděná offline fronta se přes alias přesměrují na kanonickou hospodu.</p>
+      </div>
+      <pre class="detail-only"><del>identity = geohash8 + display name</del>
+<ins>identity = stable canonical pub + many legacy aliases</ins>
+
+<del>old offline write → recreates duplicate key</del>
+<ins>old offline write → resolve alias → canonical key</ins></pre>
+    </section>
+
+    <section id="varianty">
+      <h2>Varianty řešení</h2>
+      <div class="wide">
+        <table class="compare">
+          <thead><tr><th>Varianta</th><th>Data</th><th>Staré klienty</th><th>Provoz</th><th>Verdikt</th></tr></thead>
+          <tbody>
+            <tr><td>Jen skrýt duplikát v API</td><td>Zůstanou rozdělená</td><td>Mohou duplicitu obnovit</td><td>Levné, ale neúplné</td><td>Ne</td></tr>
+            <tr><td>Hromadně přepsat geohashe</td><td>Riziko unikátních konfliktů</td><td>Staré zápisy vrátí problém</td><td>Těžký rollback</td><td>Ne</td></tr>
+            <tr><td>Alias + doménový merge</td><td>Zachová historii</td><td>Trvalé přesměrování</td><td>Audit, dry-run, rollback</td><td class="recommended">Doporučeno</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tabs" role="tablist">
+        <button class="tab" data-tab="hide">API filtr</button>
+        <button class="tab" data-tab="rewrite">Přepis klíčů</button>
+        <button class="tab active" data-tab="alias">Alias + merge</button>
+      </div>
+      <div id="hide" class="tabpanel"><strong>API filtr</strong><p>Odstraní vizuální symptom, ale menu, hodnocení a statistiky zůstanou na dvou identitách. Není to splnění zadání.</p></div>
+      <div id="rewrite" class="tabpanel"><strong>Přepis klíčů</strong><p>Bez trvalého aliasu se problém vrátí po prvním zápisu ze staré aplikace nebo offline fronty. Navíc neumí bezpečně řešit unikátní konflikty.</p></div>
+      <div id="alias" class="tabpanel active"><strong>Alias + doménový merge</strong><p>Kanonická identita je stabilní; zdrojové identity jsou auditovatelné aliasy. Každá datová oblast má explicitní merge pravidlo a příkaz nejdřív generuje dry-run.</p></div>
+    </section>
+
+    <section id="tok">
+      <h2>Tok sloučení</h2>
+      <div class="wide">
+        <svg viewBox="0 0 900 310" aria-label="Diagram toku slučování">
+          <path d="M190 75H325"/><path d="M190 215H325"/><path d="M475 145H610"/><path d="M755 145H835"/>
+          <g class="node" data-target="step-1"><rect x="35" y="35" width="155" height="80" rx="10"/><text x="55" y="68">Zdrojová identita A</text><text x="55" y="91">piva · návštěvy</text></g>
+          <g class="node" data-target="step-1"><rect x="35" y="175" width="155" height="80" rx="10"/><text x="55" y="208">Zdrojová identita B</text><text x="55" y="231">menu · hodnocení</text></g>
+          <g class="node" data-target="step-2"><rect x="325" y="103" width="150" height="84" rx="10"/><text x="350" y="137">Dry-run plán</text><text x="350" y="160">konflikty + počty</text></g>
+          <g class="node" data-target="step-3"><rect x="610" y="103" width="145" height="84" rx="10"/><text x="630" y="137">Atomic merge</text><text x="630" y="160">doménová pravidla</text></g>
+          <g class="node" data-target="step-5"><rect x="835" y="103" width="50" height="84" rx="10"/><text x="849" y="137">1×</text><text x="843" y="160">pub</text></g>
+        </svg>
+      </div>
+      <p class="muted detail-only">Kliknutím na uzel se přesuneš na odpovídající krok implementace.</p>
+    </section>
+
+    <section id="kroky">
+      <h2>Implementační kroky</h2>
+      <div class="step" id="step-1"><input type="checkbox" data-step="1"><div><h3>1. Kanonická identita a aliasy</h3><p>Zavést auditovatelnou vazbu source identity → target identity, zákaz cyklů a resolver pro staré klíče.</p><div class="files">backend/pubs/models.py · backend/pubs/identity.py · nová migrace</div></div></div>
+      <div class="step" id="step-2"><input type="checkbox" data-step="2"><div><h3>2. Dry-run a slučovací plán</h3><p>Příkaz nejprve vypíše přesné změny, konflikty, počty před/po a odmítne nejednoznačné nebo již sloučené zdroje.</p><div class="files">backend/pubs/pub_merge.py · management/commands/merge_pubs.py</div></div></div>
+      <div class="step" id="step-3"><input type="checkbox" data-step="3"><div><h3>3. Doménový transakční merge</h3><p>Append-only historii přesměrovat beze změny počtu; menu sjednotit; LWW data vyřešit; odvozené agregáty přepočítat.</p><div class="files">backend/pubs/pub_merge.py · price_index.py · API služby</div></div></div>
+      <div class="step" id="step-4"><input type="checkbox" data-step="4"><div><h3>4. Kompatibilita čtení a zápisu</h3><p>Nearby vrátí jednu kanonickou položku. Každý relevantní write endpoint vyřeší starý alias před uložením.</p><div class="files">backend/pubs/api/views.py · serializers.py · identity.py</div></div></div>
+      <div class="step" id="step-5"><input type="checkbox" data-step="5"><div><h3>5. Regresní a invariantní testy</h3><p>Testy pro drinky, návštěvy, hodnocení, menu, amenities, XP, offline replay, idempotenci, rollback a API deduplikaci.</p><div class="files">backend/pubs/management/tests/ · backend/pubs/api/tests/</div></div></div>
+      <div class="step" id="step-6"><input type="checkbox" data-step="6"><div><h3>6. Produkční rollout</h3><p>DB backup, migrace, dry-run Cisterny a Kbelského pivovaru, merge těchto dvou, kontrola API a počtů, potom konzervativní batch.</p><div class="files">api-* tag · PostgreSQL backup · audit JSON</div></div></div>
+    </section>
+
+    <section id="konflikty">
+      <h2>Pravidla pro konflikty</h2>
+      <div class="grid">
+        <div class="card"><strong>Drinky, návštěvy, aktivity</strong><p>Všechny řádky zůstanou. Změní se jen jejich hospodská identita; počet musí být před a po shodný.</p></div>
+        <div class="card"><strong>Komunitní menu</strong><p>Union podle kanonického pivního produktu, objemu a ceny. Uživatelský aktuální stav má přednost před externím fallbackem.</p></div>
+        <div class="card"><strong>Hodnocení</strong><p>Pro stejného uživatele vyhraje novější client_updated_at. Oba vstupy se zapíšou do merge auditu.</p></div>
+        <div class="card"><strong>Vybavení</strong><p>LWW po uživateli a amenity. Veřejné agregáty se zahodí jako odvozená data a znovu přepočítají.</p></div>
+        <div class="card"><strong>XP a achievementy</strong><p>Ledger se deduplikuje, ale již udělené XP ani lifetime countery se nesnižují a znovu neudělují.</p></div>
+        <div class="card"><strong>Katalog</strong><p>Zdrojové řádky se nemažou. Deaktivují se a zůstanou dohledatelné přes alias a audit.</p></div>
+      </div>
+    </section>
+
+    <section id="rizika">
+      <h2>Rizika a pojistky</h2>
+      <div class="card risk"><strong>Největší riziko: nepravdivé automatické spárování.</strong><p>Google Place ID není samo o sobě autoritativní; současný offline matching obsahuje falešné shody v areálech. Automaticky lze vzít jen úzkou silnou třídu, zbytek zůstane v review queue.</p></div>
+      <details><summary>Kolize unikátních constraintů</summary><p>Rating, amenity vote, menu indexy a XP ledgery mohou mít záznam na obou klíčích. Merge musí konflikt vyřešit před změnou klíče a celý běžet v jedné transakci.</p></details>
+      <details><summary>Staré mobilní verze a offline queue</summary><p>Alias resolver musí být na serveru trvalý. Vstup se starými souřadnicemi se kanonizuje; jinak by se duplicita po opravě znovu narodila.</p></details>
+      <details><summary>Rollback</summary><p>Před každým produkčním batchem vznikne DB backup a auditní snapshot. První batch obsahuje jen dvě ručně potvrzené dvojice.</p></details>
+    </section>
+
+    <section id="rozhodnuti">
+      <h2>Rozhodnutí</h2>
+      <p class="copy">Uživatel dal implementační svobodu; doporučené volby jsou předvyplněné a představují pracovní rozhodnutí. Formulář lze použít, pokud je chce později změnit.</p>
+      <div class="question"><strong>Katalogové zdroje po merge</strong>
+        <label><input type="radio" name="retention" value="ponechat neaktivní + audit" checked> Ponechat neaktivní + audit (doporučeno)</label>
+        <label><input type="radio" name="retention" value="smazat"> Smazat</label>
+      </div>
+      <div class="question"><strong>První produkční batch</strong>
+        <label><input type="radio" name="batch" value="Cisterna + Kbelský pivovar" checked> Cisterna + Kbelský pivovar (doporučeno)</label>
+        <label><input type="radio" name="batch" value="všech 113 silných kandidátů"> Všech 113 silných kandidátů</label>
+      </div>
+      <div class="question"><strong>Automatické slučování dalších kandidátů</strong>
+        <label><input type="radio" name="auto" value="jen po review" checked> Jen po review (doporučeno)</label>
+        <label><input type="radio" name="auto" value="automaticky podle skóre"> Automaticky podle skóre</label>
+      </div>
+      <button class="copy-btn" id="copyAnswers">Zkopírovat odpovědi</button>
+    </section>
+
+    <section id="prikazy">
+      <h2>Ověření a rollout</h2>
+      <div class="cmd"><button class="copy-btn">kopírovat</button><pre>uv run python manage.py merge_pubs --source ... --target ... --dry-run
+uv run pytest pubs/management/tests/test_merge_pubs.py pubs/api/tests/
+uv run ruff check
+uv run python manage.py makemigrations --check --dry-run</pre></div>
+      <div class="cmd detail-only"><button class="copy-btn">kopírovat</button><pre># Produkce až po backupu a kontrole dry-runu
+docker compose -p na-pivo exec napivo-web \
+  uv run python manage.py merge_pubs --plan reviewed-merges.json --apply</pre></div>
+    </section>
+  </main>
+</div>
+<script>
+  const storageKey="plan:2026-07-29-merge-duplicate-pubs";
+  const state=JSON.parse(localStorage.getItem(storageKey)||"{}");
+  const boxes=[...document.querySelectorAll("[data-step]")];
+  function save(){state.steps=boxes.map(b=>b.checked);localStorage.setItem(storageKey,JSON.stringify(state));updateProgress()}
+  function updateProgress(){const done=boxes.filter(b=>b.checked).length;document.getElementById("progressText").textContent=`${done} / ${boxes.length}`;document.getElementById("progressBar").style.width=`${done/boxes.length*100}%`}
+  boxes.forEach((b,i)=>{b.checked=!!state.steps?.[i];b.addEventListener("change",save)});updateProgress();
+  const overview=document.getElementById("overviewBtn"),detail=document.getElementById("detailBtn");
+  function setMode(mode){document.body.classList.toggle("overview",mode==="overview");overview.classList.toggle("on",mode==="overview");detail.classList.toggle("on",mode!=="overview");state.mode=mode;localStorage.setItem(storageKey,JSON.stringify(state))}
+  overview.onclick=()=>setMode("overview");detail.onclick=()=>setMode("detail");setMode(state.mode||"detail");
+  document.querySelectorAll(".tab").forEach(tab=>tab.onclick=()=>{document.querySelectorAll(".tab,.tabpanel").forEach(x=>x.classList.remove("active"));tab.classList.add("active");document.getElementById(tab.dataset.tab).classList.add("active")});
+  document.querySelectorAll(".cmd .copy-btn").forEach(btn=>btn.onclick=()=>navigator.clipboard.writeText(btn.parentElement.querySelector("pre").innerText));
+  document.getElementById("copyAnswers").onclick=()=>{const selected=[...document.querySelectorAll("#rozhodnuti input:checked")].map(x=>`${x.name}: ${x.value}`).join("\\n");navigator.clipboard.writeText("Rozhodnutí k merge hospod:\\n"+selected)};
+  document.querySelectorAll("svg .node").forEach(node=>node.onclick=()=>document.getElementById(node.dataset.target).scrollIntoView({behavior:"smooth"}));
+  const links=[...document.querySelectorAll("nav a")],sections=[...document.querySelectorAll("main section")];
+  new IntersectionObserver(entries=>entries.forEach(e=>{if(e.isIntersecting){links.forEach(a=>a.classList.toggle("active",a.getAttribute("href")==="#"+e.target.id))}}),{rootMargin:"-20% 0px -70%"}).observe;
+  const observer=new IntersectionObserver(entries=>entries.forEach(e=>{if(e.isIntersecting){links.forEach(a=>a.classList.toggle("active",a.getAttribute("href")==="#"+e.target.id))}}),{rootMargin:"-20% 0px -70%"});
+  sections.forEach(s=>observer.observe(s));
+</script>
+</body>
+</html>

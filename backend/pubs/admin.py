@@ -10,11 +10,13 @@ from .models import (
     BeerBrand,
     BeerProduct,
     BeerProductMergeAudit,
+    CanonicalPub,
     ClientEvent,
     ContentReport,
     DrinkLog,
     EnrichTask,
     FeedbackReport,
+    PubAlias,
     PubBeerBrand,
     PubBeerProduct,
     PubCommunityData,
@@ -22,6 +24,7 @@ from .models import (
     PubExternalBeerMenu,
     PubHours,
     PublishedNight,
+    PubMergeAudit,
     PubNameCorrection,
     PubRating,
     PubReport,
@@ -50,6 +53,13 @@ class _ReadOnlyAdmin:
         return False
 
 
+class _ImmutableAdmin(_ReadOnlyAdmin):
+    """Read-only admin that also protects non-destructive merge history."""
+
+    def has_delete_permission(self, request, obj=None) -> bool:  # noqa: ARG002
+        return False
+
+
 @admin.register(PubHours)
 class PubHoursAdmin(admin.ModelAdmin):
     list_display = ("name", "cache_key", "status", "venue_kind", "confidence", "source", "fetched_at", "updated_at")
@@ -57,6 +67,88 @@ class PubHoursAdmin(admin.ModelAdmin):
     search_fields = ("name", "cache_key", "source_ref")
     readonly_fields = ("cache_key", "updated_at", "fetched_at")
     ordering = ("-updated_at",)
+
+
+@admin.register(CanonicalPub)
+class CanonicalPubAdmin(_ImmutableAdmin, admin.ModelAdmin):
+    list_display = ("name", "cache_key", "city", "country", "active", "updated_at")
+    list_filter = ("active", "country")
+    search_fields = ("name", "cache_key", "city", "external_id")
+    readonly_fields = (
+        "public_id",
+        "cache_key",
+        "name",
+        "name_key",
+        "lat",
+        "lng",
+        "city",
+        "country",
+        "external_id",
+        "active",
+        "created_at",
+        "updated_at",
+    )
+
+
+@admin.register(PubAlias)
+class PubAliasAdmin(_ImmutableAdmin, admin.ModelAdmin):
+    list_display = (
+        "name",
+        "cache_key",
+        "canonical_pub",
+        "is_primary",
+        "active",
+        "updated_at",
+    )
+    list_select_related = ("canonical_pub",)
+    list_filter = ("is_primary", "active")
+    search_fields = ("name", "cache_key", "canonical_pub__name")
+    readonly_fields = (
+        "canonical_pub",
+        "cache_key",
+        "name",
+        "name_key",
+        "lat",
+        "lng",
+        "is_primary",
+        "active",
+        "created_at",
+        "updated_at",
+    )
+
+
+@admin.register(PubMergeAudit)
+class PubMergeAuditAdmin(_ImmutableAdmin, admin.ModelAdmin):
+    list_display = (
+        "created_at",
+        "source_name",
+        "target_name",
+        "actor",
+        "reverted_at",
+    )
+    list_select_related = ("canonical_pub",)
+    search_fields = (
+        "source_name",
+        "source_cache_key",
+        "target_name",
+        "target_cache_key",
+        "actor",
+    )
+    readonly_fields = (
+        "canonical_pub",
+        "source_cache_key",
+        "source_name",
+        "target_cache_key",
+        "target_name",
+        "actor",
+        "reason",
+        "affected_rows",
+        "deactivated_directory_ids",
+        "deactivated_user_added_ids",
+        "reverted_at",
+        "reverted_by",
+        "created_at",
+    )
 
 
 @admin.register(PubSearchCache)

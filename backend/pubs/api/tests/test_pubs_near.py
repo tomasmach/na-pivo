@@ -30,6 +30,7 @@ from pubs.models import (
     PubSearchCache,
     UserAddedPub,
 )
+from pubs.pub_merge import apply_pub_merge_plan, build_pub_merge_plan
 
 # Prague centre-ish coordinates.
 _LAT = 50.0812
@@ -157,6 +158,48 @@ def test_local_first_serves_directory_without_provider_or_search_cache(client, s
     assert [item["name"] for item in body["items"]] == ["Hospoda Z Adresáře"]
     assert body["fetched_at"]
     assert not PubSearchCache.objects.exists()
+
+
+@pytest.mark.django_db
+def test_reviewed_aliases_render_as_one_canonical_pub(client, settings):
+    settings.PUBS_NEAR_LOCAL_FIRST = True
+    source = _directory_pub(
+        "Testovací pivovar - restaurace",
+        lat=_LAT,
+        lng=_LNG,
+    )
+    target = _directory_pub(
+        "Testovací pivovar",
+        lat=_LAT + 0.0004,
+        lng=_LNG + 0.0004,
+    )
+    UserAddedPub.objects.create(
+        client_id="f18c93e6-d17a-4ad5-a29d-a4968ca534a6",
+        cache_key=target.cache_key,
+        name=target.name,
+        lat=target.lat + 0.00001,
+        lng=target.lng + 0.00001,
+        city=target.city,
+    )
+    plan = build_pub_merge_plan(
+        source_cache_key=source.cache_key,
+        source_name=source.name,
+        target_cache_key=target.cache_key,
+        target_name=target.name,
+        canonical_name="Testovací pivovar",
+    )
+    audit = apply_pub_merge_plan(plan, actor="test", reason="reviewed")
+
+    resp = client.get(
+        "/v1/pubs/near",
+        data={"lat": _LAT, "lng": _LNG, "radius_km": 1},
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    items = resp.json()["items"]
+    assert len(items) == 1
+    assert items[0]["name"] == "Testovací pivovar"
+    assert items[0]["canonicalPubId"] == str(audit.canonical_pub.public_id)
 
 
 @pytest.mark.django_db
