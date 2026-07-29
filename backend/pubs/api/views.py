@@ -6723,6 +6723,43 @@ def _attach_google_place_ids(items: list[dict]) -> None:
         if place_id:
             items[index]["googlePlaceId"] = place_id
 
+    unresolved_canonical_ids = {
+        str(item["canonicalPubId"])
+        for item in items
+        if item.get("canonicalPubId") and not item.get("googlePlaceId")
+    }
+    if not unresolved_canonical_ids:
+        return
+    alias_rows = list(
+        PubAlias.objects.filter(
+            canonical_pub__public_id__in=unresolved_canonical_ids,
+            active=True,
+        )
+        .order_by("-is_primary", "id")
+        .values_list(
+            "canonical_pub__public_id",
+            "cache_key",
+            "name_key",
+        )
+    )
+    alias_place_ids = {
+        (row.cache_key, row.name_key): row.google_place_id
+        for row in PubGooglePlace.objects.filter(
+            cache_key__in={cache_key for _, cache_key, _ in alias_rows}
+        ).only("cache_key", "name_key", "google_place_id")
+    }
+    place_by_canonical: dict[str, str] = {}
+    for canonical_id, cache_key, name_key in alias_rows:
+        place_id = alias_place_ids.get((cache_key, name_key))
+        if place_id:
+            place_by_canonical.setdefault(str(canonical_id), place_id)
+    for item in items:
+        canonical_id = str(item.get("canonicalPubId") or "")
+        if canonical_id and not item.get("googlePlaceId"):
+            place_id = place_by_canonical.get(canonical_id)
+            if place_id:
+                item["googlePlaceId"] = place_id
+
 
 def _item_external_id(item: dict) -> str | None:
     external_id = item.get("id")

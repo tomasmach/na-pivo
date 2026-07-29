@@ -12,6 +12,7 @@ from rest_framework.test import APIClient
 
 from pubs.enrichment import geohash8
 from pubs.models import PubDirectory, PubGooglePlace
+from pubs.pub_merge import apply_pub_merge_plan, build_pub_merge_plan
 
 _LAT = 50.0812
 _LNG = 14.4182
@@ -80,6 +81,45 @@ def test_near_omits_google_place_id_when_name_differs(client):
     items = resp.json()["items"]
     assert items
     assert all("googlePlaceId" not in item for item in items)
+
+
+@pytest.mark.django_db
+def test_canonical_pub_inherits_google_place_id_from_retained_alias(client):
+    source = _directory_pub("Původní jméno")
+    target = PubDirectory.objects.create(
+        name="Dlouhé cílové jméno - restaurace",
+        lat=_LAT + 0.0005,
+        lng=_LNG + 0.0005,
+        city="Praha",
+        country="cz",
+        venue_kind="pub",
+        source="test",
+        active=True,
+        refreshed_at=dj_tz.now(),
+    )
+    PubGooglePlace.objects.create(
+        cache_key=target.cache_key,
+        name_key=target.name_key,
+        google_place_id=_PLACE_ID,
+        matched_at=dj_tz.now(),
+    )
+    plan = build_pub_merge_plan(
+        source_cache_key=source.cache_key,
+        source_name=source.name,
+        target_cache_key=target.cache_key,
+        target_name=target.name,
+        canonical_name="Krátké jméno",
+    )
+    apply_pub_merge_plan(plan, actor="test", reason="reviewed")
+
+    resp = client.get(
+        "/v1/pubs/near",
+        data={"lat": target.lat, "lng": target.lng, "radius_km": 1},
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["items"][0]["name"] == "Krátké jméno"
+    assert resp.json()["items"][0]["googlePlaceId"] == _PLACE_ID
 
 
 @pytest.mark.django_db
