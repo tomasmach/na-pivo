@@ -7,7 +7,7 @@
  * composes that data in the app's Tácek language.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Pressable,
   RefreshControl,
@@ -20,13 +20,7 @@ import {
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import {
-  BeerIcon,
-  ChevronLeftIcon,
-  MapPinIcon,
-  PencilIcon,
-  type IconProps,
-} from '@/components/shared/IconGlyph';
+import { ChevronLeftIcon } from '@/components/shared/IconGlyph';
 import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
 import { CounterCta } from '@/counter/CounterCta';
 import { NudgeSlot, type Nudge } from '@/counter/NudgeSlot';
@@ -38,29 +32,29 @@ import {
 } from '@/data/leaderboardsClient';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { cs } from '@/i18n/cs';
+import BoardSegmented from '@/leaderboards/BoardSegmented';
 import { HeroFooterSkeleton, HeroSkeleton, RowsSkeleton } from '@/leaderboards/BoardSkeleton';
 import { GlobalBoardRow } from '@/leaderboards/GlobalBoardRow';
+import PeriodChips from '@/leaderboards/PeriodChips';
 import { PodiumMats } from '@/leaderboards/PodiumMats';
 import { useAccountStore } from '@/stores/accountStore';
-import { useSettingsStore } from '@/stores/settingsStore';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
-import { fireLightImpactHaptic } from '@/utils/haptics';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 
 type LoadState = 'loading' | 'loaded' | 'error';
 
-// Which board and which window are two separate questions, so they are two
-// separate controls on the screen: a segmented track for the board (three
-// equal surfaces, §0.4) and a quiet text row for the window.
-const CATEGORIES: readonly { key: LeaderboardCategory; icon: ComponentType<IconProps> }[] = [
-  { key: 'beers', icon: BeerIcon },
-  { key: 'pubs', icon: MapPinIcon },
-  { key: 'mapper', icon: PencilIcon },
-];
+// Which board and which window are two separate questions, so they get two
+// visually different controls: a solid segmented track with a sliding thumb for
+// the metric, and a quiet underlined text row for the window. Two controls in
+// the same voice were the thing that blurred together.
+const CATEGORIES: readonly LeaderboardCategory[] = ['beers', 'pubs', 'mapper'];
+const CATEGORY_LABELS = CATEGORIES.map((key) => cs.leaderboards.categoryTab(key));
 
-const PERIODS: readonly LeaderboardPeriod[] = ['week', 'year', 'all'];
+const PERIODS: readonly { key: LeaderboardPeriod; label: string }[] = (
+  ['week', 'year', 'all'] as const
+).map((key) => ({ key, label: cs.leaderboards.periodTab(key) }));
 
 function unitFor(category: LeaderboardCategory, score: number): string {
   if (category === 'beers') return cs.leaderboards.unitBeers(score);
@@ -88,7 +82,6 @@ export default function LeaderboardsScreen() {
   const router = useRouter();
   const reduceMotion = useReduceMotion();
   const profile = useAccountStore((s) => s.profile);
-  const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
   const { source } = useLocalSearchParams<{ source?: string }>();
 
   const [category, setCategory] = useState<LeaderboardCategory>('beers');
@@ -165,24 +158,24 @@ export default function LeaderboardsScreen() {
     router.push('/profile/edit' as Href);
   }, [router]);
 
+  // Both controls own their own haptic, so the screen only moves the state.
   const chooseCategory = useCallback(
-    (next: LeaderboardCategory) => {
+    (index: number) => {
+      const next = CATEGORIES[index] ?? 'beers';
       if (next === category) return;
-      if (hapticEnabled) fireLightImpactHaptic();
       setCategory(next);
       setState('loading');
     },
-    [category, hapticEnabled],
+    [category],
   );
 
   const choosePeriod = useCallback(
     (next: LeaderboardPeriod) => {
       if (next === period) return;
-      if (hapticEnabled) fireLightImpactHaptic();
       setPeriod(next);
       setState('loading');
     },
-    [hapticEnabled, period],
+    [period],
   );
 
   const tableTitle = cs.leaderboards.tableTitle(category, effectivePeriod);
@@ -335,83 +328,34 @@ export default function LeaderboardsScreen() {
         <View style={styles.headerSpacer} />
       </View>
 
-      {/* One filter block, two questions: which board (segmented track) and
-          which window (chips). They sit 8 pt apart and 16 pt above the card, so
-          they read as one control group, not two stray rows. */}
+      {/* One filter block, two questions asked in two different voices: the
+          metric is a solid track with one sliding thumb, the window is quiet
+          underlined text. They sit 8 pt apart and 16 pt above the card, so they
+          read as one control group, not two stray rows. */}
       <View style={styles.filters}>
-        <View style={styles.categoryTrack} accessibilityRole="tablist">
-          {CATEGORIES.map(({ key, icon: Icon }) => {
-            const active = key === category;
-            const label = cs.leaderboards.categoryTab(key);
-            return (
-              <Pressable
-                key={key}
-                onPress={() => chooseCategory(key)}
-                disabled={active}
-                style={({ pressed }) => [
-                  styles.categorySegment,
-                  active && styles.categorySegmentActive,
-                  pressed && styles.pressedSoft,
-                ]}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: active, disabled: active }}
-                accessibilityLabel={cs.leaderboards.selectCategory(label, active)}
-              >
-                {/* One tone per state (icon + label together): foam when picked,
-                    muted when not. Amber stays on the CTA (§14.2). */}
-                <Icon size={16} color={active ? Colors.foam : Colors.mutedText} />
-                <Text
-                  style={[styles.categoryLabel, active && styles.categoryLabelActive]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.85}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        <BoardSegmented
+          options={CATEGORY_LABELS}
+          value={Math.max(0, CATEGORIES.indexOf(category))}
+          onChange={chooseCategory}
+          describeOption={cs.leaderboards.selectCategory}
+          accessibilityLabel={cs.a11y.leaderboardCategory}
+        />
 
-        {/* Chips, not a second bordered track — a frame under a frame is §14.10.
-            The picked window is amber text on an amber wash; the rest is plain
-            muted text with no edge at all. Fixed height, so switching to Mapéři
-            never shifts the card under it (§14.8). */}
-        <View style={styles.periodRow} accessibilityRole="tablist">
+        {/* Fixed-height slot, so switching to Mapéři swaps the row for its note
+            without shifting the card under it (§14.8). */}
+        <View style={styles.periodSlot}>
           {category === 'mapper' ? (
             <Text style={styles.periodNote} maxFontSizeMultiplier={FontScaleCap.body}>
               {cs.leaderboards.mapperPeriodNote}
             </Text>
           ) : (
-            PERIODS.map((item) => {
-              const active = item === period;
-              const label = cs.leaderboards.periodTab(item);
-              return (
-                <Pressable
-                  key={item}
-                  onPress={() => choosePeriod(item)}
-                  disabled={active}
-                  hitSlop={8}
-                  style={({ pressed }) => [
-                    styles.periodChip,
-                    active && styles.periodChipActive,
-                    pressed && styles.pressedSoft,
-                  ]}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: active, disabled: active }}
-                  accessibilityLabel={cs.leaderboards.selectPeriod(label, active)}
-                >
-                  <Text
-                    style={[styles.periodLabel, active && styles.periodLabelActive]}
-                    numberOfLines={1}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
-                    {label}
-                  </Text>
-                </Pressable>
-              );
-            })
+            <PeriodChips
+              options={PERIODS}
+              value={period}
+              onChange={choosePeriod}
+              describeOption={cs.leaderboards.selectPeriod}
+              accessibilityLabel={cs.a11y.leaderboardPeriod}
+            />
           )}
         </View>
       </View>
@@ -589,9 +533,6 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.6,
   },
-  pressedSoft: {
-    opacity: 0.76,
-  },
 
   // The filter group: track and chips 8 pt apart, 16 pt of air to the card.
   // Related things sit close, unrelated things sit far.
@@ -599,83 +540,17 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 4,
   },
-  // §2.2 neutral chrome: foam 4 % track, 8 % edge, 10 % active fill. No amber
-  // plane here — the CTA at the bottom is the screen's only lit surface (§14.2).
-  categoryTrack: {
-    height: 44,
-    padding: 4,
-    borderRadius: Radius.pill,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: withAlpha(Colors.foam, 0.04),
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.08),
-  },
-  categorySegment: {
-    flex: 1,
-    minWidth: 0,
-    height: 36,
-    borderRadius: Radius.pill,
-    paddingHorizontal: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  // The picked segment is a lifted tile: 10 % fill with a slightly brighter top
-  // edge, so at a glance it reads as raised rather than merely lighter.
-  categorySegmentActive: {
-    backgroundColor: withAlpha(Colors.foam, 0.1),
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.12),
-  },
-  categoryLabel: {
-    flexShrink: 1,
-    fontFamily: Fonts.display.bold,
-    fontSize: 14,
-    color: Colors.mutedText,
-    includeFontPadding: false,
-  },
-  categoryLabelActive: {
-    color: Colors.foam,
-  },
-  // Centred under the track, so the two controls share one optical axis with
-  // the header title instead of hanging off the left edge.
-  periodRow: {
+  periodSlot: {
     minHeight: 32,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  periodChip: {
-    height: 32,
-    paddingHorizontal: 12,
-    borderRadius: Radius.pill,
     justifyContent: 'center',
   },
-  // Amber as a wash, not a plane: 12 % fill under amber text. Thin enough to
-  // stay under the CTA in the 60/30/10 split.
-  periodChipActive: {
-    backgroundColor: withAlpha(Colors.amber, 0.12),
-  },
-  periodLabel: {
-    fontFamily: Fonts.ui.semibold,
-    fontSize: 13,
-    color: Colors.mutedText,
-    includeFontPadding: false,
-  },
-  periodLabelActive: {
-    fontFamily: Fonts.ui.bold,
-    color: Colors.amber,
-  },
-  // Mapéři has one window, so the row states it instead of offering a choice
-  // that does nothing. Aligned with the chips' text, same height.
+  // Mapéři has one window, so the slot states it instead of offering a choice
+  // that does nothing. Same height and axis as the chips it replaces.
   periodNote: {
-    paddingHorizontal: 12,
     fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
+    textAlign: 'center',
     includeFontPadding: false,
   },
 

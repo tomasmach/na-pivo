@@ -124,6 +124,12 @@ aby to soupeřilo s plným tlačítkem.
 | Neutrální okraj stripu | `withAlpha(Colors.border, 0.6)` |
 | Dělítko mezi řádky v sheetu | `withAlpha(Colors.border, 0.4)` |
 
+**Segmentovaný přepínač mimo kartu je plný `stout3`.** Pěna na 4 % funguje jen na světlejší ploše
+karty (`LayerSwitch` v kartě mapy). Přímo na `stout` je ten rozdíl skoro neviditelný, dráha zmizí a
+přepínač se rozpadne na tři volná slova. Přepínač, který leží na holé obrazovce (`BoardSegmented` na
+Žebříčcích), má proto `backgroundColor: Colors.stout3`, okraj `withAlpha(Colors.border, 0.6)` a jeden
+posuvný thumb `withAlpha(Colors.foam, 0.10)` se stejným okrajem.
+
 **Rozpad 60 / 30 / 10.** 60 % plochy je `stout` + `stout2` (pozadí a karta), 30 % je text v odstínech
 `foam` / `foamMuted` / `mutedText`, 10 % je jantar. Když se při návrhu dostaneš přes ~10 % jantaru,
 něco jsi udělal plochou místo textem.
