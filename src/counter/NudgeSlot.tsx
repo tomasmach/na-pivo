@@ -15,10 +15,22 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
-import { BeerIcon, CheckIcon, XIcon } from '@/components/shared/IconGlyph';
+import { BeerIcon, CheckIcon, XIcon, type IconProps } from '@/components/shared/IconGlyph';
 
 export type Nudge =
-  | { kind: 'rapid'; text: string; confirmLabel: string; onConfirm: () => void }
+  | {
+      kind: 'rapid';
+      text: string;
+      confirmLabel: string;
+      onConfirm: () => void;
+      /**
+       * Leading glyph. Defaults to the check, which is right when the strip
+       * confirms something ("Ještě jedno?" → "Jo"). When the strip reports a
+       * fact instead ("někdo sedí v hospodě"), a checkmark is a small lie about
+       * what already happened — pass the glyph that matches.
+       */
+      icon?: React.ComponentType<IconProps>;
+    }
   | {
       kind: 'counted';
       text: string;
@@ -32,6 +44,18 @@ export type Nudge =
 
 const SLOT_HEIGHT = 52;
 const ICON_SIZE = 14;
+/**
+ * The pill inside the strip is 36 tall, not 44.
+ *
+ * At 44 inside a 48pt strip a three-letter label like "Jdu" came out 58 × 44 —
+ * near enough to a circle that it read as an amber coin stuck to the end of the
+ * row, and it ate so much width that the sentence beside it truncated mid-pub.
+ * 36 × ~64 is a pill again, and the 4pt it gives back to each side plus the
+ * slimmer footprint is the difference between "…U Zlatého t…" and the whole
+ * name. The touch target stays 44+ via hitSlop.
+ */
+const PILL_HEIGHT = 36;
+const PILL_HIT_SLOP = { top: 8, bottom: 8, left: 6, right: 6 } as const;
 
 function StripText({ text }: { text: string }) {
   return (
@@ -55,7 +79,7 @@ function CountedStrip({ nudge }: { nudge: Extract<Nudge, { kind: 'counted' }> })
         style={({ pressed }) => [styles.ghostPill, pressed && styles.pressed]}
         accessibilityRole="button"
         accessibilityLabel={nudge.actionAccessibilityLabel ?? cs.a11y.counterUndoStrip}
-        hitSlop={Spacing.xs}
+        hitSlop={PILL_HIT_SLOP}
       >
         <Text
           style={styles.ghostPillLabel}
@@ -70,16 +94,17 @@ function CountedStrip({ nudge }: { nudge: Extract<Nudge, { kind: 'counted' }> })
 }
 
 function RapidStrip({ nudge }: { nudge: Extract<Nudge, { kind: 'rapid' }> }) {
+  const Icon = nudge.icon ?? CheckIcon;
   return (
     <View style={[styles.strip, styles.stripRapidBorder]}>
-      <CheckIcon size={ICON_SIZE} color={Colors.amber} />
+      <Icon size={ICON_SIZE} color={Colors.amber} />
       <StripText text={nudge.text} />
       <Pressable
         onPress={nudge.onConfirm}
         style={({ pressed }) => [styles.filledPill, pressed && styles.pressed]}
         accessibilityRole="button"
         accessibilityLabel={cs.a11y.counterRapidConfirm}
-        hitSlop={Spacing.xs}
+        hitSlop={PILL_HIT_SLOP}
       >
         <Text
           style={styles.filledPillLabel}
@@ -213,7 +238,7 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   ghostPill: {
-    minHeight: HitArea.min,
+    minHeight: PILL_HEIGHT,
     justifyContent: 'center',
     paddingHorizontal: Spacing.md,
     borderRadius: Radius.pill,
@@ -227,7 +252,7 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   filledPill: {
-    minHeight: HitArea.min,
+    minHeight: PILL_HEIGHT,
     justifyContent: 'center',
     paddingHorizontal: Spacing.md,
     borderRadius: Radius.pill,

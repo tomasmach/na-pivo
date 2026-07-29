@@ -30,9 +30,14 @@ interface ToggleProps {
   value: boolean;
   onToggle: () => void;
   accessibilityLabel: string;
+  /**
+   * Greys the switch out and swallows the tap. For a setting another switch
+   * already overrules — turning this one on would not change what happens.
+   */
+  disabled?: boolean;
 }
 
-function Toggle({ value, onToggle, accessibilityLabel }: ToggleProps) {
+function Toggle({ value, onToggle, accessibilityLabel, disabled = false }: ToggleProps) {
   const reduceMotion = useReduceMotion();
   const offset = useSharedValue(value ? THUMB_ON : THUMB_OFF);
 
@@ -46,8 +51,9 @@ function Toggle({ value, onToggle, accessibilityLabel }: ToggleProps) {
   }, [value, reduceMotion, offset]);
 
   const handlePress = useCallback(() => {
+    if (disabled) return;
     onToggle();
-  }, [onToggle]);
+  }, [disabled, onToggle]);
 
   const thumbStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: offset.value }],
@@ -56,9 +62,14 @@ function Toggle({ value, onToggle, accessibilityLabel }: ToggleProps) {
   return (
     <Pressable
       onPress={handlePress}
-      style={[styles.toggle, value ? styles.toggleOn : styles.toggleOff]}
+      disabled={disabled}
+      style={[
+        styles.toggle,
+        value ? styles.toggleOn : styles.toggleOff,
+        disabled && styles.toggleDisabled,
+      ]}
       accessibilityRole="switch"
-      accessibilityState={{ checked: value }}
+      accessibilityState={{ checked: value, disabled }}
       accessibilityLabel={accessibilityLabel}
       hitSlop={8}
     >
@@ -79,6 +90,9 @@ const styles = StyleSheet.create({
   },
   toggleOff: {
     backgroundColor: Colors.stout3,
+  },
+  toggleDisabled: {
+    opacity: 0.4,
   },
   toggleThumb: {
     width: 24,

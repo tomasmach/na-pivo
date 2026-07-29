@@ -84,7 +84,18 @@ export async function loadFriendsDashboardSnapshot(): Promise<FriendsDashboardSn
     ) {
       return null;
     }
-    return { savedAt: parsed.savedAt, dashboard: parsed.dashboard as FriendsDashboard };
+    const dashboard = parsed.dashboard as FriendsDashboard;
+    return {
+      savedAt: parsed.savedAt,
+      dashboard: {
+        // A snapshot written by an older build has no presence keys at all, and
+        // the screen reads them unconditionally. Backfill rather than reject —
+        // a cold start offline should still show the last-known graph.
+        ...dashboard,
+        presence: Array.isArray(dashboard.presence) ? dashboard.presence : [],
+        myPresence: dashboard.myPresence ?? null,
+      },
+    };
   } catch {
     return null;
   }

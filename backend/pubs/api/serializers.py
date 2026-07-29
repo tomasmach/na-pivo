@@ -1307,9 +1307,17 @@ class FriendSettingsPatchSerializer(serializers.Serializer):
     """PATCH body for friend social settings."""
 
     ghost_mode = serializers.BooleanField(required=False)
+    share_drinks_with_parta = serializers.BooleanField(required=False)
     quiet_hours_enabled = serializers.BooleanField(required=False)
     quiet_hours_start = serializers.IntegerField(required=False, min_value=0, max_value=23)
     quiet_hours_end = serializers.IntegerField(required=False, min_value=0, max_value=23)
+
+
+class FriendDrinkFeedQuerySerializer(serializers.Serializer):
+    """Query parameters for the bounded automatic party drink feed."""
+
+    cursor = serializers.CharField(required=False, allow_blank=True, max_length=512)
+    limit = serializers.IntegerField(required=False, default=20, min_value=1, max_value=50)
 
 
 class FriendPubActivitySerializer(serializers.ModelSerializer):

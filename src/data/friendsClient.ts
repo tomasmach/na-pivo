@@ -118,6 +118,13 @@ export interface FriendSocialSettings {
   quietHoursEnabled: boolean;
   quietHoursStart: number;
   quietHoursEnd: number;
+  /**
+   * Whether the party sees me sitting in a pub and what I drank, derived from
+   * the counter alone — no "cinknutí" needed. Ghost mode overrules it. Older
+   * backends omit the field; they also have no presence to leak, so the parsed
+   * default is simply the server's own default (on).
+   */
+  shareDrinksWithParta: boolean;
 }
 
 export const DEFAULT_FRIEND_SOCIAL_SETTINGS: FriendSocialSettings = {
@@ -125,7 +132,35 @@ export const DEFAULT_FRIEND_SOCIAL_SETTINGS: FriendSocialSettings = {
   quietHoursEnabled: true,
   quietHoursStart: 23,
   quietHoursEnd: 9,
+  shareDrinksWithParta: true,
 };
+
+/**
+ * One friend currently sitting somewhere, derived server-side from the pub
+ * visits the counter already syncs. This is the half of Parta that used to
+ * require an explicit broadcast: "cinknutí" now only means "and send a push".
+ */
+export interface FriendPresence {
+  account: FriendProfile;
+  pubName: string;
+  pubCity: string;
+  cacheKey: string;
+  lat: number | null;
+  lng: number | null;
+  /** When this sitting started. */
+  since: string;
+  /** Freshest sign of life — last drink or visit heartbeat. */
+  lastSeenAt: string;
+  beers: number;
+  lastDrinkName: string;
+  /** Set when they ALSO broadcast, which is what makes an RSVP possible. */
+  activityId: string | null;
+}
+
+/** My own row in the same shape, plus whether the party can actually see it. */
+export interface MyPresence extends FriendPresence {
+  visibleToParta: boolean;
+}
 
 export interface FriendsDashboard {
   friends: FriendProfile[];
@@ -138,6 +173,10 @@ export interface FriendsDashboard {
   plans: FriendPubActivity[];
   /** My own plan for today, or null. */
   myPlan: FriendPubActivity | null;
+  /** Who from the party is sitting right now, broadcast or not. */
+  presence: FriendPresence[];
+  /** Where the server thinks I am sitting, or null. */
+  myPresence: MyPresence | null;
   /** Account ids I've blocked, for client-side filtering. */
   blockedIds: string[];
   settings: FriendSocialSettings;
@@ -156,6 +195,8 @@ export interface FriendsLiveSlice {
   myActiveActivity: FriendPubActivity | null;
   plans: FriendPubActivity[];
   myPlan: FriendPubActivity | null;
+  presence: FriendPresence[];
+  myPresence: MyPresence | null;
   incomingCount: number;
   unreadCount: number;
   serverTime: string | null;
@@ -341,6 +382,22 @@ interface RawFriendSocialSettings {
   quiet_hours_enabled?: boolean;
   quiet_hours_start?: number;
   quiet_hours_end?: number;
+  share_drinks_with_parta?: boolean;
+}
+
+interface RawFriendPresence {
+  account?: RawFriendProfile;
+  pub_name?: string;
+  pub_city?: string;
+  cache_key?: string;
+  lat?: number | null;
+  lng?: number | null;
+  since?: string;
+  last_seen_at?: string;
+  beers?: number;
+  last_drink_name?: string;
+  activity_id?: string | null;
+  visible_to_parta?: boolean;
 }
 
 interface RawFriendNotification {
@@ -570,7 +627,34 @@ function parseSocialSettings(raw: RawFriendSocialSettings | undefined | null): F
     quietHoursEnabled: raw?.quiet_hours_enabled !== false,
     quietHoursStart: typeof raw?.quiet_hours_start === 'number' ? raw.quiet_hours_start : 23,
     quietHoursEnd: typeof raw?.quiet_hours_end === 'number' ? raw.quiet_hours_end : 9,
+    shareDrinksWithParta: raw?.share_drinks_with_parta !== false,
   };
+}
+
+function parsePresence(raw: RawFriendPresence): FriendPresence {
+  return {
+    account: parseProfile(raw.account),
+    pubName: raw.pub_name ?? '',
+    pubCity: raw.pub_city ?? '',
+    cacheKey: raw.cache_key ?? '',
+    lat: typeof raw.lat === 'number' ? raw.lat : null,
+    lng: typeof raw.lng === 'number' ? raw.lng : null,
+    since: raw.since ?? '',
+    lastSeenAt: raw.last_seen_at ?? raw.since ?? '',
+    beers: typeof raw.beers === 'number' ? raw.beers : 0,
+    lastDrinkName: raw.last_drink_name ?? '',
+    activityId: typeof raw.activity_id === 'string' ? raw.activity_id : null,
+  };
+}
+
+function parsePresenceList(raw: unknown): FriendPresence[] {
+  return Array.isArray(raw) ? (raw as RawFriendPresence[]).map(parsePresence) : [];
+}
+
+function parseMyPresence(raw: unknown): MyPresence | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const row = raw as RawFriendPresence;
+  return { ...parsePresence(row), visibleToParta: row.visible_to_parta !== false };
 }
 
 function parseLeaderboardEntry(raw: RawLeaderboardEntry): LeaderboardEntry {
@@ -772,6 +856,8 @@ export async function fetchFriendsDashboard(signal?: AbortSignal): Promise<Frien
       ? (res.data.plans as RawFriendActivity[]).map(parseActivity)
       : [],
     myPlan: res.data.my_plan ? parseActivity(res.data.my_plan as RawFriendActivity) : null,
+    presence: parsePresenceList(res.data.presence),
+    myPresence: parseMyPresence(res.data.my_presence),
     blockedIds: Array.isArray(res.data.blocked_ids)
       ? (res.data.blocked_ids as unknown[]).filter((id): id is string => typeof id === 'string')
       : [],
@@ -808,6 +894,8 @@ export async function fetchFriendsLive(signal?: AbortSignal): Promise<FriendsLiv
         myActiveActivity: dashboard.myActiveActivity,
         plans: dashboard.plans,
         myPlan: dashboard.myPlan,
+        presence: dashboard.presence,
+        myPresence: dashboard.myPresence,
         incomingCount: dashboard.incomingRequests.length,
         unreadCount: dashboard.unreadCount,
         serverTime: null,
@@ -826,6 +914,8 @@ export async function fetchFriendsLive(signal?: AbortSignal): Promise<FriendsLiv
       ? (res.data.plans as RawFriendActivity[]).map(parseActivity)
       : [],
     myPlan: res.data.my_plan ? parseActivity(res.data.my_plan as RawFriendActivity) : null,
+    presence: parsePresenceList(res.data.presence),
+    myPresence: parseMyPresence(res.data.my_presence),
     incomingCount: typeof res.data.incoming_count === 'number' ? res.data.incoming_count : 0,
     unreadCount: typeof res.data.unread_count === 'number' ? res.data.unread_count : 0,
     serverTime: typeof res.data.server_time === 'string' ? res.data.server_time : null,
@@ -1058,6 +1148,9 @@ export async function updateFriendSettings(
   if (patch.quietHoursEnabled !== undefined) body.quiet_hours_enabled = patch.quietHoursEnabled;
   if (patch.quietHoursStart !== undefined) body.quiet_hours_start = patch.quietHoursStart;
   if (patch.quietHoursEnd !== undefined) body.quiet_hours_end = patch.quietHoursEnd;
+  if (patch.shareDrinksWithParta !== undefined) {
+    body.share_drinks_with_parta = patch.shareDrinksWithParta;
+  }
   const res = await requestJson('/v1/friends/settings', { method: 'PATCH', body });
   return res.ok ? { ok: true } : res.result;
 }

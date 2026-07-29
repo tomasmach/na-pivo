@@ -824,6 +824,7 @@ def test_friend_settings_get_and_patch(client):
     assert initial.status_code == status.HTTP_200_OK
     assert initial.json() == {
         "ghost_mode": False,
+        "share_drinks_with_parta": True,
         "quiet_hours_enabled": True,
         "quiet_hours_start": 23,
         "quiet_hours_end": 9,
@@ -838,6 +839,7 @@ def test_friend_settings_get_and_patch(client):
     assert patched.status_code == status.HTTP_200_OK
     assert patched.json() == {
         "ghost_mode": True,
+        "share_drinks_with_parta": True,
         "quiet_hours_enabled": True,
         "quiet_hours_start": 22,
         "quiet_hours_end": 7,

@@ -28,7 +28,7 @@ import math
 import re
 import secrets
 import uuid
-from collections import defaultdict
+from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -40,6 +40,7 @@ from django.core.files.uploadhandler import FileUploadHandler, StopUpload
 from django.db import IntegrityError, close_old_connections, transaction
 from django.db.models import (
     Avg,
+    Case,
     Count,
     DateTimeField,
     Exists,
@@ -51,9 +52,11 @@ from django.db.models import (
     Prefetch,
     Q,
     Subquery,
+    TextField,
     Value,
+    When,
 )
-from django.db.models.functions import TruncDate
+from django.db.models.functions import Coalesce, NullIf, TruncDate
 from django.utils import timezone as dj_timezone
 from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed
@@ -193,6 +196,7 @@ from .serializers import (
     FriendActivityRequestSerializer,
     FriendActivityResponseSerializer,
     FriendBlockRequestSerializer,
+    FriendDrinkFeedQuerySerializer,
     FriendInviteSerializer,
     FriendNotificationSerializer,
     FriendProfileSerializer,
@@ -240,7 +244,7 @@ from .serializers import (
     _amenity_vote_item,
     normalize_beer_checkin_tags,
 )
-from .stats import compute_my_stats, drinking_day_bounds
+from .stats import compute_my_stats, drinking_day, drinking_day_bounds
 
 logger = logging.getLogger(__name__)
 auth_logger = logging.getLogger("pubs.api.auth")
@@ -741,6 +745,7 @@ def _friend_settings_payload(account: Account) -> dict:
     """The social-settings dict shared by the dashboard and FriendSettingsView."""
     return {
         "ghost_mode": bool(account.ghost_mode),
+        "share_drinks_with_parta": bool(account.share_drinks_with_parta),
         "quiet_hours_enabled": bool(account.quiet_hours_enabled),
         "quiet_hours_start": int(account.quiet_hours_start),
         "quiet_hours_end": int(account.quiet_hours_end),
@@ -3133,6 +3138,171 @@ def _friend_activity_slices(request, friend_ids, now, activity_context) -> dict:
     }
 
 
+def _friend_presence_slice(
+    request: Request,
+    friend_ids: list[int],
+    now: datetime,
+) -> dict:
+    """Return friends' inferred pub presence and the caller's own presence.
+
+    The read stays bounded to the configured recent window. Visits, profiles,
+    and a visible live activity id are loaded in one query; drink counts and the
+    latest non-suspect drink name are resolved for every selected visit in one
+    grouped query.
+    """
+
+    account_ids = [request.user.id, *friend_ids]
+    cutoff = now - timedelta(minutes=settings.FRIEND_PRESENCE_WINDOW_MINUTES)
+
+    activity_target_rows = FriendPubActivityRecipient.objects.filter(
+        activity_id=OuterRef("pk")
+    )
+    active_activity = (
+        FriendPubActivity.objects.filter(
+            account_id=OuterRef("account_id"),
+            active=True,
+            kind=FriendPubActivity.Kind.LIVE,
+            expires_at__gt=now,
+        )
+        .annotate(
+            has_explicit_targets=Exists(activity_target_rows),
+            targets_viewer=Exists(activity_target_rows.filter(account=request.user)),
+        )
+        .filter(
+            Q(account=request.user)
+            | Q(has_explicit_targets=False)
+            | Q(targets_viewer=True)
+        )
+        .order_by("-started_at", "-id")
+    )
+
+    visits = (
+        PubVisit.objects.filter(account_id__in=account_ids)
+        .annotate(
+            last_seen_at=Coalesce("ended_at", "started_at"),
+            presence_activity_id=Subquery(active_activity.values("public_id")[:1]),
+        )
+        .filter(last_seen_at__gte=cutoff)
+        .filter(
+            Q(account=request.user)
+            | Q(
+                account__status=Account.Status.ACTIVE,
+                account__ghost_mode=False,
+                account__share_drinks_with_parta=True,
+            )
+        )
+        .select_related("account")
+        .order_by("-last_seen_at", "-started_at", "-id")
+    )
+
+    selected_visits: list[PubVisit] = []
+    seen_accounts: set[int] = set()
+    for visit in visits:
+        if visit.account_id in seen_accounts:
+            continue
+        seen_accounts.add(visit.account_id)
+        selected_visits.append(visit)
+
+    drink_stats: dict[tuple[int, str], dict] = {}
+    if selected_visits:
+        started_at_case = Case(
+            *[
+                When(
+                    account_id=visit.account_id,
+                    cache_key=visit.cache_key,
+                    then=Value(visit.started_at),
+                )
+                for visit in selected_visits
+            ],
+            default=Value(None),
+            output_field=DateTimeField(),
+        )
+        canonical_name = Coalesce(
+            NullIf("beer_product_name", Value("")),
+            NullIf("beer_brand_name", Value("")),
+            "beer_name",
+            output_field=TextField(),
+        )
+        latest_drink_name = (
+            DrinkLog.objects.filter(
+                account_id=OuterRef("account_id"),
+                cache_key=OuterRef("cache_key"),
+                drank_at__gte=OuterRef("presence_started_at"),
+                is_suspect=False,
+            )
+            .annotate(canonical_name=canonical_name)
+            .order_by("-drank_at", "-id")
+            .values("canonical_name")[:1]
+        )
+        account_id_set = {visit.account_id for visit in selected_visits}
+        cache_keys = {visit.cache_key for visit in selected_visits}
+        earliest_start = min(visit.started_at for visit in selected_visits)
+        stat_rows = (
+            DrinkLog.objects.filter(
+                account_id__in=account_id_set,
+                cache_key__in=cache_keys,
+                drank_at__gte=earliest_start,
+                is_suspect=False,
+            )
+            .annotate(presence_started_at=started_at_case)
+            .filter(
+                presence_started_at__isnull=False,
+                drank_at__gte=F("presence_started_at"),
+            )
+            .values("account_id", "cache_key", "presence_started_at")
+            .annotate(
+                beers=Count(
+                    "id",
+                    filter=Q(drink_type=DrinkLog.DrinkType.BEER),
+                ),
+                last_drink_name=Subquery(latest_drink_name),
+            )
+        )
+        drink_stats = {
+            (row["account_id"], row["cache_key"]): row for row in stat_rows
+        }
+
+    profile_context = _friend_profile_context(request)
+
+    def _payload(visit: PubVisit) -> dict:
+        stats_row = drink_stats.get((visit.account_id, visit.cache_key), {})
+        return {
+            "account": FriendProfileSerializer(
+                visit.account,
+                context=profile_context,
+            ).data,
+            "pub_name": visit.name,
+            "pub_city": visit.city,
+            "cache_key": visit.cache_key,
+            "lat": visit.lat,
+            "lng": visit.lng,
+            "since": visit.started_at,
+            "last_seen_at": visit.last_seen_at,
+            "beers": int(stats_row.get("beers") or 0),
+            "last_drink_name": stats_row.get("last_drink_name") or None,
+            "activity_id": (
+                str(visit.presence_activity_id)
+                if visit.presence_activity_id is not None
+                else None
+            ),
+        }
+
+    presence: list[dict] = []
+    my_presence = None
+    for visit in selected_visits:
+        item = _payload(visit)
+        if visit.account_id == request.user.id:
+            item["visible_to_parta"] = bool(
+                request.user.status == Account.Status.ACTIVE
+                and not request.user.ghost_mode
+                and request.user.share_drinks_with_parta
+            )
+            my_presence = item
+        else:
+            presence.append(item)
+    return {"presence": presence, "my_presence": my_presence}
+
+
 class FriendsView(APIView):
     """
     GET /v1/friends
@@ -3190,6 +3360,7 @@ class FriendsView(APIView):
         friend_ids = [account.id for account in friend_accounts]
         shared_stats, shared_dates = _shared_pub_stats(request.user, friend_ids)
         slices = _friend_activity_slices(request, friend_ids, now, activity_context)
+        presence_slice = _friend_presence_slice(request, friend_ids, now)
 
         notification_base = (
             FriendNotification.objects.filter(recipient=request.user)
@@ -3232,6 +3403,8 @@ class FriendsView(APIView):
                 "my_active_activity": slices["my_active_activity"],
                 "plans": slices["plans"],
                 "my_plan": slices["my_plan"],
+                "presence": presence_slice["presence"],
+                "my_presence": presence_slice["my_presence"],
                 "notifications": FriendNotificationSerializer(notifications, many=True, context=context).data,
                 "unread_count": unread_count,
                 "settings": _friend_settings_payload(request.user),
@@ -3318,6 +3491,7 @@ class FriendsLiveView(APIView):
             fid for fid in _accepted_friend_ids(request.user) if fid not in blocked_ids
         ]
         slices = _friend_activity_slices(request, friend_ids, now, activity_context)
+        presence_slice = _friend_presence_slice(request, friend_ids, now)
 
         incoming_count = (
             Friendship.objects.filter(
@@ -3352,9 +3526,231 @@ class FriendsLiveView(APIView):
                 "my_active_activity": slices["my_active_activity"],
                 "plans": slices["plans"],
                 "my_plan": slices["my_plan"],
+                "presence": presence_slice["presence"],
+                "my_presence": presence_slice["my_presence"],
                 "incoming_count": incoming_count,
                 "unread_count": unread_count,
                 "server_time": now.isoformat(),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+def _encode_friend_drink_feed_cursor(row: DrinkLog) -> str:
+    payload = json.dumps(
+        {"drank_at": row.drank_at.isoformat(), "id": row.pk},
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _decode_friend_drink_feed_cursor(value: str) -> tuple[datetime, int]:
+    try:
+        padded = value + "=" * (-len(value) % 4)
+        decoded = base64.urlsafe_b64decode(padded.encode("ascii"))
+        payload = json.loads(decoded.decode("utf-8"))
+        drank_at = datetime.fromisoformat(payload["drank_at"])
+        row_id = payload["id"]
+        if dj_timezone.is_naive(drank_at) or type(row_id) is not int or row_id < 1:
+            raise ValueError
+    except (
+        ValueError,
+        TypeError,
+        KeyError,
+        json.JSONDecodeError,
+        UnicodeError,
+        binascii.Error,
+    ) as exc:
+        raise ValueError("Invalid friend drink feed cursor.") from exc
+    return drank_at, row_id
+
+
+def _friend_drink_session_key(row: DrinkLog) -> tuple[int, date, str]:
+    location_key = row.cache_key or f"ctx:{row.place_context}"
+    return row.account_id, drinking_day(row.drank_at), location_key
+
+
+def _canonical_drink_name(row: DrinkLog) -> str:
+    return (
+        (row.beer_product_name or "").strip()
+        or (row.beer_brand_name or "").strip()
+        or (row.beer_name or "").strip()
+    )
+
+
+def _friend_drink_session_payload(
+    rows: list[DrinkLog],
+    *,
+    viewer: Account,
+    profile_context: dict,
+) -> dict:
+    newest = rows[0]
+    session_key = _friend_drink_session_key(newest)
+    stable_source = (
+        f"{newest.account.public_id}|{session_key[1].isoformat()}|{session_key[2]}"
+    )
+    stable_id = "drink-session:" + hashlib.sha256(
+        stable_source.encode("utf-8")
+    ).hexdigest()[:24]
+
+    item_counts = Counter(
+        (row.drink_type, row.serving_type, _canonical_drink_name(row))
+        for row in rows
+    )
+    items = [
+        {
+            "drink_type": drink_type,
+            "serving_type": serving_type,
+            "name": name,
+            "count": count,
+        }
+        for (drink_type, serving_type, name), count in sorted(
+            item_counts.items(),
+            key=lambda item: (
+                -item[1],
+                item[0][2].casefold(),
+                item[0][0],
+                item[0][1],
+            ),
+        )[:6]
+    ]
+
+    place_context = newest.place_context
+    pub_name = None
+    pub_city = None
+    cache_key = None
+    lat = None
+    lng = None
+    if place_context == DrinkLog.PlaceContext.PUB:
+        non_empty_names = Counter(row.name.strip() for row in rows if row.name.strip())
+        common_name = non_empty_names.most_common(1)[0][0] if non_empty_names else None
+        location_row = next(
+            (row for row in rows if common_name and row.name.strip() == common_name),
+            newest,
+        )
+        pub_name = common_name
+        pub_city = location_row.city or None
+        cache_key = location_row.cache_key
+        lat = location_row.lat
+        lng = location_row.lng
+
+    return {
+        "id": stable_id,
+        "account": FriendProfileSerializer(
+            newest.account,
+            context=profile_context,
+        ).data,
+        "is_mine": newest.account_id == viewer.id,
+        "place_context": place_context,
+        "pub_name": pub_name,
+        "pub_city": pub_city,
+        "cache_key": cache_key,
+        "lat": lat,
+        "lng": lng,
+        "started_at": min(row.drank_at for row in rows),
+        "ended_at": max(row.drank_at for row in rows),
+        "total": len(rows),
+        "items": items,
+    }
+
+
+class FriendDrinkFeedView(APIView):
+    """GET /v1/friends/drink-feed — automatic grouped party drink history."""
+
+    authentication_classes = [AccountTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "friends_dashboard"
+
+    def get(self, request: Request) -> Response:
+        serializer = FriendDrinkFeedQuerySerializer(data=request.query_params)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        data = serializer.validated_data
+
+        blocked_ids = _blocked_account_ids(request.user)
+        friend_ids = set(_accepted_friend_ids(request.user))
+        friend_ids.difference_update(blocked_ids)
+
+        rows = (
+            DrinkLog.objects.filter(is_suspect=False)
+            .filter(
+                Q(account=request.user)
+                | Q(
+                    account_id__in=friend_ids,
+                    account__status=Account.Status.ACTIVE,
+                    account__ghost_mode=False,
+                    account__share_drinks_with_parta=True,
+                )
+            )
+            .select_related("account")
+        )
+
+        cursor = data.get("cursor") or ""
+        if cursor:
+            try:
+                cursor_drank_at, cursor_id = _decode_friend_drink_feed_cursor(cursor)
+            except ValueError:
+                return Response(
+                    {"cursor": ["Invalid cursor."]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            rows = rows.filter(
+                Q(drank_at__lt=cursor_drank_at)
+                | Q(drank_at=cursor_drank_at, id__lt=cursor_id)
+            )
+
+        limit = data["limit"]
+        raw_limit = min(limit * 25, 600)
+        fetched = list(rows.order_by("-drank_at", "-id")[: raw_limit + 1])
+        has_more_raw = len(fetched) > raw_limit
+        raw_page = fetched[:raw_limit]
+
+        grouped: dict[tuple[int, date, str], list[DrinkLog]] = defaultdict(list)
+        for row in raw_page:
+            grouped[_friend_drink_session_key(row)].append(row)
+
+        # The oldest raw group can continue beyond the bounded scan. Defer it
+        # until the next cursor page instead of exposing a knowingly partial
+        # session.
+        if has_more_raw and raw_page:
+            grouped.pop(_friend_drink_session_key(raw_page[-1]), None)
+
+        ordered_groups = sorted(
+            grouped.values(),
+            key=lambda group: (group[0].drank_at, group[0].id),
+            reverse=True,
+        )
+        selected_groups = ordered_groups[:limit]
+        has_more = has_more_raw or len(ordered_groups) > limit
+
+        cursor_anchor = None
+        if has_more:
+            selected_rows = [row for group in selected_groups for row in group]
+            if selected_rows:
+                cursor_anchor = min(
+                    selected_rows,
+                    key=lambda row: (row.drank_at, row.id),
+                )
+            elif raw_page:
+                cursor_anchor = raw_page[-1]
+
+        profile_context = _friend_profile_context(request)
+        return Response(
+            {
+                "results": [
+                    _friend_drink_session_payload(
+                        group,
+                        viewer=request.user,
+                        profile_context=profile_context,
+                    )
+                    for group in selected_groups
+                ],
+                "next_cursor": (
+                    _encode_friend_drink_feed_cursor(cursor_anchor)
+                    if cursor_anchor is not None
+                    else None
+                ),
             },
             status=status.HTTP_200_OK,
         )
@@ -5943,6 +6339,9 @@ class FriendSettingsView(APIView):
         if "ghost_mode" in data:
             account.ghost_mode = data["ghost_mode"]
             update_fields.append("ghost_mode")
+        if "share_drinks_with_parta" in data:
+            account.share_drinks_with_parta = data["share_drinks_with_parta"]
+            update_fields.append("share_drinks_with_parta")
         if "quiet_hours_enabled" in data:
             account.quiet_hours_enabled = data["quiet_hours_enabled"]
             update_fields.append("quiet_hours_enabled")

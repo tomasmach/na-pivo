@@ -204,6 +204,12 @@ function FriendSettingsSheet({
     sendPatch({ ghostMode });
   }, [applyOptimistic, sendPatch]);
 
+  const handleShareDrinksToggle = useCallback(() => {
+    const shareDrinksWithParta = !draftRef.current.shareDrinksWithParta;
+    applyOptimistic({ shareDrinksWithParta });
+    sendPatch({ shareDrinksWithParta });
+  }, [applyOptimistic, sendPatch]);
+
   const handleQuietToggle = useCallback(() => {
     const quietHoursEnabled = !draftRef.current.quietHoursEnabled;
     applyOptimistic({ quietHoursEnabled });
@@ -352,6 +358,34 @@ function FriendSettingsSheet({
                   value={draft.ghostMode}
                   onToggle={handleGhostToggle}
                   accessibilityLabel={cs.friends.ghostTitle}
+                />
+              </View>
+            </HairlineRow>
+
+            {/* Ukazovat partě, kde sedím — the switch behind the whole "kdo kde
+                sedí" block. Disabled and forced off while ghost mode is on, so
+                the sheet never claims the party can see something it cannot. */}
+            <HairlineRow>
+              <View style={styles.settingRow}>
+                <View style={styles.settingText}>
+                  <Text
+                    style={styles.settingTitle}
+                    maxFontSizeMultiplier={FontScaleCap.heading}
+                  >
+                    {cs.friends.shareDrinksTitle}
+                  </Text>
+                  <Text
+                    style={styles.settingSubtitle}
+                    maxFontSizeMultiplier={FontScaleCap.body}
+                  >
+                    {cs.friends.shareDrinksSubtitle}
+                  </Text>
+                </View>
+                <Toggle
+                  value={draft.shareDrinksWithParta && !draft.ghostMode}
+                  onToggle={handleShareDrinksToggle}
+                  disabled={draft.ghostMode}
+                  accessibilityLabel={cs.friends.shareDrinksTitle}
                 />
               </View>
             </HairlineRow>

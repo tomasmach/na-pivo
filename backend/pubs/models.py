@@ -465,6 +465,10 @@ class Account(models.Model):
         default=False,
         help_text="Hide my broadcast from friends: keep my own activity but skip fanout + feed visibility.",
     )
+    share_drinks_with_parta = models.BooleanField(
+        default=True,
+        help_text="Whether accepted friends can see my live pub presence and automatic drink feed.",
+    )
     quiet_hours_enabled = models.BooleanField(
         default=True,
         help_text="Whether friend pushes are suppressed during the local quiet-hours window.",

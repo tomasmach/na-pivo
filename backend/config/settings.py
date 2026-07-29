@@ -312,6 +312,11 @@ FRIENDS_THROTTLE_RATE: str = os.environ.get("FRIENDS_THROTTLE_RATE", "120/min")
 FRIENDS_DASHBOARD_THROTTLE_RATE: str = os.environ.get(
     "FRIENDS_DASHBOARD_THROTTLE_RATE", "240/min"
 )
+# A visit remains eligible for the lightweight live presence slice this long
+# after its latest client-confirmed timestamp.
+FRIEND_PRESENCE_WINDOW_MINUTES: int = int(
+    os.environ.get("FRIEND_PRESENCE_WINDOW_MINUTES", "180")
+)
 # How long a minted invite code stays valid (reused until it expires).
 FRIEND_INVITE_TTL_DAYS: int = int(os.environ.get("FRIEND_INVITE_TTL_DAYS", "14"))
 # After a declined request, block a silent re-open (anti-harassment) for this long.

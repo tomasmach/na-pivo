@@ -2,14 +2,28 @@
  * "Parta" in the Tácek composition.
  *
  * The social graph, offline snapshot, queues, focus refresh, push hand-off and
- * bounded live poll are the same as before. This file only changes where their
- * existing surfaces live:
+ * bounded live poll are the same as before. What changed is the order of the
+ * screen, and it changed because of one piece of testing feedback: you could
+ * not see that anybody was in a pub until they said so out loud.
  *
- *   1. a quiet party chip and the single overflow door, both inside the card,
- *   2. one table card and one chronological stream,
- *   3. the screen's one action as the card's footer door,
- *   4. a nudge slot above the tab bar that collapses when empty; everything
- *      else, add-friend included, is a tap deeper behind the "…" door.
+ * So the screen now reads top to bottom as the questions people actually ask:
+ *
+ *   1. **Kdo kde sedí** — everyone currently in a pub, derived from the visits
+ *      the counter already syncs. A "cinknutí" is no longer how you find out
+ *      somebody is out; it is how they ask you to come. Those rows keep the
+ *      loud card with the RSVP, the rest are quiet one-liners.
+ *   2. **Čerstvě cvaknuto** — tonight's photos, unchanged.
+ *   3. **Co se pilo** — one chronological row per evening, automatic. Ratings
+ *      are folded into the evening they belong to rather than running as a
+ *      second, parallel feed. (Not called "Výčep": that name belongs to the
+ *      screen behind the rail door, where a night is hung up on purpose.)
+ *   4. **Co spolu podniknout** — the two other evening formats, at the tail.
+ *
+ * Two things left the surface entirely. The friend list is no longer
+ * interleaved with the feed — it was the single most confusing thing on the
+ * screen — and lives behind "…" → Celá parta. The notification log moved the
+ * same way, into "…" → Cinklo v partě, because every notification it carried
+ * was a duplicate of a row the feed above already shows.
  *
  * Nothing is permanently pinned to the bottom. This is a feed: chrome that
  * stays put is chrome the stream pays for on every screenful.
@@ -41,11 +55,9 @@ import { useFocusEffect, useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { showAppDialog } from '@/components/shared/AppDialog';
-import { BeerTagChips } from '@/components/shared/BeerTagChips';
 import { DoorRail, type DoorRailTile } from '@/components/shared/DoorRail';
 import {
   BellRingIcon,
-  BeerIcon,
   CheckIcon,
   MenuIcon,
   HandPlatterIcon,
@@ -73,9 +85,7 @@ import {
   fetchFriendsLive,
   markFriendNotificationsRead,
   respondFriendRequest,
-  respondToActivity,
   type FriendNotification,
-  type FriendProfile,
   type FriendPubActivity,
   type FriendsDashboard,
   type Friendship,
@@ -89,6 +99,7 @@ import {
   fetchLeaderboard,
   type Leaderboard,
 } from '@/data/leaderboardsClient';
+import { fetchPartaFeed, type PartaFeedSitting } from '@/data/partaFeedClient';
 import {
   fetchPhotoContestTeaser,
   type PhotoContestSnapshot,
@@ -109,7 +120,6 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
-import { formatPrice } from '@/utils/currency';
 import {
   ensureFriendPushRegisteredIfGranted,
   registerFriendPush,
@@ -120,7 +130,6 @@ import CheersPill from './CheersPill';
 import CodeSheet from './CodeSheet';
 import ComposeSheet from './ComposeSheet';
 import FriendActiveCard from './FriendActiveCard';
-import { FriendListRow } from './FriendListRow';
 import { FriendMini, friendDisplayName } from './FriendMini';
 import FriendSettingsSheet from './FriendSettingsSheet';
 import { GoingRoster } from './GoingRoster';
@@ -129,6 +138,9 @@ import MyActivityCard from './MyActivityCard';
 import { PartaPlans } from './PartaPlans';
 import { PartyCard } from './PartyCard';
 import PlanCard from './PlanCard';
+import { PresenceList } from './PresenceList';
+import { SittingRow } from './SittingRow';
+import { mergeCheckInsIntoFeed, type MergedSitting } from './partaFeedMerge';
 import { useFriendSafety } from './friendSafety';
 
 const LIVE_POLL_MS = 35000;
@@ -136,25 +148,8 @@ const SHEET_DISMISS_MS = 260;
 const ROUND_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
 const PROFILE_FEED_KINDS = new Set(['friend_accepted', 'friend_cheers']);
 const REACTABLE_FEED_KINDS = new Set(['friend_at_pub', 'friend_rsvp']);
-
-interface BeerFeedItem {
-  key: string;
-  checkIns: BeerCheckIn[];
-}
-
-type StreamItem =
-  | { key: string; kind: 'plan'; at: number; activity: FriendPubActivity; mine: boolean }
-  | { key: string; kind: 'live'; at: number; activity: FriendPubActivity }
-  | { key: string; kind: 'beer'; at: number; item: BeerFeedItem }
-  | { key: string; kind: 'notification'; at: number; notification: FriendNotification }
-  | { key: string; kind: 'request'; at: number; request: Friendship }
-  | {
-      key: string;
-      kind: 'friend';
-      at: number;
-      friend: FriendProfile;
-      stats: FriendsDashboard['friendStats'][string];
-    };
+/** How many evenings the screen holds before "Načíst starší" earns its place. */
+const FEED_PAGE = 20;
 
 function timestamp(value: string | null | undefined): number {
   if (!value) return 0;
@@ -180,22 +175,6 @@ function planTimeLabel(iso: string): string {
     hour: '2-digit',
     minute: '2-digit',
   });
-}
-
-function groupBeerFeed(checkIns: BeerCheckIn[]): BeerFeedItem[] {
-  const groups = new Map<string, BeerCheckIn[]>();
-  const order: string[] = [];
-  for (const checkIn of checkIns) {
-    const key = checkIn.visitClientId
-      ? `visit:${checkIn.account.id}:${checkIn.visitClientId}`
-      : `checkin:${checkIn.id}`;
-    if (!groups.has(key)) {
-      groups.set(key, []);
-      order.push(key);
-    }
-    groups.get(key)?.push(checkIn);
-  }
-  return order.map((key) => ({ key, checkIns: groups.get(key) ?? [] }));
 }
 
 function IconButton({
@@ -411,6 +390,9 @@ export default function FriendsScreen() {
 
   const [dashboard, setDashboard] = useState<FriendsDashboard | null>(null);
   const [beerFeed, setBeerFeed] = useState<BeerCheckIn[]>([]);
+  const [sittings, setSittings] = useState<PartaFeedSitting[]>([]);
+  const [feedCursor, setFeedCursor] = useState<string | null>(null);
+  const [feedLoadingMore, setFeedLoadingMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -419,6 +401,7 @@ export default function FriendsScreen() {
   const [composeVisible, setComposeVisible] = useState(false);
   const [addFriendVisible, setAddFriendVisible] = useState(false);
   const [rosterVisible, setRosterVisible] = useState(false);
+  const [notificationsVisible, setNotificationsVisible] = useState(false);
   const [moreVisible, setMoreVisible] = useState(false);
   const [focused, setFocused] = useState(false);
   const [photoFeedKey, setPhotoFeedKey] = useState(0);
@@ -431,12 +414,12 @@ export default function FriendsScreen() {
   const nickname = useAccountStore(selectNickname);
   const needsNickname = useAccountStore(selectNeedsNickname);
   const isSignedIn = useAccountStore(selectIsSignedIn);
+  const myAccountId = useAccountStore((state) => state.session?.accountId ?? null);
   const hasIdentity = nickname != null;
 
   const friendPushEnabled = useSettingsStore((state) => state.friendPushEnabled);
   const friendPushPrompted = useSettingsStore((state) => state.friendPushPrompted);
   const setFriendPushPrompted = useSettingsStore((state) => state.setFriendPushPrompted);
-  const priceCurrency = useSettingsStore((state) => state.priceCurrency);
 
   const lastSeenResultsId = useContestResultsStore(
     (state) => state.lastSeenResultsContestId,
@@ -452,7 +435,6 @@ export default function FriendsScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const requestsYRef = useRef(0);
   const activeYRef = useRef(0);
-  const quickRsvpRef = useRef(false);
   const endingBroadcastRef = useRef(false);
 
   useEffect(
@@ -481,9 +463,13 @@ export default function FriendsScreen() {
       // Rejections must not skip the spinner teardown. A pull-to-refresh whose
       // fetch is aborted by the next poll (or that simply throws) used to leave
       // `refreshing` true forever, and the wheel sat wedged above the card until
-      // the screen was remounted. Hence try/finally, and a caught beer feed:
-      // its promise is created here but awaited after two early returns.
+      // the screen was remounted. Hence try/finally, and caught side feeds:
+      // their promises are created here but awaited after two early returns.
       const beerFeedPromise = fetchBeerCheckInFeed(controller.signal).catch(() => null);
+      const sittingsPromise = fetchPartaFeed({
+        limit: FEED_PAGE,
+        signal: controller.signal,
+      }).catch(() => null);
       try {
         const next = await fetchFriendsDashboard(controller.signal);
         if (!mountedRef.current) return;
@@ -502,7 +488,10 @@ export default function FriendsScreen() {
             usePartaSignalStore.getState().setSignal({
               pendingRequests: next.incomingRequests.length,
               unread: willMarkRead ? 0 : next.unreadCount,
-              liveNow: next.activeFriends.length > 0 || next.myActiveActivity != null,
+              liveNow:
+                next.presence.length > 0 ||
+                next.activeFriends.length > 0 ||
+                next.myActiveActivity != null,
             });
           } else {
             setLoadError(true);
@@ -511,9 +500,16 @@ export default function FriendsScreen() {
 
         if (!next) return;
 
-        const nextBeerFeed = await beerFeedPromise;
-        if (!mountedRef.current || generation !== loadGenRef.current || !nextBeerFeed) return;
-        setBeerFeed(nextBeerFeed);
+        const [nextBeerFeed, nextSittings] = await Promise.all([
+          beerFeedPromise,
+          sittingsPromise,
+        ]);
+        if (!mountedRef.current || generation !== loadGenRef.current) return;
+        if (nextBeerFeed) setBeerFeed(nextBeerFeed);
+        if (nextSittings) {
+          setSittings(nextSittings.sittings);
+          setFeedCursor(nextSittings.nextCursor);
+        }
       } catch {
         // An aborted load is the newer one doing its job, not an outage.
         if (!controller.signal.aborted && generation === loadGenRef.current) {
@@ -526,6 +522,23 @@ export default function FriendsScreen() {
     },
     [],
   );
+
+  const loadMoreSittings = useCallback(() => {
+    if (!feedCursor || feedLoadingMore) return;
+    setFeedLoadingMore(true);
+    void fetchPartaFeed({ cursor: feedCursor, limit: FEED_PAGE }).then((page) => {
+      if (!mountedRef.current) return;
+      // Release the latch even on failure, or one bad page wedges pagination
+      // for the lifetime of the screen.
+      setFeedLoadingMore(false);
+      if (!page) return;
+      setSittings((current) => {
+        const seen = new Set(current.map((item) => item.id));
+        return [...current, ...page.sittings.filter((item) => !seen.has(item.id))];
+      });
+      setFeedCursor(page.nextCursor);
+    });
+  }, [feedCursor, feedLoadingMore]);
 
   const pollLive = useCallback(async () => {
     const generation = ++loadGenRef.current;
@@ -546,6 +559,8 @@ export default function FriendsScreen() {
             myActiveActivity: slice.myActiveActivity,
             plans: slice.plans,
             myPlan: slice.myPlan,
+            presence: slice.presence,
+            myPresence: slice.myPresence,
           }
         : current,
     );
@@ -553,7 +568,10 @@ export default function FriendsScreen() {
     usePartaSignalStore.getState().setSignal({
       pendingRequests: slice.incomingCount,
       unread: slice.unreadCount,
-      liveNow: slice.activeFriends.length > 0 || slice.myActiveActivity != null,
+      liveNow:
+        slice.presence.length > 0 ||
+        slice.activeFriends.length > 0 ||
+        slice.myActiveActivity != null,
     });
   }, []);
 
@@ -625,12 +643,16 @@ export default function FriendsScreen() {
     return () => subscription.remove();
   }, [load]);
 
+  const d = dashboard;
+
   const liveOrPlanned =
-    dashboard != null &&
-    (dashboard.activeFriends.length > 0 ||
-      dashboard.myActiveActivity != null ||
-      dashboard.myPlan != null ||
-      dashboard.plans.length > 0);
+    d != null &&
+    (d.presence.length > 0 ||
+      d.activeFriends.length > 0 ||
+      d.myActiveActivity != null ||
+      d.myPresence != null ||
+      d.myPlan != null ||
+      d.plans.length > 0);
 
   useEffect(() => {
     if (!focused || !liveOrPlanned) return;
@@ -645,17 +667,24 @@ export default function FriendsScreen() {
     [router],
   );
   const openFriendSafety = useFriendSafety(reload);
+  const handleSittingLongPress = useCallback(
+    (sitting: PartaFeedSitting) => openFriendSafety(sitting.account),
+    [openFriendSafety],
+  );
 
   const handleFeedPress = useCallback(
     (notification: FriendNotification) => {
       if (notification.kind === 'friend_request') {
+        setNotificationsVisible(false);
         scrollToOffset(requestsYRef.current);
       } else if (
         notification.kind === 'friend_at_pub' ||
         notification.kind === 'friend_rsvp'
       ) {
+        setNotificationsVisible(false);
         scrollToOffset(activeYRef.current);
       } else if (PROFILE_FEED_KINDS.has(notification.kind) && notification.actor?.id) {
+        setNotificationsVisible(false);
         openFriendProfile(notification.actor.id);
       }
     },
@@ -693,30 +722,8 @@ export default function FriendsScreen() {
     [load, respondingRequestActions, showToast],
   );
 
-  const respondGoing = useCallback(
-    (activity: FriendPubActivity) => {
-      if (quickRsvpRef.current) return;
-      quickRsvpRef.current = true;
-      void respondToActivity(activity.id, 'going').then((result) => {
-        quickRsvpRef.current = false;
-        if (result.ok) {
-          reload();
-          return;
-        }
-        if (isRetriableFriendError(result)) {
-          void enqueueFriendOp({ op: 'rsvp', activityId: activity.id, response: 'going' });
-          showToast(cs.friends.rsvpQueued);
-          reload();
-          return;
-        }
-        showToast(cs.friends.rsvpError);
-      });
-    },
-    [reload, showToast],
-  );
-
   const handleEndBroadcast = useCallback(() => {
-    const activity = dashboard?.myActiveActivity;
+    const activity = d?.myActiveActivity;
     if (!activity || endingBroadcastRef.current) return;
     showAppDialog({
       title: cs.friends.endActivityConfirmTitle,
@@ -755,7 +762,7 @@ export default function FriendsScreen() {
         },
       ],
     });
-  }, [dashboard?.myActiveActivity, reload, showToast]);
+  }, [d?.myActiveActivity, reload, showToast]);
 
   const handleEnablePush = useCallback(() => {
     void registerFriendPush().then((result) => {
@@ -807,6 +814,22 @@ export default function FriendsScreen() {
         icon: UserPlusIcon,
         onPress: () => runAfterMoreClose(() => setAddFriendVisible(true)),
       },
+      // The notification log used to run inline in the stream, where every row
+      // it held ("X je na pivu") duplicated a row the feed above already shows.
+      // It keeps its own door instead of its own share of the scroll.
+      {
+        key: 'notifications',
+        label: cs.friends.moreNotifications,
+        icon: BellRingIcon,
+        onPress: () => runAfterMoreClose(() => setNotificationsVisible(true)),
+      },
+      {
+        key: 'party',
+        label: cs.friends.moreWholeParty,
+        icon: UsersIcon,
+        onPress: () =>
+          runAfterMoreClose(() => router.push('/profile/parta' as Href)),
+      },
       {
         key: 'settings',
         label: cs.friends.moreSettings,
@@ -818,13 +841,6 @@ export default function FriendsScreen() {
         label: cs.friends.moreMyCode,
         icon: QrCodeIcon,
         onPress: () => runAfterMoreClose(() => setCodeVisible(true)),
-      },
-      {
-        key: 'party',
-        label: cs.friends.moreWholeParty,
-        icon: UsersIcon,
-        onPress: () =>
-          runAfterMoreClose(() => router.push('/profile/parta' as Href)),
       },
     ],
     [router, runAfterMoreClose],
@@ -861,129 +877,76 @@ export default function FriendsScreen() {
     [router],
   );
 
-  const d = dashboard;
   const friendCount = d?.friends.length ?? 0;
-  const beerFeedItems = useMemo(() => groupBeerFeed(beerFeed), [beerFeed]);
 
-  const streamItems = useMemo<StreamItem[]>(() => {
-    if (!d) return [];
-    const items: StreamItem[] = [];
+  /** Accounts whose sitting is already told loudly by a broadcast card. */
+  const broadcastAccountIds = useMemo(
+    () => new Set((d?.activeFriends ?? []).map((activity) => activity.account.id)),
+    [d?.activeFriends],
+  );
 
-    if (d.myPlan) {
-      items.push({
-        key: `plan:mine:${d.myPlan.id}`,
-        kind: 'plan',
-        at: timestamp(d.myPlan.scheduledFor ?? d.myPlan.createdAt),
-        activity: d.myPlan,
-        mine: true,
-      });
-    }
-    for (const plan of d.plans) {
-      items.push({
-        key: `plan:${plan.id}`,
-        kind: 'plan',
-        at: timestamp(plan.scheduledFor ?? plan.createdAt),
-        activity: plan,
-        mine: false,
-      });
-    }
-    for (const activity of d.activeFriends) {
-      items.push({
-        key: `live:${activity.id}`,
-        kind: 'live',
-        at: timestamp(activity.updatedAt || activity.startedAt),
-        activity,
-      });
-    }
-    for (const item of beerFeedItems.slice(0, 6)) {
-      const first = item.checkIns[0];
-      if (!first) continue;
-      items.push({
-        key: `beer:${item.key}`,
-        kind: 'beer',
-        at: timestamp(first.checkedInAt),
-        item,
-      });
-    }
-    for (const notification of d.notifications.slice(0, 6)) {
-      items.push({
-        key: `notification:${notification.id}`,
-        kind: 'notification',
-        at: timestamp(notification.createdAt),
-        notification,
-      });
-    }
-    for (const request of d.incomingRequests) {
-      items.push({
-        key: `request:${request.id}`,
-        kind: 'request',
-        at: timestamp(request.requestedAt),
-        request,
-      });
-    }
-    for (const friend of d.friends) {
-      const stats = d.friendStats[friend.id];
-      if (!stats?.lastSharedAt) continue;
-      items.push({
-        key: `friend:${friend.id}`,
-        kind: 'friend',
-        at: timestamp(stats.lastSharedAt),
-        friend,
-        stats,
-      });
-    }
+  /** The quiet half: sitting somewhere, never asked anyone to join. */
+  const quietPresence = useMemo(
+    () => (d?.presence ?? []).filter((row) => !broadcastAccountIds.has(row.account.id)),
+    [broadcastAccountIds, d?.presence],
+  );
 
-    return items.sort((a, b) => b.at - a.at);
-  }, [beerFeedItems, d]);
-  const firstLiveStreamKey = streamItems.find((item) => item.kind === 'live')?.key;
-  const firstRequestStreamKey = streamItems.find((item) => item.kind === 'request')?.key;
+  /** Show my own row only when the loud MyActivityCard is not already up. */
+  const myQuietPresence = d?.myActiveActivity ? null : (d?.myPresence ?? null);
 
-  const partyNumbers = useMemo(() => {
-    const goingIds = new Set<string>();
-    if (d) {
-      for (const activity of d.activeFriends) {
-        if (activity.account.id) goingIds.add(activity.account.id);
-      }
-      for (const plan of d.plans) {
-        if (plan.account.id) goingIds.add(plan.account.id);
-      }
-      const activities = [
-        ...d.activeFriends,
-        ...d.plans,
-        ...(d.myActiveActivity ? [d.myActiveActivity] : []),
-        ...(d.myPlan ? [d.myPlan] : []),
-      ];
-      for (const activity of activities) {
-        for (const profile of activity.responses.goingProfiles) {
-          if (profile.id) goingIds.add(profile.id);
-        }
-      }
-    }
-    const mine = d?.myActiveActivity != null;
-    const going = goingIds.size + (mine ? 1 : 0);
-    const maybe = d
-      ? [
-          ...d.activeFriends,
-          ...d.plans,
-          ...(d.myActiveActivity ? [d.myActiveActivity] : []),
-          ...(d.myPlan ? [d.myPlan] : []),
-        ].reduce((sum, activity) => sum + activity.responses.maybe, 0)
-      : 0;
-    return { count: going, going, maybe, mine };
-  }, [d]);
+  const sittingCount = useMemo(() => {
+    const ids = new Set<string>();
+    for (const row of d?.presence ?? []) ids.add(row.account.id);
+    for (const activity of d?.activeFriends ?? []) ids.add(activity.account.id);
+    const mine = d?.myPresence != null || d?.myActiveActivity != null;
+    return ids.size + (mine ? 1 : 0);
+  }, [d?.activeFriends, d?.myActiveActivity, d?.myPresence, d?.presence]);
 
-  const freshestLive = useMemo(() => {
-    if (!d || d.activeFriends.length === 0) return null;
-    return [...d.activeFriends].sort(
-      (a, b) => timestamp(b.updatedAt || b.startedAt) - timestamp(a.updatedAt || a.startedAt),
-    )[0];
-  }, [d]);
+  const maybeCount = useMemo(
+    () =>
+      d
+        ? [
+            ...d.activeFriends,
+            ...d.plans,
+            ...(d.myActiveActivity ? [d.myActiveActivity] : []),
+            ...(d.myPlan ? [d.myPlan] : []),
+          ].reduce((sum, activity) => sum + activity.responses.maybe, 0)
+        : 0,
+    [d],
+  );
+
+  /** The Výčep: sittings with whatever anyone wrote about them, newest first. */
+  const feed = useMemo<MergedSitting[]>(
+    () => mergeCheckInsIntoFeed(sittings, beerFeed, myAccountId),
+    [beerFeed, myAccountId, sittings],
+  );
+
+  const plans = useMemo(
+    () =>
+      d
+        ? [
+            ...(d.myPlan ? [{ activity: d.myPlan, mine: true }] : []),
+            ...d.plans.map((activity) => ({ activity, mine: false })),
+          ].sort(
+            (a, b) =>
+              timestamp(a.activity.scheduledFor ?? a.activity.createdAt) -
+              timestamp(b.activity.scheduledFor ?? b.activity.createdAt),
+          )
+        : [],
+    [d],
+  );
+
+  const freshestSitting = useMemo(() => {
+    const rows = [...(d?.presence ?? [])];
+    if (rows.length === 0) return null;
+    return rows.sort((a, b) => timestamp(b.lastSeenAt) - timestamp(a.lastSeenAt))[0];
+  }, [d?.presence]);
 
   const freshestPlan = useMemo(() => {
     if (!d) return null;
-    const plans = [...(d.myPlan ? [d.myPlan] : []), ...d.plans];
-    if (plans.length === 0) return null;
-    return plans.sort(
+    const rows = [...(d.myPlan ? [d.myPlan] : []), ...d.plans];
+    if (rows.length === 0) return null;
+    return rows.sort(
       (a, b) =>
         timestamp(b.scheduledFor ?? b.createdAt) -
         timestamp(a.scheduledFor ?? a.createdAt),
@@ -991,10 +954,10 @@ export default function FriendsScreen() {
   }, [d]);
 
   const headline = useMemo(() => {
-    if (freshestLive) {
-      return cs.friends.nudgeLive(
-        friendDisplayName(freshestLive.account),
-        freshestLive.name,
+    if (freshestSitting) {
+      return cs.friends.headlineSitting(
+        friendDisplayName(freshestSitting.account),
+        sittingCount - 1,
       );
     }
     if (freshestPlan) {
@@ -1005,7 +968,7 @@ export default function FriendsScreen() {
     }
     if (d?.myActiveActivity) return cs.friends.pulseMineBody;
     return cs.friends.emptyActive;
-  }, [d?.myActiveActivity, freshestLive, freshestPlan]);
+  }, [d?.myActiveActivity, freshestPlan, freshestSitting, sittingCount]);
 
   const rankLine = useMemo(() => {
     if (d?.settings.ghostMode) return cs.friends.hiddenRank;
@@ -1013,11 +976,6 @@ export default function FriendsScreen() {
     if (rank == null) return null;
     return `${cs.leaderboards.teaserTitleBefore}${cs.leaderboards.teaserTitleRank(rank)}${cs.leaderboards.teaserTitleAfter}`;
   }, [d?.settings.ghostMode, weeklyBoard?.me.rank]);
-
-  const unansweredLive = useMemo(
-    () => d?.activeFriends.find((activity) => activity.myResponse == null) ?? null,
-    [d?.activeFriends],
-  );
 
   const lastResults = contestSnapshot?.lastResults ?? null;
   const contestResultsUnseen =
@@ -1044,17 +1002,12 @@ export default function FriendsScreen() {
         onUndo: () => void load('refresh'),
       };
     }
-    if (unansweredLive) {
-      return {
-        kind: 'rapid',
-        text: cs.friends.nudgeLive(
-          friendDisplayName(unansweredLive.account),
-          unansweredLive.name,
-        ),
-        confirmLabel: cs.friends.nudgeLiveJoin,
-        onConfirm: () => respondGoing(unansweredLive),
-      };
-    }
+    // No nudge for an unanswered live table any more. It used to be the only
+    // way to see one, so it earned its 52pt; now "Kdo kde sedí" sits directly
+    // under the card with that friend's own card in it, RSVP included. The
+    // strip was printing the same sentence a thumb-width below the card that
+    // already said it — and printing it truncated, because a "Jdu" pill and a
+    // pub name do not fit on one row (§0.3, one path to one thing).
     if (d?.myActiveActivity) {
       return {
         kind: 'counted',
@@ -1101,9 +1054,7 @@ export default function FriendsScreen() {
     markContestResultsSeen,
     pushAudience,
     respond,
-    respondGoing,
     router,
-    unansweredLive,
   ]);
 
   const cta = useMemo(() => {
@@ -1151,7 +1102,7 @@ export default function FriendsScreen() {
   }, []);
 
   const renderNotificationRow = useCallback(
-    (notification: FriendNotification) => {
+    (notification: FriendNotification, first: boolean) => {
       const when = timeLabel(notification.createdAt);
       const canReact =
         !!notification.activityId && REACTABLE_FEED_KINDS.has(notification.kind);
@@ -1162,7 +1113,8 @@ export default function FriendsScreen() {
         (PROFILE_FEED_KINDS.has(notification.kind) && !!notification.actor?.id);
       return (
         <HairlineRow
-          first
+          key={notification.id}
+          first={first}
           onPress={canRoute ? () => handleFeedPress(notification) : undefined}
         >
           <View style={styles.feedRow}>
@@ -1220,124 +1172,9 @@ export default function FriendsScreen() {
     [handleFeedPress, reload],
   );
 
-  const renderBeerFeedRow = useCallback(
-    (item: BeerFeedItem) => {
-      const checkIn = item.checkIns[0];
-      if (!checkIn) return null;
-      const when = timeLabel(checkIn.checkedInAt);
-      const ownerName = friendDisplayName(checkIn.account);
-      const totalQuantity = item.checkIns.reduce(
-        (sum, row) => sum + Math.max(1, Math.floor(row.quantity || 1)),
-        0,
-      );
-      const totalPrice = item.checkIns.reduce(
-        (sum, row) =>
-          sum +
-          (row.priceCzk != null
-            ? row.priceCzk * Math.max(1, Math.floor(row.quantity || 1))
-            : 0),
-        0,
-      );
-      const hasAnyPrice = item.checkIns.some((row) => row.priceCzk != null);
-      const beerNames = item.checkIns
-        .map((row) => {
-          const quantity = Math.max(1, Math.floor(row.quantity || 1));
-          return quantity > 1 ? `${quantity}× ${row.beerName}` : row.beerName;
-        })
-        .join(', ');
-      const amount = [
-        totalQuantity > 1 ? `${totalQuantity}×` : '',
-        hasAnyPrice ? formatPrice(totalPrice, priceCurrency) : '',
-      ]
-        .filter(Boolean)
-        .join(' · ');
-      const meta = [
-        amount,
-        item.checkIns.length === 1 && checkIn.rating != null
-          ? `${checkIn.rating.toFixed(1)} / 5`
-          : '',
-        checkIn.pubName,
-        when,
-      ]
-        .filter(Boolean)
-        .join(' · ');
-
-      return (
-        <HairlineRow
-          first
-          onPress={() =>
-            router.push({
-              pathname: '/beer-detail',
-              params: { beer: checkIn.beerName, brewery: checkIn.breweryName },
-            } as Href)
-          }
-        >
-          <View style={styles.feedRow}>
-            <View style={styles.feedIconDisk}>
-              <BeerIcon size={16} color={Colors.amber} />
-            </View>
-            <View style={styles.feedText}>
-              <Text
-                style={styles.feedTitle}
-                numberOfLines={1}
-                maxFontSizeMultiplier={FontScaleCap.body}
-              >
-                {item.checkIns.length > 1
-                  ? `${ownerName} zapsal ${totalQuantity} piv`
-                  : `${ownerName} pije ${checkIn.beerName}`}
-              </Text>
-              {item.checkIns.length > 1 ? (
-                <Text
-                  style={styles.feedBody}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {beerNames}
-                </Text>
-              ) : null}
-              {meta ? (
-                <Text
-                  style={styles.feedBody}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {meta}
-                </Text>
-              ) : null}
-              {checkIn.note ? (
-                <Text
-                  style={styles.feedNote}
-                  numberOfLines={2}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {checkIn.note}
-                </Text>
-              ) : null}
-              {item.checkIns.length === 1 && checkIn.tags.length > 0 ? (
-                <View style={styles.feedTags}>
-                  <BeerTagChips tags={checkIn.tags} />
-                </View>
-              ) : null}
-            </View>
-            <CheersPill
-              activityId={checkIn.id}
-              target="beerCheckIn"
-              count={checkIn.reactions.cheers}
-              mine={checkIn.myReaction === 'cheers'}
-              compact
-              ownerName={ownerName}
-              onChanged={reload}
-            />
-          </View>
-        </HairlineRow>
-      );
-    },
-    [priceCurrency, reload, router],
-  );
-
   const renderRequestRow = useCallback(
-    (request: Friendship) => (
-      <HairlineRow first>
+    (request: Friendship, first: boolean) => (
+      <HairlineRow key={request.id} first={first}>
         <View style={styles.requestRow}>
           <FriendMini profile={request.requester} />
           <View style={styles.requestActions}>
@@ -1422,6 +1259,11 @@ export default function FriendsScreen() {
     </View>
   );
 
+  const hasSitting =
+    d != null &&
+    (d.activeFriends.length > 0 || quietPresence.length > 0 || myQuietPresence != null);
+  const requests = d?.incomingRequests ?? [];
+
   return (
     <View
       style={[
@@ -1451,12 +1293,12 @@ export default function FriendsScreen() {
           }
           showsVerticalScrollIndicator={false}
         >
-          <View style={streamItems.length === 0 ? styles.cardGrow : undefined}>
+          <View style={feed.length === 0 && !hasSitting ? styles.cardGrow : undefined}>
             <PartyCard
-              count={partyNumbers.count}
+              count={sittingCount}
               countLabel={
-                partyNumbers.count > 0
-                  ? cs.friends.tableCaption
+                sittingCount > 0
+                  ? cs.friends.tableCaptionSitting
                   : cs.friends.tableCaptionQuiet
               }
               headline={headline}
@@ -1472,98 +1314,122 @@ export default function FriendsScreen() {
               // sitting, and the numeral plus the table say how many.
               linkLabel={cta.label}
               onLinkPress={cta.onPress}
-              going={partyNumbers.going}
-              maybe={partyNumbers.maybe}
-              mine={partyNumbers.mine}
+              // The drawing carries the same fact as the numeral above it:
+              // seats taken are people actually sitting, not RSVPs on a plan.
+              going={sittingCount}
+              maybe={maybeCount}
+              mine={d?.myPresence != null || d?.myActiveActivity != null}
               onPress={
-                partyNumbers.count > 0 || partyNumbers.maybe > 0
-                  ? () => setRosterVisible(true)
-                  : null
+                sittingCount > 0 || maybeCount > 0 ? () => setRosterVisible(true) : null
               }
-              accessibilityLabel={cs.a11y.partaCard(String(partyNumbers.count), headline)}
+              accessibilityLabel={cs.a11y.partaCard(String(sittingCount), headline)}
               rail={<DoorRail tiles={railTiles} />}
               topRow={chromeRow}
             />
           </View>
 
-          <Text style={styles.streamHeader} maxFontSizeMultiplier={FontScaleCap.body}>
-            {cs.friends.streamHeader}
+          {/* 1. Kdo kde sedí — the block the whole rebuild is about. */}
+          <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.friends.presenceHeader}
           </Text>
 
-          <PartaPhotoStrip refreshKey={photoFeedKey} style={styles.photoStreamItem} />
-
-          {streamItems.length > 0 ? (
-            <View style={styles.stream}>
-              {streamItems.map((item) => {
-                if (item.kind === 'plan') {
-                  return (
-                    <PlanCard
-                      key={item.key}
-                      activity={item.activity}
-                      mine={item.mine}
-                      onResponded={reload}
-                      onCanceled={reload}
-                    />
-                  );
-                }
-                if (item.kind === 'live') {
-                  return (
-                    <View
-                      key={item.key}
-                      onLayout={item.key === firstLiveStreamKey ? onActiveLayout : undefined}
-                    >
-                      <FriendActiveCard
-                        activity={item.activity}
-                        onResponded={reload}
-                        stale={loadError}
-                      />
-                    </View>
-                  );
-                }
-                if (item.kind === 'beer') {
-                  return (
-                    <View key={item.key} style={styles.streamRowCard}>
-                      {renderBeerFeedRow(item.item)}
-                    </View>
-                  );
-                }
-                if (item.kind === 'notification') {
-                  return (
-                    <View key={item.key} style={styles.streamRowCard}>
-                      {renderNotificationRow(item.notification)}
-                    </View>
-                  );
-                }
-                if (item.kind === 'request') {
-                  return (
-                    <View
-                      key={item.key}
-                      style={styles.streamRowCard}
-                      onLayout={item.key === firstRequestStreamKey ? onRequestsLayout : undefined}
-                    >
-                      {renderRequestRow(item.request)}
-                    </View>
-                  );
-                }
-                return (
-                  <View key={item.key} style={styles.streamRowCard}>
-                    <FriendListRow
-                      friend={item.friend}
-                      stats={item.stats}
-                      first
-                      onOpenProfile={openFriendProfile}
-                      onLongPress={openFriendSafety}
-                    />
-                  </View>
-                );
-              })}
+          {hasSitting ? (
+            // The layout anchor sits on the block, not on a card inside it: a
+            // push hand-off scrolls to an offset measured against the scroll
+            // view, and only a direct child of the content view has one.
+            <View style={styles.block} onLayout={onActiveLayout}>
+              {/* Broadcast first: those rows are an invitation, not just a fact. */}
+              {(d?.activeFriends ?? []).map((activity) => (
+                <FriendActiveCard
+                  key={`live:${activity.id}`}
+                  activity={activity}
+                  onResponded={reload}
+                  stale={loadError}
+                />
+              ))}
+              <PresenceList
+                presence={quietPresence}
+                myPresence={myQuietPresence}
+                stale={loadError}
+                onOpenProfile={openFriendProfile}
+                onChanged={reload}
+              />
             </View>
           ) : loading && !d ? null : (
-            <Text style={styles.streamEmpty} maxFontSizeMultiplier={FontScaleCap.body}>
-              {cs.friends.streamEmpty}
+            <Text style={styles.blockEmpty} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.friends.presenceEmpty}
             </Text>
           )}
 
+          {requests.length > 0 ? (
+            <View style={[styles.card, styles.spaced]} onLayout={onRequestsLayout}>
+              {requests.map((request, index) => renderRequestRow(request, index === 0))}
+            </View>
+          ) : null}
+
+          {plans.length > 0 ? (
+            <View style={[styles.block, styles.spaced]}>
+              {plans.map(({ activity, mine }) => (
+                <PlanCard
+                  key={`plan:${mine ? 'mine' : 'friend'}:${activity.id}`}
+                  activity={activity}
+                  mine={mine}
+                  onResponded={reload}
+                  onCanceled={reload}
+                />
+              ))}
+            </View>
+          ) : null}
+
+          {/* 2. Čerstvě cvaknuto — between the people and what they drank. */}
+          <PartaPhotoStrip refreshKey={photoFeedKey} style={styles.photoStreamItem} />
+
+          {/* 3. Co se pilo — automatic, chronological, one row per evening. */}
+          <Text style={styles.sectionHeader} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.friends.sittingsHeader}
+          </Text>
+
+          {feed.length > 0 ? (
+            <>
+              <View style={styles.card}>
+                {feed.map((row, index) => (
+                  <SittingRow
+                    key={row.sitting.id}
+                    sitting={row.sitting}
+                    checkIns={row.checkIns}
+                    first={index === 0}
+                    onLongPress={handleSittingLongPress}
+                    onChanged={reload}
+                  />
+                ))}
+              </View>
+              {feedCursor ? (
+                <Pressable
+                  onPress={loadMoreSittings}
+                  disabled={feedLoadingMore}
+                  accessibilityRole="button"
+                  accessibilityLabel={cs.friends.sittingsMore}
+                  style={({ pressed }) => [
+                    styles.moreFeedButton,
+                    (pressed || feedLoadingMore) && styles.dim,
+                  ]}
+                >
+                  <Text
+                    style={styles.moreFeedLabel}
+                    maxFontSizeMultiplier={FontScaleCap.body}
+                  >
+                    {feedLoadingMore ? cs.friends.sittingsLoading : cs.friends.sittingsMore}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </>
+          ) : loading && !d ? null : (
+            <Text style={styles.blockEmpty} maxFontSizeMultiplier={FontScaleCap.body}>
+              {cs.friends.sittingsEmpty}
+            </Text>
+          )}
+
+          {/* 4. Co spolu podniknout. */}
           <PartaPlans />
         </ScrollView>
         <ScrollFade height={16} />
@@ -1587,6 +1453,22 @@ export default function FriendsScreen() {
         rows={moreRows}
         onClose={() => setMoreVisible(false)}
       />
+
+      <SheetScaffold
+        visible={notificationsVisible}
+        title={cs.friends.notificationsTitle}
+        onClose={() => setNotificationsVisible(false)}
+      >
+        {(d?.notifications ?? []).length > 0 ? (
+          (d?.notifications ?? []).map((notification, index) =>
+            renderNotificationRow(notification, index === 0),
+          )
+        ) : (
+          <Text style={styles.sheetEmpty} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.friends.notificationsEmpty}
+          </Text>
+        )}
+      </SheetScaffold>
 
       <FriendSettingsSheet
         visible={settingsVisible}
@@ -1679,7 +1561,9 @@ const styles = StyleSheet.create({
   cardGrow: {
     flex: 1,
   },
-  streamHeader: {
+  // One quiet label per section — a name for the group, never a headline
+  // competing with the card above it.
+  sectionHeader: {
     marginTop: 24,
     marginBottom: 8,
     fontFamily: Fonts.ui.medium,
@@ -1687,10 +1571,14 @@ const styles = StyleSheet.create({
     color: Colors.mutedText,
     includeFontPadding: false,
   },
-  stream: {
+  block: {
     gap: 12,
   },
-  streamEmpty: {
+  /** Same 12 as the gap inside a block — one rhythm down the whole stream. */
+  spaced: {
+    marginTop: 12,
+  },
+  blockEmpty: {
     fontFamily: Fonts.ui.medium,
     fontSize: 13,
     lineHeight: 20,
@@ -1698,15 +1586,31 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   photoStreamItem: {
-    marginBottom: 12,
+    marginTop: 24,
   },
-  streamRowCard: {
+  card: {
     overflow: 'hidden',
     backgroundColor: Colors.stout2,
     borderRadius: Radius.card,
     borderWidth: 1,
     borderColor: withAlpha(Colors.foam, 0.07),
     paddingHorizontal: 16,
+  },
+  moreFeedButton: {
+    marginTop: 12,
+    minHeight: HitArea.min,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.amber, 0.06),
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.amber, 0.18),
+  },
+  moreFeedLabel: {
+    fontFamily: Fonts.display.bold,
+    fontSize: 15,
+    color: Colors.amber,
+    includeFontPadding: false,
   },
   requestRow: {
     flexDirection: 'row',
@@ -1786,17 +1690,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     includeFontPadding: false,
-  },
-  feedNote: {
-    marginTop: 4,
-    fontFamily: Fonts.ui.medium,
-    color: Colors.foam,
-    fontSize: 13,
-    lineHeight: 18,
-    includeFontPadding: false,
-  },
-  feedTags: {
-    marginTop: 8,
   },
   sheetBackdrop: {
     flex: 1,

@@ -1448,7 +1448,11 @@ export const cs = {
     settingsTitle: 'Nastavení party',
     settingsClose: 'Zavřít nastavení',
     ghostTitle: 'Neviditelný režim',
-    ghostSubtitle: 'Nikdo nevidí, kde sedíš. Tvoje cinknutí zůstanou jen u tebe.',
+    ghostSubtitle:
+      'Parta nevidí, kde sedíš, ani co jsi vypil. Tvoje cinknutí zůstanou jen u tebe.',
+    shareDrinksTitle: 'Ukazovat partě, kde sedím',
+    shareDrinksSubtitle:
+      'Kámoši uvidí, ve které hospodě zrovna jsi a co ti večer teklo. Nikdo jiný ne.',
     ghostActive: 'Neviditelný režim je zapnutý',
     ghostChip: 'Skrytě',
     quietTitle: 'Klid v noci',
@@ -1527,14 +1531,18 @@ export const cs = {
     moreSettings: 'Nastavení party',
     moreMyCode: 'Můj kód',
     moreWholeParty: 'Celá parta',
+    moreNotifications: 'Cinklo v partě',
+    notificationsTitle: 'Cinklo v partě',
+    notificationsEmpty: 'Zatím nic nezacinkalo.',
 
     // — Nudge slot: at most one —
     nudgeRequest: (name: string) => `${name} chce do party`,
     nudgeRequestAccept: 'Přijmout',
     nudgeOffline: 'Ukazuju poslední, co vím.',
     nudgeOfflineRetry: 'Zkusit znovu',
-    nudgeLive: (name: string, pub: string) => `${name} drží stůl ${pub}`,
-    nudgeLiveJoin: 'Jdu',
+    // "Někdo drží stůl" is no longer a nudge: "Kdo kde sedí" sits right under
+    // the card with that friend's own card and its RSVP in it, so the strip was
+    // repeating the card a thumb-width below it (§0.3).
     nudgeBroadcasting: 'Cinknutí je venku.',
     nudgeBroadcastEnd: 'Zabalit',
     nudgePush: 'Cinknu ti, když někdo sedne.',
@@ -1542,6 +1550,42 @@ export const cs = {
     nudgeContest: 'Výsledky kola jsou venku.',
     nudgeContestOpen: 'Mrknout',
     streakRiskFact: 'Tenhle týden ještě nezapálená',
+
+    // — Kdo kde sedí: live presence derived from the counter, no ping needed —
+    presenceHeader: 'Kdo kde sedí',
+    presenceMe: 'Ty',
+    presenceSomewhere: 'Někde na pivu',
+    presenceBeers: (n: number) =>
+      n === 1 ? '1 pivo' : n >= 2 && n <= 4 ? `${n} piva` : `${n} piv`,
+    presenceHiddenNote: 'Jedeš v neviditelném režimu, takže tě parta u stolu nevidí.',
+    presenceEmpty: 'Nikdo z party teď nikde nesedí.',
+    /**
+     * The card headline. Deliberately without the pub: "drží stůl Lokál
+     * Dlouhááá" needs a locative ("v Lokálu Dlouhááá") that we cannot decline
+     * for arbitrary pub names, and the row right below the card names the pub
+     * anyway. "sedí" is third person, so it stays genderless.
+     */
+    headlineSitting: (name: string, others: number) => {
+      if (others <= 0) return `${name} sedí na pivu.`;
+      if (others === 1) return `${name} a ještě jeden sedí na pivu.`;
+      if (others <= 4) return `${name} a další ${others} sedí na pivu.`;
+      return `${name} a dalších ${others} sedí na pivu.`;
+    },
+    /** Card caption when the number counts people actually sitting somewhere. */
+    tableCaptionSitting: 'SEDÍ NA PIVU',
+
+    // — The automatic evening feed, no hanging-up required.
+    //   Deliberately NOT called "Výčep": that name already belongs to the
+    //   screen behind the rail door, where you hang a night up on purpose. Two
+    //   different things under one name is the confusion this rebuild is
+    //   supposed to be removing, not adding.
+    sittingsHeader: 'Co se pilo',
+    sittingsEmpty: 'Zatím tu nikdo nic nevypil. Až se to změní, dozvíš se to tady.',
+    sittingsMore: 'Načíst starší',
+    sittingsLoading: 'Načítám…',
+    /** Inline rating on a sitting row: "4,0/5 · Pilsner Urquell". */
+    sittingRating: (rating: number, beer: string) =>
+      `${rating.toFixed(1).replace('.', ',')}/5${beer ? ` · ${beer}` : ''}`,
 
     // — The one feed under the card —
     streamHeader: 'Co se děje',
@@ -2901,6 +2945,11 @@ export const cs = {
     partaCard: (count: string, headline: string) =>
       `${count} z party dneska na pivu. ${headline} Ťukni pro seznam.`,
     partaTable: 'Kdo dneska jde',
+    presenceRow: (name: string, pub: string) =>
+      `${name} teď sedí ${pub}. Ťukni pro profil.`,
+    presenceCompass: (pub: string) => `Ukázat ${pub} na kompasu`,
+    sittingRow: (name: string, what: string, where: string, when: string) =>
+      `${name}, ${what}, ${where}${when ? `, ${when}` : ''}. Ťukni pro profil.`,
 
     // — Kompas —
     compassMore: 'Co ještě? Mapa, filtry a další',

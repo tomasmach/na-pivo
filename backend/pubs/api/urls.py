@@ -74,6 +74,7 @@ from .views import (
     FriendBeerPhotosView,
     FriendBlockView,
     FriendDetailView,
+    FriendDrinkFeedView,
     FriendInviteResolveView,
     FriendInviteView,
     FriendNotificationReadView,
@@ -232,6 +233,7 @@ urlpatterns = [
     path("push-device", PushDeviceView.as_view(), name="push-device"),
     path("friends", FriendsView.as_view(), name="friends"),
     path("friends/live", FriendsLiveView.as_view(), name="friends-live"),
+    path("friends/drink-feed", FriendDrinkFeedView.as_view(), name="friends-drink-feed"),
     path("friends/search", FriendSearchView.as_view(), name="friends-search"),
     path("friends/requests", FriendRequestView.as_view(), name="friends-requests"),
     path(
