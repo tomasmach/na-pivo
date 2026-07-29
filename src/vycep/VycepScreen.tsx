@@ -161,8 +161,14 @@ export default function VycepScreen() {
   const load = useCallback(() => {
     const seq = ++requestSeq.current;
     void fetchNightsFeed(scope).then((res) => {
-      if (!mountedRef.current || seq !== requestSeq.current) return;
+      if (!mountedRef.current) return;
+      // The spinner teardown must happen BEFORE the staleness guard. A
+      // pull-to-refresh whose response is invalidated by a scope switch used to
+      // return early here and leave `refreshing` true forever — the wheel sat
+      // wedged above the feed until the screen was remounted, which is exactly
+      // what "výčep mi nefunguje" looked like from the outside.
       setRefreshing(false);
+      if (seq !== requestSeq.current) return;
       if (!res.ok) {
         setFailed(true);
         return;
