@@ -398,6 +398,7 @@ export const cs = {
   },
 
   celebration: {
+    eyebrow: 'VÍTEJ V',
     headerTitle: 'Jsi na místě',
     headlineLine1: 'Na',
     headlineLine2: 'zdraví!',

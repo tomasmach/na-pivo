@@ -1,22 +1,20 @@
 import React from 'react';
-import { StyleSheet, type TextStyle } from 'react-native';
+import { useWindowDimensions } from 'react-native';
 import TestRenderer, {
   act,
   type ReactTestInstance,
   type ReactTestRenderer,
 } from 'react-test-renderer';
 
-import { CounterCta } from '@/counter/CounterCta';
-import { cs } from '@/i18n/cs';
-import { usePubStore } from '@/stores/pubStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { usePubStore } from '@/stores/pubStore';
+import { GlowButton } from '@/components/shared/GlowButton';
+import { cs } from '@/i18n/cs';
 import { fireSuccessHaptic } from '@/utils/haptics';
 import { openPubInMaps } from '@/utils/maps';
 import CelebrationScreen from '../celebration';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-const mockRouterBack = jest.fn();
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -25,6 +23,8 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 
 jest.mock('@/utils/haptics', () => ({ fireSuccessHaptic: jest.fn() }));
 jest.mock('@/utils/maps', () => ({ openPubInMaps: jest.fn() }));
+
+const mockRouterBack = jest.fn();
 
 jest.mock('expo-router', () => ({
   useRouter: jest.fn(() => ({
@@ -42,16 +42,40 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 
 jest.mock('react-native-reanimated', () => ({
+  __esModule: true,
+  default: {
+    View: 'AnimatedView',
+  },
+  useSharedValue: jest.fn((value) => ({ value })),
+  useAnimatedStyle: jest.fn((factory) => factory()),
+  withSpring: jest.fn((value) => value),
+  withTiming: jest.fn((value) => value),
   useReducedMotion: jest.fn(() => true),
 }));
 
-jest.mock('@/counter/CounterCta', () => ({
-  CounterCta: jest.fn(() => null),
+jest.mock('@/components/celebration/FoamDrip', () => ({
+  FoamDrip: jest.fn(() => null),
+}));
+
+jest.mock('@/components/celebration/FoamDrops', () => ({
+  FoamDrops: jest.fn(() => null),
+}));
+
+jest.mock('@/components/celebration/BeerBubbles', () => ({
+  BeerBubbles: jest.fn(() => null),
+}));
+
+jest.mock('@/components/celebration/SoftGlow', () => ({
+  SoftGlow: jest.fn(() => null),
+}));
+
+jest.mock('@/components/shared/GlowButton', () => ({
+  GlowButton: jest.fn(() => null),
 }));
 
 jest.mock('@/components/shared/IconGlyph', () => ({
   BeerIcon: jest.fn(() => null),
-  ChevronRightIcon: jest.fn(() => null),
+  MapPinIcon: jest.fn(() => null),
 }));
 
 jest.mock('@/theme/fonts', () => ({
@@ -60,8 +84,10 @@ jest.mock('@/theme/fonts', () => ({
       extrabold: 'display-extrabold',
     },
     ui: {
+      regular: 'ui-regular',
       medium: 'ui-medium',
       semibold: 'ui-semibold',
+      bold: 'ui-bold',
     },
   },
   FontScaleCap: { display: 1.1, heading: 1.2, body: 1.3 },
@@ -80,6 +106,12 @@ describe('CelebrationScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     usePubStore.setState({ revealedPub: null });
+    (useWindowDimensions as jest.Mock).mockReturnValue({
+      width: 390,
+      height: 844,
+      scale: 3,
+      fontScale: 1,
+    });
   });
 
   afterEach(() => {
@@ -114,54 +146,48 @@ describe('CelebrationScreen', () => {
     expect(fireSuccessHaptic).toHaveBeenCalledTimes(1);
   });
 
-  it('scales the headline from the measured card body, clamped both ways', async () => {
-    useSettingsStore.setState({ hapticEnabled: false });
+  it('scales controls down on a genuinely short viewport', async () => {
+    (useWindowDimensions as jest.Mock).mockReturnValue({
+      width: 390,
+      height: 560,
+      scale: 3,
+      fontScale: 1,
+    });
+
     await renderScreen();
 
-    // The card's sheen measures itself too, and it is hidden from screen
-    // readers — which is exactly what tells the two layout nodes apart.
-    const layoutNode = renderer?.root.findAll(
-      (node: ReactTestInstance) =>
-        typeof node.props.onLayout === 'function' &&
-        node.props.accessibilityElementsHidden !== true
-    )[0];
-
-    const layout = (height: number) => {
-      act(() => {
-        (layoutNode?.props.onLayout as (event: {
-          nativeEvent: { layout: { height: number } };
-        }) => void)({
-          nativeEvent: { layout: { height } },
-        });
-      });
-    };
-
-    const headlineFontSize = () => {
-      const node = renderer?.root.findAll(
-        (candidate: ReactTestInstance) =>
-          candidate.props.children === cs.celebration.headlineLine1
-      )[0];
-      return StyleSheet.flatten<TextStyle>(node?.props.style as TextStyle).fontSize;
-    };
-
-    // A tall card hits the upper clamp instead of scaling forever.
-    layout(480);
-    expect(headlineFontSize()).toBe(76);
-
-    // An iPhone SE gets the smaller line, never below the floor.
-    layout(260);
-    expect(headlineFontSize()).toBe(52);
+    const glowButtonMock = GlowButton as unknown as jest.Mock;
+    // Full-size button is 64; a short viewport must shrink it (but never below
+    // the 48pt touch-target floor).
+    expect(
+      glowButtonMock.mock.calls.some(
+        ([props]) => props.height >= 48 && props.height < 64
+      )
+    ).toBe(true);
   });
 
-  it('opens the revealed pub in maps from the card footer', async () => {
+  it('keeps full-size controls on a normal phone viewport', async () => {
+    (useWindowDimensions as jest.Mock).mockReturnValue({
+      width: 390,
+      height: 844,
+      scale: 3,
+      fontScale: 1,
+    });
+
+    await renderScreen();
+
+    const glowButtonMock = GlowButton as unknown as jest.Mock;
+    expect(glowButtonMock.mock.calls.some(([props]) => props.height === 64)).toBe(true);
+  });
+
+  it('opens the revealed pub in maps from the pub card', async () => {
     useSettingsStore.setState({ hapticEnabled: false });
     usePubStore.setState({ revealedPub });
     await renderScreen();
 
     const mapButton = renderer?.root.findAll(
       (node: ReactTestInstance) =>
-        node.props.accessibilityLabel ===
-        cs.a11y.celebrationOpenMaps(revealedPub.name)
+        node.props.accessibilityLabel === cs.celebration.openInMaps
     )[0];
 
     act(() => {
@@ -171,19 +197,21 @@ describe('CelebrationScreen', () => {
     expect(openPubInMaps).toHaveBeenCalledWith(revealedPub);
   });
 
-  it('returns to the compass through the single primary CTA', async () => {
+  it('returns to the compass through the primary CTA', async () => {
     useSettingsStore.setState({ hapticEnabled: false });
     await renderScreen();
 
-    expect(CounterCta).toHaveBeenCalledWith(
+    const glowButtonMock = GlowButton as unknown as jest.Mock;
+    const props = glowButtonMock.mock.calls.at(-1)?.[0];
+
+    expect(props).toEqual(
       expect.objectContaining({
         label: cs.celebration.backToCompass,
-        accessibilityLabel: cs.a11y.celebrationBackToCompass,
-      }),
-      undefined
+        variant: 'primary',
+        glow: 'strong',
+      })
     );
 
-    const props = (CounterCta as unknown as jest.Mock).mock.calls.at(-1)?.[0];
     act(() => props.onPress());
 
     expect(mockRouterBack).toHaveBeenCalledTimes(1);
