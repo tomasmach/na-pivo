@@ -1698,11 +1698,12 @@ const styles = StyleSheet.create({
   },
   sheetCardWrap: {
     width: '100%',
-    minHeight: '56%',
+    // Let the card measure its content until this cap. A percentage minHeight
+    // combined with flex: 1 leaves the list unbounded and Yoga clips it.
     maxHeight: '92%',
   },
   sheetCard: {
-    flex: 1,
+    flexShrink: 1,
     backgroundColor: Colors.stout2,
     borderTopLeftRadius: Radius.cardLarge,
     borderTopRightRadius: Radius.cardLarge,
@@ -1745,7 +1746,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sheetList: {
-    flex: 1,
+    // Shrink only after the card reaches its cap, then scroll inside it.
+    flexGrow: 0,
+    flexShrink: 1,
     marginTop: Spacing.sm,
   },
   sheetListContent: {
