@@ -395,7 +395,7 @@ export default function LeaderboardsScreen() {
                   minimumFontScale={0.8}
                   maxFontSizeMultiplier={FontScaleCap.display}
                 >
-                  {rankLabel}
+                  {`${rankLabel}.`}
                 </Text>
                 <Text
                   style={styles.rankNoun}
