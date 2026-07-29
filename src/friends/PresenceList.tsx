@@ -18,7 +18,7 @@
  * five bordered boxes is frames inside frames (§14.10).
  */
 
-import React, { memo, useCallback } from 'react';
+import React, { memo, useCallback, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 
@@ -42,6 +42,9 @@ interface PresenceRowProps {
   /** Dims the live dot while the dashboard is stale — "live" must not lie. */
   stale: boolean;
   mine: boolean;
+  /** They are sitting where I am — the row says so instead of me having to
+   *  compare two pub names three rows apart. */
+  sameTable?: boolean;
   onOpenProfile: (accountId: string) => void;
   onLongPress?: (presence: FriendPresence) => void;
 }
@@ -61,6 +64,7 @@ const PresenceRow = memo(function PresenceRow({
   presence,
   stale,
   mine,
+  sameTable = false,
   onOpenProfile,
   onLongPress,
 }: PresenceRowProps) {
@@ -120,6 +124,15 @@ const PresenceRow = memo(function PresenceRow({
             >
               {presence.pubName || cs.friends.presenceSomewhere}
             </Text>
+            {sameTable ? (
+              <Text
+                style={styles.sameTable}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {cs.friends.presenceSameTable}
+              </Text>
+            ) : null}
             {meta ? (
               <Text
                 style={styles.meta}
@@ -152,6 +165,9 @@ export interface PresenceListProps {
   presence: FriendPresence[];
   myPresence: MyPresence | null;
   stale: boolean;
+  /** The pub I am sitting in, when somebody from the party is sitting there
+   *  too. Those rows rise to the top, right under mine. */
+  sharedCacheKey?: string | null;
   onOpenProfile: (accountId: string) => void;
   /** Called after a block/report so the screen can reload the graph. */
   onChanged: () => void;
@@ -161,6 +177,7 @@ export function PresenceList({
   presence,
   myPresence,
   stale,
+  sharedCacheKey = null,
   onOpenProfile,
   onChanged,
 }: PresenceListProps) {
@@ -169,6 +186,16 @@ export function PresenceList({
     (row: FriendPresence) => openSafetyMenu(row.account),
     [openSafetyMenu],
   );
+
+  // Stable sort: the table I am at first, everyone else in the order the server
+  // sent. Nobody is dropped — this list still answers "kdo kde sedí".
+  const rows = useMemo(() => {
+    if (!sharedCacheKey) return presence;
+    return [
+      ...presence.filter((row) => row.cacheKey === sharedCacheKey),
+      ...presence.filter((row) => row.cacheKey !== sharedCacheKey),
+    ];
+  }, [presence, sharedCacheKey]);
 
   if (presence.length === 0 && !myPresence) return null;
 
@@ -182,12 +209,13 @@ export function PresenceList({
           onOpenProfile={onOpenProfile}
         />
       ) : null}
-      {presence.map((row) => (
+      {rows.map((row) => (
         <PresenceRow
           key={row.account.id}
           presence={row}
           stale={stale}
           mine={false}
+          sameTable={sharedCacheKey != null && row.cacheKey === sharedCacheKey}
           onOpenProfile={onOpenProfile}
           onLongPress={handleLongPress}
         />
@@ -256,6 +284,15 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.ui.medium,
     fontSize: 13,
     color: Colors.mutedText,
+    includeFontPadding: false,
+  },
+  // Amber, because it is the one fact on this row that is about me. Type only,
+  // no pill: a badge per row would put frames inside the card (§14.10).
+  sameTable: {
+    marginTop: 1,
+    fontFamily: Fonts.ui.medium,
+    fontSize: 13,
+    color: Colors.amber,
     includeFontPadding: false,
   },
   // Quiet by design, and the same affordance FriendActiveCard already uses: a

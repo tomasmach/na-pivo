@@ -1,16 +1,17 @@
 /**
- * PartaPlans — the two other ways to spend an evening with the party, on the
- * surface instead of behind the "…" door.
+ * PartaPlans — the other way to spend an evening with the party, on the surface
+ * instead of behind the "…" door.
  *
- * "Cinknout partě" (the screen's amber button) covers "I'm going for one".
- * A shared table with a code and a living-room sitting are whole features, and
- * a 20pt glyph in the header was the only way to find them. They sit at the
- * tail of the stream: the live feed keeps the top, but you scroll into these
- * instead of having to know they exist.
+ * "Cinknout partě" (the screen's amber button) covers "I'm going for one", and
+ * sitting together in a pub needs no button at all — the counter already tells
+ * the party where everyone is. What is left is the one evening the app cannot
+ * infer, because it happens in somebody's living room and nobody checks into a
+ * kitchen: "Pivo u někoho". It sits at the tail of the stream, so you scroll
+ * into it instead of having to know it exists.
  *
- * Two hairline rows in one stream card, same anatomy as every other row here:
- * amber medallion, name, one line of what it actually is. Navigation only —
- * neither row counts anything, so the one-action rule stands.
+ * A hairline row in a stream card, same anatomy as every other row here: amber
+ * medallion, name, one line of what it actually is. Navigation only — the row
+ * counts nothing, so the one-action rule stands.
  */
 
 import React from 'react';
@@ -18,7 +19,6 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 
 import {
-  ArmchairIcon,
   ChevronRightIcon,
   HouseIcon,
   type IconProps,
@@ -42,13 +42,6 @@ export function PartaPlans() {
   const router = useRouter();
 
   const rows: PlanRow[] = [
-    {
-      key: 'party-evening',
-      title: cs.friends.planPartyEveningTitle,
-      body: cs.friends.planPartyEveningBody,
-      Icon: ArmchairIcon,
-      onPress: () => router.push('/party' as Href),
-    },
     {
       key: 'home-party',
       title: cs.friends.planHomePartyTitle,

@@ -1022,73 +1022,6 @@ export const cs = {
     detailMyTagsLabel: 'Můj verdikt',
   },
 
-  partyEvening: {
-    title: 'Společný večer',
-    loading: 'Načítám společný večer',
-    tableCountLabel: 'U STOLU',
-    cardA11y: (count: number, pub: string, code: string) =>
-      `${
-        count === 1
-          ? '1 člověk u stolu'
-          : count >= 2 && count <= 4
-            ? `${count} lidi u stolu`
-            : `${count} lidí u stolu`
-      }. ${pub}. Kód večera ${code}.`,
-    friendFallback: 'Kamarád',
-    emptyTitle: 'Zatím u žádného stolu nesedíš',
-    emptyBody: 'Založ stůl pro partu, nebo přijď s kódem od kámoše.',
-    privacy: 'Do večera jde jen to, co sem sám pošleš. Deníček zůstává tvůj.',
-    pubName: 'Hospoda',
-    pubNamePlaceholder: 'Třeba U Zlatého tygra',
-    pubCity: 'Město',
-    pubCityPlaceholder: 'Praha',
-    startSheetTitle: 'Kde sedíte?',
-    createTable: 'Založit stůl',
-    createCta: 'Založ stůl',
-    joinSheetTitle: 'Máš kód?',
-    joinCodeA11y: 'Šestimístný kód od kámoše',
-    joinPlaceholder: 'ABC234',
-    join: 'Jdu',
-    joinCta: 'Mám kód od kámoše',
-    hostedBy: (name: string) => `Stůl drží ${name}`,
-    copyCode: 'Kopírovat kód',
-    copyCodeA11y: (code: string) => `Kopírovat kód večera. Kód ${code}.`,
-    copied: 'Kód máš ve schránce.',
-    pendingShort: 'Čeká na signál',
-    pendingNudge: 'Čeká na signál. Pošlu, jak se chytí.',
-    actionQueued: 'Beru. Dotáhnu to, až se chytí signál.',
-    refresh: 'Obnovit',
-    feed: 'U stolu',
-    joined: (name: string) => `${name} dorazil ke stolu`,
-    drank: (name: string, beer: string, quantity: number) =>
-      `${name} poslal ${quantity > 1 ? `${quantity}× ` : ''}${beer}`,
-    emptyFeed: 'Zatím jen cinkly půllitry. První sdílené pivo může být tvoje.',
-    drinkSheetTitle: 'Co piješ?',
-    drinkPlaceholder: 'Co právě piješ?',
-    drinkPrivacy: 'Uvidí ho jen lidi u tohohle stolu. Do deníčku se nic nekopíruje.',
-    lastDrink: 'naposled',
-    repeatLastA11y: (beer: string) => `Poslat znovu ${beer} ke stolu`,
-    shareDrink: 'Pošli ke stolu',
-    shareDrinkCta: 'Pošli pivo ke stolu',
-    shared: 'Pivo je u stolu.',
-    leave: 'Odejít od stolu',
-    end: 'Zabalit večer',
-    endConfirmTitle: 'Zabalit večer?',
-    endConfirmBody: 'Stůl se zavře všem, co u něj sedí.',
-    endConfirmBack: 'Zpátky',
-    endConfirmAction: 'Zabalit',
-    ended: 'Večer je dopitý.',
-    left: 'Od stolu jsi odešel.',
-    ghost: 'V neviditelném režimu se ke společnému stolu nepřipojíš. Vypni ho v nastavení Party.',
-    notFriends: 'K tomuhle stolu pouští pořadatel jen svoje kámoše.',
-    notFound: 'Tenhle večer už neběží, nebo máš špatný kód.',
-    error: 'Večer se teď nenačetl.',
-    retry: 'Zkusit znovu',
-    back: 'Zpět do Party',
-    open: 'Společný večer',
-    openHint: 'Svolej jeden stůl bez míchání soukromých návštěv.',
-  },
-
   communityEvents: {
     title: 'Pivo u někoho',
     kicker: 'KOMORNÍ SETKÁNÍ 18+',
@@ -1521,8 +1454,6 @@ export const cs = {
 
     // — "Co spolu podniknout": the two other evening formats, on the surface —
     planHeader: 'Co spolu podniknout',
-    planPartyEveningTitle: 'Společný večer',
-    planPartyEveningBody: 'Jeden stůl, jeden kód, všichni u něj.',
     planHomePartyTitle: 'Pivo u někoho',
     planHomePartyBody: 'Malé domácí posezení v okolí.',
 
@@ -1573,6 +1504,20 @@ export const cs = {
     },
     /** Card caption when the number counts people actually sitting somewhere. */
     tableCaptionSitting: 'SEDÍ NA PIVU',
+    /**
+     * The shared table, detected instead of declared. Same grammar constraints
+     * as headlineSitting: no pub name (we cannot decline it) and no case on the
+     * friend's name (a nickname is not declinable either), so everybody stays in
+     * the nominative and the verb stays third-person genderless.
+     */
+    headlineTogether: (name: string, others: number) => {
+      if (others <= 0) return `${name} sedí u stolu s tebou.`;
+      if (others === 1) return `${name} a ještě jeden sedí u stolu s tebou.`;
+      if (others <= 4) return `${name} a další ${others} sedí u stolu s tebou.`;
+      return `${name} a dalších ${others} sedí u stolu s tebou.`;
+    },
+    /** Quiet marker on the presence rows that are sitting where I am. */
+    presenceSameTable: 'u tvého stolu',
 
     // — The automatic evening feed, no hanging-up required.
     //   Deliberately NOT called "Výčep": that name already belongs to the

@@ -25,16 +25,11 @@
 import {
   clearActivityReaction,
   clearActivityResponse,
-  createPartyEvening,
   createFriendPlan,
-  endPartyEvening,
   endFriendPubActivity,
-  joinPartyEvening,
-  leavePartyEvening,
   reactToActivity,
   respondToActivity,
   sendFriendRequest,
-  sharePartyEveningDrink,
   shareFriendPubActivity,
   type ActivityResponseKind,
   type FriendActionError,
@@ -67,26 +62,7 @@ export type FriendQueueItem =
   | { op: 'cheer-clear'; activityId: string }
   | { op: 'activity'; clientId: string; payload: ActivityPayload }
   | { op: 'end'; clientId: string; activityId?: string }
-  | { op: 'request'; key: string; inviteCode?: string; accountId?: string; nickname?: string }
-  | {
-      op: 'party-create';
-      clientId: string;
-      code: string;
-      pubName: string;
-      pubCity?: string;
-      startedAt: string;
-    }
-  | { op: 'party-join'; code: string }
-  | { op: 'party-leave'; code: string }
-  | { op: 'party-end'; code: string }
-  | {
-      op: 'party-drink';
-      code: string;
-      clientId: string;
-      beerName: string;
-      quantity: number;
-      sharedAt: string;
-    };
+  | { op: 'request'; key: string; inviteCode?: string; accountId?: string; nickname?: string };
 
 /**
  * Composite dedup key: the SAME key means last-write-wins. `act:<clientId>` is
@@ -106,15 +82,6 @@ function dedupKey(item: FriendQueueItem): string {
       return `act:${item.clientId}`;
     case 'request':
       return `req:${item.key}`;
-    case 'party-create':
-      return `party-create:${item.clientId}`;
-    case 'party-join':
-    case 'party-leave':
-      return `party-member:${item.code}`;
-    case 'party-end':
-      return `party-end:${item.code}`;
-    case 'party-drink':
-      return `party-drink:${item.clientId}`;
   }
 }
 
@@ -154,25 +121,8 @@ function isQueueItem(value: unknown): value is FriendQueueItem {
           typeof i.accountId === 'string' ||
           typeof i.nickname === 'string')
       );
-    case 'party-create':
-      return (
-        typeof i.clientId === 'string' &&
-        typeof i.code === 'string' &&
-        typeof i.pubName === 'string' &&
-        typeof i.startedAt === 'string'
-      );
-    case 'party-join':
-    case 'party-leave':
-    case 'party-end':
-      return typeof i.code === 'string';
-    case 'party-drink':
-      return (
-        typeof i.code === 'string' &&
-        typeof i.clientId === 'string' &&
-        typeof i.beerName === 'string' &&
-        typeof i.quantity === 'number' &&
-        typeof i.sharedAt === 'string'
-      );
+    // Anything else — including the retired party-evening ops left parked in a
+    // queue written by an older build — is dropped on load.
     default:
       return false;
   }
@@ -252,31 +202,6 @@ async function deliver(item: FriendQueueItem): Promise<QueueSyncResult> {
           nickname: item.nickname,
         }),
       );
-    case 'party-create':
-      return classify(
-        await createPartyEvening({
-          clientId: item.clientId,
-          joinCode: item.code,
-          pubName: item.pubName,
-          pubCity: item.pubCity,
-          startedAt: item.startedAt,
-        }),
-      );
-    case 'party-join':
-      return classify(await joinPartyEvening(item.code));
-    case 'party-leave':
-      return classify(await leavePartyEvening(item.code));
-    case 'party-end':
-      return classify(await endPartyEvening(item.code));
-    case 'party-drink':
-      return classify(
-        await sharePartyEveningDrink(item.code, {
-          clientId: item.clientId,
-          beerName: item.beerName,
-          quantity: item.quantity,
-          sharedAt: item.sharedAt,
-        }),
-      );
   }
 }
 
@@ -292,29 +217,15 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
 
   const attempted = new Map<string, string>();
   const settled = new Set<string>();
-  const blockedPartyCodes = new Set<string>();
   for (const item of queue) {
     // Stop before delivering the next op once an account-boundary clear has
     // aborted us, so a previous account's queued actions are never sent under the
     // session that replaces this one. (An op already in flight keeps the token it
     // captured before the boundary, so it still lands on the right account.)
     if (signal.aborted) break;
-    if (
-      'code' in item &&
-      blockedPartyCodes.has(item.code) &&
-      (item.op === 'party-drink' || item.op === 'party-end' || item.op === 'party-leave')
-    ) {
-      continue;
-    }
     const key = dedupKey(item);
     attempted.set(key, signature(item));
     const result = await deliver(item);
-    if (
-      result === 'retry' &&
-      (item.op === 'party-create' || item.op === 'party-join')
-    ) {
-      blockedPartyCodes.add(item.code);
-    }
     if (result !== 'retry') settled.add(key);
   }
 

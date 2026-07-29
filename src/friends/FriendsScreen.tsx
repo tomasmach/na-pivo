@@ -140,6 +140,7 @@ import { PartyCard } from './PartyCard';
 import PlanCard from './PlanCard';
 import { PresenceList } from './PresenceList';
 import { SittingRow } from './SittingRow';
+import { deriveSharedTable } from './sharedTable';
 import { mergeCheckInsIntoFeed, type MergedSitting } from './partaFeedMerge';
 import { useFriendSafety } from './friendSafety';
 
@@ -953,7 +954,26 @@ export default function FriendsScreen() {
     )[0];
   }, [d]);
 
+  /**
+   * The evening that used to need a code: me and whoever from the party is in
+   * the same pub right now, worked out from the presence rows the counter
+   * already produces. Built from the full `presence` list, not the quiet half —
+   * a friend who also broadcast is still sitting at my table.
+   */
+  const sharedTable = useMemo(
+    () => deriveSharedTable(d?.myPresence ?? null, d?.presence ?? []),
+    [d?.myPresence, d?.presence],
+  );
+
   const headline = useMemo(() => {
+    // Sitting together outranks whoever is freshest: the party's own table is
+    // the more interesting fact than a friend three districts away.
+    if (sharedTable) {
+      return cs.friends.headlineTogether(
+        friendDisplayName(sharedTable.friends[0].account),
+        sharedTable.friends.length - 1,
+      );
+    }
     if (freshestSitting) {
       return cs.friends.headlineSitting(
         friendDisplayName(freshestSitting.account),
@@ -968,7 +988,7 @@ export default function FriendsScreen() {
     }
     if (d?.myActiveActivity) return cs.friends.pulseMineBody;
     return cs.friends.emptyActive;
-  }, [d?.myActiveActivity, freshestPlan, freshestSitting, sittingCount]);
+  }, [d?.myActiveActivity, freshestPlan, freshestSitting, sharedTable, sittingCount]);
 
   const rankLine = useMemo(() => {
     if (d?.settings.ghostMode) return cs.friends.hiddenRank;
@@ -1351,6 +1371,7 @@ export default function FriendsScreen() {
                 presence={quietPresence}
                 myPresence={myQuietPresence}
                 stale={loadError}
+                sharedCacheKey={sharedTable?.cacheKey ?? null}
                 onOpenProfile={openFriendProfile}
                 onChanged={reload}
               />

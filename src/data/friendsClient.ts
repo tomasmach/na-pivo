@@ -224,37 +224,6 @@ export interface InviteResolveResult {
   inviter: FriendProfile | null;
 }
 
-export type PartyEveningEventKind = 'joined' | 'drink';
-
-export interface PartyEveningEvent {
-  id: string;
-  kind: PartyEveningEventKind;
-  at: string;
-  account: FriendProfile;
-  beerName: string;
-  quantity: number;
-}
-
-/** An explicit shared evening. Private diary visits are never copied here. */
-export interface PartyEvening {
-  id: string;
-  joinCode: string;
-  joinUrl: string;
-  host: FriendProfile;
-  pubName: string;
-  pubCity: string;
-  active: boolean;
-  startedAt: string;
-  endedAt: string | null;
-  isHost: boolean;
-  members: FriendProfile[];
-  events: PartyEveningEvent[];
-}
-
-export type PartyEveningResult =
-  | { ok: true; evening: PartyEvening | null }
-  | FriendActionError;
-
 export interface FriendProfileStats {
   sharedPubCount: number;
   nightsTogether: number;
@@ -473,30 +442,6 @@ interface RawInviteResolve {
   inviter?: RawFriendProfile | null;
 }
 
-interface RawPartyEveningEvent {
-  id?: string;
-  kind?: string;
-  at?: string;
-  account?: RawFriendProfile;
-  beer_name?: string;
-  quantity?: number;
-}
-
-interface RawPartyEvening {
-  id?: string;
-  join_code?: string;
-  join_url?: string;
-  host?: RawFriendProfile;
-  pub_name?: string;
-  pub_city?: string;
-  active?: boolean;
-  started_at?: string;
-  ended_at?: string | null;
-  is_host?: boolean;
-  members?: RawFriendProfile[];
-  events?: RawPartyEveningEvent[];
-}
-
 async function handleUnauthorized(session: AccountSession, endpoint: string): Promise<void> {
   await clearCachedAnonymousAccount(session, { source: 'friends_request', endpoint });
 }
@@ -508,32 +453,6 @@ function parseProfile(raw: RawFriendProfile | undefined | null): FriendProfile {
     displayName: raw?.display_name ?? '',
     avatarUrl: raw?.avatar_url ?? null,
     isPublic: raw?.is_public !== false,
-  };
-}
-
-function parsePartyEvening(raw: RawPartyEvening): PartyEvening {
-  return {
-    id: raw.id ?? '',
-    joinCode: raw.join_code ?? '',
-    joinUrl: raw.join_url ?? '',
-    host: parseProfile(raw.host),
-    pubName: raw.pub_name ?? '',
-    pubCity: raw.pub_city ?? '',
-    active: raw.active !== false,
-    startedAt: raw.started_at ?? '',
-    endedAt: raw.ended_at ?? null,
-    isHost: raw.is_host === true,
-    members: Array.isArray(raw.members) ? raw.members.map(parseProfile) : [],
-    events: Array.isArray(raw.events)
-      ? raw.events.map((event) => ({
-          id: event.id ?? '',
-          kind: event.kind === 'drink' ? 'drink' : 'joined',
-          at: event.at ?? '',
-          account: parseProfile(event.account),
-          beerName: event.beer_name ?? '',
-          quantity: typeof event.quantity === 'number' ? event.quantity : 1,
-        }))
-      : [],
   };
 }
 
@@ -1160,97 +1079,4 @@ export async function markFriendNotificationsRead(ids?: string[]): Promise<void>
     method: 'POST',
     body: ids ? { ids } : {},
   });
-}
-
-export async function fetchCurrentPartyEvening(
-  signal?: AbortSignal,
-): Promise<PartyEveningResult> {
-  const res = await requestJson('/v1/party-evenings', { signal });
-  if (!res.ok) return res.result;
-  const raw = res.data.evening;
-  return {
-    ok: true,
-    evening: raw && typeof raw === 'object' ? parsePartyEvening(raw as RawPartyEvening) : null,
-  };
-}
-
-export async function fetchPartyEvening(
-  code: string,
-  signal?: AbortSignal,
-): Promise<PartyEveningResult> {
-  const res = await requestJson(`/v1/party-evenings/${encodeURIComponent(code.toUpperCase())}`, {
-    signal,
-  });
-  return res.ok
-    ? { ok: true, evening: parsePartyEvening(res.data as RawPartyEvening) }
-    : res.result;
-}
-
-export async function createPartyEvening(input: {
-  clientId: string;
-  joinCode: string;
-  pubName: string;
-  pubCity?: string;
-  startedAt?: string;
-}): Promise<PartyEveningResult> {
-  const res = await requestJson('/v1/party-evenings', {
-    method: 'POST',
-    body: {
-      client_id: input.clientId,
-      join_code: input.joinCode.toUpperCase(),
-      pub_name: input.pubName,
-      pub_city: input.pubCity ?? '',
-      started_at: input.startedAt,
-    },
-  });
-  return res.ok
-    ? { ok: true, evening: parsePartyEvening(res.data as RawPartyEvening) }
-    : res.result;
-}
-
-export async function joinPartyEvening(code: string): Promise<PartyEveningResult> {
-  const res = await requestJson(
-    `/v1/party-evenings/${encodeURIComponent(code.toUpperCase())}/join`,
-    { method: 'POST' },
-  );
-  return res.ok
-    ? { ok: true, evening: parsePartyEvening(res.data as RawPartyEvening) }
-    : res.result;
-}
-
-export async function leavePartyEvening(code: string): Promise<FriendActionResult> {
-  const res = await requestJson(
-    `/v1/party-evenings/${encodeURIComponent(code.toUpperCase())}/join`,
-    { method: 'DELETE' },
-  );
-  return res.ok ? { ok: true } : res.result;
-}
-
-export async function endPartyEvening(code: string): Promise<PartyEveningResult> {
-  const res = await requestJson(
-    `/v1/party-evenings/${encodeURIComponent(code.toUpperCase())}/end`,
-    { method: 'POST' },
-  );
-  return res.ok
-    ? { ok: true, evening: parsePartyEvening(res.data as RawPartyEvening) }
-    : res.result;
-}
-
-export async function sharePartyEveningDrink(
-  code: string,
-  input: { clientId: string; beerName: string; quantity?: number; sharedAt?: string },
-): Promise<FriendActionResult> {
-  const res = await requestJson(
-    `/v1/party-evenings/${encodeURIComponent(code.toUpperCase())}/drinks`,
-    {
-      method: 'POST',
-      body: {
-        client_id: input.clientId,
-        beer_name: input.beerName,
-        quantity: input.quantity ?? 1,
-        shared_at: input.sharedAt,
-      },
-    },
-  );
-  return res.ok ? { ok: true } : res.result;
 }

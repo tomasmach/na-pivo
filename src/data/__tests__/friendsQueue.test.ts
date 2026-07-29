@@ -13,11 +13,6 @@ const shareFriendPubActivity = jest.fn(async () => ({ ok: true }));
 const createFriendPlan = jest.fn(async () => ({ ok: true }));
 const endFriendPubActivity = jest.fn(async () => ({ ok: true }));
 const sendFriendRequest = jest.fn(async () => ({ ok: true }));
-const createPartyEvening = jest.fn(async (): Promise<unknown> => ({ ok: true, evening: null }));
-const joinPartyEvening = jest.fn(async (): Promise<unknown> => ({ ok: true, evening: null }));
-const leavePartyEvening = jest.fn(async () => ({ ok: true }));
-const endPartyEvening = jest.fn(async (): Promise<unknown> => ({ ok: true, evening: null }));
-const sharePartyEveningDrink = jest.fn(async () => ({ ok: true }));
 
 jest.mock('../friendsClient', () => ({
   respondToActivity: (...a: unknown[]) => respondToActivity(...(a as [])),
@@ -28,11 +23,6 @@ jest.mock('../friendsClient', () => ({
   createFriendPlan: (...a: unknown[]) => createFriendPlan(...(a as [])),
   endFriendPubActivity: (...a: unknown[]) => endFriendPubActivity(...(a as [])),
   sendFriendRequest: (...a: unknown[]) => sendFriendRequest(...(a as [])),
-  createPartyEvening: (...a: unknown[]) => createPartyEvening(...(a as [])),
-  joinPartyEvening: (...a: unknown[]) => joinPartyEvening(...(a as [])),
-  leavePartyEvening: (...a: unknown[]) => leavePartyEvening(...(a as [])),
-  endPartyEvening: (...a: unknown[]) => endPartyEvening(...(a as [])),
-  sharePartyEveningDrink: (...a: unknown[]) => sharePartyEveningDrink(...(a as [])),
 }));
 
 import {
@@ -66,11 +56,6 @@ beforeEach(async () => {
   createFriendPlan.mockResolvedValue({ ok: true });
   endFriendPubActivity.mockResolvedValue({ ok: true });
   sendFriendRequest.mockResolvedValue({ ok: true });
-  createPartyEvening.mockResolvedValue({ ok: true, evening: null });
-  joinPartyEvening.mockResolvedValue({ ok: true, evening: null });
-  leavePartyEvening.mockResolvedValue({ ok: true });
-  endPartyEvening.mockResolvedValue({ ok: true, evening: null });
-  sharePartyEveningDrink.mockResolvedValue({ ok: true });
   await AsyncStorage.clear();
 });
 
@@ -144,59 +129,23 @@ describe('flushFriendsQueue — delivery + keep/drop', () => {
     });
   });
 
-  it('persists and retries every shared-evening write without mixing their keys', async () => {
-    createPartyEvening.mockResolvedValue(retry());
-    joinPartyEvening.mockResolvedValue(retry());
-    sharePartyEveningDrink.mockResolvedValue(retry());
-    await enqueueFriendOp({
-      op: 'party-create',
-      clientId: 'create-1',
-      code: 'STUL24',
-      pubName: 'U Testu',
-      pubCity: 'Praha',
-      startedAt: '2026-07-19T18:00:00.000Z',
-    });
-    await enqueueFriendOp({ op: 'party-join', code: 'STUL24' });
-    await enqueueFriendOp({
-      op: 'party-drink',
-      code: 'STUL24',
-      clientId: 'drink-1',
-      beerName: 'Plzeň',
-      quantity: 1,
-      sharedAt: '2026-07-19T18:10:00.000Z',
-    });
-    expect(await readQueue()).toHaveLength(3);
-    expect(sharePartyEveningDrink).not.toHaveBeenCalled();
+  it('drops an op left behind by a retired feature instead of replaying it', async () => {
+    // A queue written before the manual shared-evening was removed can still be
+    // sitting on disk. Its ops no longer have a delivery path, so load must skip
+    // them rather than hand `deliver` an op it cannot route.
+    await AsyncStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify([
+        { op: 'party-drink', code: 'STUL24', clientId: 'drink-1', beerName: 'Plzeň', quantity: 1, sharedAt: '2026-07-19T18:10:00.000Z' },
+        { op: 'rsvp', activityId: 'a1', response: 'going' },
+      ]),
+    );
+    respondToActivity.mockResolvedValue(retry());
 
-    createPartyEvening.mockResolvedValue({ ok: true, evening: null });
-    joinPartyEvening.mockResolvedValue({ ok: true, evening: null });
-    sharePartyEveningDrink.mockResolvedValue({ ok: true });
     await flushFriendsQueue();
-    expect(await readQueue()).toEqual([]);
-    expect(createPartyEvening).toHaveBeenCalledWith({
-      clientId: 'create-1',
-      joinCode: 'STUL24',
-      pubName: 'U Testu',
-      pubCity: 'Praha',
-      startedAt: '2026-07-19T18:00:00.000Z',
-    });
-    expect(joinPartyEvening).toHaveBeenCalledWith('STUL24');
-    expect(sharePartyEveningDrink).toHaveBeenCalledWith('STUL24', {
-      clientId: 'drink-1',
-      beerName: 'Plzeň',
-      quantity: 1,
-      sharedAt: '2026-07-19T18:10:00.000Z',
-    });
-  });
 
-  it('lets leaving supersede a pending join for the same evening', async () => {
-    joinPartyEvening.mockResolvedValue(retry());
-    leavePartyEvening.mockResolvedValue(retry());
-    await enqueueFriendOp({ op: 'party-join', code: 'STUL24' });
-    await enqueueFriendOp({ op: 'party-leave', code: 'STUL24' });
-
-    const queue = await readQueue();
-    expect(queue).toEqual([{ op: 'party-leave', code: 'STUL24' }]);
+    expect(await readQueue()).toEqual([{ op: 'rsvp', activityId: 'a1', response: 'going' }]);
+    expect(respondToActivity).toHaveBeenCalledWith('a1', 'going');
   });
 
   it('drops a permanently-rejected op (4xx) but keeps a transient one', async () => {
