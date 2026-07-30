@@ -19,6 +19,7 @@ import {
   Pressable,
   TextInput,
   ActivityIndicator,
+  Linking,
   Platform,
   StyleSheet,
   type KeyboardTypeOptions,
@@ -519,15 +520,51 @@ export default function AuthScreen() {
               ) : null}
             </>
           )}
+
+          {/* ── Terms consent (covers e-mail registration and social sign-in) ── */}
+          <Text style={styles.legalNote} maxFontSizeMultiplier={FontScaleCap.body}>
+            {cs.account.termsNotePrefix}
+            <Text
+              style={styles.legalLink}
+              onPress={() => void Linking.openURL(TERMS_URL)}
+              accessibilityRole="link"
+            >
+              {cs.account.termsNoteTermsLink}
+            </Text>
+            {cs.account.termsNoteMiddle}
+            <Text
+              style={styles.legalLink}
+              onPress={() => void Linking.openURL(PRIVACY_URL)}
+              accessibilityRole="link"
+            >
+              {cs.account.termsNotePrivacyLink}
+            </Text>
+            {cs.account.termsNoteSuffix}
+          </Text>
       </KeyboardAwareScrollView>
     </View>
   );
 }
 
+const TERMS_URL = 'https://tomasmach.github.io/na-pivo/terms.html';
+const PRIVACY_URL = 'https://tomasmach.github.io/na-pivo/privacy.html';
+
 const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: Colors.stout,
+  },
+  legalNote: {
+    marginTop: Spacing.xs,
+    fontFamily: Fonts.ui.regular,
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: Colors.mutedText,
+    textAlign: 'center',
+  },
+  legalLink: {
+    color: Colors.foamMuted,
+    textDecorationLine: 'underline',
   },
   flex: {
     flex: 1,
