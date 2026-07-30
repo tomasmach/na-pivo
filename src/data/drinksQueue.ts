@@ -23,30 +23,16 @@ import { createQueueStorage, createQueueLock, createCoalescingFlush } from './cr
 import { isDrinkType, isOutsidePlaceContext, isServingType } from '@/drinks/drinkTypes';
 
 const STORAGE_KEY = 'na-pivo-drinks-queue';
-/** Hard cap — a queue this long means the backend has been unreachable for a
- *  very long time; dropping the oldest drinks beats unbounded growth. */
-const MAX_QUEUE_LENGTH = 200;
+/**
+ * Existing-history backfills stay deliberately bounded so one migration cannot
+ * monopolise local storage. Live facts are never capped: they remain queued
+ * until the backend acknowledges them.
+ */
+const HISTORICAL_SEED_QUEUE_LIMIT = 200;
 export type QueuedDrinkUpdateResult = 'queued' | 'in-flight' | 'missing';
 const deliveringIds = new Set<string>();
 const protectedHistoricalIds = new Set<string>();
 let accountBoundaryGeneration = 0;
-
-function capQueue(queue: DrinkEntry[]): DrinkEntry[] {
-  if (queue.length <= MAX_QUEUE_LENGTH) return queue;
-  if (protectedHistoricalIds.size === 0) return queue.slice(-MAX_QUEUE_LENGTH);
-
-  const protectedEntries = queue.filter((entry) =>
-    protectedHistoricalIds.has(entry.client_id),
-  );
-  const unprotectedEntries = queue.filter(
-    (entry) => !protectedHistoricalIds.has(entry.client_id),
-  );
-  const unprotectedCapacity = Math.max(0, MAX_QUEUE_LENGTH - protectedEntries.length);
-  return [
-    ...protectedEntries.slice(-MAX_QUEUE_LENGTH),
-    ...(unprotectedCapacity > 0 ? unprotectedEntries.slice(-unprotectedCapacity) : []),
-  ];
-}
 
 function isDrinkEntry(entry: unknown): entry is DrinkEntry {
   const e = entry as DrinkEntry;
@@ -140,7 +126,7 @@ export async function enqueueDrink(entry: DrinkEntry, options?: { deliver?: bool
   await runMutation(async () => {
     const queue = await loadQueue();
     queue.push(entry);
-    await saveQueue(capQueue(queue));
+    await saveQueue(queue);
   });
 
   if (!deliver) return false;
@@ -160,7 +146,10 @@ export function ensureDrinkQueued(entry: DrinkEntry): Promise<void> {
     const queue = await loadQueue();
     if (queue.some((queued) => queued.client_id === entry.client_id)) return;
     queue.push(entry);
-    await saveQueue(capQueue(queue));
+    const persisted = await saveQueue(queue);
+    if (!persisted) {
+      throw new Error('Offline drink queue is unavailable');
+    }
   });
 }
 
@@ -203,7 +192,7 @@ export function ensureHistoricalDrinkBatchQueued(
     const acceptedClientIds: string[] = [];
     const additions: DrinkEntry[] = [];
     const batchIds = new Set<string>();
-    let available = Math.max(0, MAX_QUEUE_LENGTH - queue.length);
+    let available = Math.max(0, HISTORICAL_SEED_QUEUE_LIMIT - queue.length);
 
     for (const entry of entries) {
       if (batchIds.has(entry.client_id)) continue;
@@ -282,8 +271,8 @@ export function removeQueuedDrink(clientId: string): Promise<boolean> {
     const queue = await loadQueue();
     const filtered = queue.filter((entry) => entry.client_id !== clientId);
     if (filtered.length !== queue.length) {
-      await saveQueue(filtered);
-      return !deliveringIds.has(clientId);
+      const persisted = await saveQueue(filtered);
+      return persisted && !deliveringIds.has(clientId);
     }
     return false;
   });

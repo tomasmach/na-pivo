@@ -1862,9 +1862,9 @@ class PubCommunityRequestSerializer(PubInputSerializer):
 class DrinkItemSerializer(serializers.Serializer):
     """The named item inside a drink-log request.
 
-    The wire key remains ``beer`` so released clients stay compatible. Beer
-    volumes retain the strict community-menu set; soft drinks and shots accept
-    real menu sizes from 10 ml to 3 l and never enter the beer catalogue.
+    The wire key remains ``beer`` so released clients stay compatible. Private
+    drinks accept real custom sizes from 10 ml to 3 l (shots stop at 200 ml).
+    Beer sizes outside the public community-menu presets remain private.
     """
 
     name = serializers.CharField(max_length=80, trim_whitespace=True)
@@ -1903,6 +1903,7 @@ class DrinkRequestSerializer(_Pub200NameValidationMixin, PubInputSerializer):
     )
 
     client_id = serializers.UUIDField()
+    evening_client_id = serializers.UUIDField(required=False, allow_null=True)
     external_id = serializers.CharField(
         max_length=128,
         required=False,
@@ -1939,11 +1940,6 @@ class DrinkRequestSerializer(_Pub200NameValidationMixin, PubInputSerializer):
 
         item = attrs["beer"]
         if attrs["drink_type"] == DrinkLog.DrinkType.BEER:
-            volume_ml = item.get("volume_ml")
-            if volume_ml is not None and volume_ml not in ALLOWED_BEER_VOLUMES_ML:
-                raise serializers.ValidationError(
-                    {"beer": {"volume_ml": f"volume_ml must be one of {sorted(ALLOWED_BEER_VOLUMES_ML)}."}}
-                )
             normalized = normalize_beer_payload(
                 item,
                 match_cache=self.context.get("beer_match_cache"),
@@ -2043,13 +2039,19 @@ class PubVisitRequestSerializer(PubInputSerializer):
     )
     started_at = serializers.DateTimeField()
     ended_at = serializers.DateTimeField(required=False, allow_null=True)
+    closed_at = serializers.DateTimeField(required=False, allow_null=True)
     updated_at = serializers.DateTimeField()
 
     def validate(self, attrs: dict) -> dict:
         ended_at = attrs.get("ended_at")
+        closed_at = attrs.get("closed_at")
         if ended_at is not None and ended_at < attrs["started_at"]:
             raise serializers.ValidationError(
                 {"ended_at": "ended_at must be greater than or equal to started_at."}
+            )
+        if closed_at is not None and closed_at < attrs["started_at"]:
+            raise serializers.ValidationError(
+                {"closed_at": "closed_at must be greater than or equal to started_at."}
             )
         return attrs
 

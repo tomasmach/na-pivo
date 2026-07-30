@@ -89,10 +89,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     assetBundlePatterns: ['**/*'],
     ios: {
       bundleIdentifier: 'com.tomasmach.na-pivo',
+      appleTeamId: 'T5W2WM23A6',
       icon: './assets/images/icon.png',
       supportsTablet: false,
       usesAppleSignIn: true,
       associatedDomains: ['applinks:na-pivo.cz'],
+      entitlements: {
+        'com.apple.security.application-groups': ['group.com.tomasmach.na-pivo'],
+      },
       infoPlist: {
         CFBundleDisplayName: 'Na pivo',
         NSLocationWhenInUseUsageDescription: LOCATION_REASON,
@@ -150,6 +154,12 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       'expo-router',
       'expo-font',
       'expo-asset',
+      [
+        '@bacons/apple-targets',
+        {
+          root: './wearables/apple-watch',
+        },
+      ],
       [
         'react-native-maps',
         {
@@ -228,6 +238,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
           frequentUpdates: false,
         },
       ],
+      // Run last: a later root plugin currently rewrites watchOS targets to
+      // iPhone-only. Restore the watch family without relying on generated IDs.
+      './plugins/with-watch-device-family',
     ],
     experiments: {
       typedRoutes: true,

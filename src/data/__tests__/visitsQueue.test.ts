@@ -20,6 +20,7 @@ jest.mock('../visitsClient', () => ({
 import {
   clearVisitsQueue,
   enqueueVisitOp,
+  ensureVisitOpQueued,
   flushVisitsQueue,
   type VisitQueueItem,
 } from '../visitsQueue';
@@ -71,6 +72,25 @@ beforeEach(async () => {
 });
 
 describe('enqueueVisitOp — dedup per client_id (last write wins)', () => {
+  it('can persist an external watch visit before transport acknowledgement', async () => {
+    await ensureVisitOpQueued(upsert('watch-evening'));
+
+    expect((await readQueue()).map((item) => item.clientId)).toEqual(['watch-evening']);
+    expect(submitVisit).not.toHaveBeenCalled();
+  });
+
+  it('rejects when a wearable visit cannot be persisted', async () => {
+    (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(
+      new Error('storage unavailable'),
+    );
+
+    await expect(ensureVisitOpQueued(upsert('not-durable'))).rejects.toThrow(
+      'Offline visit queue is unavailable',
+    );
+    expect(await readQueue()).toEqual([]);
+    expect(submitVisit).not.toHaveBeenCalled();
+  });
+
   it('replaces a pending upsert for the same client_id (e.g. a bumped ended_at)', async () => {
     submitVisit.mockResolvedValue('retry');
     await enqueueVisitOp(upsert('v1', { ended_at: '2026-06-14T19:10:00.000Z' }));
@@ -98,6 +118,20 @@ describe('enqueueVisitOp — dedup per client_id (last write wins)', () => {
     await enqueueVisitOp(upsert('v2'));
     const queue = await readQueue();
     expect(queue.map((i) => i.clientId).sort()).toEqual(['v1', 'v2']);
+  });
+
+  it('does not evict an older evening when the legacy queue limit is exceeded', async () => {
+    const existing = Array.from({ length: 500 }, (_, index) =>
+      upsert(`visit-${index}`),
+    );
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(existing));
+
+    await ensureVisitOpQueued(upsert('visit-500'));
+
+    const queue = await readQueue();
+    expect(queue).toHaveLength(501);
+    expect(queue[0].clientId).toBe('visit-0');
+    expect(queue[500].clientId).toBe('visit-500');
   });
 
   it('clears the queue once delivery succeeds', async () => {

@@ -92,16 +92,16 @@ describe('enqueueDrink', () => {
     expect(queue.map((e) => e.client_id).sort()).toEqual(['a', 'b']);
   });
 
-  it('caps the stored queue at 200 items', async () => {
+  it('keeps every live fact until delivery, even beyond the history-seed limit', async () => {
     (submitDrink as jest.Mock).mockResolvedValue('retry');
     for (let i = 0; i < 205; i++) {
       await enqueueDrink(entry({ client_id: `id-${i}` }));
     }
     const queue = await readQueue();
-    expect(queue).toHaveLength(200);
-    // Oldest dropped, newest kept.
+    expect(queue).toHaveLength(205);
+    // Neither the oldest nor the newest live fact is discarded.
+    expect(queue[0].client_id).toBe('id-0');
     expect(queue[queue.length - 1].client_id).toBe('id-204');
-    expect(queue.some((e) => e.client_id === 'id-0')).toBe(false);
   });
 });
 
@@ -115,6 +115,18 @@ describe('ensureDrinkQueued', () => {
     expect((await readQueue()).map((queued) => queued.client_id)).toEqual([
       'lock-screen-add',
     ]);
+    expect(submitDrink).not.toHaveBeenCalled();
+  });
+
+  it('rejects when the wearable fact cannot be persisted', async () => {
+    (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(
+      new Error('storage unavailable'),
+    );
+
+    await expect(
+      ensureDrinkQueued(entry({ client_id: 'not-durable' })),
+    ).rejects.toThrow('Offline drink queue is unavailable');
+    expect(await readQueue()).toEqual([]);
     expect(submitDrink).not.toHaveBeenCalled();
   });
 });
@@ -305,7 +317,7 @@ describe('ensureHistoricalDrinkBatchQueued', () => {
     releaseHistoricalDrinkBatch(result.acceptedClientIds);
   });
 
-  it('does not evict an accepted seed ID if a normal count lands before its flush check', async () => {
+  it('does not evict any fact if a normal count lands after a full history seed', async () => {
     const existing = Array.from({ length: 199 }, (_, index) =>
       entry({ client_id: `existing-${index}` }),
     );
@@ -319,10 +331,10 @@ describe('ensureHistoricalDrinkBatchQueued', () => {
     await enqueueDrink(entry({ client_id: 'new-count' }), { deliver: false });
 
     const ids = (await readQueue()).map((queued) => queued.client_id);
-    expect(ids).toHaveLength(200);
+    expect(ids).toHaveLength(201);
     expect(ids).toContain('history-protected');
     expect(ids).toContain('new-count');
-    expect(ids).not.toContain('existing-0');
+    expect(ids).toContain('existing-0');
     releaseHistoricalDrinkBatch(result.acceptedClientIds);
   });
 

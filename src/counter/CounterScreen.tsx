@@ -1230,6 +1230,12 @@ function Tacek({
           text: cs.counter.doneConfirm,
           onPress: () => {
             archiveCurrent('manual');
+            if (pub && clientId) {
+              const closedSession = useTallyStore
+                .getState()
+                .history.find((session) => session.clientId === clientId);
+              syncVisit(closedSession ?? null);
+            }
             setDopitoNudgedFor(clientId);
             setLastCounted(null);
             setCheckInBeerName(null);
@@ -1239,7 +1245,7 @@ function Tacek({
         },
       ],
     });
-  }, [archiveCurrent, current, hapticEnabled]);
+  }, [archiveCurrent, current, hapticEnabled, pub]);
 
   const handleResume = useCallback(() => {
     if (!cell) return;

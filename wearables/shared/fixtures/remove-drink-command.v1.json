@@ -1,0 +1,19 @@
+{
+  "protocolVersion": 1,
+  "messageId": "35642ef2-ff27-4874-9d6c-186088f95a45",
+  "accountEpoch": "83d78467-da0d-4bed-9d75-d99a5e50c63b",
+  "actorId": "wearos-0e0f79e2",
+  "actorKind": "wearos",
+  "actorSequence": 9,
+  "baseRevision": 18,
+  "sentAt": "2026-07-30T21:30:00+02:00",
+  "kind": "command",
+  "payload": {
+    "command": {
+      "type": "remove_drink",
+      "eveningId": "9277be1d-cd42-4dd0-af57-1414e1c96eb6",
+      "drinkId": "269c719f-8be2-4cf9-a8cc-d17e2ab17ccd",
+      "reason": "undo"
+    }
+  }
+}

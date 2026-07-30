@@ -26,6 +26,7 @@
     "lint": "expo lint"
   },
   "dependencies": {
+    "@bacons/apple-targets": "5.0.0",
     "@expo/ui": "~56.0.22",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-google-signin/google-signin": "^16.1.2",
@@ -60,6 +61,7 @@
     "geokdbush": "^2.1.0",
     "kdbush": "^4.1.0",
     "lucide-react-native": "^1.16.0",
+    "na-pivo-wearable-bridge": "file:wearables/shared/mobile-bridge",
     "react": "19.2.3",
     "react-native": "0.85.3",
     "react-native-gesture-handler": "~2.31.1",

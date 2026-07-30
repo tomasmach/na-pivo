@@ -5,11 +5,16 @@ import { useCommunityStore } from '@/stores/communityStore';
 import { usePubAmenitiesStore } from '@/stores/pubAmenitiesStore';
 import { usePubRatingsStore } from '@/stores/pubRatingsStore';
 import { usePubStore } from '@/stores/pubStore';
+import { useFocusedPubStore } from '@/stores/focusedPubStore';
 import { useTallyStore, type TallySession } from '@/stores/tallyStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useWearableTargetStore } from '@/stores/wearableTargetStore';
+import { beginMobileWearableSyncOperation } from '@/wearables/mobileSyncBoundary';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+  jest.requireActual(
+    '@react-native-async-storage/async-storage/jest/async-storage-mock',
+  ),
 );
 
 jest.mock('expo-secure-store', () => ({
@@ -45,6 +50,8 @@ const PRIVATE_KEYS = [
   'na-pivo-pub-amenities-queue',
   'na-pivo-community',
   'na-pivo-pub',
+  'na-pivo-wearable-phone-shadow-v1',
+  'na-pivo-wearable-target-v1',
 ];
 
 function session(overrides: Partial<TallySession> = {}): TallySession {
@@ -78,6 +85,8 @@ beforeEach(async () => {
     reportedCacheKeys: [],
   });
   useSettingsStore.setState({ homePoint: null, navigationProvider: 'google' });
+  useWearableTargetStore.getState().reset();
+  useFocusedPubStore.setState({ pub: null });
 });
 
 it('clears local private stores and private sync queue storage', async () => {
@@ -119,6 +128,22 @@ it('clears local private stores and private sync queue storage', async () => {
     reportedPubIds: ['mapy:test'],
     reportedCacheKeys: ['u2fkbn1x'],
   });
+  useWearableTargetStore.setState({
+    manualTarget: {
+      pubKey: 'u2fkbn1x',
+      name: 'U Testu',
+      latitude: 50.0812,
+      longitude: 14.4182,
+    },
+  });
+  useFocusedPubStore.setState({
+    pub: {
+      cacheKey: 'u2fkbn1x',
+      name: 'U Testu',
+      lat: 50.0812,
+      lng: 14.4182,
+    },
+  });
 
   for (const key of PRIVATE_KEYS) {
     await AsyncStorage.setItem(key, JSON.stringify({ private: true }));
@@ -135,7 +160,39 @@ it('clears local private stores and private sync queue storage', async () => {
     version: 1,
   }));
 
-  await clearLocalPrivateAccountData();
+  const finishInFlightWearableCommand = beginMobileWearableSyncOperation();
+  let clearSettled = false;
+  const clearPromise = clearLocalPrivateAccountData().then(() => {
+    clearSettled = true;
+  });
+  const wearableQueueKeys = [
+    'na-pivo-drinks-queue',
+    'na-pivo-delete-drinks-queue',
+    'na-pivo-visits-queue',
+  ];
+  let firstClearValues: (string | null)[] = [];
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    firstClearValues = await Promise.all(
+      wearableQueueKeys.map((key) => AsyncStorage.getItem(key)),
+    );
+    if (firstClearValues.every((value) => value === null)) break;
+    await Promise.resolve();
+  }
+  expect(firstClearValues).toEqual([null, null, null]);
+  expect(clearSettled).toBe(false);
+
+  // Model a pre-boundary command that acquired a queue lock before cleanup and
+  // completed its durable write after the first clear.
+  await Promise.all([
+    AsyncStorage.setItem('na-pivo-drinks-queue', JSON.stringify([{ late: true }])),
+    AsyncStorage.setItem(
+      'na-pivo-delete-drinks-queue',
+      JSON.stringify(['late-drink']),
+    ),
+    AsyncStorage.setItem('na-pivo-visits-queue', JSON.stringify([{ late: true }])),
+  ]);
+  finishInFlightWearableCommand();
+  await clearPromise;
 
   expect(useTallyStore.getState().current).toBeNull();
   expect(useTallyStore.getState().history).toEqual([]);
@@ -145,6 +202,8 @@ it('clears local private stores and private sync queue storage', async () => {
   expect(usePubStore.getState().revealedPub).toBeNull();
   expect(usePubStore.getState().reportedPubIds).toEqual([]);
   expect(usePubStore.getState().reportedCacheKeys).toEqual([]);
+  expect(useWearableTargetStore.getState().manualTarget).toBeNull();
+  expect(useFocusedPubStore.getState().pub).toBeNull();
   expect(useSettingsStore.getState().homePoint).toBeNull();
   expect(useSettingsStore.getState().navigationProvider).toBe('mapy');
 

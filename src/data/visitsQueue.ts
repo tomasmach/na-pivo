@@ -34,10 +34,6 @@ import {
 import { createQueueStorage, createQueueLock, createCoalescingFlush } from './createQueue';
 
 const STORAGE_KEY = 'na-pivo-visits-queue';
-/** Hard cap — one item per evening; only bites with a very long offline backlog,
- *  where dropping the oldest beats unbounded growth. */
-const MAX_QUEUE_LENGTH = 500;
-
 /** One pending sync operation, keyed (and deduped) by client_id. */
 export type VisitQueueItem =
   | { op: 'upsert'; clientId: string; entry: VisitEntry }
@@ -120,13 +116,27 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
  * whole queue. A new operation for a client_id REPLACES any pending operation
  * for the same client_id (last write wins). Never throws.
  */
-export async function enqueueVisitOp(item: VisitQueueItem): Promise<void> {
-  await runMutation(async () => {
+/**
+ * Persist the latest visit operation without starting network delivery. This
+ * lets an external durable command be acknowledged only after its matching
+ * backend queue entry exists, while keeping network latency outside that ack.
+ */
+export function ensureVisitOpQueued(item: VisitQueueItem): Promise<void> {
+  return runMutation(async () => {
     const queue = await loadQueue();
     const deduped = queue.filter((existing) => existing.clientId !== item.clientId);
     deduped.push(item);
-    await saveQueue(deduped.slice(-MAX_QUEUE_LENGTH));
+    // One coalesced operation per evening; keep every distinct evening until
+    // its server acknowledgement so an extended offline spell loses nothing.
+    const persisted = await saveQueue(deduped);
+    if (!persisted) {
+      throw new Error('Offline visit queue is unavailable');
+    }
   });
+}
+
+export async function enqueueVisitOp(item: VisitQueueItem): Promise<void> {
+  await ensureVisitOpQueued(item);
   await flushVisitsQueue();
 }
 

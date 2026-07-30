@@ -1,0 +1,14 @@
+{
+  "platforms": ["android", "apple"],
+  "android": {
+    "modules": [
+      "com.tomasmach.napivo.wearablebridge.NaPivoWearableBridgeModule"
+    ]
+  },
+  "apple": {
+    "modules": ["NaPivoWearableBridgeModule"],
+    "appDelegateSubscribers": [
+      "NaPivoWearableBridgeAppDelegateSubscriber"
+    ]
+  }
+}

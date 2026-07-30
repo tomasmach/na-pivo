@@ -25,7 +25,6 @@ import { createQueueStorage, createQueueLock, createCoalescingFlush } from './cr
 const STORAGE_KEY = 'na-pivo-delete-drinks-queue';
 /** Hard cap — matches drinksQueue; an unbounded backlog means the backend has
  *  been unreachable for a very long time, so dropping the oldest beats growth. */
-const MAX_QUEUE_LENGTH = 200;
 
 function isClientId(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
@@ -73,14 +72,28 @@ async function flushUnlocked(signal: AbortSignal): Promise<void> {
  * deletion queue. Never throws. Deduped: enqueuing the same client_id twice is
  * a no-op (the DELETE is idempotent, but there is no point queueing it twice).
  */
-export async function enqueueDelete(clientId: string): Promise<void> {
-  await runMutation(async () => {
+/**
+ * Persist a remove-wins deletion without starting network delivery. Native
+ * wearable inboxes use this boundary before acknowledging their command; the
+ * normal foreground queue flush delivers it afterwards.
+ */
+export function ensureDeleteQueued(clientId: string): Promise<void> {
+  return runMutation(async () => {
     const queue = await loadQueue();
     if (!queue.includes(clientId)) {
       queue.push(clientId);
-      await saveQueue(queue.slice(-MAX_QUEUE_LENGTH));
+      // Remove-wins tombstones are authoritative facts. Never evict an older
+      // deletion merely because the device stayed offline for a long time.
+      const persisted = await saveQueue(queue);
+      if (!persisted) {
+        throw new Error('Offline deletion queue is unavailable');
+      }
     }
   });
+}
+
+export async function enqueueDelete(clientId: string): Promise<void> {
+  await ensureDeleteQueued(clientId);
   await flushDeleteDrinksQueue();
 }
 
