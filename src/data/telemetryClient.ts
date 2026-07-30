@@ -15,6 +15,7 @@ import { getAppVersionLabel } from '@/utils/appVersion';
 export type ClientTelemetryEvent =
   | 'app_open'
   | 'app_foreground'
+  | 'screen_viewed'
   | 'onboarding_started'
   | 'onboarding_completed'
   | 'onboarding_skipped'
@@ -79,6 +80,8 @@ const CONTEXT_KEYS = new Set([
   'distance_m',
   'duration_ms',
   'slide',
+  'screen',
+  'previous_screen',
 ]);
 
 const EMAIL_RE = /[\w.!#$%&'*+/=?^`{|}~-]+@[\w.-]+\.[A-Za-z]{2,}/g;

@@ -121,4 +121,24 @@ describe('trackClientEvent', () => {
       return_days: 2,
     });
   });
+
+  it('allows coarse screen names without accepting a raw route', async () => {
+    const fetchSpy = jest.fn(async () => ({ ok: true }));
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    await trackClientEvent({
+      event: 'screen_viewed',
+      context: {
+        screen: 'friend_profile',
+        previous_screen: 'friends',
+        pathname: '/parta/private-account-id',
+      },
+    });
+
+    const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(init.body as string).context).toEqual({
+      screen: 'friend_profile',
+      previous_screen: 'friends',
+    });
+  });
 });

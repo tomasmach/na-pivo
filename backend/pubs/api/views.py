@@ -7697,6 +7697,10 @@ def _load_export_account(account: Account) -> Account:
             "contribution_logs",
             "pub_reports",
             "feedback_reports",
+            Prefetch(
+                "client_events",
+                queryset=ClientEvent.objects.order_by("-created_at", "id"),
+            ),
             "amenity_votes",
             Prefetch(
                 "sent_friendships",
@@ -7841,6 +7845,19 @@ def _export_account_data(account: Account) -> dict:
             "client_error_count": usage.client_error_count if usage else 0,
             "api_failure_count": usage.api_failure_count if usage else 0,
         },
+        "telemetry_events": [
+            {
+                "event": event.event,
+                "severity": event.severity,
+                "message": event.message,
+                "context": event.context,
+                "app_version": event.app_version,
+                "platform": event.platform,
+                "os_version": event.os_version,
+                "created_at": _iso(event.created_at),
+            }
+            for event in account.client_events.all()
+        ],
         "drinks": [
             {
                 "client_id": str(drink.client_id),

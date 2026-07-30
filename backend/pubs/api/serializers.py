@@ -407,6 +407,41 @@ class RestorePurchasesRequestSerializer(serializers.Serializer):
 _MAX_CLIENT_EVENT_CONTEXT_KEYS = 16
 _MAX_CLIENT_EVENT_DISTANCE_M = 50_000
 _MAX_CLIENT_EVENT_SLIDE = 100
+_CLIENT_EVENT_SCREEN_NAMES = {
+    "compass",
+    "beer",
+    "friends",
+    "profile",
+    "onboarding",
+    "settings",
+    "home_point",
+    "celebration",
+    "about",
+    "privacy",
+    "report",
+    "contribute",
+    "add_pub",
+    "suggest_pub_event",
+    "evening_detail",
+    "beer_detail",
+    "taproom",
+    "sign_in",
+    "password_reset",
+    "email_verification",
+    "account",
+    "profile_privacy",
+    "profile_edit",
+    "party_settings",
+    "badges",
+    "leaderboards",
+    "invite",
+    "friend_profile",
+    "photo_detail",
+    "photo_contest",
+    "community_events",
+    "my_added_pubs",
+    "profile_photos",
+}
 _CLIENT_EVENT_CONTEXT_KEYS = {
     "operation",
     "endpoint",
@@ -427,6 +462,8 @@ _CLIENT_EVENT_CONTEXT_KEYS = {
     "distance_m",
     "duration_ms",
     "slide",
+    "screen",
+    "previous_screen",
 }
 _EMAIL_RE = re.compile(r"[\w.!#$%&'*+/=?^`{|}~-]+@[\w.-]+\.[A-Za-z]{2,}")
 _BEARER_RE = re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]+", re.IGNORECASE)
@@ -451,6 +488,10 @@ def _sanitize_client_text(value: object, *, max_len: int) -> str:
 def _sanitize_client_scalar(key: str, value: object) -> object | None:
     if value is None:
         return None
+
+    if key in {"screen", "previous_screen"}:
+        screen = str(value).strip()
+        return screen if screen in _CLIENT_EVENT_SCREEN_NAMES else None
 
     if key == "endpoint":
         return _sanitize_client_text(value, max_len=240).split("?", 1)[0]

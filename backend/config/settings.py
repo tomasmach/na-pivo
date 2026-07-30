@@ -294,6 +294,9 @@ PUB_REPORT_GLOBAL_HIDE_THRESHOLD: int = int(
 # small lifecycle/error/distance whitelist only; this cap protects the endpoint
 # from noisy loops and scripted spam.
 CLIENT_EVENTS_THROTTLE_RATE: str = os.environ.get("CLIENT_EVENTS_THROTTLE_RATE", "120/min")
+# Raw telemetry is useful for short product funnels and diagnostics only. Keep
+# long-term account counters separately and automatically prune event-level rows.
+CLIENT_EVENT_RETENTION_DAYS: int = int(os.environ.get("CLIENT_EVENT_RETENTION_DAYS", "90"))
 
 # Per-IP rate limit for authenticated push-token registration
 # (PUT/DELETE /v1/push-device). DB-only, but can be retried on app start and
