@@ -31,6 +31,7 @@ import {
   FlagIcon,
   ListFilterIcon,
   LocateFixedIcon,
+  MapPinPlusIcon,
   MapPinnedIcon,
   RefreshCwIcon,
   StarIcon,
@@ -719,6 +720,16 @@ export default function BeerMapScreen({
 
   const renameSelectedPub = useCallback(() => setDetailOpen(true), []);
 
+  // Add-pub straight from the map: prefill with the viewport center, because
+  // the user has typically panned right to the spot where the pub is missing.
+  const addPubAtMapCenter = useCallback(() => {
+    trackUiInteraction('map_add_pub_open');
+    router.push({
+      pathname: '/add-pub' as never,
+      params: { lat: String(region.latitude), lng: String(region.longitude) },
+    });
+  }, [region.latitude, region.longitude, router]);
+
   const handleMapPress = useCallback(
     (event: MapPressEvent) => {
       if (event.nativeEvent.action !== 'marker-press') clearSelection();
@@ -1059,6 +1070,12 @@ export default function BeerMapScreen({
         },
         accessibilityLabel: cs.a11y.mapRefresh,
       },
+      {
+        key: 'add-pub',
+        label: cs.compass.moreAddPub,
+        icon: MapPinPlusIcon,
+        onPress: () => runAfterMoreClose(addPubAtMapCenter),
+      },
     ];
     return selectedPub
       ? [
@@ -1074,6 +1091,7 @@ export default function BeerMapScreen({
       : rows;
   }, [
     activeFilterCount,
+    addPubAtMapCenter,
     openSelectedPubReport,
     refresh,
     runAfterMoreClose,

@@ -40,6 +40,7 @@ export const UI_INTERACTION_TARGETS = [
   'map_pub_detail_open',
   'map_list_open',
   'map_aim_compass',
+  'map_add_pub_open',
   'beer_counter_segment',
   'beer_diary_segment',
   'beer_counter_more',
