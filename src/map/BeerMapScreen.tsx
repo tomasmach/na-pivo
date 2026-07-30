@@ -518,6 +518,7 @@ export default function BeerMapScreen({
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [listOpen, setListOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [placingPin, setPlacingPin] = useState(false);
   const [detailsByPubKey, setDetailsByPubKey] = useState<Record<string, PubHoursResult>>({});
   const [loadingDetailKey, setLoadingDetailKey] = useState<string | null>(null);
   const [timedOutDetailKey, setTimedOutDetailKey] = useState<string | null>(null);
@@ -720,13 +721,36 @@ export default function BeerMapScreen({
 
   const renameSelectedPub = useCallback(() => setDetailOpen(true), []);
 
-  // Add-pub straight from the map: prefill with the viewport center, because
-  // the user has typically panned right to the spot where the pub is missing.
-  const addPubAtMapCenter = useCallback(() => {
+  // Add-pub straight from the map: a fixed pin over the viewport center that
+  // the user aims by panning the map, so the chosen point is explicit — no
+  // silently inherited coordinates.
+  const startPinPlacement = useCallback(() => {
     trackUiInteraction('map_add_pub_open');
+    setDetailOpen(false);
+    clearSelection();
+    setPlacingPin(true);
+  }, [clearSelection]);
+
+  const cancelPinPlacement = useCallback(() => setPlacingPin(false), []);
+
+  const confirmPinPlacement = useCallback(async () => {
+    trackUiInteraction('map_add_pub_open', 'submit');
+    // The settled region can lag one gesture behind; the camera is exact.
+    let center = { latitude: region.latitude, longitude: region.longitude };
+    try {
+      const camera = await mapRef.current?.getCamera();
+      if (camera?.center) center = camera.center;
+    } catch {
+      // Fall back to the last settled region.
+    }
+    setPlacingPin(false);
     router.push({
       pathname: '/add-pub' as never,
-      params: { lat: String(region.latitude), lng: String(region.longitude) },
+      params: {
+        lat: String(center.latitude),
+        lng: String(center.longitude),
+        source: 'map',
+      },
     });
   }, [region.latitude, region.longitude, router]);
 
@@ -739,6 +763,7 @@ export default function BeerMapScreen({
 
   const selectPub = useCallback(
     (point: MapPubPoint) => {
+      if (placingPin) return;
       trackUiInteraction('map_pub_select', 'select');
       if (hapticEnabled) fireLightImpactHaptic();
       const next: MapSelection = { kind: 'pub', key: point.key, accountId };
@@ -757,11 +782,12 @@ export default function BeerMapScreen({
         { duration: reduceMotion ? 0 : 220 },
       );
     },
-    [accountId, hapticEnabled, reduceMotion],
+    [accountId, hapticEnabled, placingPin, reduceMotion],
   );
 
   const selectLive = useCallback(
     (live: LivePubSummary) => {
+      if (placingPin) return;
       trackUiInteraction('map_live_select', 'select');
       if (hapticEnabled) fireLightImpactHaptic();
       const next: MapSelection = { kind: 'live', key: live.cacheKey, accountId };
@@ -780,7 +806,7 @@ export default function BeerMapScreen({
         { duration: reduceMotion ? 0 : 220 },
       );
     },
-    [accountId, hapticEnabled, reduceMotion],
+    [accountId, hapticEnabled, placingPin, reduceMotion],
   );
 
   const selectLayer = useCallback((next: Layer) => {
@@ -1074,7 +1100,7 @@ export default function BeerMapScreen({
         key: 'add-pub',
         label: cs.compass.moreAddPub,
         icon: MapPinPlusIcon,
-        onPress: () => runAfterMoreClose(addPubAtMapCenter),
+        onPress: () => runAfterMoreClose(startPinPlacement),
       },
     ];
     return selectedPub
@@ -1091,11 +1117,11 @@ export default function BeerMapScreen({
       : rows;
   }, [
     activeFilterCount,
-    addPubAtMapCenter,
     openSelectedPubReport,
     refresh,
     runAfterMoreClose,
     selectedPub,
+    startPinPlacement,
   ]);
 
   return (
@@ -1206,10 +1232,43 @@ export default function BeerMapScreen({
         )) : null}
       </MapView>
 
+      {placingPin ? (
+        <View style={styles.pinOverlay} pointerEvents="none">
+          <View style={styles.pinBalloon}>
+            <View style={styles.pinHead}>
+              <MapPinPlusIcon size={20} color={Colors.amber} />
+            </View>
+            <View style={styles.pinStem} />
+          </View>
+          <View style={styles.pinDot} />
+        </View>
+      ) : null}
+
       <View
         style={[styles.topStack, { paddingTop: insets.top }]}
         pointerEvents="box-none"
       >
+        {placingPin ? (
+          <View style={styles.header}>
+            <Pressable
+              onPress={cancelPinPlacement}
+              style={({ pressed }) => [styles.mapGlyphButton, pressed && styles.pressedSoft]}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={cs.a11y.mapPinCancel}
+            >
+              <XIcon size={19} color={Colors.foamMuted} />
+            </Pressable>
+            <View style={styles.pinHintWrap} pointerEvents="none">
+              <View style={styles.pinHintPill}>
+                <Text style={styles.pinHintText} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {cs.map.pinHint}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.headerBalanceSpacer} />
+          </View>
+        ) : (
         <View style={styles.header}>
           <ExploreSwitch
             activeView="map"
@@ -1245,9 +1304,12 @@ export default function BeerMapScreen({
             <MenuIcon size={20} color={Colors.foamMuted} />
           </Pressable>
         </View>
-        <View style={styles.nudgeWrap}>
-          <NudgeSlot nudge={nudge} />
-        </View>
+        )}
+        {!placingPin ? (
+          <View style={styles.nudgeWrap}>
+            <NudgeSlot nudge={nudge} />
+          </View>
+        ) : null}
       </View>
 
       <View
@@ -1257,6 +1319,17 @@ export default function BeerMapScreen({
         ]}
         pointerEvents="box-none"
       >
+        {placingPin ? (
+          <GlowButton
+            label={cs.map.pinConfirm}
+            onPress={() => void confirmPinPlacement()}
+            variant="primary"
+            glow="soft"
+            height={62}
+            accessibilityLabel={cs.map.pinConfirm}
+          />
+        ) : (
+        <>
         <PlaceCard
           title={cardState.title}
           meta={cardState.meta}
@@ -1315,6 +1388,8 @@ export default function BeerMapScreen({
             accessibilityLabel={primaryAction.accessibilityLabel}
           />
         ) : null}
+        </>
+        )}
       </View>
 
       <Modal
@@ -1565,6 +1640,71 @@ const styles = StyleSheet.create({
   headerSpacer: {
     flex: 1,
     minWidth: Spacing.sm,
+  },
+  headerBalanceSpacer: {
+    width: 40,
+    height: 40,
+  },
+  // Pin-placement mode: the pin is a fixed overlay whose stem bottom touches
+  // the exact viewport center — the user aims by panning the map underneath.
+  pinOverlay: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pinBalloon: {
+    alignItems: 'center',
+    // Head (40) + stem (12) column, shifted up so the stem tip anchors at the
+    // overlay center where pinDot marks the exact spot.
+    transform: [{ translateY: -26 }],
+  },
+  pinHead: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout2,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pinStem: {
+    width: 2,
+    height: 12,
+    backgroundColor: Colors.stout2,
+  },
+  pinDot: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    width: 6,
+    height: 6,
+    marginTop: -3,
+    marginLeft: -3,
+    borderRadius: 3,
+    backgroundColor: Colors.amber,
+  },
+  pinHintWrap: {
+    flex: 1,
+    alignItems: 'center',
+    marginHorizontal: Spacing.sm,
+  },
+  pinHintPill: {
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout2,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  pinHintText: {
+    fontFamily: Fonts.ui.semibold,
+    fontSize: 13,
+    color: Colors.foam,
   },
   // The only place in the app where the overflow glyph needs a surface under
   // it: everywhere else it sits on stout, here it floats over a light map and

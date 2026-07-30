@@ -210,6 +210,52 @@ describe('AddPubScreen', () => {
     expect(mockBack).toHaveBeenCalledTimes(1);
   });
 
+  it('pre-selects the map pin and saves its coordinates without touching GPS', async () => {
+    mockSearchParams = {
+      lat: '50.087',
+      lng: '14.421',
+      source: 'map',
+    };
+    renderScreen();
+
+    // The pin arrives selected — no location tap needed before submitting.
+    expect(
+      renderer!.root.findAllByProps({
+        accessibilityLabel: cs.a11y.addPubMapPinSelected,
+      }).length,
+    ).toBeGreaterThan(0);
+
+    const nameInput = renderer!.root.findByProps({
+      accessibilityLabel: cs.a11y.addPubNameInput,
+    });
+    const cityInput = renderer!.root.findByProps({
+      accessibilityLabel: cs.a11y.addPubCityInput,
+    });
+    const addressInput = renderer!.root.findByProps({
+      accessibilityLabel: cs.a11y.addPubAddressInput,
+    });
+
+    act(() => {
+      nameInput.props.onChangeText('Hospoda Ze Špendlíku');
+      cityInput.props.onChangeText('Praha');
+      addressInput.props.onChangeText('Dlouhá 33');
+    });
+    await submit();
+
+    expect(mockEnsureLocationPermission).not.toHaveBeenCalled();
+    expect(mockGetCurrentPositionAsync).not.toHaveBeenCalled();
+    expect(mockEnqueueAddedPub).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Hospoda Ze Špendlíku',
+        lat: 50.087,
+        lng: 14.421,
+        city: 'Praha',
+        address: 'Dlouhá 33',
+      }),
+    );
+    expect(mockBack).toHaveBeenCalledTimes(1);
+  });
+
   it('lets the user clear the current location selection', () => {
     renderScreen();
 

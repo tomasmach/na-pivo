@@ -65,7 +65,7 @@ interface Coordinates {
 
 interface SelectedLocation extends Coordinates {
   displayLocation?: string;
-  source: 'current';
+  source: 'current' | 'pin';
 }
 
 export default function AddPubScreen() {
@@ -87,6 +87,12 @@ export default function AddPubScreen() {
     [initialLat, initialLng],
   );
 
+  // The map hands over a pin the user aimed deliberately, so it arrives
+  // pre-selected and the location card talks about the pin, not "current
+  // location" — the user may be nowhere near the pub.
+  const fromMapPin =
+    !isEditing && parseStringParam(params.source) === 'map' && initialCoords !== null;
+
   const initialName = useMemo(() => parseStringParam(params.name).trim(), [params.name]);
   const initialCity = useMemo(() => parseStringParam(params.city).trim(), [params.city]);
   const initialAddress = useMemo(() => parseStringParam(params.address).trim(), [params.address]);
@@ -96,7 +102,15 @@ export default function AddPubScreen() {
   const [submitted, setSubmitted] = useState(false);
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState('');
-  const [selectedLocation, setSelectedLocation] = useState<SelectedLocation | null>(null);
+  const [selectedLocation, setSelectedLocation] = useState<SelectedLocation | null>(() =>
+    fromMapPin && initialCoords
+      ? {
+          ...initialCoords,
+          displayLocation: cs.addPub.mapPinSelectedBody,
+          source: 'pin',
+        }
+      : null,
+  );
   const nameChanged = name.trim() !== initialName;
   const locationCorrectionSelected = selectedLocation !== null;
   const canSubmit =
@@ -147,8 +161,10 @@ export default function AddPubScreen() {
 
       setSelectedLocation({
         ...coords,
-        displayLocation: cs.addPub.currentLocationSelectedBody,
-        source: 'current',
+        displayLocation: fromMapPin
+          ? cs.addPub.mapPinSelectedBody
+          : cs.addPub.currentLocationSelectedBody,
+        source: fromMapPin ? 'pin' : 'current',
       });
     } catch {
       setLocationError(cs.addPub.locationUnavailable);
@@ -156,7 +172,7 @@ export default function AddPubScreen() {
     } finally {
       setLocating(false);
     }
-  }, [currentLocationSelected, initialAddress, initialCity, initialCoords, isEditing, showToast]);
+  }, [currentLocationSelected, fromMapPin, initialAddress, initialCity, initialCoords, isEditing, showToast]);
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit) return;
@@ -290,7 +306,11 @@ export default function AddPubScreen() {
         <View style={styles.locationCard}>
           <Text style={styles.locationHeader}>{isEditing ? cs.addPub.editLocationHeader : cs.addPub.locationHeader}</Text>
           <Text style={styles.locationBody} maxFontSizeMultiplier={FontScaleCap.body}>
-            {isEditing ? cs.addPub.editLocationBody : cs.addPub.locationBody}
+            {isEditing
+              ? cs.addPub.editLocationBody
+              : fromMapPin
+                ? cs.addPub.mapPinLocationBody
+                : cs.addPub.locationBody}
           </Text>
           <Pressable
               onPress={() => void handleUseCurrentLocation()}
@@ -302,7 +322,9 @@ export default function AddPubScreen() {
               accessibilityRole="button"
               accessibilityLabel={
                 currentLocationSelected
-                  ? cs.a11y.addPubCurrentLocationSelected
+                  ? fromMapPin
+                    ? cs.a11y.addPubMapPinSelected
+                    : cs.a11y.addPubCurrentLocationSelected
                   : cs.a11y.addPubUseCurrentLocationButton
               }
               accessibilityState={{ selected: currentLocationSelected }}
@@ -313,24 +335,41 @@ export default function AddPubScreen() {
                   currentLocationSelected && styles.currentLocationIconSelected,
                 ]}
               >
-                <TargetIcon
-                  size={18}
-                  color={currentLocationSelected ? Colors.stout : Colors.amber}
-                />
+                {fromMapPin ? (
+                  <MapPinIcon
+                    size={18}
+                    color={currentLocationSelected ? Colors.stout : Colors.amber}
+                  />
+                ) : (
+                  <TargetIcon
+                    size={18}
+                    color={currentLocationSelected ? Colors.stout : Colors.amber}
+                  />
+                )}
               </View>
               <View style={styles.currentLocationCopy}>
                 <Text
                   style={styles.currentLocationTitle}
                   maxFontSizeMultiplier={FontScaleCap.body}
                 >
-                  {locating ? cs.addPub.locating : isEditing ? cs.addPub.editUseCurrentLocation : cs.addPub.useCurrentLocation}
+                  {locating
+                    ? cs.addPub.locating
+                    : isEditing
+                      ? cs.addPub.editUseCurrentLocation
+                      : fromMapPin
+                        ? cs.addPub.useMapPin
+                        : cs.addPub.useCurrentLocation}
                 </Text>
                 <Text
                   style={styles.currentLocationBody}
                   maxFontSizeMultiplier={FontScaleCap.body}
                   numberOfLines={3}
                 >
-                  {isEditing ? cs.addPub.editUseCurrentLocationHint : cs.addPub.useCurrentLocationHint}
+                  {isEditing
+                    ? cs.addPub.editUseCurrentLocationHint
+                    : fromMapPin
+                      ? cs.addPub.useMapPinHint
+                      : cs.addPub.useCurrentLocationHint}
                 </Text>
               </View>
               <View
@@ -366,12 +405,18 @@ export default function AddPubScreen() {
             <View style={styles.suggestions}>
               <View
                 style={[styles.selectedSuggestion, styles.selectedCurrentLocation]}
-                accessibilityLabel={cs.a11y.addPubCurrentLocationSelected}
+                accessibilityLabel={
+                  selectedLocation.source === 'pin'
+                    ? cs.a11y.addPubMapPinSelected
+                    : cs.a11y.addPubCurrentLocationSelected
+                }
               >
                 <MapPinIcon size={16} color={Colors.amber} />
                 <View style={styles.suggestionText}>
                   <Text style={styles.suggestionName} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {cs.addPub.currentLocationSelectedTitle}
+                    {selectedLocation.source === 'pin'
+                      ? cs.addPub.mapPinSelectedTitle
+                      : cs.addPub.currentLocationSelectedTitle}
                   </Text>
                   <Text
                     style={styles.suggestionLocation}
