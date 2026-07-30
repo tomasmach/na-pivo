@@ -43,8 +43,18 @@ public final class NaPivoWearableBridgeModule: Module {
       try NaPivoWearableConnectivityCoordinator.shared.publishSnapshot(json: envelopeJson)
     }
 
+    AsyncFunction("clearSnapshot") { () throws in
+      try NaPivoWearableConnectivityCoordinator.shared.clearSnapshot()
+    }
+
     AsyncFunction("getPendingCommands") { () throws -> [String] in
       try NaPivoWearableConnectivityCoordinator.shared.getPendingCommands()
+    }
+
+    AsyncFunction("getAcknowledgedActorSequences") { (accountEpoch: String) throws
+      -> [String: Int] in
+      try NaPivoWearableConnectivityCoordinator.shared
+        .getAcknowledgedActorSequences(accountEpoch: accountEpoch)
     }
 
     AsyncFunction("ackPendingCommands") { (messageIds: [String]) throws in

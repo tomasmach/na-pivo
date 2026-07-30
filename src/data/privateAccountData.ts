@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { clearWearableSnapshot } from 'na-pivo-wearable-bridge';
 
 import { clearAddedPubsQueue } from './addedPubsQueue';
 import { clearBeerPhotoLocalFiles, clearBeerPhotosQueue } from './beerPhotosQueue';
@@ -38,6 +39,7 @@ import { useWearableTargetStore } from '@/stores/wearableTargetStore';
 import {
   beginMobileWearableAccountBoundary,
   MOBILE_WEARABLE_SHADOW_STORAGE_KEY,
+  MOBILE_WEARABLE_SHADOWS_STORAGE_KEY,
   MOBILE_WEARABLE_TARGET_STORAGE_KEY,
   waitForMobileWearableSyncIdle,
 } from '@/wearables/mobileSyncBoundary';
@@ -56,6 +58,7 @@ const PRIVATE_STORAGE_KEYS = [
   'na-pivo-beer-photos',
   'na-pivo-vycep',
   MOBILE_WEARABLE_SHADOW_STORAGE_KEY,
+  MOBILE_WEARABLE_SHADOWS_STORAGE_KEY,
   MOBILE_WEARABLE_TARGET_STORAGE_KEY,
   // Note: the Parta social-graph snapshot ('na-pivo-friends-dashboard') is cleared
   // via clearFriendsDashboardSnapshot() below — that path also bumps the snapshot
@@ -90,14 +93,15 @@ async function clearPersistedHomePoint(): Promise<void> {
  * cleared before the session boundary moves.
  */
 export async function clearLocalPrivateAccountData(): Promise<void> {
-  // This must happen before the first store mutation or await. AccountStore still
-  // exposes the outgoing session until auth installs its replacement, so the
-  // wearable coordinator needs an independent synchronous boundary.
+  // This must happen before the first store mutation or await. AccountStore
+  // still exposes the outgoing session until auth installs its replacement.
   beginMobileWearableAccountBoundary();
   const wearableSyncIdle = waitForMobileWearableSyncIdle();
-  // Invalidate a captured pre-logout history snapshot before any async queue
-  // clear can yield, so it cannot be enqueued under the replacement account.
+  // Invalidate captured work synchronously, then clear transport-owned private
+  // state before local teardown yields. The native clear deliberately preserves
+  // unacknowledged watch commands.
   cancelDrinksHistorySeed();
+  await clearWearableSnapshot();
   useTallyStore.setState({ current: null, history: [], removedDrinkIds: [] });
   useWearableTargetStore.getState().reset();
   useFocusedPubStore.setState({ pub: null });
@@ -145,8 +149,10 @@ export async function clearLocalPrivateAccountData(): Promise<void> {
   // A command that had already acquired a queue lock may have crossed the
   // synchronous boundary before noticing its generation changed. The first
   // clear above aborts delivery and removes everything already queued; after
-  // that command settles, clear its three possible durable diary writes again.
+  // that command settles, clear both its possible native snapshot and its three
+  // possible durable diary writes again.
   await wearableSyncIdle;
+  await clearWearableSnapshot();
   await Promise.all([
     clearDrinksQueue(),
     clearDeleteDrinksQueue(),

@@ -412,8 +412,24 @@ function validateStringArray(
     if (itemValidator) itemValidator(item, `${path}[${index}]`, errors);
     else if (typeof item !== 'string') errors.push(`${path}[${index}] must be a string`);
   });
-  if (new Set(value).size !== value.length) errors.push(`${path} must contain unique items`);
+  const canonicalItems = value.map((item) =>
+    typeof item === 'string' ? item.toLowerCase() : item,
+  );
+  if (new Set(canonicalItems).size !== canonicalItems.length) {
+    errors.push(`${path} must contain unique items`);
+  }
   return errors.length === 0;
+}
+
+function validateUniqueUuidIdentities(
+  values: unknown[],
+  path: string,
+  errors: string[],
+): void {
+  const ids = values.filter((value): value is string => typeof value === 'string');
+  if (new Set(ids.map((id) => id.toLowerCase())).size !== ids.length) {
+    errors.push(`${path} must contain unique UUID identities`);
+  }
 }
 
 function validateEvening(
@@ -638,6 +654,26 @@ function validateSnapshotPayload(value: unknown, errors: string[]): void {
     if (!Array.isArray(items)) errors.push(`$.payload.${key} must be an array`);
     else items.forEach((item, index) => validator(item, `$.payload.${key}[${index}]`, errors));
   }
+  const evenings = [
+    ...(isRecord(value.activeEvening) ? [value.activeEvening] : []),
+    ...(Array.isArray(value.otherEvenings)
+      ? value.otherEvenings.filter(isRecord)
+      : []),
+  ];
+  validateUniqueUuidIdentities(
+    evenings.map((evening) => evening.eveningId),
+    '$.payload evening ids',
+    errors,
+  );
+  validateUniqueUuidIdentities(
+    evenings.flatMap((evening) =>
+      Array.isArray(evening.drinks)
+        ? evening.drinks.map((drink) => isRecord(drink) ? drink.id : undefined)
+        : [],
+    ),
+    '$.payload drink ids',
+    errors,
+  );
   for (const key of ['recentDrinks', 'frequentDrinks', 'menuDrinks'] as const) {
     const items = value[key];
     if (!Array.isArray(items)) errors.push(`$.payload.${key} must be an array`);
@@ -657,6 +693,97 @@ function validateSnapshotPayload(value: unknown, errors: string[]): void {
   if (typeof value.isStale !== 'boolean') errors.push('$.payload.isStale must be boolean');
   if (value.lastPhoneContactAt !== undefined && !isIsoDateTime(value.lastPhoneContactAt)) {
     errors.push('$.payload.lastPhoneContactAt must be an ISO date-time');
+  }
+}
+
+function canonicalUuid(value: string): string {
+  return value.toLowerCase();
+}
+
+function canonicalizeDrinkSpec(drink: WearableDrinkSpec): WearableDrinkSpec {
+  return { ...drink, id: canonicalUuid(drink.id) };
+}
+
+function canonicalizeEvening(evening: WearableEveningState): WearableEveningState {
+  return {
+    ...evening,
+    eveningId: canonicalUuid(evening.eveningId),
+    drinks: evening.drinks.map(canonicalizeDrinkSpec),
+    removedDrinkIds: evening.removedDrinkIds.map(canonicalUuid),
+  };
+}
+
+function canonicalizeCommand(command: WearableCommand): WearableCommand {
+  switch (command.type) {
+    case 'set_target':
+    case 'clear_target':
+      return { ...command };
+    case 'start_evening_and_add_drink':
+      return {
+        ...command,
+        eveningId: canonicalUuid(command.eveningId),
+        drink: canonicalizeDrinkSpec(command.drink),
+      };
+    case 'add_drink':
+      return {
+        ...command,
+        eveningId: canonicalUuid(command.eveningId),
+        drink: canonicalizeDrinkSpec(command.drink),
+      };
+    case 'remove_drink':
+      return {
+        ...command,
+        eveningId: canonicalUuid(command.eveningId),
+        drinkId: canonicalUuid(command.drinkId),
+      };
+    case 'close_evening':
+      return {
+        ...command,
+        eveningId: canonicalUuid(command.eveningId),
+      };
+    case 'resolve_evening_conflict':
+      return {
+        ...command,
+        activeEveningId: canonicalUuid(command.activeEveningId),
+      };
+  }
+}
+
+function canonicalizeEnvelope(envelope: WearableEnvelope): WearableEnvelope {
+  const messageId = canonicalUuid(envelope.messageId);
+  const accountEpoch = canonicalUuid(envelope.accountEpoch);
+  switch (envelope.kind) {
+    case 'command':
+      return {
+        ...envelope,
+        messageId,
+        accountEpoch,
+        payload: { command: canonicalizeCommand(envelope.payload.command) },
+      };
+    case 'state_snapshot':
+      return {
+        ...envelope,
+        messageId,
+        accountEpoch,
+        payload: {
+          ...envelope.payload,
+          activeEvening: envelope.payload.activeEvening
+            ? canonicalizeEvening(envelope.payload.activeEvening)
+            : null,
+          otherEvenings: envelope.payload.otherEvenings.map(canonicalizeEvening),
+        },
+      };
+    case 'ack':
+      return {
+        ...envelope,
+        messageId,
+        accountEpoch,
+        payload: {
+          ...envelope.payload,
+          acknowledgedMessageIds:
+            envelope.payload.acknowledgedMessageIds.map(canonicalUuid),
+        },
+      };
   }
 }
 
@@ -718,7 +845,10 @@ export function parseWearableEnvelope(
 
   return errors.length > 0
     ? { ok: false, errors }
-    : { ok: true, value: input as unknown as WearableEnvelope };
+    : {
+        ok: true,
+        value: canonicalizeEnvelope(input as unknown as WearableEnvelope),
+      };
 }
 
 export function parseWearableCommandEnvelope(

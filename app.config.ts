@@ -200,6 +200,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         },
       ],
       'expo-secure-store',
+      // The durable wearable inbox contains private evening data. Keep it on
+      // this device while preserving the rest of Expo's normal backup policy.
+      './plugins/with-wearable-backup-rules',
       // Sign in with Apple (iOS). Adds the com.apple.developer.applesignin
       // entitlement; requires enabling the capability on the App ID in the
       // Apple Developer portal and a dev-client rebuild.

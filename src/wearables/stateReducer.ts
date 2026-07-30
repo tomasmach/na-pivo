@@ -443,18 +443,66 @@ function applyResolveConflict(
   if (evening.status === 'closed') {
     return semanticResult(state, state, envelope, 'rejected', 'closed_evening_cannot_be_active', false);
   }
+  const conflictEveningIds = new Set([resolvedId]);
+  let foundConnectedConflict = true;
+  while (foundConnectedConflict) {
+    foundConnectedConflict = false;
+    for (const conflict of state.eveningConflicts) {
+      const activeId = resolveEveningId(state, conflict.activeEveningId);
+      const incomingId = resolveEveningId(state, conflict.incomingEveningId);
+      if (
+        !conflictEveningIds.has(activeId) &&
+        !conflictEveningIds.has(incomingId)
+      ) {
+        continue;
+      }
+      const sizeBefore = conflictEveningIds.size;
+      conflictEveningIds.add(activeId);
+      conflictEveningIds.add(incomingId);
+      foundConnectedConflict ||= conflictEveningIds.size !== sizeBefore;
+    }
+  }
+  const displacedIds = new Set(
+    [...conflictEveningIds].filter((eveningId) => eveningId !== resolvedId),
+  );
+  if (state.activeEveningId) {
+    displacedIds.add(resolveEveningId(state, state.activeEveningId));
+  }
+  for (const candidate of Object.values(state.evenings)) {
+    if (candidate.status === 'active') {
+      displacedIds.add(resolveEveningId(state, candidate.eveningId));
+    }
+  }
+  displacedIds.delete(resolvedId);
+  const evenings = {
+    ...state.evenings,
+    [resolvedId]: { ...evening, status: 'active' as const, closedAt: undefined },
+  };
+  for (const displacedId of displacedIds) {
+    const displaced = evenings[displacedId];
+    if (displaced && displaced.status !== 'closed') {
+      evenings[displacedId] = {
+        ...displaced,
+        status: 'closed',
+        closedAt: displaced.closedAt ?? envelope.sentAt,
+      };
+    }
+  }
   return semanticResult(
     state,
     {
       ...state,
       activeEveningId: resolvedId,
-      evenings: {
-        ...state.evenings,
-        [resolvedId]: { ...evening, status: 'active' },
-      },
+      evenings,
       eveningConflicts: state.eveningConflicts.filter(
-        (conflict) =>
-          conflict.activeEveningId !== resolvedId && conflict.incomingEveningId !== resolvedId,
+        (conflict) => {
+          const activeId = resolveEveningId(state, conflict.activeEveningId);
+          const incomingId = resolveEveningId(state, conflict.incomingEveningId);
+          return (
+            !conflictEveningIds.has(activeId) &&
+            !conflictEveningIds.has(incomingId)
+          );
+        },
       ),
     },
     envelope,
@@ -473,11 +521,11 @@ export function applyWearableCommand(
     return { state, status: 'duplicate', reason: 'message_already_processed' };
   }
 
-  const lastSequence = state.actorSequences[envelope.actorId];
-  if (lastSequence !== undefined && envelope.actorSequence > lastSequence + 1) {
+  const lastSequence = state.actorSequences[envelope.actorId] ?? 0;
+  if (envelope.actorSequence > lastSequence + 1) {
     return { state, status: 'deferred', reason: 'actor_sequence_gap' };
   }
-  if (lastSequence !== undefined && envelope.actorSequence <= lastSequence) {
+  if (envelope.actorSequence <= lastSequence) {
     return { state, status: 'rejected', reason: 'stale_actor_sequence' };
   }
 

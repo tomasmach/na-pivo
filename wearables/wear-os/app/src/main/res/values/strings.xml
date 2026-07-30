@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Na pivo</string>
+    <string name="tile_label">Na pivo — večer</string>
+    <string name="tile_description">Hospoda, počet a rychlé zopakování posledního drinku.</string>
+    <string name="complication_label">Na pivo — počítadlo</string>
+    <string name="notification_channel_name">Aktivní večer</string>
+    <string name="notification_channel_description">Drží po ruce právě rozehraný večer.</string>
+</resources>

@@ -12,7 +12,11 @@ export type WearableTransportStatus = {
 
 type NaPivoWearableBridgeNativeModule = {
   publishSnapshot?(envelopeJson: string): Promise<void>;
+  clearSnapshot?(): Promise<void>;
   getPendingCommands?(): Promise<string[]>;
+  getAcknowledgedActorSequences?(
+    accountEpoch: string,
+  ): Promise<Record<string, number>>;
   ackPendingCommands?(messageIds: string[]): Promise<void>;
   getTransportStatus?(): Promise<WearableTransportStatus>;
   requestSync?(): Promise<void>;
@@ -47,11 +51,25 @@ export async function publishSnapshot(envelopeJson: string): Promise<void> {
 }
 
 /**
+ * Removes account-owned native snapshot state while retaining unacknowledged
+ * watch commands for reconciliation with the replacement phone account.
+ */
+export async function clearWearableSnapshot(): Promise<void> {
+  await nativeModule?.clearSnapshot?.();
+}
+
+/**
  * Reads command envelopes without deleting them. Callers acknowledge only
  * after the command and its existing backend queue entry are both durable.
  */
 export async function getPendingCommands(): Promise<string[]> {
   return nativeModule?.getPendingCommands?.() ?? [];
+}
+
+export async function getAcknowledgedActorSequences(
+  accountEpoch: string,
+): Promise<Record<string, number>> {
+  return nativeModule?.getAcknowledgedActorSequences?.(accountEpoch) ?? {};
 }
 
 export async function ackPendingCommands(messageIds: string[]): Promise<void> {

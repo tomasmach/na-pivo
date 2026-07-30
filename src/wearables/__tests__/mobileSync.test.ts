@@ -4,7 +4,10 @@ import type { WearableCommandEnvelope } from '../protocol';
 import {
   beginMobileWearableAccountBoundary,
   getMobileWearableSyncBoundary,
+  MOBILE_WEARABLE_SHADOW_STORAGE_KEY,
+  MOBILE_WEARABLE_SHADOWS_STORAGE_KEY,
 } from '../mobileSyncBoundary';
+import { createWearableSyncState } from '../stateReducer';
 import { geohash8 } from '@/data/geohash';
 import { useTallyStore } from '@/stores/tallyStore';
 import { useWearableTargetStore } from '@/stores/wearableTargetStore';
@@ -26,14 +29,17 @@ const mockAccountListeners: ((
 let mockAccountState: MockAccountState = {
   session: { accountId: ACCOUNT_ID },
 };
+const mockSecureStoreValues = new Map<string, string>();
 
 jest.mock('expo-secure-store', () => ({
   WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'WHEN_UNLOCKED_THIS_DEVICE_ONLY',
-  getItemAsync: jest.fn(async () =>
-    JSON.stringify({ accountId: ACCOUNT_ID, epoch: ACCOUNT_EPOCH }),
-  ),
-  setItemAsync: jest.fn(async () => undefined),
-  deleteItemAsync: jest.fn(async () => undefined),
+  getItemAsync: jest.fn(async (key: string) => mockSecureStoreValues.get(key) ?? null),
+  setItemAsync: jest.fn(async (key: string, value: string) => {
+    mockSecureStoreValues.set(key, value);
+  }),
+  deleteItemAsync: jest.fn(async (key: string) => {
+    mockSecureStoreValues.delete(key);
+  }),
 }));
 
 jest.mock('@/stores/accountStore', () => ({
@@ -59,6 +65,10 @@ const mockAckPendingCommands = jest.fn<Promise<void>, [string[]]>(
 );
 const mockRequestSync = jest.fn<Promise<void>, []>(async () => undefined);
 const mockGetPendingCommands = jest.fn<Promise<string[]>, []>();
+const mockGetAcknowledgedActorSequences = jest.fn<
+  Promise<Record<string, number>>,
+  [string]
+>(async () => ({}));
 
 jest.mock('na-pivo-wearable-bridge', () => ({
   publishSnapshot: (...args: unknown[]) =>
@@ -68,6 +78,8 @@ jest.mock('na-pivo-wearable-bridge', () => ({
   requestSync: (...args: unknown[]) => mockRequestSync(...(args as [])),
   getPendingCommands: (...args: unknown[]) =>
     mockGetPendingCommands(...(args as [])),
+  getAcknowledgedActorSequences: (...args: unknown[]) =>
+    mockGetAcknowledgedActorSequences(...(args as [string])),
   getTransportStatus: jest.fn(async () => ({
     supported: true,
     paired: true,
@@ -168,6 +180,7 @@ function latestSnapshot(): WearableStateSnapshotEnvelopeForTest {
 }
 
 interface WearableStateSnapshotEnvelopeForTest {
+  accountEpoch: string;
   payload: {
     revision: number;
     target: { selection: 'manual' | 'nearest'; pub: typeof PUB } | null;
@@ -218,41 +231,65 @@ describe('mobile wearable coordinator', () => {
     listeners.length = 0;
     mockAccountListeners.length = 0;
     mockAccountState = { session: { accountId: ACCOUNT_ID } };
+    mockSecureStoreValues.clear();
+    mockGetAcknowledgedActorSequences.mockResolvedValue({});
+    mockSecureStoreValues.set(
+      'na-pivo-wearable-account-epoch-v1',
+      JSON.stringify({ accountId: ACCOUNT_ID, epoch: ACCOUNT_EPOCH }),
+    );
     await AsyncStorage.clear();
     useTallyStore.setState({ current: null, history: [], removedDrinkIds: [] });
     useWearableTargetStore.getState().reset();
   });
 
   it('preserves durable ordered state across conflicts, reconnects and account boundaries', async () => {
-    const targetId = 'b0224071-3170-4f91-96eb-ab8055496d39';
     const startId = 'f4ed24c2-b261-4bf1-8be9-6cb85f65266f';
     const eveningId = '9f794b7b-cf88-4015-8578-cf0f4f1fe873';
     const drinkId = '59b1369e-288b-4b9f-af94-47f616593010';
+    const swiftStart = command(
+      1,
+      startId.toUpperCase(),
+      {
+        type: 'start_evening_and_add_drink',
+        eveningId: eveningId.toUpperCase(),
+        pub: PUB,
+        drinkingDayKey: '2026-07-30',
+        drink: {
+          id: drinkId.toUpperCase(),
+          name: 'Pilsner Urquell 12°',
+          drinkType: 'beer',
+          volumeMl: 500,
+          priceCzk: 68,
+          servingType: 'draft',
+          recordedAt: '2026-07-30T19:02:00.000Z',
+        },
+      },
+      { actorId: 'watchOS-Swift-UUID' },
+    );
+    swiftStart.accountEpoch = ACCOUNT_EPOCH.toUpperCase();
+    const lowercaseLegacyDuplicate = structuredClone(swiftStart);
+    lowercaseLegacyDuplicate.messageId = startId;
+    lowercaseLegacyDuplicate.accountEpoch = ACCOUNT_EPOCH;
+    const duplicateCommand = lowercaseLegacyDuplicate.payload.command;
+    if (duplicateCommand.type !== 'start_evening_and_add_drink') {
+      throw new Error('fixture must start an evening');
+    }
+    duplicateCommand.eveningId = eveningId;
+    duplicateCommand.drink.id = drinkId;
     mockGetPendingCommands.mockResolvedValue([
-      JSON.stringify(
-        command(1, targetId, {
-          type: 'set_target',
-          target: { selection: 'manual', pub: PUB },
-        }),
-      ),
-      JSON.stringify(
-        command(2, startId, {
-          type: 'start_evening_and_add_drink',
-          eveningId,
-          pub: PUB,
-          drinkingDayKey: '2026-07-30',
-          drink: {
-            id: drinkId,
-            name: 'Pilsner Urquell 12°',
-            drinkType: 'beer',
-            volumeMl: 500,
-            priceCzk: 68,
-            servingType: 'draft',
-            recordedAt: '2026-07-30T19:02:00.000Z',
-          },
-        }),
-      ),
+      JSON.stringify(swiftStart),
+      JSON.stringify(lowercaseLegacyDuplicate),
     ]);
+    await AsyncStorage.setItem(
+      MOBILE_WEARABLE_SHADOW_STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        accountEpoch: ACCOUNT_EPOCH,
+        actorId: 'phone-legacy-shadow',
+        actorSequence: 0,
+        state: createWearableSyncState(ACCOUNT_EPOCH),
+      }),
+    );
 
     await initializeMobileWearableSync();
 
@@ -298,9 +335,22 @@ describe('mobile wearable coordinator', () => {
       drinks: [expect.objectContaining({ id: drinkId })],
     });
     expect(snapshot.payload.menuDrinks).toEqual([]);
-    expect(mockAckPendingCommands).toHaveBeenCalledWith([targetId, startId]);
+    expect(mockAckPendingCommands).toHaveBeenCalledTimes(1);
+    expect(mockAckPendingCommands).toHaveBeenCalledWith([startId]);
     expect(mockPublishSnapshot.mock.invocationCallOrder[0]).toBeLessThan(
       mockAckPendingCommands.mock.invocationCallOrder[0],
+    );
+    expect(
+      await AsyncStorage.getItem(MOBILE_WEARABLE_SHADOW_STORAGE_KEY),
+    ).toBeNull();
+    const migratedShadowLedger = JSON.parse(
+      (await AsyncStorage.getItem(MOBILE_WEARABLE_SHADOWS_STORAGE_KEY)) ??
+        '{}',
+    ) as {
+      byAccount?: Record<string, { actorId?: string }>;
+    };
+    expect(migratedShadowLedger.byAccount?.[ACCOUNT_ID]?.actorId).toBe(
+      'phone-legacy-shadow',
     );
 
     // Android DataItems may be observed in reconnect order rather than actor
@@ -441,8 +491,8 @@ describe('mobile wearable coordinator', () => {
     await wakeForSnapshot();
     expect(latestSnapshot().payload.revision).toBe(revisionBeforeHeartbeat);
 
-    // Resolve a genuine different-pub conflict and persist both the newly
-    // selected evening and the displaced evening's closed state.
+    // Resolve a genuine three-way different-pub conflict and persist both the
+    // newly selected evening and every displaced evening's closed state.
     const eveningC = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
     const drinkC = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
     const startConflict = command(
@@ -477,6 +527,52 @@ describe('mobile wearable coordinator', () => {
       ),
     ).toBe(true);
 
+    const eveningD = '12121212-1212-4212-8212-121212121212';
+    const drinkD = '13131313-1313-4313-8313-131313131313';
+    const startSecondConflict = command(
+      1,
+      '14141414-1414-4414-8414-141414141414',
+      {
+        type: 'start_evening_and_add_drink',
+        eveningId: eveningD,
+        pub: PUB,
+        drinkingDayKey: '2026-07-30',
+        drink: {
+          id: drinkD,
+          name: 'Ryzlink vlašský',
+          drinkType: 'wine',
+          volumeMl: 200,
+          priceCzk: 75,
+          servingType: 'other',
+          recordedAt: '2026-07-30T20:06:30.000Z',
+        },
+      },
+      {
+        actorId: 'wearos-second-evening-conflict',
+        baseRevision: latestSnapshot().payload.revision,
+        sentAt: '2026-07-30T20:06:30.000Z',
+      },
+    );
+    await wakeWithPending([startSecondConflict]);
+    expect(useTallyStore.getState().current?.clientId).toBe(eveningB);
+    expect(
+      useTallyStore.getState().history.map((session) => session.clientId),
+    ).toEqual(expect.arrayContaining([eveningC, eveningD]));
+
+    // The reducer shadow is durable beyond the capped/local Tally projection.
+    // If the selected conflict branch is missing locally, resolving must rebuild
+    // it from that shadow instead of acknowledging a no-op and losing the branch.
+    useTallyStore.setState((state) => ({
+      history: state.history.filter(
+        (session) => session.clientId !== eveningC,
+      ),
+    }));
+    expect(
+      useTallyStore
+        .getState()
+        .history.some((session) => session.clientId === eveningC),
+    ).toBe(false);
+
     const resolveConflict = command(
       2,
       'ffffffff-ffff-4fff-8fff-ffffffffffff',
@@ -491,7 +587,23 @@ describe('mobile wearable coordinator', () => {
       },
     );
     await wakeWithPending([resolveConflict]);
-    expect(useTallyStore.getState().current?.clientId).toBe(eveningC);
+    expect(useTallyStore.getState().current).toMatchObject({
+      clientId: eveningC,
+      pubKey: PUB_C.pubKey,
+      drinks: [expect.objectContaining({ id: drinkC })],
+    });
+    for (const displacedEveningId of [eveningB, eveningD]) {
+      expect(
+        useTallyStore
+          .getState()
+          .history.find(
+            (session) => session.clientId === displacedEveningId,
+          ),
+      ).toMatchObject({
+        closedAt: '2026-07-30T20:07:00.000Z',
+        archivedReason: 'manual',
+      });
+    }
     const conflictVisits = JSON.parse(
       (await AsyncStorage.getItem('na-pivo-visits-queue')) ?? '[]',
     ) as {
@@ -501,6 +613,9 @@ describe('mobile wearable coordinator', () => {
     }[];
     expect(
       conflictVisits.find((item) => item.clientId === eveningB)?.entry,
+    ).toMatchObject({ closed_at: '2026-07-30T20:07:00.000Z' });
+    expect(
+      conflictVisits.find((item) => item.clientId === eveningD)?.entry,
     ).toMatchObject({ closed_at: '2026-07-30T20:07:00.000Z' });
     expect(
       conflictVisits.find((item) => item.clientId === eveningC)?.entry
@@ -524,10 +639,17 @@ describe('mobile wearable coordinator', () => {
     await wakeForSnapshot();
     const storedShadow = JSON.parse(
       (await AsyncStorage.getItem(
-        'na-pivo-wearable-phone-shadow-v1',
+        MOBILE_WEARABLE_SHADOWS_STORAGE_KEY,
       )) ?? '{}',
-    ) as { state?: { evenings?: Record<string, unknown> } };
-    expect(storedShadow.state?.evenings?.[eveningC]).toBeUndefined();
+    ) as {
+      byAccount?: Record<
+        string,
+        { state?: { evenings?: Record<string, unknown> } }
+      >;
+    };
+    expect(
+      storedShadow.byAccount?.[ACCOUNT_ID]?.state?.evenings?.[eveningC],
+    ).toBeUndefined();
 
     // Account cleanup invalidates processing synchronously, before AccountStore
     // publishes its replacement session.
@@ -585,5 +707,190 @@ describe('mobile wearable coordinator', () => {
     });
     expect(getMobileWearableSyncBoundary().suspended).toBe(false);
     expect(useTallyStore.getState().hasDrink(boundaryDrink)).toBe(true);
+
+    // The fast WCSession channel can deliver sequence 2 before the durable
+    // sequence 1 transfer. It must remain unacknowledged until sequence 1 lands.
+    const orderingActor = 'watchos-unseen-ordering';
+    const closeBoundary = command(
+      1,
+      '15151515-1515-4515-8515-151515151515',
+      {
+        type: 'close_evening',
+        eveningId: boundaryEvening,
+        closedAt: '2026-07-30T20:10:00.000Z',
+      },
+      {
+        actorId: orderingActor,
+        baseRevision: latestSnapshot().payload.revision,
+        sentAt: '2026-07-30T20:10:00.000Z',
+      },
+    );
+    const laterTarget = command(
+      2,
+      '16161616-1616-4616-8616-161616161616',
+      {
+        type: 'set_target',
+        target: { selection: 'manual', pub: PUB_B },
+      },
+      {
+        actorId: orderingActor,
+        baseRevision: latestSnapshot().payload.revision + 1,
+        sentAt: '2026-07-30T20:11:00.000Z',
+      },
+    );
+    const acksBeforeGap = mockAckPendingCommands.mock.calls.length;
+    const snapshotsBeforeGap = mockPublishSnapshot.mock.calls.length;
+    mockGetPendingCommands.mockResolvedValue([
+      JSON.stringify(laterTarget),
+    ]);
+    listeners[0]?.();
+    await waitForExpectation(() => {
+      expect(mockPublishSnapshot).toHaveBeenCalledTimes(
+        snapshotsBeforeGap + 1,
+      );
+    });
+    expect(mockAckPendingCommands).toHaveBeenCalledTimes(acksBeforeGap);
+    expect(useTallyStore.getState().current?.clientId).toBe(boundaryEvening);
+
+    await wakeWithPending([laterTarget, closeBoundary]);
+    expect(mockAckPendingCommands.mock.calls.at(-1)?.[0]).toEqual([
+      closeBoundary.messageId,
+      laterTarget.messageId,
+    ]);
+    expect(useTallyStore.getState().current).toBeNull();
+    expect(
+      useTallyStore
+        .getState()
+        .history.find((session) => session.clientId === boundaryEvening)
+        ?.closedAt,
+    ).toBe('2026-07-30T20:10:00.000Z');
+
+    // Logging A → B → A must recover A's epoch and reducer shadow. The normal
+    // account teardown removes the projected Tally state, so a queued add/close
+    // must still find its old evening from the account-scoped shadow ledger.
+    const originalEpoch = latestSnapshot().accountEpoch;
+    const accountB = '2c90bf17-19e9-42e6-9dae-60df26759bf9';
+    useTallyStore.setState({
+      current: null,
+      history: [],
+      removedDrinkIds: [],
+    });
+    useWearableTargetStore.getState().reset();
+    mockGetPendingCommands.mockResolvedValue([]);
+    const accountABeforeSwitch = mockAccountState;
+    mockAccountState = { session: { accountId: accountB } };
+    for (const accountListener of mockAccountListeners) {
+      accountListener(mockAccountState, accountABeforeSwitch);
+    }
+    await waitForExpectation(() => {
+      expect(latestSnapshot().accountEpoch).not.toBe(originalEpoch);
+      expect(latestSnapshot().payload.activeEvening).toBeNull();
+    });
+
+    const acksBeforeReturningToA = mockAckPendingCommands.mock.calls.length;
+    const returnedDrink = '17171717-1717-4717-8717-171717171717';
+    const addAfterReturn = command(
+      2,
+      '18181818-1818-4818-8818-181818181818',
+      {
+        type: 'add_drink',
+        eveningId: boundaryEvening,
+        drink: {
+          id: returnedDrink,
+          name: 'Gambrinus 10°',
+          drinkType: 'beer',
+          volumeMl: 500,
+          priceCzk: 55,
+          servingType: 'draft',
+          recordedAt: '2026-07-30T20:12:00.000Z',
+        },
+      },
+      {
+        actorId: 'watchos-account-boundary',
+        baseRevision: 0,
+        sentAt: '2026-07-30T20:12:00.000Z',
+      },
+    );
+    const closeAfterReturn = command(
+      3,
+      '19191919-1919-4919-8919-191919191919',
+      {
+        type: 'close_evening',
+        eveningId: boundaryEvening,
+        closedAt: '2026-07-30T20:13:00.000Z',
+      },
+      {
+        actorId: 'watchos-account-boundary',
+        baseRevision: 0,
+        sentAt: '2026-07-30T20:13:00.000Z',
+      },
+    );
+    mockGetPendingCommands.mockResolvedValue([
+      JSON.stringify(closeAfterReturn),
+      JSON.stringify(addAfterReturn),
+    ]);
+    const accountBBeforeSwitch = mockAccountState;
+    mockAccountState = { session: { accountId: ACCOUNT_ID } };
+    for (const accountListener of mockAccountListeners) {
+      accountListener(mockAccountState, accountBBeforeSwitch);
+    }
+    await waitForExpectation(() => {
+      expect(latestSnapshot().accountEpoch).toBe(originalEpoch);
+      expect(mockAckPendingCommands).toHaveBeenCalledTimes(
+        acksBeforeReturningToA + 1,
+      );
+    });
+    expect(mockAckPendingCommands.mock.calls.at(-1)?.[0]).toEqual([
+      addAfterReturn.messageId,
+      closeAfterReturn.messageId,
+    ]);
+    expect(
+      useTallyStore
+        .getState()
+        .history.find((session) => session.clientId === boundaryEvening),
+    ).toMatchObject({
+      closedAt: '2026-07-30T20:10:00.000Z',
+      drinks: [
+        expect.objectContaining({ id: boundaryDrink }),
+        expect.objectContaining({ id: returnedDrink }),
+      ],
+    });
+
+    const epochBindings = JSON.parse(
+      mockSecureStoreValues.get('na-pivo-wearable-account-epochs-v2') ?? '{}',
+    ) as { byAccount?: Record<string, string> };
+    expect(epochBindings.byAccount?.[ACCOUNT_ID]).toBe(originalEpoch);
+    expect(epochBindings.byAccount?.[accountB]).toMatch(
+      /^[0-9a-f-]{36}$/i,
+    );
+    const accountShadows = JSON.parse(
+      (await AsyncStorage.getItem(MOBILE_WEARABLE_SHADOWS_STORAGE_KEY)) ??
+        '{}',
+    ) as {
+      byAccount?: Record<
+        string,
+        {
+          accountEpoch?: string;
+          state?: {
+            evenings?: Record<string, { drinks?: { id: string }[] }>;
+          };
+        }
+      >;
+    };
+    expect(accountShadows.byAccount?.[ACCOUNT_ID]).toMatchObject({
+      accountEpoch: originalEpoch,
+      state: {
+        evenings: {
+          [boundaryEvening]: {
+            drinks: expect.arrayContaining([
+              expect.objectContaining({ id: returnedDrink }),
+            ]),
+          },
+        },
+      },
+    });
+    expect(accountShadows.byAccount?.[accountB]).toMatchObject({
+      state: { evenings: {} },
+    });
   });
 });

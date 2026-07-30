@@ -36,6 +36,7 @@ import {
 import {
   ackPendingCommands,
   addWearableCommandListener,
+  getAcknowledgedActorSequences,
   getPendingCommands,
   getTransportStatus,
   publishSnapshot,
@@ -62,14 +63,17 @@ import {
   beginMobileWearableSyncOperation,
   getMobileWearableSyncBoundary,
   MOBILE_WEARABLE_SHADOW_STORAGE_KEY,
+  MOBILE_WEARABLE_SHADOWS_STORAGE_KEY,
   resumeMobileWearableAccountBoundary,
 } from './mobileSyncBoundary';
 
-const EPOCH_BINDING_KEY = 'na-pivo-wearable-account-epoch-v1';
+const LEGACY_EPOCH_BINDING_KEY = 'na-pivo-wearable-account-epoch-v1';
+const EPOCH_BINDINGS_KEY = 'na-pivo-wearable-account-epochs-v2';
 const SNAPSHOT_STALE_AFTER_MS = 15 * 60 * 1000;
 const BACKGROUND_POLL_MS = 12_000;
 const MAX_SNAPSHOT_EVENINGS = 20;
 const MAX_CHOICES = 20;
+const MAX_TALLY_HISTORY = 50;
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -95,12 +99,22 @@ interface EpochBinding {
   epoch: string;
 }
 
+interface EpochBindings {
+  version: 2;
+  byAccount: Record<string, string>;
+}
+
 interface PhoneShadow {
   version: 1;
   accountEpoch: string;
   actorId: string;
   actorSequence: number;
   state: WearableSyncState;
+}
+
+interface PhoneShadowLedger {
+  version: 2;
+  byAccount: Record<string, PhoneShadow>;
 }
 
 let installed = false;
@@ -589,48 +603,180 @@ function isStoredShadow(value: unknown, epoch: string): value is PhoneShadow {
   );
 }
 
-async function loadShadow(epoch: string): Promise<PhoneShadow | null> {
+function validatedAcknowledgedActorSequences(
+  value: unknown,
+): Record<string, number> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      ([actorId, sequence]) =>
+        /^[A-Za-z0-9._:-]{1,128}$/.test(actorId) &&
+        Number.isSafeInteger(sequence) &&
+        (sequence as number) > 0,
+    ),
+  ) as Record<string, number>;
+}
+
+function parseShadowLedger(value: unknown): PhoneShadowLedger | null {
+  if (!value || typeof value !== 'object') return null;
+  const candidate = value as Partial<PhoneShadowLedger>;
+  if (
+    candidate.version !== 2 ||
+    !candidate.byAccount ||
+    typeof candidate.byAccount !== 'object'
+  ) {
+    return null;
+  }
+
+  const byAccount = Object.fromEntries(
+    Object.entries(candidate.byAccount).filter(
+      ([accountId, stored]) =>
+        accountId.length > 0 &&
+        !!stored &&
+        typeof stored === 'object' &&
+        typeof (stored as Partial<PhoneShadow>).accountEpoch === 'string' &&
+        UUID_RE.test((stored as Partial<PhoneShadow>).accountEpoch ?? '') &&
+        isStoredShadow(
+          stored,
+          (stored as Partial<PhoneShadow>).accountEpoch ?? '',
+        ),
+    ),
+  );
+  return { version: 2, byAccount };
+}
+
+async function loadShadow(
+  accountId: string,
+  epoch: string,
+): Promise<PhoneShadow | null> {
+  const ledgerRaw = await AsyncStorage.getItem(
+    MOBILE_WEARABLE_SHADOWS_STORAGE_KEY,
+  );
+  if (ledgerRaw) {
+    try {
+      const ledger = parseShadowLedger(JSON.parse(ledgerRaw));
+      const stored = ledger?.byAccount[accountId];
+      if (stored && isStoredShadow(stored, epoch)) return stored;
+    } catch {
+      // A malformed v2 ledger cannot authorize another account's shadow.
+    }
+  }
+
+  // Migrate the former single-account record only when its epoch proves that it
+  // belongs to the account currently being activated. The next durable write
+  // copies it into the account-scoped ledger before removing this legacy value.
+  const legacyRaw = await AsyncStorage.getItem(
+    MOBILE_WEARABLE_SHADOW_STORAGE_KEY,
+  );
+  if (!legacyRaw) return null;
   try {
-    const raw = await AsyncStorage.getItem(MOBILE_WEARABLE_SHADOW_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed: unknown = JSON.parse(raw);
-    return isStoredShadow(parsed, epoch) ? parsed : null;
+    const legacy: unknown = JSON.parse(legacyRaw);
+    return isStoredShadow(legacy, epoch) ? legacy : null;
   } catch {
     return null;
   }
 }
 
-async function persistShadow(value: PhoneShadow): Promise<void> {
-  await runDurableCoordinatorOperation(() =>
-    AsyncStorage.setItem(
+async function persistShadow(
+  accountId: string,
+  value: PhoneShadow,
+): Promise<void> {
+  await runDurableCoordinatorOperation(async () => {
+    const ledgerRaw = await AsyncStorage.getItem(
+      MOBILE_WEARABLE_SHADOWS_STORAGE_KEY,
+    );
+    let ledger: PhoneShadowLedger = { version: 2, byAccount: {} };
+    if (ledgerRaw) {
+      try {
+        ledger =
+          parseShadowLedger(JSON.parse(ledgerRaw)) ??
+          { version: 2, byAccount: {} };
+      } catch {
+        // A corrupt ledger is replaced with the current validated account only.
+      }
+    }
+    const nextLedger: PhoneShadowLedger = {
+      version: 2,
+      byAccount: { ...ledger.byAccount, [accountId]: value },
+    };
+    await AsyncStorage.setItem(
+      MOBILE_WEARABLE_SHADOWS_STORAGE_KEY,
+      JSON.stringify(nextLedger),
+    );
+
+    const legacyRaw = await AsyncStorage.getItem(
       MOBILE_WEARABLE_SHADOW_STORAGE_KEY,
-      JSON.stringify(value),
-    ),
-  );
+    );
+    if (!legacyRaw) return;
+    try {
+      const legacy: unknown = JSON.parse(legacyRaw);
+      if (isStoredShadow(legacy, value.accountEpoch)) {
+        await AsyncStorage.removeItem(MOBILE_WEARABLE_SHADOW_STORAGE_KEY);
+      }
+    } catch {
+      // Private-account teardown removes an unreadable legacy value.
+    }
+  });
 }
 
 async function accountEpoch(accountId: string): Promise<string> {
+  let bindings: EpochBindings = { version: 2, byAccount: {} };
   try {
-    const raw = await SecureStore.getItemAsync(EPOCH_BINDING_KEY);
+    const raw = await SecureStore.getItemAsync(EPOCH_BINDINGS_KEY);
     if (raw) {
-      const parsed = JSON.parse(raw) as Partial<EpochBinding>;
+      const parsed = JSON.parse(raw) as Partial<EpochBindings>;
       if (
-        parsed.accountId === accountId &&
-        typeof parsed.epoch === 'string' &&
-        UUID_RE.test(parsed.epoch)
+        parsed.version === 2 &&
+        parsed.byAccount &&
+        typeof parsed.byAccount === 'object'
       ) {
-        return parsed.epoch;
+        bindings = {
+          version: 2,
+          byAccount: Object.fromEntries(
+            Object.entries(parsed.byAccount).filter(
+              ([storedAccountId, epoch]) =>
+                storedAccountId.length > 0 &&
+                typeof epoch === 'string' &&
+                UUID_RE.test(epoch),
+            ),
+          ),
+        };
+        const storedEpoch = bindings.byAccount[accountId];
+        if (storedEpoch) return storedEpoch;
       }
     }
   } catch {
-    // A new binding below is safer than reusing an unreadable account epoch.
+    // Try the legacy binding before minting a replacement below.
   }
 
-  const binding: EpochBinding = { accountId, epoch: generateUuidV4() };
-  await SecureStore.setItemAsync(EPOCH_BINDING_KEY, JSON.stringify(binding), {
+  let epoch: string | null = null;
+  try {
+    const legacyRaw = await SecureStore.getItemAsync(
+      LEGACY_EPOCH_BINDING_KEY,
+    );
+    if (legacyRaw) {
+      const legacy = JSON.parse(legacyRaw) as Partial<EpochBinding>;
+      if (
+        legacy.accountId === accountId &&
+        typeof legacy.epoch === 'string' &&
+        UUID_RE.test(legacy.epoch)
+      ) {
+        epoch = legacy.epoch;
+      }
+    }
+  } catch {
+    // An unreadable legacy binding cannot be trusted for this account.
+  }
+
+  epoch ??= generateUuidV4();
+  bindings = {
+    version: 2,
+    byAccount: { ...bindings.byAccount, [accountId]: epoch },
+  };
+  await SecureStore.setItemAsync(EPOCH_BINDINGS_KEY, JSON.stringify(bindings), {
     keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
   });
-  return binding.epoch;
+  return epoch;
 }
 
 async function waitForHydration(): Promise<void> {
@@ -659,6 +805,14 @@ async function queueSessionVisit(session: TallySession | null): Promise<void> {
   const entry = buildVisitEntry(session);
   if (!entry) return;
   await ensureVisitOpQueued({ op: 'upsert', clientId: entry.client_id, entry });
+}
+
+async function queueResolvedSessionVisit(session: TallySession): Promise<void> {
+  if (session.drinks.length === 0) {
+    await ensureVisitOpQueued({ op: 'delete', clientId: session.clientId });
+    return;
+  }
+  await queueSessionVisit(session);
 }
 
 async function queueDrink(
@@ -777,46 +931,173 @@ async function commitCloseCommand(
 
 interface TallyConflictResolution {
   selected: TallySession | null;
-  displaced: TallySession | null;
+  displaced: TallySession[];
+}
+
+function reconstructTallySession(
+  state: WearableSyncState,
+  eveningId: string,
+): TallySession {
+  const canonicalId = canonicalEveningId(state, eveningId);
+  const evening = state.evenings[canonicalId];
+  if (!evening || !UUID_RE.test(canonicalId) || !validIso(evening.startedAt)) {
+    throw new Error('Wearable evening cannot be reconstructed');
+  }
+  assertCanonicalPubRef(evening.pub);
+  const removedDrinkIds = new Set([
+    ...state.removedDrinkIds,
+    ...evening.removedDrinkIds,
+  ]);
+  const drinks: TallyDrink[] = evening.drinks
+    .filter((drink) => !removedDrinkIds.has(drink.id))
+    .map((drink) => {
+      if (
+        !UUID_RE.test(drink.id) ||
+        !isConcreteDrinkName(drink.name) ||
+        !isDrinkType(drink.drinkType) ||
+        !isValidVolume(drink.volumeMl, drink.drinkType) ||
+        !isValidPrice(drink.priceCzk) ||
+        !isServingType(drink.servingType) ||
+        !validIso(drink.recordedAt)
+      ) {
+        throw new Error('Wearable evening contains an invalid drink');
+      }
+      return {
+        id: drink.id,
+        beerName: drink.name,
+        drinkType: drink.drinkType,
+        priceCzk: drink.priceCzk,
+        volumeMl: drink.volumeMl,
+        servingType: drink.servingType,
+        at: drink.recordedAt,
+      };
+    });
+  return {
+    clientId: canonicalId,
+    pubKey: evening.pub.pubKey,
+    pubName: evening.pub.name,
+    ...(evening.pub.city ? { pubCity: evening.pub.city } : {}),
+    ...(evening.pub.externalId
+      ? { pubExternalId: evening.pub.externalId }
+      : {}),
+    startedAt: evening.startedAt,
+    ...(validIso(evening.closedAt) ? { closedAt: evening.closedAt } : {}),
+    drinks,
+    ...(evening.status === 'closed'
+      ? { archivedReason: 'manual' as const }
+      : {}),
+  };
+}
+
+function connectedConflictEveningIds(
+  state: WearableSyncState,
+  selectedId: string,
+): Set<string> {
+  const connectedIds = new Set([canonicalEveningId(state, selectedId)]);
+  let foundConnectedConflict = true;
+  while (foundConnectedConflict) {
+    foundConnectedConflict = false;
+    for (const conflict of state.eveningConflicts) {
+      const activeId = canonicalEveningId(state, conflict.activeEveningId);
+      const incomingId = canonicalEveningId(state, conflict.incomingEveningId);
+      if (!connectedIds.has(activeId) && !connectedIds.has(incomingId)) {
+        continue;
+      }
+      const sizeBefore = connectedIds.size;
+      connectedIds.add(activeId);
+      connectedIds.add(incomingId);
+      foundConnectedConflict ||= connectedIds.size !== sizeBefore;
+    }
+  }
+  if (state.activeEveningId) {
+    connectedIds.add(canonicalEveningId(state, state.activeEveningId));
+  }
+  for (const evening of Object.values(state.evenings)) {
+    if (evening.status === 'active') {
+      connectedIds.add(canonicalEveningId(state, evening.eveningId));
+    }
+  }
+  return connectedIds;
 }
 
 function resolveTallyConflict(
   nextState: WearableSyncState,
   selectedId: string,
+  connectedIds: ReadonlySet<string>,
   resolvedAt: string,
 ): TallyConflictResolution {
   const canonicalId = canonicalEveningId(nextState, selectedId);
   let resolution: TallyConflictResolution = {
-    selected: sessionById(canonicalId),
-    displaced: null,
+    selected: null,
+    displaced: [],
   };
   useTallyStore.setState((state) => {
-    if (state.current?.clientId === canonicalId) {
-      resolution = { selected: state.current, displaced: null };
-      return state;
+    const displacedIds = new Set(
+      [...connectedIds]
+        .map((eveningId) => canonicalEveningId(nextState, eveningId))
+        .filter((eveningId) => eveningId !== canonicalId),
+    );
+    if (state.current && state.current.clientId !== canonicalId) {
+      displacedIds.add(state.current.clientId);
     }
-    const index = state.history.findIndex((session) => session.clientId === canonicalId);
-    if (index < 0) return state;
-    const selected = state.history[index];
-    const history = state.history.filter((_, candidateIndex) => candidateIndex !== index);
-    let displaced: TallySession | null = null;
-    if (state.current?.drinks.length) {
-      displaced = {
-        ...state.current,
+    const sessionsById = new Map(
+      state.history.map((session) => [session.clientId, session]),
+    );
+    if (state.current) {
+      sessionsById.set(state.current.clientId, state.current);
+    }
+    const selected =
+      sessionsById.get(canonicalId) ??
+      reconstructTallySession(nextState, canonicalId);
+    const closeSession = (
+      eveningId: string,
+      session: TallySession,
+    ): TallySession => {
+      const canonicalEveningIdValue = canonicalEveningId(
+        nextState,
+        eveningId,
+      );
+      const closedAt =
+        nextState.evenings[canonicalEveningIdValue]?.closedAt ??
+        session.closedAt ??
+        resolvedAt;
+      return {
+        ...session,
         archivedReason: 'manual',
-        closedAt: state.current.closedAt ?? resolvedAt,
+        closedAt,
       };
-      history.unshift(displaced);
-    }
+    };
+    const displaced = [...displacedIds].map((eveningId) =>
+      closeSession(
+        eveningId,
+        sessionsById.get(eveningId) ??
+          reconstructTallySession(nextState, eveningId),
+      ),
+    );
+    const displacedClientIds = new Set(
+      displaced.map((session) => session.clientId),
+    );
+    const history = [
+      ...displaced,
+      ...state.history.filter(
+        (session) =>
+          session.clientId !== canonicalId &&
+          !displacedClientIds.has(session.clientId),
+      ),
+    ].slice(0, MAX_TALLY_HISTORY);
     const { archivedReason: _reason, closedAt: _closedAt, ...active } = selected;
     resolution = { selected: active, displaced };
     return { current: active, history };
   });
+  if (!resolution.selected) {
+    throw new Error('Wearable conflict resolution did not select an evening');
+  }
   return resolution;
 }
 
 async function commitCommand(
   envelope: WearableCommandEnvelope,
+  previousState: WearableSyncState,
   nextState: WearableSyncState,
   status: WearableApplyStatus,
 ): Promise<void> {
@@ -867,13 +1148,23 @@ async function commitCommand(
       await commitCloseCommand(nextState, command.eveningId, command.closedAt);
       return;
     case 'resolve_evening_conflict': {
+      const connectedIds = connectedConflictEveningIds(
+        previousState,
+        command.activeEveningId,
+      );
       const resolution = resolveTallyConflict(
         nextState,
         command.activeEveningId,
+        connectedIds,
         envelope.sentAt,
       );
-      await queueSessionVisit(resolution.displaced);
-      await queueSessionVisit(resolution.selected);
+      for (const displaced of resolution.displaced) {
+        await queueResolvedSessionVisit(displaced);
+      }
+      if (!resolution.selected) {
+        throw new Error('Wearable conflict resolution has no active evening');
+      }
+      await queueResolvedSessionVisit(resolution.selected);
       return;
     }
   }
@@ -1061,7 +1352,7 @@ async function publishPhoneSnapshot(
     actorSequence: sequence,
     state,
   };
-  await persistShadow(shadow);
+  await persistShadow(context.accountId, shadow);
   if (!coordinatorContextIsCurrent(context)) return;
   await publishSnapshot(JSON.stringify(snapshot));
 }
@@ -1105,7 +1396,8 @@ async function processPendingCommands(): Promise<void> {
       if (!coordinatorContextIsCurrent(context) || !shadow) return;
       if (acknowledged.has(envelope.messageId)) continue;
       if (envelope.accountEpoch !== shadow.accountEpoch) continue;
-      const result = applyWearableCommand(shadow.state, envelope);
+      const previousState = shadow.state;
+      const result = applyWearableCommand(previousState, envelope);
       if (result.status === 'deferred') continue;
       if (
         result.status === 'rejected' &&
@@ -1117,7 +1409,12 @@ async function processPendingCommands(): Promise<void> {
         commandCommitInProgress = true;
         try {
           await runDurableCoordinatorOperation(() =>
-            commitCommand(envelope, result.state, result.status),
+            commitCommand(
+              envelope,
+              previousState,
+              result.state,
+              result.status,
+            ),
           );
         } finally {
           commandCommitInProgress = false;
@@ -1125,7 +1422,7 @@ async function processPendingCommands(): Promise<void> {
       }
       if (!coordinatorContextIsCurrent(context) || !shadow) return;
       shadow = { ...shadow, state: result.state };
-      await persistShadow(shadow);
+      await persistShadow(context.accountId, shadow);
       if (!coordinatorContextIsCurrent(context)) return;
       acknowledged.add(envelope.messageId);
       madeProgress = true;
@@ -1135,7 +1432,9 @@ async function processPendingCommands(): Promise<void> {
   await publishPhoneSnapshot(context);
   if (!coordinatorContextIsCurrent(context)) return;
   if (acknowledged.size > 0) {
-    await ackPendingCommands([...acknowledged]);
+    await runDurableCoordinatorOperation(() =>
+      ackPendingCommands([...acknowledged]),
+    );
     void flushDrinksQueue();
     void flushDeleteDrinksQueue();
     void flushVisitsQueue();
@@ -1179,7 +1478,7 @@ async function activateCurrentAccount(options?: {
   ) {
     return;
   }
-  const stored = await loadShadow(epoch);
+  const stored = await loadShadow(accountId, epoch);
   if (
     getMobileWearableSyncBoundary().generation !==
       boundaryAtStart.generation ||
@@ -1187,6 +1486,26 @@ async function activateCurrentAccount(options?: {
   ) {
     return;
   }
+  let acknowledgedActorSequences: Record<string, number> = {};
+  if (!stored) {
+    try {
+      acknowledgedActorSequences = validatedAcknowledgedActorSequences(
+        await getAcknowledgedActorSequences(epoch),
+      );
+    } catch {
+      // A missing/corrupt optional watermark may defer a later actor sequence,
+      // but must never authorize skipping an unseen command.
+    }
+  }
+  if (
+    getMobileWearableSyncBoundary().generation !==
+      boundaryAtStart.generation ||
+    useAccountStore.getState().session?.accountId !== accountId
+  ) {
+    return;
+  }
+  const freshState = createWearableSyncState(epoch);
+  freshState.actorSequences = acknowledgedActorSequences;
   shadow =
     stored ??
     {
@@ -1194,7 +1513,7 @@ async function activateCurrentAccount(options?: {
       accountEpoch: epoch,
       actorId: `phone-${generateUuidV4()}`,
       actorSequence: 0,
-      state: createWearableSyncState(epoch),
+      state: freshState,
     };
   activeAccountId = accountId;
   if (options?.resumeBoundary) resumeMobileWearableAccountBoundary();
@@ -1220,7 +1539,7 @@ async function activateCurrentAccount(options?: {
     ...shadow,
     state: materializeStateWithSemanticRevision(shadow.state),
   };
-  await persistShadow(shadow);
+  await persistShadow(context.accountId, shadow);
   if (!coordinatorContextIsCurrent(context)) return;
   await requestSync();
   if (!coordinatorContextIsCurrent(context)) return;

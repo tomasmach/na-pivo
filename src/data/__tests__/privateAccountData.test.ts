@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { clearWearableSnapshot } from 'na-pivo-wearable-bridge';
 
 import { clearLocalPrivateAccountData } from '../privateAccountData';
 import { useCommunityStore } from '@/stores/communityStore';
@@ -16,6 +17,10 @@ jest.mock('@react-native-async-storage/async-storage', () =>
     '@react-native-async-storage/async-storage/jest/async-storage-mock',
   ),
 );
+
+jest.mock('na-pivo-wearable-bridge', () => ({
+  clearWearableSnapshot: jest.fn(async () => undefined),
+}));
 
 jest.mock('expo-secure-store', () => ({
   getItemAsync: jest.fn(async () => null),
@@ -51,8 +56,12 @@ const PRIVATE_KEYS = [
   'na-pivo-community',
   'na-pivo-pub',
   'na-pivo-wearable-phone-shadow-v1',
+  'na-pivo-wearable-phone-shadows-v2',
   'na-pivo-wearable-target-v1',
 ];
+
+const mockClearWearableSnapshot =
+  clearWearableSnapshot as jest.MockedFunction<typeof clearWearableSnapshot>;
 
 function session(overrides: Partial<TallySession> = {}): TallySession {
   return {
@@ -74,6 +83,7 @@ function session(overrides: Partial<TallySession> = {}): TallySession {
 
 beforeEach(async () => {
   jest.clearAllMocks();
+  mockClearWearableSnapshot.mockResolvedValue(undefined);
   await AsyncStorage.clear();
   useTallyStore.setState({ current: null, history: [] });
   useCommunityStore.setState({ overrides: {} });
@@ -144,6 +154,10 @@ it('clears local private stores and private sync queue storage', async () => {
       lng: 14.4182,
     },
   });
+  mockClearWearableSnapshot.mockImplementationOnce(async () => {
+    expect(useTallyStore.getState().current?.clientId).toBe('visit-1');
+    expect(useWearableTargetStore.getState().manualTarget?.pubKey).toBe('u2fkbn1x');
+  });
 
   for (const key of PRIVATE_KEYS) {
     await AsyncStorage.setItem(key, JSON.stringify({ private: true }));
@@ -194,6 +208,7 @@ it('clears local private stores and private sync queue storage', async () => {
   finishInFlightWearableCommand();
   await clearPromise;
 
+  expect(mockClearWearableSnapshot).toHaveBeenCalledTimes(2);
   expect(useTallyStore.getState().current).toBeNull();
   expect(useTallyStore.getState().history).toEqual([]);
   expect(useCommunityStore.getState().overrides).toEqual({});

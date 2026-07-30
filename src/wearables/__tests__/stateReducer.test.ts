@@ -19,6 +19,12 @@ const PUB_B: WearablePubRef = {
   latitude: 50.0898,
   longitude: 14.3966,
 };
+const PUB_C: WearablePubRef = {
+  pubKey: 'u2fkbzzz',
+  name: 'Lokál Dlouhááá',
+  latitude: 50.09045,
+  longitude: 14.42556,
+};
 
 function uuid(value: number): string {
   return `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
@@ -162,6 +168,169 @@ describe('applyWearableCommand', () => {
     expect(second.state.activeEveningId).toBe(uuid(10));
   });
 
+  it.each([
+    { selectedEveningId: 10, displacedEveningId: 20 },
+    { selectedEveningId: 20, displacedEveningId: 10 },
+  ])(
+    'activates evening $selectedEveningId and closes the displaced conflict branch',
+    ({ selectedEveningId, displacedEveningId }) => {
+      const first = applyWearableCommand(createWearableSyncState(EPOCH), start(1, 1, 10, 100));
+      const conflicted = applyWearableCommand(
+        first.state,
+        command(
+          2,
+          1,
+          {
+            type: 'start_evening_and_add_drink',
+            eveningId: uuid(20),
+            pub: PUB_B,
+            drinkingDayKey: '2026-07-30',
+            drink: drink(200),
+          },
+          { actorId: 'phone', baseRevision: first.state.revision },
+        ),
+      );
+      const resolved = applyWearableCommand(
+        conflicted.state,
+        command(
+          3,
+          2,
+          {
+            type: 'resolve_evening_conflict',
+            activeEveningId: uuid(selectedEveningId),
+          },
+          { baseRevision: conflicted.state.revision },
+        ),
+      );
+
+      expect(resolved.status).toBe('applied');
+      expect(resolved.state.activeEveningId).toBe(uuid(selectedEveningId));
+      expect(resolved.state.evenings[uuid(selectedEveningId)].status).toBe('active');
+      expect(resolved.state.evenings[uuid(displacedEveningId)].status).toBe('closed');
+      expect(resolved.state.eveningConflicts).toHaveLength(0);
+    },
+  );
+
+  it('closes every connected branch when three concurrent evenings are resolved', () => {
+    const first = applyWearableCommand(createWearableSyncState(EPOCH), start(1, 1, 10, 100));
+    const second = applyWearableCommand(
+      first.state,
+      command(
+        2,
+        1,
+        {
+          type: 'start_evening_and_add_drink',
+          eveningId: uuid(20),
+          pub: PUB_B,
+          drinkingDayKey: '2026-07-30',
+          drink: drink(200),
+        },
+        { actorId: 'phone', baseRevision: first.state.revision },
+      ),
+    );
+    const third = applyWearableCommand(
+      second.state,
+      command(
+        3,
+        1,
+        {
+          type: 'start_evening_and_add_drink',
+          eveningId: uuid(30),
+          pub: PUB_C,
+          drinkingDayKey: '2026-07-30',
+          drink: drink(300),
+        },
+        { actorId: 'watch-c', baseRevision: second.state.revision },
+      ),
+    );
+    const resolved = applyWearableCommand(
+      third.state,
+      command(
+        4,
+        2,
+        {
+          type: 'resolve_evening_conflict',
+          activeEveningId: uuid(20),
+        },
+        { baseRevision: third.state.revision },
+      ),
+    );
+
+    expect(resolved.state.activeEveningId).toBe(uuid(20));
+    expect(resolved.state.evenings[uuid(20)].status).toBe('active');
+    expect(resolved.state.evenings[uuid(10)].status).toBe('closed');
+    expect(resolved.state.evenings[uuid(30)].status).toBe('closed');
+    expect(resolved.state.eveningConflicts).toHaveLength(0);
+  });
+
+  it('also closes a newer active evening outside the resolved conflict component', () => {
+    const first = applyWearableCommand(
+      createWearableSyncState(EPOCH),
+      start(1, 1, 10, 100),
+    );
+    const conflicted = applyWearableCommand(
+      first.state,
+      command(
+        2,
+        2,
+        {
+          type: 'start_evening_and_add_drink',
+          eveningId: uuid(20),
+          pub: PUB_B,
+          drinkingDayKey: '2026-07-30',
+          drink: drink(200),
+        },
+        { baseRevision: first.state.revision },
+      ),
+    );
+    const closedOriginal = applyWearableCommand(
+      conflicted.state,
+      command(3, 3, {
+        type: 'close_evening',
+        eveningId: uuid(10),
+        closedAt: '2026-07-30T20:00:00.000Z',
+      }),
+    );
+    const newerActive = applyWearableCommand(
+      closedOriginal.state,
+      command(4, 4, {
+        type: 'start_evening_and_add_drink',
+        eveningId: uuid(30),
+        pub: PUB_C,
+        drinkingDayKey: '2026-07-30',
+        drink: drink(300),
+      }),
+    );
+    expect(newerActive.state.activeEveningId).toBe(uuid(30));
+    expect(newerActive.state.eveningConflicts).toEqual(
+      conflicted.state.eveningConflicts,
+    );
+
+    const resolveEnvelope = command(5, 5, {
+      type: 'resolve_evening_conflict',
+      activeEveningId: uuid(20),
+    });
+    const resolved = applyWearableCommand(newerActive.state, resolveEnvelope);
+
+    expect(resolved.status).toBe('applied');
+    expect(resolved.state.activeEveningId).toBe(uuid(20));
+    expect(resolved.state.evenings[uuid(20)]).toMatchObject({
+      status: 'active',
+      closedAt: undefined,
+    });
+    expect(resolved.state.evenings[uuid(10)].status).toBe('closed');
+    expect(resolved.state.evenings[uuid(30)]).toMatchObject({
+      status: 'closed',
+      closedAt: resolveEnvelope.sentAt,
+    });
+    expect(
+      Object.values(resolved.state.evenings).filter(
+        (evening) => evening.status === 'active',
+      ),
+    ).toHaveLength(1);
+    expect(resolved.state.eveningConflicts).toHaveLength(0);
+  });
+
   it('keeps a manual target over stale nearest and flags two stale manual targets', () => {
     const manualA = applyWearableCommand(
       createWearableSyncState(EPOCH),
@@ -241,5 +410,87 @@ describe('applyWearableCommand', () => {
 
     expect(gap.status).toBe('deferred');
     expect(applyWearableCommand(first.state, oldEpoch).status).toBe('rejected');
+  });
+
+  it('requires sequence one before establishing a new actor baseline', () => {
+    const initial = createWearableSyncState(EPOCH);
+    const second = command(
+      2,
+      2,
+      { type: 'set_target', target: { selection: 'manual', pub: PUB_B } },
+      { actorId: 'watch-first-pair', baseRevision: 1 },
+    );
+    const gap = applyWearableCommand(initial, second);
+
+    expect(gap).toMatchObject({
+      state: initial,
+      status: 'deferred',
+      reason: 'actor_sequence_gap',
+    });
+    expect(gap.state.actorSequences['watch-first-pair']).toBeUndefined();
+
+    const first = applyWearableCommand(
+      gap.state,
+      command(
+        1,
+        1,
+        { type: 'set_target', target: { selection: 'manual', pub: PUB_A } },
+        { actorId: 'watch-first-pair' },
+      ),
+    );
+    const retriedSecond = applyWearableCommand(first.state, second);
+
+    expect(first.status).toBe('applied');
+    expect(retriedSecond.status).toBe('applied');
+    expect(retriedSecond.state.actorSequences['watch-first-pair']).toBe(2);
+    expect(retriedSecond.state.target?.pub.pubKey).toBe(PUB_B.pubKey);
+  });
+
+  it('keeps a partial sequence seven deferred until acknowledged sequence six arrives', () => {
+    const actorId = 'watch-resume-watermark';
+    const initial = createWearableSyncState(EPOCH);
+    initial.actorSequences[actorId] = 5;
+    const seventh = command(
+      7,
+      7,
+      {
+        type: 'add_drink',
+        eveningId: uuid(70),
+        drink: drink(700),
+      },
+      { actorId, baseRevision: 1 },
+    );
+
+    const gap = applyWearableCommand(initial, seventh);
+    expect(gap).toMatchObject({
+      state: initial,
+      status: 'deferred',
+      reason: 'actor_sequence_gap',
+    });
+
+    const sixth = applyWearableCommand(
+      gap.state,
+      command(
+        6,
+        6,
+        {
+          type: 'start_evening_and_add_drink',
+          eveningId: uuid(70),
+          pub: PUB_A,
+          drinkingDayKey: '2026-07-30',
+          drink: drink(600),
+        },
+        { actorId },
+      ),
+    );
+    const retriedSeventh = applyWearableCommand(sixth.state, seventh);
+
+    expect(sixth.status).toBe('applied');
+    expect(retriedSeventh.status).toBe('applied');
+    expect(retriedSeventh.state.actorSequences[actorId]).toBe(7);
+    expect(retriedSeventh.state.evenings[uuid(70)].drinks).toEqual([
+      expect.objectContaining({ id: uuid(600) }),
+      expect.objectContaining({ id: uuid(700) }),
+    ]);
   });
 });

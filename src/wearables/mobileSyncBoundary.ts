@@ -7,6 +7,8 @@
 
 export const MOBILE_WEARABLE_SHADOW_STORAGE_KEY =
   'na-pivo-wearable-phone-shadow-v1';
+export const MOBILE_WEARABLE_SHADOWS_STORAGE_KEY =
+  'na-pivo-wearable-phone-shadows-v2';
 export const MOBILE_WEARABLE_TARGET_STORAGE_KEY =
   'na-pivo-wearable-target-v1';
 
