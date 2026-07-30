@@ -34,6 +34,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { usePartaSignalStore } from '@/stores/partaSignalStore';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 import { cs } from '@/i18n/cs';
+import { trackUiInteraction, type UiInteractionTarget } from '@/data/uxTelemetry';
 
 /**
  * The narrow slice of expo-router's bottom-tab `tabBar` callback props this
@@ -61,12 +62,37 @@ export interface TabBarProps {
 /** Maps a route name to its icon + label + a11y label. */
 const TAB_META: Record<
   string,
-  { Icon: typeof CompassIcon; label: string; a11yLabel: string }
+  {
+    Icon: typeof CompassIcon;
+    label: string;
+    a11yLabel: string;
+    telemetryTarget: UiInteractionTarget;
+  }
 > = {
-  index: { Icon: CompassIcon, label: cs.tabs.compass, a11yLabel: cs.a11y.tabCompass },
-  beer: { Icon: BeerIcon, label: cs.tabs.beer, a11yLabel: cs.a11y.tabBeer },
-  friends: { Icon: UsersIcon, label: cs.tabs.friends, a11yLabel: cs.a11y.tabFriends },
-  profile: { Icon: UserIcon, label: cs.tabs.profile, a11yLabel: cs.a11y.tabProfile },
+  index: {
+    Icon: CompassIcon,
+    label: cs.tabs.compass,
+    a11yLabel: cs.a11y.tabCompass,
+    telemetryTarget: 'tab_compass',
+  },
+  beer: {
+    Icon: BeerIcon,
+    label: cs.tabs.beer,
+    a11yLabel: cs.a11y.tabBeer,
+    telemetryTarget: 'tab_beer',
+  },
+  friends: {
+    Icon: UsersIcon,
+    label: cs.tabs.friends,
+    a11yLabel: cs.a11y.tabFriends,
+    telemetryTarget: 'tab_friends',
+  },
+  profile: {
+    Icon: UserIcon,
+    label: cs.tabs.profile,
+    a11yLabel: cs.a11y.tabProfile,
+    telemetryTarget: 'tab_profile',
+  },
 };
 
 /** What the Parta item's badge should render, if anything. */
@@ -186,6 +212,8 @@ export function TabBar({ state, navigation }: TabBarProps) {
         const focused = state.index === index;
 
         const onPress = () => {
+          const meta = TAB_META[route.name];
+          if (meta) trackUiInteraction(meta.telemetryTarget, 'select');
           if (hapticEnabled) {
             fireLightImpactHaptic();
           }

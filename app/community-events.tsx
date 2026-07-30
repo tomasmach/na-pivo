@@ -28,6 +28,11 @@ import {
   type DistanceBand,
 } from '@/data/communityEventsClient';
 import { ensureLocationPermission, openSystemSettings } from '@/compass/permissions';
+import {
+  trackUiInteraction,
+  type UiInteractionAction,
+  type UiInteractionTarget,
+} from '@/data/uxTelemetry';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import {
   CheckIcon,
@@ -121,9 +126,16 @@ function EventCard({
   const showToast = useToastStore((state) => state.show);
   const [acting, setActing] = useState(false);
   const [joinMessage, setJoinMessage] = useState('');
-  const run = useCallback(async (action: () => Promise<{ ok: boolean; detail?: string }>, success: string) => {
+  const run = useCallback(async (
+    action: () => Promise<{ ok: boolean; detail?: string }>,
+    success: string,
+    target: UiInteractionTarget,
+    interactionAction: UiInteractionAction = 'submit',
+  ) => {
+    trackUiInteraction(target, interactionAction);
     setActing(true);
     const result = await action();
+    trackUiInteraction(target, result.ok ? 'success' : 'failure');
     showToast(result.ok ? success : result.detail || cs.communityEvents.loadError);
     if (result.ok) await reload();
     setActing(false);
@@ -135,7 +147,11 @@ function EventCard({
       {
         text: cs.communityEvents.report,
         style: 'destructive',
-        onPress: () => void run(() => reportCommunityEvent(event.id), cs.communityEvents.reported),
+        onPress: () => void run(
+          () => reportCommunityEvent(event.id),
+          cs.communityEvents.reported,
+          'community_report',
+        ),
       },
     ]);
   };
@@ -171,9 +187,9 @@ function EventCard({
 
       {!event.isHost && event.status !== 'cancelled' ? (
         event.membershipStatus === 'approved' ? (
-          <Button label={cs.communityEvents.leave} secondary disabled={disabled} onPress={() => void run(() => leaveCommunityEvent(event.id), cs.communityEvents.leave)} />
+          <Button label={cs.communityEvents.leave} secondary disabled={disabled} onPress={() => void run(() => leaveCommunityEvent(event.id), cs.communityEvents.leave, 'community_leave')} />
         ) : event.membershipStatus === 'pending' ? (
-          <Button label={cs.communityEvents.cancelRequest} secondary disabled={disabled} onPress={() => void run(() => leaveCommunityEvent(event.id), cs.communityEvents.cancelRequest)} />
+          <Button label={cs.communityEvents.cancelRequest} secondary disabled={disabled} onPress={() => void run(() => leaveCommunityEvent(event.id), cs.communityEvents.cancelRequest, 'community_cancel_request', 'cancel')} />
         ) : (
           <>
             <TextInput
@@ -184,7 +200,7 @@ function EventCard({
               style={styles.input}
               maxLength={240}
             />
-            <Button label={cs.communityEvents.join} disabled={disabled || event.availableSpots < 1} onPress={() => void run(() => requestCommunityEventJoin(event.id, joinMessage), cs.communityEvents.joinSent)} />
+            <Button label={cs.communityEvents.join} disabled={disabled || event.availableSpots < 1} onPress={() => void run(() => requestCommunityEventJoin(event.id, joinMessage), cs.communityEvents.joinSent, 'community_join_request')} />
           </>
         )
       ) : null}
@@ -200,10 +216,10 @@ function EventCard({
               </View>
               {request.status === 'pending' ? (
                 <View style={styles.requestActions}>
-                  <Pressable onPress={() => void run(() => decideCommunityJoinRequest(event.id, request.id, 'reject'), cs.communityEvents.reject)} style={styles.iconButton}>
+                  <Pressable onPress={() => void run(() => decideCommunityJoinRequest(event.id, request.id, 'reject'), cs.communityEvents.reject, 'community_request_decline', 'decline')} style={styles.iconButton}>
                     <XIcon size={18} color={Colors.mutedText} />
                   </Pressable>
-                  <Pressable onPress={() => void run(() => decideCommunityJoinRequest(event.id, request.id, 'approve'), cs.communityEvents.approve)} style={[styles.iconButton, styles.approveButton]}>
+                  <Pressable onPress={() => void run(() => decideCommunityJoinRequest(event.id, request.id, 'approve'), cs.communityEvents.approve, 'community_request_accept', 'accept')} style={[styles.iconButton, styles.approveButton]}>
                     <CheckIcon size={18} color={Colors.stout} />
                   </Pressable>
                 </View>
@@ -215,7 +231,7 @@ function EventCard({
 
       <View style={styles.textActions}>
         {event.isHost && event.status !== 'cancelled' ? (
-          <Pressable onPress={() => void run(() => cancelCommunityEvent(event.id), cs.communityEvents.cancelled)}>
+          <Pressable onPress={() => void run(() => cancelCommunityEvent(event.id), cs.communityEvents.cancelled, 'community_cancel_event', 'cancel')}>
             <Text style={styles.dangerAction}>{cs.communityEvents.cancelEvent}</Text>
           </Pressable>
         ) : !event.isHost ? (
@@ -268,6 +284,7 @@ export default function CommunityEventsScreen() {
   }, [load]);
 
   const locate = useCallback(async (forEvent: boolean) => {
+    trackUiInteraction('community_locate');
     setBusy(true);
     const permission = await ensureLocationPermission();
     if (permission !== 'granted') {
@@ -291,7 +308,9 @@ export default function CommunityEventsScreen() {
   }, [load, showToast]);
 
   const create = useCallback(async () => {
+    trackUiInteraction('community_publish', 'submit');
     if (!eventLocation || !title.trim() || !city.trim() || !address.trim() || !adultsConfirmed || busy) {
+      trackUiInteraction('community_publish', 'failure');
       showToast(cs.communityEvents.privacyError);
       return;
     }
@@ -314,11 +333,15 @@ export default function CommunityEventsScreen() {
       capacity,
     });
     if (result.ok) {
+      trackUiInteraction('community_publish', 'success');
       setDraftClientId(generateUuidV4());
       showToast(cs.communityEvents.created);
       setMode('mine');
       await load(location);
-    } else showToast(result.detail);
+    } else {
+      trackUiInteraction('community_publish', 'failure');
+      showToast(result.detail);
+    }
     setBusy(false);
   }, [address, adultsConfirmed, area, busy, capacity, city, dayOffset, description, draftClientId, duration, eventLocation, hour, load, location, showToast, title]);
 
@@ -343,7 +366,21 @@ export default function CommunityEventsScreen() {
 
           <View style={styles.tabs}>
             {(['nearby', 'mine', 'create'] as Mode[]).map((item) => (
-              <Pressable key={item} onPress={() => setMode(item)} style={[styles.tab, mode === item && styles.tabActive]}>
+              <Pressable
+                key={item}
+                onPress={() => {
+                  trackUiInteraction(
+                    item === 'nearby'
+                      ? 'community_nearby_tab'
+                      : item === 'mine'
+                        ? 'community_mine_tab'
+                        : 'community_create_tab',
+                    'select',
+                  );
+                  setMode(item);
+                }}
+                style={[styles.tab, mode === item && styles.tabActive]}
+              >
                 <Text style={[styles.tabText, mode === item && styles.tabTextActive]}>{item === 'nearby' ? cs.communityEvents.nearby : item === 'mine' ? cs.communityEvents.mine : cs.communityEvents.create}</Text>
               </Pressable>
             ))}

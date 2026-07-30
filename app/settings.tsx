@@ -42,6 +42,7 @@ import {
 import { MoreSheet, type MoreRow } from '@/components/shared/MoreSheet';
 import { CounterCta } from '@/counter/CounterCta';
 import { updateAccountPreferences } from '@/data/account';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { cs } from '@/i18n/cs';
 import {
   disableBeerCountReminderNotifications,
@@ -433,6 +434,7 @@ export default function SettingsScreen() {
   const handleSliderSnap = useCallback(
     (index: number) => {
       const next = SLIDER_POSITIONS[index] ?? null;
+      trackUiInteraction('settings_distance_change', 'select');
       setMaxDistanceKm(next);
       void updateAccountPreferences({ maxDistanceKm: next });
     },
@@ -441,44 +443,57 @@ export default function SettingsScreen() {
 
   const toggleHaptic = useCallback(() => {
     const next = !hapticEnabled;
+    trackUiInteraction('settings_haptics', next ? 'toggle_on' : 'toggle_off');
     setHapticEnabled(next);
     void updateAccountPreferences({ hapticEnabled: next });
   }, [hapticEnabled, setHapticEnabled]);
 
   const toggleSound = useCallback(() => {
     const next = !soundEnabled;
+    trackUiInteraction('settings_sound', next ? 'toggle_on' : 'toggle_off');
     setSoundEnabled(next);
     void updateAccountPreferences({ soundEnabled: next });
   }, [setSoundEnabled, soundEnabled]);
 
   const toggleWaterNudge = useCallback(() => {
-    setWaterNudgeEnabled(!waterNudgeEnabled);
+    const next = !waterNudgeEnabled;
+    trackUiInteraction('settings_water_nudge', next ? 'toggle_on' : 'toggle_off');
+    setWaterNudgeEnabled(next);
   }, [setWaterNudgeEnabled, waterNudgeEnabled]);
 
   const toggleHideClosed = useCallback(() => {
     const next = !hideClosedPubs;
+    trackUiInteraction('settings_hide_closed', next ? 'toggle_on' : 'toggle_off');
     setHideClosedPubs(next);
     void updateAccountPreferences({ hideClosedPubs: next });
   }, [hideClosedPubs, setHideClosedPubs]);
 
   const togglePreferRated = useCallback(() => {
-    setPreferRatedPubs(!preferRatedPubs);
+    const next = !preferRatedPubs;
+    trackUiInteraction('settings_prefer_rated', next ? 'toggle_on' : 'toggle_off');
+    setPreferRatedPubs(next);
   }, [preferRatedPubs, setPreferRatedPubs]);
 
   const toggleHidePubNames = useCallback(() => {
     const next = !hidePubNames;
+    trackUiInteraction('settings_hide_names', next ? 'toggle_on' : 'toggle_off');
     setHidePubNames(next);
     void updateAccountPreferences({ hidePubNames: next });
   }, [hidePubNames, setHidePubNames]);
 
   const toggleMarketingEmails = useCallback(() => {
     const next = !marketingEmailsEnabled;
+    trackUiInteraction('settings_marketing_emails', next ? 'toggle_on' : 'toggle_off');
     setMarketingEmailsEnabled(next);
     void updateAccountPreferences({ marketingEmailsEnabled: next });
   }, [marketingEmailsEnabled, setMarketingEmailsEnabled]);
 
   const togglePubReminders = useCallback(async () => {
     if (pubReminderBusy) return;
+    trackUiInteraction(
+      'settings_pub_reminders',
+      pubReminderEnabled ? 'toggle_off' : 'toggle_on',
+    );
     setPubReminderBusy(true);
     try {
       if (pubReminderEnabled) {
@@ -502,6 +517,10 @@ export default function SettingsScreen() {
 
   const toggleBeerCountReminder = useCallback(async () => {
     if (beerCountReminderBusy) return;
+    trackUiInteraction(
+      'settings_beer_reminders',
+      beerCountReminderEnabled ? 'toggle_off' : 'toggle_on',
+    );
     setBeerCountReminderBusy(true);
     try {
       if (beerCountReminderEnabled) {
@@ -548,6 +567,7 @@ export default function SettingsScreen() {
         selected: navigationProvider === 'google',
         accessibilityRole: 'radio',
         onPress: () => {
+          trackUiInteraction('settings_navigation_google', 'select');
           setNavigationProvider('google');
           setMoreOpen(false);
         },
@@ -559,6 +579,7 @@ export default function SettingsScreen() {
         selected: navigationProvider === 'mapy',
         accessibilityRole: 'radio',
         onPress: () => {
+          trackUiInteraction('settings_navigation_mapy', 'select');
           setNavigationProvider('mapy');
           setMoreOpen(false);
         },
@@ -636,7 +657,10 @@ export default function SettingsScreen() {
           {cs.settings.title}
         </Text>
         <Pressable
-          onPress={() => setMoreOpen(true)}
+          onPress={() => {
+            trackUiInteraction('settings_more_open');
+            setMoreOpen(true);
+          }}
           style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}
           hitSlop={8}
           accessibilityRole="button"
@@ -775,7 +799,10 @@ export default function SettingsScreen() {
             : cs.settings.accountCard.signedOutTitle
         }
         subLabel={accountSubLabel}
-        onPress={() => router.push((isSignedIn ? '/account' : '/auth') as Href)}
+        onPress={() => {
+          trackUiInteraction('settings_account_open');
+          router.push((isSignedIn ? '/account' : '/auth') as Href);
+        }}
         accessibilityLabel={
           isSignedIn ? cs.a11y.profileManageAccount : cs.a11y.profileSignUp
         }

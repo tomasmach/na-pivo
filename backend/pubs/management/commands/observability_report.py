@@ -65,6 +65,7 @@ class Command(BaseCommand):
         error_events = events.filter(severity=ClientEvent.Severity.ERROR)
         warning_events = events.filter(severity=ClientEvent.Severity.WARNING)
         screen_events = events.filter(event=ClientEvent.Event.SCREEN_VIEWED)
+        interaction_events = events.filter(event=ClientEvent.Event.UI_INTERACTION)
         feedback = FeedbackReport.objects.filter(created_at__gte=since)
         counter_events = events.filter(
             event__in=[
@@ -143,6 +144,20 @@ class Command(BaseCommand):
             screen_counts[screen] += 1
             if account_id is not None:
                 screen_accounts[screen].add(account_id)
+
+        interaction_counts: Counter[tuple[str, str]] = Counter()
+        interaction_accounts: defaultdict[tuple[str, str], set[int]] = defaultdict(set)
+        interacting_account_ids: set[int] = set()
+        for context, account_id in interaction_events.values_list("context", "account_id"):
+            target = str((context or {}).get("target") or "")
+            action = str((context or {}).get("action") or "")
+            if not target or not action:
+                continue
+            key = (target, action)
+            interaction_counts[key] += 1
+            if account_id is not None:
+                interaction_accounts[key].add(account_id)
+                interacting_account_ids.add(account_id)
 
         recent_errors = [
             {
@@ -256,6 +271,20 @@ class Command(BaseCommand):
                         key=lambda item: (-item[1], item[0]),
                     )[:limit]
                 ],
+                "interactions": sum(interaction_counts.values()),
+                "unique_interacting_accounts": len(interacting_account_ids),
+                "interaction_targets": [
+                    {
+                        "target": target,
+                        "action": action,
+                        "events": count,
+                        "unique_accounts": len(interaction_accounts[(target, action)]),
+                    }
+                    for (target, action), count in sorted(
+                        interaction_counts.items(),
+                        key=lambda item: (-item[1], item[0][0], item[0][1]),
+                    )[:limit]
+                ],
             },
             "abuse": {
                 "drinks_created": drinks_created.count(),
@@ -343,6 +372,7 @@ class Command(BaseCommand):
             "## Product",
             "",
             f"- Screen views: {product['screen_views']} ({product['unique_viewing_accounts']} unique accounts)",
+            f"- UI interactions: {product['interactions']} ({product['unique_interacting_accounts']} unique accounts)",
             "",
             "### Screens",
             "",
@@ -351,6 +381,13 @@ class Command(BaseCommand):
             self._table(
                 product["screens"],
                 ["screen", "views", "unique_accounts"],
+            )
+        )
+        lines.extend(["", "### Interaction targets", ""])
+        lines.extend(
+            self._table(
+                product["interaction_targets"],
+                ["target", "action", "events", "unique_accounts"],
             )
         )
         lines.extend(

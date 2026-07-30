@@ -31,6 +31,7 @@ import { Toast } from '@/components/shared/Toast';
 import { fetchFriendInviteCode, type FriendInvite } from '@/data/friendsClient';
 import { Avatar } from '@/profile/Avatar';
 import { cs } from '@/i18n/cs';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { selectNickname, useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -118,11 +119,13 @@ function CodeSheet({ onClose }: CodeSheetProps): React.ReactElement {
 
   const handleShare = useCallback(() => {
     if (!link) return;
+    trackUiInteraction('friend_invite_share', 'share');
     void Share.share({ message: cs.friends.shareMessage(link) });
   }, [link]);
 
   const handleQuickSend = useCallback(() => {
     if (!link) return;
+    trackUiInteraction('friend_invite_share', 'share');
     void Share.share({ message: cs.friends.shareMessage(link) }).catch(() => {
       if (!mountedRef.current) return;
       showToast(cs.friends.shareError, { icon: <CopyIcon size={20} color={Colors.amber} /> });

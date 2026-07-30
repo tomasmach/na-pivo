@@ -95,6 +95,7 @@ import {
   isRetriableFriendError,
 } from '@/data/friendsQueue';
 import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import {
   fetchLeaderboard,
   type Leaderboard,
@@ -516,6 +517,7 @@ export default function FriendsScreen() {
 
   const loadMoreSittings = useCallback(() => {
     if (!feedCursor || feedLoadingMore) return;
+    trackUiInteraction('friends_load_more', 'load_more');
     setFeedLoadingMore(true);
     void fetchPartaFeed({ cursor: feedCursor, limit: FEED_PAGE }).then((page) => {
       if (!mountedRef.current) return;
@@ -653,7 +655,10 @@ export default function FriendsScreen() {
 
   const openFriendProfile = useCallback(
     (accountId: string) => {
-      if (accountId) router.push(`/parta/${accountId}` as Href);
+      if (accountId) {
+        trackUiInteraction('friends_profile_open');
+        router.push(`/parta/${accountId}` as Href);
+      }
     },
     [router],
   );
@@ -666,6 +671,10 @@ export default function FriendsScreen() {
   const respond = useCallback(
     async (id: string, action: 'accept' | 'decline') => {
       if (respondingRequestActions[id]) return;
+      trackUiInteraction(
+        action === 'accept' ? 'friends_request_accept' : 'friends_request_decline',
+        action,
+      );
       setRespondingRequestActions((current) => ({ ...current, [id]: action }));
       const result = await respondFriendRequest(id, action);
       if (!mountedRef.current) return;
@@ -697,6 +706,7 @@ export default function FriendsScreen() {
   const handleEndBroadcast = useCallback(() => {
     const activity = d?.myActiveActivity;
     if (!activity || endingBroadcastRef.current) return;
+    trackUiInteraction('friends_end_broadcast');
     showAppDialog({
       title: cs.friends.endActivityConfirmTitle,
       message: cs.friends.endActivityConfirmBody,
@@ -737,6 +747,7 @@ export default function FriendsScreen() {
   }, [d?.myActiveActivity, reload, showToast]);
 
   const handleEnablePush = useCallback(() => {
+    trackUiInteraction('friends_push_enable');
     void registerFriendPush().then((result) => {
       if (!mountedRef.current) return;
       if (result.ok) {
@@ -791,7 +802,10 @@ export default function FriendsScreen() {
         label: cs.friends.moreWholeParty,
         icon: UsersIcon,
         onPress: () =>
-          runAfterMoreClose(() => router.push('/profile/parta' as Href)),
+          runAfterMoreClose(() => {
+            trackUiInteraction('friends_manage_open');
+            router.push('/profile/parta' as Href);
+          }),
       },
       {
         key: 'settings',
@@ -819,22 +833,30 @@ export default function FriendsScreen() {
         label: cs.friends.railVycep,
         a11yLabel: cs.a11y.vycepLink,
         Icon: HandPlatterIcon,
-        onPress: () => router.push('/vycep' as Href),
+        onPress: () => {
+          trackUiInteraction('friends_taproom_open');
+          router.push('/vycep' as Href);
+        },
       },
       {
         key: 'leaderboards',
         label: cs.friends.railLeaderboards,
         a11yLabel: cs.a11y.leaderboardsLink,
         Icon: TrophyIcon,
-        onPress: () =>
-          router.push({ pathname: '/leaderboards', params: { source: 'parta' } } as Href),
+        onPress: () => {
+          trackUiInteraction('friends_leaderboards_open');
+          router.push({ pathname: '/leaderboards', params: { source: 'parta' } } as Href);
+        },
       },
       {
         key: 'photo-contest',
         label: cs.friends.railPhotoContest,
         a11yLabel: cs.a11y.photoContestLink,
         Icon: ImagesIcon,
-        onPress: () => router.push('/photo-contest' as Href),
+        onPress: () => {
+          trackUiInteraction('friends_photo_contest_open');
+          router.push('/photo-contest' as Href);
+        },
       },
     ],
     [router],
@@ -1159,7 +1181,10 @@ export default function FriendsScreen() {
       )}
       <View style={styles.headerSpacer} />
       <Pressable
-        onPress={() => setMoreVisible(true)}
+        onPress={() => {
+          trackUiInteraction('friends_more_open');
+          setMoreVisible(true);
+        }}
         style={({ pressed }) => [styles.moreButton, pressed && styles.dim]}
         hitSlop={8}
         accessibilityRole="button"

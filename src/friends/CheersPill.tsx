@@ -39,6 +39,7 @@ import {
   reactToActivity,
 } from '@/data/friendsClient';
 import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { cs } from '@/i18n/cs';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
@@ -129,6 +130,7 @@ function CheersPillBase({
   const handlePress = useCallback(() => {
     if (busy) return;
     const turningOn = !active;
+    trackUiInteraction('parta_reaction_add', turningOn ? 'toggle_on' : 'toggle_off');
     const prevActive = active;
     const prevCount = displayCount;
 
@@ -159,6 +161,7 @@ function CheersPillBase({
       if (seq !== seqRef.current) return;
       pendingRef.current = false;
       if (res.ok) {
+        trackUiInteraction('parta_reaction_add', 'success');
         showToast(turningOn ? cs.friends.cheersDone : cs.friends.cheersUndone, {
           icon: <BeerIcon size={20} color={Colors.amber} />,
         });
@@ -166,6 +169,7 @@ function CheersPillBase({
         return;
       }
       if (isRetriableFriendError(res)) {
+        trackUiInteraction('parta_reaction_add', 'success');
         // Offline / transient: keep the optimistic flip and queue the op so it
         // lands on the next flush (honest — it WILL send).
         if (target === 'beerCheckIn') {
@@ -182,6 +186,7 @@ function CheersPillBase({
         });
         return;
       }
+      trackUiInteraction('parta_reaction_add', 'failure');
       // Hard reject: revert.
       setActive(prevActive);
       setDisplayCount(prevCount);

@@ -58,6 +58,7 @@ import { useReduceMotion } from '@/utils/useReduceMotion';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useAccountStore } from '@/stores/accountStore';
 import { openPubInMaps } from '@/utils/maps';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -727,6 +728,7 @@ export default function BeerMapScreen({
 
   const selectPub = useCallback(
     (point: MapPubPoint) => {
+      trackUiInteraction('map_pub_select', 'select');
       if (hapticEnabled) fireLightImpactHaptic();
       const next: MapSelection = { kind: 'pub', key: point.key, accountId };
       rememberedSelection = next;
@@ -749,6 +751,7 @@ export default function BeerMapScreen({
 
   const selectLive = useCallback(
     (live: LivePubSummary) => {
+      trackUiInteraction('map_live_select', 'select');
       if (hapticEnabled) fireLightImpactHaptic();
       const next: MapSelection = { kind: 'live', key: live.cacheKey, accountId };
       rememberedSelection = next;
@@ -770,6 +773,14 @@ export default function BeerMapScreen({
   );
 
   const selectLayer = useCallback((next: Layer) => {
+    trackUiInteraction(
+      next === 'all'
+        ? 'map_layer_all'
+        : next === 'visited'
+          ? 'map_layer_visited'
+          : 'map_layer_friends',
+      'select',
+    );
     rememberedLayer = next;
     rememberedSelection = null;
     setLayer(next);
@@ -778,6 +789,7 @@ export default function BeerMapScreen({
 
   const aimCompass = useCallback(
     (target: FocusedPub) => {
+      trackUiInteraction('map_aim_compass');
       useFocusedPubStore.getState().setFocusedPub(target);
       onShowCompass();
     },
@@ -785,6 +797,7 @@ export default function BeerMapScreen({
   );
 
   const locate = useCallback(() => {
+    trackUiInteraction('map_locate');
     if (!position) {
       void requestPermission();
       return;
@@ -1199,7 +1212,10 @@ export default function BeerMapScreen({
             <LocateFixedIcon size={19} color={Colors.amber} />
           </Pressable>
           <Pressable
-            onPress={() => setMoreOpen(true)}
+            onPress={() => {
+              trackUiInteraction('map_more_open');
+              setMoreOpen(true);
+            }}
             style={({ pressed }) => [
               styles.moreButton,
               pressed && styles.pressedSoft,
@@ -1244,13 +1260,19 @@ export default function BeerMapScreen({
             cardState.kind === 'pub'
               ? {
                   label: cs.compass.mapPubLink,
-                  onPress: () => setDetailOpen(true),
+                  onPress: () => {
+                    trackUiInteraction('map_pub_detail_open');
+                    setDetailOpen(true);
+                  },
                   accessibilityLabel: cs.compass.mapPubLink,
                 }
               : cardState.kind === 'idle'
                 ? {
                     label: cs.map.listLink,
-                    onPress: () => setListOpen(true),
+                    onPress: () => {
+                      trackUiInteraction('map_list_open');
+                      setListOpen(true);
+                    },
                     accessibilityLabel: cs.a11y.mapList,
                   }
                 : undefined

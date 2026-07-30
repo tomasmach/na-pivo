@@ -29,6 +29,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { reconcileLiveBeerActivityAndAutoArchive } from '@/liveActivity/liveBeerActivity';
 import CounterScreen from '@/counter/CounterScreen';
 import DiaryScreen from '@/diary/DiaryScreen';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 
 type BeerTab = 'count' | 'diary';
 
@@ -43,6 +44,10 @@ const Segmented = memo(function Segmented({ tab, onChange }: SegmentedProps) {
   const press = (next: BeerTab) => {
     if (next === tab) return;
     if (hapticEnabled) fireLightImpactHaptic();
+    trackUiInteraction(
+      next === 'count' ? 'beer_counter_segment' : 'beer_diary_segment',
+      'select',
+    );
     onChange(next);
   };
 
@@ -113,7 +118,15 @@ export default function BeerScreen() {
               counter it pushed the place chip around for one glyph. */}
           {tab === 'diary' || counterMoreReady ? (
             <Pressable
-              onPress={() => (tab === 'diary' ? setStatsOpen(true) : setCounterMoreOpen(true))}
+              onPress={() => {
+                if (tab === 'diary') {
+                  trackUiInteraction('beer_stats_open');
+                  setStatsOpen(true);
+                } else {
+                  trackUiInteraction('beer_counter_more');
+                  setCounterMoreOpen(true);
+                }
+              }}
               style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}
               hitSlop={8}
               accessibilityRole="button"

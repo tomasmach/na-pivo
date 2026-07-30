@@ -76,6 +76,7 @@ import { CounterCta, CounterSecondary } from '@/counter/CounterCta';
 import { ReportPubModal } from '@/components/compass/ReportPubModal';
 import { pubInfoFromPub } from '@/components/amenities/pubInfoContext';
 import { geohash8 } from '@/data/geohash';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import type { FocusedPub } from '@/stores/focusedPubStore';
 import { useToastStore } from '@/stores/toastStore';
 import BeerMapScreen from '@/map/BeerMapScreen';
@@ -624,6 +625,10 @@ export default function CompassScreen() {
   const showPubDetails = !hidePubNames || revealed;
   const handleModeChange = useCallback(
     (next: 'nearest' | 'surprise') => {
+      trackUiInteraction(
+        next === 'nearest' ? 'compass_mode_nearest' : 'compass_mode_surprise',
+        'select',
+      );
       setMode(next);
       void updateAccountPreferences({ mode: next });
     },
@@ -681,25 +686,43 @@ export default function CompassScreen() {
   }, [arrived, pub, router, dismissArrival]);
 
   const handleSettings = useCallback(() => {
+    trackUiInteraction('compass_settings_open');
     router.push('/settings');
   }, [router]);
 
-  const handleOpenFilter = useCallback(() => setFilterSheetOpen(true), []);
+  const handleOpenFilter = useCallback(() => {
+    trackUiInteraction('compass_filters_open');
+    setFilterSheetOpen(true);
+  }, []);
   const handleCloseFilter = useCallback(() => setFilterSheetOpen(false), []);
   const handleClearFilter = useCallback(
-    () => setPubFilters(EMPTY_PUB_SEARCH_FILTERS),
+    () => {
+      trackUiInteraction('compass_filters_clear');
+      setPubFilters(EMPTY_PUB_SEARCH_FILTERS);
+    },
     [],
   );
+  const handleApplyFilter = useCallback((next: PubSearchFilters) => {
+    trackUiInteraction('compass_filters_apply', 'submit');
+    setPubFilters(next);
+  }, []);
   // Snapshot the known prices when the sheet opens — the histogram should show
   // the distribution around the CURRENT loaded area, not live-shift mid-drag.
   const nearbyPrices = useMemo(
     () => (filterSheetOpen ? freshPriceCzks(getAllLoadedPubs()) : []),
     [filterSheetOpen],
   );
-  const handleShowMap = useCallback(() => setMapOpen(true), []);
-  const handleShowCompass = useCallback(() => setMapOpen(false), []);
+  const handleShowMap = useCallback(() => {
+    trackUiInteraction('compass_map_open');
+    setMapOpen(true);
+  }, []);
+  const handleShowCompass = useCallback(() => {
+    trackUiInteraction('compass_return');
+    setMapOpen(false);
+  }, []);
 
   const handleAddPub = useCallback(() => {
+    trackUiInteraction('compass_add_pub_open');
     router.push({
       pathname: '/add-pub' as never,
       params: {
@@ -717,7 +740,10 @@ export default function CompassScreen() {
   }, [pub, router]);
 
   const handleOpenMaps = useCallback(() => {
-    if (pub) openPubInMaps(pub);
+    if (pub) {
+      trackUiInteraction('compass_directions_open');
+      openPubInMaps(pub);
+    }
   }, [pub]);
   const handleNavigateHome = useCallback(() => {
     if (homePoint) void openHomeInMaps(homePoint);
@@ -733,6 +759,7 @@ export default function CompassScreen() {
 
   const handleRenamePress = useCallback(() => {
     if (!pub) return;
+    trackUiInteraction('compass_rename_open');
     setRenameDraft(pub.name);
     setRenameOpen(true);
   }, [pub]);
@@ -758,6 +785,7 @@ export default function CompassScreen() {
 
   const handleReport = useCallback(() => {
     if (!pub) return;
+    trackUiInteraction('compass_report_open');
     setReportOpen(true);
   }, [pub]);
 
@@ -788,10 +816,12 @@ export default function CompassScreen() {
   // name is visible, the reveal when it isn't.
   const handleCardFooterPress = useCallback(() => {
     if (!showPubDetails) {
+      trackUiInteraction('compass_pub_reveal');
       reveal();
       return;
     }
     if (focusedPub) return; // a coarse friend target has nothing to map
+    trackUiInteraction('compass_pub_card_open');
     setMapPubOpen(true);
   }, [focusedPub, reveal, showPubDetails]);
 
@@ -879,7 +909,7 @@ export default function CompassScreen() {
       <BeerMapScreen
         initialPub={pub}
         filters={pubFilters}
-        onApplyFilters={setPubFilters}
+        onApplyFilters={handleApplyFilter}
         onShowCompass={handleShowCompass}
       />
     );
@@ -933,7 +963,7 @@ export default function CompassScreen() {
             value={pubFilters}
             nearbyPrices={nearbyPrices}
             onClose={handleCloseFilter}
-            onApply={setPubFilters}
+            onApply={handleApplyFilter}
           />
         ) : null}
       </View>
@@ -965,7 +995,10 @@ export default function CompassScreen() {
         />
         <View style={styles.headerSpacer} />
         <Pressable
-          onPress={() => setMoreOpen(true)}
+          onPress={() => {
+            trackUiInteraction('compass_more_open');
+            setMoreOpen(true);
+          }}
           onLongPress={handleDevArrival}
           delayLongPress={800}
           style={({ pressed }) => [styles.moreButton, pressed && styles.pressedSoft]}
@@ -1022,13 +1055,20 @@ export default function CompassScreen() {
       {focusedPub ? (
         <CounterSecondary
           label={cs.compass.backToNearest}
-          onPress={clearFocusedPub}
+          onPress={() => {
+            trackUiInteraction('compass_focus_clear');
+            clearFocusedPub();
+          }}
           accessibilityLabel={cs.a11y.compassBackToNearest}
         />
       ) : (
         <CounterSecondary
           label={cs.compass.anotherPub}
-          onPress={mode === 'surprise' ? reroll : skip}
+          onPress={() => {
+            trackUiInteraction('compass_reroll');
+            if (mode === 'surprise') reroll();
+            else skip();
+          }}
           accessibilityLabel={cs.a11y.compassAnother}
         />
       )}
@@ -1041,7 +1081,7 @@ export default function CompassScreen() {
           value={pubFilters}
           nearbyPrices={nearbyPrices}
           onClose={handleCloseFilter}
-          onApply={setPubFilters}
+          onApply={handleApplyFilter}
         />
       ) : null}
       {pub ? (

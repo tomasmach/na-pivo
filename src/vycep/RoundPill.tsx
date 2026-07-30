@@ -25,6 +25,7 @@ import Animated, {
 import { HandPlatterIcon } from '@/components/shared/IconGlyph';
 import { clearNightReaction, isRetriableNightError, reactToNight } from '@/data/nightsClient';
 import { enqueueNightOp } from '@/data/nightsQueue';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { cs } from '@/i18n/cs';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
@@ -100,6 +101,7 @@ function RoundPillBase({ nightId, count, mine, onChanged, ownerName }: RoundPill
   const handlePress = useCallback(() => {
     if (busy) return;
     const turningOn = !active;
+    trackUiInteraction('night_react', turningOn ? 'toggle_on' : 'toggle_off');
     const prevActive = active;
     const prevCount = displayCount;
 
@@ -123,6 +125,7 @@ function RoundPillBase({ nightId, count, mine, onChanged, ownerName }: RoundPill
       if (seq !== seqRef.current) return;
       pendingRef.current = false;
       if (res.ok) {
+        trackUiInteraction('night_react', 'success');
         showToast(turningOn ? cs.vycep.roundSentToast : cs.vycep.roundUndoneToast, {
           icon: <HandPlatterIcon size={20} color={Colors.amber} />,
         });
@@ -130,6 +133,7 @@ function RoundPillBase({ nightId, count, mine, onChanged, ownerName }: RoundPill
         return;
       }
       if (isRetriableNightError(res)) {
+        trackUiInteraction('night_react', 'success');
         // Offline / transient: keep the flip, queue the op (it WILL land).
         void enqueueNightOp(
           turningOn ? { op: 'round', nightId } : { op: 'round-clear', nightId },
@@ -139,6 +143,7 @@ function RoundPillBase({ nightId, count, mine, onChanged, ownerName }: RoundPill
         });
         return;
       }
+      trackUiInteraction('night_react', 'failure');
       // Hard reject: revert.
       setActive(prevActive);
       setDisplayCount(prevCount);

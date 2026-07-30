@@ -35,6 +35,7 @@ import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScroll
 import { ensureLocationPermission, openSystemSettings } from '@/compass/permissions';
 import { generateUuidV4 } from '@/data/account';
 import { buildAddedPubEntry } from '@/data/addedPubsClient';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { enqueueAddedPub, enqueueAddedPubEdit } from '@/data/addedPubsQueue';
 import { clearPubsSnapshot, pubIdForCoords, upsertLocalPub } from '@/data/pubs';
 import { usePubStore } from '@/stores/pubStore';
@@ -109,6 +110,7 @@ export default function AddPubScreen() {
   const currentLocationSelected = locationCorrectionSelected;
 
   const handleUseCurrentLocation = useCallback(async () => {
+    trackUiInteraction('add_pub_location', 'select');
     if (currentLocationSelected) {
       setSelectedLocation(null);
       if (isEditing) {
@@ -158,6 +160,7 @@ export default function AddPubScreen() {
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit) return;
+    trackUiInteraction('add_pub_submit', 'submit');
     setSubmitted(true);
     setLocationError('');
 
@@ -211,6 +214,7 @@ export default function AddPubScreen() {
           generateUuidV4(),
         ));
     void sync.then((state) => {
+      trackUiInteraction('add_pub_submit', state === 'failed' ? 'failure' : 'success');
       bumpCatalogRevision();
       showToast(
         state === 'synced'
@@ -244,7 +248,10 @@ export default function AddPubScreen() {
     <View style={[styles.root, { paddingTop: insets.top + 12 }]}>
       <View style={styles.header}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => {
+            trackUiInteraction('add_pub_cancel', 'cancel');
+            router.back();
+          }}
           style={styles.backButton}
           accessibilityRole="button"
           accessibilityLabel={cs.a11y.backButton}

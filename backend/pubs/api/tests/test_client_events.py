@@ -334,6 +334,50 @@ def test_screen_view_event_drops_unknown_screen_values(client):
 
 
 @pytest.mark.django_db
+def test_ui_interaction_accepts_only_allowlisted_target_and_action(client):
+    token = _register(client)
+
+    resp = client.post(
+        "/v1/client-events",
+        data={
+            "event": "ui_interaction",
+            "context": {
+                "target": "community_join_request",
+                "action": "submit",
+                "label": "Přidat se k Pepovi",
+                "account_id": "private-id",
+            },
+        },
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_202_ACCEPTED
+    assert ClientEvent.objects.get().context == {
+        "target": "community_join_request",
+        "action": "submit",
+    }
+
+
+@pytest.mark.django_db
+def test_ui_interaction_drops_unknown_target_and_action(client):
+    resp = client.post(
+        "/v1/client-events",
+        data={
+            "event": "ui_interaction",
+            "context": {
+                "target": "profile_user@example.com",
+                "action": "clicked_private-pub-id",
+            },
+        },
+        format="json",
+    )
+
+    assert resp.status_code == status.HTTP_202_ACCEPTED
+    assert ClientEvent.objects.get().context == {}
+
+
+@pytest.mark.django_db
 def test_account_export_includes_linked_telemetry(client):
     token = _register(client)
     client.post(

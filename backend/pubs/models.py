@@ -2439,6 +2439,7 @@ class ClientEvent(models.Model):
         APP_OPEN = "app_open", "App opened"
         APP_FOREGROUND = "app_foreground", "App foregrounded"
         SCREEN_VIEWED = "screen_viewed", "Screen viewed"
+        UI_INTERACTION = "ui_interaction", "UI interaction"
         WALKING_DISTANCE = "walking_distance", "Walking distance"
         COUNTER_TAB_OPENED = "counter_tab_opened", "Counter tab opened"
         COUNTER_SESSION_STARTED = "counter_session_started", "Counter session started"
