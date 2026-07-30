@@ -141,4 +141,23 @@ describe('trackClientEvent', () => {
       previous_screen: 'friends',
     });
   });
+
+  it('keeps diagnostics alive when product events exhaust their own budget', async () => {
+    const fetchSpy = jest.fn(async () => ({ ok: true }));
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    for (let i = 0; i < 600; i += 1) {
+      await trackClientEvent({
+        event: 'ui_interaction',
+        context: { target: 'tab_beer', action: 'select' },
+      });
+    }
+    const productSent = fetchSpy.mock.calls.length;
+    expect(productSent).toBeLessThan(600);
+
+    await trackClientEvent({ event: 'unhandled_error', severity: 'error' });
+    await trackClientEvent({ event: 'walking_distance', context: { distance_m: 1200 } });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(productSent + 2);
+  });
 });

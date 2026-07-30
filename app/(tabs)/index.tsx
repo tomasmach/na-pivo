@@ -1065,9 +1065,13 @@ export default function CompassScreen() {
         <CounterSecondary
           label={cs.compass.anotherPub}
           onPress={() => {
-            trackUiInteraction('compass_reroll');
-            if (mode === 'surprise') reroll();
-            else skip();
+            if (mode === 'surprise') {
+              trackUiInteraction('compass_reroll');
+              reroll();
+            } else {
+              trackUiInteraction('compass_skip');
+              skip();
+            }
           }}
           accessibilityLabel={cs.a11y.compassAnother}
         />

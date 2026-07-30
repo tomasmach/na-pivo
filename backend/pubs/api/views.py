@@ -3012,19 +3012,9 @@ class ClientEventsView(APIView):
             )
             return _internal_error()
 
-        logger.info(
-            "client event accepted",
-            extra={
-                "event": "client_event",
-                "observability": {
-                    "client_event": event.event,
-                    "severity": event.severity,
-                    "account_id": str(account.public_id) if account else "",
-                    "app_version": event.app_version,
-                    "platform": event.platform,
-                },
-            },
-        )
+        # No per-event INFO log: the event row is already stored with a 90-day
+        # retention, while container logs have no matching rotation and would
+        # keep account-linked event records beyond the documented retention.
         return Response({"accepted": True}, status=status.HTTP_202_ACCEPTED)
 
 

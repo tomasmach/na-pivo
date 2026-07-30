@@ -137,6 +137,7 @@ class Command(BaseCommand):
 
         screen_counts: Counter[str] = Counter()
         screen_accounts: defaultdict[str, set[int]] = defaultdict(set)
+        viewing_account_ids: set[int] = set()
         for context, account_id in screen_events.values_list("context", "account_id"):
             screen = str((context or {}).get("screen") or "")
             if not screen:
@@ -144,6 +145,7 @@ class Command(BaseCommand):
             screen_counts[screen] += 1
             if account_id is not None:
                 screen_accounts[screen].add(account_id)
+                viewing_account_ids.add(account_id)
 
         interaction_counts: Counter[tuple[str, str]] = Counter()
         interaction_accounts: defaultdict[tuple[str, str], set[int]] = defaultdict(set)
@@ -255,11 +257,8 @@ class Command(BaseCommand):
                 ],
             },
             "product": {
-                "screen_views": screen_events.count(),
-                "unique_viewing_accounts": screen_events.exclude(account__isnull=True)
-                .values("account_id")
-                .distinct()
-                .count(),
+                "screen_views": sum(screen_counts.values()),
+                "unique_viewing_accounts": len(viewing_account_ids),
                 "screens": [
                     {
                         "screen": screen,

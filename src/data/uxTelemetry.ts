@@ -26,6 +26,7 @@ export const UI_INTERACTION_TARGETS = [
   'compass_pub_reveal',
   'compass_directions_open',
   'compass_reroll',
+  'compass_skip',
   'compass_focus_clear',
   'compass_report_open',
   'compass_rename_open',

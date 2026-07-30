@@ -212,8 +212,6 @@ export function TabBar({ state, navigation }: TabBarProps) {
         const focused = state.index === index;
 
         const onPress = () => {
-          const meta = TAB_META[route.name];
-          if (meta) trackUiInteraction(meta.telemetryTarget, 'select');
           if (hapticEnabled) {
             fireLightImpactHaptic();
           }
@@ -223,6 +221,8 @@ export function TabBar({ state, navigation }: TabBarProps) {
             canPreventDefault: true,
           });
           if (!focused && !event.defaultPrevented) {
+            const meta = TAB_META[route.name];
+            if (meta) trackUiInteraction(meta.telemetryTarget, 'select');
             navigation.navigate(route.name);
           }
         };
