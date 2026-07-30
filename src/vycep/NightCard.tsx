@@ -18,6 +18,7 @@ import {
   type PublishedNight,
 } from '@/data/nightsClient';
 import { enqueueNightOp } from '@/data/nightsQueue';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { cs } from '@/i18n/cs';
 import { beerCountLabel, shotCountLabel, softDrinkCountLabel, wineCountLabel } from '@/i18n/plural';
 import { formatEveningDate } from '@/myBeers/eveningModel';
@@ -89,6 +90,7 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
           onPress: () => {
             const clientId = night.clientId;
             if (!clientId) return;
+            trackUiInteraction('night_unpublish', 'submit');
             void unpublishNight(clientId).then((res) => {
               if (!res.ok) {
                 if (isRetriableNightError(res)) {
@@ -96,10 +98,12 @@ function NightCardBase({ night, onRemoved, onChanged }: NightCardProps) {
                   // queue so the night really comes down once we're back online.
                   void enqueueNightOp({ op: 'unpublish', clientId });
                 } else {
+                  trackUiInteraction('night_unpublish', 'failure');
                   showToast(cs.vycep.roundErrorToast);
                   return;
                 }
               }
+              trackUiInteraction('night_unpublish', 'success');
               markUnpublished(clientId);
               showToast(cs.vycep.unpublishedToast);
               onRemoved?.(clientId);

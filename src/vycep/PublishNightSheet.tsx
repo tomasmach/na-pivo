@@ -20,6 +20,7 @@ import {
   type NightVisibility,
 } from '@/data/nightsClient';
 import { enqueueNightOp } from '@/data/nightsQueue';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { cs } from '@/i18n/cs';
 import { beerCountLabel } from '@/i18n/plural';
 import { formatEveningDate } from '@/myBeers/eveningModel';
@@ -80,6 +81,7 @@ function PublishNightSheetBase({
       return;
     }
 
+    trackUiInteraction('night_publish', 'submit');
     setBusy(true);
     const payload = {
       clientId: night.clientKey,
@@ -102,6 +104,7 @@ function PublishNightSheetBase({
     void publishNight(payload).then((res) => {
       setBusy(false);
       if (res.ok) {
+        trackUiInteraction('night_publish', 'success');
         markPublished(night.clientKey, visibility);
         showToast(cs.vycep.publishedToast, {
           icon: <HandPlatterIcon size={20} color={Colors.amber} />,
@@ -111,6 +114,7 @@ function PublishNightSheetBase({
         return;
       }
       if (isRetriableNightError(res)) {
+        trackUiInteraction('night_publish', 'success');
         // Offline / transient: hand the publish to the durable queue and keep
         // the optimistic published state (it WILL land).
         void enqueueNightOp({ op: 'publish', payload });
@@ -122,6 +126,7 @@ function PublishNightSheetBase({
         onClose();
         return;
       }
+      trackUiInteraction('night_publish', 'failure');
       showToast(res.detail);
     });
   }, [

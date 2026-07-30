@@ -3012,19 +3012,9 @@ class ClientEventsView(APIView):
             )
             return _internal_error()
 
-        logger.info(
-            "client event accepted",
-            extra={
-                "event": "client_event",
-                "observability": {
-                    "client_event": event.event,
-                    "severity": event.severity,
-                    "account_id": str(account.public_id) if account else "",
-                    "app_version": event.app_version,
-                    "platform": event.platform,
-                },
-            },
-        )
+        # No per-event INFO log: the event row is already stored with a 90-day
+        # retention, while container logs have no matching rotation and would
+        # keep account-linked event records beyond the documented retention.
         return Response({"accepted": True}, status=status.HTTP_202_ACCEPTED)
 
 
@@ -7697,6 +7687,10 @@ def _load_export_account(account: Account) -> Account:
             "contribution_logs",
             "pub_reports",
             "feedback_reports",
+            Prefetch(
+                "client_events",
+                queryset=ClientEvent.objects.order_by("-created_at", "id"),
+            ),
             "amenity_votes",
             Prefetch(
                 "sent_friendships",
@@ -7841,6 +7835,19 @@ def _export_account_data(account: Account) -> dict:
             "client_error_count": usage.client_error_count if usage else 0,
             "api_failure_count": usage.api_failure_count if usage else 0,
         },
+        "telemetry_events": [
+            {
+                "event": event.event,
+                "severity": event.severity,
+                "message": event.message,
+                "context": event.context,
+                "app_version": event.app_version,
+                "platform": event.platform,
+                "os_version": event.os_version,
+                "created_at": _iso(event.created_at),
+            }
+            for event in account.client_events.all()
+        ],
         "drinks": [
             {
                 "client_id": str(drink.client_id),

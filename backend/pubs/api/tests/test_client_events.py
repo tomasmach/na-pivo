@@ -289,6 +289,126 @@ def test_onboarding_auth_opened_event_is_accepted_with_slide_context(client):
 
 
 @pytest.mark.django_db
+def test_screen_view_event_accepts_only_coarse_screen_names(client):
+    token = _register(client)
+
+    resp = client.post(
+        "/v1/client-events",
+        data={
+            "event": "screen_viewed",
+            "context": {
+                "screen": "friend_profile",
+                "previous_screen": "friends",
+                "pathname": "/parta/private-account-id",
+                "pub_name": "U Zlatého tygra",
+            },
+        },
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_202_ACCEPTED
+    event = ClientEvent.objects.get()
+    assert event.context == {
+        "screen": "friend_profile",
+        "previous_screen": "friends",
+    }
+
+
+@pytest.mark.django_db
+def test_screen_view_event_drops_unknown_screen_values(client):
+    resp = client.post(
+        "/v1/client-events",
+        data={
+            "event": "screen_viewed",
+            "context": {
+                "screen": "user@example.com",
+                "previous_screen": "/parta/private-account-id",
+            },
+        },
+        format="json",
+    )
+
+    assert resp.status_code == status.HTTP_202_ACCEPTED
+    assert ClientEvent.objects.get().context == {}
+
+
+@pytest.mark.django_db
+def test_ui_interaction_accepts_only_allowlisted_target_and_action(client):
+    token = _register(client)
+
+    resp = client.post(
+        "/v1/client-events",
+        data={
+            "event": "ui_interaction",
+            "context": {
+                "target": "community_join_request",
+                "action": "submit",
+                "label": "Přidat se k Pepovi",
+                "account_id": "private-id",
+            },
+        },
+        format="json",
+        **_auth(token),
+    )
+
+    assert resp.status_code == status.HTTP_202_ACCEPTED
+    assert ClientEvent.objects.get().context == {
+        "target": "community_join_request",
+        "action": "submit",
+    }
+
+
+@pytest.mark.django_db
+def test_ui_interaction_drops_unknown_target_and_action(client):
+    resp = client.post(
+        "/v1/client-events",
+        data={
+            "event": "ui_interaction",
+            "context": {
+                "target": "profile_user@example.com",
+                "action": "clicked_private-pub-id",
+            },
+        },
+        format="json",
+    )
+
+    assert resp.status_code == status.HTTP_202_ACCEPTED
+    assert ClientEvent.objects.get().context == {}
+
+
+@pytest.mark.django_db
+def test_account_export_includes_linked_telemetry(client):
+    token = _register(client)
+    client.post(
+        "/v1/client-events",
+        data={
+            "event": "screen_viewed",
+            "context": {"screen": "compass"},
+            "app_version": "v2.0.0 (50)",
+        },
+        format="json",
+        **_auth(token),
+    )
+
+    resp = client.get("/v1/account/export", **_auth(token))
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.json()["telemetry_events"] == [
+        {
+            "event": "screen_viewed",
+            "severity": "info",
+            "message": "",
+            "context": {"screen": "compass"},
+            "app_version": "v2.0.0 (50)",
+            "platform": "",
+            "os_version": "",
+            "created_at": ClientEvent.objects.get().created_at.isoformat(),
+        }
+    ]
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     "event_name",
     ["rating_synced", "rating_sync_failed", "visit_synced", "visit_sync_failed"],

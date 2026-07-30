@@ -25,6 +25,7 @@ import { accountXpProgress } from '@/data/accountXp';
 import { enqueueBeerPhoto } from '@/data/beerPhotosQueue';
 import { deriveReconciledDiaryStats } from '@/data/diarySync';
 import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import CodeSheet from '@/friends/CodeSheet';
 import { isContextPubKey, normalizeDrinkType } from '@/drinks/drinkTypes';
 import { cs } from '@/i18n/cs';
@@ -290,6 +291,7 @@ export default function ProfileScreen() {
         label: cs.profile.moreSettings,
         icon: SettingsIcon,
         onPress: () => {
+          trackUiInteraction('profile_settings_open');
           setMoreVisible(false);
           router.push('/settings' as Href);
         },
@@ -299,6 +301,7 @@ export default function ProfileScreen() {
         label: cs.profile.moreLeaderboards,
         icon: TrophyIcon,
         onPress: () => {
+          trackUiInteraction('profile_leaderboards_open');
           setMoreVisible(false);
           router.push({
             pathname: '/leaderboards',
@@ -315,6 +318,7 @@ export default function ProfileScreen() {
             : cs.profile.morePartaEmpty,
         icon: UsersIcon,
         onPress: () => {
+          trackUiInteraction('profile_friends_manage_open');
           setMoreVisible(false);
           router.push('/profile/parta' as Href);
         },
@@ -374,7 +378,10 @@ export default function ProfileScreen() {
       <View style={styles.identityRow}>
         {isSignedIn ? (
           <Pressable
-            onPress={() => router.push('/profile/edit' as Href)}
+            onPress={() => {
+              trackUiInteraction('profile_edit_open');
+              router.push('/profile/edit' as Href);
+            }}
             style={({ pressed }) => [styles.identity, pressed && styles.pressed]}
             accessibilityRole="button"
             accessibilityLabel={cs.a11y.profileIdentity}
@@ -386,7 +393,10 @@ export default function ProfileScreen() {
         )}
 
         <Pressable
-          onPress={() => setMoreVisible(true)}
+          onPress={() => {
+            trackUiInteraction('profile_more_open');
+            setMoreVisible(true);
+          }}
           style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}
           hitSlop={8}
           accessibilityRole="button"
@@ -430,7 +440,10 @@ export default function ProfileScreen() {
           },
         ]}
         linkLabel={cs.profile.badgesLink}
-        onPressLink={() => router.push('/profile/badges' as Href)}
+        onPressLink={() => {
+          trackUiInteraction('profile_badges_open');
+          router.push('/profile/badges' as Href);
+        }}
         accessibilityLabel={cs.a11y.profileCard(
           beersLabel,
           level !== null && xpProgress
@@ -445,8 +458,13 @@ export default function ProfileScreen() {
         label={isSignedIn ? cs.profile.ctaCode : cs.profile.ctaSignUp}
         subLabel={isSignedIn ? cs.profile.ctaCodeSub : cs.profile.ctaSignUpSub}
         onPress={() => {
-          if (isSignedIn) setCodeVisible(true);
-          else router.push('/auth' as Href);
+          if (isSignedIn) {
+            trackUiInteraction('profile_code_open');
+            setCodeVisible(true);
+          } else {
+            trackUiInteraction('profile_signup_open');
+            router.push('/auth' as Href);
+          }
         }}
         accessibilityLabel={
           isSignedIn ? cs.profile.ctaCode : cs.a11y.profileSignUp
@@ -455,7 +473,10 @@ export default function ProfileScreen() {
 
       <CounterSecondary
         label={cs.profile.secondaryPhotos}
-        onPress={() => router.push('/profile/photos' as Href)}
+        onPress={() => {
+          trackUiInteraction('profile_photos_open');
+          router.push('/profile/photos' as Href);
+        }}
       />
 
       <MoreSheet

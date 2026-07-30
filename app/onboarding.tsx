@@ -38,6 +38,7 @@ import { cs } from '@/i18n/cs';
 import { CounterCta } from '@/counter/CounterCta';
 import { useOnboardingStore } from '@/stores/onboardingStore';
 import { trackClientEvent } from '@/data/telemetryClient';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 
 interface Slide {
   key: string;
@@ -132,6 +133,7 @@ export default function OnboardingScreen() {
 
   const handleOpenAuth = useCallback(() => {
     if (finishedRef.current) return;
+    trackUiInteraction('onboarding_auth_open');
     finishedRef.current = true;
     useOnboardingStore.getState().complete();
     void trackClientEvent({ event: 'onboarding_completed', context: { slide: indexRef.current + 1 } });
@@ -143,6 +145,7 @@ export default function OnboardingScreen() {
   }, [router]);
 
   const handleNext = useCallback(() => {
+    trackUiInteraction('onboarding_next');
     if (indexRef.current >= LAST_INDEX) {
       finish('onboarding_completed');
       return;
@@ -221,7 +224,10 @@ export default function OnboardingScreen() {
 
       <View style={styles.secondaryCtaSlot} testID="onboarding-secondary-cta-slot">
         <Pressable
-          onPress={() => finish(isLast ? 'onboarding_completed' : 'onboarding_skipped')}
+          onPress={() => {
+            trackUiInteraction('onboarding_skip');
+            finish(isLast ? 'onboarding_completed' : 'onboarding_skipped');
+          }}
           style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
           accessibilityRole="button"
           accessibilityLabel={isLast ? cs.onboarding.slide3Later : cs.onboarding.skip}

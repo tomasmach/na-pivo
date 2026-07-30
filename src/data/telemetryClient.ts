@@ -15,6 +15,8 @@ import { getAppVersionLabel } from '@/utils/appVersion';
 export type ClientTelemetryEvent =
   | 'app_open'
   | 'app_foreground'
+  | 'screen_viewed'
+  | 'ui_interaction'
   | 'onboarding_started'
   | 'onboarding_completed'
   | 'onboarding_skipped'
@@ -58,6 +60,10 @@ export interface ClientTelemetryInput {
 
 const REQUEST_TIMEOUT_MS = 4000;
 const MAX_EVENTS_PER_SESSION = 120;
+// Product events (navigation + UI taps) are high-volume by design; they get
+// their own budget so they can never starve diagnostics or walking distance.
+const MAX_PRODUCT_EVENTS_PER_SESSION = 400;
+const PRODUCT_EVENTS = new Set<ClientTelemetryEvent>(['screen_viewed', 'ui_interaction']);
 const MAX_REPEATS_PER_MESSAGE = 3;
 const CONTEXT_KEYS = new Set([
   'operation',
@@ -79,6 +85,10 @@ const CONTEXT_KEYS = new Set([
   'distance_m',
   'duration_ms',
   'slide',
+  'screen',
+  'previous_screen',
+  'target',
+  'action',
 ]);
 
 const EMAIL_RE = /[\w.!#$%&'*+/=?^`{|}~-]+@[\w.-]+\.[A-Za-z]{2,}/g;
@@ -90,6 +100,7 @@ const LONG_TOKEN_RE = /\b[A-Za-z0-9._~+/=-]{32,}\b/g;
 let sessionToken: string | null = null;
 let installed = false;
 let sentThisSession = 0;
+let productSentThisSession = 0;
 const messageRepeats = new Map<string, number>();
 
 export function setTelemetrySession(session: AccountSession | null): void {
@@ -99,6 +110,7 @@ export function setTelemetrySession(session: AccountSession | null): void {
 export function resetTelemetryForTests(): void {
   sessionToken = null;
   sentThisSession = 0;
+  productSentThisSession = 0;
   messageRepeats.clear();
 }
 
@@ -212,6 +224,11 @@ function sanitizeContext(
 }
 
 function shouldSend(input: ClientTelemetryInput): boolean {
+  if (PRODUCT_EVENTS.has(input.event)) {
+    if (productSentThisSession >= MAX_PRODUCT_EVENTS_PER_SESSION) return false;
+    productSentThisSession += 1;
+    return true;
+  }
   if (sentThisSession >= MAX_EVENTS_PER_SESSION) return false;
   if (input.event === 'console_warn' || input.event === 'console_error') {
     const key = `${input.event}:${sanitizeText(input.message, 120)}`;

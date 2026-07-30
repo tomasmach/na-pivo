@@ -2423,10 +2423,11 @@ class ClientEvent(models.Model):
     """
     Privacy-safe client-side diagnostic / usage event.
 
-    The mobile app sends only a small whitelist of app lifecycle, counter usage,
-    error, API failure and distance-summary events. It never sends bearer tokens,
-    request payloads, GPS points, routes, pub names, beer names, feedback text or
-    contact details. ``context`` is sanitized server-side before storage.
+    The mobile app sends only a small whitelist of app lifecycle, coarse screen,
+    counter usage, error, API failure and distance-summary events. It never sends
+    bearer tokens, request payloads, GPS points, routes, pub names, beer names,
+    feedback text or contact details. ``context`` is sanitized server-side before
+    storage.
     """
 
     class Severity(models.TextChoices):
@@ -2437,6 +2438,8 @@ class ClientEvent(models.Model):
     class Event(models.TextChoices):
         APP_OPEN = "app_open", "App opened"
         APP_FOREGROUND = "app_foreground", "App foregrounded"
+        SCREEN_VIEWED = "screen_viewed", "Screen viewed"
+        UI_INTERACTION = "ui_interaction", "UI interaction"
         WALKING_DISTANCE = "walking_distance", "Walking distance"
         COUNTER_TAB_OPENED = "counter_tab_opened", "Counter tab opened"
         COUNTER_SESSION_STARTED = "counter_session_started", "Counter session started"

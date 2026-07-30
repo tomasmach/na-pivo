@@ -2689,7 +2689,9 @@ export const cs = {
   privacy: {
     title: 'Soukromí',
     body: [
-      'Sbírám jen omezené provozní statistiky: otevření aplikace, návrat do popředí, technické chyby, verzi aplikace a součet nachozených metrů.',
+      'Sbírám omezené provozní a produktové statistiky: otevření aplikace, zobrazení hlavních obrazovek, použití hlavních tlačítek a ovládacích prvků, výsledky vybraných akcí, technické chyby, verzi aplikace a součet nachozených metrů.',
+      'U produktových událostí posílám jen pevné hrubé kategorie. Neposílám v nich názvy hospod ani piv, tvoje texty, identifikátory prohlížených profilů nebo příspěvků, vyhledávací dotazy, GPS body ani trasu.',
+      'Jednotlivé provozní, produktové a chybové události na serveru automaticky mažu nejpozději po 90 dnech. Souhrnné čítače můžou zůstat po dobu existence účtu a události spojené s účtem najdeš v exportu dat.',
       'Pro stažení okolních hospod může aplikace poslat aktuální nebo přibližnou polohu na můj server.',
       'Nachozené metry se počítají v telefonu a na server se posílá jen součet po dávkách, nikdy GPS body ani trasa.',
       'Průběžnou GPS historii, trasu pohybu ani jednotlivé GPS body neukládám.',

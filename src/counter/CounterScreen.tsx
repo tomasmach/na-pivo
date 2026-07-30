@@ -68,6 +68,7 @@ import { BeerPhotoCaptureFlow } from '@/photos/BeerPhotoCaptureFlow';
 import { ShareNightModal } from '@/vycep/ShareNightModal';
 import type { NightSummary } from '@/vycep/nightModel';
 import { trackClientEvent } from '@/data/telemetryClient';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { fireSuccessHaptic, fireLightImpactHaptic } from '@/utils/haptics';
 import {
   isBeerListOverrideCurrent,
@@ -1009,17 +1010,20 @@ function Tacek({
   );
 
   const handleAddBeer = useCallback(() => {
+    trackUiInteraction('counter_add_drink_open');
     setBackdateAt(null);
     openForm('add', null, 'beer');
   }, [openForm]);
 
   const handleAddOtherDrink = useCallback(() => {
+    trackUiInteraction('counter_add_drink_open');
     setBackdateAt(null);
     openForm('add', null, 'soft_drink');
   }, [openForm]);
 
   const handleFormSubmit = useCallback(
     (result: BeerFormResult) => {
+      trackUiInteraction('counter_drink_form_submit', 'submit');
       const mode = formMode;
       // Capture the row being edited BEFORE clearing form state — identity is
       // name+volume, so a volume edit must replace this exact row in place.
@@ -1103,6 +1107,7 @@ function Tacek({
    *  editor's AI scan with the current menu prefilled. */
   const handleScanMenu = useCallback(() => {
     if (!pub) return;
+    trackUiInteraction('counter_menu_scan_open');
     setFormMode(null);
     setFormBeer(null);
     setBackdateAt(null);
@@ -1214,6 +1219,7 @@ function Tacek({
   // ── Closing / resuming the evening ──────────────────────────────────────────
 
   const handleDone = useCallback(() => {
+    trackUiInteraction('counter_finish_open');
     const clientId = current?.clientId ?? null;
     showAppDialog({
       title: cs.counter.doneTitle,
@@ -1237,6 +1243,7 @@ function Tacek({
 
   const handleResume = useCallback(() => {
     if (!cell) return;
+    trackUiInteraction('counter_resume');
     if (resumeLast(cell)) {
       void trackClientEvent({ event: 'counter_session_resumed' });
       if (hapticEnabled) fireLightImpactHaptic();
@@ -1247,6 +1254,7 @@ function Tacek({
 
   const handleShareWithFriends = useCallback(async () => {
     if (!pub || !cell || sharingWithFriends || broadcasted) return;
+    trackUiInteraction('counter_share_friends', 'share');
     setSharingWithFriends(true);
     const shareClientId = isThisSession && current?.clientId ? current.clientId : generateUuidV4();
     const result = await shareFriendPubActivity(pub, '', shareClientId);
@@ -1266,6 +1274,22 @@ function Tacek({
 
   // ── The one button ──────────────────────────────────────────────────────────
 
+  const handlePlaceOpen = useCallback(() => {
+    trackUiInteraction('counter_place_open');
+    onChangePlace();
+  }, [onChangePlace]);
+
+  const handlePickOpen = useCallback(() => {
+    trackUiInteraction('counter_add_drink_open');
+    setPickOpen(true);
+  }, []);
+
+  const handleRepeatDrink = useCallback(() => {
+    if (!repeatBeer) return;
+    trackUiInteraction('counter_repeat_drink');
+    requestCountBeer(repeatBeer);
+  }, [repeatBeer, requestCountBeer]);
+
   const cta = useMemo(() => {
     // No place yet: the button is how you say where you are. It never guesses a
     // beer and it never counts.
@@ -1274,7 +1298,7 @@ function Tacek({
         label: cs.counter.ctaLogBeer,
         subLabel: null as string | null,
         a11y: cs.counter.ctaLogBeer,
-        onPress: onChangePlace,
+        onPress: handlePlaceOpen,
       };
     }
     if (resumable) {
@@ -1290,7 +1314,7 @@ function Tacek({
         label: cs.counter.repeatCta,
         subLabel: beerLine(repeatBeer),
         a11y: cs.a11y.counterRepeat(repeatBeer.name),
-        onPress: () => requestCountBeer(repeatBeer),
+        onPress: handleRepeatDrink,
       };
     }
     if (hasSomethingToPick) {
@@ -1298,7 +1322,7 @@ function Tacek({
         label: cs.counter.ctaPick,
         subLabel: null as string | null,
         a11y: cs.counter.ctaPick,
-        onPress: () => setPickOpen(true),
+        onPress: handlePickOpen,
       };
     }
     return {
@@ -1309,12 +1333,13 @@ function Tacek({
     };
   }, [
     handleAddBeer,
+    handlePickOpen,
+    handlePlaceOpen,
+    handleRepeatDrink,
     handleResume,
     hasSomethingToPick,
-    onChangePlace,
     place,
     repeatBeer,
-    requestCountBeer,
     resumable,
   ]);
 
@@ -1393,7 +1418,7 @@ function Tacek({
       ]}
     >
       <View style={styles.header}>
-        <PlaceChip kind={chipKind} label={placeLabel} onPress={onChangePlace} />
+        <PlaceChip kind={chipKind} label={placeLabel} onPress={handlePlaceOpen} />
         <View style={styles.headerSpacer} />
         {/* Cvakni pivo. It feeds the Parta strip and the photo contest, so it is
             the one social action that earns a permanent glyph up here instead of
@@ -1443,7 +1468,7 @@ function Tacek({
           // Only while the button repeats the last beer. In every other state the
           // CTA itself already leads to the pick sheet, and two doors to one
           // sheet is the mistake the old counter was built out of.
-          onPickOther={showQuickOtherBeer ? () => setPickOpen(true) : undefined}
+          onPickOther={showQuickOtherBeer ? handlePickOpen : undefined}
           onMapPub={pub ? () => setMapPubOpen(true) : undefined}
         />
       </CoasterCard>

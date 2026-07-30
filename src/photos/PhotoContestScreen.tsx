@@ -62,6 +62,7 @@ import {
   type PhotoContestSnapshot,
   type PhotoContestWinner,
 } from '@/data/photoContestClient';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import SkeletonBlock from '@/friends/SkeletonBlock';
 import { cs } from '@/i18n/cs';
 import { BeerPhotoCaptureFlow } from '@/photos/BeerPhotoCaptureFlow';
@@ -442,6 +443,7 @@ export default function PhotoContestScreen() {
     (entry: PhotoContestEntry) => {
       if (entry.isMine || voteBusyRef.current) return;
       voteBusyRef.current = true;
+      trackUiInteraction('photo_contest_vote', 'submit');
       const previous = entries;
       const generation = entriesGenRef.current;
       const retracting = entry.myVote;
@@ -456,6 +458,7 @@ export default function PhotoContestScreen() {
         voteBusyRef.current = false;
         if (!mountedRef.current) return;
         if (!res.ok) {
+          trackUiInteraction('photo_contest_vote', 'failure');
           // Hard reject (finished round, own entry, network…): restore the
           // tap-time snapshot — but only if no fresher server snapshot landed
           // meanwhile (that one already carries the truth; reverting would
@@ -468,6 +471,7 @@ export default function PhotoContestScreen() {
           );
           return;
         }
+        trackUiInteraction('photo_contest_vote', 'success');
         const { entryId, votes } = res;
         if (!retracting && typeof entryId === 'string' && typeof votes === 'number') {
           // Reconcile the target with the server's fresh tally.
@@ -487,11 +491,13 @@ export default function PhotoContestScreen() {
   const doEnter = useCallback(
     async (photoId: string) => {
       if (actionBusyRef.current) return;
+      trackUiInteraction('photo_contest_enter', 'submit');
       actionBusyRef.current = true;
       const res = await enterPhotoContest(photoId);
       actionBusyRef.current = false;
       if (!mountedRef.current) return;
       if (res.ok) {
+        trackUiInteraction('photo_contest_enter', 'success');
         showToast(cs.photoContest.enteredToast, {
           icon: <TrophyIcon size={18} color={Colors.amber} />,
         });
@@ -499,6 +505,7 @@ export default function PhotoContestScreen() {
         void loadBeerPhotos();
         return;
       }
+      trackUiInteraction('photo_contest_enter', 'failure');
       showToast(
         res.code === 'nickname_required'
           ? cs.photoContest.errorNicknameRequired

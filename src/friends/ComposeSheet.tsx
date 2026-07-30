@@ -48,6 +48,7 @@ import {
   type FriendProfile,
 } from '@/data/friendsClient';
 import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import type { Pub } from '@/data/pubs';
 import { useNearbyPub } from '@/counter/useNearbyPub';
 import { cs } from '@/i18n/cs';
@@ -380,6 +381,7 @@ function ComposeSheet({ friends, onSubmitted, onClose }: ComposeSheetProps): Rea
   const handleSubmit = useCallback(() => {
     if (!selectionPub || submitting) return;
     if (isPlan && !isValidPlanTime) return;
+    trackUiInteraction('parta_activity_share', 'submit');
     setSubmitting(true);
 
     const clientId = generateUuidV4();
@@ -397,12 +399,14 @@ function ComposeSheet({ friends, onSubmitted, onClose }: ComposeSheetProps): Rea
     void call.then((res) => {
       if (!mountedRef.current) return;
       if (res.ok) {
+        trackUiInteraction('parta_activity_share', 'success');
         showToast(isPlan ? cs.friends.planCreated : cs.friends.shareSuccess);
         onSubmitted();
         requestClose();
         return;
       }
       if (isRetriableFriendError(res)) {
+        trackUiInteraction('parta_activity_share', 'success');
         // Offline: queue the op (it WILL send) and close honestly.
         void enqueueFriendOp({
           op: 'activity',
@@ -414,6 +418,7 @@ function ComposeSheet({ friends, onSubmitted, onClose }: ComposeSheetProps): Rea
         requestClose();
         return;
       }
+      trackUiInteraction('parta_activity_share', 'failure');
       // Hard reject: keep the sheet open with its data.
       setSubmitting(false);
       showToast(res.detail || cs.friends.shareError);

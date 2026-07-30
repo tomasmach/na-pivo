@@ -66,6 +66,7 @@ services:
           python manage.py advance_friend_plans || true
           python manage.py advance_photo_contests || true
           python manage.py prune_friend_data || true
+          python manage.py prune_client_events || true
           sleep 300
         done
 

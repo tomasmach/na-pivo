@@ -34,6 +34,7 @@ import {
   isRetriableFriendError,
   type FriendQueueItem,
 } from '@/data/friendsQueue';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { GlowButton } from '@/components/shared/GlowButton';
 import {
   LinkIcon,
@@ -118,6 +119,7 @@ export function AddFriendTools({
       if (!profile && nickname.length < 2) return;
       const requestKey = profile?.id ?? `nickname:${nickname.toLocaleLowerCase('cs-CZ')}`;
       if (requestingKey) return;
+      trackUiInteraction('friend_request_send', 'submit');
       setRequestingKey(requestKey);
       const queuedRequest: FriendQueueItem =
         profile
@@ -129,6 +131,7 @@ export function AddFriendTools({
       if (!mountedRef.current) return;
       setRequestingKey(null);
       if (result.ok || isRetriableFriendError(result)) {
+        trackUiInteraction('friend_request_send', 'success');
         if (!result.ok) {
           await enqueueFriendOp(queuedRequest);
           if (!mountedRef.current) return;
@@ -140,6 +143,7 @@ export function AddFriendTools({
         setResults([]);
         onChanged();
       } else {
+        trackUiInteraction('friend_request_send', 'failure');
         showToast(result.detail, { icon: <XIcon size={20} color={Colors.amber} /> });
       }
     },
@@ -151,6 +155,7 @@ export function AddFriendTools({
   }, [needsNickname, router]);
 
   const shareInvite = useCallback(async () => {
+    trackUiInteraction('friend_invite_share', 'share');
     const invite = await fetchFriendInviteCode();
     if (!mountedRef.current) return;
     const link = invite?.webUrl || invite?.url || '';

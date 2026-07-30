@@ -39,6 +39,7 @@ import { NicknameField } from '@/profile/NicknameField';
 import { useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
 import { isAppleSignInSupported, isGoogleSignInConfigured } from '@/data/socialAuth';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD = 8;
@@ -159,28 +160,34 @@ export default function AuthScreen() {
   const googleConfigured = useMemo(() => isGoogleSignInConfigured(), []);
 
   const switchMode = useCallback((next: Mode) => {
+    trackUiInteraction(next === 'login' ? 'auth_login_mode' : 'auth_register_mode', 'select');
     setMode(next);
     setError('');
   }, []);
 
   const handleSubmit = useCallback(async () => {
     if (busy) return;
+    trackUiInteraction('auth_email_submit', 'submit');
     const trimmedEmail = email.trim();
     if (!isValidEmail(trimmedEmail)) {
+      trackUiInteraction('auth_email_submit', 'failure');
       setError(cs.account.errorEmailInvalid);
       return;
     }
     if (password.length < MIN_PASSWORD) {
+      trackUiInteraction('auth_email_submit', 'failure');
       setError(cs.account.errorPasswordShort);
       return;
     }
     const trimmedNickname = nickname.trim();
     if (mode === 'register') {
       if (!trimmedNickname) {
+        trackUiInteraction('auth_email_submit', 'failure');
         setError(cs.account.errorNicknameMissing);
         return;
       }
       if (!nicknameReady) {
+        trackUiInteraction('auth_email_submit', 'failure');
         setError(cs.account.errorNicknameNotReady);
         return;
       }
@@ -194,6 +201,7 @@ export default function AuthScreen() {
           : await register({ email: trimmedEmail, password });
 
       if (result.ok) {
+        trackUiInteraction('auth_email_submit', 'success');
         if (mode === 'register') {
           // The handle is claimed right after the account exists. Losing the
           // race (or a network hiccup) must not block registration — the
@@ -214,7 +222,10 @@ export default function AuthScreen() {
         return;
       }
       if (result.code !== 'cancelled') {
+        trackUiInteraction('auth_email_submit', 'failure');
         setError(result.detail || cs.account.errorGeneric);
+      } else {
+        trackUiInteraction('auth_email_submit', 'cancel');
       }
     } finally {
       setBusy(null);
@@ -236,11 +247,14 @@ export default function AuthScreen() {
   const handleSocial = useCallback(
     async (provider: 'google' | 'apple') => {
       if (busy) return;
+      const target = provider === 'google' ? 'auth_google_submit' : 'auth_apple_submit';
+      trackUiInteraction(target, 'submit');
       setError('');
       setBusy(provider);
       try {
         const result = provider === 'google' ? await signInGoogle() : await signInApple();
         if (result.ok) {
+          trackUiInteraction(target, 'success');
           // Social buttons serve both login and registration. The backend marks
           // new accounts; a missing nickname is the compatibility fallback for
           // claimed anonymous accounts where `created` can be false.
@@ -252,7 +266,10 @@ export default function AuthScreen() {
           return;
         }
         if (result.code !== 'cancelled') {
+          trackUiInteraction(target, 'failure');
           setError(result.detail || cs.account.errorGeneric);
+        } else {
+          trackUiInteraction(target, 'cancel');
         }
       } finally {
         setBusy(null);
@@ -262,18 +279,22 @@ export default function AuthScreen() {
   );
 
   const handleSendReset = useCallback(async () => {
+    trackUiInteraction('auth_reset_submit', 'submit');
     const trimmed = resetEmail.trim();
     if (!isValidEmail(trimmed)) {
+      trackUiInteraction('auth_reset_submit', 'failure');
       setError(cs.account.errorEmailInvalid);
       return;
     }
     setError('');
     const result = await requestPasswordReset(trimmed);
     if (!result.ok) {
+      trackUiInteraction('auth_reset_submit', 'failure');
       setError(result.detail || cs.account.errorGeneric);
       return;
     }
     setResetOpen(false);
+    trackUiInteraction('auth_reset_submit', 'success');
     setResetEmail('');
     showToast(cs.account.resetSentToast);
     router.push('/auth/reset');
@@ -419,6 +440,7 @@ export default function AuthScreen() {
           {mode === 'login' && !resetOpen && (
             <Pressable
               onPress={() => {
+                trackUiInteraction('auth_reset_open');
                 setResetOpen(true);
                 setResetEmail(email.trim());
                 setError('');

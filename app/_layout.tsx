@@ -5,7 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { AppState, Linking, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { fontAssets } from '@/theme/fonts';
 import { Colors } from '@/theme/colors';
@@ -41,6 +41,11 @@ import {
   setTelemetrySession,
   trackClientEvent,
 } from '@/data/telemetryClient';
+import {
+  productScreenFromPathname,
+  trackScreenViewed,
+  type ProductScreenName,
+} from '@/data/productTelemetry';
 import { flushWalkingDistance } from '@/data/walkingTelemetry';
 import { getCachedAuthenticationState } from '@/data/account';
 import { useAccountStore, selectIsSignedIn } from '@/stores/accountStore';
@@ -104,6 +109,28 @@ function OnboardingGate() {
 }
 
 /**
+ * Tracks coarse screen usage after account hydration. Dynamic route parameters
+ * never leave the device; productTelemetry collapses them to fixed names first.
+ */
+function ProductTelemetryTracker({ enabled }: { enabled: boolean }) {
+  const pathname = usePathname();
+  const previousPathnameRef = useRef<string | null>(null);
+  const previousScreenRef = useRef<ProductScreenName | undefined>(undefined);
+
+  useEffect(() => {
+    if (!enabled || previousPathnameRef.current === pathname) return;
+    previousPathnameRef.current = pathname;
+
+    const screen = productScreenFromPathname(pathname);
+    if (!screen) return;
+    trackScreenViewed(screen, previousScreenRef.current);
+    previousScreenRef.current = screen;
+  }, [enabled, pathname]);
+
+  return null;
+}
+
+/**
  * Seed the Parta tab badge once on launch with a single cheap live fetch, so
  * pending requests / live friends surface before the user first opens Parta (§D1).
  * Only for signed-in accounts (anonymous devices have no social graph); silent on
@@ -156,12 +183,14 @@ export default function RootLayout() {
   const router = useRouter();
   const pathname = usePathname();
   const pathnameRef = useRef(pathname);
+  const [telemetryReady, setTelemetryReady] = useState(false);
   useEffect(() => {
     pathnameRef.current = pathname;
   }, [pathname]);
   // Hold the splash until the first-run decision resolves too, so a fresh
   // install fades straight into the onboarding instead of flashing the compass.
-  const onboardingDecided = useOnboardingStore((s) => s.decision !== 'pending');
+  const onboardingDecision = useOnboardingStore((s) => s.decision);
+  const onboardingDecided = onboardingDecision !== 'pending';
 
   useEffect(() => {
     if ((fontsLoaded || fontError) && onboardingDecided) {
@@ -251,6 +280,7 @@ export default function RootLayout() {
       .finally(() => {
         const session = useAccountStore.getState().session;
         setTelemetrySession(session);
+        setTelemetryReady(true);
         // Account hydration may restore the legacy CZK/EUR preference after the
         // launch-time location check, so let the cached country win once more.
         void refreshCurrencyFromLastKnownLocation();
@@ -615,6 +645,13 @@ export default function RootLayout() {
         <PubReminderEnableFailureModal />
         <AppDialogHost />
         <AppReviewPromptGate />
+        <ProductTelemetryTracker
+          enabled={
+            telemetryReady &&
+            onboardingDecided &&
+            !(onboardingDecision === 'show' && pathname !== '/onboarding')
+          }
+        />
         <Toast />
       </SafeAreaProvider>
     </GestureHandlerRootView>

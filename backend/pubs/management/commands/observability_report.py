@@ -64,6 +64,8 @@ class Command(BaseCommand):
         distance_events = events.filter(event=ClientEvent.Event.WALKING_DISTANCE)
         error_events = events.filter(severity=ClientEvent.Severity.ERROR)
         warning_events = events.filter(severity=ClientEvent.Severity.WARNING)
+        screen_events = events.filter(event=ClientEvent.Event.SCREEN_VIEWED)
+        interaction_events = events.filter(event=ClientEvent.Event.UI_INTERACTION)
         feedback = FeedbackReport.objects.filter(created_at__gte=since)
         counter_events = events.filter(
             event__in=[
@@ -132,6 +134,32 @@ class Command(BaseCommand):
             status = str(context.get("status") or context.get("reason") or "unknown")
             result = str(context.get("sync_result") or "unknown")
             drink_sync_failure_counter[(operation, status, result)] += 1
+
+        screen_counts: Counter[str] = Counter()
+        screen_accounts: defaultdict[str, set[int]] = defaultdict(set)
+        viewing_account_ids: set[int] = set()
+        for context, account_id in screen_events.values_list("context", "account_id"):
+            screen = str((context or {}).get("screen") or "")
+            if not screen:
+                continue
+            screen_counts[screen] += 1
+            if account_id is not None:
+                screen_accounts[screen].add(account_id)
+                viewing_account_ids.add(account_id)
+
+        interaction_counts: Counter[tuple[str, str]] = Counter()
+        interaction_accounts: defaultdict[tuple[str, str], set[int]] = defaultdict(set)
+        interacting_account_ids: set[int] = set()
+        for context, account_id in interaction_events.values_list("context", "account_id"):
+            target = str((context or {}).get("target") or "")
+            action = str((context or {}).get("action") or "")
+            if not target or not action:
+                continue
+            key = (target, action)
+            interaction_counts[key] += 1
+            if account_id is not None:
+                interaction_accounts[key].add(account_id)
+                interacting_account_ids.add(account_id)
 
         recent_errors = [
             {
@@ -228,6 +256,35 @@ class Command(BaseCommand):
                     )
                 ],
             },
+            "product": {
+                "screen_views": sum(screen_counts.values()),
+                "unique_viewing_accounts": len(viewing_account_ids),
+                "screens": [
+                    {
+                        "screen": screen,
+                        "views": count,
+                        "unique_accounts": len(screen_accounts[screen]),
+                    }
+                    for screen, count in sorted(
+                        screen_counts.items(),
+                        key=lambda item: (-item[1], item[0]),
+                    )[:limit]
+                ],
+                "interactions": sum(interaction_counts.values()),
+                "unique_interacting_accounts": len(interacting_account_ids),
+                "interaction_targets": [
+                    {
+                        "target": target,
+                        "action": action,
+                        "events": count,
+                        "unique_accounts": len(interaction_accounts[(target, action)]),
+                    }
+                    for (target, action), count in sorted(
+                        interaction_counts.items(),
+                        key=lambda item: (-item[1], item[0][0], item[0][1]),
+                    )[:limit]
+                ],
+            },
             "abuse": {
                 "drinks_created": drinks_created.count(),
                 "flagged": drinks_created.filter(is_suspect=True).count(),
@@ -294,6 +351,7 @@ class Command(BaseCommand):
         usage = report["usage"]
         all_time = report["all_time"]
         counter = report["counter"]
+        product = report["product"]
         abuse = report["abuse"]
         health = report["client_health"]
         lines = [
@@ -310,18 +368,43 @@ class Command(BaseCommand):
             f"- All-time opens: {all_time['app_opens']} across {all_time['accounts_with_opens']} accounts",
             f"- All-time walked distance: {round(all_time['walked_distance_m'] / 1000, 2)} km",
             "",
-            "## Counter",
+            "## Product",
             "",
-            f"- Counter tab opens: {counter['tab_opens']} ({counter['unique_counter_accounts']} unique accounts)",
-            f"- Sessions started: {counter['sessions_started']}",
-            f"- Drinks added/removed: {counter['drinks_added']} / {counter['drinks_removed']}",
-            f"- Drinks synced/failed: {counter['drinks_synced']} / {counter['drink_sync_failures']}",
-            f"- Beer forms opened / prices added: {counter['beer_forms_opened']} / {counter['beer_prices_added']}",
-            f"- Returns same day / later: {counter['returns_same_day']} / {counter['returns_later']}",
+            f"- Screen views: {product['screen_views']} ({product['unique_viewing_accounts']} unique accounts)",
+            f"- UI interactions: {product['interactions']} ({product['unique_interacting_accounts']} unique accounts)",
             "",
-            "### Drink Sync Failures",
+            "### Screens",
             "",
         ]
+        lines.extend(
+            self._table(
+                product["screens"],
+                ["screen", "views", "unique_accounts"],
+            )
+        )
+        lines.extend(["", "### Interaction targets", ""])
+        lines.extend(
+            self._table(
+                product["interaction_targets"],
+                ["target", "action", "events", "unique_accounts"],
+            )
+        )
+        lines.extend(
+            [
+                "",
+                "## Counter",
+                "",
+                f"- Counter tab opens: {counter['tab_opens']} ({counter['unique_counter_accounts']} unique accounts)",
+                f"- Sessions started: {counter['sessions_started']}",
+                f"- Drinks added/removed: {counter['drinks_added']} / {counter['drinks_removed']}",
+                f"- Drinks synced/failed: {counter['drinks_synced']} / {counter['drink_sync_failures']}",
+                f"- Beer forms opened / prices added: {counter['beer_forms_opened']} / {counter['beer_prices_added']}",
+                f"- Returns same day / later: {counter['returns_same_day']} / {counter['returns_later']}",
+                "",
+                "### Drink Sync Failures",
+                "",
+            ]
+        )
         lines.extend(
             self._table(
                 counter["drink_sync_failures_by_operation"],

@@ -233,18 +233,19 @@ The Expo app sends a small event whitelist to:
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| `POST` | `/v1/client-events` | optional `Authorization: Bearer <token>` | App opens, foregrounds, counter usage, drink sync results, sanitized warnings/errors/API failures and walking-distance meter increments. |
+| `POST` | `/v1/client-events` | optional `Authorization: Bearer <token>` | App lifecycle, coarse allowlisted screen views, counter usage, drink sync results, sanitized warnings/errors/API failures and walking-distance meter increments. |
 
-Authenticated events update `AccountUsageStats`. Counter events are product-level only: no pub names, beer names, drink ids or GPS coordinates are accepted. Walking distance is computed on-device; the backend stores only meter increments, not coordinates or routes.
+Authenticated events update `AccountUsageStats`. Product events are coarse and server-validated: dynamic pathnames, account/content ids, pub names, beer names, user text and GPS coordinates are not accepted. Walking distance is computed on-device; the backend stores only meter increments, not coordinates or routes. Event-level rows are retained for 90 days by default and pruned in bounded batches; aggregate account counters remain for the account lifetime.
 
 Agent-friendly reports:
 
 ```bash
 uv run python manage.py observability_report --days 7 --format markdown
 uv run python manage.py observability_report --days 7 --format json
+uv run python manage.py prune_client_events --dry-run
 ```
 
-The report includes usage totals, top walkers, client error/API-failure breakdowns and recent feedback with contact-like text redacted.
+The report includes usage totals, screen popularity, top walkers, client error/API-failure breakdowns and recent feedback with contact-like text redacted.
 
 ---
 

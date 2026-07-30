@@ -47,6 +47,7 @@ import { ScrollFade } from '@/components/shared/ScrollFade';
 import { fetchMyBeerCheckIns, type BeerCheckIn, type BeerCheckInInput } from '@/data/beerCheckinsClient';
 import { getPendingBeerCheckIns } from '@/data/beerCheckinsQueue';
 import { deriveReconciledDiaryStats } from '@/data/diarySync';
+import { trackUiInteraction } from '@/data/uxTelemetry';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useAccountStore } from '@/stores/accountStore';
 import {
@@ -412,6 +413,7 @@ export default function DiaryScreen({
         text: cs.diary.loadFailed,
         undoLabel: cs.diary.retry,
         onUndo: () => {
+          trackUiInteraction('diary_retry', 'retry');
           setLoadFailed(false);
           setDiaryToken((token) => token + 1);
         },
@@ -425,6 +427,7 @@ export default function DiaryScreen({
 
   const openEvening = useCallback(
     (session: TallySession) => {
+      trackUiInteraction('diary_evening_open');
       router.push({ pathname: '/evening', params: { startedAt: session.startedAt } });
     },
     [router],
@@ -542,7 +545,10 @@ export default function DiaryScreen({
 
         <GlowButton
           label={cs.diary.cta}
-          onPress={() => setHistoricalOpen(true)}
+          onPress={() => {
+            trackUiInteraction('diary_historical_open');
+            setHistoricalOpen(true);
+          }}
           glow="soft"
           accessibilityLabel={cs.a11y.myBeersAddHistorical}
         />
