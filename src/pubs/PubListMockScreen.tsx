@@ -279,6 +279,7 @@ export default function PubListMockScreen() {
   const [detent, setDetent] = React.useState<Detent>('half');
   const [collapseSignal, setCollapseSignal] = React.useState(0);
   const [listAtTop, setListAtTop] = React.useState(true);
+  const [expandSignal, setExpandSignal] = React.useState(0);
   const [selectedPub, setSelectedPub] = React.useState<string | null>(MOCK_PUBS[0]?.id ?? null);
 
   // The locate button rides just above the sheet's resting top, so collapsing
@@ -328,46 +329,62 @@ export default function PubListMockScreen() {
         initial="half"
         onDetentChange={setDetent}
         collapseSignal={collapseSignal}
+        expandSignal={expandSignal}
         listAtTop={listAtTop}
       >
-        {/* Search lives IN the sheet, above the chips — the reference puts it
-            here, not in a nav bar, because it filters the list under it. */}
-        <View style={styles.searchWrap}>
-          <View style={styles.searchField}>
-            <SearchIcon size={17} color={Colors.mutedText} />
-            <Text style={styles.searchPlaceholder} maxFontSizeMultiplier={FontScaleCap.body}>
-              Hledej hospodu nebo pivo
+        {/* Collapsed, the sheet is one line: the map is the screen and this is
+            just the handle back to the list. Keeping the search field and the
+            filter row on screen at peek meant the map never actually got the
+            screen it was supposed to have. */}
+        {detent === 'peek' ? (
+          <Pressable
+            onPress={() => setExpandSignal((n) => n + 1)}
+            style={({ pressed }) => [styles.collapsed, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Rozbalit seznam hospod"
+          >
+            <Text style={styles.collapsedText} maxFontSizeMultiplier={FontScaleCap.body}>
+              Seznam hospod
             </Text>
-          </View>
-        </View>
+          </Pressable>
+        ) : (
+          <>
+            <View style={styles.searchWrap}>
+              <View style={styles.searchField}>
+                <SearchIcon size={17} color={Colors.mutedText} />
+                <Text style={styles.searchPlaceholder} maxFontSizeMultiplier={FontScaleCap.body}>
+                  Hledej hospodu nebo pivo
+                </Text>
+              </View>
+            </View>
 
-        <FilterChips />
+            <FilterChips />
 
-        <ScrollView
-          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 120 }]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          // Below `full` the sheet owns the drag (see PlacesSheet); letting the
-          // list scroll at the same time would make one gesture do two things.
-          scrollEnabled={detent === 'full'}
-          scrollEventThrottle={16}
-          onScroll={(event) => {
-            const atTop = event.nativeEvent.contentOffset.y <= 0.5;
-            setListAtTop((current) => (current === atTop ? current : atTop));
-          }}
-        >
-          <CompassCell onPress={() => router.push('/pubs-map' as Href)} />
+            <ScrollView
+              contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 120 }]}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              scrollEnabled={detent === 'full'}
+              scrollEventThrottle={16}
+              onScroll={(event) => {
+                const atTop = event.nativeEvent.contentOffset.y <= 0.5;
+                setListAtTop((current) => (current === atTop ? current : atTop));
+              }}
+            >
+              <CompassCell onPress={() => router.push('/pubs-map' as Href)} />
 
-          <View style={styles.list}>
-            {MOCK_PUBS.map((pub, index) => (
-              <PubRow key={pub.id} pub={pub} first={index === 0} />
-            ))}
-          </View>
+              <View style={styles.list}>
+                {MOCK_PUBS.map((pub, index) => (
+                  <PubRow key={pub.id} pub={pub} first={index === 0} />
+                ))}
+              </View>
 
-          <Text style={styles.mockNote} maxFontSizeMultiplier={FontScaleCap.body}>
-            Design mock — data jsou napevno.
-          </Text>
-        </ScrollView>
+              <Text style={styles.mockNote} maxFontSizeMultiplier={FontScaleCap.body}>
+                Design mock — data jsou napevno.
+              </Text>
+            </ScrollView>
+          </>
+        )}
       </PlacesSheet>
     </View>
   );
@@ -433,6 +450,9 @@ const styles = StyleSheet.create({
     marginTop: MockLayout.sectionGap,
     marginBottom: Spacing.sm,
   },
+
+  collapsed: { paddingHorizontal: MockLayout.screenPad, paddingTop: 2, minHeight: 44 },
+  collapsedText: { ...MockType.titleS, color: Colors.foam },
 
   // — Search + filters, inside the sheet —
   searchWrap: { paddingHorizontal: MockLayout.screenPad, paddingBottom: Spacing.sm },

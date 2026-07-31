@@ -20,6 +20,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import Animated, {
   runOnJS,
   useAnimatedStyle,
@@ -33,13 +34,16 @@ import { MockLayout } from '@/mocks/mockTheme';
 /**
  * Share of the screen left ABOVE the sheet at each detent.
  *
- * Derived from Packeta's `DraggableBottomPanel` (peek 0.26 / mid 0.52 /
- * expanded 0.92 of the screen HEIGHT) so the two apps rest in the same places:
- * top = 1 − height.
+ * Mid and expanded come from Packeta's `DraggableBottomPanel` (0.52 / 0.92 of
+ * the screen HEIGHT); `peek` is deliberately shallower than theirs, because at
+ * peek this sheet shows a single line of text rather than a search field and a
+ * filter row. The map is the screen at that point; the sheet is a handle.
  */
-export const DETENT_TOP = { peek: 0.74, half: 0.48, full: 0.08 } as const;
+export const DETENT_TOP = { peek: 0.87, half: 0.48, full: 0.08 } as const;
 const DETENTS = DETENT_TOP;
 export type Detent = keyof typeof DETENTS;
+
+const GLASS = isLiquidGlassAvailable();
 
 const SPRING = { damping: 22, stiffness: 190, mass: 0.7 } as const;
 
@@ -48,6 +52,7 @@ export function PlacesSheet({
   initial = 'half',
   onDetentChange,
   collapseSignal = 0,
+  expandSignal = 0,
   listAtTop = true,
 }: {
   children: React.ReactNode;
@@ -60,6 +65,8 @@ export function PlacesSheet({
   /** Bump to collapse to `peek` — Apple Maps behaviour: touching the map gets
    *  the sheet out of the way so you can see what you are touching. */
   collapseSignal?: number;
+  /** Bump to open to `half` — the collapsed bar taps to expand. */
+  expandSignal?: number;
 }) {
   const { height } = useWindowDimensions();
   // Precomputed pixel tops. The gesture callbacks are worklets on the UI
@@ -149,15 +156,24 @@ export function PlacesSheet({
       runOnJS(settle)(best);
     });
 
-  // Collapse when the parent says the map was panned. The first render must
-  // not fire it, or the sheet would snap to peek the moment the screen opens.
-  const seenSignal = useRef(collapseSignal);
+  // ONE effect owns every programmatic move. Two effects each writing the same
+  // shared value is what `react-hooks/immutability` objects to, and it is right:
+  // whichever ran last would win a race nobody declared.
+  const seenCollapse = useRef(collapseSignal);
+  const seenExpand = useRef(expandSignal);
   useEffect(() => {
-    if (collapseSignal === seenSignal.current) return;
-    seenSignal.current = collapseSignal;
-    translateY.value = withSpring(tops.peek, SPRING);
-    settle('peek');
-  }, [collapseSignal, settle, tops, translateY]);
+    if (collapseSignal !== seenCollapse.current) {
+      seenCollapse.current = collapseSignal;
+      translateY.value = withSpring(tops.peek, SPRING);
+      settle('peek');
+      return;
+    }
+    if (expandSignal !== seenExpand.current) {
+      seenExpand.current = expandSignal;
+      translateY.value = withSpring(tops.half, SPRING);
+      settle('half');
+    }
+  }, [collapseSignal, expandSignal, settle, tops, translateY]);
 
   const sheetStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
@@ -165,6 +181,19 @@ export function PlacesSheet({
 
   return (
     <Animated.View style={[styles.sheet, { height }, sheetStyle]}>
+      {/* Glass, like the pub cards that float over the same map. Tinted hard
+          enough that a list stays readable over streets (§15.1/§15.2). */}
+      {GLASS ? (
+        <GlassView
+          style={StyleSheet.absoluteFill}
+          glassEffectStyle="regular"
+          tintColor={withAlpha(Colors.stout, 0.82)}
+          colorScheme="dark"
+          pointerEvents="none"
+        />
+      ) : (
+        <View style={[StyleSheet.absoluteFill, styles.solid]} pointerEvents="none" />
+      )}
       <GestureDetector gesture={pan}>
         {/* The drag target. Tall enough to grab without aiming. */}
         <View style={styles.handleArea}>
@@ -191,13 +220,13 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     top: 0,
-    backgroundColor: Colors.stout,
     borderTopLeftRadius: MockLayout.cardRadius + 4,
     borderTopRightRadius: MockLayout.cardRadius + 4,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderColor: withAlpha(Colors.foam, 0.12),
     overflow: 'hidden',
   },
+  solid: { backgroundColor: Colors.stout },
   handleArea: { height: 28, alignItems: 'center', justifyContent: 'center' },
   grabber: {
     width: 40,

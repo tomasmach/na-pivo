@@ -386,6 +386,7 @@ export default function LeaderboardsScreen({ embedded = false }: LeaderboardsScr
       </View>
 
       <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
         style={styles.scroll}
         contentContainerStyle={[styles.scrollContent, !showList && styles.scrollContentCentered]}
         showsVerticalScrollIndicator={false}

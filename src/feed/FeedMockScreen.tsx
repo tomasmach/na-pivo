@@ -29,6 +29,7 @@ import { cs } from "@/i18n/cs";
 import { MOCK_FEED, MOCK_NUDGE, type FeedEntry } from "@/feed/mockFeed";
 import { PartyHighlight } from "@/feed/PartyHighlight";
 import { buildRoast } from "@/feed/roast";
+import { usePartyMorph } from "@/mocks/PartyMorph";
 import { StatGrid } from "@/mocks/StatGrid";
 import { MockColors, MockType } from "@/mocks/mockTheme";
 import { Colors, withAlpha } from "@/theme/colors";
@@ -76,6 +77,8 @@ function Face({
 
 function FeedCard({ entry }: { entry: FeedEntry }) {
   const router = useRouter();
+  const cardRef = React.useRef<View>(null);
+  const fireMorph = usePartyMorph((s) => s.fire);
 
   // Derived, not written: every roast is a true observation about THIS night,
   // and the rules stay silent when there is nothing fair to say (see roast.ts).
@@ -93,8 +96,18 @@ function FeedCard({ entry }: { entry: FeedEntry }) {
 
   return (
     <Pressable
+      ref={cardRef}
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-      onPress={() => router.push("/friends/party-recap" as Href)}
+      onPress={() => {
+        // The card grows into the screen it opens. Measured, not guessed —
+        // a feed scrolls, so the frame is only true at the moment of the tap.
+        cardRef.current?.measureInWindow((x, y, width, height) => {
+          fireMorph(
+            { x, y, width, height, radius: 0, color: MockColors.surface },
+            () => router.push("/friends/party-recap" as Href),
+          );
+        });
+      }}
       accessibilityRole="button"
       accessibilityLabel={`${entry.title}, detail večera`}
     >

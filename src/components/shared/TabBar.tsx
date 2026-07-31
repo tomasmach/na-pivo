@@ -57,7 +57,7 @@ import { usePartaSignalStore } from '@/stores/partaSignalStore';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 import { cs } from '@/i18n/cs';
 import { trackUiInteraction, type UiInteractionTarget } from '@/data/uxTelemetry';
-import { usePartyMorph } from '@/mocks/PartyMorph';
+import { discSource, usePartyMorph } from '@/mocks/PartyMorph';
 
 /**
  * The narrow slice of expo-router's bottom-tab `tabBar` callback props this
@@ -326,9 +326,9 @@ export function TabBar({ state, navigation }: TabBarProps) {
           // see is the button becoming the night.
           if (meta?.accent) {
             trackUiInteraction(meta.telemetryTarget, 'select');
-            const origin = accentCentre.current;
-            if (origin) {
-              fireMorph(origin, () => router.push('/party-live' as Href));
+            const centre = accentCentre.current;
+            if (centre) {
+              fireMorph(discSource(centre), () => router.push('/party-live' as Href));
             } else {
               router.push('/party-live' as Href);
             }

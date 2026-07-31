@@ -62,7 +62,9 @@ export default function FeedLayout() {
           // "(tabs)" — which is a router internal, not a place.
           headerBackButtonDisplayMode: 'minimal',
           headerTintColor: Colors.foam,
-          animation: 'ios_from_right',
+          // The morph cover is already opaque when this pushes, so the screen
+          // must not slide underneath it. Going BACK keeps a real direction.
+          animation: 'fade',
         }}
       />
     </Stack>

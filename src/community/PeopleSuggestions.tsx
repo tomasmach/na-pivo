@@ -18,13 +18,13 @@
  */
 
 import React, { useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { CheckIcon, UserPlusIcon } from '@/components/shared/IconGlyph';
-import { MockLayout, MockType } from '@/mocks/mockTheme';
+import { MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
+import { Spacing } from '@/theme/layout';
 
 const AVATARS = 'https://i.pravatar.cc/160?img=';
 
@@ -44,35 +44,38 @@ const SUGGESTIONS: Suggestion[] = [
   { id: 's5', handle: '@tuplák', reason: 'Kamarád @chmeláka', avatar: `${AVATARS}52` },
 ];
 
-function SuggestionCard({ person }: { person: Suggestion }) {
+/**
+ * A row, not a card. Cards for five people turned a supporting section into the
+ * loudest block on the screen, and the "Přidat" button on each one made it five
+ * competing amber surfaces. The row IS the action — tapping it sends the
+ * request — and the reason sits where a subtitle goes.
+ */
+function SuggestionRow({ person, first }: { person: Suggestion; first: boolean }) {
   const [added, setAdded] = useState(false);
 
   return (
-    <View style={styles.card}>
+    <Pressable
+      onPress={() => setAdded((current) => !current)}
+      style={({ pressed }) => [styles.row, first && styles.rowFirst, pressed && styles.pressed]}
+      accessibilityRole="button"
+      accessibilityState={{ selected: added }}
+      accessibilityLabel={added ? `Žádost odeslána ${person.handle}` : `Přidat ${person.handle}`}
+    >
       <Image source={{ uri: person.avatar }} style={styles.avatar} />
-      <Text style={styles.handle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-        {person.handle}
-      </Text>
-      <Text style={styles.reason} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
-        {person.reason}
-      </Text>
-      <Pressable
-        onPress={() => setAdded((current) => !current)}
-        style={({ pressed }) => [styles.button, added && styles.buttonOn, pressed && styles.pressed]}
-        accessibilityRole="button"
-        accessibilityState={{ selected: added }}
-        accessibilityLabel={added ? `Žádost odeslána ${person.handle}` : `Přidat ${person.handle}`}
-      >
-        {added ? (
-          <CheckIcon size={14} color={Colors.mutedText} />
-        ) : (
-          <UserPlusIcon size={14} color={Colors.stout} />
-        )}
-        <Text style={[styles.buttonText, added && styles.buttonTextOn]} allowFontScaling={false}>
-          {added ? 'Odesláno' : 'Přidat'}
+      <View style={styles.body}>
+        <Text style={styles.handle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+          {person.handle}
         </Text>
-      </Pressable>
-    </View>
+        <Text style={styles.reason} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+          {person.reason}
+        </Text>
+      </View>
+      {added ? (
+        <CheckIcon size={18} color={Colors.mutedText} />
+      ) : (
+        <UserPlusIcon size={18} color={Colors.amber} />
+      )}
+    </Pressable>
   );
 }
 
@@ -82,55 +85,29 @@ export function PeopleSuggestions() {
       <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
         Koho přidat
       </Text>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.row}
-      >
-        {SUGGESTIONS.map((person) => (
-          <SuggestionCard key={person.id} person={person} />
-        ))}
-      </ScrollView>
+      {SUGGESTIONS.map((person, index) => (
+        <SuggestionRow key={person.id} person={person} first={index === 0} />
+      ))}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { gap: Spacing.sm, marginBottom: Spacing.lg },
-  title: { ...MockType.titleS, color: Colors.foam },
-  row: { gap: Spacing.sm, paddingRight: Spacing.md },
+  wrap: { marginBottom: Spacing.lg },
+  title: { ...MockType.titleS, color: Colors.foam, marginBottom: Spacing.xs },
 
-  card: {
-    width: 148,
-    alignItems: 'center',
-    gap: 4,
-    padding: Spacing.md,
-    borderRadius: MockLayout.cardRadius,
-    backgroundColor: Colors.stout2,
-  },
-  avatar: { width: 54, height: 54, borderRadius: 27, marginBottom: 2 },
-  handle: { ...MockType.bodySemibold, color: Colors.foam },
-  reason: {
-    fontSize: 12,
-    fontWeight: '400',
-    lineHeight: 16,
-    color: Colors.mutedText,
-    textAlign: 'center',
-    minHeight: 32,
-  },
-  button: {
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    height: 34,
-    alignSelf: 'stretch',
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.amber,
-    marginTop: 4,
+    gap: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.foam, 0.1),
   },
-  buttonOn: { backgroundColor: withAlpha(Colors.foam, 0.08) },
-  buttonText: { fontSize: 13, fontWeight: '700', color: Colors.stout },
-  buttonTextOn: { color: Colors.mutedText },
-  pressed: { opacity: 0.7 },
+  rowFirst: { borderTopWidth: 0 },
+  avatar: { width: 40, height: 40, borderRadius: 20 },
+  body: { flex: 1 },
+  handle: { ...MockType.bodySemibold, color: Colors.foam },
+  reason: { fontSize: 13, fontWeight: '400', color: Colors.mutedText, marginTop: 1 },
+  pressed: { opacity: 0.65 },
 });
