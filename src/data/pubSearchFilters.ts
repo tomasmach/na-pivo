@@ -133,3 +133,15 @@ export function pubMatchesPriceFilter(
     (priceMaxCzk === null || pub.price.czk <= priceMaxCzk)
   );
 }
+
+/** Own added pubs stay discoverable while their reference price is still unknown. */
+export function pubMatchesPriceFilterOrOwn(
+  pub: {
+    userAddedClientId?: string;
+    price?: { czk: number; observedAt: string } | null;
+  },
+  priceMinCzk: number | null,
+  priceMaxCzk: number | null,
+): boolean {
+  return Boolean(pub.userAddedClientId) || pubMatchesPriceFilter(pub, priceMinCzk, priceMaxCzk);
+}

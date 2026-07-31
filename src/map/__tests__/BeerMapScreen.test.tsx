@@ -5,7 +5,7 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import { cs } from '@/i18n/cs';
 import type { FriendPubActivity } from '@/data/friendsClient';
 import { EMPTY_PUB_SEARCH_FILTERS } from '@/data/pubSearchFilters';
-import BeerMapScreen from '../BeerMapScreen';
+import BeerMapScreen, { resetBeerMapLayerForAddedPub } from '../BeerMapScreen';
 import { fetchPubHours } from '@/data/hoursClient';
 import { enqueuePubReport } from '@/data/pubReportQueue';
 import { useBeerMap } from '../useBeerMap';
@@ -412,9 +412,10 @@ describe('BeerMapScreen opening-hours loading', () => {
       screen.getByLabelText(cs.map.layerVisited).props.accessibilityState,
     ).toMatchObject({ selected: true });
 
-    // The chosen layer is remembered across mounts, so put it back — otherwise
-    // the next test starts on a slice where the fixture pub isn't drawn.
-    fireEvent.press(screen.getByLabelText(cs.map.layerAll));
+    act(() => resetBeerMapLayerForAddedPub());
+    expect(screen.getByLabelText(cs.map.layerAll).props.accessibilityState).toMatchObject({
+      selected: true,
+    });
   });
 
   it('asks for confirmation before reporting a pub from the overflow sheet', () => {

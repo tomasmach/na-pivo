@@ -41,6 +41,7 @@ import { clearPubsSnapshot, pubIdForCoords, upsertLocalPub } from '@/data/pubs';
 import { usePubStore } from '@/stores/pubStore';
 import { useToastStore } from '@/stores/toastStore';
 import { fireSuccessHaptic } from '@/utils/haptics';
+import { resetBeerMapLayerForAddedPub } from '@/map/BeerMapScreen';
 
 function parseStringParam(value: string | string[] | undefined): string {
   return Array.isArray(value) ? (value[0] ?? '') : (value ?? '');
@@ -183,6 +184,7 @@ export default function AddPubScreen() {
     const trimmedName = name.trim().slice(0, 200);
     const trimmedCity = city.trim();
     const trimmedAddress = address.trim();
+    const clientId = isEditing ? editedClientId : generateUuidV4();
 
     const location = selectedLocation ?? initialCoords;
 
@@ -194,6 +196,7 @@ export default function AddPubScreen() {
     }
 
     if (location) {
+      if (fromMapPin) resetBeerMapLayerForAddedPub();
       upsertLocalPub({
         id: pubIdForCoords(location.lat, location.lng),
         name: trimmedName,
@@ -202,6 +205,7 @@ export default function AddPubScreen() {
         city: trimmedCity,
         address: trimmedAddress,
         venueKind: 'pub',
+        userAddedClientId: clientId,
       });
       bumpCatalogRevision();
       void clearPubsSnapshot();
@@ -228,7 +232,7 @@ export default function AddPubScreen() {
             address: trimmedAddress,
             ...(selectedLocation!.source === 'pin' ? { locationSource: 'map_pin' as const } : {}),
           },
-          generateUuidV4(),
+          clientId,
         ));
     void sync.then((state) => {
       trackUiInteraction('add_pub_submit', state === 'failed' ? 'failure' : 'success');
@@ -252,6 +256,7 @@ export default function AddPubScreen() {
     canSubmit,
     city,
     editedClientId,
+    fromMapPin,
     initialCoords,
     isEditing,
     nameChanged,

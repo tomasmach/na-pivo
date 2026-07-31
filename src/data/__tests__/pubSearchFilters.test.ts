@@ -6,6 +6,7 @@ import {
   normalizeAmenityFilterKeys,
   normalizePubSearchFilters,
   pubMatchesPriceFilter,
+  pubMatchesPriceFilterOrOwn,
   pubSearchFilterKey,
 } from '../pubSearchFilters';
 
@@ -102,5 +103,13 @@ describe('pub search filters', () => {
     expect(pubMatchesPriceFilter(unknown, 35, 45)).toBe(false);
     expect(pubMatchesPriceFilter(unknown, null, null)).toBe(true);
     jest.restoreAllMocks();
+  });
+
+  it('lets an own added pub through an active price range before its price is known', () => {
+    const ownUnknown = { userAddedClientId: 'client-own', price: null };
+    const ordinaryUnknown = { price: null };
+
+    expect(pubMatchesPriceFilterOrOwn(ownUnknown, 35, 45)).toBe(true);
+    expect(pubMatchesPriceFilterOrOwn(ordinaryUnknown, 35, 45)).toBe(false);
   });
 });
