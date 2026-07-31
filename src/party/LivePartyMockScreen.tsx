@@ -27,10 +27,13 @@ import { useRouter, type Href } from 'expo-router';
 
 import {
   BeerIcon,
+  CameraIcon,
   ChevronDownIcon,
   SoccerBallIcon,
+  TrophyIcon,
   UserPlusIcon,
 } from '@/components/shared/IconGlyph';
+import { GamesSheet } from '@/party/GamesSheet';
 import { NightRoute } from '@/mocks/NightRoute';
 import { StatGrid } from '@/mocks/StatGrid';
 import { useLivePartyStore } from '@/mocks/livePartyStore';
@@ -78,8 +81,13 @@ export default function LivePartyMockScreen() {
   const router = useRouter();
   const live = useLivePartyStore((s) => s.live);
   const beers = useLivePartyStore((s) => s.beers);
+  const photos = useLivePartyStore((s) => s.photos);
+  const games = useLivePartyStore((s) => s.games);
   const startParty = useLivePartyStore((s) => s.start);
   const addBeer = useLivePartyStore((s) => s.addBeer);
+  const addPhoto = useLivePartyStore((s) => s.addPhoto);
+  const playGame = useLivePartyStore((s) => s.playGame);
+  const [gamesOpen, setGamesOpen] = React.useState(false);
 
   const total = live ? beers + PEOPLE.reduce((s, p) => s + p.beers, 0) - PEOPLE[0].beers : 0;
 
@@ -167,6 +175,39 @@ export default function LivePartyMockScreen() {
               Večer začíná prvním pivem. Kamarády můžeš přizvat kdykoliv potom.
             </Text>
           )}
+
+          {/* What the night has produced so far. This is the whole reason the
+              party mode exists beyond a counter: the recap and the feed can
+              only lead with a scoreboard or a photo strip if something here
+              made one. */}
+          {live ? (
+            <View style={styles.outputs}>
+              <Pressable
+                onPress={addPhoto}
+                style={({ pressed }) => [styles.output, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel="Vyfotit moment"
+              >
+                <CameraIcon size={17} color={Colors.amber} />
+                <Text style={styles.outputText} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {photos > 0 ? `${photos} fotek` : 'Vyfoť moment'}
+                </Text>
+              </Pressable>
+
+              {games.length > 0 ? (
+                <View style={styles.output}>
+                  <TrophyIcon size={17} color={Colors.amber} />
+                  <Text
+                    style={styles.outputText}
+                    numberOfLines={1}
+                    maxFontSizeMultiplier={FontScaleCap.body}
+                  >
+                    {games[games.length - 1].game} — {games[games.length - 1].winner}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
         </ScrollView>
 
         {/* Primary in the middle, the two night-time doors either side. */}
@@ -189,11 +230,21 @@ export default function LivePartyMockScreen() {
             </Text>
           </View>
 
-          <CircleButton label="Hry">
+          <CircleButton label="Hry" onPress={() => setGamesOpen(true)}>
             <SoccerBallIcon size={22} color={Colors.foam} />
           </CircleButton>
         </View>
       </View>
+
+      <GamesSheet
+        visible={gamesOpen}
+        people={PEOPLE.map((p) => p.name)}
+        onClose={() => setGamesOpen(false)}
+        onPlayed={(result) => {
+          playGame(result);
+          setGamesOpen(false);
+        }}
+      />
     </View>
   );
 }
@@ -284,6 +335,19 @@ const styles = StyleSheet.create({
     color: Colors.mutedText,
     marginTop: Spacing.md,
   },
+
+  // — Outputs —
+  outputs: { marginTop: Spacing.lg, gap: Spacing.sm },
+  output: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    minHeight: 44,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.stout3,
+  },
+  outputText: { flex: 1, fontSize: 14, fontWeight: '600', color: Colors.foam },
 
   // — People —
   people: { marginTop: Spacing.lg, gap: Spacing.sm },
