@@ -224,7 +224,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     minHeight: 52,
-    borderRadius: Radius.medium,
+    borderRadius: Radius.card,
     borderWidth: 1,
     borderColor: Colors.border,
     backgroundColor: Colors.stout2,

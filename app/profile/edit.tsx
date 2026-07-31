@@ -402,16 +402,14 @@ const styles = StyleSheet.create({
     marginLeft: 2,
   },
 
-  // ── Avatar card ──
+  // ── Avatar ──
+  // No card. A panel around a circle that is already a distinct shape is a
+  // frame around a frame (§14.10), and stacking one on the visibility panel and
+  // the inputs made the screen read as a pile of boxes rather than a form.
   avatarCard: {
     alignItems: 'center',
-    gap: Spacing.lg,
-    backgroundColor: Colors.stout2,
-    borderRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    paddingVertical: Spacing.xl,
-    paddingHorizontal: Spacing.lg,
+    gap: Spacing.md,
+    paddingVertical: Spacing.md,
   },
   avatarTap: {
     position: 'relative',
@@ -426,7 +424,8 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     backgroundColor: Colors.amber,
     borderWidth: 3,
-    borderColor: Colors.stout2,
+    // Rings against the page now that there is no card behind the avatar.
+    borderColor: Colors.stout,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -465,8 +464,10 @@ const styles = StyleSheet.create({
 
   // ── Input ──
   input: {
-    minHeight: 52,
-    borderRadius: Radius.medium,
+    minHeight: 54,
+    // Bigger corner: the form is the screen now, so the fields carry the
+    // roundness the removed cards used to.
+    borderRadius: Radius.card,
     borderWidth: 1,
     borderColor: Colors.border,
     backgroundColor: Colors.stout2,
@@ -483,14 +484,10 @@ const styles = StyleSheet.create({
     marginLeft: 2,
   },
 
-  // ── Visibility card ──
+  // ── Visibility ──
   consentCard: {
     gap: Spacing.md,
-    backgroundColor: Colors.stout2,
-    borderRadius: Radius.cardLarge,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: Spacing.lg,
+    paddingVertical: Spacing.sm,
   },
   consentDivider: {
     height: 1,

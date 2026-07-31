@@ -79,7 +79,7 @@ const styles = StyleSheet.create({
   iconWell: {
     width: 36,
     height: 36,
-    borderRadius: 12,
+    borderRadius: 16,
     backgroundColor: Colors.stout3,
     alignItems: 'center',
     justifyContent: 'center',
