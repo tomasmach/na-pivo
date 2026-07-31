@@ -17,7 +17,7 @@
  * dependencies, and a sheet with three snap points is not worth a third.
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -37,7 +37,8 @@ import { MockLayout } from '@/mocks/mockTheme';
  * expanded 0.92 of the screen HEIGHT) so the two apps rest in the same places:
  * top = 1 − height.
  */
-const DETENTS = { peek: 0.74, half: 0.48, full: 0.08 } as const;
+export const DETENT_TOP = { peek: 0.74, half: 0.48, full: 0.08 } as const;
+const DETENTS = DETENT_TOP;
 export type Detent = keyof typeof DETENTS;
 
 const SPRING = { damping: 22, stiffness: 190, mass: 0.7 } as const;
@@ -46,15 +47,29 @@ export function PlacesSheet({
   children,
   initial = 'half',
   onDetentChange,
+  collapseSignal = 0,
 }: {
   children: React.ReactNode;
   initial?: Detent;
   onDetentChange?: (detent: Detent) => void;
+  /** Bump to collapse to `peek` — Apple Maps behaviour: touching the map gets
+   *  the sheet out of the way so you can see what you are touching. */
+  collapseSignal?: number;
 }) {
   const { height } = useWindowDimensions();
-  const topFor = useCallback((d: Detent) => Math.round(height * DETENTS[d]), [height]);
+  // Precomputed pixel tops. The gesture callbacks are worklets on the UI
+  // thread, so they must not call a JS closure like a `topFor(d)` helper —
+  // plain numbers captured from the closure are fine, a function is not.
+  const tops = useMemo(
+    () => ({
+      peek: Math.round(height * DETENTS.peek),
+      half: Math.round(height * DETENTS.half),
+      full: Math.round(height * DETENTS.full),
+    }),
+    [height],
+  );
 
-  const translateY = useSharedValue(topFor(initial));
+  const translateY = useSharedValue(Math.round(height * DETENTS[initial]));
   const start = useSharedValue(0);
 
   const settle = useCallback(
@@ -66,32 +81,42 @@ export function PlacesSheet({
 
   const pan = Gesture.Pan()
     .onStart(() => {
+      'worklet';
       start.value = translateY.value;
     })
     .onUpdate((event) => {
+      'worklet';
       const next = start.value + event.translationY;
       // Clamp with a little give at both ends so it never feels stuck.
-      translateY.value = Math.min(
-        Math.max(next, topFor('full') - 12),
-        topFor('peek') + 12,
-      );
+      translateY.value = Math.min(Math.max(next, tops.full - 12), tops.peek + 12);
     })
     .onEnd((event) => {
+      'worklet';
       // Throw: where the sheet would land, not where the finger let go.
       const projected = translateY.value + event.velocityY * 0.12;
       const candidates: Detent[] = ['full', 'half', 'peek'];
       let best: Detent = 'half';
       let bestDistance = Number.POSITIVE_INFINITY;
       for (const candidate of candidates) {
-        const distance = Math.abs(projected - topFor(candidate));
+        const distance = Math.abs(projected - tops[candidate]);
         if (distance < bestDistance) {
           bestDistance = distance;
           best = candidate;
         }
       }
-      translateY.value = withSpring(topFor(best), SPRING);
+      translateY.value = withSpring(tops[best], SPRING);
       runOnJS(settle)(best);
     });
+
+  // Collapse when the parent says the map was panned. The first render must
+  // not fire it, or the sheet would snap to peek the moment the screen opens.
+  const seenSignal = useRef(collapseSignal);
+  useEffect(() => {
+    if (collapseSignal === seenSignal.current) return;
+    seenSignal.current = collapseSignal;
+    translateY.value = withSpring(tops.peek, SPRING);
+    settle('peek');
+  }, [collapseSignal, settle, tops, translateY]);
 
   const sheetStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],

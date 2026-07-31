@@ -23,7 +23,15 @@ import { Colors, withAlpha } from '@/theme/colors';
 const CENTRE = { lat: 50.079, lng: 14.432 };
 const SPREAD = 0.012;
 
-export function PubsMap({ onPressPub }: { onPressPub?: (id: string) => void }) {
+export function PubsMap({
+  onPressPub,
+  onPan,
+}: {
+  onPressPub?: (id: string) => void;
+  /** Fires while the user drags the map — the screen uses it to get the sheet
+   *  out of the way (Apple Maps behaviour). */
+  onPan?: () => void;
+}) {
   const mapRef = useRef<MapView>(null);
 
   const pins = useMemo(
@@ -62,6 +70,7 @@ export function PubsMap({ onPressPub }: { onPressPub?: (id: string) => void }) {
       toolbarEnabled={false}
       loadingBackgroundColor={Colors.stout}
       loadingIndicatorColor={Colors.amber}
+      onPanDrag={onPan}
     >
       {pins.map((pin) => (
         <Marker

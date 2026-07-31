@@ -17,12 +17,22 @@
  */
 
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActionSheetIOS,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 
 import {
   BeerIcon,
+  ChevronDownIcon,
+  LocateFixedIcon,
   ChevronRightIcon,
   MapPinIcon,
   SearchIcon,
@@ -31,7 +41,7 @@ import {
   UsersIcon,
 } from '@/components/shared/IconGlyph';
 import { CompassCell } from '@/pubs/CompassCell';
-import { PlacesSheet } from '@/pubs/PlacesSheet';
+import { DETENT_TOP, PlacesSheet, type Detent } from '@/pubs/PlacesSheet';
 import { PubsMap } from '@/pubs/PubsMap';
 import { MOCK_PUBS, type MockPub } from '@/pubs/mockPubs';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
@@ -39,10 +49,43 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
-const FILTERS = ['Vše', 'Nejbližší', 'Otevřeno', 'Zahrádka', 'Levné'] as const;
+/**
+ * How the list is ordered. "Nejbližší" is the default because standing
+ * somewhere and asking "where do I go" is the whole job of this screen;
+ * "Vše" was never an answer to anything.
+ */
+const SORTS = ['Nejbližší', 'Nejlépe hodnocené', 'Náhodně v okolí'] as const;
+type Sort = (typeof SORTS)[number];
+
+/** Independent toggles, on top of whatever the sort is. */
+const TOGGLES = ['Otevřeno', 'Zahrádka', 'Levné'] as const;
 
 function FilterChips() {
-  const [active, setActive] = React.useState(0);
+  const [sort, setSort] = React.useState<Sort>('Nejbližší');
+  const [on, setOn] = React.useState<string[]>([]);
+
+  // Native iOS menu. `@expo/ui`'s SwiftUI ContextMenu opens on long-press,
+  // which is the wrong gesture for a dropdown; an anchored SwiftUI Menu would
+  // need a Host island and SwiftUI-styled rows. The action sheet is the same
+  // system control, one import, and reads correctly on a chip tap.
+  const openSort = () => {
+    ActionSheetIOS.showActionSheetWithOptions(
+      {
+        options: [...SORTS, 'Zrušit'],
+        cancelButtonIndex: SORTS.length,
+        title: 'Seřadit',
+        userInterfaceStyle: 'dark',
+      },
+      (index) => {
+        if (index < SORTS.length) setSort(SORTS[index]);
+      },
+    );
+  };
+
+  const toggle = (label: string) =>
+    setOn((current) =>
+      current.includes(label) ? current.filter((l) => l !== label) : [...current, label],
+    );
 
   return (
     <ScrollView
@@ -58,27 +101,45 @@ function FilterChips() {
       >
         <SlidersHorizontalIcon size={17} color={Colors.foam} />
       </Pressable>
-      {FILTERS.map((label, index) => (
-        <Pressable
-          key={label}
-          onPress={() => setActive(index)}
-          style={({ pressed }) => [
-            styles.chip,
-            index === active && styles.chipActive,
-            pressed && styles.pressed,
-          ]}
-          accessibilityRole="button"
-          accessibilityState={{ selected: index === active }}
-          accessibilityLabel={label}
-        >
-          <Text
-            style={[styles.chipText, index === active && styles.chipTextActive]}
-            allowFontScaling={false}
+
+      {/* The sort is a dropdown, not one of the toggles — it answers a
+          different question and only ever has one answer at a time. */}
+      <Pressable
+        onPress={openSort}
+        style={({ pressed }) => [styles.chip, styles.chipActive, pressed && styles.pressed]}
+        accessibilityRole="button"
+        accessibilityLabel={`Seřadit: ${sort}`}
+      >
+        <Text style={[styles.chipText, styles.chipTextActive]} allowFontScaling={false}>
+          {sort}
+        </Text>
+        <ChevronDownIcon size={14} color={Colors.amber} />
+      </Pressable>
+
+      {TOGGLES.map((label) => {
+        const active = on.includes(label);
+        return (
+          <Pressable
+            key={label}
+            onPress={() => toggle(label)}
+            style={({ pressed }) => [
+              styles.chip,
+              active && styles.chipActive,
+              pressed && styles.pressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: active }}
+            accessibilityLabel={label}
           >
-            {label}
-          </Text>
-        </Pressable>
-      ))}
+            <Text
+              style={[styles.chipText, active && styles.chipTextActive]}
+              allowFontScaling={false}
+            >
+              {label}
+            </Text>
+          </Pressable>
+        );
+      })}
     </ScrollView>
   );
 }
@@ -159,15 +220,38 @@ function PubRow({ pub, nearest }: { pub: MockPub; nearest?: boolean }) {
 export default function PubListMockScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { height } = useWindowDimensions();
+  const [detent, setDetent] = React.useState<Detent>('half');
+  const [collapseSignal, setCollapseSignal] = React.useState(0);
+
+  // The locate button rides just above the sheet's resting top, so collapsing
+  // the sheet walks the button down with it instead of stranding it.
+  const sheetTop = height * DETENT_TOP[detent];
 
   return (
     <View style={styles.screen}>
       {/* The map is the screen; the places ride over it in a sheet you drag. */}
       <View style={styles.map}>
-        <PubsMap onPressPub={() => router.push('/pubs-map' as Href)} />
+        <PubsMap
+          onPressPub={() => router.push('/pubs-map' as Href)}
+          onPan={() => setCollapseSignal((n) => n + 1)}
+        />
       </View>
 
-      <PlacesSheet initial="half">
+      <Pressable
+        onPress={() => router.push('/pubs-map' as Href)}
+        style={({ pressed }) => [
+          styles.locate,
+          { top: sheetTop - 56 },
+          pressed && styles.pressed,
+        ]}
+        accessibilityRole="button"
+        accessibilityLabel="Vycentrovat na mě"
+      >
+        <LocateFixedIcon size={20} color={Colors.foam} />
+      </Pressable>
+
+      <PlacesSheet initial="half" onDetentChange={setDetent} collapseSignal={collapseSignal}>
         {/* Search lives IN the sheet, above the chips — the reference puts it
             here, not in a nav bar, because it filters the list under it. */}
         <View style={styles.searchWrap}>
@@ -290,6 +374,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout2,
   },
   chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
     height: MockLayout.pillHeight,
     paddingHorizontal: Spacing.md,
     borderRadius: Radius.pill,
@@ -356,6 +443,16 @@ const styles = StyleSheet.create({
   historyRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 },
   historyText: { flex: 1, fontSize: 12, fontWeight: '500', color: withAlpha(Colors.amber, 0.9) },
 
+  locate: {
+    position: 'absolute',
+    right: MockLayout.screenPad,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha('#000000', 0.62),
+  },
   mockNote: {
     fontWeight: '400',
     fontSize: 12,
