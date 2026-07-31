@@ -147,7 +147,9 @@ jest.mock('@/data/account', () => ({
   updateAccountPreferences: jest.fn(async () => null),
 }));
 
-const CompassScreen = require('../(tabs)/index').default;
+// The real compass lives in src/ now; `app/(tabs)/index.tsx` is a one-line
+// re-export (a design mock on the 3.0 branch). Test the screen, not the route.
+const CompassScreen = require('@/compass/CompassHomeScreen').default;
 const { useCompass } = require('@/hooks/useCompass') as {
   useCompass: jest.Mock;
 };
