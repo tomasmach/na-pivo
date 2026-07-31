@@ -44,6 +44,34 @@ export const MOCK_COMPASS_TARGET = {
   beer: 'Flekovský ležák 13°',
 };
 
+/**
+ * "340 m" / "1,2 km" → the numeral and a declined Czech unit, because the
+ * compass cell sets the number large and the unit small beside it.
+ */
+export function splitDistance(distance: string): { value: string; unit: string } {
+  const [value, unit = ''] = distance.split(' ');
+  return { value, unit: unit === 'm' ? 'metrů' : unit };
+}
+
+/**
+ * Deterministic shuffle. `Math.random()` inside a render would reorder the list
+ * under your thumb on every re-render; the seed only changes when you pick
+ * "Náhodně v okolí" again, so picking it twice genuinely reshuffles and
+ * scrolling does not.
+ */
+export function shuffled<T>(items: T[], seed: number): T[] {
+  const out = [...items];
+  let state = (seed + 1) * 9301 + 49297;
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    state = (state * 9301 + 49297) % 233280;
+    const j = Math.floor((state / 233280) * (i + 1));
+    const swap = out[i];
+    out[i] = out[j];
+    out[j] = swap;
+  }
+  return out;
+}
+
 export const MOCK_PUBS: MockPub[] = [
   {
     id: 'p1',

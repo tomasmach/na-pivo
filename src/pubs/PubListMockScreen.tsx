@@ -47,7 +47,7 @@ import { DETENT_TOP, PlacesSheet, type Detent } from '@/pubs/PlacesSheet';
 import { PubCarousel } from '@/pubs/PubCarousel';
 import { PubThumbMap } from '@/pubs/PubThumbMap';
 import { PubsMap } from '@/pubs/PubsMap';
-import { MOCK_PUBS, type MockPub } from '@/pubs/mockPubs';
+import { MOCK_PUBS, shuffled, type MockPub } from '@/pubs/mockPubs';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -64,6 +64,14 @@ const THUMB = 56;
 const SORTS = ['Nejbližší', 'Nejlépe hodnocené', 'Náhodně v okolí'] as const;
 type Sort = (typeof SORTS)[number];
 
+/** What the head cell's badge says, per sort — it has to explain why THIS pub
+ *  is the one the compass points at. */
+const BADGE: Record<Sort, string> = {
+  'Nejbližší': 'Nejbližší',
+  'Nejlépe hodnocené': 'Nejlíp hodnocená',
+  'Náhodně v okolí': 'Náhodná',
+};
+
 /**
  * The beer is why you pick one pub over another, so it gets its own pill next
  * to "Otevřeno" rather than hiding behind the sliders. This maps onto the
@@ -79,8 +87,15 @@ const BEERS = ['Pilsner Urquell', 'Kozel', 'Matuška', 'Únětické', 'Kacíř']
  */
 const TOGGLES = ['Otevřeno', 'Tank', 'Zahrádka'] as const;
 
-function FilterChips() {
-  const [sort, setSort] = React.useState<Sort>('Nejbližší');
+function FilterChips({
+  sort,
+  onSort,
+}: {
+  sort: Sort;
+  /** Fires on EVERY pick, including re-picking the current one — that is how
+   *  "Náhodně v okolí" reshuffles a second time. */
+  onSort: (next: Sort) => void;
+}) {
   const [on, setOn] = React.useState<string[]>([]);
 
   // Several beers at once, so a sheet with checkboxes rather than an action
@@ -99,7 +114,7 @@ function FilterChips() {
         userInterfaceStyle: 'dark',
       },
       (index) => {
-        if (index < SORTS.length) setSort(SORTS[index]);
+        if (index < SORTS.length) onSort(SORTS[index]);
       },
     );
   };
@@ -281,6 +296,28 @@ export default function PubListMockScreen() {
   const [listAtTop, setListAtTop] = React.useState(true);
   const [expandSignal, setExpandSignal] = React.useState(0);
   const [selectedPub, setSelectedPub] = React.useState<string | null>(MOCK_PUBS[0]?.id ?? null);
+  const [sort, setSort] = React.useState<Sort>('Nejbližší');
+  // Bumped on every pick of "Náhodně v okolí", so picking it again genuinely
+  // deals a new order instead of returning the same "random" one.
+  const [shuffleSeed, setShuffleSeed] = React.useState(0);
+
+  const ordered = React.useMemo(() => {
+    if (sort === 'Nejlépe hodnocené') {
+      return [...MOCK_PUBS].sort((a, b) => b.rating - a.rating);
+    }
+    if (sort === 'Náhodně v okolí') return shuffled(MOCK_PUBS, shuffleSeed);
+    // MOCK_PUBS is already in distance order.
+    return MOCK_PUBS;
+  }, [sort, shuffleSeed]);
+
+  // The compass head cell points at whatever the sort put first, so the needle
+  // and the list always agree about where you are being sent.
+  const head = ordered[0];
+
+  const pickSort = React.useCallback((next: Sort) => {
+    setSort(next);
+    if (next === 'Náhodně v okolí') setShuffleSeed((n) => n + 1);
+  }, []);
 
   // The locate button rides just above the sheet's resting top, so collapsing
   // the sheet walks the button down with it instead of stranding it.
@@ -358,7 +395,7 @@ export default function PubListMockScreen() {
               </View>
             </View>
 
-            <FilterChips />
+            <FilterChips sort={sort} onSort={pickSort} />
 
             <ScrollView
               contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 120 }]}
@@ -371,10 +408,16 @@ export default function PubListMockScreen() {
                 setListAtTop((current) => (current === atTop ? current : atTop));
               }}
             >
-              <CompassCell onPress={() => router.push('/pubs-map' as Href)} />
+              {head ? (
+                <CompassCell
+                  pub={head}
+                  badge={BADGE[sort]}
+                  onPress={() => router.push('/pubs-map' as Href)}
+                />
+              ) : null}
 
               <View style={styles.list}>
-                {MOCK_PUBS.map((pub, index) => (
+                {ordered.slice(1).map((pub, index) => (
                   <PubRow key={pub.id} pub={pub} first={index === 0} />
                 ))}
               </View>

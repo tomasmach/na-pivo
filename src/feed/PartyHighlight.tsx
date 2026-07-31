@@ -1,22 +1,32 @@
 /**
- * DESIGN MOCK — the feed card's hero, chosen by what the night actually made.
+ * DESIGN MOCK — the feed card's hero: everything the night produced, in a strip
+ * you scroll sideways.
  *
- * The card shows the BEST thing a party produced, not always the same thing.
- * Ranked by how much it tells you about the evening:
+ * It used to pick ONE output and give it the full width. That threw away most of
+ * a good evening — a night with a game AND photos AND three stops showed the
+ * game and nothing else, and looked identical to a night that only had a game.
+ * Now every output gets a tile and the card shows what it has.
+ *
+ * The first tile is still the best thing, ranked by how much it tells you about
+ * the evening:
  *
  *   photos → game → tempo → record → map
  *
  * The map is last on purpose. It is the one output that says nothing about what
  * the night was LIKE — it is coordinates, and coordinates are plan B.
  *
+ * Tiles are deliberately NARROWER than the screen so the next one is always
+ * half-visible. A strip that ends flush with the edge reads as a single panel
+ * that happens to be clipped; the peek is the entire affordance.
+ *
  * The roast is NOT here. It is the card's headline, not its hero — the app's
  * own line about the night, which can sit over any of these.
  */
 
 import React from 'react';
-import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
-import { TrophyIcon } from '@/components/shared/IconGlyph';
+import { BeerIcon, TrophyIcon } from '@/components/shared/IconGlyph';
 import { NightRoute } from '@/mocks/NightRoute';
 import { MockColors, MockType } from '@/mocks/mockTheme';
 import type { FeedEntry } from '@/feed/mockFeed';
@@ -24,9 +34,13 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
 
-const HERO_HEIGHT = 170;
-/** Tile height of the map + photos strip. */
-const STRIP = 150;
+/** Every tile is the same height, so the strip has one baseline top and bottom
+ *  no matter what the night produced. */
+const TILE = 164;
+/** How much of the next tile stays on screen. */
+const PEEK = 54;
+const PHOTO_W = 128;
+const MAP_W = 218;
 
 /**
  * Illustrative photos for the mock. `picsum.photos` is a stock-photo service and
@@ -41,26 +55,9 @@ const PHOTOS = [
   'https://picsum.photos/seed/napivo-5/400/400',
 ];
 
-function Photos({ count, caption }: { count: number; caption: string }) {
-  return (
-    <View style={[styles.pad, { height: HERO_HEIGHT }]}>
-      <View style={styles.photoRow}>
-        {Array.from({ length: Math.min(3, count) }).map((_, index) => (
-          <Image key={index} source={{ uri: PHOTOS[index % PHOTOS.length] }} style={styles.photo} />
-        ))}
-        {count > 3 ? (
-          <View style={[styles.photo, styles.photoMore]}>
-            <Text style={styles.photoMoreText} allowFontScaling={false}>
-              +{count - 3}
-            </Text>
-          </View>
-        ) : null}
-      </View>
-      <Text style={styles.caption} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-        {caption}
-      </Text>
-    </View>
-  );
+/** A data tile: the surface that makes a chart read as one card in the strip. */
+function Tile({ width, children }: { width: number; children: React.ReactNode }) {
+  return <View style={[styles.tile, { width }]}>{children}</View>;
 }
 
 function Game({
@@ -74,10 +71,10 @@ function Game({
 }) {
   const top = scores[0]?.score ?? 1;
   return (
-    <View style={styles.pad}>
+    <>
       <View style={styles.gameHead}>
         <TrophyIcon size={15} color={Colors.amber} />
-        <Text style={styles.gameTitle} maxFontSizeMultiplier={FontScaleCap.body}>
+        <Text style={styles.gameTitle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
           {game} · vyhrála {winner}
         </Text>
       </View>
@@ -105,125 +102,142 @@ function Game({
           </Text>
         </View>
       ))}
-    </View>
+    </>
   );
 }
 
-function Tempo({
-  hourly,
-  peakLabel,
-}: {
-  hourly: { hour: string; beers: number }[];
-  peakLabel: string;
-}) {
+/**
+ * Beers per hour. No title and no summary line: the mug beside each tally says
+ * what is counted and the hour under each bar says when, which is the whole
+ * chart. A heading naming the axes and a caption restating the peak were two
+ * sentences explaining four numbers.
+ */
+function Tempo({ hourly }: { hourly: { hour: string; beers: number }[] }) {
   const peak = hourly.reduce((m, h) => Math.max(m, h.beers), 0);
   return (
-    <View style={styles.pad}>
-      {/* Bare numerals above bare numerals is a puzzle: 4 what, at 21 what?
-          One line naming both axes is cheaper than a legend and a y-axis. */}
-      <Text style={styles.chartTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-        Piva po hodinách
-      </Text>
-      <View style={styles.bars}>
-        {hourly.map((slot) => (
-          <View key={slot.hour} style={styles.barCol}>
-            {/* The tally above the bar: the shape shows the trend, the number
-                answers "how many" without making anyone read a bar height. */}
+    <View style={styles.bars}>
+      {hourly.map((slot) => (
+        <View key={slot.hour} style={styles.barCol}>
+          <View style={styles.barValueRow}>
+            <BeerIcon size={12} color={withAlpha(Colors.amber, 0.9)} />
             <Text style={styles.barValue} allowFontScaling={false}>
               {slot.beers}
             </Text>
-            <View style={styles.barTrack}>
-              <View
-                style={[
-                  styles.bar,
-                  { height: `${peak > 0 ? Math.max(8, (slot.beers / peak) * 100) : 8}%` },
-                ]}
-              />
-            </View>
-            <Text style={styles.barHour} allowFontScaling={false}>
-              {slot.hour}:00
-            </Text>
           </View>
-        ))}
-      </View>
-      <Text style={styles.caption} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-        {peakLabel}
-      </Text>
+          <View style={styles.barTrack}>
+            <View
+              style={[
+                styles.bar,
+                { height: `${peak > 0 ? Math.max(8, (slot.beers / peak) * 100) : 8}%` },
+              ]}
+            />
+          </View>
+          <Text style={styles.barHour} allowFontScaling={false}>
+            {slot.hour}:00
+          </Text>
+        </View>
+      ))}
     </View>
   );
 }
 
 function Record({ title, detail }: { title: string; detail: string }) {
   return (
-    <View style={[styles.pad, styles.recordRow]}>
+    <View style={styles.recordBody}>
       <View style={styles.medallion}>
         <TrophyIcon size={17} color={Colors.amber} />
       </View>
-      <View style={styles.grow}>
-        <Text style={styles.recordTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-          {title}
-        </Text>
-        <Text style={styles.caption} maxFontSizeMultiplier={FontScaleCap.body}>
-          {detail}
-        </Text>
-      </View>
+      <Text style={styles.recordTitle} maxFontSizeMultiplier={FontScaleCap.body}>
+        {title}
+      </Text>
+      <Text style={styles.caption} maxFontSizeMultiplier={FontScaleCap.body}>
+        {detail}
+      </Text>
     </View>
   );
 }
 
 export function PartyHighlight({ entry }: { entry: FeedEntry }) {
+  const { width } = useWindowDimensions();
   const h = entry.highlight;
+  // The data tile takes the screen minus the card's gutters minus the peek.
+  const wide = Math.max(240, width - Spacing.md * 2 - PEEK);
 
-  switch (h.kind) {
-    case 'photos':
-      return <Photos count={h.count} caption={h.caption} />;
-    case 'game':
-      return <Game game={h.game} winner={h.winner} scores={h.scores} />;
-    case 'tempo':
-      return <Tempo hourly={h.hourly} peakLabel={h.peakLabel} />;
-    case 'record':
-      return <Record title={h.title} detail={h.detail} />;
-    case 'map':
-    default:
-      // With photos, the map stops being the whole hero and becomes the first
-      // tile of a strip you scroll: where it was, then what it looked like.
-      // The pictures are the point; the map is the establishing shot.
-      return entry.photos > 0 ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.strip}
-        >
-          <View style={styles.stripMap}>
-            <NightRoute stops={entry.stops} live={entry.live} height={STRIP} />
-          </View>
-          {Array.from({ length: entry.photos }).map((_, index) => (
-            <Image
-              key={index}
-              source={{ uri: PHOTOS[index % PHOTOS.length] }}
-              style={styles.stripPhoto}
-            />
-          ))}
-        </ScrollView>
-      ) : (
-        // Nothing was produced: no map, no filler. Strava does the same with a
-        // text-only activity — the card is the numbers and a line saying where.
-        // A map dropped in to fill the slot is decoration pretending to be
-        // content, and it makes every empty night look identical.
-        <Text
-          style={styles.routeText}
-          numberOfLines={2}
-          maxFontSizeMultiplier={FontScaleCap.body}
-        >
-          {entry.stops.map((stop) => stop.name).join('  →  ')}
-        </Text>
-      );
+  const tiles: React.ReactNode[] = [];
+
+  // 1. The ranked hero, whatever this night's best output was.
+  if (h.kind === 'game') {
+    tiles.push(
+      <Tile key="game" width={wide}>
+        <Game game={h.game} winner={h.winner} scores={h.scores} />
+      </Tile>,
+    );
+  } else if (h.kind === 'tempo') {
+    tiles.push(
+      <Tile key="tempo" width={wide}>
+        <Tempo hourly={h.hourly} />
+      </Tile>,
+    );
+  } else if (h.kind === 'record') {
+    tiles.push(
+      <Tile key="record" width={Math.min(wide, 210)}>
+        <Record title={h.title} detail={h.detail} />
+      </Tile>,
+    );
   }
+
+  const photoTiles = Array.from({ length: entry.photos }).map((_, index) => (
+    <Image
+      key={`photo-${index}`}
+      source={{ uri: PHOTOS[index % PHOTOS.length] }}
+      style={styles.photo}
+    />
+  ));
+
+  const mapTile =
+    entry.stops.length > 0 ? (
+      <View key="map" style={styles.map}>
+        <NightRoute stops={entry.stops} live={entry.live} height={TILE} />
+      </View>
+    ) : null;
+
+  // 2. Photos before the map when the pictures ARE the highlight; otherwise the
+  //    map establishes where before the pictures show what it looked like.
+  if (h.kind === 'photos') {
+    tiles.push(...photoTiles);
+    if (mapTile) tiles.push(mapTile);
+  } else {
+    if (mapTile) tiles.push(mapTile);
+    tiles.push(...photoTiles);
+  }
+
+  // Nothing was produced: no map, no filler. Strava does the same with a
+  // text-only activity — the card is the numbers and a line saying where. A map
+  // dropped in to fill the slot is decoration pretending to be content, and it
+  // makes every empty night look identical.
+  if (tiles.length === 0) {
+    return (
+      <Text style={styles.routeText} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
+        {entry.stops.map((stop) => stop.name).join('  →  ')}
+      </Text>
+    );
+  }
+
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.strip}
+      // The strip lives inside a Pressable card; without this a sideways drag
+      // that starts on a tile counts as a tap on the post.
+      directionalLockEnabled
+    >
+      {tiles}
+    </ScrollView>
+  );
 }
 
 const styles = StyleSheet.create({
-  pad: { paddingHorizontal: Spacing.md, paddingTop: Spacing.md, gap: Spacing.sm },
-  grow: { flex: 1 },
   caption: { fontSize: 12, fontWeight: '500', color: Colors.mutedText },
 
   routeText: {
@@ -234,35 +248,27 @@ const styles = StyleSheet.create({
     color: withAlpha(Colors.amber, 0.9),
   },
 
-  // — Map + photos strip —
-  strip: { gap: Spacing.xs, paddingHorizontal: Spacing.md },
-  stripMap: { width: 220, borderRadius: 18, overflow: 'hidden' },
-  stripPhoto: {
-    width: 120,
-    height: STRIP,
-    borderRadius: 18,
-    alignItems: 'center',
+  // — The strip —
+  strip: { gap: Spacing.sm, paddingHorizontal: Spacing.md, alignItems: 'center' },
+  tile: {
+    height: TILE,
+    borderRadius: 20,
+    padding: Spacing.md,
+    gap: Spacing.xs,
     justifyContent: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: withAlpha(Colors.foam, 0.12),
+    backgroundColor: MockColors.surfaceHigh,
   },
-
-  // — Photos —
-  photoRow: { flexDirection: 'row', gap: Spacing.xs, flex: 1 },
+  map: { width: MAP_W, height: TILE, borderRadius: 20, overflow: 'hidden' },
   photo: {
-    flex: 1,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: withAlpha(Colors.foam, 0.12),
+    width: PHOTO_W,
+    height: TILE,
+    borderRadius: 20,
+    backgroundColor: MockColors.surfaceHigh,
   },
-  photoMore: { backgroundColor: MockColors.surfaceHigh, maxWidth: 64 },
-  photoMoreText: { fontSize: 14, fontWeight: '700', color: Colors.foam },
 
   // — Game —
-  gameHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  gameTitle: { ...MockType.bodySmall, fontWeight: '700', color: Colors.foam },
+  gameHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
+  gameTitle: { ...MockType.bodySmall, fontWeight: '700', color: Colors.foam, flex: 1 },
   scoreRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
   scoreRank: {
     width: 14,
@@ -271,7 +277,7 @@ const styles = StyleSheet.create({
     color: Colors.mutedText,
     fontVariant: ['tabular-nums'],
   },
-  scoreName: { width: 68, fontSize: 13, fontWeight: '600', color: Colors.foam },
+  scoreName: { width: 62, fontSize: 13, fontWeight: '600', color: Colors.foam },
   scoreTrack: {
     flex: 1,
     height: 8,
@@ -290,16 +296,16 @@ const styles = StyleSheet.create({
   },
 
   // — Tempo —
-  bars: { flexDirection: 'row', alignItems: 'flex-end', gap: Spacing.sm, height: 96 },
+  bars: { flex: 1, flexDirection: 'row', alignItems: 'flex-end', gap: Spacing.sm },
   barCol: { flex: 1, alignItems: 'center', gap: 5 },
+  barValueRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   barTrack: { flex: 1, width: '100%', justifyContent: 'flex-end' },
   bar: { width: '100%', borderRadius: 6, backgroundColor: withAlpha(Colors.amber, 0.55) },
-  chartTitle: { fontSize: 13, fontWeight: '600', color: Colors.foam },
-  barValue: { fontSize: 12, fontWeight: '700', color: Colors.foam },
+  barValue: { fontSize: 13, fontWeight: '700', color: Colors.foam },
   barHour: { fontSize: 11, fontWeight: '500', color: Colors.mutedText },
 
   // — Record —
-  recordRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  recordBody: { alignItems: 'flex-start', gap: Spacing.sm },
   medallion: {
     width: 38,
     height: 38,

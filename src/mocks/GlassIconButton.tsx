@@ -31,44 +31,63 @@ export function GlassIconButton({
   /** Header trailing actions are 38; controls floating on a map are 44. */
   size?: number;
 }) {
+  const radius = size / 2;
+
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
-        { width: size, height: size, borderRadius: size / 2 },
-        pressed && styles.pressed,
+        { width: size, height: size, borderRadius: radius },
+        // Only the fallback dims. Interactive glass supplies its own press
+        // feedback, and dimming on top of it reads as two things happening.
+        !GLASS && pressed && styles.pressed,
       ]}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       hitSlop={8}
     >
       {GLASS ? (
+        // The jelly: iOS 26 deforms interactive glass under a press — but only
+        // for touches the effect view itself receives. `pointerEvents="none"`
+        // sets `userInteractionEnabled = NO` on it, which is exactly the touch
+        // the deformation needs, so the button rendered as a frosted disc that
+        // never moved. The glass stays touchable and the CONTENT goes
+        // `pointerEvents="none"` instead, so a press on the glyph falls through
+        // to the glass underneath it.
+        //
+        // The radius also lives here rather than as `overflow: 'hidden'` on the
+        // parent: clipping the effect view would cut the deformation off at the
+        // circle it is supposed to bulge past.
         <GlassView
-          style={StyleSheet.absoluteFill}
+          style={[StyleSheet.absoluteFill, { borderRadius: radius }]}
           glassEffectStyle="regular"
-          // The jelly: iOS 26 deforms interactive glass under a press. Without
-          // it a glass button is just a frosted rectangle.
           isInteractive
           colorScheme="dark"
-          pointerEvents="none"
         />
       ) : (
-        <View style={[StyleSheet.absoluteFill, styles.solid]} pointerEvents="none" />
+        <View
+          style={[StyleSheet.absoluteFill, styles.solid, { borderRadius: radius }]}
+          pointerEvents="none"
+        />
       )}
-      {children}
+      <View style={styles.content} pointerEvents="none">
+        {children}
+      </View>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   button: {
-    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  content: { alignItems: 'center', justifyContent: 'center' },
+  solid: {
+    backgroundColor: withAlpha(Colors.stout3, 0.9),
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: withAlpha(Colors.foam, 0.16),
   },
-  solid: { backgroundColor: withAlpha(Colors.stout3, 0.9) },
   pressed: { opacity: 0.7 },
 });

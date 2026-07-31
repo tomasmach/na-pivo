@@ -5,6 +5,7 @@
  */
 
 import React, { memo, ComponentType } from 'react';
+import { View } from 'react-native';
 import Svg, { Circle as SvgCircle, Path as SvgPath } from 'react-native-svg';
 import {
   Armchair,
@@ -106,6 +107,39 @@ function wrap(Lucide: ComponentType<LucideProps>, displayName: string) {
 
 export const ArmchairIcon = wrap(Armchair, 'ArmchairIcon');
 export const BeerIcon = wrap(Beer, 'BeerIcon');
+/**
+ * Cheers — the social reaction, NOT a count of beers.
+ *
+ * Both were the same mug, which made "12" under a post ambiguous: twelve people
+ * clinked, or twelve beers were drunk? So the vocabulary splits by COUNT rather
+ * than by drawing something unrelated: one mug means one beer, two mugs tilted
+ * into each other mean the clink. Same lucide path, composed — an unrelated
+ * glyph (a party popper, a heart) would have meant relearning the icon.
+ */
+export const CheersIcon = memo(function CheersIcon({ size = 20, color }: IconProps) {
+  const mug = Math.round(size * 0.74);
+  // Overlap by a third of a mug so the rims meet instead of merely leaning.
+  const offset = Math.round(mug * 0.3);
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <Beer
+          size={mug}
+          color={color}
+          strokeWidth={2}
+          style={{ transform: [{ rotate: '-20deg' }], marginRight: -offset }}
+        />
+        {/* Mirrored, so the two handles point outward and the rims face. */}
+        <Beer
+          size={mug}
+          color={color}
+          strokeWidth={2}
+          style={{ transform: [{ scaleX: -1 }, { rotate: '-20deg' }] }}
+        />
+      </View>
+    </View>
+  );
+});
 export const BeerOffIcon = wrap(BeerOff, 'BeerOffIcon');
 export const CompassIcon = wrap(Compass, 'CompassIcon');
 export const Undo2Icon = wrap(Undo2, 'Undo2Icon');

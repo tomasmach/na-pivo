@@ -21,7 +21,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { CompassContainer } from '@/components/compass/CompassContainer';
-import { MOCK_COMPASS_TARGET } from '@/pubs/mockPubs';
+import { splitDistance, type MockPub } from '@/pubs/mockPubs';
 import { useCompassRotation } from '@/pubs/useCompassRotation';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -32,16 +32,33 @@ const DIAL = 66;
 /** Stand-in for the device position until the mock is wired to location. */
 const HERE = { lat: 50.077, lng: 14.4165 };
 
-export function CompassCell({ onPress }: { onPress?: () => void }) {
-  const t = MOCK_COMPASS_TARGET;
-  const rotation = useCompassRotation(HERE, { lat: t.lat, lng: t.lng });
+/**
+ * The compass points at the pub at the TOP OF THE LIST, not at a fixed target.
+ * It used to hold a constant, so picking "Náhodně v okolí" reshuffled the rows
+ * while the needle kept sending you to U Fleků — the head cell and the list
+ * disagreed about where you were going.
+ */
+export function CompassCell({
+  pub,
+  badge,
+  onPress,
+}: {
+  pub: MockPub;
+  /** Why THIS pub is at the top — "Nejbližší", "Nejlíp hodnocená", "Náhodná".
+   *  It follows the sort, because a row hard-labelled "Nejbližší" while the
+   *  list is shuffled is simply wrong. */
+  badge: string;
+  onPress?: () => void;
+}) {
+  const distance = splitDistance(pub.distance);
+  const rotation = useCompassRotation(HERE, { lat: pub.lat, lng: pub.lng });
 
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [styles.cell, pressed && styles.pressed]}
       accessibilityRole="button"
-      accessibilityLabel={`Nejbližší hospoda ${t.name}, ${t.distance} ${t.unit}`}
+      accessibilityLabel={`${badge} hospoda ${pub.name}, ${pub.distance}`}
     >
       <CompassContainer rotation={rotation} size={DIAL} />
 
@@ -50,23 +67,23 @@ export function CompassCell({ onPress }: { onPress?: () => void }) {
           this one is at the top of the list at all. */}
       <View style={styles.body}>
         <Text style={styles.pub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {t.name}
+          {pub.name}
         </Text>
         <View style={styles.distanceRow}>
           <Text style={styles.distance} allowFontScaling={false}>
-            {t.distance}
+            {distance.value}
           </Text>
           <Text style={styles.unit} allowFontScaling={false}>
-            {t.unit}
+            {distance.unit}
           </Text>
           <View style={styles.badge}>
             <Text style={styles.badgeText} allowFontScaling={false}>
-              Nejbližší
+              {badge}
             </Text>
           </View>
         </View>
         <Text style={styles.meta} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {t.hours} · {t.beer}
+          Otevřeno {pub.hours} · {pub.beer}
         </Text>
       </View>
     </Pressable>

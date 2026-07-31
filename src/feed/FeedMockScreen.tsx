@@ -24,7 +24,7 @@ import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-nati
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter, type Href } from "expo-router";
 
-import { BeerIcon, MessageSquareIcon } from "@/components/shared/IconGlyph";
+import { CheersIcon, MessageSquareIcon } from "@/components/shared/IconGlyph";
 import { cs } from "@/i18n/cs";
 import { MOCK_FEED, type FeedEntry } from "@/feed/mockFeed";
 import { PartyHighlight } from "@/feed/PartyHighlight";
@@ -74,7 +74,16 @@ function Face({
   );
 }
 
-export function FeedCard({ entry }: { entry: FeedEntry }) {
+export function FeedCard({
+  entry,
+  first = false,
+}: {
+  entry: FeedEntry;
+  /** The band separates posts FROM EACH OTHER. Above the first one there is no
+   *  previous post to separate it from, only the title — so it reads as a rule
+   *  under the header instead of a gap, which is a different thing. */
+  first?: boolean;
+}) {
   const router = useRouter();
 
   // Derived, not written: every roast is a true observation about THIS night,
@@ -93,7 +102,7 @@ export function FeedCard({ entry }: { entry: FeedEntry }) {
 
   return (
     <Pressable
-      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+      style={({ pressed }) => [styles.card, first && styles.cardFirst, pressed && styles.cardPressed]}
       onPress={() => router.push("/friends/party-recap" as Href)}
       accessibilityRole="button"
       accessibilityLabel={`${entry.title}, detail večera`}
@@ -183,8 +192,9 @@ export function FeedCard({ entry }: { entry: FeedEntry }) {
 
       <View style={styles.cardFoot}>
         {/* Cheers, not a heart: you clink a glass, you do not like a night.
-            The app already spells this with BeerIcon and never an emoji
-            (`CheersPill`), so this follows that rather than inventing a glyph. */}
+            Its own glyph, not the mug — the mug now means one beer everywhere,
+            and reusing it here made "12" read as twelve beers. Still never an
+            emoji, per `CheersPill`. */}
         <Pressable
           style={({ pressed }) => [
             styles.footAction,
@@ -193,8 +203,8 @@ export function FeedCard({ entry }: { entry: FeedEntry }) {
           accessibilityRole="button"
           accessibilityLabel={cs.friends.cheersCount(entry.cheers)}
         >
-          <BeerIcon
-            size={16}
+          <CheersIcon
+            size={17}
             color={entry.cheered ? Colors.amber : Colors.mutedText}
           />
           <Text
@@ -240,8 +250,8 @@ export default function FeedMockScreen() {
       {/* No hand-rolled header: the native stack owns the large title, its
             collapse onto the blurred bar and the floating glass search button. */}
 
-      {MOCK_FEED.map((entry) => (
-        <FeedCard key={entry.id} entry={entry} />
+      {MOCK_FEED.map((entry, index) => (
+        <FeedCard key={entry.id} entry={entry} first={index === 0} />
       ))}
 
       <Text style={styles.mockNote} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -314,6 +324,9 @@ const styles = StyleSheet.create({
     marginHorizontal: -Spacing.md,
     paddingHorizontal: Spacing.md,
   },
+  // No band above the first post — but it still needs air, or the byline sits
+  // on the large title's baseline and reads as its subtitle.
+  cardFirst: { borderTopWidth: 0, paddingTop: Spacing.xl },
   cardPressed: { opacity: 0.92 },
   cardHead: { flexDirection: "row", alignItems: "center", gap: Spacing.sm },
   headAvatars: { flexDirection: "row", alignItems: "center" },
