@@ -31,6 +31,9 @@ export interface MockPub {
 /** What the compass is pointing at right now — the list's head cell. */
 export const MOCK_COMPASS_TARGET = {
   name: 'U Fleků',
+  /** Real coordinates so the needle points somewhere real on a device. */
+  lat: 50.0785,
+  lng: 14.42,
   distance: '180',
   unit: 'metrů',
   bearingLabel: 'na severovýchod',

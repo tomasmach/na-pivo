@@ -177,7 +177,7 @@ export default function FeedMockScreen() {
       >
         <View style={styles.header}>
           <Text style={styles.screenTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-            Feed
+            Kronika
           </Text>
           <View style={styles.grow} />
           <Pressable

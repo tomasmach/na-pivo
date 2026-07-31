@@ -21,66 +21,33 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
-  CompassIcon,
+  BeerIcon,
   MapIcon,
   SearchIcon,
   SlidersHorizontalIcon,
   StarIcon,
   UsersIcon,
 } from '@/components/shared/IconGlyph';
-import { MOCK_COMPASS_TARGET, MOCK_PUBS, type MockPub } from '@/pubs/mockPubs';
+import { CompassCell } from '@/pubs/CompassCell';
+import { MOCK_PUBS, type MockPub } from '@/pubs/mockPubs';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
-/** The head cell: the compass, shrunk to a row but still the loudest number. */
-function CompassCell() {
-  const t = MOCK_COMPASS_TARGET;
-
-  return (
-    <Pressable style={({ pressed }) => [styles.compassCell, pressed && styles.pressed]}>
-      <View style={styles.compassDial}>
-        <CompassIcon size={30} color={Colors.amber} />
-      </View>
-
-      <View style={styles.grow}>
-        <Text style={styles.compassKicker} allowFontScaling={false}>
-          Nejbližší · {t.bearingLabel}
-        </Text>
-        <View style={styles.compassDistanceRow}>
-          <Text style={styles.compassDistance} allowFontScaling={false}>
-            {t.distance}
-          </Text>
-          <Text style={styles.compassUnit} allowFontScaling={false}>
-            {t.unit}
-          </Text>
-        </View>
-        <Text style={styles.compassPub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {t.name}
-        </Text>
-        <Text style={styles.compassMeta} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {t.hours} · {t.beer}
-        </Text>
-      </View>
-    </Pressable>
-  );
-}
-
 function PubRow({ pub }: { pub: MockPub }) {
   return (
     <Pressable style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
-      <View style={styles.rowMain}>
+      {/* Packeta's 48x48 r12 pictogram well opens every row. */}
+      <View style={styles.thumb}>
+        <BeerIcon size={22} color={Colors.amber} />
+      </View>
+
+      <View style={styles.rowBody}>
         <View style={styles.rowTop}>
           <Text style={styles.pubName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
             {pub.name}
           </Text>
-          <View style={styles.ratingChip}>
-            <StarIcon size={11} color={Colors.amber} />
-            <Text style={styles.ratingText} allowFontScaling={false}>
-              {pub.rating.toFixed(1)}
-            </Text>
-          </View>
           <View style={styles.grow} />
           <Text style={styles.distance} allowFontScaling={false}>
             {pub.distance}
@@ -91,29 +58,32 @@ function PubRow({ pub }: { pub: MockPub }) {
           {pub.address}
         </Text>
 
-        {/* The row's real content: is it open, what is on tap, what it costs. */}
+        {/* Open state and the beer are the two facts you came for. The price
+            rides in brackets on the beer rather than as its own right-aligned
+            column — it belongs to the beer, not to the row. */}
         <View style={styles.factsRow}>
-          <View style={styles.fact}>
-            <View style={[styles.dot, { backgroundColor: pub.open ? Colors.open : Colors.closed }]} />
-            <Text
-              style={[styles.factText, { color: pub.open ? Colors.open : Colors.mutedText }]}
-              allowFontScaling={false}
-            >
-              {pub.open ? 'Otevřeno' : 'Zavřeno'} {pub.hours}
+          <View style={[styles.dot, { backgroundColor: pub.open ? Colors.open : Colors.closed }]} />
+          <Text
+            style={[styles.factText, { color: pub.open ? Colors.open : Colors.mutedText }]}
+            numberOfLines={1}
+            allowFontScaling={false}
+          >
+            {pub.open ? 'Otevřeno' : 'Zavřeno'} {pub.hours}
+          </Text>
+          <View style={styles.ratingChip}>
+            <StarIcon size={11} color={Colors.amber} />
+            <Text style={styles.ratingText} allowFontScaling={false}>
+              {pub.rating.toFixed(1)}
             </Text>
           </View>
         </View>
 
-        <View style={styles.beerRow}>
-          <Text style={styles.beer} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-            {pub.beer}
-          </Text>
+        <Text style={styles.beer} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+          {pub.beer}
           {pub.priceCzk !== null ? (
-            <Text style={styles.price} allowFontScaling={false}>
-              {pub.priceCzk} Kč
-            </Text>
+            <Text style={styles.price}>{`  (${pub.priceCzk} Kč)`}</Text>
           ) : null}
-        </View>
+        </Text>
 
         {pub.lastParty ? (
           <View style={styles.historyRow}>
@@ -278,16 +248,26 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
   },
 
-  // — Rows —
-  list: {},
+  // — Rows (Packeta list item: pictogram well + two lines + facts) —
+  list: { gap: Spacing.sm },
   row: {
-    paddingVertical: Spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: withAlpha(Colors.foam, 0.1),
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    padding: Spacing.sm + 2,
+    borderRadius: MockLayout.cardRadius,
+    backgroundColor: Colors.stout2,
   },
-  rowMain: { gap: 3 },
+  thumb: {
+    width: MockLayout.thumb,
+    height: MockLayout.thumb,
+    borderRadius: MockLayout.thumbRadius,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.amber, 0.12),
+  },
+  rowBody: { flex: 1, gap: 2 },
   rowTop: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
-  pubName: { fontWeight: '700', fontSize: 17, color: Colors.foam, letterSpacing: -0.2 },
+  pubName: { ...MockType.bodySemibold, fontSize: 17, color: Colors.foam, letterSpacing: -0.2 },
   ratingChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -297,31 +277,21 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     backgroundColor: withAlpha(Colors.amber, 0.12),
   },
-  ratingText: { fontWeight: '700', fontSize: 11, color: Colors.amber },
+  ratingText: { fontSize: 11, fontWeight: '700', color: Colors.amber },
   distance: {
+    ...MockType.bodySmall,
     fontWeight: '600',
-    fontSize: 14,
     color: Colors.mutedText,
     fontVariant: ['tabular-nums'],
   },
-  address: { fontWeight: '400', fontSize: 13, color: Colors.mutedText },
-
-  factsRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, marginTop: 3 },
-  fact: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  address: { fontSize: 13, fontWeight: '400', color: Colors.mutedText },
+  factsRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
   dot: { width: 6, height: 6, borderRadius: 3 },
-  factText: { fontWeight: '500', fontSize: 13 },
-
-  beerRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: 2 },
-  beer: { flex: 1, fontWeight: '500', fontSize: 14, color: Colors.foam },
-  price: {
-    fontWeight: '700',
-    fontSize: 14,
-    color: Colors.foam,
-    fontVariant: ['tabular-nums'],
-  },
-
-  historyRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 },
-  historyText: { flex: 1, fontWeight: '500', fontSize: 12, color: withAlpha(Colors.amber, 0.9) },
+  factText: { fontSize: 13, fontWeight: '500' },
+  beer: { ...MockType.bodySmall, color: Colors.foam, marginTop: 2 },
+  price: { fontWeight: '700', color: Colors.mutedText },
+  historyRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 },
+  historyText: { flex: 1, fontSize: 12, fontWeight: '500', color: withAlpha(Colors.amber, 0.9) },
 
   mockNote: {
     fontWeight: '400',
