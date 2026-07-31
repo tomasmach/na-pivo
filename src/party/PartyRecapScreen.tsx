@@ -59,9 +59,14 @@ const SECTION_GAP = 32;
 
 // ── The three numerals ──────────────────────────────────────────────────────
 
+/** Label ABOVE value, exactly as the feed card does it — the detail should
+ *  read as the same object opened, not as a different screen. */
 function HeroStat({ value, label }: { value: string; label: string }) {
   return (
     <View style={styles.heroStat}>
+      <Text style={styles.heroLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+        {label}
+      </Text>
       <Text
         style={styles.heroValue}
         allowFontScaling={false}
@@ -70,9 +75,6 @@ function HeroStat({ value, label }: { value: string; label: string }) {
       >
         {value}
       </Text>
-      <Text style={styles.heroLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-        {label}
-      </Text>
     </View>
   );
 }
@@ -80,11 +82,9 @@ function HeroStat({ value, label }: { value: string; label: string }) {
 function HeroStats({ party }: { party: PartyRecap }) {
   return (
     <View style={styles.heroRow}>
-      <HeroStat value={String(party.beers)} label="piv" />
-      <View style={styles.heroDivider} />
-      <HeroStat value={party.duration} label="večer" />
-      <View style={styles.heroDivider} />
-      <HeroStat value={String(party.stops.length)} label="hospody" />
+      <HeroStat value={String(party.beers)} label="Piva" />
+      <HeroStat value={party.duration} label="Večer" />
+      <HeroStat value={String(party.stops.length)} label="Hospody" />
     </View>
   );
 }
@@ -468,29 +468,19 @@ const styles = StyleSheet.create({
     letterSpacing: -1,
     fontVariant: ['tabular-nums'],
   },
-  heroLabel: {
-    fontWeight: '500',
-    fontSize: 12,
-    color: Colors.mutedText,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-    marginTop: -2,
-  },
-  heroDivider: {
-    width: StyleSheet.hairlineWidth,
-    alignSelf: 'stretch',
-    backgroundColor: withAlpha(Colors.foam, 0.14),
-    marginHorizontal: Spacing.md,
-  },
+  heroLabel: { fontWeight: '400', fontSize: 13, color: Colors.mutedText, marginBottom: 2 },
+
 
   // — Sections —
   section: { marginTop: SECTION_GAP },
+  // Sentence case, foam — the same voice as the feed card's sections. The
+  // uppercase muted kicker made the detail read as a different app from the
+  // preview it opens out of.
   sectionTitle: {
     fontWeight: '700',
-    fontSize: 13,
-    letterSpacing: 1.1,
-    textTransform: 'uppercase',
-    color: Colors.mutedText,
+    fontSize: 18,
+    letterSpacing: -0.2,
+    color: Colors.foam,
     marginBottom: Spacing.md,
   },
 

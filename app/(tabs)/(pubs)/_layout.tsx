@@ -30,6 +30,20 @@ export default function PubsLayout() {
       }}
     >
       <Stack.Screen name="index" options={{ headerShown: false }} />
+      {/* Declared INSIDE the tab's stack, so the push happens under the tab
+          bar and the bar stays put. In the root stack it covered the tabs. */}
+      <Stack.Screen
+        name="pub/[id]"
+        options={{
+          headerTransparent: true,
+          headerTitle: '',
+          // Without this the back control is labelled with the parent route —
+          // "(tabs)" — which is a router internal, not a place.
+          headerBackButtonDisplayMode: 'minimal',
+          headerTintColor: Colors.foam,
+          animation: 'ios_from_right',
+        }}
+      />
     </Stack>
   );
 }

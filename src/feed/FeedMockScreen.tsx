@@ -94,7 +94,7 @@ function FeedCard({ entry }: { entry: FeedEntry }) {
   return (
     <Pressable
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-      onPress={() => router.push("/party-recap" as Href)}
+      onPress={() => router.push("/friends/party-recap" as Href)}
       accessibilityRole="button"
       accessibilityLabel={`${entry.title}, detail večera`}
     >
@@ -297,16 +297,14 @@ const styles = StyleSheet.create({
   },
 
   // — Nudge —
+  // Not a card. Only posts get a surface; the nudge is a line of copy and a
+  // button, and wrapping it panelled the first thing you see on the screen.
   nudge: {
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.sm,
-    padding: Spacing.md,
-    borderRadius: Radius.card,
-    backgroundColor: withAlpha(Colors.amber, 0.09),
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.22),
-    marginBottom: Spacing.lg,
+    paddingVertical: Spacing.md,
+    marginBottom: Spacing.sm,
   },
   nudgeTitle: { fontWeight: "700", fontSize: 15, color: Colors.foam },
   nudgeBody: {
