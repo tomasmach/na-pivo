@@ -87,6 +87,7 @@ export default function LivePartyMockScreen() {
   const addBeer = useLivePartyStore((s) => s.addBeer);
   const addPhoto = useLivePartyStore((s) => s.addPhoto);
   const playGame = useLivePartyStore((s) => s.playGame);
+  const endParty = useLivePartyStore((s) => s.end);
   const [gamesOpen, setGamesOpen] = React.useState(false);
 
   const total = live ? beers + PEOPLE.reduce((s, p) => s + p.beers, 0) - PEOPLE[0].beers : 0;
@@ -206,6 +207,21 @@ export default function LivePartyMockScreen() {
                 </View>
               ) : null}
             </View>
+          ) : null}
+          {/* Ending the night is a named action, spelled out, and it lives at
+              the bottom of what you scroll — never next to "+1 pivo", where a
+              mis-tap would close the evening you are still having. */}
+          {live ? (
+            <Pressable
+              onPress={endParty}
+              style={({ pressed }) => [styles.end, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Ukončit večer"
+            >
+              <Text style={styles.endText} maxFontSizeMultiplier={FontScaleCap.body}>
+                Ukončit večer
+              </Text>
+            </Pressable>
           ) : null}
         </ScrollView>
 
@@ -334,6 +350,15 @@ const styles = StyleSheet.create({
     color: Colors.mutedText,
     marginTop: Spacing.md,
   },
+
+  end: {
+    alignSelf: 'center',
+    marginTop: Spacing.xl,
+    paddingHorizontal: Spacing.lg,
+    height: 44,
+    justifyContent: 'center',
+  },
+  endText: { fontSize: 15, fontWeight: '600', color: Colors.mutedText },
 
   // — Outputs —
   outputs: { marginTop: Spacing.lg, gap: Spacing.sm },

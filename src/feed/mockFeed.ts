@@ -63,12 +63,15 @@ export interface FeedEntry {
   cheered?: boolean;
   /** The best thing this night produced. Drives the card's hero. */
   highlight: PartyHighlight;
-  /**
-   * The app's own headline for the night, written from the numbers and
-   * delivered flat. Replaces the party's title when there is one — a roast that
-   * sits below the stats is a caption; as the headline it is the post.
-   */
-  roast?: { line: string; basis: string };
+  /** Minutes, for the roast rules — `duration` above is already humanised. */
+  durationMinutes: number;
+  /** Games played tonight and how many you won, for the roast rules. */
+  games: number;
+  gamesWon: number;
+  /** Your usual beers-per-hour. Null on a first night, which mutes the roast. */
+  usualPerHour: number | null;
+  /** Times you have been to tonight's pub before. */
+  visitsToSamePub: number;
 }
 
 export const MOCK_FEED: FeedEntry[] = [
@@ -93,10 +96,11 @@ export const MOCK_FEED: FeedEntry[] = [
     // be rude about. No nested quotes in the line: the card renders it as the
     // headline, unquoted.
     highlight: { kind: 'map' },
-    roast: {
-      line: 'Čtyři piva za 48 minut a pořád jen na jedno',
-      basis: 'Tvoje tempo je 5× rychlejší než obvykle',
-    },
+    durationMinutes: 48,
+    games: 0,
+    gamesWon: 0,
+    usualPerHour: 1,
+    visitsToSamePub: 2,
   },
   {
     id: 'f2',
@@ -122,6 +126,11 @@ export const MOCK_FEED: FeedEntry[] = [
     cheers: 12,
     comments: 4,
     cheered: true,
+    durationMinutes: 402,
+    games: 1,
+    gamesWon: 0,
+    usualPerHour: 2,
+    visitsToSamePub: 1,
     highlight: {
       kind: 'game',
       game: 'Pub kvíz',
@@ -154,6 +163,11 @@ export const MOCK_FEED: FeedEntry[] = [
     photos: 6,
     cheers: 7,
     comments: 2,
+    durationMinutes: 185,
+    games: 0,
+    gamesWon: 0,
+    usualPerHour: 2,
+    visitsToSamePub: 1,
     highlight: {
       kind: 'tempo',
       hourly: [

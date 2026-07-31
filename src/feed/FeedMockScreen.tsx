@@ -28,6 +28,7 @@ import { BeerIcon, MessageSquareIcon } from "@/components/shared/IconGlyph";
 import { cs } from "@/i18n/cs";
 import { MOCK_FEED, MOCK_NUDGE, type FeedEntry } from "@/feed/mockFeed";
 import { PartyHighlight } from "@/feed/PartyHighlight";
+import { buildRoast } from "@/feed/roast";
 import { StatGrid } from "@/mocks/StatGrid";
 import { MockColors, MockType } from "@/mocks/mockTheme";
 import { Colors, withAlpha } from "@/theme/colors";
@@ -75,6 +76,20 @@ function Face({
 
 function FeedCard({ entry }: { entry: FeedEntry }) {
   const router = useRouter();
+
+  // Derived, not written: every roast is a true observation about THIS night,
+  // and the rules stay silent when there is nothing fair to say (see roast.ts).
+  const roast = buildRoast({
+    beers: entry.beers,
+    duration: entry.durationMinutes,
+    pubs: entry.stops.length,
+    people: entry.people.length,
+    photos: entry.photos,
+    games: entry.games,
+    gamesWon: entry.gamesWon,
+    usualPerHour: entry.usualPerHour,
+    visitsToSamePub: entry.visitsToSamePub,
+  });
 
   return (
     <Pressable
@@ -133,15 +148,15 @@ function FeedCard({ entry }: { entry: FeedEntry }) {
         numberOfLines={3}
         maxFontSizeMultiplier={FontScaleCap.heading}
       >
-        {entry.roast ? entry.roast.line : entry.title}
+        {roast ? roast.line : entry.title}
       </Text>
-      {entry.roast ? (
+      {roast ? (
         <Text
           style={styles.roastBasis}
           numberOfLines={1}
           maxFontSizeMultiplier={FontScaleCap.body}
         >
-          {entry.roast.basis}
+          {roast.basis}
         </Text>
       ) : null}
 
