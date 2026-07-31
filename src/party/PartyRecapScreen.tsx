@@ -49,6 +49,7 @@ import {
   MapPinIcon,
   TrophyIcon,
 } from '@/components/shared/IconGlyph';
+import { useLivePartyStore } from '@/mocks/livePartyStore';
 import { MOCK_PARTY, type PartyPerson, type PartyRecap } from '@/party/mockParty';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -235,7 +236,32 @@ function SectionTitle({ children }: { children: string }) {
 export default function PartyRecapScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const party = MOCK_PARTY;
+  // The recap reads what the party mode actually produced, and only falls back
+  // to the canned night for the parts a mock evening has not made yet. Before
+  // this, playing a game and taking photos changed nothing here — the loop was
+  // drawn but not connected.
+  const liveBeers = useLivePartyStore((s) => s.beers);
+  const livePhotos = useLivePartyStore((s) => s.photos);
+  const liveGames = useLivePartyStore((s) => s.games);
+  const liveHourly = useLivePartyStore((s) => s.hourly);
+  const livePub = useLivePartyStore((s) => s.pubName);
+  const hasLive = useLivePartyStore((s) => s.live);
+
+  const party: PartyRecap = hasLive
+    ? {
+        ...MOCK_PARTY,
+        title: MOCK_PARTY.title,
+        beers: liveBeers,
+        photos: livePhotos,
+        hourly: liveHourly.length > 0 ? liveHourly : MOCK_PARTY.hourly,
+        stops: livePub
+          ? [{ id: 'live', pubName: livePub, arrivedAt: '20:15', beers: liveBeers }]
+          : MOCK_PARTY.stops,
+        people: MOCK_PARTY.people.map((person) =>
+          person.name === 'Honza' ? { ...person, beers: liveBeers } : person,
+        ),
+      }
+    : MOCK_PARTY;
   const maxBeers = party.people.reduce((m, p) => Math.max(m, p.beers), 0);
   const route = party.stops.map((s) => s.pubName).join('  →  ');
 
@@ -298,6 +324,38 @@ export default function PartyRecapScreen() {
           <SectionTitle>Tempo</SectionTitle>
           <Tempo party={party} />
         </View>
+
+        {/* The richest thing a night makes. Only rendered when one was played —
+            an empty scoreboard would be a section explaining its own absence. */}
+        {liveGames.length > 0 ? (
+          <View style={styles.section}>
+            <SectionTitle>Hry</SectionTitle>
+            {liveGames.map((game, index) => (
+              <View key={`${game.game}-${index}`} style={styles.gameBlock}>
+                <Text style={styles.gameTitle} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {game.game} · vyhrál{game.winner === 'Klára' ? 'a' : ''} {game.winner}
+                </Text>
+                {game.scores.map((row, rank) => (
+                  <View key={row.name} style={styles.gameRow}>
+                    <Text style={styles.gameRank} allowFontScaling={false}>
+                      {rank + 1}
+                    </Text>
+                    <Text
+                      style={styles.gameName}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {row.name}
+                    </Text>
+                    <Text style={styles.gameScore} allowFontScaling={false}>
+                      {row.score}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ))}
+          </View>
+        ) : null}
 
         <View style={styles.section}>
           <SectionTitle>Padlo tenhle večer</SectionTitle>
@@ -525,6 +583,25 @@ const styles = StyleSheet.create({
     minHeight: 8,
   },
   tempoHour: { fontWeight: '500', fontSize: 11, color: Colors.mutedText },
+
+  // — Games —
+  gameBlock: { marginBottom: Spacing.lg, gap: 4 },
+  gameTitle: { fontWeight: '700', fontSize: 15, color: Colors.foam, marginBottom: 4 },
+  gameRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  gameRank: {
+    width: 16,
+    fontWeight: '700',
+    fontSize: 13,
+    color: Colors.mutedText,
+    fontVariant: ['tabular-nums'],
+  },
+  gameName: { flex: 1, fontWeight: '500', fontSize: 15, color: Colors.foam },
+  gameScore: {
+    fontWeight: '700',
+    fontSize: 15,
+    color: Colors.foam,
+    fontVariant: ['tabular-nums'],
+  },
 
   // — Records —
   record: {
