@@ -41,6 +41,10 @@ export default function PubsLayout() {
           // "(tabs)" — which is a router internal, not a place.
           headerBackButtonDisplayMode: 'minimal',
           headerTintColor: Colors.foam,
+          // No bar at all — just the floating back disc over the map. The
+          // inherited blur painted a grey band across the top of a photo and a
+          // map that are meant to run under the status bar.
+          headerBlurEffect: 'none',
           animation: 'ios_from_right',
         }}
       />

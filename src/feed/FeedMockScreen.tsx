@@ -139,14 +139,6 @@ export function FeedCard({
             {entry.when}
           </Text>
         </View>
-        {entry.live ? (
-          <View style={styles.livePill}>
-            <View style={styles.liveDot} />
-            <Text style={styles.liveText} allowFontScaling={false}>
-              TEĎ
-            </Text>
-          </View>
-        ) : null}
       </View>
 
       {/* When the app has something to say about the night, IT is the

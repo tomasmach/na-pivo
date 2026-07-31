@@ -50,8 +50,10 @@ export const MockLayout = {
   /** Pictogram thumbnail in a row. */
   thumb: 48,
   thumbRadius: 16,
-  /** Filter pills and row action pills. */
-  pillHeight: 40,
+  /** Filter pills and row action pills. Deliberately small: a filter row is
+   *  navigation furniture sitting under a heading, and at 40pt it competed with
+   *  the content it was meant to filter. */
+  pillHeight: 32,
   /** CTA inside a card. */
   buttonHeight: 48,
   /** CTA in a sheet. */

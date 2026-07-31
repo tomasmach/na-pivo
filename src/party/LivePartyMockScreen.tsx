@@ -1,54 +1,75 @@
 /**
- * DESIGN MOCK — starting and running a party. Strava's Record screen, in a pub.
+ * DESIGN MOCK — the running night, as a hub.
  *
- * The reference (`docs/references/IMG_2127.PNG`) is: a full-bleed map, a sheet
- * over it carrying three stats, and one big circular primary flanked by two
- * secondary circles. This is the same object with the pub map as the bleed, the
- * beer tally as the stats, and "+1 pivo" as the circle.
+ * The first version was Strava's Record screen: a full-bleed map with a sheet of
+ * controls over it. That is the right shape for the moment BEFORE anything has
+ * happened, and the wrong one from the first beer onwards — a map of one pin you
+ * are sitting inside is the least interesting thing on the screen, and it was
+ * taking two thirds of it.
  *
- * Two states in one screen:
- *   idle     no party yet — the circle says "Začni" and the stats are zeroes
- *   live     running — the circle is "+1 pivo", the tally is real, people show
+ * So the map collapses to a band the moment the night starts, and the evening
+ * takes the space. What you get instead, top to bottom:
  *
- * The state flips locally so the shape of both can be judged; nothing is wired.
+ *   stats        yours, the table's, the clock, and time since the last one
+ *   timeline     the beers as clips, so the night has a shape
+ *   what you're  the running order, per kind, with counters you can correct
+ *   drinking
+ *   sections     Statistiky / Aktivity / Log
  *
- * The pub picker is at the TOP, as asked: you are somewhere before you drink
- * anything, and changing pub mid-night is one tap on the same control.
+ * Ending the night sits top right, away from "+1 pivo": those two buttons must
+ * never be neighbours, because one of them is undoable and the other is not.
  *
- * Inviting friends and the games door sit on the secondary circles either side
- * of the primary — they are the two things you reach for during a night, and
- * everything else can live behind "…".
+ * Everything is local state on a mock store. Nothing is wired.
  */
 
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 
 import {
   BeerIcon,
   CameraIcon,
   ChevronDownIcon,
+  ChevronRightIcon,
   SoccerBallIcon,
+  SparklesIcon,
   TrophyIcon,
   UserPlusIcon,
 } from '@/components/shared/IconGlyph';
+import { BeerList } from '@/party/BeerList';
 import { GamesSheet } from '@/party/GamesSheet';
+import { InviteSheet } from '@/party/InviteSheet';
+import { NightTimeline } from '@/party/NightTimeline';
 import { NightRoute } from '@/mocks/NightRoute';
+import { Segmented } from '@/mocks/Segmented';
 import { StatGrid } from '@/mocks/StatGrid';
-import { useLivePartyStore } from '@/mocks/livePartyStore';
-import { MockColors } from '@/mocks/mockTheme';
+import {
+  beersByType,
+  clockAt,
+  formatElapsed,
+  hourlyFrom,
+  useLivePartyStore,
+} from '@/mocks/livePartyStore';
+import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
-const PEOPLE = [
-  { name: 'Ty', beers: 3, tint: '#E8A317' },
-  { name: 'Honza', beers: 4, tint: '#7DD66B' },
-  { name: 'Petr', beers: 2, tint: '#F0BE5C' },
+const STOPS = [{ name: 'U Fleků', lat: 50.0785, lng: 14.42 }];
+const HOUSE_BEER = 'Flekovský ležák 13°';
+const TAPS = [
+  { name: 'Flekovský ležák 13°', priceCzk: 62 },
+  { name: 'Flekovský tmavý 13°', priceCzk: 62 },
+  { name: 'Nealko 11°', priceCzk: 45 },
 ];
 
-const STOPS = [{ name: 'U Fleků', lat: 50.0785, lng: 14.42 }];
+/** Full map before the night starts, a band once it has. */
+const MAP_IDLE = 460;
+const MAP_LIVE = 156;
+
+const SECTIONS = ['Statistiky', 'Aktivity', 'Log'] as const;
+const CHARTS = ['V čase', 'Podle piva', 'U stolu'] as const;
 
 function CircleButton({
   label,
@@ -76,31 +97,104 @@ function CircleButton({
   );
 }
 
+/** One chart, three readings. Bars because every one of these is a comparison
+ *  of counts, and three different chart types would be three things to learn. */
+function Bars({ rows, highlightFirst }: { rows: { label: string; value: number }[]; highlightFirst?: boolean }) {
+  const peak = rows.reduce((max, row) => Math.max(max, row.value), 0);
+  if (rows.length === 0) return null;
+
+  return (
+    <View style={styles.chart}>
+      {rows.map((row, index) => (
+        <View key={row.label} style={styles.chartRow}>
+          <Text
+            style={styles.chartLabel}
+            numberOfLines={1}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
+            {row.label}
+          </Text>
+          <View style={styles.chartTrack}>
+            <View
+              style={[
+                styles.chartFill,
+                {
+                  width: `${peak > 0 ? Math.max(6, (row.value / peak) * 100) : 6}%`,
+                  backgroundColor:
+                    highlightFirst && index === 0 ? Colors.amber : withAlpha(Colors.amber, 0.4),
+                },
+              ]}
+            />
+          </View>
+          <View style={styles.chartValueRow}>
+            <BeerIcon size={12} color={withAlpha(Colors.amber, 0.9)} />
+            <Text style={styles.chartValue} allowFontScaling={false}>
+              {row.value}
+            </Text>
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 export default function LivePartyMockScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+
   const live = useLivePartyStore((s) => s.live);
   const beers = useLivePartyStore((s) => s.beers);
+  const minutes = useLivePartyStore((s) => s.minutes);
+  const people = useLivePartyStore((s) => s.people);
   const photos = useLivePartyStore((s) => s.photos);
   const games = useLivePartyStore((s) => s.games);
+  const log = useLivePartyStore((s) => s.log);
+  const houseBeer = useLivePartyStore((s) => s.houseBeer);
   const startParty = useLivePartyStore((s) => s.start);
   const addBeer = useLivePartyStore((s) => s.addBeer);
+  const removeBeer = useLivePartyStore((s) => s.removeBeer);
   const addPhoto = useLivePartyStore((s) => s.addPhoto);
-  const playGame = useLivePartyStore((s) => s.playGame);
+  const addGame = useLivePartyStore((s) => s.addGame);
+  const invite = useLivePartyStore((s) => s.invite);
   const endParty = useLivePartyStore((s) => s.end);
-  const [gamesOpen, setGamesOpen] = React.useState(false);
 
-  const total = live ? beers + PEOPLE.reduce((s, p) => s + p.beers, 0) - PEOPLE[0].beers : 0;
+  const [gamesOpen, setGamesOpen] = React.useState(false);
+  const [inviteOpen, setInviteOpen] = React.useState(false);
+  const [section, setSection] = React.useState<(typeof SECTIONS)[number]>('Statistiky');
+  const [chart, setChart] = React.useState<(typeof CHARTS)[number]>('V čase');
+
+  const mine = beers.length;
+  const table = mine + people.reduce((sum, person) => sum + person.beers, 0);
+  const last = beers[beers.length - 1];
+  const sinceLast = last ? minutes - last.at : 0;
+  const byType = beersByType(beers);
+
+  const chartRows =
+    chart === 'V čase'
+      ? hourlyFrom(beers).map((slot) => ({ label: `${slot.hour}:00`, value: slot.beers }))
+      : chart === 'Podle piva'
+        ? byType.map((row) => ({ label: row.beer, value: row.count }))
+        : [{ label: 'Ty', value: mine }, ...people.map((p) => ({ label: p.name, value: p.beers }))]
+            .sort((a, b) => b.value - a.value);
 
   return (
     <View style={styles.screen}>
-      {/* The real map, full bleed — Strava's Record screen with the pub in it. */}
+      {/* The map shrinks to a band once the night is running: at that point it
+          is orientation, not the subject. */}
       <View style={styles.map}>
-        <NightRoute stops={STOPS} live={live} height={520} />
+        <NightRoute stops={STOPS} live={live} height={live ? MAP_LIVE : MAP_IDLE} />
       </View>
 
-      {/* The pub picker rides on top of the map, like Strava's floating pills. */}
       <View style={[styles.topBar, { paddingTop: insets.top + Spacing.sm }]}>
+        <Pressable
+          onPress={() => router.back()}
+          style={({ pressed }) => [styles.topIcon, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel="Minimalizovat večer"
+        >
+          <ChevronDownIcon size={20} color={Colors.foam} />
+        </Pressable>
+
         <Pressable
           style={({ pressed }) => [styles.pubPicker, pressed && styles.pressed]}
           accessibilityRole="button"
@@ -110,78 +204,69 @@ export default function LivePartyMockScreen() {
           <Text style={styles.pubName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
             U Fleků
           </Text>
-          <ChevronDownIcon size={16} color={Colors.foam} />
+          <ChevronDownIcon size={15} color={Colors.foam} />
         </Pressable>
+
         <View style={styles.grow} />
-        {/* Dismisses the modal the way it arrived: down. "Ukončit večer" is a
-            named action and belongs in the sheet — this only puts the night
-            away, it does not end it. */}
-        <Pressable
-          onPress={() => router.back()}
-          style={({ pressed }) => [styles.topIcon, pressed && styles.pressed]}
-          accessibilityRole="button"
-          accessibilityLabel="Minimalizovat večer"
-        >
-          <ChevronDownIcon size={20} color={Colors.foam} />
-        </Pressable>
+
+        {/* Top right, as far from "+1 pivo" as the screen allows. */}
+        {live ? (
+          <Pressable
+            onPress={endParty}
+            style={({ pressed }) => [styles.endPill, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Ukončit večer"
+          >
+            <Text style={styles.endText} allowFontScaling={false}>
+              Ukončit
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
 
-      {/* The sheet. Everything you touch during a night lives here. */}
-      <View style={[styles.sheet, { paddingBottom: insets.bottom + Spacing.md }]}>
+      {/* The sheet starts BELOW the map band rather than at `marginTop: 'auto'`:
+          with `flex: 1` the auto margin collapsed to nothing and the sheet
+          covered the map it was supposed to sit under. */}
+      <View
+        style={[
+          styles.sheet,
+          { marginTop: live ? MAP_LIVE : MAP_IDLE, paddingBottom: insets.bottom + Spacing.md },
+        ]}
+      >
         <View style={styles.grabber} />
 
-        <ScrollView
-          contentContainerStyle={styles.sheetContent}
-          showsVerticalScrollIndicator={false}
-        >
+        <ScrollView contentContainerStyle={styles.sheetContent} showsVerticalScrollIndicator={false}>
           <StatGrid
+            columns={4}
+            compact
             stats={[
-              { label: 'Tvoje piva', value: String(live ? beers : 0) },
-              { label: 'U stolu', value: String(live ? total : 0) },
-              { label: 'Večer', value: live ? '1h 12m' : '0m' },
+              { label: 'Tvoje', value: String(mine) },
+              { label: 'U stolu', value: String(live ? table : 0) },
+              { label: 'Večer', value: live ? formatElapsed(minutes) : '0m' },
+              { label: 'Od posl.', value: live ? `${sinceLast}m` : '—' },
             ]}
-            columns={3}
           />
 
           {live ? (
-            <View style={styles.people}>
-              {PEOPLE.map((person) => (
-                <View key={person.name} style={styles.personRow}>
-                  <View
-                    style={[
-                      styles.avatar,
-                      { backgroundColor: person.tint },
-                    ]}
-                  >
-                    <Text style={styles.avatarText} allowFontScaling={false}>
-                      {person.name.slice(0, 1).toUpperCase()}
-                    </Text>
-                  </View>
-                  <Text
-                    style={styles.personName}
-                    numberOfLines={1}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
-                    {person.name}
-                  </Text>
-                  <Text style={styles.personCount} allowFontScaling={false}>
-                    {person.name === 'Ty' ? beers : person.beers}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          ) : (
-            <Text style={styles.idleHint} maxFontSizeMultiplier={FontScaleCap.body}>
-              Večer začíná prvním pivem. Kamarády můžeš přizvat kdykoliv potom.
-            </Text>
-          )}
+            <>
+              <Text style={styles.section} maxFontSizeMultiplier={FontScaleCap.heading}>
+                Večer po piv{beers.length === 1 ? 'u' : 'ech'}
+              </Text>
+              <NightTimeline beers={beers} now={minutes} />
 
-          {/* What the night has produced so far. This is the whole reason the
-              party mode exists beyond a counter: the recap and the feed can
-              only lead with a scoreboard or a photo strip if something here
-              made one. */}
-          {live ? (
-            <View style={styles.outputs}>
+              <Text style={styles.section} maxFontSizeMultiplier={FontScaleCap.heading}>
+                Co piješ
+              </Text>
+              <BeerList
+                rows={byType}
+                onTaps={TAPS}
+                onTap={addBeer}
+                onAdd={addBeer}
+                onRemove={removeBeer}
+              />
+
+              {/* Photos are an output, so they sit with the night's contents
+                  rather than competing with the primary control. */}
               <Pressable
                 onPress={addPhoto}
                 style={({ pressed }) => [styles.output, pressed && styles.pressed]}
@@ -190,50 +275,153 @@ export default function LivePartyMockScreen() {
               >
                 <CameraIcon size={17} color={Colors.amber} />
                 <Text style={styles.outputText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {photos > 0 ? `${photos} fotek` : 'Vyfoť moment'}
+                  {photos > 0 ? `${photos} fotek dnes` : 'Vyfoť moment'}
                 </Text>
+                <ChevronRightIcon size={16} color={Colors.mutedText} />
               </Pressable>
 
-              {games.length > 0 ? (
-                <View style={styles.output}>
-                  <TrophyIcon size={17} color={Colors.amber} />
-                  <Text
-                    style={styles.outputText}
-                    numberOfLines={1}
-                    maxFontSizeMultiplier={FontScaleCap.body}
+              <View style={styles.tabs}>
+                {SECTIONS.map((option) => (
+                  <Pressable
+                    key={option}
+                    onPress={() => setSection(option)}
+                    style={styles.tab}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: option === section }}
+                    accessibilityLabel={option}
                   >
-                    {games[games.length - 1].game} — {games[games.length - 1].winner}
-                  </Text>
+                    <Text
+                      style={[styles.tabText, option === section && styles.tabTextOn]}
+                      maxFontSizeMultiplier={FontScaleCap.body}
+                    >
+                      {option}
+                    </Text>
+                    <View style={[styles.tabRule, option === section && styles.tabRuleOn]} />
+                  </Pressable>
+                ))}
+              </View>
+
+              {section === 'Statistiky' ? (
+                <View style={styles.sectionBody}>
+                  {/* A segment, not three more tabs: one chart, three questions
+                      you can ask of it. */}
+                  <Segmented options={CHARTS} value={chart} onChange={setChart} />
+                  <Bars rows={chartRows} highlightFirst={chart === 'U stolu'} />
                 </View>
               ) : null}
-            </View>
-          ) : null}
-          {/* Ending the night is a named action, spelled out, and it lives at
-              the bottom of what you scroll — never next to "+1 pivo", where a
-              mis-tap would close the evening you are still having. */}
-          {live ? (
-            <Pressable
-              onPress={endParty}
-              style={({ pressed }) => [styles.end, pressed && styles.pressed]}
-              accessibilityRole="button"
-              accessibilityLabel="Ukončit večer"
-            >
-              <Text style={styles.endText} maxFontSizeMultiplier={FontScaleCap.body}>
-                Ukončit večer
+
+              {section === 'Aktivity' ? (
+                <View style={styles.sectionBody}>
+                  {games.length === 0 ? (
+                    <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>
+                      Zatím nic. Hru dáš na stůl tlačítkem Hry — spouští se pak odsud.
+                    </Text>
+                  ) : (
+                    games.map((game) => (
+                      <Pressable
+                        key={game.key}
+                        onPress={() => router.push(`/party-game?key=${game.key}` as Href)}
+                        style={({ pressed }) => [styles.game, pressed && styles.pressed]}
+                        accessibilityRole="button"
+                        accessibilityLabel={
+                          game.result ? `${game.name}, výsledek` : `Spustit ${game.name}`
+                        }
+                      >
+                        <View style={styles.gameHead}>
+                          <View style={styles.medallion}>
+                            {game.result ? (
+                              <TrophyIcon size={16} color={Colors.amber} />
+                            ) : (
+                              <SparklesIcon size={16} color={Colors.amber} />
+                            )}
+                          </View>
+                          <View style={styles.grow}>
+                            <Text
+                              style={styles.gameTitle}
+                              numberOfLines={1}
+                              maxFontSizeMultiplier={FontScaleCap.body}
+                            >
+                              {game.name}
+                            </Text>
+                            <Text style={styles.gameMeta} maxFontSizeMultiplier={FontScaleCap.body}>
+                              {game.result
+                                ? `Vyhrál ${game.result.winner}`
+                                : `Na stole od ${clockAt(game.at)} · ťukni a hraj`}
+                            </Text>
+                          </View>
+                          <ChevronRightIcon size={16} color={Colors.mutedText} />
+                        </View>
+
+                        {/* A finished game IS a leaderboard — that is the whole
+                            thing the recap and the feed then lead with. */}
+                        {game.result ? (
+                          <View style={styles.board}>
+                            {game.result.scores.slice(0, 4).map((row, index) => (
+                              <View key={row.name} style={styles.boardRow}>
+                                <Text style={styles.boardRank} allowFontScaling={false}>
+                                  {index + 1}
+                                </Text>
+                                <Text
+                                  style={styles.boardName}
+                                  numberOfLines={1}
+                                  maxFontSizeMultiplier={FontScaleCap.body}
+                                >
+                                  {row.name}
+                                </Text>
+                                <Text style={styles.boardScore} allowFontScaling={false}>
+                                  {row.score}
+                                </Text>
+                              </View>
+                            ))}
+                          </View>
+                        ) : null}
+                      </Pressable>
+                    ))
+                  )}
+                </View>
+              ) : null}
+
+              {section === 'Log' ? (
+                <View style={styles.sectionBody}>
+                  {[...log].reverse().map((event) => (
+                    <View key={event.id} style={styles.logRow}>
+                      <Text style={styles.logTime} allowFontScaling={false}>
+                        {clockAt(event.at)}
+                      </Text>
+                      <View style={styles.logDot} />
+                      <Text
+                        style={styles.logText}
+                        numberOfLines={2}
+                        maxFontSizeMultiplier={FontScaleCap.body}
+                      >
+                        {event.text}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+            </>
+          ) : (
+            <View style={styles.idle}>
+              <Text style={styles.idleTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+                Zatím nic se nestalo
               </Text>
-            </Pressable>
-          ) : null}
+              <Text style={styles.idleHint} maxFontSizeMultiplier={FontScaleCap.body}>
+                Večer začne prvním pivem. Pak se sem načte časová osa, grafy i log
+                — a kamarády přizveš kdykoliv potom.
+              </Text>
+            </View>
+          )}
         </ScrollView>
 
-        {/* Primary in the middle, the two night-time doors either side. */}
         <View style={styles.controls}>
-          <CircleButton label="Pozvat">
+          <CircleButton label="Pozvat" onPress={() => setInviteOpen(true)}>
             <UserPlusIcon size={22} color={Colors.foam} />
           </CircleButton>
 
           <View style={styles.circleWrap}>
             <Pressable
-              onPress={() => (live ? addBeer() : startParty('U Fleků'))}
+              onPress={() => (live ? addBeer(houseBeer) : startParty('U Fleků', HOUSE_BEER))}
               style={({ pressed }) => [styles.circlePrimary, pressed && styles.primaryPressed]}
               accessibilityRole="button"
               accessibilityLabel={live ? 'Přidat pivo' : 'Začít večer prvním pivem'}
@@ -253,12 +441,20 @@ export default function LivePartyMockScreen() {
 
       <GamesSheet
         visible={gamesOpen}
-        people={PEOPLE.map((p) => p.name)}
+        onTable={games.map((game) => game.key)}
         onClose={() => setGamesOpen(false)}
-        onPlayed={(result) => {
-          playGame(result);
+        onPick={(key, name) => {
+          addGame(key, name);
           setGamesOpen(false);
+          setSection('Aktivity');
         }}
+      />
+
+      <InviteSheet
+        visible={inviteOpen}
+        present={people.map((person) => person.name)}
+        onClose={() => setInviteOpen(false)}
+        onInvite={invite}
       />
     </View>
   );
@@ -269,29 +465,7 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.65 },
   grow: { flex: 1 },
 
-  // — Map bleed —
   map: { position: 'absolute', top: 0, left: 0, right: 0 },
-  mapGrid: { flex: 1, justifyContent: 'space-around', paddingTop: 80 },
-  mapGridRow: { height: StyleSheet.hairlineWidth, backgroundColor: withAlpha(Colors.foam, 0.06) },
-  mapPinWrap: { position: 'absolute', top: '26%', left: '46%', alignItems: 'center' },
-  mapPin: { width: 16, height: 16, borderRadius: 8, backgroundColor: Colors.amber },
-  mapPulse: {
-    position: 'absolute',
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    top: -15,
-    borderWidth: 2,
-    borderColor: withAlpha(Colors.amber, 0.35),
-  },
-  mapNote: {
-    position: 'absolute',
-    top: '34%',
-    alignSelf: 'center',
-    fontWeight: '400',
-    fontSize: 12,
-    color: withAlpha(Colors.foam, 0.28),
-  },
 
   // — Floating top bar —
   topBar: {
@@ -304,32 +478,43 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.xs,
-    height: 44,
+    height: 40,
     paddingHorizontal: Spacing.md,
     borderRadius: Radius.pill,
     backgroundColor: withAlpha(Colors.stout, 0.92),
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.12),
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: withAlpha(Colors.foam, 0.14),
   },
-  pubDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.amber },
-  pubName: { fontWeight: '700', fontSize: 16, color: Colors.foam, maxWidth: 200 },
+  pubDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: MockColors.live },
+  pubName: { fontWeight: '700', fontSize: 15, color: Colors.foam, maxWidth: 150 },
   topIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: withAlpha(Colors.stout, 0.92),
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.foam, 0.12),
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: withAlpha(Colors.foam, 0.14),
   },
+  endPill: {
+    height: 40,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.stout, 0.92),
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: withAlpha(Colors.foam, 0.2),
+  },
+  endText: { fontSize: 14, fontWeight: '700', color: Colors.foam },
 
   // — Sheet —
   sheet: {
-    marginTop: 'auto',
+    flex: 1,
     backgroundColor: MockColors.bg,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
     paddingHorizontal: Spacing.md,
     paddingTop: Spacing.sm,
   },
@@ -343,55 +528,107 @@ const styles = StyleSheet.create({
   },
   sheetContent: { paddingBottom: Spacing.md },
 
-  idleHint: {
-    fontWeight: '400',
-    fontSize: 14,
-    lineHeight: 20,
+  section: {
+    ...MockType.titleS,
+    fontSize: 15,
     color: Colors.mutedText,
-    marginTop: Spacing.md,
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.sm,
   },
 
-  end: {
-    alignSelf: 'center',
-    marginTop: Spacing.xl,
-    paddingHorizontal: Spacing.lg,
-    height: 44,
-    justifyContent: 'center',
-  },
-  endText: { fontSize: 15, fontWeight: '600', color: Colors.mutedText },
+  idle: { paddingTop: Spacing.xl, gap: 6 },
+  idleTitle: { ...MockType.titleS, fontSize: 20, color: Colors.foam },
+  idleHint: { fontWeight: '400', fontSize: 15, lineHeight: 22, color: Colors.mutedText },
 
-  // — Outputs —
-  outputs: { marginTop: Spacing.lg, gap: Spacing.sm },
   output: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    minHeight: 44,
+    minHeight: HitArea.min,
     paddingHorizontal: Spacing.md,
     borderRadius: Radius.pill,
-    backgroundColor: Colors.stout3,
+    backgroundColor: MockColors.surfaceHigh,
+    marginTop: Spacing.lg,
   },
   outputText: { flex: 1, fontSize: 14, fontWeight: '600', color: Colors.foam },
 
-  // — People —
-  people: { marginTop: Spacing.lg, gap: Spacing.sm },
-  personRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  avatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+  // — Sections —
+  tabs: { flexDirection: 'row', marginTop: Spacing.xl },
+  tab: { flex: 1, alignItems: 'center', gap: 6 },
+  tabText: { fontSize: 15, fontWeight: '600', color: Colors.mutedText },
+  tabTextOn: { color: Colors.foam, fontWeight: '700' },
+  tabRule: { height: 2, alignSelf: 'stretch', backgroundColor: 'transparent', borderRadius: 1 },
+  tabRuleOn: { backgroundColor: Colors.amber },
+  sectionBody: { marginTop: Spacing.lg, gap: Spacing.md },
+  empty: { fontSize: 14, fontWeight: '400', color: Colors.mutedText, lineHeight: 20 },
+
+  // — Chart —
+  chart: { gap: Spacing.sm },
+  chartRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  chartLabel: { width: 92, fontSize: 13, fontWeight: '600', color: Colors.foam },
+  chartTrack: {
+    flex: 1,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: withAlpha(Colors.foam, 0.07),
+    overflow: 'hidden',
   },
-  avatarText: { fontWeight: '700', fontSize: 13, color: Colors.stout },
-  personName: { flex: 1, fontWeight: '500', fontSize: 15, color: Colors.foam },
-  personCount: {
+  chartFill: { height: '100%', borderRadius: 6 },
+  chartValueRow: { flexDirection: 'row', alignItems: 'center', gap: 3, width: 40 },
+  chartValue: {
+    fontSize: 14,
     fontWeight: '700',
-    fontSize: 16,
     color: Colors.foam,
     fontVariant: ['tabular-nums'],
   },
+
+  // — Games on the table —
+  game: { padding: Spacing.md, borderRadius: 22, backgroundColor: MockColors.surfaceHigh },
+  gameHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  medallion: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.amber, 0.14),
+  },
+  gameTitle: { ...MockType.bodySemibold, color: Colors.foam },
+  gameMeta: { fontSize: 12, fontWeight: '500', color: Colors.mutedText, marginTop: 1 },
+  board: {
+    marginTop: Spacing.sm,
+    paddingTop: Spacing.sm,
+    gap: 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.foam, 0.1),
+  },
+  boardRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  boardRank: {
+    width: 14,
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.mutedText,
+    fontVariant: ['tabular-nums'],
+  },
+  boardName: { flex: 1, fontSize: 14, fontWeight: '600', color: Colors.foam },
+  boardScore: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.foam,
+    fontVariant: ['tabular-nums'],
+  },
+
+  // — Log —
+  logRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, minHeight: 34 },
+  logTime: {
+    width: 46,
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.mutedText,
+    fontVariant: ['tabular-nums'],
+  },
+  logDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: withAlpha(Colors.amber, 0.6) },
+  logText: { flex: 1, fontSize: 14, fontWeight: '500', color: Colors.foam },
 
   // — Controls —
   controls: {
@@ -409,7 +646,7 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.stout3,
+    backgroundColor: MockColors.surfaceHigh,
   },
   circleLabel: { fontWeight: '500', fontSize: 13, color: Colors.mutedText },
   circlePrimary: {
@@ -423,7 +660,4 @@ const styles = StyleSheet.create({
   },
   primaryPressed: { opacity: 0.9, transform: [{ scale: 0.97 }] },
   primaryLabel: { fontWeight: '700', fontSize: 14, color: Colors.amber },
-
-  // keep the sheet clear of the tab bar's own hit area
-  spacer: { height: HitArea.min },
 });

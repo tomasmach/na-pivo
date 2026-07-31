@@ -49,8 +49,14 @@ export type Detent = keyof typeof DETENTS;
 
 const GLASS = isLiquidGlassAvailable();
 
-/** How far the sheet sits off the screen edges when it is resting. */
-const FLOAT_INSET = 10;
+/**
+ * Edge to edge, at every detent.
+ *
+ * It used to float inset at rest and widen as you lifted it, which is Packeta's
+ * behaviour — but Packeta has no tab bar under it. Here the sheet sat 10pt off
+ * each edge directly above a full-width tab bar, and the two disagreeing about
+ * where the screen ends is what read as broken rather than as depth.
+ */
 const FLOAT_RADIUS = 34;
 
 const SPRING = { damping: 22, stiffness: 190, mass: 0.7 } as const;
@@ -183,19 +189,11 @@ export function PlacesSheet({
     }
   }, [collapseSignal, expandSignal, settle, tops, translateY]);
 
-  // Floating at rest, edge-to-edge when expanded. Packeta's panel does exactly
-  // this ("0 when fully expanded, 1 at the resting detent"), and it is what
-  // makes the sheet read as a card you lift rather than a drawer that slides.
-  const sheetStyle = useAnimatedStyle(() => {
-    const span = tops.peek - tops.full || 1;
-    const lifted = Math.min(1, Math.max(0, (tops.peek - translateY.value) / span));
-    return {
-      transform: [{ translateY: translateY.value }],
-      marginHorizontal: FLOAT_INSET * (1 - lifted),
-      borderTopLeftRadius: FLOAT_RADIUS,
-      borderTopRightRadius: FLOAT_RADIUS,
-    };
-  });
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+    borderTopLeftRadius: FLOAT_RADIUS,
+    borderTopRightRadius: FLOAT_RADIUS,
+  }));
 
   return (
     <Animated.View style={[styles.sheet, { height }, sheetStyle]}>

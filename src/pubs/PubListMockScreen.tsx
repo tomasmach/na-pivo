@@ -412,7 +412,10 @@ export default function PubListMockScreen() {
                 <CompassCell
                   pub={head}
                   badge={BADGE[sort]}
-                  onPress={() => router.push('/pubs-map' as Href)}
+                  // It is a pub row, so it opens the pub. It used to open the
+                  // map, which meant the one cell naming a place was the one
+                  // cell that would not take you to it.
+                  onPress={() => router.push(`/pub/${head.id}` as Href)}
                 />
               ) : null}
 

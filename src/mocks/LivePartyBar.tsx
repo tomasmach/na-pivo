@@ -10,9 +10,16 @@
  * (§15.2). It is chrome, so glass is exactly where it belongs; nothing you have
  * to read sits behind it.
  *
- * The strip carries the live colour rather than the app's amber: a running
- * session is the one state worth recolouring for, and it is what makes the bar
- * legible as "still going" out of the corner of your eye.
+ * Brown glass, not a green plate. The strip floats — there is no solid surface
+ * under it and none behind it; it borrows whatever is on screen and tints it
+ * warm, which is what makes it read as chrome sitting ON the app rather than a
+ * band welded to the tab bar. Only the live dot keeps the running-session
+ * colour: that is the one pixel that has to say "still counting" from the
+ * corner of your eye, and it does not need the whole bar to say it.
+ *
+ * It also carries the counter, not just a link to it. The one thing you do
+ * during a night is add a beer, and making that cost a screen transition is
+ * what turns a fast ritual into an errand.
  */
 
 import React from 'react';
@@ -20,8 +27,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { usePathname, useRouter, type Href } from 'expo-router';
 
-import { BeerIcon, ChevronDownIcon } from '@/components/shared/IconGlyph';
-import { useLivePartyStore } from '@/mocks/livePartyStore';
+import { BeerIcon } from '@/components/shared/IconGlyph';
+import { formatElapsed, useLivePartyStore } from '@/mocks/livePartyStore';
 import { MockColors } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -34,24 +41,23 @@ export function LivePartyBar() {
   const live = useLivePartyStore((s) => s.live);
   const pubName = useLivePartyStore((s) => s.pubName);
   const beers = useLivePartyStore((s) => s.beers);
-  const elapsed = useLivePartyStore((s) => s.elapsed);
+  const minutes = useLivePartyStore((s) => s.minutes);
+  const addBeer = useLivePartyStore((s) => s.addBeer);
+  const houseBeer = useLivePartyStore((s) => s.houseBeer);
   const pathname = usePathname();
 
   // Nothing to minimise into while you are already standing in it.
   if (!live || pathname === '/beer') return null;
 
+  const count = beers.length;
+
   return (
-    <Pressable
-      onPress={() => router.navigate('/beer' as Href)}
-      style={({ pressed }) => [styles.wrap, pressed && styles.pressed]}
-      accessibilityRole="button"
-      accessibilityLabel={`Večer běží, ${pubName}, ${beers} piv. Otevřít.`}
-    >
+    <View style={styles.wrap}>
       {GLASS ? (
         <GlassView
           style={StyleSheet.absoluteFill}
           glassEffectStyle="regular"
-          tintColor={withAlpha(MockColors.live, 0.14)}
+          tintColor={withAlpha(MockColors.accent, 0.1)}
           colorScheme="dark"
           pointerEvents="none"
         />
@@ -59,20 +65,37 @@ export function LivePartyBar() {
         <View style={[StyleSheet.absoluteFill, styles.solid]} pointerEvents="none" />
       )}
 
-      <View style={styles.dot} />
-      <View style={styles.text}>
-        <Text style={styles.pub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {pubName}
+      {/* The body opens the hub; the counter stays where your thumb already is. */}
+      <Pressable
+        onPress={() => router.navigate('/beer' as Href)}
+        style={({ pressed }) => [styles.body, pressed && styles.pressed]}
+        accessibilityRole="button"
+        accessibilityLabel={`Večer běží, ${pubName}, ${count} piv. Otevřít.`}
+      >
+        <View style={styles.dot} />
+        <View style={styles.text}>
+          <Text style={styles.pub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+            {pubName}
+          </Text>
+          <Text style={styles.meta} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+            {count} piv · {formatElapsed(minutes)}
+          </Text>
+        </View>
+      </Pressable>
+
+      <Pressable
+        onPress={() => addBeer(houseBeer)}
+        style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
+        accessibilityRole="button"
+        accessibilityLabel="Přidat pivo"
+        hitSlop={6}
+      >
+        <BeerIcon size={17} color={Colors.stout} />
+        <Text style={styles.ctaText} allowFontScaling={false}>
+          +1
         </Text>
-        <Text style={styles.meta} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {beers} piv · {elapsed}
-        </Text>
-      </View>
-      <BeerIcon size={18} color={MockColors.live} />
-      <View style={styles.chevronUp}>
-        <ChevronDownIcon size={18} color={withAlpha(Colors.foam, 0.7)} />
-      </View>
-    </Pressable>
+      </Pressable>
+    </View>
   );
 }
 
@@ -83,20 +106,32 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     marginHorizontal: 12,
     marginBottom: 8,
-    paddingHorizontal: Spacing.md,
-    height: 56,
+    paddingLeft: Spacing.md,
+    paddingRight: 6,
+    height: 58,
     borderRadius: Radius.pill,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: withAlpha(MockColors.live, 0.3),
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: withAlpha(Colors.foam, 0.14),
   },
-  solid: { backgroundColor: MockColors.surfaceHigh },
+  /** Only below iOS 26. Above it the bar has no fill of its own at all. */
+  solid: { backgroundColor: withAlpha(Colors.stout2, 0.96) },
   pressed: { opacity: 0.85 },
+  body: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: MockColors.live },
   text: { flex: 1 },
   pub: { fontSize: 15, fontWeight: '700', color: Colors.foam },
   meta: { fontSize: 12, fontWeight: '500', color: withAlpha(Colors.foam, 0.7), marginTop: 1 },
-  /** The glyph set has no up chevron; flipping the down one beats adding an
-   *  icon to the shared set for a single mock. */
-  chevronUp: { transform: [{ rotate: '180deg' }] },
+
+  cta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    height: 44,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.amber,
+  },
+  ctaPressed: { opacity: 0.9, transform: [{ scale: 0.97 }] },
+  ctaText: { fontSize: 16, fontWeight: '800', color: Colors.stout },
 });

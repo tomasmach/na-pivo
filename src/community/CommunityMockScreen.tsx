@@ -293,14 +293,16 @@ const styles = StyleSheet.create({
   // — Section tabs (underline, like iOS segmented pages) —
   // Full width, equal columns — three sections of one screen, not a row of
   // links that happens to start on the left.
-  tabs: { flexDirection: 'row' },
+  // The native large title needs air under it; butted straight against the
+  // tabs it read as one stacked heading rather than a title and a control.
+  tabs: { flexDirection: 'row', marginTop: Spacing.md },
   tab: { flex: 1, alignItems: 'center', gap: 6 },
   tabText: { fontSize: 17, fontWeight: '600', color: Colors.mutedText },
   tabTextOn: { color: Colors.foam, fontWeight: '700' },
   tabRule: { height: 2, alignSelf: 'stretch', backgroundColor: 'transparent', borderRadius: 1 },
   tabRuleOn: { backgroundColor: Colors.amber },
 
-  chips: { flexDirection: 'row', gap: Spacing.xs, marginTop: Spacing.lg },
+  chips: { flexDirection: 'row', gap: Spacing.xs, marginTop: Spacing.lg, marginBottom: Spacing.xs },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -312,7 +314,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: withAlpha(Colors.amber, 0.4),
   },
-  chipText: { fontSize: 14, fontWeight: '600', color: Colors.amber },
+  chipText: { fontSize: 13, fontWeight: '600', color: Colors.amber },
 
   // — Podium —
   podium: {

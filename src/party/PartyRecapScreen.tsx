@@ -47,7 +47,7 @@ import {
   MapPinIcon,
   TrophyIcon,
 } from '@/components/shared/IconGlyph';
-import { useLivePartyStore } from '@/mocks/livePartyStore';
+import { formatElapsed, hourlyFrom, useLivePartyStore } from '@/mocks/livePartyStore';
 import { MOCK_PARTY, type PartyPerson, type PartyRecap } from '@/party/mockParty';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -237,22 +237,30 @@ export default function PartyRecapScreen() {
   const liveBeers = useLivePartyStore((s) => s.beers);
   const livePhotos = useLivePartyStore((s) => s.photos);
   const liveGames = useLivePartyStore((s) => s.games);
-  const liveHourly = useLivePartyStore((s) => s.hourly);
+  const liveMinutes = useLivePartyStore((s) => s.minutes);
   const livePub = useLivePartyStore((s) => s.pubName);
   const hasLive = useLivePartyStore((s) => s.live);
+
+  // Derived from the beer list rather than stored: one source of truth for the
+  // night, read three different ways.
+  const liveHourly = hourlyFrom(liveBeers);
+  // A game on the table is not a result. Only played ones have a scoreboard,
+  // and a scoreboard is the whole reason this section exists.
+  const playedGames = liveGames.flatMap((game) => (game.result ? [game.result] : []));
 
   const party: PartyRecap = hasLive
     ? {
         ...MOCK_PARTY,
         title: MOCK_PARTY.title,
-        beers: liveBeers,
+        beers: liveBeers.length,
+        duration: formatElapsed(liveMinutes),
         photos: livePhotos,
         hourly: liveHourly.length > 0 ? liveHourly : MOCK_PARTY.hourly,
         stops: livePub
-          ? [{ id: 'live', pubName: livePub, arrivedAt: '20:15', beers: liveBeers }]
+          ? [{ id: 'live', pubName: livePub, arrivedAt: '20:00', beers: liveBeers.length }]
           : MOCK_PARTY.stops,
         people: MOCK_PARTY.people.map((person) =>
-          person.name === 'Honza' ? { ...person, beers: liveBeers } : person,
+          person.name === 'Honza' ? { ...person, beers: liveBeers.length } : person,
         ),
       }
     : MOCK_PARTY;
@@ -335,10 +343,10 @@ export default function PartyRecapScreen() {
 
         {/* The richest thing a night makes. Only rendered when one was played —
             an empty scoreboard would be a section explaining its own absence. */}
-        {liveGames.length > 0 ? (
+        {playedGames.length > 0 ? (
           <View style={styles.section}>
             <SectionTitle>Hry</SectionTitle>
-            {liveGames.map((game, index) => (
+            {playedGames.map((game, index) => (
               <View key={`${game.game}-${index}`} style={styles.gameBlock}>
                 <Text style={styles.gameTitle} maxFontSizeMultiplier={FontScaleCap.body}>
                   {game.game} · vyhrál{game.winner === 'Klára' ? 'a' : ''} {game.winner}
