@@ -32,15 +32,18 @@ import {
   CameraIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  MapPinIcon,
   SoccerBallIcon,
   SparklesIcon,
   TrophyIcon,
   UserPlusIcon,
 } from '@/components/shared/IconGlyph';
 import { BeerList } from '@/party/BeerList';
+import { PulsePanel } from '@/party/PulsePanel';
 import { GamesSheet } from '@/party/GamesSheet';
 import { InviteSheet } from '@/party/InviteSheet';
 import { NightTimeline } from '@/party/NightTimeline';
+import { buildPulse, fourthStat } from '@/party/nightPulse';
 import { NightRoute } from '@/mocks/NightRoute';
 import { Segmented } from '@/mocks/Segmented';
 import { StatGrid } from '@/mocks/StatGrid';
@@ -68,7 +71,7 @@ const TAPS = [
 const MAP_IDLE = 460;
 const MAP_LIVE = 156;
 
-const SECTIONS = ['Statistiky', 'Aktivity', 'Log'] as const;
+const SECTIONS = ['Piva', 'Statistiky', 'Aktivity', 'Log'] as const;
 const CHARTS = ['V čase', 'Podle piva', 'U stolu'] as const;
 
 function CircleButton({
@@ -156,18 +159,20 @@ export default function LivePartyMockScreen() {
   const addPhoto = useLivePartyStore((s) => s.addPhoto);
   const addGame = useLivePartyStore((s) => s.addGame);
   const invite = useLivePartyStore((s) => s.invite);
-  const endParty = useLivePartyStore((s) => s.end);
 
   const [gamesOpen, setGamesOpen] = React.useState(false);
   const [inviteOpen, setInviteOpen] = React.useState(false);
-  const [section, setSection] = React.useState<(typeof SECTIONS)[number]>('Statistiky');
+  const [section, setSection] = React.useState<(typeof SECTIONS)[number]>('Piva');
   const [chart, setChart] = React.useState<(typeof CHARTS)[number]>('V čase');
 
   const mine = beers.length;
   const table = mine + people.reduce((sum, person) => sum + person.beers, 0);
-  const last = beers[beers.length - 1];
-  const sinceLast = last ? minutes - last.at : 0;
   const byType = beersByType(beers);
+
+  // The night says what it is doing, instead of four labels that never change.
+  const beerTimes = beers.map((entry) => entry.at);
+  const pulse = buildPulse({ beerTimes, now: minutes });
+  const fourth = fourthStat({ beerTimes, now: minutes });
 
   const chartRows =
     chart === 'V čase'
@@ -185,6 +190,9 @@ export default function LivePartyMockScreen() {
         <NightRoute stops={STOPS} live={live} height={live ? MAP_LIVE : MAP_IDLE} />
       </View>
 
+      {/* Absolute: it is chrome floating ON the map. In the column it was also
+          CONSUMING height, so the sheet's map offset stacked on top of it and
+          left a band of nothing between the two. */}
       <View style={[styles.topBar, { paddingTop: insets.top + Spacing.sm }]}>
         <Pressable
           onPress={() => router.back()}
@@ -212,7 +220,10 @@ export default function LivePartyMockScreen() {
         {/* Top right, as far from "+1 pivo" as the screen allows. */}
         {live ? (
           <Pressable
-            onPress={endParty}
+            // Ending goes THROUGH the finish screen, never straight to nothing:
+            // the last thing an evening does is become a post, and dropping the
+            // state on the floor is how a good night ends up unrecorded.
+            onPress={() => router.push('/party-finish' as Href)}
             style={({ pressed }) => [styles.endPill, pressed && styles.pressed]}
             accessibilityRole="button"
             accessibilityLabel="Ukončit večer"
@@ -236,49 +247,25 @@ export default function LivePartyMockScreen() {
         <View style={styles.grabber} />
 
         <ScrollView contentContainerStyle={styles.sheetContent} showsVerticalScrollIndicator={false}>
-          <StatGrid
-            columns={4}
-            compact
+          {/* Strava's band: the STATE over the numbers, and a way to blow the
+              numbers up for a phone lying on the table. */}
+          <PulsePanel
+            pulse={pulse}
             stats={[
               { label: 'Tvoje', value: String(mine) },
               { label: 'U stolu', value: String(live ? table : 0) },
               { label: 'Večer', value: live ? formatElapsed(minutes) : '0m' },
-              { label: 'Od posl.', value: live ? `${sinceLast}m` : '—' },
+              { label: fourth.label, value: live ? fourth.value : '—' },
             ]}
           />
 
           {live ? (
             <>
-              <Text style={styles.section} maxFontSizeMultiplier={FontScaleCap.heading}>
-                Večer po piv{beers.length === 1 ? 'u' : 'ech'}
-              </Text>
-              <NightTimeline beers={beers} now={minutes} />
-
-              <Text style={styles.section} maxFontSizeMultiplier={FontScaleCap.heading}>
-                Co piješ
-              </Text>
-              <BeerList
-                rows={byType}
-                onTaps={TAPS}
-                onTap={addBeer}
-                onAdd={addBeer}
-                onRemove={removeBeer}
-              />
-
-              {/* Photos are an output, so they sit with the night's contents
-                  rather than competing with the primary control. */}
-              <Pressable
-                onPress={addPhoto}
-                style={({ pressed }) => [styles.output, pressed && styles.pressed]}
-                accessibilityRole="button"
-                accessibilityLabel="Vyfotit moment"
-              >
-                <CameraIcon size={17} color={Colors.amber} />
-                <Text style={styles.outputText} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {photos > 0 ? `${photos} fotek dnes` : 'Vyfoť moment'}
-                </Text>
-                <ChevronRightIcon size={16} color={Colors.mutedText} />
-              </Pressable>
+              {/* The shape of the night, right under its numbers — it is a
+                  reading of the same data, not a section of its own. */}
+              <View style={styles.timeline}>
+                <NightTimeline beers={beers} now={minutes} />
+              </View>
 
               <View style={styles.tabs}>
                 {SECTIONS.map((option) => (
@@ -300,6 +287,18 @@ export default function LivePartyMockScreen() {
                   </Pressable>
                 ))}
               </View>
+
+              {section === 'Piva' ? (
+                <View style={styles.sectionBody}>
+                  <BeerList
+                    rows={byType}
+                    onTaps={TAPS}
+                    onTap={addBeer}
+                    onAdd={addBeer}
+                    onRemove={removeBeer}
+                  />
+                </View>
+              ) : null}
 
               {section === 'Statistiky' ? (
                 <View style={styles.sectionBody}>
@@ -416,7 +415,11 @@ export default function LivePartyMockScreen() {
 
         <View style={styles.controls}>
           <CircleButton label="Pozvat" onPress={() => setInviteOpen(true)}>
-            <UserPlusIcon size={22} color={Colors.foam} />
+            <UserPlusIcon size={20} color={Colors.foam} />
+          </CircleButton>
+
+          <CircleButton label={photos > 0 ? `Foto ${photos}` : 'Foto'} onPress={addPhoto}>
+            <CameraIcon size={20} color={Colors.foam} />
           </CircleButton>
 
           <View style={styles.circleWrap}>
@@ -434,7 +437,11 @@ export default function LivePartyMockScreen() {
           </View>
 
           <CircleButton label="Hry" onPress={() => setGamesOpen(true)}>
-            <SoccerBallIcon size={22} color={Colors.foam} />
+            <SoccerBallIcon size={20} color={Colors.foam} />
+          </CircleButton>
+
+          <CircleButton label="Přesun">
+            <MapPinIcon size={20} color={Colors.foam} />
           </CircleButton>
         </View>
       </View>
@@ -469,6 +476,11 @@ const styles = StyleSheet.create({
 
   // — Floating top bar —
   topBar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 2,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
@@ -553,7 +565,8 @@ const styles = StyleSheet.create({
   outputText: { flex: 1, fontSize: 14, fontWeight: '600', color: Colors.foam },
 
   // — Sections —
-  tabs: { flexDirection: 'row', marginTop: Spacing.xl },
+  timeline: { marginTop: Spacing.lg },
+  tabs: { flexDirection: 'row', marginTop: Spacing.lg },
   tab: { flex: 1, alignItems: 'center', gap: 6 },
   tabText: { fontSize: 15, fontWeight: '600', color: Colors.mutedText },
   tabTextOn: { color: Colors.foam, fontWeight: '700' },
@@ -634,21 +647,21 @@ const styles = StyleSheet.create({
   controls: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
     paddingTop: Spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(Colors.foam, 0.12),
   },
-  circleWrap: { alignItems: 'center', gap: 6, minWidth: 84 },
+  circleWrap: { alignItems: 'center', gap: 5, flex: 1 },
   circleSecondary: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: MockColors.surfaceHigh,
   },
-  circleLabel: { fontWeight: '500', fontSize: 13, color: Colors.mutedText },
+  circleLabel: { fontWeight: '500', fontSize: 12, color: Colors.mutedText },
   circlePrimary: {
     width: 84,
     height: 84,

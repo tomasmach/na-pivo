@@ -439,6 +439,20 @@ export default function RootLayout() {
               animation: 'slide_from_bottom',
             }}
           />
+          {/* A game is passed around the table, so it takes the whole screen —
+              a tab bar under a phone in someone else's hand is a mis-tap. It
+              pushes from the right because you came from the hub and go back to
+              it, unlike the night itself which slides up out of nowhere. */}
+          <Stack.Screen
+            name="party-game"
+            options={{ presentation: 'fullScreenModal', animation: 'ios_from_right' }}
+          />
+          {/* Saving the night: pushed over the hub so backing out returns you to
+              an evening that is still running. Only "Zveřejnit" ends it. */}
+          <Stack.Screen
+            name="party-finish"
+            options={{ presentation: 'fullScreenModal', animation: 'ios_from_right' }}
+          />
           <Stack.Screen
             name="onboarding"
             options={{
