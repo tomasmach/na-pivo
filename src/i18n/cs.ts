@@ -959,19 +959,6 @@ export const cs = {
     verifyDoneCta: 'Zpět do aplikace',
   },
 
-  // Community hub — the 3.0 tab that gathers what the whole pub does together.
-  community: {
-    title: 'Community',
-    lede: 'Co se děje mimo tvůj stůl.',
-    leaderboardsTitle: 'Žebříčky',
-    leaderboardsSubtitle: 'Pivaři, objevitelé a mapéři celé republiky.',
-    eventsTitle: 'Akce',
-    eventsSubtitle: 'Co se chystá v hospodách kolem tebe.',
-    photoContestTitle: 'Foto soutěž',
-    photoContestSubtitle: 'Pošli fotku večera a hlasuj pro ostatní.',
-    contributeTitle: 'Přispěj do mapy',
-    contributeSubtitle: 'Přidej hospodu, opravy a ceny. Ostatním to pomůže.',
-  },
   tabs: {
     compass: 'Kompas',
     counter: 'Počítadlo',
