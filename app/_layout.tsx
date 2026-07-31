@@ -8,6 +8,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useEffect, useRef, useState } from 'react';
 
 import { fontAssets } from '@/theme/fonts';
+import { PartyMorph } from '@/mocks/PartyMorph';
 import { Colors } from '@/theme/colors';
 import { flushPubReportQueue } from '@/data/pubReportQueue';
 import { flushPubNameCorrectionsQueue } from '@/data/pubNameCorrectionsQueue';
@@ -436,7 +437,11 @@ export default function RootLayout() {
             name="party-live"
             options={{
               presentation: 'fullScreenModal',
-              animation: 'slide_from_bottom',
+              // No slide: the morph disc is already covering the screen when
+              // this pushes, so an animation underneath would fight it. The
+              // dismissal keeps the slide, which is why it is `fade` and not
+              // `none` — going back still needs a direction.
+              animation: 'fade',
             }}
           />
           <Stack.Screen
@@ -648,6 +653,8 @@ export default function RootLayout() {
             }}
           />
         </Stack>
+        {/* Above the stack so the growing disc covers the push it hides. */}
+        <PartyMorph />
         <OnboardingGate />
         <WhatsNewModal />
         <ContestResultsModal />

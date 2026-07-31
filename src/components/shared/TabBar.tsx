@@ -28,7 +28,7 @@
  * Driven by expo-router's <Tabs> via `tabBar={(props) => <TabBar {...props} />}`.
  */
 
-import React, { memo, useEffect } from 'react';
+import React, { memo, useEffect, useRef } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import Animated, {
@@ -57,6 +57,7 @@ import { usePartaSignalStore } from '@/stores/partaSignalStore';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 import { cs } from '@/i18n/cs';
 import { trackUiInteraction, type UiInteractionTarget } from '@/data/uxTelemetry';
+import { usePartyMorph } from '@/mocks/PartyMorph';
 
 /**
  * The narrow slice of expo-router's bottom-tab `tabBar` callback props this
@@ -188,9 +189,17 @@ interface TabItemProps {
   focused: boolean;
   onPress: () => void;
   badge: TabBadgeState | null;
+  /** Only the accent item reports where it sits, for the morph origin. */
+  onAccentLayout?: (centre: { x: number; y: number }) => void;
 }
 
-const TabItem = memo(function TabItem({ routeName, focused, onPress, badge }: TabItemProps) {
+const TabItem = memo(function TabItem({
+  routeName,
+  focused,
+  onPress,
+  badge,
+  onAccentLayout,
+}: TabItemProps) {
   const meta = TAB_META[routeName];
   if (!meta) return null;
   // Party inverts: the glyph sits ON the amber disc, not inside a tint of it.
@@ -221,7 +230,18 @@ const TabItem = memo(function TabItem({ routeName, focused, onPress, badge }: Ta
           Party adds the 12 % medallion §2.2 allows for an icon in a row — never
           a filled amber circle, which would be a full amber surface on top of
           every screen's own primary button. */}
-      <View style={[styles.iconWrap, meta.accent && styles.accentWrap]}>
+      <View
+        style={[styles.iconWrap, meta.accent && styles.accentWrap]}
+        onLayout={
+          meta.accent && onAccentLayout
+            ? (event) => {
+                event.currentTarget.measureInWindow((x, y, w, h) =>
+                  onAccentLayout({ x: x + w / 2, y: y + h / 2 }),
+                );
+              }
+            : undefined
+        }
+      >
         <Icon size={24} color={color} />
         {badge ? <TabBadge count={badge.count} dot={badge.dot} live={badge.live} /> : null}
       </View>
@@ -244,6 +264,10 @@ const FULLSCREEN_ROUTES = new Set(['beer']);
 export function TabBar({ state, navigation }: TabBarProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const fireMorph = usePartyMorph((s) => s.fire);
+  // Where the Party medallion actually is, measured rather than guessed — the
+  // bar's height changes with the safe-area inset.
+  const accentCentre = useRef<{ x: number; y: number } | null>(null);
   const activeRoute = state.routes[state.index]?.name;
   const hidden = !!activeRoute && FULLSCREEN_ROUTES.has(activeRoute);
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
@@ -293,11 +317,18 @@ export function TabBar({ state, navigation }: TabBarProps) {
           });
           const meta = TAB_META[route.name];
 
-          // Party is a door, not a destination: it opens the fullscreen night
-          // as a modal so it slides up, and dismissing it slides back down.
+          // Party is a door, not a destination. The amber disc grows from this
+          // button until it covers the screen, and the route is pushed at the
+          // moment the cover is opaque — so the push is invisible and what you
+          // see is the button becoming the night.
           if (meta?.accent) {
-            if (meta) trackUiInteraction(meta.telemetryTarget, 'select');
-            router.push('/party-live' as Href);
+            trackUiInteraction(meta.telemetryTarget, 'select');
+            const origin = accentCentre.current;
+            if (origin) {
+              fireMorph(origin, () => router.push('/party-live' as Href));
+            } else {
+              router.push('/party-live' as Href);
+            }
             return;
           }
 
@@ -315,6 +346,9 @@ export function TabBar({ state, navigation }: TabBarProps) {
             focused={focused}
             onPress={onPress}
             badge={route.name === 'friends' ? partaBadge : null}
+            onAccentLayout={(centre) => {
+              accentCentre.current = centre;
+            }}
           />
         );
       })}
