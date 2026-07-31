@@ -20,7 +20,17 @@
  *    instead of 12.
  *
  * Palette stays Na pivo — stout ground, amber accent, foam text. The change is
- * structure and density, not colour.
+ * structure, density and type, not colour.
+ *
+ * Type is the SYSTEM font (SF Pro on iOS, Roboto on Android) via bare
+ * `fontWeight`, not Baloo 2. Baloo is the rounded pub voice that makes every
+ * Tácek screen read as the same playful object; on a screen whose whole job is
+ * dense numbers and rows it fights the content and reads as a theme rather than
+ * an app. The system face is what "native like Packeta" actually means, and it
+ * gets optical sizing, real tabular numerals and Dynamic Type for free.
+ *
+ * If this direction is adopted, the swap belongs in §3 of the design system for
+ * the whole app — not left as one screen quietly using different type.
  *
  * Deliberately absent: price, spend, per-mille. See `mockParty.ts`.
  */
@@ -41,7 +51,7 @@ import {
 } from '@/components/shared/IconGlyph';
 import { MOCK_PARTY, type PartyPerson, type PartyRecap } from '@/party/mockParty';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
 /** Air between top-level sections. Deliberately far larger than the 12pt the
@@ -368,21 +378,22 @@ const styles = StyleSheet.create({
 
   // — Title block —
   date: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     letterSpacing: 0.3,
     marginTop: Spacing.xs,
   },
   title: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 34,
     lineHeight: 40,
     color: Colors.foam,
     marginTop: 2,
+    letterSpacing: -0.6,
   },
   route: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 14,
     lineHeight: 20,
     color: withAlpha(Colors.amber, 0.85),
@@ -400,14 +411,18 @@ const styles = StyleSheet.create({
   },
   heroStat: { flex: 1, alignItems: 'flex-start' },
   heroValue: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 38,
     lineHeight: 46,
     color: Colors.foam,
     includeFontPadding: false,
+    // SF Pro tracks loose at display sizes; pull it in so the three numerals
+    // read as one row. Tabular figures keep them from dancing on re-render.
+    letterSpacing: -1,
+    fontVariant: ['tabular-nums'],
   },
   heroLabel: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.mutedText,
     letterSpacing: 0.6,
@@ -424,7 +439,7 @@ const styles = StyleSheet.create({
   // — Sections —
   section: { marginTop: SECTION_GAP },
   sectionTitle: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 13,
     letterSpacing: 1.1,
     textTransform: 'uppercase',
@@ -436,12 +451,12 @@ const styles = StyleSheet.create({
   people: { gap: Spacing.md },
   personRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   avatar: { alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  avatarText: { fontFamily: Fonts.display.bold, color: Colors.foam },
+  avatarText: { fontWeight: '700', color: Colors.foam },
   personBody: { flex: 1, gap: 6 },
   personTop: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
-  personName: { fontFamily: Fonts.display.bold, fontSize: 16, color: Colors.foam },
+  personName: { fontWeight: '700', fontSize: 16, color: Colors.foam },
   personCount: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 17,
     color: Colors.foam,
     fontVariant: ['tabular-nums'],
@@ -456,7 +471,7 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.amber, 0.12),
   },
   mvpText: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 10,
     letterSpacing: 0.5,
     color: Colors.amber,
@@ -489,19 +504,19 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.lg,
   },
   stopTime: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 14,
     color: Colors.mutedText,
     width: 46,
     fontVariant: ['tabular-nums'],
   },
-  stopPub: { flex: 1, fontFamily: Fonts.display.bold, fontSize: 17, color: Colors.foam },
-  stopBeers: { fontFamily: Fonts.ui.medium, fontSize: 13, color: Colors.mutedText },
+  stopPub: { flex: 1, fontWeight: '700', fontSize: 17, color: Colors.foam },
+  stopBeers: { fontWeight: '500', fontSize: 13, color: Colors.mutedText },
 
   // — Tempo —
   tempoRow: { flexDirection: 'row', alignItems: 'flex-end', gap: Spacing.sm, height: 132 },
   tempoCol: { flex: 1, alignItems: 'center', gap: 6 },
-  tempoValue: { fontFamily: Fonts.display.bold, fontSize: 12, color: Colors.mutedText },
+  tempoValue: { fontWeight: '700', fontSize: 12, color: Colors.mutedText },
   tempoTrack: { flex: 1, width: '100%', justifyContent: 'flex-end' },
   tempoBar: {
     width: '100%',
@@ -509,7 +524,7 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.amber, 0.55),
     minHeight: 8,
   },
-  tempoHour: { fontFamily: Fonts.ui.medium, fontSize: 11, color: Colors.mutedText },
+  tempoHour: { fontWeight: '500', fontSize: 11, color: Colors.mutedText },
 
   // — Records —
   record: {
@@ -526,8 +541,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: withAlpha(Colors.amber, 0.12),
   },
-  recordTitle: { fontFamily: Fonts.display.bold, fontSize: 15, color: Colors.foam },
-  recordDetail: { fontFamily: Fonts.ui.regular, fontSize: 13, color: Colors.mutedText, marginTop: 1 },
+  recordTitle: { fontWeight: '700', fontSize: 15, color: Colors.foam },
+  recordDetail: { fontWeight: '400', fontSize: 13, color: Colors.mutedText, marginTop: 1 },
 
   // — Footer —
   footerRow: {
@@ -539,7 +554,7 @@ const styles = StyleSheet.create({
     borderTopColor: withAlpha(Colors.foam, 0.14),
   },
   footerFact: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  footerText: { fontFamily: Fonts.ui.medium, fontSize: 13, color: Colors.mutedText },
+  footerText: { fontWeight: '500', fontSize: 13, color: Colors.mutedText },
 
   cta: {
     flexDirection: 'row',
@@ -552,7 +567,7 @@ const styles = StyleSheet.create({
     marginTop: SECTION_GAP,
   },
   ctaPressed: { opacity: 0.9, transform: [{ scale: 0.985 }] },
-  ctaText: { fontFamily: Fonts.display.extrabold, fontSize: 17, color: Colors.stout },
+  ctaText: { fontWeight: '800', fontSize: 17, color: Colors.stout },
 
   mockNote: {
     flexDirection: 'row',
@@ -561,5 +576,5 @@ const styles = StyleSheet.create({
     gap: 6,
     marginTop: Spacing.md,
   },
-  mockText: { fontFamily: Fonts.ui.regular, fontSize: 12, color: Colors.mutedText },
+  mockText: { fontWeight: '400', fontSize: 12, color: Colors.mutedText },
 });
