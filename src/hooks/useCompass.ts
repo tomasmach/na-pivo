@@ -25,7 +25,7 @@ import type { PubReportReason } from '@/data/pubReportsClient';
 import { buildPubNameCorrectionEntry } from '@/data/pubNameCorrectionsClient';
 import { enqueuePubNameCorrection } from '@/data/pubNameCorrectionsQueue';
 import { geohash8 } from '@/data/geohash';
-import { pubMatchesPriceFilter } from '@/data/pubSearchFilters';
+import { pubMatchesPriceFilterOrOwn } from '@/data/pubSearchFilters';
 import type { CommunityBeer, WeeklyHours } from '@/data/communityClient';
 import { computeOpenState } from '@/data/communityHours';
 import { recordWalkingSample } from '@/data/walkingTelemetry';
@@ -548,11 +548,11 @@ export function useCompass(
       // derived Mapy.cz ids change between fetches, the cell does not.
       const excludeCacheKeys = reportedCacheKeys;
 
-      // Price range is a hard local filter: pubs with no known price are skipped
-      // too — the compass must not present an unknown price as affordable.
+      // Own added pubs remain reachable while their first reference price is
+      // unknown; ordinary catalogue pubs still require a fresh matching price.
       const filterPub =
         priceMinCzk !== null || priceMaxCzk !== null
-          ? (candidate: Pub) => pubMatchesPriceFilter(candidate, priceMinCzk, priceMaxCzk)
+          ? (candidate: Pub) => pubMatchesPriceFilterOrOwn(candidate, priceMinCzk, priceMaxCzk)
           : undefined;
 
       const pub =

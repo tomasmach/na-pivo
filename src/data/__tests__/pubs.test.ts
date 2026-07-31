@@ -128,6 +128,53 @@ describe("fetchPubsNear", () => {
     });
   });
 
+  it("keeps an own local override in a filtered index without restoring ordinary pubs", async () => {
+    const ownPub: Pub = {
+      id: "local:own",
+      name: "Moje nová hospoda",
+      lat: 50.081,
+      lng: 14.421,
+      userAddedClientId: "client-own",
+    };
+    upsertLocalPub(ownPub);
+    (searchPubsNear as jest.Mock).mockResolvedValueOnce([
+      { id: "mapy:matching", name: "Jen s kartou", lat: 50.082, lng: 14.422 },
+    ]);
+
+    await fetchPubsNear(50.08, 14.42, undefined, {
+      force: true,
+      radiusKm: 25,
+      amenityKeys: ["payment_card"],
+    });
+
+    expect(getPubById(ownPub.id)).toEqual(ownPub);
+    expect(getPubById("mapy:matching")?.name).toBe("Jen s kartou");
+    expect(getPubById("osm:1")).toBeNull();
+  });
+
+  it("keeps an own local override visible when a filtered request fails", async () => {
+    const ownPub: Pub = {
+      id: "local:offline",
+      name: "Moje offline hospoda",
+      lat: 50.081,
+      lng: 14.421,
+      userAddedClientId: "client-offline",
+    };
+    upsertLocalPub(ownPub);
+    (searchPubsNear as jest.Mock).mockRejectedValueOnce(new Error("offline"));
+
+    await expect(
+      fetchPubsNear(50.08, 14.42, undefined, {
+        force: true,
+        radiusKm: 25,
+        beerBrandKey: "pilsner-urquell",
+      }),
+    ).rejects.toThrow("offline");
+
+    expect(getPubById(ownPub.id)).toEqual(ownPub);
+    expect(getPubById("osm:1")).toBeNull();
+  });
+
   it("restores the last unfiltered catalogue when clearing filters offline", async () => {
     const filteredPub: Pub = {
       id: "mapy:filtered",

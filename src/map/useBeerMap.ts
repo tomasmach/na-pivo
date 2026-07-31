@@ -16,6 +16,7 @@ import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
 import {
   fetchPubsNear,
   getAllLoadedPubs,
+  getLocalPubOverrides,
   hydratePubsSnapshot,
   type Pub,
 } from '@/data/pubs';
@@ -23,7 +24,7 @@ import { fetchVisits, type WireVisit } from '@/data/visitsClient';
 import {
   backendPubSearchFilterKey,
   freshPriceCzks,
-  pubMatchesPriceFilter,
+  pubMatchesPriceFilterOrOwn,
   type PubSearchFilters,
 } from '@/data/pubSearchFilters';
 import {
@@ -113,6 +114,7 @@ export function useBeerMap(filters: PubSearchFilters): BeerMapData {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [requestedRegion, setRequestedRegion] = useState<Region | null>(null);
   const requestSerial = useRef(0);
+  const forceNextPubFetch = useRef(false);
   const privateReadsSuspended = useRef(false);
   const current = useTallyStore((state) => state.current);
   const history = useTallyStore((state) => state.history);
@@ -120,6 +122,10 @@ export function useBeerMap(filters: PubSearchFilters): BeerMapData {
   const reportedPubIds = usePubStore((state) => state.reportedPubIds);
   const reportedCacheKeys = usePubStore((state) => state.reportedCacheKeys);
   const accountId = useAccountStore((state) => state.session?.accountId ?? null);
+  // Re-read own additions only when the catalogue actually changes; a fresh
+  // array on every render would defeat the visiblePubs memoization mid-gesture.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const ownLocalPubs = useMemo(() => getLocalPubOverrides(), [catalogRevision]);
 
   useFocusEffect(
     useCallback(() => {
@@ -242,8 +248,11 @@ export function useBeerMap(filters: PubSearchFilters): BeerMapData {
     const serial = ++requestSerial.current;
     const controller = new AbortController();
     const timer = setTimeout(() => {
+      const force = forceNextPubFetch.current;
+      forceNextPubFetch.current = false;
       setLoadingPubs(true);
       void fetchPubsNear(requestedRegion.latitude, requestedRegion.longitude, controller.signal, {
+        ...(force ? { force: true } : {}),
         radiusKm,
         coverageKm: Math.min(viewportCoverageKm(requestedRegion), radiusKm),
         beerBrandKey,
@@ -308,25 +317,31 @@ export function useBeerMap(filters: PubSearchFilters): BeerMapData {
   }, []);
 
   const loadRegion = useCallback((region: Region) => setRequestedRegion(region), []);
-  const refresh = useCallback(() => setRefreshNonce((value) => value + 1), []);
+  const refresh = useCallback(() => {
+    forceNextPubFetch.current = true;
+    setRefreshNonce((value) => value + 1);
+  }, []);
   // Hide the previous catalogue while a different filter request is pending;
   // unfiltered pubs must never masquerade as confirmed matches. Locally
   // reported pubs disappear immediately (and stay hidden offline) by both
   // signals — id and geohash-8 cell — matching the compass exclusions.
   const visiblePubs = useMemo(() => {
     const loaded = loadedFiltersKey === filtersKey ? pubs : [];
-    if (reportedPubIds.length === 0 && reportedCacheKeys.length === 0) return loaded;
+    const loadedWithOwnPubs = mergePubs(loaded, ownLocalPubs);
+    if (reportedPubIds.length === 0 && reportedCacheKeys.length === 0) return loadedWithOwnPubs;
     const ids = new Set(reportedPubIds);
     const cells = new Set(reportedCacheKeys);
-    return loaded.filter((pub) => !ids.has(pub.id) && !cells.has(geohash8(pub.lat, pub.lng)));
-  }, [loadedFiltersKey, filtersKey, pubs, reportedPubIds, reportedCacheKeys]);
+    return loadedWithOwnPubs.filter(
+      (pub) => !ids.has(pub.id) && !cells.has(geohash8(pub.lat, pub.lng)),
+    );
+  }, [loadedFiltersKey, filtersKey, ownLocalPubs, pubs, reportedPubIds, reportedCacheKeys]);
   const nearbyPrices = useMemo(() => freshPriceCzks(visiblePubs), [visiblePubs]);
   const pricedPubs = useMemo(
     () =>
       priceMinCzk === null && priceMaxCzk === null
         ? visiblePubs
         : visiblePubs.filter((pub) =>
-            pubMatchesPriceFilter(pub, priceMinCzk, priceMaxCzk),
+            pubMatchesPriceFilterOrOwn(pub, priceMinCzk, priceMaxCzk),
           ),
     [priceMaxCzk, priceMinCzk, visiblePubs],
   );

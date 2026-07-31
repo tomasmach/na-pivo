@@ -340,13 +340,13 @@ function mergeLocalPubOverrides(pubs: Pub[]): Pub[] {
   ];
 }
 
-function replaceBasePubs(pubs: Pub[], includeLocalOverrides = true): void {
+function replaceBasePubs(pubs: Pub[]): void {
   _basePubs = pubs.slice();
-  rebuildIndex(includeLocalOverrides ? mergeLocalPubOverrides(_basePubs) : _basePubs);
+  rebuildIndex(mergeLocalPubOverrides(_basePubs));
 }
 
 function rebuildCurrentIndex(): void {
-  rebuildIndex(_currentIndexIsFiltered ? _basePubs : mergeLocalPubOverrides(_basePubs));
+  rebuildIndex(mergeLocalPubOverrides(_basePubs));
 }
 
 /**
@@ -634,7 +634,7 @@ export async function fetchPubsNear(
         _lastUnfilteredRadiusKm = radiusKm;
       }
       _currentIndexIsFiltered = Boolean(beerBrandKey || amenityKey);
-      replaceBasePubs(filtered, !beerBrandKey && !amenityKey);
+      replaceBasePubs(filtered);
       _lastFetchCenter = { lat, lng };
       _lastFetchRadiusKm = radiusKm;
       _lastFetchCoveredKm = coveredKm;
@@ -658,10 +658,10 @@ export async function fetchPubsNear(
     } catch (error) {
       // A failed filtered lookup must never leave the previous unfiltered index
       // looking like a valid match. Keep local work intact in its own override
-      // map, but expose no result until the user retries or clears the filters.
+      // map and expose only those own additions until retrying or clearing filters.
       if (beerBrandKey || amenityKey) {
         _currentIndexIsFiltered = true;
-        replaceBasePubs([], false);
+        replaceBasePubs([]);
       } else if (_currentIndexIsFiltered || (!includeOtherPlaces && _lastFetchIncludeOtherPlaces)) {
         // Clearing filters while offline must not leave the last filtered index
         // presented as an unfiltered result. Restore the last known unfiltered
@@ -686,7 +686,7 @@ export async function fetchPubsNear(
           ),
         );
         _currentIndexIsFiltered = false;
-        replaceBasePubs(canRestore ? _lastUnfilteredPubs : [], true);
+        replaceBasePubs(canRestore ? _lastUnfilteredPubs : []);
       }
       throw error;
     } finally {
@@ -726,6 +726,11 @@ export async function hydratePubsSnapshot(): Promise<boolean> {
 /** A defensive copy of every pub currently held by the spatial index. */
 export function getAllLoadedPubs(): Pub[] {
   return _pubs.slice();
+}
+
+/** A defensive copy of pubs added by this user, independent of active filters. */
+export function getLocalPubOverrides(): Pub[] {
+  return Array.from(_localPubOverrides.values());
 }
 
 /** Builds an index predicate excluding pubs by id and/or geohash-8 cell. The

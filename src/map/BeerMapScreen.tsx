@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
   AccessibilityInfo,
   FlatList,
@@ -93,6 +93,23 @@ type MapSelection =
 let rememberedRegion: Region | null = null;
 let rememberedLayer: Layer = 'all';
 let rememberedSelection: MapSelection | null = null;
+const layerListeners = new Set<() => void>();
+
+function setRememberedLayer(layer: Layer): void {
+  if (rememberedLayer === layer) return;
+  rememberedLayer = layer;
+  for (const listener of layerListeners) listener();
+}
+
+function subscribeRememberedLayer(listener: () => void): () => void {
+  layerListeners.add(listener);
+  return () => layerListeners.delete(listener);
+}
+
+/** Return map-pin additions to the catalogue layer without moving the aimed viewport. */
+export function resetBeerMapLayerForAddedPub(): void {
+  setRememberedLayer('all');
+}
 
 export interface BeerMapScreenProps {
   initialPub?: Pub | null;
@@ -511,7 +528,11 @@ export default function BeerMapScreen({
     [initialPub],
   );
   const [region, setRegion] = useState<Region>(initialRegion);
-  const [layer, setLayer] = useState<Layer>(rememberedLayer);
+  const layer = useSyncExternalStore(
+    subscribeRememberedLayer,
+    () => rememberedLayer,
+    () => rememberedLayer,
+  );
   const [selection, setSelection] = useState<MapSelection | null>(rememberedSelection);
   const [detailOpen, setDetailOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
@@ -818,9 +839,8 @@ export default function BeerMapScreen({
           : 'map_layer_friends',
       'select',
     );
-    rememberedLayer = next;
+    setRememberedLayer(next);
     rememberedSelection = null;
-    setLayer(next);
     setSelection(null);
   }, []);
 

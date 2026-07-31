@@ -20,6 +20,7 @@ const mockClearPubsSnapshot: jest.Mock = jest.fn(async () => undefined);
 const mockPubIdForCoords: jest.Mock = jest.fn((lat: number, lng: number) => `local:${lat}:${lng}`);
 const mockUpsertLocalPub: jest.Mock = jest.fn();
 const mockFireSuccessHaptic: jest.Mock = jest.fn(async () => undefined);
+const mockResetBeerMapLayerForAddedPub: jest.Mock = jest.fn();
 
 jest.mock('expo-router', () => ({
   useRouter: jest.fn(() => ({
@@ -105,6 +106,10 @@ jest.mock('@/data/pubs', () => ({
   clearPubsSnapshot: () => mockClearPubsSnapshot(),
   pubIdForCoords: (...args: [number, number]) => mockPubIdForCoords(...args),
   upsertLocalPub: (pub: unknown) => mockUpsertLocalPub(pub),
+}));
+
+jest.mock('@/map/BeerMapScreen', () => ({
+  resetBeerMapLayerForAddedPub: () => mockResetBeerMapLayerForAddedPub(),
 }));
 
 jest.mock('@/stores/pubStore', () => ({
@@ -195,6 +200,7 @@ describe('AddPubScreen', () => {
         lng: 14.421,
         city: 'Praha',
         address: 'Dlouhá 33',
+        userAddedClientId: 'uuid-fixed',
       }),
     );
     expect(mockEnqueueAddedPub).toHaveBeenCalledWith(
@@ -206,6 +212,9 @@ describe('AddPubScreen', () => {
         city: 'Praha',
         address: 'Dlouhá 33',
       }),
+    );
+    expect(mockUpsertLocalPub.mock.calls[0][0].userAddedClientId).toBe(
+      mockEnqueueAddedPub.mock.calls[0][0].client_id,
     );
     expect(mockBack).toHaveBeenCalledTimes(1);
   });
@@ -253,6 +262,7 @@ describe('AddPubScreen', () => {
         address: 'Dlouhá 33',
       }),
     );
+    expect(mockResetBeerMapLayerForAddedPub).toHaveBeenCalledTimes(1);
     expect(mockBack).toHaveBeenCalledTimes(1);
   });
 
