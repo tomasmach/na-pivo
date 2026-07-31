@@ -14,9 +14,9 @@
  */
 
 import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { ImagesIcon, TrophyIcon } from '@/components/shared/IconGlyph';
+import { TrophyIcon } from '@/components/shared/IconGlyph';
 import { NightRoute } from '@/mocks/NightRoute';
 import { MockColors, MockType } from '@/mocks/mockTheme';
 import type { FeedEntry } from '@/feed/mockFeed';
@@ -28,17 +28,25 @@ const HERO_HEIGHT = 170;
 /** Tile height of the map + photos strip. */
 const STRIP = 150;
 
-/** Photo placeholders until real images are wired. */
-const TINTS = ['#3A2515', '#2E2A1A', '#3A1E1E', '#22301F'];
+/**
+ * Illustrative photos for the mock. `picsum.photos` is a stock-photo service and
+ * a seeded URL always returns the same image, so the feed does not reshuffle on
+ * every render. It MUST NOT ship — real photos come from `BeerPhoto`.
+ */
+const PHOTOS = [
+  'https://picsum.photos/seed/napivo-1/400/400',
+  'https://picsum.photos/seed/napivo-2/400/400',
+  'https://picsum.photos/seed/napivo-3/400/400',
+  'https://picsum.photos/seed/napivo-4/400/400',
+  'https://picsum.photos/seed/napivo-5/400/400',
+];
 
 function Photos({ count, caption }: { count: number; caption: string }) {
   return (
     <View style={[styles.pad, { height: HERO_HEIGHT }]}>
       <View style={styles.photoRow}>
         {Array.from({ length: Math.min(3, count) }).map((_, index) => (
-          <View key={index} style={[styles.photo, { backgroundColor: TINTS[index] }]}>
-            <ImagesIcon size={18} color={withAlpha(Colors.foam, 0.4)} />
-          </View>
+          <Image key={index} source={{ uri: PHOTOS[index % PHOTOS.length] }} style={styles.photo} />
         ))}
         {count > 3 ? (
           <View style={[styles.photo, styles.photoMore]}>
@@ -185,12 +193,11 @@ export function PartyHighlight({ entry }: { entry: FeedEntry }) {
             <NightRoute stops={entry.stops} live={entry.live} height={STRIP} />
           </View>
           {Array.from({ length: entry.photos }).map((_, index) => (
-            <View
+            <Image
               key={index}
-              style={[styles.stripPhoto, { backgroundColor: TINTS[index % TINTS.length] }]}
-            >
-              <ImagesIcon size={20} color={withAlpha(Colors.foam, 0.4)} />
-            </View>
+              source={{ uri: PHOTOS[index % PHOTOS.length] }}
+              style={styles.stripPhoto}
+            />
           ))}
         </ScrollView>
       ) : (

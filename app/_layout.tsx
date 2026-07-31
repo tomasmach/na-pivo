@@ -429,6 +429,30 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="(tabs)" />
+          {/* Opening a night from a card is a normal push: in from the right,
+              back out to the right. The header is native and empty except for
+              the back control, which iOS 26 draws on its own glass capsule and
+              morphs — hand-rolling that button is how you lose the morph. */}
+          <Stack.Screen
+            name="party-recap"
+            options={{
+              headerShown: true,
+              headerTransparent: true,
+              headerTitle: '',
+              headerTintColor: Colors.foam,
+              animation: 'ios_from_right',
+            }}
+          />
+          <Stack.Screen
+            name="pub/[id]"
+            options={{
+              headerShown: true,
+              headerTransparent: true,
+              headerTitle: '',
+              headerTintColor: Colors.foam,
+              animation: 'ios_from_right',
+            }}
+          />
           {/* Starting a night slides UP and the chevron sends it back DOWN —
               the Strava "Record" idiom. It is a modal rather than a tab page
               precisely so the dismissal is the same gesture reversed, instead

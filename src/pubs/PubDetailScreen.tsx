@@ -19,11 +19,10 @@
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 
 import {
   BeerIcon,
-  ChevronLeftIcon,
   MapPinIcon,
   StarIcon,
   UsersIcon,
@@ -77,7 +76,6 @@ function CircleAction({
 
 export default function PubDetailScreen() {
   const insets = useSafeAreaInsets();
-  const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const pub = MOCK_PUBS.find((p) => p.id === id) ?? MOCK_PUBS[0];
 
@@ -95,17 +93,8 @@ export default function PubDetailScreen() {
           height={260}
         />
 
-        <View style={[styles.back, { top: insets.top + Spacing.xs }]}>
-          <Pressable
-            onPress={() => router.back()}
-            style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel="Zpátky"
-          >
-            <ChevronLeftIcon size={22} color={Colors.foam} />
-          </Pressable>
-        </View>
-
+        {/* No hand-rolled back button: the native header draws it on iOS 26's
+            own glass capsule and morphs it. Ours would be a flat copy. */}
         <View style={styles.body}>
           <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
             {pub.name}

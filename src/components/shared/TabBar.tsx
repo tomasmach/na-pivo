@@ -202,12 +202,15 @@ const TabItem = memo(function TabItem({
 }: TabItemProps) {
   const meta = TAB_META[routeName];
   if (!meta) return null;
-  // Party inverts: the glyph sits ON the amber disc, not inside a tint of it.
-  const color = meta.accent
+  // Party inverts: the glyph sits ON the amber disc, so it is stout. The LABEL
+  // is not on the disc — it sits under it on the dark bar, so giving it the
+  // same stout made it invisible. Icon and label need separate colours here.
+  const iconColor = meta.accent
     ? Colors.stout
     : focused
       ? Colors.amber
       : Colors.mutedText;
+  const labelColor = meta.accent || focused ? Colors.amber : Colors.mutedText;
   const { Icon } = meta;
 
   // Fold the badge count into the tab's own a11y label so VoiceOver announces
@@ -242,11 +245,11 @@ const TabItem = memo(function TabItem({
             : undefined
         }
       >
-        <Icon size={24} color={color} />
+        <Icon size={24} color={iconColor} />
         {badge ? <TabBadge count={badge.count} dot={badge.dot} live={badge.live} /> : null}
       </View>
       <Text
-        style={[styles.label, { color }]}
+        style={[styles.label, { color: labelColor }]}
         numberOfLines={1}
         maxFontSizeMultiplier={FontScaleCap.body}
       >

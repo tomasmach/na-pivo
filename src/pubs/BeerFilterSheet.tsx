@@ -100,7 +100,7 @@ function SheetBody({
         accessibilityLabel="Zavřít"
       />
 
-      <View style={[styles.cardWrap, { marginBottom: -insets.bottom }]}>
+      <View style={styles.cardWrap}>
         <View style={styles.card}>
           <View style={styles.header}>
             <Text

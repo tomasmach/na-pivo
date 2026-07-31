@@ -201,13 +201,13 @@ function FilterChips() {
   );
 }
 
-function PubRow({ pub }: { pub: MockPub }) {
+function PubRow({ pub, first }: { pub: MockPub; first?: boolean }) {
   const router = useRouter();
 
   return (
     <Pressable
       onPress={() => router.push(`/pub/${pub.id}` as Href)}
-      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+      style={({ pressed }) => [styles.row, first && styles.rowFirst, pressed && styles.pressed]}
       accessibilityRole="button"
       accessibilityLabel={`${pub.name}, detail`}
     >
@@ -359,8 +359,8 @@ export default function PubListMockScreen() {
           <CompassCell onPress={() => router.push('/pubs-map' as Href)} />
 
           <View style={styles.list}>
-            {MOCK_PUBS.map((pub) => (
-              <PubRow key={pub.id} pub={pub} />
+            {MOCK_PUBS.map((pub, index) => (
+              <PubRow key={pub.id} pub={pub} first={index === 0} />
             ))}
           </View>
 
@@ -481,6 +481,9 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(Colors.foam, 0.1),
   },
+  /** The first row follows the tinted compass panel — a hairline right under a
+   *  filled block reads as an underline on it, not as a list separator. */
+  rowFirst: { borderTopWidth: 0 },
   thumb: { width: THUMB, height: THUMB },
   thumbBadge: {
     position: 'absolute',

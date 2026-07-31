@@ -38,11 +38,9 @@
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
 
 import {
   BeerIcon,
-  ChevronLeftIcon,
   ClockIcon,
   HeartIcon,
   ImagesIcon,
@@ -235,7 +233,6 @@ function SectionTitle({ children }: { children: string }) {
 
 export default function PartyRecapScreen() {
   const insets = useSafeAreaInsets();
-  const router = useRouter();
   // The recap reads what the party mode actually produced, and only falls back
   // to the canned night for the parts a mock evening has not made yet. Before
   // this, playing a game and taking photos changed nothing here — the loop was
@@ -273,16 +270,8 @@ export default function PartyRecapScreen() {
           { paddingTop: insets.top + Spacing.sm, paddingBottom: insets.bottom + SECTION_GAP },
         ]}
       >
-        <Pressable
-          onPress={() => router.back()}
-          hitSlop={10}
-          accessibilityRole="button"
-          accessibilityLabel="Zpátky"
-          style={({ pressed }) => [styles.back, pressed && styles.pressed]}
-        >
-          <ChevronLeftIcon size={26} color={Colors.foam} />
-        </Pressable>
-
+        {/* No hand-rolled back button: the native header draws it on iOS 26's
+            own glass capsule and morphs it. Ours would be a flat copy. */}
         {/* Title block — the night, named, dated and routed. */}
         <Text style={styles.date} maxFontSizeMultiplier={FontScaleCap.body}>
           {party.dateLabel}
