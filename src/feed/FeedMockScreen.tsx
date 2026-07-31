@@ -22,6 +22,7 @@
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter, type Href } from 'expo-router';
 
 import {
   HeartIcon,
@@ -30,11 +31,23 @@ import {
   SearchIcon,
 } from '@/components/shared/IconGlyph';
 import { MOCK_FEED, MOCK_NUDGE, type FeedEntry } from '@/feed/mockFeed';
+import { NightRoute } from '@/mocks/NightRoute';
 import { StatGrid } from '@/mocks/StatGrid';
-import { MockLayout, MockType } from '@/mocks/mockTheme';
+import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
+
+/** Placeholder tints until real photos are wired — a strip that reads as a
+ *  gallery without pretending to be one. */
+const PHOTO_TINTS = ['#3A2515', '#2E2A1A', '#3A1E1E', '#22301F'];
+
+/** "Honza, Petr a ty" — the table, named the way you would say it out loud. */
+function namesLine(people: { name: string }[]): string {
+  const names = people.map((p) => p.name);
+  if (names.length <= 1) return names[0] ?? '';
+  return `${names.slice(0, -1).join(', ')} a ${names[names.length - 1]}`;
+}
 
 function Initials({ name, tint, size = 28 }: { name: string; tint: string; size?: number }) {
   return (
@@ -57,33 +70,31 @@ function Initials({ name, tint, size = 28 }: { name: string; tint: string; size?
   );
 }
 
-/** The table, as one object: initials overlapping like a Strava kudos row. */
-function PeopleStack({ people }: { people: FeedEntry['people'] }) {
-  const shown = people.slice(0, 4);
-  const rest = people.length - shown.length;
-
-  return (
-    <View style={styles.peopleRow}>
-      {shown.map((person, index) => (
-        <View key={person.name} style={index === 0 ? undefined : styles.peopleOverlap}>
-          <Initials name={person.name} tint={person.tint} size={26} />
-        </View>
-      ))}
-      <Text style={styles.peopleLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-        {rest > 0 ? `${shown.map((p) => p.name).join(', ')} +${rest}` : shown.map((p) => p.name).join(', ')}
-      </Text>
-    </View>
-  );
-}
-
 function FeedCard({ entry }: { entry: FeedEntry }) {
+  const router = useRouter();
+
   return (
-    <View style={styles.card}>
+    <Pressable
+      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+      onPress={() => router.push('/party-recap' as Href)}
+      accessibilityRole="button"
+      accessibilityLabel={`${entry.title}, detail večera`}
+    >
+      {/* The party owns the post, not one author. A night is the same object on
+          everybody's wall, so the header is the table: every face, then who they
+          are. "Honza přidal" would make four other people spectators at their
+          own evening. */}
       <View style={styles.cardHead}>
-        <Initials name={entry.author} tint={entry.authorTint} />
+        <View style={styles.headAvatars}>
+          {entry.people.slice(0, 4).map((person, index) => (
+            <View key={person.name} style={index === 0 ? undefined : styles.peopleOverlap}>
+              <Initials name={person.name} tint={person.tint} size={30} />
+            </View>
+          ))}
+        </View>
         <View style={styles.grow}>
           <Text style={styles.author} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-            {entry.author}
+            {namesLine(entry.people)}
           </Text>
           <Text style={styles.when} maxFontSizeMultiplier={FontScaleCap.body}>
             {entry.when}
@@ -102,9 +113,6 @@ function FeedCard({ entry }: { entry: FeedEntry }) {
       <Text style={styles.title} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.heading}>
         {entry.title}
       </Text>
-      <Text style={styles.route} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
-        {entry.stops.join('  →  ')}
-      </Text>
 
       {/* Strava's stat block: muted label ABOVE a heavy value, no dividers —
           the grid spacing separates them (docs/references/IMG_2125.PNG). */}
@@ -119,7 +127,28 @@ function FeedCard({ entry }: { entry: FeedEntry }) {
         />
       </View>
 
-      <PeopleStack people={entry.people} />
+      {/* The hero. Strava's card is worth sharing because half of it is the
+          map; this is the same slot — the night's route, edge to edge, with a
+          strip of the evening's photos over its foot. */}
+      <View style={styles.hero}>
+        <NightRoute stops={entry.stops} live={entry.live} />
+        {entry.photos > 0 ? (
+          <View style={styles.photoStrip} pointerEvents="none">
+            {Array.from({ length: Math.min(4, entry.photos) }).map((_, index) => (
+              <View key={index} style={[styles.photo, { backgroundColor: PHOTO_TINTS[index] }]}>
+                <ImagesIcon size={13} color={withAlpha(Colors.foam, 0.5)} />
+              </View>
+            ))}
+            {entry.photos > 4 ? (
+              <View style={[styles.photo, styles.photoMore]}>
+                <Text style={styles.photoMoreText} allowFontScaling={false}>
+                  +{entry.photos - 4}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+      </View>
 
       <View style={styles.cardFoot}>
         <Pressable
@@ -151,7 +180,7 @@ function FeedCard({ entry }: { entry: FeedEntry }) {
           </View>
         ) : null}
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -259,7 +288,36 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     marginBottom: Spacing.md,
   },
+  cardPressed: { opacity: 0.92 },
   cardHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  headAvatars: { flexDirection: 'row', alignItems: 'center' },
+
+  // — Hero —
+  hero: {
+    marginTop: Spacing.md,
+    marginHorizontal: -Spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.foam, 0.1),
+  },
+  photoStrip: {
+    position: 'absolute',
+    left: Spacing.md,
+    right: Spacing.md,
+    top: 12,
+    flexDirection: 'row',
+    gap: 6,
+  },
+  photo: {
+    width: 42,
+    height: 42,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.foam, 0.14),
+  },
+  photoMore: { backgroundColor: MockColors.surfaceHigh },
+  photoMoreText: { fontSize: 12, fontWeight: '700', color: Colors.foam },
   author: { fontWeight: '700', fontSize: 15, color: Colors.foam },
   when: { fontWeight: '400', fontSize: 12, color: Colors.mutedText, marginTop: 1 },
   livePill: {

@@ -17,8 +17,8 @@ export interface FeedEntry {
   /** "dnes 23:40", "včera", "út 28. 7." — already humanised. */
   when: string;
   title: string;
-  /** The pub chain, in order. */
-  stops: string[];
+  /** The pub chain, in order — with coordinates, so the card can show a map. */
+  stops: { name: string; lat: number; lng: number }[];
   beers: number;
   duration: string;
   /** Everyone at the table, author included. */
@@ -39,7 +39,7 @@ export const MOCK_FEED: FeedEntry[] = [
     authorTint: '#E8A317',
     when: 'právě teď',
     title: 'Rychlovka po práci',
-    stops: ['Zlý časy'],
+    stops: [{ name: 'Zlý časy', lat: 50.0655, lng: 14.438 }],
     beers: 4,
     duration: '48m',
     people: [
@@ -57,7 +57,11 @@ export const MOCK_FEED: FeedEntry[] = [
     authorTint: '#F0BE5C',
     when: 'včera 02:12',
     title: 'Čtvrteční jízda',
-    stops: ['U Fleků', 'Zlý časy', 'Vzorkovna'],
+    stops: [
+      { name: 'U Fleků', lat: 50.0785, lng: 14.42 },
+      { name: 'Zlý časy', lat: 50.0655, lng: 14.438 },
+      { name: 'Vzorkovna', lat: 50.081, lng: 14.418 },
+    ],
     beers: 27,
     duration: '6h 42m',
     people: [
@@ -78,7 +82,10 @@ export const MOCK_FEED: FeedEntry[] = [
     authorTint: '#A8896A',
     when: 'út 28. 7.',
     title: 'Objevovačka na Žižkově',
-    stops: ['U Slovanské lípy', 'Bílá labuť'],
+    stops: [
+      { name: 'U Slovanské lípy', lat: 50.088, lng: 14.453 },
+      { name: 'Bílá labuť', lat: 50.09, lng: 14.434 },
+    ],
     beers: 9,
     duration: '3h 05m',
     people: [

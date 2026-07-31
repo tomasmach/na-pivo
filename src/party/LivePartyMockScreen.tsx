@@ -27,7 +27,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   BeerIcon,
   ChevronDownIcon,
-  MenuIcon,
   SoccerBallIcon,
   UserPlusIcon,
 } from '@/components/shared/IconGlyph';
@@ -113,13 +112,10 @@ export default function LivePartyMockScreen() {
           </Text>
           <ChevronDownIcon size={16} color={Colors.foam} />
         </Pressable>
-        <Pressable
-          style={({ pressed }) => [styles.topIcon, pressed && styles.pressed]}
-          accessibilityRole="button"
-          accessibilityLabel="Další možnosti"
-        >
-          <MenuIcon size={19} color={Colors.foam} />
-        </Pressable>
+        {/* No overflow button here. There was a "…" out of Tácek habit and it
+            had no job — chrome with nothing behind it. What a running night
+            actually needs is "Ukončit večer", and that deserves a name, not a
+            hamburger; it belongs in the sheet next to the counter. */}
       </View>
 
       {/* The sheet. Everything you touch during a night lives here. */}

@@ -61,11 +61,44 @@ export const MockLayout = {
 } as const;
 
 /**
+ * True-dark surfaces. The brown moved OUT of the background and INTO the light.
+ *
+ * Until now the app's ground was `stout #1F1308` — a warm brown panel. Against
+ * Strava and Packeta, which both sit on near-black, that brown is what made
+ * every screen read as tinted rather than deep. So the ground goes neutral and
+ * almost black, and the brown survives only as a gradient at the top of a
+ * screen — light falling on the room, not paint on the walls.
+ *
+ * Adopting this for real means rewriting §2.1 of the design system; these
+ * tokens are mock-scoped until that call is made.
+ */
+export const MockColors = {
+  /** Screen ground. Neutral, not brown. */
+  bg: '#0D0D0E',
+  /** Card / raised surface. */
+  surface: '#161618',
+  /** Nested element inside a card: row, chip, thumbnail well. */
+  surfaceHigh: '#202023',
+  /** The one accent — unchanged, it is the brand. */
+  accent: '#E8A317',
+  /** A running session. The only time the app changes colour. */
+  live: '#35D07F',
+} as const;
+
+/**
  * The brown answer to Packeta's pink header shader
  * (`#FFEBEC → #FCAAAF → #FF6F79`): a warm glow at the very top of a screen that
- * fades into the background. Stops go top → bottom.
+ * fades into the ground. Stops go top → bottom.
  *
  * Per design-system §16.2 this is chrome, not an ambient halo behind content —
- * it lives in the header band and nowhere else.
+ * it lives in the header band and nowhere else, and it never sits under a
+ * number you have to read.
  */
-export const HEADER_GRADIENT = ['#4A2C12', '#33200E', '#1F1308'] as const;
+export const HEADER_GRADIENT = ['#5A3418', '#2A1A0C', MockColors.bg] as const;
+
+/**
+ * The same band while a session is running. A night in progress is the one
+ * state worth recolouring the whole screen for — you should be able to tell
+ * across the table, at a glance, that the counter is live.
+ */
+export const LIVE_GRADIENT = ['#0F4429', '#122A1B', MockColors.bg] as const;
