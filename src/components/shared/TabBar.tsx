@@ -232,12 +232,23 @@ const TabItem = memo(function TabItem({ routeName, focused, onPress, badge }: Ta
   );
 });
 
+/** The party is a fullscreen mode, not a page with chrome: while it is open the
+ *  bar steps out of the way entirely and the screen carries its own minimise.
+ *  Route name, not label — `beer` is the party's route (see TAB_META). */
+const FULLSCREEN_ROUTES = new Set(['beer']);
+
 export function TabBar({ state, navigation }: TabBarProps) {
   const insets = useSafeAreaInsets();
+  const activeRoute = state.routes[state.index]?.name;
+  const hidden = !!activeRoute && FULLSCREEN_ROUTES.has(activeRoute);
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
   const pendingRequests = usePartaSignalStore((s) => s.pendingRequests);
   const unread = usePartaSignalStore((s) => s.unread);
   const liveNow = usePartaSignalStore((s) => s.liveNow);
+
+  // After every hook, never before — an early return above them would change
+  // the hook order between renders (rules-of-hooks).
+  if (hidden) return null;
 
   const partaBadge: TabBadgeState | null =
     pendingRequests > 0

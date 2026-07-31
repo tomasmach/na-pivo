@@ -38,10 +38,6 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
-/** Placeholder tints until real photos are wired — a strip that reads as a
- *  gallery without pretending to be one. */
-const PHOTO_TINTS = ['#3A2515', '#2E2A1A', '#3A1E1E', '#22301F'];
-
 /** "Honza, Petr a ty" — the table, named the way you would say it out loud. */
 function namesLine(people: { name: string }[]): string {
   const names = people.map((p) => p.name);
@@ -128,26 +124,10 @@ function FeedCard({ entry }: { entry: FeedEntry }) {
       </View>
 
       {/* The hero. Strava's card is worth sharing because half of it is the
-          map; this is the same slot — the night's route, edge to edge, with a
-          strip of the evening's photos over its foot. */}
+          map; this is the same slot. The map owns its own caption and photo
+          count, so nothing is pasted on top of it from out here. */}
       <View style={styles.hero}>
-        <NightRoute stops={entry.stops} live={entry.live} />
-        {entry.photos > 0 ? (
-          <View style={styles.photoStrip} pointerEvents="none">
-            {Array.from({ length: Math.min(4, entry.photos) }).map((_, index) => (
-              <View key={index} style={[styles.photo, { backgroundColor: PHOTO_TINTS[index] }]}>
-                <ImagesIcon size={13} color={withAlpha(Colors.foam, 0.5)} />
-              </View>
-            ))}
-            {entry.photos > 4 ? (
-              <View style={[styles.photo, styles.photoMore]}>
-                <Text style={styles.photoMoreText} allowFontScaling={false}>
-                  +{entry.photos - 4}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-        ) : null}
+        <NightRoute stops={entry.stops} live={entry.live} photos={entry.photos} />
       </View>
 
       <View style={styles.cardFoot}>

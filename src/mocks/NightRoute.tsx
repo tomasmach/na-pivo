@@ -1,29 +1,42 @@
 /**
  * DESIGN MOCK — the night, on a real map.
  *
- * The first attempt drew the route as an abstract zig-zag diagram. It was
- * wrong twice: a stretched viewBox squashed the dots into ellipses, and a
- * one-pub night degenerated into a single meaningless blob. The deeper mistake
- * was the premise — Strava's card is worth sharing because it shows a REAL map
- * of a REAL place, and no amount of tidying makes a made-up polyline do that.
+ * An earlier pass drew the route as an abstract zig-zag. It was wrong twice: a
+ * stretched viewBox squashed the dots into ellipses, and a one-pub night became
+ * a single meaningless blob. The deeper mistake was the premise — Strava's card
+ * is worth sharing because it shows a REAL map of a REAL place, and no amount
+ * of tidying makes an invented polyline do that.
  *
- * So this is the actual map: `react-native-maps` on Google (already the app's
- * provider in `BeerMapScreen`), a pin per pub, framed to fit them all, in dark
- * to match the card. Non-interactive on purpose — it is the card's picture,
- * not a map you drive; the whole card is one tap into the night's detail.
+ * `react-native-maps` on Google (the app's provider in `BeerMapScreen`), a
+ * numbered pin per pub, framed to fit them all, dark to match the card, and
+ * non-interactive: it is the card's picture, not a map you drive. The whole
+ * card is one tap into the night's detail.
+ *
+ * Two things this file learned the hard way:
+ *
+ *  - Use `region`, not `initialRegion`. The latter is applied once at mount,
+ *    and a MapView that mounts before layout has a size falls back to a
+ *    continent — which is exactly what it did.
+ *  - The caption is a fade, not a bar. A solid strip across the picture reads
+ *    as a broken overlay; a gradient that dissolves into the map reads as part
+ *    of it.
  */
 
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
+import { ImagesIcon } from '@/components/shared/IconGlyph';
 import { MockColors } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 
 const HEIGHT = 170;
-/** Never frame tighter than this, or one pub fills the card with rooftops. */
-const MIN_SPAN = 0.012;
+/** Street level. One pub should look like a corner, not a country. */
+const MIN_SPAN = 0.006;
+/** How tall the bottom fade is. */
+const FADE = 78;
 
 export interface RouteStop {
   name: string;
@@ -31,7 +44,7 @@ export interface RouteStop {
   lng: number;
 }
 
-/** Frame every stop with room to breathe. */
+/** Frame every stop with a little room around them. */
 function regionFor(stops: RouteStop[]): Region {
   const lats = stops.map((s) => s.lat);
   const lngs = stops.map((s) => s.lng);
@@ -43,26 +56,36 @@ function regionFor(stops: RouteStop[]): Region {
   return {
     latitude: (minLat + maxLat) / 2,
     longitude: (minLng + maxLng) / 2,
-    latitudeDelta: Math.max(MIN_SPAN, (maxLat - minLat) * 1.9),
-    longitudeDelta: Math.max(MIN_SPAN, (maxLng - minLng) * 1.9),
+    latitudeDelta: Math.max(MIN_SPAN, (maxLat - minLat) * 1.6),
+    longitudeDelta: Math.max(MIN_SPAN, (maxLng - minLng) * 1.6),
   };
 }
 
-export function NightRoute({ stops, live = false }: { stops: RouteStop[]; live?: boolean }) {
+export function NightRoute({
+  stops,
+  live = false,
+  photos = 0,
+  height = HEIGHT,
+}: {
+  stops: RouteStop[];
+  live?: boolean;
+  photos?: number;
+  /** Card hero by default; a shorter strip when it heads a live party. */
+  height?: number;
+}) {
   const region = useMemo(() => (stops.length > 0 ? regionFor(stops) : null), [stops]);
   const tint = live ? MockColors.live : MockColors.accent;
 
   if (!region) return null;
 
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, { height }]}>
       <MapView
         provider={PROVIDER_GOOGLE}
         style={StyleSheet.absoluteFill}
-        initialRegion={region}
+        region={region}
         userInterfaceStyle="dark"
         mapType="standard"
-        // The card's picture, not a map you drive.
         scrollEnabled={false}
         zoomEnabled={false}
         rotateEnabled={false}
@@ -90,8 +113,22 @@ export function NightRoute({ stops, live = false }: { stops: RouteStop[]; live?:
         ))}
       </MapView>
 
-      {/* The chain, spelled out along the foot — the map's caption. */}
-      <View style={styles.caption} pointerEvents="none">
+      {/* The map dissolves into the card instead of being cut by a bar. */}
+      <View style={styles.fade} pointerEvents="none">
+        <Svg width="100%" height="100%">
+          <Defs>
+            <LinearGradient id="mapFade" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor="#000000" stopOpacity="0" />
+              <Stop offset="0.55" stopColor="#000000" stopOpacity="0.55" />
+              <Stop offset="1" stopColor="#000000" stopOpacity="0.88" />
+            </LinearGradient>
+          </Defs>
+          <Rect x="0" y="0" width="100%" height="100%" fill="url(#mapFade)" />
+        </Svg>
+      </View>
+
+      {/* Caption left, the night's photos right — both riding the same fade. */}
+      <View style={styles.foot} pointerEvents="none">
         <Text
           style={[styles.captionText, live && { color: MockColors.live }]}
           numberOfLines={1}
@@ -99,13 +136,21 @@ export function NightRoute({ stops, live = false }: { stops: RouteStop[]; live?:
         >
           {stops.map((s) => s.name).join('  →  ')}
         </Text>
+        {photos > 0 ? (
+          <View style={styles.photoPill}>
+            <ImagesIcon size={13} color={Colors.foam} />
+            <Text style={styles.photoText} allowFontScaling={false}>
+              {photos}
+            </Text>
+          </View>
+        ) : null}
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { height: HEIGHT, overflow: 'hidden', backgroundColor: MockColors.bg },
+  wrap: { overflow: 'hidden', backgroundColor: MockColors.bg },
   pin: {
     minWidth: 22,
     height: 22,
@@ -117,14 +162,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pinText: { fontSize: 12, fontWeight: '800' },
-  caption: {
+  fade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: FADE },
+  foot: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    left: 14,
+    right: 14,
+    bottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  captionText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: withAlpha(Colors.amber, 0.95),
+  },
+  photoPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: withAlpha('#000000', 0.55),
   },
-  captionText: { fontSize: 13, fontWeight: '600', color: withAlpha(Colors.amber, 0.95) },
+  photoText: { fontSize: 12, fontWeight: '700', color: Colors.foam },
 });
