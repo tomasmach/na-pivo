@@ -37,7 +37,6 @@ import {
   LocateFixedIcon,
   ChevronRightIcon,
   HeartIcon,
-  MapPinIcon,
   SearchIcon,
   SlidersHorizontalIcon,
   StarIcon,
@@ -148,11 +147,17 @@ function PubRow({ pub, nearest }: { pub: MockPub; nearest?: boolean }) {
     <Pressable
       style={({ pressed }) => [styles.row, nearest && styles.rowNearest, pressed && styles.pressed]}
     >
-      {/* Photo well. A real pub photo goes here; the glyph is the placeholder. */}
+      {/* The well is the pub's picture — a photo, or a static map of the spot
+          when there is none. Until either is wired it carries the initial, so
+          the rows still differ from each other at a glance instead of being
+          five identical beer glyphs. The beer moves to the corner badge: it
+          says "this is a pub", which is a label, not the picture. */}
       <View style={styles.thumb}>
-        <BeerIcon size={20} color={Colors.amber} />
+        <Text style={styles.thumbInitial} allowFontScaling={false}>
+          {pub.name.slice(0, 1).toUpperCase()}
+        </Text>
         <View style={styles.thumbBadge}>
-          <MapPinIcon size={10} color={Colors.stout} />
+          <BeerIcon size={11} color={Colors.stout} />
         </View>
       </View>
 
@@ -429,8 +434,12 @@ const styles = StyleSheet.create({
     borderRadius: MockLayout.thumbRadius,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.12),
+    // Neutral, not amber: it is a picture well, and a tinted one would fight
+    // the photo that eventually fills it.
+    backgroundColor: Colors.stout3,
+    overflow: 'visible',
   },
+  thumbInitial: { fontSize: 19, fontWeight: '700', color: withAlpha(Colors.foam, 0.55) },
   thumbBadge: {
     position: 'absolute',
     right: -3,
