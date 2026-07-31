@@ -32,6 +32,13 @@ export type PartyHighlight =
   | { kind: 'record'; title: string; detail: string }
   | { kind: 'map' };
 
+/**
+ * Placeholder faces for the mock only. `pravatar.cc` is a stock-photo service —
+ * it must not survive into anything shipped; real avatars come from
+ * `Account.avatar`, which the app already serves.
+ */
+const AVATARS = 'https://i.pravatar.cc/160?img=';
+
 export interface FeedEntry {
   id: string;
   /** Who posted the night. */
@@ -44,8 +51,9 @@ export interface FeedEntry {
   stops: { name: string; lat: number; lng: number }[];
   beers: number;
   duration: string;
-  /** Everyone at the table, author included. */
-  people: { name: string; tint: string }[];
+  /** Everyone at the table, author included. Handles, not legal names — this
+   *  is a pub app, and nobody is "Jan Novák" at the table. */
+  people: { name: string; tint: string; avatar: string }[];
   photos: number;
   cheers: number;
   comments: number;
@@ -74,8 +82,8 @@ export const MOCK_FEED: FeedEntry[] = [
     beers: 4,
     duration: '48m',
     people: [
-      { name: 'Honza', tint: '#E8A317' },
-      { name: 'Petr', tint: '#7DD66B' },
+      { name: '@sudík', tint: '#E8A317', avatar: `${AVATARS}57` },
+      { name: '@pěna', tint: '#7DD66B', avatar: `${AVATARS}41` },
     ],
     photos: 2,
     cheers: 3,
@@ -104,11 +112,11 @@ export const MOCK_FEED: FeedEntry[] = [
     beers: 27,
     duration: '6h 42m',
     people: [
-      { name: 'Honza', tint: '#E8A317' },
-      { name: 'Petr', tint: '#7DD66B' },
-      { name: 'Tomáš', tint: '#F0BE5C' },
-      { name: 'Klára', tint: '#A8896A' },
-      { name: 'Míša', tint: '#FBF3E0' },
+      { name: '@sudík', tint: '#E8A317', avatar: `${AVATARS}57` },
+      { name: '@pěna', tint: '#7DD66B', avatar: `${AVATARS}41` },
+      { name: '@chmelák', tint: '#F0BE5C', avatar: `${AVATARS}50` },
+      { name: '@klárka', tint: '#A8896A', avatar: `${AVATARS}64` },
+      { name: '@mišák', tint: '#FBF3E0', avatar: `${AVATARS}26` },
     ],
     photos: 18,
     cheers: 12,
@@ -139,9 +147,9 @@ export const MOCK_FEED: FeedEntry[] = [
     beers: 9,
     duration: '3h 05m',
     people: [
-      { name: 'Klára', tint: '#A8896A' },
-      { name: 'Míša', tint: '#FBF3E0' },
-      { name: 'Tomáš', tint: '#F0BE5C' },
+      { name: '@klárka', tint: '#A8896A', avatar: `${AVATARS}64` },
+      { name: '@mišák', tint: '#FBF3E0', avatar: `${AVATARS}26` },
+      { name: '@chmelák', tint: '#F0BE5C', avatar: `${AVATARS}50` },
     ],
     photos: 6,
     cheers: 7,

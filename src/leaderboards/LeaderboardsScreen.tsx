@@ -43,6 +43,7 @@ import {
 } from '@/data/leaderboardsClient';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { cs } from '@/i18n/cs';
+import { PeopleSuggestions } from '@/community/PeopleSuggestions';
 import BoardSegmented from '@/leaderboards/BoardSegmented';
 import { HeroFooterSkeleton, HeroSkeleton, RowsSkeleton } from '@/leaderboards/BoardSkeleton';
 import { GlobalBoardRow } from '@/leaderboards/GlobalBoardRow';
@@ -321,8 +322,9 @@ export default function LeaderboardsScreen({ embedded = false }: LeaderboardsScr
         },
       ]}
     >
+      {embedded ? null : (
       <View style={styles.header}>
-        {embedded ? null : (
+        {(
           <Pressable
             onPress={goBack}
             hitSlop={10}
@@ -345,13 +347,16 @@ export default function LeaderboardsScreen({ embedded = false }: LeaderboardsScr
         {/* The back chevron's twin, so the title stays optically centred.
             Without the chevron there is nothing to balance, and the title moves
             to the left edge like every other tab's title. */}
-        {embedded ? null : <View style={styles.headerSpacer} />}
+        <View style={styles.headerSpacer} />
       </View>
+      )}
 
       {/* One filter block, two questions asked in two different voices: the
           metric is a solid track with one sliding thumb, the window is quiet
           underlined text. They sit 8 pt apart and 16 pt above the card, so they
           read as one control group, not two stray rows. */}
+      {embedded ? <PeopleSuggestions /> : null}
+
       <View style={styles.filters}>
         <BoardSegmented
           options={CATEGORY_LABELS}

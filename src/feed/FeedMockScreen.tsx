@@ -20,7 +20,7 @@
  */
 
 import React from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter, type Href } from "expo-router";
 
@@ -41,33 +41,33 @@ function namesLine(people: { name: string }[]): string {
   return `${names.slice(0, -1).join(", ")} a ${names[names.length - 1]}`;
 }
 
-function Initials({
+/** A face when there is one, the initial when there is not. The ring is the
+ *  card ground, so overlapping faces punch out of each other cleanly. */
+function Face({
   name,
   tint,
+  avatar,
   size = 28,
 }: {
   name: string;
   tint: string;
+  avatar?: string;
   size?: number;
 }) {
+  const shape = {
+    width: size,
+    height: size,
+    borderRadius: size / 2,
+  };
+
+  if (avatar) {
+    return <Image source={{ uri: avatar }} style={[styles.avatar, shape]} />;
+  }
+
   return (
-    <View
-      style={[
-        styles.avatar,
-        {
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          backgroundColor: tint,
-          borderColor: MockColors.surface,
-        },
-      ]}
-    >
-      <Text
-        style={[styles.avatarText, { fontSize: size * 0.42 }]}
-        allowFontScaling={false}
-      >
-        {name.slice(0, 1).toUpperCase()}
+    <View style={[styles.avatar, shape, { backgroundColor: tint, borderColor: MockColors.surface }]}>
+      <Text style={[styles.avatarText, { fontSize: size * 0.42 }]} allowFontScaling={false}>
+        {name.replace('@', '').slice(0, 1).toUpperCase()}
       </Text>
     </View>
   );
@@ -94,7 +94,12 @@ function FeedCard({ entry }: { entry: FeedEntry }) {
               key={person.name}
               style={index === 0 ? undefined : styles.peopleOverlap}
             >
-              <Initials name={person.name} tint={person.tint} size={30} />
+              <Face
+                name={person.name}
+                tint={person.tint}
+                avatar={person.avatar}
+                size={30}
+              />
             </View>
           ))}
         </View>
@@ -309,11 +314,16 @@ const styles = StyleSheet.create({
   // No panel. A post wrapped in a card gives away the screen's width to a
   // border on both sides, and the feed is the one place that wants every pixel
   // for the content. Posts sit on the ground, separated by a hairline.
+  // Posts are separated by a dark BAND, not a hairline. Strava does the same
+  // and it is why its feed reads as a stack of separate things — a 1px line
+  // between two panels of the same colour just makes one long panel with a
+  // scratch in it. The band is darker than the ground, so it reads as the gap
+  // between cards rather than a border on them.
   card: {
     paddingTop: Spacing.lg,
     paddingBottom: Spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(Colors.foam, 0.1),
+    borderTopWidth: 10,
+    borderTopColor: '#0F0A05',
     marginHorizontal: -Spacing.md,
     paddingHorizontal: Spacing.md,
   },

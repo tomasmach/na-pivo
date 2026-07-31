@@ -114,6 +114,11 @@ function Tempo({
       <View style={styles.bars}>
         {hourly.map((slot) => (
           <View key={slot.hour} style={styles.barCol}>
+            {/* The tally above the bar: the shape shows the trend, the number
+                answers "how many" without making anyone read a bar height. */}
+            <Text style={styles.barValue} allowFontScaling={false}>
+              {slot.beers}
+            </Text>
             <View style={styles.barTrack}>
               <View
                 style={[
@@ -277,6 +282,7 @@ const styles = StyleSheet.create({
   barCol: { flex: 1, alignItems: 'center', gap: 5 },
   barTrack: { flex: 1, width: '100%', justifyContent: 'flex-end' },
   bar: { width: '100%', borderRadius: 6, backgroundColor: withAlpha(Colors.amber, 0.55) },
+  barValue: { fontSize: 12, fontWeight: '700', color: Colors.foam },
   barHour: { fontSize: 11, fontWeight: '500', color: Colors.mutedText },
 
   // — Record —
