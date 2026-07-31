@@ -48,10 +48,15 @@ export function PlacesSheet({
   initial = 'half',
   onDetentChange,
   collapseSignal = 0,
+  listAtTop = true,
 }: {
   children: React.ReactNode;
   initial?: Detent;
   onDetentChange?: (detent: Detent) => void;
+  /** Whether the child list is scrolled to its very top. At the top a downward
+   *  drag has nothing left to scroll, so it should pull the sheet down instead
+   *  of doing nothing. */
+  listAtTop?: boolean;
   /** Bump to collapse to `peek` — Apple Maps behaviour: touching the map gets
    *  the sheet out of the way so you can see what you are touching. */
   collapseSignal?: number;
@@ -110,9 +115,14 @@ export function PlacesSheet({
       runOnJS(settle)(best);
     });
 
-  // The same pan, on the body, but only while there is room to grow.
+  // The same pan, on the body. Below `full` it owns every direction — pulling
+  // the list up IS how you open the sheet. At `full` it only wakes for a
+  // DOWNWARD drag, and only while the list is already at its top: there the
+  // list has nothing left to scroll, so the drag belongs to the sheet.
+  const atFull = detent === 'full';
   const bodyPan = Gesture.Pan()
-    .enabled(detent !== 'full')
+    .enabled(!atFull || listAtTop)
+    .activeOffsetY(atFull ? 8 : [-8, 8])
     .onStart(() => {
       'worklet';
       start.value = translateY.value;

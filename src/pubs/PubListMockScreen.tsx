@@ -19,7 +19,6 @@
 
 import React from 'react';
 import {
-  ActionSheetIOS,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -29,6 +28,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
+import { ContextMenuButton } from 'react-native-ios-context-menu';
+import { SymbolView } from 'expo-symbols';
 
 import {
   BeerIcon,
@@ -65,24 +66,6 @@ function FilterChips() {
   const [sort, setSort] = React.useState<Sort>('Nejbližší');
   const [on, setOn] = React.useState<string[]>([]);
 
-  // Native iOS menu. `@expo/ui`'s SwiftUI ContextMenu opens on long-press,
-  // which is the wrong gesture for a dropdown; an anchored SwiftUI Menu would
-  // need a Host island and SwiftUI-styled rows. The action sheet is the same
-  // system control, one import, and reads correctly on a chip tap.
-  const openSort = () => {
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        options: [...SORTS, 'Zrušit'],
-        cancelButtonIndex: SORTS.length,
-        title: 'Seřadit',
-        userInterfaceStyle: 'dark',
-      },
-      (index) => {
-        if (index < SORTS.length) setSort(SORTS[index]);
-      },
-    );
-  };
-
   const toggle = (label: string) =>
     setOn((current) =>
       current.includes(label) ? current.filter((l) => l !== label) : [...current, label],
@@ -104,18 +87,33 @@ function FilterChips() {
       </Pressable>
 
       {/* The sort is a dropdown, not one of the toggles — it answers a
-          different question and only ever has one answer at a time. */}
-      <Pressable
-        onPress={openSort}
-        style={({ pressed }) => [styles.chip, styles.chipActive, pressed && styles.pressed]}
-        accessibilityRole="button"
-        accessibilityLabel={`Seřadit: ${sort}`}
+          different question and only ever has one answer at a time.
+          `ContextMenuButton` is the real iOS menu: it morphs out of this pill
+          instead of sliding up from the bottom like an action sheet. The
+          anchor must NOT be a glass view — the popover fails to present on one
+          (the same note Spendee's `TimelinePeriodSizePill` carries), so this
+          pill stays a solid fill. */}
+      <ContextMenuButton
+        isMenuPrimaryAction
+        menuConfig={{
+          menuTitle: 'Seřadit',
+          menuItems: SORTS.map((option) => ({
+            actionKey: option,
+            actionTitle: option,
+            menuState: option === sort ? 'on' : 'off',
+          })),
+        }}
+        onPressMenuItem={({ nativeEvent }) => {
+          setSort(nativeEvent.actionKey as Sort);
+        }}
       >
-        <Text style={[styles.chipText, styles.chipTextActive]} allowFontScaling={false}>
-          {sort}
-        </Text>
-        <ChevronDownIcon size={14} color={Colors.amber} />
-      </Pressable>
+        <View style={[styles.chip, styles.chipActive]}>
+          <Text style={[styles.chipText, styles.chipTextActive]} allowFontScaling={false}>
+            {sort}
+          </Text>
+          <ChevronDownIcon size={14} color={Colors.amber} />
+        </View>
+      </ContextMenuButton>
 
       {TOGGLES.map((label) => {
         const active = on.includes(label);
@@ -220,6 +218,7 @@ export default function PubListMockScreen() {
   const { height } = useWindowDimensions();
   const [detent, setDetent] = React.useState<Detent>('half');
   const [collapseSignal, setCollapseSignal] = React.useState(0);
+  const [listAtTop, setListAtTop] = React.useState(true);
 
   // The locate button rides just above the sheet's resting top, so collapsing
   // the sheet walks the button down with it instead of stranding it.
@@ -245,10 +244,24 @@ export default function PubListMockScreen() {
         accessibilityRole="button"
         accessibilityLabel="Vycentrovat na mě"
       >
-        <LocateFixedIcon size={20} color={Colors.foam} />
+        {/* The real SF Symbol, not a lookalike: this button means the same
+            thing as Apple Maps' tracking button, so it should be the same
+            glyph. `location.fill` is what iOS uses for "centre on me". */}
+        <SymbolView
+          name="location.fill"
+          size={19}
+          tintColor={Colors.foam}
+          resizeMode="scaleAspectFit"
+          fallback={<LocateFixedIcon size={20} color={Colors.foam} />}
+        />
       </Pressable>
 
-      <PlacesSheet initial="half" onDetentChange={setDetent} collapseSignal={collapseSignal}>
+      <PlacesSheet
+        initial="half"
+        onDetentChange={setDetent}
+        collapseSignal={collapseSignal}
+        listAtTop={listAtTop}
+      >
         {/* Search lives IN the sheet, above the chips — the reference puts it
             here, not in a nav bar, because it filters the list under it. */}
         <View style={styles.searchWrap}>
@@ -269,6 +282,11 @@ export default function PubListMockScreen() {
           // Below `full` the sheet owns the drag (see PlacesSheet); letting the
           // list scroll at the same time would make one gesture do two things.
           scrollEnabled={detent === 'full'}
+          scrollEventThrottle={16}
+          onScroll={(event) => {
+            const atTop = event.nativeEvent.contentOffset.y <= 0.5;
+            setListAtTop((current) => (current === atTop ? current : atTop));
+          }}
         >
           <CompassCell onPress={() => router.push('/pubs-map' as Href)} />
 
