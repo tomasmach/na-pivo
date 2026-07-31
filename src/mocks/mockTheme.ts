@@ -45,11 +45,11 @@ export const MockLayout = {
   sectionGap: 32,
   /** Internal gap inside a section. */
   sectionInnerGap: 12,
-  /** Card corner. Packeta uses 12 / 16 / 24 / 40; 24 is the card. */
-  cardRadius: 24,
+  /** Card corner. Packeta uses 12 / 16 / 24 / 40; we sit softer than that. */
+  cardRadius: 28,
   /** Pictogram thumbnail in a row. */
   thumb: 48,
-  thumbRadius: 12,
+  thumbRadius: 16,
   /** Filter pills and row action pills. */
   pillHeight: 40,
   /** CTA inside a card. */

@@ -105,9 +105,17 @@ function FeedCard({ entry }: { entry: FeedEntry }) {
         ) : null}
       </View>
 
-      <Text style={styles.title} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.heading}>
-        {entry.title}
+      {/* When the app has something to say about the night, IT is the
+          headline — a roast printed under the stats is a caption, and captions
+          do not get screenshotted. The party's own title steps aside. */}
+      <Text style={styles.title} numberOfLines={3} maxFontSizeMultiplier={FontScaleCap.heading}>
+        {entry.roast ? entry.roast.line : entry.title}
       </Text>
+      {entry.roast ? (
+        <Text style={styles.roastBasis} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+          {entry.roast.basis}
+        </Text>
+      ) : null}
 
       {/* Strava's stat block: muted label ABOVE a heavy value, no dividers —
           the grid spacing separates them (docs/references/IMG_2125.PNG). */}
@@ -303,6 +311,7 @@ const styles = StyleSheet.create({
   liveText: { fontWeight: '800', fontSize: 10, letterSpacing: 0.8, color: Colors.amber },
 
   title: { fontWeight: '800', fontSize: 21, color: Colors.foam, marginTop: Spacing.md, letterSpacing: -0.3 },
+  roastBasis: { fontSize: 12, fontWeight: '500', color: Colors.mutedText, marginTop: 3 },
   route: { fontWeight: '500', fontSize: 13, color: withAlpha(Colors.amber, 0.85), marginTop: 3 },
 
   // — Numbers —

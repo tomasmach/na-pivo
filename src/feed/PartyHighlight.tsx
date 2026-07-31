@@ -4,14 +4,13 @@
  * The card shows the BEST thing a party produced, not always the same thing.
  * Ranked by how much it tells you about the evening:
  *
- *   photos → game → tempo → record → roast → map
+ *   photos → game → tempo → record → map
  *
  * The map is last on purpose. It is the one output that says nothing about what
  * the night was LIKE — it is coordinates, and coordinates are plan B.
  *
- * The roast is generated from the numbers and delivered flat. That is the
- * product's voice: this is a beer app fed by what people do, and the line that
- * gets screenshotted is never the one that congratulates you.
+ * The roast is NOT here. It is the card's headline, not its hero — the app's
+ * own line about the night, which can sit over any of these.
  */
 
 import React from 'react';
@@ -134,19 +133,6 @@ function Tempo({
   );
 }
 
-function Roast({ line, basis }: { line: string; basis: string }) {
-  return (
-    <View style={styles.pad}>
-      <Text style={styles.roast} maxFontSizeMultiplier={FontScaleCap.heading}>
-        {`„${line}“`}
-      </Text>
-      <Text style={styles.caption} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-        {basis}
-      </Text>
-    </View>
-  );
-}
-
 function Record({ title, detail }: { title: string; detail: string }) {
   return (
     <View style={[styles.pad, styles.recordRow]}>
@@ -177,8 +163,6 @@ export function PartyHighlight({ entry }: { entry: FeedEntry }) {
       return <Tempo hourly={h.hourly} peakLabel={h.peakLabel} />;
     case 'record':
       return <Record title={h.title} detail={h.detail} />;
-    case 'roast':
-      return <Roast line={h.line} basis={h.basis} />;
     case 'map':
     default:
       return <NightRoute stops={entry.stops} live={entry.live} photos={entry.photos} />;
@@ -238,15 +222,6 @@ const styles = StyleSheet.create({
   barTrack: { flex: 1, width: '100%', justifyContent: 'flex-end' },
   bar: { width: '100%', borderRadius: 6, backgroundColor: withAlpha(Colors.amber, 0.55) },
   barHour: { fontSize: 11, fontWeight: '500', color: Colors.mutedText },
-
-  // — Roast —
-  roast: {
-    fontSize: 19,
-    fontWeight: '700',
-    lineHeight: 25,
-    color: Colors.foam,
-    letterSpacing: -0.3,
-  },
 
   // — Record —
   recordRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },

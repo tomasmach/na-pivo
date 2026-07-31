@@ -19,19 +19,17 @@
  *   game     a pub quiz or game scoreboard: who won, by how much
  *   tempo    beers per hour — the shape of how far it went
  *   record   a personal best that fell, or a streak that held
- *   roast    the night, read back to you with a straight face and a knife
  *   map      the pubs, joined. Plan B.
  *
- * The roast is generated FROM the numbers, which is why it belongs in this list
- * rather than beside it: "tři hospody a ani jedna fotka" is a fact, delivered
- * badly on purpose. It is the app's voice, and the reason people screenshot it.
+ * The roast is NOT in this list. It is a different slot: the highlight is what
+ * the night produced, the roast is what the app says about it — a headline
+ * generated from the numbers, which can sit over any of the above.
  */
 export type PartyHighlight =
   | { kind: 'photos'; count: number; caption: string }
   | { kind: 'game'; game: string; winner: string; scores: { name: string; score: number }[] }
   | { kind: 'tempo'; hourly: { hour: string; beers: number }[]; peakLabel: string }
   | { kind: 'record'; title: string; detail: string }
-  | { kind: 'roast'; line: string; basis: string }
   | { kind: 'map' };
 
 export interface FeedEntry {
@@ -57,6 +55,12 @@ export interface FeedEntry {
   cheered?: boolean;
   /** The best thing this night produced. Drives the card's hero. */
   highlight: PartyHighlight;
+  /**
+   * The app's own headline for the night, written from the numbers and
+   * delivered flat. Replaces the party's title when there is one — a roast that
+   * sits below the stats is a caption; as the headline it is the post.
+   */
+  roast?: { line: string; basis: string };
 }
 
 export const MOCK_FEED: FeedEntry[] = [
@@ -78,10 +82,11 @@ export const MOCK_FEED: FeedEntry[] = [
     comments: 1,
     live: true,
     // Still running, so the numbers are all there is — and that is enough to
-    // be rude about.
-    highlight: {
-      kind: 'roast',
-      line: 'Čtyři piva za 48 minut a pořád „jen na jedno".',
+    // be rude about. No nested quotes in the line: the card renders it as the
+    // headline, unquoted.
+    highlight: { kind: 'map' },
+    roast: {
+      line: 'Čtyři piva za 48 minut a pořád jen na jedno',
       basis: 'Tvoje tempo je 5× rychlejší než obvykle',
     },
   },
