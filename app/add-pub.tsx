@@ -226,6 +226,7 @@ export default function AddPubScreen() {
             lng: selectedLocation!.lng,
             city: trimmedCity,
             address: trimmedAddress,
+            ...(selectedLocation!.source === 'pin' ? { locationSource: 'map_pin' as const } : {}),
           },
           generateUuidV4(),
         ));

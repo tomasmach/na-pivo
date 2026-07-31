@@ -18,6 +18,7 @@ export interface AddedPubInput {
   lng: number;
   city?: string;
   address?: string;
+  locationSource?: 'map_pin';
 }
 
 export interface AddedPubEntry {
@@ -27,6 +28,7 @@ export interface AddedPubEntry {
   lng: number;
   city?: string;
   address?: string;
+  location_source?: 'map_pin';
 }
 
 export interface AddedPubResponse {
@@ -73,6 +75,7 @@ export function buildAddedPubEntry(input: AddedPubInput, clientId: string): Adde
   const address = input.address?.trim();
   if (city) entry.city = city;
   if (address) entry.address = address;
+  if (input.locationSource === 'map_pin') entry.location_source = input.locationSource;
   return entry;
 }
 

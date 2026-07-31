@@ -49,6 +49,26 @@ describe('buildAddedPubEntry', () => {
       address: 'Testovací 12',
     });
   });
+
+  it('includes explicit map-pin provenance only when supplied', () => {
+    expect(
+      buildAddedPubEntry(
+        {
+          name: 'U Testu',
+          lat: 50.0812,
+          lng: 14.4182,
+          locationSource: 'map_pin',
+        },
+        'client-1',
+      ),
+    ).toEqual({
+      client_id: 'client-1',
+      name: 'U Testu',
+      lat: 50.0812,
+      lng: 14.4182,
+      location_source: 'map_pin',
+    });
+  });
 });
 
 describe('submitAddedPub', () => {
