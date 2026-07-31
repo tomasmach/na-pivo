@@ -41,6 +41,7 @@ import {
   SlidersHorizontalIcon,
   StarIcon,
 } from '@/components/shared/IconGlyph';
+import { BeerFilterSheet } from '@/pubs/BeerFilterSheet';
 import { CompassCell } from '@/pubs/CompassCell';
 import { DETENT_TOP, PlacesSheet, type Detent } from '@/pubs/PlacesSheet';
 import { PubCarousel } from '@/pubs/PubCarousel';
@@ -82,22 +83,12 @@ function FilterChips() {
   const [sort, setSort] = React.useState<Sort>('Nejbližší');
   const [on, setOn] = React.useState<string[]>([]);
 
-  const [beer, setBeer] = React.useState<string | null>(null);
-
-  const openBeer = () => {
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        options: ['Jakékoliv pivo', ...BEERS, 'Zrušit'],
-        cancelButtonIndex: BEERS.length + 1,
-        title: 'Pivo',
-        userInterfaceStyle: 'dark',
-      },
-      (index) => {
-        if (index === 0) setBeer(null);
-        else if (index <= BEERS.length) setBeer(BEERS[index - 1]);
-      },
-    );
-  };
+  // Several beers at once, so a sheet with checkboxes rather than an action
+  // sheet — the latter answers one question with one answer.
+  const [beers, setBeers] = React.useState<string[]>([]);
+  const [beerSheet, setBeerSheet] = React.useState(false);
+  const beerLabel =
+    beers.length === 0 ? 'Pivo' : beers.length === 1 ? beers[0] : `Pivo (${beers.length})`;
 
   const openSort = () => {
     ActionSheetIOS.showActionSheetWithOptions(
@@ -158,19 +149,37 @@ function FilterChips() {
       {/* Beer is a value, not a toggle — one answer at a time — so it is a
           dropdown like the sort, and sits right beside "Otevřeno". */}
       <Pressable
-        onPress={openBeer}
-        style={({ pressed }) => [styles.chip, beer && styles.chipActive, pressed && styles.pressed]}
+        onPress={() => setBeerSheet(true)}
+        style={({ pressed }) => [
+          styles.chip,
+          beers.length > 0 && styles.chipActive,
+          pressed && styles.pressed,
+        ]}
         accessibilityRole="button"
-        accessibilityLabel={beer ? `Pivo: ${beer}` : 'Vybrat pivo'}
+        accessibilityLabel={beers.length > 0 ? `Pivo: ${beers.join(', ')}` : 'Vybrat piva'}
       >
         <Text
-          style={[styles.chipText, beer && styles.chipTextActive]}
+          style={[styles.chipText, beers.length > 0 && styles.chipTextActive]}
           allowFontScaling={false}
         >
-          {beer ?? 'Pivo'}
+          {beerLabel}
         </Text>
-        <ChevronDownIcon size={14} color={beer ? Colors.amber : Colors.mutedText} />
+        <ChevronDownIcon
+          size={14}
+          color={beers.length > 0 ? Colors.amber : Colors.mutedText}
+        />
       </Pressable>
+
+      <BeerFilterSheet
+        visible={beerSheet}
+        options={BEERS}
+        value={beers}
+        onClose={() => setBeerSheet(false)}
+        onApply={(next) => {
+          setBeers(next);
+          setBeerSheet(false);
+        }}
+      />
 
       {TOGGLES.map((label) => {
         const active = on.includes(label);
