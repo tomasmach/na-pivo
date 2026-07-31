@@ -19,6 +19,7 @@
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter, type Href } from 'expo-router';
 
 import {
   BeerIcon,
@@ -104,6 +105,7 @@ function PubRow({ pub }: { pub: MockPub }) {
 
 export default function PubListMockScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
 
   return (
     <View style={styles.screen}>
@@ -120,6 +122,7 @@ export default function PubListMockScreen() {
           </Text>
           <View style={styles.grow} />
           <Pressable
+            onPress={() => router.push('/pubs-map' as Href)}
             style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
             accessibilityRole="button"
             accessibilityLabel="Mapa"
@@ -146,7 +149,7 @@ export default function PubListMockScreen() {
           </Pressable>
         </View>
 
-        <CompassCell />
+        <CompassCell onPress={() => router.push('/pubs-map' as Href)} />
 
         <Text style={styles.sectionTitle} maxFontSizeMultiplier={FontScaleCap.body}>
           V okolí

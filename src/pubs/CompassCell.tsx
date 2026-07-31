@@ -87,9 +87,12 @@ export function CompassCell({ onPress }: { onPress?: () => void }) {
     >
       <CompassContainer rotation={rotation} size={DIAL} />
 
+      {/* Name first: that is what you are looking for. The distance is a
+          property OF the pub, so it reads underneath — and the badge says why
+          this one is at the top of the list at all. */}
       <View style={styles.body}>
-        <Text style={styles.kicker} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          Nejbližší · {t.bearingLabel}
+        <Text style={styles.pub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+          {t.name}
         </Text>
         <View style={styles.distanceRow}>
           <Text style={styles.distance} allowFontScaling={false}>
@@ -98,10 +101,12 @@ export function CompassCell({ onPress }: { onPress?: () => void }) {
           <Text style={styles.unit} allowFontScaling={false}>
             {t.unit}
           </Text>
+          <View style={styles.badge}>
+            <Text style={styles.badgeText} allowFontScaling={false}>
+              Nejbližší
+            </Text>
+          </View>
         </View>
-        <Text style={styles.pub} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {t.name}
-        </Text>
         <Text style={styles.meta} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
           {t.hours} · {t.beer}
         </Text>
@@ -123,8 +128,16 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.7 },
   body: { flex: 1 },
-  kicker: { ...MockType.bodySmall, fontWeight: '600', color: withAlpha(Colors.amber, 0.95) },
-  distanceRow: { flexDirection: 'row', alignItems: 'baseline', gap: 5, marginTop: 1 },
+  distanceRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 1 },
+  badge: {
+    paddingHorizontal: 8,
+    height: 22,
+    borderRadius: 11,
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.amber, 0.14),
+    marginLeft: 2,
+  },
+  badgeText: { fontSize: 11, fontWeight: '700', color: Colors.amber },
   distance: {
     fontSize: 34,
     fontWeight: '800',
@@ -133,6 +146,6 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   unit: { ...MockType.bodySmall, color: Colors.mutedText },
-  pub: { ...MockType.bodySemibold, color: Colors.foam, marginTop: 1 },
+  pub: { ...MockType.titleS, color: Colors.foam },
   meta: { fontSize: 13, fontWeight: '400', color: Colors.mutedText, marginTop: 1 },
 });
