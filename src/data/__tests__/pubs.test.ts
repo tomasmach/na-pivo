@@ -128,7 +128,10 @@ describe("fetchPubsNear", () => {
     });
   });
 
-  it("keeps an own local override in a filtered index without restoring ordinary pubs", async () => {
+  // Deliberate product choice: filters stay honest even for the user's own
+  // additions — a fresh pub with no beer/amenity data hides under an active
+  // filter like any other pub, and reappears once the filter is cleared.
+  it("hides an own local override from a filtered index until filters clear", async () => {
     const ownPub: Pub = {
       id: "local:own",
       name: "Moje nová hospoda",
@@ -147,12 +150,12 @@ describe("fetchPubsNear", () => {
       amenityKeys: ["payment_card"],
     });
 
-    expect(getPubById(ownPub.id)).toEqual(ownPub);
+    expect(getPubById(ownPub.id)).toBeNull();
     expect(getPubById("mapy:matching")?.name).toBe("Jen s kartou");
     expect(getPubById("osm:1")).toBeNull();
   });
 
-  it("keeps an own local override visible when a filtered request fails", async () => {
+  it("keeps an own local override out of the empty index of a failed filtered request", async () => {
     const ownPub: Pub = {
       id: "local:offline",
       name: "Moje offline hospoda",
@@ -171,7 +174,7 @@ describe("fetchPubsNear", () => {
       }),
     ).rejects.toThrow("offline");
 
-    expect(getPubById(ownPub.id)).toEqual(ownPub);
+    expect(getPubById(ownPub.id)).toBeNull();
     expect(getPubById("osm:1")).toBeNull();
   });
 
