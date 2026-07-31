@@ -16,7 +16,6 @@ import { loadFriendsDashboardSnapshot } from '@/data/friendsSnapshot';
 import {
   fetchPubsNear,
   getAllLoadedPubs,
-  getLocalPubOverrides,
   hydratePubsSnapshot,
   type Pub,
 } from '@/data/pubs';
@@ -24,7 +23,7 @@ import { fetchVisits, type WireVisit } from '@/data/visitsClient';
 import {
   backendPubSearchFilterKey,
   freshPriceCzks,
-  pubMatchesPriceFilterOrOwn,
+  pubMatchesPriceFilter,
   type PubSearchFilters,
 } from '@/data/pubSearchFilters';
 import {
@@ -122,10 +121,6 @@ export function useBeerMap(filters: PubSearchFilters): BeerMapData {
   const reportedPubIds = usePubStore((state) => state.reportedPubIds);
   const reportedCacheKeys = usePubStore((state) => state.reportedCacheKeys);
   const accountId = useAccountStore((state) => state.session?.accountId ?? null);
-  // Re-read own additions only when the catalogue actually changes; a fresh
-  // array on every render would defeat the visiblePubs memoization mid-gesture.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const ownLocalPubs = useMemo(() => getLocalPubOverrides(), [catalogRevision]);
 
   useFocusEffect(
     useCallback(() => {
@@ -327,21 +322,18 @@ export function useBeerMap(filters: PubSearchFilters): BeerMapData {
   // signals — id and geohash-8 cell — matching the compass exclusions.
   const visiblePubs = useMemo(() => {
     const loaded = loadedFiltersKey === filtersKey ? pubs : [];
-    const loadedWithOwnPubs = mergePubs(loaded, ownLocalPubs);
-    if (reportedPubIds.length === 0 && reportedCacheKeys.length === 0) return loadedWithOwnPubs;
+    if (reportedPubIds.length === 0 && reportedCacheKeys.length === 0) return loaded;
     const ids = new Set(reportedPubIds);
     const cells = new Set(reportedCacheKeys);
-    return loadedWithOwnPubs.filter(
-      (pub) => !ids.has(pub.id) && !cells.has(geohash8(pub.lat, pub.lng)),
-    );
-  }, [loadedFiltersKey, filtersKey, ownLocalPubs, pubs, reportedPubIds, reportedCacheKeys]);
+    return loaded.filter((pub) => !ids.has(pub.id) && !cells.has(geohash8(pub.lat, pub.lng)));
+  }, [loadedFiltersKey, filtersKey, pubs, reportedPubIds, reportedCacheKeys]);
   const nearbyPrices = useMemo(() => freshPriceCzks(visiblePubs), [visiblePubs]);
   const pricedPubs = useMemo(
     () =>
       priceMinCzk === null && priceMaxCzk === null
         ? visiblePubs
         : visiblePubs.filter((pub) =>
-            pubMatchesPriceFilterOrOwn(pub, priceMinCzk, priceMaxCzk),
+            pubMatchesPriceFilter(pub, priceMinCzk, priceMaxCzk),
           ),
     [priceMaxCzk, priceMinCzk, visiblePubs],
   );
