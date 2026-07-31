@@ -58,12 +58,41 @@ import { HitArea, Radius, Spacing } from '@/theme/layout';
 const SORTS = ['Nejbližší', 'Nejlépe hodnocené', 'Náhodně v okolí'] as const;
 type Sort = (typeof SORTS)[number];
 
-/** Independent toggles, on top of whatever the sort is. */
-const TOGGLES = ['Otevřeno', 'Zahrádka', 'Levné'] as const;
+/**
+ * The beer is why you pick one pub over another, so it gets its own pill next
+ * to "Otevřeno" rather than hiding behind the sliders. This maps onto the
+ * filter the app already has — `PubSearchFilters.beerBrand`.
+ */
+const BEERS = ['Pilsner Urquell', 'Kozel', 'Matuška', 'Únětické', 'Kacíř'] as const;
+
+/**
+ * Independent toggles, on top of whatever the sort is. These are real
+ * `mapFilterable` amenity keys from `src/data/amenities.ts`
+ * (`practical_tank_beer`, `seating_garden`) plus the open-now state — not
+ * invented labels.
+ */
+const TOGGLES = ['Otevřeno', 'Tank', 'Zahrádka'] as const;
 
 function FilterChips() {
   const [sort, setSort] = React.useState<Sort>('Nejbližší');
   const [on, setOn] = React.useState<string[]>([]);
+
+  const [beer, setBeer] = React.useState<string | null>(null);
+
+  const openBeer = () => {
+    ActionSheetIOS.showActionSheetWithOptions(
+      {
+        options: ['Jakékoliv pivo', ...BEERS, 'Zrušit'],
+        cancelButtonIndex: BEERS.length + 1,
+        title: 'Pivo',
+        userInterfaceStyle: 'dark',
+      },
+      (index) => {
+        if (index === 0) setBeer(null);
+        else if (index <= BEERS.length) setBeer(BEERS[index - 1]);
+      },
+    );
+  };
 
   const openSort = () => {
     ActionSheetIOS.showActionSheetWithOptions(
@@ -119,6 +148,23 @@ function FilterChips() {
           {sort}
         </Text>
         <ChevronDownIcon size={14} color={Colors.amber} />
+      </Pressable>
+
+      {/* Beer is a value, not a toggle — one answer at a time — so it is a
+          dropdown like the sort, and sits right beside "Otevřeno". */}
+      <Pressable
+        onPress={openBeer}
+        style={({ pressed }) => [styles.chip, beer && styles.chipActive, pressed && styles.pressed]}
+        accessibilityRole="button"
+        accessibilityLabel={beer ? `Pivo: ${beer}` : 'Vybrat pivo'}
+      >
+        <Text
+          style={[styles.chipText, beer && styles.chipTextActive]}
+          allowFontScaling={false}
+        >
+          {beer ?? 'Pivo'}
+        </Text>
+        <ChevronDownIcon size={14} color={beer ? Colors.amber : Colors.mutedText} />
       </Pressable>
 
       {TOGGLES.map((label) => {
