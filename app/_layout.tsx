@@ -428,6 +428,17 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="(tabs)" />
+          {/* Starting a night slides UP and the chevron sends it back DOWN —
+              the Strava "Record" idiom. It is a modal rather than a tab page
+              precisely so the dismissal is the same gesture reversed, instead
+              of a hard jump to another tab. */}
+          <Stack.Screen
+            name="party-live"
+            options={{
+              presentation: 'fullScreenModal',
+              animation: 'slide_from_bottom',
+            }}
+          />
           <Stack.Screen
             name="onboarding"
             options={{

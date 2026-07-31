@@ -23,7 +23,7 @@
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, type Href } from 'expo-router';
+import { useRouter } from 'expo-router';
 
 import {
   BeerIcon,
@@ -112,12 +112,11 @@ export default function LivePartyMockScreen() {
           <ChevronDownIcon size={16} color={Colors.foam} />
         </Pressable>
         <View style={styles.grow} />
-        {/* No overflow button here — there was a "…" out of Tácek habit with no
-            job behind it. What fullscreen DOES need is a way out, because the
-            tab bar steps aside on this route. "Ukončit večer" is a named action
-            and belongs in the sheet; this is just minimise. */}
+        {/* Dismisses the modal the way it arrived: down. "Ukončit večer" is a
+            named action and belongs in the sheet — this only puts the night
+            away, it does not end it. */}
         <Pressable
-          onPress={() => router.replace('/friends' as Href)}
+          onPress={() => router.back()}
           style={({ pressed }) => [styles.topIcon, pressed && styles.pressed]}
           accessibilityRole="button"
           accessibilityLabel="Minimalizovat večer"

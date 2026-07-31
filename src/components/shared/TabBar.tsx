@@ -39,6 +39,7 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter, type Href } from 'expo-router';
 
 import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
@@ -242,6 +243,7 @@ const FULLSCREEN_ROUTES = new Set(['beer']);
 
 export function TabBar({ state, navigation }: TabBarProps) {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const activeRoute = state.routes[state.index]?.name;
   const hidden = !!activeRoute && FULLSCREEN_ROUTES.has(activeRoute);
   const hapticEnabled = useSettingsStore((s) => s.hapticEnabled);
@@ -289,8 +291,17 @@ export function TabBar({ state, navigation }: TabBarProps) {
             target: route.key,
             canPreventDefault: true,
           });
+          const meta = TAB_META[route.name];
+
+          // Party is a door, not a destination: it opens the fullscreen night
+          // as a modal so it slides up, and dismissing it slides back down.
+          if (meta?.accent) {
+            if (meta) trackUiInteraction(meta.telemetryTarget, 'select');
+            router.push('/party-live' as Href);
+            return;
+          }
+
           if (!focused && !event.defaultPrevented) {
-            const meta = TAB_META[route.name];
             if (meta) trackUiInteraction(meta.telemetryTarget, 'select');
             navigation.navigate(route.name);
           }
