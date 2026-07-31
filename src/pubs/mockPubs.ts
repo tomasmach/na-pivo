@@ -12,6 +12,9 @@
 export interface MockPub {
   id: string;
   name: string;
+  /** Real coordinates — the row thumbnail is a map of the actual spot. */
+  lat: number;
+  lng: number;
   /** "180 m", "1,2 km" — already formatted and declined. */
   distance: string;
   /** Human street line, second row of the cell. */
@@ -44,6 +47,8 @@ export const MOCK_COMPASS_TARGET = {
 export const MOCK_PUBS: MockPub[] = [
   {
     id: 'p1',
+    lat: 50.0655,
+    lng: 14.438,
     name: 'Zlý časy',
     distance: '340 m',
     address: 'Čestmírova 5, Nusle',
@@ -56,6 +61,8 @@ export const MOCK_PUBS: MockPub[] = [
   },
   {
     id: 'p2',
+    lat: 50.088,
+    lng: 14.453,
     name: 'U Slovanské lípy',
     distance: '620 m',
     address: 'Tachovské náměstí 6, Žižkov',
@@ -68,6 +75,8 @@ export const MOCK_PUBS: MockPub[] = [
   },
   {
     id: 'p3',
+    lat: 50.081,
+    lng: 14.418,
     name: 'Vzorkovna',
     distance: '1,1 km',
     address: 'Národní 11, Nové Město',
@@ -80,6 +89,8 @@ export const MOCK_PUBS: MockPub[] = [
   },
   {
     id: 'p4',
+    lat: 50.09,
+    lng: 14.434,
     name: 'Bílá labuť',
     distance: '1,4 km',
     address: 'Biskupská 3, Petrská čtvrť',
@@ -92,6 +103,8 @@ export const MOCK_PUBS: MockPub[] = [
   },
   {
     id: 'p5',
+    lat: 50.093,
+    lng: 14.449,
     name: 'Kulový blesk',
     distance: '1,9 km',
     address: 'Sokolovská 89, Karlín',

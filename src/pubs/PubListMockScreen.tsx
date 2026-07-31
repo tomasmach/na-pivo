@@ -43,12 +43,16 @@ import {
 } from '@/components/shared/IconGlyph';
 import { CompassCell } from '@/pubs/CompassCell';
 import { DETENT_TOP, PlacesSheet, type Detent } from '@/pubs/PlacesSheet';
+import { PubThumbMap } from '@/pubs/PubThumbMap';
 import { PubsMap } from '@/pubs/PubsMap';
 import { MOCK_PUBS, type MockPub } from '@/pubs/mockPubs';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
+
+/** A map needs more than Packeta's 48pt photo well to show a street. */
+const THUMB = 56;
 
 /**
  * How the list is ordered. "Nejbližší" is the default because standing
@@ -200,15 +204,12 @@ function PubRow({ pub, nearest }: { pub: MockPub; nearest?: boolean }) {
     <Pressable
       style={({ pressed }) => [styles.row, nearest && styles.rowNearest, pressed && styles.pressed]}
     >
-      {/* The well is the pub's picture — a photo, or a static map of the spot
-          when there is none. Until either is wired it carries the initial, so
-          the rows still differ from each other at a glance instead of being
-          five identical beer glyphs. The beer moves to the corner badge: it
-          says "this is a pub", which is a label, not the picture. */}
+      {/* The well is a map of where the pub actually is — frozen to a bitmap
+          after first paint, so the list scrolls images and not map engines
+          (see PubThumbMap). The beer sits in the corner badge: it labels the
+          row, it is not the picture. */}
       <View style={styles.thumb}>
-        <Text style={styles.thumbInitial} allowFontScaling={false}>
-          {pub.name.slice(0, 1).toUpperCase()}
-        </Text>
+        <PubThumbMap lat={pub.lat} lng={pub.lng} size={THUMB} />
         <View style={styles.thumbBadge}>
           <BeerIcon size={11} color={Colors.stout} />
         </View>
@@ -481,18 +482,7 @@ const styles = StyleSheet.create({
   },
   /** The nearest one needs no tinted panel — the amber tag already says why. */
   rowNearest: {},
-  thumb: {
-    width: MockLayout.thumb,
-    height: MockLayout.thumb,
-    borderRadius: MockLayout.thumbRadius,
-    alignItems: 'center',
-    justifyContent: 'center',
-    // Neutral, not amber: it is a picture well, and a tinted one would fight
-    // the photo that eventually fills it.
-    backgroundColor: Colors.stout3,
-    overflow: 'visible',
-  },
-  thumbInitial: { fontSize: 19, fontWeight: '700', color: withAlpha(Colors.foam, 0.55) },
+  thumb: { width: THUMB, height: THUMB },
   thumbBadge: {
     position: 'absolute',
     right: -3,
