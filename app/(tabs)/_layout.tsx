@@ -2,6 +2,7 @@ import { Tabs } from 'expo-router';
 
 import { Colors } from '@/theme/colors';
 import { TabBar } from '@/components/shared/TabBar';
+import { LivePartyBar } from '@/mocks/LivePartyBar';
 
 /**
  * Tab group — the five 3.0 sections (§17.1), behind a custom hand-rolled tab bar
@@ -23,7 +24,15 @@ import { TabBar } from '@/components/shared/TabBar';
 export default function TabsLayout() {
   return (
     <Tabs
-      tabBar={(props) => <TabBar {...props} />}
+      // The mini bar rides directly above the tab bar, the way a media player's
+      // does: `tabBar` owns the whole bottom chrome, not just the tabs. Both
+      // render nothing while the party is fullscreen.
+      tabBar={(props) => (
+        <>
+          <LivePartyBar />
+          <TabBar {...props} />
+        </>
+      )}
       initialRouteName="index"
       screenOptions={{
         headerShown: false,

@@ -20,7 +20,7 @@
  * everything else can live behind "…".
  */
 
-import React, { useState } from 'react';
+import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
@@ -33,6 +33,7 @@ import {
 } from '@/components/shared/IconGlyph';
 import { NightRoute } from '@/mocks/NightRoute';
 import { StatGrid } from '@/mocks/StatGrid';
+import { useLivePartyStore } from '@/mocks/livePartyStore';
 import { MockColors } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -75,8 +76,10 @@ function CircleButton({
 export default function LivePartyMockScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [live, setLive] = useState(false);
-  const [beers, setBeers] = useState(0);
+  const live = useLivePartyStore((s) => s.live);
+  const beers = useLivePartyStore((s) => s.beers);
+  const startParty = useLivePartyStore((s) => s.start);
+  const addBeer = useLivePartyStore((s) => s.addBeer);
 
   const total = live ? beers + PEOPLE.reduce((s, p) => s + p.beers, 0) - PEOPLE[0].beers : 0;
 
@@ -174,10 +177,7 @@ export default function LivePartyMockScreen() {
 
           <View style={styles.circleWrap}>
             <Pressable
-              onPress={() => {
-                if (!live) setLive(true);
-                setBeers((n) => n + 1);
-              }}
+              onPress={() => (live ? addBeer() : startParty('U Fleků'))}
               style={({ pressed }) => [styles.circlePrimary, pressed && styles.primaryPressed]}
               accessibilityRole="button"
               accessibilityLabel={live ? 'Přidat pivo' : 'Začít večer prvním pivem'}
