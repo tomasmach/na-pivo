@@ -19,6 +19,7 @@
 
 import React from 'react';
 import {
+  ActionSheetIOS,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -28,7 +29,6 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
-import { ContextMenuButton } from 'react-native-ios-context-menu';
 import { SymbolView } from 'expo-symbols';
 
 import {
@@ -65,6 +65,20 @@ function FilterChips() {
   const [sort, setSort] = React.useState<Sort>('Nejbližší');
   const [on, setOn] = React.useState<string[]>([]);
 
+  const openSort = () => {
+    ActionSheetIOS.showActionSheetWithOptions(
+      {
+        options: [...SORTS, 'Zrušit'],
+        cancelButtonIndex: SORTS.length,
+        title: 'Seřadit',
+        userInterfaceStyle: 'dark',
+      },
+      (index) => {
+        if (index < SORTS.length) setSort(SORTS[index]);
+      },
+    );
+  };
+
   const toggle = (label: string) =>
     setOn((current) =>
       current.includes(label) ? current.filter((l) => l !== label) : [...current, label],
@@ -87,32 +101,25 @@ function FilterChips() {
 
       {/* The sort is a dropdown, not one of the toggles — it answers a
           different question and only ever has one answer at a time.
-          `ContextMenuButton` is the real iOS menu: it morphs out of this pill
-          instead of sliding up from the bottom like an action sheet. The
-          anchor must NOT be a glass view — the popover fails to present on one
-          (the same note Spendee's `TimelinePeriodSizePill` carries), so this
-          pill stays a solid fill. */}
-      <ContextMenuButton
-        isMenuPrimaryAction
-        menuConfig={{
-          menuTitle: 'Seřadit',
-          menuItems: SORTS.map((option) => ({
-            actionKey: option,
-            actionTitle: option,
-            menuState: option === sort ? 'on' : 'off',
-          })),
-        }}
-        onPressMenuItem={({ nativeEvent }) => {
-          setSort(nativeEvent.actionKey as Sort);
-        }}
+          This SHOULD be a menu that morphs out of the pill. It briefly was, via
+          `react-native-ios-context-menu` (the library Spendee uses), but that
+          package's peer `react-native-ios-utilities` fails to link against this
+          Xcode SDK: "cannot link directly with 'SwiftUICore' because product
+          being built is not an allowed client of it". Fixing it means a config
+          plugin re-adding a linker flag after every `expo prebuild --clean` —
+          a permanent maintenance tax for one control. The action sheet is the
+          same system control, presented from the bottom instead of the anchor. */}
+      <Pressable
+        onPress={openSort}
+        style={({ pressed }) => [styles.chip, styles.chipActive, pressed && styles.pressed]}
+        accessibilityRole="button"
+        accessibilityLabel={`Seřadit: ${sort}`}
       >
-        <View style={[styles.chip, styles.chipActive]}>
-          <Text style={[styles.chipText, styles.chipTextActive]} allowFontScaling={false}>
-            {sort}
-          </Text>
-          <ChevronDownIcon size={14} color={Colors.amber} />
-        </View>
-      </ContextMenuButton>
+        <Text style={[styles.chipText, styles.chipTextActive]} allowFontScaling={false}>
+          {sort}
+        </Text>
+        <ChevronDownIcon size={14} color={Colors.amber} />
+      </Pressable>
 
       {TOGGLES.map((label) => {
         const active = on.includes(label);

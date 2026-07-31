@@ -64,8 +64,6 @@
     "react": "19.2.3",
     "react-native": "0.85.3",
     "react-native-gesture-handler": "~2.31.1",
-    "react-native-ios-context-menu": "^3.2.1",
-    "react-native-ios-utilities": "^5.2.0",
     "react-native-maps": "1.27.2",
     "react-native-qrcode-svg": "^6.3.21",
     "react-native-reanimated": "4.3.1",
