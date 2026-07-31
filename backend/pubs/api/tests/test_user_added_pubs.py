@@ -39,7 +39,8 @@ def _generous_throttle(settings):
             "added_pubs": "10000/min",
         },
     }
-    yield
+    with patch("pubs.api.views.resolve_user_added_pub_location", return_value=None):
+        yield
     cache.clear()
 
 
@@ -99,14 +100,23 @@ def test_add_pub_creates_live_row(client):
 
 
 @pytest.mark.django_db
-def test_add_pub_trusts_confirmed_client_coords_without_google(client):
+def test_add_pub_keeps_submitted_coords_when_location_cannot_be_resolved(client):
     token = _register(client)
 
-    with patch("pubs.api.views.resolve_user_added_pub_location") as resolver:
+    with patch(
+        "pubs.api.views.resolve_user_added_pub_location",
+        return_value=None,
+    ) as resolver:
         resp = client.post("/v1/pubs", data=_payload(), format="json", **_auth(token))
 
     assert resp.status_code == status.HTTP_201_CREATED
-    resolver.assert_not_called()
+    resolver.assert_called_once_with(
+        name=_NAME,
+        address="Testovací 12",
+        city="Praha",
+        lat=_LAT,
+        lng=_LNG,
+    )
     pub = UserAddedPub.objects.get()
     assert pub.lat == _LAT
     assert pub.lng == _LNG
@@ -115,6 +125,107 @@ def test_add_pub_trusts_confirmed_client_coords_without_google(client):
     assert pub.google_place_id == ""
     assert pub.location_synced_at is None
     assert resp.json()["cache_key"] == _KEY
+
+
+@pytest.mark.django_db
+def test_add_pub_keeps_submitted_coords_when_verification_errors(client):
+    token = _register(client)
+
+    with patch(
+        "pubs.api.views.resolve_user_added_pub_location",
+        side_effect=GoogleGeocodingUnavailableError("unavailable"),
+    ):
+        resp = client.post("/v1/pubs", data=_payload(), format="json", **_auth(token))
+
+    assert resp.status_code == status.HTTP_201_CREATED
+    pub = UserAddedPub.objects.get()
+    assert pub.lat == _LAT
+    assert pub.lng == _LNG
+    assert pub.location_source == UserAddedPub.LocationSource.USER_PIN
+
+
+@pytest.mark.django_db
+def test_add_pub_snaps_legacy_coords_to_distant_resolved_address(client, settings):
+    settings.USER_ADDED_PUB_LOCATION_VERIFY_MAX_METERS = 500
+    token = _register(client)
+    resolved = ResolvedPubLocation(
+        name=_NAME,
+        lat=49.1951,
+        lng=16.6068,
+        city="Brno",
+        address="Testovací 12",
+        result_type="street_address",
+        place_id="ChIJ-resolved-pub",
+    )
+
+    with patch(
+        "pubs.api.views.resolve_user_added_pub_location",
+        return_value=resolved,
+    ):
+        resp = client.post("/v1/pubs", data=_payload(), format="json", **_auth(token))
+
+    assert resp.status_code == status.HTTP_201_CREATED
+    pub = UserAddedPub.objects.get()
+    assert pub.lat == resolved.lat
+    assert pub.lng == resolved.lng
+    assert pub.cache_key == geohash8(resolved.lat, resolved.lng)
+    assert pub.location_source == UserAddedPub.LocationSource.GOOGLE_GEOCODE
+    assert pub.google_place_id == "ChIJ-resolved-pub"
+    assert pub.location_synced_at is not None
+    assert resp.json()["lat"] == resolved.lat
+    assert resp.json()["lng"] == resolved.lng
+    assert resp.json()["cache_key"] == geohash8(resolved.lat, resolved.lng)
+
+
+@pytest.mark.django_db
+def test_add_pub_keeps_legacy_coords_near_resolved_address(client, settings):
+    settings.USER_ADDED_PUB_LOCATION_VERIFY_MAX_METERS = 500
+    token = _register(client)
+    resolved = ResolvedPubLocation(
+        name=_NAME,
+        lat=_LAT + 0.0001,
+        lng=_LNG + 0.0001,
+        city="Praha",
+        address="Testovací 12",
+        result_type="street_address",
+        place_id="ChIJ-nearby-pub",
+    )
+
+    with patch(
+        "pubs.api.views.resolve_user_added_pub_location",
+        return_value=resolved,
+    ):
+        resp = client.post("/v1/pubs", data=_payload(), format="json", **_auth(token))
+
+    assert resp.status_code == status.HTTP_201_CREATED
+    pub = UserAddedPub.objects.get()
+    assert pub.lat == _LAT
+    assert pub.lng == _LNG
+    assert pub.cache_key == _KEY
+    assert pub.location_source == UserAddedPub.LocationSource.USER_PIN
+    assert pub.google_place_id == ""
+    assert pub.location_synced_at is None
+
+
+@pytest.mark.django_db
+def test_add_pub_trusts_explicit_map_pin_without_resolving(client):
+    token = _register(client)
+
+    with patch("pubs.api.views.resolve_user_added_pub_location") as resolver:
+        resp = client.post(
+            "/v1/pubs",
+            data=_payload(location_source="map_pin"),
+            format="json",
+            **_auth(token),
+        )
+
+    assert resp.status_code == status.HTTP_201_CREATED
+    resolver.assert_not_called()
+    pub = UserAddedPub.objects.get()
+    assert pub.lat == _LAT
+    assert pub.lng == _LNG
+    assert pub.cache_key == _KEY
+    assert pub.location_source == UserAddedPub.LocationSource.USER_PIN
 
 
 @pytest.mark.django_db

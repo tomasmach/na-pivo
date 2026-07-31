@@ -752,6 +752,55 @@ def test_beer_brand_filter_returns_only_known_brand_pubs_from_cache(client):
 
 
 @pytest.mark.django_db
+def test_beer_brand_filter_keeps_only_qualifying_user_added_pub(client):
+    brand, _ = BeerBrand.objects.get_or_create(
+        key="pilsner-urquell",
+        defaults={"name": "Pilsner Urquell"},
+    )
+    qualifying = UserAddedPub.objects.create(
+        client_id="9a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d",
+        cache_key=geohash8(_LAT, _LNG),
+        name="Komunitní s Plzní",
+        lat=_LAT,
+        lng=_LNG,
+    )
+    UserAddedPub.objects.create(
+        client_id="aaaaaaaa-0000-0000-0000-000000000001",
+        cache_key=geohash8(_LAT + 0.002, _LNG),
+        name="Komunitní bez Plzně",
+        lat=_LAT + 0.002,
+        lng=_LNG,
+    )
+    PubBeerBrand.objects.create(
+        cache_key=qualifying.cache_key,
+        name=qualifying.name,
+        lat=qualifying.lat,
+        lng=qualifying.lng,
+        brand=brand,
+        brand_key=brand.key,
+        brand_name=brand.name,
+        source=PubBeerBrand.Source.COMMUNITY,
+    )
+
+    resp = client.get(
+        "/v1/pubs/near",
+        data={
+            "lat": _LAT,
+            "lng": _LNG,
+            "radius_km": 1,
+            "beer_brand": brand.key,
+        },
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert [item["name"] for item in resp.json()["items"]] == [qualifying.name]
+    assert resp.json()["items"][0]["source"] == "community"
+    # The suite's DRF throttle uses the shared local cache. This added request
+    # must not push unrelated later tests over the process-wide test limit.
+    default_cache.clear()
+
+
+@pytest.mark.django_db
 def test_beer_brand_filter_can_serve_known_pub_without_search_cache(client):
     brand, _ = BeerBrand.objects.get_or_create(
         key="pilsner-urquell",
@@ -909,6 +958,47 @@ def test_amenity_filter_requires_every_selected_amenity(client):
         "amenities": ["payment_card", "game_foosball"],
         "beer_brand": None,
     }
+
+
+@pytest.mark.django_db
+def test_amenity_filter_keeps_only_qualifying_user_added_pub(client):
+    qualifying = UserAddedPub.objects.create(
+        client_id="9a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d",
+        cache_key=geohash8(_LAT, _LNG),
+        name="Komunitní s kartou",
+        lat=_LAT,
+        lng=_LNG,
+    )
+    UserAddedPub.objects.create(
+        client_id="aaaaaaaa-0000-0000-0000-000000000001",
+        cache_key=geohash8(_LAT + 0.002, _LNG),
+        name="Komunitní bez karty",
+        lat=_LAT + 0.002,
+        lng=_LNG,
+    )
+    _amenity(
+        "payment_card",
+        name=qualifying.name,
+        lat=qualifying.lat,
+        lng=qualifying.lng,
+    )
+
+    resp = client.get(
+        "/v1/pubs/near",
+        data={
+            "lat": _LAT,
+            "lng": _LNG,
+            "radius_km": 1,
+            "amenities": "payment_card",
+        },
+    )
+
+    assert resp.status_code == status.HTTP_200_OK
+    assert [item["name"] for item in resp.json()["items"]] == [qualifying.name]
+    assert resp.json()["items"][0]["source"] == "community"
+    # See the throttle note above: keep the shared throttle counter clean for
+    # unrelated later tests.
+    default_cache.clear()
 
 
 @pytest.mark.django_db

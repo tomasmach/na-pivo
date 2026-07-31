@@ -65,7 +65,8 @@ function isAddedPubEntry(entry: unknown): entry is AddedPubEntry {
     typeof value.lat === 'number' &&
     typeof value.lng === 'number' &&
     (value.city === undefined || typeof value.city === 'string') &&
-    (value.address === undefined || typeof value.address === 'string')
+    (value.address === undefined || typeof value.address === 'string') &&
+    (value.location_source === undefined || value.location_source === 'map_pin')
   );
 }
 
@@ -88,6 +89,7 @@ function normalizeSubmission(value: unknown): AddedPubSubmission | null {
     lng: value.lng,
     ...(value.city ? { city: value.city } : {}),
     ...(value.address ? { address: value.address } : {}),
+    ...(value.location_source === 'map_pin' ? { location_source: value.location_source } : {}),
     syncState,
     pendingOperation,
     updatedAt: typeof candidate.updatedAt === 'string' ? candidate.updatedAt : new Date(0).toISOString(),

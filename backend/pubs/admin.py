@@ -4,6 +4,7 @@ from django.contrib import admin
 from django.utils import timezone
 
 from . import community_event_admin, pub_event_admin  # noqa: F401
+from .enrichment import geohash8
 from .models import (
     Account,
     AccountUsageStats,
@@ -168,6 +169,11 @@ class UserAddedPubAdmin(admin.ModelAdmin):
     search_fields = ("name", "cache_key", "city", "address")
     readonly_fields = ("cache_key", "client_id", "created_at", "updated_at")
     ordering = ("-updated_at",)
+
+    def save_model(self, request, obj, form, change) -> None:
+        if {"lat", "lng"}.intersection(form.changed_data):
+            obj.cache_key = geohash8(obj.lat, obj.lng)
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(EnrichTask)

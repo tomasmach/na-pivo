@@ -1268,13 +1268,48 @@ class UserAddedPubView(APIView):
             return Response(UserAddedPubSerializer(existing).data, status=status.HTTP_200_OK)
 
         if "lat" in data and "lng" in data:
-            # Released clients already submit a user-confirmed pin. Trust it and
-            # avoid a paid provider call even when they also include an address.
             lat = data["lat"]
             lng = data["lng"]
             location_source = UserAddedPub.LocationSource.USER_PIN
             google_place_id = ""
             location_synced_at = None
+            if address and data.get("location_source") != "map_pin":
+                try:
+                    resolved = resolve_user_added_pub_location(
+                        name=data["name"],
+                        address=address,
+                        city=city,
+                        lat=lat,
+                        lng=lng,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "user-added-pub: create location verification unavailable: %s",
+                        type(exc).__name__,
+                    )
+                    resolved = None
+
+                verify_max_km = max(
+                    0.05,
+                    float(
+                        getattr(
+                            settings,
+                            "USER_ADDED_PUB_LOCATION_VERIFY_MAX_METERS",
+                            500,
+                        )
+                    )
+                    / 1000,
+                )
+                if (
+                    resolved is not None
+                    and _haversine_km(lat, lng, resolved.lat, resolved.lng)
+                    > verify_max_km
+                ):
+                    lat = resolved.lat
+                    lng = resolved.lng
+                    location_source = UserAddedPub.LocationSource.GOOGLE_GEOCODE
+                    google_place_id = resolved.place_id
+                    location_synced_at = dj_timezone.now()
         elif address and city:
             try:
                 resolved = resolve_user_added_pub_location(
@@ -7396,9 +7431,11 @@ class PubsNearView(APIView):
                 filtered_items = _filter_items_by_amenity_signals(filtered_items, amenity_items)
             if beer_brand_key:
                 filtered_items = _filter_items_by_cache_key(filtered_items, beer_brand_cache_keys)
-                return _with_pub_signal_items(beer_brand_items, filtered_items)
+                filtered_items = _with_pub_signal_items(beer_brand_items, filtered_items)
+                return _with_user_added_items(user_added_items, filtered_items)
             if amenity_keys:
-                return _with_pub_signal_items(amenity_items, filtered_items)
+                filtered_items = _with_pub_signal_items(amenity_items, filtered_items)
+                return _with_user_added_items(user_added_items, filtered_items)
             return _with_user_added_items(user_added_items, filtered_items)
 
         def final_items(items: list[dict]) -> list[dict]:

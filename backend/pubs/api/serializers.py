@@ -240,6 +240,12 @@ class UserAddedPubRequestSerializer(_Pub200NameValidationMixin, PubInputSerializ
     lat = serializers.FloatField(required=False)
     lng = serializers.FloatField(required=False)
     client_id = serializers.UUIDField()
+    location_source = serializers.CharField(
+        max_length=32,
+        required=False,
+        allow_blank=True,
+        trim_whitespace=True,
+    )
     address = serializers.CharField(
         max_length=255,
         required=False,
