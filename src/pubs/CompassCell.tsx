@@ -31,7 +31,7 @@ import { initialBearing } from '@/compass/bearing';
 import { shortestRotationTarget } from '@/compass/rotation';
 import { useDeviceHeading } from '@/compass/useDeviceHeading';
 import { MOCK_COMPASS_TARGET } from '@/pubs/mockPubs';
-import { MockType } from '@/mocks/mockTheme';
+import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
@@ -120,8 +120,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
-    // No card. It is the first row of the list, not a panel parked above it.
+    // Packeta highlights the nearest branch with a tinted row, not a bordered
+    // card — the fill says "this is the one" without adding a frame. One tinted
+    // row among plain ones stays calm; tinting every row is what read as busy.
     paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.sm + 2,
+    marginHorizontal: -(Spacing.sm + 2),
+    borderRadius: MockLayout.cardRadius,
+    backgroundColor: withAlpha(Colors.amber, 0.09),
   },
   pressed: { opacity: 0.7 },
   body: { flex: 1 },
