@@ -21,14 +21,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 
-import {
-  BeerIcon,
-  MapIcon,
-  SearchIcon,
-  SlidersHorizontalIcon,
-  StarIcon,
-  UsersIcon,
-} from '@/components/shared/IconGlyph';
+import { BeerIcon, StarIcon, UsersIcon } from '@/components/shared/IconGlyph';
 import { CompassCell } from '@/pubs/CompassCell';
 import { MOCK_PUBS, type MockPub } from '@/pubs/mockPubs';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
@@ -110,45 +103,15 @@ export default function PubListMockScreen() {
   return (
     <View style={styles.screen}>
       <ScrollView
-        contentContainerStyle={[
-          styles.content,
-          { paddingTop: insets.top + Spacing.sm, paddingBottom: insets.bottom + 40 },
-        ]}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 40 }]}
         keyboardShouldPersistTaps="handled"
+        // Lets the large title and the search bar own the top inset.
+        contentInsetAdjustmentBehavior="automatic"
       >
-        <View style={styles.header}>
-          <Text style={styles.screenTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-            Hospody
-          </Text>
-          <View style={styles.grow} />
-          <Pressable
-            onPress={() => router.push('/pubs-map' as Href)}
-            style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel="Mapa"
-          >
-            <MapIcon size={20} color={Colors.foam} />
-          </Pressable>
-        </View>
-
-        {/* Search sits above the list, the way a branch picker does — one field,
-            one filter door, no third control competing with them. */}
-        <View style={styles.searchRow}>
-          <View style={styles.searchField}>
-            <SearchIcon size={17} color={Colors.mutedText} />
-            <Text style={styles.searchPlaceholder} maxFontSizeMultiplier={FontScaleCap.body}>
-              Hledej hospodu nebo pivo
-            </Text>
-          </View>
-          <Pressable
-            style={({ pressed }) => [styles.filterButton, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel="Filtry"
-          >
-            <SlidersHorizontalIcon size={18} color={Colors.foam} />
-          </Pressable>
-        </View>
-
+        {/* No hand-rolled header or search field here: the native stack owns
+            the large title, its collapse onto the blurred bar and the search
+            field (`headerSearchBarOptions`). Drawing our own would give two
+            titles and a search box that does not know how to hide. */}
         <CompassCell onPress={() => router.push('/pubs-map' as Href)} />
 
         <Text style={styles.sectionTitle} maxFontSizeMultiplier={FontScaleCap.body}>

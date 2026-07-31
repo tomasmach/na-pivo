@@ -33,14 +33,14 @@ export default function TabsLayout() {
           <TabBar {...props} />
         </>
       )}
-      initialRouteName="index"
+      initialRouteName="(pubs)"
       screenOptions={{
         headerShown: false,
         sceneStyle: { backgroundColor: Colors.stout },
       }}
     >
       <Tabs.Screen name="friends" />
-      <Tabs.Screen name="index" />
+      <Tabs.Screen name="(pubs)" />
       <Tabs.Screen name="beer" />
       <Tabs.Screen name="community" />
       <Tabs.Screen name="profile" />

@@ -17,7 +17,7 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors } from '@/theme/colors';
@@ -54,7 +54,7 @@ export default function ResetPasswordScreen() {
     if (router.canGoBack()) {
       router.back();
     } else {
-      router.replace('/(tabs)');
+      router.replace('/(tabs)' as Href);
     }
   }, [router]);
 
@@ -75,7 +75,7 @@ export default function ResetPasswordScreen() {
       const result = await resetPassword({ token, password });
       if (result.ok) {
         showToast(cs.account.resetDoneToast);
-        router.replace('/(tabs)');
+        router.replace('/(tabs)' as Href);
         return;
       }
       setError(result.detail || cs.account.errorGeneric);

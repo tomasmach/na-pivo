@@ -99,7 +99,7 @@ const TAB_META: Record<
     a11yLabel: cs.a11y.tabFeed,
     telemetryTarget: 'tab_friends',
   },
-  index: {
+  '(pubs)': {
     Icon: CompassIcon,
     label: cs.tabs.pubs,
     a11yLabel: cs.a11y.tabPubs,
