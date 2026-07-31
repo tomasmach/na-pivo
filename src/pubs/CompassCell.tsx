@@ -31,7 +31,7 @@ import { initialBearing } from '@/compass/bearing';
 import { shortestRotationTarget } from '@/compass/rotation';
 import { useDeviceHeading } from '@/compass/useDeviceHeading';
 import { MOCK_COMPASS_TARGET } from '@/pubs/mockPubs';
-import { MockLayout, MockType } from '@/mocks/mockTheme';
+import { MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
@@ -120,11 +120,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
-    padding: Spacing.md,
-    borderRadius: MockLayout.cardRadius,
-    backgroundColor: Colors.stout2,
-    borderWidth: 1,
-    borderColor: withAlpha(Colors.amber, 0.24),
+    // No card. It is the first row of the list, not a panel parked above it.
+    paddingVertical: Spacing.md,
   },
   pressed: { opacity: 0.7 },
   body: { flex: 1 },

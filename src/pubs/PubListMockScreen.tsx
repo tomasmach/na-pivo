@@ -21,20 +21,79 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 
-import { BeerIcon, StarIcon, UsersIcon } from '@/components/shared/IconGlyph';
+import {
+  BeerIcon,
+  ChevronRightIcon,
+  MapPinIcon,
+  SearchIcon,
+  SlidersHorizontalIcon,
+  StarIcon,
+  UsersIcon,
+} from '@/components/shared/IconGlyph';
 import { CompassCell } from '@/pubs/CompassCell';
+import { PlacesSheet } from '@/pubs/PlacesSheet';
+import { PubsMap } from '@/pubs/PubsMap';
 import { MOCK_PUBS, type MockPub } from '@/pubs/mockPubs';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
-function PubRow({ pub }: { pub: MockPub }) {
+const FILTERS = ['Vše', 'Nejbližší', 'Otevřeno', 'Zahrádka', 'Levné'] as const;
+
+function FilterChips() {
+  const [active, setActive] = React.useState(0);
+
   return (
-    <Pressable style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
-      {/* Packeta's 48x48 r12 pictogram well opens every row. */}
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.chipsRow}
+      keyboardShouldPersistTaps="handled"
+    >
+      <Pressable
+        style={({ pressed }) => [styles.chipIcon, pressed && styles.pressed]}
+        accessibilityRole="button"
+        accessibilityLabel="Filtry"
+      >
+        <SlidersHorizontalIcon size={17} color={Colors.foam} />
+      </Pressable>
+      {FILTERS.map((label, index) => (
+        <Pressable
+          key={label}
+          onPress={() => setActive(index)}
+          style={({ pressed }) => [
+            styles.chip,
+            index === active && styles.chipActive,
+            pressed && styles.pressed,
+          ]}
+          accessibilityRole="button"
+          accessibilityState={{ selected: index === active }}
+          accessibilityLabel={label}
+        >
+          <Text
+            style={[styles.chipText, index === active && styles.chipTextActive]}
+            allowFontScaling={false}
+          >
+            {label}
+          </Text>
+        </Pressable>
+      ))}
+    </ScrollView>
+  );
+}
+
+function PubRow({ pub, nearest }: { pub: MockPub; nearest?: boolean }) {
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.row, nearest && styles.rowNearest, pressed && styles.pressed]}
+    >
+      {/* Photo well. A real pub photo goes here; the glyph is the placeholder. */}
       <View style={styles.thumb}>
-        <BeerIcon size={22} color={Colors.amber} />
+        <BeerIcon size={20} color={Colors.amber} />
+        <View style={styles.thumbBadge}>
+          <MapPinIcon size={10} color={Colors.stout} />
+        </View>
       </View>
 
       <View style={styles.rowBody}>
@@ -42,9 +101,9 @@ function PubRow({ pub }: { pub: MockPub }) {
           <Text style={styles.pubName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
             {pub.name}
           </Text>
-          <View style={styles.grow} />
-          <Text style={styles.distance} allowFontScaling={false}>
-            {pub.distance}
+          <StarIcon size={12} color={Colors.amber} />
+          <Text style={styles.rating} allowFontScaling={false}>
+            {pub.rating.toFixed(1)}
           </Text>
         </View>
 
@@ -52,24 +111,23 @@ function PubRow({ pub }: { pub: MockPub }) {
           {pub.address}
         </Text>
 
-        {/* Open state and the beer are the two facts you came for. The price
-            rides in brackets on the beer rather than as its own right-aligned
-            column — it belongs to the beer, not to the row. */}
+        {/* One line, the way Packeta writes it: state · distance · why it is
+            first. The price rides in brackets on the beer below. */}
         <View style={styles.factsRow}>
-          <View style={[styles.dot, { backgroundColor: pub.open ? Colors.open : Colors.closed }]} />
           <Text
             style={[styles.factText, { color: pub.open ? Colors.open : Colors.mutedText }]}
-            numberOfLines={1}
             allowFontScaling={false}
           >
-            {pub.open ? 'Otevřeno' : 'Zavřeno'} {pub.hours}
+            {pub.open ? `Otevřeno ${pub.hours}` : `Zavřeno, ${pub.hours}`}
           </Text>
-          <View style={styles.ratingChip}>
-            <StarIcon size={11} color={Colors.amber} />
-            <Text style={styles.ratingText} allowFontScaling={false}>
-              {pub.rating.toFixed(1)}
+          <Text style={styles.distance} allowFontScaling={false}>
+            {pub.distance}
+          </Text>
+          {nearest ? (
+            <Text style={styles.nearestTag} allowFontScaling={false}>
+              Nejbližší
             </Text>
-          </View>
+          ) : null}
         </View>
 
         <Text style={styles.beer} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -81,7 +139,7 @@ function PubRow({ pub }: { pub: MockPub }) {
 
         {pub.lastParty ? (
           <View style={styles.historyRow}>
-            <UsersIcon size={13} color={withAlpha(Colors.amber, 0.9)} />
+            <UsersIcon size={12} color={withAlpha(Colors.amber, 0.9)} />
             <Text
               style={styles.historyText}
               numberOfLines={1}
@@ -92,6 +150,8 @@ function PubRow({ pub }: { pub: MockPub }) {
           </View>
         ) : null}
       </View>
+
+      <ChevronRightIcon size={18} color={Colors.mutedText} />
     </Pressable>
   );
 }
@@ -102,39 +162,51 @@ export default function PubListMockScreen() {
 
   return (
     <View style={styles.screen}>
-      <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 40 }]}
-        keyboardShouldPersistTaps="handled"
-        // Lets the large title and the search bar own the top inset.
-        contentInsetAdjustmentBehavior="automatic"
-      >
-        {/* No hand-rolled header or search field here: the native stack owns
-            the large title, its collapse onto the blurred bar and the search
-            field (`headerSearchBarOptions`). Drawing our own would give two
-            titles and a search box that does not know how to hide. */}
-        <CompassCell onPress={() => router.push('/pubs-map' as Href)} />
+      {/* The map is the screen; the places ride over it in a sheet you drag. */}
+      <View style={styles.map}>
+        <PubsMap onPressPub={() => router.push('/pubs-map' as Href)} />
+      </View>
 
-        <Text style={styles.sectionTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-          V okolí
-        </Text>
-
-        <View style={styles.list}>
-          {MOCK_PUBS.map((pub) => (
-            <PubRow key={pub.id} pub={pub} />
-          ))}
+      <PlacesSheet initial="half">
+        {/* Search lives IN the sheet, above the chips — the reference puts it
+            here, not in a nav bar, because it filters the list under it. */}
+        <View style={styles.searchWrap}>
+          <View style={styles.searchField}>
+            <SearchIcon size={17} color={Colors.mutedText} />
+            <Text style={styles.searchPlaceholder} maxFontSizeMultiplier={FontScaleCap.body}>
+              Hledej hospodu nebo pivo
+            </Text>
+          </View>
         </View>
 
-        <Text style={styles.mockNote} maxFontSizeMultiplier={FontScaleCap.body}>
-          Design mock — data jsou napevno.
-        </Text>
-      </ScrollView>
+        <FilterChips />
+
+        <ScrollView
+          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 120 }]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <CompassCell onPress={() => router.push('/pubs-map' as Href)} />
+
+          <View style={styles.list}>
+            {MOCK_PUBS.map((pub, index) => (
+              <PubRow key={pub.id} pub={pub} nearest={index === 0} />
+            ))}
+          </View>
+
+          <Text style={styles.mockNote} maxFontSizeMultiplier={FontScaleCap.body}>
+            Design mock — data jsou napevno.
+          </Text>
+        </ScrollView>
+      </PlacesSheet>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Colors.stout },
-  content: { paddingHorizontal: 16 },
+  content: { paddingHorizontal: 16, paddingTop: 4 },
+  map: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   grow: { flex: 1 },
   pressed: { opacity: 0.65 },
 
@@ -145,28 +217,6 @@ const styles = StyleSheet.create({
     height: HitArea.min,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-
-  // — Search —
-  searchRow: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.lg },
-  searchField: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    height: 44,
-    paddingHorizontal: Spacing.md,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.stout2,
-  },
-  searchPlaceholder: { fontWeight: '400', fontSize: 15, color: Colors.mutedText },
-  filterButton: {
-    width: 44,
-    height: 44,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.stout2,
   },
 
   // — Compass head cell —
@@ -214,15 +264,60 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
   },
 
-  // — Rows (Packeta list item: pictogram well + two lines + facts) —
-  list: { gap: Spacing.sm },
-  row: {
+  // — Search + filters, inside the sheet —
+  searchWrap: { paddingHorizontal: MockLayout.screenPad, paddingBottom: Spacing.sm },
+  searchField: {
     flexDirection: 'row',
-    gap: Spacing.sm,
-    padding: Spacing.sm + 2,
-    borderRadius: MockLayout.cardRadius,
+    alignItems: 'center',
+    gap: Spacing.xs,
+    height: 46,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.pill,
     backgroundColor: Colors.stout2,
   },
+  searchPlaceholder: { ...MockType.body, color: Colors.mutedText },
+  chipsRow: {
+    paddingHorizontal: MockLayout.screenPad,
+    gap: Spacing.xs,
+    paddingBottom: Spacing.sm,
+  },
+  chipIcon: {
+    width: MockLayout.pillHeight,
+    height: MockLayout.pillHeight,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.stout2,
+  },
+  chip: {
+    height: MockLayout.pillHeight,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.pill,
+    justifyContent: 'center',
+    backgroundColor: Colors.stout2,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  chipActive: { borderColor: withAlpha(Colors.amber, 0.5) },
+  chipText: { fontSize: 14, fontWeight: '600', color: Colors.mutedText },
+  chipTextActive: { color: Colors.amber },
+
+  // — Rows (Packeta list item: photo well + title + facts) —
+  // Rows sit straight on the sheet, separated by a hairline. Wrapping each one
+  // in its own bordered card put a rectangle inside a rectangle inside the
+  // sheet — three frames deep, and §14.10 kills exactly that. The list reads as
+  // a list; nothing needs a container to prove it is a row.
+  list: { marginTop: Spacing.xs },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.sm + 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.foam, 0.1),
+  },
+  /** The nearest one needs no tinted panel — the amber tag already says why. */
+  rowNearest: {},
   thumb: {
     width: MockLayout.thumb,
     height: MockLayout.thumb,
@@ -231,29 +326,31 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: withAlpha(Colors.amber, 0.12),
   },
-  rowBody: { flex: 1, gap: 2 },
-  rowTop: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
-  pubName: { ...MockType.bodySemibold, fontSize: 17, color: Colors.foam, letterSpacing: -0.2 },
-  ratingChip: {
-    flexDirection: 'row',
+  thumbBadge: {
+    position: 'absolute',
+    right: -3,
+    bottom: -3,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 6,
-    height: 19,
-    borderRadius: Radius.pill,
-    backgroundColor: withAlpha(Colors.amber, 0.12),
+    justifyContent: 'center',
+    backgroundColor: Colors.amber,
   },
-  ratingText: { fontSize: 11, fontWeight: '700', color: Colors.amber },
+  rowBody: { flex: 1, gap: 1 },
+  rowTop: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  pubName: { ...MockType.bodySemibold, color: Colors.foam, letterSpacing: -0.2 },
+  rating: { fontSize: 12, fontWeight: '700', color: Colors.amber },
+  address: { fontSize: 13, fontWeight: '400', color: Colors.mutedText },
+  factsRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: 1 },
+  factText: { fontSize: 13, fontWeight: '600' },
   distance: {
-    ...MockType.bodySmall,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '500',
     color: Colors.mutedText,
     fontVariant: ['tabular-nums'],
   },
-  address: { fontSize: 13, fontWeight: '400', color: Colors.mutedText },
-  factsRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
-  dot: { width: 6, height: 6, borderRadius: 3 },
-  factText: { fontSize: 13, fontWeight: '500' },
+  nearestTag: { fontSize: 13, fontWeight: '700', color: Colors.amber },
   beer: { ...MockType.bodySmall, color: Colors.foam, marginTop: 2 },
   price: { fontWeight: '700', color: Colors.mutedText },
   historyRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 },

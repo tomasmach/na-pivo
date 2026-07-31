@@ -8,10 +8,10 @@ import { Colors } from '@/theme/colors';
 /**
  * Native stack for the Hospody tab (§17).
  *
- * The large title, its collapse into a centred title on a blurred bar and the
- * icon morphing are iOS 26 behaviours. Hand-rolling them from a scroll offset
- * gets the geometry roughly right and the feel wrong, so the header belongs to
- * the platform: `headerLargeTitle` + a translucent blur.
+ * The header belongs to the platform: a translucent blurred bar with the title
+ * inline. The large title is OFF here — a collapsing title needs a scrolling
+ * content pane directly beneath it, and this screen's content is a sheet
+ * floating over a map. It comes back on any screen that is a list again.
  *
  * Search is a trailing glass BUTTON, not `headerSearchBarOptions`. On iOS 26
  * that option renders a full-width field pinned to the BOTTOM of the screen —
@@ -27,7 +27,7 @@ export default function PubsLayout() {
   return (
     <Stack
       screenOptions={{
-        headerLargeTitle: true,
+        headerLargeTitle: false,
         headerTransparent: true,
         headerBlurEffect: 'systemChromeMaterialDark',
         headerShadowVisible: false,
