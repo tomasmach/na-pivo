@@ -211,8 +211,15 @@ function FilterChips() {
 }
 
 function PubRow({ pub }: { pub: MockPub }) {
+  const router = useRouter();
+
   return (
-    <Pressable style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
+    <Pressable
+      onPress={() => router.push(`/pub/${pub.id}` as Href)}
+      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+      accessibilityRole="button"
+      accessibilityLabel={`${pub.name}, detail`}
+    >
       {/* The well is a map of where the pub actually is — frozen to a bitmap
           after first paint, so the list scrolls images and not map engines
           (see PubThumbMap). The beer sits in the corner badge: it labels the
@@ -292,7 +299,7 @@ export default function PubListMockScreen() {
       {/* The map is the screen; the places ride over it in a sheet you drag. */}
       <View style={styles.map}>
         <PubsMap
-          onPressPub={() => router.push('/pubs-map' as Href)}
+          onPressPub={(pubId) => router.push(`/pub/${pubId}` as Href)}
           onPan={() => setCollapseSignal((n) => n + 1)}
           selectedId={selectedPub}
         />
