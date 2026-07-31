@@ -41,6 +41,7 @@ import {
   SlidersHorizontalIcon,
   StarIcon,
 } from '@/components/shared/IconGlyph';
+import { GlassIconButton } from '@/mocks/GlassIconButton';
 import { BeerFilterSheet } from '@/pubs/BeerFilterSheet';
 import { CompassCell } from '@/pubs/CompassCell';
 import { DETENT_TOP, PlacesSheet, type Detent } from '@/pubs/PlacesSheet';
@@ -306,27 +307,24 @@ export default function PubListMockScreen() {
         </View>
       ) : null}
 
-      <Pressable
-        onPress={() => router.push('/pubs-map' as Href)}
-        style={({ pressed }) => [
-          styles.locate,
-          { top: sheetTop - (detent === 'peek' ? 170 : 56) },
-          pressed && styles.pressed,
-        ]}
-        accessibilityRole="button"
-        accessibilityLabel="Vycentrovat na mě"
-      >
-        {/* The real SF Symbol, not a lookalike: this button means the same
-            thing as Apple Maps' tracking button, so it should be the same
-            glyph. `location.fill` is what iOS uses for "centre on me". */}
-        <SymbolView
-          name="location.fill"
-          size={19}
-          tintColor={Colors.foam}
-          resizeMode="scaleAspectFit"
-          fallback={<LocateFixedIcon size={20} color={Colors.foam} />}
-        />
-      </Pressable>
+      {/* Same glass as the cards it floats beside. The glyph is the real SF
+          Symbol, not a lookalike: this control means what Apple Maps' tracking
+          button means, so it should be the same shape. */}
+      <View style={[styles.locate, { top: sheetTop - (detent === 'peek' ? 170 : 56) }]}>
+        <GlassIconButton
+          size={44}
+          accessibilityLabel="Vycentrovat na mě"
+          onPress={() => router.push('/pubs-map' as Href)}
+        >
+          <SymbolView
+            name="location.fill"
+            size={19}
+            tintColor={Colors.foam}
+            resizeMode="scaleAspectFit"
+            fallback={<LocateFixedIcon size={20} color={Colors.foam} />}
+          />
+        </GlassIconButton>
+      </View>
 
       <PlacesSheet
         initial="half"
@@ -515,16 +513,7 @@ const styles = StyleSheet.create({
   price: { fontWeight: '700', color: Colors.mutedText },
 
   carousel: { position: 'absolute', left: 0, right: 0 },
-  locate: {
-    position: 'absolute',
-    right: MockLayout.screenPad,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha('#000000', 0.62),
-  },
+  locate: { position: 'absolute', right: MockLayout.screenPad },
   mockNote: {
     fontWeight: '400',
     fontSize: 12,

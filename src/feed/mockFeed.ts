@@ -9,6 +9,31 @@
  * Delete alongside the other mocks once the real feed lands.
  */
 
+/**
+ * What a party can produce, richest first. The feed card shows the BEST thing a
+ * given night has, and only falls back down the list — the route map is last
+ * because it is the one output that says nothing about what the evening was
+ * like. A card is worth sharing when it carries a story, not coordinates.
+ *
+ *   photos   the night, as pictures — faces, the pub, the mess
+ *   game     a pub quiz or game scoreboard: who won, by how much
+ *   tempo    beers per hour — the shape of how far it went
+ *   record   a personal best that fell, or a streak that held
+ *   roast    the night, read back to you with a straight face and a knife
+ *   map      the pubs, joined. Plan B.
+ *
+ * The roast is generated FROM the numbers, which is why it belongs in this list
+ * rather than beside it: "tři hospody a ani jedna fotka" is a fact, delivered
+ * badly on purpose. It is the app's voice, and the reason people screenshot it.
+ */
+export type PartyHighlight =
+  | { kind: 'photos'; count: number; caption: string }
+  | { kind: 'game'; game: string; winner: string; scores: { name: string; score: number }[] }
+  | { kind: 'tempo'; hourly: { hour: string; beers: number }[]; peakLabel: string }
+  | { kind: 'record'; title: string; detail: string }
+  | { kind: 'roast'; line: string; basis: string }
+  | { kind: 'map' };
+
 export interface FeedEntry {
   id: string;
   /** Who posted the night. */
@@ -30,6 +55,8 @@ export interface FeedEntry {
   live?: boolean;
   /** Whether I already cheered this one. */
   cheered?: boolean;
+  /** The best thing this night produced. Drives the card's hero. */
+  highlight: PartyHighlight;
 }
 
 export const MOCK_FEED: FeedEntry[] = [
@@ -50,6 +77,13 @@ export const MOCK_FEED: FeedEntry[] = [
     cheers: 3,
     comments: 1,
     live: true,
+    // Still running, so the numbers are all there is — and that is enough to
+    // be rude about.
+    highlight: {
+      kind: 'roast',
+      line: 'Čtyři piva za 48 minut a pořád „jen na jedno".',
+      basis: 'Tvoje tempo je 5× rychlejší než obvykle',
+    },
   },
   {
     id: 'f2',
@@ -75,6 +109,17 @@ export const MOCK_FEED: FeedEntry[] = [
     cheers: 12,
     comments: 4,
     cheered: true,
+    highlight: {
+      kind: 'game',
+      game: 'Pub kvíz',
+      winner: 'Klára',
+      scores: [
+        { name: 'Klára', score: 18 },
+        { name: 'Honza', score: 15 },
+        { name: 'Ty', score: 14 },
+        { name: 'Petr', score: 11 },
+      ],
+    },
   },
   {
     id: 'f3',
@@ -96,6 +141,16 @@ export const MOCK_FEED: FeedEntry[] = [
     photos: 6,
     cheers: 7,
     comments: 2,
+    highlight: {
+      kind: 'tempo',
+      hourly: [
+        { hour: '19', beers: 1 },
+        { hour: '20', beers: 3 },
+        { hour: '21', beers: 4 },
+        { hour: '22', beers: 1 },
+      ],
+      peakLabel: 'Nejvíc mezi devátou a desátou',
+    },
   },
 ];
 

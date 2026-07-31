@@ -23,15 +23,22 @@ export function GlassIconButton({
   children,
   onPress,
   accessibilityLabel,
+  size = SIZE,
 }: {
   children: React.ReactNode;
   onPress?: () => void;
   accessibilityLabel: string;
+  /** Header trailing actions are 38; controls floating on a map are 44. */
+  size?: number;
 }) {
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [styles.button, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.button,
+        { width: size, height: size, borderRadius: size / 2 },
+        pressed && styles.pressed,
+      ]}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       hitSlop={8}
@@ -53,9 +60,6 @@ export function GlassIconButton({
 
 const styles = StyleSheet.create({
   button: {
-    width: SIZE,
-    height: SIZE,
-    borderRadius: SIZE / 2,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',

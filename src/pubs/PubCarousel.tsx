@@ -11,9 +11,9 @@
  * on screen, and a carousel of the same pubs above it would be the same content
  * twice (§0.3).
  *
- * Paging is `snapToInterval` rather than `pagingEnabled` so the neighbouring
- * cards peek in at the edges — that peek is what tells you the card swipes at
- * all, without a hint label saying so.
+ * One card fills the width; the next is fully off-screen. `snapToInterval`
+ * rather than `pagingEnabled` because the cards are inset by the screen padding
+ * and separated by a gap, so a "page" is not the viewport width.
  */
 
 import React, { useCallback, useRef } from 'react';
@@ -27,6 +27,8 @@ import {
   type NativeSyntheticEvent,
 } from 'react-native';
 
+import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
+
 import { CompassContainer } from '@/components/compass/CompassContainer';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { useCompassRotation } from '@/pubs/useCompassRotation';
@@ -35,10 +37,9 @@ import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
 
+const GLASS = isLiquidGlassAvailable();
 const DIAL = 62;
 const GAP = Spacing.sm;
-/** How much of the next card shows — the affordance that it swipes. */
-const PEEK = 34;
 
 /** Stand-in for the device position until the mock is wired to location. */
 const HERE = { lat: 50.077, lng: 14.4165 };
@@ -48,6 +49,20 @@ function PubCard({ pub, width, nearest }: { pub: MockPub; width: number; nearest
 
   return (
     <View style={[styles.card, { width }]}>
+      {/* Glass, like Packeta's places card. Tinted hard enough that a pub name
+          never has to be read against a street label showing through — glass
+          here is a material, not transparency for its own sake. */}
+      {GLASS ? (
+        <GlassView
+          style={StyleSheet.absoluteFill}
+          glassEffectStyle="regular"
+          tintColor={withAlpha(Colors.stout, 0.72)}
+          colorScheme="dark"
+          pointerEvents="none"
+        />
+      ) : (
+        <View style={[StyleSheet.absoluteFill, styles.solid]} pointerEvents="none" />
+      )}
       <CompassContainer rotation={rotation} size={DIAL} />
       <View style={styles.body}>
         <Text style={styles.name} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -75,7 +90,8 @@ function PubCard({ pub, width, nearest }: { pub: MockPub; width: number; nearest
 
 export function PubCarousel({ onSelect }: { onSelect?: (id: string) => void }) {
   const { width: screen } = useWindowDimensions();
-  const cardWidth = screen - MockLayout.screenPad * 2 - PEEK;
+  // One card per screen width: no peek of the next one.
+  const cardWidth = screen - MockLayout.screenPad * 2;
   const interval = cardWidth + GAP;
   const lastIndex = useRef(0);
 
@@ -114,12 +130,12 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
     padding: Spacing.md,
     borderRadius: MockLayout.cardRadius,
-    // Solid, not translucent: it sits on a map, and anything see-through here
-    // means reading a pub name over street labels.
-    backgroundColor: Colors.stout2,
+    overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: withAlpha(Colors.foam, 0.12),
+    borderColor: withAlpha(Colors.foam, 0.14),
   },
+  /** The pre-glass surface, kept for iOS < 26 and Android. */
+  solid: { backgroundColor: Colors.stout2 },
   body: { flex: 1 },
   name: { ...MockType.titleS, color: Colors.foam },
   distanceRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 1 },

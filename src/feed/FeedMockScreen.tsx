@@ -28,10 +28,9 @@ import {
   HeartIcon,
   ImagesIcon,
   MessageSquareIcon,
-  SearchIcon,
 } from '@/components/shared/IconGlyph';
 import { MOCK_FEED, MOCK_NUDGE, type FeedEntry } from '@/feed/mockFeed';
-import { NightRoute } from '@/mocks/NightRoute';
+import { PartyHighlight } from '@/feed/PartyHighlight';
 import { StatGrid } from '@/mocks/StatGrid';
 import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -123,11 +122,12 @@ function FeedCard({ entry }: { entry: FeedEntry }) {
         />
       </View>
 
-      {/* The hero. Strava's card is worth sharing because half of it is the
-          map; this is the same slot. The map owns its own caption and photo
-          count, so nothing is pasted on top of it from out here. */}
+      {/* The hero is whatever this night actually produced — photos, a game
+          scoreboard, the tempo, a record, or a roast built from the numbers.
+          The map is the fallback, not the default: it is the one output that
+          says nothing about what the evening was like. */}
       <View style={styles.hero}>
-        <NightRoute stops={entry.stops} live={entry.live} photos={entry.photos} />
+        <PartyHighlight entry={entry} />
       </View>
 
       <View style={styles.cardFoot}>
@@ -172,23 +172,13 @@ export default function FeedMockScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingTop: insets.top + Spacing.sm, paddingBottom: insets.bottom + 40 },
+          { paddingBottom: insets.bottom + 40 },
         ]}
+        // Lets the large title own the top inset and collapse on scroll.
+        contentInsetAdjustmentBehavior="automatic"
       >
-        <View style={styles.header}>
-          <Text style={styles.screenTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-            Kronika
-          </Text>
-          <View style={styles.grow} />
-          <Pressable
-            style={({ pressed }) => [styles.searchButton, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel="Hledat"
-          >
-            <SearchIcon size={20} color={Colors.foam} />
-          </Pressable>
-        </View>
-
+        {/* No hand-rolled header: the native stack owns the large title, its
+            collapse onto the blurred bar and the floating glass search button. */}
         {/* The facilitator: a reason to go out, above everyone else's nights. */}
         <View style={styles.nudge}>
           <View style={styles.grow}>

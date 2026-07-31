@@ -970,7 +970,7 @@ export const cs = {
     // — 3.0 navigation (§17.1). The route names stay as they are so the Live
     // Activity deep link (napivo://beer) and every existing router.replace keep
     // working; only what the bar SAYS changes.
-    feed: 'Kronika',
+    feed: 'Kocoviny',
     pubs: 'Hospody',
     party: 'Party',
     community: 'Komunita',
@@ -2856,7 +2856,7 @@ export const cs = {
     tabBeer: 'Záložka Štamgast',
     tabFriends: 'Záložka Parta',
     // — 3.0 navigation (§17.1) —
-    tabFeed: 'Záložka Kronika',
+    tabFeed: 'Záložka Kocoviny',
     tabPubs: 'Záložka Hospody',
     tabParty: 'Záložka Party',
     tabCommunity: 'Záložka Komunita',
