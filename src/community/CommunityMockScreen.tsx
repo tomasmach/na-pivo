@@ -36,6 +36,9 @@ import {
   TrophyIcon,
 } from '@/components/shared/IconGlyph';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
+// Shared with the detail screen, so the card you tap and the screen you land on
+// can never show different numbers.
+import { CHALLENGES } from '@/community/mockChallenges';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -57,12 +60,6 @@ const ROWS = [
   { rank: 4, handle: '@klárka', score: 19, avatar: `${AVATARS}64` },
   { rank: 5, handle: '@ty', score: 17, avatar: `${AVATARS}12`, me: true },
   { rank: 6, handle: '@mišák', score: 14, avatar: `${AVATARS}26` },
-];
-
-const CHALLENGES = [
-  { id: 'c1', title: 'Deset nových hospod', detail: 'Do konce srpna · 4 z 10', progress: 0.4 },
-  { id: 'c2', title: 'Tři čtvrtky po sobě', detail: 'Série běží · 2 ze 3', progress: 0.66 },
-  { id: 'c3', title: 'Ochutnej pět pivovarů', detail: 'Do konce srpna · 1 z 5', progress: 0.2 },
 ];
 
 const EVENTS = [

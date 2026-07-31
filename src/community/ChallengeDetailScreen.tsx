@@ -1,0 +1,215 @@
+/**
+ * DESIGN MOCK — one challenge, opened from the Komunita card.
+ *
+ * The order answers the questions in the order you actually ask them:
+ *
+ *   what is it        title and one line of pitch
+ *   how am I doing    the count, big, with a track under it
+ *   what counts       the rules, in sentences
+ *   who else is in    the people, with their counts
+ *
+ * No cards. The card was the thing you tapped; repeating it here would frame
+ * the content as a preview of itself. Sections are separated by space and one
+ * hairline, per the design system's §14 warning about busy nesting.
+ *
+ * The header is transparent with no title (see the community `_layout`), so the
+ * screen owns its own heading and has to clear the floating back button — hence
+ * the `insets.top + 52` top pad, the same figure the party recap uses.
+ */
+
+import React from 'react';
+import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { CheckIcon, SparklesIcon, TrophyIcon } from '@/components/shared/IconGlyph';
+import { MockLayout, MockType } from '@/mocks/mockTheme';
+import { Colors, withAlpha } from '@/theme/colors';
+import { FontScaleCap } from '@/theme/fonts';
+import { Radius, Spacing } from '@/theme/layout';
+
+import type { Challenge } from './mockChallenges';
+
+export function ChallengeDetailScreen({ challenge }: { challenge: Challenge }) {
+  const insets = useSafeAreaInsets();
+  const lead = Math.max(...challenge.rivals.map((rival) => rival.done), challenge.goal);
+
+  return (
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={[
+        styles.content,
+        { paddingTop: insets.top + 52, paddingBottom: insets.bottom + 120 },
+      ]}
+    >
+      <View style={styles.medallion}>
+        <SparklesIcon size={22} color={Colors.amber} />
+      </View>
+
+      <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
+        {challenge.title}
+      </Text>
+      <Text style={styles.blurb} maxFontSizeMultiplier={FontScaleCap.body}>
+        {challenge.blurb}
+      </Text>
+
+      {/* Where you stand. The numeral is the content, so nothing sits on top of
+          it — no chip, no card, no gradient (§15: glass never under a number). */}
+      <View style={styles.progress}>
+        <Text style={styles.count} allowFontScaling={false}>
+          {challenge.done}
+          <Text style={styles.countRest}>
+            {' '}
+            z {challenge.goal} {challenge.unit}
+          </Text>
+        </Text>
+        <View style={styles.track}>
+          <View style={[styles.fill, { width: `${Math.max(4, challenge.progress * 100)}%` }]} />
+        </View>
+        <View style={styles.metaRow}>
+          <Text style={styles.meta} maxFontSizeMultiplier={FontScaleCap.body}>
+            {challenge.deadline}
+          </Text>
+          <View style={styles.rewardRow}>
+            <TrophyIcon size={14} color={Colors.amber} />
+            <Text style={styles.reward} maxFontSizeMultiplier={FontScaleCap.body}>
+              {challenge.reward}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      <Text style={styles.section} maxFontSizeMultiplier={FontScaleCap.heading}>
+        Co se počítá
+      </Text>
+      {challenge.counts.map((rule) => (
+        <View key={rule} style={styles.rule}>
+          <CheckIcon size={16} color={Colors.amber} />
+          <Text style={styles.ruleText} maxFontSizeMultiplier={FontScaleCap.body}>
+            {rule}
+          </Text>
+        </View>
+      ))}
+
+      <Text style={styles.section} maxFontSizeMultiplier={FontScaleCap.heading}>
+        Kdo ještě jede
+      </Text>
+      {challenge.rivals.map((rival) => (
+        <View key={rival.handle} style={styles.rival}>
+          <Image source={{ uri: rival.avatar }} style={styles.avatar} />
+          <View style={styles.grow}>
+            <Text
+              style={[styles.handle, rival.me && styles.handleMe]}
+              numberOfLines={1}
+              maxFontSizeMultiplier={FontScaleCap.body}
+            >
+              {rival.handle}
+            </Text>
+            <View style={styles.trackThin}>
+              <View
+                style={[
+                  styles.fill,
+                  {
+                    width: `${Math.max(5, Math.round((rival.done / lead) * 100))}%`,
+                    backgroundColor: rival.me ? Colors.amber : withAlpha(Colors.amber, 0.35),
+                  },
+                ]}
+              />
+            </View>
+          </View>
+          <Text style={styles.rivalScore} allowFontScaling={false}>
+            {rival.done}
+            <Text style={styles.rivalGoal}>/{challenge.goal}</Text>
+          </Text>
+        </View>
+      ))}
+
+      <Text style={styles.mockNote} maxFontSizeMultiplier={FontScaleCap.body}>
+        Design mock — data jsou napevno.
+      </Text>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: Colors.stout },
+  content: { paddingHorizontal: MockLayout.screenPad },
+  grow: { flex: 1 },
+
+  medallion: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.amber, 0.16),
+  },
+  title: {
+    fontSize: 30,
+    fontWeight: '800',
+    color: Colors.foam,
+    letterSpacing: -0.6,
+    marginTop: Spacing.md,
+  },
+  blurb: { fontSize: 16, fontWeight: '400', color: Colors.mutedText, lineHeight: 23, marginTop: 6 },
+
+  progress: { marginTop: MockLayout.sectionGap },
+  count: { fontSize: 40, fontWeight: '800', color: Colors.foam, letterSpacing: -1 },
+  countRest: { fontSize: 19, fontWeight: '600', color: Colors.mutedText, letterSpacing: -0.2 },
+  track: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: withAlpha(Colors.foam, 0.1),
+    overflow: 'hidden',
+    marginTop: Spacing.sm,
+  },
+  trackThin: {
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: withAlpha(Colors.foam, 0.1),
+    overflow: 'hidden',
+    marginTop: 5,
+  },
+  fill: { height: '100%', borderRadius: 4, backgroundColor: Colors.amber },
+
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: Spacing.sm,
+  },
+  meta: { fontSize: 14, fontWeight: '500', color: Colors.mutedText },
+  rewardRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  reward: { fontSize: 14, fontWeight: '600', color: Colors.amber },
+
+  section: { ...MockType.titleS, color: Colors.foam, marginTop: MockLayout.sectionGap },
+
+  rule: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm, marginTop: Spacing.md },
+  ruleText: { flex: 1, fontSize: 15, fontWeight: '400', color: Colors.foam, lineHeight: 21 },
+
+  rival: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: withAlpha(Colors.foam, 0.08),
+  },
+  avatar: { width: 40, height: 40, borderRadius: Radius.pill },
+  handle: { fontSize: 15, fontWeight: '600', color: Colors.mutedText },
+  handleMe: { color: Colors.foam, fontWeight: '700' },
+  rivalScore: {
+    fontSize: 19,
+    fontWeight: '700',
+    color: Colors.foam,
+    fontVariant: ['tabular-nums'],
+  },
+  rivalGoal: { fontSize: 14, fontWeight: '500', color: Colors.mutedText },
+
+  mockNote: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: Colors.mutedText,
+    textAlign: 'center',
+    marginTop: MockLayout.sectionGap,
+  },
+});
