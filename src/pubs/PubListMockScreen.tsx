@@ -12,8 +12,9 @@
  * pointing at.
  *
  * Every row carries: distance, open state with the actual hour, the beer people
- * come for, its price, a rating — and, when there is one, what the party did
- * here before. That last line is the only genuinely new fact.
+ * come for, its price and a rating — plus a heart when you have been here
+ * before. How many times and when is a detail-screen answer; as a sentence on
+ * every row it competed with the facts you actually scan.
  */
 
 import React from 'react';
@@ -34,11 +35,11 @@ import {
   ChevronDownIcon,
   LocateFixedIcon,
   ChevronRightIcon,
+  HeartIcon,
   MapPinIcon,
   SearchIcon,
   SlidersHorizontalIcon,
   StarIcon,
-  UsersIcon,
 } from '@/components/shared/IconGlyph';
 import { CompassCell } from '@/pubs/CompassCell';
 import { DETENT_TOP, PlacesSheet, type Detent } from '@/pubs/PlacesSheet';
@@ -166,6 +167,14 @@ function PubRow({ pub, nearest }: { pub: MockPub; nearest?: boolean }) {
           <Text style={styles.rating} allowFontScaling={false}>
             {pub.rating.toFixed(1)}
           </Text>
+          {/* Been here before. Just the fact — how many times and when is a
+              detail-screen answer, and spelling it out on every row was a
+              second sentence competing with the ones you actually scan. */}
+          {pub.lastParty ? (
+            <View accessible accessibilityLabel="Už jsi tu byl">
+              <HeartIcon size={13} color={Colors.amber} />
+            </View>
+          ) : null}
         </View>
 
         <Text style={styles.address} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -198,18 +207,6 @@ function PubRow({ pub, nearest }: { pub: MockPub; nearest?: boolean }) {
           ) : null}
         </Text>
 
-        {pub.lastParty ? (
-          <View style={styles.historyRow}>
-            <UsersIcon size={12} color={withAlpha(Colors.amber, 0.9)} />
-            <Text
-              style={styles.historyText}
-              numberOfLines={1}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            >
-              {pub.lastParty}
-            </Text>
-          </View>
-        ) : null}
       </View>
 
       <ChevronRightIcon size={18} color={Colors.mutedText} />
@@ -440,8 +437,6 @@ const styles = StyleSheet.create({
   nearestTag: { fontSize: 13, fontWeight: '700', color: Colors.amber },
   beer: { ...MockType.bodySmall, color: Colors.foam, marginTop: 2 },
   price: { fontWeight: '700', color: Colors.mutedText },
-  historyRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 },
-  historyText: { flex: 1, fontSize: 12, fontWeight: '500', color: withAlpha(Colors.amber, 0.9) },
 
   locate: {
     position: 'absolute',
