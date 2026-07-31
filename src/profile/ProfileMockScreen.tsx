@@ -20,10 +20,13 @@ import React, { useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { TrophyIcon } from '@/components/shared/IconGlyph';
+import { FlameIcon, TrophyIcon } from '@/components/shared/IconGlyph';
 import { FeedCard } from '@/feed/FeedMockScreen';
 import { MOCK_FEED } from '@/feed/mockFeed';
+import { BarChart } from '@/mocks/BarChart';
+import { Segmented } from '@/mocks/Segmented';
 import { StatGrid } from '@/mocks/StatGrid';
+import { RECORDS, SERIES, STREAK, type StatPeriod } from '@/profile/mockStats';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { useAccountStore } from '@/stores/accountStore';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -33,6 +36,7 @@ import { Radius, Spacing } from '@/theme/layout';
 const AVATAR = 'https://i.pravatar.cc/240?img=57';
 
 const TABS = ['Statistiky', 'Aktivita'] as const;
+const PERIODS: StatPeriod[] = ['Týden', 'Měsíc', 'Rok'];
 
 const BADGES = [
   { title: 'Sto piv', earned: true },
@@ -46,6 +50,8 @@ const BADGES = [
 export default function ProfileMockScreen() {
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<(typeof TABS)[number]>('Statistiky');
+  const [period, setPeriod] = useState<StatPeriod>('Týden');
+  const series = SERIES[period];
   const session = useAccountStore((s) => s.session);
   const profile = useAccountStore((s) => s.profile);
   const signedIn = Boolean(session);
@@ -111,17 +117,71 @@ export default function ProfileMockScreen() {
 
       {tab === 'Statistiky' ? (
         <>
+          {/* Strava's shape: pick a window, see the chart, then the totals FOR
+              that window. Four lifetime numbers on their own told you nothing
+              about whether anything was happening lately. */}
           <View style={styles.stats}>
-            <StatGrid
-              columns={2}
-              stats={[
-                { label: 'Piv celkem', value: '312' },
-                { label: 'Večerů', value: '54' },
-                { label: 'Hospod', value: '38' },
-                { label: 'Nejdelší série', value: '3 týdny' },
-              ]}
-            />
+            <Segmented options={PERIODS} value={period} onChange={setPeriod} />
           </View>
+
+          <View style={styles.chart}>
+            <BarChart points={series.points} unit="piv" />
+          </View>
+
+          <View style={styles.totals}>
+            <StatGrid columns={4} compact stats={series.totals} />
+          </View>
+
+          {/* The streak, drawn rather than stated. "3 týdny" is a fact; twelve
+              dots with two gaps in them is the thing you actually want to keep
+              unbroken, and it shows the misses honestly. */}
+          <Text style={styles.section} maxFontSizeMultiplier={FontScaleCap.heading}>
+            Série
+          </Text>
+          <View style={styles.streakRow}>
+            <View style={styles.flame}>
+              <FlameIcon size={18} color={Colors.stout} />
+            </View>
+            <View style={styles.grow}>
+              <Text style={styles.streakValue} allowFontScaling={false}>
+                {STREAK.current} týdny v řadě
+              </Text>
+              <Text style={styles.streakBest} maxFontSizeMultiplier={FontScaleCap.body}>
+                Nejlepší série {STREAK.best} týdnů
+              </Text>
+            </View>
+          </View>
+          <View style={styles.weeks}>
+            {STREAK.weeks.map((hit, index) => (
+              <View
+                key={index}
+                style={[styles.week, hit ? styles.weekOn : styles.weekOff]}
+              />
+            ))}
+          </View>
+
+          <Text style={styles.section} maxFontSizeMultiplier={FontScaleCap.heading}>
+            Rekordy
+          </Text>
+          {RECORDS.map((record) => (
+            <View key={record.id} style={styles.record}>
+              <View style={styles.grow}>
+                <Text
+                  style={styles.recordTitle}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {record.title}
+                </Text>
+                <Text style={styles.recordWhen} maxFontSizeMultiplier={FontScaleCap.body}>
+                  {record.when}
+                </Text>
+              </View>
+              <Text style={styles.recordValue} allowFontScaling={false}>
+                {record.value}
+              </Text>
+            </View>
+          ))}
 
           <Text style={styles.section} maxFontSizeMultiplier={FontScaleCap.heading}>
             Odznaky
@@ -175,11 +235,46 @@ const styles = StyleSheet.create({
   },
   ctaText: { ...MockType.buttonLabel, color: Colors.stout },
 
-  stats: {
-    marginTop: MockLayout.sectionGap,
+  stats: { marginTop: MockLayout.sectionGap },
+  chart: { marginTop: Spacing.xl },
+  totals: {
+    marginTop: Spacing.xl,
     paddingTop: Spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(Colors.foam, 0.12),
+  },
+
+  streakRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, marginTop: Spacing.sm },
+  flame: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.amber,
+  },
+  streakValue: { fontSize: 18, fontWeight: '800', color: Colors.foam },
+  streakBest: { fontSize: 13, fontWeight: '500', color: Colors.mutedText, marginTop: 1 },
+  weeks: { flexDirection: 'row', gap: 5, marginTop: Spacing.md },
+  week: { flex: 1, height: 10, borderRadius: 3 },
+  weekOn: { backgroundColor: Colors.amber },
+  weekOff: { backgroundColor: withAlpha(Colors.foam, 0.1) },
+
+  record: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: withAlpha(Colors.foam, 0.08),
+  },
+  recordTitle: { fontSize: 15, fontWeight: '600', color: Colors.foam },
+  recordWhen: { fontSize: 12, fontWeight: '400', color: Colors.mutedText, marginTop: 1 },
+  recordValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: Colors.amber,
+    fontVariant: ['tabular-nums'],
   },
 
   section: { ...MockType.titleS, color: Colors.foam, marginTop: MockLayout.sectionGap },

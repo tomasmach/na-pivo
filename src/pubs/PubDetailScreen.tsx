@@ -48,34 +48,54 @@ const MOCK_TAPS = [
   { name: 'Pilsner Urquell', priceCzk: 59 },
 ];
 
-function CircleAction({
+/**
+ * A wide pill, not a disc with a caption under it.
+ *
+ * Discs belong to the party hub, where five actions have to fit one row and
+ * every one of them is a verb you already know. Here there are two, both need
+ * their words, and a label hanging under a circle is a caption on a control —
+ * the label IS the control, so it goes inside it.
+ */
+function PillAction({
   label,
   children,
+  primary,
   onPress,
 }: {
   label: string;
   children: React.ReactNode;
+  /** Exactly one per screen (§6.1). */
+  primary?: boolean;
   onPress?: () => void;
 }) {
   return (
-    <View style={styles.actionWrap}>
-      <Pressable
-        onPress={onPress}
-        style={({ pressed }) => [styles.actionCircle, pressed && styles.pressed]}
-        accessibilityRole="button"
-        accessibilityLabel={label}
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.action,
+        primary && styles.actionPrimary,
+        pressed && styles.pressed,
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      {children}
+      <Text
+        style={[styles.actionLabel, primary && styles.actionLabelPrimary]}
+        numberOfLines={1}
+        maxFontSizeMultiplier={FontScaleCap.body}
       >
-        {children}
-      </Pressable>
-      <Text style={styles.actionLabel} maxFontSizeMultiplier={FontScaleCap.body}>
         {label}
       </Text>
-    </View>
+    </Pressable>
   );
 }
 
+const TABS = ['Statistiky', 'Aktivita'] as const;
+
 export default function PubDetailScreen() {
   const insets = useSafeAreaInsets();
+  const [tab, setTab] = React.useState<(typeof TABS)[number]>('Statistiky');
   const { id } = useLocalSearchParams<{ id?: string }>();
   const pub = MOCK_PUBS.find((p) => p.id === id) ?? MOCK_PUBS[0];
 
@@ -126,17 +146,42 @@ export default function PubDetailScreen() {
             {pub.address}
           </Text>
 
-          {/* The two things you do from here, as circles beside each other. */}
+          {/* The two things you do from here. Starting a night is the primary;
+              navigating is the escape hatch to another app. */}
           <View style={styles.actions}>
-            <CircleAction label="Navigovat">
-              <MapPinIcon size={20} color={Colors.foam} />
-            </CircleAction>
-            <CircleAction label="Začít tu večer">
-              <BeerIcon size={20} color={Colors.stout} />
-            </CircleAction>
+            <PillAction label="Navigovat">
+              <MapPinIcon size={18} color={Colors.foam} />
+            </PillAction>
+            <PillAction label="Začít tu večer" primary>
+              <BeerIcon size={18} color={Colors.stout} />
+            </PillAction>
           </View>
 
-          {visited ? (
+          {/* Two tabs, the same split the profile uses: where this pub stands,
+              and what has happened in it. Stacked, the history pushed the tap
+              list off the bottom of a screen nobody scrolled that far. */}
+          <View style={styles.tabs}>
+            {TABS.map((option) => (
+              <Pressable
+                key={option}
+                onPress={() => setTab(option)}
+                style={styles.tab}
+                accessibilityRole="button"
+                accessibilityState={{ selected: option === tab }}
+                accessibilityLabel={option}
+              >
+                <Text
+                  style={[styles.tabText, option === tab && styles.tabTextOn]}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {option}
+                </Text>
+                <View style={[styles.tabRule, option === tab && styles.tabRuleOn]} />
+              </Pressable>
+            ))}
+          </View>
+
+          {tab === 'Statistiky' && visited ? (
             <View style={styles.section}>
               <Text style={styles.sectionTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
                 Co se tu dělo
@@ -150,6 +195,33 @@ export default function PubDetailScreen() {
                   { label: 'Naposled', value: 'čt' },
                 ]}
               />
+            </View>
+          ) : null}
+
+          {tab === 'Statistiky' ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
+                Na čepu
+              </Text>
+              {MOCK_TAPS.map((tap, index) => (
+                <View key={tap.name} style={[styles.tapRow, index === 0 && styles.tapFirst]}>
+                  <Text
+                    style={styles.tapName}
+                    numberOfLines={1}
+                    maxFontSizeMultiplier={FontScaleCap.body}
+                  >
+                    {tap.name}
+                  </Text>
+                  <Text style={styles.tapPrice} allowFontScaling={false}>
+                    {tap.priceCzk} Kč
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+
+          {tab === 'Aktivita' ? (
+            <View style={styles.section}>
               {MOCK_NIGHTS.map((night) => (
                 <Pressable
                   key={night.id}
@@ -179,26 +251,6 @@ export default function PubDetailScreen() {
               ))}
             </View>
           ) : null}
-
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-              Na čepu
-            </Text>
-            {MOCK_TAPS.map((tap, index) => (
-              <View key={tap.name} style={[styles.tapRow, index === 0 && styles.tapFirst]}>
-                <Text
-                  style={styles.tapName}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {tap.name}
-                </Text>
-                <Text style={styles.tapPrice} allowFontScaling={false}>
-                  {tap.priceCzk} Kč
-                </Text>
-              </View>
-            ))}
-          </View>
 
           <Text style={styles.mockNote} maxFontSizeMultiplier={FontScaleCap.body}>
             Design mock — data jsou napevno.
@@ -231,17 +283,27 @@ const styles = StyleSheet.create({
   metaDot: { fontSize: 14, color: Colors.mutedText },
   address: { fontSize: 14, fontWeight: '400', color: Colors.mutedText, marginTop: 2 },
 
-  actions: { flexDirection: 'row', gap: Spacing.lg, marginTop: Spacing.lg },
-  actionWrap: { alignItems: 'center', gap: 6 },
-  actionCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: Radius.pill,
+  actions: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.lg },
+  action: {
+    flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: Spacing.xs,
+    height: MockLayout.buttonHeight,
+    borderRadius: Radius.pill,
     backgroundColor: Colors.stout3,
   },
-  actionLabel: { fontSize: 13, fontWeight: '500', color: Colors.mutedText },
+  actionPrimary: { backgroundColor: Colors.amber },
+  actionLabel: { fontSize: 15, fontWeight: '700', color: Colors.foam },
+  actionLabelPrimary: { color: Colors.stout },
+
+  tabs: { flexDirection: 'row', marginTop: MockLayout.sectionGap },
+  tab: { flex: 1, alignItems: 'center', gap: 6 },
+  tabText: { fontSize: 16, fontWeight: '600', color: Colors.mutedText },
+  tabTextOn: { color: Colors.foam, fontWeight: '700' },
+  tabRule: { height: 2, alignSelf: 'stretch', backgroundColor: 'transparent', borderRadius: 1 },
+  tabRuleOn: { backgroundColor: Colors.amber },
 
   section: { marginTop: MockLayout.sectionGap, gap: Spacing.sm },
   sectionTitle: { ...MockType.titleS, color: Colors.foam },
