@@ -1,7 +1,6 @@
-import { View } from 'react-native';
-import { Stack, useRouter, type Href } from 'expo-router';
+import { Stack } from 'expo-router';
 
-import { MapIcon, SearchIcon } from '@/components/shared/IconGlyph';
+import { SearchIcon } from '@/components/shared/IconGlyph';
 import { GlassIconButton } from '@/mocks/GlassIconButton';
 import { Colors } from '@/theme/colors';
 
@@ -22,8 +21,6 @@ import { Colors } from '@/theme/colors';
  * every existing `router.replace('/(tabs)')` keeps landing where it did.
  */
 export default function PubsLayout() {
-  const router = useRouter();
-
   return (
     <Stack
       screenOptions={{
@@ -43,18 +40,14 @@ export default function PubsLayout() {
         name="index"
         options={{
           title: 'Hospody',
+          // No map button. The map IS the screen behind the sheet — you get to
+          // it by pulling the sheet down, which is one road instead of two
+          // (§0.3). A header icon that reveals what is already underneath is
+          // chrome describing the layout back to you.
           headerRight: () => (
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <GlassIconButton
-                accessibilityLabel="Mapa"
-                onPress={() => router.push('/pubs-map' as Href)}
-              >
-                <MapIcon size={18} color={Colors.foam} />
-              </GlassIconButton>
-              <GlassIconButton accessibilityLabel="Hledat">
-                <SearchIcon size={18} color={Colors.foam} />
-              </GlassIconButton>
-            </View>
+            <GlassIconButton accessibilityLabel="Hledat">
+              <SearchIcon size={18} color={Colors.foam} />
+            </GlassIconButton>
           ),
         }}
       />

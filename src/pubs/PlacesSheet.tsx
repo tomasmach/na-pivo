@@ -17,7 +17,7 @@
  * dependencies, and a sheet with three snap points is not worth a third.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -71,9 +71,11 @@ export function PlacesSheet({
 
   const translateY = useSharedValue(Math.round(height * DETENTS[initial]));
   const start = useSharedValue(0);
+  const [detent, setDetent] = useState<Detent>(initial);
 
   const settle = useCallback(
     (to: Detent) => {
+      setDetent(to);
       onDetentChange?.(to);
     },
     [onDetentChange],
@@ -93,6 +95,35 @@ export function PlacesSheet({
     .onEnd((event) => {
       'worklet';
       // Throw: where the sheet would land, not where the finger let go.
+      const projected = translateY.value + event.velocityY * 0.12;
+      const candidates: Detent[] = ['full', 'half', 'peek'];
+      let best: Detent = 'half';
+      let bestDistance = Number.POSITIVE_INFINITY;
+      for (const candidate of candidates) {
+        const distance = Math.abs(projected - tops[candidate]);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = candidate;
+        }
+      }
+      translateY.value = withSpring(tops[best], SPRING);
+      runOnJS(settle)(best);
+    });
+
+  // The same pan, on the body, but only while there is room to grow.
+  const bodyPan = Gesture.Pan()
+    .enabled(detent !== 'full')
+    .onStart(() => {
+      'worklet';
+      start.value = translateY.value;
+    })
+    .onUpdate((event) => {
+      'worklet';
+      const next = start.value + event.translationY;
+      translateY.value = Math.min(Math.max(next, tops.full - 12), tops.peek + 12);
+    })
+    .onEnd((event) => {
+      'worklet';
       const projected = translateY.value + event.velocityY * 0.12;
       const candidates: Detent[] = ['full', 'half', 'peek'];
       let best: Detent = 'half';
@@ -130,7 +161,16 @@ export function PlacesSheet({
           <View style={styles.grabber} />
         </View>
       </GestureDetector>
-      <View style={styles.body}>{children}</View>
+
+      {/* Below `full`, a drag anywhere on the list raises the sheet instead of
+          scrolling — pulling the list up IS how you open it, and hunting for
+          the grabber to see one more row is a tax. Once the sheet is up the
+          gesture switches off and the list scrolls normally, so the two never
+          compete for the same drag. The screen mirrors this by only enabling
+          its ScrollView at `full` (see `sheetDetent`). */}
+      <GestureDetector gesture={bodyPan}>
+        <View style={styles.body}>{children}</View>
+      </GestureDetector>
     </Animated.View>
   );
 }

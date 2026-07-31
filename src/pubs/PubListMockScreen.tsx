@@ -266,6 +266,9 @@ export default function PubListMockScreen() {
           contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 120 }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          // Below `full` the sheet owns the drag (see PlacesSheet); letting the
+          // list scroll at the same time would make one gesture do two things.
+          scrollEnabled={detent === 'full'}
         >
           <CompassCell onPress={() => router.push('/pubs-map' as Href)} />
 
