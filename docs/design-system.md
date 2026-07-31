@@ -942,3 +942,136 @@ Konkrétní věci, které už jednou byly a byly zabity. Nedělej je znovu.
 12. **Nový design pattern kvůli jedné obrazovce.** Žádný nový state manager, navigační pattern,
     komponentová knihovna ani druhý typografický systém. Když ti existující systém nestačí, uprav
     tenhle dokument a pak kód — v tomhle pořadí.
+
+---
+
+## 15. Materiál a hloubka (3.0)
+
+Do 3.0 byla appka plochá: každý povrch byl plný `stout` / `stout2` / `stout3`. Od 3.0 přibývá
+**jeden** další materiál — poloprůhledné sklo pod chromem. Referencí je nativní iOS, ne webový
+`backdrop-filter` a rozhodně ne dekorativní blur přes obsah.
+
+### 15.1 Kam sklo patří
+
+| Povrch | Materiál |
+|---|---|
+| Tab bar | sklo |
+| Header obrazovky (včetně search pole vpravo nahoře) | sklo |
+| Bottom sheet — grabber a patka s akcí | sklo |
+| Plovoucí lišta nad obsahem (např. filtry v seznamu hospod) | sklo |
+| Karta | **ne** — karta zůstává plný `stout2` (§5) |
+| Plocha pod velkým číslem | **ne** (§14.1, §14.5) |
+| Primární tlačítko | **ne** — jantar je plný, vždycky (§6.1) |
+
+Pravidlo jednou větou: **sklo je chrome, ne obsah.** Když skrz materiál prosvítá věc, kterou má
+uživatel číst, je to špatně. Sklo smí prosvítat jen scrollující obsah, který právě mizí za okrajem.
+
+### 15.2 Fallback je povinný
+
+Liquid glass běží až na iOS 26+. Deployment target je 16.4 (`ios/Podfile:25`), takže **každé**
+použití skla má větev pro zařízení, která ho neumí:
+
+```tsx
+import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
+
+// Sklo tam, kde je; jinak přesně ta plná plocha, kterou má appka dnes.
+{isLiquidGlassAvailable() ? (
+  <GlassView style={styles.bar} glassEffectStyle="regular" />
+) : (
+  <View style={[styles.bar, { backgroundColor: Colors.stout2 }]} />
+)}
+```
+
+`expo-glass-effect` je už v `node_modules` jako tranzitivní závislost Expo 56 — není to nová
+dependency a nepřidávej ji do `package.json` bez důvodu.
+
+Android sklo nemá vůbec. Tam platí fallback větev vždycky.
+
+### 15.3 Vztah k §10 (Pohyb)
+
+Sklo je **materiál, ne animace**. Reaguje na to, co pod ním scrolluje, a jinak stojí. Zakázané
+zůstává všechno z §10: žádné pulzování průhlednosti, žádný animovaný blur radius, žádné
+„dýchající“ pozadí. Když se sklo hýbe samo od sebe, je to smyčková animace se sklem místo bublinek.
+
+---
+
+## 16. Gradienty (3.0)
+
+3.0 bere strukturu z nativních iOS aplikací, ale **barevnost zůstává Na pivo**. Tam, kde by
+referenční appka sáhla po sytém akcentu (červená u Packety), sahá Na pivo po **hnědém přechodu**.
+
+### 16.1 Co gradient smí
+
+- Podklad tab baru a headeru **pod** sklem, aby chrome nebyl plochý obdélník.
+- Vršek detailu hospody — přechod ze `stout` do `stout2` pod titulkem.
+- Uvnitř ilustrací, kde už dnes je (`TallyCoaster`, `PartyTable`).
+
+### 16.2 Co gradient nesmí
+
+**§14.3 platí dál a tenhle oddíl ho neruší.** Zakázané zůstává:
+
+- radiální halo za obsahem a „ambient light“;
+- gradient přes celou obrazovku;
+- gradient jako pozadí karty — karta je plný `stout2` (§5);
+- jakýkoliv **jantarový** gradient mimo ilustraci. Jantar je plocha, text nebo ikona, ne přechod.
+
+Rozdíl proti zabitému antipatternu je v tom, že gradient 3.0 je **hnědý přechod mezi dvěma
+sousedními stouty na chromu**, ne světelný efekt za obsahem. Když je vidět, kde gradient začíná a
+končí, je moc silný.
+
+### 16.3 Tokeny
+
+Gradient se nepíše hexy na místě. Patří do `src/theme/colors.ts` vedle stávajících tokenů jako
+pojmenované dvojice stopů, ať jde změnit na jednom místě:
+
+```ts
+export const Gradients = {
+  /** Chrome pod sklem: tab bar, header. */
+  chrome: [Colors.stout2, Colors.stout] as const,
+  /** Hlava detailu hospody. */
+  header: [Colors.stout3, Colors.stout2] as const,
+};
+```
+
+Rozpad 60 / 30 / 10 z §2.2 platí beze změny — gradient je pořád těch 60 % pozadí, jen ne jednolitých.
+
+---
+
+## 17. Navigace (3.0)
+
+### 17.1 Pět tabů
+
+| Tab | Co v něm je |
+|---|---|
+| **Feed** | Kronika parties. Co zažili ostatní. |
+| **Hospody** | Objevování. Kompas, mapa, seznam, filtry, detail. |
+| **Party** | Střed. Živý večer, nebo jeho založení. |
+| **Community** | Žebříčky, komunitní události, foto soutěž, přispívání. |
+| **Profil** | Vlastní historie, statistiky, badges — a **nastavení**. |
+
+Nastavení nemá vlastní vstupní bod v chromu. Žije v Profilu (§0.4: okrajové akce do jednoho místa).
+
+### 17.2 Party je střed a jediný důraz
+
+Party je prostřední položka a **jediná** v baru, která nese jantar. Ostatní čtyři drží pravidlo
+z dnešního `TabBar.tsx`: aktivní je jantarová ikona a label, neaktivní `mutedText`, a **žádný glow
+nikde** — glow na obrazovce patří jednomu tlačítku (§6.1), a tab bar je na každé obrazovce.
+
+### 17.3 Search
+
+Search je **vpravo nahoře v headeru**, ne šestý tab a ne plovoucí pole nad obsahem. Otevírá se jako
+vlastní povrch, ne jako rozbalovací pole v liště — jeden záměr na povrch (§8).
+
+### 17.4 List → detail
+
+Detail je pushnutá route s nativním zpět, ne sheet. Sheet vlastní **jeden záměr** (§7, §8); detail
+hospody je místo, kam se dá vracet a odkud vedou další cesty, takže patří do stacku vedle
+`/profile/edit` a `/settings`.
+
+### 17.5 Kompas v seznamu hospod
+
+Kompas nezmizel a nestal se položkou menu. Je **první buňkou seznamu hospod** a nese u sebe
+hospodu, ke které právě navádí. Zůstává tím, co uživatel v tabu Hospody uvidí jako první.
+
+Zdroj pravdy o nejbližší hospodě je **jeden** — `useNearbyPub` (`src/counter/useNearbyPub.ts`).
+Nezakládej druhý.

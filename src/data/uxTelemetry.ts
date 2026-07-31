@@ -12,6 +12,10 @@ export const UI_INTERACTION_TARGETS = [
   'tab_beer',
   'tab_friends',
   'tab_profile',
+  // 3.0 navigation (§17.1). The four above keep their names so the existing
+  // event history stays comparable across the rename — the bar's labels moved,
+  // the routes behind them did not.
+  'tab_community',
   'compass_mode_nearest',
   'compass_mode_surprise',
   'compass_map_open',

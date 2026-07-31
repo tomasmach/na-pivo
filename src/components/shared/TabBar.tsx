@@ -1,21 +1,36 @@
 /**
- * Hand-rolled bottom tab bar — matches the stout/amber pub theme instead of the
- * default react-navigation look. Four items (Kompas / Štamgast / Parta / Profil),
- * each an IconGlyph + Baloo2 label. Active = amber with a subtle glow; inactive =
- * muted. A light haptic fires on press when the user has haptics enabled.
+ * Hand-rolled bottom tab bar — the stout/amber pub theme, not the default
+ * react-navigation look. Five items (Feed / Hospody / Party / Community /
+ * Profil), each an IconGlyph + Baloo2 label.
  *
- * The Parta item carries an amber signal badge fed by `usePartaSignalStore`
+ * The five labels sit on the FOUR original routes plus `community`; the routes
+ * themselves were deliberately not renamed. `napivo://beer` is the Live Activity
+ * deep link running on people's lock screens, and `/beer` / `/friends` are still
+ * named in telemetry, `appReviewPolicy` and a dozen `router.replace` calls. The
+ * bar's copy moved; the URLs did not.
+ *
+ * Party is the centre and the only item carrying amber when inactive (§17.2) —
+ * an amber glyph over the 12 % medallion §2.2 allows for an icon in a row. It is
+ * deliberately NOT a filled amber circle: a full amber surface here would be a
+ * second one on every single screen, next to that screen's own primary button
+ * (§2.2, §6.1). For the same reason nothing here glows.
+ *
+ * The bar's surface is liquid glass where the OS has it (§15.1) and the exact
+ * solid `stout2` it has always been where it does not (§15.2) — iOS 26+ only,
+ * and never on Android.
+ *
+ * The Feed item carries an amber signal badge fed by `usePartaSignalStore`
  * (Parta 3.0 §D1): a numeric pill when friend requests wait, else an ambient dot
  * when the feed has unread items or a friend is live now. The dot is static:
  * this bar sits on every screen, so any looping motion here would be ambient
- * animation across the whole app (§10), and the active tab carries no glow —
- * the one glow on a screen belongs to its one amber button (§6.1).
+ * animation across the whole app (§10).
  *
  * Driven by expo-router's <Tabs> via `tabBar={(props) => <TabBar {...props} />}`.
  */
 
 import React, { memo, useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import Animated, {
   cancelAnimation,
   useAnimatedStyle,
@@ -25,10 +40,16 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Colors } from '@/theme/colors';
+import { Colors, withAlpha } from '@/theme/colors';
 import { Fonts, FontScaleCap } from '@/theme/fonts';
 import { HitArea } from '@/theme/layout';
-import { CompassIcon, BeerIcon, UserIcon, UsersIcon } from '@/components/shared/IconGlyph';
+import {
+  CompassIcon,
+  BeerIcon,
+  UserIcon,
+  UsersIcon,
+  TrophyIcon,
+} from '@/components/shared/IconGlyph';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { usePartaSignalStore } from '@/stores/partaSignalStore';
@@ -59,7 +80,8 @@ export interface TabBarProps {
   navigation: TabBarNavigation;
 }
 
-/** Maps a route name to its icon + label + a11y label. */
+/** Maps a route name to its icon + label + a11y label.
+ *  Keys are ROUTE names (unchanged since 2.x); labels are the 3.0 copy. */
 const TAB_META: Record<
   string,
   {
@@ -67,25 +89,34 @@ const TAB_META: Record<
     label: string;
     a11yLabel: string;
     telemetryTarget: UiInteractionTarget;
+    /** The centre item: amber even when inactive (§17.2). Exactly one. */
+    accent?: boolean;
   }
 > = {
+  friends: {
+    Icon: UsersIcon,
+    label: cs.tabs.feed,
+    a11yLabel: cs.a11y.tabFeed,
+    telemetryTarget: 'tab_friends',
+  },
   index: {
     Icon: CompassIcon,
-    label: cs.tabs.compass,
-    a11yLabel: cs.a11y.tabCompass,
+    label: cs.tabs.pubs,
+    a11yLabel: cs.a11y.tabPubs,
     telemetryTarget: 'tab_compass',
   },
   beer: {
     Icon: BeerIcon,
-    label: cs.tabs.beer,
-    a11yLabel: cs.a11y.tabBeer,
+    label: cs.tabs.party,
+    a11yLabel: cs.a11y.tabParty,
     telemetryTarget: 'tab_beer',
+    accent: true,
   },
-  friends: {
-    Icon: UsersIcon,
-    label: cs.tabs.friends,
-    a11yLabel: cs.a11y.tabFriends,
-    telemetryTarget: 'tab_friends',
+  community: {
+    Icon: TrophyIcon,
+    label: cs.tabs.community,
+    a11yLabel: cs.a11y.tabCommunity,
+    telemetryTarget: 'tab_community',
   },
   profile: {
     Icon: UserIcon,
@@ -94,6 +125,10 @@ const TAB_META: Record<
     telemetryTarget: 'tab_profile',
   },
 };
+
+/** Whether the OS can draw liquid glass. Constant for the process, so it is
+ *  resolved once rather than on every render (iOS 26+; false everywhere else). */
+const GLASS = isLiquidGlassAvailable();
 
 /** What the Parta item's badge should render, if anything. */
 interface TabBadgeState {
@@ -157,7 +192,9 @@ interface TabItemProps {
 const TabItem = memo(function TabItem({ routeName, focused, onPress, badge }: TabItemProps) {
   const meta = TAB_META[routeName];
   if (!meta) return null;
-  const color = focused ? Colors.amber : Colors.mutedText;
+  // Party stays amber even when you are somewhere else — it is the one place
+  // the evening happens, and the bar should say so without shouting (§17.2).
+  const color = focused || meta.accent ? Colors.amber : Colors.mutedText;
   const { Icon } = meta;
 
   // Fold the badge count into the tab's own a11y label so VoiceOver announces
@@ -176,8 +213,11 @@ const TabItem = memo(function TabItem({ routeName, focused, onPress, badge }: Ta
     >
       {/* No glow here. The tab bar is on every screen, so a lit active icon
           would be a second permanent glow next to each screen's one amber
-          button (§6.1). Amber on the icon and the label already says "active". */}
-      <View style={styles.iconWrap}>
+          button (§6.1). Amber on the icon and the label already says "active".
+          Party adds the 12 % medallion §2.2 allows for an icon in a row — never
+          a filled amber circle, which would be a full amber surface on top of
+          every screen's own primary button. */}
+      <View style={[styles.iconWrap, meta.accent && styles.accentWrap]}>
         <Icon size={24} color={color} />
         {badge ? <TabBadge count={badge.count} dot={badge.dot} live={badge.live} /> : null}
       </View>
@@ -208,6 +248,21 @@ export function TabBar({ state, navigation }: TabBarProps) {
 
   return (
     <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+      {/* §15.1: the bar is chrome, so it is the glass. §15.2: below iOS 26 and
+          on Android this is exactly the solid stout2 the bar always had. The
+          surface sits behind the items, never over them — nothing you read
+          shows through. */}
+      {GLASS ? (
+        <GlassView
+          style={StyleSheet.absoluteFill}
+          glassEffectStyle="regular"
+          tintColor={withAlpha(Colors.stout2, 0.6)}
+          colorScheme="dark"
+          pointerEvents="none"
+        />
+      ) : (
+        <View style={[StyleSheet.absoluteFill, styles.barSolid]} pointerEvents="none" />
+      )}
       {state.routes.map((route, index) => {
         const focused = state.index === index;
 
@@ -245,10 +300,16 @@ export function TabBar({ state, navigation }: TabBarProps) {
 const styles = StyleSheet.create({
   bar: {
     flexDirection: 'row',
-    backgroundColor: Colors.stout2,
+    // No backgroundColor: the surface is the glass / solid layer underneath.
     borderTopWidth: 1,
     borderTopColor: Colors.border,
     paddingTop: 8,
+    // Glass needs the layer to clip to the bar, not bleed past the hairline.
+    overflow: 'hidden',
+  },
+  /** The pre-3.0 surface, kept verbatim as the no-glass fallback (§15.2). */
+  barSolid: {
+    backgroundColor: Colors.stout2,
   },
   item: {
     flex: 1,
@@ -260,6 +321,13 @@ const styles = StyleSheet.create({
   iconWrap: {
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  /** Party's medallion — the 12 % amber §2.2 allows behind a row icon. */
+  accentWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: withAlpha(Colors.amber, 0.12),
   },
   label: {
     fontFamily: Fonts.display.bold,
