@@ -73,12 +73,14 @@ export const MockLayout = {
  * tokens are mock-scoped until that call is made.
  */
 export const MockColors = {
-  /** Screen ground. Neutral, not brown. */
-  bg: '#0D0D0E',
+  /** Screen ground. Deep and almost neutral — but never black: pure black on a
+   *  warm-accented app reads as a void, and OLED smear on scroll is worse than
+   *  the tint it saves. A hair of warmth keeps it Na pivo without being brown. */
+  bg: '#15120F',
   /** Card / raised surface. */
-  surface: '#161618',
+  surface: '#1C1815',
   /** Nested element inside a card: row, chip, thumbnail well. */
-  surfaceHigh: '#202023',
+  surfaceHigh: '#262019',
   /** The one accent — unchanged, it is the brand. */
   accent: '#E8A317',
   /** A running session. The only time the app changes colour. */

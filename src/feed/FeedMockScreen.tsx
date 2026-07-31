@@ -54,8 +54,8 @@ function Initials({ name, tint, size = 28 }: { name: string; tint: string; size?
           width: size,
           height: size,
           borderRadius: size / 2,
-          backgroundColor: withAlpha(tint, 0.22),
-          borderColor: withAlpha(tint, 0.55),
+          backgroundColor: tint,
+          borderColor: MockColors.surface,
         },
       ]}
     >
@@ -349,8 +349,9 @@ const styles = StyleSheet.create({
   // — People —
   peopleRow: { flexDirection: 'row', alignItems: 'center', marginTop: Spacing.md },
   peopleOverlap: { marginLeft: -9 },
-  avatar: { alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  avatarText: { fontWeight: '700', color: Colors.foam },
+  // A 2pt ring in the card colour punches each face out of the one behind it.
+  avatar: { alignItems: 'center', justifyContent: 'center', borderWidth: 2 },
+  avatarText: { fontWeight: '700', color: Colors.stout },
   peopleLabel: {
     flex: 1,
     fontWeight: '400',
