@@ -26,8 +26,11 @@ const SPREAD = 0.012;
 export function PubsMap({
   onPressPub,
   onPan,
+  selectedId,
 }: {
   onPressPub?: (id: string) => void;
+  /** The pub the floating card is currently on — its pin leads. */
+  selectedId?: string | null;
   /** Fires while the user drags the map — the screen uses it to get the sheet
    *  out of the way (Apple Maps behaviour). */
   onPan?: () => void;
@@ -79,8 +82,18 @@ export function PubsMap({
           onPress={() => onPressPub?.(pin.id)}
           tracksViewChanges={false}
         >
-          <View style={[styles.pin, !pin.open && styles.pinClosed]}>
-            <Text style={styles.pinText} numberOfLines={1} allowFontScaling={false}>
+          <View
+            style={[
+              styles.pin,
+              !pin.open && styles.pinClosed,
+              pin.id === selectedId && styles.pinSelected,
+            ]}
+          >
+            <Text
+              style={[styles.pinText, pin.id === selectedId && styles.pinTextSelected]}
+              numberOfLines={1}
+              allowFontScaling={false}
+            >
               {pin.name}
             </Text>
           </View>
@@ -102,5 +115,9 @@ const styles = StyleSheet.create({
     borderColor: Colors.amber,
   },
   pinClosed: { borderColor: withAlpha(Colors.foam, 0.3) },
+  /** The card you are on. Filled rather than merely outlined, so it reads as
+   *  the subject of the screen and not just another marker. */
+  pinSelected: { backgroundColor: Colors.amber, borderColor: Colors.amber },
+  pinTextSelected: { color: Colors.stout },
   pinText: { fontSize: 12, fontWeight: '700', color: Colors.foam },
 });

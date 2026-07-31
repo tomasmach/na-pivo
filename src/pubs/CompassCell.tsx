@@ -17,20 +17,12 @@
  * what turns "north is that way" into "the pub is that way".
  */
 
-import React, { useMemo } from 'react';
+import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import {
-  useAnimatedReaction,
-  useDerivedValue,
-  useSharedValue,
-  withSpring,
-} from 'react-native-reanimated';
 
 import { CompassContainer } from '@/components/compass/CompassContainer';
-import { initialBearing } from '@/compass/bearing';
-import { shortestRotationTarget } from '@/compass/rotation';
-import { useDeviceHeading } from '@/compass/useDeviceHeading';
 import { MOCK_COMPASS_TARGET } from '@/pubs/mockPubs';
+import { useCompassRotation } from '@/pubs/useCompassRotation';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -40,43 +32,9 @@ const DIAL = 66;
 /** Stand-in for the device position until the mock is wired to location. */
 const HERE = { lat: 50.077, lng: 14.4165 };
 
-const SPRING = { damping: 18, stiffness: 140, mass: 0.6 } as const;
-
 export function CompassCell({ onPress }: { onPress?: () => void }) {
   const t = MOCK_COMPASS_TARGET;
-  const { smoothedHeading } = useDeviceHeading(true);
-
-  const bearing = useMemo(
-    () =>
-      initialBearing({
-        lat1: HERE.lat,
-        lng1: HERE.lng,
-        lat2: t.lat,
-        lng2: t.lng,
-      }),
-    [t.lat, t.lng],
-  );
-
-  const rotation = useSharedValue(0);
-  const lastTarget = useSharedValue(0);
-  const hasTarget = useSharedValue(false);
-
-  // "Where is the pub" = its bearing, less wherever the phone is facing.
-  const arrow = useDerivedValue(() =>
-    smoothedHeading.value === null ? null : bearing - smoothedHeading.value,
-  );
-
-  useAnimatedReaction(
-    () => arrow.value,
-    (target, previous) => {
-      if (target === null || target === previous) return;
-      const current = hasTarget.value ? lastTarget.value : rotation.value;
-      const next = shortestRotationTarget(current, target);
-      hasTarget.value = true;
-      lastTarget.value = next;
-      rotation.value = withSpring(next, SPRING);
-    },
-  );
+  const rotation = useCompassRotation(HERE, { lat: t.lat, lng: t.lng });
 
   return (
     <Pressable

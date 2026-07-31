@@ -43,6 +43,7 @@ import {
 } from '@/components/shared/IconGlyph';
 import { CompassCell } from '@/pubs/CompassCell';
 import { DETENT_TOP, PlacesSheet, type Detent } from '@/pubs/PlacesSheet';
+import { PubCarousel } from '@/pubs/PubCarousel';
 import { PubThumbMap } from '@/pubs/PubThumbMap';
 import { PubsMap } from '@/pubs/PubsMap';
 import { MOCK_PUBS, type MockPub } from '@/pubs/mockPubs';
@@ -278,6 +279,7 @@ export default function PubListMockScreen() {
   const [detent, setDetent] = React.useState<Detent>('half');
   const [collapseSignal, setCollapseSignal] = React.useState(0);
   const [listAtTop, setListAtTop] = React.useState(true);
+  const [selectedPub, setSelectedPub] = React.useState<string | null>(MOCK_PUBS[0]?.id ?? null);
 
   // The locate button rides just above the sheet's resting top, so collapsing
   // the sheet walks the button down with it instead of stranding it.
@@ -290,14 +292,24 @@ export default function PubListMockScreen() {
         <PubsMap
           onPressPub={() => router.push('/pubs-map' as Href)}
           onPan={() => setCollapseSignal((n) => n + 1)}
+          selectedId={selectedPub}
         />
       </View>
+
+      {/* Map mode: one card above the sheet, swipeable, and the map follows it.
+          At the other detents the list is on screen, so this would be the same
+          pubs twice. */}
+      {detent === 'peek' ? (
+        <View style={[styles.carousel, { top: sheetTop - 118 }]}>
+          <PubCarousel onSelect={setSelectedPub} />
+        </View>
+      ) : null}
 
       <Pressable
         onPress={() => router.push('/pubs-map' as Href)}
         style={({ pressed }) => [
           styles.locate,
-          { top: sheetTop - 56 },
+          { top: sheetTop - (detent === 'peek' ? 170 : 56) },
           pressed && styles.pressed,
         ]}
         accessibilityRole="button"
@@ -511,6 +523,7 @@ const styles = StyleSheet.create({
   beer: { ...MockType.bodySmall, color: Colors.foam, marginTop: 2 },
   price: { fontWeight: '700', color: Colors.mutedText },
 
+  carousel: { position: 'absolute', left: 0, right: 0 },
   locate: {
     position: 'absolute',
     right: MockLayout.screenPad,
