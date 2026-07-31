@@ -200,11 +200,9 @@ function FilterChips() {
   );
 }
 
-function PubRow({ pub, nearest }: { pub: MockPub; nearest?: boolean }) {
+function PubRow({ pub }: { pub: MockPub }) {
   return (
-    <Pressable
-      style={({ pressed }) => [styles.row, nearest && styles.rowNearest, pressed && styles.pressed]}
-    >
+    <Pressable style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
       {/* The well is a map of where the pub actually is — frozen to a bitmap
           after first paint, so the list scrolls images and not map engines
           (see PubThumbMap). The beer sits in the corner badge: it labels the
@@ -235,28 +233,22 @@ function PubRow({ pub, nearest }: { pub: MockPub; nearest?: boolean }) {
           ) : null}
         </View>
 
+        {/* Distance belongs with the address — both answer "where is it", and
+            splitting them made the row read as two separate facts. */}
         <Text style={styles.address} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-          {pub.address}
+          {pub.address} · {pub.distance}
         </Text>
 
-        {/* One line, the way Packeta writes it: state · distance · why it is
-            first. The price rides in brackets on the beer below. */}
-        <View style={styles.factsRow}>
-          <Text
-            style={[styles.factText, { color: pub.open ? Colors.open : Colors.mutedText }]}
-            allowFontScaling={false}
-          >
-            {pub.open ? `Otevřeno ${pub.hours}` : `Zavřeno, ${pub.hours}`}
-          </Text>
-          <Text style={styles.distance} allowFontScaling={false}>
-            {pub.distance}
-          </Text>
-          {nearest ? (
-            <Text style={styles.nearestTag} allowFontScaling={false}>
-              Nejbližší
-            </Text>
-          ) : null}
-        </View>
+        {/* No "Nejbližší" tag down here: the nearest pub is the tinted compass
+            row at the top of the list, so repeating it on a row is the same
+            claim twice. The line that is left is the one you actually scan. */}
+        <Text
+          style={[styles.factText, { color: pub.open ? Colors.open : Colors.mutedText }]}
+          numberOfLines={1}
+          allowFontScaling={false}
+        >
+          {pub.open ? `Otevřeno ${pub.hours}` : `Zavřeno, ${pub.hours}`}
+        </Text>
 
         <Text style={styles.beer} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
           {pub.beer}
@@ -362,8 +354,8 @@ export default function PubListMockScreen() {
           <CompassCell onPress={() => router.push('/pubs-map' as Href)} />
 
           <View style={styles.list}>
-            {MOCK_PUBS.map((pub, index) => (
-              <PubRow key={pub.id} pub={pub} nearest={index === 0} />
+            {MOCK_PUBS.map((pub) => (
+              <PubRow key={pub.id} pub={pub} />
             ))}
           </View>
 
@@ -492,8 +484,6 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(Colors.foam, 0.1),
   },
-  /** The nearest one needs no tinted panel — the amber tag already says why. */
-  rowNearest: {},
   thumb: { width: THUMB, height: THUMB },
   thumbBadge: {
     position: 'absolute',
@@ -511,15 +501,7 @@ const styles = StyleSheet.create({
   pubName: { ...MockType.bodySemibold, color: Colors.foam, letterSpacing: -0.2 },
   rating: { fontSize: 12, fontWeight: '700', color: Colors.amber },
   address: { fontSize: 13, fontWeight: '400', color: Colors.mutedText },
-  factsRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: 1 },
   factText: { fontSize: 13, fontWeight: '600' },
-  distance: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: Colors.mutedText,
-    fontVariant: ['tabular-nums'],
-  },
-  nearestTag: { fontSize: 13, fontWeight: '700', color: Colors.amber },
   beer: { ...MockType.bodySmall, color: Colors.foam, marginTop: 2 },
   price: { fontWeight: '700', color: Colors.mutedText },
 
