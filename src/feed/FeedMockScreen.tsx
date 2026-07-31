@@ -29,7 +29,6 @@ import { cs } from "@/i18n/cs";
 import { MOCK_FEED, MOCK_NUDGE, type FeedEntry } from "@/feed/mockFeed";
 import { PartyHighlight } from "@/feed/PartyHighlight";
 import { buildRoast } from "@/feed/roast";
-import { usePartyMorph } from "@/mocks/PartyMorph";
 import { StatGrid } from "@/mocks/StatGrid";
 import { MockColors, MockType } from "@/mocks/mockTheme";
 import { Colors, withAlpha } from "@/theme/colors";
@@ -75,10 +74,8 @@ function Face({
   );
 }
 
-function FeedCard({ entry }: { entry: FeedEntry }) {
+export function FeedCard({ entry }: { entry: FeedEntry }) {
   const router = useRouter();
-  const cardRef = React.useRef<View>(null);
-  const fireMorph = usePartyMorph((s) => s.fire);
 
   // Derived, not written: every roast is a true observation about THIS night,
   // and the rules stay silent when there is nothing fair to say (see roast.ts).
@@ -96,18 +93,8 @@ function FeedCard({ entry }: { entry: FeedEntry }) {
 
   return (
     <Pressable
-      ref={cardRef}
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-      onPress={() => {
-        // The card grows into the screen it opens. Measured, not guessed —
-        // a feed scrolls, so the frame is only true at the moment of the tap.
-        cardRef.current?.measureInWindow((x, y, width, height) => {
-          fireMorph(
-            { x, y, width, height, radius: 0, color: MockColors.surface },
-            () => router.push("/friends/party-recap" as Href),
-          );
-        });
-      }}
+      onPress={() => router.push("/friends/party-recap" as Href)}
       accessibilityRole="button"
       accessibilityLabel={`${entry.title}, detail večera`}
     >
@@ -225,7 +212,7 @@ function FeedCard({ entry }: { entry: FeedEntry }) {
           accessibilityRole="button"
           accessibilityLabel="Komentáře"
         >
-          <MessageSquareIcon size={16} color={Colors.mutedText} />
+          <MessageSquareIcon size={19} color={Colors.foam} />
           <Text style={styles.footText} allowFontScaling={false}>
             {entry.comments}
           </Text>
@@ -491,7 +478,9 @@ const styles = StyleSheet.create({
     gap: 6,
     minHeight: 28,
   },
-  footText: { fontWeight: "500", fontSize: 13, color: Colors.mutedText },
+  // The floor carries the card's only two actions, so it reads at full
+  // strength — muted grey made them look like metadata you cannot press.
+  footText: { fontWeight: "600", fontSize: 15, color: Colors.foam },
   footTextOn: { color: Colors.amber },
 
   mockNote: {

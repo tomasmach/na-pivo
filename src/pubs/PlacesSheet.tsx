@@ -40,10 +40,18 @@ import { MockLayout } from '@/mocks/mockTheme';
  * filter row. The map is the screen at that point; the sheet is a handle.
  */
 export const DETENT_TOP = { peek: 0.87, half: 0.48, full: 0.08 } as const;
+
+/** Room the tab bar needs. Peek is measured UP from the window bottom rather
+ *  than as a fraction, or the collapsed row lands behind the bar. */
+const TAB_BAR_RESERVE = 150;
 const DETENTS = DETENT_TOP;
 export type Detent = keyof typeof DETENTS;
 
 const GLASS = isLiquidGlassAvailable();
+
+/** How far the sheet sits off the screen edges when it is resting. */
+const FLOAT_INSET = 10;
+const FLOAT_RADIUS = 26;
 
 const SPRING = { damping: 22, stiffness: 190, mass: 0.7 } as const;
 
@@ -74,7 +82,7 @@ export function PlacesSheet({
   // plain numbers captured from the closure are fine, a function is not.
   const tops = useMemo(
     () => ({
-      peek: Math.round(height * DETENTS.peek),
+      peek: Math.round(height - TAB_BAR_RESERVE),
       half: Math.round(height * DETENTS.half),
       full: Math.round(height * DETENTS.full),
     }),
@@ -175,9 +183,19 @@ export function PlacesSheet({
     }
   }, [collapseSignal, expandSignal, settle, tops, translateY]);
 
-  const sheetStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
-  }));
+  // Floating at rest, edge-to-edge when expanded. Packeta's panel does exactly
+  // this ("0 when fully expanded, 1 at the resting detent"), and it is what
+  // makes the sheet read as a card you lift rather than a drawer that slides.
+  const sheetStyle = useAnimatedStyle(() => {
+    const span = tops.peek - tops.full || 1;
+    const lifted = Math.min(1, Math.max(0, (tops.peek - translateY.value) / span));
+    return {
+      transform: [{ translateY: translateY.value }],
+      marginHorizontal: FLOAT_INSET * (1 - lifted),
+      borderTopLeftRadius: FLOAT_RADIUS,
+      borderTopRightRadius: FLOAT_RADIUS,
+    };
+  });
 
   return (
     <Animated.View style={[styles.sheet, { height }, sheetStyle]}>
@@ -220,8 +238,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     top: 0,
-    borderTopLeftRadius: MockLayout.cardRadius + 4,
-    borderTopRightRadius: MockLayout.cardRadius + 4,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderColor: withAlpha(Colors.foam, 0.12),
     overflow: 'hidden',

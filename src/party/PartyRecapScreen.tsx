@@ -213,7 +213,7 @@ function Tempo({ party }: { party: PartyRecap }) {
             />
           </View>
           <Text style={styles.tempoHour} allowFontScaling={false}>
-            {slot.hour}
+            {slot.hour}:00
           </Text>
         </View>
       ))}
@@ -310,7 +310,7 @@ export default function PartyRecapScreen() {
         </View>
 
         <View style={styles.section}>
-          <SectionTitle>Tempo</SectionTitle>
+          <SectionTitle>Piva po hodinách</SectionTitle>
           <Tempo party={party} />
         </View>
 

@@ -119,6 +119,11 @@ function Tempo({
   const peak = hourly.reduce((m, h) => Math.max(m, h.beers), 0);
   return (
     <View style={styles.pad}>
+      {/* Bare numerals above bare numerals is a puzzle: 4 what, at 21 what?
+          One line naming both axes is cheaper than a legend and a y-axis. */}
+      <Text style={styles.chartTitle} maxFontSizeMultiplier={FontScaleCap.body}>
+        Piva po hodinách
+      </Text>
       <View style={styles.bars}>
         {hourly.map((slot) => (
           <View key={slot.hour} style={styles.barCol}>
@@ -136,7 +141,7 @@ function Tempo({
               />
             </View>
             <Text style={styles.barHour} allowFontScaling={false}>
-              {slot.hour}
+              {slot.hour}:00
             </Text>
           </View>
         ))}
@@ -289,6 +294,7 @@ const styles = StyleSheet.create({
   barCol: { flex: 1, alignItems: 'center', gap: 5 },
   barTrack: { flex: 1, width: '100%', justifyContent: 'flex-end' },
   bar: { width: '100%', borderRadius: 6, backgroundColor: withAlpha(Colors.amber, 0.55) },
+  chartTitle: { fontSize: 13, fontWeight: '600', color: Colors.foam },
   barValue: { fontSize: 12, fontWeight: '700', color: Colors.foam },
   barHour: { fontSize: 11, fontWeight: '500', color: Colors.mutedText },
 

@@ -47,6 +47,9 @@ export function GlassIconButton({
         <GlassView
           style={StyleSheet.absoluteFill}
           glassEffectStyle="regular"
+          // The jelly: iOS 26 deforms interactive glass under a press. Without
+          // it a glass button is just a frosted rectangle.
+          isInteractive
           colorScheme="dark"
           pointerEvents="none"
         />
