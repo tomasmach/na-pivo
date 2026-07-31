@@ -29,7 +29,11 @@ export default function FeedLayout() {
         headerLargeTitle: true,
         headerShadowVisible: false,
         headerLargeTitleShadowVisible: false,
+        // Tint colours the BUTTONS; the title is foam. Letting the tint carry
+        // both made the large title amber, which reads as a link.
         headerTintColor: Colors.amber,
+        headerTitleStyle: { color: Colors.foam },
+        headerLargeTitleStyle: { color: Colors.foam },
         contentStyle: { backgroundColor: Colors.stout },
       }}
     >

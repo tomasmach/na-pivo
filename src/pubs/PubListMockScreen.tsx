@@ -38,7 +38,6 @@ import {
   ChevronRightIcon,
   HeartIcon,
   SearchIcon,
-  SlidersHorizontalIcon,
   StarIcon,
 } from '@/components/shared/IconGlyph';
 import { GlassIconButton } from '@/mocks/GlassIconButton';
@@ -117,14 +116,6 @@ function FilterChips() {
       contentContainerStyle={styles.chipsRow}
       keyboardShouldPersistTaps="handled"
     >
-      <Pressable
-        style={({ pressed }) => [styles.chipIcon, pressed && styles.pressed]}
-        accessibilityRole="button"
-        accessibilityLabel="Filtry"
-      >
-        <SlidersHorizontalIcon size={17} color={Colors.foam} />
-      </Pressable>
-
       {/* The sort is a dropdown, not one of the toggles — it answers a
           different question and only ever has one answer at a time.
           This SHOULD be a menu that morphs out of the pill. It briefly was, via
@@ -459,14 +450,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: MockLayout.screenPad,
     gap: Spacing.xs,
     paddingBottom: Spacing.sm,
-  },
-  chipIcon: {
-    width: MockLayout.pillHeight,
-    height: MockLayout.pillHeight,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.stout2,
   },
   chip: {
     flexDirection: 'row',

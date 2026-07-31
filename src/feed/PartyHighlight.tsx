@@ -14,7 +14,7 @@
  */
 
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { ImagesIcon, TrophyIcon } from '@/components/shared/IconGlyph';
 import { NightRoute } from '@/mocks/NightRoute';
@@ -25,6 +25,8 @@ import { FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
 
 const HERO_HEIGHT = 170;
+/** Tile height of the map + photos strip. */
+const STRIP = 150;
 
 /** Photo placeholders until real images are wired. */
 const TINTS = ['#3A2515', '#2E2A1A', '#3A1E1E', '#22301F'];
@@ -165,7 +167,40 @@ export function PartyHighlight({ entry }: { entry: FeedEntry }) {
       return <Record title={h.title} detail={h.detail} />;
     case 'map':
     default:
-      return <NightRoute stops={entry.stops} live={entry.live} photos={entry.photos} />;
+      // With photos, the map stops being the whole hero and becomes the first
+      // tile of a strip you scroll: where it was, then what it looked like.
+      // The pictures are the point; the map is the establishing shot.
+      return entry.photos > 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.strip}
+        >
+          <View style={styles.stripMap}>
+            <NightRoute stops={entry.stops} live={entry.live} height={STRIP} />
+          </View>
+          {Array.from({ length: entry.photos }).map((_, index) => (
+            <View
+              key={index}
+              style={[styles.stripPhoto, { backgroundColor: TINTS[index % TINTS.length] }]}
+            >
+              <ImagesIcon size={20} color={withAlpha(Colors.foam, 0.4)} />
+            </View>
+          ))}
+        </ScrollView>
+      ) : (
+        // Nothing was produced: no map, no filler. Strava does the same with a
+        // text-only activity — the card is the numbers and a line saying where.
+        // A map dropped in to fill the slot is decoration pretending to be
+        // content, and it makes every empty night look identical.
+        <Text
+          style={styles.routeText}
+          numberOfLines={2}
+          maxFontSizeMultiplier={FontScaleCap.body}
+        >
+          {entry.stops.map((stop) => stop.name).join('  →  ')}
+        </Text>
+      );
   }
 }
 
@@ -173,6 +208,27 @@ const styles = StyleSheet.create({
   pad: { paddingHorizontal: Spacing.md, paddingTop: Spacing.md, gap: Spacing.sm },
   grow: { flex: 1 },
   caption: { fontSize: 12, fontWeight: '500', color: Colors.mutedText },
+
+  routeText: {
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.sm,
+    fontSize: 14,
+    fontWeight: '600',
+    color: withAlpha(Colors.amber, 0.9),
+  },
+
+  // — Map + photos strip —
+  strip: { gap: Spacing.xs, paddingHorizontal: Spacing.md },
+  stripMap: { width: 220, borderRadius: 18, overflow: 'hidden' },
+  stripPhoto: {
+    width: 120,
+    height: STRIP,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: withAlpha(Colors.foam, 0.12),
+  },
 
   // — Photos —
   photoRow: { flexDirection: 'row', gap: Spacing.xs, flex: 1 },

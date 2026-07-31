@@ -9,11 +9,11 @@
  * named in telemetry, `appReviewPolicy` and a dozen `router.replace` calls. The
  * bar's copy moved; the URLs did not.
  *
- * Party is the centre and the only item carrying amber when inactive (§17.2) —
- * an amber glyph over the 12 % medallion §2.2 allows for an icon in a row. It is
- * deliberately NOT a filled amber circle: a full amber surface here would be a
- * second one on every single screen, next to that screen's own primary button
- * (§2.2, §6.1). For the same reason nothing here glows.
+ * Party is the centre and inverted: a filled amber disc with a stout glyph on
+ * it, amber whether or not it is focused. That is a deliberate exception to
+ * §2.2 ("one full amber surface per screen") — the bar rides every screen, so
+ * §17.2 needs amending to record the exception rather than leaving the doc and
+ * the code disagreeing. Nothing here glows; the disc is the emphasis.
  *
  * The bar's surface is liquid glass where the OS has it (§15.1) and the exact
  * solid `stout2` it has always been where it does not (§15.2) — iOS 26+ only,
@@ -192,9 +192,12 @@ interface TabItemProps {
 const TabItem = memo(function TabItem({ routeName, focused, onPress, badge }: TabItemProps) {
   const meta = TAB_META[routeName];
   if (!meta) return null;
-  // Party stays amber even when you are somewhere else — it is the one place
-  // the evening happens, and the bar should say so without shouting (§17.2).
-  const color = focused || meta.accent ? Colors.amber : Colors.mutedText;
+  // Party inverts: the glyph sits ON the amber disc, not inside a tint of it.
+  const color = meta.accent
+    ? Colors.stout
+    : focused
+      ? Colors.amber
+      : Colors.mutedText;
   const { Icon } = meta;
 
   // Fold the badge count into the tab's own a11y label so VoiceOver announces
@@ -312,8 +315,8 @@ const styles = StyleSheet.create({
   bar: {
     flexDirection: 'row',
     // No backgroundColor: the surface is the glass / solid layer underneath.
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
+    // No top hairline either — on glass a hard line reads as a seam, and the
+    // material already separates the bar from what scrolls behind it.
     paddingTop: 8,
     // Glass needs the layer to clip to the bar, not bleed past the hairline.
     overflow: 'hidden',
@@ -333,12 +336,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  /** Party's medallion — the 12 % amber §2.2 allows behind a row icon. */
+  /** Party, inverted: a filled amber disc with a stout glyph on it. This is a
+   *  deliberate exception to §2.2's "one full amber surface per screen" — the
+   *  bar rides every screen, so §17.2 in the design system needs updating to
+   *  say so rather than leaving code and doc disagreeing. */
   accentWrap: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: withAlpha(Colors.amber, 0.12),
+    backgroundColor: Colors.amber,
   },
   label: {
     fontFamily: Fonts.display.bold,
