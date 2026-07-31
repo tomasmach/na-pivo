@@ -1,9 +1,4 @@
-import LeaderboardsScreen from '@/leaderboards/LeaderboardsScreen';
-
-/**
- * Community tab — the standings themselves, not a menu pointing at them.
- * `embedded` drops the back chevron a tab has nothing to use for.
- */
-export default function CommunityTab() {
-  return <LeaderboardsScreen embedded />;
-}
+// MOCK on this branch. Real screen:
+//   import LeaderboardsScreen from '@/leaderboards/LeaderboardsScreen';
+//   export default () => <LeaderboardsScreen embedded />;
+export { default } from '@/community/CommunityMockScreen';

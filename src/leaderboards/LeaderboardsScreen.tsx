@@ -43,7 +43,6 @@ import {
 } from '@/data/leaderboardsClient';
 import { trackClientEvent } from '@/data/telemetryClient';
 import { cs } from '@/i18n/cs';
-import { PeopleSuggestions } from '@/community/PeopleSuggestions';
 import BoardSegmented from '@/leaderboards/BoardSegmented';
 import { HeroFooterSkeleton, HeroSkeleton, RowsSkeleton } from '@/leaderboards/BoardSkeleton';
 import { GlobalBoardRow } from '@/leaderboards/GlobalBoardRow';
@@ -355,8 +354,6 @@ export default function LeaderboardsScreen({ embedded = false }: LeaderboardsScr
           metric is a solid track with one sliding thumb, the window is quiet
           underlined text. They sit 8 pt apart and 16 pt above the card, so they
           read as one control group, not two stray rows. */}
-      {embedded ? <PeopleSuggestions /> : null}
-
       <View style={styles.filters}>
         <BoardSegmented
           options={CATEGORY_LABELS}
@@ -386,7 +383,6 @@ export default function LeaderboardsScreen({ embedded = false }: LeaderboardsScr
       </View>
 
       <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
         style={styles.scroll}
         contentContainerStyle={[styles.scrollContent, !showList && styles.scrollContentCentered]}
         showsVerticalScrollIndicator={false}
