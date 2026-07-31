@@ -27,7 +27,17 @@ export default function CommunityLayout() {
         contentStyle: { backgroundColor: Colors.stout },
       }}
     >
-      <Stack.Screen name="index" options={{ title: 'Žebříčky' }} />
+      <Stack.Screen name="index" options={{ title: 'Komunita' }} />
+      <Stack.Screen
+        name="challenge/[id]"
+        options={{
+          headerTransparent: true,
+          headerTitle: '',
+          headerBackButtonDisplayMode: 'minimal',
+          headerTintColor: Colors.foam,
+          animation: 'ios_from_right',
+        }}
+      />
     </Stack>
   );
 }

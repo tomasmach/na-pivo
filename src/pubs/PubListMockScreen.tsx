@@ -301,7 +301,7 @@ export default function PubListMockScreen() {
           At the other detents the list is on screen, so this would be the same
           pubs twice. */}
       {detent === 'peek' ? (
-        <View style={[styles.carousel, { top: sheetTop - 118 }]}>
+        <View style={[styles.carousel, { top: sheetTop - 152 }]}>
           <PubCarousel onSelect={setSelectedPub} />
         </View>
       ) : null}
@@ -309,7 +309,7 @@ export default function PubListMockScreen() {
       {/* Same glass as the cards it floats beside. The glyph is the real SF
           Symbol, not a lookalike: this control means what Apple Maps' tracking
           button means, so it should be the same shape. */}
-      <View style={[styles.locate, { top: sheetTop - (detent === 'peek' ? 170 : 56) }]}>
+      <View style={[styles.locate, { top: sheetTop - (detent === 'peek' ? 204 : 56) }]}>
         <GlassIconButton
           size={44}
           accessibilityLabel="Vycentrovat na mě"
@@ -451,8 +451,13 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
   },
 
-  collapsed: { paddingHorizontal: MockLayout.screenPad, paddingTop: 2, minHeight: 44 },
-  collapsedText: { ...MockType.titleS, color: Colors.foam },
+  collapsed: {
+    paddingHorizontal: MockLayout.screenPad,
+    minHeight: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  collapsedText: { fontSize: 15, fontWeight: '600', color: Colors.foam },
 
   // — Search + filters, inside the sheet —
   searchWrap: { paddingHorizontal: MockLayout.screenPad, paddingBottom: Spacing.sm },

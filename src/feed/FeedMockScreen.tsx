@@ -26,7 +26,7 @@ import { useRouter, type Href } from "expo-router";
 
 import { BeerIcon, MessageSquareIcon } from "@/components/shared/IconGlyph";
 import { cs } from "@/i18n/cs";
-import { MOCK_FEED, MOCK_NUDGE, type FeedEntry } from "@/feed/mockFeed";
+import { MOCK_FEED, type FeedEntry } from "@/feed/mockFeed";
 import { PartyHighlight } from "@/feed/PartyHighlight";
 import { buildRoast } from "@/feed/roast";
 import { StatGrid } from "@/mocks/StatGrid";
@@ -239,32 +239,6 @@ export default function FeedMockScreen() {
     >
       {/* No hand-rolled header: the native stack owns the large title, its
             collapse onto the blurred bar and the floating glass search button. */}
-      {/* The facilitator: a reason to go out, above everyone else's nights. */}
-      <View style={styles.nudge}>
-        <View style={styles.grow}>
-          <Text
-            style={styles.nudgeTitle}
-            maxFontSizeMultiplier={FontScaleCap.body}
-          >
-            {MOCK_NUDGE.title}
-          </Text>
-          <Text
-            style={styles.nudgeBody}
-            maxFontSizeMultiplier={FontScaleCap.body}
-          >
-            {MOCK_NUDGE.body}
-          </Text>
-        </View>
-        <Pressable
-          style={({ pressed }) => [styles.nudgeCta, pressed && styles.pressed]}
-          accessibilityRole="button"
-          accessibilityLabel={MOCK_NUDGE.cta}
-        >
-          <Text style={styles.nudgeCtaText} allowFontScaling={false}>
-            {MOCK_NUDGE.cta}
-          </Text>
-        </Pressable>
-      </View>
 
       {MOCK_FEED.map((entry) => (
         <FeedCard key={entry.id} entry={entry} />

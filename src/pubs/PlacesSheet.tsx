@@ -43,7 +43,7 @@ export const DETENT_TOP = { peek: 0.87, half: 0.48, full: 0.08 } as const;
 
 /** Room the tab bar needs. Peek is measured UP from the window bottom rather
  *  than as a fraction, or the collapsed row lands behind the bar. */
-const TAB_BAR_RESERVE = 150;
+const TAB_BAR_RESERVE = 168;
 const DETENTS = DETENT_TOP;
 export type Detent = keyof typeof DETENTS;
 
@@ -51,7 +51,7 @@ const GLASS = isLiquidGlassAvailable();
 
 /** How far the sheet sits off the screen edges when it is resting. */
 const FLOAT_INSET = 10;
-const FLOAT_RADIUS = 26;
+const FLOAT_RADIUS = 34;
 
 const SPRING = { damping: 22, stiffness: 190, mass: 0.7 } as const;
 
@@ -243,7 +243,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   solid: { backgroundColor: Colors.stout },
-  handleArea: { height: 28, alignItems: 'center', justifyContent: 'center' },
+  handleArea: { height: 22, alignItems: 'center', justifyContent: 'center' },
   grabber: {
     width: 40,
     height: 5,

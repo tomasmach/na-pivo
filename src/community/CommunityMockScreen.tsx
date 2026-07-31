@@ -27,15 +27,25 @@
 import React, { useState } from 'react';
 import { ActionSheetIOS, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter, type Href } from 'expo-router';
 
-import { ChevronDownIcon, SparklesIcon, TrophyIcon } from '@/components/shared/IconGlyph';
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  SparklesIcon,
+  TrophyIcon,
+} from '@/components/shared/IconGlyph';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
-const SECTIONS = ['Výzvy', 'Žebříčky', 'Akce'] as const;
+const SECTIONS = ['Žebříčky', 'Výzvy', 'Akce'] as const;
 const METRICS = ['Piva', 'Hospody', 'Mapér XP'] as const;
+
+/** A bare 31 does not say what it counts. The chip picks the metric, so the
+ *  unit follows it rather than being hard-coded next to the numeral. */
+const UNITS: Record<string, string> = { Piva: 'piv', Hospody: 'hospod', 'Mapér XP': 'XP' };
 const PERIODS = ['Týden', 'Letos', 'Celkem'] as const;
 
 const AVATARS = 'https://i.pravatar.cc/160?img=';
@@ -98,7 +108,7 @@ function FilterChip({
 }
 
 /** The podium — first place has to look like first place. */
-function Podium({ rows }: { rows: typeof ROWS }) {
+function Podium({ rows, unit }: { rows: typeof ROWS; unit: string }) {
   const order = [rows[1], rows[0], rows[2]].filter(Boolean);
   const heights = [64, 84, 56];
 
@@ -119,6 +129,7 @@ function Podium({ rows }: { rows: typeof ROWS }) {
           </Text>
           <Text style={styles.podiumScore} allowFontScaling={false}>
             {row.score}
+            <Text style={styles.podiumUnit}> {unit}</Text>
           </Text>
           <View style={[styles.podiumBlock, { height: heights[index] }, index === 1 && styles.podiumBlockFirst]}>
             <Text style={styles.podiumRank} allowFontScaling={false}>
@@ -133,6 +144,7 @@ function Podium({ rows }: { rows: typeof ROWS }) {
 
 export default function CommunityMockScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [section, setSection] = useState<(typeof SECTIONS)[number]>('Žebříčky');
   const [metric, setMetric] = useState<string>(METRICS[0]);
   const [period, setPeriod] = useState<string>(PERIODS[0]);
@@ -176,7 +188,7 @@ export default function CommunityMockScreen() {
             <FilterChip value={period} options={PERIODS} title="Za jaké období" onChange={setPeriod} />
           </View>
 
-          <Podium rows={ROWS} />
+          <Podium rows={ROWS} unit={UNITS[metric] ?? ''} />
 
           {rest.map((row) => (
             <View key={row.handle} style={[styles.row, row.me && styles.rowMe]}>
@@ -206,30 +218,48 @@ export default function CommunityMockScreen() {
               </View>
               <Text style={styles.score} allowFontScaling={false}>
                 {row.score}
+                <Text style={styles.scoreUnit}> {UNITS[metric] ?? ''}</Text>
               </Text>
             </View>
           ))}
         </>
       ) : null}
 
+      {/* Challenges are cards, not rows: each one is a thing you are IN, with a
+          detail behind it. A row would file them next to the leaderboard's
+          entries, which is a different kind of object. */}
       {section === 'Výzvy'
-        ? CHALLENGES.map((challenge, index) => (
-            <View key={challenge.id} style={[styles.row, index === 0 && styles.rowFirst]}>
-              <View style={styles.medallion}>
-                <SparklesIcon size={17} color={Colors.amber} />
-              </View>
-              <View style={styles.body}>
-                <Text style={styles.handle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {challenge.title}
-                </Text>
-                <Text style={styles.sub} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {challenge.detail}
-                </Text>
-                <View style={styles.track}>
-                  <View style={[styles.fill, { width: `${challenge.progress * 100}%`, backgroundColor: Colors.amber }]} />
+        ? CHALLENGES.map((challenge) => (
+            <Pressable
+              key={challenge.id}
+              onPress={() => router.push(`/community/challenge/${challenge.id}` as Href)}
+              style={({ pressed }) => [styles.challenge, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={challenge.title}
+            >
+              <View style={styles.challengeHead}>
+                <View style={styles.medallion}>
+                  <SparklesIcon size={17} color={Colors.amber} />
                 </View>
+                <View style={styles.grow}>
+                  <Text style={styles.handle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {challenge.title}
+                  </Text>
+                  <Text style={styles.sub} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {challenge.detail}
+                  </Text>
+                </View>
+                <ChevronRightIcon size={18} color={Colors.mutedText} />
               </View>
-            </View>
+              <View style={styles.track}>
+                <View
+                  style={[
+                    styles.fill,
+                    { width: `${challenge.progress * 100}%`, backgroundColor: Colors.amber },
+                  ]}
+                />
+              </View>
+            </Pressable>
           ))
         : null}
 
@@ -264,8 +294,10 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.65 },
 
   // — Section tabs (underline, like iOS segmented pages) —
-  tabs: { flexDirection: 'row', gap: Spacing.lg },
-  tab: { alignItems: 'center', gap: 6 },
+  // Full width, equal columns — three sections of one screen, not a row of
+  // links that happens to start on the left.
+  tabs: { flexDirection: 'row' },
+  tab: { flex: 1, alignItems: 'center', gap: 6 },
   tabText: { fontSize: 17, fontWeight: '600', color: Colors.mutedText },
   tabTextOn: { color: Colors.foam, fontWeight: '700' },
   tabRule: { height: 2, alignSelf: 'stretch', backgroundColor: 'transparent', borderRadius: 1 },
@@ -320,6 +352,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   podiumBlockFirst: { backgroundColor: withAlpha(Colors.amber, 0.34) },
+  podiumUnit: { fontSize: 12, fontWeight: '500', color: Colors.mutedText },
   podiumRank: { fontSize: 15, fontWeight: '800', color: Colors.amber },
 
   // — Rest of the board / challenges / events —
@@ -349,6 +382,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: withAlpha(Colors.amber, 0.12),
   },
+  grow: { flex: 1 },
+  challenge: {
+    gap: Spacing.sm,
+    padding: Spacing.md,
+    borderRadius: MockLayout.cardRadius,
+    backgroundColor: Colors.stout2,
+    marginTop: Spacing.sm,
+  },
+  challengeHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   body: { flex: 1, gap: 5 },
   handle: { ...MockType.bodySemibold, color: Colors.foam },
   handleMe: { color: Colors.amber },
@@ -366,6 +408,7 @@ const styles = StyleSheet.create({
     color: Colors.foam,
     fontVariant: ['tabular-nums'],
   },
+  scoreUnit: { fontSize: 12, fontWeight: '500', color: Colors.mutedText },
 
   mockNote: {
     fontSize: 12,

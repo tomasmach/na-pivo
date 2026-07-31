@@ -16,10 +16,13 @@
  * moment the screen genuinely has something to ask for.
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { TrophyIcon } from '@/components/shared/IconGlyph';
+import { FeedCard } from '@/feed/FeedMockScreen';
+import { MOCK_FEED } from '@/feed/mockFeed';
 import { StatGrid } from '@/mocks/StatGrid';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { useAccountStore } from '@/stores/accountStore';
@@ -29,16 +32,20 @@ import { Radius, Spacing } from '@/theme/layout';
 
 const AVATAR = 'https://i.pravatar.cc/240?img=57';
 
-/** Recent nights. Real data comes from PartyEvening / PublishedNight. */
-const NIGHTS = [
-  { id: 'n1', title: 'Čtvrteční jízda', when: 'včera', beers: 27, pubs: 3, duration: '6h 42m' },
-  { id: 'n2', title: 'Rychlovka po práci', when: 'út 28. 7.', beers: 4, pubs: 1, duration: '48m' },
-  { id: 'n3', title: 'Po zápase', when: 'so 25. 7.', beers: 11, pubs: 2, duration: '4h 10m' },
-  { id: 'n4', title: 'Objevovačka na Žižkově', when: 'čt 23. 7.', beers: 9, pubs: 2, duration: '3h 05m' },
+const TABS = ['Statistiky', 'Aktivita'] as const;
+
+const BADGES = [
+  { title: 'Sto piv', earned: true },
+  { title: 'Deset hospod', earned: true },
+  { title: 'Tři čtvrtky', earned: true },
+  { title: 'První Oktoberfest', earned: false },
+  { title: 'Padesát večerů', earned: false },
+  { title: 'Mapér', earned: false },
 ];
 
 export default function ProfileMockScreen() {
   const insets = useSafeAreaInsets();
+  const [tab, setTab] = useState<(typeof TABS)[number]>('Statistiky');
   const session = useAccountStore((s) => s.session);
   const profile = useAccountStore((s) => s.profile);
   const signedIn = Boolean(session);
@@ -78,51 +85,67 @@ export default function ProfileMockScreen() {
         </Pressable>
       )}
 
-      <View style={styles.stats}>
-        <StatGrid
-          columns={4}
-          compact
-          stats={[
-            { label: 'Piv', value: '312' },
-            { label: 'Večerů', value: '54' },
-            { label: 'Hospod', value: '38' },
-            { label: 'Série', value: '3 t' },
-          ]}
-        />
-      </View>
-
-      <Text style={styles.section} maxFontSizeMultiplier={FontScaleCap.heading}>
-        Večery
-      </Text>
-
-      {NIGHTS.map((night, index) => (
-        <Pressable
-          key={night.id}
-          style={({ pressed }) => [
-            styles.night,
-            index === 0 && styles.nightFirst,
-            pressed && styles.pressed,
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel={night.title}
-        >
-          <View style={styles.grow}>
-            <Text style={styles.nightWhen} maxFontSizeMultiplier={FontScaleCap.body}>
-              {night.when}
-            </Text>
+      {/* Two jobs, two tabs. Statistiky is the default because a profile is
+          first a place you check where you stand; Aktivita is the same posts the
+          feed shows, so a night looks identical wherever you meet it. */}
+      <View style={styles.tabs}>
+        {TABS.map((option) => (
+          <Pressable
+            key={option}
+            onPress={() => setTab(option)}
+            style={styles.tab}
+            accessibilityRole="button"
+            accessibilityState={{ selected: option === tab }}
+            accessibilityLabel={option}
+          >
             <Text
-              style={styles.nightTitle}
-              numberOfLines={1}
+              style={[styles.tabText, option === tab && styles.tabTextOn]}
               maxFontSizeMultiplier={FontScaleCap.body}
             >
-              {night.title}
+              {option}
             </Text>
-            <Text style={styles.nightMeta} maxFontSizeMultiplier={FontScaleCap.body}>
-              {night.beers} piv · {night.duration} · {night.pubs} hospody
-            </Text>
+            <View style={[styles.tabRule, option === tab && styles.tabRuleOn]} />
+          </Pressable>
+        ))}
+      </View>
+
+      {tab === 'Statistiky' ? (
+        <>
+          <View style={styles.stats}>
+            <StatGrid
+              columns={2}
+              stats={[
+                { label: 'Piv celkem', value: '312' },
+                { label: 'Večerů', value: '54' },
+                { label: 'Hospod', value: '38' },
+                { label: 'Nejdelší série', value: '3 týdny' },
+              ]}
+            />
           </View>
-        </Pressable>
-      ))}
+
+          <Text style={styles.section} maxFontSizeMultiplier={FontScaleCap.heading}>
+            Odznaky
+          </Text>
+          <View style={styles.badges}>
+            {BADGES.map((badge) => (
+              <View key={badge.title} style={[styles.badge, !badge.earned && styles.badgeLocked]}>
+                <View style={[styles.badgeDisc, !badge.earned && styles.badgeDiscLocked]}>
+                  <TrophyIcon size={18} color={badge.earned ? Colors.stout : Colors.mutedText} />
+                </View>
+                <Text
+                  style={[styles.badgeTitle, !badge.earned && styles.badgeTitleLocked]}
+                  numberOfLines={2}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {badge.title}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </>
+      ) : (
+        MOCK_FEED.map((entry) => <FeedCard key={entry.id} entry={entry} />)
+      )}
 
       <Text style={styles.mockNote} maxFontSizeMultiplier={FontScaleCap.body}>
         Design mock — data jsou napevno.
@@ -161,15 +184,28 @@ const styles = StyleSheet.create({
 
   section: { ...MockType.titleS, color: Colors.foam, marginTop: MockLayout.sectionGap },
 
-  night: {
-    paddingVertical: Spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(Colors.foam, 0.1),
+  tabs: { flexDirection: 'row', marginTop: MockLayout.sectionGap },
+  tab: { flex: 1, alignItems: 'center', gap: 6 },
+  tabText: { fontSize: 17, fontWeight: '600', color: Colors.mutedText },
+  tabTextOn: { color: Colors.foam, fontWeight: '700' },
+  tabRule: { height: 2, alignSelf: 'stretch', backgroundColor: 'transparent', borderRadius: 1 },
+  tabRuleOn: { backgroundColor: Colors.amber },
+
+  badges: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.md, marginTop: Spacing.sm },
+  badge: { width: '28%', alignItems: 'center', gap: 6 },
+  badgeLocked: { opacity: 0.45 },
+  badgeDisc: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.amber,
   },
-  nightFirst: { borderTopWidth: 0 },
-  nightWhen: { fontSize: 12, fontWeight: '500', color: Colors.mutedText },
-  nightTitle: { fontSize: 18, fontWeight: '700', color: Colors.foam, marginTop: 1 },
-  nightMeta: { fontSize: 13, fontWeight: '400', color: Colors.mutedText, marginTop: 2 },
+  badgeDiscLocked: { backgroundColor: withAlpha(Colors.foam, 0.08) },
+  badgeTitle: { fontSize: 12, fontWeight: '600', color: Colors.foam, textAlign: 'center' },
+  badgeTitleLocked: { color: Colors.mutedText },
+
 
   mockNote: {
     fontSize: 12,

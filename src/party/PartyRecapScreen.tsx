@@ -67,12 +67,9 @@ function HeroStat({ value, label }: { value: string; label: string }) {
       <Text style={styles.heroLabel} maxFontSizeMultiplier={FontScaleCap.body}>
         {label}
       </Text>
-      <Text
-        style={styles.heroValue}
-        allowFontScaling={false}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-      >
+      {/* No `adjustsFontSizeToFit`: inside a flex column with no fixed width it
+          shrinks the numeral to nothing rather than fitting it. */}
+      <Text style={styles.heroValue} allowFontScaling={false} numberOfLines={1}>
         {value}
       </Text>
     </View>
@@ -267,12 +264,34 @@ export default function PartyRecapScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingTop: insets.top + Spacing.sm, paddingBottom: insets.bottom + SECTION_GAP },
+          {
+            // Clears the transparent native header so the title never sits
+            // under the back control.
+            paddingTop: insets.top + 52,
+            paddingBottom: insets.bottom + SECTION_GAP,
+          },
         ]}
       >
         {/* No hand-rolled back button: the native header draws it on iOS 26's
             own glass capsule and morphs it. Ours would be a flat copy. */}
         {/* Title block — the night, named, dated and routed. */}
+        {/* The same header the card in the feed carries — the detail is that
+            post opened, so it should still say whose night this is. */}
+        <View style={styles.byline}>
+          {party.people.slice(0, 5).map((person, index) => (
+            <View key={person.id} style={index === 0 ? undefined : styles.peopleOverlap}>
+              <Initials person={person} size={28} />
+            </View>
+          ))}
+          <Text
+            style={styles.peopleNames}
+            numberOfLines={1}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
+            {party.people.map((p) => p.name).join(', ')}
+          </Text>
+        </View>
+
         <Text style={styles.date} maxFontSizeMultiplier={FontScaleCap.body}>
           {party.dateLabel}
         </Text>
@@ -421,6 +440,16 @@ const styles = StyleSheet.create({
     marginLeft: -10,
     alignItems: 'flex-start',
     justifyContent: 'center',
+  },
+
+  byline: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.sm },
+  peopleOverlap: { marginLeft: -9 },
+  peopleNames: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
+    color: Colors.mutedText,
+    marginLeft: Spacing.sm,
   },
 
   // — Title block —
