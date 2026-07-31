@@ -10,6 +10,11 @@
  * Android has no `cacheEnabled`; it has `liteMode`, which is the same idea —
  * a static, non-interactive rendering. Both are set.
  *
+ * The provider is the platform's own, not Google: Google's terms require its
+ * logo to remain visible, and at thumbnail size that logo covers the map it is
+ * attributing. That is a licensing constraint, not a taste one — it cannot be
+ * styled away.
+ *
  * The remaining real cost is the first render of each tile. If this ships,
  * the list wants either a windowed renderer (only visible rows mount a map) or
  * a cached static-map image per `cacheKey`. Worth saying out loud rather than
@@ -18,7 +23,7 @@
 
 import React from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
-import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView from 'react-native-maps';
 
 import { MockLayout } from '@/mocks/mockTheme';
 import { Colors } from '@/theme/colors';
@@ -35,7 +40,12 @@ export function PubThumbMap({ lat, lng, size }: { lat: number; lng: number; size
       importantForAccessibility="no"
     >
       <MapView
-        provider={PROVIDER_GOOGLE}
+        // Deliberately NOT `PROVIDER_GOOGLE`. Google Maps Platform terms
+        // require its logo to stay visible and unobscured, and at 56pt that
+        // logo is half the tile — so a Google thumbnail is out on licensing
+        // grounds before it is out on looks. The platform map (MapKit on iOS)
+        // carries far lighter attribution at this size. The big map keeps
+        // Google, where the logo has room to sit legally and unobtrusively.
         style={StyleSheet.absoluteFill}
         region={{
           latitude: lat,
