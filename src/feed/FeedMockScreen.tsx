@@ -105,12 +105,24 @@ export function FeedCard({
   });
 
   return (
-    <Pressable
-      style={({ pressed }) => [styles.card, first && styles.cardFirst, pressed && styles.cardPressed]}
-      onPress={() => router.push("/friends/party-recap" as Href)}
-      accessibilityRole="button"
-      accessibilityLabel={`${entry.title}, detail večera`}
-    >
+    // The card is a View, not one big Pressable.
+    //
+    // Wrapping the whole post in a Pressable meant it claimed the touch on
+    // press-down and never let go, so the horizontal strip inside it could not
+    // take over the pan — the hero simply would not scroll. It also made a
+    // button that contained two other buttons, which is malformed for
+    // VoiceOver.
+    //
+    // So only the text block opens the detail. The strip scrolls, the cheers and
+    // comment buttons are their own targets, and each thing on the card does
+    // exactly one thing.
+    <View style={[styles.card, first && styles.cardFirst]}>
+      <Pressable
+        style={({ pressed }) => [pressed && styles.cardPressed]}
+        onPress={() => router.push("/friends/party-recap" as Href)}
+        accessibilityRole="button"
+        accessibilityLabel={`${entry.title}, detail večera`}
+      >
       {/* The party owns the post, not one author. A night is the same object on
           everybody's wall, so the header is the table: every face, then who they
           are. "Honza přidal" would make four other people spectators at their
@@ -177,6 +189,7 @@ export function FeedCard({
           ]}
         />
       </View>
+      </Pressable>
 
       {/* The hero is whatever this night actually produced — photos, a game
           scoreboard, the tempo, a record, or a roast built from the numbers.
@@ -224,7 +237,7 @@ export function FeedCard({
           </Text>
         </Pressable>
       </View>
-    </Pressable>
+    </View>
   );
 }
 

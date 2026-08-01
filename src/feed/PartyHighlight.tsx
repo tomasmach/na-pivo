@@ -228,8 +228,8 @@ export function PartyHighlight({ entry }: { entry: FeedEntry }) {
       horizontal
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.strip}
-      // The strip lives inside a Pressable card; without this a sideways drag
-      // that starts on a tile counts as a tap on the post.
+      // Locks to one axis once a drag starts, so a slightly diagonal swipe
+      // scrolls the strip instead of fighting the feed's vertical scroll.
       directionalLockEnabled
     >
       {tiles}
