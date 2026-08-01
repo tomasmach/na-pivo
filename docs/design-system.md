@@ -67,10 +67,19 @@ Osobnost dodává jeden kreslený vektorový prvek, ne dekorace, ne animace a ro
 
 | Token | Hex | K čemu to je |
 |---|---|---|
-| `Colors.stout` | `#1F1308` | Pozadí obrazovky (root). Nic jiného. |
-| `Colors.stout2` | `#2B1A0E` | Plocha karty a bottom sheetu. O stupeň světlejší než root. |
-| `Colors.stout3` | `#3A2515` | Vnořený prvek uvnitř karty/sheetu: řádek, strip, chip, close button. |
-| `Colors.border` | `#5A3A20` | Plný okraj sheetu, grabber, dělítka uvnitř sheetu. Často s alfou. |
+| `Colors.stout` | `#15120F` | Pozadí obrazovky (root). Nic jiného. |
+| `Colors.stout2` | `#1C1815` | Plocha karty a bottom sheetu. O stupeň světlejší než root. |
+| `Colors.stout3` | `#262019` | Vnořený prvek uvnitř karty/sheetu: řádek, strip, chip, close button. |
+| `Colors.border` | `#3A322A` | Plný okraj sheetu, grabber, dělítka uvnitř sheetu. Často s alfou. |
+
+> **Změna 3.0.** Tyhle čtyři byly teplejší hnědé (`#1F1308` / `#2B1A0E` / `#3A2515` /
+> `#5A3A20`). Proti referencím — Strava i Packeta sedí na skoro černé — ta hnědá
+> nečetla jako hloubka, ale jako tint přes celou appku, a je z velké části důvod,
+> proč rané návrhy působily levněji, než byly. **Hnědá z produktu nezmizela**,
+> jen se přestěhovala z pozadí do světla: žije v gradientech (§16).
+>
+> Nikdy ne čistě černá. Na appce s teplým akcentem čte jako díra a OLED smear
+> při scrollu stojí víc, než kolik ten tint ušetří.
 | `Colors.amber` | `#E8A317` | Akcent. Primární tlačítko, hlavní číslo, ikony, aktivní stav. |
 | `Colors.amberLight` | `#F5B642` | Jen uvnitř ilustrací (horní stop gradientu piva). |
 | `Colors.glow` | `#FF7A1A` | **Jen** `shadowColor` v `amberGlow*`. Nikdy jako fill nebo text. |
@@ -138,11 +147,21 @@ něco jsi udělal plochou místo textem.
 
 ## 3. Typografie
 
-Dvě rodiny, obě lokální (`src/theme/fonts.ts`):
+Typografie je **systémové písmo** (San Francisco), všude. `src/theme/fonts.ts`
+neexportuje žádné rodiny — jen `FontScaleCap`.
 
-- **`Fonts.display.*` = Baloo 2** — kulaté, hospodské, hravé. Čísla, nadpisy, labely tlačítek,
-  názvy míst, malé „hlasité“ pilulky. Nejtěžší dostupná váha je `extrabold` (`black` je jen alias).
-- **`Fonts.ui.*` = Inter** — věcné. Body text, meta řádky, popisky, ceny, řádky v seznamech.
+Váha se píše jako `fontWeight`, nikdy jako název rodiny. Dřív ji nesl název
+(`Baloo2-ExtraBold`), takže `fontFamily` a `fontWeight` si na jednom stylu
+odporovaly.
+
+**Proč:** 3.0 stojí na skutečných systémových prvcích — segmented picker,
+kotvená menu, SwiftUI grafy, nativní velké titulky (§18). Vlastní rodina vedle
+nich staví na jednu obrazovku dvě abecedy. SF navíc nese optical sizing a
+škáluje s Dynamic Type, což přibalená TTF neumí.
+
+TTF soubory zůstávají v `assets/fonts/` a **vědomě se nenačítají**. Kdyby se
+Baloo mělo vrátit na jednu záměrnou věc — wordmark, jedno hero číslo — přidej
+zpátky jen ten jeden řez, ne celý pár.
 
 Jednoduché rozhodovací pravidlo: **když to má znít, je to Baloo. Když se to má číst, je to Inter.**
 
@@ -1170,11 +1189,17 @@ produkční obrazovky — a až padne, změň **dokument**, ne kód lokální v�
 
 | Věc | Dokument říká | Mocky dělají |
 |---|---|---|
-| Ground | `Colors.stout` `#1F1308` (§2.1) | `MockColors.bg` `#15120F` — hnědá jen v gradientech |
-| Písmo | Baloo 2 + Inter (§3.1) | Systémové |
+| ~~Ground~~ | **Rozhodnuto 1. 8. 2026** — tmavší zem přijata, §2.1 přepsán. `MockColors` je teď jen alias. |
+| ~~Písmo~~ | **Rozhodnuto 1. 8. 2026** — systémové, §3.1 přepsán. `fontFamily` z appky pryč. |
 | Radiusy | 12–24 | 20–34 |
 | Karty | Obsah žije v kartách (§5) | Posty na ploše, oddělené tmavým pásem |
 | Sekce | Oddělené mezerou | `SectionBreak` — 10 pt tmavý pás, nadpis **pod** ním |
+
+**Dluh po přechodu na systémové písmo.** Deset a víc míst kompenzuje metriku
+Baloo 2 — `lineHeight: size * 1.24`, protože ExtraBold přetéká, a odhad šířky
+číslice `0.62 × fontSize` v `CoasterCard`. SF má jinou metriku: řádkové boxy jsou
+teď volnější a odhad šířky konzervativnější, než je potřeba. Nic rozbitého, ale
+při dalším zásahu do těch souborů to přepočítej.
 
 Šestá věc, která rozhodnutí nepotřebuje, ale nesmí se zapomenout: **`pravatar.cc` a `picsum.photos`
 placeholdery nesmí opustit mocky.** Reálné avatary jsou `Account.avatar`, fotky `BeerPhoto`.
