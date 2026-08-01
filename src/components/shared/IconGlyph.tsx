@@ -11,6 +11,8 @@ import {
   Armchair,
   Beer,
   BeerOff,
+  ChartColumn,
+  ChartPie,
   Compass,
   Undo2,
   LockKeyhole,
@@ -141,6 +143,8 @@ export const CheersIcon = memo(function CheersIcon({ size = 20, color }: IconPro
   );
 });
 export const BeerOffIcon = wrap(BeerOff, 'BeerOffIcon');
+export const ChartColumnIcon = wrap(ChartColumn, 'ChartColumnIcon');
+export const ChartPieIcon = wrap(ChartPie, 'ChartPieIcon');
 export const CompassIcon = wrap(Compass, 'CompassIcon');
 export const Undo2Icon = wrap(Undo2, 'Undo2Icon');
 export const LockKeyholeIcon = wrap(LockKeyhole, 'LockKeyholeIcon');

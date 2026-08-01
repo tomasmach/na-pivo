@@ -25,7 +25,7 @@
  */
 
 import React, { useState } from 'react';
-import { ActionSheetIOS, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 
@@ -35,6 +35,7 @@ import {
   SparklesIcon,
   TrophyIcon,
 } from '@/components/shared/IconGlyph';
+import { MenuChip } from '@/mocks/MenuChip';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 // Shared with the detail screen, so the card you tap and the screen you land on
 // can never show different numbers.
@@ -67,42 +68,6 @@ const EVENTS = [
   { id: 'e2', title: 'Tankové pivo u Fleků', when: 'pá 8. 8.', where: 'U Fleků' },
   { id: 'e3', title: 'Pub kvíz', when: 'čt 14. 8.', where: 'Zlý časy' },
 ];
-
-/** A chip that opens a native picker. One question, one answer. */
-function FilterChip({
-  value,
-  options,
-  title,
-  onChange,
-}: {
-  value: string;
-  options: readonly string[];
-  title: string;
-  onChange: (next: string) => void;
-}) {
-  const open = () => {
-    ActionSheetIOS.showActionSheetWithOptions(
-      { options: [...options, 'Zrušit'], cancelButtonIndex: options.length, title, userInterfaceStyle: 'dark' },
-      (index) => {
-        if (index < options.length) onChange(options[index]);
-      },
-    );
-  };
-
-  return (
-    <Pressable
-      onPress={open}
-      style={({ pressed }) => [styles.chip, pressed && styles.pressed]}
-      accessibilityRole="button"
-      accessibilityLabel={`${title}: ${value}`}
-    >
-      <Text style={styles.chipText} allowFontScaling={false}>
-        {value}
-      </Text>
-      <ChevronDownIcon size={14} color={Colors.amber} />
-    </Pressable>
-  );
-}
 
 /** The podium — first place has to look like first place. */
 function Podium({ rows, unit }: { rows: typeof ROWS; unit: string }) {
@@ -181,8 +146,8 @@ export default function CommunityMockScreen() {
       {section === 'Žebříčky' ? (
         <>
           <View style={styles.chips}>
-            <FilterChip value={metric} options={METRICS} title="Podle čeho" onChange={setMetric} />
-            <FilterChip value={period} options={PERIODS} title="Za jaké období" onChange={setPeriod} />
+            <MenuChip value={metric} options={METRICS} title="Podle čeho" onChange={setMetric} />
+            <MenuChip value={period} options={PERIODS} title="Za jaké období" onChange={setPeriod} />
           </View>
 
           <Podium rows={ROWS} unit={UNITS[metric] ?? ''} />

@@ -38,15 +38,14 @@ import {
   TrophyIcon,
   UserPlusIcon,
 } from '@/components/shared/IconGlyph';
-import { BeerList } from '@/party/BeerList';
+import { BeerSheet } from '@/party/BeerSheet';
 import { PulsePanel } from '@/party/PulsePanel';
 import { GamesSheet } from '@/party/GamesSheet';
 import { InviteSheet } from '@/party/InviteSheet';
-import { NightTimeline } from '@/party/NightTimeline';
 import { buildPulse, fourthStat } from '@/party/nightPulse';
+import { NightChart, type ChartShape } from '@/mocks/NightChart';
 import { NightRoute } from '@/mocks/NightRoute';
 import { Segmented } from '@/mocks/Segmented';
-import { StatGrid } from '@/mocks/StatGrid';
 import {
   beersByType,
   clockAt,
@@ -71,7 +70,13 @@ const TAPS = [
 const MAP_IDLE = 460;
 const MAP_LIVE = 156;
 
-const SECTIONS = ['Piva', 'Statistiky', 'Aktivity', 'Log'] as const;
+/**
+ * Two sections, because there are two questions: how is it going, and what
+ * happened. The beer list used to be a third tab, but it is not a section of
+ * the night — it is the thing the "+1 pivo" control writes into, so it moved
+ * behind the chip under that control where you are already looking.
+ */
+const SECTIONS = ['Statistiky', 'Log'] as const;
 const CHARTS = ['V čase', 'Podle piva', 'U stolu'] as const;
 
 function CircleButton({
@@ -162,8 +167,10 @@ export default function LivePartyMockScreen() {
 
   const [gamesOpen, setGamesOpen] = React.useState(false);
   const [inviteOpen, setInviteOpen] = React.useState(false);
-  const [section, setSection] = React.useState<(typeof SECTIONS)[number]>('Piva');
+  const [section, setSection] = React.useState<(typeof SECTIONS)[number]>('Statistiky');
   const [chart, setChart] = React.useState<(typeof CHARTS)[number]>('V čase');
+  const [shape, setShape] = React.useState<ChartShape>('bar');
+  const [beersOpen, setBeersOpen] = React.useState(false);
 
   const mine = beers.length;
   const table = mine + people.reduce((sum, person) => sum + person.beers, 0);
@@ -252,21 +259,15 @@ export default function LivePartyMockScreen() {
           <PulsePanel
             pulse={pulse}
             stats={[
-              { label: 'Tvoje', value: String(mine) },
-              { label: 'U stolu', value: String(live ? table : 0) },
-              { label: 'Večer', value: live ? formatElapsed(minutes) : '0m' },
-              { label: fourth.label, value: live ? fourth.value : '—' },
+              { value: String(mine), unit: 'piv' },
+              { value: String(live ? table : 0), unit: 'u stolu' },
+              { value: live ? formatElapsed(minutes) : '0m' },
+              { value: live ? fourth.value : '—', unit: fourth.label.toLowerCase() },
             ]}
           />
 
           {live ? (
             <>
-              {/* The shape of the night, right under its numbers — it is a
-                  reading of the same data, not a section of its own. */}
-              <View style={styles.timeline}>
-                <NightTimeline beers={beers} now={minutes} />
-              </View>
-
               <View style={styles.tabs}>
                 {SECTIONS.map((option) => (
                   <Pressable
@@ -288,35 +289,21 @@ export default function LivePartyMockScreen() {
                 ))}
               </View>
 
-              {section === 'Piva' ? (
-                <View style={styles.sectionBody}>
-                  <BeerList
-                    rows={byType}
-                    onTaps={TAPS}
-                    onTap={addBeer}
-                    onAdd={addBeer}
-                    onRemove={removeBeer}
-                  />
-                </View>
-              ) : null}
-
               {section === 'Statistiky' ? (
                 <View style={styles.sectionBody}>
                   {/* A segment, not three more tabs: one chart, three questions
                       you can ask of it. */}
                   <Segmented options={CHARTS} value={chart} onChange={setChart} />
-                  <Bars rows={chartRows} highlightFirst={chart === 'U stolu'} />
+                  <NightChart rows={chartRows} shape={shape} onShape={setShape} />
                 </View>
               ) : null}
 
-              {section === 'Aktivity' ? (
+              {/* Games sit ABOVE the chronology: an unplayed game is the one
+                  thing in this list you can still act on, and burying it among
+                  timestamps makes it read as something that already happened. */}
+              {section === 'Log' && games.length > 0 ? (
                 <View style={styles.sectionBody}>
-                  {games.length === 0 ? (
-                    <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>
-                      Zatím nic. Hru dáš na stůl tlačítkem Hry — spouští se pak odsud.
-                    </Text>
-                  ) : (
-                    games.map((game) => (
+                  {games.map((game) => (
                       <Pressable
                         key={game.key}
                         onPress={() => router.push(`/party-game?key=${game.key}` as Href)}
@@ -374,9 +361,8 @@ export default function LivePartyMockScreen() {
                             ))}
                           </View>
                         ) : null}
-                      </Pressable>
-                    ))
-                  )}
+                    </Pressable>
+                  ))}
                 </View>
               ) : null}
 
@@ -431,9 +417,27 @@ export default function LivePartyMockScreen() {
             >
               <BeerIcon size={34} color={Colors.stout} />
             </Pressable>
-            <Text style={styles.primaryLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-              {live ? '+1 pivo' : 'Začni'}
-            </Text>
+            {/* Tap the disc to pour the house tap, tap the chip to change what
+                that is. One tap to log stays the whole ritual; picking a beer
+                is the rarer thing, so it is the smaller target. */}
+            {live ? (
+              <Pressable
+                onPress={() => setBeersOpen(true)}
+                style={({ pressed }) => [styles.beerChip, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel={`Piješ ${houseBeer}. Změnit.`}
+                hitSlop={6}
+              >
+                <Text style={styles.primaryLabel} numberOfLines={1} allowFontScaling={false}>
+                  {byType.length > 1 ? `${byType.length} druhy` : houseBeer}
+                </Text>
+                <ChevronDownIcon size={13} color={Colors.amber} />
+              </Pressable>
+            ) : (
+              <Text style={styles.primaryLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+                Začni
+              </Text>
+            )}
           </View>
 
           <CircleButton label="Hry" onPress={() => setGamesOpen(true)}>
@@ -453,8 +457,17 @@ export default function LivePartyMockScreen() {
         onPick={(key, name) => {
           addGame(key, name);
           setGamesOpen(false);
-          setSection('Aktivity');
+          setSection('Log');
         }}
+      />
+
+      <BeerSheet
+        visible={beersOpen}
+        rows={byType}
+        onTaps={TAPS}
+        onClose={() => setBeersOpen(false)}
+        onAdd={addBeer}
+        onRemove={removeBeer}
       />
 
       <InviteSheet
@@ -565,7 +578,6 @@ const styles = StyleSheet.create({
   outputText: { flex: 1, fontSize: 14, fontWeight: '600', color: Colors.foam },
 
   // — Sections —
-  timeline: { marginTop: Spacing.lg },
   tabs: { flexDirection: 'row', marginTop: Spacing.lg },
   tab: { flex: 1, alignItems: 'center', gap: 6 },
   tabText: { fontSize: 15, fontWeight: '600', color: Colors.mutedText },
@@ -672,5 +684,6 @@ const styles = StyleSheet.create({
     marginTop: -14,
   },
   primaryPressed: { opacity: 0.9, transform: [{ scale: 0.97 }] },
-  primaryLabel: { fontWeight: '700', fontSize: 14, color: Colors.amber },
+  primaryLabel: { fontWeight: '700', fontSize: 13, color: Colors.amber, maxWidth: 120 },
+  beerChip: { flexDirection: 'row', alignItems: 'center', gap: 3 },
 });

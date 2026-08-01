@@ -118,19 +118,20 @@ export default function ProfileMockScreen() {
 
       {tab === 'Statistiky' ? (
         <>
-          {/* Strava's shape: pick a window, see the chart, then the totals FOR
-              that window. Four lifetime numbers on their own told you nothing
-              about whether anything was happening lately. */}
-          <View style={styles.stats}>
-            <Segmented options={PERIODS} value={period} onChange={setPeriod} />
+          {/* Numbers first, then the shape of them, then the control that
+              changes both. The segment used to lead, which meant the screen
+              opened on a filter rather than on an answer — you look at a profile
+              to see where you stand, not to pick a time window. */}
+          <View style={styles.totals}>
+            <StatGrid columns={4} compact stats={series.totals} />
           </View>
 
           <View style={styles.chart}>
             <BarChart points={series.points} unit="piv" />
           </View>
 
-          <View style={styles.totals}>
-            <StatGrid columns={4} compact stats={series.totals} />
+          <View style={styles.periodRow}>
+            <Segmented options={PERIODS} value={period} onChange={setPeriod} />
           </View>
 
           {/* The streak, drawn rather than stated. "3 týdny" is a fact; twelve
@@ -230,14 +231,14 @@ const styles = StyleSheet.create({
   },
   ctaText: { ...MockType.buttonLabel, color: Colors.stout },
 
-  stats: { marginTop: MockLayout.sectionGap },
-  chart: { marginTop: Spacing.xl },
   totals: {
-    marginTop: Spacing.xl,
+    marginTop: MockLayout.sectionGap,
     paddingTop: Spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(Colors.foam, 0.12),
   },
+  chart: { marginTop: Spacing.xl },
+  periodRow: { marginTop: Spacing.lg },
 
   streakRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, marginTop: Spacing.sm },
   flame: {
