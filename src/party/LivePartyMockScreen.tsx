@@ -42,6 +42,7 @@ import { BeerSheet } from '@/party/BeerSheet';
 import { PulsePanel } from '@/party/PulsePanel';
 import { GamesSheet } from '@/party/GamesSheet';
 import { InviteSheet } from '@/party/InviteSheet';
+import { PubPickerSheet } from '@/party/PubPickerSheet';
 import { buildPulse, fourthStat } from '@/party/nightPulse';
 import { MenuChip } from '@/mocks/MenuChip';
 import { NightChart, type ChartShape } from '@/mocks/NightChart';
@@ -60,6 +61,8 @@ import { HitArea, Radius, Spacing } from '@/theme/layout';
 
 const STOPS = [{ name: 'U Fleků', lat: 50.0785, lng: 14.42 }];
 const HOUSE_BEER = 'Flekovský ležák 13°';
+/** The pub before a night exists. Once it starts, the store owns the name. */
+const DEFAULT_PUB = { name: 'U Fleků', beer: HOUSE_BEER, meta: '180 m · otevřeno do 23:00' };
 const TAPS = [
   { name: 'Flekovský ležák 13°', priceCzk: 62 },
   { name: 'Flekovský tmavý 13°', priceCzk: 62 },
@@ -131,6 +134,8 @@ export default function LivePartyMockScreen() {
   const [chart, setChart] = React.useState<(typeof CHARTS)[number]>('V čase');
   const [shape, setShape] = React.useState<ChartShape>('bar');
   const [beersOpen, setBeersOpen] = React.useState(false);
+  const [pubOpen, setPubOpen] = React.useState(false);
+  const [draftPub, setDraftPub] = React.useState(DEFAULT_PUB);
 
   const mine = beers.length;
   const table = mine + people.reduce((sum, person) => sum + person.beers, 0);
@@ -213,24 +218,32 @@ export default function LivePartyMockScreen() {
               pill floating on the map and the table was buried three sections
               down, so the top of a screen about an evening with friends said
               nothing about either. */}
-          {live ? (
-            <View style={styles.hub}>
-              <Pressable
-                style={({ pressed }) => [styles.hubPub, pressed && styles.pressed]}
-                accessibilityRole="button"
-                accessibilityLabel={`${pubName}. Změnit hospodu.`}
+          <View style={styles.hub}>
+            <Pressable
+              onPress={() => setPubOpen(true)}
+              style={({ pressed }) => [styles.hubPub, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={`${live ? pubName : draftPub.name}. Změnit hospodu.`}
+            >
+              {live ? <View style={styles.pubDot} /> : null}
+              <Text
+                style={styles.hubPubName}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.heading}
               >
-                <View style={styles.pubDot} />
-                <Text
-                  style={styles.hubPubName}
-                  numberOfLines={1}
-                  maxFontSizeMultiplier={FontScaleCap.heading}
-                >
-                  {pubName}
-                </Text>
-                <ChevronDownIcon size={16} color={Colors.mutedText} />
-              </Pressable>
+                {live ? pubName : draftPub.name}
+              </Text>
+              <ChevronDownIcon size={16} color={Colors.mutedText} />
+            </Pressable>
 
+            {/* Before the night: what this place is. During it: who is at the
+                table. Both answer "what am I looking at", which is the one job
+                the top of this screen has. */}
+            {!live ? (
+              <Text style={styles.hubMeta} maxFontSizeMultiplier={FontScaleCap.body}>
+                {draftPub.meta} · {draftPub.beer}
+              </Text>
+            ) : (
               <Pressable
                 onPress={() => setInviteOpen(true)}
                 style={({ pressed }) => [styles.hubPeople, pressed && styles.pressed]}
@@ -265,18 +278,20 @@ export default function LivePartyMockScreen() {
                   {['Ty', ...people.map((p) => p.name)].join(', ')}
                 </Text>
               </Pressable>
-            </View>
-          ) : null}
+            )}
+          </View>
 
-          <PulsePanel
-            pulse={pulse}
-            stats={[
-              { value: String(mine), unit: 'piv' },
-              { value: String(live ? table : 0), unit: 'u stolu' },
-              { value: live ? formatElapsed(minutes) : '0m' },
-              { value: live ? fourth.value : '—', unit: fourth.label.toLowerCase() },
-            ]}
-          />
+          {live ? (
+            <PulsePanel
+              pulse={pulse}
+              stats={[
+                { value: String(mine), unit: 'piv' },
+                { value: String(table), unit: 'u stolu' },
+                { value: formatElapsed(minutes) },
+                { value: fourth.value, unit: fourth.label.toLowerCase() },
+              ]}
+            />
+          ) : null}
 
           {live ? (
             <>
@@ -436,7 +451,7 @@ export default function LivePartyMockScreen() {
 
           <View style={styles.circleWrap}>
             <Pressable
-              onPress={() => (live ? addBeer(houseBeer) : startParty('U Fleků', HOUSE_BEER))}
+              onPress={() => (live ? addBeer(houseBeer) : startParty(draftPub.name, draftPub.beer))}
               style={({ pressed }) => [styles.circlePrimary, pressed && styles.primaryPressed]}
               accessibilityRole="button"
               accessibilityLabel={live ? 'Přidat pivo' : 'Začít večer prvním pivem'}
@@ -484,6 +499,16 @@ export default function LivePartyMockScreen() {
           addGame(key, name);
           setGamesOpen(false);
           setSection('Log');
+        }}
+      />
+
+      <PubPickerSheet
+        visible={pubOpen}
+        current={live ? pubName : draftPub.name}
+        onClose={() => setPubOpen(false)}
+        onPick={(pub) => {
+          setDraftPub({ ...pub, meta: 'vybráno ručně' });
+          setPubOpen(false);
         }}
       />
 
@@ -542,6 +567,7 @@ const styles = StyleSheet.create({
   hub: { gap: Spacing.sm, marginBottom: Spacing.lg },
   hubPub: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   hubPubName: { fontSize: 22, fontWeight: '800', color: Colors.foam, letterSpacing: -0.4 },
+  hubMeta: { fontSize: 14, fontWeight: '500', color: Colors.mutedText },
   hubPeople: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   faces: { flexDirection: 'row', alignItems: 'center' },
   face: {
