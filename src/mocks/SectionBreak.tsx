@@ -51,5 +51,13 @@ const styles = StyleSheet.create({
     backgroundColor: BAND_COLOR,
     marginTop: Spacing.xl,
   },
-  title: { ...MockType.titleS, color: Colors.foam, marginTop: Spacing.lg },
+  // Air on BOTH sides. The band gives the heading room above it; without a
+  // margin below, the heading sat straight on the first row and read as part of
+  // it rather than as its title.
+  title: {
+    ...MockType.titleS,
+    color: Colors.foam,
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.md,
+  },
 });

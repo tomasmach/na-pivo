@@ -443,7 +443,7 @@ const styles = StyleSheet.create({
   },
 
   // — Sections —
-  section: { marginTop: Spacing.sm },
+  section: {},
   // Sentence case, foam — the same voice as the feed card's sections. The
   // uppercase muted kicker made the detail read as a different app from the
   // preview it opens out of.
