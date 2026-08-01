@@ -68,7 +68,7 @@ const TAPS = [
 
 /** Full map before the night starts, a band once it has. */
 const MAP_IDLE = 460;
-const MAP_LIVE = 156;
+const MAP_LIVE = 128;
 
 /**
  * Two sections, because there are two questions: how is it going, and what
@@ -117,6 +117,7 @@ export default function LivePartyMockScreen() {
   const games = useLivePartyStore((s) => s.games);
   const log = useLivePartyStore((s) => s.log);
   const houseBeer = useLivePartyStore((s) => s.houseBeer);
+  const pubName = useLivePartyStore((s) => s.pubName);
   const startParty = useLivePartyStore((s) => s.start);
   const addBeer = useLivePartyStore((s) => s.addBeer);
   const removeBeer = useLivePartyStore((s) => s.removeBeer);
@@ -169,18 +170,6 @@ export default function LivePartyMockScreen() {
           <ChevronDownIcon size={20} color={Colors.foam} />
         </Pressable>
 
-        <Pressable
-          style={({ pressed }) => [styles.pubPicker, pressed && styles.pressed]}
-          accessibilityRole="button"
-          accessibilityLabel="Změnit hospodu"
-        >
-          <View style={styles.pubDot} />
-          <Text style={styles.pubName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-            U Fleků
-          </Text>
-          <ChevronDownIcon size={15} color={Colors.foam} />
-        </Pressable>
-
         <View style={styles.grow} />
 
         {/* Top right, as far from "+1 pivo" as the screen allows. */}
@@ -215,6 +204,65 @@ export default function LivePartyMockScreen() {
         <ScrollView contentContainerStyle={styles.sheetContent} showsVerticalScrollIndicator={false}>
           {/* Strava's band: the STATE over the numbers, and a way to blow the
               numbers up for a phone lying on the table. */}
+          {/* What the hub IS: a place and the people in it. The pub used to be a
+              pill floating on the map and the table was buried three sections
+              down, so the top of a screen about an evening with friends said
+              nothing about either. */}
+          {live ? (
+            <View style={styles.hub}>
+              <Pressable
+                style={({ pressed }) => [styles.hubPub, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel={`${pubName}. Změnit hospodu.`}
+              >
+                <View style={styles.pubDot} />
+                <Text
+                  style={styles.hubPubName}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.heading}
+                >
+                  {pubName}
+                </Text>
+                <ChevronDownIcon size={16} color={Colors.mutedText} />
+              </Pressable>
+
+              <Pressable
+                onPress={() => setInviteOpen(true)}
+                style={({ pressed }) => [styles.hubPeople, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel={`U stolu: ty a ${people.map((p) => p.name).join(', ')}. Přizvat dalšího.`}
+              >
+                <View style={styles.faces}>
+                  <View style={[styles.face, { backgroundColor: Colors.amber }]}>
+                    <Text style={styles.faceText} allowFontScaling={false}>
+                      T
+                    </Text>
+                  </View>
+                  {people.map((person) => (
+                    <View
+                      key={person.id}
+                      style={[styles.face, styles.faceOverlap, { backgroundColor: person.tint }]}
+                    >
+                      <Text style={styles.faceText} allowFontScaling={false}>
+                        {person.name.slice(0, 1).toUpperCase()}
+                      </Text>
+                    </View>
+                  ))}
+                  <View style={[styles.face, styles.faceOverlap, styles.faceAdd]}>
+                    <UserPlusIcon size={14} color={Colors.mutedText} />
+                  </View>
+                </View>
+                <Text
+                  style={styles.hubNames}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {['Ty', ...people.map((p) => p.name)].join(', ')}
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
+
           <PulsePanel
             pulse={pulse}
             stats={[
@@ -470,7 +518,26 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.foam, 0.14),
   },
   pubDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: MockColors.live },
-  pubName: { fontWeight: '700', fontSize: 15, color: Colors.foam, maxWidth: 150 },
+
+  // — Hub header —
+  hub: { gap: Spacing.sm, marginBottom: Spacing.lg },
+  hubPub: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  hubPubName: { fontSize: 22, fontWeight: '800', color: Colors.foam, letterSpacing: -0.4 },
+  hubPeople: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  faces: { flexDirection: 'row', alignItems: 'center' },
+  face: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: MockColors.bg,
+  },
+  faceOverlap: { marginLeft: -9 },
+  faceAdd: { backgroundColor: withAlpha(Colors.foam, 0.12) },
+  faceText: { fontSize: 12, fontWeight: '800', color: Colors.stout },
+  hubNames: { flex: 1, fontSize: 13, fontWeight: '500', color: Colors.mutedText },
   topIcon: {
     width: 40,
     height: 40,
