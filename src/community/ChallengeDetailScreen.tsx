@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CheckIcon, SparklesIcon, TrophyIcon } from '@/components/shared/IconGlyph';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
+import { TAB_CHROME } from '@/components/shared/TabBar';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -38,7 +39,7 @@ export function ChallengeDetailScreen({ challenge }: { challenge: Challenge }) {
       style={styles.screen}
       contentContainerStyle={[
         styles.content,
-        { paddingTop: insets.top + 52, paddingBottom: insets.bottom + 120 },
+        { paddingTop: insets.top + 52, paddingBottom: insets.bottom + TAB_CHROME },
       ]}
     >
       <View style={styles.medallion}>

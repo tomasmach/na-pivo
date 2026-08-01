@@ -246,6 +246,17 @@ const TabItem = memo(function TabItem({ routeName, focused, onPress, badge }: Ta
  *  Route name, not label — `beer` is the party's route (see TAB_META). */
 const FULLSCREEN_ROUTES = new Set(['beer']);
 
+/**
+ * Room the floating bottom chrome needs above a screen's last row.
+ *
+ * The bar is absolutely positioned (see `app/(tabs)/_layout.tsx`), so the
+ * navigator no longer insets the scene and every scrollable screen pads by this
+ * itself. Bar + safe area, plus the live-party pill when a night is running —
+ * screens reserve the taller figure unconditionally, because content that only
+ * fits while nobody is drinking is not a layout, it is a coincidence.
+ */
+export const TAB_CHROME = 132;
+
 export function TabBar({ state, navigation }: TabBarProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();

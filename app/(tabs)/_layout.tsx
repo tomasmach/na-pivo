@@ -1,3 +1,4 @@
+import { StyleSheet, View } from 'react-native';
 import { Tabs } from 'expo-router';
 
 import { Colors } from '@/theme/colors';
@@ -28,10 +29,18 @@ export default function TabsLayout() {
       // does: `tabBar` owns the whole bottom chrome, not just the tabs. Both
       // render nothing while the party is fullscreen.
       tabBar={(props) => (
-        <>
+        // Absolute, over the scene. In the normal flow the bottom chrome sits
+        // BELOW the screen, so the tab bar's glass and the live-party pill had
+        // nothing behind them to refract — they rendered over the navigator's
+        // own opaque background and read as a solid brown band. Glass only looks
+        // like glass when there is content underneath it.
+        //
+        // Screens therefore reserve the chrome themselves (`TAB_CHROME`); the
+        // navigator no longer inset them.
+        <View style={styles.chrome} pointerEvents="box-none">
           <LivePartyBar />
           <TabBar {...props} />
-        </>
+        </View>
       )}
       initialRouteName="(pubs)"
       screenOptions={{
@@ -47,3 +56,7 @@ export default function TabsLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  chrome: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+});

@@ -30,6 +30,7 @@ import { StatGrid } from '@/mocks/StatGrid';
 import { RECORDS, SERIES, STREAK, type StatPeriod } from '@/profile/mockStats';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { useAccountStore } from '@/stores/accountStore';
+import { TAB_CHROME } from '@/components/shared/TabBar';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -66,7 +67,7 @@ export default function ProfileMockScreen() {
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 40 }]}
+      contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + TAB_CHROME }]}
       contentInsetAdjustmentBehavior="automatic"
     >
       {/* Who you are: a face and a handle. Nothing else competes up here. */}

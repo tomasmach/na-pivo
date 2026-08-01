@@ -31,6 +31,7 @@ import { PartyHighlight } from "@/feed/PartyHighlight";
 import { buildRoast } from "@/feed/roast";
 import { StatGrid } from "@/mocks/StatGrid";
 import { MockColors, MockType } from "@/mocks/mockTheme";
+import { TAB_CHROME } from '@/components/shared/TabBar';
 import { Colors, withAlpha } from "@/theme/colors";
 import { FontScaleCap } from "@/theme/fonts";
 import { HitArea, Radius, Spacing } from "@/theme/layout";
@@ -238,7 +239,7 @@ export default function FeedMockScreen() {
       style={styles.screen}
       contentContainerStyle={[
         styles.content,
-        { paddingBottom: insets.bottom + 40 },
+        { paddingBottom: insets.bottom + TAB_CHROME },
       ]}
       contentInsetAdjustmentBehavior="automatic"
     >

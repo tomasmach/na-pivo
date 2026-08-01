@@ -32,6 +32,7 @@ import { StatGrid } from '@/mocks/StatGrid';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { NightRoute } from '@/mocks/NightRoute';
 import { MOCK_PUBS } from '@/pubs/mockPubs';
+import { TAB_CHROME } from '@/components/shared/TabBar';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -105,7 +106,7 @@ export default function PubDetailScreen() {
   return (
     <View style={styles.screen}>
       <ScrollView
-        contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + TAB_CHROME }}
         showsVerticalScrollIndicator={false}
       >
         {/* Full-bleed map, the way the reference opens on a route. */}
