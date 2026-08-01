@@ -50,6 +50,17 @@ npm run dev
 
 `npm run dev` runs the backend on its own dedicated port `8012` (the dvanáctka of ports — clear of 8000, 8080 and Metro's 8081) so it never fights with other dev servers; override it with `EXPO_PUBLIC_BACKEND_PORT`. If the backend is already running on that port, `npm run dev` reuses it and leaves it running on exit. The manual way still works too:
 
+On exit it also shuts the simulator down, which is what you want after Ctrl+C and
+not what you want when something else supervises the process — an agent's
+background shell, a detached terminal, tmux. There the runner exits for reasons
+unrelated to you being finished, and the simulator vanishing mid-session looks
+exactly like the app crashing. Set `NAPIVO_KEEP_SIM=1` to leave it running:
+
+```bash
+NAPIVO_KEEP_SIM=1 npm run dev
+```
+
+
 Start the Django backend on the LAN interface:
 
 ```bash

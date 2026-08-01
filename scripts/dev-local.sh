@@ -37,8 +37,17 @@ cleanup() {
     # runserver's autoreload child can outlive its parent; free the port
     lsof -ti "tcp:$BACKEND_PORT" | xargs kill 2>/dev/null || true
   fi
-  xcrun simctl shutdown booted 2>/dev/null || true
-  osascript -e 'quit app "Simulator"' 2>/dev/null || true
+  # The simulator is only torn down when this runner OWNS the session. Set
+  # NAPIVO_KEEP_SIM=1 when something else supervises the process — an agent's
+  # background shell, a detached terminal, tmux — because there the runner exits
+  # for reasons that have nothing to do with you being finished, and taking the
+  # simulator down with it looks exactly like the app crashing.
+  if [ "${NAPIVO_KEEP_SIM:-0}" != "1" ]; then
+    xcrun simctl shutdown booted 2>/dev/null || true
+    osascript -e 'quit app "Simulator"' 2>/dev/null || true
+  else
+    echo "==> Simulátor nechávám běžet (NAPIVO_KEEP_SIM=1)"
+  fi
 }
 trap cleanup EXIT INT TERM
 
