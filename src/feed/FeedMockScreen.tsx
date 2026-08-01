@@ -165,8 +165,8 @@ export function FeedCard({
         </Text>
       ) : null}
 
-      {/* Strava's stat block: muted label ABOVE a heavy value, no dividers —
-          the grid spacing separates them (docs/references/IMG_2125.PNG). */}
+      {/* The stat block: a heavy value with a muted label under it, no dividers —
+          the grid spacing separates them. Order is set once in `StatGrid`. */}
       <View style={styles.statsRow}>
         <StatGrid
           columns={3}

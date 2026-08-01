@@ -1,12 +1,20 @@
 /**
- * DESIGN MOCK — the Strava stat block.
+ * DESIGN MOCK — the stat block.
  *
- * Taken straight from the references in `docs/references/`: a small muted label
- * ABOVE a big heavy value, and NO dividers between columns. The grid spacing is
- * the separator. Getting this the wrong way round (value on top, hairlines
- * between) is what made the first pass still read as the old app.
+ * A big heavy value with a small muted label UNDER it, and NO dividers between
+ * columns — the grid spacing is the separator.
  *
- * Two shapes, both from the references:
+ * Strava puts the label above, and this deliberately does not. Above works on a
+ * screen where the row stands alone; here the profile stacks a period label over
+ * it, so you got three sizes of small text before reaching a number. Value first
+ * also matches how the rest of 3.0 already reads — the hub's numerals carry
+ * their unit inline, the challenge count leads with the figure.
+ *
+ * One order everywhere. This block is on the feed card, the party hub, the
+ * recap, the profile, the pub detail and the finish screen, and two orders would
+ * mean the same numbers read differently depending on where you met them.
+ *
+ * Two shapes:
  *   `columns={3|4}`  one row, used on a feed card
  *   `columns={2}`    wrapping grid, used on a detail screen
  */
@@ -45,9 +53,6 @@ export function StatGrid({
             columns === 2 && styles.cellRoomy,
           ]}
         >
-          <Text style={styles.label} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-            {stat.label}
-          </Text>
           <View style={styles.valueRow}>
             {stat.glyph}
             <Text
@@ -58,6 +63,9 @@ export function StatGrid({
               {stat.value}
             </Text>
           </View>
+          <Text style={styles.label} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+            {stat.label}
+          </Text>
         </View>
       ))}
     </View>
@@ -72,7 +80,7 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     fontSize: 13,
     color: Colors.mutedText,
-    marginBottom: 2,
+    marginTop: 2,
   },
   valueRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   value: {
