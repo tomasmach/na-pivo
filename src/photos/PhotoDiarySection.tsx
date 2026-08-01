@@ -29,7 +29,7 @@ import { BeerPhotoCaptureFlow } from '@/photos/BeerPhotoCaptureFlow';
 import { ScalePressable } from '@/photos/ScalePressable';
 import { loadBeerPhotos, useBeerPhotosStore, type BeerPhotoLocal } from '@/stores/beerPhotosStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 /** How many photos the strip shows (the full album lives per-photo for now). */
@@ -231,7 +231,7 @@ const styles = StyleSheet.create({
   // Mirrors ProfileScreen's sectionHeader idiom.
   sectionHeader: {
     flex: 1,
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
@@ -253,7 +253,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.4),
   },
   contestLinkText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 12,
     color: Colors.amber,
   },
@@ -302,7 +302,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   addLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 12,
     color: Colors.amber,
     textAlign: 'center',
@@ -330,7 +330,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.glow,
   },
   syncChipText: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 9,
     letterSpacing: 0.4,
     color: Colors.foamMuted,
@@ -362,14 +362,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   emptyTitle: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 19,
     color: Colors.foam,
     textAlign: 'center',
     marginTop: Spacing.xs,
   },
   emptyBody: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 13,
     lineHeight: 19,
     color: Colors.mutedText,

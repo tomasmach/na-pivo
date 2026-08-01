@@ -31,7 +31,7 @@ import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
 import { ChevronRightIcon } from '@/components/shared/IconGlyph';
 import { cs } from '@/i18n/cs';
 import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 
 /** Nothing on any screen is bigger than this. */
 const COUNT_MAX = 132;
@@ -219,7 +219,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   count: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     color: Colors.amber,
     includeFontPadding: false,
     textAlign: 'center',
@@ -231,7 +231,7 @@ const styles = StyleSheet.create({
   // object instead of two stacked labels.
   noun: {
     marginTop: -18,
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 16,
     letterSpacing: 3,
     color: Colors.foamMuted,
@@ -246,14 +246,14 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   fact: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
   },
   factMuted: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -266,7 +266,7 @@ const styles = StyleSheet.create({
     paddingLeft: 8,
   },
   receiptLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.amber,
     includeFontPadding: false,

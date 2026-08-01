@@ -61,7 +61,7 @@ import { useAccountStore } from '@/stores/accountStore';
 import { openPubInMaps } from '@/utils/maps';
 import { trackUiInteraction } from '@/data/uxTelemetry';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
@@ -1702,7 +1702,7 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
   },
   pinHintText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.foam,
   },
@@ -1785,7 +1785,7 @@ const styles = StyleSheet.create({
   },
   clusterPinVisited: { borderColor: Colors.amber, borderWidth: 2.5 },
   clusterText: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     color: Colors.foam,
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
@@ -1811,7 +1811,7 @@ const styles = StyleSheet.create({
   livePinSelected: { transform: [{ scale: 1.14 }], borderColor: Colors.neon },
   liveAvatar: { width: '100%', height: '100%' },
   liveInitial: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 19,
     color: Colors.stout,
     includeFontPadding: false,
@@ -1831,7 +1831,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   liveCountText: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 10,
     color: Colors.stout,
     includeFontPadding: false,
@@ -1851,13 +1851,13 @@ const styles = StyleSheet.create({
   },
   cityMarkerText: {
     flexShrink: 1,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 15,
     color: Colors.stout,
     includeFontPadding: false,
   },
   cityMarkerCount: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 12,
     color: withAlpha(Colors.stout, 0.72),
     includeFontPadding: false,
@@ -1905,7 +1905,7 @@ const styles = StyleSheet.create({
   placeTitle: {
     flexShrink: 1,
     minWidth: 0,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     color: Colors.foam,
     includeFontPadding: false,
@@ -1925,14 +1925,14 @@ const styles = StyleSheet.create({
   placeMeta: {
     flex: 1,
     minWidth: 0,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
   },
   placeFact: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1953,7 +1953,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   placeDoorLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.amber,
     includeFontPadding: false,
@@ -1986,7 +1986,7 @@ const styles = StyleSheet.create({
   },
   layerLabel: {
     flexShrink: 1,
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 13,
     color: Colors.foamMuted,
     includeFontPadding: false,
@@ -1995,7 +1995,7 @@ const styles = StyleSheet.create({
     color: Colors.foam,
   },
   layerBadge: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 12,
     color: Colors.amber,
     includeFontPadding: false,
@@ -2040,7 +2040,7 @@ const styles = StyleSheet.create({
   },
   listTitle: {
     flexShrink: 1,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 22,
     color: Colors.foam,
     includeFontPadding: false,
@@ -2075,14 +2075,14 @@ const styles = StyleSheet.create({
   },
   listRowCopy: { flex: 1, minWidth: 0 },
   listRowTitle: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
   },
   listRowMeta: {
     marginTop: 2,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -2090,7 +2090,7 @@ const styles = StyleSheet.create({
   emptyList: {
     paddingVertical: 40,
     textAlign: 'center',
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,

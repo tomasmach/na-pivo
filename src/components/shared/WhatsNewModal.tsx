@@ -27,7 +27,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { GlowButton } from '@/components/shared/GlowButton';
@@ -213,20 +213,20 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
   },
   eyebrow: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 11,
     letterSpacing: 2,
     color: Colors.amber,
   },
   versionText: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     letterSpacing: 0.4,
     fontVariant: ['tabular-nums'],
     color: Colors.mutedText,
   },
   title: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 30,
     lineHeight: 36,
     color: Colors.foam,
@@ -269,7 +269,7 @@ const styles = StyleSheet.create({
   },
   itemText: {
     flex: 1,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 15,
     lineHeight: 22,
     color: Colors.foamMuted,

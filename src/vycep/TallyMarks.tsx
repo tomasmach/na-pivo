@@ -13,7 +13,6 @@ import React, { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Line } from 'react-native-svg';
 
-import { Fonts } from '@/theme/fonts';
 import { tallyGroups } from '@/vycep/nightModel';
 
 /** Fixed per-index jitter tables (degrees of lean, px of vertical slip). A
@@ -119,7 +118,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   overflow: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     includeFontPadding: false,
   },
 });

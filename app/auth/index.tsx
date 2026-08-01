@@ -29,7 +29,7 @@ import { useRouter, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
 import { ChevronLeftIcon } from '@/components/shared/IconGlyph';
@@ -556,7 +556,7 @@ const styles = StyleSheet.create({
   },
   legalNote: {
     marginTop: Spacing.xs,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 12.5,
     lineHeight: 18,
     color: Colors.mutedText,
@@ -571,7 +571,7 @@ const styles = StyleSheet.create({
   },
   googleHelp: {
     marginTop: Spacing.xs,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 12.5,
     lineHeight: 18,
     color: Colors.mutedText,
@@ -598,7 +598,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 24,
     color: Colors.foam,
   },
@@ -614,7 +614,7 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   intro: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 15,
     lineHeight: 22,
     color: Colors.foamMuted,
@@ -641,7 +641,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amber,
   },
   segmentLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.foamMuted,
   },
@@ -654,7 +654,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   label: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 12,
     color: Colors.mutedText,
     textTransform: 'uppercase',
@@ -667,19 +667,19 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     backgroundColor: Colors.stout2,
     paddingHorizontal: 14,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 16,
     color: Colors.foam,
   },
   nicknameHint: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 13,
     lineHeight: 18,
     color: Colors.mutedText,
     marginLeft: 2,
   },
   errorText: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     lineHeight: 18,
     color: Colors.amberLight,
@@ -704,7 +704,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.xs,
   },
   forgotText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.amber,
   },
@@ -717,7 +717,7 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
   },
   resetPrompt: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 14,
     lineHeight: 20,
     color: Colors.foamMuted,
@@ -736,7 +736,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.border,
   },
   dividerText: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.mutedText,
   },
@@ -754,7 +754,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   socialButtonLabel: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 16,
     color: Colors.foam,
   },

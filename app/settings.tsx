@@ -65,7 +65,7 @@ import {
   type BeerCountReminderIntervalMinutes,
 } from '@/stores/settingsStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { getAppVersionLabel } from '@/utils/appVersion';
@@ -844,7 +844,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 24,
     color: Colors.foam,
     includeFontPadding: false,
@@ -861,7 +861,7 @@ const styles = StyleSheet.create({
   scrollContent: { paddingBottom: 12 },
   sectionLabel: {
     marginBottom: 8,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -879,7 +879,7 @@ const styles = StyleSheet.create({
   },
   distanceNumber: {
     alignSelf: 'stretch',
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     color: Colors.amber,
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
@@ -887,7 +887,7 @@ const styles = StyleSheet.create({
   },
   distanceUnit: {
     marginTop: -8,
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 13,
     letterSpacing: 3,
     color: Colors.mutedText,
@@ -934,7 +934,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   rangeLabel: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -973,14 +973,14 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   preferenceTitle: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
   },
   preferenceSubtitle: {
     marginTop: 2,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 12,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1017,7 +1017,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   reminderIntervalLabel: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 11,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1044,7 +1044,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.foam, 0.18),
   },
   reminderIntervalOptionText: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 11,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1056,7 +1056,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   footerPromise: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     lineHeight: 17,
     color: Colors.mutedText,
@@ -1064,7 +1064,7 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   footerTagline: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 11,
     letterSpacing: 0.5,
     color: Colors.mutedText,

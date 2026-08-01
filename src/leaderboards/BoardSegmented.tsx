@@ -22,7 +22,7 @@ import Animated, {
 
 import { useSettingsStore } from '@/stores/settingsStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { useReduceMotion } from '@/utils/useReduceMotion';
@@ -165,7 +165,7 @@ const styles = StyleSheet.create({
   },
   segmentText: {
     flexShrink: 1,
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 14,
     textAlign: 'center',
     color: Colors.mutedText,

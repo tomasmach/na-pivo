@@ -50,7 +50,7 @@ import PeriodChips from '@/leaderboards/PeriodChips';
 import { PodiumMats } from '@/leaderboards/PodiumMats';
 import { useAccountStore } from '@/stores/accountStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 
@@ -542,7 +542,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     minWidth: 0,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     color: Colors.foam,
     textAlign: 'center',
@@ -575,7 +575,7 @@ const styles = StyleSheet.create({
   // Mapéři has one window, so the slot states it instead of offering a choice
   // that does nothing. Same height and axis as the chips it replaces.
   periodNote: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     textAlign: 'center',
@@ -600,7 +600,7 @@ const styles = StyleSheet.create({
     ...CardSurface.card,
   },
   eyebrow: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -618,14 +618,14 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   rank: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     color: Colors.amber,
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
   },
   rankNoun: {
     marginTop: -8,
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 13,
     letterSpacing: 3,
     color: Colors.foamMuted,
@@ -661,21 +661,21 @@ const styles = StyleSheet.create({
   },
   rulesCaption: {
     marginBottom: 2,
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
     includeFontPadding: false,
   },
   ruleText: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 14,
     lineHeight: 20,
     color: Colors.foamMuted,
     includeFontPadding: false,
   },
   blankTitle: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 28,
     lineHeight: 34,
     color: Colors.foam,
@@ -683,7 +683,7 @@ const styles = StyleSheet.create({
   },
   blankText: {
     maxWidth: 320,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 15,
     lineHeight: 22,
     color: Colors.mutedText,
@@ -694,7 +694,7 @@ const styles = StyleSheet.create({
   },
   scoreFact: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
@@ -702,7 +702,7 @@ const styles = StyleSheet.create({
   },
   totalFact: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -713,7 +713,7 @@ const styles = StyleSheet.create({
   listLabel: {
     marginTop: 24,
     marginBottom: 8,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,

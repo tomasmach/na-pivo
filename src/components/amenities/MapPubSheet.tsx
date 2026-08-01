@@ -44,7 +44,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, HitArea } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { cs } from '@/i18n/cs';
@@ -1276,7 +1276,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   title: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 22,
     color: Colors.foam,
   },
@@ -1293,12 +1293,12 @@ const styles = StyleSheet.create({
   },
   hours: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
   },
   subtitle: {
     marginTop: 2,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 13,
     lineHeight: 18,
     color: Colors.mutedText,
@@ -1324,7 +1324,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   sectionLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 12,
     letterSpacing: 1,
     textTransform: 'uppercase',
@@ -1340,7 +1340,7 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.amberLight, 0.09),
   },
   publicPillText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 11,
     color: Colors.amberLight,
   },
@@ -1380,14 +1380,14 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.mutedText, 0.14),
   },
   tileLabel: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
   },
   tileValue: {
     marginTop: 3,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12.5,
     color: Colors.foamMuted,
     includeFontPadding: false,
@@ -1398,7 +1398,7 @@ const styles = StyleSheet.create({
   },
   tileRecency: {
     marginTop: 9,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 11,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1431,7 +1431,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   rowLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
   },
@@ -1444,13 +1444,13 @@ const styles = StyleSheet.create({
   },
   confText: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 11.5,
     color: Colors.mutedText,
   },
   confFirst: {
     color: Colors.amberLight,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
   },
   confDisputed: {
     color: Colors.amberLight,
@@ -1483,7 +1483,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   moreLabel: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
   },
@@ -1501,7 +1501,7 @@ const styles = StyleSheet.create({
   moreRowLabel: {
     flex: 1,
     minWidth: 0,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
   },
@@ -1535,7 +1535,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amber,
   },
   halfText: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 13,
     color: Colors.foamMuted,
   },
@@ -1545,7 +1545,7 @@ const styles = StyleSheet.create({
   footerHint: {
     marginTop: Spacing.lg,
     marginBottom: Spacing.sm,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 12,
     color: Colors.mutedText,
   },
@@ -1580,13 +1580,13 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.28),
   },
   renameTitle: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 24,
     lineHeight: 30,
     color: Colors.foam,
   },
   renameBody: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 14,
     lineHeight: 20,
     color: Colors.foamMuted,
@@ -1598,7 +1598,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.38),
     backgroundColor: Colors.stout3,
     paddingHorizontal: 14,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 17,
     color: Colors.foam,
   },
@@ -1618,7 +1618,7 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.stout, 0.42),
   },
   renameSecondaryText: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 15,
     color: Colors.foamMuted,
   },
@@ -1634,7 +1634,7 @@ const styles = StyleSheet.create({
     opacity: 0.42,
   },
   renamePrimaryText: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 16,
     color: Colors.stout,
   },

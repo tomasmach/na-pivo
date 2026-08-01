@@ -4,7 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
 import { PinMat } from '@/addedPubs/PinMat';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 
 function countFontSize(count: number): number {
   if (count < 10) return 88;
@@ -107,14 +107,14 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   count: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     color: Colors.amber,
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
   },
   caption: {
     marginTop: -8,
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 13,
     letterSpacing: 3,
     color: Colors.foamMuted,
@@ -122,7 +122,7 @@ const styles = StyleSheet.create({
   },
   headline: {
     marginTop: 12,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
@@ -142,14 +142,14 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   factStrong: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
   },
   factMuted: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,

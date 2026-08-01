@@ -9,7 +9,7 @@
 import React, { memo, useCallback, useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
 import { amberGlowStrong } from '@/theme/shadows';
 
@@ -150,7 +150,7 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.985 }],
   },
   label: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 20,
     color: Colors.stout,
     textAlign: 'center',
@@ -160,7 +160,7 @@ const styles = StyleSheet.create({
     color: withAlpha(Colors.stout, 0.55),
   },
   subLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: withAlpha(Colors.stout, 0.72),
     marginTop: 2,
@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   secondaryLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foamMuted,
     includeFontPadding: false,

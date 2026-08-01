@@ -23,7 +23,7 @@ import { ScalePressable } from '@/photos/ScalePressable';
 import { selectAvatarUrl, selectNickname, useAccountStore } from '@/stores/accountStore';
 import { useBeerPhotosStore } from '@/stores/beerPhotosStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 const TILE_WIDTH = 108;
@@ -215,7 +215,7 @@ export function PartaPhotoStrip({ refreshKey, style }: PartaPhotoStripProps) {
 const styles = StyleSheet.create({
   // Mirrors the FriendsScreen section-header idiom.
   sectionHeader: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
@@ -253,7 +253,7 @@ const styles = StyleSheet.create({
   },
   nameChipText: {
     flex: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 11,
     color: Colors.foam,
   },
@@ -285,12 +285,12 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   viewerName: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 14,
     color: Colors.foam,
   },
   viewerCaption: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 14,
     lineHeight: 20,
     color: Colors.foamMuted,
@@ -301,7 +301,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   viewerPub: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.foamMuted,
   },

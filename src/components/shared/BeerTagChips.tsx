@@ -12,7 +12,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { BEER_TAGS, type BeerTag } from '@/data/beerCheckinsClient';
 import { cs } from '@/i18n/cs';
 import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 interface BeerTagChipsProps {
@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout2,
   },
   text: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 11,
     color: Colors.foamMuted,
   },

@@ -1,7 +1,7 @@
 import React, { memo, ReactNode } from 'react';
 import { ActivityIndicator, Pressable, Text, View, StyleSheet, ViewStyle } from 'react-native';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
 import { amberGlow, amberGlowStrong } from '@/theme/shadows';
 
@@ -127,7 +127,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.36),
   },
   label: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 20,
     letterSpacing: 0.3,
   },
@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
   },
   subLabel: {
     marginTop: 2,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     includeFontPadding: false,
   },

@@ -48,7 +48,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { fireSuccessHaptic } from '@/utils/haptics';
 import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
@@ -387,7 +387,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
   },
   title: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 22,
     color: Colors.foam,
   },
@@ -413,7 +413,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout3,
   },
   fieldLabel: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 11,
     letterSpacing: 1.2,
     color: Colors.amber,
@@ -432,7 +432,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingTop: Spacing.sm + 2,
     paddingBottom: Spacing.sm + 2,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 15,
     lineHeight: 21,
     color: Colors.foam,
@@ -457,12 +457,12 @@ const styles = StyleSheet.create({
   },
   pubName: {
     flex: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.foam,
   },
   pubNameEmpty: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     color: Colors.mutedText,
   },
   pubClear: {
@@ -496,7 +496,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.amber,
   },
   segmentText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.mutedText,
   },
@@ -535,13 +535,13 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   contestToggleTitle: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 15,
     color: Colors.foam,
   },
   contestToggleHint: {
     marginTop: 2,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 12,
     lineHeight: 17,
     color: Colors.mutedText,

@@ -82,7 +82,7 @@ import { useToastStore } from '@/stores/toastStore';
 import BeerMapScreen from '@/map/BeerMapScreen';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, CompassSize } from '@/theme/layout';
 import { amberGlowStrong } from '@/theme/shadows';
 import { cs, formatVolume } from '@/i18n/cs';
@@ -789,7 +789,6 @@ export default function CompassScreen() {
     setReportOpen(true);
   }, [pub]);
 
-
   // ── Tácek composition state ───────────────────────────────────────────────
   // The pub the needle is actually aimed at: a friend's handoff wins over the
   // local search, which is why the focused mode no longer needs its own screen.
@@ -1189,13 +1188,13 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.28),
   },
   renameTitle: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 24,
     lineHeight: 30,
     color: Colors.foam,
   },
   renameBody: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 14,
     lineHeight: 20,
     color: Colors.foamMuted,
@@ -1207,7 +1206,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.38),
     backgroundColor: Colors.stout3,
     paddingHorizontal: 14,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 17,
     color: Colors.foam,
   },
@@ -1227,7 +1226,7 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.stout, 0.42),
   },
   renameSecondaryText: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 15,
     color: Colors.foamMuted,
   },
@@ -1243,7 +1242,7 @@ const styles = StyleSheet.create({
     opacity: 0.42,
   },
   renamePrimaryText: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 16,
     color: Colors.stout,
   },
@@ -1260,14 +1259,14 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   permTitle: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 28,
     color: Colors.foam,
     textAlign: 'center',
     lineHeight: 36,
   },
   permBody: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 15,
     color: Colors.mutedText,
     textAlign: 'center',
@@ -1287,7 +1286,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   permissionMapText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.foamMuted,
   },
@@ -1344,21 +1343,21 @@ const styles = StyleSheet.create({
     gap: 0,
   },
   emptyHeadlineFoam: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 38,
     color: Colors.foam,
     letterSpacing: -0.5,
     lineHeight: 44,
   },
   emptyHeadlineAmber: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 38,
     color: Colors.amber,
     letterSpacing: -0.5,
     lineHeight: 44,
   },
   emptyBody: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 15,
     color: Colors.mutedText,
     textAlign: 'center',
@@ -1384,7 +1383,7 @@ const styles = StyleSheet.create({
     gap: Spacing.lg,
   },
   emptyRetryText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.mutedText,
   },

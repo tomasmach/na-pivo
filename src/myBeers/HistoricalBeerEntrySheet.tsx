@@ -23,7 +23,7 @@ import { cs } from '@/i18n/cs';
 import { useToastStore } from '@/stores/toastStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { currencyFractionDigits, currencySuffix, parsePriceInputToCzk, sanitizePriceInput } from '@/utils/currency';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
@@ -545,20 +545,20 @@ const styles = StyleSheet.create({
   },
   headerText: { flex: 1 },
   title: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 21,
     color: Colors.foam,
   },
   subtitle: {
     marginTop: 2,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     lineHeight: 16,
     color: Colors.foamMuted,
   },
   hint: {
     marginTop: 3,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 11,
     lineHeight: 15,
     color: Colors.mutedText,
@@ -583,7 +583,7 @@ const styles = StyleSheet.create({
   label: {
     marginTop: Spacing.sm,
     marginBottom: 5,
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 12,
     color: Colors.mutedText,
     letterSpacing: 0.4,
@@ -591,7 +591,7 @@ const styles = StyleSheet.create({
   },
   miniLabel: {
     marginBottom: 4,
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 10,
     color: Colors.mutedText,
     letterSpacing: 0.35,
@@ -607,7 +607,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   addBeerText: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 11,
     color: Colors.stout,
   },
@@ -651,7 +651,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout2,
     color: Colors.foam,
     paddingHorizontal: Spacing.md,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 14,
   },
   inputError: {
@@ -659,7 +659,7 @@ const styles = StyleSheet.create({
   },
   errorText: {
     marginTop: Spacing.xs,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.glow,
   },
@@ -709,12 +709,12 @@ const styles = StyleSheet.create({
   priceInput: {
     flex: 1,
     color: Colors.foam,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 14,
     padding: 0,
   },
   priceSuffix: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 12,
     color: Colors.mutedText,
   },
@@ -735,14 +735,14 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.border,
   },
   suggestionText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
   },
   visibilityHint: {
     marginTop: -2,
     marginBottom: Spacing.xs,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 11,
     lineHeight: 15,
     color: Colors.mutedText,
@@ -768,7 +768,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.amber,
   },
   visibilityText: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 12,
     color: Colors.foamMuted,
   },
@@ -784,7 +784,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amber,
   },
   submitText: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 16,
     color: Colors.stout,
   },

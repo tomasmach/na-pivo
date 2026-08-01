@@ -6,7 +6,7 @@ import { BeerIcon, CircleDotIcon, GlassWaterIcon, WineIcon, XIcon } from '@/comp
 import type { ScannedDrink } from '@/data/menuScanClient';
 import { cs, formatVolume } from '@/i18n/cs';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { formatPrice, type PriceCurrency } from '@/utils/currency';
 
@@ -98,8 +98,8 @@ const styles = StyleSheet.create({
   },
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.md, marginBottom: Spacing.md },
   headerText: { flex: 1 },
-  title: { fontFamily: Fonts.display.extrabold, fontSize: 24, color: Colors.foam },
-  hint: { marginTop: 4, fontFamily: Fonts.ui.regular, fontSize: 14, lineHeight: 20, color: Colors.mutedText },
+  title: { fontWeight: '800', fontSize: 24, color: Colors.foam },
+  hint: { marginTop: 4, fontWeight: '400', fontSize: 14, lineHeight: 20, color: Colors.mutedText },
   close: { width: HitArea.min, height: HitArea.min, alignItems: 'center', justifyContent: 'center' },
   list: { flexGrow: 0 },
   row: { minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
@@ -114,6 +114,6 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.amber, 0.1),
   },
   rowText: { flex: 1 },
-  name: { fontFamily: Fonts.ui.semibold, fontSize: 16, color: Colors.foam },
-  meta: { marginTop: 2, fontFamily: Fonts.ui.regular, fontSize: 13, color: Colors.mutedText },
+  name: { fontWeight: '600', fontSize: 16, color: Colors.foam },
+  meta: { marginTop: 2, fontWeight: '400', fontSize: 13, color: Colors.mutedText },
 });

@@ -17,7 +17,7 @@ import React, { useCallback, useState } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native';
 
 import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
 import {
@@ -217,7 +217,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   sectionHeaderText: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
@@ -252,7 +252,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.mutedText,
   },
   verdictText: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 14,
     color: Colors.foamMuted,
   },
@@ -265,7 +265,7 @@ const styles = StyleSheet.create({
 
   // Small muted label above the tag row and the note field.
   subLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 11,
     letterSpacing: 0.4,
     textTransform: 'uppercase',
@@ -298,7 +298,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.amber,
   },
   tagChipText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 12,
     lineHeight: 16,
     textAlign: 'center',
@@ -323,14 +323,14 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 14,
     lineHeight: 20,
     color: Colors.foam,
   },
 
   hint: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 12,
     color: Colors.mutedText,
     marginTop: 14,

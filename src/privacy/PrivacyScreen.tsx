@@ -16,7 +16,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors } from '@/theme/colors';
-import { Fonts } from '@/theme/fonts';
+
 import { cs } from '@/i18n/cs';
 
 export default function PrivacyScreen() {
@@ -91,13 +91,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   backChevron: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 32,
     color: Colors.foam,
     lineHeight: 36,
   },
   headerTitle: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 24,
     color: Colors.foam,
     textAlign: 'center',
@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
     paddingTop: 24,
   },
   paragraph: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 15,
     color: Colors.foamMuted,
     lineHeight: 15 * 1.5,
@@ -121,12 +121,12 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   contactLabel: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 15,
     color: Colors.foamMuted,
   },
   contactEmail: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 15,
     color: Colors.amber,
     textDecorationLine: 'underline',

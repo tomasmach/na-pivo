@@ -21,7 +21,7 @@ import { geocodePubLocation } from '@/data/mapyClient';
 import { cs } from '@/i18n/cs';
 import { useSettingsStore, type HomePoint } from '@/stores/settingsStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts } from '@/theme/fonts';
+
 import { Radius, Spacing } from '@/theme/layout';
 
 const CZECHIA_REGION: Region = {
@@ -296,34 +296,34 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: Colors.stout },
   header: { position: 'relative', zIndex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 12, backgroundColor: Colors.stout },
   headerButton: { width: 44, height: 44, borderRadius: Radius.pill, backgroundColor: Colors.stout2, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { flex: 1, textAlign: 'center', fontFamily: Fonts.display.extrabold, fontSize: 24, color: Colors.foam },
+  headerTitle: { flex: 1, textAlign: 'center', fontWeight: '800', fontSize: 24, color: Colors.foam },
   headerSpacer: { width: 44 },
   scroll: { flex: 1 },
   content: { paddingHorizontal: Spacing.lg, gap: Spacing.md },
   saveBar: { paddingTop: Spacing.sm, paddingHorizontal: Spacing.lg, backgroundColor: Colors.stout },
   addressSection: { gap: Spacing.sm },
-  lead: { fontFamily: Fonts.ui.semibold, fontSize: 17, lineHeight: 23, color: Colors.foam },
-  label: { marginTop: Spacing.xs, fontFamily: Fonts.ui.semibold, fontSize: 13.5, color: Colors.foamMuted },
-  input: { minHeight: 52, borderRadius: Radius.medium, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.stout2, paddingHorizontal: Spacing.md, paddingVertical: 12, fontFamily: Fonts.ui.regular, fontSize: 16, letterSpacing: 0, color: Colors.foam },
-  privacy: { marginTop: 2, fontFamily: Fonts.ui.regular, fontSize: 13, lineHeight: 18, color: Colors.foamMuted, maxWidth: 520 },
-  error: { fontFamily: Fonts.ui.medium, fontSize: 13.5, lineHeight: 19, color: Colors.amberLight },
+  lead: { fontWeight: '600', fontSize: 17, lineHeight: 23, color: Colors.foam },
+  label: { marginTop: Spacing.xs, fontWeight: '600', fontSize: 13.5, color: Colors.foamMuted },
+  input: { minHeight: 52, borderRadius: Radius.medium, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.stout2, paddingHorizontal: Spacing.md, paddingVertical: 12, fontWeight: '400', fontSize: 16, letterSpacing: 0, color: Colors.foam },
+  privacy: { marginTop: 2, fontWeight: '400', fontSize: 13, lineHeight: 18, color: Colors.foamMuted, maxWidth: 520 },
+  error: { fontWeight: '500', fontSize: 13.5, lineHeight: 19, color: Colors.amberLight },
   mapFrame: { height: 320, overflow: 'hidden', borderRadius: Radius.card, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.stout2 },
   mapHint: { position: 'absolute', alignSelf: 'center', top: 16, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 12, paddingVertical: 8, borderRadius: Radius.pill, backgroundColor: Colors.stout, borderWidth: 1, borderColor: withAlpha(Colors.amber, 0.45) },
-  mapHintText: { fontFamily: Fonts.ui.semibold, fontSize: 12.5, color: Colors.foam },
-  refineHint: { marginTop: -4, fontFamily: Fonts.ui.regular, fontSize: 13.5, lineHeight: 19, color: Colors.foamMuted },
+  mapHintText: { fontWeight: '600', fontSize: 12.5, color: Colors.foam },
+  refineHint: { marginTop: -4, fontWeight: '400', fontSize: 13.5, lineHeight: 19, color: Colors.foamMuted },
   fallback: { padding: Spacing.md, borderRadius: Radius.medium, borderWidth: 1, borderColor: withAlpha(Colors.amber, 0.4), backgroundColor: withAlpha(Colors.amber, 0.08), gap: Spacing.sm },
-  fallbackText: { fontFamily: Fonts.ui.regular, fontSize: 13.5, lineHeight: 19, color: Colors.foamMuted },
+  fallbackText: { fontWeight: '400', fontSize: 13.5, lineHeight: 19, color: Colors.foamMuted },
   inlineButton: { alignSelf: 'flex-start', minHeight: 36, justifyContent: 'center' },
-  inlineButtonText: { fontFamily: Fonts.ui.semibold, fontSize: 13.5, color: Colors.amberLight },
+  inlineButtonText: { fontWeight: '600', fontSize: 13.5, color: Colors.amberLight },
   secondaryButton: { minHeight: 50, borderRadius: Radius.medium, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.stout2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  secondaryButtonText: { fontFamily: Fonts.ui.semibold, fontSize: 15, color: Colors.foam },
+  secondaryButtonText: { fontWeight: '600', fontSize: 15, color: Colors.foam },
   alternativeRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginVertical: 2 },
   alternativeLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: Colors.border },
-  alternativeText: { fontFamily: Fonts.ui.medium, fontSize: 12.5, color: Colors.mutedText },
+  alternativeText: { fontWeight: '500', fontSize: 12.5, color: Colors.mutedText },
   primaryButton: { minHeight: 52, borderRadius: Radius.medium, backgroundColor: Colors.amber, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  primaryButtonText: { fontFamily: Fonts.ui.bold, fontSize: 16, color: Colors.stout },
+  primaryButtonText: { fontWeight: '700', fontSize: 16, color: Colors.stout },
   clearButton: { minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
-  clearButtonText: { fontFamily: Fonts.ui.medium, fontSize: 13.5, color: Colors.foamMuted },
+  clearButtonText: { fontWeight: '500', fontSize: 13.5, color: Colors.foamMuted },
   disabled: { opacity: 0.45 },
   pressed: { opacity: 0.72 },
 });

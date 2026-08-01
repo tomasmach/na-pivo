@@ -38,7 +38,7 @@ import { cs } from '@/i18n/cs';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { useReduceMotion } from '@/utils/useReduceMotion';
@@ -521,7 +521,7 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 22,
     color: Colors.foam,
   },
@@ -553,13 +553,13 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   settingTitle: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 16,
     color: Colors.foam,
   },
   settingSubtitle: {
     marginTop: 2,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     lineHeight: 18,
     color: Colors.mutedText,
@@ -568,7 +568,7 @@ const styles = StyleSheet.create({
     marginTop: Spacing.md,
   },
   quietSummary: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: withAlpha(Colors.amberLight, 0.9),
   },
@@ -580,7 +580,7 @@ const styles = StyleSheet.create({
     marginTop: Spacing.sm,
   },
   stepperCaption: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 12,
     letterSpacing: 1,
     textTransform: 'uppercase',

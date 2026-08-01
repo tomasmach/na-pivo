@@ -19,7 +19,7 @@ import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TextInput, ActivityIndicator, StyleSheet, type TextStyle } from 'react-native';
 
 import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
 import { CheckIcon } from '@/components/shared/IconGlyph';
@@ -231,19 +231,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   at: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 18,
     color: Colors.amber,
   },
   input: {
     flex: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 16,
     color: Colors.foam,
     paddingVertical: 12,
   },
   hint: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     lineHeight: 18,
     marginLeft: 2,

@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
 import Svg, { Circle, Text as SvgText } from 'react-native-svg';
 import { Colors } from '@/theme/colors';
-import { Fonts } from '@/theme/fonts';
+
 import { CompassSize } from '@/theme/layout';
 
 interface CompassDialProps {
@@ -157,7 +157,6 @@ export const CompassDial = memo(function CompassDial({ size = CompassSize }: Com
           key={label}
           x={x}
           y={y}
-          fontFamily={Fonts.display.extrabold}
           fontSize={20}
           fontWeight="800"
           fill={Colors.stout}

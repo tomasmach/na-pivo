@@ -45,7 +45,7 @@ import { enqueueFriendOp, isRetriableFriendError } from '@/data/friendsQueue';
 import { cs } from '@/i18n/cs';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { amberGlow, softDrop } from '@/theme/shadows';
 import { useReduceMotion } from '@/utils/useReduceMotion';
@@ -320,7 +320,7 @@ const styles = StyleSheet.create({
   },
   kickerLabel: {
     flexShrink: 1,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 12,
     letterSpacing: 1,
     color: Colors.amber,
@@ -331,13 +331,13 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   expiryText: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.mutedText,
   },
   pubName: {
     marginTop: Spacing.md,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 22,
     lineHeight: 26,
     color: Colors.foam,
@@ -350,7 +350,7 @@ const styles = StyleSheet.create({
   },
   cityText: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
   },
@@ -360,7 +360,7 @@ const styles = StyleSheet.create({
   },
   cheersLine: {
     marginTop: Spacing.sm,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.mutedText,
   },
@@ -385,7 +385,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   endLabel: {
-    fontFamily: Fonts.display.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.foamMuted,
   },

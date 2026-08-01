@@ -42,7 +42,7 @@ import { cs } from '@/i18n/cs';
 import { loadBeerPhotos, useBeerPhotosStore } from '@/stores/beerPhotosStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
 /** "9. července 2026" — the long Czech date for the meta row. */
@@ -388,7 +388,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     color: Colors.foam,
   },
@@ -403,7 +403,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.xxl,
   },
   missingText: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 15,
     color: Colors.mutedText,
     textAlign: 'center',
@@ -433,7 +433,7 @@ const styles = StyleSheet.create({
   },
   syncText: {
     flex: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.foamMuted,
   },
@@ -450,13 +450,13 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.4),
   },
   retryPillText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.amber,
   },
 
   caption: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 15,
     lineHeight: 22,
     color: Colors.foam,
@@ -477,7 +477,7 @@ const styles = StyleSheet.create({
   },
   metaText: {
     flex: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 14,
     color: Colors.foamMuted,
   },
@@ -497,12 +497,12 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   contestNoteTitle: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.foam,
   },
   contestNoteLink: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.amber,
   },
@@ -511,7 +511,7 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
   },
   contestHint: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 12,
     lineHeight: 17,
     color: Colors.mutedText,

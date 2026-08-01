@@ -26,7 +26,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
 import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { cs, formatVolume } from '@/i18n/cs';
 import {
@@ -1749,14 +1749,14 @@ const styles = StyleSheet.create({
   },
   gateIcon: { marginBottom: 4 },
   gateTitle: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 26,
     color: Colors.foam,
     textAlign: 'center',
     lineHeight: 32,
   },
   gateBody: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 15,
     color: Colors.mutedText,
     textAlign: 'center',
@@ -1772,7 +1772,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   gateLinkText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.mutedText,
   },

@@ -29,7 +29,7 @@ import { useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
 import { useVycepStore } from '@/stores/vycepStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { TallyMarks } from '@/vycep/TallyMarks';
 import type { NightSummary } from '@/vycep/nightModel';
@@ -253,7 +253,7 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 22,
     color: Colors.foam,
   },
@@ -276,12 +276,12 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   previewDate: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.mutedText,
   },
   previewCount: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 20,
     color: Colors.foam,
   },
@@ -292,24 +292,24 @@ const styles = StyleSheet.create({
   },
   previewPubsText: {
     flex: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.foamMuted,
   },
   body: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     lineHeight: 19,
     color: Colors.foamMuted,
   },
   visibilityLabel: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
   },
   visibilityHint: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12.5,
     lineHeight: 18,
     color: Colors.mutedText,
@@ -328,7 +328,7 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   publishText: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 16,
     color: Colors.stout,
   },

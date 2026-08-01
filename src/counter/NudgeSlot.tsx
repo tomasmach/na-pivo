@@ -12,7 +12,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
 import { BeerIcon, CheckIcon, XIcon, type IconProps } from '@/components/shared/IconGlyph';
@@ -232,7 +232,7 @@ const styles = StyleSheet.create({
   },
   stripText: {
     flex: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.foam,
     includeFontPadding: false,
@@ -246,7 +246,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.32),
   },
   ghostPillLabel: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 14,
     color: Colors.amber,
     includeFontPadding: false,
@@ -259,7 +259,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amber,
   },
   filledPillLabel: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 14,
     color: Colors.stout,
     includeFontPadding: false,
@@ -274,7 +274,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.border, 0.6),
   },
   dopitoLabel: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 14,
     color: Colors.foam,
     includeFontPadding: false,
@@ -285,7 +285,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.sm,
   },
   textButtonLabel: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 14,
     color: Colors.amber,
     includeFontPadding: false,

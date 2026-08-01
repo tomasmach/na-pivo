@@ -13,7 +13,7 @@ import type { Friendship } from '@/data/friendsClient';
 import { XIcon } from '@/components/shared/IconGlyph';
 import { cs } from '@/i18n/cs';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 import { friendDisplayName } from './FriendMini';
@@ -65,7 +65,7 @@ const styles = StyleSheet.create({
   },
   outgoingLabel: {
     marginBottom: Spacing.sm,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 12,
     letterSpacing: 1.5,
     textTransform: 'uppercase',
@@ -86,7 +86,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
   },
   outgoingText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     color: Colors.foamMuted,
     fontSize: 13,
   },

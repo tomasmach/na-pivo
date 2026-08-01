@@ -42,7 +42,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea } from '@/theme/layout';
 import {
   CompassIcon,
@@ -374,7 +374,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amber,
   },
   label: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 12,
     letterSpacing: 0.2,
   },
@@ -394,7 +394,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   badgeCount: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 11,
     lineHeight: 13,
     color: Colors.stout,

@@ -34,7 +34,7 @@ import SkeletonBlock from '@/friends/SkeletonBlock';
 import { cs } from '@/i18n/cs';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 
@@ -462,13 +462,13 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
   },
   title: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 22,
     color: Colors.foam,
   },
   subtitle: {
     marginTop: 2,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.foamMuted,
   },
@@ -481,7 +481,7 @@ const styles = StyleSheet.create({
   label: {
     marginTop: Spacing.md,
     marginBottom: Spacing.xs,
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 12,
     color: Colors.mutedText,
     letterSpacing: 0.4,
@@ -495,7 +495,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout2,
     color: Colors.foam,
     paddingHorizontal: Spacing.md,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 15,
   },
   suggestionsBox: {
@@ -508,8 +508,8 @@ const styles = StyleSheet.create({
   },
   suggestionRow: { minHeight: 48, justifyContent: 'center', paddingHorizontal: Spacing.md },
   suggestionDivider: { borderTopWidth: 1, borderTopColor: Colors.border },
-  suggestionName: { fontFamily: Fonts.display.bold, fontSize: 14, color: Colors.foam },
-  suggestionBrand: { fontFamily: Fonts.ui.regular, fontSize: 11, color: Colors.mutedText, marginTop: 2 },
+  suggestionName: { fontWeight: '700', fontSize: 14, color: Colors.foam },
+  suggestionBrand: { fontWeight: '400', fontSize: 11, color: Colors.mutedText, marginTop: 2 },
   noteInput: {
     minHeight: 92,
     paddingTop: Spacing.sm,
@@ -552,7 +552,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout2,
   },
   tagChipText: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 13,
     color: Colors.foam,
   },
@@ -566,22 +566,22 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   memoryLead: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 13,
     color: Colors.amber,
   },
   memoryMeta: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.foamMuted,
   },
   memoryFirst: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
   },
   ratingText: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 13,
     color: Colors.foam,
   },
@@ -609,7 +609,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.amber,
   },
   visibilityText: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 13,
     color: Colors.foamMuted,
   },
@@ -625,7 +625,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amber,
   },
   submitText: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 16,
     color: Colors.stout,
   },

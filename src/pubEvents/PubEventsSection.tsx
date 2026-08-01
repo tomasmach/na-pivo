@@ -7,7 +7,7 @@ import { BadgeCheckIcon, ChevronRightIcon, ClockIcon } from '@/components/shared
 import { fetchActivePubEvents, isPubEventActive, type PubEvent } from '@/data/pubEventsClient';
 import { selectIsSignedIn, useAccountStore } from '@/stores/accountStore';
 import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
 interface PubEventsSectionProps {
@@ -161,7 +161,7 @@ const styles = StyleSheet.create({
   sectionLabel: {
     marginTop: Spacing.xl,
     marginBottom: Spacing.sm,
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 12,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
@@ -178,26 +178,26 @@ const styles = StyleSheet.create({
   eventCopy: { flex: 1 },
   eventTitle: {
     color: Colors.foam,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     lineHeight: 20,
   },
   validity: {
     marginTop: 2,
     color: Colors.amberLight,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     lineHeight: 18,
   },
   details: {
     marginTop: 3,
     color: Colors.mutedText,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 13,
     lineHeight: 18,
   },
   verifiedRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: Spacing.sm },
-  verified: { color: Colors.success, fontFamily: Fonts.ui.medium, fontSize: 12 },
+  verified: { color: Colors.success, fontWeight: '500', fontSize: 12 },
   suggestRow: {
     minHeight: HitArea.min,
     flexDirection: 'row',
@@ -215,6 +215,6 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Colors.border,
   },
-  suggestTitle: { color: Colors.foam, fontFamily: Fonts.ui.semibold, fontSize: 14 },
+  suggestTitle: { color: Colors.foam, fontWeight: '600', fontSize: 14 },
   pressed: { opacity: 0.7 },
 });

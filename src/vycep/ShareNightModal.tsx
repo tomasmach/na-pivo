@@ -37,7 +37,7 @@ import { cs } from '@/i18n/cs';
 import { formatEveningDate } from '@/myBeers/eveningModel';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { amberGlow } from '@/theme/shadows';
 import {
@@ -268,14 +268,14 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 22,
     color: Colors.foam,
   },
   subtitle: {
     marginTop: 2,
     paddingHorizontal: Spacing.lg,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13.5,
     lineHeight: 19,
     color: Colors.mutedText,
@@ -340,12 +340,12 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   primaryText: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 17,
     color: Colors.stout,
   },
   secondaryText: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 15,
     color: Colors.foam,
   },

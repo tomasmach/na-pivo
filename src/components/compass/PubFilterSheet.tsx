@@ -61,7 +61,7 @@ import {
 import { cs } from '@/i18n/cs';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
 type Glyph = ComponentType<{ size?: number; color: string }>;
@@ -795,12 +795,12 @@ const styles = StyleSheet.create({
   },
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.md },
   titleTextWrap: { flex: 1 },
-  title: { fontFamily: Fonts.display.extrabold, fontSize: 24, color: Colors.foam },
-  subtitle: { marginTop: 2, fontFamily: Fonts.ui.regular, fontSize: 13, lineHeight: 18, color: Colors.mutedText },
+  title: { fontWeight: '800', fontSize: 24, color: Colors.foam },
+  subtitle: { marginTop: 2, fontWeight: '400', fontSize: 13, lineHeight: 18, color: Colors.mutedText },
   otherPlacesHint: {
     marginTop: Spacing.xs,
     marginBottom: Spacing.sm,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 12,
     lineHeight: 17,
     color: Colors.mutedText,
@@ -808,7 +808,7 @@ const styles = StyleSheet.create({
   closeBtn: { width: HitArea.min, height: HitArea.min, alignItems: 'center', justifyContent: 'center', marginTop: -Spacing.xs },
   content: { flex: 1, marginTop: Spacing.sm },
   sectionLabel: {
-    marginTop: Spacing.md, marginBottom: Spacing.sm, fontFamily: Fonts.ui.semibold,
+    marginTop: Spacing.md, marginBottom: Spacing.sm, fontWeight: '600',
     fontSize: 11, letterSpacing: 1.1, color: Colors.mutedText,
   },
   searchRow: {
@@ -816,12 +816,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, borderRadius: Radius.medium, borderWidth: 1,
     borderColor: Colors.border, backgroundColor: Colors.stout3,
   },
-  searchInput: { flex: 1, minWidth: 0, paddingVertical: 0, fontFamily: Fonts.ui.semibold, fontSize: 15, color: Colors.foam },
+  searchInput: { flex: 1, minWidth: 0, paddingVertical: 0, fontWeight: '600', fontSize: 15, color: Colors.foam },
   searchClear: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
   results: { marginTop: Spacing.xs },
   resultRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 46, borderBottomWidth: 1, borderBottomColor: withAlpha(Colors.border, 0.6) },
-  resultText: { flex: 1, fontFamily: Fonts.ui.semibold, fontSize: 15, color: Colors.foam },
-  noResults: { paddingVertical: Spacing.md, textAlign: 'center', fontFamily: Fonts.ui.regular, fontSize: 14, color: Colors.mutedText },
+  resultText: { flex: 1, fontWeight: '600', fontSize: 15, color: Colors.foam },
+  noResults: { paddingVertical: Spacing.md, textAlign: 'center', fontWeight: '400', fontSize: 14, color: Colors.mutedText },
   chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: Spacing.md },
   rotatingFilterHint: {
     flexDirection: 'row',
@@ -837,7 +837,7 @@ const styles = StyleSheet.create({
   },
   rotatingFilterHintText: {
     flex: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     lineHeight: 17,
     color: Colors.foamMuted,
@@ -849,12 +849,12 @@ const styles = StyleSheet.create({
     borderColor: Colors.border, backgroundColor: Colors.stout3,
   },
   chipActive: { borderColor: Colors.amber, backgroundColor: Colors.amber },
-  chipText: { fontFamily: Fonts.ui.semibold, fontSize: 14, color: Colors.foam },
+  chipText: { fontWeight: '600', fontSize: 14, color: Colors.foam },
   chipTextActive: { color: Colors.stout },
   pressed: { opacity: 0.76, transform: [{ scale: 0.97 }] },
   priceHeaderRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
-  priceCount: { fontFamily: Fonts.ui.semibold, fontSize: 12, color: Colors.amber },
-  priceSubtitle: { fontFamily: Fonts.ui.regular, fontSize: 12, lineHeight: 16, color: Colors.mutedText, marginBottom: Spacing.sm },
+  priceCount: { fontWeight: '600', fontSize: 12, color: Colors.amber },
+  priceSubtitle: { fontWeight: '400', fontSize: 12, lineHeight: 16, color: Colors.mutedText, marginBottom: Spacing.sm },
   priceSliderArea: { paddingTop: Spacing.xs },
   priceHistogram: {
     flexDirection: 'row', gap: 3,
@@ -865,7 +865,7 @@ const styles = StyleSheet.create({
   priceBar: { width: '100%', borderRadius: 3, backgroundColor: Colors.amber },
   priceBarExcluded: { backgroundColor: Colors.border },
   priceAxisLabel: {
-    marginTop: 5, height: 15, textAlign: 'center', fontFamily: Fonts.ui.medium,
+    marginTop: 5, height: 15, textAlign: 'center', fontWeight: '500',
     fontSize: 9, color: Colors.mutedText,
   },
   priceTrack: {
@@ -884,16 +884,16 @@ const styles = StyleSheet.create({
     borderWidth: 2, borderColor: Colors.amber,
   },
   priceValueRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 },
-  priceValue: { fontFamily: Fonts.ui.semibold, fontSize: 14, color: Colors.foam },
-  priceHint: { marginTop: 4, fontFamily: Fonts.ui.regular, fontSize: 12, lineHeight: 16, color: Colors.mutedText },
-  priceNoData: { fontFamily: Fonts.ui.regular, fontSize: 13, lineHeight: 18, color: Colors.mutedText },
-  matchHint: { marginTop: Spacing.lg, marginBottom: Spacing.md, fontFamily: Fonts.ui.regular, fontSize: 12, lineHeight: 17, color: Colors.mutedText },
+  priceValue: { fontWeight: '600', fontSize: 14, color: Colors.foam },
+  priceHint: { marginTop: 4, fontWeight: '400', fontSize: 12, lineHeight: 16, color: Colors.mutedText },
+  priceNoData: { fontWeight: '400', fontSize: 13, lineHeight: 18, color: Colors.mutedText },
+  matchHint: { marginTop: Spacing.lg, marginBottom: Spacing.md, fontWeight: '400', fontSize: 12, lineHeight: 17, color: Colors.mutedText },
   limitHint: { color: Colors.amberLight },
   actions: {
     flexDirection: 'row', gap: Spacing.sm, paddingTop: Spacing.sm,
   },
   secondaryButton: { minHeight: 50, paddingHorizontal: Spacing.md, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.medium, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.stout2 },
-  secondaryButtonText: { fontFamily: Fonts.ui.semibold, fontSize: 14, color: Colors.foamMuted },
+  secondaryButtonText: { fontWeight: '600', fontSize: 14, color: Colors.foamMuted },
   primaryButton: { flex: 1, minHeight: 50, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.medium, backgroundColor: Colors.amber },
-  primaryButtonText: { fontFamily: Fonts.ui.bold, fontSize: 15, color: Colors.stout },
+  primaryButtonText: { fontWeight: '700', fontSize: 15, color: Colors.stout },
 });

@@ -118,7 +118,7 @@ import { usePartaSignalStore } from '@/stores/partaSignalStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import {
@@ -1449,7 +1449,7 @@ const styles = StyleSheet.create({
   },
   partyChipLabel: {
     flexShrink: 1,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     color: Colors.foam,
     includeFontPadding: false,
@@ -1487,7 +1487,7 @@ const styles = StyleSheet.create({
   sectionHeader: {
     marginTop: 24,
     marginBottom: 8,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1500,7 +1500,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   blockEmpty: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     lineHeight: 20,
     color: Colors.mutedText,
@@ -1528,7 +1528,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.18),
   },
   moreFeedLabel: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 15,
     color: Colors.amber,
     includeFontPadding: false,
@@ -1600,7 +1600,7 @@ const styles = StyleSheet.create({
   },
   sheetTitle: {
     flexShrink: 1,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 22,
     color: Colors.foam,
     includeFontPadding: false,
@@ -1627,7 +1627,7 @@ const styles = StyleSheet.create({
   },
   sheetEmpty: {
     paddingVertical: 24,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 15,
     color: Colors.mutedText,
     textAlign: 'center',
@@ -1640,7 +1640,7 @@ const styles = StyleSheet.create({
     borderTopColor: withAlpha(Colors.foam, 0.1),
   },
   rosterPub: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     color: Colors.foam,
     includeFontPadding: false,

@@ -47,7 +47,7 @@ import {
 } from '@/components/shared/IconGlyph';
 import { cs } from '@/i18n/cs';
 import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { useToastStore } from '@/stores/toastStore';
 
@@ -315,12 +315,12 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   gateTitle: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     color: Colors.foam,
   },
   gateBody: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 14,
     lineHeight: 20,
     color: Colors.foamMuted,
@@ -342,7 +342,7 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     color: Colors.foam,
     fontSize: 16,
     paddingVertical: 12,
@@ -356,7 +356,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amber,
   },
   searchButtonText: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     color: Colors.stout,
     fontSize: 15,
   },
@@ -379,7 +379,7 @@ const styles = StyleSheet.create({
   },
   noResults: {
     marginTop: Spacing.md,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     lineHeight: 18,
     color: Colors.mutedText,
@@ -392,7 +392,7 @@ const styles = StyleSheet.create({
   },
   nicknameInviteText: {
     flex: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     color: Colors.amber,
     fontSize: 14,
   },

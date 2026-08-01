@@ -16,7 +16,7 @@ import {
   type PubReminderEnableFailureReason,
 } from '@/stores/pubReminderEnableFailureStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 
@@ -148,20 +148,20 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   eyebrow: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 11,
     letterSpacing: 1.1,
     color: Colors.amberLight,
   },
   title: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 25,
     lineHeight: 30,
     color: Colors.foam,
   },
   body: {
     marginTop: Spacing.lg,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 16,
     lineHeight: 23,
     color: Colors.foamMuted,
@@ -181,7 +181,7 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.98 }],
   },
   secondaryText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foamMuted,
   },

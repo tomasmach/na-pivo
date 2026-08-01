@@ -16,7 +16,7 @@ import { CrownIcon } from '@/components/shared/IconGlyph';
 import { cs } from '@/i18n/cs';
 import type { LeaderboardEntry } from '@/data/friendsClient';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 interface LeaderboardRowProps {
@@ -171,13 +171,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   rankMedal: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 16,
     color: Colors.foamMuted,
     includeFontPadding: false,
   },
   rankPlain: {
-    fontFamily: Fonts.display.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -188,13 +188,13 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   name: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 15,
     color: Colors.foam,
   },
   sharedLine: {
     marginTop: 2,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.mutedText,
   },
@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   visits: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     color: Colors.foam,
     includeFontPadding: false,
@@ -214,7 +214,7 @@ const styles = StyleSheet.create({
   // Quiet unit label under the big number.
   visitsCaption: {
     marginTop: 2,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 11,
     color: Colors.mutedText,
   },

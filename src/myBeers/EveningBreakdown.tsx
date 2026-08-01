@@ -9,7 +9,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 
 import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
 import { cs, formatVolume } from '@/i18n/cs';
 import { formatPrice, type PriceCurrency } from '@/utils/currency';
@@ -73,12 +73,12 @@ const styles = StyleSheet.create({
   },
   name: {
     flex: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
   },
   meta: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.amber,
   },
@@ -89,13 +89,13 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.sm + 2,
   },
   totalLabel: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 13,
     letterSpacing: 0.5,
     color: Colors.mutedText,
   },
   totalValue: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     color: Colors.foam,
   },

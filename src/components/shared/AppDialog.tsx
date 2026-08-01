@@ -11,7 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BeerIcon } from '@/components/shared/IconGlyph';
 import { cs } from '@/i18n/cs';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 
@@ -308,7 +308,7 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.amber, 0.14),
   },
   title: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 27,
     lineHeight: 32,
     color: Colors.foam,
@@ -316,7 +316,7 @@ const styles = StyleSheet.create({
   },
   message: {
     marginTop: Spacing.sm,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 15,
     lineHeight: 22,
     color: Colors.foamMuted,
@@ -338,7 +338,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amberLight,
   },
   primaryText: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     lineHeight: 22,
     color: Colors.stout,
@@ -355,7 +355,7 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.foam, 0.05),
   },
   secondaryText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     lineHeight: 19,
     color: Colors.foam,
@@ -377,7 +377,7 @@ const styles = StyleSheet.create({
     borderBottomColor: withAlpha(Colors.border, 0.75),
   },
   menuTitle: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 24,
     lineHeight: 29,
     color: Colors.foam,
@@ -397,7 +397,7 @@ const styles = StyleSheet.create({
     borderBottomColor: withAlpha(Colors.border, 0.55),
   },
   menuButtonText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 16,
     lineHeight: 21,
     color: Colors.foam,
@@ -415,7 +415,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout2,
   },
   cancelMenuText: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 16,
     lineHeight: 21,
     color: Colors.foamMuted,

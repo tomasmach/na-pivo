@@ -40,7 +40,7 @@ import Animated, {
 import { Avatar } from '@/profile/Avatar';
 import { cs } from '@/i18n/cs';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 import type { FriendProfile } from '@/data/friendsClient';
@@ -322,7 +322,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   plusText: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 13,
     color: Colors.amber,
     includeFontPadding: false,
@@ -334,18 +334,18 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   countNumeral: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     color: Colors.amber,
     includeFontPadding: false,
   },
   countWord: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     color: Colors.foamMuted,
     flexShrink: 1,
   },
   secondaryLine: {
     marginTop: Spacing.xs,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.mutedText,
   },
@@ -356,7 +356,7 @@ const styles = StyleSheet.create({
   },
   emptyLine: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontStyle: 'italic',
     fontSize: 13,
     color: Colors.mutedText,

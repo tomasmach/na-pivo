@@ -35,7 +35,7 @@ import { trackUiInteraction } from '@/data/uxTelemetry';
 import { selectNickname, useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { useReduceMotion } from '@/utils/useReduceMotion';
@@ -301,7 +301,7 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 22,
     color: Colors.foam,
   },
@@ -327,12 +327,12 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   handleText: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 20,
     color: Colors.foam,
   },
   displayName: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 14,
     color: Colors.mutedText,
   },
@@ -341,13 +341,13 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   noNickText: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 14,
     color: withAlpha(Colors.amberLight, 0.9),
     textAlign: 'center',
   },
   noNickCta: {
-    fontFamily: Fonts.display.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.amber,
   },
@@ -367,7 +367,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.xl,
   },
   offlineText: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 14,
     color: Colors.mutedText,
     textAlign: 'center',
@@ -384,13 +384,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   retryLabel: {
-    fontFamily: Fonts.display.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.foamMuted,
   },
   hint: {
     marginTop: Spacing.lg,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     lineHeight: 18,
     color: Colors.mutedText,
@@ -415,7 +415,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.28),
   },
   actionLabel: {
-    fontFamily: Fonts.display.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.amber,
   },

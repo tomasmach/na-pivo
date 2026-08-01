@@ -9,7 +9,7 @@ import { StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { normalizeEditableHhMm } from '@/data/communityHours';
 import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
 
 function sanitizeTimePart(raw: string): string {
@@ -93,7 +93,7 @@ const styles = StyleSheet.create({
   part: {
     width: 19,
     color: Colors.foam,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 14.5,
     paddingVertical: 0,
     textAlign: 'center',
@@ -101,7 +101,7 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   colon: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 14.5,
     color: Colors.foamMuted,
     includeFontPadding: false,

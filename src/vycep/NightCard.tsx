@@ -26,7 +26,7 @@ import { Avatar } from '@/profile/Avatar';
 import { useToastStore } from '@/stores/toastStore';
 import { useVycepStore } from '@/stores/vycepStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { TallyMarks } from '@/vycep/TallyMarks';
 import RoundPill from '@/vycep/RoundPill';
@@ -243,14 +243,14 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   author: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
   },
   date: {
     marginTop: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -269,13 +269,13 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   tallyLabel: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 22,
     color: Colors.foam,
     includeFontPadding: false,
   },
   metaText: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.foamMuted,
     includeFontPadding: false,
@@ -286,7 +286,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   mineRoundsText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.amber,
     includeFontPadding: false,

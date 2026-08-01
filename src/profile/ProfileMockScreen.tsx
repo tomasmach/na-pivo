@@ -319,7 +319,6 @@ const styles = StyleSheet.create({
   badgeTitle: { fontSize: 12, fontWeight: '600', color: Colors.foam, textAlign: 'center' },
   badgeTitleLocked: { color: Colors.mutedText },
 
-
   mockNote: {
     fontSize: 12,
     fontWeight: '400',

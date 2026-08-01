@@ -34,7 +34,7 @@ import { useContestResultsStore } from '@/stores/contestResultsStore';
 import { useLaunchModalMutex } from '@/stores/launchModalMutex';
 import { useReleaseStore } from '@/stores/releaseStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { amberGlow, softDrop } from '@/theme/shadows';
 import { fireSuccessHaptic } from '@/utils/haptics';
@@ -255,14 +255,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   eyebrow: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 11,
     letterSpacing: 2,
     color: Colors.amber,
   },
   title: {
     marginTop: Spacing.xs,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 28,
     lineHeight: 33,
     color: Colors.foam,
@@ -270,7 +270,7 @@ const styles = StyleSheet.create({
   },
   body: {
     marginTop: Spacing.xs,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 15,
     lineHeight: 21,
     color: Colors.foamMuted,
@@ -293,7 +293,7 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.border, 0.9),
   },
   statValue: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 24,
     lineHeight: 28,
     fontVariant: ['tabular-nums'],
@@ -301,7 +301,7 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     marginTop: 2,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.mutedText,
   },
@@ -316,7 +316,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   closeText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.foamMuted,
   },

@@ -48,7 +48,7 @@ import { cs } from '@/i18n/cs';
 import { useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 
@@ -628,7 +628,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     color: Colors.foam,
   },
@@ -654,7 +654,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.xxl,
   },
   errorText: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 15,
     lineHeight: 21,
     color: Colors.mutedText,
@@ -672,12 +672,12 @@ const styles = StyleSheet.create({
   },
   heroName: {
     marginTop: Spacing.sm,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 24,
     color: Colors.foam,
   },
   heroDisplay: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 15,
     color: Colors.foamMuted,
   },
@@ -689,7 +689,7 @@ const styles = StyleSheet.create({
   pendingStrip: {
     marginTop: Spacing.xl,
     textAlign: 'center',
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontStyle: 'italic',
     fontSize: 13,
     color: Colors.mutedText,
@@ -714,7 +714,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.35),
   },
   showcaseChipText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 12,
     color: Colors.foam,
   },
@@ -737,13 +737,13 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   statNumeral: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 30,
     color: Colors.amber,
     includeFontPadding: false,
   },
   statLabel: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     lineHeight: 16,
     color: Colors.mutedText,
@@ -762,13 +762,13 @@ const styles = StyleSheet.create({
   },
   recentLead: {
     flex: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.foam,
   },
   recentPub: {
     flex: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 14,
     color: Colors.foamMuted,
   },
@@ -778,19 +778,19 @@ const styles = StyleSheet.create({
   },
   latestBeerMeta: {
     marginTop: 2,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.mutedText,
   },
   recentDate: {
     flexShrink: 0,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.mutedText,
   },
   emptyHistory: {
     marginTop: Spacing.sm,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontStyle: 'italic',
     fontSize: 14,
     lineHeight: 20,
@@ -840,7 +840,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   viewerCaption: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 15,
     lineHeight: 22,
     color: Colors.foam,
@@ -852,7 +852,7 @@ const styles = StyleSheet.create({
   },
   viewerPub: {
     flex: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.foamMuted,
   },

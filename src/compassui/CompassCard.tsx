@@ -42,7 +42,7 @@ import { CardSheen, CardSurface } from '@/components/shared/CardSurface';
 import { ChevronRightIcon, RefreshCwIcon } from '@/components/shared/IconGlyph';
 import { cs } from '@/i18n/cs';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius } from '@/theme/layout';
 
 /**
@@ -358,7 +358,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   distance: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     color: Colors.amber,
     includeFontPadding: false,
     textAlign: 'center',
@@ -370,7 +370,7 @@ const styles = StyleSheet.create({
   // object instead of two stacked labels.
   unit: {
     marginTop: -2,
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 14,
     letterSpacing: 3.2,
     color: Colors.foamMuted,
@@ -392,7 +392,7 @@ const styles = StyleSheet.create({
   },
   pubName: {
     flexShrink: 1,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     color: Colors.foam,
     includeFontPadding: false,
@@ -430,7 +430,7 @@ const styles = StyleSheet.create({
   },
   hours: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     includeFontPadding: false,
   },
@@ -441,7 +441,7 @@ const styles = StyleSheet.create({
   },
   meta: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -451,7 +451,7 @@ const styles = StyleSheet.create({
   },
   revealHint: {
     flex: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.amber,
     includeFontPadding: false,

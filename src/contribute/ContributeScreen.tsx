@@ -75,7 +75,7 @@ import { useCommunityStore } from '@/stores/communityStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import {
   formatPrice,
@@ -1345,7 +1345,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     minWidth: 0,
     textAlign: 'center',
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     color: Colors.foam,
     includeFontPadding: false,
@@ -1373,7 +1373,7 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.foam, 0.1),
   },
   segmentLabel: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 14,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1394,7 +1394,7 @@ const styles = StyleSheet.create({
   },
   pubName: {
     flexShrink: 1,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     color: Colors.foam,
     includeFontPadding: false,
@@ -1422,7 +1422,7 @@ const styles = StyleSheet.create({
   dayName: {
     flex: 1,
     minWidth: 0,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
@@ -1433,7 +1433,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   closedLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1452,7 +1452,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   timeDash: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 14,
     color: Colors.foamMuted,
     includeFontPadding: false,
@@ -1470,7 +1470,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     marginBottom: 8,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 14,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1490,7 +1490,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   menuTypeLabel: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 14,
     color: Colors.foam,
   },
@@ -1517,7 +1517,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amber,
   },
   menuTypeOptionText: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 13,
     color: Colors.foamMuted,
   },
@@ -1526,7 +1526,7 @@ const styles = StyleSheet.create({
   },
   menuTypeHint: {
     marginTop: 9,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 12,
     lineHeight: 17,
     color: Colors.mutedText,
@@ -1544,14 +1544,14 @@ const styles = StyleSheet.create({
   },
   beerName: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
   },
   beerMeta: {
     marginTop: 2,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1564,7 +1564,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   addBeerLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.amber,
     includeFontPadding: false,
@@ -1585,7 +1585,7 @@ const styles = StyleSheet.create({
   },
   footerFact: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
@@ -1597,7 +1597,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   copyWeekLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 12.5,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1611,14 +1611,14 @@ const styles = StyleSheet.create({
   },
   historyDoorLabel: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.amber,
     includeFontPadding: false,
   },
   footerHint: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,

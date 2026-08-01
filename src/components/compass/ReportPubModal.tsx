@@ -11,7 +11,7 @@ import {
 import type { PubReportReason } from '@/data/pubReportsClient';
 import { cs } from '@/i18n/cs';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
 
 interface ReportPubModalProps {
@@ -168,8 +168,8 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.28),
   },
   titleWrap: { flex: 1, minWidth: 0, gap: 2 },
-  title: { fontFamily: Fonts.display.extrabold, fontSize: 25, lineHeight: 30, color: Colors.foam },
-  body: { fontFamily: Fonts.ui.regular, fontSize: 14, lineHeight: 20, color: Colors.foamMuted },
+  title: { fontWeight: '800', fontSize: 25, lineHeight: 30, color: Colors.foam },
+  body: { fontWeight: '400', fontSize: 14, lineHeight: 20, color: Colors.foamMuted },
   actions: { gap: 10 },
   action: {
     minHeight: 54,
@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     textAlign: 'center',
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 16,
     color: Colors.foam,
   },

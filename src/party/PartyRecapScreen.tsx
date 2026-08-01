@@ -459,7 +459,6 @@ const styles = StyleSheet.create({
   },
   heroLabel: { fontWeight: '400', fontSize: 13, color: Colors.mutedText, marginBottom: 2 },
 
-
   // — Sections —
   section: { marginTop: SECTION_GAP },
   // Sentence case, foam — the same voice as the feed card's sections. The

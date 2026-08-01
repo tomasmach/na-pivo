@@ -12,7 +12,7 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import type { FriendProfile, FriendStats } from '@/data/friendsClient';
 import { cs } from '@/i18n/cs';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 import { FriendMini, friendDisplayName } from './FriendMini';
@@ -83,12 +83,12 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   sharedCount: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 22,
     color: Colors.foam,
   },
   lastTogether: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 14,
     color: Colors.foamMuted,
   },
@@ -106,7 +106,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.xs,
   },
   ritualText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     color: Colors.amber,
     fontSize: 12,
   },

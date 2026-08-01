@@ -19,7 +19,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useRouter, useLocalSearchParams } from 'expo-router';
 
 import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { cs, formatVolume } from '@/i18n/cs';
 import { formatPrice } from '@/utils/currency';
@@ -628,7 +628,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 24,
     color: Colors.foam,
   },
@@ -658,12 +658,12 @@ const styles = StyleSheet.create({
   },
   pubName: {
     flex: 1,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 22,
     color: Colors.foam,
   },
   summary: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.amber,
   },
@@ -674,7 +674,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   cardSectionHeaderText: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
@@ -690,7 +690,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 11,
   },
   addDrinkButtonText: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 12,
     color: Colors.stout,
   },
@@ -709,13 +709,13 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   drinkName: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
   },
   drinkMeta: {
     marginTop: 2,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 12,
     color: Colors.amber,
   },
@@ -739,14 +739,14 @@ const styles = StyleSheet.create({
   },
 
   vycepBody: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     lineHeight: 19,
     color: Colors.foamMuted,
   },
   vycepState: {
     marginTop: 6,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 12.5,
     color: Colors.amber,
   },
@@ -766,7 +766,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   vycepPrimaryText: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 14,
     color: Colors.stout,
   },
@@ -782,7 +782,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   vycepGhostText: {
-    fontFamily: Fonts.display.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.foamMuted,
   },
@@ -808,7 +808,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     flex: 1,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 22,
     color: Colors.foam,
   },
@@ -826,7 +826,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     backgroundColor: Colors.stout,
     paddingHorizontal: 14,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 16,
     color: Colors.foam,
   },
@@ -843,7 +843,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   modalSecondaryText: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 14,
     color: Colors.mutedText,
   },
@@ -856,7 +856,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   modalPrimaryText: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 14,
     color: Colors.stout,
   },
@@ -869,7 +869,7 @@ const styles = StyleSheet.create({
     paddingBottom: 60,
   },
   emptyTitle: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 22,
     color: Colors.foam,
     textAlign: 'center',

@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import {
   ChevronLeftIcon,
@@ -170,13 +170,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerText: { gap: 2 },
-  eyebrow: { fontFamily: Fonts.ui.bold, fontSize: 10, letterSpacing: 1.3, color: Colors.amber },
-  title: { fontFamily: Fonts.display.extrabold, fontSize: 24, color: Colors.foam },
+  eyebrow: { fontWeight: '700', fontSize: 10, letterSpacing: 1.3, color: Colors.amber },
+  title: { fontWeight: '800', fontSize: 24, color: Colors.foam },
   content: { paddingHorizontal: Spacing.lg, gap: Spacing.md },
   mapperSection: { gap: Spacing.sm },
   sectionHeader: {
     marginLeft: 4,
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
@@ -207,20 +207,20 @@ const styles = StyleSheet.create({
   },
   mapperValue: {
     marginTop: 6,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 28,
     color: Colors.foam,
     fontVariant: ['tabular-nums'],
   },
   mapperCaption: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 10,
     letterSpacing: 1,
     color: Colors.mutedText,
   },
   mapperHint: {
     marginLeft: 4,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 12,
     lineHeight: 17,
     color: Colors.mutedText,
@@ -247,13 +247,13 @@ const styles = StyleSheet.create({
   },
   mapperEmptyText: {
     flex: 1,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 13,
     lineHeight: 19,
     color: Colors.mutedText,
   },
   intro: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 14,
     lineHeight: 20,
     color: Colors.foamMuted,

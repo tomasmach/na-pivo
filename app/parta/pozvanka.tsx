@@ -25,7 +25,7 @@ import { cs } from '@/i18n/cs';
 import { useAccountStore } from '@/stores/accountStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Spacing } from '@/theme/layout';
 
 type ClaimState = 'loading' | 'valid' | 'expired' | 'invalid' | 'self';
@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.xxl,
   },
   loadingText: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 15,
     color: Colors.mutedText,
   },
@@ -214,21 +214,21 @@ const styles = StyleSheet.create({
   },
   title: {
     marginTop: Spacing.sm,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 24,
     lineHeight: 30,
     color: Colors.foam,
     textAlign: 'center',
   },
   claimBody: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 15,
     lineHeight: 21,
     color: Colors.foamMuted,
     textAlign: 'center',
   },
   errorText: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 15,
     lineHeight: 21,
     color: Colors.mutedText,

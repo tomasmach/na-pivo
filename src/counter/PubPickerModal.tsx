@@ -19,7 +19,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import {
@@ -291,7 +291,7 @@ const styles = StyleSheet.create({
   },
   title: {
     flexShrink: 1,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 22,
     color: Colors.foam,
   },
@@ -316,7 +316,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.amber,
   },
   outsideButtonText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.foam,
   },
@@ -341,7 +341,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.sm,
   },
   sectionHeader: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 12,
     letterSpacing: 1,
     textTransform: 'uppercase',
@@ -370,7 +370,7 @@ const styles = StyleSheet.create({
   },
   rowName: {
     flex: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
   },
@@ -378,7 +378,7 @@ const styles = StyleSheet.create({
     color: Colors.stout,
   },
   rowDistance: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
   },
@@ -399,7 +399,7 @@ const styles = StyleSheet.create({
   },
   quietRowLabel: {
     flex: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foamMuted,
   },

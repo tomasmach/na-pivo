@@ -10,7 +10,7 @@ import React, { memo } from 'react';
 import { StyleSheet, View, Text } from 'react-native';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
 
 import LiveDot from './LiveDot';
@@ -58,7 +58,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
   },
   label: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     lineHeight: 22,
     letterSpacing: -0.15,
@@ -68,7 +68,7 @@ const styles = StyleSheet.create({
     color: Colors.amberLight,
   },
   labelCompact: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 12,
     lineHeight: 16,
     letterSpacing: 1.4,

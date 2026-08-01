@@ -37,7 +37,7 @@ import { CardSurface } from '@/components/shared/CardSurface';
 import { ChevronRightIcon } from '@/components/shared/IconGlyph';
 import { LevelRing } from '@/profile/LevelRing';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea } from '@/theme/layout';
 
 /**
@@ -227,7 +227,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   count: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     color: Colors.amber,
     includeFontPadding: false,
     // Tabular figures so the digits never shift sideways as the total grows.
@@ -238,7 +238,7 @@ const styles = StyleSheet.create({
   // object instead of two stacked labels.
   caption: {
     marginTop: -8,
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 13,
     letterSpacing: 3,
     color: Colors.foamMuted,
@@ -265,14 +265,14 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.foam, 0.1),
   },
   statValue: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 17,
     color: Colors.foam,
     includeFontPadding: false,
     fontVariant: ['tabular-nums'],
   },
   statLabel: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 11,
     letterSpacing: 1.2,
     color: Colors.mutedText,
@@ -284,7 +284,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   levelHint: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -297,7 +297,7 @@ const styles = StyleSheet.create({
     paddingLeft: 8,
   },
   linkLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.amber,
     includeFontPadding: false,

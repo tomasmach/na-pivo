@@ -16,7 +16,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { type IconProps } from '@/components/shared/IconGlyph';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius } from '@/theme/layout';
 
 /** Above this the badge stops being a count and becomes "a lot". */
@@ -128,7 +128,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.stout2,
   },
   badgeText: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 10,
     lineHeight: 13,
     color: Colors.stout,
@@ -136,7 +136,7 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   label: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 13,
     color: Colors.foamMuted,
     includeFontPadding: false,

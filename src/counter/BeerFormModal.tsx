@@ -33,7 +33,7 @@ import { useKeyboardHeight } from '@/utils/useKeyboardHeight';
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing, HitArea } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { GlowButton } from '@/components/shared/GlowButton';
@@ -765,7 +765,7 @@ const styles = StyleSheet.create({
   title: {
     flex: 1,
     minWidth: 0,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 22,
     color: Colors.foam,
     includeFontPadding: false,
@@ -788,7 +788,7 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.amber, 0.18),
   },
   typePillText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -797,7 +797,7 @@ const styles = StyleSheet.create({
     color: Colors.amber,
   },
   lockedName: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 17,
     color: Colors.amber,
     includeFontPadding: false,
@@ -808,7 +808,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: Radius.small,
     color: Colors.foam,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 16,
     paddingHorizontal: 14,
     paddingVertical: Platform.OS === 'ios' ? 14 : 10,
@@ -832,7 +832,7 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.border,
   },
   suggestionText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
@@ -840,7 +840,7 @@ const styles = StyleSheet.create({
   suggestionsLoading: {
     paddingHorizontal: 14,
     paddingVertical: 12,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -864,7 +864,7 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.amber, 0.14),
   },
   scanShortcutText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.amber,
     includeFontPadding: false,
@@ -881,7 +881,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: Radius.small,
     color: Colors.foam,
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 22,
     lineHeight: 30,
     fontVariant: ['tabular-nums'],
@@ -894,13 +894,13 @@ const styles = StyleSheet.create({
     textAlignVertical: 'center',
   },
   priceSuffix: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 22,
     color: Colors.foamMuted,
     includeFontPadding: false,
   },
   volumeLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.mutedText,
     marginBottom: -6,
@@ -924,7 +924,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.amber,
   },
   volumePillText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.foamMuted,
     includeFontPadding: false,
@@ -944,7 +944,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: Radius.small,
     color: Colors.foam,
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 20,
     lineHeight: 28,
     fontVariant: ['tabular-nums'],
@@ -955,7 +955,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'center',
   },
   customSuffix: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 20,
     color: Colors.foamMuted,
     includeFontPadding: false,
@@ -989,13 +989,13 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   menuActionLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.amber,
     includeFontPadding: false,
   },
   menuActionMuted: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1007,7 +1007,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
   },
   cancelText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.mutedText,
     includeFontPadding: false,

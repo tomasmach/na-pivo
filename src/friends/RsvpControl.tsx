@@ -38,7 +38,7 @@ import { cs } from '@/i18n/cs';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { amberGlow } from '@/theme/shadows';
 import { fireLightImpactHaptic, fireSuccessHaptic } from '@/utils/haptics';
@@ -320,7 +320,7 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
   segmentText: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 15,
     textAlign: 'center',
   },

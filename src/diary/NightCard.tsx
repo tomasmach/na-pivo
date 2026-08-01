@@ -24,7 +24,7 @@ import { ChevronRightIcon } from '@/components/shared/IconGlyph';
 import { TallyCoaster } from '@/diary/TallyCoaster';
 import { cs } from '@/i18n/cs';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 
 /** The numeral shrinks as the night grows so "12" never crowds the card. */
 function countFontSize(count: number): number {
@@ -157,7 +157,7 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   eyebrow: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -180,7 +180,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   count: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     color: Colors.amber,
     includeFontPadding: false,
     // Tabular figures so the digit never shifts sideways between nights.
@@ -191,7 +191,7 @@ const styles = StyleSheet.create({
   // object instead of two stacked labels.
   noun: {
     marginTop: -8,
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 13,
     letterSpacing: 3,
     color: Colors.foamMuted,
@@ -219,7 +219,7 @@ const styles = StyleSheet.create({
   // long name gets the full card width instead of a third of the footer.
   place: {
     flexShrink: 1,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     color: Colors.foam,
     includeFontPadding: false,
@@ -236,7 +236,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   spent: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
     includeFontPadding: false,
@@ -249,7 +249,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   breakdownLabel: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.amber,
     includeFontPadding: false,

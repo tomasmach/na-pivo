@@ -74,7 +74,7 @@ import { useContestResultsStore } from '@/stores/contestResultsStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { amberGlow } from '@/theme/shadows';
 import { fireLightImpactHaptic, fireSuccessHaptic } from '@/utils/haptics';
@@ -1068,7 +1068,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   headerTitle: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 20,
     color: Colors.foam,
   },
@@ -1090,7 +1090,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.xxl,
   },
   errorText: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 15,
     lineHeight: 21,
     color: Colors.mutedText,
@@ -1105,13 +1105,13 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.md,
   },
   countdown: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 24,
     color: Colors.amber,
   },
   subtitle: {
     marginTop: 4,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 13,
     lineHeight: 19,
     color: Colors.mutedText,
@@ -1144,7 +1144,7 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   reigningTitle: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 10.5,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
@@ -1152,18 +1152,18 @@ const styles = StyleSheet.create({
   },
   reigningName: {
     marginTop: 2,
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 16,
     color: Colors.foam,
   },
   reigningVotes: {
     marginTop: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.foamMuted,
   },
   sectionHeader: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 11,
     letterSpacing: 1.5,
     color: Colors.amber,
@@ -1197,13 +1197,13 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   myEntryVotes: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 22,
     color: Colors.foam,
     fontVariant: ['tabular-nums'],
   },
   myEntryCaption: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 13,
     lineHeight: 18,
     color: Colors.foamMuted,
@@ -1220,7 +1220,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout3,
   },
   withdrawPillText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 13,
     color: Colors.foamMuted,
   },
@@ -1249,12 +1249,12 @@ const styles = StyleSheet.create({
   },
   enterTitle: {
     flex: 1,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     color: Colors.foam,
   },
   enterHint: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 13,
     lineHeight: 19,
     color: Colors.mutedText,
@@ -1271,13 +1271,13 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.border,
   },
   enterDividerText: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 9,
     letterSpacing: 1,
     color: Colors.mutedText,
   },
   enterEmptyHint: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     lineHeight: 17,
     color: Colors.foamMuted,
@@ -1338,7 +1338,7 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.amber, 0.5),
   },
   mineChipText: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 9,
     letterSpacing: 0.4,
     color: Colors.amber,
@@ -1370,7 +1370,7 @@ const styles = StyleSheet.create({
   },
   entryAuthor: {
     flex: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 12,
     color: Colors.foam,
   },
@@ -1381,7 +1381,7 @@ const styles = StyleSheet.create({
   },
   entryPub: {
     flex: 1,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 11,
     color: Colors.mutedText,
   },
@@ -1438,12 +1438,12 @@ const styles = StyleSheet.create({
   },
   viewerAuthor: {
     flex: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
   },
   viewerCaption: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 15,
     lineHeight: 22,
     color: Colors.foam,
@@ -1455,7 +1455,7 @@ const styles = StyleSheet.create({
   },
   viewerPub: {
     flex: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.foamMuted,
   },
@@ -1481,7 +1481,7 @@ const styles = StyleSheet.create({
     opacity: 0.55,
   },
   votePillText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 12,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -1500,7 +1500,7 @@ const styles = StyleSheet.create({
     marginTop: Spacing.md,
   },
   emptyText: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 14,
     lineHeight: 20,
     color: Colors.mutedText,
@@ -1549,14 +1549,14 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   winnerCrownText: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 10,
     letterSpacing: 0.4,
     color: Colors.stout,
     textTransform: 'uppercase',
   },
   winnerRank: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 10,
     letterSpacing: 0.6,
     color: Colors.mutedText,
@@ -1564,20 +1564,20 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   winnerName: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 12,
     color: Colors.foam,
     maxWidth: '100%',
   },
   winnerVotes: {
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 12,
     color: Colors.amber,
     fontVariant: ['tabular-nums'],
   },
   winnerNote: {
     marginTop: Spacing.sm,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 12,
     color: Colors.mutedText,
     textAlign: 'center',

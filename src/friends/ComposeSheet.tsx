@@ -56,7 +56,7 @@ import { usePartyGroupsStore } from '@/stores/partyGroupsStore';
 import { useTallyStore } from '@/stores/tallyStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 import { softDrop } from '@/theme/shadows';
 import { useReduceMotion } from '@/utils/useReduceMotion';
@@ -731,7 +731,7 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 22,
     color: Colors.foam,
   },
@@ -777,7 +777,7 @@ const styles = StyleSheet.create({
   },
   recipientChipText: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 14,
     color: Colors.foamMuted,
   },
@@ -786,7 +786,7 @@ const styles = StyleSheet.create({
   },
   recipientSummary: {
     marginTop: Spacing.sm,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
   },
@@ -826,13 +826,13 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   recipientName: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 15,
     color: Colors.foam,
   },
   recipientSub: {
     marginTop: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.mutedText,
   },
@@ -845,7 +845,7 @@ const styles = StyleSheet.create({
   groupNameInput: {
     flex: 1,
     minHeight: 44,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     color: Colors.foam,
     fontSize: 15,
     backgroundColor: Colors.stout2,
@@ -868,7 +868,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   groupSaveText: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 14,
     color: Colors.amber,
   },
@@ -880,7 +880,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.xs,
   },
   emptyText: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 14,
     color: Colors.mutedText,
     paddingVertical: Spacing.md,
@@ -893,7 +893,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
   },
   permText: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.amber,
   },
@@ -916,18 +916,18 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   pubName: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 15,
     color: Colors.foam,
   },
   pubCity: {
     marginTop: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.mutedText,
   },
   pubDistance: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 12,
     color: Colors.mutedText,
   },
@@ -955,7 +955,7 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.amber, 0.12),
   },
   presetText: {
-    fontFamily: Fonts.display.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foamMuted,
   },
@@ -969,7 +969,7 @@ const styles = StyleSheet.create({
   messageInput: {
     marginTop: Spacing.sm,
     minHeight: 54,
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     color: Colors.foam,
     fontSize: 16,
     backgroundColor: Colors.stout2,
@@ -985,7 +985,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   hint: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     textAlign: 'center',
@@ -1006,7 +1006,7 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.98 }],
   },
   submitLabel: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     letterSpacing: 0.3,
     color: Colors.stout,

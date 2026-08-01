@@ -21,7 +21,7 @@ import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 import { cs } from '@/i18n/cs';
 import {
@@ -507,7 +507,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: 'center',
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 24,
     color: Colors.foam,
   },
@@ -537,7 +537,7 @@ const styles = StyleSheet.create({
   },
   intro: {
     flex: 1,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 15,
     lineHeight: 22,
     color: Colors.foamMuted,
@@ -570,18 +570,18 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   suggestionName: {
-    fontFamily: Fonts.ui.semibold,
+    fontWeight: '600',
     fontSize: 15,
     color: Colors.foam,
   },
   suggestionLocation: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 13,
     lineHeight: 18,
     color: Colors.foamMuted,
   },
   label: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 12,
     color: Colors.mutedText,
     textTransform: 'uppercase',
@@ -594,7 +594,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     backgroundColor: Colors.stout2,
     paddingHorizontal: 14,
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 16,
     letterSpacing: 0,
     color: Colors.foam,
@@ -613,13 +613,13 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.md,
   },
   locationHeader: {
-    fontFamily: Fonts.display.extrabold,
+    fontWeight: '800',
     fontSize: 18,
     color: Colors.foam,
     marginBottom: Spacing.md,
   },
   locationBody: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 14,
     lineHeight: 20,
     color: Colors.foamMuted,
@@ -664,13 +664,13 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   currentLocationTitle: {
-    fontFamily: Fonts.ui.bold,
+    fontWeight: '700',
     fontSize: 15,
     lineHeight: 19,
     color: Colors.foam,
   },
   currentLocationBody: {
-    fontFamily: Fonts.ui.regular,
+    fontWeight: '400',
     fontSize: 13,
     lineHeight: 18,
     color: Colors.foamMuted,
@@ -686,7 +686,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.amber,
   },
   invalidText: {
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     lineHeight: 18,
     color: Colors.amberLight,

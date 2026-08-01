@@ -27,7 +27,7 @@ import type { FriendPresence, MyPresence } from '@/data/friendsClient';
 import { cs } from '@/i18n/cs';
 import { Avatar } from '@/profile/Avatar';
 import { Colors, withAlpha } from '@/theme/colors';
-import { Fonts, FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
 import HairlineRow from './HairlineRow';
@@ -265,7 +265,7 @@ const styles = StyleSheet.create({
   },
   name: {
     flexShrink: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -274,14 +274,14 @@ const styles = StyleSheet.create({
   // avatar has already answered "who".
   pub: {
     marginTop: 1,
-    fontFamily: Fonts.display.bold,
+    fontWeight: '700',
     fontSize: 16,
     color: Colors.foam,
     includeFontPadding: false,
   },
   meta: {
     marginTop: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.mutedText,
     includeFontPadding: false,
@@ -290,7 +290,7 @@ const styles = StyleSheet.create({
   // no pill: a badge per row would put frames inside the card (§14.10).
   sameTable: {
     marginTop: 1,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     color: Colors.amber,
     includeFontPadding: false,
@@ -307,7 +307,7 @@ const styles = StyleSheet.create({
   },
   hiddenNote: {
     paddingBottom: Spacing.md,
-    fontFamily: Fonts.ui.medium,
+    fontWeight: '500',
     fontSize: 13,
     lineHeight: 18,
     color: Colors.mutedText,
