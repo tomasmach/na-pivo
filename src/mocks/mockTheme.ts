@@ -23,6 +23,8 @@
  * and they are most of what still made the mocks read as the current app.
  */
 
+import { Colors } from '@/theme/colors';
+
 export const MockType = {
   /** Screen title, top left. Packeta `titleXL`. */
   titleXL: { fontSize: 30, fontWeight: '700' as const, letterSpacing: -0.5 },
@@ -63,41 +65,25 @@ export const MockLayout = {
 } as const;
 
 /**
- * True-dark surfaces. The brown moved OUT of the background and INTO the light.
+ * Kept as an alias, not a second palette.
  *
- * Until now the app's ground was `stout #1F1308` — a warm brown panel. Against
- * Strava and Packeta, which both sit on near-black, that brown is what made
- * every screen read as tinted rather than deep. So the ground goes neutral and
- * almost black, and the brown survives only as a gradient at the top of a
- * screen — light falling on the room, not paint on the walls.
- *
- * Adopting this for real means rewriting §2.1 of the design system; these
- * tokens are mock-scoped until that call is made.
+ * These used to hold their own hexes while the darker ground was still a
+ * proposal. It was accepted (§2.1), so `Colors` carries it and this exists only
+ * so the mocks' call sites keep reading. New code should use `Colors` directly.
  */
 export const MockColors = {
-  /** Screen ground. Deep and almost neutral — but never black: pure black on a
-   *  warm-accented app reads as a void, and OLED smear on scroll is worse than
-   *  the tint it saves. A hair of warmth keeps it Na pivo without being brown. */
-  bg: '#15120F',
+  /** Screen ground. */
+  bg: Colors.stout,
   /** Card / raised surface. */
-  surface: '#1C1815',
+  surface: Colors.stout2,
   /** Nested element inside a card: row, chip, thumbnail well. */
-  surfaceHigh: '#262019',
-  /** The one accent — unchanged, it is the brand. */
-  accent: '#E8A317',
+  surfaceHigh: Colors.stout3,
+  /** The one accent — it is the brand. */
+  accent: Colors.amber,
   /** A running session. The only time the app changes colour. */
   live: '#35D07F',
 } as const;
 
-/**
- * The brown answer to Packeta's pink header shader
- * (`#FFEBEC → #FCAAAF → #FF6F79`): a warm glow at the very top of a screen that
- * fades into the ground. Stops go top → bottom.
- *
- * Per design-system §16.2 this is chrome, not an ambient halo behind content —
- * it lives in the header band and nowhere else, and it never sits under a
- * number you have to read.
- */
 export const HEADER_GRADIENT = ['#5A3418', '#2A1A0C', MockColors.bg] as const;
 
 /**
