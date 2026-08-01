@@ -217,14 +217,29 @@ export function beersByType(beers: BeerEntry[]): { beer: string; count: number }
   return order.map((beer) => ({ beer, count: counts.get(beer) ?? 0 }));
 }
 
-/** Beers bucketed by clock hour, for the tempo chart. */
-export function hourlyFrom(beers: BeerEntry[]): { hour: string; beers: number }[] {
-  const order: string[] = [];
-  const counts = new Map<string, number>();
+/**
+ * Beers bucketed by clock hour, for the tempo chart.
+ *
+ * Every hour from the first beer to `now` is present, including the empty ones.
+ * Bucketing only the hours that HAD a beer drew a chart with one bar on it and
+ * no time axis at all — an hour where nobody drank is a fact about the evening,
+ * and skipping it silently squashes the gaps out of the tempo.
+ */
+export function hourlyFrom(beers: BeerEntry[], now = 0): { hour: string; beers: number }[] {
+  if (beers.length === 0) return [];
+
+  const counts = new Map<number, number>();
   for (const entry of beers) {
-    const hour = clockAt(entry.at).slice(0, 2);
-    if (!counts.has(hour)) order.push(hour);
+    const hour = Math.floor(entry.at / 60);
     counts.set(hour, (counts.get(hour) ?? 0) + 1);
   }
-  return order.map((hour) => ({ hour, beers: counts.get(hour) ?? 0 }));
+
+  const first = Math.floor(beers[0].at / 60);
+  const last = Math.max(Math.floor(Math.max(now, beers[beers.length - 1].at) / 60), first);
+
+  const out: { hour: string; beers: number }[] = [];
+  for (let hour = first; hour <= last; hour += 1) {
+    out.push({ hour: clockAt(hour * 60).slice(0, 2), beers: counts.get(hour) ?? 0 });
+  }
+  return out;
 }

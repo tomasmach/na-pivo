@@ -10,7 +10,7 @@
  * in that space is a picture pretending to be a map.
  */
 
-import React, { useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 
@@ -24,10 +24,13 @@ const CENTRE = { lat: 50.079, lng: 14.432 };
 const SPREAD = 0.012;
 
 export function PubsMap({
+  recenterSignal = 0,
   onPressPub,
   onPan,
   selectedId,
 }: {
+  /** Bump to fly the map back to where you are. */
+  recenterSignal?: number;
   onPressPub?: (id: string) => void;
   /** The pub the floating card is currently on — its pin leads. */
   selectedId?: string | null;
@@ -36,6 +39,23 @@ export function PubsMap({
   onPan?: () => void;
 }) {
   const mapRef = useRef<MapView>(null);
+
+  // Recentring is a MAP action, so it moves the map — it used to push a whole
+  // separate screen, which is a strange answer to "put me back where I am".
+  const seenRecenter = useRef(recenterSignal);
+  useEffect(() => {
+    if (recenterSignal === seenRecenter.current) return;
+    seenRecenter.current = recenterSignal;
+    mapRef.current?.animateToRegion(
+      {
+        latitude: CENTRE.lat,
+        longitude: CENTRE.lng,
+        latitudeDelta: 0.012,
+        longitudeDelta: 0.012,
+      },
+      450,
+    );
+  }, [recenterSignal]);
 
   const pins = useMemo(
     () =>

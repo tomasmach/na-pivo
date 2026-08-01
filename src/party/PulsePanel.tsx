@@ -10,10 +10,11 @@
  * Labels go too. "Tvoje 1" needs the word; "1 pivo" does not, so the unit rides
  * with the value and a whole row of muted captions disappears.
  *
- * What stays from Strava is the STATE line — "Auto-paused" — because a screen of
- * numbers that never says anything is a dashboard, and this is meant to be a
- * companion. It sits above the numbers in amber, and going quiet (a pause, or
- * nothing having happened yet) drops it to muted rather than hiding it.
+ * The state line ("Rozjezd · První pivo právě teď") is gone from the compact
+ * view. Over four big numbers it was a caption on something that needs none, and
+ * at the start of an evening it announced that nothing had happened yet. It
+ * survives in the EXPANDED view, where there is room for the night to say
+ * something and where you have asked to look at it.
  *
  * Tapping still blows the numbers up full screen: a phone lying on a pub table
  * is at arm's length and 34pt does not survive that.
@@ -50,19 +51,6 @@ export function PulsePanel({ pulse, stats }: { pulse: Pulse; stats: PulseStat[] 
         accessibilityRole="button"
         accessibilityLabel={`${pulse.headline}. ${pulse.basis}. Zvětšit čísla.`}
       >
-        <View style={styles.stateRow}>
-          <Text
-            style={[styles.headline, stalled && styles.headlineStalled]}
-            numberOfLines={1}
-            maxFontSizeMultiplier={FontScaleCap.body}
-          >
-            {pulse.headline}
-          </Text>
-          <Text style={styles.basis} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-            {pulse.basis}
-          </Text>
-        </View>
-
         <View style={styles.numbers}>
           {stats.map((stat) => (
             <Text

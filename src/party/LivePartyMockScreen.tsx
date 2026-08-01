@@ -43,9 +43,9 @@ import { PulsePanel } from '@/party/PulsePanel';
 import { GamesSheet } from '@/party/GamesSheet';
 import { InviteSheet } from '@/party/InviteSheet';
 import { buildPulse, fourthStat } from '@/party/nightPulse';
+import { MenuChip } from '@/mocks/MenuChip';
 import { NightChart, type ChartShape } from '@/mocks/NightChart';
 import { NightRoute } from '@/mocks/NightRoute';
-import { Segmented } from '@/mocks/Segmented';
 import {
   beersByType,
   clockAt,
@@ -143,7 +143,7 @@ export default function LivePartyMockScreen() {
 
   const chartRows =
     chart === 'V čase'
-      ? hourlyFrom(beers).map((slot) => ({ label: `${slot.hour}:00`, value: slot.beers }))
+      ? hourlyFrom(beers, minutes).map((slot) => ({ label: `${slot.hour}:00`, value: slot.beers }))
       : chart === 'Podle piva'
         ? byType.map((row) => ({ label: row.beer, value: row.count }))
         : [{ label: 'Ty', value: mine }, ...people.map((p) => ({ label: p.name, value: p.beers }))]
@@ -154,7 +154,12 @@ export default function LivePartyMockScreen() {
       {/* The map shrinks to a band once the night is running: at that point it
           is orientation, not the subject. */}
       <View style={styles.map}>
-        <NightRoute stops={STOPS} live={live} height={live ? MAP_LIVE : MAP_IDLE} />
+        <NightRoute
+          stops={STOPS}
+          live={live}
+          height={live ? MAP_LIVE : MAP_IDLE}
+          caption={false}
+        />
       </View>
 
       {/* Absolute: it is chrome floating ON the map. In the column it was also
@@ -300,8 +305,22 @@ export default function LivePartyMockScreen() {
                 <View style={styles.sectionBody}>
                   {/* A segment, not three more tabs: one chart, three questions
                       you can ask of it. */}
-                  <Segmented options={CHARTS} value={chart} onChange={setChart} />
-                  <NightChart rows={chartRows} shape={shape} onShape={setShape} />
+                  {/* One row: a chip says WHAT is measured, the icons say how it
+                      is drawn. A full-width segment above a right-aligned pair
+                      of icons was two controls on two lines for one chart. */}
+                  <NightChart
+                    rows={chartRows}
+                    shape={shape}
+                    onShape={setShape}
+                    control={
+                      <MenuChip
+                        value={chart}
+                        options={CHARTS}
+                        title="Podle čeho"
+                        onChange={(next) => setChart(next as (typeof CHARTS)[number])}
+                      />
+                    }
+                  />
                 </View>
               ) : null}
 

@@ -44,10 +44,14 @@ export function NightChart({
   rows,
   shape,
   onShape,
+  control,
 }: {
   rows: { label: string; value: number }[];
   shape: ChartShape;
   onShape: (next: ChartShape) => void;
+  /** Rendered on the same row as the type switcher — what is measured on the
+   *  left, how it is drawn on the right. */
+  control?: React.ReactNode;
 }) {
   const pieAvailable = Platform.OS === 'ios' && Number.parseInt(String(Platform.Version), 10) >= 17;
   const effective: ChartShape = pieAvailable ? shape : 'bar';
@@ -70,8 +74,10 @@ export function NightChart({
 
   return (
     <View style={styles.wrap}>
-      {pieAvailable ? (
-        <View style={styles.switcher}>
+      <View style={styles.controls}>
+        {control ?? <View style={styles.grow} />}
+        {pieAvailable ? (
+          <View style={styles.switcher}>
           <ShapeButton
             active={shape === 'bar'}
             label="Sloupcový graf"
@@ -79,15 +85,16 @@ export function NightChart({
           >
             <ChartColumnIcon size={16} color={shape === 'bar' ? Colors.stout : Colors.mutedText} />
           </ShapeButton>
-          <ShapeButton
-            active={shape === 'pie'}
-            label="Koláčový graf"
-            onPress={() => onShape('pie')}
-          >
-            <ChartPieIcon size={16} color={shape === 'pie' ? Colors.stout : Colors.mutedText} />
-          </ShapeButton>
-        </View>
-      ) : null}
+            <ShapeButton
+              active={shape === 'pie'}
+              label="Koláčový graf"
+              onPress={() => onShape('pie')}
+            >
+              <ChartPieIcon size={16} color={shape === 'pie' ? Colors.stout : Colors.mutedText} />
+            </ShapeButton>
+          </View>
+        ) : null}
+      </View>
 
       <Host style={styles.host} colorScheme="dark" seedColor={Colors.amber}>
         <Chart
@@ -135,9 +142,10 @@ const styles = StyleSheet.create({
   host: { height: CHART_HEIGHT },
   empty: { fontSize: 14, fontWeight: '400', color: Colors.mutedText },
 
+  grow: { flex: 1 },
+  controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   switcher: {
     flexDirection: 'row',
-    alignSelf: 'flex-end',
     gap: 3,
     padding: 3,
     borderRadius: Radius.pill,

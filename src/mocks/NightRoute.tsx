@@ -66,12 +66,16 @@ export function NightRoute({
   live = false,
   photos = 0,
   height = HEIGHT,
+  caption = true,
 }: {
   stops: RouteStop[];
   live?: boolean;
   photos?: number;
   /** Card hero by default; a shorter strip when it heads a live party. */
   height?: number;
+  /** The route printed over the fade. Off where the screen already names the
+   *  place — in the party hub the header says it two rows below. */
+  caption?: boolean;
 }) {
   const region = useMemo(() => (stops.length > 0 ? regionFor(stops) : null), [stops]);
   const tint = live ? MockColors.live : MockColors.accent;
@@ -129,13 +133,17 @@ export function NightRoute({
 
       {/* Caption left, the night's photos right — both riding the same fade. */}
       <View style={styles.foot} pointerEvents="none">
-        <Text
-          style={[styles.captionText, live && { color: MockColors.live }]}
-          numberOfLines={1}
-          maxFontSizeMultiplier={FontScaleCap.body}
-        >
-          {stops.map((s) => s.name).join('  →  ')}
-        </Text>
+        {caption ? (
+          <Text
+            style={[styles.captionText, live && { color: MockColors.live }]}
+            numberOfLines={1}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
+            {stops.map((s) => s.name).join('  →  ')}
+          </Text>
+        ) : (
+          <View style={styles.grow} />
+        )}
         {photos > 0 ? (
           <View style={styles.photoPill}>
             <ImagesIcon size={13} color={Colors.foam} />
@@ -150,6 +158,7 @@ export function NightRoute({
 }
 
 const styles = StyleSheet.create({
+  grow: { flex: 1 },
   wrap: { overflow: 'hidden', backgroundColor: MockColors.bg },
   pin: {
     minWidth: 22,

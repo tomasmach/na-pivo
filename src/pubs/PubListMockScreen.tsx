@@ -275,6 +275,7 @@ export default function PubListMockScreen() {
   const [expandSignal, setExpandSignal] = React.useState(0);
   const [selectedPub, setSelectedPub] = React.useState<string | null>(MOCK_PUBS[0]?.id ?? null);
   const [sort, setSort] = React.useState<Sort>('Nejbližší');
+  const [recenterSignal, setRecenterSignal] = React.useState(0);
   // Bumped on every pick of "Náhodně v okolí", so picking it again genuinely
   // deals a new order instead of returning the same "random" one.
   const [shuffleSeed, setShuffleSeed] = React.useState(0);
@@ -306,6 +307,7 @@ export default function PubListMockScreen() {
       {/* The map is the screen; the places ride over it in a sheet you drag. */}
       <View style={styles.map}>
         <PubsMap
+          recenterSignal={recenterSignal}
           onPressPub={(pubId) => router.push(`/pub/${pubId}` as Href)}
           onPan={() => setCollapseSignal((n) => n + 1)}
           selectedId={selectedPub}
@@ -328,7 +330,7 @@ export default function PubListMockScreen() {
         <GlassIconButton
           size={44}
           accessibilityLabel="Vycentrovat na mě"
-          onPress={() => router.push('/pubs-map' as Href)}
+          onPress={() => setRecenterSignal((n) => n + 1)}
         >
           <SymbolView
             name="location.fill"
@@ -492,6 +494,8 @@ const styles = StyleSheet.create({
   collapsedText: { fontSize: 15, fontWeight: '600', color: Colors.foam },
 
   // — Search + filters, inside the sheet —
+  // Tight around the filter row: the sheet is half a screen and the padding
+  // above and below the chips was costing a whole pub row.
   searchWrap: { paddingHorizontal: MockLayout.screenPad, paddingBottom: Spacing.sm },
   searchField: {
     flexDirection: 'row',
@@ -511,7 +515,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: MockLayout.screenPad,
     gap: Spacing.xs,
     alignItems: 'center',
-    paddingBottom: Spacing.sm,
   },
   chip: {
     flexDirection: 'row',
