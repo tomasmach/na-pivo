@@ -1,22 +1,35 @@
 /**
- * DESIGN MOCK — the segmented control, Spendee's shape.
+ * The segmented control — the real `UISegmentedControl`, not a drawing of one.
  *
- * A track with a moving thumb, not a row of underlined words: an underline says
- * "these are pages"; a thumb inside a track says "this one control has one
- * answer". Screens use the underline for top-level sections and this for
- * switching what a single chart is showing, and keeping the two visually
- * distinct is the only reason both can be on screen at once.
+ * It was hand-built: a track, a pill, two text weights. That gets the shape
+ * right and everything else wrong — no press-and-slide, no keyboard focus ring,
+ * no VoiceOver "tab, 2 of 3", and it drifts every time Apple restyles the
+ * control. `@expo/ui` already ships SwiftUI's `Picker`, which IS the control,
+ * and it is already in the Podfile, so this costs a dependency we have rather
+ * than a new one.
  *
- * Equal columns, always — a thumb that resizes per label makes the control
- * twitch every time you change the answer.
+ * The amber comes through `seedColor` on the host: SwiftUI propagates it as the
+ * environment tint, which on a segmented picker paints the selected pill. We do
+ * not get to restyle the rest of it, and that is the point of using the system
+ * control.
+ *
+ * Android has no equivalent SwiftUI host, so it keeps the hand-built track —
+ * which is fine, because there it is not pretending to be a system control.
  */
 
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Host, Picker, Text as UIText } from '@expo/ui/swift-ui';
+import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius } from '@/theme/layout';
+
+/** UISegmentedControl's own height. Hard-coded because the host has to be
+ *  given a size and `matchContents` on a control this small measures late,
+ *  which shows up as the row jumping on first paint. */
+const NATIVE_HEIGHT = 32;
 
 export function Segmented<T extends string>({
   options,
@@ -27,6 +40,26 @@ export function Segmented<T extends string>({
   value: T;
   onChange: (next: T) => void;
 }) {
+  if (Platform.OS === 'ios') {
+    return (
+      <Host style={{ height: NATIVE_HEIGHT }} colorScheme="dark" seedColor={Colors.amber}>
+        <Picker
+          selection={value}
+          onSelectionChange={(next) => {
+            if (typeof next === 'string') onChange(next as T);
+          }}
+          modifiers={[pickerStyle('segmented')]}
+        >
+          {options.map((option) => (
+            <UIText key={option} modifiers={[tag(option)]}>
+              {option}
+            </UIText>
+          ))}
+        </Picker>
+      </Host>
+    );
+  }
+
   return (
     <View style={styles.track}>
       {options.map((option) => {

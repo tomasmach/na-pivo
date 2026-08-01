@@ -24,6 +24,7 @@ import { FlameIcon, TrophyIcon } from '@/components/shared/IconGlyph';
 import { FeedCard } from '@/feed/FeedMockScreen';
 import { MOCK_FEED } from '@/feed/mockFeed';
 import { BarChart } from '@/mocks/BarChart';
+import { SectionBreak } from '@/mocks/SectionBreak';
 import { Segmented } from '@/mocks/Segmented';
 import { StatGrid } from '@/mocks/StatGrid';
 import { RECORDS, SERIES, STREAK, type StatPeriod } from '@/profile/mockStats';
@@ -135,9 +136,7 @@ export default function ProfileMockScreen() {
           {/* The streak, drawn rather than stated. "3 týdny" is a fact; twelve
               dots with two gaps in them is the thing you actually want to keep
               unbroken, and it shows the misses honestly. */}
-          <Text style={styles.section} maxFontSizeMultiplier={FontScaleCap.heading}>
-            Série
-          </Text>
+          <SectionBreak title="Série" />
           <View style={styles.streakRow}>
             <View style={styles.flame}>
               <FlameIcon size={18} color={Colors.stout} />
@@ -160,9 +159,7 @@ export default function ProfileMockScreen() {
             ))}
           </View>
 
-          <Text style={styles.section} maxFontSizeMultiplier={FontScaleCap.heading}>
-            Rekordy
-          </Text>
+          <SectionBreak title="Rekordy" />
           {RECORDS.map((record) => (
             <View key={record.id} style={styles.record}>
               <View style={styles.grow}>
@@ -183,9 +180,7 @@ export default function ProfileMockScreen() {
             </View>
           ))}
 
-          <Text style={styles.section} maxFontSizeMultiplier={FontScaleCap.heading}>
-            Odznaky
-          </Text>
+          <SectionBreak title="Odznaky" />
           <View style={styles.badges}>
             {BADGES.map((badge) => (
               <View key={badge.title} style={[styles.badge, !badge.earned && styles.badgeLocked]}>

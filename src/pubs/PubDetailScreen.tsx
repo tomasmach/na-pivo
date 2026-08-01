@@ -27,6 +27,7 @@ import {
   StarIcon,
   UsersIcon,
 } from '@/components/shared/IconGlyph';
+import { SectionBreak } from '@/mocks/SectionBreak';
 import { StatGrid } from '@/mocks/StatGrid';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { NightRoute } from '@/mocks/NightRoute';
@@ -199,10 +200,8 @@ export default function PubDetailScreen() {
           ) : null}
 
           {tab === 'Statistiky' ? (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-                Na čepu
-              </Text>
+            <View style={styles.tapSection}>
+              <SectionBreak title="Na čepu" />
               {MOCK_TAPS.map((tap, index) => (
                 <View key={tap.name} style={[styles.tapRow, index === 0 && styles.tapFirst]}>
                   <Text
@@ -306,6 +305,7 @@ const styles = StyleSheet.create({
   tabRuleOn: { backgroundColor: Colors.amber },
 
   section: { marginTop: MockLayout.sectionGap, gap: Spacing.sm },
+  tapSection: { gap: Spacing.sm },
   sectionTitle: { ...MockType.titleS, color: Colors.foam },
 
   nightRow: {

@@ -29,7 +29,6 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Colors, withAlpha } from '@/theme/colors';
-import { MockLayout } from '@/mocks/mockTheme';
 
 /**
  * Share of the screen left ABOVE the sheet at each detent.
