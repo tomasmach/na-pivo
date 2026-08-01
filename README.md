@@ -60,6 +60,19 @@ exactly like the app crashing. Set `NAPIVO_KEEP_SIM=1` to leave it running:
 NAPIVO_KEEP_SIM=1 npm run dev
 ```
 
+That keeps the simulator, but **Metro and the backend still die** with the
+runner, because they are its children and the shell's teardown signals the whole
+process group. The app then sits on a booted simulator with no bundler, which
+looks exactly like "Metro stopped working". To survive that, run it in its own
+session:
+
+```bash
+npm run dev:detached   # logs to /tmp/napivo-dev.log
+npm run dev:stop
+```
+
+Interactively, prefer plain `npm run dev` — you want Ctrl+C to tidy up.
+
 
 Start the Django backend on the LAN interface:
 

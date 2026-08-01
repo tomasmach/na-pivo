@@ -15,6 +15,8 @@
   "scripts": {
     "start": "expo start",
     "dev": "bash scripts/dev-local.sh",
+    "dev:detached": "NAPIVO_KEEP_SIM=1 node scripts/dev-detached.js",
+    "dev:stop": "kill -- -$(cat /tmp/napivo-dev.pid) 2>/dev/null || kill $(cat /tmp/napivo-dev.pid) 2>/dev/null || true",
     "start:local": "EXPO_PUBLIC_BACKEND_MODE=local EXPO_PUBLIC_BACKEND_HOST=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo localhost) expo start --lan",
     "postinstall": "node scripts/patch-expo-location-heading.js && node scripts/patch-expo-widgets-live-activity.js",
     "ios": "expo run:ios",
