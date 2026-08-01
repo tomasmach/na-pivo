@@ -53,7 +53,7 @@ import {
   hourlyFrom,
   useLivePartyStore,
 } from '@/mocks/livePartyStore';
-import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
+import { MockColors, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -101,47 +101,6 @@ function CircleButton({
       <Text style={styles.circleLabel} maxFontSizeMultiplier={FontScaleCap.body}>
         {label}
       </Text>
-    </View>
-  );
-}
-
-/** One chart, three readings. Bars because every one of these is a comparison
- *  of counts, and three different chart types would be three things to learn. */
-function Bars({ rows, highlightFirst }: { rows: { label: string; value: number }[]; highlightFirst?: boolean }) {
-  const peak = rows.reduce((max, row) => Math.max(max, row.value), 0);
-  if (rows.length === 0) return null;
-
-  return (
-    <View style={styles.chart}>
-      {rows.map((row, index) => (
-        <View key={row.label} style={styles.chartRow}>
-          <Text
-            style={styles.chartLabel}
-            numberOfLines={1}
-            maxFontSizeMultiplier={FontScaleCap.body}
-          >
-            {row.label}
-          </Text>
-          <View style={styles.chartTrack}>
-            <View
-              style={[
-                styles.chartFill,
-                {
-                  width: `${peak > 0 ? Math.max(6, (row.value / peak) * 100) : 6}%`,
-                  backgroundColor:
-                    highlightFirst && index === 0 ? Colors.amber : withAlpha(Colors.amber, 0.4),
-                },
-              ]}
-            />
-          </View>
-          <View style={styles.chartValueRow}>
-            <BeerIcon size={12} color={withAlpha(Colors.amber, 0.9)} />
-            <Text style={styles.chartValue} allowFontScaling={false}>
-              {row.value}
-            </Text>
-          </View>
-        </View>
-      ))}
     </View>
   );
 }
@@ -586,26 +545,6 @@ const styles = StyleSheet.create({
   tabRuleOn: { backgroundColor: Colors.amber },
   sectionBody: { marginTop: Spacing.lg, gap: Spacing.md },
   empty: { fontSize: 14, fontWeight: '400', color: Colors.mutedText, lineHeight: 20 },
-
-  // — Chart —
-  chart: { gap: Spacing.sm },
-  chartRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  chartLabel: { width: 92, fontSize: 13, fontWeight: '600', color: Colors.foam },
-  chartTrack: {
-    flex: 1,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: withAlpha(Colors.foam, 0.07),
-    overflow: 'hidden',
-  },
-  chartFill: { height: '100%', borderRadius: 6 },
-  chartValueRow: { flexDirection: 'row', alignItems: 'center', gap: 3, width: 40 },
-  chartValue: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.foam,
-    fontVariant: ['tabular-nums'],
-  },
 
   // — Games on the table —
   game: { padding: Spacing.md, borderRadius: 22, backgroundColor: MockColors.surfaceHigh },

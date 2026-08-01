@@ -30,7 +30,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 
 import {
-  ChevronDownIcon,
   ChevronRightIcon,
   SparklesIcon,
   TrophyIcon,
