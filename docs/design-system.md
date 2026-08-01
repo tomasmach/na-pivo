@@ -1043,19 +1043,33 @@ Rozpad 60 / 30 / 10 z §2.2 platí beze změny — gradient je pořád těch 60 
 
 | Tab | Co v něm je |
 |---|---|
-| **Feed** | Kronika parties. Co zažili ostatní. |
-| **Hospody** | Objevování. Kompas, mapa, seznam, filtry, detail. |
-| **Party** | Střed. Živý večer, nebo jeho založení. |
-| **Community** | Žebříčky, komunitní události, foto soutěž, přispívání. |
-| **Profil** | Vlastní historie, statistiky, badges — a **nastavení**. |
+| **Kocoviny** | Kronika parties. Co zažili ostatní. Route zůstává `friends`. |
+| **Hospody** | Objevování. Kompas, mapa, seznam, filtry, detail. Route je group `(pubs)`, URL `/`. |
+| **Party** | Střed. Živý večer, nebo jeho založení. Route zůstává `beer`. |
+| **Komunita** | Žebříčky, výzvy, akce. Route `community`. |
+| **Profil** | Vlastní historie, statistiky, odznaky — a **nastavení**. |
+
+Labely se změnily, **route názvy ne**. `napivo://beer`, `/friends` a `/profile` jsou deep-link cíle
+a jsou pojmenované v telemetrii a `appReviewPolicy` — přejmenovat složku znamená rozbít vydané
+appky. Když se mění název v UI, mění se jen `TAB_META`.
 
 Nastavení nemá vlastní vstupní bod v chromu. Žije v Profilu (§0.4: okrajové akce do jednoho místa).
 
 ### 17.2 Party je střed a jediný důraz
 
-Party je prostřední položka a **jediná** v baru, která nese jantar. Ostatní čtyři drží pravidlo
-z dnešního `TabBar.tsx`: aktivní je jantarová ikona a label, neaktivní `mutedText`, a **žádný glow
-nikde** — glow na obrazovce patří jednomu tlačítku (§6.1), a tab bar je na každé obrazovce.
+Party je prostřední položka a **jediná** v baru, která nese jantar — a nese ho jako **plný jantarový
+disk se stout glyfem**, ne jako obarvená ikona. Rozdíl je záměr: ostatní čtyři taby jsou místa, kam
+jdeš, Party je akce, kterou spustíš, a control, co něco spouští, má vypadat jako tlačítko.
+
+Ikona a label mají v `TabBar.tsx` **oddělené barvy**: uvnitř disku je glyf `Colors.stout` (na jantaru
+by jantarová ikona zmizela), zatímco label pod ním zůstává jantarový jako u aktivního tabu.
+
+Ostatní čtyři drží původní pravidlo: aktivní je jantarová ikona i label, neaktivní `mutedText`,
+a **žádný glow nikde** — glow na obrazovce patří jednomu tlačítku (§6.1), a tab bar je na každé
+obrazovce. Bar nemá horní hairline; sklo se od obsahu odděluje samo (§15.1).
+
+Party tab **nenaviguje** — pushuje `/party-live` jako fullscreen modal, takže se zavírá stejným
+gestem obráceně. Na té route se tab bar celý skrývá.
 
 ### 17.3 Search
 
@@ -1075,3 +1089,92 @@ hospodu, ke které právě navádí. Zůstává tím, co uživatel v tabu Hospod
 
 Zdroj pravdy o nejbližší hospodě je **jeden** — `useNearbyPub` (`src/counter/useNearbyPub.ts`).
 Nezakládej druhý.
+
+---
+
+## 18. Nativní komponenty (3.0)
+
+### 18.1 Pravidlo
+
+Když pro ovládací prvek existuje systémová komponenta, **použij ji**. Ne kresbu, která ji připomíná.
+
+Ručně stavěný segmented control měl správný tvar a všechno ostatní špatně: nešlo stisknout a přejet
+prstem mezi segmenty, nebyl focus ring, VoiceOver neřekl „tab, 2 ze 3“, a s každým Apple restylem
+by se rozešel s okolím. To samé platí pro dropdowny, grafy a kontextová menu.
+
+Cena je, že **nemáme plnou kontrolu nad vzhledem**. To je součást rozhodnutí, ne důvod k návratu:
+`UISegmentedControl` má systémově šedý selection indicator, protože ho SwiftUI přes `.tint()`
+nevystavuje. Buď je to systémový prvek, nebo je to náš prvek — obojí nejde.
+
+### 18.2 Čím to stavíme
+
+Vším jede `@expo/ui` (SwiftUI host). Je to **tranzitivní závislost Expo 56**, už v `Podfile.lock`,
+takže žádná nová dependency.
+
+| Prvek | Co použít |
+|---|---|
+| Segmented control | `Picker` + `pickerStyle('segmented')` |
+| Dropdown / filtr chip | `Menu` + vnořený `Picker` s `pickerStyle('inline')` |
+| Graf | `Chart` (`type: 'bar' \| 'pie' \| 'line'`) |
+| Kontextové menu | `ContextMenu` (long-press) |
+
+**Nezaváděj `react-native-ios-context-menu`.** Zkoušeno, nelinkuje se proti tomuhle Xcode SDK
+(`ld: cannot link directly with 'SwiftUICore'`) a oprava znamená stavět React ze zdrojáků
+(`RCT_USE_PREBUILT_RNCORE=0`), což je trvalá daň na každém čistém buildu kvůli jedné komponentě.
+`@expo/ui` řeší to samé a linkuje se.
+
+### 18.3 Label si skládej ve SwiftUI
+
+`Menu` s `label` jako holým stringem se vykreslí jako text s vedoucí SF ikonou a **žádnou pilulkou**.
+Vedle našich chipů to čte jako rozbitý prvek. Label skládej z `HStack` + `Text` + `Image` a styluj
+modifiery — `glassEffect({ shape: 'capsule', interactive: true })` dá liquid glass kapsli.
+
+### 18.4 Fallback
+
+`Host` existuje jen na iOS. Každá obrazovka, která nativní prvek používá, musí mít **RN variantu pro
+Android** — a ta nemá předstírat systémový prvek, protože tam systémový není. `Chart` typu `pie`
+navíc potřebuje iOS 17+; pod tím se přepínač typu **skryje**, místo aby nabízel ovladač, co nic
+nevykreslí.
+
+---
+
+## 19. Ikonografie: co znamená půllitr
+
+Jeden glyf = jeden význam, napříč celou appkou.
+
+| Glyf | Význam |
+|---|---|
+| **Jeden půllitr** (`BeerIcon`) | Jedno pivo. Počet piv, „+1 pivo“, jednotka v grafu. |
+| **Dva ťuknuté půllitry** (`CheersIcon`) | Cheers — sociální reakce na večer. Nikdy počet. |
+
+Než tohle vzniklo, obojí byl ten samý půllitr, takže „12“ pod postem bylo nejednoznačné: ťuklo
+dvanáct lidí, nebo se vypilo dvanáct piv? Rozdíl je schválně **v počtu, ne v jiné ilustraci** —
+nesouvisející glyf (srdce, party popper) by znamenal ikonu přeučit.
+
+`CheersIcon` je **širší než vyšší**. Dva půllitry vecpané do čtverce o velikosti jednoho jsou
+nutně poloviční a v 17 pt z nich je šmouha.
+
+**Nikdy emoji.** Platilo to už pro `CheersPill` a platí to dál.
+
+> `src/friends/CheersPill.tsx` ve vydané appce zatím pořád používá samotný půllitr pro reakci.
+> Je to živé UI a je to samostatné rozhodnutí; při dalším zásahu do něj to sjednoť.
+
+---
+
+## 20. Otevřená rozhodnutí 3.0
+
+Mocky v `src/mocks/`, `src/feed/`, `src/party/`, `src/pubs/`, `src/community/`, `src/profile/`
+a `src/search/` se v pěti věcech **vědomě rozcházejí s tímhle dokumentem**. Rozcházejí se, protože
+jsou to návrhy k posouzení, ne přijatá pravidla. Dokud rozhodnutí nepadne, neaplikuj je na
+produkční obrazovky — a až padne, změň **dokument**, ne kód lokální výjimkou (§0).
+
+| Věc | Dokument říká | Mocky dělají |
+|---|---|---|
+| Ground | `Colors.stout` `#1F1308` (§2.1) | `MockColors.bg` `#15120F` — hnědá jen v gradientech |
+| Písmo | Baloo 2 + Inter (§3.1) | Systémové |
+| Radiusy | 12–24 | 20–34 |
+| Karty | Obsah žije v kartách (§5) | Posty na ploše, oddělené tmavým pásem |
+| Sekce | Oddělené mezerou | `SectionBreak` — 10 pt tmavý pás, nadpis **pod** ním |
+
+Šestá věc, která rozhodnutí nepotřebuje, ale nesmí se zapomenout: **`pravatar.cc` a `picsum.photos`
+placeholdery nesmí opustit mocky.** Reálné avatary jsou `Account.avatar`, fotky `BeerPhoto`.
