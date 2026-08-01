@@ -34,11 +34,18 @@ export interface StatSeries {
 
 /** The four numbers, in one order, everywhere. A helper because writing the
  *  labels out thirty times is thirty chances to disagree with the header. */
-const t = (beers: string, nights: string, pubs: string, longest: string) => [
-  { label: 'Piv', value: beers },
-  { label: 'Večerů', value: nights },
-  { label: 'Hospod', value: pubs },
-  { label: 'Nejdelší', value: longest },
+const t = (
+  beers: string,
+  nights: string,
+  pubs: string,
+  longest: string,
+  /** Which of the four is a personal best in this window. */
+  record?: 'beers' | 'nights' | 'pubs' | 'longest',
+) => [
+  { label: 'Piv', value: beers, record: record === 'beers' },
+  { label: 'Večerů', value: nights, record: record === 'nights' },
+  { label: 'Hospod', value: pubs, record: record === 'pubs' },
+  { label: 'Nejdelší', value: longest, record: record === 'longest' },
 ];
 
 export const SERIES: Record<StatPeriod, StatSeries> = {
@@ -47,17 +54,12 @@ export const SERIES: Record<StatPeriod, StatSeries> = {
       { label: 'po', value: 0, totals: t('0', '0', '0', '—') },
       { label: 'út', value: 2, totals: t('2', '1', '1', '1h 40m') },
       { label: 'st', value: 0, totals: t('0', '0', '0', '—') },
-      { label: 'čt', value: 6, totals: t('6', '1', '3', '6h 42m') },
+      { label: 'čt', value: 6, totals: t('6', '1', '3', '6h 42m', 'longest') },
       { label: 'pá', value: 4, totals: t('4', '1', '1', '2h 15m') },
       { label: 'so', value: 3, totals: t('3', '1', '1', '1h 55m') },
       { label: 'ne', value: 0, totals: t('0', '0', '0', '—') },
     ],
-    totals: [
-      { label: 'Piv', value: '15' },
-      { label: 'Večerů', value: '4' },
-      { label: 'Hospod', value: '5' },
-      { label: 'Nejdelší', value: '6h 42m' },
-    ],
+    totals: t('15', '4', '5', '6h 42m', 'longest'),
   },
   Měsíc: {
     points: [
@@ -66,29 +68,19 @@ export const SERIES: Record<StatPeriod, StatSeries> = {
       { label: '3.t', value: 14, totals: t('14', '3', '5', '5h 20m') },
       { label: '4.t', value: 15, totals: t('15', '4', '5', '7h 05m') },
     ],
-    totals: [
-      { label: 'Piv', value: '48' },
-      { label: 'Večerů', value: '13' },
-      { label: 'Hospod', value: '11' },
-      { label: 'Nejdelší', value: '7h 05m' },
-    ],
+    totals: t('48', '13', '11', '7h 05m'),
   },
   Rok: {
     points: [
       { label: 'led', value: 22, totals: t('22', '6', '7', '5h 40m') },
       { label: 'úno', value: 19, totals: t('19', '5', '6', '4h 50m') },
-      { label: 'bře', value: 28, totals: t('28', '7', '9', '9h 12m') },
+      { label: 'bře', value: 28, totals: t('28', '7', '9', '9h 12m', 'longest') },
       { label: 'dub', value: 24, totals: t('24', '6', '8', '6h 15m') },
       { label: 'kvě', value: 33, totals: t('33', '8', '11', '7h 30m') },
       { label: 'čvn', value: 41, totals: t('41', '10', '13', '8h 05m') },
-      { label: 'čvc', value: 48, totals: t('48', '12', '14', '7h 05m') },
+      { label: 'čvc', value: 48, totals: t('48', '12', '14', '7h 05m', 'beers') },
     ],
-    totals: [
-      { label: 'Piv', value: '215' },
-      { label: 'Večerů', value: '54' },
-      { label: 'Hospod', value: '38' },
-      { label: 'Nejdelší', value: '9h 12m' },
-    ],
+    totals: t('215', '54', '38', '9h 12m', 'beers'),
   },
 };
 

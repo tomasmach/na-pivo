@@ -49,6 +49,8 @@ import {
 } from '@/components/shared/IconGlyph';
 import { Face } from '@/feed/FeedMockScreen';
 import { Leaderboard } from '@/mocks/Leaderboard';
+import { SectionBreak } from '@/mocks/SectionBreak';
+import { StatGrid } from '@/mocks/StatGrid';
 import { formatElapsed, hourlyFrom, useLivePartyStore } from '@/mocks/livePartyStore';
 import { MOCK_PARTY, type PartyRecap } from '@/party/mockParty';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -63,39 +65,6 @@ const SECTION_GAP = 32;
 
 /** Label ABOVE value, exactly as the feed card does it — the detail should
  *  read as the same object opened, not as a different screen. */
-function HeroStat({ value, label }: { value: string; label: string }) {
-  return (
-    <View style={styles.heroStat}>
-      <Text style={styles.heroLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-        {label}
-      </Text>
-      {/* No `adjustsFontSizeToFit`: inside a flex column with no fixed width it
-          shrinks the numeral to nothing rather than fitting it. */}
-      <Text
-        style={styles.heroValue}
-        allowFontScaling={false}
-        numberOfLines={1}
-        // With a minimum scale it shrinks a hair; without one (the earlier
-        // version had none) it crushes the numeral to ~8pt instead.
-        adjustsFontSizeToFit
-        minimumFontScale={0.75}
-      >
-        {value}
-      </Text>
-    </View>
-  );
-}
-
-function HeroStats({ party }: { party: PartyRecap }) {
-  return (
-    <View style={styles.heroRow}>
-      <HeroStat value={String(party.beers)} label="Piva" />
-      <HeroStat value={party.duration} label="Večer" />
-      <HeroStat value={String(party.stops.length)} label="Hospody" />
-    </View>
-  );
-}
-
 // ── People ──────────────────────────────────────────────────────────────────
 
 function StopRow({
@@ -163,12 +132,15 @@ function Tempo({ party }: { party: PartyRecap }) {
 
 // ── Screen ──────────────────────────────────────────────────────────────────
 
+/**
+ * A heading with the dark band above it, the way the feed separates posts.
+ *
+ * The recap ran five sections apart on margin alone, so "Kdo tam byl", "Štace"
+ * and "Piva po hodinách" read as one long column. The band is what makes the
+ * feed scan as separate things, and this screen is the same problem.
+ */
 function SectionTitle({ children }: { children: string }) {
-  return (
-    <Text style={styles.sectionTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-      {children}
-    </Text>
-  );
+  return <SectionBreak title={children} inset={20} />;
 }
 
 export default function PartyRecapScreen() {
@@ -208,6 +180,11 @@ export default function PartyRecapScreen() {
       }
     : MOCK_PARTY;
   const route = party.stops.map((s) => s.pubName).join('  →  ');
+
+  /** Does any of tonight's records mention this? Cheap, and it keeps the badge
+   *  honest — no record in the list, no PR on the number. */
+  const brokeRecord = (needle: string) =>
+    party.records.some((record) => record.title.toLocaleLowerCase('cs').includes(needle));
 
   return (
     <View style={styles.screen}>
@@ -252,7 +229,26 @@ export default function PartyRecapScreen() {
           {route}
         </Text>
 
-        <HeroStats party={party} />
+        {/* The shared block: one column width per stat, so a long duration
+            cannot walk into the next number. */}
+        <View style={styles.heroRow}>
+          <StatGrid
+            columns={3}
+            hero
+            stats={[
+              // Derived from the night's own records, not hard-coded: the recap
+              // already lists what this evening beat, so the stat and the record
+              // list cannot disagree.
+              { label: 'Piva', value: String(party.beers), record: brokeRecord('piv') },
+              { label: 'Večer', value: party.duration, record: brokeRecord('večer') },
+              {
+                label: 'Hospody',
+                value: String(party.stops.length),
+                record: brokeRecord('štac'),
+              },
+            ]}
+          />
+        </View>
 
         <View style={styles.section}>
           <SectionTitle>Kdo tam byl</SectionTitle>
@@ -445,32 +441,12 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(Colors.foam, 0.14),
   },
-  heroStat: { flex: 1, alignItems: 'flex-start' },
-  heroValue: {
-    fontWeight: '800',
-    fontSize: 38,
-    lineHeight: 46,
-    color: Colors.foam,
-    includeFontPadding: false,
-    // SF Pro tracks loose at display sizes; pull it in so the three numerals
-    // read as one row. Tabular figures keep them from dancing on re-render.
-    letterSpacing: -1,
-    fontVariant: ['tabular-nums'],
-  },
-  heroLabel: { fontWeight: '400', fontSize: 13, color: Colors.mutedText, marginBottom: 2 },
 
   // — Sections —
-  section: { marginTop: SECTION_GAP },
+  section: { marginTop: Spacing.sm },
   // Sentence case, foam — the same voice as the feed card's sections. The
   // uppercase muted kicker made the detail read as a different app from the
   // preview it opens out of.
-  sectionTitle: {
-    fontWeight: '700',
-    fontSize: 18,
-    letterSpacing: -0.2,
-    color: Colors.foam,
-    marginBottom: Spacing.md,
-  },
 
   // — People —
   people: { gap: Spacing.md },
