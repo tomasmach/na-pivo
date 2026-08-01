@@ -15,6 +15,8 @@
  * Delete this file when the real stats client lands.
  */
 
+import { EMPTY_ACHIEVEMENTS, type AccountAchievements } from '@/data/achievements';
+
 export type StatPeriod = 'Týden' | 'Měsíc' | 'Rok';
 
 export interface StatPoint {
@@ -130,4 +132,27 @@ export const STREAK: Streak = {
     { label: '21. 7.', nights: 3 },
     { label: '28. 7.', nights: 2 },
   ],
+};
+
+/**
+ * Which badges this mock profile has unlocked.
+ *
+ * A believable spread rather than all-on: an all-gold grid has nothing to
+ * chase, and the locked ones carry the hints that make the wall read as a list
+ * of things to do. Real ones come from `Account.achievements`.
+ */
+export const MOCK_ACHIEVEMENTS: AccountAchievements = {
+  ...EMPTY_ACHIEVEMENTS,
+  firstBeer: true,
+  firstTen: true,
+  century: true,
+  regular: true,
+  stamgast: true,
+  reviewer: true,
+  nightOwl: true,
+  taster: true,
+  partyAnimal: true,
+  firstMap: true,
+  explorer: true,
+  podSirakem: true,
 };

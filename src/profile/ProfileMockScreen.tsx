@@ -20,13 +20,14 @@ import React, { useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { TrophyIcon } from '@/components/shared/IconGlyph';
 import { FeedCard } from '@/feed/FeedMockScreen';
 import { MOCK_FEED } from '@/feed/mockFeed';
 import { BarChart } from '@/mocks/BarChart';
 import { SectionBreak } from '@/mocks/SectionBreak';
 import { Segmented } from '@/mocks/Segmented';
 import { StatGrid } from '@/mocks/StatGrid';
+import { AchievementGrid } from '@/profile/AchievementGrid';
+import { MOCK_ACHIEVEMENTS } from '@/profile/mockStats';
 import { RECORDS, SERIES, STREAK, type StatPeriod } from '@/profile/mockStats';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { useAccountStore } from '@/stores/accountStore';
@@ -39,15 +40,6 @@ const AVATAR = 'https://i.pravatar.cc/240?img=57';
 
 const TABS = ['Statistiky', 'Aktivita'] as const;
 const PERIODS: StatPeriod[] = ['Týden', 'Měsíc', 'Rok'];
-
-const BADGES = [
-  { title: 'Sto piv', earned: true },
-  { title: 'Deset hospod', earned: true },
-  { title: 'Tři čtvrtky', earned: true },
-  { title: 'První Oktoberfest', earned: false },
-  { title: 'Padesát večerů', earned: false },
-  { title: 'Mapér', earned: false },
-];
 
 export default function ProfileMockScreen() {
   const insets = useSafeAreaInsets();
@@ -202,23 +194,14 @@ export default function ProfileMockScreen() {
             </View>
           ))}
 
+          {/* The REAL catalogue, not six invented ones. The app already has
+              twenty badges with Czech names and locked hints
+              (`badgeCatalog.tsx`), and they are better than anything a mock
+              would make up — Štamgast, Noční sova, Poutník, Lahváčový filozof.
+              Rendering the shipped grid too, so the mock cannot drift from what
+              the profile actually shows. */}
           <SectionBreak title="Odznaky" />
-          <View style={styles.badges}>
-            {BADGES.map((badge) => (
-              <View key={badge.title} style={[styles.badge, !badge.earned && styles.badgeLocked]}>
-                <View style={[styles.badgeDisc, !badge.earned && styles.badgeDiscLocked]}>
-                  <TrophyIcon size={18} color={badge.earned ? Colors.stout : Colors.mutedText} />
-                </View>
-                <Text
-                  style={[styles.badgeTitle, !badge.earned && styles.badgeTitleLocked]}
-                  numberOfLines={2}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {badge.title}
-                </Text>
-              </View>
-            ))}
-          </View>
+          <AchievementGrid mapper={undefined} achievements={MOCK_ACHIEVEMENTS} />
         </>
       ) : (
         MOCK_FEED.map((entry) => <FeedCard key={entry.id} entry={entry} />)
@@ -304,20 +287,6 @@ const styles = StyleSheet.create({
   tabRule: { height: 2, alignSelf: 'stretch', backgroundColor: 'transparent', borderRadius: 1 },
   tabRuleOn: { backgroundColor: Colors.amber },
 
-  badges: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.md, marginTop: Spacing.sm },
-  badge: { width: '28%', alignItems: 'center', gap: 6 },
-  badgeLocked: { opacity: 0.45 },
-  badgeDisc: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.amber,
-  },
-  badgeDiscLocked: { backgroundColor: withAlpha(Colors.foam, 0.08) },
-  badgeTitle: { fontSize: 12, fontWeight: '600', color: Colors.foam, textAlign: 'center' },
-  badgeTitleLocked: { color: Colors.mutedText },
 
   mockNote: {
     fontSize: 12,
