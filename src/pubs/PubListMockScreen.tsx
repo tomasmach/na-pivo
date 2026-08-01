@@ -46,6 +46,7 @@ import { CompassCell } from '@/pubs/CompassCell';
 import { DETENT_TOP, PlacesSheet, type Detent } from '@/pubs/PlacesSheet';
 import { PubCarousel } from '@/pubs/PubCarousel';
 import { PubThumbMap } from '@/pubs/PubThumbMap';
+import { PubDetailBody } from '@/pubs/PubDetailBody';
 import { PubsMap } from '@/pubs/PubsMap';
 import { MOCK_PUBS, shuffled, type MockPub } from '@/pubs/mockPubs';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
@@ -194,12 +195,18 @@ function FilterChips({
   );
 }
 
-function PubRow({ pub, first }: { pub: MockPub; first?: boolean }) {
-  const router = useRouter();
-
+function PubRow({
+  pub,
+  first,
+  onPress,
+}: {
+  pub: MockPub;
+  first?: boolean;
+  onPress: () => void;
+}) {
   return (
     <Pressable
-      onPress={() => router.push(`/pub/${pub.id}` as Href)}
+      onPress={onPress}
       style={({ pressed }) => [styles.row, first && styles.rowFirst, pressed && styles.pressed]}
       accessibilityRole="button"
       accessibilityLabel={`${pub.name}, detail`}
@@ -276,6 +283,10 @@ export default function PubListMockScreen() {
   const [selectedPub, setSelectedPub] = React.useState<string | null>(MOCK_PUBS[0]?.id ?? null);
   const [sort, setSort] = React.useState<Sort>('Nejbližší');
   const [recenterSignal, setRecenterSignal] = React.useState(0);
+  // The detail opens INSIDE the sheet rather than as a push: the map behind is
+  // the context for the place you just tapped, and pushing a screen throws that
+  // away to show you a second map of the same pin.
+  const [openPubId, setOpenPubId] = React.useState<string | null>(null);
   // Bumped on every pick of "Náhodně v okolí", so picking it again genuinely
   // deals a new order instead of returning the same "random" one.
   const [shuffleSeed, setShuffleSeed] = React.useState(0);
@@ -292,6 +303,16 @@ export default function PubListMockScreen() {
   // The compass head cell points at whatever the sort put first, so the needle
   // and the list always agree about where you are being sent.
   const head = ordered[0];
+  const openPub = openPubId ? (MOCK_PUBS.find((pub) => pub.id === openPubId) ?? null) : null;
+
+  // Opening a detail raises the sheet in the SAME action, not in an effect
+  // watching the id: at `peek` the detail would land in a one-line slot, and an
+  // effect that setStates on every id change is the cascading-render trap
+  // (`react-hooks/set-state-in-effect`).
+  const openPubDetail = React.useCallback((id: string) => {
+    setOpenPubId(id);
+    setExpandSignal((n) => n + 1);
+  }, []);
 
   const pickSort = React.useCallback((next: Sort) => {
     setSort(next);
@@ -308,7 +329,7 @@ export default function PubListMockScreen() {
       <View style={styles.map}>
         <PubsMap
           recenterSignal={recenterSignal}
-          onPressPub={(pubId) => router.push(`/pub/${pubId}` as Href)}
+          onPressPub={openPubDetail}
           onPan={() => setCollapseSignal((n) => n + 1)}
           selectedId={selectedPub}
         />
@@ -353,7 +374,24 @@ export default function PubListMockScreen() {
             just the handle back to the list. Keeping the search field and the
             filter row on screen at peek meant the map never actually got the
             screen it was supposed to have. */}
-        {detent === 'peek' ? (
+        {/* Detail wins the sheet. It is the same body the pushed `/pub/[id]`
+            screen renders, minus the map — the one behind this sheet already
+            shows the pin, and a second map of it would be the screen arguing
+            with itself. The X puts the list back. */}
+        {openPub ? (
+          <ScrollView
+            contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 120 }]}
+            showsVerticalScrollIndicator={false}
+            scrollEnabled={detent === 'full'}
+            scrollEventThrottle={16}
+            onScroll={(event) => {
+              const atTop = event.nativeEvent.contentOffset.y <= 0.5;
+              setListAtTop((current) => (current === atTop ? current : atTop));
+            }}
+          >
+            <PubDetailBody pub={openPub} onClose={() => setOpenPubId(null)} />
+          </ScrollView>
+        ) : detent === 'peek' ? (
           <Pressable
             onPress={() => setExpandSignal((n) => n + 1)}
             style={({ pressed }) => [styles.collapsed, pressed && styles.pressed]}
@@ -403,13 +441,18 @@ export default function PubListMockScreen() {
                   // It is a pub row, so it opens the pub. It used to open the
                   // map, which meant the one cell naming a place was the one
                   // cell that would not take you to it.
-                  onPress={() => router.push(`/pub/${head.id}` as Href)}
+                  onPress={() => openPubDetail(head.id)}
                 />
               ) : null}
 
               <View style={styles.list}>
                 {ordered.slice(1).map((pub, index) => (
-                  <PubRow key={pub.id} pub={pub} first={index === 0} />
+                  <PubRow
+                    key={pub.id}
+                    pub={pub}
+                    first={index === 0}
+                    onPress={() => openPubDetail(pub.id)}
+                  />
                 ))}
               </View>
 
