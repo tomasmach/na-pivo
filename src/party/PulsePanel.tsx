@@ -7,8 +7,10 @@
  * they ARE the screen. So the box goes and the numerals sit straight on the
  * ground, big enough to read from across the table.
  *
- * Labels go too. "Tvoje 1" needs the word; "1 pivo" does not, so the unit rides
- * with the value and a whole row of muted captions disappears.
+ * The numbers are the shared `StatGrid` — value first, unit under it — so the
+ * hub reads the same way as the feed card and the profile. An earlier pass set
+ * the unit beside the numeral instead; at four columns that ran together into
+ * "0 piv 0 u stolu 0m — tempo", which is a sentence, not four figures.
  *
  * The state line ("Rozjezd · První pivo právě teď") is gone from the compact
  * view. Over four big numbers it was a caption on something that needs none, and
@@ -25,6 +27,7 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { XIcon } from '@/components/shared/IconGlyph';
+import { StatGrid } from '@/mocks/StatGrid';
 import { MockColors, MockType } from '@/mocks/mockTheme';
 import type { Pulse } from '@/party/nightPulse';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -51,19 +54,13 @@ export function PulsePanel({ pulse, stats }: { pulse: Pulse; stats: PulseStat[] 
         accessibilityRole="button"
         accessibilityLabel={`${pulse.headline}. ${pulse.basis}. Zvětšit čísla.`}
       >
-        <View style={styles.numbers}>
-          {stats.map((stat) => (
-            <Text
-              key={`${stat.value}-${stat.unit ?? ''}`}
-              style={styles.value}
-              allowFontScaling={false}
-              numberOfLines={1}
-            >
-              {stat.value}
-              {stat.unit ? <Text style={styles.unit}> {stat.unit}</Text> : null}
-            </Text>
-          ))}
-        </View>
+        {/* The same block the feed, the recap and the profile use. Units set
+            beside the numerals were a third layout for one idea, and at four
+            columns "0 piv 0 u stolu 0m — tempo" ran together into one sentence. */}
+        <StatGrid
+          columns={4}
+          stats={stats.map((stat) => ({ value: stat.value, label: stat.unit ?? '' }))}
+        />
       </Pressable>
 
       <Modal visible={expanded} animationType="fade" onRequestClose={() => setExpanded(false)}>
@@ -116,20 +113,9 @@ const styles = StyleSheet.create({
   grow: { flex: 1 },
   pressed: { opacity: 0.75 },
 
-  stateRow: { flexDirection: 'row', alignItems: 'baseline', gap: Spacing.sm },
   headline: { fontSize: 15, fontWeight: '800', color: Colors.amber },
   headlineStalled: { color: Colors.mutedText },
   basis: { flex: 1, fontSize: 13, fontWeight: '500', color: Colors.mutedText },
-
-  numbers: { flexDirection: 'row', alignItems: 'baseline', gap: Spacing.lg, flexWrap: 'wrap' },
-  value: {
-    fontSize: 34,
-    fontWeight: '800',
-    color: Colors.foam,
-    letterSpacing: -1,
-    fontVariant: ['tabular-nums'],
-  },
-  unit: { fontSize: 15, fontWeight: '600', color: Colors.mutedText, letterSpacing: 0 },
 
   // — Expanded —
   full: { flex: 1, backgroundColor: MockColors.bg, paddingHorizontal: Spacing.lg },
