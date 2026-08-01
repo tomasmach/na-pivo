@@ -119,29 +119,31 @@ export const BeerIcon = wrap(Beer, 'BeerIcon');
  * glyph (a party popper, a heart) would have meant relearning the icon.
  */
 export const CheersIcon = memo(function CheersIcon({ size = 20, color }: IconProps) {
-  const mug = Math.round(size * 0.74);
-  // Overlap by a third of a mug so the rims meet instead of merely leaning.
-  const offset = Math.round(mug * 0.3);
+  // Side by side, not stacked into a square. Two mugs crammed inside one mug's
+  // bounding box are necessarily half-size each, which at 17pt turned the glyph
+  // into a smudge. The icon is WIDER than it is tall instead, so each mug keeps
+  // the full height and stays as legible as the single-beer glyph next to it.
+  const mug = Math.round(size * 0.92);
+  // Just enough tilt to read as a clink rather than as two mugs on a shelf.
   return (
-    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <Beer
-          size={mug}
-          color={color}
-          strokeWidth={2}
-          style={{ transform: [{ rotate: '-20deg' }], marginRight: -offset }}
-        />
-        {/* Mirrored, so the two handles point outward and the rims face. */}
-        <Beer
-          size={mug}
-          color={color}
-          strokeWidth={2}
-          style={{ transform: [{ scaleX: -1 }, { rotate: '-20deg' }] }}
-        />
-      </View>
+    <View style={{ height: size, flexDirection: 'row', alignItems: 'center' }}>
+      <Beer
+        size={mug}
+        color={color}
+        strokeWidth={2}
+        style={{ transform: [{ rotate: '-14deg' }], marginRight: -Math.round(mug * 0.16) }}
+      />
+      {/* Mirrored, so the handles point outward and the rims face each other. */}
+      <Beer
+        size={mug}
+        color={color}
+        strokeWidth={2}
+        style={{ transform: [{ scaleX: -1 }, { rotate: '-14deg' }] }}
+      />
     </View>
   );
 });
+
 export const BeerOffIcon = wrap(BeerOff, 'BeerOffIcon');
 export const ChartColumnIcon = wrap(ChartColumn, 'ChartColumnIcon');
 export const ChartPieIcon = wrap(ChartPie, 'ChartPieIcon');

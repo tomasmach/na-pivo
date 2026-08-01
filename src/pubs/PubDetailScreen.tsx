@@ -282,14 +282,22 @@ const styles = StyleSheet.create({
   metaDot: { fontSize: 14, color: Colors.mutedText },
   address: { fontSize: 14, fontWeight: '400', color: Colors.mutedText, marginTop: 2 },
 
-  actions: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.lg },
+  // Packeta's proportions: the pair does not stretch to the full width, and each
+  // is a touch taller than the standard row button. Edge-to-edge they read as a
+  // segmented control rather than as two separate actions.
+  actions: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    marginTop: Spacing.lg,
+    alignSelf: 'flex-start',
+  },
   action: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: Spacing.xs,
-    height: MockLayout.buttonHeight,
+    gap: 6,
+    height: 52,
+    paddingHorizontal: Spacing.lg,
     borderRadius: Radius.pill,
     backgroundColor: Colors.stout3,
   },

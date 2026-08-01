@@ -424,7 +424,7 @@ export default function PubListMockScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Colors.stout },
-  content: { paddingHorizontal: 16, paddingTop: 4 },
+  content: { paddingHorizontal: 16 },
   map: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   grow: { flex: 1 },
   pressed: { opacity: 0.65 },
@@ -503,9 +503,14 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout2,
   },
   searchPlaceholder: { ...MockType.body, color: Colors.mutedText },
+  // `flexGrow: 0` matters: a horizontal ScrollView inside a column otherwise
+  // takes a full flex slot, which is where the band of dead space under the
+  // filters came from.
+  chipsScroller: { flexGrow: 0 },
   chipsRow: {
     paddingHorizontal: MockLayout.screenPad,
     gap: Spacing.xs,
+    alignItems: 'center',
     paddingBottom: Spacing.sm,
   },
   chip: {

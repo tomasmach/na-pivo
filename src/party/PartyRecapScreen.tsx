@@ -47,8 +47,10 @@ import {
   MapPinIcon,
   TrophyIcon,
 } from '@/components/shared/IconGlyph';
+import { Face } from '@/feed/FeedMockScreen';
+import { Leaderboard } from '@/mocks/Leaderboard';
 import { formatElapsed, hourlyFrom, useLivePartyStore } from '@/mocks/livePartyStore';
-import { MOCK_PARTY, type PartyPerson, type PartyRecap } from '@/party/mockParty';
+import { MOCK_PARTY, type PartyRecap } from '@/party/mockParty';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -69,7 +71,15 @@ function HeroStat({ value, label }: { value: string; label: string }) {
       </Text>
       {/* No `adjustsFontSizeToFit`: inside a flex column with no fixed width it
           shrinks the numeral to nothing rather than fitting it. */}
-      <Text style={styles.heroValue} allowFontScaling={false} numberOfLines={1}>
+      <Text
+        style={styles.heroValue}
+        allowFontScaling={false}
+        numberOfLines={1}
+        // With a minimum scale it shrinks a hair; without one (the earlier
+        // version had none) it crushes the numeral to ~8pt instead.
+        adjustsFontSizeToFit
+        minimumFontScale={0.75}
+      >
         {value}
       </Text>
     </View>
@@ -88,73 +98,6 @@ function HeroStats({ party }: { party: PartyRecap }) {
 
 // ── People ──────────────────────────────────────────────────────────────────
 
-function Initials({ person, size = 34 }: { person: PartyPerson; size?: number }) {
-  return (
-    <View
-      style={[
-        styles.avatar,
-        {
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          backgroundColor: withAlpha(person.tint, 0.22),
-          borderColor: withAlpha(person.tint, 0.5),
-        },
-      ]}
-    >
-      <Text style={[styles.avatarText, { fontSize: size * 0.42 }]} allowFontScaling={false}>
-        {person.name.slice(0, 1).toUpperCase()}
-      </Text>
-    </View>
-  );
-}
-
-/** One person: who, how many, and how that reads against the night's best.
- *  The bar is the row's content — it is why you do not need to open anything. */
-function PersonRow({ person, max }: { person: PartyPerson; max: number }) {
-  const share = max > 0 ? person.beers / max : 0;
-
-  return (
-    <View style={styles.personRow}>
-      <Initials person={person} />
-      <View style={styles.personBody}>
-        <View style={styles.personTop}>
-          <Text style={styles.personName} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
-            {person.name}
-          </Text>
-          {person.mvp ? (
-            <View style={styles.mvpTag}>
-              <TrophyIcon size={11} color={Colors.amber} />
-              <Text style={styles.mvpText} allowFontScaling={false}>
-                MVP
-              </Text>
-            </View>
-          ) : null}
-          <View style={styles.grow} />
-          <Text style={styles.personCount} allowFontScaling={false}>
-            {person.beers}
-          </Text>
-        </View>
-        <View style={styles.barTrack}>
-          <View
-            style={[
-              styles.barFill,
-              {
-                width: `${Math.max(6, Math.round(share * 100))}%`,
-                backgroundColor: person.mvp ? Colors.amber : withAlpha(Colors.amber, 0.38),
-              },
-            ]}
-          />
-        </View>
-      </View>
-    </View>
-  );
-}
-
-// ── Štace ───────────────────────────────────────────────────────────────────
-
-/** The night's route, read top to bottom. The connector is what makes three
- *  rows read as one journey instead of three unrelated pubs. */
 function StopRow({
   arrivedAt,
   pubName,
@@ -264,7 +207,6 @@ export default function PartyRecapScreen() {
         ),
       }
     : MOCK_PARTY;
-  const maxBeers = party.people.reduce((m, p) => Math.max(m, p.beers), 0);
   const route = party.stops.map((s) => s.pubName).join('  →  ');
 
   return (
@@ -288,7 +230,7 @@ export default function PartyRecapScreen() {
         <View style={styles.byline}>
           {party.people.slice(0, 5).map((person, index) => (
             <View key={person.id} style={index === 0 ? undefined : styles.peopleOverlap}>
-              <Initials person={person} size={28} />
+              <Face name={person.name} tint={person.tint} avatar={person.avatar} size={30} />
             </View>
           ))}
           <Text
@@ -314,10 +256,20 @@ export default function PartyRecapScreen() {
 
         <View style={styles.section}>
           <SectionTitle>Kdo tam byl</SectionTitle>
+          {/* Komunita's board, not a second design of the same object. A list
+              where first place looks like fifth is a table, not a ranking. */}
           <View style={styles.people}>
-            {party.people.map((person) => (
-              <PersonRow key={person.id} person={person} max={maxBeers} />
-            ))}
+            <Leaderboard
+              rows={party.people.map((person) => ({
+                id: person.id,
+                name: person.name,
+                score: person.beers,
+                avatar: person.avatar,
+                tint: person.tint,
+              }))}
+              unit="piv"
+              topBadge="MVP"
+            />
           </View>
         </View>
 

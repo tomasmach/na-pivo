@@ -43,8 +43,11 @@ function namesLine(people: { name: string }[]): string {
 }
 
 /** A face when there is one, the initial when there is not. The ring is the
- *  card ground, so overlapping faces punch out of each other cleanly. */
-function Face({
+ *  card ground, so overlapping faces punch out of each other cleanly.
+ *
+ *  Exported because the recap's byline IS this byline — the detail is the post
+ *  opened, so a second implementation there could only ever drift from it. */
+export function Face({
   name,
   tint,
   avatar,
@@ -196,7 +199,7 @@ export function FeedCard({
           accessibilityLabel={cs.friends.cheersCount(entry.cheers)}
         >
           <CheersIcon
-            size={17}
+            size={19}
             color={entry.cheered ? Colors.amber : Colors.mutedText}
           />
           <Text

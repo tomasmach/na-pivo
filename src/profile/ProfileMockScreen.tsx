@@ -20,7 +20,7 @@ import React, { useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { FlameIcon, TrophyIcon } from '@/components/shared/IconGlyph';
+import { TrophyIcon } from '@/components/shared/IconGlyph';
 import { FeedCard } from '@/feed/FeedMockScreen';
 import { MOCK_FEED } from '@/feed/mockFeed';
 import { BarChart } from '@/mocks/BarChart';
@@ -52,7 +52,11 @@ export default function ProfileMockScreen() {
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<(typeof TABS)[number]>('Statistiky');
   const [period, setPeriod] = useState<StatPeriod>('Týden');
+  const [scrubbed, setScrubbed] = useState<number | null>(null);
   const series = SERIES[period];
+  // The header follows your finger. With nothing held it shows the whole window.
+  const point = scrubbed === null ? null : series.points[scrubbed];
+  const totals = point?.totals ?? series.totals;
   const session = useAccountStore((s) => s.session);
   const profile = useAccountStore((s) => s.profile);
   const signedIn = Boolean(session);
@@ -123,11 +127,14 @@ export default function ProfileMockScreen() {
               opened on a filter rather than on an answer — you look at a profile
               to see where you stand, not to pick a time window. */}
           <View style={styles.totals}>
-            <StatGrid columns={4} compact stats={series.totals} />
+            <Text style={styles.window} maxFontSizeMultiplier={FontScaleCap.body}>
+              {point ? point.label : period}
+            </Text>
+            <StatGrid columns={4} compact stats={totals} />
           </View>
 
           <View style={styles.chart}>
-            <BarChart points={series.points} unit="piv" />
+            <BarChart points={series.points} onScrub={setScrubbed} />
           </View>
 
           <View style={styles.periodRow}>
@@ -138,25 +145,38 @@ export default function ProfileMockScreen() {
               dots with two gaps in them is the thing you actually want to keep
               unbroken, and it shows the misses honestly. */}
           <SectionBreak title="Série" />
-          <View style={styles.streakRow}>
-            <View style={styles.flame}>
-              <FlameIcon size={18} color={Colors.stout} />
-            </View>
-            <View style={styles.grow}>
-              <Text style={styles.streakValue} allowFontScaling={false}>
-                {STREAK.current} týdny v řadě
-              </Text>
-              <Text style={styles.streakBest} maxFontSizeMultiplier={FontScaleCap.body}>
-                Nejlepší série {STREAK.best} týdnů
-              </Text>
-            </View>
-          </View>
+          {/* No flame disc. A 38pt amber circle beside the number pulled the eye
+              to a decoration instead of to the streak, which is the only thing
+              here worth looking at — so the number is the graphic. */}
+          <Text style={styles.streakValue} allowFontScaling={false}>
+            {STREAK.current}
+            <Text style={styles.streakUnit}> týdny v řadě</Text>
+          </Text>
+          <Text style={styles.streakBest} maxFontSizeMultiplier={FontScaleCap.body}>
+            Nejlepší {STREAK.best} týdnů · {STREAK.weeks.reduce((sum, w) => sum + w.nights, 0)}{' '}
+            večerů za {STREAK.weeks.length} týdnů
+          </Text>
+          {/* Columns, not dots: the height says how many nights that week had and
+              a gap says you missed it, which is the difference between a streak
+              you can read and a row of identical ticks. */}
           <View style={styles.weeks}>
-            {STREAK.weeks.map((hit, index) => (
-              <View
-                key={index}
-                style={[styles.week, hit ? styles.weekOn : styles.weekOff]}
-              />
+            {STREAK.weeks.map((week) => (
+              <View key={week.label} style={styles.week}>
+                <Text style={styles.weekNights} allowFontScaling={false}>
+                  {week.nights > 0 ? week.nights : ''}
+                </Text>
+                <View
+                  style={[
+                    styles.weekBar,
+                    week.nights > 0
+                      ? { height: 10 + week.nights * 9, backgroundColor: Colors.amber }
+                      : styles.weekMiss,
+                  ]}
+                />
+                <Text style={styles.weekLabel} allowFontScaling={false} numberOfLines={1}>
+                  {week.label}
+                </Text>
+              </View>
             ))}
           </View>
 
@@ -237,24 +257,25 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(Colors.foam, 0.12),
   },
+  window: { fontSize: 13, fontWeight: '700', color: Colors.amber, marginBottom: Spacing.sm },
   chart: { marginTop: Spacing.xl },
   periodRow: { marginTop: Spacing.lg },
 
-  streakRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, marginTop: Spacing.sm },
-  flame: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.amber,
+  streakValue: {
+    fontSize: 40,
+    fontWeight: '800',
+    color: Colors.foam,
+    letterSpacing: -1.2,
+    marginTop: Spacing.sm,
   },
-  streakValue: { fontSize: 18, fontWeight: '800', color: Colors.foam },
-  streakBest: { fontSize: 13, fontWeight: '500', color: Colors.mutedText, marginTop: 1 },
-  weeks: { flexDirection: 'row', gap: 5, marginTop: Spacing.md },
-  week: { flex: 1, height: 10, borderRadius: 3 },
-  weekOn: { backgroundColor: Colors.amber },
-  weekOff: { backgroundColor: withAlpha(Colors.foam, 0.1) },
+  streakUnit: { fontSize: 19, fontWeight: '700', color: Colors.mutedText, letterSpacing: 0 },
+  streakBest: { fontSize: 13, fontWeight: '500', color: Colors.mutedText, marginTop: 2 },
+  weeks: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, marginTop: Spacing.lg },
+  week: { flex: 1, alignItems: 'center', gap: 4 },
+  weekNights: { fontSize: 10, fontWeight: '700', color: Colors.mutedText, height: 13 },
+  weekBar: { alignSelf: 'stretch', borderRadius: 4 },
+  weekMiss: { height: 6, backgroundColor: withAlpha(Colors.foam, 0.1) },
+  weekLabel: { fontSize: 9, fontWeight: '500', color: Colors.mutedText },
 
   record: {
     flexDirection: 'row',

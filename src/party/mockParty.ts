@@ -21,9 +21,14 @@
  * Delete this file the moment the real client lands.
  */
 
+const AVATARS = 'https://i.pravatar.cc/160?img=';
+
 export interface PartyPerson {
   id: string;
   name: string;
+  /** Same placeholder faces the feed uses, so a night looks identical wherever
+   *  you meet it. MUST NOT ship — real ones come from `Account.avatar`. */
+  avatar?: string;
   beers: number;
   /** Highest tally of the night. Exactly one person carries it. */
   mvp?: boolean;
@@ -73,11 +78,11 @@ export const MOCK_PARTY: PartyRecap = {
     { id: 's3', pubName: 'Vzorkovna', arrivedAt: '00:30', beers: 7 },
   ],
   people: [
-    { id: 'p1', name: 'Honza', beers: 7, mvp: true, tint: '#E8A317' },
-    { id: 'p2', name: 'Petr', beers: 6, tint: '#7DD66B' },
-    { id: 'p3', name: 'Tomáš', beers: 5, tint: '#F0BE5C' },
-    { id: 'p4', name: 'Klára', beers: 5, tint: '#A8896A' },
-    { id: 'p5', name: 'Míša', beers: 4, tint: '#FBF3E0' },
+    { id: 'p1', name: 'Honza', beers: 7, mvp: true, tint: '#E8A317', avatar: `${AVATARS}57` },
+    { id: 'p2', name: 'Petr', beers: 6, tint: '#7DD66B', avatar: `${AVATARS}41` },
+    { id: 'p3', name: 'Tomáš', beers: 5, tint: '#F0BE5C', avatar: `${AVATARS}50` },
+    { id: 'p4', name: 'Klára', beers: 5, tint: '#A8896A', avatar: `${AVATARS}64` },
+    { id: 'p5', name: 'Míša', beers: 4, tint: '#FBF3E0', avatar: `${AVATARS}26` },
   ],
   hourly: [
     { hour: '20', beers: 4 },

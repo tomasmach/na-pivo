@@ -25,14 +25,25 @@
 
 import React from 'react';
 import { ActionSheetIOS, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Host, Menu, Picker, Text as UIText } from '@expo/ui/swift-ui';
-import { pickerStyle, tag, tint } from '@expo/ui/swift-ui/modifiers';
+import { HStack, Host, Image, Menu, Picker, Text as UIText } from '@expo/ui/swift-ui';
+import {
+  font,
+  foregroundStyle,
+  glassEffect,
+  padding,
+  pickerStyle,
+  tag,
+} from '@expo/ui/swift-ui/modifiers';
 
 import { ChevronDownIcon } from '@/components/shared/IconGlyph';
 import { MockLayout } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
+
+/** Warm enough to read as ours, weak enough that it is still glass and not
+ *  paint — §15.1: the material has to show what is behind it. */
+const GLASS_TINT = withAlpha(Colors.amber, 0.12);
 
 export function MenuChip({
   value,
@@ -48,18 +59,30 @@ export function MenuChip({
 }) {
   if (Platform.OS === 'ios') {
     return (
-      <Host
-        // Sized by its content: these sit in a horizontal scroller where the
-        // label length decides the width, and a fixed one would clip "Nejlépe
-        // hodnocené" or leave a gap after "Pivo".
-        matchContents
-        colorScheme="dark"
-        seedColor={Colors.amber}
-      >
+      <Host matchContents colorScheme="dark" seedColor={Colors.amber}>
         <Menu
-          label={value}
-          systemImage="chevron.down"
-          modifiers={[tint(Colors.amber)]}
+          // The label is composed in SwiftUI, not left as a bare string: a
+          // string renders as text with a leading SF symbol and no chip at all,
+          // which next to the app's own pills read as a broken control. This is
+          // Spendee's shape — a liquid-glass capsule, the label, then a trailing
+          // chevron — and being real glass it picks up whatever is behind it.
+          label={
+            <HStack
+              spacing={5}
+              modifiers={[
+                padding({ horizontal: 14, vertical: 7 }),
+                glassEffect({
+                  glass: { variant: 'regular', interactive: true, tint: GLASS_TINT },
+                  shape: 'capsule',
+                }),
+              ]}
+            >
+              <UIText modifiers={[font({ size: 13, weight: 'semibold' }), foregroundStyle(Colors.amber)]}>
+                {value}
+              </UIText>
+              <Image systemName="chevron.down" size={10} color={Colors.amber} />
+            </HStack>
+          }
         >
           <Picker
             label={title}
