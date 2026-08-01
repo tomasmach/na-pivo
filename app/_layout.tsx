@@ -439,6 +439,14 @@ export default function RootLayout() {
               animation: 'slide_from_bottom',
             }}
           />
+          {/* Search is a MODE, not a page: it takes the whole screen, keeps its
+              own Zrušit, and slides up so dismissing it is the reverse gesture.
+              Under the tab bar it would have been a fourth thing competing with
+              the tabs for the same job. */}
+          <Stack.Screen
+            name="search"
+            options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+          />
           {/* A game is passed around the table, so it takes the whole screen —
               a tab bar under a phone in someone else's hand is a mis-tap. It
               pushes from the right because you came from the hub and go back to

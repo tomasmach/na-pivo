@@ -1,4 +1,7 @@
-import { Stack } from 'expo-router';
+import { Pressable } from 'react-native';
+import { Stack, useRouter, type Href } from 'expo-router';
+
+import { SearchIcon } from '@/components/shared/IconGlyph';
 
 import { Colors } from '@/theme/colors';
 
@@ -14,6 +17,8 @@ import { Colors } from '@/theme/colors';
  * A folder (not a route group) so the URL stays `/community`.
  */
 export default function CommunityLayout() {
+  const router = useRouter();
+
   return (
     <Stack
       screenOptions={{
@@ -27,7 +32,24 @@ export default function CommunityLayout() {
         contentStyle: { backgroundColor: Colors.stout },
       }}
     >
-      <Stack.Screen name="index" options={{ title: 'Komunita' }} />
+      <Stack.Screen
+        name="index"
+        options={{
+          title: 'Komunita',
+          // Same door as Kocoviny: people are found by searching for them, not
+          // by scrolling a leaderboard until a name appears.
+          headerRight: () => (
+            <Pressable
+              onPress={() => router.push('/search' as Href)}
+              accessibilityRole="button"
+              accessibilityLabel="Hledat"
+              hitSlop={10}
+            >
+              <SearchIcon size={20} color={Colors.amber} />
+            </Pressable>
+          ),
+        }}
+      />
       <Stack.Screen
         name="challenge/[id]"
         options={{

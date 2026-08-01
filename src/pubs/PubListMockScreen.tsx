@@ -19,7 +19,6 @@
 
 import React from 'react';
 import {
-  ActionSheetIOS,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -41,6 +40,7 @@ import {
   StarIcon,
 } from '@/components/shared/IconGlyph';
 import { GlassIconButton } from '@/mocks/GlassIconButton';
+import { MenuChip } from '@/mocks/MenuChip';
 import { BeerFilterSheet } from '@/pubs/BeerFilterSheet';
 import { CompassCell } from '@/pubs/CompassCell';
 import { DETENT_TOP, PlacesSheet, type Detent } from '@/pubs/PlacesSheet';
@@ -105,20 +105,6 @@ function FilterChips({
   const beerLabel =
     beers.length === 0 ? 'Pivo' : beers.length === 1 ? beers[0] : `Pivo (${beers.length})`;
 
-  const openSort = () => {
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        options: [...SORTS, 'Zrušit'],
-        cancelButtonIndex: SORTS.length,
-        title: 'Seřadit',
-        userInterfaceStyle: 'dark',
-      },
-      (index) => {
-        if (index < SORTS.length) onSort(SORTS[index]);
-      },
-    );
-  };
-
   const toggle = (label: string) =>
     setOn((current) =>
       current.includes(label) ? current.filter((l) => l !== label) : [...current, label],
@@ -132,26 +118,18 @@ function FilterChips({
       keyboardShouldPersistTaps="handled"
     >
       {/* The sort is a dropdown, not one of the toggles — it answers a
-          different question and only ever has one answer at a time.
-          This SHOULD be a menu that morphs out of the pill. It briefly was, via
-          `react-native-ios-context-menu` (the library Spendee uses), but that
-          package's peer `react-native-ios-utilities` fails to link against this
-          Xcode SDK: "cannot link directly with 'SwiftUICore' because product
-          being built is not an allowed client of it". Fixing it means a config
-          plugin re-adding a linker flag after every `expo prebuild --clean` —
-          a permanent maintenance tax for one control. The action sheet is the
-          same system control, presented from the bottom instead of the anchor. */}
-      <Pressable
-        onPress={openSort}
-        style={({ pressed }) => [styles.chip, styles.chipActive, pressed && styles.pressed]}
-        accessibilityRole="button"
-        accessibilityLabel={`Seřadit: ${sort}`}
-      >
-        <Text style={[styles.chipText, styles.chipTextActive]} allowFontScaling={false}>
-          {sort}
-        </Text>
-        <ChevronDownIcon size={14} color={Colors.amber} />
-      </Pressable>
+          different question and only ever has one answer at a time. It is now a
+          real anchored UIMenu: the earlier note here said this needed
+          `react-native-ios-context-menu` and could not link ("cannot link
+          directly with 'SwiftUICore'"), which was true of that library and not
+          of the problem — `@expo/ui` ships SwiftUI's own Menu and was already in
+          the Podfile. */}
+      <MenuChip
+        value={sort}
+        options={SORTS}
+        title="Seřadit"
+        onChange={(next) => onSort(next as Sort)}
+      />
 
       {/* Beer is a value, not a toggle — one answer at a time — so it is a
           dropdown like the sort, and sits right beside "Otevřeno". */}
@@ -387,12 +365,20 @@ export default function PubListMockScreen() {
         ) : (
           <>
             <View style={styles.searchWrap}>
-              <View style={styles.searchField}>
+              {/* A field you tap to OPEN search, not one you type in here: the
+                  sheet is half a screen tall and a keyboard would take the rest
+                  of it. Apple Maps does the same. */}
+              <Pressable
+                onPress={() => router.push('/search' as Href)}
+                style={({ pressed }) => [styles.searchField, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel="Hledat hospodu nebo pivo"
+              >
                 <SearchIcon size={17} color={Colors.mutedText} />
                 <Text style={styles.searchPlaceholder} maxFontSizeMultiplier={FontScaleCap.body}>
                   Hledej hospodu nebo pivo
                 </Text>
-              </View>
+              </Pressable>
             </View>
 
             <FilterChips sort={sort} onSort={pickSort} />

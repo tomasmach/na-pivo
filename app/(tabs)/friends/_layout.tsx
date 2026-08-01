@@ -1,5 +1,5 @@
 import { Pressable } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, useRouter, type Href } from 'expo-router';
 
 import { SearchIcon } from '@/components/shared/IconGlyph';
 import { Colors } from '@/theme/colors';
@@ -22,6 +22,8 @@ import { Colors } from '@/theme/colors';
  * target and is named in telemetry and `appReviewPolicy`.
  */
 export default function FeedLayout() {
+  const router = useRouter();
+
   return (
     <Stack
       screenOptions={{
@@ -45,7 +47,12 @@ export default function FeedLayout() {
           // bar buttons on their own capsule. Adding ours would be two glass
           // layers, one of them a fake.
           headerRight: () => (
-            <Pressable accessibilityRole="button" accessibilityLabel="Hledat" hitSlop={10}>
+            <Pressable
+              onPress={() => router.push('/search' as Href)}
+              accessibilityRole="button"
+              accessibilityLabel="Hledat"
+              hitSlop={10}
+            >
               <SearchIcon size={20} color={Colors.amber} />
             </Pressable>
           ),
