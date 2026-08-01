@@ -48,7 +48,7 @@ import {
   CompassIcon,
   BeerIcon,
   UserIcon,
-  UsersIcon,
+  CheersIcon,
   TrophyIcon,
 } from '@/components/shared/IconGlyph';
 import { fireLightImpactHaptic } from '@/utils/haptics';
@@ -95,7 +95,9 @@ const TAB_META: Record<
   }
 > = {
   friends: {
-    Icon: UsersIcon,
+    // Two mugs meeting, not a generic pair of people. The tab is nights out with
+    // the table, and the clink says that where a "users" glyph says "contacts".
+    Icon: CheersIcon,
     label: cs.tabs.feed,
     a11yLabel: cs.a11y.tabFeed,
     telemetryTarget: 'tab_friends',

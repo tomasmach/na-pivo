@@ -5,8 +5,7 @@
  */
 
 import React, { memo, ComponentType } from 'react';
-import { View } from 'react-native';
-import Svg, { Circle as SvgCircle, Path as SvgPath } from 'react-native-svg';
+import Svg, { Circle as SvgCircle, G, Path as SvgPath } from 'react-native-svg';
 import {
   Armchair,
   Beer,
@@ -118,29 +117,57 @@ export const BeerIcon = wrap(Beer, 'BeerIcon');
  * into each other mean the clink. Same lucide path, composed — an unrelated
  * glyph (a party popper, a heart) would have meant relearning the icon.
  */
+/**
+ * Cheers — two mugs meeting, drawn here rather than composed.
+ *
+ * This is the one glyph the icon set could not borrow. `BeerIcon` (lucide) is a
+ * mug drawn to stand alone: put two side by side and they do not clink, they
+ * queue. A clink needs the mugs LEANING INTO each other with their rims meeting,
+ * and no arrangement of an upright glyph gets there.
+ *
+ * So one mug is drawn once and used twice — the second is the first mirrored
+ * about the middle — which keeps the pair exactly symmetrical and means the
+ * shape only has to be got right once. Three short strokes at the meeting point
+ * are the impact; without them two tilted mugs read as falling over.
+ *
+ * Deliberately WIDER than tall (28×24). Two mugs squeezed into one mug's square
+ * are two half-size mugs, and at 17pt that is a smudge.
+ *
+ * Stroke weight, caps and joins match lucide so it sits in the same set.
+ */
+const CHEERS_RATIO = 28 / 24;
+
+/** One mug, centred on its own origin: body, foam line, handle. */
+const MUG = (
+  <>
+    <SvgPath d="M -4.5 -7 L 4.5 -7 L 3.7 7.2 A 1.8 1.8 0 0 1 1.9 9 L -1.9 9 A 1.8 1.8 0 0 1 -3.7 7.2 Z" />
+    <SvgPath d="M -4.3 -3.2 L 4.3 -3.2" />
+    <SvgPath d="M 4.6 -3.4 L 6.2 -3.4 A 3.2 3.2 0 0 1 6.2 3 L 4.2 3" />
+  </>
+);
+
 export const CheersIcon = memo(function CheersIcon({ size = 20, color }: IconProps) {
-  // Side by side, not stacked into a square. Two mugs crammed inside one mug's
-  // bounding box are necessarily half-size each, which at 17pt turned the glyph
-  // into a smudge. The icon is WIDER than it is tall instead, so each mug keeps
-  // the full height and stays as legible as the single-beer glyph next to it.
-  const mug = Math.round(size * 0.92);
-  // Just enough tilt to read as a clink rather than as two mugs on a shelf.
   return (
-    <View style={{ height: size, flexDirection: 'row', alignItems: 'center' }}>
-      <Beer
-        size={mug}
-        color={color}
-        strokeWidth={2}
-        style={{ transform: [{ rotate: '-14deg' }], marginRight: -Math.round(mug * 0.16) }}
-      />
-      {/* Mirrored, so the handles point outward and the rims face each other. */}
-      <Beer
-        size={mug}
-        color={color}
-        strokeWidth={2}
-        style={{ transform: [{ scaleX: -1 }, { rotate: '-14deg' }] }}
-      />
-    </View>
+    <Svg
+      width={size * CHEERS_RATIO}
+      height={size}
+      viewBox="0 0 28 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <G transform="translate(18,12) rotate(-14)">{MUG}</G>
+      {/* The same mug, mirrored about the middle — one shape, two mugs. */}
+      <G transform="translate(28,0) scale(-1,1)">
+        <G transform="translate(18,12) rotate(-14)">{MUG}</G>
+      </G>
+      {/* The clink. Without it the pair reads as two mugs tipping over. */}
+      <SvgPath d="M 14 0.8 L 14 3" />
+      <SvgPath d="M 10.5 2.2 L 11.8 3.8" />
+      <SvgPath d="M 17.5 2.2 L 16.2 3.8" />
+    </Svg>
   );
 });
 
