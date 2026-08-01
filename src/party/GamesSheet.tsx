@@ -18,15 +18,17 @@
  */
 
 import React from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 
 import {
   CheckIcon,
   SparklesIcon,
   TrophyIcon,
   XIcon,
-} from '@/components/shared/IconGlyph';
+} from "@/components/shared/IconGlyph";
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -36,7 +38,11 @@ export const GAMES = [
   { key: 'quiz', name: 'Pub kvíz', blurb: 'Deset otázek, kdo víc.' },
   { key: 'dice', name: 'Kostky', blurb: 'Klasika. Nejvyšší bere.' },
   { key: 'never', name: 'Nikdy jsem…', blurb: 'Kdo to udělal, pije.' },
-  { key: 'kings', name: 'King’s Cup', blurb: 'Karty a pravidla, co si vymyslíte.' },
+  {
+    key: 'kings',
+    name: 'King’s Cup',
+    blurb: 'Karty a pravidla, co si vymyslíte.',
+  },
   { key: 'categories', name: 'Kategorie', blurb: 'Kdo se zasekne, pije.' },
   { key: 'bottle', name: 'Flaška', blurb: 'Točí se, ukáže, ptá se.' },
 ] as const;
@@ -56,93 +62,88 @@ export function GamesSheet({
   const insets = useSafeAreaInsets();
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityRole="button"
-          accessibilityLabel="Zavřít"
-        />
-
-        <View style={styles.card}>
-          <View style={styles.header}>
-            <View style={styles.grow}>
-              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                Hry
-              </Text>
-              <Text style={styles.sub} maxFontSizeMultiplier={FontScaleCap.body}>
-                Vyber hru, objeví se ve večeru a odtud se spouští.
-              </Text>
-            </View>
-            <Pressable
-              onPress={onClose}
-              style={({ pressed }) => [styles.close, pressed && styles.pressed]}
-              accessibilityRole="button"
-              accessibilityLabel="Zavřít"
-              hitSlop={8}
+    <BottomSheetModal visible={visible} onClose={onClose}>
+      <View style={styles.card}>
+        <View style={styles.header}>
+          <View style={styles.grow}>
+            <Text
+              style={styles.title}
+              maxFontSizeMultiplier={FontScaleCap.heading}
             >
-              <XIcon size={17} color={Colors.mutedText} />
-            </Pressable>
+              Hry
+            </Text>
+            <Text style={styles.sub} maxFontSizeMultiplier={FontScaleCap.body}>
+              Vyber hru, objeví se ve večeru a odtud se spouští.
+            </Text>
           </View>
-
-          <ScrollView
-            contentContainerStyle={[
-              styles.grid,
-              { paddingBottom: Math.max(insets.bottom, Spacing.lg) },
-            ]}
-            showsVerticalScrollIndicator={false}
+          <Pressable
+            onPress={onClose}
+            style={({ pressed }) => [styles.close, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Zavřít"
+            hitSlop={8}
           >
-            {GAMES.map((game) => {
-              const added = onTable.includes(game.key);
-              return (
-                <Pressable
-                  key={game.key}
-                  onPress={() => onPick(game.key, game.name)}
-                  style={({ pressed }) => [
-                    styles.tile,
-                    added && styles.tileAdded,
-                    pressed && styles.pressed,
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: added }}
-                  accessibilityLabel={game.name}
-                >
-                  <View style={[styles.medallion, added && styles.medallionAdded]}>
-                    {added ? (
-                      <CheckIcon size={17} color={Colors.stout} />
-                    ) : game.key === 'quiz' ? (
-                      <TrophyIcon size={17} color={Colors.amber} />
-                    ) : (
-                      <SparklesIcon size={17} color={Colors.amber} />
-                    )}
-                  </View>
-                  <Text
-                    style={styles.tileTitle}
-                    numberOfLines={1}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
-                    {game.name}
-                  </Text>
-                  <Text
-                    style={styles.tileBlurb}
-                    numberOfLines={2}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
-                    {game.blurb}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+            <XIcon size={17} color={Colors.mutedText} />
+          </Pressable>
         </View>
+
+        <ScrollView
+          contentContainerStyle={[
+            styles.grid,
+            { paddingBottom: Math.max(insets.bottom, Spacing.lg) },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          {GAMES.map((game) => {
+            const added = onTable.includes(game.key);
+            return (
+              <Pressable
+                key={game.key}
+                onPress={() => onPick(game.key, game.name)}
+                style={({ pressed }) => [
+                  styles.tile,
+                  added && styles.tileAdded,
+                  pressed && styles.pressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: added }}
+                accessibilityLabel={game.name}
+              >
+                <View
+                  style={[styles.medallion, added && styles.medallionAdded]}
+                >
+                  {added ? (
+                    <CheckIcon size={17} color={Colors.stout} />
+                  ) : game.key === "quiz" ? (
+                    <TrophyIcon size={17} color={Colors.amber} />
+                  ) : (
+                    <SparklesIcon size={17} color={Colors.amber} />
+                  )}
+                </View>
+                <Text
+                  style={styles.tileTitle}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {game.name}
+                </Text>
+                <Text
+                  style={styles.tileBlurb}
+                  numberOfLines={2}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {game.blurb}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
       </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: withAlpha(Colors.black, 0.6) },
   grow: { flex: 1 },
   pressed: { opacity: 0.65 },
 
@@ -163,7 +164,12 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.md,
   },
   title: { ...MockType.titleS, fontSize: 22, color: Colors.foam },
-  sub: { fontSize: 13, fontWeight: '400', color: Colors.mutedText, marginTop: 2 },
+  sub: {
+    fontSize: 13,
+    fontWeight: '400',
+    color: Colors.mutedText,
+    marginTop: 2,
+  },
   close: {
     width: 32,
     height: 32,
@@ -199,5 +205,10 @@ const styles = StyleSheet.create({
   },
   medallionAdded: { backgroundColor: Colors.amber },
   tileTitle: { ...MockType.bodySemibold, color: Colors.foam },
-  tileBlurb: { fontSize: 12, fontWeight: '400', color: Colors.mutedText, lineHeight: 16 },
+  tileBlurb: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: Colors.mutedText,
+    lineHeight: 16,
+  },
 });

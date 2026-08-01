@@ -39,6 +39,7 @@ import {
   SearchIcon,
   StarIcon,
 } from '@/components/shared/IconGlyph';
+import { TAB_CHROME } from '@/components/shared/TabBar';
 import { GlassIconButton } from '@/mocks/GlassIconButton';
 import { MenuChip } from '@/mocks/MenuChip';
 import { BeerFilterSheet } from '@/pubs/BeerFilterSheet';
@@ -56,6 +57,9 @@ import { HitArea, Radius, Spacing } from '@/theme/layout';
 
 /** A map needs more than Packeta's 48pt photo well to show a street. */
 const THUMB = 56;
+
+/** Height of the swipeable card that stands in for the list at `peek`. */
+const CAROUSEL_H = 140;
 
 /**
  * How the list is ordered. "Nejbližší" is the default because standing
@@ -322,6 +326,11 @@ export default function PubListMockScreen() {
   // The locate button rides just above the sheet's resting top, so collapsing
   // the sheet walks the button down with it instead of stranding it.
   const sheetTop = height * DETENT_TOP[detent];
+  // At `peek` the sheet is off screen entirely, so the floating things stack up
+  // from the tab bar instead of chasing a sheet edge that is no longer there.
+  const peekCarouselTop = height - TAB_CHROME - CAROUSEL_H;
+  const carouselTop = peekCarouselTop;
+  const controlsTop = detent === 'peek' ? peekCarouselTop - 60 : sheetTop - 56;
 
   return (
     <View style={styles.screen}>
@@ -339,7 +348,7 @@ export default function PubListMockScreen() {
           At the other detents the list is on screen, so this would be the same
           pubs twice. */}
       {detent === 'peek' ? (
-        <View style={[styles.carousel, { top: sheetTop - 152 }]}>
+        <View style={[styles.carousel, { top: carouselTop }]}>
           <PubCarousel onSelect={setSelectedPub} />
         </View>
       ) : null}
@@ -347,7 +356,27 @@ export default function PubListMockScreen() {
       {/* Same glass as the cards it floats beside. The glyph is the real SF
           Symbol, not a lookalike: this control means what Apple Maps' tracking
           button means, so it should be the same shape. */}
-      <View style={[styles.locate, { top: sheetTop - (detent === 'peek' ? 204 : 56) }]}>
+      {/* Two ways of looking at the same places, mirrored: the list on the left,
+          where you are on the right. The list used to be a one-line bar at the
+          bottom of the sheet whose only content was the words "Seznam hospod" —
+          a row of chrome naming itself, over the map it was covering. */}
+      <View style={[styles.places, { top: controlsTop }]}>
+        <GlassIconButton
+          size={44}
+          accessibilityLabel="Seznam hospod"
+          onPress={() => setExpandSignal((n) => n + 1)}
+        >
+          <SymbolView
+            name="list.bullet"
+            size={19}
+            tintColor={Colors.foam}
+            resizeMode="scaleAspectFit"
+            fallback={<ChevronRightIcon size={20} color={Colors.foam} />}
+          />
+        </GlassIconButton>
+      </View>
+
+      <View style={[styles.locate, { top: controlsTop }]}>
         <GlassIconButton
           size={44}
           accessibilityLabel="Vycentrovat na mě"
@@ -370,14 +399,6 @@ export default function PubListMockScreen() {
         expandSignal={expandSignal}
         listAtTop={listAtTop}
       >
-        {/* Collapsed, the sheet is one line: the map is the screen and this is
-            just the handle back to the list. Keeping the search field and the
-            filter row on screen at peek meant the map never actually got the
-            screen it was supposed to have. */}
-        {/* Detail wins the sheet. It is the same body the pushed `/pub/[id]`
-            screen renders, minus the map — the one behind this sheet already
-            shows the pin, and a second map of it would be the screen arguing
-            with itself. The X puts the list back. */}
         {openPub ? (
           <ScrollView
             contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 120 }]}
@@ -391,17 +412,6 @@ export default function PubListMockScreen() {
           >
             <PubDetailBody pub={openPub} onClose={() => setOpenPubId(null)} />
           </ScrollView>
-        ) : detent === 'peek' ? (
-          <Pressable
-            onPress={() => setExpandSignal((n) => n + 1)}
-            style={({ pressed }) => [styles.collapsed, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel="Rozbalit seznam hospod"
-          >
-            <Text style={styles.collapsedText} maxFontSizeMultiplier={FontScaleCap.body}>
-              Seznam hospod
-            </Text>
-          </Pressable>
         ) : (
           <>
             <View style={styles.searchWrap}>
@@ -528,13 +538,6 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
   },
 
-  collapsed: {
-    paddingHorizontal: MockLayout.screenPad,
-    minHeight: 34,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  collapsedText: { fontSize: 15, fontWeight: '600', color: Colors.foam },
 
   // — Search + filters, inside the sheet —
   // Tight around the filter row: the sheet is half a screen and the padding
@@ -615,6 +618,7 @@ const styles = StyleSheet.create({
 
   carousel: { position: 'absolute', left: 0, right: 0 },
   locate: { position: 'absolute', right: MockLayout.screenPad },
+  places: { position: 'absolute', left: MockLayout.screenPad },
   mockNote: {
     fontWeight: '400',
     fontSize: 12,

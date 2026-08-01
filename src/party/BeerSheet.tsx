@@ -11,8 +11,10 @@
  */
 
 import React from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 
 import { XIcon } from '@/components/shared/IconGlyph';
 import { BeerList } from '@/party/BeerList';
@@ -39,51 +41,49 @@ export function BeerSheet({
   const insets = useSafeAreaInsets();
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityRole="button"
-          accessibilityLabel="Zavřít"
-        />
-
-        <View style={[styles.card, { paddingBottom: Math.max(insets.bottom, Spacing.lg) }]}>
-          <View style={styles.header}>
-            <View style={styles.grow}>
-              <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-                Co piješ
-              </Text>
-              <Text style={styles.sub} maxFontSizeMultiplier={FontScaleCap.body}>
-                Uprav počty nebo si dej něco jiného.
-              </Text>
-            </View>
-            <Pressable
-              onPress={onClose}
-              style={({ pressed }) => [styles.close, pressed && styles.pressed]}
-              accessibilityRole="button"
-              accessibilityLabel="Zavřít"
-              hitSlop={8}
+    <BottomSheetModal visible={visible} onClose={onClose}>
+      <View
+        style={[
+          styles.card,
+          { paddingBottom: Math.max(insets.bottom, Spacing.lg) },
+        ]}
+      >
+        <View style={styles.header}>
+          <View style={styles.grow}>
+            <Text
+              style={styles.title}
+              maxFontSizeMultiplier={FontScaleCap.heading}
             >
-              <XIcon size={17} color={Colors.mutedText} />
-            </Pressable>
+              Co piješ
+            </Text>
+            <Text style={styles.sub} maxFontSizeMultiplier={FontScaleCap.body}>
+              Uprav počty nebo si dej něco jiného.
+            </Text>
           </View>
-
-          <BeerList
-            rows={rows}
-            onTaps={onTaps}
-            onTap={onAdd}
-            onAdd={onAdd}
-            onRemove={onRemove}
-          />
+          <Pressable
+            onPress={onClose}
+            style={({ pressed }) => [styles.close, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Zavřít"
+            hitSlop={8}
+          >
+            <XIcon size={17} color={Colors.mutedText} />
+          </Pressable>
         </View>
+
+        <BeerList
+          rows={rows}
+          onTaps={onTaps}
+          onTap={onAdd}
+          onAdd={onAdd}
+          onRemove={onRemove}
+        />
       </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: withAlpha(Colors.black, 0.6) },
   grow: { flex: 1 },
   pressed: { opacity: 0.65 },
 
@@ -96,9 +96,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: MockLayout.screenPad,
     paddingTop: Spacing.md,
   },
-  header: { flexDirection: 'row', alignItems: 'flex-start', paddingBottom: Spacing.sm },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingBottom: Spacing.sm,
+  },
   title: { ...MockType.titleS, fontSize: 22, color: Colors.foam },
-  sub: { fontSize: 13, fontWeight: '400', color: Colors.mutedText, marginTop: 2 },
+  sub: {
+    fontSize: 13,
+    fontWeight: '400',
+    color: Colors.mutedText,
+    marginTop: 2,
+  },
   close: {
     width: 32,
     height: 32,

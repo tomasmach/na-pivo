@@ -510,7 +510,7 @@ spodní panel. Modal, ne knihovna.
 | Rozhodnutí | Důvod |
 |---|---|
 | `transparent` + `statusBarTranslucent` + `presentationStyle="overFullScreen"` | Sheet musí kreslit přes status bar i přes tab bar. Bez `statusBarTranslucent` zůstane na Androidu nad backdropem pruh. |
-| `animationType="fade"` | `"slide"` na iOS koliduje s tím, že si kartu polohujeme sami (`justifyContent: 'flex-end'`), a vzniká dvojitý pohyb. |
+| `animationType="none"` + `BottomSheetModal` | Viz níž. Ani `fade`, ani `slide`. |
 | Backdrop je **absolutní sourozenec** karty (`StyleSheet.absoluteFill`), ne její rodič | Kdyby backdrop kartu obaloval, karta by nesedla nadoraz na spodní hranu a backdrop by polykal její gesta. |
 | `cardWrap` má `marginBottom: -insets.bottom` | Vytáhne kartu pod home indicator, takže mezi kartou a spodní hranou displeje nezůstane proužek pozadí. |
 | Karta má `paddingBottom: insets.bottom + Spacing.lg` | Obsah se přitom nedostane pod home indicator. Ty dvě věci jdou vždycky spolu. |
@@ -660,6 +660,35 @@ const styles = StyleSheet.create({
   },
 });
 ```
+
+### 7.2b Sheet vyjíždí zespoda (3.0)
+
+Použij `src/components/shared/BottomSheetModal.tsx`. Nestav si `Modal` s
+`animationType` sám.
+
+Dřív tu stálo `animationType="fade"` s odůvodněním, že `"slide"` koliduje
+s vlastním polohováním karty a vzniká dvojitý pohyb. Je to napůl pravda:
+`slide` na `transparent` modalu posune **celý modal včetně backdropu**, takže
+tmavý závoj vyjede zespoda místo aby prolnul. To nečte jako karta přijíždějící
+přes obrazovku, ale jako jeden velký kus tmavého papíru.
+
+Řešení není vybrat jednu ze dvou vestavěných animací. Sheet jsou **dva pohyby
+najednou a nejsou stejné**:
+
+| Vrstva | Pohyb | Proč |
+|---|---|---|
+| závoj | prolnutí | je to stav obrazovky za ním, ne předmět |
+| karta | posun zespoda, spring | je to objekt, který přijíždí, a má hmotu |
+
+Takže `Modal` neanimuje nic (`animationType="none"`) a obojí řídí wrapper. Při
+zavírání běží ty samé dva pohyby pozpátku a `Modal` se odmontuje až na konci —
+`visible={false}` hned by kartu nechal zmizet místo odejít.
+
+Wrapper taky drží Android back gesture, aby zavřel sheet a ne obrazovku za ním.
+
+> **Migrace.** Ve 3.0 na něm jedou sheety v `src/party/`. Zbytek appky
+> (~27 míst) pořád fade a je to **vědomý dluh**, ne opomenutí — projede se to
+> najednou, ne po jednom, aby appka nebyla půl na půl.
 
 ### 7.3 Řádky uvnitř sheetu
 

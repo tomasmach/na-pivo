@@ -38,11 +38,20 @@ import { Colors, withAlpha } from '@/theme/colors';
  * peek this sheet shows a single line of text rather than a search field and a
  * filter row. The map is the screen at that point; the sheet is a handle.
  */
-export const DETENT_TOP = { peek: 0.87, half: 0.48, full: 0.08 } as const;
+export const DETENT_TOP = { peek: 1, half: 0.48, full: 0.08 } as const;
 
-/** Room the tab bar needs. Peek is measured UP from the window bottom rather
- *  than as a fraction, or the collapsed row lands behind the bar. */
-const TAB_BAR_RESERVE = 168;
+/**
+ * At `peek` the sheet is GONE, not a one-line bar.
+ *
+ * It used to leave a strip saying "Seznam hospod" above the tab bar — a whole
+ * row of chrome whose only content was its own name, sitting on the map it was
+ * hiding. The way back is a list button floating beside the locate button, so
+ * the two ways of looking at the same places are a mirrored pair rather than a
+ * button on one side and a label at the bottom.
+ *
+ * A few points of overshoot past the window bottom, so no hairline peeks out.
+ */
+const PEEK_OFFSET = -8;
 const DETENTS = DETENT_TOP;
 export type Detent = keyof typeof DETENTS;
 
@@ -78,7 +87,7 @@ export function PlacesSheet({
   /** Bump to collapse to `peek` — Apple Maps behaviour: touching the map gets
    *  the sheet out of the way so you can see what you are touching. */
   collapseSignal?: number;
-  /** Bump to open to `half` — the collapsed bar taps to expand. */
+  /** Bump to open to `half` — the floating list button brings it back. */
   expandSignal?: number;
 }) {
   const { height } = useWindowDimensions();
@@ -87,7 +96,7 @@ export function PlacesSheet({
   // plain numbers captured from the closure are fine, a function is not.
   const tops = useMemo(
     () => ({
-      peek: Math.round(height - TAB_BAR_RESERVE),
+      peek: Math.round(height - PEEK_OFFSET),
       half: Math.round(height * DETENTS.half),
       full: Math.round(height * DETENTS.full),
     }),

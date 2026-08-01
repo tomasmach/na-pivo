@@ -16,8 +16,10 @@
  */
 
 import React from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import QRCode from 'react-native-qrcode-svg';
 
 import { CheckIcon, CopyIcon, XIcon } from '@/components/shared/IconGlyph';
@@ -35,7 +37,7 @@ const FRIENDS = [
   { name: 'Verča', tint: '#7DD66B' },
 ];
 
-const CODE = 'PIVO-4271';
+const CODE = "PIVO-4271";
 const LINK = `napivo://party/${CODE}`;
 
 export function InviteSheet({
@@ -53,110 +55,123 @@ export function InviteSheet({
   const insets = useSafeAreaInsets();
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityRole="button"
-          accessibilityLabel="Zavřít"
-        />
+    <BottomSheetModal visible={visible} onClose={onClose}>
+      <View style={styles.card}>
+        <View style={styles.header}>
+          <Text
+            style={styles.title}
+            maxFontSizeMultiplier={FontScaleCap.heading}
+          >
+            Přizvat ke stolu
+          </Text>
+          <Pressable
+            onPress={onClose}
+            style={({ pressed }) => [styles.close, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Zavřít"
+            hitSlop={8}
+          >
+            <XIcon size={17} color={Colors.mutedText} />
+          </Pressable>
+        </View>
 
-        <View style={styles.card}>
-          <View style={styles.header}>
-            <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
-              Přizvat ke stolu
+        <ScrollView
+          contentContainerStyle={{
+            paddingBottom: Math.max(insets.bottom, Spacing.lg),
+          }}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* White quiet zone, because a QR on a dark surface is a QR that does
+                not scan — the contrast has to be the code's, not the app's. */}
+          <View style={styles.qrWrap}>
+            <View style={styles.qr}>
+              <QRCode
+                value={LINK}
+                size={148}
+                backgroundColor="#FFFFFF"
+                color="#000000"
+              />
+            </View>
+            <Text style={styles.code} allowFontScaling={false}>
+              {CODE}
             </Text>
-            <Pressable
-              onPress={onClose}
-              style={({ pressed }) => [styles.close, pressed && styles.pressed]}
-              accessibilityRole="button"
-              accessibilityLabel="Zavřít"
-              hitSlop={8}
+            <Text
+              style={styles.codeHint}
+              maxFontSizeMultiplier={FontScaleCap.body}
             >
-              <XIcon size={17} color={Colors.mutedText} />
-            </Pressable>
+              Nasnímej, nebo si kód přečti nahlas.
+            </Text>
           </View>
 
-          <ScrollView
-            contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, Spacing.lg) }}
-            showsVerticalScrollIndicator={false}
+          <Pressable
+            style={({ pressed }) => [styles.linkRow, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Zkopírovat odkaz"
           >
-            {/* White quiet zone, because a QR on a dark surface is a QR that does
-                not scan — the contrast has to be the code's, not the app's. */}
-            <View style={styles.qrWrap}>
-              <View style={styles.qr}>
-                <QRCode value={LINK} size={148} backgroundColor="#FFFFFF" color="#000000" />
-              </View>
-              <Text style={styles.code} allowFontScaling={false}>
-                {CODE}
-              </Text>
-              <Text style={styles.codeHint} maxFontSizeMultiplier={FontScaleCap.body}>
-                Nasnímej, nebo si kód přečti nahlas.
-              </Text>
-            </View>
-
-            <Pressable
-              style={({ pressed }) => [styles.linkRow, pressed && styles.pressed]}
-              accessibilityRole="button"
-              accessibilityLabel="Zkopírovat odkaz"
+            <Text
+              style={styles.link}
+              numberOfLines={1}
+              allowFontScaling={false}
             >
-              <Text style={styles.link} numberOfLines={1} allowFontScaling={false}>
-                {LINK}
-              </Text>
-              <CopyIcon size={17} color={Colors.amber} />
-            </Pressable>
-
-            <Text style={styles.section} maxFontSizeMultiplier={FontScaleCap.heading}>
-              Kamarádi
+              {LINK}
             </Text>
-            {FRIENDS.map((friend) => {
-              const here = present.includes(friend.name);
-              return (
-                <View key={friend.name} style={styles.friendRow}>
-                  <View style={[styles.avatar, { backgroundColor: friend.tint }]}>
-                    <Text style={styles.avatarText} allowFontScaling={false}>
-                      {friend.name.slice(0, 1).toUpperCase()}
+            <CopyIcon size={17} color={Colors.amber} />
+          </Pressable>
+
+          <Text
+            style={styles.section}
+            maxFontSizeMultiplier={FontScaleCap.heading}
+          >
+            Kamarádi
+          </Text>
+          {FRIENDS.map((friend) => {
+            const here = present.includes(friend.name);
+            return (
+              <View key={friend.name} style={styles.friendRow}>
+                <View style={[styles.avatar, { backgroundColor: friend.tint }]}>
+                  <Text style={styles.avatarText} allowFontScaling={false}>
+                    {friend.name.slice(0, 1).toUpperCase()}
+                  </Text>
+                </View>
+                <Text
+                  style={styles.friendName}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {friend.name}
+                </Text>
+                {here ? (
+                  <View style={styles.hereRow}>
+                    <CheckIcon size={15} color={Colors.amber} />
+                    <Text style={styles.here} allowFontScaling={false}>
+                      U stolu
                     </Text>
                   </View>
-                  <Text
-                    style={styles.friendName}
-                    numberOfLines={1}
-                    maxFontSizeMultiplier={FontScaleCap.body}
+                ) : (
+                  <Pressable
+                    onPress={() => onInvite(friend.name)}
+                    style={({ pressed }) => [
+                      styles.invite,
+                      pressed && styles.pressed,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Přizvat ${friend.name}`}
                   >
-                    {friend.name}
-                  </Text>
-                  {here ? (
-                    <View style={styles.hereRow}>
-                      <CheckIcon size={15} color={Colors.amber} />
-                      <Text style={styles.here} allowFontScaling={false}>
-                        U stolu
-                      </Text>
-                    </View>
-                  ) : (
-                    <Pressable
-                      onPress={() => onInvite(friend.name)}
-                      style={({ pressed }) => [styles.invite, pressed && styles.pressed]}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Přizvat ${friend.name}`}
-                    >
-                      <Text style={styles.inviteText} allowFontScaling={false}>
-                        Přizvat
-                      </Text>
-                    </Pressable>
-                  )}
-                </View>
-              );
-            })}
-          </ScrollView>
-        </View>
+                    <Text style={styles.inviteText} allowFontScaling={false}>
+                      Přizvat
+                    </Text>
+                  </Pressable>
+                )}
+              </View>
+            );
+          })}
+        </ScrollView>
       </View>
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: withAlpha(Colors.black, 0.6) },
   pressed: { opacity: 0.65 },
 
   card: {
@@ -169,7 +184,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: MockLayout.screenPad,
     paddingTop: Spacing.md,
   },
-  header: { flexDirection: 'row', alignItems: 'center', paddingBottom: Spacing.sm },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingBottom: Spacing.sm,
+  },
   title: { ...MockType.titleS, fontSize: 22, color: Colors.foam, flex: 1 },
   close: {
     width: 32,

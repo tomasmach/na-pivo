@@ -13,15 +13,10 @@
  */
 
 import React from 'react';
-import {
-  Modal,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 
 import { MinusIcon, PlusIcon, XIcon } from '@/components/shared/IconGlyph';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
@@ -62,7 +57,11 @@ export function BeerList({
     <View style={styles.wrap}>
       {rows.map((row) => (
         <View key={row.beer} style={styles.row}>
-          <Text style={styles.name} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+          <Text
+            style={styles.name}
+            numberOfLines={1}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          >
             {row.beer}
           </Text>
           <View style={styles.counter}>
@@ -80,7 +79,11 @@ export function BeerList({
             </Text>
             <Pressable
               onPress={() => onAdd(row.beer)}
-              style={({ pressed }) => [styles.step, styles.stepOn, pressed && styles.pressed]}
+              style={({ pressed }) => [
+                styles.step,
+                styles.stepOn,
+                pressed && styles.pressed,
+              ]}
               accessibilityRole="button"
               accessibilityLabel={`Ještě jedno ${row.beer}`}
               hitSlop={6}
@@ -104,14 +107,22 @@ export function BeerList({
               accessibilityLabel={`Dát si ${tap.name}`}
             >
               <PlusIcon size={13} color={Colors.amber} />
-              <Text style={styles.chipText} numberOfLines={1} allowFontScaling={false}>
+              <Text
+                style={styles.chipText}
+                numberOfLines={1}
+                allowFontScaling={false}
+              >
                 {tap.name}
               </Text>
             </Pressable>
           ))}
           <Pressable
             onPress={() => setCustom(true)}
-            style={({ pressed }) => [styles.chip, styles.chipGhost, pressed && styles.pressed]}
+            style={({ pressed }) => [
+              styles.chip,
+              styles.chipGhost,
+              pressed && styles.pressed,
+            ]}
             accessibilityRole="button"
             accessibilityLabel="Zapsat vlastní pivo"
           >
@@ -124,53 +135,53 @@ export function BeerList({
 
       {/* A one-field dialog, so it keeps its own keyboard lift rather than a
           scroll view (AGENTS.md: short non-scrolling dialogs lift on the wrap). */}
-      <Modal visible={custom} transparent animationType="fade" onRequestClose={() => setCustom(false)}>
-        <View style={styles.backdrop}>
-          <Pressable
-            style={StyleSheet.absoluteFill}
-            onPress={() => setCustom(false)}
-            accessibilityRole="button"
-            accessibilityLabel="Zavřít"
-          />
-          <View style={[styles.dialog, { marginBottom: insets.bottom + Spacing.lg }]}>
-            <View style={styles.dialogHead}>
-              <Text style={styles.dialogTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-                Co piješ?
-              </Text>
-              <Pressable
-                onPress={() => setCustom(false)}
-                style={({ pressed }) => [styles.close, pressed && styles.pressed]}
-                accessibilityRole="button"
-                accessibilityLabel="Zavřít"
-                hitSlop={8}
-              >
-                <XIcon size={16} color={Colors.mutedText} />
-              </Pressable>
-            </View>
-            <TextInput
-              value={draft}
-              onChangeText={setDraft}
-              placeholder="Značka a stupně"
-              placeholderTextColor={Colors.mutedText}
-              style={styles.input}
-              autoFocus
-              returnKeyType="done"
-              onSubmitEditing={commit}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            />
-            <Pressable
-              onPress={commit}
-              style={({ pressed }) => [styles.save, pressed && styles.pressed]}
-              accessibilityRole="button"
-              accessibilityLabel="Zapsat"
+      <BottomSheetModal visible={custom} onClose={() => setCustom(false)}>
+        <View
+          style={[styles.dialog, { marginBottom: insets.bottom + Spacing.lg }]}
+        >
+          <View style={styles.dialogHead}>
+            <Text
+              style={styles.dialogTitle}
+              maxFontSizeMultiplier={FontScaleCap.heading}
             >
-              <Text style={styles.saveText} maxFontSizeMultiplier={FontScaleCap.heading}>
-                Zapsat
-              </Text>
+              Co piješ?
+            </Text>
+            <Pressable
+              onPress={() => setCustom(false)}
+              style={({ pressed }) => [styles.close, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Zavřít"
+              hitSlop={8}
+            >
+              <XIcon size={16} color={Colors.mutedText} />
             </Pressable>
           </View>
+          <TextInput
+            value={draft}
+            onChangeText={setDraft}
+            placeholder="Značka a stupně"
+            placeholderTextColor={Colors.mutedText}
+            style={styles.input}
+            autoFocus
+            returnKeyType="done"
+            onSubmitEditing={commit}
+            maxFontSizeMultiplier={FontScaleCap.body}
+          />
+          <Pressable
+            onPress={commit}
+            style={({ pressed }) => [styles.save, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Zapsat"
+          >
+            <Text
+              style={styles.saveText}
+              maxFontSizeMultiplier={FontScaleCap.heading}
+            >
+              Zapsat
+            </Text>
+          </Pressable>
         </View>
-      </Modal>
+      </BottomSheetModal>
     </View>
   );
 }
@@ -205,7 +216,12 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
 
-  others: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs, marginTop: Spacing.xs },
+  others: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+    marginTop: Spacing.xs,
+  },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -215,11 +231,15 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     backgroundColor: withAlpha(Colors.amber, 0.12),
   },
-  chipText: { fontSize: 13, fontWeight: '600', color: Colors.amber, maxWidth: 160 },
+  chipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.amber,
+    maxWidth: 160,
+  },
   chipGhost: { backgroundColor: withAlpha(Colors.foam, 0.07) },
   chipGhostText: { fontSize: 13, fontWeight: '600', color: Colors.mutedText },
 
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: withAlpha(Colors.black, 0.6) },
   dialog: {
     marginHorizontal: Spacing.md,
     padding: Spacing.md,
@@ -230,7 +250,12 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.foam, 0.14),
   },
   dialogHead: { flexDirection: 'row', alignItems: 'center' },
-  dialogTitle: { ...MockType.titleS, fontSize: 20, color: Colors.foam, flex: 1 },
+  dialogTitle: {
+    ...MockType.titleS,
+    fontSize: 20,
+    color: Colors.foam,
+    flex: 1,
+  },
   close: {
     width: 30,
     height: 30,
