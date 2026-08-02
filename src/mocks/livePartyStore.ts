@@ -220,6 +220,43 @@ export function formatElapsed(minutes: number): string {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
+/**
+ * "12:04" / "1:12:04" — a stopwatch face, with seconds.
+ *
+ * Seconds are the whole point: a number that only changes once a minute looks
+ * frozen, and the hub is meant to feel like something is running. Everything
+ * else stays in whole minutes; this is the one reading that ticks.
+ */
+export function formatStopwatch(totalSeconds: number): string {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const sec = totalSeconds % 60;
+  const mm = String(m).padStart(h > 0 ? 2 : 1, '0');
+  return `${h > 0 ? `${h}:` : ''}${mm}:${String(sec).padStart(2, '0')}`;
+}
+
+/**
+ * The stopwatch face, ticking every second.
+ *
+ * Deliberately separate from `useNightClock`: this one re-renders 60× a minute,
+ * so it is used ONLY by the small component that draws the clock. Putting it on
+ * the hub would re-render the SwiftUI chart every second for a digit.
+ */
+export function useNightSeconds(startedAt: number | null): number {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (startedAt === null) return undefined;
+    // No synchronous setState here — the first tick lands a second later, which
+    // is invisible, and calling it in the effect body is the cascading-render
+    // trap (`react-hooks/set-state-in-effect`).
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [startedAt]);
+
+  return startedAt === null ? 0 : Math.max(0, Math.floor((now - startedAt) / 1000));
+}
+
 /** Whole minutes between two stamps — the unit every reading works in. */
 export function minutesBetween(from: number, to: number): number {
   return Math.max(0, Math.floor((to - from) / 60_000));

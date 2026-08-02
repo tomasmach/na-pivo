@@ -298,10 +298,10 @@ export default function LivePartyMockScreen() {
               which a paragraph explaining it never did. */}
           <PulsePanel
             pulse={pulse}
+            startedAt={startedAt}
             stats={[
               { value: String(mine), unit: 'piv' },
               { value: String(live ? table : 0), unit: 'u stolu' },
-              { value: formatElapsed(minutes) },
               { value: live ? fourth.value : '—', unit: fourth.label.toLowerCase() },
             ]}
           />
@@ -438,7 +438,7 @@ export default function LivePartyMockScreen() {
             <CameraIcon size={20} color={Colors.foam} />
           </CircleButton>
 
-          <View style={styles.circleWrap}>
+          <View style={styles.primaryWrap}>
             <Pressable
               onPress={() => (live ? addBeer(houseBeer) : setBeersOpen(true))}
               style={({ pressed }) => [styles.circlePrimary, pressed && styles.primaryPressed]}
@@ -661,7 +661,7 @@ const styles = StyleSheet.create({
   outputText: { flex: 1, fontSize: 14, fontWeight: '600', color: Colors.foam },
 
   // — Sections —
-  sectionBody: { marginTop: Spacing.lg, gap: Spacing.md },
+  sectionBody: { gap: Spacing.md },
   empty: { fontSize: 14, fontWeight: '400', color: Colors.mutedText, lineHeight: 20 },
 
   // — Games on the table —
@@ -701,27 +701,38 @@ const styles = StyleSheet.create({
   },
 
   // — Log —
-  logRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, minHeight: 34 },
+  logRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    minHeight: 60,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: withAlpha(Colors.foam, 0.07),
+  },
   logTime: {
-    width: 46,
-    fontSize: 13,
+    width: 52,
+    fontSize: 15,
     fontWeight: '600',
     color: Colors.mutedText,
     fontVariant: ['tabular-nums'],
   },
-  logDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: withAlpha(Colors.amber, 0.6) },
-  logText: { flex: 1, fontSize: 14, fontWeight: '500', color: Colors.foam },
+  logDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: withAlpha(Colors.amber, 0.7) },
+  logText: { flex: 1, fontSize: 16, fontWeight: '500', color: Colors.foam },
 
   // — Controls —
+  // Five equal columns. The primary is bigger but occupies the same slot, so
+  // the gaps between all five read as one rhythm instead of the middle pair
+  // being pushed apart by the disc.
   controls: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    justifyContent: 'space-between',
     paddingTop: Spacing.md,
+    paddingBottom: Spacing.lg,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(Colors.foam, 0.12),
   },
   circleWrap: { alignItems: 'center', gap: 5, flex: 1 },
+  primaryWrap: { alignItems: 'center', gap: 5, flex: 1, zIndex: 1 },
   circleSecondary: {
     width: 48,
     height: 48,
@@ -732,15 +743,29 @@ const styles = StyleSheet.create({
   },
   circleLabel: { fontWeight: '500', fontSize: 12, color: Colors.mutedText },
   circlePrimary: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.amber,
-    marginTop: -14,
+    marginTop: -12,
   },
   primaryPressed: { opacity: 0.9, transform: [{ scale: 0.97 }] },
-  primaryLabel: { fontWeight: '700', fontSize: 13, color: Colors.amber, maxWidth: 120 },
-  beerChip: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  primaryLabel: { fontWeight: '700', fontSize: 13, color: Colors.amber },
+  /**
+   * Full width of the control row, not the width of the disc above it. Clipped
+   * to the disc, "Flekovský ležák 13°" came out as "Flekovsk…" — and the whole
+   * point of the chip is telling you what "+1" will pour.
+   */
+  beerChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    position: 'absolute',
+    left: -80,
+    right: -80,
+    bottom: -20,
+  },
 });

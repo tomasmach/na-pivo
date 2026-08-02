@@ -28,6 +28,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { XIcon } from '@/components/shared/IconGlyph';
 import { StatGrid } from '@/mocks/StatGrid';
+import { formatStopwatch, useNightSeconds } from '@/mocks/livePartyStore';
 import { MockColors, MockType } from '@/mocks/mockTheme';
 import type { Pulse } from '@/party/nightPulse';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -40,7 +41,32 @@ export interface PulseStat {
   unit?: string;
 }
 
-export function PulsePanel({ pulse, stats }: { pulse: Pulse; stats: PulseStat[] }) {
+/**
+ * The running clock, on its own.
+ *
+ * Its own component because it ticks every second: keeping the hook here means
+ * one `<Text>` re-renders sixty times a minute instead of the whole hub, which
+ * would redraw a SwiftUI chart for a digit.
+ */
+function Stopwatch({ startedAt }: { startedAt: number }) {
+  const seconds = useNightSeconds(startedAt);
+  return (
+    <Text style={styles.clock} allowFontScaling={false} numberOfLines={1}>
+      {formatStopwatch(seconds)}
+    </Text>
+  );
+}
+
+export function PulsePanel({
+  pulse,
+  stats,
+  startedAt,
+}: {
+  pulse: Pulse;
+  /** Three columns; the clock is the fourth and draws itself. */
+  stats: PulseStat[];
+  startedAt: number | null;
+}) {
   const [expanded, setExpanded] = React.useState(false);
   const insets = useSafeAreaInsets();
 
@@ -57,10 +83,26 @@ export function PulsePanel({ pulse, stats }: { pulse: Pulse; stats: PulseStat[] 
         {/* The same block the feed, the recap and the profile use. Units set
             beside the numerals were a third layout for one idea, and at four
             columns "0 piv 0 u stolu 0m — tempo" ran together into one sentence. */}
-        <StatGrid
-          columns={4}
-          stats={stats.map((stat) => ({ value: stat.value, label: stat.unit ?? '' }))}
-        />
+        <View style={styles.row}>
+          <View style={styles.grow}>
+            <StatGrid
+              columns={3}
+              stats={stats.map((stat) => ({ value: stat.value, label: stat.unit ?? '' }))}
+            />
+          </View>
+          <View style={styles.clockCol}>
+            {startedAt === null ? (
+              <Text style={styles.clock} allowFontScaling={false}>
+                0:00
+              </Text>
+            ) : (
+              <Stopwatch startedAt={startedAt} />
+            )}
+            <Text style={styles.clockLabel} maxFontSizeMultiplier={FontScaleCap.body}>
+              večer
+            </Text>
+          </View>
+        </View>
       </Pressable>
 
       <Modal visible={expanded} animationType="fade" onRequestClose={() => setExpanded(false)}>
@@ -110,6 +152,16 @@ export function PulsePanel({ pulse, stats }: { pulse: Pulse; stats: PulseStat[] 
 
 const styles = StyleSheet.create({
   wrap: { gap: Spacing.xs },
+  row: { flexDirection: 'row', alignItems: 'flex-start' },
+  clockCol: { alignItems: 'flex-end' },
+  clock: {
+    fontFamily: Fonts.numeral,
+    fontSize: 22,
+    lineHeight: 27,
+    color: Colors.foam,
+    fontVariant: ['tabular-nums'],
+  },
+  clockLabel: { fontSize: 13, fontWeight: '400', color: Colors.mutedText, marginTop: 2 },
   grow: { flex: 1 },
   pressed: { opacity: 0.75 },
 
