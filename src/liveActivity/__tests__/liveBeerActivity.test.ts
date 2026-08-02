@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
+  initializeLiveBeerActivity,
   reconcileLiveBeerActivityAndAutoArchive,
   reconcilePendingLiveBeerAdds,
 } from '@/liveActivity/liveBeerActivity';
@@ -12,6 +13,12 @@ import {
 import { ensureDrinkQueued, isDrinkQueued } from '@/data/drinksQueue';
 import { syncVisit } from '@/data/visitsSync';
 import { refreshBeerCountReminderAfterBeer } from '@/notifications/beerCountReminder';
+
+const mockAddUserInteractionListener = jest.fn();
+
+jest.mock('expo-widgets', () => ({
+  addUserInteractionListener: mockAddUserInteractionListener,
+}));
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
@@ -209,5 +216,42 @@ describe('reconcilePendingLiveBeerAdds', () => {
 
     expect(useTallyStore.getState().current?.drinks).toHaveLength(2);
     expect(useTallyStore.getState().history).toHaveLength(0);
+  });
+
+  it('reconciles an iOS Live Activity tap while the app process is running', async () => {
+    await seedTally(
+      liveSession([
+        {
+          id: 'recent-beer',
+          beerName: 'Bernard 11°',
+          at: new Date().toISOString(),
+        },
+      ]),
+    );
+    let onInteraction: ((event: { target?: string }) => void) | undefined;
+    mockAddUserInteractionListener.mockImplementation((listener) => {
+      onInteraction = listener;
+      return { remove: jest.fn() };
+    });
+    const event = {
+      id: 'f4296115-ef71-43f0-8d8c-817d19db573c',
+      sessionId: 'session-live',
+      createdAt: Date.now(),
+    };
+    (getPendingAdds as jest.Mock)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([event])
+      .mockResolvedValue([]);
+
+    await initializeLiveBeerActivity();
+    expect(onInteraction).toBeDefined();
+
+    onInteraction?.({ target: 'add-beer' });
+    // Queue another pass so the listener's fire-and-forget reconciliation has
+    // completed before assertions run.
+    await reconcilePendingLiveBeerAdds();
+
+    expect(useTallyStore.getState().current?.drinks.at(-1)?.id).toBe(event.id);
+    expect(refreshBeerCountReminderAfterBeer).toHaveBeenCalledWith('session-live');
   });
 });
