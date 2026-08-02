@@ -36,20 +36,22 @@
  */
 
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
-  BeerIcon,
   ClockIcon,
   HeartIcon,
   ImagesIcon,
+  Share2Icon,
   MapPinIcon,
   TrophyIcon,
 } from '@/components/shared/IconGlyph';
 import { Face } from '@/feed/FeedMockScreen';
 import { Leaderboard } from '@/mocks/Leaderboard';
+import { GlassIconButton } from '@/mocks/GlassIconButton';
 import { SectionBreak } from '@/mocks/SectionBreak';
+import { TempoChart } from '@/mocks/TempoChart';
 import { StatGrid } from '@/mocks/StatGrid';
 import { formatElapsed, hourlyFrom, useLivePartyStore } from '@/mocks/livePartyStore';
 import { MOCK_PARTY, type PartyRecap } from '@/party/mockParty';
@@ -103,33 +105,6 @@ function StopRow({
 
 /** Strava's splits, in beers. Bars only — a line chart would need axes, and an
  *  axis is chrome explaining content that can just be the right height. */
-function Tempo({ party }: { party: PartyRecap }) {
-  const peak = party.hourly.reduce((m, h) => Math.max(m, h.beers), 0);
-
-  return (
-    <View style={styles.tempoRow}>
-      {party.hourly.map((slot) => (
-        <View key={slot.hour} style={styles.tempoCol}>
-          <Text style={styles.tempoValue} allowFontScaling={false}>
-            {slot.beers}
-          </Text>
-          <View style={styles.tempoTrack}>
-            <View
-              style={[
-                styles.tempoBar,
-                { height: `${peak > 0 ? Math.max(8, (slot.beers / peak) * 100) : 8}%` },
-              ]}
-            />
-          </View>
-          <Text style={styles.tempoHour} allowFontScaling={false}>
-            {slot.hour}:00
-          </Text>
-        </View>
-      ))}
-    </View>
-  );
-}
-
 // ── Screen ──────────────────────────────────────────────────────────────────
 
 /**
@@ -188,6 +163,15 @@ export default function PartyRecapScreen() {
 
   return (
     <View style={styles.screen}>
+      {/* Share floats top right, opposite the native back capsule. As a
+          full-width amber bar at the very bottom it was the loudest thing on the
+          screen and sat below everything worth sharing. */}
+      <View style={[styles.shareFloat, { top: insets.top + Spacing.sm }]}>
+        <GlassIconButton size={40} accessibilityLabel="Sdílet večer">
+          <Share2Icon size={18} color={Colors.foam} />
+        </GlassIconButton>
+      </View>
+
       <ScrollView
         contentContainerStyle={[
           styles.content,
@@ -228,6 +212,30 @@ export default function PartyRecapScreen() {
         <Text style={styles.route} numberOfLines={2} maxFontSizeMultiplier={FontScaleCap.body}>
           {route}
         </Text>
+
+        {/* What the post collected, right under the route — it is a summary of
+            the night, so it reads before the detail rather than after it. At the
+            bottom it was a footer nobody scrolled to. */}
+        <View style={styles.summaryRow}>
+          <View style={styles.summaryFact}>
+            <HeartIcon size={15} color={Colors.mutedText} />
+            <Text style={styles.summaryText} allowFontScaling={false}>
+              {party.cheers} cheers
+            </Text>
+          </View>
+          <View style={styles.summaryFact}>
+            <ImagesIcon size={15} color={Colors.mutedText} />
+            <Text style={styles.summaryText} allowFontScaling={false}>
+              {party.photos} fotek
+            </Text>
+          </View>
+          <View style={styles.summaryFact}>
+            <MapPinIcon size={15} color={Colors.mutedText} />
+            <Text style={styles.summaryText} allowFontScaling={false}>
+              {party.stops.length} štace
+            </Text>
+          </View>
+        </View>
 
         {/* The shared block: one column width per stat, so a long duration
             cannot walk into the next number. */}
@@ -286,7 +294,7 @@ export default function PartyRecapScreen() {
 
         <View style={styles.section}>
           <SectionTitle>Piva po hodinách</SectionTitle>
-          <Tempo party={party} />
+          <TempoChart hourly={party.hourly} height={140} />
         </View>
 
         {/* The richest thing a night makes. Only rendered when one was played —
@@ -340,39 +348,6 @@ export default function PartyRecapScreen() {
           ))}
         </View>
 
-        {/* Footer facts, not buttons: what the night collected. */}
-        <View style={styles.footerRow}>
-          <View style={styles.footerFact}>
-            <HeartIcon size={16} color={Colors.mutedText} />
-            <Text style={styles.footerText} allowFontScaling={false}>
-              {party.cheers} cheers
-            </Text>
-          </View>
-          <View style={styles.footerFact}>
-            <ImagesIcon size={16} color={Colors.mutedText} />
-            <Text style={styles.footerText} allowFontScaling={false}>
-              {party.photos} fotek
-            </Text>
-          </View>
-          <View style={styles.footerFact}>
-            <MapPinIcon size={16} color={Colors.mutedText} />
-            <Text style={styles.footerText} allowFontScaling={false}>
-              {party.stops.length} štace
-            </Text>
-          </View>
-        </View>
-
-        <Pressable
-          style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
-          accessibilityRole="button"
-          accessibilityLabel="Sdílet večer"
-        >
-          <BeerIcon size={18} color={Colors.stout} />
-          <Text style={styles.ctaText} maxFontSizeMultiplier={FontScaleCap.heading}>
-            Sdílet večer
-          </Text>
-        </Pressable>
-
         <View style={styles.mockNote}>
           <ClockIcon size={13} color={Colors.mutedText} />
           <Text style={styles.mockText} maxFontSizeMultiplier={FontScaleCap.body}>
@@ -385,6 +360,10 @@ export default function PartyRecapScreen() {
 }
 
 const styles = StyleSheet.create({
+  shareFloat: { position: 'absolute', right: 20, zIndex: 2 },
+  summaryRow: { flexDirection: 'row', gap: Spacing.lg, marginTop: Spacing.md },
+  summaryFact: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  summaryText: { fontSize: 13, fontWeight: '600', color: Colors.mutedText },
   screen: { flex: 1, backgroundColor: Colors.stout },
   content: { paddingHorizontal: 20 },
   grow: { flex: 1 },
@@ -515,17 +494,6 @@ const styles = StyleSheet.create({
   stopBeers: { fontWeight: '500', fontSize: 13, color: Colors.mutedText },
 
   // — Tempo —
-  tempoRow: { flexDirection: 'row', alignItems: 'flex-end', gap: Spacing.sm, height: 132 },
-  tempoCol: { flex: 1, alignItems: 'center', gap: 6 },
-  tempoValue: { fontWeight: '700', fontSize: 12, color: Colors.mutedText },
-  tempoTrack: { flex: 1, width: '100%', justifyContent: 'flex-end' },
-  tempoBar: {
-    width: '100%',
-    borderRadius: 6,
-    backgroundColor: withAlpha(Colors.amber, 0.55),
-    minHeight: 8,
-  },
-  tempoHour: { fontWeight: '500', fontSize: 11, color: Colors.mutedText },
 
   // — Games —
   gameBlock: { marginBottom: Spacing.lg, gap: 4 },
@@ -565,29 +533,7 @@ const styles = StyleSheet.create({
   recordDetail: { fontWeight: '400', fontSize: 13, color: Colors.mutedText, marginTop: 1 },
 
   // — Footer —
-  footerRow: {
-    flexDirection: 'row',
-    gap: Spacing.lg,
-    marginTop: SECTION_GAP,
-    paddingTop: Spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(Colors.foam, 0.14),
-  },
-  footerFact: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  footerText: { fontWeight: '500', fontSize: 13, color: Colors.mutedText },
 
-  cta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.xs,
-    height: 54,
-    borderRadius: Radius.card,
-    backgroundColor: Colors.amber,
-    marginTop: SECTION_GAP,
-  },
-  ctaPressed: { opacity: 0.9, transform: [{ scale: 0.985 }] },
-  ctaText: { fontWeight: '800', fontSize: 17, color: Colors.stout },
 
   mockNote: {
     flexDirection: 'row',

@@ -137,6 +137,26 @@ export const BeerIcon = wrap(Beer, 'BeerIcon');
  */
 const CHEERS_RATIO = 28 / 24;
 
+/**
+ * One mug, as bare paths, so the shape exists exactly once.
+ *
+ * `CheersIcon` composes two of these; `CheersButton` animates two of these. If
+ * the drawing lived in both places they would drift the first time either was
+ * touched.
+ */
+export const CHEERS_MUG_PATHS = [
+  'M -4.5 -7 L 4.5 -7 L 3.7 7.2 A 1.8 1.8 0 0 1 2.1 9 L -2.1 9 A 1.8 1.8 0 0 1 -3.7 7.2 Z',
+  'M -4.3 -3.2 L 4.3 -3.2',
+  'M 4.6 -3.4 L 6.2 -3.4 A 3.2 3.2 0 0 1 6.2 3 L 4.2 3',
+] as const;
+
+/** The three short strokes that read as the impact. */
+export const CHEERS_SPARK_PATHS = [
+  'M 0 -10.5 L 0 -8.4',
+  'M -3.4 -9.2 L -2.1 -7.6',
+  'M 3.4 -9.2 L 2.1 -7.6',
+] as const;
+
 /** One mug, centred on its own origin: body, foam line, handle. */
 const MUG = (
   <>

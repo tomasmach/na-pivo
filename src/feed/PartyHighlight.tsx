@@ -26,8 +26,9 @@
 import React from 'react';
 import { Image, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
-import { BeerIcon, TrophyIcon } from '@/components/shared/IconGlyph';
+import { TrophyIcon } from '@/components/shared/IconGlyph';
 import { NightRoute } from '@/mocks/NightRoute';
+import { TempoChart } from '@/mocks/TempoChart';
 import { MockColors, MockType } from '@/mocks/mockTheme';
 import type { FeedEntry } from '@/feed/mockFeed';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -106,41 +107,6 @@ function Game({
   );
 }
 
-/**
- * Beers per hour. No title and no summary line: the mug beside each tally says
- * what is counted and the hour under each bar says when, which is the whole
- * chart. A heading naming the axes and a caption restating the peak were two
- * sentences explaining four numbers.
- */
-function Tempo({ hourly }: { hourly: { hour: string; beers: number }[] }) {
-  const peak = hourly.reduce((m, h) => Math.max(m, h.beers), 0);
-  return (
-    <View style={styles.bars}>
-      {hourly.map((slot) => (
-        <View key={slot.hour} style={styles.barCol}>
-          <View style={styles.barValueRow}>
-            <BeerIcon size={12} color={withAlpha(Colors.amber, 0.9)} />
-            <Text style={styles.barValue} allowFontScaling={false}>
-              {slot.beers}
-            </Text>
-          </View>
-          <View style={styles.barTrack}>
-            <View
-              style={[
-                styles.bar,
-                { height: `${peak > 0 ? Math.max(8, (slot.beers / peak) * 100) : 8}%` },
-              ]}
-            />
-          </View>
-          <Text style={styles.barHour} allowFontScaling={false}>
-            {slot.hour}:00
-          </Text>
-        </View>
-      ))}
-    </View>
-  );
-}
-
 function Record({ title, detail }: { title: string; detail: string }) {
   return (
     <View style={styles.recordBody}>
@@ -175,7 +141,7 @@ export function PartyHighlight({ entry }: { entry: FeedEntry }) {
   } else if (h.kind === 'tempo') {
     tiles.push(
       <Tile key="tempo" width={wide}>
-        <Tempo hourly={h.hourly} />
+        <TempoChart hourly={h.hourly} />
       </Tile>,
     );
   } else if (h.kind === 'record') {
@@ -295,14 +261,6 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
 
-  // — Tempo —
-  bars: { flex: 1, flexDirection: 'row', alignItems: 'flex-end', gap: Spacing.sm },
-  barCol: { flex: 1, alignItems: 'center', gap: 5 },
-  barValueRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  barTrack: { flex: 1, width: '100%', justifyContent: 'flex-end' },
-  bar: { width: '100%', borderRadius: 6, backgroundColor: withAlpha(Colors.amber, 0.55) },
-  barValue: { fontSize: 13, fontWeight: '700', color: Colors.foam },
-  barHour: { fontSize: 11, fontWeight: '500', color: Colors.mutedText },
 
   // — Record —
   recordBody: { alignItems: 'flex-start', gap: Spacing.sm },

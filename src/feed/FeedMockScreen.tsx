@@ -24,7 +24,8 @@ import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-nati
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter, type Href } from "expo-router";
 
-import { CheersIcon, MessageSquareIcon } from "@/components/shared/IconGlyph";
+import { MessageSquareIcon } from "@/components/shared/IconGlyph";
+import { CheersButton } from "@/feed/CheersButton";
 import { cs } from "@/i18n/cs";
 import { MOCK_FEED, type FeedEntry } from "@/feed/mockFeed";
 import { PartyHighlight } from "@/feed/PartyHighlight";
@@ -200,29 +201,13 @@ export function FeedCard({
       </View>
 
       <View style={styles.cardFoot}>
-        {/* Cheers, not a heart: you clink a glass, you do not like a night.
-            Its own glyph, not the mug — the mug now means one beer everywhere,
-            and reusing it here made "12" read as twelve beers. Still never an
-            emoji, per `CheersPill`. */}
-        <Pressable
-          style={({ pressed }) => [
-            styles.footAction,
-            pressed && styles.pressed,
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel={cs.friends.cheersCount(entry.cheers)}
-        >
-          <CheersIcon
-            size={19}
-            color={entry.cheered ? Colors.amber : Colors.mutedText}
-          />
-          <Text
-            style={[styles.footText, entry.cheered && styles.footTextOn]}
-            allowFontScaling={false}
-          >
-            {entry.cheers}
-          </Text>
-        </Pressable>
+        {/* Cheers, not a heart: you clink a glass, you do not like a night. And
+            the mugs actually clink on tap — §10's one allowed pop. */}
+        <CheersButton
+          count={entry.cheers}
+          cheered={Boolean(entry.cheered)}
+          label={cs.friends.cheersCount(entry.cheers)}
+        />
         <Pressable
           style={({ pressed }) => [
             styles.footAction,
