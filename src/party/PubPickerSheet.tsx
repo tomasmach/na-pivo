@@ -15,13 +15,14 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { CloseButton } from '@/components/shared/CloseButton';
 
-import { CheckIcon, XIcon } from '@/components/shared/IconGlyph';
+import { CheckIcon } from '@/components/shared/IconGlyph';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { MOCK_PUBS } from '@/pubs/mockPubs';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
-import { HitArea, Radius, Spacing } from '@/theme/layout';
+import { Spacing } from '@/theme/layout';
 
 export function PubPickerSheet({
   visible,
@@ -51,15 +52,7 @@ export function PubPickerSheet({
               Hospody kolem tebe. Změnit ji jde i uprostřed večera.
             </Text>
           </View>
-          <Pressable
-            onPress={onClose}
-            style={({ pressed }) => [styles.close, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel="Zavřít"
-            hitSlop={8}
-          >
-            <XIcon size={17} color={Colors.mutedText} />
-          </Pressable>
+          <CloseButton onPress={onClose} />
         </View>
 
         <ScrollView
@@ -141,20 +134,12 @@ const styles = StyleSheet.create({
     color: Colors.mutedText,
     marginTop: 2,
   },
-  close: {
-    width: 32,
-    height: 32,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.stout3,
-  },
 
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    minHeight: HitArea.min + 14,
+    minHeight: 68,
     paddingVertical: Spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(Colors.foam, 0.08),

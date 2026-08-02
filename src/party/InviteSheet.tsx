@@ -20,13 +20,14 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { CloseButton } from '@/components/shared/CloseButton';
 import QRCode from 'react-native-qrcode-svg';
 
-import { CheckIcon, CopyIcon, XIcon } from '@/components/shared/IconGlyph';
+import { CheckIcon, CopyIcon } from '@/components/shared/IconGlyph';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
-import { HitArea, Radius, Spacing } from '@/theme/layout';
+import { Radius, Spacing } from '@/theme/layout';
 
 /** Friends the app already knows about — the mock's stand-in for the friends
  *  list. Real one comes from `friendsClient`. */
@@ -64,15 +65,7 @@ export function InviteSheet({
           >
             Přizvat ke stolu
           </Text>
-          <Pressable
-            onPress={onClose}
-            style={({ pressed }) => [styles.close, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel="Zavřít"
-            hitSlop={8}
-          >
-            <XIcon size={17} color={Colors.mutedText} />
-          </Pressable>
+          <CloseButton onPress={onClose} />
         </View>
 
         <ScrollView
@@ -190,16 +183,8 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.sm,
   },
   title: { ...MockType.titleS, fontSize: 22, color: Colors.foam, flex: 1 },
-  close: {
-    width: 32,
-    height: 32,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.stout3,
-  },
 
-  qrWrap: { alignItems: 'center', gap: 6, paddingVertical: Spacing.md },
+  qrWrap: { alignItems: 'center', gap: 8, paddingVertical: Spacing.xl },
   qr: { padding: Spacing.md, borderRadius: 20, backgroundColor: '#FFFFFF' },
   code: {
     fontSize: 22,
@@ -214,21 +199,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    height: HitArea.min,
+    height: 56,
     paddingHorizontal: Spacing.md,
     borderRadius: Radius.pill,
     backgroundColor: Colors.stout3,
-    marginTop: Spacing.sm,
+    marginTop: Spacing.md,
   },
   link: { flex: 1, fontSize: 14, fontWeight: '600', color: Colors.foam },
 
-  section: { ...MockType.titleS, color: Colors.foam, marginTop: Spacing.xl },
+  section: {
+    ...MockType.titleS,
+    color: Colors.foam,
+    marginTop: MockLayout.sectionGap,
+    marginBottom: Spacing.xs,
+  },
 
   friendRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    minHeight: HitArea.min + 8,
+    minHeight: 60,
   },
   avatar: {
     width: 34,
@@ -240,7 +230,7 @@ const styles = StyleSheet.create({
   avatarText: { fontSize: 14, fontWeight: '700', color: Colors.stout },
   friendName: { flex: 1, fontSize: 16, fontWeight: '600', color: Colors.foam },
   invite: {
-    height: 34,
+    height: 38,
     paddingHorizontal: Spacing.md,
     borderRadius: Radius.pill,
     alignItems: 'center',

@@ -11,17 +11,17 @@
  */
 
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
+import { CloseButton } from '@/components/shared/CloseButton';
 
-import { XIcon } from '@/components/shared/IconGlyph';
 import { BeerList } from '@/party/BeerList';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
+import { Spacing } from '@/theme/layout';
 
 export function BeerSheet({
   visible,
@@ -64,15 +64,7 @@ export function BeerSheet({
               {subtitle}
             </Text>
           </View>
-          <Pressable
-            onPress={onClose}
-            style={({ pressed }) => [styles.close, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel="Zavřít"
-            hitSlop={8}
-          >
-            <XIcon size={17} color={Colors.mutedText} />
-          </Pressable>
+          <CloseButton onPress={onClose} />
         </View>
 
         <BeerList rows={rows} onTaps={onTaps} onAdd={onAdd} onRemove={onRemove} />
@@ -105,13 +97,5 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: Colors.mutedText,
     marginTop: 2,
-  },
-  close: {
-    width: 32,
-    height: 32,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.stout3,
   },
 });

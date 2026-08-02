@@ -284,6 +284,28 @@ se pak čte jako seznam náhodných prvků.
 
 ---
 
+### 4.4 Hustota: co dělá „lacině" (3.0)
+
+Tři věci, které se opakovaně vracely a pokaždé to vypadalo levněji, než produkt
+je. Všechny jsou rozměrové, takže nejsou věc vkusu.
+
+| Prvek | Minimum | Proč |
+|---|---|---|
+| Řádek seznamu | **60 pt**, u dvouřádkového **68** | 44 je minimum pro *dotyk*, ne pro čtení. Seznam natěsnaný na dotykové minimum čte jako tabulka. |
+| Vnitřní okraj sheetu | `MockLayout.screenPad` (20) | Sheet je obrazovka, ne popup. Menší okraj tlačí obsah na sklo. |
+| Nadpis → jeho obsah | `MockLayout.controlGap` (24) | Nadpis nalepený na první řádek se čte jako jeho součást. |
+| Sekce → sekce | `SectionBreak` (§ 4.5) | Mezera sama nestačí, viz níž. |
+
+**Pravidlo:** když se ptáš, jestli je něčeho moc, je ho málo. Tenhle produkt se
+používá v hospodě, jednou rukou, v šeru — vzduch není luxus, je to čitelnost.
+
+A dvě věci, které se pojí s tím samým dojmem:
+
+- **Zavírací křížek** je `CloseButton`, 44 pt, na skle (§7.2c). 32pt ploška je
+  pod dotykovým minimem a na skleněném povrchu čte jako díra.
+- **Ovládací prvky mají být systémové**, kde existují (§18). Ruční nápodoba
+  nativního prvku je nejlevněji vypadající věc, kterou lze na iOS udělat.
+
 ## 5. Karty
 
 ### 5.1 Recept
