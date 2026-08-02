@@ -158,6 +158,7 @@ internal object BeerLiveActivityNotification {
       NOTIFICATION_ID,
       buildNotification(context, updatedState)
     )
+    BeerCountReminderRescheduler.reschedule(context, sessionId)
   }
 
   @Synchronized
