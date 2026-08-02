@@ -28,8 +28,8 @@ import {
   MapPinIcon,
   StarIcon,
   UsersIcon,
-  XIcon,
 } from '@/components/shared/IconGlyph';
+import { CloseButton } from '@/components/shared/CloseButton';
 import { SectionBreak } from '@/mocks/SectionBreak';
 import { StatGrid } from '@/mocks/StatGrid';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
@@ -94,7 +94,12 @@ function PillAction({
   );
 }
 
-const TABS = ['Statistiky', 'Aktivita'] as const;
+/**
+ * "Info", not "Statistiky". The tab holds what the place IS — your history with
+ * it and what is on tap — and calling three counters and a price list
+ * "statistics" promised a chart that was never coming.
+ */
+const TABS = ['Info', 'Aktivita'] as const;
 
 export function PubDetailBody({
   pub,
@@ -105,7 +110,7 @@ export function PubDetailBody({
    *  needs its own way out. On the pushed screen the native back button is it. */
   onClose?: () => void;
 }) {
-  const [tab, setTab] = React.useState<(typeof TABS)[number]>('Statistiky');
+  const [tab, setTab] = React.useState<(typeof TABS)[number]>('Info');
   const visited = pub.lastParty !== null;
 
   return (
@@ -118,17 +123,7 @@ export function PubDetailBody({
           >
             {pub.name}
           </Text>
-          {onClose ? (
-            <Pressable
-              onPress={onClose}
-              style={({ pressed }) => [styles.close, pressed && styles.pressed]}
-              accessibilityRole="button"
-              accessibilityLabel="Zavřít detail"
-              hitSlop={8}
-            >
-              <XIcon size={17} color={Colors.mutedText} />
-            </Pressable>
-          ) : null}
+          {onClose ? <CloseButton onPress={onClose} label="Zavřít detail" /> : null}
         </View>
 
         <View style={styles.metaRow}>
@@ -192,7 +187,7 @@ export function PubDetailBody({
           ))}
         </View>
 
-        {tab === 'Statistiky' && visited ? (
+        {tab === 'Info' && visited ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
               Co se tu dělo
@@ -209,7 +204,7 @@ export function PubDetailBody({
           </View>
         ) : null}
 
-        {tab === 'Statistiky' ? (
+        {tab === 'Info' ? (
           <View style={styles.tapSection}>
             <SectionBreak title="Na čepu" />
             {MOCK_TAPS.map((tap, index) => (
@@ -270,14 +265,6 @@ export function PubDetailBody({
 
 const styles = StyleSheet.create({
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm },
-  close: {
-    width: 32,
-    height: 32,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.stout3,
-  },
   grow: { flex: 1 },
   pressed: { opacity: 0.65 },
   body: { paddingHorizontal: MockLayout.screenPad, paddingTop: Spacing.md },
@@ -330,6 +317,12 @@ const styles = StyleSheet.create({
   tabRuleOn: { backgroundColor: Colors.amber },
 
   section: { marginTop: MockLayout.sectionGap, gap: Spacing.sm },
+  yours: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: Colors.amber,
+    marginTop: Spacing.xs,
+  },
   tapSection: { gap: Spacing.sm },
   sectionTitle: { ...MockType.titleS, color: Colors.foam },
 

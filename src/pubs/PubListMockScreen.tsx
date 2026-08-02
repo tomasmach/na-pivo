@@ -40,7 +40,7 @@ import {
   StarIcon,
 } from '@/components/shared/IconGlyph';
 import { TAB_CHROME } from '@/components/shared/TabBar';
-import { GlassIconButton } from '@/mocks/GlassIconButton';
+import { GlassIconButton } from '@/components/shared/GlassIconButton';
 import { MenuChip } from '@/mocks/MenuChip';
 import { BeerFilterSheet } from '@/pubs/BeerFilterSheet';
 import { CompassCell } from '@/pubs/CompassCell';

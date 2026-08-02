@@ -49,7 +49,7 @@ import {
 } from '@/components/shared/IconGlyph';
 import { Face } from '@/feed/FeedMockScreen';
 import { Leaderboard } from '@/mocks/Leaderboard';
-import { GlassIconButton } from '@/mocks/GlassIconButton';
+import { GlassIconButton } from '@/components/shared/GlassIconButton';
 import { SectionBreak } from '@/mocks/SectionBreak';
 import { TempoChart } from '@/mocks/TempoChart';
 import { StatGrid } from '@/mocks/StatGrid';

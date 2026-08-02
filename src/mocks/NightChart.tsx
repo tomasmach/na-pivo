@@ -53,7 +53,11 @@ export function NightChart({
    *  left, how it is drawn on the right. */
   control?: React.ReactNode;
 }) {
-  const pieAvailable = Platform.OS === 'ios' && Number.parseInt(String(Platform.Version), 10) >= 17;
+  // `Host` is `requireNativeView('ExpoUI', ...)` — the view only exists on iOS,
+  // so on Android rendering it throws rather than degrading. SwiftUI Charts get
+  // a plain RN fallback below.
+  const native = Platform.OS === 'ios';
+  const pieAvailable = native && Number.parseInt(String(Platform.Version), 10) >= 17;
   const effective: ChartShape = pieAvailable ? shape : 'bar';
 
   if (rows.length === 0) {
@@ -63,6 +67,8 @@ export function NightChart({
       </Text>
     );
   }
+
+  const peak = rows.reduce((max, row) => Math.max(max, row.value), 0);
 
   const data = rows.map((row, index) => ({
     x: row.label,
@@ -96,17 +102,44 @@ export function NightChart({
         ) : null}
       </View>
 
-      <Host style={styles.host} colorScheme="dark" seedColor={Colors.amber}>
-        <Chart
-          data={data}
-          type={effective}
-          animate
-          showGrid={effective === 'bar'}
-          showLegend={effective === 'pie'}
-          barStyle={{ cornerRadius: 6 }}
-          pieStyle={{ innerRadius: 0.55, angularInset: 1.5 }}
-        />
-      </Host>
+      {native ? (
+        <Host style={styles.host} colorScheme="dark" seedColor={Colors.amber}>
+          <Chart
+            data={data}
+            type={effective}
+            animate
+            showGrid={effective === 'bar'}
+            showLegend={effective === 'pie'}
+            barStyle={{ cornerRadius: 6 }}
+            pieStyle={{ innerRadius: 0.55, angularInset: 1.5 }}
+          />
+        </Host>
+      ) : (
+        <View style={styles.fallback}>
+          {rows.map((row) => (
+            <View key={row.label} style={styles.fallbackRow}>
+              <Text
+                style={styles.fallbackLabel}
+                numberOfLines={1}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {row.label}
+              </Text>
+              <View style={styles.fallbackTrack}>
+                <View
+                  style={[
+                    styles.fallbackFill,
+                    { width: `${peak > 0 ? Math.max(4, (row.value / peak) * 100) : 4}%` },
+                  ]}
+                />
+              </View>
+              <Text style={styles.fallbackValue} allowFontScaling={false}>
+                {row.value}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -159,4 +192,27 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
   },
   shapeOn: { backgroundColor: Colors.amber },
+
+  // Android: no SwiftUI host, so horizontal bars in plain RN. Deliberately not
+  // a pretend pie — a hand-drawn pie is a lot of arithmetic for a shape that
+  // says less than a bar does.
+  fallback: { gap: Spacing.sm, paddingVertical: Spacing.sm },
+  fallbackRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  fallbackLabel: { width: 92, fontSize: 13, fontWeight: '600', color: Colors.foam },
+  fallbackTrack: {
+    flex: 1,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: withAlpha(Colors.foam, 0.07),
+    overflow: 'hidden',
+  },
+  fallbackFill: { height: '100%', borderRadius: 6, backgroundColor: Colors.amber },
+  fallbackValue: {
+    width: 28,
+    textAlign: 'right',
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.foam,
+    fontVariant: ['tabular-nums'],
+  },
 });

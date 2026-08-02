@@ -690,6 +690,21 @@ Wrapper taky drží Android back gesture, aby zavřel sheet a ne obrazovku za n�
 > (~27 míst) pořád fade a je to **vědomý dluh**, ne opomenutí — projede se to
 > najednou, ne po jednom, aby appka nebyla půl na půl.
 
+### 7.2c Zavírací tlačítko
+
+Použij `src/components/shared/CloseButton.tsx`. Nestav si další.
+
+Každý sheet měl svůj: **32pt ploška z plného `stout3`**. Dvě chyby v jedné.
+32 pt je **pod minimem 44 pt**, což je jediné rozměrové pravidlo, které není věc
+vkusu (§11). A plná ploška na povrchu, který je sám ze skla, čte jako **díra
+vyseknutá do materiálu**, ne jako tlačítko na něm.
+
+Takže je to 44 pt na stejném skle jako všechno ostatní plovoucí (§15.1), s plnou
+plochou jako fallback (§15.2).
+
+> **Migrace.** Ve 3.0 na něm jede detail hospody. Zbytek (~12 míst) pořád vlastní
+> 32pt plošky — vědomý dluh, projede se najednou.
+
 ### 7.3 Řádky uvnitř sheetu
 
 ```ts
