@@ -227,7 +227,9 @@ export default function FinishNightScreen() {
                 style={styles.gameLine}
                 maxFontSizeMultiplier={FontScaleCap.body}
               >
-                {game.name} — vyhrál {game.result?.winner}
+                {game.result?.winner
+                  ? `${game.name} — vyhrál ${game.result.winner}`
+                  : `${game.name} — odehráno`}
               </Text>
             ))}
           </View>

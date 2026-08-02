@@ -311,7 +311,9 @@ export default function PartyRecapScreen() {
             {playedGames.map((game, index) => (
               <View key={`${game.game}-${index}`} style={styles.gameBlock}>
                 <Text style={styles.gameTitle} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {game.game} · vyhrál{game.winner === 'Klára' ? 'a' : ''} {game.winner}
+                  {game.winner
+                    ? `${game.game} · vyhrál${game.winner === 'Klára' ? 'a' : ''} ${game.winner}`
+                    : `${game.game} · odehráno`}
                 </Text>
                 {game.scores.map((row, rank) => (
                   <View key={row.name} style={styles.gameRow}>

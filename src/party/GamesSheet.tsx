@@ -1,20 +1,17 @@
 /**
  * DESIGN MOCK — the games door of the party mode.
  *
- * Games are the cheapest thing in the whole product: no server, no storage, and
- * they are the only reason the rest of the table installs the app. They are
- * also what gives a night something to SAY afterwards — a scoreboard is the
- * richest thing a feed card can lead with, and it only exists if the party mode
- * produces one.
- *
- * A GRID, not a list: picking a game is browsing, and browsing wants shapes you
- * can scan at a glance, not rows of prose you have to read left to right in a
- * loud pub.
+ * A grid of covers, because picking a game is browsing and browsing wants
+ * pictures you scan, not rows of prose you read left to right in a loud pub. The
+ * first pass was a grid of small amber discs, which is a list of icons wearing a
+ * grid's clothes.
  *
  * Tapping a tile does NOT play it. It puts the game on the table — it appears in
- * the hub under Aktivity and is launched from there. That separation is the
- * point: the table agrees to play something, then plays it, and the hub stays
- * the one place the evening is run from.
+ * the hub's Log and is launched from there. The table agrees to play something,
+ * then plays it, and the hub stays the one place the evening is run from.
+ *
+ * The badge on each cover says how it ends: a scoreboard, or sips. That is the
+ * one thing worth knowing before you commit the table to it.
  */
 
 import React from 'react';
@@ -22,30 +19,16 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
-
-import {
-  CheckIcon,
-  SparklesIcon,
-  TrophyIcon,
-  XIcon,
-} from "@/components/shared/IconGlyph";
+import { CloseButton } from '@/components/shared/CloseButton';
+import { CheckIcon } from '@/components/shared/IconGlyph';
+import { GameCover } from '@/party/GameCover';
+import { GAME_CATALOG } from '@/party/gameCatalog';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
+import { Spacing } from '@/theme/layout';
 
-export const GAMES = [
-  { key: 'quiz', name: 'Pub kvíz', blurb: 'Deset otázek, kdo víc.' },
-  { key: 'dice', name: 'Kostky', blurb: 'Klasika. Nejvyšší bere.' },
-  { key: 'never', name: 'Nikdy jsem…', blurb: 'Kdo to udělal, pije.' },
-  {
-    key: 'kings',
-    name: 'King’s Cup',
-    blurb: 'Karty a pravidla, co si vymyslíte.',
-  },
-  { key: 'categories', name: 'Kategorie', blurb: 'Kdo se zasekne, pije.' },
-  { key: 'bottle', name: 'Flaška', blurb: 'Točí se, ukáže, ptá se.' },
-] as const;
+const COVER_H = 96;
 
 export function GamesSheet({
   visible,
@@ -66,25 +49,14 @@ export function GamesSheet({
       <View style={styles.card}>
         <View style={styles.header}>
           <View style={styles.grow}>
-            <Text
-              style={styles.title}
-              maxFontSizeMultiplier={FontScaleCap.heading}
-            >
+            <Text style={styles.title} maxFontSizeMultiplier={FontScaleCap.heading}>
               Hry
             </Text>
             <Text style={styles.sub} maxFontSizeMultiplier={FontScaleCap.body}>
               Vyber hru, objeví se ve večeru a odtud se spouští.
             </Text>
           </View>
-          <Pressable
-            onPress={onClose}
-            style={({ pressed }) => [styles.close, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel="Zavřít"
-            hitSlop={8}
-          >
-            <XIcon size={17} color={Colors.mutedText} />
-          </Pressable>
+          <CloseButton onPress={onClose} />
         </View>
 
         <ScrollView
@@ -94,45 +66,46 @@ export function GamesSheet({
           ]}
           showsVerticalScrollIndicator={false}
         >
-          {GAMES.map((game) => {
+          {GAME_CATALOG.map((game) => {
             const added = onTable.includes(game.key);
             return (
               <Pressable
                 key={game.key}
                 onPress={() => onPick(game.key, game.name)}
-                style={({ pressed }) => [
-                  styles.tile,
-                  added && styles.tileAdded,
-                  pressed && styles.pressed,
-                ]}
+                style={({ pressed }) => [styles.tile, pressed && styles.pressed]}
                 accessibilityRole="button"
                 accessibilityState={{ selected: added }}
-                accessibilityLabel={game.name}
+                accessibilityLabel={`${game.name}. ${game.how}`}
               >
-                <View
-                  style={[styles.medallion, added && styles.medallionAdded]}
-                >
+                <View>
+                  <GameCover game={game} height={COVER_H} />
+                  <View
+                    style={[styles.badge, game.scoring === 'points' && styles.badgePoints]}
+                  >
+                    <Text style={styles.badgeText} allowFontScaling={false}>
+                      {game.scoring === 'points' ? 'Na body' : 'Na pití'}
+                    </Text>
+                  </View>
                   {added ? (
-                    <CheckIcon size={17} color={Colors.stout} />
-                  ) : game.key === "quiz" ? (
-                    <TrophyIcon size={17} color={Colors.amber} />
-                  ) : (
-                    <SparklesIcon size={17} color={Colors.amber} />
-                  )}
+                    <View style={styles.added}>
+                      <CheckIcon size={15} color={Colors.stout} />
+                    </View>
+                  ) : null}
                 </View>
+
                 <Text
-                  style={styles.tileTitle}
+                  style={styles.name}
                   numberOfLines={1}
                   maxFontSizeMultiplier={FontScaleCap.body}
                 >
                   {game.name}
                 </Text>
                 <Text
-                  style={styles.tileBlurb}
+                  style={styles.how}
                   numberOfLines={2}
                   maxFontSizeMultiplier={FontScaleCap.body}
                 >
-                  {game.blurb}
+                  {game.how}
                 </Text>
               </Pressable>
             );
@@ -145,10 +118,10 @@ export function GamesSheet({
 
 const styles = StyleSheet.create({
   grow: { flex: 1 },
-  pressed: { opacity: 0.65 },
+  pressed: { opacity: 0.7 },
 
   card: {
-    maxHeight: '80%',
+    maxHeight: '86%',
     backgroundColor: Colors.stout2,
     borderTopLeftRadius: MockLayout.cardRadius + 6,
     borderTopRightRadius: MockLayout.cardRadius + 6,
@@ -158,57 +131,46 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: Spacing.sm,
     paddingHorizontal: MockLayout.screenPad,
-    paddingBottom: Spacing.md,
+    paddingBottom: Spacing.lg,
   },
-  title: { ...MockType.titleS, fontSize: 22, color: Colors.foam },
-  sub: {
-    fontSize: 13,
-    fontWeight: '400',
-    color: Colors.mutedText,
-    marginTop: 2,
-  },
-  close: {
-    width: 32,
-    height: 32,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.stout3,
-  },
+  title: { ...MockType.titleS, fontSize: 24, color: Colors.foam },
+  sub: { fontSize: 13, fontWeight: '400', color: Colors.mutedText, marginTop: 2 },
 
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: Spacing.sm,
+    gap: Spacing.md,
     paddingHorizontal: MockLayout.screenPad,
   },
-  tile: {
-    width: '48%',
-    minHeight: 124,
-    padding: Spacing.md,
-    gap: 5,
-    borderRadius: 22,
-    backgroundColor: Colors.stout3,
+  tile: { width: '47%', gap: 6 },
+  name: { ...MockType.bodySemibold, fontSize: 17, color: Colors.foam },
+  how: { fontSize: 12, fontWeight: '400', color: Colors.mutedText, lineHeight: 16 },
+
+  /** How it ends, on the cover — the one thing worth knowing before you pick. */
+  badge: {
+    position: 'absolute',
+    left: 8,
+    bottom: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    backgroundColor: withAlpha(Colors.black, 0.5),
   },
-  tileAdded: { backgroundColor: withAlpha(Colors.amber, 0.14) },
-  medallion: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+  badgePoints: { backgroundColor: withAlpha(Colors.amber, 0.85) },
+  badgeText: { fontSize: 10, fontWeight: '800', color: Colors.foam },
+
+  added: {
+    position: 'absolute',
+    right: 8,
+    top: 8,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.14),
-    marginBottom: 2,
-  },
-  medallionAdded: { backgroundColor: Colors.amber },
-  tileTitle: { ...MockType.bodySemibold, color: Colors.foam },
-  tileBlurb: {
-    fontSize: 12,
-    fontWeight: '400',
-    color: Colors.mutedText,
-    lineHeight: 16,
+    backgroundColor: Colors.amber,
   },
 });

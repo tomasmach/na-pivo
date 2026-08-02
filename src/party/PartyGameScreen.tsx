@@ -22,7 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { BeerIcon, ChevronLeftIcon, PlusIcon } from '@/components/shared/IconGlyph';
-import { GAMES } from '@/party/GamesSheet';
+import { findGame } from '@/party/gameCatalog';
 import { useLivePartyStore } from '@/mocks/livePartyStore';
 import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -41,8 +41,10 @@ export default function PartyGameScreen() {
   const finishGame = useLivePartyStore((s) => s.finishGame);
   const games = useLivePartyStore((s) => s.games);
 
-  const game = games.find((entry) => entry.key === key) ?? GAMES.find((g) => g.key === key);
-  const name = game?.name ?? 'Hra';
+  const def = key ? findGame(key) : undefined;
+  const name = def?.name ?? games.find((entry) => entry.key === key)?.name ?? 'Hra';
+  // Points games crown someone; sip games do not. See `gameCatalog`.
+  const onPoints = def?.scoring !== 'drinks';
 
   const players = React.useMemo(
     () => ['Ty', ...people.map((person) => person.name)],
@@ -61,7 +63,11 @@ export default function PartyGameScreen() {
 
   const finish = () => {
     if (played && key) {
-      finishGame(key, { game: name, winner: leader.name, scores: ranked });
+      finishGame(key, {
+        game: name,
+        winner: onPoints ? leader.name : null,
+        scores: ranked,
+      });
     }
     router.back();
   };
@@ -103,8 +109,15 @@ export default function PartyGameScreen() {
         contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + 120 }]}
         showsVerticalScrollIndicator={false}
       >
+        {/* The rules, on the screen. Nobody remembers how King's Cup goes and
+            looking it up mid-round is how a game dies. */}
+        {def ? (
+          <Text style={styles.rules} maxFontSizeMultiplier={FontScaleCap.body}>
+            {def.how}
+          </Text>
+        ) : null}
         <Text style={styles.hint} maxFontSizeMultiplier={FontScaleCap.body}>
-          Hraje se u stolu. Ťukni na toho, kdo bodoval.
+          {onPoints ? 'Ťukni na toho, kdo bodoval.' : 'Ťukni na toho, kdo pije.'}
         </Text>
 
         {ranked.map((row, index) => (
@@ -113,7 +126,7 @@ export default function PartyGameScreen() {
             onPress={() => bump(row.name)}
             style={({ pressed }) => [
               styles.player,
-              index === 0 && played && styles.playerLeader,
+              onPoints && index === 0 && played && styles.playerLeader,
               pressed && styles.pressed,
             ]}
             accessibilityRole="button"
@@ -141,7 +154,11 @@ export default function PartyGameScreen() {
           accessibilityLabel={played ? 'Uložit výsledek' : 'Zavřít hru'}
         >
           <Text style={styles.finishText} maxFontSizeMultiplier={FontScaleCap.heading}>
-            {played ? `Konec — vyhrává ${leader.name}` : 'Zavřít'}
+            {!played
+              ? 'Zavřít'
+              : onPoints
+                ? `Konec — vyhrává ${leader.name}`
+                : 'Konec'}
           </Text>
         </Pressable>
       </View>
@@ -189,6 +206,12 @@ const styles = StyleSheet.create({
   },
 
   body: { paddingHorizontal: MockLayout.screenPad, paddingTop: Spacing.lg, gap: Spacing.sm },
+  rules: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: Colors.foam,
+    lineHeight: 21,
+  },
   hint: {
     fontSize: 14,
     fontWeight: '400',

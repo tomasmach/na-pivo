@@ -368,7 +368,9 @@ export default function LivePartyMockScreen() {
                             </Text>
                             <Text style={styles.gameMeta} maxFontSizeMultiplier={FontScaleCap.body}>
                               {game.result
-                                ? `Vyhrál ${game.result.winner}`
+                                ? game.result.winner
+                                  ? `Vyhrál ${game.result.winner}`
+                                  : 'Odehráno'
                                 : `Na stole od ${clockAt(game.at)} · ťukni a hraj`}
                             </Text>
                           </View>

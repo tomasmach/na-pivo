@@ -31,7 +31,14 @@ import { create } from 'zustand';
 
 export interface GameResult {
   game: string;
-  winner: string;
+  /**
+   * Null for a game scored in sips.
+   *
+   * A drinking game has no winner, and inventing one would mean crowning
+   * whoever drank most — the one scoreboard this product must not keep. What it
+   * leaves behind is the round, not a ranking.
+   */
+  winner: string | null;
   scores: { name: string; score: number }[];
 }
 
@@ -184,7 +191,14 @@ export const useLivePartyStore = create<LivePartyState>((set) => ({
   finishGame: (key, result) =>
     set((s) => ({
       games: s.games.map((game) => (game.key === key ? { ...game, result } : game)),
-      log: logged(s, Date.now(), 'game', `${result.game} — vyhrál ${result.winner}`),
+      log: logged(
+        s,
+        Date.now(),
+        'game',
+        result.winner
+          ? `${result.game} — vyhrál ${result.winner}`
+          : `${result.game} — odehráno`,
+      ),
     })),
 
   invite: (name) =>

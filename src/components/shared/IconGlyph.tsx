@@ -10,6 +10,7 @@ import {
   Armchair,
   Beer,
   BeerOff,
+  HandMetal,
   ChartColumn,
   ChartPie,
   Compass,
@@ -238,6 +239,7 @@ export const CheckIcon = wrap(Check, 'CheckIcon');
 export const BadgeCheckIcon = wrap(BadgeCheck, 'BadgeCheckIcon');
 export const KeyRoundIcon = wrap(KeyRound, 'KeyRoundIcon');
 export const CrownIcon = wrap(Crown, 'CrownIcon');
+export const HandMetalIcon = wrap(HandMetal, 'HandMetalIcon');
 export const CameraIcon = wrap(Camera, 'CameraIcon');
 export const ImagesIcon = wrap(Images, 'ImagesIcon');
 export const SparklesIcon = wrap(Sparkles, 'SparklesIcon');
