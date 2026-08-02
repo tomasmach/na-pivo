@@ -39,6 +39,8 @@ import { MockLayout, MockType } from '@/mocks/mockTheme';
 // Shared with the detail screen, so the card you tap and the screen you land on
 // can never show different numbers.
 import { CHALLENGES } from '@/community/mockChallenges';
+import { EVENTS } from '@/community/mockEvents';
+import { EventCover } from '@/community/EventCover';
 import { TAB_CHROME } from '@/components/shared/TabBar';
 import { UnderlineTabs } from '@/components/shared/UnderlineTabs';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -62,12 +64,6 @@ const ROWS = [
   { rank: 4, handle: '@klárka', score: 19, avatar: `${AVATARS}64` },
   { rank: 5, handle: '@ty', score: 17, avatar: `${AVATARS}12`, me: true },
   { rank: 6, handle: '@mišák', score: 14, avatar: `${AVATARS}26` },
-];
-
-const EVENTS = [
-  { id: 'e1', title: 'Pivní slavnosti Žižkov', when: 'so 2. 8.', where: 'Parukářka' },
-  { id: 'e2', title: 'Tankové pivo u Fleků', when: 'pá 8. 8.', where: 'U Fleků' },
-  { id: 'e3', title: 'Pub kvíz', when: 'čt 14. 8.', where: 'Zlý časy' },
 ];
 
 /** The podium — first place has to look like first place. */
@@ -212,21 +208,37 @@ export default function CommunityMockScreen() {
           ))
         : null}
 
+      {/* Cards with a poster, not rows with a trophy. An event is a thing you
+          might GO to — it has a place, a time and other people — and a row of
+          three facts behind one repeated glyph makes them all look the same. */}
       {section === 'Akce'
-        ? EVENTS.map((event, index) => (
-            <View key={event.id} style={[styles.row, index === 0 && styles.rowFirst]}>
-              <View style={styles.medallion}>
-                <TrophyIcon size={17} color={Colors.amber} />
-              </View>
-              <View style={styles.body}>
-                <Text style={styles.handle} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+        ? EVENTS.map((event) => (
+            <Pressable
+              key={event.id}
+              onPress={() => router.push(`/community/event/${event.id}` as Href)}
+              style={({ pressed }) => [styles.event, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={`${event.title}, ${event.when} ${event.time}, ${event.where}`}
+            >
+              <EventCover event={event} height={112} />
+              <View style={styles.eventBody}>
+                <Text
+                  style={styles.eventTitle}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
                   {event.title}
                 </Text>
-                <Text style={styles.sub} maxFontSizeMultiplier={FontScaleCap.body}>
-                  {event.when} · {event.where}
+                <Text
+                  style={styles.eventMeta}
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
+                  {event.when} {event.time} · {event.where}
                 </Text>
               </View>
-            </View>
+              <ChevronRightIcon size={18} color={Colors.mutedText} />
+            </Pressable>
           ))
         : null}
 
@@ -329,13 +341,27 @@ const styles = StyleSheet.create({
   },
   grow: { flex: 1 },
   challenge: {
-    gap: Spacing.sm,
-    padding: Spacing.md,
+    gap: Spacing.md,
+    padding: Spacing.lg,
     borderRadius: MockLayout.cardRadius,
     backgroundColor: Colors.stout2,
     marginTop: Spacing.sm,
   },
-  challengeHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  challengeHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+
+  event: {
+    borderRadius: MockLayout.cardRadius,
+    backgroundColor: Colors.stout2,
+    overflow: 'hidden',
+    marginTop: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingRight: Spacing.md,
+  },
+  eventBody: { flex: 1, gap: 3, paddingVertical: Spacing.md },
+  eventTitle: { ...MockType.bodySemibold, fontSize: 17, color: Colors.foam },
+  eventMeta: { fontSize: 13, fontWeight: '500', color: Colors.mutedText },
   body: { flex: 1, gap: 5 },
   handle: { ...MockType.bodySemibold, color: Colors.foam },
   handleMe: { color: Colors.amber },

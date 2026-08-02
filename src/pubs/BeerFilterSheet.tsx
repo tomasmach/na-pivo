@@ -18,7 +18,6 @@
 
 import React, { useState } from "react";
 import {
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -27,7 +26,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { CheckIcon, XIcon } from "@/components/shared/IconGlyph";
+import { BottomSheetModal } from "@/components/shared/BottomSheetModal";
+import { CloseButton } from "@/components/shared/CloseButton";
+import { CheckIcon } from "@/components/shared/IconGlyph";
 import { MockLayout, MockType } from "@/mocks/mockTheme";
 import { Colors, withAlpha } from "@/theme/colors";
 import { FontScaleCap } from "@/theme/fonts";
@@ -47,12 +48,7 @@ export function BeerFilterSheet({
   onApply: (next: string[]) => void;
 }) {
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-    >
+    <BottomSheetModal visible={visible} onClose={onClose}>
       {/* The body mounts on open, so its draft seeds from `value` naturally.
           Re-seeding an existing component from an effect would be state set in
           an effect — the same result, one render later, and lint is right to
@@ -65,7 +61,7 @@ export function BeerFilterSheet({
           onApply={onApply}
         />
       ) : null}
-    </Modal>
+    </BottomSheetModal>
   );
 }
 
@@ -92,14 +88,6 @@ function SheetBody({
     );
 
   return (
-    <View style={styles.backdrop}>
-      <Pressable
-        style={StyleSheet.absoluteFill}
-        onPress={onClose}
-        accessibilityRole="button"
-        accessibilityLabel="Zavřít"
-      />
-
       <View style={styles.cardWrap}>
         <View style={styles.card}>
           <View style={styles.header}>
@@ -110,15 +98,7 @@ function SheetBody({
               Pivo
             </Text>
             <View style={styles.grow} />
-            <Pressable
-              onPress={onClose}
-              style={({ pressed }) => [styles.close, pressed && styles.pressed]}
-              accessibilityRole="button"
-              accessibilityLabel="Zavřít"
-              hitSlop={8}
-            >
-              <XIcon size={17} color={Colors.mutedText} />
-            </Pressable>
+            <CloseButton onPress={onClose} />
           </View>
 
           <ScrollView
@@ -194,16 +174,10 @@ function SheetBody({
           </View>
         </View>
       </View>
-    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    justifyContent: "flex-end",
-    backgroundColor: withAlpha(Colors.black, 0.6),
-  },
   grow: { flex: 1 },
   pressed: { opacity: 0.65 },
 
@@ -224,14 +198,6 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.sm,
   },
   title: { ...MockType.titleS, fontSize: 22, color: Colors.foam },
-  close: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: Colors.stout3,
-  },
 
   list: { flexGrow: 0 },
   listContent: { paddingHorizontal: MockLayout.screenPad },

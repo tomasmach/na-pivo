@@ -40,7 +40,7 @@ import {
   StarIcon,
 } from '@/components/shared/IconGlyph';
 import { TAB_CHROME } from '@/components/shared/TabBar';
-import { GlassIconButton } from '@/components/shared/GlassIconButton';
+import { GlassIconButton, GlassPill } from '@/components/shared/GlassIconButton';
 import { MenuChip } from '@/mocks/MenuChip';
 import { BeerFilterSheet } from '@/pubs/BeerFilterSheet';
 import { CompassCell } from '@/pubs/CompassCell';
@@ -340,10 +340,10 @@ export default function PubListMockScreen() {
   // the sheet walks the button down with it instead of stranding it.
   const sheetTop = height * DETENT_TOP[detent];
   // At `peek` the sheet is off screen entirely, so the floating things stack up
-  // from the tab bar instead of chasing a sheet edge that is no longer there.
-  const peekCarouselTop = height - TAB_CHROME - CAROUSEL_H;
-  const carouselTop = peekCarouselTop;
-  const controlsTop = detent === 'peek' ? peekCarouselTop - 60 : sheetTop - 56;
+  // from the tab bar. Anchored by their BOTTOM edge: computed down from the top
+  // they drifted away from the bar on taller screens.
+  const carouselBottom = TAB_CHROME - 18;
+  const controlsBottom = carouselBottom + CAROUSEL_H + Spacing.sm;
 
   return (
     <View style={styles.screen}>
@@ -361,7 +361,7 @@ export default function PubListMockScreen() {
           At the other detents the list is on screen, so this would be the same
           pubs twice. */}
       {detent === 'peek' ? (
-        <View style={[styles.carousel, { top: carouselTop }]}>
+        <View style={[styles.carousel, { bottom: carouselBottom }]}>
           <PubCarousel onSelect={setSelectedPub} />
         </View>
       ) : null}
@@ -373,23 +373,31 @@ export default function PubListMockScreen() {
           where you are on the right. The list used to be a one-line bar at the
           bottom of the sheet whose only content was the words "Seznam hospod" —
           a row of chrome naming itself, over the map it was covering. */}
-      <View style={[styles.places, { top: controlsTop }]}>
-        <GlassIconButton
-          size={44}
-          accessibilityLabel="Seznam hospod"
-          onPress={() => moveSheet('half')}
-        >
+      {detent === 'peek' ? (
+        <View style={[styles.places, { bottom: controlsBottom }]}>
+        {/* Labelled, not a bare glyph. A list icon alone on a map is a guess;
+            the two words cost nothing and the pill still floats. */}
+        <GlassPill accessibilityLabel="Seznam hospod" onPress={() => moveSheet('half')}>
           <SymbolView
             name="list.bullet"
-            size={19}
+            size={17}
             tintColor={Colors.foam}
             resizeMode="scaleAspectFit"
-            fallback={<ChevronRightIcon size={20} color={Colors.foam} />}
+            fallback={<ChevronRightIcon size={18} color={Colors.foam} />}
           />
-        </GlassIconButton>
-      </View>
+          <Text style={styles.placesLabel} allowFontScaling={false}>
+            Seznam hospod
+          </Text>
+        </GlassPill>
+        </View>
+      ) : null}
 
-      <View style={[styles.locate, { top: controlsTop }]}>
+      <View
+        style={[
+          styles.locate,
+          detent === 'peek' ? { bottom: controlsBottom } : { top: sheetTop - 56 },
+        ]}
+      >
         <GlassIconButton
           size={44}
           accessibilityLabel="Vycentrovat na mě"
@@ -554,7 +562,7 @@ const styles = StyleSheet.create({
   // — Search + filters, inside the sheet —
   // Tight around the filter row: the sheet is half a screen and the padding
   // above and below the chips was costing a whole pub row.
-  searchWrap: { paddingHorizontal: MockLayout.screenPad, paddingBottom: Spacing.sm },
+  searchWrap: { paddingHorizontal: MockLayout.screenPad, paddingBottom: Spacing.xs },
   searchField: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -573,6 +581,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: MockLayout.screenPad,
     gap: Spacing.xs,
     alignItems: 'center',
+    paddingBottom: Spacing.xs,
   },
   chip: {
     flexDirection: 'row',
@@ -595,7 +604,7 @@ const styles = StyleSheet.create({
   // in its own bordered card put a rectangle inside a rectangle inside the
   // sheet — three frames deep, and §14.10 kills exactly that. The list reads as
   // a list; nothing needs a container to prove it is a row.
-  list: { marginTop: Spacing.xs },
+  list: {},
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -631,6 +640,7 @@ const styles = StyleSheet.create({
   carousel: { position: 'absolute', left: 0, right: 0 },
   locate: { position: 'absolute', right: MockLayout.screenPad },
   places: { position: 'absolute', left: MockLayout.screenPad },
+  placesLabel: { fontSize: 14, fontWeight: '700', color: Colors.foam },
   mockNote: {
     fontWeight: '400',
     fontSize: 12,

@@ -58,8 +58,16 @@ export function MenuChip({
   onChange: (next: string) => void;
 }) {
   if (Platform.OS === 'ios') {
+    // Fixed height, not bare `matchContents`: the SwiftUI host measured a hair
+    // taller than the RN chips beside it, so the first chip sat a couple of
+    // points off the row.
     return (
-      <Host matchContents colorScheme="dark" seedColor={Colors.amber}>
+      <Host
+        matchContents={{ horizontal: true }}
+        style={{ height: MockLayout.pillHeight + 6 }}
+        colorScheme="dark"
+        seedColor={Colors.amber}
+      >
         <Menu
           // The label is composed in SwiftUI, not left as a bare string: a
           // string renders as text with a leading SF symbol and no chip at all,

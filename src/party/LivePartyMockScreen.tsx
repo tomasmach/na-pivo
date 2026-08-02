@@ -42,7 +42,6 @@ import { BeerSheet } from '@/party/BeerSheet';
 import { PulsePanel } from '@/party/PulsePanel';
 import { GamesSheet } from '@/party/GamesSheet';
 import { InviteSheet } from '@/party/InviteSheet';
-import { PubPickerSheet } from '@/party/PubPickerSheet';
 import { buildPulse, fourthStat } from '@/party/nightPulse';
 import { MenuChip } from '@/mocks/MenuChip';
 import { NightChart, type ChartShape } from '@/mocks/NightChart';
@@ -50,7 +49,6 @@ import { NightRoute } from '@/mocks/NightRoute';
 import {
   beersByType,
   clockAt,
-  formatElapsed,
   hourlyFrom,
   minutesBetween,
   useLivePartyStore,
@@ -63,9 +61,6 @@ import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
 
 const STOPS = [{ name: 'U Fleků', lat: 50.0785, lng: 14.42 }];
-const HOUSE_BEER = 'Flekovský ležák 13°';
-/** The pub before a night exists. Once it starts, the store owns the name. */
-const DEFAULT_PUB = { name: 'U Fleků', beer: HOUSE_BEER, meta: '180 m · otevřeno do 23:00' };
 const TAPS = [
   { name: 'Flekovský ležák 13°', priceCzk: 62 },
   { name: 'Flekovský tmavý 13°', priceCzk: 62 },
@@ -128,6 +123,7 @@ export default function LivePartyMockScreen() {
   const games = useLivePartyStore((s) => s.games);
   const log = useLivePartyStore((s) => s.log);
   const houseBeer = useLivePartyStore((s) => s.houseBeer);
+  const beginPickingPub = useLivePartyStore((s) => s.beginPickingPub);
   const pubName = useLivePartyStore((s) => s.pubName);
   const startParty = useLivePartyStore((s) => s.start);
   const addBeer = useLivePartyStore((s) => s.addBeer);
@@ -142,8 +138,6 @@ export default function LivePartyMockScreen() {
   const [chart, setChart] = React.useState<(typeof CHARTS)[number]>('V čase');
   const [shape, setShape] = React.useState<ChartShape>('bar');
   const [beersOpen, setBeersOpen] = React.useState(false);
-  const [pubOpen, setPubOpen] = React.useState(false);
-  const [draftPub, setDraftPub] = React.useState(DEFAULT_PUB);
 
   const mine = beers.length;
   const table = mine + people.reduce((sum, person) => sum + person.beers, 0);
@@ -236,10 +230,17 @@ export default function LivePartyMockScreen() {
               nothing about either. */}
           <View style={styles.hub}>
             <Pressable
-              onPress={() => setPubOpen(true)}
+              // Straight to Hospody. That screen already has the map, the
+              // filters, the sort and the detail; a second pub list inside the
+              // hub was a worse copy of it that only existed to avoid leaving.
+              onPress={() => {
+                beginPickingPub();
+                router.back();
+                router.navigate('/' as Href);
+              }}
               style={({ pressed }) => [styles.hubPub, pressed && styles.pressed]}
               accessibilityRole="button"
-              accessibilityLabel={`${live ? pubName : draftPub.name}. Změnit hospodu.`}
+              accessibilityLabel={`${pubName}. Změnit hospodu.`}
             >
               {live ? <View style={styles.pubDot} /> : null}
               <Text
@@ -247,7 +248,7 @@ export default function LivePartyMockScreen() {
                 numberOfLines={1}
                 maxFontSizeMultiplier={FontScaleCap.heading}
               >
-                {live ? pubName : draftPub.name}
+                {pubName}
               </Text>
               <ChevronDownIcon size={15} color={Colors.amber} />
             </Pressable>
@@ -491,19 +492,6 @@ export default function LivePartyMockScreen() {
         }}
       />
 
-      <PubPickerSheet
-        visible={pubOpen}
-        current={live ? pubName : draftPub.name}
-        onClose={() => setPubOpen(false)}
-        onPick={(pub) => {
-          setDraftPub({ ...pub, meta: 'vybráno ručně' });
-          setPubOpen(false);
-        }}
-      />
-
-      {/* Before the night the sheet is a PICKER: the first beer decides what the
-          evening's default tap is, so it is worth one tap of choosing. During the
-          night it is the running order and "+1" pours without asking. */}
       <BeerSheet
         visible={beersOpen}
         rows={byType}
@@ -520,7 +508,7 @@ export default function LivePartyMockScreen() {
             addBeer(beer);
             return;
           }
-          startParty(draftPub.name, beer);
+          startParty(pubName, beer);
           setBeersOpen(false);
         }}
         onRemove={removeBeer}

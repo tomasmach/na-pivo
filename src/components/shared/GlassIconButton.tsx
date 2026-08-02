@@ -91,3 +91,61 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.7 },
 });
+
+/**
+ * The same glass, as a labelled pill.
+ *
+ * A bare glyph floating on a map is a guess — "list" could mean anything. Two
+ * words cost a few points of width and remove the guess, and the control still
+ * floats.
+ */
+export function GlassPill({
+  children,
+  onPress,
+  accessibilityLabel,
+}: {
+  children: React.ReactNode;
+  onPress?: () => void;
+  accessibilityLabel: string;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [pillStyles.pill, !GLASS && pressed && pillStyles.pressed]}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      hitSlop={8}
+    >
+      {GLASS ? (
+        <GlassView
+          style={[StyleSheet.absoluteFill, pillStyles.round]}
+          glassEffectStyle="regular"
+          isInteractive
+          colorScheme="dark"
+        />
+      ) : (
+        <View
+          style={[StyleSheet.absoluteFill, pillStyles.round, pillStyles.solid]}
+          pointerEvents="none"
+        />
+      )}
+      <View style={pillStyles.content} pointerEvents="none">
+        {children}
+      </View>
+    </Pressable>
+  );
+}
+
+const RADIUS = 22;
+
+const pillStyles = StyleSheet.create({
+  pill: { height: 44, paddingHorizontal: 16, justifyContent: 'center' },
+  round: { borderRadius: RADIUS },
+  content: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  solid: {
+    backgroundColor: withAlpha(Colors.stout3, 0.9),
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: withAlpha(Colors.foam, 0.16),
+  },
+  pressed: { opacity: 0.7 },
+});

@@ -51,6 +51,17 @@ export default function CommunityLayout() {
         }}
       />
       <Stack.Screen
+        name="event/[id]"
+        options={{
+          headerTransparent: true,
+          headerTitle: '',
+          headerBackButtonDisplayMode: 'minimal',
+          headerTintColor: Colors.foam,
+          headerBlurEffect: 'none',
+          animation: 'ios_from_right',
+        }}
+      />
+      <Stack.Screen
         name="challenge/[id]"
         options={{
           headerTransparent: true,

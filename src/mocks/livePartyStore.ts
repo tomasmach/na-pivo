@@ -84,6 +84,14 @@ export interface LogEvent {
 interface LivePartyState {
   live: boolean;
   pubName: string;
+  /**
+   * The hub sent you to Hospody to choose a place.
+   *
+   * A flag rather than a route param because the trip is a round trip through a
+   * tab: hub → Hospody → a pub detail → back to the hub. The detail only knows
+   * to offer "Vybrat" because this is set.
+   */
+  pickingPub: boolean;
   /** What "+1 pivo" pours without asking — the pub's own tap. */
   houseBeer: string;
   /** Epoch ms of the first beer — the stopwatch's zero. Null until it starts. */
@@ -95,6 +103,10 @@ interface LivePartyState {
   log: LogEvent[];
 
   start: (pubName: string, beer: string) => void;
+  /** Set where you are — before a night, or when you move mid-evening. */
+  setPub: (pubName: string, beer: string) => void;
+  beginPickingPub: () => void;
+  endPickingPub: () => void;
   addBeer: (beer: string) => void;
   /** Takes the LAST beer of that type back off. Mis-taps happen in pubs. */
   removeBeer: (beer: string) => void;
@@ -117,10 +129,14 @@ const TABLE: PartyPersonLive[] = [
   { id: 'u3', name: 'Petr', tint: '#F0BE5C', beers: 0 },
 ];
 
+/** Where the app assumes you are before you say otherwise. Mock. */
+const DEFAULT_PUB = { name: 'U Fleků', beer: 'Flekovský ležák 13°' };
+
 const EMPTY = {
   live: false,
-  pubName: '',
-  houseBeer: '',
+  pubName: DEFAULT_PUB.name,
+  houseBeer: DEFAULT_PUB.beer,
+  pickingPub: false,
   startedAt: null as number | null,
   beers: [] as BeerEntry[],
   people: [] as PartyPersonLive[],
@@ -153,6 +169,20 @@ export const useLivePartyStore = create<LivePartyState>((set) => ({
       ],
     });
   },
+
+  setPub: (pubName, beer) =>
+    set((s) =>
+      s.live
+        ? {
+            pubName,
+            houseBeer: beer,
+            log: logged(s, Date.now(), 'pub', `Přesun do ${pubName}`),
+          }
+        : { pubName, houseBeer: beer },
+    ),
+
+  beginPickingPub: () => set({ pickingPub: true }),
+  endPickingPub: () => set({ pickingPub: false }),
 
   addBeer: (beer) =>
     set((s) => {

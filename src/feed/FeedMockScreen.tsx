@@ -168,16 +168,6 @@ export function FeedCard({
       >
         {roast ? roast.line : entry.title}
       </Text>
-      {roast ? (
-        <Text
-          style={styles.roastBasis}
-          numberOfLines={1}
-          maxFontSizeMultiplier={FontScaleCap.body}
-        >
-          {roast.basis}
-        </Text>
-      ) : null}
-
       {/* The stat block: a heavy value with a muted label under it, no dividers —
           the grid spacing separates them. Order is set once in `StatGrid`. */}
       <View style={styles.statsRow}>
@@ -381,12 +371,6 @@ const styles = StyleSheet.create({
     color: Colors.foam,
     marginTop: Spacing.md,
     letterSpacing: -0.3,
-  },
-  roastBasis: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: Colors.mutedText,
-    marginTop: 3,
   },
   route: {
     fontWeight: "500",

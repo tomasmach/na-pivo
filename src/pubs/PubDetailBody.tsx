@@ -117,9 +117,33 @@ export function PubDetailBody({
   const [tab, setTab] = React.useState<(typeof TABS)[number]>('Info');
   const router = useRouter();
   const startParty = useLivePartyStore((s) => s.start);
+  const setPub = useLivePartyStore((s) => s.setPub);
+  const picking = useLivePartyStore((s) => s.pickingPub);
+  const endPicking = useLivePartyStore((s) => s.endPickingPub);
+  const live = useLivePartyStore((s) => s.live);
+
+  /**
+   * Two jobs, one button — Packeta's "vybrat pobočku".
+   *
+   * Arriving from the hub you are CHOOSING, so the button confirms and hands you
+   * back. Arriving from Hospody you are browsing, so it starts a night here.
+   * Same place, different errand; the label says which.
+   */
+  const primaryLabel = picking ? 'Vybrat tuhle hospodu' : 'Začít tu večer';
 
   const startHere = () => {
-    startParty(pub.name, pub.beer);
+    if (picking) {
+      setPub(pub.name, pub.beer);
+      endPicking();
+      onClose?.();
+      router.push('/party-live' as Href);
+      return;
+    }
+    if (live) {
+      setPub(pub.name, pub.beer);
+    } else {
+      startParty(pub.name, pub.beer);
+    }
     router.push('/party-live' as Href);
   };
   const visited = pub.lastParty !== null;
@@ -172,7 +196,7 @@ export function PubDetailBody({
           {/* This is the loop: you found the place in Hospody, so starting the
               night belongs here rather than behind a second pub list inside the
               hub. */}
-          <PillAction label="Začít tu večer" primary onPress={startHere}>
+          <PillAction label={primaryLabel} primary onPress={startHere}>
             <BeerIcon size={18} color={Colors.stout} />
           </PillAction>
         </View>
