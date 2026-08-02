@@ -281,9 +281,16 @@ export default function PubListMockScreen() {
   const router = useRouter();
   const { height } = useWindowDimensions();
   const [detent, setDetent] = React.useState<Detent>('half');
-  const [collapseSignal, setCollapseSignal] = React.useState(0);
+  // One move signal with its destination, bumped by whoever wants the sheet
+  // somewhere. See `PlacesSheet` for why it is not three booleans.
+  const [moveTo, setMoveTo] = React.useState<{ nonce: number; to: Detent }>({
+    nonce: 0,
+    to: 'half',
+  });
+  const moveSheet = React.useCallback((to: Detent) => {
+    setMoveTo((current) => ({ nonce: current.nonce + 1, to }));
+  }, []);
   const [listAtTop, setListAtTop] = React.useState(true);
-  const [expandSignal, setExpandSignal] = React.useState(0);
   const [selectedPub, setSelectedPub] = React.useState<string | null>(MOCK_PUBS[0]?.id ?? null);
   const [sort, setSort] = React.useState<Sort>('Nejbližší');
   const [recenterSignal, setRecenterSignal] = React.useState(0);
@@ -313,10 +320,16 @@ export default function PubListMockScreen() {
   // watching the id: at `peek` the detail would land in a one-line slot, and an
   // effect that setStates on every id change is the cascading-render trap
   // (`react-hooks/set-state-in-effect`).
-  const openPubDetail = React.useCallback((id: string) => {
-    setOpenPubId(id);
-    setExpandSignal((n) => n + 1);
-  }, []);
+  const openPubDetail = React.useCallback(
+    (id: string) => {
+      setOpenPubId(id);
+      // `full`, not `half`: the detail is a screen's worth — map, actions, two
+      // tabs, the tap list — and reading it through a half-height slot means
+      // dragging before you can read anything.
+      moveSheet('full');
+    },
+    [moveSheet],
+  );
 
   const pickSort = React.useCallback((next: Sort) => {
     setSort(next);
@@ -339,7 +352,7 @@ export default function PubListMockScreen() {
         <PubsMap
           recenterSignal={recenterSignal}
           onPressPub={openPubDetail}
-          onPan={() => setCollapseSignal((n) => n + 1)}
+          onPan={() => moveSheet('peek')}
           selectedId={selectedPub}
         />
       </View>
@@ -364,7 +377,7 @@ export default function PubListMockScreen() {
         <GlassIconButton
           size={44}
           accessibilityLabel="Seznam hospod"
-          onPress={() => setExpandSignal((n) => n + 1)}
+          onPress={() => moveSheet('half')}
         >
           <SymbolView
             name="list.bullet"
@@ -395,8 +408,7 @@ export default function PubListMockScreen() {
       <PlacesSheet
         initial="half"
         onDetentChange={setDetent}
-        collapseSignal={collapseSignal}
-        expandSignal={expandSignal}
+        moveTo={moveTo}
         listAtTop={listAtTop}
       >
         {openPub ? (

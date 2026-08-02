@@ -73,8 +73,7 @@ export function PlacesSheet({
   children,
   initial = 'half',
   onDetentChange,
-  collapseSignal = 0,
-  expandSignal = 0,
+  moveTo,
   listAtTop = true,
 }: {
   children: React.ReactNode;
@@ -84,11 +83,15 @@ export function PlacesSheet({
    *  drag has nothing left to scroll, so it should pull the sheet down instead
    *  of doing nothing. */
   listAtTop?: boolean;
-  /** Bump to collapse to `peek` — Apple Maps behaviour: touching the map gets
-   *  the sheet out of the way so you can see what you are touching. */
-  collapseSignal?: number;
-  /** Bump to open to `half` — the floating list button brings it back. */
-  expandSignal?: number;
+  /**
+   * Programmatic move. Bump `nonce` to fire; `to` says where.
+   *
+   * One signal carrying its destination, rather than a boolean per detent. It
+   * started as `collapseSignal` + `expandSignal` and the third case — open a
+   * detail, which wants `full` — would have been a third prop and a third
+   * branch in the effect below.
+   */
+  moveTo?: { nonce: number; to: Detent };
 }) {
   const { height } = useWindowDimensions();
   // Precomputed pixel tops. The gesture callbacks are worklets on the UI
@@ -181,21 +184,13 @@ export function PlacesSheet({
   // ONE effect owns every programmatic move. Two effects each writing the same
   // shared value is what `react-hooks/immutability` objects to, and it is right:
   // whichever ran last would win a race nobody declared.
-  const seenCollapse = useRef(collapseSignal);
-  const seenExpand = useRef(expandSignal);
+  const seenNonce = useRef(moveTo?.nonce ?? 0);
   useEffect(() => {
-    if (collapseSignal !== seenCollapse.current) {
-      seenCollapse.current = collapseSignal;
-      translateY.value = withSpring(tops.peek, SPRING);
-      settle('peek');
-      return;
-    }
-    if (expandSignal !== seenExpand.current) {
-      seenExpand.current = expandSignal;
-      translateY.value = withSpring(tops.half, SPRING);
-      settle('half');
-    }
-  }, [collapseSignal, expandSignal, settle, tops, translateY]);
+    if (!moveTo || moveTo.nonce === seenNonce.current) return;
+    seenNonce.current = moveTo.nonce;
+    translateY.value = withSpring(tops[moveTo.to], SPRING);
+    settle(moveTo.to);
+  }, [moveTo, settle, tops, translateY]);
 
   const sheetStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
