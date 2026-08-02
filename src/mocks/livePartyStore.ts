@@ -225,7 +225,20 @@ export function beersByType(beers: BeerEntry[]): { beer: string; count: number }
  * no time axis at all — an hour where nobody drank is a fact about the evening,
  * and skipping it silently squashes the gaps out of the tempo.
  */
-export function hourlyFrom(beers: BeerEntry[], now = 0): { hour: string; beers: number }[] {
+export function hourlyFrom(
+  beers: BeerEntry[],
+  now = 0,
+  /**
+   * Hours the axis always shows, counted from the first beer.
+   *
+   * Without it the chart is one bar wide at 20:05 and grows a column every
+   * hour, so the whole thing rescales under you all evening. An evening is
+   * expected to run a few hours — drawing that span from the start means the
+   * bars mean the same thing at 20:05 as at 23:00, and the empty columns read
+   * as "not yet" rather than as a prediction that you will fill them.
+   */
+  minSpan = 5,
+): { hour: string; beers: number }[] {
   if (beers.length === 0) return [];
 
   const counts = new Map<number, number>();
@@ -235,7 +248,8 @@ export function hourlyFrom(beers: BeerEntry[], now = 0): { hour: string; beers: 
   }
 
   const first = Math.floor(beers[0].at / 60);
-  const last = Math.max(Math.floor(Math.max(now, beers[beers.length - 1].at) / 60), first);
+  const reached = Math.floor(Math.max(now, beers[beers.length - 1].at) / 60);
+  const last = Math.max(reached, first + minSpan - 1);
 
   const out: { hour: string; beers: number }[] = [];
   for (let hour = first; hour <= last; hour += 1) {

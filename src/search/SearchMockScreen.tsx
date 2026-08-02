@@ -35,6 +35,7 @@ import { PeopleSuggestions } from '@/community/PeopleSuggestions';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { SectionBreak } from '@/mocks/SectionBreak';
 import { MOCK_PUBS } from '@/pubs/mockPubs';
+import { UnderlineTabs } from '@/components/shared/UnderlineTabs';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -116,26 +117,12 @@ export default function SearchMockScreen() {
       {/* The tabs only appear once there is something to sort into them. Before
           that they are three empty promises across the top of a blank screen. */}
       {searching ? (
-        <View style={styles.tabs}>
-          {TABS.map((option) => (
-            <Pressable
-              key={option}
-              onPress={() => setTab(option)}
-              style={styles.tab}
-              accessibilityRole="button"
-              accessibilityState={{ selected: option === tab }}
-              accessibilityLabel={option}
-            >
-              <Text
-                style={[styles.tabText, option === tab && styles.tabTextOn]}
-                maxFontSizeMultiplier={FontScaleCap.body}
-              >
-                {option}
-              </Text>
-              <View style={[styles.tabRule, option === tab && styles.tabRuleOn]} />
-            </Pressable>
-          ))}
-        </View>
+        <UnderlineTabs
+                options={TABS}
+                value={tab}
+                onChange={setTab}
+                inset={MockLayout.screenPad}
+              />
       ) : null}
 
       <ScrollView
@@ -295,12 +282,6 @@ const styles = StyleSheet.create({
   input: { flex: 1, fontSize: 16, fontWeight: '500', color: Colors.foam },
   cancel: { fontSize: 16, fontWeight: '600', color: Colors.amber },
 
-  tabs: { flexDirection: 'row', paddingHorizontal: MockLayout.screenPad },
-  tab: { flex: 1, alignItems: 'center', gap: 6 },
-  tabText: { fontSize: 15, fontWeight: '600', color: Colors.mutedText },
-  tabTextOn: { color: Colors.foam, fontWeight: '700' },
-  tabRule: { height: 2, alignSelf: 'stretch', backgroundColor: 'transparent', borderRadius: 1 },
-  tabRuleOn: { backgroundColor: Colors.amber },
 
   body: { paddingHorizontal: MockLayout.screenPad, paddingTop: Spacing.md },
   section: { ...MockType.titleS, color: Colors.foam, marginBottom: Spacing.xs },

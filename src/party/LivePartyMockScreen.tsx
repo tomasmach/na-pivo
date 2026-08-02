@@ -55,6 +55,7 @@ import {
   useLivePartyStore,
 } from '@/mocks/livePartyStore';
 import { MockColors, MockType } from '@/mocks/mockTheme';
+import { UnderlineTabs } from '@/components/shared/UnderlineTabs';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -295,26 +296,12 @@ export default function LivePartyMockScreen() {
 
           {live ? (
             <>
-              <View style={styles.tabs}>
-                {SECTIONS.map((option) => (
-                  <Pressable
-                    key={option}
-                    onPress={() => setSection(option)}
-                    style={styles.tab}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: option === section }}
-                    accessibilityLabel={option}
-                  >
-                    <Text
-                      style={[styles.tabText, option === section && styles.tabTextOn]}
-                      maxFontSizeMultiplier={FontScaleCap.body}
-                    >
-                      {option}
-                    </Text>
-                    <View style={[styles.tabRule, option === section && styles.tabRuleOn]} />
-                  </Pressable>
-                ))}
-              </View>
+              <UnderlineTabs
+                options={SECTIONS}
+                value={section}
+                onChange={setSection}
+                inset={Spacing.md}
+              />
 
               {section === 'Statistiky' ? (
                 <View style={styles.sectionBody}>
@@ -451,7 +438,7 @@ export default function LivePartyMockScreen() {
 
           <View style={styles.circleWrap}>
             <Pressable
-              onPress={() => (live ? addBeer(houseBeer) : startParty(draftPub.name, draftPub.beer))}
+              onPress={() => (live ? addBeer(houseBeer) : setBeersOpen(true))}
               style={({ pressed }) => [styles.circlePrimary, pressed && styles.primaryPressed]}
               accessibilityRole="button"
               accessibilityLabel={live ? 'Přidat pivo' : 'Začít večer prvním pivem'}
@@ -512,12 +499,28 @@ export default function LivePartyMockScreen() {
         }}
       />
 
+      {/* Before the night the sheet is a PICKER: the first beer decides what the
+          evening's default tap is, so it is worth one tap of choosing. During the
+          night it is the running order and "+1" pours without asking. */}
       <BeerSheet
         visible={beersOpen}
         rows={byType}
         onTaps={TAPS}
+        title={live ? 'Co piješ' : 'Čím začínáš?'}
+        subtitle={
+          live
+            ? 'Uprav počty nebo si dej něco jiného.'
+            : 'První pivo nastaví, co bude nalévat „+1 pivo“.'
+        }
         onClose={() => setBeersOpen(false)}
-        onAdd={addBeer}
+        onAdd={(beer) => {
+          if (live) {
+            addBeer(beer);
+            return;
+          }
+          startParty(draftPub.name, beer);
+          setBeersOpen(false);
+        }}
         onRemove={removeBeer}
       />
 
@@ -649,12 +652,6 @@ const styles = StyleSheet.create({
   outputText: { flex: 1, fontSize: 14, fontWeight: '600', color: Colors.foam },
 
   // — Sections —
-  tabs: { flexDirection: 'row', marginTop: Spacing.lg },
-  tab: { flex: 1, alignItems: 'center', gap: 6 },
-  tabText: { fontSize: 15, fontWeight: '600', color: Colors.mutedText },
-  tabTextOn: { color: Colors.foam, fontWeight: '700' },
-  tabRule: { height: 2, alignSelf: 'stretch', backgroundColor: 'transparent', borderRadius: 1 },
-  tabRuleOn: { backgroundColor: Colors.amber },
   sectionBody: { marginTop: Spacing.lg, gap: Spacing.md },
   empty: { fontSize: 14, fontWeight: '400', color: Colors.mutedText, lineHeight: 20 },
 

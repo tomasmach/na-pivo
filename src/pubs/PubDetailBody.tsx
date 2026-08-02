@@ -34,6 +34,7 @@ import { SectionBreak } from '@/mocks/SectionBreak';
 import { StatGrid } from '@/mocks/StatGrid';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import type { MockPub } from '@/pubs/mockPubs';
+import { UnderlineTabs } from '@/components/shared/UnderlineTabs';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -166,26 +167,12 @@ export function PubDetailBody({
         {/* Two tabs, the same split the profile uses: where this pub stands,
             and what has happened in it. Stacked, the history pushed the tap
             list off the bottom of a screen nobody scrolled that far. */}
-        <View style={styles.tabs}>
-          {TABS.map((option) => (
-            <Pressable
-              key={option}
-              onPress={() => setTab(option)}
-              style={styles.tab}
-              accessibilityRole="button"
-              accessibilityState={{ selected: option === tab }}
-              accessibilityLabel={option}
-            >
-              <Text
-                style={[styles.tabText, option === tab && styles.tabTextOn]}
-                maxFontSizeMultiplier={FontScaleCap.body}
-              >
-                {option}
-              </Text>
-              <View style={[styles.tabRule, option === tab && styles.tabRuleOn]} />
-            </Pressable>
-          ))}
-        </View>
+        <UnderlineTabs
+                options={TABS}
+                value={tab}
+                onChange={setTab}
+                inset={MockLayout.screenPad}
+              />
 
         {tab === 'Info' && visited ? (
           <View style={styles.section}>
@@ -309,12 +296,6 @@ const styles = StyleSheet.create({
   actionLabel: { fontSize: 15, fontWeight: '700', color: Colors.foam },
   actionLabelPrimary: { color: Colors.stout },
 
-  tabs: { flexDirection: 'row', marginTop: MockLayout.sectionGap },
-  tab: { flex: 1, alignItems: 'center', gap: 6 },
-  tabText: { fontSize: 16, fontWeight: '600', color: Colors.mutedText },
-  tabTextOn: { color: Colors.foam, fontWeight: '700' },
-  tabRule: { height: 2, alignSelf: 'stretch', backgroundColor: 'transparent', borderRadius: 1 },
-  tabRuleOn: { backgroundColor: Colors.amber },
 
   section: { marginTop: MockLayout.sectionGap, gap: Spacing.sm },
   yours: {

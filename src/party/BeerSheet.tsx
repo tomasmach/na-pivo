@@ -27,10 +27,14 @@ export function BeerSheet({
   visible,
   rows,
   onTaps,
+  title = 'Co piješ',
+  subtitle = 'Uprav počty nebo si dej něco jiného.',
   onClose,
   onAdd,
   onRemove,
 }: {
+  title?: string;
+  subtitle?: string;
   visible: boolean;
   rows: { beer: string; count: number }[];
   onTaps: { name: string; priceCzk: number | null }[];
@@ -54,10 +58,10 @@ export function BeerSheet({
               style={styles.title}
               maxFontSizeMultiplier={FontScaleCap.heading}
             >
-              Co piješ
+              {title}
             </Text>
             <Text style={styles.sub} maxFontSizeMultiplier={FontScaleCap.body}>
-              Uprav počty nebo si dej něco jiného.
+              {subtitle}
             </Text>
           </View>
           <Pressable

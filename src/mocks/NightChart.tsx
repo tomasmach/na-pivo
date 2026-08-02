@@ -70,12 +70,14 @@ export function NightChart({
 
   const peak = rows.reduce((max, row) => Math.max(max, row.value), 0);
 
+  // Every point carries its colour. `seedColor` on the Host tints CONTROLS, not
+  // chart marks — without this the bars come out system blue, which is what they
+  // did. Bars are one series so they share the amber; a pie has no axis, so
+  // there the colour IS the category and each slice differs.
   const data = rows.map((row, index) => ({
     x: row.label,
     y: row.value,
-    // Bars stay one colour — they are one series measured over an axis. A pie
-    // has no axis, so the colour IS the category.
-    ...(effective === 'pie' ? { color: SLICES[index % SLICES.length] } : {}),
+    color: effective === 'pie' ? SLICES[index % SLICES.length] : Colors.amber,
   }));
 
   return (

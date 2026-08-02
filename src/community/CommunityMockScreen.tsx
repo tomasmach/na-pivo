@@ -40,6 +40,7 @@ import { MockLayout, MockType } from '@/mocks/mockTheme';
 // can never show different numbers.
 import { CHALLENGES } from '@/community/mockChallenges';
 import { TAB_CHROME } from '@/components/shared/TabBar';
+import { UnderlineTabs } from '@/components/shared/UnderlineTabs';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
@@ -122,26 +123,12 @@ export default function CommunityMockScreen() {
       contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + TAB_CHROME }]}
       contentInsetAdjustmentBehavior="automatic"
     >
-      <View style={styles.tabs}>
-        {SECTIONS.map((option) => (
-          <Pressable
-            key={option}
-            onPress={() => setSection(option)}
-            style={styles.tab}
-            accessibilityRole="button"
-            accessibilityState={{ selected: option === section }}
-            accessibilityLabel={option}
-          >
-            <Text
-              style={[styles.tabText, option === section && styles.tabTextOn]}
-              maxFontSizeMultiplier={FontScaleCap.body}
-            >
-              {option}
-            </Text>
-            <View style={[styles.tabRule, option === section && styles.tabRuleOn]} />
-          </Pressable>
-        ))}
-      </View>
+      <UnderlineTabs
+                options={SECTIONS}
+                value={section}
+                onChange={setSection}
+                inset={MockLayout.screenPad}
+              />
 
       {section === 'Žebříčky' ? (
         <>
@@ -260,12 +247,6 @@ const styles = StyleSheet.create({
   // links that happens to start on the left.
   // The native large title needs air under it; butted straight against the
   // tabs it read as one stacked heading rather than a title and a control.
-  tabs: { flexDirection: 'row', marginTop: Spacing.md },
-  tab: { flex: 1, alignItems: 'center', gap: 6 },
-  tabText: { fontSize: 17, fontWeight: '600', color: Colors.mutedText },
-  tabTextOn: { color: Colors.foam, fontWeight: '700' },
-  tabRule: { height: 2, alignSelf: 'stretch', backgroundColor: 'transparent', borderRadius: 1 },
-  tabRuleOn: { backgroundColor: Colors.amber },
 
   chips: { flexDirection: 'row', gap: Spacing.xs, marginTop: Spacing.lg, marginBottom: Spacing.xs },
   chip: {
