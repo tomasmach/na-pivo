@@ -59,7 +59,6 @@ import {
   MapPinIcon,
   GlobeIcon,
   TriangleAlertIcon,
-  MenuIcon,
   CheckIcon,
   PlusIcon,
   FlagIcon,
@@ -88,7 +87,6 @@ import { geohash8 } from '@/data/geohash';
 import { renameLocalPub, clearPubsSnapshot, type Pub } from '@/data/pubs';
 import { buildPubNameCorrectionEntry } from '@/data/pubNameCorrectionsClient';
 import { enqueuePubNameCorrection } from '@/data/pubNameCorrectionsQueue';
-import type { PubReportReason } from '@/data/pubReportsClient';
 import {
   usePubAmenitiesStore,
   selectPubVotes,
@@ -141,7 +139,7 @@ interface MapPubSheetProps {
    *  (the sheet's optimistic override dies with the sheet). */
   onRenamed?: (newName: string) => void;
   /** When set, the sheet also offers the shared pub-report flow. */
-  onReport?: (reason: PubReportReason) => void;
+  onReport?: () => void;
   /**
    * What the pub IS, for the header: today's hours and the beer on tap, already
    * formatted by the host (it owns the live open/closed lookup). Optional — a
@@ -763,13 +761,13 @@ export function MapPubSheet({
               ))}
 
               {(info || onReport) && (
-                <MoreActions
+                <PubDetailActions
                   showRename={Boolean(info)}
                   showEditAdded={Boolean(info?.userAddedClientId)}
                   showReport={Boolean(onReport)}
                   onRename={handleRenamePress}
                   onEditAdded={handleEditAddedPub}
-                  onReport={() => onReport?.('not_pub')}
+                  onReport={onReport}
                 />
               )}
             </ScrollView>
@@ -1137,12 +1135,12 @@ function FactTile({
   );
 }
 
-// ─── Overflow (rename / report) ──────────────────────────────────────────────
+// ─── Detail actions (rename / report) ────────────────────────────────────────
 
-/** Edge actions tucked behind one quiet "···" row. Tapping reveals rename /
- *  edit-added-pub / report inline — none of them earns a permanent row in the
- *  main scroll (§0.4). */
-function MoreActions({
+/** Keep the data-quality actions visible at the end of the detail. They are
+ *  deliberately below the community rows, so they are easy to find when a
+ *  user has reached the bottom without competing with the mapping work above. */
+function PubDetailActions({
   showRename,
   showEditAdded,
   showReport,
@@ -1155,70 +1153,62 @@ function MoreActions({
   showReport: boolean;
   onRename: () => void;
   onEditAdded: () => void;
-  onReport: () => void;
+  onReport?: () => void;
 }) {
-  const [open, setOpen] = useState(false);
   return (
-    <View style={styles.more}>
-      <Pressable
-        onPress={() => setOpen((v) => !v)}
-        style={({ pressed }) => [styles.moreToggle, pressed && { opacity: 0.6 }]}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: open }}
-        accessibilityLabel={cs.mapPub.moreA11y}
-      >
-        <MenuIcon size={18} color={Colors.mutedText} />
-        <Text style={styles.moreLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-          {cs.mapPub.moreLabel}
-        </Text>
-      </Pressable>
-      {open ? (
-        <View style={styles.moreList}>
-          {showRename ? (
-            <MoreRow
-              icon={<PencilIcon size={20} color={Colors.foamMuted} />}
-              label={cs.mapPub.renameRowLabel}
-              onPress={onRename}
-            />
-          ) : null}
-          {showEditAdded ? (
-            <MoreRow
-              icon={<MapPinIcon size={20} color={Colors.amber} />}
-              label={cs.addPub.edit}
-              onPress={onEditAdded}
-            />
-          ) : null}
-          {showReport ? (
-            <MoreRow
-              icon={<FlagIcon size={20} color={Colors.mutedText} />}
-              label={cs.compass.reportRemove}
-              onPress={onReport}
-            />
-          ) : null}
-        </View>
-      ) : null}
+    <View style={styles.detailActions}>
+      <View style={styles.detailActionList}>
+        {showRename ? (
+          <DetailActionRow
+            icon={<PencilIcon size={20} color={Colors.foamMuted} />}
+            label={cs.mapPub.renameRowLabel}
+            onPress={onRename}
+          />
+        ) : null}
+        {showEditAdded ? (
+          <DetailActionRow
+            icon={<MapPinIcon size={20} color={Colors.amber} />}
+            label={cs.addPub.edit}
+            onPress={onEditAdded}
+          />
+        ) : null}
+        {showReport && onReport ? (
+          <DetailActionRow
+            icon={<FlagIcon size={20} color={Colors.amberLight} />}
+            label={cs.mapPub.reportRowLabel}
+            onPress={onReport}
+            tone="accent"
+          />
+        ) : null}
+      </View>
     </View>
   );
 }
 
-function MoreRow({
+function DetailActionRow({
   icon,
   label,
   onPress,
+  tone = 'default',
 }: {
   icon: React.ReactNode;
   label: string;
   onPress: () => void;
+  tone?: 'default' | 'accent';
 }) {
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [styles.moreRow, pressed && { opacity: 0.6 }]}
+      style={({ pressed }) => [
+        styles.detailActionRow,
+        tone === 'accent' && styles.detailActionRowAccent,
+        pressed && { opacity: 0.72 },
+      ]}
       accessibilityRole="button"
       accessibilityLabel={label}
     >
       {icon}
-      <Text style={styles.moreRowLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
+      <Text style={styles.detailActionLabel} numberOfLines={1} maxFontSizeMultiplier={FontScaleCap.body}>
         {label}
       </Text>
       <ChevronRightIcon size={18} color={Colors.mutedText} />
@@ -1470,35 +1460,33 @@ const styles = StyleSheet.create({
   bar2: { height: 8 },
   bar3: { height: 11 },
 
-  // ── Overflow (rename / report) ──
-  more: {
-    marginTop: Spacing.md,
+  // ── Detail actions (rename / report) ──
+  detailActions: {
+    marginTop: Spacing.lg,
     marginBottom: Spacing.sm,
+    paddingTop: Spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: withAlpha(Colors.border, 0.55),
   },
-  moreToggle: {
-    minHeight: HitArea.min,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
+  detailActionList: {
+    gap: Spacing.xs,
   },
-  moreLabel: {
-    fontFamily: Fonts.ui.medium,
-    fontSize: 13,
-    color: Colors.mutedText,
-  },
-  moreList: {
-    marginTop: Spacing.xs,
-  },
-  moreRow: {
+  detailActionRow: {
     minHeight: 52,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(Colors.border, 0.4),
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.medium,
+    borderWidth: 1,
+    borderColor: withAlpha(Colors.border, 0.7),
+    backgroundColor: Colors.stout3,
   },
-  moreRowLabel: {
+  detailActionRowAccent: {
+    borderColor: withAlpha(Colors.amber, 0.3),
+    backgroundColor: withAlpha(Colors.amber, 0.06),
+  },
+  detailActionLabel: {
     flex: 1,
     minWidth: 0,
     fontFamily: Fonts.ui.semibold,

@@ -78,9 +78,15 @@ export function ReportPubModal({
               onPress={() => runAfterClose(onRename)}
             />
             <ActionButton
-              label={cs.compass.reportRemove}
+              label={cs.compass.reportNotPub}
               icon={<Trash2Icon size={18} color={Colors.amberLight} />}
               onPress={() => runAfterClose(() => onReportReason('not_pub'))}
+              tone="danger"
+            />
+            <ActionButton
+              label={cs.compass.reportClosed}
+              icon={<Trash2Icon size={18} color={Colors.amberLight} />}
+              onPress={() => runAfterClose(() => onReportReason('closed'))}
               tone="danger"
             />
             <ActionButton

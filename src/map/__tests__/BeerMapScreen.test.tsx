@@ -436,12 +436,36 @@ describe('BeerMapScreen opening-hours loading', () => {
 
     expect(mockedEnqueuePubReport).not.toHaveBeenCalled();
 
-    fireEvent.press(screen.getByLabelText(cs.compass.reportRemove));
+    fireEvent.press(screen.getByLabelText(cs.compass.reportNotPub));
 
     expect(mockedEnqueuePubReport).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'pub-1', name: 'U Testu' }),
       'not_pub',
     );
     expect(screen.queryByLabelText(cs.a11y.mapReportClosed('U Testu'))).toBeNull();
+  });
+
+  it('sends a closed reason when a pub no longer operates', () => {
+    const screen = render(
+      <BeerMapScreen
+        filters={EMPTY_PUB_SEARCH_FILTERS}
+        onApplyFilters={jest.fn()}
+        onShowCompass={jest.fn()}
+      />,
+    );
+
+    fireEvent.press(screen.getByLabelText(cs.a11y.mapPub('U Testu', 0)));
+    fireEvent.press(screen.getByLabelText(cs.a11y.compassMore));
+    fireEvent.press(screen.getByLabelText(cs.a11y.mapReportClosed('U Testu')));
+    act(() => {
+      jest.advanceTimersByTime(260);
+    });
+
+    fireEvent.press(screen.getByLabelText(cs.compass.reportClosed));
+
+    expect(mockedEnqueuePubReport).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'pub-1', name: 'U Testu' }),
+      'closed',
+    );
   });
 });

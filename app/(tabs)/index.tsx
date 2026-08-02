@@ -789,6 +789,14 @@ export default function CompassScreen() {
     setReportOpen(true);
   }, [pub]);
 
+  const handleReportFromMap = useCallback(() => {
+    if (!pub) return;
+    // Let the native detail modal finish dismissing before presenting the
+    // report choices. iOS only presents one modal view controller at a time.
+    setMapPubOpen(false);
+    setTimeout(handleReport, 250);
+  }, [handleReport, pub]);
+
 
   // ── Tácek composition state ───────────────────────────────────────────────
   // The pub the needle is actually aimed at: a friend's handoff wins over the
@@ -1098,6 +1106,7 @@ export default function CompassScreen() {
           hoursTone={hours.tone}
           beerLine={sheetBeerLine}
           onClose={() => setMapPubOpen(false)}
+          onReport={handleReportFromMap}
         />
       ) : null}
       {pub ? (
