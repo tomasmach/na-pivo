@@ -248,7 +248,7 @@ const styles = StyleSheet.create({
   // The native large title needs air under it; butted straight against the
   // tabs it read as one stacked heading rather than a title and a control.
 
-  chips: { flexDirection: 'row', gap: Spacing.xs, marginTop: Spacing.lg, marginBottom: Spacing.xs },
+  chips: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.lg },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',

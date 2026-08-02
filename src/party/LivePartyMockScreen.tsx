@@ -72,6 +72,9 @@ const TAPS = [
   { name: 'Nealko 11°', priceCzk: 45 },
 ];
 
+/** How far the sheet overlaps the map, which is also its corner radius. */
+const SHEET_RADIUS = 28;
+
 /** Full map before the night starts, a band once it has. */
 const MAP_IDLE = 460;
 const MAP_LIVE = 128;
@@ -214,7 +217,12 @@ export default function LivePartyMockScreen() {
       <View
         style={[
           styles.sheet,
-          { marginTop: live ? MAP_LIVE : MAP_IDLE, paddingBottom: insets.bottom + Spacing.md },
+          {
+            // Pulled UP over the map by the radius, or the rounded corners have
+            // nothing behind them to reveal and the edge reads as square.
+            marginTop: (live ? MAP_LIVE : MAP_IDLE) - SHEET_RADIUS,
+            paddingBottom: insets.bottom + Spacing.md,
+          },
         ]}
       >
         <View style={styles.grabber} />
@@ -241,17 +249,13 @@ export default function LivePartyMockScreen() {
               >
                 {live ? pubName : draftPub.name}
               </Text>
-              <ChevronDownIcon size={16} color={Colors.mutedText} />
+              <ChevronDownIcon size={15} color={Colors.amber} />
             </Pressable>
 
-            {/* Before the night: what this place is. During it: who is at the
-                table. Both answer "what am I looking at", which is the one job
-                the top of this screen has. */}
-            {!live ? (
-              <Text style={styles.hubMeta} maxFontSizeMultiplier={FontScaleCap.body}>
-                {draftPub.meta} · {draftPub.beer}
-              </Text>
-            ) : (
+            {/* The table, once there is one. Before the night the pill is the
+                whole header — distance and opening hours belong to choosing a
+                pub, which is what the picker behind the pill is for. */}
+            {live ? (
               <Pressable
                 onPress={() => setInviteOpen(true)}
                 style={({ pressed }) => [styles.hubPeople, pressed && styles.pressed]}
@@ -286,7 +290,7 @@ export default function LivePartyMockScreen() {
                   {['Ty', ...people.map((p) => p.name)].join(', ')}
                 </Text>
               </Pressable>
-            )}
+            ) : null}
           </View>
 
           {/* Shown even before the first beer, as zeroes. An empty stopwatch is
@@ -303,14 +307,12 @@ export default function LivePartyMockScreen() {
           />
 
           <>
-              <View style={styles.tabsWrap}>
-            <UnderlineTabs
+              <UnderlineTabs
                 options={SECTIONS}
                 value={section}
                 onChange={setSection}
                 inset={Spacing.md}
               />
-          </View>
 
               {section === 'Statistiky' ? (
                 <View style={styles.sectionBody}>
@@ -568,9 +570,19 @@ const styles = StyleSheet.create({
 
   // — Hub header —
   hub: { gap: Spacing.sm, marginBottom: Spacing.lg },
-  hubPub: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  hubPubName: { fontSize: 22, fontWeight: '800', color: Colors.foam, letterSpacing: -0.4 },
-  hubMeta: { fontSize: 14, fontWeight: '500', color: Colors.mutedText },
+  // A pill, not a heading with a chevron bolted on: it is a control, and it
+  // should look like one before you tap it.
+  hubPub: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: Spacing.sm,
+    height: 44,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.pill,
+    backgroundColor: withAlpha(Colors.amber, 0.12),
+  },
+  hubPubName: { fontSize: 18, fontWeight: '800', color: Colors.foam, letterSpacing: -0.2 },
   hubPeople: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   faces: { flexDirection: 'row', alignItems: 'center' },
   face: {
@@ -612,8 +624,8 @@ const styles = StyleSheet.create({
   sheet: {
     flex: 1,
     backgroundColor: MockColors.bg,
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
+    borderTopLeftRadius: SHEET_RADIUS,
+    borderTopRightRadius: SHEET_RADIUS,
     paddingHorizontal: Spacing.md,
     paddingTop: Spacing.sm,
   },
@@ -649,7 +661,6 @@ const styles = StyleSheet.create({
   outputText: { flex: 1, fontSize: 14, fontWeight: '600', color: Colors.foam },
 
   // — Sections —
-  tabsWrap: { marginTop: Spacing.xl },
   sectionBody: { marginTop: Spacing.lg, gap: Spacing.md },
   empty: { fontSize: 14, fontWeight: '400', color: Colors.mutedText, lineHeight: 20 },
 

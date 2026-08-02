@@ -29,7 +29,10 @@ import {
   StarIcon,
   UsersIcon,
 } from '@/components/shared/IconGlyph';
+import { useRouter, type Href } from 'expo-router';
+
 import { CloseButton } from '@/components/shared/CloseButton';
+import { useLivePartyStore } from '@/mocks/livePartyStore';
 import { SectionBreak } from '@/mocks/SectionBreak';
 import { StatGrid } from '@/mocks/StatGrid';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
@@ -112,6 +115,13 @@ export function PubDetailBody({
   onClose?: () => void;
 }) {
   const [tab, setTab] = React.useState<(typeof TABS)[number]>('Info');
+  const router = useRouter();
+  const startParty = useLivePartyStore((s) => s.start);
+
+  const startHere = () => {
+    startParty(pub.name, pub.beer);
+    router.push('/party-live' as Href);
+  };
   const visited = pub.lastParty !== null;
 
   return (
@@ -159,7 +169,10 @@ export function PubDetailBody({
           <PillAction label="Navigovat">
             <MapPinIcon size={18} color={Colors.foam} />
           </PillAction>
-          <PillAction label="Začít tu večer" primary>
+          {/* This is the loop: you found the place in Hospody, so starting the
+              night belongs here rather than behind a second pub list inside the
+              hub. */}
+          <PillAction label="Začít tu večer" primary onPress={startHere}>
             <BeerIcon size={18} color={Colors.stout} />
           </PillAction>
         </View>

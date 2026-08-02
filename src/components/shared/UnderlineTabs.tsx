@@ -18,7 +18,9 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { MockLayout } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
+import { Spacing } from '@/theme/layout';
 import { FontScaleCap } from '@/theme/fonts';
 
 export function UnderlineTabs<T extends string>({
@@ -34,6 +36,10 @@ export function UnderlineTabs<T extends string>({
   inset?: number;
 }) {
   return (
+    // The gap above and below is the component's, not the screen's. Every place
+    // this sits — under a large title, under a row of actions, under the night's
+    // numbers — wants the same air, and leaving it to the caller is how the
+    // Komunita title ended up touching its own tabs.
     <View style={[styles.wrap, { marginHorizontal: -inset }]}>
       {options.map((option) => {
         const on = option === value;
@@ -62,7 +68,11 @@ export function UnderlineTabs<T extends string>({
 }
 
 const styles = StyleSheet.create({
-  wrap: { flexDirection: 'row' },
+  wrap: {
+    flexDirection: 'row',
+    marginTop: MockLayout.controlGap,
+    marginBottom: Spacing.lg,
+  },
   tab: { flex: 1, alignItems: 'center', gap: 8 },
   label: { fontSize: 16, fontWeight: '600', color: Colors.mutedText },
   labelOn: { color: Colors.foam, fontWeight: '700' },

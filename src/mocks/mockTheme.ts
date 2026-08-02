@@ -41,12 +41,21 @@ export const MockType = {
 } as const;
 
 export const MockLayout = {
-  /** Screen padding; content = screen − 32. */
-  screenPad: 16,
+  /**
+   * Screen padding. 20, not 16 — at 16 the content sat right on the edge of a
+   * dark screen and every list read as tighter than it is.
+   */
+  screenPad: 20,
   /** Vertical gap between top-level sections. */
   sectionGap: 32,
   /** Internal gap inside a section. */
   sectionInnerGap: 12,
+  /**
+   * Air above a control that follows a heading — a tab row under a large title,
+   * a filter row under a section. Baked into the shared controls rather than
+   * re-added per screen, because that is exactly what kept getting forgotten.
+   */
+  controlGap: 24,
   /** Card corner. Packeta uses 12 / 16 / 24 / 40; we sit softer than that. */
   cardRadius: 28,
   /** Pictogram thumbnail in a row. */
