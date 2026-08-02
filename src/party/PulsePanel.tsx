@@ -31,7 +31,7 @@ import { StatGrid } from '@/mocks/StatGrid';
 import { MockColors, MockType } from '@/mocks/mockTheme';
 import type { Pulse } from '@/party/nightPulse';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap, Fonts } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
 
 export interface PulseStat {
@@ -138,8 +138,9 @@ const styles = StyleSheet.create({
   },
   fullStat: { width: '50%', alignItems: 'center', paddingVertical: Spacing.xl },
   fullValue: {
+    fontFamily: Fonts.numeral,
     fontSize: 58,
-    fontWeight: '800',
+    lineHeight: 72,
     color: Colors.foam,
     letterSpacing: -2,
     fontVariant: ['tabular-nums'],

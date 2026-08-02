@@ -159,9 +159,21 @@ kotvená menu, SwiftUI grafy, nativní velké titulky (§18). Vlastní rodina ve
 nich staví na jednu obrazovku dvě abecedy. SF navíc nese optical sizing a
 škáluje s Dynamic Type, což přibalená TTF neumí.
 
-TTF soubory zůstávají v `assets/fonts/` a **vědomě se nenačítají**. Kdyby se
-Baloo mělo vrátit na jednu záměrnou věc — wordmark, jedno hero číslo — přidej
-zpátky jen ten jeden řez, ne celý pár.
+**Jedna výjimka: `Fonts.numeral` — Baloo 2 ExtraBold, jen na display číslice.**
+
+SF je záměrně neutrální. To je správně pro řádek v nastavení a špatně pro číslo,
+které říká, jak dopadl večer — v SF čtou jako tabulka, v Baloo jako tahle appka.
+Ta čísla jsou nejblíž tomu, co má produkt místo tváře.
+
+Platí to **jen pro číslice** (`StatGrid`, hero čísla, série, postup výzvy). Body
+text, popisky, nadpisy a tlačítka zůstávají systémové — dvě abecedy v odstavci
+je přesně to, co jsme odstranili.
+
+Baloo 2 ExtraBold **přetéká svůj řádkový box**, takže každý styl, který ho
+používá, potřebuje `lineHeight` kolem 1,24× velikosti (§3.2). Bez toho se číslo
+ořízne shora.
+
+Zbylé TTF zůstávají v `assets/fonts/` nenačtené.
 
 Jednoduché rozhodovací pravidlo: **když to má znít, je to Baloo. Když se to má číst, je to Inter.**
 

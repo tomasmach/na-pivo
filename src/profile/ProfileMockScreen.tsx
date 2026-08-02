@@ -34,7 +34,7 @@ import { useAccountStore } from '@/stores/accountStore';
 import { TAB_CHROME } from '@/components/shared/TabBar';
 import { UnderlineTabs } from '@/components/shared/UnderlineTabs';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap, Fonts } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 const AVATAR = 'https://i.pravatar.cc/240?img=57';
@@ -233,10 +233,11 @@ const styles = StyleSheet.create({
   periodRow: { marginTop: Spacing.lg },
 
   streakValue: {
+    fontFamily: Fonts.numeral,
     fontSize: 40,
-    fontWeight: '800',
+    lineHeight: 50,
     color: Colors.foam,
-    letterSpacing: -1.2,
+    letterSpacing: -0.5,
     marginTop: Spacing.sm,
   },
   streakUnit: { fontSize: 19, fontWeight: '700', color: Colors.mutedText, letterSpacing: 0 },

@@ -24,6 +24,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { TrophyIcon } from '@/components/shared/IconGlyph';
 import { Colors } from '@/theme/colors';
+import { Fonts } from '@/theme/fonts';
 import { FontScaleCap } from '@/theme/fonts';
 import { Spacing } from '@/theme/layout';
 
@@ -143,13 +144,22 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   valueRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  /**
+   * The one place the app is not on the system font.
+   *
+   * SF is neutral by design — correct for a settings row, wrong for the number
+   * that says how the night went. In SF these read as a spreadsheet; in Baloo
+   * they read as the app. Line height is 1.24× because Baloo 2 ExtraBold
+   * overshoots its box (§3.2).
+   */
   value: {
-    fontWeight: '700',
+    fontFamily: Fonts.numeral,
     fontSize: 22,
+    lineHeight: 27,
     color: Colors.foam,
-    letterSpacing: -0.4,
+    letterSpacing: -0.2,
     fontVariant: ['tabular-nums'],
   },
-  valueCompact: { fontSize: 19 },
-  valueHero: { fontSize: 34, letterSpacing: -1 },
+  valueCompact: { fontSize: 19, lineHeight: 24 },
+  valueHero: { fontSize: 34, lineHeight: 42, letterSpacing: -0.6 },
 });

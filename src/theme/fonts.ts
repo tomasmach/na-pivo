@@ -11,10 +11,25 @@
  * So `fontFamily` is gone from every style and the weight is a plain
  * `fontWeight`. There is nothing left to import here but the scale caps.
  *
- * The TTFs are still in `assets/fonts/` and are deliberately NOT loaded. If
- * Baloo comes back for one deliberate thing — a wordmark, one hero numeral —
- * re-add just that face rather than the whole pair.
+ * ONE face survives: `Fonts.numeral` — Baloo 2 ExtraBold, for display numerals
+ * only. SF is neutral by design, which is right for a row of settings and wrong
+ * for the number that says how the night went. Those numerals are the closest
+ * thing this app has to a face, and in SF they read as a spreadsheet.
+ *
+ * It is the ONLY custom face and it is only for digits. Body text, labels,
+ * headings and buttons stay system — a second alphabet in a paragraph is the
+ * thing we removed.
+ *
+ * The other TTFs stay in `assets/fonts/` unloaded.
  */
+
+export const Fonts = {
+  /**
+   * Display numerals only. Baloo 2 ExtraBold overshoots its line box, so any
+   * text using it needs `lineHeight` around 1.24× the size — see §3.2.
+   */
+  numeral: 'Baloo2-ExtraBold',
+} as const;
 
 /**
  * Caps for the OS font-scale multiplier (`maxFontSizeMultiplier`). The layout
@@ -31,9 +46,8 @@ export const FontScaleCap = {
   body: 1.3,
 } as const;
 
-/**
- * Nothing to load. Kept (empty) so `app/_layout.tsx` keeps its one splash gate
- * rather than growing a branch for "no fonts"; `useFonts({})` resolves at once.
- */
-export const fontAssets = {} as const;
+/** The one face the app loads. */
+export const fontAssets = {
+  'Baloo2-ExtraBold': require('../../assets/fonts/Baloo2-ExtraBold.ttf'),
+} as const;
 

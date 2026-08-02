@@ -25,7 +25,7 @@ import { CheckIcon, SparklesIcon, TrophyIcon } from '@/components/shared/IconGly
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { TAB_CHROME } from '@/components/shared/TabBar';
 import { Colors, withAlpha } from '@/theme/colors';
-import { FontScaleCap } from '@/theme/fonts';
+import { FontScaleCap, Fonts } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 import type { Challenge } from './mockChallenges';
@@ -154,7 +154,13 @@ const styles = StyleSheet.create({
   blurb: { fontSize: 16, fontWeight: '400', color: Colors.mutedText, lineHeight: 23, marginTop: 6 },
 
   progress: { marginTop: MockLayout.sectionGap },
-  count: { fontSize: 40, fontWeight: '800', color: Colors.foam, letterSpacing: -1 },
+  count: {
+    fontFamily: Fonts.numeral,
+    fontSize: 40,
+    lineHeight: 50,
+    color: Colors.foam,
+    letterSpacing: -0.5,
+  },
   countRest: { fontSize: 19, fontWeight: '600', color: Colors.mutedText, letterSpacing: -0.2 },
   track: {
     height: 8,
