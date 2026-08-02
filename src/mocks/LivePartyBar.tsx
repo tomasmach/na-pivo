@@ -28,7 +28,7 @@ import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { usePathname, useRouter, type Href } from 'expo-router';
 
 import { BeerIcon } from '@/components/shared/IconGlyph';
-import { formatElapsed, useLivePartyStore } from '@/mocks/livePartyStore';
+import { formatElapsed, useLivePartyStore, useNightClock } from '@/mocks/livePartyStore';
 import { MockColors } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -41,7 +41,8 @@ export function LivePartyBar() {
   const live = useLivePartyStore((s) => s.live);
   const pubName = useLivePartyStore((s) => s.pubName);
   const beers = useLivePartyStore((s) => s.beers);
-  const minutes = useLivePartyStore((s) => s.minutes);
+  const startedAt = useLivePartyStore((s) => s.startedAt);
+  const minutes = useNightClock(startedAt);
   const addBeer = useLivePartyStore((s) => s.addBeer);
   const houseBeer = useLivePartyStore((s) => s.houseBeer);
   const pathname = usePathname();

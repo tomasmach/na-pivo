@@ -52,7 +52,9 @@ import {
   clockAt,
   formatElapsed,
   hourlyFrom,
+  minutesBetween,
   useLivePartyStore,
+  useNightClock,
 } from '@/mocks/livePartyStore';
 import { MockColors, MockType } from '@/mocks/mockTheme';
 import { UnderlineTabs } from '@/components/shared/UnderlineTabs';
@@ -115,7 +117,9 @@ export default function LivePartyMockScreen() {
 
   const live = useLivePartyStore((s) => s.live);
   const beers = useLivePartyStore((s) => s.beers);
-  const minutes = useLivePartyStore((s) => s.minutes);
+  const startedAt = useLivePartyStore((s) => s.startedAt);
+  // The stopwatch. Ticks on its own; every reading below is derived from it.
+  const minutes = useNightClock(startedAt);
   const people = useLivePartyStore((s) => s.people);
   const photos = useLivePartyStore((s) => s.photos);
   const games = useLivePartyStore((s) => s.games);
@@ -142,14 +146,17 @@ export default function LivePartyMockScreen() {
   const table = mine + people.reduce((sum, person) => sum + person.beers, 0);
   const byType = beersByType(beers);
 
-  // The night says what it is doing, instead of four labels that never change.
-  const beerTimes = beers.map((entry) => entry.at);
+  // The pulse rules work in minutes from the start; the stamps are epoch.
+  const beerTimes = startedAt === null ? [] : beers.map((e) => minutesBetween(startedAt, e.at));
+  // Derived from the ticking clock, not `Date.now()` — calling that in render is
+  // impure and the lint rule is right to stop it.
+  const nowStamp = startedAt === null ? 0 : startedAt + minutes * 60_000;
   const pulse = buildPulse({ beerTimes, now: minutes });
   const fourth = fourthStat({ beerTimes, now: minutes });
 
   const chartRows =
     chart === 'V čase'
-      ? hourlyFrom(beers, minutes).map((slot) => ({ label: `${slot.hour}:00`, value: slot.beers }))
+      ? hourlyFrom(beers, nowStamp).map((slot) => ({ label: `${slot.hour}:00`, value: slot.beers }))
       : chart === 'Podle piva'
         ? byType.map((row) => ({ label: row.beer, value: row.count }))
         : [{ label: 'Ty', value: mine }, ...people.map((p) => ({ label: p.name, value: p.beers }))]
@@ -282,26 +289,28 @@ export default function LivePartyMockScreen() {
             )}
           </View>
 
-          {live ? (
-            <PulsePanel
-              pulse={pulse}
-              stats={[
-                { value: String(mine), unit: 'piv' },
-                { value: String(table), unit: 'u stolu' },
-                { value: formatElapsed(minutes) },
-                { value: fourth.value, unit: fourth.label.toLowerCase() },
-              ]}
-            />
-          ) : null}
+          {/* Shown even before the first beer, as zeroes. An empty stopwatch is
+              still a stopwatch — the shape tells you what the night will collect,
+              which a paragraph explaining it never did. */}
+          <PulsePanel
+            pulse={pulse}
+            stats={[
+              { value: String(mine), unit: 'piv' },
+              { value: String(live ? table : 0), unit: 'u stolu' },
+              { value: formatElapsed(minutes) },
+              { value: live ? fourth.value : '—', unit: fourth.label.toLowerCase() },
+            ]}
+          />
 
-          {live ? (
-            <>
-              <UnderlineTabs
+          <>
+              <View style={styles.tabsWrap}>
+            <UnderlineTabs
                 options={SECTIONS}
                 value={section}
                 onChange={setSection}
                 inset={Spacing.md}
               />
+          </View>
 
               {section === 'Statistiky' ? (
                 <View style={styles.sectionBody}>
@@ -414,17 +423,6 @@ export default function LivePartyMockScreen() {
                 </View>
               ) : null}
             </>
-          ) : (
-            <View style={styles.idle}>
-              <Text style={styles.idleTitle} maxFontSizeMultiplier={FontScaleCap.heading}>
-                Zatím nic se nestalo
-              </Text>
-              <Text style={styles.idleHint} maxFontSizeMultiplier={FontScaleCap.body}>
-                Večer začne prvním pivem. Pak se sem načte časová osa, grafy i log
-                — a kamarády přizveš kdykoliv potom.
-              </Text>
-            </View>
-          )}
         </ScrollView>
 
         <View style={styles.controls}>
@@ -635,9 +633,6 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
   },
 
-  idle: { paddingTop: Spacing.xl, gap: 6 },
-  idleTitle: { ...MockType.titleS, fontSize: 20, color: Colors.foam },
-  idleHint: { fontWeight: '400', fontSize: 15, lineHeight: 22, color: Colors.mutedText },
 
   output: {
     flexDirection: 'row',
@@ -652,6 +647,7 @@ const styles = StyleSheet.create({
   outputText: { flex: 1, fontSize: 14, fontWeight: '600', color: Colors.foam },
 
   // — Sections —
+  tabsWrap: { marginTop: Spacing.xl },
   sectionBody: { marginTop: Spacing.lg, gap: Spacing.md },
   empty: { fontSize: 14, fontWeight: '400', color: Colors.mutedText, lineHeight: 20 },
 

@@ -7,10 +7,16 @@
  * one. Until now the card could render five kinds of highlight and the party
  * produced none of them.
  *
- * The clock is a counter of minutes, not a real one. `Date.now()` in a mock
- * means the timeline drifts while you look at it and no two screenshots agree;
- * here each action advances the evening by a plausible gap, which is enough to
- * judge the shape of a timeline and keeps every render deterministic.
+ * The clock is REAL, and the night is a stopwatch.
+ *
+ * It used to be a counter of minutes that only moved when you did something —
+ * deterministic, and dead. An evening that does not tick is not running, and the
+ * whole point of the hub is that something is happening while you sit there.
+ *
+ * Each beer is a LAP. `startedAt` is the stopwatch; every beer stamps the moment
+ * it was poured, so the gap between two of them is that lap's time and the gap
+ * since the last one is the lap in progress. Everything else — the tempo chart,
+ * "na jedno", the pulse — is a reading of those stamps.
  *
  * Beers are a LIST, not a tally. A number cannot say what you drank or when,
  * and the timeline, the per-type counters and the tempo chart are all just
@@ -20,6 +26,7 @@
  * the party evening client.
  */
 
+import { useEffect, useState } from 'react';
 import { create } from 'zustand';
 
 export interface GameResult {
@@ -39,8 +46,12 @@ export interface GameEntry {
   result?: GameResult;
 }
 
-/** One beer, logged. It runs until the next one, which is what gives the
- *  timeline its segments rather than a row of identical ticks. */
+/**
+ * One beer, logged — a lap on the stopwatch.
+ *
+ * `at` is epoch ms. It runs until the next one, so the gap IS the lap time, and
+ * the last one is still running.
+ */
 export interface BeerEntry {
   id: string;
   beer: string;
@@ -68,8 +79,8 @@ interface LivePartyState {
   pubName: string;
   /** What "+1 pivo" pours without asking — the pub's own tap. */
   houseBeer: string;
-  /** Minutes since the first beer. Advanced by actions, never by a real clock. */
-  minutes: number;
+  /** Epoch ms of the first beer — the stopwatch's zero. Null until it starts. */
+  startedAt: number | null;
   beers: BeerEntry[];
   people: PartyPersonLive[];
   photos: number;
@@ -87,9 +98,6 @@ interface LivePartyState {
   end: () => void;
 }
 
-/** Plausible gaps so the timeline has rhythm instead of even ticks. */
-const GAPS = [14, 9, 21, 12, 26, 8, 17, 11];
-
 let seq = 0;
 const nextId = (prefix: string) => {
   seq += 1;
@@ -106,7 +114,7 @@ const EMPTY = {
   live: false,
   pubName: '',
   houseBeer: '',
-  minutes: 0,
+  startedAt: null as number | null,
   beers: [] as BeerEntry[],
   people: [] as PartyPersonLive[],
   photos: 0,
@@ -121,27 +129,28 @@ function logged(state: { log: LogEvent[] }, at: number, kind: LogKind, text: str
 export const useLivePartyStore = create<LivePartyState>((set) => ({
   ...EMPTY,
 
-  start: (pubName, beer) =>
-    set(() => ({
+  start: (pubName, beer) => {
+    const now = Date.now();
+    set({
       live: true,
       pubName,
       houseBeer: beer,
-      minutes: 0,
-      beers: [{ id: nextId('beer'), beer, at: 0 }],
+      startedAt: now,
+      beers: [{ id: nextId('beer'), beer, at: now }],
       people: TABLE.map((person) => ({ ...person })),
       photos: 0,
       games: [],
       log: [
-        { id: nextId('ev'), at: 0, kind: 'pub', text: `Večer začal v ${pubName}` },
-        { id: nextId('ev'), at: 0, kind: 'beer', text: beer },
+        { id: nextId('ev'), at: now, kind: 'pub', text: `Večer začal v ${pubName}` },
+        { id: nextId('ev'), at: now, kind: 'beer', text: beer },
       ],
-    })),
+    });
+  },
 
   addBeer: (beer) =>
     set((s) => {
-      const at = s.minutes + GAPS[s.beers.length % GAPS.length];
+      const at = Date.now();
       return {
-        minutes: at,
         beers: [...s.beers, { id: nextId('beer'), beer, at }],
         log: logged(s, at, 'beer', beer),
       };
@@ -159,7 +168,7 @@ export const useLivePartyStore = create<LivePartyState>((set) => ({
   addPhoto: () =>
     set((s) => ({
       photos: s.photos + 1,
-      log: logged(s, s.minutes, 'photo', 'Fotka'),
+      log: logged(s, Date.now(), 'photo', 'Fotka'),
     })),
 
   addGame: (key, name) =>
@@ -167,15 +176,15 @@ export const useLivePartyStore = create<LivePartyState>((set) => ({
       s.games.some((game) => game.key === key)
         ? s
         : {
-            games: [...s.games, { key, name, at: s.minutes }],
-            log: logged(s, s.minutes, 'game', `${name} na stole`),
+            games: [...s.games, { key, name, at: Date.now() }],
+            log: logged(s, Date.now(), 'game', `${name} na stole`),
           },
     ),
 
   finishGame: (key, result) =>
     set((s) => ({
       games: s.games.map((game) => (game.key === key ? { ...game, result } : game)),
-      log: logged(s, s.minutes, 'game', `${result.game} — vyhrál ${result.winner}`),
+      log: logged(s, Date.now(), 'game', `${result.game} — vyhrál ${result.winner}`),
     })),
 
   invite: (name) =>
@@ -184,7 +193,7 @@ export const useLivePartyStore = create<LivePartyState>((set) => ({
         ? s
         : {
             people: [...s.people, { id: nextId('u'), name, tint: '#A8896A', beers: 0 }],
-            log: logged(s, s.minutes, 'join', `${name} dorazil`),
+            log: logged(s, Date.now(), 'join', `${name} dorazil`),
           },
     ),
 
@@ -197,13 +206,45 @@ export function formatElapsed(minutes: number): string {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
-/** "20:15" from a minute offset. The evening is pinned to a 20:00 start so the
- *  timeline reads like a real night instead of "minuta 14". */
-export function clockAt(minutes: number): string {
-  const total = 20 * 60 + minutes;
-  const h = Math.floor(total / 60) % 24;
-  const m = total % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+/** Whole minutes between two stamps — the unit every reading works in. */
+export function minutesBetween(from: number, to: number): number {
+  return Math.max(0, Math.floor((to - from) / 60_000));
+}
+
+/** "20:15" — a wall clock time from an epoch stamp. */
+export function clockAt(at: number): string {
+  const d = new Date(at);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/**
+ * The stopwatch, ticking.
+ *
+ * Re-renders once a minute, not once a second: everything on screen is written
+ * in whole minutes, so a per-second tick would be sixty renders for one visible
+ * change. Aligned to the next minute boundary so the number flips when the
+ * clock does.
+ */
+export function useNightClock(startedAt: number | null): number {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (startedAt === null) return undefined;
+    const tick = () => setNow(Date.now());
+    tick();
+    const toBoundary = 60_000 - (Date.now() % 60_000);
+    let interval: ReturnType<typeof setInterval> | undefined;
+    const timeout = setTimeout(() => {
+      tick();
+      interval = setInterval(tick, 60_000);
+    }, toBoundary);
+    return () => {
+      clearTimeout(timeout);
+      if (interval) clearInterval(interval);
+    };
+  }, [startedAt]);
+
+  return startedAt === null ? 0 : minutesBetween(startedAt, now);
 }
 
 /** The shopping list: one row per beer type, in the order first ordered. */
@@ -227,6 +268,7 @@ export function beersByType(beers: BeerEntry[]): { beer: string; count: number }
  */
 export function hourlyFrom(
   beers: BeerEntry[],
+  /** Epoch ms of "now" — how far the axis has actually got. */
   now = 0,
   /**
    * Hours the axis always shows, counted from the first beer.
@@ -241,19 +283,20 @@ export function hourlyFrom(
 ): { hour: string; beers: number }[] {
   if (beers.length === 0) return [];
 
+  const hourOf = (at: number) => Math.floor(at / 3_600_000);
+
   const counts = new Map<number, number>();
   for (const entry of beers) {
-    const hour = Math.floor(entry.at / 60);
-    counts.set(hour, (counts.get(hour) ?? 0) + 1);
+    counts.set(hourOf(entry.at), (counts.get(hourOf(entry.at)) ?? 0) + 1);
   }
 
-  const first = Math.floor(beers[0].at / 60);
-  const reached = Math.floor(Math.max(now, beers[beers.length - 1].at) / 60);
+  const first = hourOf(beers[0].at);
+  const reached = hourOf(Math.max(now, beers[beers.length - 1].at));
   const last = Math.max(reached, first + minSpan - 1);
 
   const out: { hour: string; beers: number }[] = [];
   for (let hour = first; hour <= last; hour += 1) {
-    out.push({ hour: clockAt(hour * 60).slice(0, 2), beers: counts.get(hour) ?? 0 });
+    out.push({ hour: clockAt(hour * 3_600_000).slice(0, 2), beers: counts.get(hour) ?? 0 });
   }
   return out;
 }

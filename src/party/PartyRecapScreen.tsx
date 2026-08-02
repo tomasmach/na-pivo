@@ -53,7 +53,12 @@ import { GlassIconButton } from '@/components/shared/GlassIconButton';
 import { SectionBreak } from '@/mocks/SectionBreak';
 import { TempoChart } from '@/mocks/TempoChart';
 import { StatGrid } from '@/mocks/StatGrid';
-import { formatElapsed, hourlyFrom, useLivePartyStore } from '@/mocks/livePartyStore';
+import {
+  formatElapsed,
+  hourlyFrom,
+  useLivePartyStore,
+  useNightClock,
+} from '@/mocks/livePartyStore';
 import { MOCK_PARTY, type PartyRecap } from '@/party/mockParty';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -127,7 +132,8 @@ export default function PartyRecapScreen() {
   const liveBeers = useLivePartyStore((s) => s.beers);
   const livePhotos = useLivePartyStore((s) => s.photos);
   const liveGames = useLivePartyStore((s) => s.games);
-  const liveMinutes = useLivePartyStore((s) => s.minutes);
+  const liveStartedAt = useLivePartyStore((s) => s.startedAt);
+  const liveMinutes = useNightClock(liveStartedAt);
   const livePub = useLivePartyStore((s) => s.pubName);
   const hasLive = useLivePartyStore((s) => s.live);
 

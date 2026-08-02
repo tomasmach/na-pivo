@@ -75,13 +75,7 @@ export function BeerSheet({
           </Pressable>
         </View>
 
-        <BeerList
-          rows={rows}
-          onTaps={onTaps}
-          onTap={onAdd}
-          onAdd={onAdd}
-          onRemove={onRemove}
-        />
+        <BeerList rows={rows} onTaps={onTaps} onAdd={onAdd} onRemove={onRemove} />
       </View>
     </BottomSheetModal>
   );

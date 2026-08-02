@@ -30,6 +30,7 @@ import {
   beersByType,
   formatElapsed,
   useLivePartyStore,
+  useNightClock,
 } from '@/mocks/livePartyStore';
 import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -49,7 +50,8 @@ export default function FinishNightScreen() {
   const router = useRouter();
 
   const beers = useLivePartyStore((s) => s.beers);
-  const minutes = useLivePartyStore((s) => s.minutes);
+  const startedAt = useLivePartyStore((s) => s.startedAt);
+  const minutes = useNightClock(startedAt);
   const people = useLivePartyStore((s) => s.people);
   const photos = useLivePartyStore((s) => s.photos);
   const games = useLivePartyStore((s) => s.games);
