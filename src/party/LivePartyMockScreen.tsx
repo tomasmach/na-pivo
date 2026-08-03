@@ -27,6 +27,11 @@
 
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Animated, {
+  FadeInDown,
+  LinearTransition,
+  useReducedMotion,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 
@@ -36,6 +41,7 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   MapPinIcon,
+  PlusIcon,
   SoccerBallIcon,
   SparklesIcon,
   TrophyIcon,
@@ -92,10 +98,15 @@ function CircleButton({
   label,
   children,
   onPress,
+  /** Does this put something INTO the evening? Those get a plus, so a row of
+   *  nouns ("Foto", "Hry") reads as five things you can add rather than five
+   *  places you can go. */
+  adds = true,
 }: {
   label: string;
   children: React.ReactNode;
   onPress?: () => void;
+  adds?: boolean;
 }) {
   return (
     <View style={styles.circleWrap}>
@@ -103,9 +114,14 @@ function CircleButton({
         onPress={onPress}
         style={({ pressed }) => [styles.circleSecondary, pressed && styles.pressed]}
         accessibilityRole="button"
-        accessibilityLabel={label}
+        accessibilityLabel={adds ? `Přidat: ${label}` : label}
       >
         {children}
+        {adds ? (
+          <View style={styles.addBadge}>
+            <PlusIcon size={9} color={Colors.stout} />
+          </View>
+        ) : null}
       </Pressable>
       <Text style={styles.circleLabel} maxFontSizeMultiplier={FontScaleCap.body}>
         {label}
@@ -137,6 +153,13 @@ export default function LivePartyMockScreen() {
   const addGame = useLivePartyStore((s) => s.addGame);
   const invite = useLivePartyStore((s) => s.invite);
 
+  // Rows already on screen at first paint must NOT animate — the log would deal
+  // itself out like a hand of cards every time you open the hub. Stamping the
+  // mount (in the state initialiser, so render stays pure) lets each row decide
+  // for itself: anything logged after you got here is genuinely new.
+  const [mountedAt] = React.useState(() => Date.now());
+  const reduceMotion = useReducedMotion();
+
   const [gamesOpen, setGamesOpen] = React.useState(false);
   const [inviteOpen, setInviteOpen] = React.useState(false);
   const [beersOpen, setBeersOpen] = React.useState(false);
@@ -144,6 +167,11 @@ export default function LivePartyMockScreen() {
   const mapHeight = live
     ? Math.max(MAP_LIVE_MIN, insets.top + TOP_BAR_H + SHEET_RADIUS)
     : MAP_IDLE;
+
+  // Faces in the thread must match the faces in the header — same person, same
+  // colour, wherever they show up.
+  const tintOf = (name: string) =>
+    name === 'Ty' ? Colors.amber : (people.find((p) => p.name === name)?.tint ?? Colors.mutedText);
 
   const mine = beers.length;
   const table = mine + people.reduce((sum, person) => sum + person.beers, 0);
@@ -296,99 +324,101 @@ export default function LivePartyMockScreen() {
             stats={stats.map((stat) => ({ value: stat.value, unit: stat.label }))}
           />
 
-          <>
-              {/* Games sit ABOVE the chronology: an unplayed game is the one
-                  thing in this list you can still act on, and burying it among
-                  timestamps makes it read as something that already happened. */}
-              {games.length > 0 ? (
-                <View style={styles.sectionBody}>
-                  {games.map((game) => (
-                      <Pressable
-                        key={game.key}
-                        onPress={() => router.push(`/party-game?key=${game.key}` as Href)}
-                        style={({ pressed }) => [styles.game, pressed && styles.pressed]}
-                        accessibilityRole="button"
-                        accessibilityLabel={
-                          game.result ? `${game.name}, výsledek` : `Spustit ${game.name}`
-                        }
-                      >
-                        <View style={styles.gameHead}>
-                          <View style={styles.medallion}>
+          {/* The thread. Every kind of thing the row of buttons can add lands
+              here, in order, with the name of whoever added it — at a table of
+              four "Fotka" with no name is the app talking to itself. A game is
+              not a line ABOUT a game: the row IS the game and starts it. */}
+          {log.length > 0 ? (
+            <View style={styles.sectionBody}>
+              {[...log].reverse().map((event, index, all) => {
+                const game = event.gameKey
+                  ? games.find((entry) => entry.key === event.gameKey)
+                  : undefined;
+                return (
+                  <Animated.View
+                    key={event.id}
+                    style={styles.logRow}
+                    entering={
+                      event.at > mountedAt && !reduceMotion ? FadeInDown.duration(260) : undefined
+                    }
+                    // The rows under it slide down to make room instead of
+                    // teleporting, so you can see WHERE the new one landed.
+                    layout={reduceMotion ? undefined : LinearTransition.duration(220)}
+                  >
+                    {/* The rail. A timeline is a chronology, not a list —
+                        hairlines BETWEEN rows separate them, a line THROUGH them
+                        says they are one thread. It stops at the first and last
+                        node so the thread has ends. */}
+                    <View style={styles.logRail} pointerEvents="none">
+                      <View style={[styles.railLine, index === 0 && styles.railHidden]} />
+                      <View
+                        style={[styles.railLine, index === all.length - 1 && styles.railHidden]}
+                      />
+                    </View>
+                    <View style={styles.logIcon}>{LOG_GLYPH[event.kind]}</View>
+
+                    <View style={styles.grow}>
+                      {game ? (
+                        <Pressable
+                          onPress={() => router.push(`/party-game?key=${game.key}` as Href)}
+                          style={({ pressed }) => [styles.game, pressed && styles.pressed]}
+                          accessibilityRole="button"
+                          accessibilityLabel={
+                            game.result ? `${game.name}, výsledek` : `Spustit ${game.name}`
+                          }
+                        >
+                          <View style={styles.gameHead}>
+                            <View style={styles.grow}>
+                              <Text
+                                style={styles.gameTitle}
+                                numberOfLines={1}
+                                maxFontSizeMultiplier={FontScaleCap.body}
+                              >
+                                {game.name}
+                              </Text>
+                              <Text
+                                style={styles.gameMeta}
+                                maxFontSizeMultiplier={FontScaleCap.body}
+                              >
+                                {game.result
+                                  ? game.result.winner
+                                    ? `Vyhrál ${game.result.winner}`
+                                    : 'Odehráno'
+                                  : 'Ťukni a hraj'}
+                              </Text>
+                            </View>
                             {game.result ? (
                               <TrophyIcon size={16} color={Colors.amber} />
                             ) : (
-                              <SparklesIcon size={16} color={Colors.amber} />
+                              <ChevronRightIcon size={16} color={Colors.mutedText} />
                             )}
                           </View>
-                          <View style={styles.grow}>
-                            <Text
-                              style={styles.gameTitle}
-                              numberOfLines={1}
-                              maxFontSizeMultiplier={FontScaleCap.body}
-                            >
-                              {game.name}
-                            </Text>
-                            <Text style={styles.gameMeta} maxFontSizeMultiplier={FontScaleCap.body}>
-                              {game.result
-                                ? game.result.winner
-                                  ? `Vyhrál ${game.result.winner}`
-                                  : 'Odehráno'
-                                : `Na stole od ${clockAt(game.at)} · ťukni a hraj`}
-                            </Text>
-                          </View>
-                          <ChevronRightIcon size={16} color={Colors.mutedText} />
-                        </View>
 
-                        {/* A finished game IS a leaderboard — that is the whole
-                            thing the recap and the feed then lead with. */}
-                        {game.result ? (
-                          <View style={styles.board}>
-                            {game.result.scores.slice(0, 4).map((row, index) => (
-                              <View key={row.name} style={styles.boardRow}>
-                                <Text style={styles.boardRank} allowFontScaling={false}>
-                                  {index + 1}
-                                </Text>
-                                <Text
-                                  style={styles.boardName}
-                                  numberOfLines={1}
-                                  maxFontSizeMultiplier={FontScaleCap.body}
-                                >
-                                  {row.name}
-                                </Text>
-                                <Text style={styles.boardScore} allowFontScaling={false}>
-                                  {row.score}
-                                </Text>
-                              </View>
-                            ))}
-                          </View>
-                        ) : null}
-                    </Pressable>
-                  ))}
-                </View>
-              ) : null}
-
-              {log.length > 0 ? (
-                <View style={styles.sectionBody}>
-                  {[...log]
-                    .reverse()
-                    .map((event, index, all) => (
-                      <View key={event.id} style={styles.logRow}>
-                        {/* The rail. A timeline is a chronology, not a list —
-                            hairlines BETWEEN rows separate them, a line THROUGH
-                            them says they are one thread. It stops at the first
-                            and last node so the thread has ends. */}
-                        <View style={styles.logRail} pointerEvents="none">
-                          <View
-                            style={[styles.railLine, index === 0 && styles.railHidden]}
-                          />
-                          <View
-                            style={[
-                              styles.railLine,
-                              index === all.length - 1 && styles.railHidden,
-                            ]}
-                          />
-                        </View>
-                        <View style={styles.logIcon}>{LOG_GLYPH[event.kind]}</View>
+                          {/* A finished game IS a leaderboard — that is the
+                              whole thing the recap and the feed lead with. */}
+                          {game.result ? (
+                            <View style={styles.board}>
+                              {game.result.scores.slice(0, 4).map((row, rank) => (
+                                <View key={row.name} style={styles.boardRow}>
+                                  <Text style={styles.boardRank} allowFontScaling={false}>
+                                    {rank + 1}
+                                  </Text>
+                                  <Text
+                                    style={styles.boardName}
+                                    numberOfLines={1}
+                                    maxFontSizeMultiplier={FontScaleCap.body}
+                                  >
+                                    {row.name}
+                                  </Text>
+                                  <Text style={styles.boardScore} allowFontScaling={false}>
+                                    {row.score}
+                                  </Text>
+                                </View>
+                              ))}
+                            </View>
+                          ) : null}
+                        </Pressable>
+                      ) : (
                         <Text
                           style={styles.logText}
                           numberOfLines={2}
@@ -396,16 +426,28 @@ export default function LivePartyMockScreen() {
                         >
                           {event.text}
                         </Text>
-                        {/* When is the least interesting part, so it goes last
-                            and quiet — you scan WHAT happened, then look. */}
-                        <Text style={styles.logTime} allowFontScaling={false}>
-                          {clockAt(event.at)}
+                      )}
+
+                      {/* Who put it there. A face because a name alone in 12pt
+                          grey is not something you notice at a loud table. */}
+                      <View style={styles.logWho}>
+                        <Face name={event.by} tint={tintOf(event.by)} size={16} />
+                        <Text style={styles.logWhoName} maxFontSizeMultiplier={FontScaleCap.body}>
+                          {event.by}
                         </Text>
                       </View>
-                    ))}
-                </View>
-              ) : null}
-            </>
+                    </View>
+
+                    {/* When is the least interesting part, so it goes last and
+                        quiet — you scan WHAT happened, then look. */}
+                    <Text style={styles.logTime} allowFontScaling={false}>
+                      {clockAt(event.at)}
+                    </Text>
+                  </Animated.View>
+                );
+              })}
+            </View>
+          ) : null}
         </ScrollView>
 
         <View style={styles.controls}>
@@ -457,7 +499,7 @@ export default function LivePartyMockScreen() {
             <SoccerBallIcon size={20} color={Colors.foam} />
           </CircleButton>
 
-          <CircleButton label="Přesun">
+          <CircleButton label="Přesun" adds={false}>
             <MapPinIcon size={20} color={Colors.foam} />
           </CircleButton>
         </View>
@@ -636,14 +678,6 @@ const styles = StyleSheet.create({
   // — Games on the table —
   game: { padding: Spacing.md, borderRadius: 22, backgroundColor: MockColors.surfaceHigh },
   gameHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  medallion: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.14),
-  },
   gameTitle: { ...MockType.bodySemibold, color: Colors.foam },
   gameMeta: { fontSize: 12, fontWeight: '500', color: Colors.mutedText, marginTop: 1 },
   board: {
@@ -672,8 +706,11 @@ const styles = StyleSheet.create({
   // — Log —
   logRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    // Top-aligned: a row is now a block (what happened, then who), and a game
+    // row is a whole card. Centring hung the glyph in the middle of it.
+    alignItems: 'flex-start',
     gap: Spacing.md,
+    paddingVertical: Spacing.sm,
     minHeight: 64,
   },
   /** Behind the icon column: two half-height segments, so either end can be
@@ -699,8 +736,11 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: withAlpha(Colors.foam, 0.1),
   },
-  logText: { flex: 1, fontSize: 16, fontWeight: '600', color: Colors.foam },
+  logWho: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  logWhoName: { fontSize: 12, fontWeight: '600', color: Colors.mutedText },
+  logText: { fontSize: 16, fontWeight: '600', color: Colors.foam, paddingTop: 8 },
   logTime: {
+    marginTop: 10,
     fontSize: 14,
     fontWeight: '500',
     color: Colors.mutedText,
@@ -721,7 +761,21 @@ const styles = StyleSheet.create({
   },
   circleWrap: { alignItems: 'center', gap: 5, flex: 1 },
   primaryWrap: { alignItems: 'center', gap: 5, flex: 1, zIndex: 1 },
+  addBadge: {
+    position: 'absolute',
+    right: -1,
+    top: -1,
+    width: 17,
+    height: 17,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.amber,
+    borderWidth: 2,
+    borderColor: MockColors.bg,
+  },
   circleSecondary: {
+    overflow: 'visible',
     width: 48,
     height: 48,
     borderRadius: 24,
@@ -740,7 +794,14 @@ const styles = StyleSheet.create({
     marginTop: -12,
   },
   primaryPressed: { opacity: 0.9, transform: [{ scale: 0.97 }] },
-  primaryLabel: { fontWeight: '700', fontSize: 13, color: Colors.amber, textAlign: 'center' },
+  primaryLabel: {
+    flexShrink: 1,
+    fontWeight: '700',
+    fontSize: 13,
+    lineHeight: 16,
+    color: Colors.amber,
+    textAlign: 'center',
+  },
   /**
    * Full width of the control row, not the width of the disc above it. Clipped
    * to the disc, "Flekovský ležák 13°" came out as "Flekovsk…" — and the whole
@@ -751,9 +812,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 3,
+    // Only as wide as the disc it belongs to, so a long tap name breaks onto a
+    // second line instead of running under "Foto" and "Hry".
     position: 'absolute',
-    left: -60,
-    right: -60,
-    bottom: -34,
+    left: -18,
+    right: -18,
+    bottom: -40,
   },
 });

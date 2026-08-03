@@ -1269,7 +1269,24 @@ graf vlastního večera je věc, kterou nikdo nestuduje uprostřed hospody.
 Statistiky, grafy a rozbor patří do **recapu** (`/party-recap`), po ukončení a
 odeslání. Tam je ohlédnutí celý smysl obrazovky.
 
-### 18.5 Velká čísla se neklikají
+### 18.5 Log je thread, ne systémový žurnál
+
+Log běžícího večera je společný thread. U každého záznamu musí být vidět **kdo
+to tam dal** — u stolu pro čtyři je „Fotka" bez jména aplikace mluvící sama se
+sebou. Obsah do něj přidávají tlačítka dole (pozvat, foto, pivo, hra, přesun) a
+každý typ má svůj glyf na lince.
+
+Hra v threadu **není zpráva o hře** — ten řádek hru spouští a po dohrání na místě
+vyroste ve výsledkovku. Dva řádky (založení + výsledek) čtou jako dvě hry.
+
+Nově přidaný záznam **přijede animací** (`FadeInDown` + `LinearTransition`, §10),
+ale jen ten — řádky, které tam byly při otevření, se nesmí rozdávat jako karty.
+Rozhoduje o tom razítko mountu, ne pořadí.
+
+Akce, které něco přidávají, nesou na ikoně malý **plus badge**. Řádek samotných
+podstatných jmen („Foto", „Hry") čte jako navigace, ne jako přidávání.
+
+### 18.6 Velká čísla se neklikají
 
 Blok velkých numerálů je nadpis, ne ovládací prvek. Nedávej pod něj `Pressable`
 ani "rozklikni pro víc" — vypadá jako obsah, chová se jako tlačítko, a uživatel

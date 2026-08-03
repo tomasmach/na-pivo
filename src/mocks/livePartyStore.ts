@@ -74,11 +74,22 @@ export interface PartyPersonLive {
 
 export type LogKind = 'beer' | 'photo' | 'game' | 'join' | 'pub';
 
+/**
+ * One thing that happened, and WHO did it.
+ *
+ * The log is a thread, not a system journal: at a table of four, "Fotka" with no
+ * name is the app talking to itself. Every entry carries its author, and a game
+ * entry carries the key of the game so the row can start it.
+ */
 export interface LogEvent {
   id: string;
   at: number;
   kind: LogKind;
   text: string;
+  /** Display name. "Ty" is you — the mock has no user ids. */
+  by: string;
+  /** Only on `game` rows: what the row launches. */
+  gameKey?: string;
 }
 
 interface LivePartyState {
@@ -145,8 +156,18 @@ const EMPTY = {
   log: [] as LogEvent[],
 };
 
-function logged(state: { log: LogEvent[] }, at: number, kind: LogKind, text: string): LogEvent[] {
-  return [...state.log, { id: nextId('ev'), at, kind, text }];
+/** Whoever is holding the phone. */
+const ME = 'Ty';
+
+function logged(
+  state: { log: LogEvent[] },
+  at: number,
+  kind: LogKind,
+  text: string,
+  by: string = ME,
+  extra?: { gameKey?: string },
+): LogEvent[] {
+  return [...state.log, { id: nextId('ev'), at, kind, text, by, ...extra }];
 }
 
 export const useLivePartyStore = create<LivePartyState>((set) => ({
@@ -164,8 +185,17 @@ export const useLivePartyStore = create<LivePartyState>((set) => ({
       photos: 0,
       games: [],
       log: [
-        { id: nextId('ev'), at: now, kind: 'pub', text: `Večer začal v ${pubName}` },
-        { id: nextId('ev'), at: now, kind: 'beer', text: beer },
+        { id: nextId('ev'), at: now, kind: 'pub', text: `Večer začal v ${pubName}`, by: ME },
+        // The table was already there and Honza was already drinking — the
+        // thread starts with more than one voice, because it always does.
+        ...TABLE.filter((person) => person.beers > 0).map((person) => ({
+          id: nextId('ev'),
+          at: now,
+          kind: 'beer' as LogKind,
+          text: beer,
+          by: person.name,
+        })),
+        { id: nextId('ev'), at: now, kind: 'beer' as LogKind, text: beer, by: ME },
       ],
     });
   },
@@ -214,21 +244,17 @@ export const useLivePartyStore = create<LivePartyState>((set) => ({
         ? s
         : {
             games: [...s.games, { key, name, at: Date.now() }],
-            log: logged(s, Date.now(), 'game', `${name} na stole`),
+            // Carries the key: the thread row IS the game, and starting it
+            // happens from where it was put on the table.
+            log: logged(s, Date.now(), 'game', name, ME, { gameKey: key }),
           },
     ),
 
+  // No second log entry when it ends: the game's own row grows a scoreboard.
+  // Two rows for one game read as two games.
   finishGame: (key, result) =>
     set((s) => ({
       games: s.games.map((game) => (game.key === key ? { ...game, result } : game)),
-      log: logged(
-        s,
-        Date.now(),
-        'game',
-        result.winner
-          ? `${result.game} — vyhrál ${result.winner}`
-          : `${result.game} — odehráno`,
-      ),
     })),
 
   invite: (name) =>
@@ -237,7 +263,7 @@ export const useLivePartyStore = create<LivePartyState>((set) => ({
         ? s
         : {
             people: [...s.people, { id: nextId('u'), name, tint: '#A8896A', beers: 0 }],
-            log: logged(s, Date.now(), 'join', `${name} dorazil`),
+            log: logged(s, Date.now(), 'join', 'Dorazil k stolu', name),
           },
     ),
 
