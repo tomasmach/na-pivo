@@ -421,7 +421,19 @@ export default function LivePartyMockScreen() {
                         style={[styles.railLine, index === all.length - 1 && styles.railHidden]}
                       />
                     </View>
-                    <View style={styles.logIcon}>{LOG_GLYPH[event.kind]}</View>
+                    <View style={styles.logIcon}>
+                      {LOG_GLYPH[event.kind]}
+                      {/* "+1" belongs ON the mug, not in front of the beer's
+                          name. In the title it pushed every name a centimetre
+                          right and read as part of what the beer is called. */}
+                      {event.kind === 'beer' ? (
+                        <View style={styles.logIconBadge}>
+                          <Text style={styles.logIconBadgeText} allowFontScaling={false}>
+                            +1
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
 
                     <View style={styles.grow}>
                       {game ? (
@@ -511,14 +523,6 @@ export default function LivePartyMockScreen() {
                           numberOfLines={2}
                           maxFontSizeMultiplier={FontScaleCap.body}
                         >
-                          {/* "+1" in the same language as the button that made
-                              it: two identical rows are two beers, not one beer
-                              mentioned twice. */}
-                          {event.kind === 'beer' ? (
-                            <Text style={styles.logPlus} allowFontScaling={false}>
-                              +1{'  '}
-                            </Text>
-                          ) : null}
                           {event.text}
                         </Text>
                       )}
@@ -891,6 +895,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout3,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: withAlpha(Colors.foam, 0.1),
+    // The badge hangs off the disc.
+    overflow: 'visible',
   },
   gameBlock: { gap: Spacing.sm },
   gameCover: { borderRadius: 18, overflow: 'hidden' },
@@ -923,7 +929,21 @@ const styles = StyleSheet.create({
   logMenuSlot: { width: 30, alignItems: 'flex-end' },
   logWho: { marginTop: 4 },
   logWhoName: { fontSize: 12, fontWeight: '600', color: Colors.mutedText },
-  logPlus: { fontFamily: Fonts.numeral, color: Colors.amber },
+  logIconBadge: {
+    position: 'absolute',
+    right: -6,
+    bottom: -3,
+    height: 17,
+    minWidth: 22,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.amber,
+    borderWidth: 2,
+    borderColor: MockColors.bg,
+  },
+  logIconBadgeText: { fontFamily: Fonts.numeral, fontSize: 11, color: Colors.stout },
   logText: { fontSize: 16, fontWeight: '600', color: Colors.foam },
   logTime: {
     fontSize: 14,
