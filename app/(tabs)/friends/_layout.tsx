@@ -52,6 +52,14 @@ export default function FeedLayout() {
           // Everywhere else stays title-only: a wordmark on every screen is
           // chrome nobody asked for.
           headerLargeTitle: false,
+          // Without the large title the bar falls back to the system's LIGHT
+          // chrome material, which on a stout app is a white plank across the
+          // top. Asking for the dark chrome material keeps it real glass —
+          // this is not the "flat colour behind headerTransparent" mistake the
+          // note above warns about; it is the platform's own material, named.
+          headerTransparent: true,
+          headerBlurEffect: 'systemChromeMaterialDark',
+          headerStyle: { backgroundColor: 'transparent' },
           headerTitle: () => (
             <View style={styles.brand}>
               <Image
