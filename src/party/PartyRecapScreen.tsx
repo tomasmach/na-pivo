@@ -36,13 +36,13 @@
  */
 
 import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SymbolView } from 'expo-symbols';
 
 import {
   ClockIcon,
-  HeartIcon,
-  ImagesIcon,
+  MessageSquareIcon,
   Share2Icon,
   MapPinIcon,
   TrophyIcon,
@@ -51,6 +51,8 @@ import { Face } from '@/feed/FeedMockScreen';
 import { Leaderboard } from '@/mocks/Leaderboard';
 import { GlassIconButton } from '@/components/shared/GlassIconButton';
 import { MockLayout } from '@/mocks/mockTheme';
+import { CheersButton } from '@/feed/CheersButton';
+import { NightRoute } from '@/mocks/NightRoute';
 import { SectionBreak } from '@/mocks/SectionBreak';
 import { MenuChip } from '@/mocks/MenuChip';
 import { NightChart, type ChartShape } from '@/mocks/NightChart';
@@ -160,7 +162,16 @@ export default function PartyRecapScreen() {
         photos: livePhotos,
         hourly: liveHourly.length > 0 ? liveHourly : MOCK_PARTY.hourly,
         stops: livePub
-          ? [{ id: 'live', pubName: livePub, arrivedAt: '20:00', beers: liveBeers.length }]
+          ? [
+              {
+                id: 'live',
+                pubName: livePub,
+                arrivedAt: '20:00',
+                beers: liveBeers.length,
+                lat: 50.0785,
+                lng: 14.42,
+              },
+            ]
           : MOCK_PARTY.stops,
         people: MOCK_PARTY.people.map((person) =>
           person.name === 'Honza' ? { ...person, beers: liveBeers.length } : person,
@@ -199,7 +210,15 @@ export default function PartyRecapScreen() {
           screen and sat below everything worth sharing. */}
       <View style={[styles.shareFloat, { top: insets.top + Spacing.sm }]}>
         <GlassIconButton size={40} accessibilityLabel="Sdílet večer">
-          <Share2Icon size={18} color={Colors.foam} />
+          {/* The system's own share mark, not a generic node graph. On iOS this
+              is the glyph every share sheet in the OS is behind, so it needs no
+              learning; the fallback keeps the old icon everywhere else. */}
+          <SymbolView
+            name="square.and.arrow.up"
+            size={20}
+            tintColor={Colors.foam}
+            fallback={<Share2Icon size={18} color={Colors.foam} />}
+          />
         </GlassIconButton>
       </View>
 
@@ -244,23 +263,28 @@ export default function PartyRecapScreen() {
           {route}
         </Text>
 
-        {/* What the POST collected — cheers and photos. The pub count used to
-            sit here as "3 štace" and again three lines down as "Hospody 3"; the
-            same number twice in one screenful makes both look like filler. */}
-        <View style={styles.summaryRow}>
-          <View style={styles.summaryFact}>
-            <HeartIcon size={15} color={Colors.mutedText} />
-            <Text style={styles.summaryText} allowFontScaling={false}>
-              {party.cheers} cheers
-            </Text>
-          </View>
-          <View style={styles.summaryFact}>
-            <ImagesIcon size={15} color={Colors.mutedText} />
-            <Text style={styles.summaryText} allowFontScaling={false}>
-              {party.photos} fotek
-            </Text>
-          </View>
-        </View>
+        {/* The night's own pictures, right under its name — they are the best
+            thing the evening made, and as a count in a meta row ("18 fotek")
+            they were a number standing in for the content. */}
+        {party.photoUrls.length > 0 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.photoStrip}
+            style={styles.photoStripWrap}
+          >
+            {party.photoUrls.map((uri) => (
+              <Image key={uri} source={{ uri }} style={styles.photoThumb} />
+            ))}
+            {party.photos > party.photoUrls.length ? (
+              <View style={[styles.photoThumb, styles.photoMore]}>
+                <Text style={styles.photoMoreText} allowFontScaling={false}>
+                  +{party.photos - party.photoUrls.length}
+                </Text>
+              </View>
+            ) : null}
+          </ScrollView>
+        ) : null}
 
         {/* The shared block: one column width per stat, so a long duration
             cannot walk into the next number. */}
@@ -281,6 +305,19 @@ export default function PartyRecapScreen() {
               },
             ]}
           />
+        </View>
+
+        {/* Reactions sit UNDER the numbers, where they do on the feed card:
+            you read what the night was, then you clink it. Above the stats they
+            were a toolbar on top of the content. */}
+        <View style={styles.reactions}>
+          <CheersButton count={party.cheers} cheered={false} label={`${party.cheers} cheers`} />
+          <View style={styles.reaction}>
+            <MessageSquareIcon size={19} color={Colors.foam} />
+            <Text style={styles.reactionText} allowFontScaling={false}>
+              4
+            </Text>
+          </View>
         </View>
 
         <View style={styles.section}>
@@ -304,6 +341,13 @@ export default function PartyRecapScreen() {
 
         <View style={styles.section}>
           <SectionTitle>Štace</SectionTitle>
+          {/* The walk, drawn. The list says where and when; the map says how far
+              it actually was, which is the part nobody remembers by morning. */}
+          {party.stops.length > 1 ? (
+            <View style={styles.stopsMap}>
+              <NightRoute stops={party.stops.map((stop) => ({ ...stop, name: stop.pubName }))} height={168} caption={false} />
+            </View>
+          ) : null}
           <View style={styles.stops}>
             {party.stops.map((stop, index) => (
               <StopRow
@@ -418,9 +462,15 @@ export default function PartyRecapScreen() {
 
 const styles = StyleSheet.create({
   shareFloat: { position: 'absolute', right: 20, zIndex: 2 },
-  summaryRow: { flexDirection: 'row', gap: Spacing.lg, marginTop: Spacing.md },
-  summaryFact: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  summaryText: { fontSize: 13, fontWeight: '600', color: Colors.mutedText },
+  photoStripWrap: { marginTop: Spacing.md, marginHorizontal: -MockLayout.screenPad },
+  photoStrip: { gap: Spacing.xs, paddingHorizontal: MockLayout.screenPad },
+  photoThumb: { width: 76, height: 76, borderRadius: 14, backgroundColor: Colors.stout3 },
+  photoMore: { alignItems: 'center', justifyContent: 'center' },
+  photoMoreText: { fontSize: 17, fontWeight: '800', color: Colors.foam },
+  reactions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.lg, marginTop: Spacing.md },
+  reaction: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  reactionText: { fontSize: 15, fontWeight: '700', color: Colors.foam },
+  stopsMap: { marginBottom: Spacing.md, borderRadius: 18, overflow: 'hidden' },
   screen: { flex: 1, backgroundColor: Colors.stout },
   content: { paddingHorizontal: MockLayout.screenPad },
   grow: { flex: 1 },

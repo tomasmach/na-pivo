@@ -42,6 +42,9 @@ export interface PartyStop {
   /** "20:15" — already formatted; the mock does no date maths. */
   arrivedAt: string;
   beers: number;
+  /** Where it is, so the stops can be drawn as the walk they were. */
+  lat: number;
+  lng: number;
 }
 
 export interface PartyRecord {
@@ -73,6 +76,7 @@ export interface PartyRecap {
   records: PartyRecord[];
   cheers: number;
   photos: number;
+  photoUrls: string[];
 }
 
 export const MOCK_PARTY: PartyRecap = {
@@ -81,9 +85,9 @@ export const MOCK_PARTY: PartyRecap = {
   beers: 27,
   duration: '6h 42m',
   stops: [
-    { id: 's1', pubName: 'U Fleků', arrivedAt: '20:15', beers: 9 },
-    { id: 's2', pubName: 'Zlý časy', arrivedAt: '22:00', beers: 11 },
-    { id: 's3', pubName: 'Vzorkovna', arrivedAt: '00:30', beers: 7 },
+    { id: 's1', pubName: 'U Fleků', arrivedAt: '20:15', beers: 9, lat: 50.0785, lng: 14.42 },
+    { id: 's2', pubName: 'Zlý časy', arrivedAt: '22:00', beers: 11, lat: 50.0655, lng: 14.438 },
+    { id: 's3', pubName: 'Vzorkovna', arrivedAt: '00:30', beers: 7, lat: 50.081, lng: 14.418 },
   ],
   people: [
     { id: 'p1', name: 'Honza', beers: 7, mvp: true, tint: '#E8A317', avatar: `${AVATARS}57` },
@@ -117,4 +121,13 @@ export const MOCK_PARTY: PartyRecap = {
   ],
   cheers: 12,
   photos: 18,
+  /** Placeholder shots. `picsum.photos` MUST NOT ship — the real ones are
+   *  `BeerPhoto` rows. */
+  photoUrls: [
+    'https://picsum.photos/seed/napivo-1/400/400',
+    'https://picsum.photos/seed/napivo-2/400/400',
+    'https://picsum.photos/seed/napivo-3/400/400',
+    'https://picsum.photos/seed/napivo-4/400/400',
+    'https://picsum.photos/seed/napivo-5/400/400',
+  ],
 };
