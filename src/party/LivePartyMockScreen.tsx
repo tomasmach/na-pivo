@@ -282,13 +282,15 @@ export default function LivePartyMockScreen() {
 
             {/* The table, once there is one. Before the night the pill is the
                 whole header — distance and opening hours belong to choosing a
-                pub, which is what the picker behind the pill is for. */}
+                pub, which is what the picker behind the pill is for.
+
+                Not a button, and no "+" face: inviting lives in the control row
+                with the other things that ADD to the evening. Two ways to do it
+                made the header read as a control panel. */}
             {live ? (
-              <Pressable
-                onPress={() => setInviteOpen(true)}
-                style={({ pressed }) => [styles.hubPeople, pressed && styles.pressed]}
-                accessibilityRole="button"
-                accessibilityLabel={`U stolu: ty a ${people.map((p) => p.name).join(', ')}. Přizvat dalšího.`}
+              <View
+                style={styles.hubPeople}
+                accessibilityLabel={`U stolu: ty a ${people.map((p) => p.name).join(', ')}`}
               >
                 <View style={styles.faces}>
                   {/* The same component the feed card uses, so a person looks
@@ -299,9 +301,6 @@ export default function LivePartyMockScreen() {
                       <Face name={person.name} tint={person.tint} size={30} />
                     </View>
                   ))}
-                  <View style={[styles.face, styles.faceOverlap, styles.faceAdd]}>
-                    <UserPlusIcon size={14} color={Colors.mutedText} />
-                  </View>
                 </View>
                 <Text
                   style={styles.hubNames}
@@ -310,7 +309,7 @@ export default function LivePartyMockScreen() {
                 >
                   {['Ty', ...people.map((p) => p.name)].join(', ')}
                 </Text>
-              </Pressable>
+              </View>
             ) : null}
           </View>
 
@@ -604,17 +603,7 @@ const styles = StyleSheet.create({
   hubPubName: { fontSize: 18, fontWeight: '800', color: Colors.foam, letterSpacing: -0.2 },
   hubPeople: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   faces: { flexDirection: 'row', alignItems: 'center' },
-  face: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: MockColors.bg,
-  },
   faceOverlap: { marginLeft: -9 },
-  faceAdd: { backgroundColor: withAlpha(Colors.foam, 0.12) },
   faceText: { fontSize: 12, fontWeight: '800', color: Colors.stout },
   hubNames: { flex: 1, fontSize: 13, fontWeight: '500', color: Colors.mutedText },
   topIcon: {
