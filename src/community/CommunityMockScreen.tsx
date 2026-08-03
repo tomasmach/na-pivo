@@ -57,6 +57,11 @@ const PERIODS = ['Týden', 'Letos', 'Celkem'] as const;
 
 const AVATARS = 'https://i.pravatar.cc/160?img=';
 
+/**
+ * A board of six read as a friend list, not as a community. A leaderboard has to
+ * look like something you are IN — with a tail below you that you could climb
+ * and people you do not know at the top.
+ */
 const ROWS = [
   { rank: 1, handle: '@sudík', score: 31, avatar: `${AVATARS}57` },
   { rank: 2, handle: '@chmelák', score: 27, avatar: `${AVATARS}50` },
@@ -64,6 +69,15 @@ const ROWS = [
   { rank: 4, handle: '@klárka', score: 19, avatar: `${AVATARS}64` },
   { rank: 5, handle: '@ty', score: 17, avatar: `${AVATARS}12`, me: true },
   { rank: 6, handle: '@mišák', score: 14, avatar: `${AVATARS}26` },
+  { rank: 7, handle: '@hospodská', score: 13, avatar: `${AVATARS}47` },
+  { rank: 8, handle: '@tanker', score: 12, avatar: `${AVATARS}33` },
+  { rank: 9, handle: '@ležáková', score: 11, avatar: `${AVATARS}45` },
+  { rank: 10, handle: '@kvasnice', score: 10, avatar: `${AVATARS}15` },
+  { rank: 11, handle: '@půllitr', score: 9, avatar: `${AVATARS}68` },
+  { rank: 12, handle: '@štamgast', score: 8, avatar: `${AVATARS}59` },
+  { rank: 13, handle: '@chmel', score: 7, avatar: `${AVATARS}11` },
+  { rank: 14, handle: '@nočnísova', score: 6, avatar: `${AVATARS}23` },
+  { rank: 15, handle: '@tmavé12', score: 5, avatar: `${AVATARS}52` },
 ];
 
 /** The podium — first place has to look like first place. */
