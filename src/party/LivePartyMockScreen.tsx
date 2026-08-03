@@ -643,10 +643,8 @@ export default function LivePartyMockScreen() {
               accessibilityRole="button"
               accessibilityLabel={live ? `Přidat ${houseBeer}` : 'Začít večer prvním pivem'}
             >
-              <BeerIcon size={22} color={Colors.stout} />
-              <Text style={styles.primaryPlus} allowFontScaling={false}>
-                +1
-              </Text>
+              <PlusIcon size={17} color={Colors.stout} />
+              <BeerIcon size={21} color={Colors.stout} />
               <Text
                 style={styles.primaryLabel}
                 numberOfLines={2}
@@ -655,19 +653,22 @@ export default function LivePartyMockScreen() {
                 {live ? (byType.length > 1 ? `${byType.length} druhy` : houseBeer) : 'Začni večer'}
               </Text>
             </Pressable>
-
-            {live ? (
-              <Pressable
-                onPress={() => setBeersOpen(true)}
-                style={({ pressed }) => [styles.primaryPick, pressed && styles.primaryPressed]}
-                accessibilityRole="button"
-                accessibilityLabel={`Piješ ${houseBeer}. Změnit.`}
-              >
-                <View style={styles.primaryDivider} />
-                <ChevronDownIcon size={16} color={Colors.stout} />
-              </Pressable>
-            ) : null}
           </View>
+
+          {/* Changing the beer is its OWN button, outside the amber. Inside it,
+              a chevron behind a hairline was a second action hiding in the
+              middle of the one thing on this screen you press all night — and a
+              button you press by accident when you meant to log a beer. */}
+          {live ? (
+            <Pressable
+              onPress={() => setBeersOpen(true)}
+              style={({ pressed }) => [styles.primaryPick, pressed && styles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={`Piješ ${houseBeer}. Změnit.`}
+            >
+              <ChevronDownIcon size={18} color={Colors.amber} />
+            </Pressable>
+          ) : null}
 
           <CircleButton label="Hry" onPress={() => setGamesOpen(true)}>
             <SoccerBallIcon size={20} color={Colors.foam} />
@@ -979,23 +980,18 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    height: '100%',
-    paddingLeft: Spacing.md,
-  },
-  primaryPick: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    gap: 5,
     height: '100%',
     paddingHorizontal: Spacing.md,
   },
-  primaryDivider: {
-    width: StyleSheet.hairlineWidth,
-    height: 26,
-    marginRight: Spacing.md,
-    backgroundColor: withAlpha(Colors.stout, 0.28),
+  primaryPick: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(Colors.amber, 0.16),
   },
-  primaryPlus: { fontFamily: Fonts.numeral, fontSize: 17, color: Colors.stout },
   addBadge: {
     position: 'absolute',
     right: -1,
