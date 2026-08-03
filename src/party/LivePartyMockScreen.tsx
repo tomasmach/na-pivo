@@ -645,7 +645,9 @@ export default function LivePartyMockScreen() {
               that happened to be near each other; this reads as one thing whose
               end does something slightly different. */}
           <View style={styles.primaryGroup}>
-          <View style={styles.primaryWrap}>
+          {/* Before a night starts there is no picker beside it, so the flat
+              right edge would be a seam with nothing on the other side. */}
+          <View style={[styles.primaryWrap, !live && styles.primaryWhole]}>
             <Pressable
               onPress={() => (live ? addBeer(houseBeer) : setBeersOpen(true))}
               style={({ pressed }) => [styles.primaryBody, pressed && styles.primaryPressed]}
@@ -655,7 +657,7 @@ export default function LivePartyMockScreen() {
               <PlusIcon size={17} color={Colors.stout} />
               <BeerIcon size={21} color={Colors.stout} />
               <Text
-                style={styles.primaryLabel}
+                style={[styles.primaryLabel, !live && styles.primaryLabelWhole]}
                 numberOfLines={2}
                 maxFontSizeMultiplier={FontScaleCap.body}
               >
@@ -987,6 +989,13 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: Radius.pill,
     backgroundColor: Colors.amber,
     overflow: 'hidden',
+  },
+  // Centred when it is the whole button; left-aligned when a beer name has to
+  // share the capsule with the picker.
+  primaryLabelWhole: { textAlign: 'center' },
+  primaryWhole: {
+    borderTopRightRadius: Radius.pill,
+    borderBottomRightRadius: Radius.pill,
   },
   primaryBody: {
     flex: 1,
