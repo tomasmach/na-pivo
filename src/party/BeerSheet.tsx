@@ -31,7 +31,6 @@ export function BeerSheet({
   subtitle = 'Uprav počty nebo si dej něco jiného.',
   onClose,
   onAdd,
-  onRemove,
 }: {
   title?: string;
   subtitle?: string;
@@ -40,7 +39,6 @@ export function BeerSheet({
   onTaps: { name: string; priceCzk: number | null }[];
   onClose: () => void;
   onAdd: (beer: string) => void;
-  onRemove: (beer: string) => void;
 }) {
   const insets = useSafeAreaInsets();
 
@@ -67,7 +65,7 @@ export function BeerSheet({
           <CloseButton onPress={onClose} />
         </View>
 
-        <BeerList rows={rows} onTaps={onTaps} onAdd={onAdd} onRemove={onRemove} />
+        <BeerList rows={rows} onTaps={onTaps} onAdd={onAdd} />
       </View>
     </BottomSheetModal>
   );

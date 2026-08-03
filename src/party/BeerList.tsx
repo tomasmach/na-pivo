@@ -2,8 +2,13 @@
  * DESIGN MOCK — the pub's taps, as a running order.
  *
  * One list, one row type. Every tap the pub has is a row: its name, its price,
- * and a counter. Nought means you have not had it, so the row shows a single
- * plus; once you have, the same spot becomes `− N +`.
+ * and the amber mug-and-plus. Tap it and the sheet closes with the beer in the
+ * log — one gesture, done.
+ *
+ * There is no stepper. It made this sheet a place you STAY, adjusting numbers,
+ * when the only thing you came for was to say what you are drinking; and it was
+ * a second, worse editor for something the log row's own menu now does properly
+ * — where you can see WHICH beer you are correcting.
  *
  * It used to be two things stacked — the beers you had as rows, the rest as a
  * wrap of chips. That read as a cramped chip cloud, could not show a price, and
@@ -21,7 +26,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { CloseButton } from '@/components/shared/CloseButton';
-import { BeerIcon, MinusIcon, PlusIcon } from '@/components/shared/IconGlyph';
+import { BeerIcon, PlusIcon } from '@/components/shared/IconGlyph';
 import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -31,14 +36,12 @@ export function BeerList({
   rows,
   onTaps,
   onAdd,
-  onRemove,
 }: {
-  /** What you have had, per kind. */
+  /** What you have had, per kind — shown as a quiet tally, not as a control. */
   rows: { beer: string; count: number }[];
   /** The pub's tap list. */
   onTaps: { name: string; priceCzk: number | null }[];
   onAdd: (beer: string) => void;
-  onRemove: (beer: string) => void;
 }) {
   const [custom, setCustom] = React.useState(false);
   const [draft, setDraft] = React.useState('');
@@ -65,7 +68,13 @@ export function BeerList({
       {[...listed, ...extra].map((beer) => {
         const count = counts.get(beer.name) ?? 0;
         return (
-          <View key={beer.name} style={styles.row}>
+          <Pressable
+            key={beer.name}
+            onPress={() => onAdd(beer.name)}
+            style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel={`Dát si ${beer.name}`}
+          >
             <View style={styles.grow}>
               <Text
                 style={[styles.name, count > 0 && styles.nameOn]}
@@ -74,54 +83,18 @@ export function BeerList({
               >
                 {beer.name}
               </Text>
-              {beer.price !== null ? (
-                <Text style={styles.price} allowFontScaling={false}>
-                  {beer.price} Kč
-                </Text>
-              ) : null}
+              <Text style={styles.price} allowFontScaling={false}>
+                {beer.price !== null ? `${beer.price} Kč` : ''}
+                {beer.price !== null && count > 0 ? ' · ' : ''}
+                {count > 0 ? `už ${count}×` : ''}
+              </Text>
             </View>
 
-            {count > 0 ? (
-              <View style={styles.counter}>
-                <Pressable
-                  onPress={() => onRemove(beer.name)}
-                  style={({ pressed }) => [styles.step, pressed && styles.pressed]}
-                  accessibilityRole="button"
-                  accessibilityLabel={`O jedno ${beer.name} míň`}
-                  hitSlop={6}
-                >
-                  <MinusIcon size={16} color={Colors.foam} />
-                </Pressable>
-                <Text style={styles.count} allowFontScaling={false}>
-                  {count}
-                </Text>
-                <Pressable
-                  onPress={() => onAdd(beer.name)}
-                  style={({ pressed }) => [styles.step, styles.stepOn, pressed && styles.pressed]}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Ještě jedno ${beer.name}`}
-                  hitSlop={6}
-                >
-                  <PlusIcon size={16} color={Colors.stout} />
-                </Pressable>
-              </View>
-            ) : (
-              // A mug AND a plus, the same pair the live bar's counter uses: a
-              // lone plus on a list of beers says "add a row", the mug says
-              // what the row is. Only on the untouched rows — once there is a
-              // count, the plus sits beside a minus and reads as a stepper.
-              <Pressable
-                onPress={() => onAdd(beer.name)}
-                style={({ pressed }) => [styles.addPill, pressed && styles.pressed]}
-                accessibilityRole="button"
-                accessibilityLabel={`Dát si ${beer.name}`}
-                hitSlop={6}
-              >
-                <BeerIcon size={17} color={Colors.stout} />
-                <PlusIcon size={14} color={Colors.stout} />
-              </Pressable>
-            )}
-          </View>
+            <View style={styles.addPill}>
+              <BeerIcon size={17} color={Colors.stout} />
+              <PlusIcon size={14} color={Colors.stout} />
+            </View>
+          </Pressable>
         );
       })}
 
@@ -134,7 +107,7 @@ export function BeerList({
         <Text style={styles.other} maxFontSizeMultiplier={FontScaleCap.body}>
           Jiné pivo
         </Text>
-        <View style={[styles.step, styles.stepGhost]}>
+        <View style={styles.otherPlus}>
           <PlusIcon size={17} color={Colors.mutedText} />
         </View>
       </Pressable>
@@ -192,16 +165,14 @@ const styles = StyleSheet.create({
   price: { fontSize: 13, fontWeight: '500', color: Colors.mutedText, marginTop: 2 },
   other: { flex: 1, fontSize: 16, fontWeight: '600', color: Colors.mutedText },
 
-  counter: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
-  step: {
+  otherPlus: {
     width: 36,
     height: 36,
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.foam, 0.09),
+    backgroundColor: withAlpha(Colors.foam, 0.07),
   },
-  stepOn: { backgroundColor: Colors.amber },
   addPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -210,15 +181,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: Radius.pill,
     backgroundColor: Colors.amber,
-  },
-  stepGhost: { backgroundColor: withAlpha(Colors.foam, 0.07) },
-  count: {
-    minWidth: 20,
-    textAlign: 'center',
-    fontSize: 18,
-    fontWeight: '800',
-    color: Colors.foam,
-    fontVariant: ['tabular-nums'],
   },
 
   dialog: {

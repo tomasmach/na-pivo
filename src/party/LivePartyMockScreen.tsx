@@ -41,7 +41,6 @@ import {
   BeerIcon,
   CameraIcon,
   ChevronDownIcon,
-  ChevronRightIcon,
   MapPinIcon,
   PlayIcon,
   PlusIcon,
@@ -50,7 +49,7 @@ import {
   TrophyIcon,
   UserPlusIcon,
 } from '@/components/shared/IconGlyph';
-import { GlassIconButton } from '@/components/shared/GlassIconButton';
+import { GlassPill } from '@/components/shared/GlassIconButton';
 import { BeerSheet } from '@/party/BeerSheet';
 import { GameCover } from '@/party/GameCover';
 import { GAME_CATALOG } from '@/party/gameCatalog';
@@ -187,7 +186,6 @@ export default function LivePartyMockScreen() {
   const pubName = useLivePartyStore((s) => s.pubName);
   const startParty = useLivePartyStore((s) => s.start);
   const addBeer = useLivePartyStore((s) => s.addBeer);
-  const removeBeer = useLivePartyStore((s) => s.removeBeer);
   const addPhoto = useLivePartyStore((s) => s.addPhoto);
   const editBeer = useLivePartyStore((s) => s.editBeer);
   const dropBeer = useLivePartyStore((s) => s.dropBeer);
@@ -209,6 +207,17 @@ export default function LivePartyMockScreen() {
   const mapHeight = live
     ? Math.max(MAP_LIVE_MIN, insets.top + TOP_BAR_H + SHEET_RADIUS)
     : MAP_IDLE;
+
+  // "Your third beer" — counted per person over the thread in the order things
+  // happened, so Honza's rows count Honza's beers and not the table's.
+  const ordinals = new Map<string, number>();
+  const tally = new Map<string, number>();
+  for (const event of log) {
+    if (event.kind !== 'beer') continue;
+    const next = (tally.get(event.by) ?? 0) + 1;
+    tally.set(event.by, next);
+    ordinals.set(event.id, next);
+  }
 
   const mine = beers.length;
   const table = mine + people.reduce((sum, person) => sum + person.beers, 0);
@@ -327,13 +336,18 @@ export default function LivePartyMockScreen() {
                 changes. Down in the control row it sat among the things you do
                 over and over all evening; you invite people once. */}
             {live ? (
-              <GlassIconButton
-                size={40}
+              // With a word on it. A bare glyph in a corner is a guess — and
+              // this is the one control on the screen whose job ("get someone
+              // else in here") no icon says on its own.
+              <GlassPill
                 accessibilityLabel="Přizvat ke stolu"
                 onPress={() => setInviteOpen(true)}
               >
-                <UserPlusIcon size={19} color={Colors.amber} />
-              </GlassIconButton>
+                <UserPlusIcon size={17} color={Colors.amber} />
+                <Text style={styles.invitePill} allowFontScaling={false}>
+                  Pozvat
+                </Text>
+              </GlassPill>
             ) : null}
             </View>
 
@@ -421,19 +435,24 @@ export default function LivePartyMockScreen() {
                         style={[styles.railLine, index === all.length - 1 && styles.railHidden]}
                       />
                     </View>
-                    <View style={styles.logIcon}>
-                      {LOG_GLYPH[event.kind]}
-                      {/* "+1" belongs ON the mug, not in front of the beer's
-                          name. In the title it pushed every name a centimetre
-                          right and read as part of what the beer is called. */}
-                      {event.kind === 'beer' ? (
-                        <View style={styles.logIconBadge}>
-                          <Text style={styles.logIconBadgeText} allowFontScaling={false}>
-                            +1
-                          </Text>
-                        </View>
-                      ) : null}
-                    </View>
+                    {/* A beer wears the same amber mug-and-plus as the button
+                        that pours one, so the thread's most common row is the
+                        one you can find without reading. Everything else stays a
+                        quiet disc — if every kind were amber, none would be. */}
+                    {event.kind === 'beer' ? (
+                      // The mug carries WHICH beer this is — third of the night
+                      // for whoever poured it. A plus said the row added
+                      // something, which the row already said by existing; the
+                      // number is the fact you cannot get any other way.
+                      <View style={[styles.logIcon, styles.logIconBeer]}>
+                        <BeerIcon size={15} color={Colors.stout} />
+                        <Text style={styles.logIconCount} allowFontScaling={false}>
+                          {ordinals.get(event.id) ?? 1}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={styles.logIcon}>{LOG_GLYPH[event.kind]}</View>
+                    )}
 
                     <View style={styles.grow}>
                       {game ? (
@@ -610,54 +629,44 @@ export default function LivePartyMockScreen() {
             <CameraIcon size={20} color={Colors.foam} />
           </CircleButton>
 
+          {/* One long button instead of a disc with a caption hanging under it.
+              The name of what you are drinking belongs INSIDE the thing that
+              pours it — floating below, it had nowhere to break, so a long tap
+              name either clipped or wrapped into the labels beside it.
+
+              Two targets in one shape: the body logs a beer, the chevron at the
+              end changes which. Same split as before, just no longer stacked. */}
           <View style={styles.primaryWrap}>
             <Pressable
               onPress={() => (live ? addBeer(houseBeer) : setBeersOpen(true))}
-              style={({ pressed }) => [styles.circlePrimary, pressed && styles.primaryPressed]}
+              style={({ pressed }) => [styles.primaryBody, pressed && styles.primaryPressed]}
               accessibilityRole="button"
-              accessibilityLabel={live ? 'Přidat pivo' : 'Začít večer prvním pivem'}
+              accessibilityLabel={live ? `Přidat ${houseBeer}` : 'Začít večer prvním pivem'}
             >
-              <BeerIcon size={34} color={Colors.stout} />
-              {/* The same plus the other four wear. On the biggest, loudest
-                  button in the app a bare mug said "beer"; the plus says what
-                  pressing it DOES. Inverted — stout disc, amber glyph — so it
-                  punches out of the amber instead of vanishing into it. */}
-              {live ? (
-                <View style={[styles.addBadge, styles.primaryBadge]}>
-                  <PlusIcon size={11} color={Colors.amber} />
-                </View>
-              ) : null}
+              <BeerIcon size={22} color={Colors.stout} />
+              <Text style={styles.primaryPlus} allowFontScaling={false}>
+                +1
+              </Text>
+              <Text
+                style={styles.primaryLabel}
+                numberOfLines={2}
+                maxFontSizeMultiplier={FontScaleCap.body}
+              >
+                {live ? (byType.length > 1 ? `${byType.length} druhy` : houseBeer) : 'Začni večer'}
+              </Text>
             </Pressable>
-            {/* Tap the disc to pour the house tap, tap the chip to change what
-                that is. One tap to log stays the whole ritual; picking a beer
-                is the rarer thing, so it is the smaller target. */}
+
             {live ? (
               <Pressable
                 onPress={() => setBeersOpen(true)}
-                style={({ pressed }) => [styles.beerChip, pressed && styles.pressed]}
+                style={({ pressed }) => [styles.primaryPick, pressed && styles.primaryPressed]}
                 accessibilityRole="button"
                 accessibilityLabel={`Piješ ${houseBeer}. Změnit.`}
-                hitSlop={6}
               >
-                {/* A spacer the width of the chevron, so the NAME is centred on
-                    the disc rather than the name-plus-chevron block. Without it
-                    a two-line label sat visibly left of the button it belongs
-                    to. */}
-                <View style={styles.chipSpacer} />
-                <Text
-                  style={styles.primaryLabel}
-                  numberOfLines={2}
-                  maxFontSizeMultiplier={FontScaleCap.body}
-                >
-                  {byType.length > 1 ? `${byType.length} druhy` : houseBeer}
-                </Text>
-                <ChevronDownIcon size={13} color={Colors.amber} />
+                <View style={styles.primaryDivider} />
+                <ChevronDownIcon size={16} color={Colors.stout} />
               </Pressable>
-            ) : (
-              <Text style={styles.primaryLabel} maxFontSizeMultiplier={FontScaleCap.body}>
-                Začni
-              </Text>
-            )}
+            ) : null}
           </View>
 
           <CircleButton label="Hry" onPress={() => setGamesOpen(true)}>
@@ -683,19 +692,18 @@ export default function LivePartyMockScreen() {
         title={live ? 'Co piješ' : 'Čím začínáš?'}
         subtitle={
           live
-            ? 'Uprav počty nebo si dej něco jiného.'
+            ? 'Ťukni a je to v logu.'
             : 'První pivo nastaví, co bude nalévat „+1 pivo“.'
         }
         onClose={() => setBeersOpen(false)}
+        // One tap, sheet closed, beer in the log. Staying open to let you add
+        // three in a row was designing for a case that does not happen: you
+        // order a beer, you log a beer.
         onAdd={(beer) => {
-          if (live) {
-            addBeer(beer);
-            return;
-          }
-          startParty(pubName, beer);
+          if (live) addBeer(beer);
+          else startParty(pubName, beer);
           setBeersOpen(false);
         }}
-        onRemove={removeBeer}
       />
 
       <InviteSheet
@@ -743,6 +751,7 @@ const styles = StyleSheet.create({
   // — Hub header —
   hub: { gap: Spacing.sm, marginBottom: Spacing.lg },
   hubTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  invitePill: { fontSize: 14, fontWeight: '700', color: Colors.amber },
   // A pill, not a heading with a chevron bolted on: it is a control, and it
   // should look like one before you tap it.
   hubPub: {
@@ -933,21 +942,13 @@ const styles = StyleSheet.create({
     marginTop: 1,
     fontVariant: ['tabular-nums'],
   },
-  logIconBadge: {
-    position: 'absolute',
-    right: -6,
-    bottom: -3,
-    height: 17,
-    minWidth: 22,
-    paddingHorizontal: 4,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
+  logIconBeer: {
+    flexDirection: 'row',
+    gap: 1,
     backgroundColor: Colors.amber,
-    borderWidth: 2,
-    borderColor: MockColors.bg,
+    borderColor: Colors.amber,
   },
-  logIconBadgeText: { fontFamily: Fonts.numeral, fontSize: 11, color: Colors.stout },
+  logIconCount: { fontFamily: Fonts.numeral, fontSize: 14, color: Colors.stout },
   logText: { fontSize: 16, fontWeight: '600', color: Colors.foam },
 
   // — Controls —
@@ -956,24 +957,45 @@ const styles = StyleSheet.create({
   // being pushed apart by the disc.
   controls: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    gap: Spacing.sm,
     paddingTop: Spacing.xl,
     paddingBottom: Spacing.sm,
     // Overlaps the thread it fades out — the scroll runs under it.
     marginTop: -Spacing.xl,
   },
-  controlsLive: { paddingBottom: 46 },
-  circleWrap: { alignItems: 'center', gap: 5, flex: 1 },
-  primaryWrap: { alignItems: 'center', gap: 5, flex: 1, zIndex: 1 },
-  primaryBadge: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    right: 2,
-    top: 2,
-    backgroundColor: Colors.stout,
-    borderColor: Colors.amber,
+  controlsLive: { paddingBottom: Spacing.sm },
+  circleWrap: { alignItems: 'center', gap: 5 },
+  primaryWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 60,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.amber,
+    overflow: 'hidden',
   },
+  primaryBody: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: '100%',
+    paddingLeft: Spacing.md,
+  },
+  primaryPick: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: '100%',
+    paddingHorizontal: Spacing.md,
+  },
+  primaryDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 26,
+    marginRight: Spacing.md,
+    backgroundColor: withAlpha(Colors.stout, 0.28),
+  },
+  primaryPlus: { fontFamily: Fonts.numeral, fontSize: 17, color: Colors.stout },
   addBadge: {
     position: 'absolute',
     right: -1,
@@ -1006,40 +1028,17 @@ const styles = StyleSheet.create({
   },
   circleSolid: { backgroundColor: MockColors.surfaceHigh },
   circleLabel: { fontWeight: '500', fontSize: 12, color: Colors.mutedText },
-  circlePrimary: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.amber,
-    marginTop: -12,
-  },
   primaryPressed: { opacity: 0.9, transform: [{ scale: 0.97 }] },
-  chipSpacer: { width: 16 },
   primaryLabel: {
     flexShrink: 1,
-    fontWeight: '700',
-    fontSize: 13,
-    lineHeight: 16,
-    color: Colors.amber,
-    textAlign: 'center',
+    fontWeight: '800',
+    fontSize: 15,
+    lineHeight: 18,
+    color: Colors.stout,
   },
   /**
    * Full width of the control row, not the width of the disc above it. Clipped
    * to the disc, "Flekovský ležák 13°" came out as "Flekovsk…" — and the whole
    * point of the chip is telling you what "+1" will pour.
    */
-  beerChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 3,
-    // Only as wide as the disc it belongs to, so a long tap name breaks onto a
-    // second line instead of running under "Foto" and "Hry".
-    position: 'absolute',
-    left: -18,
-    right: -18,
-    bottom: -48,
-  },
 });
