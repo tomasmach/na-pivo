@@ -151,9 +151,6 @@ export default function CommunityMockScreen() {
 
           {rest.map((row) => (
             <View key={row.handle} style={[styles.row, row.me && styles.rowMe]}>
-              <Text style={styles.rank} allowFontScaling={false}>
-                {row.rank}
-              </Text>
               <Image source={{ uri: row.avatar }} style={styles.rowAvatar} />
               <View style={styles.body}>
                 <Text
@@ -163,17 +160,16 @@ export default function CommunityMockScreen() {
                 >
                   {row.handle}
                 </Text>
-                <View style={styles.track}>
-                  <View
-                    style={[
-                      styles.fill,
-                      {
-                        width: `${Math.max(6, Math.round((row.score / top) * 100))}%`,
-                        backgroundColor: row.me ? Colors.amber : withAlpha(Colors.amber, 0.35),
-                      },
-                    ]}
-                  />
-                </View>
+                {/* The place goes UNDER the name. In its own leading column it
+                    was 18pt wide, so "10" broke across two lines and the board
+                    read as a stack of loose digits.
+
+                    No bar either: below the podium the differences are one or
+                    two beers and every bar was the same length — a graphic that
+                    says nothing, printed fifteen times. */}
+                <Text style={styles.rank} allowFontScaling={false}>
+                  {row.rank}. místo
+                </Text>
               </View>
               <Text style={styles.score} allowFontScaling={false}>
                 {row.score}
@@ -338,10 +334,10 @@ const styles = StyleSheet.create({
   rowFirst: { borderTopWidth: 0, marginTop: Spacing.lg },
   rowMe: { borderTopColor: withAlpha(Colors.amber, 0.3) },
   rank: {
-    width: 18,
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '600',
     color: Colors.mutedText,
+    marginTop: 2,
     fontVariant: ['tabular-nums'],
   },
   rowAvatar: { width: 34, height: 34, borderRadius: 17 },
@@ -380,6 +376,9 @@ const styles = StyleSheet.create({
   handle: { ...MockType.bodySemibold, color: Colors.foam },
   handleMe: { color: Colors.amber },
   sub: { fontSize: 13, fontWeight: '400', color: Colors.mutedText },
+  // The challenge card's progress. It survived the leaderboard's cull because
+  // there it measures something real — how far through a goal you are — rather
+  // than restating a score printed beside it.
   track: {
     height: 7,
     borderRadius: 4,

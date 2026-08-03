@@ -34,6 +34,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
+import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import {
   BeerIcon,
@@ -77,6 +79,9 @@ const TAPS = [
   { name: 'Flekovský tmavý 13°', priceCzk: 62 },
   { name: 'Nealko 11°', priceCzk: 45 },
 ];
+
+/** Resolved once: constant for the process (iOS 26+, false everywhere else). */
+const GLASS = isLiquidGlassAvailable();
 
 /** How far the sheet overlaps the map, which is also its corner radius. */
 const SHEET_RADIUS = 28;
@@ -134,6 +139,21 @@ function CircleButton({
         accessibilityRole="button"
         accessibilityLabel={adds ? `Přidat: ${label}` : label}
       >
+        {/* Real glass where the OS has it (§15.1), a filled disc below iOS 26.
+            The discs sit over a fading thread, which is exactly the situation
+            the material is for — a flat plate here read as five holes cut in
+            the screen. */}
+        {GLASS ? (
+          <GlassView
+            style={styles.circleGlass}
+            glassEffectStyle="regular"
+            tintColor={withAlpha(Colors.foam, 0.06)}
+            colorScheme="dark"
+            pointerEvents="none"
+          />
+        ) : (
+          <View style={[styles.circleGlass, styles.circleSolid]} pointerEvents="none" />
+        )}
         {children}
         {adds ? (
           <View style={styles.addBadge}>
@@ -550,10 +570,26 @@ export default function LivePartyMockScreen() {
           ) : null}
         </ScrollView>
 
-        {/* The room under the row exists only for the beer chip, which hangs
+        {/* The controls float ON the thread, not on a plate under a rule. The
+            hairline said "this is a different panel" and pushed the buttons up
+            off the bottom of the phone; a gradient that is solid under the row
+            and fades to nothing above it lets the log run out of sight instead
+            of stopping at a border.
+
+            The room under the row exists only for the beer chip, which hangs
             below the disc while a night runs. Before one starts there is no
-            chip, and the fixed padding left the buttons floating in a hole. */}
+            chip, and fixed padding left the buttons floating in a hole. */}
         <View style={[styles.controls, live && styles.controlsLive]}>
+          <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
+            <Defs>
+              <LinearGradient id="controlsFade" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor={MockColors.bg} stopOpacity="0" />
+                <Stop offset="0.45" stopColor={MockColors.bg} stopOpacity="0.92" />
+                <Stop offset="1" stopColor={MockColors.bg} stopOpacity="1" />
+              </LinearGradient>
+            </Defs>
+            <Rect x="0" y="0" width="100%" height="100%" fill="url(#controlsFade)" />
+          </Svg>
           <CircleButton label="Pozvat" onPress={() => setInviteOpen(true)}>
             <UserPlusIcon size={20} color={Colors.foam} />
           </CircleButton>
@@ -893,10 +929,10 @@ const styles = StyleSheet.create({
   controls: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    paddingTop: Spacing.md,
+    paddingTop: Spacing.xl,
     paddingBottom: Spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(Colors.foam, 0.12),
+    // Overlaps the thread it fades out — the scroll runs under it.
+    marginTop: -Spacing.xl,
   },
   controlsLive: { paddingBottom: 46 },
   circleWrap: { alignItems: 'center', gap: 5, flex: 1 },
@@ -930,8 +966,17 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: MockColors.surfaceHigh,
   },
+  circleGlass: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    borderRadius: 24,
+    overflow: 'hidden',
+  },
+  circleSolid: { backgroundColor: MockColors.surfaceHigh },
   circleLabel: { fontWeight: '500', fontSize: 12, color: Colors.mutedText },
   circlePrimary: {
     width: 76,
