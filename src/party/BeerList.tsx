@@ -25,7 +25,7 @@ import { MinusIcon, PlusIcon } from '@/components/shared/IconGlyph';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
-import { HitArea, Radius, Spacing } from '@/theme/layout';
+import { Radius, Spacing } from '@/theme/layout';
 
 export function BeerList({
   rows,

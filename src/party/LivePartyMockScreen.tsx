@@ -39,6 +39,7 @@ import {
   UserPlusIcon,
 } from '@/components/shared/IconGlyph';
 import { BeerSheet } from '@/party/BeerSheet';
+import { Face } from '@/feed/FeedMockScreen';
 import { PulsePanel } from '@/party/PulsePanel';
 import { GamesSheet } from '@/party/GamesSheet';
 import { InviteSheet } from '@/party/InviteSheet';
@@ -264,19 +265,12 @@ export default function LivePartyMockScreen() {
                 accessibilityLabel={`U stolu: ty a ${people.map((p) => p.name).join(', ')}. Přizvat dalšího.`}
               >
                 <View style={styles.faces}>
-                  <View style={[styles.face, { backgroundColor: Colors.amber }]}>
-                    <Text style={styles.faceText} allowFontScaling={false}>
-                      T
-                    </Text>
-                  </View>
+                  {/* The same component the feed card uses, so a person looks
+                      the same wherever they appear. */}
+                  <Face name="Ty" tint={Colors.amber} size={30} />
                   {people.map((person) => (
-                    <View
-                      key={person.id}
-                      style={[styles.face, styles.faceOverlap, { backgroundColor: person.tint }]}
-                    >
-                      <Text style={styles.faceText} allowFontScaling={false}>
-                        {person.name.slice(0, 1).toUpperCase()}
-                      </Text>
+                    <View key={person.id} style={styles.faceOverlap}>
+                      <Face name={person.name} tint={person.tint} size={30} />
                     </View>
                   ))}
                   <View style={[styles.face, styles.faceOverlap, styles.faceAdd]}>
@@ -303,7 +297,7 @@ export default function LivePartyMockScreen() {
             stats={[
               { value: String(mine), unit: 'piv' },
               { value: String(live ? table : 0), unit: 'u stolu' },
-              { value: live ? fourth.value : '—', unit: fourth.label.toLowerCase() },
+              { value: live ? fourth.value : '—', unit: live ? fourth.label.toLowerCase() : 'tempo' },
             ]}
           />
 

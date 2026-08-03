@@ -343,7 +343,7 @@ export default function PubListMockScreen() {
   // from the tab bar. Anchored by their BOTTOM edge: computed down from the top
   // they drifted away from the bar on taller screens.
   const carouselBottom = TAB_CHROME - 18;
-  const controlsBottom = carouselBottom + CAROUSEL_H + Spacing.sm;
+  const controlsBottom = carouselBottom + CAROUSEL_H - Spacing.sm;
 
   return (
     <View style={styles.screen}>
@@ -362,7 +362,7 @@ export default function PubListMockScreen() {
           pubs twice. */}
       {detent === 'peek' ? (
         <View style={[styles.carousel, { bottom: carouselBottom }]}>
-          <PubCarousel onSelect={setSelectedPub} />
+          <PubCarousel onSelect={setSelectedPub} onOpen={openPubDetail} />
         </View>
       ) : null}
 

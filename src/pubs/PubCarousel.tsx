@@ -18,6 +18,7 @@
 
 import React, { useCallback, useRef } from 'react';
 import {
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -44,11 +45,26 @@ const GAP = Spacing.sm;
 /** Stand-in for the device position until the mock is wired to location. */
 const HERE = { lat: 50.077, lng: 14.4165 };
 
-function PubCard({ pub, width, nearest }: { pub: MockPub; width: number; nearest: boolean }) {
+function PubCard({
+  pub,
+  width,
+  nearest,
+  onPress,
+}: {
+  pub: MockPub;
+  width: number;
+  nearest: boolean;
+  onPress?: () => void;
+}) {
   const rotation = useCompassRotation(HERE, { lat: pub.lat, lng: pub.lng });
 
   return (
-    <View style={[styles.card, { width }]}>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.card, { width }, pressed && styles.pressed]}
+      accessibilityRole="button"
+      accessibilityLabel={`${pub.name}, ${pub.distance}, detail`}
+    >
       {/* Glass, like Packeta's places card. Tinted hard enough that a pub name
           never has to be read against a street label showing through — glass
           here is a material, not transparency for its own sake. */}
@@ -84,11 +100,18 @@ function PubCard({ pub, width, nearest }: { pub: MockPub; width: number; nearest
           {pub.open ? `Otevřeno ${pub.hours}` : `Zavřeno, ${pub.hours}`} · {pub.beer}
         </Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
-export function PubCarousel({ onSelect }: { onSelect?: (id: string) => void }) {
+export function PubCarousel({
+  onSelect,
+  onOpen,
+}: {
+  onSelect?: (id: string) => void;
+  /** Tapping a card opens that pub — the card is a row, not a caption. */
+  onOpen?: (id: string) => void;
+}) {
   const { width: screen } = useWindowDimensions();
   // One card per screen width: no peek of the next one.
   const cardWidth = screen - MockLayout.screenPad * 2;
@@ -116,13 +139,20 @@ export function PubCarousel({ onSelect }: { onSelect?: (id: string) => void }) {
       onMomentumScrollEnd={handleScroll}
     >
       {MOCK_PUBS.map((pub, index) => (
-        <PubCard key={pub.id} pub={pub} width={cardWidth} nearest={index === 0} />
+        <PubCard
+          key={pub.id}
+          pub={pub}
+          width={cardWidth}
+          nearest={index === 0}
+          onPress={() => onOpen?.(pub.id)}
+        />
       ))}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  pressed: { opacity: 0.75 },
   row: { paddingHorizontal: MockLayout.screenPad, gap: GAP },
   card: {
     flexDirection: 'row',
