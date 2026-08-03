@@ -25,6 +25,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { DieFace } from '@/party/DieFace';
 import { KINGS_CARDS } from '@/party/gameContent';
 import { MockColors, MockLayout } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -118,11 +119,7 @@ export function DrawShell({
         {kind === 'dice' ? (
           <Animated.View style={[styles.dice, tumbleStyle]}>
             {(result?.dice ?? [1, 1]).map((pips, index) => (
-              <View key={index} style={[styles.die, rolling && styles.dieRolling]}>
-                <Text style={styles.diePips} allowFontScaling={false}>
-                  {rolling ? '·' : pips}
-                </Text>
-              </View>
+              <DieFace key={index} value={pips} blank={rolling} size={96} />
             ))}
           </Animated.View>
         ) : null}
@@ -211,17 +208,7 @@ const styles = StyleSheet.create({
   },
   stage: { minHeight: 220, alignItems: 'center', justifyContent: 'center' },
 
-  dice: { flexDirection: 'row', gap: Spacing.md },
-  die: {
-    width: 96,
-    height: 96,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.amber,
-  },
-  dieRolling: { backgroundColor: withAlpha(Colors.amber, 0.35) },
-  diePips: { fontFamily: Fonts.numeral, fontSize: 48, color: Colors.stout },
+  dice: { flexDirection: 'row', gap: Spacing.lg },
 
   person: {
     fontSize: 40,

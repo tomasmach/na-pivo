@@ -32,6 +32,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Face } from '@/feed/FeedMockScreen';
+import { DieFace } from '@/party/DieFace';
 import {
   isOver,
   recordRoll,
@@ -190,18 +191,17 @@ export function DiceDuelShell({
 
       <Animated.View style={[styles.dice, diceStyle]}>
         {(rolling || !last ? [null, null] : last.dice).map((pips, index) => (
-          <View key={index} style={[styles.die, pips === null && styles.dieBlank]}>
-            <Text style={styles.diePips} allowFontScaling={false}>
-              {pips ?? '·'}
-            </Text>
-          </View>
+          <DieFace key={index} value={pips ?? 1} blank={pips === null} size={96} />
         ))}
       </Animated.View>
 
+      {/* Smaller than the dice, because the dice ARE the screen. A full-width
+          amber bar under them made the button the loudest thing in a game whose
+          whole point is what just landed. */}
       <Pressable
         onPress={roll}
         disabled={rolling}
-        style={({ pressed }) => [styles.action, (pressed || rolling) && styles.pressed]}
+        style={({ pressed }) => [styles.roll, (pressed || rolling) && styles.pressed]}
         accessibilityRole="button"
         accessibilityLabel={`Hodit za ${turn}`}
       >
@@ -308,17 +308,16 @@ const styles = StyleSheet.create({
   turn: { alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.xl },
   turnName: { fontSize: 34, fontWeight: '800', color: Colors.foam, letterSpacing: -0.6 },
 
-  dice: { flexDirection: 'row', gap: Spacing.md, marginTop: Spacing.xl },
-  die: {
-    width: 88,
-    height: 88,
-    borderRadius: 20,
+  dice: { flexDirection: 'row', gap: Spacing.lg, marginTop: Spacing.xl },
+  roll: {
+    height: 54,
+    paddingHorizontal: 44,
+    borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: Spacing.xl,
     backgroundColor: Colors.amber,
   },
-  dieBlank: { backgroundColor: withAlpha(Colors.amber, 0.3) },
-  diePips: { fontFamily: Fonts.numeral, fontSize: 44, color: Colors.stout },
 
   action: {
     alignSelf: 'stretch',

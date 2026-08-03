@@ -1335,6 +1335,22 @@ Ikona Party v tab baru dostane při běžícím večeru **prstenec** a popisek
 „Večer". Ne jinou ikonu a ne jinou barvu — je to pořád stejné místo, jen jsi
 v něm.
 
+### 18.11 Rekvizity vypadají jako rekvizity
+
+Kostka je **kostka**, ne číslo na čtverci. Celé kouzlo házení je v tom, že
+stěnu poznáš dřív, než ji spočítáš — a „4" jako kostku nepoznal nikdo. Puntíky
+v uspořádání, které všichni znají, na slonovinové stěně.
+
+Prostorovost je **falešná a levná záměrně**: skutečná 3D kostka znamená
+renderer, mesh a fyziku kvůli dvěma kostkám, co dopadnou za vteřinu. Stačí
+zaoblený čtverec se světlem vlevo nahoře, tmavší hrana pod ním místo vytažení a
+stín. Ve velikosti, v jaké to telefon na stole ukazuje, to čte jako předmět —
+a víc dělat nemusí. Kreslené `react-native-svg`, žádný nový balík.
+
+**Rekvizita je hlavní, tlačítko vedlejší.** Jantarový pruh přes celou šířku pod
+kostkami dělal z tlačítka nejhlasitější věc na obrazovce, jejíž celý smysl je,
+co právě dopadlo.
+
 ### 18.10 Hra má sestavu, kolo a konec
 
 **Sestava napřed.** Stůl není parta: někdo je u baru, někdo nehraje, někdo si
