@@ -505,7 +505,12 @@ export default function LivePartyMockScreen() {
                     {/* Mis-taps happen in pubs, and the log is the only place
                         you can see WHICH beer was wrong — so correcting it
                         belongs here. Spendee's row menu: the taps as a checked
-                        list, "Smazat" destructive underneath. */}
+                        list, "Smazat" destructive underneath.
+
+                        The slot is always there, empty or not. Rendered only on
+                        rows that have a menu, it shoved their timestamps left
+                        and the column of times zig-zagged down the thread. */}
+                    <View style={styles.logMenuSlot}>
                     {event.beerId ? (
                       <RowMenu
                         title="Co to bylo?"
@@ -522,6 +527,7 @@ export default function LivePartyMockScreen() {
                         }}
                       />
                     ) : null}
+                    </View>
                   </Animated.View>
                 );
               })}
@@ -853,6 +859,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: Colors.stout3,
   },
+  logMenuSlot: { width: 30, alignItems: 'flex-end' },
   logWho: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
   logWhoName: { fontSize: 12, fontWeight: '600', color: Colors.mutedText },
   logPlus: { fontFamily: Fonts.numeral, color: Colors.amber },
