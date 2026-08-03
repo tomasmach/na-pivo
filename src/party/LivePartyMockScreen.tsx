@@ -40,12 +40,11 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import {
   BeerIcon,
   CameraIcon,
+  DicesIcon,
   ChevronDownIcon,
   MapPinIcon,
   PlayIcon,
   PlusIcon,
-  SoccerBallIcon,
-  SparklesIcon,
   TrophyIcon,
   UserPlusIcon,
 } from '@/components/shared/IconGlyph';
@@ -111,7 +110,7 @@ const TOP_BAR_H = HitArea.min + Spacing.sm * 2;
 const LOG_GLYPH: Record<LogKind, React.ReactNode> = {
   beer: <BeerIcon size={17} color={Colors.amber} />,
   photo: <CameraIcon size={17} color={Colors.amber} />,
-  game: <SparklesIcon size={17} color={Colors.amber} />,
+  game: <DicesIcon size={17} color={Colors.amber} />,
   join: <UserPlusIcon size={17} color={Colors.amber} />,
   pub: <MapPinIcon size={17} color={Colors.amber} />,
 };
@@ -682,7 +681,7 @@ export default function LivePartyMockScreen() {
           </View>
 
           <CircleButton label="Hry" onPress={() => setGamesOpen(true)}>
-            <SoccerBallIcon size={20} color={Colors.foam} />
+            <DicesIcon size={21} color={Colors.foam} />
           </CircleButton>
         </View>
       </View>

@@ -64,6 +64,7 @@ import {
   Accessibility,
   Target,
   CircleDot,
+  Dices,
   Play,
   Radio,
   Mic,
@@ -258,6 +259,10 @@ export const AccessibilityIcon = wrap(Accessibility, 'AccessibilityIcon');
 export const TargetIcon = wrap(Target, 'TargetIcon');
 export const CircleDotIcon = wrap(CircleDot, 'CircleDotIcon');
 export const PlayIcon = wrap(Play, 'PlayIcon');
+// "Společenské hry" is literally board games, and dice is the glyph everyone
+// reads as that. A football said one specific game — table football — on a menu
+// whose whole point is that it is a list of many.
+export const DicesIcon = wrap(Dices, 'DicesIcon');
 // Soccer ball — lucide ships no soccer/football glyph, so this is a deliberate
 // hand-rolled exception (owner wanted a real football for "stolní fotbal"):
 // outer circle + central pentagon + radial seams, drawn to match the lucide look.
