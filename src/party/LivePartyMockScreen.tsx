@@ -640,9 +640,11 @@ export default function LivePartyMockScreen() {
 
               Two targets in one shape: the body logs a beer, the chevron at the
               end changes which. Same split as before, just no longer stacked. */}
-          {/* The button and its picker are ONE thing with a seam, not two
-              controls sharing a row: 4pt apart against 12 to the discs, so the
-              chevron reads as belonging to the amber beside it. */}
+          {/* One button, cut. Same amber, same height, flat where they meet and
+              rounded only on the outside, with 2pt of the ground showing
+              through as the seam. Two separate capsules read as two controls
+              that happened to be near each other; this reads as one thing whose
+              end does something slightly different. */}
           <View style={styles.primaryGroup}>
           <View style={styles.primaryWrap}>
             <Pressable
@@ -674,7 +676,7 @@ export default function LivePartyMockScreen() {
               accessibilityRole="button"
               accessibilityLabel={`Piješ ${houseBeer}. Změnit.`}
             >
-              <ChevronDownIcon size={18} color={Colors.amber} />
+              <ChevronDownIcon size={18} color={Colors.stout} />
             </Pressable>
           ) : null}
           </View>
@@ -976,13 +978,14 @@ const styles = StyleSheet.create({
   },
   controlsLive: { paddingBottom: Spacing.sm },
   circleWrap: { alignItems: 'center' },
-  primaryGroup: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  primaryGroup: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 2 },
   primaryWrap: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     height: 60,
-    borderRadius: Radius.pill,
+    borderTopLeftRadius: Radius.pill,
+    borderBottomLeftRadius: Radius.pill,
     backgroundColor: Colors.amber,
     overflow: 'hidden',
   },
@@ -995,12 +998,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
   },
   primaryPick: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 52,
+    height: 60,
+    borderTopRightRadius: Radius.pill,
+    borderBottomRightRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: withAlpha(Colors.amber, 0.16),
+    backgroundColor: Colors.amber,
   },
   addBadge: {
     position: 'absolute',
