@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomSheetModal } from '@/components/shared/BottomSheetModal';
 import { CloseButton } from '@/components/shared/CloseButton';
-import { MinusIcon, PlusIcon } from '@/components/shared/IconGlyph';
+import { BeerIcon, MinusIcon, PlusIcon } from '@/components/shared/IconGlyph';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
@@ -106,14 +106,19 @@ export function BeerList({
                 </Pressable>
               </View>
             ) : (
+              // A mug AND a plus, the same pair the live bar's counter uses: a
+              // lone plus on a list of beers says "add a row", the mug says
+              // what the row is. Only on the untouched rows — once there is a
+              // count, the plus sits beside a minus and reads as a stepper.
               <Pressable
                 onPress={() => onAdd(beer.name)}
-                style={({ pressed }) => [styles.step, styles.stepOn, pressed && styles.pressed]}
+                style={({ pressed }) => [styles.addPill, pressed && styles.pressed]}
                 accessibilityRole="button"
                 accessibilityLabel={`Dát si ${beer.name}`}
                 hitSlop={6}
               >
-                <PlusIcon size={17} color={Colors.stout} />
+                <BeerIcon size={17} color={Colors.stout} />
+                <PlusIcon size={14} color={Colors.stout} />
               </Pressable>
             )}
           </View>
@@ -197,6 +202,15 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.foam, 0.09),
   },
   stepOn: { backgroundColor: Colors.amber },
+  addPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    height: 40,
+    paddingHorizontal: 14,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.amber,
+  },
   stepGhost: { backgroundColor: withAlpha(Colors.foam, 0.07) },
   count: {
     minWidth: 20,
