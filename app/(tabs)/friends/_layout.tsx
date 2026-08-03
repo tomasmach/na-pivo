@@ -1,8 +1,9 @@
-import { Image, Pressable, StyleSheet } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Stack, useRouter, type Href } from 'expo-router';
 
 import { SearchIcon } from '@/components/shared/IconGlyph';
 import { Colors } from '@/theme/colors';
+import { Fonts } from '@/theme/fonts';
 
 /**
  * Native stack for the Kocoviny tab.
@@ -42,17 +43,25 @@ export default function FeedLayout() {
       <Stack.Screen
         name="index"
         options={{
-          title: 'Kocoviny',
-          // The mark, top left, opposite search. Kocoviny is the app's home —
-          // the one screen you land on — so it is the right place for the logo
-          // and the wrong place for it is everywhere else, where a repeated
-          // wordmark reads as chrome nobody asked for.
-          headerLeft: () => (
-            <Image
-              source={require('../../../assets/images/icon.png')}
-              style={styles.mark}
-              accessibilityLabel="Na pivo"
-            />
+          title: 'Na pivo',
+          // The logo IS the title here. Kocoviny is the screen you land on, so
+          // it carries the name of the app the way Instagram's home does — and
+          // the tab under it already says which section you are in, which is
+          // what the large title was repeating.
+          //
+          // Everywhere else stays title-only: a wordmark on every screen is
+          // chrome nobody asked for.
+          headerLargeTitle: false,
+          headerTitle: () => (
+            <View style={styles.brand}>
+              <Image
+                source={require('../../../assets/images/icon.png')}
+                style={styles.mark}
+              />
+              <Text style={styles.wordmark} allowFontScaling={false}>
+                Na pivo
+              </Text>
+            </View>
           ),
           // No custom glass wrapper here: on iOS 26 the system already floats
           // bar buttons on their own capsule. Adding ours would be two glass
@@ -88,7 +97,11 @@ export default function FeedLayout() {
 }
 
 const styles = StyleSheet.create({
+  brand: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   // Rounded like an app icon, because that is what it is — squared off in a bar
   // it reads as a photo of a logo rather than the logo.
-  mark: { width: 30, height: 30, borderRadius: 8 },
+  mark: { width: 28, height: 28, borderRadius: 7 },
+  // Baloo, the one place a display face belongs: a wordmark is a picture of the
+  // name, not text. Everything else on the screen is the system font (§3).
+  wordmark: { fontFamily: Fonts.numeral, fontSize: 19, color: Colors.foam },
 });
