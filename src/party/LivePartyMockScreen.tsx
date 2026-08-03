@@ -493,7 +493,10 @@ export default function LivePartyMockScreen() {
           ) : null}
         </ScrollView>
 
-        <View style={styles.controls}>
+        {/* The room under the row exists only for the beer chip, which hangs
+            below the disc while a night runs. Before one starts there is no
+            chip, and the fixed padding left the buttons floating in a hole. */}
+        <View style={[styles.controls, live && styles.controlsLive]}>
           <CircleButton label="Pozvat" onPress={() => setInviteOpen(true)}>
             <UserPlusIcon size={20} color={Colors.foam} />
           </CircleButton>
@@ -812,10 +815,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     paddingTop: Spacing.md,
-    paddingBottom: Spacing.xxl,
+    paddingBottom: Spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(Colors.foam, 0.12),
   },
+  controlsLive: { paddingBottom: 46 },
   circleWrap: { alignItems: 'center', gap: 5, flex: 1 },
   primaryWrap: { alignItems: 'center', gap: 5, flex: 1, zIndex: 1 },
   primaryBadge: {
