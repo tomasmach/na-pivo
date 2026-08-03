@@ -273,13 +273,14 @@ export default function LivePartyMockScreen() {
               nothing about either. */}
           <View style={styles.hub}>
             <Pressable
-              // Straight to Hospody. That screen already has the map, the
-              // filters, the sort and the detail; a second pub list inside the
-              // hub was a worse copy of it that only existed to avoid leaving.
+              // The Hospody screen, over the hub. It already has the map, the
+              // filters, the sort and the detail, so a second pub list in here
+              // would be a worse copy of it — but reaching it by dropping the
+              // night and jumping to another tab made choosing a pub feel like
+              // abandoning the evening. Same screen, presented as a modal.
               onPress={() => {
                 beginPickingPub();
-                router.back();
-                router.navigate('/' as Href);
+                router.push('/pick-pub' as Href);
               }}
               style={({ pressed }) => [styles.hubPub, pressed && styles.pressed]}
               accessibilityRole="button"

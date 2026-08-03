@@ -131,7 +131,9 @@ export function PubDetailBody({
       setPub(pub.name, pub.beer);
       endPicking();
       onClose?.();
-      router.push('/party-live' as Href);
+      // Back to the night, not forward to another copy of it: the picker was
+      // pushed OVER the hub, so dismissing it is what returns you.
+      router.back();
       return;
     }
     if (live) {

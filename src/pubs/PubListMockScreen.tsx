@@ -291,6 +291,8 @@ export default function PubListMockScreen() {
     setMoveTo((current) => ({ nonce: current.nonce + 1, to }));
   }, []);
   const [listAtTop, setListAtTop] = React.useState(true);
+  // Handed to the sheet so its drag can out-rank the list's own scrolling.
+  const listRef = React.useRef<React.ComponentType<object> | null>(null);
   const [selectedPub, setSelectedPub] = React.useState<string | null>(MOCK_PUBS[0]?.id ?? null);
   const [sort, setSort] = React.useState<Sort>('Nejbližší');
   const [recenterSignal, setRecenterSignal] = React.useState(0);
@@ -418,6 +420,7 @@ export default function PubListMockScreen() {
         onDetentChange={setDetent}
         moveTo={moveTo}
         listAtTop={listAtTop}
+        scrollRef={listRef}
       >
         {openPub ? (
           <ScrollView
@@ -454,6 +457,7 @@ export default function PubListMockScreen() {
             <FilterChips sort={sort} onSort={pickSort} />
 
             <ScrollView
+              ref={listRef as never}
               contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 120 }]}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}

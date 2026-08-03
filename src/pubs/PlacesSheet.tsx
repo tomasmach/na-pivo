@@ -75,6 +75,7 @@ export function PlacesSheet({
   onDetentChange,
   moveTo,
   listAtTop = true,
+  scrollRef,
 }: {
   children: React.ReactNode;
   initial?: Detent;
@@ -92,6 +93,15 @@ export function PlacesSheet({
    * branch in the effect below.
    */
   moveTo?: { nonce: number; to: Detent };
+  /**
+   * The child's scrollable.
+   *
+   * Without it the body pan and the list's own scrolling were two gestures
+   * racing for the same finger, and the native ScrollView wins that race every
+   * time — which is why dragging the list down at `full` did nothing at all.
+   * `blocksExternalGesture` makes the list wait for this pan to fail first.
+   */
+  scrollRef?: React.RefObject<React.ComponentType<object> | null>;
 }) {
   const { height } = useWindowDimensions();
   // Precomputed pixel tops. The gesture callbacks are worklets on the UI
@@ -181,6 +191,8 @@ export function PlacesSheet({
       runOnJS(settle)(best);
     });
 
+  const bodyGesture = scrollRef ? bodyPan.blocksExternalGesture(scrollRef) : bodyPan;
+
   // ONE effect owns every programmatic move. Two effects each writing the same
   // shared value is what `react-hooks/immutability` objects to, and it is right:
   // whichever ran last would win a race nobody declared.
@@ -226,7 +238,7 @@ export function PlacesSheet({
           gesture switches off and the list scrolls normally, so the two never
           compete for the same drag. The screen mirrors this by only enabling
           its ScrollView at `full` (see `sheetDetent`). */}
-      <GestureDetector gesture={bodyPan}>
+      <GestureDetector gesture={bodyGesture}>
         <View style={styles.body}>{children}</View>
       </GestureDetector>
     </Animated.View>

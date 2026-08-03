@@ -451,6 +451,15 @@ export default function RootLayout() {
               a tab bar under a phone in someone else's hand is a mis-tap. It
               pushes from the right because you came from the hub and go back to
               it, unlike the night itself which slides up out of nowhere. */}
+          {/* Choosing where the night is happening. It is the Hospody screen —
+              the map, the filters, the detail with "Vybrat tuhle hospodu" — but
+              presented OVER the running night rather than by jumping to another
+              tab. Leaving the hub to answer a question about the hub made the
+              evening feel like something you had walked away from. */}
+          <Stack.Screen
+            name="pick-pub"
+            options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+          />
           {/* Somebody else's profile. Pushed from the right, not raised as a
               modal: you got here by tapping a face in a feed or a thread and you
               are coming straight back to it. */}
