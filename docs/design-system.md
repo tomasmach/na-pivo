@@ -1292,6 +1292,16 @@ každý typ má svůj glyf na lince.
 Hra v threadu **není zpráva o hře** — ten řádek hru spouští a po dohrání na místě
 vyroste ve výsledkovku. Dva řádky (založení + výsledek) čtou jako dvě hry.
 
+Thread smí nést **jen obsah, který app umí vyrobit**. Namockovaná „poznámka" a
+„runda" vypadaly dobře a slibovaly dvě funkce, ke kterým nevede žádné tlačítko —
+log by inzeroval něco, co neexistuje. Typy obsahu = přesně ta akce dole.
+
+Vodicí linka se kreslí **uvnitř řádku**, takže mezi řádky nesmí být gap; jinak se
+z linky stane čárkovaná. Odsazení si nese řádek sám.
+
+Hlavička hubu (hospoda, lidi, čísla) je **sticky**, scrolluje jen thread. Odpověď
+na „co se děje" nesmí odjet nahoru, když se koukáš, co se stalo.
+
 Nově přidaný záznam **přijede animací** (`FadeInDown` + `LinearTransition`, §10),
 ale jen ten — řádky, které tam byly při otevření, se nesmí rozdávat jako karty.
 Rozhoduje o tom razítko mountu, ne pořadí.

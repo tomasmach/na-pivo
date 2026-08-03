@@ -72,16 +72,14 @@ export interface PartyPersonLive {
   beers: number;
 }
 
-export type LogKind =
-  | 'beer'
-  | 'photo'
-  | 'game'
-  | 'join'
-  | 'pub'
-  /** Someone wrote into the thread. The only kind whose text is a voice. */
-  | 'note'
-  /** Somebody bought a round — the most Czech event there is. */
-  | 'round';
+/**
+ * Exactly the five things the control row can do, and nothing else.
+ *
+ * A thread may only carry content the app can actually produce. A mocked "note"
+ * and "round" looked good and promised two features that have no way in — the
+ * log would have been advertising buttons that do not exist.
+ */
+export type LogKind = 'beer' | 'photo' | 'game' | 'join' | 'pub';
 
 /**
  * One thing that happened, and WHO did it.
@@ -211,23 +209,6 @@ export const useLivePartyStore = create<LivePartyState>((set) => ({
           by: person.name,
         })),
         { id: nextId('ev'), at: now, kind: 'beer' as LogKind, text: beer, by: ME },
-        // Two more shapes the thread has to carry: somebody's round, and
-        // somebody talking. A thread only reads as a thread once there is a
-        // voice in it that is not the app narrating.
-        {
-          id: nextId('ev'),
-          at: now,
-          kind: 'round' as LogKind,
-          text: 'Runda pro stůl',
-          by: TABLE[1]?.name ?? ME,
-        },
-        {
-          id: nextId('ev'),
-          at: now,
-          kind: 'note' as LogKind,
-          text: 'Držte mi místo, jdu si pro kufr a jsem tu.',
-          by: TABLE[0]?.name ?? ME,
-        },
       ],
     });
   },

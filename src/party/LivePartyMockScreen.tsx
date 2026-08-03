@@ -40,9 +40,7 @@ import {
   CameraIcon,
   ChevronDownIcon,
   ChevronRightIcon,
-  CoinsIcon,
   MapPinIcon,
-  MessageSquareIcon,
   PlusIcon,
   SoccerBallIcon,
   SparklesIcon,
@@ -65,7 +63,7 @@ import {
   useNightClock,
   type LogKind,
 } from '@/mocks/livePartyStore';
-import { MockColors, MockType } from '@/mocks/mockTheme';
+import { MockColors, MockLayout, MockType } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap, Fonts } from '@/theme/fonts';
 import { HitArea, Radius, Spacing } from '@/theme/layout';
@@ -97,8 +95,6 @@ const LOG_GLYPH: Record<LogKind, React.ReactNode> = {
   game: <SparklesIcon size={17} color={Colors.amber} />,
   join: <UserPlusIcon size={17} color={Colors.amber} />,
   pub: <MapPinIcon size={17} color={Colors.amber} />,
-  round: <CoinsIcon size={17} color={Colors.amber} />,
-  note: <MessageSquareIcon size={17} color={Colors.amber} />,
 };
 
 
@@ -258,7 +254,10 @@ export default function LivePartyMockScreen() {
       >
         <View style={styles.grabber} />
 
-        <ScrollView contentContainerStyle={styles.sheetContent} showsVerticalScrollIndicator={false}>
+        {/* The header does not scroll. Where you are, who is with you and the
+            night's numbers are the answer to "what is going on" — scrolling the
+            log to see what just happened must not push them off the screen. */}
+        <View style={styles.sheetHead}>
           {/* Strava's band: the STATE over the numbers, and a way to blow the
               numbers up for a phone lying on the table. */}
           {/* What the hub IS: a place and the people in it. The pub used to be a
@@ -337,8 +336,18 @@ export default function LivePartyMockScreen() {
               here, in order, with the name of whoever added it — at a table of
               four "Fotka" with no name is the app talking to itself. A game is
               not a line ABOUT a game: the row IS the game and starts it. */}
+        </View>
+
+        {/* Only the thread scrolls. No gap between the rows either: the rail is
+            drawn INSIDE each row, so spacing between them cuts the thread into
+            dashes. The rows carry their own vertical padding. */}
+        <ScrollView
+          style={styles.grow}
+          contentContainerStyle={styles.sheetContent}
+          showsVerticalScrollIndicator={false}
+        >
           {log.length > 0 ? (
-            <View style={styles.sectionBody}>
+            <View>
               {[...log].reverse().map((event, index, all) => {
                 const game = event.gameKey
                   ? games.find((entry) => entry.key === event.gameKey)
@@ -427,15 +436,6 @@ export default function LivePartyMockScreen() {
                             </View>
                           ) : null}
                         </Pressable>
-                      ) : event.kind === 'note' ? (
-                        // A voice, not a record. Given the same 16pt row as
-                        // "Fotka" it read as another system line; in a bubble it
-                        // is obviously somebody talking.
-                        <View style={styles.noteBubble}>
-                          <Text style={styles.noteText} maxFontSizeMultiplier={FontScaleCap.body}>
-                            {event.text}
-                          </Text>
-                        </View>
                       ) : (
                         <Text
                           style={styles.logText}
@@ -687,7 +687,8 @@ const styles = StyleSheet.create({
     backgroundColor: MockColors.bg,
     borderTopLeftRadius: SHEET_RADIUS,
     borderTopRightRadius: SHEET_RADIUS,
-    paddingHorizontal: Spacing.md,
+    // The app's one width (§18.3b), not a private 16 because it is a sheet.
+    paddingHorizontal: MockLayout.screenPad,
     paddingTop: Spacing.sm,
   },
   grabber: {
@@ -698,6 +699,7 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.foam, 0.22),
     marginBottom: Spacing.md,
   },
+  sheetHead: { paddingBottom: Spacing.xs },
   sheetContent: { paddingBottom: Spacing.md },
 
   section: {
@@ -791,15 +793,6 @@ const styles = StyleSheet.create({
   logWhoName: { fontSize: 12, fontWeight: '600', color: Colors.mutedText },
   logPlus: { fontFamily: Fonts.numeral, color: Colors.amber },
   logText: { fontSize: 16, fontWeight: '600', color: Colors.foam },
-  noteBubble: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: 18,
-    borderTopLeftRadius: 6,
-    backgroundColor: MockColors.surfaceHigh,
-  },
-  noteText: { fontSize: 15, fontWeight: '500', color: Colors.foam, lineHeight: 21 },
   logTime: {
     fontSize: 14,
     fontWeight: '500',
