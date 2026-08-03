@@ -21,18 +21,10 @@
 
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Animated, {
-  Easing,
-  FadeIn,
-  useAnimatedStyle,
-  useReducedMotion,
-  useSharedValue,
-  withSequence,
-  withTiming,
-} from 'react-native-reanimated';
+import Animated, { FadeIn, useReducedMotion } from 'react-native-reanimated';
 
 import { Face } from '@/feed/FeedMockScreen';
-import { DieFace } from '@/party/DieFace';
+import { Die3D } from '@/party/Die3D';
 import {
   isOver,
   recordRoll,
@@ -82,11 +74,6 @@ export function DiceDuelShell({
   const roundDone = turn === null && state.round.length > 0;
   const over = isOver(state);
 
-  const tumble = useSharedValue(0);
-  const diceStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${tumble.value * 540}deg` }, { scale: 0.9 + tumble.value * 0.1 }],
-  }));
-
   React.useEffect(() => {
     if (over && !reported.current) {
       reported.current = true;
@@ -103,12 +90,9 @@ export function DiceDuelShell({
       return;
     }
 
+    // The cubes own their own tumble; this only says "in flight" and then
+    // hands them the value to land on.
     setRolling(true);
-    tumble.value = 0;
-    tumble.value = withSequence(
-      withTiming(1, { duration: ROLL_MS, easing: Easing.out(Easing.cubic) }),
-      withTiming(1, { duration: 0 }),
-    );
     setTimeout(() => {
       setState((current) => recordRoll(current, turn, dice));
       setRolling(false);
@@ -189,11 +173,21 @@ export function DiceDuelShell({
         </Text>
       </View>
 
-      <Animated.View style={[styles.dice, diceStyle]}>
-        {(rolling || !last ? [null, null] : last.dice).map((pips, index) => (
-          <DieFace key={index} value={pips ?? 1} blank={pips === null} size={96} />
+      {/* Two real cubes. They keep their last faces while the next thrower is
+          deciding, which is what a table looks like — dice do not vanish
+          between throws. */}
+      <View style={styles.dice}>
+        {[0, 1].map((index) => (
+          <Die3D
+            key={index}
+            value={last ? last.dice[index] : 1}
+            nonce={state.round.length}
+            rolling={rolling}
+            offset={index}
+            size={92}
+          />
         ))}
-      </Animated.View>
+      </View>
 
       {/* Smaller than the dice, because the dice ARE the screen. A full-width
           amber bar under them made the button the loudest thing in a game whose

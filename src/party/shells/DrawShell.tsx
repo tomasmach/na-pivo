@@ -25,7 +25,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { DieFace } from '@/party/DieFace';
+import { Die3D } from '@/party/Die3D';
 import { KINGS_CARDS } from '@/party/gameContent';
 import { MockColors, MockLayout } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
@@ -102,9 +102,6 @@ export function DrawShell({
     }, ROLL_MS);
   };
 
-  const tumbleStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${spin.value * 720}deg` }, { scale: settle.value }],
-  }));
   const settleStyle = useAnimatedStyle(() => ({ transform: [{ scale: settle.value }] }));
 
   return (
@@ -117,11 +114,18 @@ export function DrawShell({
 
       <View style={styles.stage}>
         {kind === 'dice' ? (
-          <Animated.View style={[styles.dice, tumbleStyle]}>
+          <View style={styles.dice}>
             {(result?.dice ?? [1, 1]).map((pips, index) => (
-              <DieFace key={index} value={pips} blank={rolling} size={96} />
+              <Die3D
+                key={index}
+                value={pips}
+                nonce={result?.nonce ?? 0}
+                rolling={rolling}
+                offset={index}
+                size={92}
+              />
             ))}
-          </Animated.View>
+          </View>
         ) : null}
 
         {kind === 'person' ? (
