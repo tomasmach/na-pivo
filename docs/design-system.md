@@ -1335,6 +1335,28 @@ Ikona Party v tab baru dostane při běžícím večeru **prstenec** a popisek
 „Večer". Ne jinou ikonu a ne jinou barvu — je to pořád stejné místo, jen jsi
 v něm.
 
+### 18.7 Cizí profil
+
+Cizí profil je **stejná obrazovka jako tvoje**, jen zvenku. Člověk má vypadat
+jako člověk, ať ho potkáš kdekoli; jinak nakreslený profil cizího čte jako jiný
+produkt.
+
+Co se mění:
+
+- vztah v hlavičce — „Byli jste spolu 4× na pivu". To je poctivá verze „12
+  společných přátel" v hospodské appce;
+- dvě akce: **Sledovat** a **Na pivo?**. Druhá je vlastně smysl celé appky;
+- **žádná série a žádné rekordy**. Na svém profilu tlačí tebe; na cizím je série
+  běžící součet cizího pití, který si ten člověk nezveřejnil.
+
+Statistiky jsou **agregáty**. „12 hospod" je fakt o tom, jak často chodí ven;
+seznam kterých dvanáct je rozvrh, a rozvrh jednoho člověka tahle app druhému
+nedává.
+
+**Otevřená otázka (§20):** jak se ta akce jmenuje. Teď „Sledovat", protože je
+jednoznačné. Ve hře je „Parťák" (hospodštější, ale svádí k tomu, že je to
+vzájemné, což follow není).
+
 ### 18.6 Velká čísla se neklikají
 
 Blok velkých numerálů je nadpis, ne ovládací prvek. Nedávej pod něj `Pressable`

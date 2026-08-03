@@ -451,6 +451,10 @@ export default function RootLayout() {
               a tab bar under a phone in someone else's hand is a mis-tap. It
               pushes from the right because you came from the hub and go back to
               it, unlike the night itself which slides up out of nowhere. */}
+          {/* Somebody else's profile. Pushed from the right, not raised as a
+              modal: you got here by tapping a face in a feed or a thread and you
+              are coming straight back to it. */}
+          <Stack.Screen name="user" options={{ animation: 'ios_from_right' }} />
           <Stack.Screen
             name="party-game"
             options={{ presentation: 'fullScreenModal', animation: 'ios_from_right' }}

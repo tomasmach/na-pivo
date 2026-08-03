@@ -129,7 +129,18 @@ export function FeedCard({
           everybody's wall, so the header is the table: every face, then who they
           are. "Honza přidal" would make four other people spectators at their
           own evening. */}
-      <View style={styles.cardHead}>
+      {/* The faces open the person, not the night — the one place in the feed
+          where you can get from a table to somebody's profile. */}
+      <Pressable
+        style={({ pressed }) => [styles.cardHead, pressed && styles.pressed]}
+        onPress={() =>
+          router.push(
+            `/user?handle=${encodeURIComponent(entry.people[0]?.name.replace('@', '') ?? '')}` as Href,
+          )
+        }
+        accessibilityRole="button"
+        accessibilityLabel={`Profil: ${namesLine(entry.people)}`}
+      >
         <View style={styles.headAvatars}>
           {entry.people.slice(0, 4).map((person, index) => (
             <View
@@ -157,7 +168,7 @@ export function FeedCard({
             {entry.when}
           </Text>
         </View>
-      </View>
+      </Pressable>
 
       {/* When the app has something to say about the night, IT is the
           headline — a roast printed under the stats is a caption, and captions
