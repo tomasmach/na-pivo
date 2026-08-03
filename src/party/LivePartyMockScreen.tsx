@@ -50,6 +50,7 @@ import {
   TrophyIcon,
   UserPlusIcon,
 } from '@/components/shared/IconGlyph';
+import { GlassIconButton } from '@/components/shared/GlassIconButton';
 import { BeerSheet } from '@/party/BeerSheet';
 import { GameCover } from '@/party/GameCover';
 import { GAME_CATALOG } from '@/party/gameCatalog';
@@ -295,6 +296,7 @@ export default function LivePartyMockScreen() {
               down, so the top of a screen about an evening with friends said
               nothing about either. */}
           <View style={styles.hub}>
+            <View style={styles.hubTop}>
             <Pressable
               // The Hospody screen, over the hub. It already has the map, the
               // filters, the sort and the detail, so a second pub list in here
@@ -319,6 +321,21 @@ export default function LivePartyMockScreen() {
               </Text>
               <ChevronDownIcon size={15} color={Colors.amber} />
             </Pressable>
+
+            {/* Inviting lives up here, opposite the pub — the header is the
+                "who and where" row, and that is what asking someone to join
+                changes. Down in the control row it sat among the things you do
+                over and over all evening; you invite people once. */}
+            {live ? (
+              <GlassIconButton
+                size={40}
+                accessibilityLabel="Přizvat ke stolu"
+                onPress={() => setInviteOpen(true)}
+              >
+                <UserPlusIcon size={19} color={Colors.amber} />
+              </GlassIconButton>
+            ) : null}
+            </View>
 
             {/* The table, once there is one. Before the night the pill is the
                 whole header — distance and opening hours belong to choosing a
@@ -590,10 +607,6 @@ export default function LivePartyMockScreen() {
             </Defs>
             <Rect x="0" y="0" width="100%" height="100%" fill="url(#controlsFade)" />
           </Svg>
-          <CircleButton label="Pozvat" onPress={() => setInviteOpen(true)}>
-            <UserPlusIcon size={20} color={Colors.foam} />
-          </CircleButton>
-
           <CircleButton label={photos > 0 ? `Foto ${photos}` : 'Foto'} onPress={addPhoto}>
             <CameraIcon size={20} color={Colors.foam} />
           </CircleButton>
@@ -650,10 +663,6 @@ export default function LivePartyMockScreen() {
 
           <CircleButton label="Hry" onPress={() => setGamesOpen(true)}>
             <SoccerBallIcon size={20} color={Colors.foam} />
-          </CircleButton>
-
-          <CircleButton label="Přesun" adds={false}>
-            <MapPinIcon size={20} color={Colors.foam} />
           </CircleButton>
         </View>
       </View>
@@ -734,6 +743,7 @@ const styles = StyleSheet.create({
 
   // — Hub header —
   hub: { gap: Spacing.sm, marginBottom: Spacing.lg },
+  hubTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   // A pill, not a heading with a chevron bolted on: it is a control, and it
   // should look like one before you tap it.
   hubPub: {
