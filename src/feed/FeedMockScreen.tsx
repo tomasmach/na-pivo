@@ -251,9 +251,11 @@ export default function FeedMockScreen() {
   const published = usePublishedStore((s) => s.entries);
 
   return (
-    // The ScrollView is the ROOT, not wrapped in a View: react-native-screens
-    // binds the native large title to the screen's scrollable, and a wrapper
-    // hides it — which is why the title sat pinned instead of scrolling away.
+    // The ScrollView used to be the ROOT because react-native-screens binds the
+    // native large title to the screen's scrollable and a wrapper hid it. There
+    // is no native header on this screen any more — the logo is content — so a
+    // wrapper is safe again, and it is what lets search float over the list.
+    <View style={styles.screen}>
     <ScrollView
       style={styles.screen}
       contentContainerStyle={[
@@ -267,23 +269,10 @@ export default function FeedMockScreen() {
           on the left is the width of the search button, so the mark is centred
           on the SCREEN rather than on what is left over beside the button. */}
       <View style={[styles.brandRow, { paddingTop: insets.top + Spacing.sm }]}>
-        <View style={styles.brandSpacer} />
-        <View style={styles.brand}>
-          <Image
-            source={require("../../assets/images/icon.png")}
-            style={styles.mark}
-          />
-          <Text style={styles.wordmark} allowFontScaling={false}>
-            Na pivo
-          </Text>
-        </View>
-        <GlassIconButton
-          size={40}
-          accessibilityLabel="Hledat"
-          onPress={() => router.push("/search" as Href)}
-        >
-          <SearchIcon size={19} color={Colors.amber} />
-        </GlassIconButton>
+        <Image source={require("../../assets/images/icon.png")} style={styles.mark} />
+        <Text style={styles.wordmark} allowFontScaling={false}>
+          Na pivo
+        </Text>
       </View>
 
       {/* Yours first. A night you just published has to be the thing you land
@@ -296,6 +285,20 @@ export default function FeedMockScreen() {
         Design mock — data jsou napevno.
       </Text>
     </ScrollView>
+
+    {/* Floating, not in the brand row: search has to stay reachable after the
+        logo has scrolled away, and glass over a moving list is exactly what
+        the material is for (§15.1). */}
+    <View style={[styles.searchFloat, { top: insets.top + Spacing.sm }]}>
+      <GlassIconButton
+        size={40}
+        accessibilityLabel="Hledat"
+        onPress={() => router.push("/search" as Href)}
+      >
+        <SearchIcon size={19} color={Colors.amber} />
+      </GlassIconButton>
+    </View>
+    </View>
   );
 }
 
@@ -305,11 +308,11 @@ const styles = StyleSheet.create({
   brandRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "center",
+    gap: 8,
     paddingBottom: Spacing.md,
   },
-  brandSpacer: { width: 40 },
-  brand: { flexDirection: "row", alignItems: "center", gap: 8 },
+  searchFloat: { position: "absolute", right: MockLayout.screenPad, zIndex: 2 },
   mark: { width: 28, height: 28, borderRadius: 7 },
   // Baloo, the one place a display face belongs: a wordmark is a picture of the
   // name, not text. Everything else on the screen is the system font (§3).
