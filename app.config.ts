@@ -5,7 +5,7 @@ import { withInfoPlist } from 'expo/config-plugins.js';
 const LOCATION_REASON =
   'Na pivo používá tvou polohu k nalezení hospod v okolí a namíření šipky. Aktuální nebo přibližná poloha se může poslat našemu serveru; GPS trasu ani historii neukládáme.';
 const BACKGROUND_LOCATION_REASON =
-  'Na pivo může večer občas zkontrolovat, jestli sedíš u hospody, a připomenout ti výběr hospody a počítání piv. GPS trasu ani historii neukládáme.';
+  'Na pivo může večer občas zkontrolovat, jestli sedíš u hospody, a připomenout ti výběr hospody a počítání piv — i když je aplikace zavřená nebo ji zrovna nepoužíváš. GPS trasu ani historii neukládáme.';
 
 const LOCAL_BACKEND_MODES = new Set(['local', 'auto']);
 const SPLASH_BACKGROUND = '#1f1007';

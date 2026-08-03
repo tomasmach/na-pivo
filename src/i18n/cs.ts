@@ -374,8 +374,11 @@ export const cs = {
 
   permissions: {
     title: 'Potřebuju tvoji polohu',
+    // Google Play prominent-disclosure requirement: say explicitly that the app
+    // collects location data, what for, that it goes to the server, and that
+    // with reminders on it happens even when the app is closed or not in use.
     body:
-      'Bez polohy neumím najít hospody v okolí ani namířit šipku. Aktuální nebo přibližná poloha se může poslat mému serveru; GPS trasu ani historii neukládám.',
+      'Na pivo sbírá údaje o tvé poloze, aby našlo hospody v okolí a namířilo šipku. Aktuální nebo přibližná poloha se kvůli hledání hospod posílá na můj server. Když si zapneš hospodské připomínky, kontroluju polohu, i když je appka zavřená nebo ji zrovna nepoužíváš. GPS trasu ani historii polohy neukládám.',
     cta: 'Povolit polohu',
     openSettings: 'Otevřít Nastavení',
   },
@@ -485,7 +488,7 @@ export const cs = {
         'background-location-denied': {
           title: 'Chybí poloha „vždy“',
           body:
-            'Poloha při používání stačí pro kompas. Hospodská připomínka ale běží i se zamčenou appkou, takže iOS musí mít polohu nastavenou na „Vždy“.',
+            'Poloha při používání stačí pro kompas. Hospodská připomínka ale běží, i když je appka zavřená, takže telefon musí mít polohu nastavenou na „Vždy“.',
         },
       },
     },
@@ -572,13 +575,14 @@ export const cs = {
     body:
       'Počítadlo ti večer připomene, když dorazíš k hospodě. Stačí zapnout notifikace a polohu na pozadí.',
     introCta: 'Ukázat, co povoluju',
-    detailsTitle: 'Co bude iOS chtít povolit',
+    detailsTitle: 'Co bude telefon chtít povolit',
     detailsBody:
       'Kompasu stačí poloha při používání. Připomínka navíc potřebuje polohu „vždy“.',
     notificationTitle: 'Notifikace',
     notificationBody: 'Pošlu jen krátké připomenutí, ať večer nezmizí bez zápisu.',
     locationTitle: 'Poloha „vždy“',
-    locationBody: 'iOS ji potřebuje pro hospodský okruh, i když appka zrovna neběží.',
+    locationBody:
+      'Sbírám ji jen kvůli hospodskému okruhu, i když je appka zavřená nebo ji zrovna nepoužíváš.',
     privacyTitle: 'Bez GPS deníčku',
     privacyBody: 'Trasy neukládám. Hlídám jen, jestli nejsi kousek od hospody.',
     cta: 'Zapnout připomínky',
@@ -2203,8 +2207,9 @@ export const cs = {
   counter: {
     // — Permission gate —
     permTitle: 'Potřebuju tvoji polohu',
+    // Same Google Play prominent-disclosure wording rules as `permissions.body`.
     permBody:
-      'Ať poznám hospody v okolí a podnik, ve kterém sedíš. Aktuální nebo přibližná poloha se může poslat mému serveru; GPS trasu ani historii neukládám.',
+      'Na pivo sbírá údaje o tvé poloze, aby poznalo hospody v okolí a podnik, ve kterém sedíš. Aktuální nebo přibližná poloha se kvůli tomu posílá na můj server. Se zapnutými hospodskými připomínkami kontroluju polohu, i když je appka zavřená nebo ji zrovna nepoužíváš. GPS trasu ani historii polohy neukládám.',
     permCta: 'Povolit polohu',
     permOpenSettings: 'Otevřít Nastavení',
 
