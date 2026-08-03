@@ -1299,6 +1299,21 @@ Rozhoduje o tom razítko mountu, ne pořadí.
 Akce, které něco přidávají, nesou na ikoně malý **plus badge**. Řádek samotných
 podstatných jmen („Foto", „Hry") čte jako navigace, ne jako přidávání.
 
+### 18.5b Opravy patří do logu
+
+Do hospody se ťuká špatně. Log je jediné místo, kde uživatel vidí, **který**
+záznam je špatný, takže oprava patří tam — ne do samostatné obrazovky historie.
+
+Řádek s pivem nese `RowMenu` (`src/mocks/MenuChip.tsx`): nativní kotvené menu
+jako v Spendee, čepované pivo jako zaškrtnutý seznam a „Smazat" jako destructive
+položka pod ním. Oprava **přepíše původní řádek**; thread ve stylu „Pilsner / no
+vlastně Kozel" je horší záznam večera než ten, co prostě říká, co jsi pil.
+
+Pozor na hranici: SwiftUI `Menu` si kreslí vlastní label, takže se kotví na
+glyf, který mu dáme — **neumí obalit existující RN řádek** a udělat z long-pressu
+na něm kontextové menu. To by chtělo `react-native-ios-context-menu`, což je ta
+knihovna, která nešla slinkovat.
+
 ### 18.5c Běžící večer v chrome
 
 Live bar nad tab barem se **vysvětluje sám**: hospoda a pod ní běžící stopky a

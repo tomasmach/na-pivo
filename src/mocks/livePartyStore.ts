@@ -72,7 +72,16 @@ export interface PartyPersonLive {
   beers: number;
 }
 
-export type LogKind = 'beer' | 'photo' | 'game' | 'join' | 'pub';
+export type LogKind =
+  | 'beer'
+  | 'photo'
+  | 'game'
+  | 'join'
+  | 'pub'
+  /** Someone wrote into the thread. The only kind whose text is a voice. */
+  | 'note'
+  /** Somebody bought a round — the most Czech event there is. */
+  | 'round';
 
 /**
  * One thing that happened, and WHO did it.
@@ -90,6 +99,8 @@ export interface LogEvent {
   by: string;
   /** Only on `game` rows: what the row launches. */
   gameKey?: string;
+  /** Only on `beer` rows: which entry to correct when you tap it. */
+  beerId?: string;
 }
 
 interface LivePartyState {
@@ -121,6 +132,10 @@ interface LivePartyState {
   addBeer: (beer: string) => void;
   /** Takes the LAST beer of that type back off. Mis-taps happen in pubs. */
   removeBeer: (beer: string) => void;
+  /** Fix one entry you logged wrong — the log is the only place you can see
+   *  WHICH one was wrong, so it is where correcting it belongs. */
+  editBeer: (beerId: string, beer: string) => void;
+  dropBeer: (beerId: string) => void;
   addPhoto: () => void;
   addGame: (key: string, name: string) => void;
   finishGame: (key: string, result: GameResult) => void;
@@ -165,7 +180,7 @@ function logged(
   kind: LogKind,
   text: string,
   by: string = ME,
-  extra?: { gameKey?: string },
+  extra?: { gameKey?: string; beerId?: string },
 ): LogEvent[] {
   return [...state.log, { id: nextId('ev'), at, kind, text, by, ...extra }];
 }
@@ -196,6 +211,23 @@ export const useLivePartyStore = create<LivePartyState>((set) => ({
           by: person.name,
         })),
         { id: nextId('ev'), at: now, kind: 'beer' as LogKind, text: beer, by: ME },
+        // Two more shapes the thread has to carry: somebody's round, and
+        // somebody talking. A thread only reads as a thread once there is a
+        // voice in it that is not the app narrating.
+        {
+          id: nextId('ev'),
+          at: now,
+          kind: 'round' as LogKind,
+          text: 'Runda pro stůl',
+          by: TABLE[1]?.name ?? ME,
+        },
+        {
+          id: nextId('ev'),
+          at: now,
+          kind: 'note' as LogKind,
+          text: 'Držte mi místo, jdu si pro kufr a jsem tu.',
+          by: TABLE[0]?.name ?? ME,
+        },
       ],
     });
   },
@@ -217,9 +249,10 @@ export const useLivePartyStore = create<LivePartyState>((set) => ({
   addBeer: (beer) =>
     set((s) => {
       const at = Date.now();
+      const id = nextId('beer');
       return {
-        beers: [...s.beers, { id: nextId('beer'), beer, at }],
-        log: logged(s, at, 'beer', beer),
+        beers: [...s.beers, { id, beer, at }],
+        log: logged(s, at, 'beer', beer, ME, { beerId: id }),
       };
     }),
 
@@ -231,6 +264,21 @@ export const useLivePartyStore = create<LivePartyState>((set) => ({
       if (index < 0) return s;
       return { beers: s.beers.filter((_, i) => i !== index) };
     }),
+
+  editBeer: (beerId, beer) =>
+    set((s) => ({
+      beers: s.beers.map((entry) => (entry.id === beerId ? { ...entry, beer } : entry)),
+      // The log row is rewritten in place rather than a correction being
+      // appended: a thread of "Pilsner / no vlastně Kozel" is a worse record of
+      // the evening than one that simply says what you drank.
+      log: s.log.map((event) => (event.beerId === beerId ? { ...event, text: beer } : event)),
+    })),
+
+  dropBeer: (beerId) =>
+    set((s) => ({
+      beers: s.beers.filter((entry) => entry.id !== beerId),
+      log: s.log.filter((event) => event.beerId !== beerId),
+    })),
 
   addPhoto: () =>
     set((s) => ({

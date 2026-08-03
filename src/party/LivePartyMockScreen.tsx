@@ -40,7 +40,9 @@ import {
   CameraIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  CoinsIcon,
   MapPinIcon,
+  MessageSquareIcon,
   PlusIcon,
   SoccerBallIcon,
   SparklesIcon,
@@ -52,6 +54,7 @@ import { Face } from '@/feed/FeedMockScreen';
 import { PulsePanel } from '@/party/PulsePanel';
 import { GamesSheet } from '@/party/GamesSheet';
 import { InviteSheet } from '@/party/InviteSheet';
+import { RowMenu } from '@/mocks/MenuChip';
 import { hubStats } from '@/party/nightPulse';
 import { NightRoute } from '@/mocks/NightRoute';
 import {
@@ -77,6 +80,9 @@ const TAPS = [
 /** How far the sheet overlaps the map, which is also its corner radius. */
 const SHEET_RADIUS = 28;
 
+/** What the row menu offers instead of the entry you logged. */
+const MENU_BEERS = TAPS.map((tap) => tap.name);
+
 /** Full map before the night starts, a band once it has. */
 const MAP_IDLE = 460;
 /** Below the notch and the floating chrome: at a fixed 128 the sheet's top edge
@@ -91,6 +97,8 @@ const LOG_GLYPH: Record<LogKind, React.ReactNode> = {
   game: <SparklesIcon size={17} color={Colors.amber} />,
   join: <UserPlusIcon size={17} color={Colors.amber} />,
   pub: <MapPinIcon size={17} color={Colors.amber} />,
+  round: <CoinsIcon size={17} color={Colors.amber} />,
+  note: <MessageSquareIcon size={17} color={Colors.amber} />,
 };
 
 
@@ -150,6 +158,8 @@ export default function LivePartyMockScreen() {
   const addBeer = useLivePartyStore((s) => s.addBeer);
   const removeBeer = useLivePartyStore((s) => s.removeBeer);
   const addPhoto = useLivePartyStore((s) => s.addPhoto);
+  const editBeer = useLivePartyStore((s) => s.editBeer);
+  const dropBeer = useLivePartyStore((s) => s.dropBeer);
   const addGame = useLivePartyStore((s) => s.addGame);
   const invite = useLivePartyStore((s) => s.invite);
 
@@ -417,6 +427,15 @@ export default function LivePartyMockScreen() {
                             </View>
                           ) : null}
                         </Pressable>
+                      ) : event.kind === 'note' ? (
+                        // A voice, not a record. Given the same 16pt row as
+                        // "Fotka" it read as another system line; in a bubble it
+                        // is obviously somebody talking.
+                        <View style={styles.noteBubble}>
+                          <Text style={styles.noteText} maxFontSizeMultiplier={FontScaleCap.body}>
+                            {event.text}
+                          </Text>
+                        </View>
                       ) : (
                         <Text
                           style={styles.logText}
@@ -450,6 +469,23 @@ export default function LivePartyMockScreen() {
                     <Text style={styles.logTime} allowFontScaling={false}>
                       {clockAt(event.at)}
                     </Text>
+
+                    {/* Mis-taps happen in pubs, and the log is the only place
+                        you can see WHICH beer was wrong — so correcting it
+                        belongs here. Spendee's row menu: the taps as a checked
+                        list, "Smazat" destructive underneath. */}
+                    {event.beerId ? (
+                      <RowMenu
+                        title="Co to bylo?"
+                        value={event.text}
+                        options={MENU_BEERS}
+                        onChange={(next) => editBeer(event.beerId as string, next)}
+                        destructive={{
+                          label: 'Smazat pivo',
+                          onPress: () => dropBeer(event.beerId as string),
+                        }}
+                      />
+                    ) : null}
                   </Animated.View>
                 );
               })}
@@ -474,6 +510,15 @@ export default function LivePartyMockScreen() {
               accessibilityLabel={live ? 'Přidat pivo' : 'Začít večer prvním pivem'}
             >
               <BeerIcon size={34} color={Colors.stout} />
+              {/* The same plus the other four wear. On the biggest, loudest
+                  button in the app a bare mug said "beer"; the plus says what
+                  pressing it DOES. Inverted — stout disc, amber glyph — so it
+                  punches out of the amber instead of vanishing into it. */}
+              {live ? (
+                <View style={[styles.addBadge, styles.primaryBadge]}>
+                  <PlusIcon size={11} color={Colors.amber} />
+                </View>
+              ) : null}
             </Pressable>
             {/* Tap the disc to pour the house tap, tap the chip to change what
                 that is. One tap to log stays the whole ritual; picking a beer
@@ -743,6 +788,15 @@ const styles = StyleSheet.create({
   logWhoName: { fontSize: 12, fontWeight: '600', color: Colors.mutedText },
   logPlus: { fontFamily: Fonts.numeral, color: Colors.amber },
   logText: { fontSize: 16, fontWeight: '600', color: Colors.foam },
+  noteBubble: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: 18,
+    borderTopLeftRadius: 6,
+    backgroundColor: MockColors.surfaceHigh,
+  },
+  noteText: { fontSize: 15, fontWeight: '500', color: Colors.foam, lineHeight: 21 },
   logTime: {
     fontSize: 14,
     fontWeight: '500',
@@ -758,12 +812,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     paddingTop: Spacing.md,
-    paddingBottom: Spacing.xl,
+    paddingBottom: Spacing.xxl,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(Colors.foam, 0.12),
   },
   circleWrap: { alignItems: 'center', gap: 5, flex: 1 },
   primaryWrap: { alignItems: 'center', gap: 5, flex: 1, zIndex: 1 },
+  primaryBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    right: 2,
+    top: 2,
+    backgroundColor: Colors.stout,
+    borderColor: Colors.amber,
+  },
   addBadge: {
     position: 'absolute',
     right: -1,
@@ -821,6 +884,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: -18,
     right: -18,
-    bottom: -40,
+    bottom: -48,
   },
 });

@@ -25,7 +25,7 @@
 
 import React from 'react';
 import { ActionSheetIOS, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { HStack, Host, Image, Menu, Picker, Text as UIText } from '@expo/ui/swift-ui';
+import { Button, HStack, Host, Image, Menu, Picker, Text as UIText } from '@expo/ui/swift-ui';
 import {
   font,
   foregroundStyle,
@@ -39,7 +39,7 @@ import { ChevronDownIcon } from '@/components/shared/IconGlyph';
 import { MockLayout } from '@/mocks/mockTheme';
 import { Colors, withAlpha } from '@/theme/colors';
 import { FontScaleCap } from '@/theme/fonts';
-import { Radius, Spacing } from '@/theme/layout';
+import { HitArea, Radius, Spacing } from '@/theme/layout';
 
 /** Warm enough to read as ours, weak enough that it is still glass and not
  *  paint — §15.1: the material has to show what is behind it. */
@@ -140,6 +140,97 @@ export function MenuChip({
   );
 }
 
+/**
+ * The same anchored menu, but as a row affordance rather than a filter chip —
+ * this is Spendee's "…" on a transaction: tap the glyph on the row and the
+ * UIMenu unfurls FROM that row, with a destructive item at the bottom.
+ *
+ * It answers "can we use the Spendee context menu here" with: yes, but it has
+ * to be a BUTTON in the row. SwiftUI's `Menu` draws its own label, so it can
+ * anchor to a glyph we hand it — it cannot wrap an existing React Native row and
+ * turn a long-press on it into a menu. That would need
+ * `react-native-ios-context-menu`, which is the library that would not link.
+ */
+export function RowMenu({
+  value,
+  options,
+  title,
+  onChange,
+  destructive,
+}: {
+  value: string;
+  options: readonly string[];
+  title: string;
+  onChange: (next: string) => void;
+  /** The one item that is not a choice — "Smazat". */
+  destructive?: { label: string; onPress: () => void };
+}) {
+  if (Platform.OS === 'ios') {
+    return (
+      <Host matchContents style={{ height: HitArea.min }} colorScheme="dark" seedColor={Colors.amber}>
+        <Menu
+          label={
+            <HStack modifiers={[padding({ horizontal: 8, vertical: 8 })]}>
+              <Image systemName="ellipsis" size={17} color={Colors.mutedText} />
+            </HStack>
+          }
+        >
+          <Picker
+            label={title}
+            selection={value}
+            onSelectionChange={(next) => {
+              if (typeof next === 'string') onChange(next);
+            }}
+            modifiers={[pickerStyle('inline')]}
+          >
+            {options.map((option) => (
+              <UIText key={option} modifiers={[tag(option)]}>
+                {option}
+              </UIText>
+            ))}
+          </Picker>
+          {destructive ? (
+            <Button role="destructive" onPress={destructive.onPress}>
+              <UIText>{destructive.label}</UIText>
+            </Button>
+          ) : null}
+        </Menu>
+      </Host>
+    );
+  }
+
+  const open = () => {
+    const labels = [...options, ...(destructive ? [destructive.label] : []), 'Zrušit'];
+    ActionSheetIOS.showActionSheetWithOptions(
+      {
+        options: labels,
+        cancelButtonIndex: labels.length - 1,
+        destructiveButtonIndex: destructive ? options.length : undefined,
+        title,
+        userInterfaceStyle: 'dark',
+      },
+      (index) => {
+        if (index < options.length) onChange(options[index]);
+        else if (destructive && index === options.length) destructive.onPress();
+      },
+    );
+  };
+
+  return (
+    <Pressable
+      onPress={open}
+      style={({ pressed }) => [styles.rowMenu, pressed && styles.pressed]}
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      hitSlop={8}
+    >
+      <Text style={styles.rowMenuGlyph} allowFontScaling={false}>
+        ···
+      </Text>
+    </Pressable>
+  );
+}
+
 /** The plain toggle chip beside the menus — no menu, one bit of state. */
 export function ToggleChip({
   label,
@@ -183,6 +274,8 @@ const styles = StyleSheet.create({
     borderColor: withAlpha(Colors.foam, 0.14),
   },
   chipOn: { borderColor: withAlpha(Colors.amber, 0.5) },
+  rowMenu: { paddingHorizontal: Spacing.sm, paddingVertical: Spacing.xs },
+  rowMenuGlyph: { fontSize: 17, fontWeight: '800', color: Colors.mutedText },
   chipText: { fontSize: 13, fontWeight: '600', color: Colors.amber },
   chipTextOff: { color: Colors.mutedText },
 });
