@@ -62,6 +62,8 @@ export interface PartyRecap {
   people: PartyPerson[];
   /** Beers per hour of the night, in order, for the tempo bars. */
   hourly: { hour: string; beers: number }[];
+  /** What was actually drunk, per tap — the chart's second question. */
+  byBeer: { beer: string; count: number }[];
   records: PartyRecord[];
   cheers: number;
   photos: number;
@@ -83,6 +85,12 @@ export const MOCK_PARTY: PartyRecap = {
     { id: 'p3', name: 'Tomáš', beers: 5, tint: '#F0BE5C', avatar: `${AVATARS}50` },
     { id: 'p4', name: 'Klára', beers: 5, tint: '#A8896A', avatar: `${AVATARS}64` },
     { id: 'p5', name: 'Míša', beers: 4, tint: '#FBF3E0', avatar: `${AVATARS}26` },
+  ],
+  byBeer: [
+    { beer: 'Pilsner Urquell', count: 11 },
+    { beer: 'Matuška Raptor', count: 8 },
+    { beer: 'Únětická 12°', count: 5 },
+    { beer: 'Nealko', count: 3 },
   ],
   hourly: [
     { hour: '20', beers: 4 },

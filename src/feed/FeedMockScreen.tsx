@@ -200,7 +200,10 @@ export function FeedCard({
           columns={3}
           stats={[
             { label: "Piva", value: String(entry.beers) },
-            { label: entry.live ? "Zatím" : "Večer", value: entry.duration },
+            // "Zatím" was a label nobody could parse under a number — zatím
+            // WHAT. A running night says it is running; a finished one names the
+            // thing being measured.
+            { label: entry.live ? "Běží" : "Večer", value: entry.duration },
             { label: "Hospody", value: String(entry.stops.length) },
           ]}
         />

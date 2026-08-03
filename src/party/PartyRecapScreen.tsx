@@ -173,8 +173,14 @@ export default function PartyRecapScreen() {
     chart === 'V čase'
       ? party.hourly.map((slot) => ({ label: `${slot.hour}:00`, value: slot.beers }))
       : chart === 'Podle piva'
-        ? beersByType(liveBeers).map((row) => ({ label: row.beer, value: row.count }))
-        : party.people.map((person) => ({ label: person.name, value: person.beers }));
+        ? // The live night's own breakdown when there is one, the canned night's
+          // otherwise — an empty chart behind a menu item reads as a bug.
+          (liveBeers.length > 0
+            ? beersByType(liveBeers).map((row) => ({ label: row.beer, value: row.count }))
+            : party.byBeer.map((row) => ({ label: row.beer, value: row.count })))
+        : party.people
+            .map((person) => ({ label: person.name, value: person.beers }))
+            .sort((a, b) => b.value - a.value);
 
   /** Does any of tonight's records mention this? Cheap, and it keeps the badge
    *  honest — no record in the list, no PR on the number. */
@@ -233,9 +239,9 @@ export default function PartyRecapScreen() {
           {route}
         </Text>
 
-        {/* What the post collected, right under the route — it is a summary of
-            the night, so it reads before the detail rather than after it. At the
-            bottom it was a footer nobody scrolled to. */}
+        {/* What the POST collected — cheers and photos. The pub count used to
+            sit here as "3 štace" and again three lines down as "Hospody 3"; the
+            same number twice in one screenful makes both look like filler. */}
         <View style={styles.summaryRow}>
           <View style={styles.summaryFact}>
             <HeartIcon size={15} color={Colors.mutedText} />
@@ -247,12 +253,6 @@ export default function PartyRecapScreen() {
             <ImagesIcon size={15} color={Colors.mutedText} />
             <Text style={styles.summaryText} allowFontScaling={false}>
               {party.photos} fotek
-            </Text>
-          </View>
-          <View style={styles.summaryFact}>
-            <MapPinIcon size={15} color={Colors.mutedText} />
-            <Text style={styles.summaryText} allowFontScaling={false}>
-              {party.stops.length} štace
             </Text>
           </View>
         </View>
