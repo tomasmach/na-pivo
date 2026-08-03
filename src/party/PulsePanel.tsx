@@ -85,8 +85,10 @@ export function PulsePanel({
             columns "0 piv 0 u stolu 0m — tempo" ran together into one sentence. */}
         <View style={styles.row}>
           <View style={styles.grow}>
+            {/* Columns follow the count: with one beer there is no tempo yet,
+                so the block is two wide rather than three with a dash in it. */}
             <StatGrid
-              columns={3}
+              columns={stats.length >= 3 ? 3 : 2}
               stats={stats.map((stat) => ({ value: stat.value, label: stat.unit ?? '' }))}
             />
           </View>
@@ -152,7 +154,9 @@ export function PulsePanel({
 
 const styles = StyleSheet.create({
   wrap: { gap: Spacing.xs },
-  row: { flexDirection: 'row', alignItems: 'flex-start' },
+  // The stopwatch needs air from the tempo beside it, or "26 min" and "26:43"
+  // run together into one number.
+  row: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.lg },
   clockCol: { alignItems: 'flex-end' },
   clock: {
     fontFamily: Fonts.numeral,

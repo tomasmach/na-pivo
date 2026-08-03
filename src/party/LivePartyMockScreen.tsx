@@ -54,6 +54,7 @@ import {
   minutesBetween,
   useLivePartyStore,
   useNightClock,
+  type LogKind,
 } from '@/mocks/livePartyStore';
 import { MockColors, MockType } from '@/mocks/mockTheme';
 import { UnderlineTabs } from '@/components/shared/UnderlineTabs';
@@ -81,6 +82,15 @@ const MAP_LIVE = 128;
  * the night — it is the thing the "+1 pivo" control writes into, so it moved
  * behind the chip under that control where you are already looking.
  */
+/** One glyph per kind of thing that happens in an evening. */
+const LOG_GLYPH: Record<LogKind, React.ReactNode> = {
+  beer: <BeerIcon size={17} color={Colors.amber} />,
+  photo: <CameraIcon size={17} color={Colors.amber} />,
+  game: <SparklesIcon size={17} color={Colors.amber} />,
+  join: <UserPlusIcon size={17} color={Colors.amber} />,
+  pub: <MapPinIcon size={17} color={Colors.amber} />,
+};
+
 const SECTIONS = ['Statistiky', 'Log'] as const;
 const CHARTS = ['V čase', 'Podle piva', 'U stolu'] as const;
 
@@ -295,9 +305,14 @@ export default function LivePartyMockScreen() {
             pulse={pulse}
             startedAt={startedAt}
             stats={[
-              { value: String(mine), unit: 'piv' },
+              // Whose, how many at the table, how fast. The labels say which is
+              // which — "piv" alone next to "u stolu" left you guessing whether
+              // the first number was yours or everyone's.
+              { value: String(mine), unit: 'tvoje piva' },
               { value: String(live ? table : 0), unit: 'u stolu' },
-              { value: live ? fourth.value : '—', unit: live ? fourth.label.toLowerCase() : 'tempo' },
+              // Dropped entirely until there are two beers: with one, the only
+              // duration worth showing is the stopwatch.
+              ...(beers.length >= 2 ? [{ value: fourth.value, unit: fourth.label }] : []),
             ]}
           />
 
@@ -404,21 +419,40 @@ export default function LivePartyMockScreen() {
 
               {section === 'Log' ? (
                 <View style={styles.sectionBody}>
-                  {[...log].reverse().map((event) => (
-                    <View key={event.id} style={styles.logRow}>
-                      <Text style={styles.logTime} allowFontScaling={false}>
-                        {clockAt(event.at)}
-                      </Text>
-                      <View style={styles.logDot} />
-                      <Text
-                        style={styles.logText}
-                        numberOfLines={2}
-                        maxFontSizeMultiplier={FontScaleCap.body}
-                      >
-                        {event.text}
-                      </Text>
-                    </View>
-                  ))}
+                  {[...log]
+                    .reverse()
+                    .map((event, index, all) => (
+                      <View key={event.id} style={styles.logRow}>
+                        {/* The rail. A timeline is a chronology, not a list —
+                            hairlines BETWEEN rows separate them, a line THROUGH
+                            them says they are one thread. It stops at the first
+                            and last node so the thread has ends. */}
+                        <View style={styles.logRail} pointerEvents="none">
+                          <View
+                            style={[styles.railLine, index === 0 && styles.railHidden]}
+                          />
+                          <View
+                            style={[
+                              styles.railLine,
+                              index === all.length - 1 && styles.railHidden,
+                            ]}
+                          />
+                        </View>
+                        <View style={styles.logIcon}>{LOG_GLYPH[event.kind]}</View>
+                        <Text
+                          style={styles.logText}
+                          numberOfLines={2}
+                          maxFontSizeMultiplier={FontScaleCap.body}
+                        >
+                          {event.text}
+                        </Text>
+                        {/* When is the least interesting part, so it goes last
+                            and quiet — you scan WHAT happened, then look. */}
+                        <Text style={styles.logTime} allowFontScaling={false}>
+                          {clockAt(event.at)}
+                        </Text>
+                      </View>
+                    ))}
                 </View>
               ) : null}
             </>
@@ -453,7 +487,11 @@ export default function LivePartyMockScreen() {
                 accessibilityLabel={`Piješ ${houseBeer}. Změnit.`}
                 hitSlop={6}
               >
-                <Text style={styles.primaryLabel} numberOfLines={1} allowFontScaling={false}>
+                <Text
+                  style={styles.primaryLabel}
+                  numberOfLines={2}
+                  maxFontSizeMultiplier={FontScaleCap.body}
+                >
                   {byType.length > 1 ? `${byType.length} druhy` : houseBeer}
                 </Text>
                 <ChevronDownIcon size={13} color={Colors.amber} />
@@ -687,19 +725,38 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
-    minHeight: 60,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: withAlpha(Colors.foam, 0.07),
+    minHeight: 64,
   },
+  /** Behind the icon column: two half-height segments, so either end can be
+   *  hidden and the thread stops at the first and last node. */
+  logRail: {
+    position: 'absolute',
+    left: 19,
+    top: 0,
+    bottom: 0,
+    width: 2,
+    marginLeft: -1,
+  },
+  railLine: { flex: 1, backgroundColor: withAlpha(Colors.foam, 0.12) },
+  railHidden: { backgroundColor: 'transparent' },
+  logIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    // Opaque, so the rail passes BEHIND the node rather than through it.
+    backgroundColor: Colors.stout3,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: withAlpha(Colors.foam, 0.1),
+  },
+  logText: { flex: 1, fontSize: 16, fontWeight: '600', color: Colors.foam },
   logTime: {
-    width: 52,
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '500',
     color: Colors.mutedText,
     fontVariant: ['tabular-nums'],
   },
-  logDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: withAlpha(Colors.amber, 0.7) },
-  logText: { flex: 1, fontSize: 16, fontWeight: '500', color: Colors.foam },
 
   // — Controls —
   // Five equal columns. The primary is bigger but occupies the same slot, so
@@ -709,7 +766,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     paddingTop: Spacing.md,
-    paddingBottom: Spacing.lg,
+    paddingBottom: Spacing.xl,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: withAlpha(Colors.foam, 0.12),
   },
@@ -734,7 +791,7 @@ const styles = StyleSheet.create({
     marginTop: -12,
   },
   primaryPressed: { opacity: 0.9, transform: [{ scale: 0.97 }] },
-  primaryLabel: { fontWeight: '700', fontSize: 13, color: Colors.amber },
+  primaryLabel: { fontWeight: '700', fontSize: 13, color: Colors.amber, textAlign: 'center' },
   /**
    * Full width of the control row, not the width of the disc above it. Clipped
    * to the disc, "Flekovský ležák 13°" came out as "Flekovsk…" — and the whole
@@ -746,8 +803,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 3,
     position: 'absolute',
-    left: -80,
-    right: -80,
-    bottom: -20,
+    left: -60,
+    right: -60,
+    bottom: -34,
   },
 });

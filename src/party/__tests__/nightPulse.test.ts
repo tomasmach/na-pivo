@@ -49,17 +49,19 @@ describe('buildPulse', () => {
 describe('fourthStat', () => {
   it('shows the average gap while the night is flowing', () => {
     const stat = fourthStat({ beerTimes: [0, 20, 40], now: 45 });
-    expect(stat.label).toBe('Pivo po');
-    expect(stat.value).toBe('20m');
+    expect(stat.label).toBe('pivo po');
+    expect(stat.value).toBe('20 min');
   });
 
   it('switches to the silence once it is longer than the usual gap', () => {
     const stat = fourthStat({ beerTimes: [0, 20, 40], now: 75 });
-    expect(stat.label).toBe('Na jedno');
-    expect(stat.value).toBe('35m');
+    expect(stat.label).toBe('na jedno');
+    expect(stat.value).toBe('35 min');
   });
 
-  it('never renders a dash once there is a beer', () => {
-    expect(fourthStat({ beerTimes: [0], now: 3 }).value).not.toBe('—');
+  it('says nothing until two beers give it a gap to measure', () => {
+    // One beer's "time since" IS the stopwatch, and the hub shows that already.
+    expect(fourthStat({ beerTimes: [0], now: 26 }).value).toBe('—');
+    expect(fourthStat({ beerTimes: [], now: 0 }).value).toBe('—');
   });
 });

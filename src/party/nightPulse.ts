@@ -103,17 +103,18 @@ export interface PulseStat {
  * being one fixed label that is a dash half the evening.
  */
 export function fourthStat({ beerTimes, now }: PulseInput): PulseStat {
-  if (beerTimes.length === 0) return { label: 'Tempo', value: '—' };
+  // Under two beers there is no tempo, and "od prvního" would just be the
+  // stopwatch again — the hub showed "26m" beside "26:43", the same fact twice
+  // in two formats. A dash is honest; a duplicate is noise.
+  if (beerTimes.length < 2) return { label: 'pivo po', value: '—' };
 
   const last = beerTimes[beerTimes.length - 1];
   const since = Math.max(0, now - last);
-
-  if (beerTimes.length === 1) return { label: 'Od prvního', value: `${since}m` };
 
   const gaps = beerTimes.slice(1).map((time, index) => time - beerTimes[index]);
   const average = Math.round(gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length);
 
   // Once the silence is longer than the usual gap, THAT is the number you want.
-  if (since > average) return { label: 'Na jedno', value: `${since}m` };
-  return { label: 'Pivo po', value: `${average}m` };
+  if (since > average) return { label: 'na jedno', value: `${since} min` };
+  return { label: 'pivo po', value: `${average} min` };
 }
