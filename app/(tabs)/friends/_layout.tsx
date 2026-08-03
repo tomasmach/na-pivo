@@ -1,4 +1,4 @@
-import { Pressable } from 'react-native';
+import { Image, Pressable, StyleSheet } from 'react-native';
 import { Stack, useRouter, type Href } from 'expo-router';
 
 import { SearchIcon } from '@/components/shared/IconGlyph';
@@ -43,6 +43,17 @@ export default function FeedLayout() {
         name="index"
         options={{
           title: 'Kocoviny',
+          // The mark, top left, opposite search. Kocoviny is the app's home —
+          // the one screen you land on — so it is the right place for the logo
+          // and the wrong place for it is everywhere else, where a repeated
+          // wordmark reads as chrome nobody asked for.
+          headerLeft: () => (
+            <Image
+              source={require('../../../assets/images/icon.png')}
+              style={styles.mark}
+              accessibilityLabel="Na pivo"
+            />
+          ),
           // No custom glass wrapper here: on iOS 26 the system already floats
           // bar buttons on their own capsule. Adding ours would be two glass
           // layers, one of them a fake.
@@ -75,3 +86,9 @@ export default function FeedLayout() {
     </Stack>
   );
 }
+
+const styles = StyleSheet.create({
+  // Rounded like an app icon, because that is what it is — squared off in a bar
+  // it reads as a photo of a logo rather than the logo.
+  mark: { width: 30, height: 30, borderRadius: 8 },
+});
