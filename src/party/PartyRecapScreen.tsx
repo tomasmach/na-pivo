@@ -169,6 +169,11 @@ export default function PartyRecapScreen() {
     : MOCK_PARTY;
   const route = party.stops.map((s) => s.pubName).join('  →  ');
 
+  // Same person, same face, wherever they appear on this screen.
+  const personOf = (name: string) => party.people.find((person) => person.name === name);
+  const personTint = (name: string) => personOf(name)?.tint ?? Colors.amber;
+  const personAvatar = (name: string) => personOf(name)?.avatar;
+
   const chartRows =
     chart === 'V čase'
       ? party.hourly.map((slot) => ({ label: `${slot.hour}:00`, value: slot.beers }))
@@ -381,6 +386,20 @@ export default function PartyRecapScreen() {
                 <Text style={styles.recordDetail} maxFontSizeMultiplier={FontScaleCap.body}>
                   {record.detail}
                 </Text>
+                {/* Whose it is. On a post shared by five people, "tvůj nový
+                    rekord" is ambiguous for four of them — a record needs a
+                    face on it. */}
+                <View style={styles.recordBy}>
+                  <Face
+                    name={record.by}
+                    tint={personTint(record.by)}
+                    avatar={personAvatar(record.by)}
+                    size={16}
+                  />
+                  <Text style={styles.recordByName} maxFontSizeMultiplier={FontScaleCap.body}>
+                    {record.by}
+                  </Text>
+                </View>
               </View>
             </View>
           ))}
@@ -568,6 +587,8 @@ const styles = StyleSheet.create({
     backgroundColor: withAlpha(Colors.amber, 0.12),
   },
   recordTitle: { fontWeight: '700', fontSize: 15, color: Colors.foam },
+  recordBy: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
+  recordByName: { fontSize: 13, fontWeight: '600', color: Colors.mutedText },
   recordDetail: { fontWeight: '400', fontSize: 13, color: Colors.mutedText, marginTop: 1 },
 
   // — Footer —

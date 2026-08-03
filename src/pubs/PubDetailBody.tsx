@@ -27,13 +27,14 @@ import {
   BeerIcon,
   MapPinIcon,
   StarIcon,
-  UsersIcon,
 } from '@/components/shared/IconGlyph';
 import { useRouter, type Href } from 'expo-router';
 
 import { CloseButton } from '@/components/shared/CloseButton';
 import { useLivePartyStore } from '@/mocks/livePartyStore';
 import { SectionBreak } from '@/mocks/SectionBreak';
+import { FeedCard } from '@/feed/FeedMockScreen';
+import { MOCK_FEED } from '@/feed/mockFeed';
 import { StatGrid } from '@/mocks/StatGrid';
 import { MockLayout, MockType } from '@/mocks/mockTheme';
 import type { MockPub } from '@/pubs/mockPubs';
@@ -43,12 +44,6 @@ import { FontScaleCap } from '@/theme/fonts';
 import { Radius, Spacing } from '@/theme/layout';
 
 /** What happened here. Real data comes from PartyEvening + PubVisit. */
-const MOCK_NIGHTS = [
-  { id: 'n1', title: 'Čtvrteční jízda', when: 've čtvrtek', people: 5, beers: 9 },
-  { id: 'n2', title: 'Rychlovka po práci', when: '18. 7.', people: 2, beers: 4 },
-  { id: 'n3', title: 'Po zápase', when: '2. 7.', people: 4, beers: 11 },
-];
-
 const MOCK_TAPS = [
   { name: 'Matuška Raptor', priceCzk: 69 },
   { name: 'Únětická 12°', priceCzk: 52 },
@@ -249,34 +244,22 @@ export function PubDetailBody({
         ) : null}
 
         {tab === 'Aktivita' ? (
-          <View style={styles.section}>
-            {MOCK_NIGHTS.map((night) => (
-              <Pressable
-                key={night.id}
-                style={({ pressed }) => [styles.nightRow, pressed && styles.pressed]}
-                accessibilityRole="button"
-                accessibilityLabel={night.title}
-              >
-                <View style={styles.grow}>
-                  <Text
-                    style={styles.nightTitle}
-                    numberOfLines={1}
-                    maxFontSizeMultiplier={FontScaleCap.body}
-                  >
-                    {night.title}
-                  </Text>
-                  <Text style={styles.nightMeta} maxFontSizeMultiplier={FontScaleCap.body}>
-                    {night.when} · {night.beers} piv
-                  </Text>
-                </View>
-                <View style={styles.nightPeople}>
-                  <UsersIcon size={13} color={Colors.mutedText} />
-                  <Text style={styles.nightMeta} allowFontScaling={false}>
-                    {night.people}
-                  </Text>
-                </View>
-              </Pressable>
+          // The same card the feed and the profile use, filtered to this pub.
+          // A night looks identical wherever you meet it — the stripped rows
+          // that used to be here were a third design of an object the app
+          // already draws twice, and they carried none of what makes a night
+          // worth opening: the faces, the photos, the roast.
+          <View style={styles.feed}>
+            {MOCK_FEED.filter((entry) =>
+              entry.stops.some((stop) => stop.name === pub.name),
+            ).map((entry, index) => (
+              <FeedCard key={entry.id} entry={entry} first={index === 0} />
             ))}
+            {MOCK_FEED.every((entry) => entry.stops.every((stop) => stop.name !== pub.name)) ? (
+              <Text style={styles.empty} maxFontSizeMultiplier={FontScaleCap.body}>
+                Zatím sem nikdo nic nezapsal. Buď první.
+              </Text>
+            ) : null}
           </View>
         ) : null}
 
@@ -292,6 +275,14 @@ const styles = StyleSheet.create({
   grow: { flex: 1 },
   pressed: { opacity: 0.65 },
   body: { paddingHorizontal: MockLayout.screenPad, paddingTop: Spacing.md },
+  feed: { marginTop: Spacing.md },
+  empty: {
+    marginTop: Spacing.lg,
+    fontSize: 15,
+    fontWeight: '500',
+    color: Colors.mutedText,
+    lineHeight: 21,
+  },
 
   back: { position: 'absolute', left: MockLayout.screenPad },
   backButton: {
@@ -344,17 +335,6 @@ const styles = StyleSheet.create({
   tapSection: { gap: Spacing.sm },
   sectionTitle: { ...MockType.titleS, color: Colors.foam },
 
-  nightRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    paddingVertical: Spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: withAlpha(Colors.foam, 0.1),
-  },
-  nightTitle: { ...MockType.bodySemibold, color: Colors.foam },
-  nightMeta: { fontSize: 13, fontWeight: '400', color: Colors.mutedText, marginTop: 1 },
-  nightPeople: { flexDirection: 'row', alignItems: 'center', gap: 4 },
 
   tapRow: {
     flexDirection: 'row',

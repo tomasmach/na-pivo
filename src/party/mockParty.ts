@@ -49,6 +49,12 @@ export interface PartyRecord {
   /** Short, loud, one line. "Osobní rekord" not "Gratulujeme, dosáhl jsi…". */
   title: string;
   detail: string;
+  /**
+   * Whose record it is. At a table of five, "tvůj nový rekord" on a shared post
+   * is ambiguous for four of the readers — a record needs a name on it. Matches
+   * a `PartyPerson.name`; "Ty" when it is yours.
+   */
+  by: string;
 }
 
 export interface PartyRecap {
@@ -101,8 +107,13 @@ export const MOCK_PARTY: PartyRecap = {
     { hour: '01', beers: 3 },
   ],
   records: [
-    { id: 'r1', title: 'Nejvíc štací za večer', detail: 'Tři hospody, tvůj nový rekord.' },
-    { id: 'r2', title: 'Nejdelší večer měsíce', detail: '6h 42m — o hodinu víc než minule.' },
+    { id: 'r1', title: 'Nejvíc štací za večer', detail: 'Tři hospody, nový rekord.', by: 'Ty' },
+    {
+      id: 'r2',
+      title: 'Nejdelší večer měsíce',
+      detail: '6h 42m — o hodinu víc než minule.',
+      by: 'Honza',
+    },
   ],
   cheers: 12,
   photos: 18,
