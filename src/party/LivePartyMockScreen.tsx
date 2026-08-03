@@ -448,7 +448,8 @@ export default function LivePartyMockScreen() {
                             >
                               {event.by === 'Ty'
                                 ? `Hodil jsi na stůl ${game.name}`
-                                : `${event.by} hodil na stůl ${game.name}`}
+                                : `${event.by} hodil na stůl ${game.name}`}{' '}
+                              · {clockAt(event.at)}
                             </Text>
                           </View>
 
@@ -534,16 +535,10 @@ export default function LivePartyMockScreen() {
                           cover. */}
                       {game ? null : (
                         <Text style={styles.logWhoName} maxFontSizeMultiplier={FontScaleCap.body}>
-                          {event.by}
+                          {event.by} · {clockAt(event.at)}
                         </Text>
                       )}
                     </View>
-
-                    {/* When is the least interesting part, so it goes last and
-                        quiet — you scan WHAT happened, then look. */}
-                    <Text style={styles.logTime} allowFontScaling={false}>
-                      {clockAt(event.at)}
-                    </Text>
 
                     {/* Mis-taps happen in pubs, and the log is the only place
                         you can see WHICH beer was wrong — so correcting it
@@ -927,8 +922,17 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.stout3,
   },
   logMenuSlot: { width: 30, alignItems: 'flex-end' },
-  logWho: { marginTop: 4 },
-  logWhoName: { fontSize: 12, fontWeight: '600', color: Colors.mutedText },
+  logWho: { marginTop: 2 },
+  // Who and when, on one quiet line under the thing itself. The time used to be
+  // right-aligned in its own column, which put the least interesting fact on the
+  // row at the end of a long empty gap.
+  logWhoName: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.mutedText,
+    marginTop: 1,
+    fontVariant: ['tabular-nums'],
+  },
   logIconBadge: {
     position: 'absolute',
     right: -6,
@@ -945,12 +949,6 @@ const styles = StyleSheet.create({
   },
   logIconBadgeText: { fontFamily: Fonts.numeral, fontSize: 11, color: Colors.stout },
   logText: { fontSize: 16, fontWeight: '600', color: Colors.foam },
-  logTime: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: Colors.mutedText,
-    fontVariant: ['tabular-nums'],
-  },
 
   // — Controls —
   // Five equal columns. The primary is bigger but occupies the same slot, so
