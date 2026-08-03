@@ -20,11 +20,12 @@
 import React from 'react';
 import { Image, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 
 import { KeyboardAwareScrollView } from '@/components/shared/KeyboardAwareScrollView';
 import { CameraIcon, SparklesIcon, XIcon } from '@/components/shared/IconGlyph';
 import { buildRoast } from '@/feed/roast';
+import { usePublishedStore } from '@/mocks/publishedStore';
 import { StatGrid } from '@/mocks/StatGrid';
 import {
   beersByType,
@@ -57,6 +58,7 @@ export default function FinishNightScreen() {
   const games = useLivePartyStore((s) => s.games);
   const pubName = useLivePartyStore((s) => s.pubName);
   const endParty = useLivePartyStore((s) => s.end);
+  const publishNight = usePublishedStore((s) => s.publish);
 
   const [title, setTitle] = React.useState('');
   const [note, setNote] = React.useState('');
@@ -84,8 +86,48 @@ export default function FinishNightScreen() {
   const caption = roastOn && roast ? roast.line : title.trim() || fallbackTitle;
 
   const publish = () => {
+    // Built BEFORE `endParty()`, which resets the live store — the whole point
+    // of publishing is that the evening outlives the night that made it.
+    publishNight({
+      id: `mine-${startedAt ?? 0}`,
+      author: 'Ty',
+      authorTint: Colors.amber,
+      when: 'právě teď',
+      title: title.trim() || fallbackTitle,
+      note: note.trim() || undefined,
+      stops: [{ name: pubName, lat: 50.0785, lng: 14.42 }],
+      beers: beers.length,
+      duration: formatElapsed(minutes),
+      people: [
+        // No avatar url: `Face` falls back to the initial on a tint, which is
+        // what a real table looks like anyway — half of them never set a photo.
+        { name: 'Ty', tint: Colors.amber, avatar: '' },
+        ...people.map((person) => ({ name: person.name, tint: person.tint, avatar: '' })),
+      ],
+      photos,
+      cheers: 0,
+      comments: 0,
+      highlight:
+        played.length > 0 && played[0].result
+          ? {
+              kind: 'game',
+              game: played[0].name,
+              winner: played[0].result.winner ?? '—',
+              scores: played[0].result.scores,
+            }
+          : { kind: 'map' },
+      durationMinutes: minutes,
+      games: played.length,
+      gamesWon: played.filter((game) => game.result?.winner === 'Ty').length,
+      // Roast off means the night keeps its own words: the rules read this and
+      // stay silent, rather than the card having to know about a toggle.
+      usualPerHour: roastOn ? 1.6 : null,
+      visitsToSamePub: 1,
+    });
     endParty();
-    router.replace('/friends/party-recap');
+    // Into Kocoviny, not back to a recap: you published to a feed, so the feed
+    // with your night at the top of it is the proof that it worked.
+    router.replace('/friends' as Href);
   };
 
   return (

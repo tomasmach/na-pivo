@@ -47,6 +47,9 @@ export interface FeedEntry {
   /** "dnes 23:40", "včera", "út 28. 7." — already humanised. */
   when: string;
   title: string;
+  /** What the table wrote about the night. Shown under the headline when the
+   *  app has no roast of its own to print. */
+  note?: string;
   /** The pub chain, in order — with coordinates, so the card can show a map. */
   stops: { name: string; lat: number; lng: number }[];
   beers: number;

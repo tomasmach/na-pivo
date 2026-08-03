@@ -28,6 +28,7 @@ import { MessageSquareIcon } from "@/components/shared/IconGlyph";
 import { CheersButton } from "@/feed/CheersButton";
 import { cs } from "@/i18n/cs";
 import { MOCK_FEED, type FeedEntry } from "@/feed/mockFeed";
+import { usePublishedStore } from "@/mocks/publishedStore";
 import { PartyHighlight } from "@/feed/PartyHighlight";
 import { buildRoast } from "@/feed/roast";
 import { StatGrid } from "@/mocks/StatGrid";
@@ -168,6 +169,19 @@ export function FeedCard({
       >
         {roast ? roast.line : entry.title}
       </Text>
+      {/* The line under it says WHY. A roast with no basis is the app being
+          rude at you; with the fact printed under it, it is the app being rude
+          about a thing that actually happened, which is the whole joke. When
+          there is no roast this is the night's own note. */}
+      {roast || entry.note ? (
+        <Text
+          style={styles.description}
+          numberOfLines={2}
+          maxFontSizeMultiplier={FontScaleCap.body}
+        >
+          {roast ? roast.basis : entry.note}
+        </Text>
+      ) : null}
       {/* The stat block: a heavy value with a muted label under it, no dividers —
           the grid spacing separates them. Order is set once in `StatGrid`. */}
       <View style={styles.statsRow}>
@@ -218,6 +232,7 @@ export function FeedCard({
 
 export default function FeedMockScreen() {
   const insets = useSafeAreaInsets();
+  const published = usePublishedStore((s) => s.entries);
 
   return (
     // The ScrollView is the ROOT, not wrapped in a View: react-native-screens
@@ -234,7 +249,9 @@ export default function FeedMockScreen() {
       {/* No hand-rolled header: the native stack owns the large title, its
             collapse onto the blurred bar and the floating glass search button. */}
 
-      {MOCK_FEED.map((entry, index) => (
+      {/* Yours first. A night you just published has to be the thing you land
+          on, or "Zveřejnit" is a button that appears to do nothing. */}
+      {[...published, ...MOCK_FEED].map((entry, index) => (
         <FeedCard key={entry.id} entry={entry} first={index === 0} />
       ))}
 
@@ -365,6 +382,13 @@ const styles = StyleSheet.create({
     color: Colors.amber,
   },
 
+  description: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: Colors.mutedText,
+    lineHeight: 19,
+    marginTop: 4,
+  },
   title: {
     fontWeight: "800",
     fontSize: 21,
