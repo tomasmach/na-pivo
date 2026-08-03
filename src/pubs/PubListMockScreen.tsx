@@ -421,7 +421,7 @@ export default function PubListMockScreen() {
       >
         {openPub ? (
           <ScrollView
-            contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 120 }]}
+            contentContainerStyle={[styles.detailContent, { paddingBottom: insets.bottom + 120 }]}
             showsVerticalScrollIndicator={false}
             scrollEnabled={detent === 'full'}
             scrollEventThrottle={16}
@@ -499,7 +499,11 @@ export default function PubListMockScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Colors.stout },
-  content: { paddingHorizontal: 16 },
+  content: { paddingHorizontal: MockLayout.screenPad },
+  // No gutter of its own: `PubDetailBody` sets the app's one width, and adding
+  // 16 here on top of its 20 put the text at 36 while every full-bleed band
+  // still bled only 20 — three different edges on one sheet.
+  detailContent: {},
   map: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   grow: { flex: 1 },
   pressed: { opacity: 0.65 },

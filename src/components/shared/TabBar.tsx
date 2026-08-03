@@ -53,6 +53,7 @@ import {
 } from '@/components/shared/IconGlyph';
 import { fireLightImpactHaptic } from '@/utils/haptics';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useLivePartyStore } from '@/mocks/livePartyStore';
 import { usePartaSignalStore } from '@/stores/partaSignalStore';
 import { useReduceMotion } from '@/utils/useReduceMotion';
 import { cs } from '@/i18n/cs';
@@ -190,9 +191,17 @@ interface TabItemProps {
   focused: boolean;
   onPress: () => void;
   badge: TabBadgeState | null;
+  /** A night is running right now. Only the party item cares. */
+  running?: boolean;
 }
 
-const TabItem = memo(function TabItem({ routeName, focused, onPress, badge }: TabItemProps) {
+const TabItem = memo(function TabItem({
+  routeName,
+  focused,
+  onPress,
+  badge,
+  running,
+}: TabItemProps) {
   const meta = TAB_META[routeName];
   if (!meta) return null;
   // Party inverts: the glyph sits ON the amber disc, so it is stout. The LABEL
@@ -226,9 +235,12 @@ const TabItem = memo(function TabItem({ routeName, focused, onPress, badge }: Ta
           Party adds the 12 % medallion §2.2 allows for an icon in a row — never
           a filled amber circle, which would be a full amber surface on top of
           every screen's own primary button. */}
-      <View
-        style={[styles.iconWrap, meta.accent && styles.accentWrap]}
-      >
+      {/* While a night is running the party disc wears a ring: the tab is no
+          longer "start something", it is "the thing you are already in". Same
+          disc, one ring — a different icon would make it read as a different
+          destination. */}
+      <View style={[styles.iconWrap, meta.accent && styles.accentWrap]}>
+        {running && meta.accent ? <View style={styles.liveRing} pointerEvents="none" /> : null}
         <Icon size={24} color={iconColor} />
         {badge ? <TabBadge count={badge.count} dot={badge.dot} live={badge.live} /> : null}
       </View>
@@ -237,7 +249,7 @@ const TabItem = memo(function TabItem({ routeName, focused, onPress, badge }: Ta
         numberOfLines={1}
         maxFontSizeMultiplier={FontScaleCap.body}
       >
-        {meta.label}
+        {running && meta.accent ? 'Večer' : meta.label}
       </Text>
     </Pressable>
   );
@@ -268,6 +280,8 @@ export function TabBar({ state, navigation }: TabBarProps) {
   const pendingRequests = usePartaSignalStore((s) => s.pendingRequests);
   const unread = usePartaSignalStore((s) => s.unread);
   const liveNow = usePartaSignalStore((s) => s.liveNow);
+  // Your OWN night, not a friend's — the ring means "you are in one".
+  const nightRunning = useLivePartyStore((s) => s.live);
 
   // After every hook, never before — an early return above them would change
   // the hook order between renders (rules-of-hooks).
@@ -333,6 +347,7 @@ export function TabBar({ state, navigation }: TabBarProps) {
             focused={focused}
             onPress={onPress}
             badge={route.name === 'friends' ? partaBadge : null}
+            running={route.name === 'beer' && nightRunning}
           />
         );
       })}
@@ -374,6 +389,18 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
     backgroundColor: Colors.amber,
+  },
+  /** A running night, said with a ring rather than a colour: the bar already has
+   *  exactly one amber and a second state colour here would compete with it. */
+  liveRing: {
+    position: 'absolute',
+    left: -5,
+    right: -5,
+    top: -5,
+    bottom: -5,
+    borderRadius: 25,
+    borderWidth: 2,
+    borderColor: withAlpha(Colors.amber, 0.45),
   },
   label: {
     fontWeight: '700',

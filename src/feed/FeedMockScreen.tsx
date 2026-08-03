@@ -31,7 +31,7 @@ import { MOCK_FEED, type FeedEntry } from "@/feed/mockFeed";
 import { PartyHighlight } from "@/feed/PartyHighlight";
 import { buildRoast } from "@/feed/roast";
 import { StatGrid } from "@/mocks/StatGrid";
-import { MockColors, MockType } from "@/mocks/mockTheme";
+import { MockColors, MockLayout, MockType } from "@/mocks/mockTheme";
 import { TAB_CHROME } from '@/components/shared/TabBar';
 import { Colors, withAlpha } from "@/theme/colors";
 import { FontScaleCap } from "@/theme/fonts";
@@ -247,7 +247,7 @@ export default function FeedMockScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Colors.stout },
-  content: { paddingHorizontal: 16 },
+  content: { paddingHorizontal: MockLayout.screenPad },
   grow: { flex: 1 },
   pressed: { opacity: 0.6 },
 

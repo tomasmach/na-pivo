@@ -50,6 +50,7 @@ import {
 import { Face } from '@/feed/FeedMockScreen';
 import { Leaderboard } from '@/mocks/Leaderboard';
 import { GlassIconButton } from '@/components/shared/GlassIconButton';
+import { MockLayout } from '@/mocks/mockTheme';
 import { SectionBreak } from '@/mocks/SectionBreak';
 import { MenuChip } from '@/mocks/MenuChip';
 import { NightChart, type ChartShape } from '@/mocks/NightChart';
@@ -402,7 +403,7 @@ const styles = StyleSheet.create({
   summaryFact: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   summaryText: { fontSize: 13, fontWeight: '600', color: Colors.mutedText },
   screen: { flex: 1, backgroundColor: Colors.stout },
-  content: { paddingHorizontal: 20 },
+  content: { paddingHorizontal: MockLayout.screenPad },
   grow: { flex: 1 },
   pressed: { opacity: 0.6 },
 

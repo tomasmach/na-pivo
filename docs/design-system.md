@@ -1269,6 +1269,19 @@ graf vlastního večera je věc, kterou nikdo nestuduje uprostřed hospody.
 Statistiky, grafy a rozbor patří do **recapu** (`/party-recap`), po ukončení a
 odeslání. Tam je ohlédnutí celý smysl obrazovky.
 
+### 18.3b Jedna šířka skrz celou app
+
+Vodorovný okraj obsahu je **vždycky** `MockLayout.screenPad` (20) — na
+obrazovce, v sheetu i v detailu. Žádných 16 „protože je to sheet".
+
+Hostitel obsahu si k tomu **nesmí přidat vlastní padding**. Detail hospody měl
+20 ze `PubDetailBody` a 16 z ScrollView okolo, takže text seděl na 36, zatímco
+full-bleed pásy (`SectionBreak`, `UnderlineTabs`) přetékaly jen o 20 a končily
+16 před krajem. Tři různé hrany na jednom sheetu.
+
+Komponenty, které přetékají přes okraj, dostávají `inset` rovný té jedné šířce.
+Když se okraj mění, mění se `MockLayout.screenPad`, ne lokální číslo.
+
 ### 18.5 Log je thread, ne systémový žurnál
 
 Log běžícího večera je společný thread. U každého záznamu musí být vidět **kdo
@@ -1285,6 +1298,17 @@ Rozhoduje o tom razítko mountu, ne pořadí.
 
 Akce, které něco přidávají, nesou na ikoně malý **plus badge**. Řádek samotných
 podstatných jmen („Foto", „Hry") čte jako navigace, ne jako přidávání.
+
+### 18.5c Běžící večer v chrome
+
+Live bar nad tab barem se **vysvětluje sám**: hospoda a pod ní běžící stopky a
+počet piv. Zelená tečka je pryč — stavová kontrolka se musí naučit, kdežto
+tikající čas říká „běží to" slovy, která už čteš. Plurály česky (1 pivo, 3 piva,
+7 piv); špatný plurál je na takhle malém pruhu první, čeho si všimneš.
+
+Ikona Party v tab baru dostane při běžícím večeru **prstenec** a popisek
+„Večer". Ne jinou ikonu a ne jinou barvu — je to pořád stejné místo, jen jsi
+v něm.
 
 ### 18.6 Velká čísla se neklikají
 
