@@ -83,14 +83,19 @@ export function PulsePanel({
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.md },
+  // Air above: the numbers are the headline of the sheet, and sitting them
+  // straight under the faces made them read as a caption to the guest list.
+  row: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.md, marginTop: Spacing.sm },
   col: { flex: 1 },
   value: {
     fontFamily: Fonts.numeral,
-    fontSize: 26,
-    lineHeight: 32,
+    // Big enough to be the infographic rather than a row of figures. At 26 they
+    // were the same weight as the log under them and the eye had no first stop.
+    fontSize: 33,
+    lineHeight: 40,
+    letterSpacing: -0.5,
     color: Colors.foam,
     fontVariant: ['tabular-nums'],
   },
-  label: { fontSize: 13, fontWeight: '400', color: Colors.mutedText, marginTop: 2 },
+  label: { fontSize: 13, fontWeight: '500', color: Colors.mutedText, marginTop: 3 },
 });

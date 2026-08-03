@@ -708,9 +708,10 @@ const styles = StyleSheet.create({
   // — Log —
   logRow: {
     flexDirection: 'row',
-    // Top-aligned: a row is now a block (what happened, then who), and a game
-    // row is a whole card. Centring hung the glyph in the middle of it.
-    alignItems: 'flex-start',
+    // The glyph centres against the WHOLE block, both lines of it. Top-aligned,
+    // the icon lined up with the first line and the author's name hung below
+    // it, so every row looked a few points too low.
+    alignItems: 'center',
     gap: Spacing.md,
     paddingVertical: Spacing.sm,
     minHeight: 64,
@@ -741,9 +742,8 @@ const styles = StyleSheet.create({
   logWho: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
   logWhoName: { fontSize: 12, fontWeight: '600', color: Colors.mutedText },
   logPlus: { fontFamily: Fonts.numeral, color: Colors.amber },
-  logText: { fontSize: 16, fontWeight: '600', color: Colors.foam, paddingTop: 8 },
+  logText: { fontSize: 16, fontWeight: '600', color: Colors.foam },
   logTime: {
-    marginTop: 10,
     fontSize: 14,
     fontWeight: '500',
     color: Colors.mutedText,
