@@ -512,6 +512,10 @@ export default function LivePartyMockScreen() {
                         value={event.text}
                         options={MENU_BEERS}
                         onChange={(next) => editBeer(event.beerId as string, next)}
+                        // The thing you most often want from a beer you already
+                        // had is another one of it — and this row is the only
+                        // place that knows WHICH one you mean.
+                        repeat={{ label: 'Ještě jedno', onPress: () => addBeer(event.text) }}
                         destructive={{
                           label: 'Smazat pivo',
                           onPress: () => dropBeer(event.beerId as string),

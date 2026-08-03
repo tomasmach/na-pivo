@@ -200,12 +200,13 @@ export const useLivePartyStore = create<LivePartyState>((set) => ({
 
   start: (pubName, beer) => {
     const now = Date.now();
+    const firstId = nextId('beer');
     set({
       live: true,
       pubName,
       houseBeer: beer,
       startedAt: now,
-      beers: [{ id: nextId('beer'), beer, at: now }],
+      beers: [{ id: firstId, beer, at: now }],
       people: TABLE.map((person) => ({ ...person })),
       photos: 0,
       games: [],
@@ -219,8 +220,10 @@ export const useLivePartyStore = create<LivePartyState>((set) => ({
           kind: 'beer' as LogKind,
           text: beer,
           by: person.name,
+          // Someone else's beer: no `beerId`, because it is not in YOUR list and
+          // you have no business editing it.
         })),
-        { id: nextId('ev'), at: now, kind: 'beer' as LogKind, text: beer, by: ME },
+        { id: nextId('ev'), at: now, kind: 'beer' as LogKind, text: beer, by: ME, beerId: firstId },
       ],
     });
   },

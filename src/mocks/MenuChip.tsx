@@ -156,12 +156,15 @@ export function RowMenu({
   options,
   title,
   onChange,
+  repeat,
   destructive,
 }: {
   value: string;
   options: readonly string[];
   title: string;
   onChange: (next: string) => void;
+  /** The obvious thing to do with a beer you already had: have it again. */
+  repeat?: { label: string; onPress: () => void };
   /** The one item that is not a choice — "Smazat". */
   destructive?: { label: string; onPress: () => void };
 }) {
@@ -175,6 +178,11 @@ export function RowMenu({
             </HStack>
           }
         >
+          {repeat ? (
+            <Button systemImage="plus" onPress={repeat.onPress}>
+              <UIText>{repeat.label}</UIText>
+            </Button>
+          ) : null}
           <Picker
             label={title}
             selection={value}
@@ -200,18 +208,20 @@ export function RowMenu({
   }
 
   const open = () => {
-    const labels = [...options, ...(destructive ? [destructive.label] : []), 'Zrušit'];
+    const extras = repeat ? [repeat.label] : [];
+    const labels = [...extras, ...options, ...(destructive ? [destructive.label] : []), 'Zrušit'];
     ActionSheetIOS.showActionSheetWithOptions(
       {
         options: labels,
         cancelButtonIndex: labels.length - 1,
-        destructiveButtonIndex: destructive ? options.length : undefined,
+        destructiveButtonIndex: destructive ? extras.length + options.length : undefined,
         title,
         userInterfaceStyle: 'dark',
       },
       (index) => {
-        if (index < options.length) onChange(options[index]);
-        else if (destructive && index === options.length) destructive.onPress();
+        if (repeat && index === 0) repeat.onPress();
+        else if (index < extras.length + options.length) onChange(options[index - extras.length]);
+        else if (destructive && index === extras.length + options.length) destructive.onPress();
       },
     );
   };
